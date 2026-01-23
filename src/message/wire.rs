@@ -1,3 +1,4 @@
+use crate::error::LxmfError;
 use crate::message::Payload;
 use sha2::{Digest, Sha256};
 
@@ -26,5 +27,29 @@ impl WireMessage {
         let mut out = [0u8; 32];
         out.copy_from_slice(&bytes);
         out
+    }
+
+    pub fn pack(&self) -> Result<Vec<u8>, LxmfError> {
+        let mut out = Vec::new();
+        out.extend_from_slice(&self.destination);
+        out.extend_from_slice(&self.source);
+        let payload = self
+            .payload
+            .to_msgpack()
+            .map_err(|_| LxmfError::Unimplemented)?;
+        out.extend_from_slice(&payload);
+        Ok(out)
+    }
+
+    pub fn unpack(bytes: &[u8]) -> Result<Self, LxmfError> {
+        if bytes.len() < 32 {
+            return Err(LxmfError::Unimplemented);
+        }
+        let mut dest = [0u8; 16];
+        let mut src = [0u8; 16];
+        dest.copy_from_slice(&bytes[0..16]);
+        src.copy_from_slice(&bytes[16..32]);
+        let payload = Payload::from_msgpack(&bytes[32..]).map_err(|_| LxmfError::Unimplemented)?;
+        Ok(Self::new(dest, src, payload))
     }
 }
