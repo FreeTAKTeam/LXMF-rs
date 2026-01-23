@@ -8,4 +8,6 @@ pub enum LxmfError {
     Encode(String),
     #[error("io error: {0}")]
     Io(String),
+    #[error("verify error: {0}")]
+    Verify(String),
 }
