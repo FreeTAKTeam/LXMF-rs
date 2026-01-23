@@ -12,3 +12,4 @@ serde_json = "1"
 sha2 = "0.10"
 tempfile = "3"
 hex = "0.4"
+ed25519-dalek = { version = "2.1.1", features = ["rand_core"] }
