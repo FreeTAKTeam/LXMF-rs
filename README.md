@@ -117,6 +117,11 @@ The complete message overhead for LXMF is only 111 bytes, which in return gives 
 
 Before writing your own programs using LXMF, you need to have a basic understanding of how the [Reticulum](https://reticulum.network) protocol and API works. Please see the [Reticulum Manual](https://reticulum.network/manual/). For a few simple examples of how to send and receive messages with LXMF, please see the [receiver example](./docs/example_receiver.py) and the [sender example](./docs/example_sender.py) included in this repository.
 
+## Rust Library (WIP)
+
+This repository now includes a Rust crate that implements LXMF on top of Reticulum-rs.
+See `docs/lxmf-rs-api.md` for the evolving API.
+
 ## Example Paper Message
 
 You can try out the paper messaging functionality by using the following QR code. It is a paper message sent to the LXMF address `6b3362bd2c1dbf87b66a85f79a8d8c75`. To be able to decrypt and read the message, you will need to import the following Reticulum Identity to an LXMF messaging app:
