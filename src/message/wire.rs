@@ -36,20 +36,21 @@ impl WireMessage {
         let payload = self
             .payload
             .to_msgpack()
-            .map_err(|_| LxmfError::Unimplemented)?;
+            .map_err(|e| LxmfError::Encode(e.to_string()))?;
         out.extend_from_slice(&payload);
         Ok(out)
     }
 
     pub fn unpack(bytes: &[u8]) -> Result<Self, LxmfError> {
         if bytes.len() < 32 {
-            return Err(LxmfError::Unimplemented);
+            return Err(LxmfError::Decode("wire message too short".into()));
         }
         let mut dest = [0u8; 16];
         let mut src = [0u8; 16];
         dest.copy_from_slice(&bytes[0..16]);
         src.copy_from_slice(&bytes[16..32]);
-        let payload = Payload::from_msgpack(&bytes[32..]).map_err(|_| LxmfError::Unimplemented)?;
+        let payload =
+            Payload::from_msgpack(&bytes[32..]).map_err(|e| LxmfError::Decode(e.to_string()))?;
         Ok(Self::new(dest, src, payload))
     }
 }

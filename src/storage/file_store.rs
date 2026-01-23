@@ -21,13 +21,13 @@ impl Store for FileStore {
     fn save(&self, msg: &WireMessage) -> Result<(), LxmfError> {
         let id = msg.message_id();
         let path = self.root.join(hex::encode(id));
-        fs::write(path, msg.pack().map_err(|_| LxmfError::Unimplemented)?)
-            .map_err(|_| LxmfError::Unimplemented)
+        let packed = msg.pack().map_err(|e| LxmfError::Encode(e.to_string()))?;
+        fs::write(path, packed).map_err(|e| LxmfError::Io(e.to_string()))
     }
 
     fn get(&self, id: &[u8; 32]) -> Result<WireMessage, LxmfError> {
         let path = self.root.join(hex::encode(id));
-        let bytes = fs::read(path).map_err(|_| LxmfError::Unimplemented)?;
-        WireMessage::unpack(&bytes).map_err(|_| LxmfError::Unimplemented)
+        let bytes = fs::read(path).map_err(|e| LxmfError::Io(e.to_string()))?;
+        WireMessage::unpack(&bytes).map_err(|e| LxmfError::Decode(e.to_string()))
     }
 }

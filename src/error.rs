@@ -1,4 +1,11 @@
-#[derive(Debug)]
+use thiserror::Error;
+
+#[derive(Debug, Error)]
 pub enum LxmfError {
-    Unimplemented,
+    #[error("decode error: {0}")]
+    Decode(String),
+    #[error("encode error: {0}")]
+    Encode(String),
+    #[error("io error: {0}")]
+    Io(String),
 }
