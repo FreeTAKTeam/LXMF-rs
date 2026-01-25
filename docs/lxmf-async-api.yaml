@@ -1,0 +1,263 @@
+version: 0.1
+name: LXMF Async API (Python-derived)
+source:
+  files:
+    - LXMF/LXMRouter.py
+    - LXMF/LXMessage.py
+    - LXMF/LXMF.py
+    - docs/example_sender.py
+    - docs/example_receiver.py
+notes:
+  - The asynchronous behavior is modeled on the router job loop, background threads,
+    and callback-based delivery used by the Python implementation.
+  - This is an interface definition for async wrappers; the underlying Python API is
+    synchronous and event/callback-driven.
+
+entities:
+  Router:
+    description: |
+      Core router that queues outbound messages, handles inbound delivery, and
+      manages propagation node behavior.
+    constructor:
+      method: LXMRouter.__init__
+      parameters:
+        identity: optional RNS.Identity
+        storagepath: required path for LXMF state
+        autopeer: optional bool
+        autopeer_maxdepth: optional int
+        propagation_limit: optional int
+        delivery_limit: optional int
+        sync_limit: optional int
+        enforce_ratchets: optional bool
+        enforce_stamps: optional bool
+        static_peers: optional list[bytes]
+        max_peers: optional int
+        from_static_only: optional bool
+        sync_strategy: optional enum (LXMPeer strategies)
+        propagation_cost: optional int
+        propagation_cost_flexibility: optional int
+        peering_cost: optional int
+        max_peering_cost: optional int
+        name: optional str
+
+  Message:
+    description: |
+      LXMF message object with content, title, fields, delivery method, and
+      delivery state tracking.
+    constructor:
+      method: LXMessage.__init__
+      parameters:
+        destination: RNS.Destination (or None with destination_hash)
+        source: RNS.Destination (or None with source_hash)
+        content: str|bytes
+        title: str|bytes
+        fields: dict|None
+        desired_method: enum (OPPORTUNISTIC|DIRECT|PROPAGATED|PAPER)
+        destination_hash: bytes (when destination None)
+        source_hash: bytes (when source None)
+        stamp_cost: int|None
+        include_ticket: bool
+
+async_api:
+  router:
+    create:
+      summary: Instantiate a router and start the background job loop.
+      returns: Router
+      async_behavior: |
+        A wrapper should start a task that periodically calls Router.jobs() or
+        Router.jobloop() for processing outbound/inbound queues.
+
+    register_delivery_identity:
+      summary: Register a delivery destination for inbound messages.
+      method: LXMRouter.register_delivery_identity
+      params:
+        identity: RNS.Identity
+        display_name: optional str
+        stamp_cost: optional int
+      returns: RNS.Destination
+
+    register_delivery_callback:
+      summary: Set the callback invoked on inbound delivery.
+      method: LXMRouter.register_delivery_callback
+      params:
+        callback: function(message: Message) -> None
+      async_behavior: |
+        Delivery events are emitted from packet/link handlers and delivered
+        asynchronously to the callback.
+
+    announce:
+      summary: Announce an LXMF delivery destination.
+      method: LXMRouter.announce
+      params:
+        destination_hash: bytes
+        attached_interface: optional interface
+      returns: None
+
+    send_message:
+      summary: Enqueue an outbound LXMF message.
+      method: LXMRouter.handle_outbound
+      params:
+        message: Message
+      returns: message_id/hash (from Message after packing)
+      async_behavior: |
+        Message delivery is asynchronous; update tracking via
+        get_outbound_progress, and monitor delivery callbacks or state changes.
+
+    cancel_message:
+      summary: Cancel an outbound message by its transient/message id.
+      method: LXMRouter.cancel_outbound
+      params:
+        message_id: bytes
+        cancel_state: enum (LXMessage.CANCELLED by default)
+
+    get_outbound_progress:
+      summary: Inspect outbound delivery progress.
+      method: LXMRouter.get_outbound_progress
+      params:
+        message_hash: bytes
+      returns: float (0.0 - 1.0)
+
+    set_outbound_propagation_node:
+      summary: Set the propagation node used for outbound delivery.
+      method: LXMRouter.set_outbound_propagation_node
+      params:
+        destination_hash: bytes
+
+    request_messages_from_propagation_node:
+      summary: Request pending messages from a propagation node.
+      method: LXMRouter.request_messages_from_propagation_node
+      params:
+        identity: RNS.Identity
+        max_messages: optional int
+      async_behavior: |
+        Uses a link request to the propagation node and delivers messages as
+        they arrive; observe delivery callback for inbound messages.
+
+    cancel_propagation_requests:
+      summary: Cancel any in-flight propagation node requests.
+      method: LXMRouter.cancel_propagation_node_requests
+
+    enable_propagation:
+      summary: Enable propagation-node behavior on this router.
+      method: LXMRouter.enable_propagation
+
+    disable_propagation:
+      summary: Disable propagation-node behavior on this router.
+      method: LXMRouter.disable_propagation
+
+    set_authentication:
+      summary: Require authentication for inbound delivery.
+      method: LXMRouter.set_authentication
+      params:
+        required: bool
+
+    allow_identity:
+      summary: Add an identity hash to the allow list.
+      method: LXMRouter.allow
+      params:
+        identity_hash: bytes
+
+    disallow_identity:
+      summary: Remove an identity hash from the allow list.
+      method: LXMRouter.disallow
+      params:
+        identity_hash: bytes
+
+    allow_control:
+      summary: Add an identity hash to the control allow list.
+      method: LXMRouter.allow_control
+      params:
+        identity_hash: bytes
+
+    disallow_control:
+      summary: Remove an identity hash from the control allow list.
+      method: LXMRouter.disallow_control
+      params:
+        identity_hash: bytes
+
+    prioritise_destination:
+      summary: Prioritise a destination hash for delivery scheduling.
+      method: LXMRouter.prioritise
+      params:
+        destination_hash: bytes
+
+    unprioritise_destination:
+      summary: Remove destination hash from the priority list.
+      method: LXMRouter.unprioritise
+      params:
+        destination_hash: bytes
+
+    ignore_destination:
+      summary: Ignore messages from a destination hash.
+      method: LXMRouter.ignore_destination
+      params:
+        destination_hash: bytes
+
+    unignore_destination:
+      summary: Stop ignoring a destination hash.
+      method: LXMRouter.unignore_destination
+      params:
+        destination_hash: bytes
+
+    ingest_paper_message:
+      summary: Decode and ingest an LXM URI (paper message).
+      method: LXMRouter.ingest_lxm_uri
+      params:
+        uri: str
+      returns: bool or duplicate signal
+
+  message:
+    states:
+      generating: LXMessage.GENERATING
+      outbound: LXMessage.OUTBOUND
+      sending: LXMessage.SENDING
+      sent: LXMessage.SENT
+      delivered: LXMessage.DELIVERED
+      rejected: LXMessage.REJECTED
+      cancelled: LXMessage.CANCELLED
+      failed: LXMessage.FAILED
+
+    methods:
+      opportunistic: LXMessage.OPPORTUNISTIC
+      direct: LXMessage.DIRECT
+      propagated: LXMessage.PROPAGATED
+      paper: LXMessage.PAPER
+
+    helpers:
+      set_title_from_string: LXMessage.set_title_from_string
+      set_content_from_string: LXMessage.set_content_from_string
+      set_title_from_bytes: LXMessage.set_title_from_bytes
+      set_content_from_bytes: LXMessage.set_content_from_bytes
+
+async_events:
+  message_received:
+    emitted_from: delivery callback registered via register_delivery_callback
+    payload:
+      message: Message
+
+  message_delivery_progress:
+    emitted_from: router job loop (wrapper should poll get_outbound_progress)
+    payload:
+      message_hash: bytes
+      progress: float
+
+  message_failed:
+    emitted_from: router fail_message callback path
+    payload:
+      message: Message
+      state: LXMessage.FAILED|REJECTED|CANCELLED
+
+examples:
+  send:
+    steps:
+      - create router
+      - register delivery identity for source
+      - create destination
+      - create message
+      - enqueue with send_message
+  receive:
+    steps:
+      - create router
+      - register delivery identity
+      - set delivery callback
+      - announce destination
