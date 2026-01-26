@@ -18,4 +18,12 @@ impl Router {
     pub fn outbound_len(&self) -> usize {
         self.outbound.len()
     }
+
+    pub fn dequeue_outbound(&mut self) -> Option<WireMessage> {
+        if self.outbound.is_empty() {
+            None
+        } else {
+            Some(self.outbound.remove(0))
+        }
+    }
 }
