@@ -39,3 +39,26 @@ pub fn stamp_value(workblock: &[u8], stamp: &[u8]) -> u32 {
 pub fn stamp_valid(stamp: &[u8], target_cost: u32, workblock: &[u8]) -> bool {
     stamp_value(workblock, stamp) >= target_cost
 }
+
+pub fn validate_pn_stamp(
+    transient_data: &[u8],
+    target_cost: u32,
+) -> Option<(Vec<u8>, Vec<u8>, u32, Vec<u8>)> {
+    let stamp_size = reticulum::hash::HASH_SIZE;
+    if transient_data.len() <= stamp_size {
+        return None;
+    }
+
+    let (lxm_data, stamp) = transient_data.split_at(transient_data.len() - stamp_size);
+    let transient_id = reticulum::hash::Hash::new_from_slice(lxm_data)
+        .to_bytes()
+        .to_vec();
+    let workblock = stamp_workblock(&transient_id, crate::constants::WORKBLOCK_EXPAND_ROUNDS_PN);
+
+    if !stamp_valid(stamp, target_cost, &workblock) {
+        return None;
+    }
+
+    let value = stamp_value(&workblock, stamp);
+    Some((transient_id, lxm_data.to_vec(), value, stamp.to_vec()))
+}
