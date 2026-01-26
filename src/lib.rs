@@ -7,5 +7,6 @@ pub mod propagation;
 pub mod router;
 pub mod storage;
 pub mod reticulum;
+pub mod stamper;
 
 pub use message::Message;
