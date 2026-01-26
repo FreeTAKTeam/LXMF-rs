@@ -208,15 +208,10 @@ fn encrypt_for_identity<R: CryptoRngCore + Copy>(
     plaintext: &[u8],
     rng: R,
 ) -> Result<Vec<u8>, LxmfError> {
-    let mut hasher = Sha256::new();
-    hasher.update(destination.public_key.as_bytes());
-    hasher.update(destination.verifying_key.as_bytes());
-    let salt = hasher.finalize();
-
     let secret = EphemeralSecret::random_from_rng(rng);
     let ephemeral_public = PublicKey::from(&secret);
     let shared = secret.diffie_hellman(&destination.public_key);
-    let derived = DerivedKey::new(&shared, Some(&salt));
+    let derived = DerivedKey::new(&shared, Some(destination.address_hash.as_slice()));
     let key_bytes = derived.as_bytes();
     let split = key_bytes.len() / 2;
 

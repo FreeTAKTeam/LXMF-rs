@@ -37,6 +37,13 @@ with open(config_path, "w", encoding="utf-8") as f:
         )
     )
 
+original_urandom = os.urandom
+
+def fixed_urandom(n):
+    return bytes([0x42] * n)
+
+os.urandom = fixed_urandom
+
 RNS.Reticulum(configdir=config_dir, loglevel=RNS.LOG_ERROR)
 
 identity = RNS.Identity()
@@ -81,20 +88,20 @@ prop_msg.timestamp = fixed_timestamp
 paper_msg = LXMessage(destination, source, content="paper", title="", fields=None, desired_method=LXMessage.PAPER)
 paper_msg.timestamp = fixed_timestamp
 
-original_urandom = os.urandom
 original_time = time.time
 
-def fixed_urandom(n):
-    return bytes([0x42] * n)
-
 try:
-    os.urandom = fixed_urandom
     time.time = lambda: fixed_timestamp
     prop_msg.pack()
     paper_msg.pack()
     router = LXMF.LXMRouter(identity=identity, storagepath=config_dir)
     propagation_node_app_data = router.get_propagation_node_app_data()
+    def fixed_urandom_alt(n):
+        return bytes([0x43] * n)
+
+    os.urandom = fixed_urandom_alt
     custom_identity = RNS.Identity()
+    os.urandom = fixed_urandom
     custom_router = LXMF.LXMRouter(
         identity=custom_identity,
         storagepath=config_dir,
@@ -108,8 +115,8 @@ try:
     custom_router.propagation_node = True
     custom_propagation_node_app_data = custom_router.get_propagation_node_app_data()
 finally:
-    os.urandom = original_urandom
     time.time = original_time
+    os.urandom = original_urandom
 
 with open(os.path.join(OUT, "payload_bytes.bin"), "wb") as f:
     f.write(msg_bytes.payload)

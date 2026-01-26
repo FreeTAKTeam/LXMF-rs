@@ -19,5 +19,5 @@ fn storage_container_state_and_method_match_python() {
     assert_eq!(container.state_enum().unwrap(), MessageState::Delivered);
     assert_eq!(container.method_enum().unwrap(), TransportMethod::Direct);
     assert!(container.transport_encrypted);
-    assert_eq!(container.transport_encryption.as_deref(), Some("AES"));
+    assert_eq!(container.transport_encryption.as_deref(), Some("AES-128"));
 }
