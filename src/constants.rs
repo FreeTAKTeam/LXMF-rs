@@ -44,6 +44,12 @@ pub const URI_SCHEMA_LENGTH: usize = 3;
 pub const PAPER_MDU: usize = ((QR_MAX_STORAGE - (URI_SCHEMA_LENGTH + 3)) * 6) / 8;
 
 pub const PN_META_NAME: u8 = 0x01;
+pub const PN_META_VERSION: u8 = 0x00;
+pub const PN_META_SYNC_STRATUM: u8 = 0x02;
+pub const PN_META_SYNC_THROTTLE: u8 = 0x03;
+pub const PN_META_AUTH_BAND: u8 = 0x04;
+pub const PN_META_UTIL_PRESSURE: u8 = 0x05;
+pub const PN_META_CUSTOM: u8 = 0xFF;
 
 pub const PROPAGATION_COST_MIN: u32 = 13;
 pub const PROPAGATION_COST_FLEX: u32 = 3;
