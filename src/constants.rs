@@ -42,3 +42,13 @@ pub const PLAIN_PACKET_MAX_CONTENT: usize = PLAIN_MDU - LXMF_OVERHEAD + DESTINAT
 pub const QR_MAX_STORAGE: usize = 2953;
 pub const URI_SCHEMA_LENGTH: usize = 3;
 pub const PAPER_MDU: usize = ((QR_MAX_STORAGE - (URI_SCHEMA_LENGTH + 3)) * 6) / 8;
+
+pub const PN_META_NAME: u8 = 0x01;
+
+pub const PROPAGATION_COST_MIN: u32 = 13;
+pub const PROPAGATION_COST_FLEX: u32 = 3;
+pub const PROPAGATION_COST: u32 = 16;
+pub const PROPAGATION_LIMIT: u32 = 256;
+pub const SYNC_LIMIT: u32 = PROPAGATION_LIMIT * 40;
+pub const PEERING_COST: u32 = 18;
+pub const MAX_PEERING_COST: u32 = 26;
