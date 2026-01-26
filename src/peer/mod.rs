@@ -19,4 +19,8 @@ impl Peer {
     pub fn last_seen(&self) -> Option<f64> {
         self.last_seen
     }
+
+    pub fn dest(&self) -> [u8; 16] {
+        self.dest
+    }
 }
