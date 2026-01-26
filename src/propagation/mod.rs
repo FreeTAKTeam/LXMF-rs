@@ -34,6 +34,14 @@ pub struct PropagationEnvelope {
     pub messages: Vec<Vec<u8>>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct PropagationStamp {
+    pub transient_id: Vec<u8>,
+    pub lxmf_data: Vec<u8>,
+    pub stamp_value: u32,
+    pub stamp: Vec<u8>,
+}
+
 pub fn unpack_envelope(bytes: &[u8]) -> Result<PropagationEnvelope, LxmfError> {
     #[derive(Deserialize)]
     struct Envelope(f64, Vec<ByteBuf>);
@@ -43,6 +51,17 @@ pub fn unpack_envelope(bytes: &[u8]) -> Result<PropagationEnvelope, LxmfError> {
     Ok(PropagationEnvelope {
         timestamp,
         messages: messages.into_iter().map(|b| b.into_vec()).collect(),
+    })
+}
+
+pub fn validate_stamp(transient_data: &[u8], target_cost: u32) -> Option<PropagationStamp> {
+    let (transient_id, lxmf_data, stamp_value, stamp) =
+        crate::stamper::validate_pn_stamp(transient_data, target_cost)?;
+    Some(PropagationStamp {
+        transient_id,
+        lxmf_data,
+        stamp_value,
+        stamp,
     })
 }
 
