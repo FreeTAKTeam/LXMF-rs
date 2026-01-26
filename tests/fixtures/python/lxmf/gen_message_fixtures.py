@@ -59,6 +59,9 @@ storage_msg_alt.method = LXMessage.DIRECT
 prop_msg = LXMessage(destination, source, content="prop", title="", fields=None, desired_method=LXMessage.PROPAGATED)
 prop_msg.timestamp = fixed_timestamp
 
+paper_msg = LXMessage(destination, source, content="paper", title="", fields=None, desired_method=LXMessage.PAPER)
+paper_msg.timestamp = fixed_timestamp
+
 original_urandom = os.urandom
 
 def fixed_urandom(n):
@@ -67,6 +70,7 @@ def fixed_urandom(n):
 try:
     os.urandom = fixed_urandom
     prop_msg.pack()
+    paper_msg.pack()
 finally:
     os.urandom = original_urandom
 
@@ -80,11 +84,15 @@ with open(os.path.join(OUT, "message_packed.bin"), "wb") as f:
     f.write(packed_msg.packed)
 with open(os.path.join(OUT, "propagation_message.bin"), "wb") as f:
     f.write(prop_msg.packed)
+with open(os.path.join(OUT, "paper_message.bin"), "wb") as f:
+    f.write(paper_msg.packed)
 with open(os.path.join(OUT, "storage_unsigned.bin"), "wb") as f:
     f.write(storage_msg.packed_container())
 with open(os.path.join(OUT, "storage_signed.bin"), "wb") as f:
     f.write(storage_msg_alt.packed_container())
 with open(os.path.join(OUT, "propagation.bin"), "wb") as f:
     f.write(prop_msg.propagation_packed)
+with open(os.path.join(OUT, "paper.bin"), "wb") as f:
+    f.write(paper_msg.paper_packed)
 with open(os.path.join(OUT, "propagation_dest_pubkey.bin"), "wb") as f:
     f.write(dest_identity.get_public_key())

@@ -188,6 +188,19 @@ impl WireMessage {
         let envelope = (timestamp, vec![serde_bytes::ByteBuf::from(lxmf_data)]);
         rmp_serde::to_vec(&envelope).map_err(|e| LxmfError::Encode(e.to_string()))
     }
+
+    pub fn pack_paper_with_rng<R: CryptoRngCore + Copy>(
+        &self,
+        destination: &Identity,
+        rng: R,
+    ) -> Result<Vec<u8>, LxmfError> {
+        let packed = self.pack()?;
+        let encrypted = encrypt_for_identity(destination, &packed[16..], rng)?;
+        let mut out = Vec::with_capacity(16 + encrypted.len());
+        out.extend_from_slice(&packed[..16]);
+        out.extend_from_slice(&encrypted);
+        Ok(out)
+    }
 }
 
 fn encrypt_for_identity<R: CryptoRngCore + Copy>(
