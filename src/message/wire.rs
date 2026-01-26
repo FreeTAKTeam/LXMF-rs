@@ -1,8 +1,11 @@
 use crate::error::LxmfError;
 use crate::message::Payload;
 use ed25519_dalek::Signature;
-use reticulum::identity::{Identity, PrivateIdentity};
+use rand_core::CryptoRngCore;
+use reticulum::crypt::fernet::{Fernet, PlainText, FERNET_MAX_PADDING_SIZE, FERNET_OVERHEAD_SIZE};
+use reticulum::identity::{DerivedKey, Identity, PrivateIdentity, PUBLIC_KEY_LENGTH};
 use sha2::{Digest, Sha256};
+use x25519_dalek::{EphemeralSecret, PublicKey};
 
 pub const SIGNATURE_LENGTH: usize = ed25519_dalek::SIGNATURE_LENGTH;
 const STORAGE_MAGIC: &[u8; 8] = b"LXMFSTR0";
@@ -168,4 +171,52 @@ impl WireMessage {
 
         Self::unpack(bytes)
     }
+
+    pub fn pack_propagation_with_rng<R: CryptoRngCore + Copy>(
+        &self,
+        destination: &Identity,
+        timestamp: f64,
+        rng: R,
+    ) -> Result<Vec<u8>, LxmfError> {
+        let packed = self.pack()?;
+        let encrypted = encrypt_for_identity(destination, &packed[16..], rng)?;
+
+        let mut lxmf_data = Vec::with_capacity(16 + encrypted.len());
+        lxmf_data.extend_from_slice(&packed[..16]);
+        lxmf_data.extend_from_slice(&encrypted);
+
+        let envelope = (timestamp, vec![serde_bytes::ByteBuf::from(lxmf_data)]);
+        rmp_serde::to_vec(&envelope).map_err(|e| LxmfError::Encode(e.to_string()))
+    }
+}
+
+fn encrypt_for_identity<R: CryptoRngCore + Copy>(
+    destination: &Identity,
+    plaintext: &[u8],
+    rng: R,
+) -> Result<Vec<u8>, LxmfError> {
+    let mut hasher = Sha256::new();
+    hasher.update(destination.public_key.as_bytes());
+    hasher.update(destination.verifying_key.as_bytes());
+    let salt = hasher.finalize();
+
+    let secret = EphemeralSecret::random_from_rng(rng);
+    let ephemeral_public = PublicKey::from(&secret);
+    let shared = secret.diffie_hellman(&destination.public_key);
+    let derived = DerivedKey::new(&shared, Some(&salt));
+    let key_bytes = derived.as_bytes();
+    let split = key_bytes.len() / 2;
+
+    let fernet = Fernet::new_from_slices(&key_bytes[..split], &key_bytes[split..], rng);
+    let mut out = vec![
+        0u8;
+        PUBLIC_KEY_LENGTH + plaintext.len() + FERNET_OVERHEAD_SIZE + FERNET_MAX_PADDING_SIZE
+    ];
+    out[..PUBLIC_KEY_LENGTH].copy_from_slice(ephemeral_public.as_bytes());
+    let token = fernet
+        .encrypt(PlainText::from(plaintext), &mut out[PUBLIC_KEY_LENGTH..])
+        .map_err(|e| LxmfError::Encode(format!("{e:?}")))?;
+    let total = PUBLIC_KEY_LENGTH + token.len();
+    out.truncate(total);
+    Ok(out)
 }

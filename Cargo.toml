@@ -17,3 +17,5 @@ tempfile = "3"
 hex = "0.4"
 ed25519-dalek = { version = "2.1.1", features = ["rand_core"] }
 clap = { version = "4.5.4", features = ["derive"] }
+rand_core = { version = "0.6.4", features = ["getrandom"] }
+x25519-dalek = "2.0.1"

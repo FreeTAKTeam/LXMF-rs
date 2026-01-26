@@ -743,6 +743,7 @@ dependencies = [
  "ed25519-dalek",
  "hex",
  "hkdf",
+ "rand_core",
  "reticulum",
  "rmp-serde",
  "rmpv",
@@ -752,6 +753,7 @@ dependencies = [
  "sha2",
  "tempfile",
  "thiserror",
+ "x25519-dalek",
 ]
 
 [[package]]
