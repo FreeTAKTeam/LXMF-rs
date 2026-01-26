@@ -12,6 +12,14 @@ pub trait Verifier: Send + Sync {
     fn verify(&self, message: &WireMessage) -> Result<bool, LxmfError>;
 }
 
+pub struct NoopVerifier;
+
+impl Verifier for NoopVerifier {
+    fn verify(&self, _message: &WireMessage) -> Result<bool, LxmfError> {
+        Ok(true)
+    }
+}
+
 pub struct PropagationNode {
     store: Box<dyn Store + Send + Sync>,
     mode: VerificationMode,
