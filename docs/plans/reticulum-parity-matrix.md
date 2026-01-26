@@ -14,7 +14,7 @@ Status legend: not-started | partial | done
 | RNS/Cryptography/* | src/crypt/* + src/crypt.rs | partial | tests/lxmf_signature.rs, tests/lxmf_group_encrypt.rs | crypto/signatures |
 | RNS/Resource.py | src/resource.rs | partial | tests/resource_channel_parity.rs | resource transfer |
 | RNS/Channel.py | src/channel.rs | partial | tests/resource_channel_parity.rs | channels |
-| RNS/Buffer.py | src/buffer.rs | not-started |  | buffer management |
+| RNS/Buffer.py | src/buffer.rs | partial | tests/buffer_parity.rs | buffer management |
 | RNS/Discovery.py | src/transport/discovery.rs (missing) | not-started |  | discovery/announce |
 | RNS/Resolver.py | src/utils/resolver.rs (missing) | not-started |  | resolver |
 | RNS/Utilities/* | src/utils/* | partial | tests/hash_parity.rs | helpers/hashes |
