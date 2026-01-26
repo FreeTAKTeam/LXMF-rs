@@ -1,10 +1,12 @@
 mod container;
+mod delivery;
 mod payload;
 mod state;
 mod types;
 mod wire;
 
 pub use container::MessageContainer;
+pub use delivery::{decide_delivery, DeliveryDecision};
 pub use payload::Payload;
 pub use state::State;
 pub use types::{MessageMethod, MessageState, TransportMethod, UnverifiedReason};

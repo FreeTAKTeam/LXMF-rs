@@ -8,6 +8,7 @@ fn loads_lxmessage_fixtures() {
     let storage_signed = std::fs::read("tests/fixtures/python/lxmf/storage_signed.bin").unwrap();
     let propagation = std::fs::read("tests/fixtures/python/lxmf/propagation.bin").unwrap();
     let paper = std::fs::read("tests/fixtures/python/lxmf/paper.bin").unwrap();
+    let delivery_matrix = std::fs::read("tests/fixtures/python/lxmf/delivery_matrix.msgpack").unwrap();
 
     assert!(!payload_bytes.is_empty());
     assert!(!payload_strings.is_empty());
@@ -17,4 +18,5 @@ fn loads_lxmessage_fixtures() {
     assert!(!storage_signed.is_empty());
     assert!(!propagation.is_empty());
     assert!(!paper.is_empty());
+    assert!(!delivery_matrix.is_empty());
 }
