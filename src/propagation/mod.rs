@@ -42,6 +42,14 @@ pub struct PropagationStamp {
     pub stamp: Vec<u8>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct IngestedMessage {
+    pub transient_id: Vec<u8>,
+    pub lxmf_data: Vec<u8>,
+    pub stamp_value: Option<u32>,
+    pub stamp: Option<Vec<u8>>,
+}
+
 pub fn unpack_envelope(bytes: &[u8]) -> Result<PropagationEnvelope, LxmfError> {
     #[derive(Deserialize)]
     struct Envelope(f64, Vec<ByteBuf>);
@@ -63,6 +71,41 @@ pub fn validate_stamp(transient_data: &[u8], target_cost: u32) -> Option<Propaga
         stamp_value,
         stamp,
     })
+}
+
+pub fn ingest_envelope(
+    bytes: &[u8],
+    target_cost: u32,
+) -> Result<Vec<IngestedMessage>, LxmfError> {
+    let envelope = unpack_envelope(bytes)?;
+    let mut out = Vec::new();
+
+    for data in envelope.messages {
+        let maybe_stamped = if data.len() > reticulum::hash::HASH_SIZE {
+            validate_stamp(&data, target_cost)
+        } else {
+            None
+        };
+
+        if let Some(stamped) = maybe_stamped {
+            out.push(IngestedMessage {
+                transient_id: stamped.transient_id,
+                lxmf_data: stamped.lxmf_data,
+                stamp_value: Some(stamped.stamp_value),
+                stamp: Some(stamped.stamp),
+            });
+        } else if target_cost == 0 {
+            let transient_id = reticulum::hash::Hash::new_from_slice(&data).to_bytes().to_vec();
+            out.push(IngestedMessage {
+                transient_id,
+                lxmf_data: data,
+                stamp_value: None,
+                stamp: None,
+            });
+        }
+    }
+
+    Ok(out)
 }
 
 impl PropagationNode {
