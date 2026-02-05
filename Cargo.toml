@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-reticulum = { path = "../Reticulum-rs" }
+reticulum = { path = "../Reticulum-rs/crates/reticulum" }
 serde = { version = "1", features = ["derive"] }
 thiserror = "1"
 rmp-serde = "1"

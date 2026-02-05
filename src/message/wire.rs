@@ -34,7 +34,7 @@ impl WireMessage {
         let mut hasher = Sha256::new();
         hasher.update(self.destination);
         hasher.update(self.source);
-        hasher.update(self.payload.to_msgpack().unwrap_or_default());
+        hasher.update(self.payload.to_msgpack_without_stamp().unwrap_or_default());
         let bytes = hasher.finalize();
         let mut out = [0u8; 32];
         out.copy_from_slice(&bytes);
@@ -42,7 +42,7 @@ impl WireMessage {
     }
 
     pub fn sign(&mut self, signer: &PrivateIdentity) -> Result<(), LxmfError> {
-        let payload = self.payload.to_msgpack()?;
+        let payload = self.payload.to_msgpack_without_stamp()?;
         let mut data = Vec::with_capacity(16 + 16 + payload.len() + 32);
         data.extend_from_slice(&self.destination);
         data.extend_from_slice(&self.source);
@@ -61,7 +61,7 @@ impl WireMessage {
         let signature = Signature::from_slice(&sig_bytes)
             .map_err(|e| LxmfError::Decode(e.to_string()))?;
 
-        let payload = self.payload.to_msgpack()?;
+        let payload = self.payload.to_msgpack_without_stamp()?;
         let mut data = Vec::with_capacity(16 + 16 + payload.len() + 32);
         data.extend_from_slice(&self.destination);
         data.extend_from_slice(&self.source);

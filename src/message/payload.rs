@@ -9,6 +9,7 @@ pub struct Payload {
     pub content: Option<ByteBuf>,
     pub title: Option<ByteBuf>,
     pub fields: Option<rmpv::Value>,
+    pub stamp: Option<ByteBuf>,
 }
 
 impl Payload {
@@ -17,38 +18,83 @@ impl Payload {
         content: Option<Vec<u8>>,
         title: Option<Vec<u8>>,
         fields: Option<rmpv::Value>,
+        stamp: Option<Vec<u8>>,
     ) -> Self {
         Self {
             timestamp,
             content: content.map(ByteBuf::from),
             title: title.map(ByteBuf::from),
             fields,
+            stamp: stamp.map(ByteBuf::from),
         }
     }
 
     pub fn to_msgpack(&self) -> Result<Vec<u8>, LxmfError> {
+        if let Some(stamp) = &self.stamp {
+            let list = (
+                self.timestamp,
+                self.title.clone(),
+                self.content.clone(),
+                self.fields.clone(),
+                stamp.clone(),
+            );
+            rmp_serde::to_vec(&list).map_err(|e| LxmfError::Encode(e.to_string()))
+        } else {
+            self.to_msgpack_without_stamp()
+        }
+    }
+
+    pub fn to_msgpack_without_stamp(&self) -> Result<Vec<u8>, LxmfError> {
         let list = (
             self.timestamp,
-            self.content.clone(),
             self.title.clone(),
+            self.content.clone(),
             self.fields.clone(),
         );
         rmp_serde::to_vec(&list).map_err(|e| LxmfError::Encode(e.to_string()))
     }
 
     pub fn from_msgpack(bytes: &[u8]) -> Result<Self, LxmfError> {
-        let (timestamp, content, title, fields): (
-            f64,
-            Option<ByteBuf>,
-            Option<ByteBuf>,
-            Option<rmpv::Value>,
-        ) = rmp_serde::from_slice(bytes)
+        let value = rmp_serde::from_slice::<rmpv::Value>(bytes)
             .map_err(|e| LxmfError::Decode(e.to_string()))?;
+        let rmpv::Value::Array(items) = value else {
+            return Err(LxmfError::Decode("invalid payload structure".into()));
+        };
+        if items.len() < 4 || items.len() > 5 {
+            return Err(LxmfError::Decode("invalid payload length".into()));
+        }
+        let timestamp = items
+            .get(0)
+            .and_then(|value| value.as_f64())
+            .ok_or_else(|| LxmfError::Decode("invalid payload timestamp".into()))?;
+        let title = value_to_bytes(items.get(1))
+            .map(ByteBuf::from);
+        let content = value_to_bytes(items.get(2))
+            .map(ByteBuf::from);
+        let fields = match items.get(3) {
+            Some(rmpv::Value::Nil) | None => None,
+            Some(value) => Some(value.clone()),
+        };
+        let stamp = if items.len() == 5 {
+            value_to_bytes(items.get(4)).map(ByteBuf::from)
+        } else {
+            None
+        };
         Ok(Self {
             timestamp,
             content,
             title,
             fields,
+            stamp,
         })
+    }
+}
+
+fn value_to_bytes(value: Option<&rmpv::Value>) -> Option<Vec<u8>> {
+    match value {
+        Some(rmpv::Value::Binary(bin)) => Some(bin.clone()),
+        Some(rmpv::Value::String(text)) => text.as_str().map(|s| s.as_bytes().to_vec()),
+        Some(rmpv::Value::Nil) | None => None,
+        _ => None,
     }
 }

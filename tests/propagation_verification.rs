@@ -30,7 +30,7 @@ fn strict_rejects_unsigned_messages() {
     let msg = WireMessage::new(
         [10u8; 16],
         [11u8; 16],
-        Payload::new(1.0, Some(b"hi".to_vec()), None, None),
+        Payload::new(1.0, Some(b"hi".to_vec()), None, None, None),
     );
 
     let err = node.store(msg).unwrap_err();
@@ -47,7 +47,7 @@ fn strict_rejects_invalid_signature_when_verifier_present() {
     let mut msg = WireMessage::new(
         [12u8; 16],
         [13u8; 16],
-        Payload::new(1.0, Some(b"hi".to_vec()), None, None),
+        Payload::new(1.0, Some(b"hi".to_vec()), None, None, None),
     );
     let signer = PrivateIdentity::new_from_name("lxmf-verify");
     msg.sign(&signer).unwrap();
@@ -67,7 +67,7 @@ fn permissive_allows_unsigned_messages_to_persist() {
     let msg = WireMessage::new(
         [20u8; 16],
         [21u8; 16],
-        Payload::new(2.0, Some(b"hi".to_vec()), None, None),
+        Payload::new(2.0, Some(b"hi".to_vec()), None, None, None),
     );
 
     node.store(msg.clone()).unwrap();

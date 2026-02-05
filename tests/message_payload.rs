@@ -2,7 +2,7 @@ use lxmf::message::Payload;
 
 #[test]
 fn payload_roundtrip_msgpack() {
-    let payload = Payload::new(1_700_000_000.0, Some(b"hi".to_vec()), None, None);
+    let payload = Payload::new(1_700_000_000.0, Some(b"hi".to_vec()), None, None, None);
     let bytes = payload.to_msgpack().unwrap();
     let decoded = Payload::from_msgpack(&bytes).unwrap();
     assert_eq!(decoded.timestamp, payload.timestamp);

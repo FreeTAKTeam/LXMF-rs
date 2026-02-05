@@ -4,7 +4,7 @@ fn outbound_queue_dequeues() {
     let msg = lxmf::message::WireMessage::new(
         [0u8; 16],
         [1u8; 16],
-        lxmf::message::Payload::new(0.0, None, None, None),
+        lxmf::message::Payload::new(0.0, None, None, None, None),
     );
     router.enqueue_outbound(msg);
     let dequeued = router.dequeue_outbound().expect("expected message");

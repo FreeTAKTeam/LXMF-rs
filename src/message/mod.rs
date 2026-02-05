@@ -24,6 +24,7 @@ pub struct Message {
     pub content: Vec<u8>,
     pub title: Vec<u8>,
     pub fields: Option<rmpv::Value>,
+    pub stamp: Option<Vec<u8>>,
     pub timestamp: Option<f64>,
     state: State,
 }
@@ -37,6 +38,7 @@ impl Message {
             content: Vec::new(),
             title: Vec::new(),
             fields: None,
+            stamp: None,
             timestamp: None,
             state: State::Generating,
         }
@@ -70,6 +72,14 @@ impl Message {
         self.content = content.to_vec();
     }
 
+    pub fn set_stamp_from_bytes(&mut self, stamp: &[u8]) {
+        self.stamp = Some(stamp.to_vec());
+    }
+
+    pub fn stamp_bytes(&self) -> Option<Vec<u8>> {
+        self.stamp.clone()
+    }
+
     pub fn content_as_string(&self) -> Option<String> {
         String::from_utf8(self.content.clone()).ok()
     }
@@ -84,6 +94,7 @@ impl Message {
             content: payload.content.as_ref().map(|c| c.to_vec()).unwrap_or_default(),
             title: payload.title.as_ref().map(|t| t.to_vec()).unwrap_or_default(),
             fields: payload.fields,
+            stamp: payload.stamp.as_ref().map(|s| s.to_vec()),
             timestamp: Some(payload.timestamp),
             state: State::Generating,
         })
@@ -109,6 +120,7 @@ impl Message {
             Some(self.content.clone()),
             Some(self.title.clone()),
             self.fields.clone(),
+            self.stamp.clone(),
         );
 
         let mut wire = WireMessage::new(destination, source, payload);

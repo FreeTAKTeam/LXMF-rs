@@ -4,7 +4,7 @@ use lxmf::router::Router;
 #[test]
 fn router_can_queue_outbound() {
     let mut router = Router::default();
-    let payload = Payload::new(1_700_000_000.0, Some(b"hi".to_vec()), None, None);
+    let payload = Payload::new(1_700_000_000.0, Some(b"hi".to_vec()), None, None, None);
     let msg = WireMessage::new([0u8; 16], [1u8; 16], payload);
     router.enqueue_outbound(msg);
     assert_eq!(router.outbound_len(), 1);
