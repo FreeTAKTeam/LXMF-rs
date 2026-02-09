@@ -25,6 +25,8 @@ Status legend: `not-started` | `partial` | `done`.
 - PARITY_ITEM id=message.storage_roundtrip status=done tests=tests/message_storage_parity.rs
 - PARITY_ITEM id=message.propagation_pack_unpack status=done tests=tests/propagation_pack_parity.rs,tests/propagation_unpack_parity.rs
 - PARITY_ITEM id=message.paper_pack status=done tests=tests/paper_pack_parity.rs
+- PARITY_ITEM id=message.paper_uri_helpers status=done tests=tests/message_uri_file_helpers.rs
+- PARITY_ITEM id=message.file_unpack_helpers status=done tests=tests/message_uri_file_helpers.rs
 - PARITY_ITEM id=message.signature_verify status=done tests=tests/message_signature.rs
 - PARITY_ITEM id=message.object_accessors status=done tests=tests/message_object_parity.rs
 - PARITY_ITEM id=stamper.validate_pn_stamp status=done tests=tests/pn_stamp_parity.rs

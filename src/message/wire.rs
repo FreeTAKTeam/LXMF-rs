@@ -1,13 +1,16 @@
 use crate::error::LxmfError;
 use crate::message::Payload;
+use base64::Engine;
 use ed25519_dalek::Signature;
 use rand_core::CryptoRngCore;
 use reticulum::crypt::fernet::{Fernet, PlainText};
 use reticulum::identity::{DerivedKey, Identity, PrivateIdentity, PUBLIC_KEY_LENGTH};
 use sha2::{Digest, Sha256};
+use std::path::Path;
 use x25519_dalek::{EphemeralSecret, PublicKey};
 
 pub const SIGNATURE_LENGTH: usize = ed25519_dalek::SIGNATURE_LENGTH;
+pub const LXM_URI_PREFIX: &str = "lxm://";
 const STORAGE_MAGIC: &[u8; 8] = b"LXMFSTR0";
 const STORAGE_VERSION: u8 = 1;
 const STORAGE_FLAG_HAS_SIGNATURE: u8 = 0x01;
@@ -131,6 +134,11 @@ impl WireMessage {
         })
     }
 
+    pub fn unpack_from_file(path: impl AsRef<Path>) -> Result<Self, LxmfError> {
+        let bytes = std::fs::read(path).map_err(|e| LxmfError::Io(e.to_string()))?;
+        Self::unpack(&bytes)
+    }
+
     pub fn unpack_storage(bytes: &[u8]) -> Result<Self, LxmfError> {
         let magic_len = STORAGE_MAGIC.len();
         if bytes.len() >= magic_len && bytes.starts_with(STORAGE_MAGIC) {
@@ -172,6 +180,21 @@ impl WireMessage {
         Self::unpack(bytes)
     }
 
+    pub fn unpack_storage_from_file(path: impl AsRef<Path>) -> Result<Self, LxmfError> {
+        let bytes = std::fs::read(path).map_err(|e| LxmfError::Io(e.to_string()))?;
+        Self::unpack_storage(&bytes)
+    }
+
+    pub fn pack_to_file(&self, path: impl AsRef<Path>) -> Result<(), LxmfError> {
+        let bytes = self.pack()?;
+        std::fs::write(path, bytes).map_err(|e| LxmfError::Io(e.to_string()))
+    }
+
+    pub fn pack_storage_to_file(&self, path: impl AsRef<Path>) -> Result<(), LxmfError> {
+        let bytes = self.pack_storage()?;
+        std::fs::write(path, bytes).map_err(|e| LxmfError::Io(e.to_string()))
+    }
+
     pub fn pack_propagation_with_rng<R: CryptoRngCore + Copy>(
         &self,
         destination: &Identity,
@@ -200,6 +223,31 @@ impl WireMessage {
         out.extend_from_slice(&packed[..16]);
         out.extend_from_slice(&encrypted);
         Ok(out)
+    }
+
+    pub fn pack_paper_uri_with_rng<R: CryptoRngCore + Copy>(
+        &self,
+        destination: &Identity,
+        rng: R,
+    ) -> Result<String, LxmfError> {
+        let packed = self.pack_paper_with_rng(destination, rng)?;
+        Ok(Self::encode_lxm_uri(&packed))
+    }
+
+    pub fn encode_lxm_uri(paper_bytes: &[u8]) -> String {
+        let encoded = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(paper_bytes);
+        format!("{LXM_URI_PREFIX}{encoded}")
+    }
+
+    pub fn decode_lxm_uri(uri: &str) -> Result<Vec<u8>, LxmfError> {
+        let encoded = uri
+            .strip_prefix(LXM_URI_PREFIX)
+            .ok_or_else(|| LxmfError::Decode("invalid lxm uri prefix".into()))?;
+
+        base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(encoded)
+            .or_else(|_| base64::engine::general_purpose::URL_SAFE.decode(encoded))
+            .map_err(|e| LxmfError::Decode(format!("invalid lxm uri payload: {e}")))
     }
 }
 
