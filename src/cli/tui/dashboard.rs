@@ -127,6 +127,15 @@ pub fn render(
         ]),
         Line::from(vec![
             Span::styled(
+                "p",
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" edit profile settings", Style::default().fg(theme.text)),
+        ]),
+        Line::from(vec![
+            Span::styled(
                 "y",
                 Style::default()
                     .fg(theme.accent)

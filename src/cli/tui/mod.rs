@@ -26,6 +26,7 @@ use crate::cli::daemon::DaemonSupervisor;
 use crate::cli::profile::{
     load_profile_settings, load_reticulum_config, remove_interface, save_profile_settings,
     save_reticulum_config, set_interface_enabled, upsert_interface, InterfaceEntry,
+    ProfileSettings,
 };
 use crate::cli::rpc_client::RpcClient;
 
@@ -136,6 +137,8 @@ struct TuiState {
     welcome_dismissed: bool,
     composer: Option<ComposeState>,
     interface_editor: Option<InterfaceEditorState>,
+    profile_editor: Option<ProfileEditorState>,
+    profile_managed: bool,
 }
 
 #[derive(Debug)]
@@ -144,6 +147,94 @@ struct RefreshOutcome {
     warning: Option<String>,
     new_events: usize,
     elapsed_ms: u128,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProfileField {
+    Managed,
+    Rpc,
+    ReticulumdPath,
+    DbPath,
+    IdentityPath,
+    Transport,
+}
+
+impl ProfileField {
+    fn next(self) -> Self {
+        match self {
+            Self::Managed => Self::Rpc,
+            Self::Rpc => Self::ReticulumdPath,
+            Self::ReticulumdPath => Self::DbPath,
+            Self::DbPath => Self::IdentityPath,
+            Self::IdentityPath => Self::Transport,
+            Self::Transport => Self::Managed,
+        }
+    }
+
+    fn prev(self) -> Self {
+        match self {
+            Self::Managed => Self::Transport,
+            Self::Rpc => Self::Managed,
+            Self::ReticulumdPath => Self::Rpc,
+            Self::DbPath => Self::ReticulumdPath,
+            Self::IdentityPath => Self::DbPath,
+            Self::Transport => Self::IdentityPath,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct ProfileEditorState {
+    managed: bool,
+    rpc: String,
+    reticulumd_path: String,
+    db_path: String,
+    identity_path: String,
+    transport: String,
+    active: Option<ProfileField>,
+}
+
+impl ProfileEditorState {
+    fn from_settings(settings: &ProfileSettings) -> Self {
+        Self {
+            managed: settings.managed,
+            rpc: settings.rpc.clone(),
+            reticulumd_path: settings.reticulumd_path.clone().unwrap_or_default(),
+            db_path: settings.db_path.clone().unwrap_or_default(),
+            identity_path: settings.identity_path.clone().unwrap_or_default(),
+            transport: settings.transport.clone().unwrap_or_default(),
+            active: Some(ProfileField::Managed),
+        }
+    }
+
+    fn active_field(&self) -> ProfileField {
+        self.active.unwrap_or(ProfileField::Managed)
+    }
+
+    fn next_field(&mut self) {
+        self.active = Some(self.active_field().next());
+    }
+
+    fn prev_field(&mut self) {
+        self.active = Some(self.active_field().prev());
+    }
+
+    fn active_value_mut(&mut self) -> Option<&mut String> {
+        match self.active_field() {
+            ProfileField::Managed => None,
+            ProfileField::Rpc => Some(&mut self.rpc),
+            ProfileField::ReticulumdPath => Some(&mut self.reticulumd_path),
+            ProfileField::DbPath => Some(&mut self.db_path),
+            ProfileField::IdentityPath => Some(&mut self.identity_path),
+            ProfileField::Transport => Some(&mut self.transport),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct ProfileSaveResult {
+    rpc: String,
+    managed: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -301,12 +392,7 @@ pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
     let mut terminal = Terminal::new(backend)?;
     terminal.clear()?;
 
-    let fast_rpc = RpcClient::new_with_timeouts(
-        &ctx.profile_settings.rpc,
-        FAST_RPC_CONNECT_TIMEOUT,
-        FAST_RPC_IO_TIMEOUT,
-        FAST_RPC_IO_TIMEOUT,
-    );
+    let mut fast_rpc = build_fast_rpc(&ctx.profile_settings.rpc);
 
     let mut state = TuiState {
         pane: Pane::Dashboard,
@@ -329,10 +415,12 @@ pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
         welcome_dismissed: false,
         composer: None,
         interface_editor: None,
+        profile_editor: None,
+        profile_managed: ctx.profile_settings.managed,
     };
 
     apply_refresh(ctx, &fast_rpc, &mut state, true);
-    if ctx.profile_settings.managed && !state.connected {
+    if state.profile_managed && !state.connected {
         auto_start_managed_daemon(ctx, &mut state);
         apply_refresh(ctx, &fast_rpc, &mut state, true);
     }
@@ -345,6 +433,7 @@ pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
         let now = Instant::now();
         if state.composer.is_none()
             && state.interface_editor.is_none()
+            && state.profile_editor.is_none()
             && now >= next_refresh_due
         {
             apply_refresh(ctx, &fast_rpc, &mut state, false);
@@ -372,6 +461,21 @@ pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
                     continue;
                 }
 
+                if state.profile_editor.is_some() {
+                    if let Some(updated) = handle_profile_editor_key(key, ctx, &mut state)? {
+                        let rpc_changed = state.snapshot.rpc != updated.rpc;
+                        state.profile_managed = updated.managed;
+                        state.snapshot.rpc = updated.rpc.clone();
+                        if rpc_changed {
+                            fast_rpc = build_fast_rpc(&updated.rpc);
+                        }
+                        apply_refresh(ctx, &fast_rpc, &mut state, true);
+                        next_refresh_due =
+                            next_refresh_deadline(command.refresh_ms, state.connected);
+                    }
+                    continue;
+                }
+
                 match key.code {
                     KeyCode::Char('q') => break Ok(()),
                     KeyCode::Tab => {
@@ -387,7 +491,11 @@ pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
                     KeyCode::Char('j') | KeyCode::Down => increment_selection(&mut state),
                     KeyCode::Char('k') | KeyCode::Up => decrement_selection(&mut state),
                     KeyCode::Char('r') => {
-                        set_status(&mut state, StatusLevel::Info, "Starting/restarting daemon...");
+                        set_status(
+                            &mut state,
+                            StatusLevel::Info,
+                            "Starting/restarting daemon...",
+                        );
                         match restart_daemon(ctx) {
                             Ok(msg) => set_status(&mut state, StatusLevel::Success, msg),
                             Err(err) => set_status(
@@ -397,7 +505,8 @@ pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
                             ),
                         }
                         apply_refresh(ctx, &fast_rpc, &mut state, true);
-                        next_refresh_due = next_refresh_deadline(command.refresh_ms, state.connected);
+                        next_refresh_due =
+                            next_refresh_deadline(command.refresh_ms, state.connected);
                     }
                     KeyCode::Char('n') => match fast_rpc.call("announce_now", None) {
                         Ok(_) => set_status(&mut state, StatusLevel::Success, "announce sent"),
@@ -440,7 +549,8 @@ pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
                             ),
                         }
                         apply_refresh(ctx, &fast_rpc, &mut state, true);
-                        next_refresh_due = next_refresh_deadline(command.refresh_ms, state.connected);
+                        next_refresh_due =
+                            next_refresh_deadline(command.refresh_ms, state.connected);
                     }
                     KeyCode::Char('s') => {
                         state.composer = Some(ComposeState::new());
@@ -448,6 +558,18 @@ pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
                             &mut state,
                             StatusLevel::Info,
                             "Compose message: fill fields, Enter to advance/send, Esc to cancel",
+                        );
+                    }
+                    KeyCode::Char('p') => {
+                        let mut settings = load_profile_settings(&ctx.profile_name)
+                            .unwrap_or_else(|_| ctx.profile_settings.clone());
+                        settings.managed = state.profile_managed;
+                        settings.rpc = state.snapshot.rpc.clone();
+                        state.profile_editor = Some(ProfileEditorState::from_settings(&settings));
+                        set_status(
+                            &mut state,
+                            StatusLevel::Info,
+                            "Profile settings: Enter to advance/save, Esc to cancel",
                         );
                     }
                     KeyCode::Char('i') => {
@@ -486,7 +608,8 @@ pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
                     }
                     KeyCode::Char('e') => {
                         apply_refresh(ctx, &fast_rpc, &mut state, true);
-                        next_refresh_due = next_refresh_deadline(command.refresh_ms, state.connected);
+                        next_refresh_due =
+                            next_refresh_deadline(command.refresh_ms, state.connected);
                     }
                     _ => {}
                 }
@@ -501,9 +624,26 @@ pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
     run_result
 }
 
+fn build_fast_rpc(rpc: &str) -> RpcClient {
+    RpcClient::new_with_timeouts(
+        rpc,
+        FAST_RPC_CONNECT_TIMEOUT,
+        FAST_RPC_IO_TIMEOUT,
+        FAST_RPC_IO_TIMEOUT,
+    )
+}
+
 fn apply_refresh(ctx: &RuntimeContext, rpc: &RpcClient, state: &mut TuiState, manual: bool) {
     let include_logs = state.pane == Pane::Logs || !state.first_refresh_done;
-    let outcome = refresh_snapshot(ctx, rpc, &mut state.snapshot, include_logs);
+    let rpc_display = state.snapshot.rpc.clone();
+    let outcome = refresh_snapshot(
+        ctx,
+        rpc,
+        &mut state.snapshot,
+        include_logs,
+        state.profile_managed,
+        &rpc_display,
+    );
     state.connected = outcome.connected;
     state.last_refresh_ms = Some(outcome.elapsed_ms);
 
@@ -677,6 +817,10 @@ fn draw(frame: &mut ratatui::Frame<'_>, state: &TuiState) {
     if state.interface_editor.is_some() {
         draw_interface_editor_overlay(frame, state);
     }
+
+    if state.profile_editor.is_some() {
+        draw_profile_editor_overlay(frame, state);
+    }
 }
 
 fn draw_header(frame: &mut ratatui::Frame<'_>, area: Rect, state: &TuiState) {
@@ -748,7 +892,7 @@ fn draw_status_bar(frame: &mut ratatui::Frame<'_>, area: Rect, state: &TuiState)
         StatusLevel::Error => state.theme.danger,
     };
 
-    let keys = "keys: q quit | Tab/Shift+Tab panes | s compose | i/t/x/a interfaces | y sync | u unpeer | r start/restart | n announce | e refresh";
+    let keys = "keys: q quit | Tab/Shift+Tab panes | s compose | p profile | i/t/x/a interfaces | y sync | u unpeer | r start/restart | n announce | e refresh";
     let content = vec![
         Line::from(Span::styled(
             state.status_line.as_str(),
@@ -789,7 +933,7 @@ fn draw_welcome_overlay(frame: &mut ratatui::Frame<'_>, state: &TuiState) {
         )),
         Line::from(""),
         Line::from(Span::styled(
-            "Quick start: Tab switch panes, s send, i/t/x/a manage interfaces, y sync peer.",
+            "Quick start: Tab switch panes, s send, p profile settings, i/t/x/a interfaces, y sync peer.",
             Style::default().fg(state.theme.muted),
         )),
         Line::from(Span::styled(
@@ -1033,6 +1177,215 @@ fn interface_bool_line(label: &str, value: bool, active: bool, theme: &TuiTheme)
     ])
 }
 
+fn draw_profile_editor_overlay(frame: &mut ratatui::Frame<'_>, state: &TuiState) {
+    let Some(editor) = state.profile_editor.as_ref() else {
+        return;
+    };
+
+    let area = centered_rect(78, 68, frame.area());
+    frame.render_widget(Clear, area);
+
+    let mut lines = Vec::new();
+    lines.push(Line::from(Span::styled(
+        format!("profile: {}", state.snapshot.profile),
+        Style::default().fg(state.theme.muted),
+    )));
+    lines.push(Line::from(""));
+    lines.push(interface_bool_line(
+        "managed",
+        editor.managed,
+        editor.active_field() == ProfileField::Managed,
+        &state.theme,
+    ));
+    lines.push(interface_line(
+        "rpc",
+        &editor.rpc,
+        editor.active_field() == ProfileField::Rpc,
+        true,
+        &state.theme,
+    ));
+    lines.push(interface_line(
+        "reticulumd_path",
+        &editor.reticulumd_path,
+        editor.active_field() == ProfileField::ReticulumdPath,
+        false,
+        &state.theme,
+    ));
+    lines.push(interface_line(
+        "db_path",
+        &editor.db_path,
+        editor.active_field() == ProfileField::DbPath,
+        false,
+        &state.theme,
+    ));
+    lines.push(interface_line(
+        "identity_path",
+        &editor.identity_path,
+        editor.active_field() == ProfileField::IdentityPath,
+        false,
+        &state.theme,
+    ));
+    lines.push(interface_line(
+        "transport",
+        &editor.transport,
+        editor.active_field() == ProfileField::Transport,
+        false,
+        &state.theme,
+    ));
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "Enter: next/save  Tab: next field  Shift+Tab: previous  Space on managed toggles  Esc: cancel",
+        Style::default().fg(state.theme.muted),
+    )));
+    lines.push(Line::from(Span::styled(
+        "Saving updates profile.toml immediately; RPC changes are applied in this TUI session.",
+        Style::default().fg(state.theme.muted),
+    )));
+
+    let popup = Paragraph::new(lines)
+        .block(
+            Block::default()
+                .title(Span::styled(
+                    "Profile Settings",
+                    Style::default()
+                        .fg(state.theme.accent)
+                        .add_modifier(Modifier::BOLD),
+                ))
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(state.theme.border_active))
+                .border_type(BorderType::Rounded),
+        )
+        .wrap(Wrap { trim: true });
+    frame.render_widget(popup, area);
+}
+
+fn handle_profile_editor_key(
+    key: KeyEvent,
+    ctx: &RuntimeContext,
+    state: &mut TuiState,
+) -> Result<Option<ProfileSaveResult>> {
+    let mut close = false;
+    let mut submit = false;
+    let mut status: Option<(StatusLevel, String)> = None;
+    let mut saved = None;
+
+    let Some(editor) = state.profile_editor.as_mut() else {
+        return Ok(None);
+    };
+
+    match key.code {
+        KeyCode::Esc => {
+            close = true;
+            status = Some((StatusLevel::Info, "profile settings edit canceled".into()));
+        }
+        KeyCode::Tab | KeyCode::Down => editor.next_field(),
+        KeyCode::BackTab | KeyCode::Up => editor.prev_field(),
+        KeyCode::Enter => {
+            if editor.active_field() == ProfileField::Transport {
+                submit = true;
+            } else {
+                editor.next_field();
+            }
+        }
+        KeyCode::Backspace => {
+            if let Some(value) = editor.active_value_mut() {
+                value.pop();
+            }
+        }
+        KeyCode::Delete => {
+            if let Some(value) = editor.active_value_mut() {
+                value.clear();
+            }
+        }
+        KeyCode::Char(' ') => {
+            if editor.active_field() == ProfileField::Managed {
+                editor.managed = !editor.managed;
+            } else if let Some(value) = editor.active_value_mut() {
+                value.push(' ');
+            }
+        }
+        KeyCode::Char(c) => {
+            if editor.active_field() == ProfileField::Managed {
+                match c {
+                    't' | 'y' | '1' => editor.managed = true,
+                    'f' | 'n' | '0' => editor.managed = false,
+                    _ => {}
+                }
+            } else if let Some(value) = editor.active_value_mut() {
+                value.push(c);
+            }
+        }
+        _ => {}
+    }
+
+    if submit {
+        let payload = state
+            .profile_editor
+            .clone()
+            .ok_or_else(|| anyhow!("profile editor state disappeared"))?;
+        match save_profile_from_editor(ctx, &payload) {
+            Ok(result) => {
+                let managed_text = if result.managed {
+                    "managed"
+                } else {
+                    "external"
+                };
+                status = Some((
+                    StatusLevel::Success,
+                    format!("profile settings saved ({managed_text} mode)"),
+                ));
+                close = true;
+                saved = Some(result);
+            }
+            Err(err) => {
+                status = Some((StatusLevel::Error, format!("profile save failed: {err}")));
+            }
+        }
+    }
+
+    if close {
+        state.profile_editor = None;
+    }
+    if let Some((level, message)) = status {
+        set_status(state, level, message);
+    }
+
+    Ok(saved)
+}
+
+fn save_profile_from_editor(
+    ctx: &RuntimeContext,
+    editor: &ProfileEditorState,
+) -> Result<ProfileSaveResult> {
+    let rpc = editor.rpc.trim();
+    if rpc.is_empty() {
+        return Err(anyhow!("rpc endpoint is required"));
+    }
+
+    let mut settings = load_profile_settings(&ctx.profile_name)?;
+    settings.managed = editor.managed;
+    settings.rpc = rpc.to_string();
+    settings.reticulumd_path = optional_trimmed_string(&editor.reticulumd_path);
+    settings.db_path = optional_trimmed_string(&editor.db_path);
+    settings.identity_path = optional_trimmed_string(&editor.identity_path);
+    settings.transport = optional_trimmed_string(&editor.transport);
+    save_profile_settings(&settings)?;
+
+    Ok(ProfileSaveResult {
+        rpc: settings.rpc,
+        managed: settings.managed,
+    })
+}
+
+fn optional_trimmed_string(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
 fn handle_interface_editor_key(
     key: KeyEvent,
     ctx: &RuntimeContext,
@@ -1220,6 +1573,8 @@ fn refresh_snapshot(
     rpc: &RpcClient,
     snapshot: &mut TuiSnapshot,
     include_logs: bool,
+    managed_profile: bool,
+    rpc_display: &str,
 ) -> RefreshOutcome {
     let started = Instant::now();
     let mut warning = None;
@@ -1235,7 +1590,7 @@ fn refresh_snapshot(
         }
         Err(err) => {
             connected = false;
-            warning = Some(rpc_unreachable_warning(ctx.profile_settings.managed, &err));
+            warning = Some(rpc_unreachable_warning(managed_profile, &err));
             snapshot.daemon_running = false;
         }
     }
@@ -1296,12 +1651,14 @@ fn refresh_snapshot(
     }
 
     if include_logs {
-        let supervisor = DaemonSupervisor::new(&ctx.profile_name, ctx.profile_settings.clone());
+        let runtime_settings = load_profile_settings(&ctx.profile_name)
+            .unwrap_or_else(|_| ctx.profile_settings.clone());
+        let supervisor = DaemonSupervisor::new(&ctx.profile_name, runtime_settings);
         snapshot.logs = supervisor.logs(400).unwrap_or_default();
     }
 
     snapshot.profile = ctx.profile_name.clone();
-    snapshot.rpc = ctx.profile_settings.rpc.clone();
+    snapshot.rpc = rpc_display.to_string();
 
     RefreshOutcome {
         connected,
@@ -1402,9 +1759,14 @@ fn send_message_from_composer(rpc: &RpcClient, compose: &ComposeState) -> Result
 }
 
 fn restart_daemon(ctx: &RuntimeContext) -> Result<String> {
-    let mut runtime_settings = ctx.profile_settings.clone();
+    let mut runtime_settings =
+        load_profile_settings(&ctx.profile_name).unwrap_or_else(|_| ctx.profile_settings.clone());
+    if let Some(rpc_override) = ctx.cli.rpc.clone() {
+        runtime_settings.rpc = rpc_override;
+    }
+
     if runtime_settings.managed {
-        let supervisor = DaemonSupervisor::new(&ctx.profile_name, runtime_settings);
+        let supervisor = DaemonSupervisor::new(&ctx.profile_name, runtime_settings.clone());
         let status = supervisor.restart(None, Some(true), None)?;
         return Ok(match status.pid {
             Some(pid) => format!("daemon started/restarted (pid {pid})"),
@@ -1413,25 +1775,7 @@ fn restart_daemon(ctx: &RuntimeContext) -> Result<String> {
     }
 
     runtime_settings.managed = true;
-
-    let mut promoted = load_profile_settings(&ctx.profile_name)?;
-    promoted.managed = true;
-    if ctx.cli.rpc.is_some() {
-        promoted.rpc = runtime_settings.rpc.clone();
-    }
-    if runtime_settings.reticulumd_path.is_some() {
-        promoted.reticulumd_path = runtime_settings.reticulumd_path.clone();
-    }
-    if runtime_settings.db_path.is_some() {
-        promoted.db_path = runtime_settings.db_path.clone();
-    }
-    if runtime_settings.identity_path.is_some() {
-        promoted.identity_path = runtime_settings.identity_path.clone();
-    }
-    if runtime_settings.transport.is_some() {
-        promoted.transport = runtime_settings.transport.clone();
-    }
-    save_profile_settings(&promoted)?;
+    save_profile_settings(&runtime_settings)?;
     let supervisor = DaemonSupervisor::new(&ctx.profile_name, runtime_settings);
     let status = supervisor.restart(None, Some(true), None)?;
     Ok(match status.pid {
