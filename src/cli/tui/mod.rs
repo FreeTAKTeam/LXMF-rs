@@ -35,8 +35,8 @@ use crate::cli::profile::{
 };
 use crate::cli::rpc_client::{RpcClient, RpcEvent};
 
-const FAST_RPC_CONNECT_TIMEOUT: Duration = Duration::from_millis(120);
-const FAST_RPC_IO_TIMEOUT: Duration = Duration::from_millis(240);
+const FAST_RPC_CONNECT_TIMEOUT: Duration = Duration::from_millis(350);
+const FAST_RPC_IO_TIMEOUT: Duration = Duration::from_millis(900);
 const OFFLINE_REFRESH_BACKOFF: Duration = Duration::from_millis(2_500);
 const DISCOVERY_ANNOUNCE_BURST: usize = 3;
 const DISCOVERY_ANNOUNCE_GAP: Duration = Duration::from_millis(220);
@@ -2280,12 +2280,37 @@ fn refresh_snapshot(
                 .unwrap_or(false);
             snapshot.identity_hash = identity_hash_from_status(&value);
         }
-        Err(err) => {
-            connected = false;
-            warning = Some(rpc_unreachable_warning(managed_profile, &err));
-            snapshot.daemon_running = false;
-            snapshot.identity_hash = None;
-        }
+        Err(daemon_status_err) => match rpc.call("status", None) {
+            Ok(value) => {
+                snapshot.daemon_running = value
+                    .get("running")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(true);
+                snapshot.identity_hash = identity_hash_from_status(&value);
+                warning.get_or_insert_with(|| {
+                    format!("daemon_status_ex unavailable ({daemon_status_err}); using status")
+                });
+            }
+            Err(status_err) => {
+                connected = false;
+                warning = Some(rpc_unreachable_warning(managed_profile, &status_err));
+                snapshot.identity_hash = None;
+
+                if managed_profile {
+                    let runtime_settings = load_profile_settings(&ctx.profile_name)
+                        .unwrap_or_else(|_| ctx.profile_settings.clone());
+                    if let Ok(local_status) =
+                        DaemonSupervisor::new(&ctx.profile_name, runtime_settings).status()
+                    {
+                        snapshot.daemon_running = local_status.running;
+                    } else {
+                        snapshot.daemon_running = false;
+                    }
+                } else {
+                    snapshot.daemon_running = false;
+                }
+            }
+        },
     }
 
     if connected {

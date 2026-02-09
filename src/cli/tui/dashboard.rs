@@ -39,6 +39,13 @@ pub fn render(
                     .add_modifier(Modifier::BOLD),
             )
         }
+    } else if snapshot.daemon_running {
+        Span::styled(
+            "rpc degraded",
+            Style::default()
+                .fg(theme.warning)
+                .add_modifier(Modifier::BOLD),
+        )
     } else {
         Span::styled(
             "offline",
