@@ -2,6 +2,8 @@ use crate::error::LxmfError;
 use crate::helpers::{
     pn_announce_data_is_valid, pn_name_from_app_data, pn_stamp_cost_from_app_data,
 };
+use crate::router::Router;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PropagationAnnounceEvent {
@@ -34,6 +36,20 @@ impl DeliveryAnnounceHandler {
             callback(dest)?;
         }
         Ok(())
+    }
+
+    pub fn handle_with_router(
+        &mut self,
+        router: &mut Router,
+        dest: &[u8; 16],
+    ) -> Result<(), LxmfError> {
+        router.register_identity(*dest, None);
+        router.allow_destination(*dest);
+        router.register_peer(*dest);
+        if let Some(peer) = router.peer_mut(dest) {
+            peer.mark_seen(unix_now());
+        }
+        self.handle(dest)
     }
 }
 
@@ -91,10 +107,37 @@ impl PropagationAnnounceHandler {
 
         Ok(event)
     }
+
+    pub fn handle_with_router(
+        &mut self,
+        router: &mut Router,
+        dest: &[u8; 16],
+        app_data: &[u8],
+    ) -> Result<PropagationAnnounceEvent, LxmfError> {
+        let event = self.handle_with_app_data(dest, app_data)?;
+        router.register_identity(*dest, event.name.clone());
+        router.allow_destination(*dest);
+        router.prioritise_destination(*dest);
+        router.register_peer(*dest);
+        if let Some(peer) = router.peer_mut(dest) {
+            peer.mark_seen(unix_now());
+            if let Some(name) = &event.name {
+                peer.set_name(name.clone());
+            }
+        }
+        Ok(event)
+    }
 }
 
 impl Default for PropagationAnnounceHandler {
     fn default() -> Self {
         Self::new()
     }
+}
+
+fn unix_now() -> f64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs_f64()
 }

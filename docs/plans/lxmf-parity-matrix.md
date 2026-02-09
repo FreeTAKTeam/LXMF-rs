@@ -45,6 +45,7 @@ Status legend: `not-started` | `partial` | `done`.
 - PARITY_ITEM id=router.node_app_data status=done tests=tests/propagation_node_app_data_parity.rs,tests/propagation_node_app_data_custom_parity.rs
 - PARITY_ITEM id=handlers.delivery_callback status=done tests=tests/handlers_behavior.rs
 - PARITY_ITEM id=handlers.propagation_app_data status=done tests=tests/handlers_behavior.rs
+- PARITY_ITEM id=handlers.router_side_effects status=done tests=tests/handlers_parity.rs
 - PARITY_ITEM id=lxmd.config_load status=done tests=tests/lxmd_runtime.rs
 - PARITY_ITEM id=lxmd.serve_sync_unpeer_status status=done tests=tests/lxmd_runtime.rs
 - PARITY_ITEM id=lxmd.live_daemon_runtime status=done tests=tests/lxmd_runtime.rs,tests/lxmd_cli.rs
