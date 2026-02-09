@@ -154,6 +154,15 @@ pub fn render(
         ]),
         Line::from(vec![
             Span::styled(
+                "d",
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" discover peers (burst)", Style::default().fg(theme.text)),
+        ]),
+        Line::from(vec![
+            Span::styled(
                 "u",
                 Style::default()
                     .fg(theme.accent)

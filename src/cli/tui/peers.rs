@@ -23,7 +23,7 @@ pub fn render(
                 Style::default().fg(theme.muted),
             ))),
             ListItem::new(Line::from(Span::styled(
-                "Press n to announce local identity.",
+                "Press d for discovery sweep or n for single announce.",
                 Style::default().fg(theme.accent_dim),
             ))),
             ListItem::new(Line::from(Span::styled(
@@ -71,7 +71,7 @@ pub fn render(
     let list = List::new(items).block(
         Block::default()
             .title(Span::styled(
-                "Peers  (n announce, y sync, u unpeer)",
+                "Peers  (d discover, n announce, y sync, u unpeer)",
                 Style::default().fg(theme.accent),
             ))
             .borders(Borders::ALL)

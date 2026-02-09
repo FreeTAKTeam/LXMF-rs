@@ -33,6 +33,10 @@ use crate::cli::rpc_client::RpcClient;
 const FAST_RPC_CONNECT_TIMEOUT: Duration = Duration::from_millis(120);
 const FAST_RPC_IO_TIMEOUT: Duration = Duration::from_millis(240);
 const OFFLINE_REFRESH_BACKOFF: Duration = Duration::from_millis(2_500);
+const DISCOVERY_ANNOUNCE_BURST: usize = 3;
+const DISCOVERY_ANNOUNCE_GAP: Duration = Duration::from_millis(220);
+const DISCOVERY_WINDOW: Duration = Duration::from_secs(3);
+const DISCOVERY_POLL_INTERVAL: Duration = Duration::from_millis(320);
 const WELCOME_TIMEOUT: Duration = Duration::from_secs(6);
 const SPINNER: [char; 4] = ['|', '/', '-', '\\'];
 
@@ -553,6 +557,23 @@ pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
                         next_refresh_due =
                             next_refresh_deadline(command.refresh_ms, state.connected);
                     }
+                    KeyCode::Char('d') => {
+                        set_status(
+                            &mut state,
+                            StatusLevel::Info,
+                            "Running peer discovery sweep...",
+                        );
+                        match discover_peers(ctx, &fast_rpc, &mut state) {
+                            Ok(msg) => set_status(&mut state, StatusLevel::Success, msg),
+                            Err(err) => set_status(
+                                &mut state,
+                                StatusLevel::Error,
+                                format!("discovery failed: {err}"),
+                            ),
+                        }
+                        next_refresh_due =
+                            next_refresh_deadline(command.refresh_ms, state.connected);
+                    }
                     KeyCode::Char('n') => match fast_rpc.call("announce_now", None) {
                         Ok(_) => {
                             apply_refresh(ctx, &fast_rpc, &mut state, true);
@@ -967,7 +988,7 @@ fn draw_status_bar(frame: &mut ratatui::Frame<'_>, area: Rect, state: &TuiState)
         StatusLevel::Error => state.theme.danger,
     };
 
-    let keys = "keys: q quit | Tab/Shift+Tab panes | s compose | p profile | Enter edit iface | i/t/x/a interfaces | y sync | u unpeer | r start/restart | n announce | e refresh";
+    let keys = "keys: q quit | Tab/Shift+Tab panes | s compose | p profile | Enter edit iface | i/t/x/a interfaces | d discover | y sync | u unpeer | r start/restart | n announce | e refresh";
     let content = vec![
         Line::from(Span::styled(
             state.status_line.as_str(),
@@ -1008,7 +1029,7 @@ fn draw_welcome_overlay(frame: &mut ratatui::Frame<'_>, state: &TuiState) {
         )),
         Line::from(""),
         Line::from(Span::styled(
-            "Quick start: Tab panes, n announce, s send, p profile, Enter edit iface, i/t/x/a interfaces.",
+            "Quick start: Tab panes, d discover, n announce, s send, p profile, Enter edit iface, i/t/x/a interfaces.",
             Style::default().fg(state.theme.muted),
         )),
         Line::from(Span::styled(
@@ -1885,6 +1906,91 @@ fn restart_daemon(ctx: &RuntimeContext) -> Result<String> {
         Some(pid) => format!("managed mode enabled; daemon started (pid {pid})"),
         None => "managed mode enabled; daemon start requested".to_string(),
     })
+}
+
+fn discover_peers(ctx: &RuntimeContext, rpc: &RpcClient, state: &mut TuiState) -> Result<String> {
+    let baseline_peers = state.snapshot.peers.len();
+    let baseline_events = state.snapshot.events.len();
+
+    let mut announces_sent = 0usize;
+    let mut announce_failures = 0usize;
+    let mut first_error = None;
+
+    for _ in 0..DISCOVERY_ANNOUNCE_BURST {
+        match rpc.call("announce_now", None) {
+            Ok(_) => announces_sent += 1,
+            Err(err) => {
+                announce_failures += 1;
+                if first_error.is_none() {
+                    first_error = Some(err.to_string());
+                }
+            }
+        }
+        std::thread::sleep(DISCOVERY_ANNOUNCE_GAP);
+    }
+
+    if announces_sent == 0 {
+        return Err(anyhow!(
+            "all announce attempts failed: {}",
+            first_error.unwrap_or_else(|| "unknown error".to_string())
+        ));
+    }
+
+    let deadline = Instant::now() + DISCOVERY_WINDOW;
+    while Instant::now() < deadline {
+        let rpc_display = state.snapshot.rpc.clone();
+        let outcome = refresh_snapshot(
+            ctx,
+            rpc,
+            &mut state.snapshot,
+            false,
+            state.profile_managed,
+            &rpc_display,
+        );
+        state.connected = outcome.connected;
+        state.last_refresh_ms = Some(outcome.elapsed_ms);
+        clamp_selection(state);
+
+        if !outcome.connected {
+            return Err(anyhow!(
+                "rpc unreachable during discovery sweep; verify daemon and rpc endpoint"
+            ));
+        }
+        if state.snapshot.peers.len() > baseline_peers {
+            break;
+        }
+        std::thread::sleep(DISCOVERY_POLL_INTERVAL);
+    }
+
+    let peer_delta = state.snapshot.peers.len().saturating_sub(baseline_peers);
+    let event_delta = state.snapshot.events.len().saturating_sub(baseline_events);
+    let announce_event_delta = state
+        .snapshot
+        .events
+        .iter()
+        .skip(baseline_events)
+        .filter(|event| event.contains("announce"))
+        .count();
+
+    let mut message = if peer_delta > 0 {
+        format!(
+            "discovery done: {peer_delta} new peer(s), {} total",
+            state.snapshot.peers.len()
+        )
+    } else {
+        format!(
+            "discovery done: no new peers yet ({} total)",
+            state.snapshot.peers.len()
+        )
+    };
+    message.push_str(&format!(
+        ", announces sent={announces_sent}, announce events={announce_event_delta}, new events={event_delta}"
+    ));
+    if announce_failures > 0 {
+        message.push_str(&format!(", failed announces={announce_failures}"));
+    }
+
+    Ok(message)
 }
 
 fn auto_start_managed_daemon(ctx: &RuntimeContext, state: &mut TuiState) {
