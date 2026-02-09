@@ -24,8 +24,8 @@ use std::time::{Duration, Instant};
 use crate::cli::app::{RuntimeContext, TuiCommand};
 use crate::cli::daemon::DaemonSupervisor;
 use crate::cli::profile::{
-    load_reticulum_config, remove_interface, save_reticulum_config, set_interface_enabled,
-    upsert_interface, InterfaceEntry,
+    load_profile_settings, load_reticulum_config, remove_interface, save_profile_settings,
+    save_reticulum_config, set_interface_enabled, upsert_interface, InterfaceEntry,
 };
 use crate::cli::rpc_client::RpcClient;
 
@@ -387,7 +387,7 @@ pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
                     KeyCode::Char('j') | KeyCode::Down => increment_selection(&mut state),
                     KeyCode::Char('k') | KeyCode::Up => decrement_selection(&mut state),
                     KeyCode::Char('r') => {
-                        set_status(&mut state, StatusLevel::Info, "Restarting daemon...");
+                        set_status(&mut state, StatusLevel::Info, "Starting/restarting daemon...");
                         match restart_daemon(ctx) {
                             Ok(msg) => set_status(&mut state, StatusLevel::Success, msg),
                             Err(err) => set_status(
@@ -571,7 +571,7 @@ fn rpc_unreachable_warning(managed: bool, err: &anyhow::Error) -> String {
     let mut suffix = if managed {
         "Press r to start/restart daemon."
     } else {
-        "Start daemon or set --rpc endpoint."
+        "Press r to enable managed mode and start local daemon, or set --rpc endpoint."
     }
     .to_string();
 
@@ -1400,10 +1400,25 @@ fn send_message_from_composer(rpc: &RpcClient, compose: &ComposeState) -> Result
 }
 
 fn restart_daemon(ctx: &RuntimeContext) -> Result<String> {
-    let supervisor = DaemonSupervisor::new(&ctx.profile_name, ctx.profile_settings.clone());
-    let status = supervisor.restart(None, None, None)?;
-    let mode = if status.managed { "managed" } else { "external" };
-    Ok(format!("daemon restart requested ({mode} profile)"))
+    let settings = load_profile_settings(&ctx.profile_name)?;
+    if settings.managed {
+        let supervisor = DaemonSupervisor::new(&ctx.profile_name, settings);
+        let status = supervisor.restart(None, Some(true), None)?;
+        return Ok(match status.pid {
+            Some(pid) => format!("daemon started/restarted (pid {pid})"),
+            None => "daemon start/restart requested".to_string(),
+        });
+    }
+
+    let mut promoted = settings;
+    promoted.managed = true;
+    save_profile_settings(&promoted)?;
+    let supervisor = DaemonSupervisor::new(&ctx.profile_name, promoted);
+    let status = supervisor.restart(None, Some(true), None)?;
+    Ok(match status.pid {
+        Some(pid) => format!("managed mode enabled; daemon started (pid {pid})"),
+        None => "managed mode enabled; daemon start requested".to_string(),
+    })
 }
 
 fn auto_start_managed_daemon(ctx: &RuntimeContext, state: &mut TuiState) {
