@@ -1402,9 +1402,9 @@ fn send_message_from_composer(rpc: &RpcClient, compose: &ComposeState) -> Result
 }
 
 fn restart_daemon(ctx: &RuntimeContext) -> Result<String> {
-    let settings = load_profile_settings(&ctx.profile_name)?;
-    if settings.managed {
-        let supervisor = DaemonSupervisor::new(&ctx.profile_name, settings);
+    let mut runtime_settings = ctx.profile_settings.clone();
+    if runtime_settings.managed {
+        let supervisor = DaemonSupervisor::new(&ctx.profile_name, runtime_settings);
         let status = supervisor.restart(None, Some(true), None)?;
         return Ok(match status.pid {
             Some(pid) => format!("daemon started/restarted (pid {pid})"),
@@ -1412,10 +1412,27 @@ fn restart_daemon(ctx: &RuntimeContext) -> Result<String> {
         });
     }
 
-    let mut promoted = settings;
+    runtime_settings.managed = true;
+
+    let mut promoted = load_profile_settings(&ctx.profile_name)?;
     promoted.managed = true;
+    if ctx.cli.rpc.is_some() {
+        promoted.rpc = runtime_settings.rpc.clone();
+    }
+    if runtime_settings.reticulumd_path.is_some() {
+        promoted.reticulumd_path = runtime_settings.reticulumd_path.clone();
+    }
+    if runtime_settings.db_path.is_some() {
+        promoted.db_path = runtime_settings.db_path.clone();
+    }
+    if runtime_settings.identity_path.is_some() {
+        promoted.identity_path = runtime_settings.identity_path.clone();
+    }
+    if runtime_settings.transport.is_some() {
+        promoted.transport = runtime_settings.transport.clone();
+    }
     save_profile_settings(&promoted)?;
-    let supervisor = DaemonSupervisor::new(&ctx.profile_name, promoted);
+    let supervisor = DaemonSupervisor::new(&ctx.profile_name, runtime_settings);
     let status = supervisor.restart(None, Some(true), None)?;
     Ok(match status.pid {
         Some(pid) => format!("managed mode enabled; daemon started (pid {pid})"),
