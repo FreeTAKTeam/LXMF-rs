@@ -118,4 +118,42 @@ fn reticulum_matrix_is_current_and_actionable() {
     assert!(text.contains("Last verified:"));
     assert!(text.contains("RNS/Transport.py"));
     assert!(!text.contains("| not-started |"));
+
+    for line in text.lines() {
+        let line = line.trim();
+        if !line.starts_with("| `RNS/") {
+            continue;
+        }
+        let columns: Vec<_> = line.split('|').map(str::trim).collect();
+        let status = columns.get(3).copied().unwrap_or_default();
+        assert_eq!(status, "done", "reticulum module row must be done: {line}");
+    }
+}
+
+#[test]
+fn lxmf_module_map_and_compatibility_matrix_are_fully_done() {
+    let module_text = std::fs::read_to_string("docs/plans/lxmf-parity-matrix.md").unwrap();
+    for line in module_text.lines() {
+        let line = line.trim();
+        if !line.starts_with("| `LXMF/") {
+            continue;
+        }
+        let columns: Vec<_> = line.split('|').map(str::trim).collect();
+        let status = columns.get(3).copied().unwrap_or_default();
+        assert_eq!(status, "done", "lxmf module map row must be done: {line}");
+    }
+
+    let compatibility_text = std::fs::read_to_string("docs/compatibility-matrix.md").unwrap();
+    for line in compatibility_text.lines() {
+        let line = line.trim();
+        if !line.starts_with("| `LXMF/") {
+            continue;
+        }
+        let columns: Vec<_> = line.split('|').map(str::trim).collect();
+        let status = columns.get(3).copied().unwrap_or_default();
+        assert_eq!(
+            status, "done",
+            "compatibility matrix row must be done: {line}"
+        );
+    }
 }
