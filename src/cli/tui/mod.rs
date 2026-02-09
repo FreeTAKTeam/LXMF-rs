@@ -24,9 +24,9 @@ use std::time::{Duration, Instant};
 use crate::cli::app::{RuntimeContext, TuiCommand};
 use crate::cli::daemon::DaemonSupervisor;
 use crate::cli::profile::{
-    load_profile_settings, load_reticulum_config, remove_interface, save_profile_settings,
-    save_reticulum_config, set_interface_enabled, upsert_interface, InterfaceEntry,
-    ProfileSettings,
+    load_profile_settings, load_reticulum_config, normalize_optional_display_name,
+    remove_interface, save_profile_settings, save_reticulum_config, set_interface_enabled,
+    upsert_interface, InterfaceEntry, ProfileSettings,
 };
 use crate::cli::rpc_client::RpcClient;
 
@@ -142,6 +142,9 @@ struct TuiState {
     composer: Option<ComposeState>,
     interface_editor: Option<InterfaceEditorState>,
     profile_editor: Option<ProfileEditorState>,
+    peer_filter: String,
+    peer_filter_editing: bool,
+    peer_details_open: bool,
     profile_managed: bool,
 }
 
@@ -157,6 +160,7 @@ struct RefreshOutcome {
 enum ProfileField {
     Managed,
     Rpc,
+    DisplayName,
     ReticulumdPath,
     DbPath,
     IdentityPath,
@@ -167,7 +171,8 @@ impl ProfileField {
     fn next(self) -> Self {
         match self {
             Self::Managed => Self::Rpc,
-            Self::Rpc => Self::ReticulumdPath,
+            Self::Rpc => Self::DisplayName,
+            Self::DisplayName => Self::ReticulumdPath,
             Self::ReticulumdPath => Self::DbPath,
             Self::DbPath => Self::IdentityPath,
             Self::IdentityPath => Self::Transport,
@@ -179,7 +184,8 @@ impl ProfileField {
         match self {
             Self::Managed => Self::Transport,
             Self::Rpc => Self::Managed,
-            Self::ReticulumdPath => Self::Rpc,
+            Self::DisplayName => Self::Rpc,
+            Self::ReticulumdPath => Self::DisplayName,
             Self::DbPath => Self::ReticulumdPath,
             Self::IdentityPath => Self::DbPath,
             Self::Transport => Self::IdentityPath,
@@ -191,6 +197,7 @@ impl ProfileField {
 struct ProfileEditorState {
     managed: bool,
     rpc: String,
+    display_name: String,
     reticulumd_path: String,
     db_path: String,
     identity_path: String,
@@ -203,6 +210,7 @@ impl ProfileEditorState {
         Self {
             managed: settings.managed,
             rpc: settings.rpc.clone(),
+            display_name: settings.display_name.clone().unwrap_or_default(),
             reticulumd_path: settings.reticulumd_path.clone().unwrap_or_default(),
             db_path: settings.db_path.clone().unwrap_or_default(),
             identity_path: settings.identity_path.clone().unwrap_or_default(),
@@ -227,6 +235,7 @@ impl ProfileEditorState {
         match self.active_field() {
             ProfileField::Managed => None,
             ProfileField::Rpc => Some(&mut self.rpc),
+            ProfileField::DisplayName => Some(&mut self.display_name),
             ProfileField::ReticulumdPath => Some(&mut self.reticulumd_path),
             ProfileField::DbPath => Some(&mut self.db_path),
             ProfileField::IdentityPath => Some(&mut self.identity_path),
@@ -465,6 +474,9 @@ pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
         composer: None,
         interface_editor: None,
         profile_editor: None,
+        peer_filter: String::new(),
+        peer_filter_editing: false,
+        peer_details_open: false,
         profile_managed: ctx.profile_settings.managed,
     };
 
@@ -525,6 +537,16 @@ pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
                     continue;
                 }
 
+                if state.peer_filter_editing {
+                    handle_peer_filter_key(key, &mut state);
+                    continue;
+                }
+
+                if state.peer_details_open {
+                    handle_peer_details_key(key, &mut state);
+                    continue;
+                }
+
                 match key.code {
                     KeyCode::Char('q') => break Ok(()),
                     KeyCode::Tab => {
@@ -539,6 +561,23 @@ pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
                     }
                     KeyCode::Char('j') | KeyCode::Down => increment_selection(&mut state),
                     KeyCode::Char('k') | KeyCode::Up => decrement_selection(&mut state),
+                    KeyCode::Esc => {
+                        if state.pane == Pane::Peers && !state.peer_filter.is_empty() {
+                            state.peer_filter.clear();
+                            clamp_selection(&mut state);
+                            set_status(&mut state, StatusLevel::Info, "Peer filter cleared");
+                        }
+                    }
+                    KeyCode::Char('/') => {
+                        if state.pane == Pane::Peers {
+                            state.peer_filter_editing = true;
+                            set_status(
+                                &mut state,
+                                StatusLevel::Info,
+                                "Peer filter: type to search by hash/name, Enter to close, Esc to clear",
+                            );
+                        }
+                    }
                     KeyCode::Char('r') => {
                         set_status(
                             &mut state,
@@ -674,6 +713,15 @@ pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
                                     &mut state,
                                     StatusLevel::Error,
                                     format!("edit failed: {err}"),
+                                ),
+                            }
+                        } else if state.pane == Pane::Peers {
+                            match open_selected_peer_details(&mut state) {
+                                Ok(msg) => set_status(&mut state, StatusLevel::Info, msg),
+                                Err(err) => set_status(
+                                    &mut state,
+                                    StatusLevel::Error,
+                                    format!("peer details unavailable: {err}"),
                                 ),
                             }
                         }
@@ -861,6 +909,8 @@ fn draw(frame: &mut ratatui::Frame<'_>, state: &TuiState) {
     .divider(" ");
     frame.render_widget(tabs, chunks[1]);
 
+    let filtered_peers = filtered_peers(state);
+
     match state.pane {
         Pane::Dashboard => dashboard::render(
             frame,
@@ -881,10 +931,12 @@ fn draw(frame: &mut ratatui::Frame<'_>, state: &TuiState) {
         Pane::Peers => peers::render(
             frame,
             chunks[2],
-            &state.snapshot.peers,
+            &filtered_peers,
             state.selected_peer,
             &state.theme,
             true,
+            &state.peer_filter,
+            state.peer_filter_editing,
         ),
         Pane::Interfaces => interfaces::render(
             frame,
@@ -916,6 +968,14 @@ fn draw(frame: &mut ratatui::Frame<'_>, state: &TuiState) {
 
     if state.profile_editor.is_some() {
         draw_profile_editor_overlay(frame, state);
+    }
+
+    if state.peer_filter_editing {
+        draw_peer_filter_overlay(frame, state);
+    }
+
+    if state.peer_details_open {
+        draw_peer_details_overlay(frame, state);
     }
 }
 
@@ -988,7 +1048,7 @@ fn draw_status_bar(frame: &mut ratatui::Frame<'_>, area: Rect, state: &TuiState)
         StatusLevel::Error => state.theme.danger,
     };
 
-    let keys = "keys: q quit | Tab/Shift+Tab panes | s compose | p profile | Enter edit iface | i/t/x/a interfaces | d discover | y sync | u unpeer | r start/restart | n announce | e refresh";
+    let keys = "keys: q quit | Tab/Shift+Tab panes | s compose | p profile | / peer filter | Enter peer details/iface edit | i/t/x/a interfaces | d discover | y sync | u unpeer | r start/restart | n announce | e refresh";
     let content = vec![
         Line::from(Span::styled(
             state.status_line.as_str(),
@@ -1029,7 +1089,7 @@ fn draw_welcome_overlay(frame: &mut ratatui::Frame<'_>, state: &TuiState) {
         )),
         Line::from(""),
         Line::from(Span::styled(
-            "Quick start: Tab panes, d discover, n announce, s send, p profile, Enter edit iface, i/t/x/a interfaces.",
+            "Quick start: Tab panes, d discover, n announce, s send, / filter peers, Enter peer details/edit iface, p profile, i/t/x/a interfaces.",
             Style::default().fg(state.theme.muted),
         )),
         Line::from(Span::styled(
@@ -1306,6 +1366,13 @@ fn draw_profile_editor_overlay(frame: &mut ratatui::Frame<'_>, state: &TuiState)
         &state.theme,
     ));
     lines.push(interface_line(
+        "display_name",
+        &editor.display_name,
+        editor.active_field() == ProfileField::DisplayName,
+        false,
+        &state.theme,
+    ));
+    lines.push(interface_line(
         "reticulumd_path",
         &editor.reticulumd_path,
         editor.active_field() == ProfileField::ReticulumdPath,
@@ -1339,7 +1406,7 @@ fn draw_profile_editor_overlay(frame: &mut ratatui::Frame<'_>, state: &TuiState)
         Style::default().fg(state.theme.muted),
     )));
     lines.push(Line::from(Span::styled(
-        "Saving updates profile.toml immediately; RPC changes are applied in this TUI session.",
+        "Saving updates profile.toml immediately; use n (announce) or r (restart) so peers see display-name changes.",
         Style::default().fg(state.theme.muted),
     )));
 
@@ -1358,6 +1425,145 @@ fn draw_profile_editor_overlay(frame: &mut ratatui::Frame<'_>, state: &TuiState)
         )
         .wrap(Wrap { trim: true });
     frame.render_widget(popup, area);
+}
+
+fn draw_peer_filter_overlay(frame: &mut ratatui::Frame<'_>, state: &TuiState) {
+    if state.pane != Pane::Peers {
+        return;
+    }
+
+    let area = centered_rect(70, 20, frame.area());
+    frame.render_widget(Clear, area);
+
+    let shown = if state.peer_filter.trim().is_empty() {
+        "<type hash or name>".to_string()
+    } else {
+        state.peer_filter.clone()
+    };
+    let filtered = filtered_peer_indices(state).len();
+    let total = state.snapshot.peers.len();
+
+    let lines = vec![
+        Line::from(vec![
+            Span::styled("> ", Style::default().fg(state.theme.accent)),
+            Span::styled(
+                shown,
+                Style::default()
+                    .fg(state.theme.text)
+                    .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
+            ),
+        ]),
+        Line::from(Span::styled(
+            format!("showing {filtered} of {total} peer(s)"),
+            Style::default().fg(state.theme.muted),
+        )),
+        Line::from(Span::styled(
+            "Enter: keep filter  Esc: clear filter  Backspace/Delete: edit",
+            Style::default().fg(state.theme.muted),
+        )),
+    ];
+
+    let popup = Paragraph::new(lines)
+        .block(
+            Block::default()
+                .title(Span::styled(
+                    "Peer Search",
+                    Style::default()
+                        .fg(state.theme.accent)
+                        .add_modifier(Modifier::BOLD),
+                ))
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(state.theme.border_active))
+                .border_type(BorderType::Rounded),
+        )
+        .wrap(Wrap { trim: true });
+
+    frame.render_widget(popup, area);
+}
+
+fn draw_peer_details_overlay(frame: &mut ratatui::Frame<'_>, state: &TuiState) {
+    let Some(peer) = selected_peer_value(state) else {
+        return;
+    };
+
+    let area = centered_rect(70, 50, frame.area());
+    frame.render_widget(Clear, area);
+
+    let name = peer
+        .get("name")
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or("<unknown>");
+    let hash = peer
+        .get("peer")
+        .and_then(Value::as_str)
+        .unwrap_or("<unknown>");
+    let source = peer
+        .get("name_source")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let first_seen = format_timestamp(peer.get("first_seen").and_then(Value::as_i64));
+    let last_seen = format_timestamp(peer.get("last_seen").and_then(Value::as_i64));
+    let seen_count = peer
+        .get("seen_count")
+        .and_then(Value::as_u64)
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "0".to_string());
+
+    let lines = vec![
+        Line::from(vec![
+            Span::styled("name: ", Style::default().fg(state.theme.muted)),
+            Span::styled(name, Style::default().fg(state.theme.text)),
+        ]),
+        Line::from(vec![
+            Span::styled("hash: ", Style::default().fg(state.theme.muted)),
+            Span::styled(hash, Style::default().fg(state.theme.text)),
+        ]),
+        Line::from(vec![
+            Span::styled("source: ", Style::default().fg(state.theme.muted)),
+            Span::styled(source, Style::default().fg(state.theme.text)),
+        ]),
+        Line::from(vec![
+            Span::styled("first seen: ", Style::default().fg(state.theme.muted)),
+            Span::styled(first_seen, Style::default().fg(state.theme.text)),
+        ]),
+        Line::from(vec![
+            Span::styled("last seen: ", Style::default().fg(state.theme.muted)),
+            Span::styled(last_seen, Style::default().fg(state.theme.text)),
+        ]),
+        Line::from(vec![
+            Span::styled("seen count: ", Style::default().fg(state.theme.muted)),
+            Span::styled(seen_count, Style::default().fg(state.theme.text)),
+        ]),
+        Line::from(""),
+        Line::from(Span::styled(
+            "Esc or Enter closes this panel.",
+            Style::default().fg(state.theme.muted),
+        )),
+    ];
+
+    let popup = Paragraph::new(lines)
+        .block(
+            Block::default()
+                .title(Span::styled(
+                    "Peer Details",
+                    Style::default()
+                        .fg(state.theme.accent)
+                        .add_modifier(Modifier::BOLD),
+                ))
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(state.theme.border_active))
+                .border_type(BorderType::Rounded),
+        )
+        .wrap(Wrap { trim: true });
+
+    frame.render_widget(popup, area);
+}
+
+fn format_timestamp(value: Option<i64>) -> String {
+    value
+        .map(|ts| ts.to_string())
+        .unwrap_or_else(|| "n/a".to_string())
 }
 
 fn handle_profile_editor_key(
@@ -1433,7 +1639,7 @@ fn handle_profile_editor_key(
                 };
                 status = Some((
                     StatusLevel::Success,
-                    format!("profile settings saved ({managed_text} mode)"),
+                    format!("profile settings saved ({managed_text} mode); announce or restart to publish name"),
                 ));
                 close = true;
                 saved = Some(result);
@@ -1466,6 +1672,8 @@ fn save_profile_from_editor(
     let mut settings = load_profile_settings(&ctx.profile_name)?;
     settings.managed = editor.managed;
     settings.rpc = rpc.to_string();
+    let display_name = optional_trimmed_string(&editor.display_name);
+    settings.display_name = normalize_optional_display_name(display_name.as_deref())?;
     settings.reticulumd_path = optional_trimmed_string(&editor.reticulumd_path);
     settings.db_path = optional_trimmed_string(&editor.db_path);
     settings.identity_path = optional_trimmed_string(&editor.identity_path);
@@ -2070,13 +2278,137 @@ fn unpeer_selected_peer(rpc: &RpcClient, state: &TuiState) -> Result<String> {
 }
 
 fn selected_peer_name(state: &TuiState) -> Option<String> {
+    let index = selected_peer_source_index(state)?;
     state
         .snapshot
         .peers
-        .get(state.selected_peer)
+        .get(index)
         .and_then(|peer| peer.get("peer"))
         .and_then(Value::as_str)
         .map(ToOwned::to_owned)
+}
+
+fn selected_peer_source_index(state: &TuiState) -> Option<usize> {
+    filtered_peer_indices(state)
+        .get(state.selected_peer)
+        .copied()
+}
+
+fn selected_peer_value(state: &TuiState) -> Option<&Value> {
+    let index = selected_peer_source_index(state)?;
+    state.snapshot.peers.get(index)
+}
+
+fn filtered_peers(state: &TuiState) -> Vec<Value> {
+    filtered_peer_indices(state)
+        .into_iter()
+        .filter_map(|index| state.snapshot.peers.get(index).cloned())
+        .collect()
+}
+
+fn filtered_peer_indices(state: &TuiState) -> Vec<usize> {
+    let query = state.peer_filter.trim().to_ascii_lowercase();
+    if query.is_empty() {
+        return (0..state.snapshot.peers.len()).collect();
+    }
+
+    state
+        .snapshot
+        .peers
+        .iter()
+        .enumerate()
+        .filter_map(|(index, peer)| {
+            let hash = peer
+                .get("peer")
+                .and_then(Value::as_str)
+                .map(str::to_ascii_lowercase)
+                .unwrap_or_default();
+            let name = peer
+                .get("name")
+                .and_then(Value::as_str)
+                .map(str::to_ascii_lowercase)
+                .unwrap_or_default();
+            if hash.contains(&query) || name.contains(&query) {
+                Some(index)
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn open_selected_peer_details(state: &mut TuiState) -> Result<String> {
+    let Some(index) = selected_peer_source_index(state) else {
+        return Err(anyhow!("no peer selected"));
+    };
+    state.peer_details_open = true;
+    let label = state
+        .snapshot
+        .peers
+        .get(index)
+        .and_then(|peer| {
+            peer.get("name")
+                .and_then(Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+                .map(ToOwned::to_owned)
+                .or_else(|| {
+                    peer.get("peer")
+                        .and_then(Value::as_str)
+                        .map(ToOwned::to_owned)
+                })
+        })
+        .unwrap_or_else(|| "<unknown>".to_string());
+    Ok(format!("Peer details: {label} (Esc/Enter to close)"))
+}
+
+fn handle_peer_details_key(key: KeyEvent, state: &mut TuiState) {
+    match key.code {
+        KeyCode::Esc | KeyCode::Enter => {
+            state.peer_details_open = false;
+            set_status(state, StatusLevel::Info, "Peer details closed");
+        }
+        _ => {}
+    }
+}
+
+fn handle_peer_filter_key(key: KeyEvent, state: &mut TuiState) {
+    match key.code {
+        KeyCode::Esc => {
+            state.peer_filter.clear();
+            state.peer_filter_editing = false;
+            clamp_selection(state);
+            set_status(state, StatusLevel::Info, "Peer filter cleared");
+        }
+        KeyCode::Enter => {
+            state.peer_filter_editing = false;
+            clamp_selection(state);
+            set_status(
+                state,
+                StatusLevel::Info,
+                format!(
+                    "Peer filter active: {}",
+                    if state.peer_filter.trim().is_empty() {
+                        "<none>"
+                    } else {
+                        state.peer_filter.trim()
+                    }
+                ),
+            );
+        }
+        KeyCode::Backspace => {
+            state.peer_filter.pop();
+            clamp_selection(state);
+        }
+        KeyCode::Delete => {
+            state.peer_filter.clear();
+            clamp_selection(state);
+        }
+        KeyCode::Char(c) => {
+            state.peer_filter.push(c);
+            clamp_selection(state);
+        }
+        _ => {}
+    }
 }
 
 fn selected_interface_name(state: &TuiState) -> Option<String> {
@@ -2098,8 +2430,12 @@ fn as_vec(value: Value, key: &str) -> Vec<Value> {
 
 #[cfg(test)]
 mod tests {
-    use super::as_vec;
+    use super::{
+        as_vec, filtered_peer_indices, selected_peer_name, Pane, StatusLevel, TuiSnapshot,
+        TuiState, TuiTheme,
+    };
     use serde_json::json;
+    use std::time::Instant;
 
     #[test]
     fn as_vec_extracts_wrapped_array() {
@@ -2126,14 +2462,85 @@ mod tests {
         let peers = as_vec(value, "peers");
         assert!(peers.is_empty());
     }
+
+    #[test]
+    fn filtered_peer_indices_matches_hash_and_name() {
+        let mut state = sample_state(vec![
+            json!({"peer": "abc123", "name": "Alice Node"}),
+            json!({"peer": "def456", "name": "Bob Node"}),
+            json!({"peer": "0011ff", "name": "Relay"}),
+        ]);
+
+        state.peer_filter = "alice".into();
+        assert_eq!(filtered_peer_indices(&state), vec![0]);
+
+        state.peer_filter = "def".into();
+        assert_eq!(filtered_peer_indices(&state), vec![1]);
+
+        state.peer_filter = String::new();
+        assert_eq!(filtered_peer_indices(&state), vec![0, 1, 2]);
+    }
+
+    #[test]
+    fn selected_peer_name_uses_filtered_selection() {
+        let mut state = sample_state(vec![
+            json!({"peer": "hash-a", "name": "Alice"}),
+            json!({"peer": "hash-b", "name": "Bob"}),
+            json!({"peer": "hash-c", "name": "Bob Two"}),
+        ]);
+        state.peer_filter = "bob".into();
+        state.selected_peer = 1;
+
+        let selected = selected_peer_name(&state);
+        assert_eq!(selected.as_deref(), Some("hash-c"));
+    }
+
+    fn sample_state(peers: Vec<serde_json::Value>) -> TuiState {
+        TuiState {
+            pane: Pane::Peers,
+            selected_message: 0,
+            selected_peer: 0,
+            selected_interface: 0,
+            status_line: String::new(),
+            status_level: StatusLevel::Info,
+            snapshot: TuiSnapshot {
+                profile: "default".into(),
+                rpc: "127.0.0.1:4243".into(),
+                daemon_running: false,
+                messages: Vec::new(),
+                peers,
+                interfaces: Vec::new(),
+                events: Vec::new(),
+                logs: Vec::new(),
+            },
+            theme: TuiTheme::default(),
+            connected: false,
+            first_refresh_done: false,
+            spinner_tick: 0,
+            started_at: Instant::now(),
+            last_refresh_ms: None,
+            welcome_dismissed: false,
+            composer: None,
+            interface_editor: None,
+            profile_editor: None,
+            peer_filter: String::new(),
+            peer_filter_editing: false,
+            peer_details_open: false,
+            profile_managed: false,
+        }
+    }
 }
 
 fn clamp_selection(state: &mut TuiState) {
     if state.selected_message >= state.snapshot.messages.len() {
         state.selected_message = state.snapshot.messages.len().saturating_sub(1);
     }
-    if state.selected_peer >= state.snapshot.peers.len() {
-        state.selected_peer = state.snapshot.peers.len().saturating_sub(1);
+    let filtered_len = filtered_peer_indices(state).len();
+    if state.selected_peer >= filtered_len {
+        state.selected_peer = filtered_len.saturating_sub(1);
+    }
+    if filtered_len == 0 {
+        state.peer_details_open = false;
     }
     if state.selected_interface >= state.snapshot.interfaces.len() {
         state.selected_interface = state.snapshot.interfaces.len().saturating_sub(1);
@@ -2148,7 +2555,7 @@ fn increment_selection(state: &mut TuiState) {
             }
         }
         Pane::Peers => {
-            if state.selected_peer + 1 < state.snapshot.peers.len() {
+            if state.selected_peer + 1 < filtered_peer_indices(state).len() {
                 state.selected_peer += 1;
             }
         }

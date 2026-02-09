@@ -15,9 +15,11 @@ pub fn render(
     selected: usize,
     theme: &TuiTheme,
     active: bool,
+    filter: &str,
+    filter_editing: bool,
 ) {
     let items = if peers.is_empty() {
-        vec![
+        let mut lines = vec![
             ListItem::new(Line::from(Span::styled(
                 "No peers discovered yet.",
                 Style::default().fg(theme.muted),
@@ -30,21 +32,41 @@ pub fn render(
                 "Verify interfaces are enabled and applied (i/t/x/a).",
                 Style::default().fg(theme.accent_dim),
             ))),
-        ]
+        ];
+        if !filter.trim().is_empty() {
+            lines.insert(
+                0,
+                ListItem::new(Line::from(Span::styled(
+                    format!("No peers match filter '{}'.", filter.trim()),
+                    Style::default().fg(theme.warning),
+                ))),
+            );
+        }
+        lines
     } else {
         peers
             .iter()
             .enumerate()
             .map(|(idx, peer)| {
-                let name = peer
+                let hash = peer
                     .get("peer")
                     .and_then(Value::as_str)
                     .unwrap_or("<unknown>");
-                let last_seen = peer
-                    .get("last_seen")
-                    .and_then(Value::as_i64)
-                    .map(|v| v.to_string())
-                    .unwrap_or_else(|| "n/a".into());
+                let name = peer
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty());
+                let primary = name.unwrap_or(hash);
+                let secondary = if name.is_some() {
+                    format!("hash={} ", short(hash, 20))
+                } else {
+                    String::new()
+                };
+                let seen_count = peer
+                    .get("seen_count")
+                    .and_then(Value::as_u64)
+                    .unwrap_or_default();
                 let pointer = if idx == selected { ">" } else { " " };
 
                 ListItem::new(Line::from(vec![
@@ -55,9 +77,13 @@ pub fn render(
                             .add_modifier(Modifier::BOLD),
                     ),
                     Span::raw(" "),
-                    Span::styled(short(name, 28), Style::default().fg(theme.text)),
-                    Span::styled("  last_seen=", Style::default().fg(theme.muted)),
-                    Span::styled(last_seen, Style::default().fg(theme.accent_dim)),
+                    Span::styled(short(primary, 28), Style::default().fg(theme.text)),
+                    Span::styled("  ", Style::default().fg(theme.text)),
+                    Span::styled(secondary, Style::default().fg(theme.muted)),
+                    Span::styled(
+                        format!("seen={seen_count}"),
+                        Style::default().fg(theme.accent_dim),
+                    ),
                 ]))
             })
             .collect::<Vec<_>>()
@@ -68,10 +94,19 @@ pub fn render(
     } else {
         theme.border
     };
+    let filter_label = if filter.trim().is_empty() {
+        "all".to_string()
+    } else {
+        format!("'{}'", short(filter.trim(), 28))
+    };
+    let edit_suffix = if filter_editing { " (typing)" } else { "" };
+
     let list = List::new(items).block(
         Block::default()
             .title(Span::styled(
-                "Peers  (d discover, n announce, y sync, u unpeer)",
+                format!(
+                    "Peers  (/ filter{edit_suffix}, Enter details, y sync, u unpeer)  filter={filter_label}"
+                ),
                 Style::default().fg(theme.accent),
             ))
             .borders(Borders::ALL)

@@ -145,6 +145,15 @@ pub fn render(
         ]),
         Line::from(vec![
             Span::styled(
+                "/",
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" peer filter/search", Style::default().fg(theme.text)),
+        ]),
+        Line::from(vec![
+            Span::styled(
                 "n",
                 Style::default()
                     .fg(theme.accent)
@@ -186,7 +195,10 @@ pub fn render(
                     .fg(theme.accent)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled(" edit selected interface", Style::default().fg(theme.text)),
+            Span::styled(
+                " peer details / edit selected interface",
+                Style::default().fg(theme.text),
+            ),
         ]),
         Line::from(vec![
             Span::styled(
