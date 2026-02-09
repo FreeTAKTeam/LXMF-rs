@@ -1895,7 +1895,7 @@ fn restart_daemon(ctx: &RuntimeContext) -> Result<String> {
         return Ok(match status.pid {
             Some(pid) => format!("daemon started/restarted (pid {pid})"),
             None => "daemon start/restart requested".to_string(),
-        });
+        } + &transport_suffix(&status));
     }
 
     runtime_settings.managed = true;
@@ -1905,7 +1905,7 @@ fn restart_daemon(ctx: &RuntimeContext) -> Result<String> {
     Ok(match status.pid {
         Some(pid) => format!("managed mode enabled; daemon started (pid {pid})"),
         None => "managed mode enabled; daemon start requested".to_string(),
-    })
+    } + &transport_suffix(&status))
 }
 
 fn discover_peers(ctx: &RuntimeContext, rpc: &RpcClient, state: &mut TuiState) -> Result<String> {
@@ -2006,13 +2006,19 @@ fn auto_start_managed_daemon(ctx: &RuntimeContext, state: &mut TuiState) {
                 set_status(
                     state,
                     StatusLevel::Success,
-                    format!("Managed daemon started (pid {pid}); connecting..."),
+                    format!(
+                        "Managed daemon started (pid {pid}); connecting...{}",
+                        transport_suffix(&status)
+                    ),
                 );
             } else {
                 set_status(
                     state,
                     StatusLevel::Success,
-                    "Managed daemon start requested; connecting...".to_string(),
+                    format!(
+                        "Managed daemon start requested; connecting...{}",
+                        transport_suffix(&status)
+                    ),
                 );
             }
         }
@@ -2023,6 +2029,15 @@ fn auto_start_managed_daemon(ctx: &RuntimeContext, state: &mut TuiState) {
                 format!("Managed daemon auto-start failed: {err}. Press r to retry."),
             );
         }
+    }
+}
+
+fn transport_suffix(status: &crate::cli::daemon::DaemonStatus) -> String {
+    if status.transport_inferred {
+        let transport = status.transport.as_deref().unwrap_or("127.0.0.1:0");
+        format!(" (inferred transport: {transport})")
+    } else {
+        String::new()
     }
 }
 

@@ -1,9 +1,8 @@
 use lxmf::cli::daemon::DaemonSupervisor;
-use lxmf::cli::profile::{
-    init_profile, profile_paths, save_profile_settings, ProfileSettings,
-};
+use lxmf::cli::profile::{init_profile, profile_paths, save_profile_settings, ProfileSettings};
 use std::os::unix::fs::PermissionsExt;
 use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 fn env_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -145,6 +144,73 @@ fn daemon_supervisor_drops_empty_identity_stub_before_start() {
     let supervisor = DaemonSupervisor::new("daemon-empty-id", settings);
     supervisor.start(None, None, None).unwrap();
     assert!(!paths.identity_file.exists());
+    supervisor.stop().unwrap();
+
+    std::env::remove_var("LXMF_CONFIG_ROOT");
+}
+
+#[test]
+fn daemon_supervisor_infers_transport_when_interfaces_are_enabled() {
+    let _guard = env_lock().lock().unwrap_or_else(|err| err.into_inner());
+    let temp = tempfile::tempdir().unwrap();
+    std::env::set_var("LXMF_CONFIG_ROOT", temp.path());
+
+    init_profile(
+        "daemon-infer-transport",
+        true,
+        Some("127.0.0.1:4557".into()),
+    )
+    .unwrap();
+    let paths = profile_paths("daemon-infer-transport").unwrap();
+    std::fs::write(
+        &paths.reticulum_toml,
+        "[[interfaces]]\nname = \"uplink\"\ntype = \"tcp_client\"\nenabled = true\nhost = \"rmap.world\"\nport = 4242\n",
+    )
+    .unwrap();
+
+    let args_log = temp.path().join("reticulumd-args.txt");
+    let fake = temp.path().join("fake-reticulumd.sh");
+    std::fs::write(
+        &fake,
+        format!(
+            "#!/bin/sh\necho \"$@\" > \"{}\"\ntrap 'exit 0' TERM INT\nwhile true; do sleep 1; done\n",
+            args_log.display()
+        ),
+    )
+    .unwrap();
+    let mut perms = std::fs::metadata(&fake).unwrap().permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&fake, perms).unwrap();
+
+    let settings = ProfileSettings {
+        name: "daemon-infer-transport".into(),
+        managed: true,
+        rpc: "127.0.0.1:4557".into(),
+        reticulumd_path: Some(fake.display().to_string()),
+        db_path: None,
+        identity_path: None,
+        transport: None,
+    };
+    save_profile_settings(&settings).unwrap();
+
+    let supervisor = DaemonSupervisor::new("daemon-infer-transport", settings);
+    let started = supervisor.start(None, None, None).unwrap();
+    assert!(started.transport_inferred);
+    assert_eq!(started.transport.as_deref(), Some("127.0.0.1:0"));
+
+    let deadline = Instant::now() + Duration::from_secs(2);
+    let mut args = String::new();
+    while Instant::now() < deadline {
+        if let Ok(content) = std::fs::read_to_string(&args_log) {
+            if !content.trim().is_empty() {
+                args = content;
+                break;
+            }
+        }
+        std::thread::sleep(Duration::from_millis(40));
+    }
+
+    assert!(args.contains("--transport 127.0.0.1:0"), "args: {args}");
     supervisor.stop().unwrap();
 
     std::env::remove_var("LXMF_CONFIG_ROOT");

@@ -1,4 +1,6 @@
-use crate::cli::profile::{profile_paths, resolve_identity_path, ProfileSettings};
+use crate::cli::profile::{
+    load_reticulum_config, profile_paths, resolve_identity_path, ProfileSettings,
+};
 use anyhow::{anyhow, Context, Result};
 use serde::Serialize;
 use std::fs::{self, File, OpenOptions};
@@ -7,6 +9,8 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
+const INFERRED_TRANSPORT_BIND: &str = "127.0.0.1:0";
+
 #[derive(Debug, Clone, Serialize)]
 pub struct DaemonStatus {
     pub running: bool,
@@ -14,6 +18,8 @@ pub struct DaemonStatus {
     pub rpc: String,
     pub profile: String,
     pub managed: bool,
+    pub transport: Option<String>,
+    pub transport_inferred: bool,
     pub log_path: String,
 }
 
@@ -46,6 +52,8 @@ impl DaemonSupervisor {
         }
 
         let paths = profile_paths(&self.profile)?;
+        let (transport, transport_inferred) =
+            resolve_transport_for_start(&self.profile, &self.settings, transport_override);
         if let Some(pid) = read_pid(&paths.daemon_pid)? {
             if is_pid_running(pid) {
                 return Ok(DaemonStatus {
@@ -54,6 +62,8 @@ impl DaemonSupervisor {
                     rpc: self.settings.rpc.clone(),
                     profile: self.profile.clone(),
                     managed,
+                    transport,
+                    transport_inferred,
                     log_path: paths.daemon_log.display().to_string(),
                 });
             }
@@ -82,7 +92,6 @@ impl DaemonSupervisor {
             .as_ref()
             .map(PathBuf::from)
             .unwrap_or_else(|| paths.daemon_db.clone());
-        let transport = transport_override.or_else(|| self.settings.transport.clone());
 
         let mut cmd = Command::new(&reticulumd_bin);
         cmd.arg("--rpc")
@@ -97,7 +106,7 @@ impl DaemonSupervisor {
             .stdout(Stdio::from(log_file))
             .stderr(Stdio::from(log_file_err));
 
-        if let Some(transport) = transport {
+        if let Some(transport) = transport.as_deref() {
             cmd.arg("--transport").arg(transport);
         }
 
@@ -149,6 +158,8 @@ impl DaemonSupervisor {
             rpc: self.settings.rpc.clone(),
             profile: self.profile.clone(),
             managed,
+            transport,
+            transport_inferred,
             log_path: paths.daemon_log.display().to_string(),
         })
     }
@@ -176,6 +187,8 @@ impl DaemonSupervisor {
             rpc: self.settings.rpc.clone(),
             profile: self.profile.clone(),
             managed: self.settings.managed,
+            transport: self.settings.transport.clone(),
+            transport_inferred: false,
             log_path: paths.daemon_log.display().to_string(),
         })
     }
@@ -201,6 +214,8 @@ impl DaemonSupervisor {
             rpc: self.settings.rpc.clone(),
             profile: self.profile.clone(),
             managed: self.settings.managed,
+            transport: self.settings.transport.clone(),
+            transport_inferred: false,
             log_path: paths.daemon_log.display().to_string(),
         })
     }
@@ -255,6 +270,38 @@ fn drop_empty_identity_stub(path: &PathBuf) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn resolve_transport_for_start(
+    profile: &str,
+    settings: &ProfileSettings,
+    transport_override: Option<String>,
+) -> (Option<String>, bool) {
+    if let Some(value) = clean_non_empty(transport_override) {
+        return (Some(value), false);
+    }
+
+    if let Some(value) = clean_non_empty(settings.transport.clone()) {
+        return (Some(value), false);
+    }
+
+    if should_infer_transport(profile) {
+        return (Some(INFERRED_TRANSPORT_BIND.to_string()), true);
+    }
+
+    (None, false)
+}
+
+fn should_infer_transport(profile: &str) -> bool {
+    load_reticulum_config(profile)
+        .map(|config| config.interfaces.iter().any(|iface| iface.enabled))
+        .unwrap_or(false)
+}
+
+fn clean_non_empty(value: Option<String>) -> Option<String> {
+    value
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
 }
 
 fn startup_failure_hint(log_path: &PathBuf, rpc: &str) -> Option<String> {
