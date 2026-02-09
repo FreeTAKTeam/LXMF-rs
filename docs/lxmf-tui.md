@@ -24,11 +24,15 @@ cargo run --bin lxmf -- --profile <name> tui
 - `j` / `Down`: move selection down (messages/peers/interfaces)
 - `k` / `Up`: move selection up (messages/peers/interfaces)
 - `s`: send message (interactive prompt)
+- `/`: open peer search filter (hash or name, live)
+- `Esc` (while filtering): clear peer filter
+- `Enter` in Peers: open selected peer details
 - `y`: sync selected peer
 - `u`: unpeer selected peer
 - `a`: apply interfaces (`set_interfaces` + `reload_config`)
 - `r`: restart daemon (managed profile)
 - `n`: announce now
+- `p`: edit profile settings in-place (including display name)
 - `e`: force refresh
 
 ## Data Sources
@@ -45,4 +49,5 @@ The TUI refreshes from:
 ## Notes
 
 - The TUI is intended for operator workflows and daemon introspection.
+- The Peers pane supports hash/name filtering and per-peer details without leaving TUI.
 - For scripted automation, prefer `lxmf --json ...` CLI subcommands.

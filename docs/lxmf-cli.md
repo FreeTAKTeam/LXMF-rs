@@ -19,7 +19,7 @@ The CLI targets `reticulumd` over framed msgpack RPC (`POST /rpc`) and event pol
 
 ## Command Tree
 
-- `lxmf profile init|list|show|select|import-identity|export-identity|delete`
+- `lxmf profile init|list|show|select|set|import-identity|export-identity|delete`
 - `lxmf daemon start|stop|restart|status|logs`
 - `lxmf iface list|add|remove|enable|disable|apply`
 - `lxmf peer list|show|watch|sync|unpeer|clear`
@@ -75,6 +75,21 @@ Add an interface and apply:
 ```bash
 lxmf --profile ops iface add uplink --type tcp_client --host 127.0.0.1 --port 4242
 lxmf --profile ops iface apply
+```
+
+Set or clear your local announce display name:
+
+```bash
+lxmf --profile ops profile set --display-name "Tommy Operator"
+lxmf --profile ops profile set --clear-display-name
+```
+
+Search peers and inspect details:
+
+```bash
+lxmf --profile ops peer list --query alice --limit 10
+lxmf --profile ops peer show alice
+lxmf --profile ops peer show 6b33cafe --exact
 ```
 
 Send a message with `send_message_v2` semantics:
