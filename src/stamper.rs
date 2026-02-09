@@ -1,6 +1,8 @@
 use hkdf::Hkdf;
 use sha2::Sha256;
 
+pub type PnStampValidation = (Vec<u8>, Vec<u8>, u32, Vec<u8>);
+
 pub fn stamp_workblock(material: &[u8], expand_rounds: usize) -> Vec<u8> {
     let mut workblock = Vec::with_capacity(expand_rounds * 256);
 
@@ -40,10 +42,7 @@ pub fn stamp_valid(stamp: &[u8], target_cost: u32, workblock: &[u8]) -> bool {
     stamp_value(workblock, stamp) >= target_cost
 }
 
-pub fn validate_pn_stamp(
-    transient_data: &[u8],
-    target_cost: u32,
-) -> Option<(Vec<u8>, Vec<u8>, u32, Vec<u8>)> {
+pub fn validate_pn_stamp(transient_data: &[u8], target_cost: u32) -> Option<PnStampValidation> {
     let stamp_size = reticulum::hash::HASH_SIZE;
     if transient_data.len() <= stamp_size {
         return None;

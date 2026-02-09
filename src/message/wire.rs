@@ -58,8 +58,8 @@ impl WireMessage {
         let Some(sig_bytes) = self.signature else {
             return Ok(false);
         };
-        let signature = Signature::from_slice(&sig_bytes)
-            .map_err(|e| LxmfError::Decode(e.to_string()))?;
+        let signature =
+            Signature::from_slice(&sig_bytes).map_err(|e| LxmfError::Decode(e.to_string()))?;
 
         let payload = self.payload.to_msgpack_without_stamp()?;
         let mut data = Vec::with_capacity(16 + 16 + payload.len() + 32);
@@ -216,10 +216,11 @@ fn encrypt_for_identity<R: CryptoRngCore + Copy>(
     let split = key_bytes.len() / 2;
 
     let fernet = Fernet::new_from_slices(&key_bytes[..split], &key_bytes[split..], rng);
-    let mut out = vec![
-        0u8;
-        PUBLIC_KEY_LENGTH + plaintext.len() + FERNET_OVERHEAD_SIZE + FERNET_MAX_PADDING_SIZE
-    ];
+    let mut out =
+        vec![
+            0u8;
+            PUBLIC_KEY_LENGTH + plaintext.len() + FERNET_OVERHEAD_SIZE + FERNET_MAX_PADDING_SIZE
+        ];
     out[..PUBLIC_KEY_LENGTH].copy_from_slice(ephemeral_public.as_bytes());
     let token = fernet
         .encrypt(PlainText::from(plaintext), &mut out[PUBLIC_KEY_LENGTH..])

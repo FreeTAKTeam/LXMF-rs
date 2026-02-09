@@ -81,7 +81,7 @@ pub fn pn_stamp_cost_from_app_data(data: &[u8]) -> Option<u32> {
         _ => return None,
     };
 
-    value_to_u32(stamp_costs.get(0)?)
+    value_to_u32(stamp_costs.first()?)
 }
 
 fn value_is_int(value: &Value) -> bool {
@@ -89,9 +89,12 @@ fn value_is_int(value: &Value) -> bool {
 }
 
 fn value_to_u32(value: &Value) -> Option<u32> {
-    value.as_u64().and_then(|v| u32::try_from(v).ok()).or_else(|| {
-        value
-            .as_i64()
-            .and_then(|v| if v >= 0 { u32::try_from(v).ok() } else { None })
-    })
+    value
+        .as_u64()
+        .and_then(|v| u32::try_from(v).ok())
+        .or_else(|| {
+            value
+                .as_i64()
+                .and_then(|v| if v >= 0 { u32::try_from(v).ok() } else { None })
+        })
 }

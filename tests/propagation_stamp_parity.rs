@@ -13,10 +13,13 @@ fn propagation_stamp_validation_matches_fixture() {
     let bytes = std::fs::read("tests/fixtures/python/lxmf/pn_stamp_valid.msgpack").unwrap();
     let case: PnStampCase = rmp_serde::from_slice(&bytes).unwrap();
 
-    let stamp = validate_stamp(&case.transient_data, case.target_cost)
-        .expect("expected valid stamp");
+    let stamp =
+        validate_stamp(&case.transient_data, case.target_cost).expect("expected valid stamp");
 
     assert_eq!(stamp.transient_id.len(), 32);
     assert_eq!(stamp.stamp.len(), 32);
-    assert_eq!(stamp.lxmf_data.len() + stamp.stamp.len(), case.transient_data.len());
+    assert_eq!(
+        stamp.lxmf_data.len() + stamp.stamp.len(),
+        case.transient_data.len()
+    );
 }

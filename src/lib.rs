@@ -1,14 +1,17 @@
-pub mod error;
 pub mod constants;
-pub mod helpers;
+pub mod error;
 pub mod handlers;
+pub mod helpers;
 pub mod message;
 pub mod peer;
 pub mod propagation;
-pub mod router;
-pub mod storage;
 pub mod reticulum;
+pub mod router;
 pub mod stamper;
+pub mod storage;
 pub mod ticket;
 
 pub use message::Message;
+pub use message::{Payload, WireMessage};
+pub use propagation::PropagationNode;
+pub use router::Router;

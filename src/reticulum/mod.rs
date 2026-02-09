@@ -35,3 +35,9 @@ impl Adapter {
         identity.verify(data, &signature).is_ok()
     }
 }
+
+impl Default for Adapter {
+    fn default() -> Self {
+        Self::new()
+    }
+}

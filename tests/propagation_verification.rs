@@ -42,7 +42,8 @@ fn strict_rejects_invalid_signature_when_verifier_present() {
     let dir = tempfile::tempdir().unwrap();
     let store = FileStore::new(dir.path());
     let verifier = Box::new(AlwaysInvalid);
-    let mut node = PropagationNode::with_verifier(Box::new(store), VerificationMode::Strict, verifier);
+    let mut node =
+        PropagationNode::with_verifier(Box::new(store), VerificationMode::Strict, verifier);
 
     let mut msg = WireMessage::new(
         [12u8; 16],

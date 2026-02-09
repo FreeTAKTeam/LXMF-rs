@@ -30,8 +30,8 @@ impl CryptoRng for FixedRng {}
 fn paper_pack_matches_fixture() {
     let packed = std::fs::read("tests/fixtures/python/lxmf/paper_message.bin")
         .expect("paper message fixture");
-    let fixture = std::fs::read("tests/fixtures/python/lxmf/paper.bin")
-        .expect("paper packed fixture");
+    let fixture =
+        std::fs::read("tests/fixtures/python/lxmf/paper.bin").expect("paper packed fixture");
     let dest_pub = std::fs::read("tests/fixtures/python/lxmf/propagation_dest_pubkey.bin")
         .expect("dest pubkey fixture");
 

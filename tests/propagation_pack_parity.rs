@@ -1,6 +1,6 @@
 use lxmf::message::WireMessage;
-use reticulum::identity::Identity;
 use rand_core::{CryptoRng, RngCore};
+use reticulum::identity::Identity;
 
 const PROPAGATION_TIMESTAMP: f64 = 1_700_000_000.0;
 

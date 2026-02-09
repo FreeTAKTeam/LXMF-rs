@@ -73,10 +73,7 @@ pub fn validate_stamp(transient_data: &[u8], target_cost: u32) -> Option<Propaga
     })
 }
 
-pub fn ingest_envelope(
-    bytes: &[u8],
-    target_cost: u32,
-) -> Result<Vec<IngestedMessage>, LxmfError> {
+pub fn ingest_envelope(bytes: &[u8], target_cost: u32) -> Result<Vec<IngestedMessage>, LxmfError> {
     let envelope = unpack_envelope(bytes)?;
     let mut out = Vec::new();
 
@@ -95,7 +92,9 @@ pub fn ingest_envelope(
                 stamp: Some(stamped.stamp),
             });
         } else if target_cost == 0 {
-            let transient_id = reticulum::hash::Hash::new_from_slice(&data).to_bytes().to_vec();
+            let transient_id = reticulum::hash::Hash::new_from_slice(&data)
+                .to_bytes()
+                .to_vec();
             out.push(IngestedMessage {
                 transient_id,
                 lxmf_data: data,

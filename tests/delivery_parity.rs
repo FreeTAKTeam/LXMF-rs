@@ -22,10 +22,13 @@ fn delivery_selection_matches_python_fixture() {
             .expect("delivery decision");
 
         assert_eq!(decision.method.as_u8(), case.expected_method);
-        assert_eq!(decision.representation.as_u8(), case.expected_representation);
+        assert_eq!(
+            decision.representation.as_u8(),
+            case.expected_representation
+        );
 
-        let expected_repr = MessageMethod::try_from(case.expected_representation)
-            .expect("valid representation");
+        let expected_repr =
+            MessageMethod::try_from(case.expected_representation).expect("valid representation");
         assert_eq!(decision.representation, expected_repr);
     }
 }

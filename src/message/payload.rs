@@ -64,13 +64,11 @@ impl Payload {
             return Err(LxmfError::Decode("invalid payload length".into()));
         }
         let timestamp = items
-            .get(0)
+            .first()
             .and_then(|value| value.as_f64())
             .ok_or_else(|| LxmfError::Decode("invalid payload timestamp".into()))?;
-        let title = value_to_bytes(items.get(1))
-            .map(ByteBuf::from);
-        let content = value_to_bytes(items.get(2))
-            .map(ByteBuf::from);
+        let title = value_to_bytes(items.get(1)).map(ByteBuf::from);
+        let content = value_to_bytes(items.get(2)).map(ByteBuf::from);
         let fields = match items.get(3) {
             Some(rmpv::Value::Nil) | None => None,
             Some(value) => Some(value.clone()),

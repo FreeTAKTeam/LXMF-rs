@@ -1,5 +1,7 @@
 # LXMF Parity Matrix
 
+Last verified: 2026-02-09 (`cargo test -q` in `LXMF-rs`)
+
 Status legend: not-started | partial | done
 
 | Python Module | Rust Module | Status | Tests | Notes |

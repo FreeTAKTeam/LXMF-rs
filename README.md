@@ -120,7 +120,13 @@ Before writing your own programs using LXMF, you need to have a basic understand
 ## Rust Library (WIP)
 
 This repository now includes a Rust crate that implements LXMF on top of Reticulum-rs.
-See `docs/lxmf-rs-api.md` for the evolving API.
+See `docs/lxmf-rs-api.md` for the public API surface.
+Release hardening and publication gates are tracked in:
+
+- `docs/release-readiness.md`
+- `docs/compatibility-matrix.md`
+- `docs/plans/lxmf-parity-matrix.md`
+- `docs/plans/reticulum-parity-matrix.md`
 
 ## Example Paper Message
 

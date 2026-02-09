@@ -1,9 +1,9 @@
 mod file_store;
 mod propagation_store;
 
+use crate::message::WireMessage;
 pub use file_store::FileStore;
 pub use propagation_store::PropagationStore;
-use crate::message::WireMessage;
 
 pub trait Store {
     fn save(&self, msg: &WireMessage) -> Result<(), crate::error::LxmfError>;

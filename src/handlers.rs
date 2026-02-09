@@ -12,6 +12,12 @@ impl DeliveryAnnounceHandler {
     }
 }
 
+impl Default for DeliveryAnnounceHandler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub struct PropagationAnnounceHandler;
 
 impl PropagationAnnounceHandler {
@@ -21,5 +27,11 @@ impl PropagationAnnounceHandler {
 
     pub fn handle(&mut self, _dest: &[u8; 16]) -> Result<(), LxmfError> {
         Ok(())
+    }
+}
+
+impl Default for PropagationAnnounceHandler {
+    fn default() -> Self {
+        Self::new()
     }
 }

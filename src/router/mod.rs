@@ -6,10 +6,10 @@ use crate::message::WireMessage;
 use crate::propagation::PropagationService;
 use crate::reticulum::Adapter;
 use crate::storage::PropagationStore;
-use std::path::Path;
-use std::collections::BTreeMap;
-use std::time::{SystemTime, UNIX_EPOCH};
 use serde_bytes::ByteBuf;
+use std::collections::BTreeMap;
+use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub struct Router {
     outbound: Vec<WireMessage>,
@@ -92,7 +92,10 @@ impl Router {
         Ok(count)
     }
 
-    pub fn fetch_propagated(&self, transient_id: &[u8]) -> Result<Vec<u8>, crate::error::LxmfError> {
+    pub fn fetch_propagated(
+        &self,
+        transient_id: &[u8],
+    ) -> Result<Vec<u8>, crate::error::LxmfError> {
         let Some(service) = &self.propagation_service else {
             return Err(crate::error::LxmfError::Io("propagation disabled".into()));
         };

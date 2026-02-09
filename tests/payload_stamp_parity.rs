@@ -3,7 +3,13 @@ use reticulum::identity::PrivateIdentity;
 
 #[test]
 fn payload_accepts_4_or_5_elements() {
-    let payload = Payload::new(1.0, Some(b"hello".to_vec()), Some(b"title".to_vec()), None, None);
+    let payload = Payload::new(
+        1.0,
+        Some(b"hello".to_vec()),
+        Some(b"title".to_vec()),
+        None,
+        None,
+    );
     let encoded = payload.to_msgpack().expect("encode");
     let decoded = Payload::from_msgpack(&encoded).expect("decode");
     assert_eq!(decoded.timestamp, 1.0);
@@ -39,10 +45,16 @@ fn sign_verify_with_stamp_present() {
     let dest = [0x33u8; 16];
     let mut src = [0u8; 16];
     src.copy_from_slice(signer.address_hash().as_slice());
-    let payload = Payload::new(4.0, Some(b"content".to_vec()), None, None, Some(vec![0x55; 16]));
+    let payload = Payload::new(
+        4.0,
+        Some(b"content".to_vec()),
+        None,
+        None,
+        Some(vec![0x55; 16]),
+    );
     let mut wire = WireMessage::new(dest, src, payload);
     wire.sign(&signer).expect("sign");
     let packed = wire.pack().expect("pack");
     let decoded = WireMessage::unpack(&packed).expect("unpack");
-    assert!(decoded.verify(&signer.as_identity()).expect("verify"));
+    assert!(decoded.verify(signer.as_identity()).expect("verify"));
 }
