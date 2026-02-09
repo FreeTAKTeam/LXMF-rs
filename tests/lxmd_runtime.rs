@@ -78,6 +78,13 @@ fn lxmd_serve_tick_runs_jobs_announces_and_inbound_hook() {
 #[test]
 fn lxmd_sync_unpeer_and_status_flow() {
     let mut runtime = LxmdRuntime::new(LxmdConfig::default()).unwrap();
+    runtime.queue_inbound(InboundEvent::new(
+        [0x31; 16],
+        [0x32; 16],
+        "sync-msg-1",
+        "sync-content",
+    ));
+    runtime.serve_tick_at(1_699_999_999).unwrap();
 
     let sync_output = execute_with_runtime(
         &mut runtime,
@@ -94,6 +101,8 @@ fn lxmd_sync_unpeer_and_status_flow() {
         execute_with_runtime(&mut runtime, LxmdCommand::Status, 1_700_000_001).unwrap();
     assert!(status_output.contains("peer_count=1"));
     assert!(status_output.contains("sync_runs=1"));
+    assert!(status_output.contains("peer_sync_runs=1"));
+    assert!(status_output.contains("peer_sync_items=1"));
 
     let unpeer_output = execute_with_runtime(
         &mut runtime,

@@ -63,6 +63,7 @@ pub struct LxmdStatus {
     pub peer_count: usize,
     pub peers: Vec<String>,
     pub pending_inbound: usize,
+    pub pending_sync_items: usize,
     pub outbound_queue: usize,
     pub jobs_run: u64,
     pub sync_runs: u64,
@@ -70,6 +71,8 @@ pub struct LxmdStatus {
     pub inbound_hooks_run: u64,
     pub announces_sent: u64,
     pub service_ticks: u64,
+    pub peer_sync_runs: usize,
+    pub peer_sync_items: usize,
 }
 
 pub struct LxmdRuntime {
@@ -77,6 +80,7 @@ pub struct LxmdRuntime {
     router: Router,
     peers: BTreeMap<String, [u8; 16]>,
     pending_inbound: VecDeque<InboundEvent>,
+    recent_inbound_ids: VecDeque<Vec<u8>>,
     last_announce_at: Option<u64>,
     jobs_run: u64,
     sync_runs: u64,
@@ -107,6 +111,7 @@ impl LxmdRuntime {
             router,
             peers: BTreeMap::new(),
             pending_inbound: VecDeque::new(),
+            recent_inbound_ids: VecDeque::new(),
             last_announce_at: None,
             jobs_run: 0,
             sync_runs: 0,
@@ -162,11 +167,22 @@ impl LxmdRuntime {
         for peer_name in targets {
             let destination = self.ensure_peer(&peer_name);
             self.router.allow_destination(destination);
-
-            let transfer_id = format!("sync:{}:{}", peer_name, now).into_bytes();
-            self.router.request_propagation_transfer(transfer_id);
             synced_peers += 1;
-            created_transfers += 1;
+            let max_sync_items = self.router.config().propagation_per_sync_limit as usize;
+
+            let batch = self
+                .router
+                .build_peer_sync_batch(&destination, max_sync_items);
+            created_transfers += batch.len();
+
+            if !batch.is_empty() {
+                self.router
+                    .apply_peer_sync_result(&destination, &batch, &[]);
+            }
+
+            if let Some(peer_state) = self.router.peer_mut(&destination) {
+                peer_state.mark_seen(now as f64);
+            }
         }
 
         Ok(SyncReport {
@@ -183,6 +199,7 @@ impl LxmdRuntime {
         };
 
         self.router.unregister_identity(&destination);
+        self.router.remove_peer(&destination);
         self.router.clear_destination_policy(&destination);
         self.router.unignore_destination(&destination);
         self.router.deprioritise_destination(&destination);
@@ -199,6 +216,12 @@ impl LxmdRuntime {
             peer_count: self.peers.len(),
             peers: self.peers.keys().cloned().collect(),
             pending_inbound: self.pending_inbound.len(),
+            pending_sync_items: self
+                .peers
+                .values()
+                .filter_map(|destination| self.router.peer(destination))
+                .map(|peer| peer.unhandled_message_count())
+                .sum(),
             outbound_queue: self.router.outbound_len(),
             jobs_run: self.jobs_run,
             sync_runs: self.sync_runs,
@@ -206,6 +229,8 @@ impl LxmdRuntime {
             inbound_hooks_run: self.inbound_hooks_run,
             announces_sent: self.announces_sent,
             service_ticks: self.service_ticks,
+            peer_sync_runs: self.router.stats().peer_sync_runs_total,
+            peer_sync_items: self.router.stats().peer_sync_items_total,
         }
     }
 
@@ -243,29 +268,31 @@ impl LxmdRuntime {
     }
 
     fn run_inbound_hooks(&mut self) -> Result<usize, LxmfError> {
-        let Some(hook_cmd) = self.config.on_inbound.as_deref() else {
-            return Ok(0);
-        };
+        let hook_cmd = self.config.on_inbound.clone();
 
         let mut processed = 0usize;
         while let Some(event) = self.pending_inbound.pop_front() {
-            let status = Command::new("sh")
-                .args(["-c", hook_cmd])
-                .env("LXMF_SOURCE", hex::encode(event.source))
-                .env("LXMF_DESTINATION", hex::encode(event.destination))
-                .env("LXMF_MESSAGE_ID", &event.message_id)
-                .env("LXMF_CONTENT", &event.content)
-                .status()
-                .map_err(|e| LxmfError::Io(e.to_string()))?;
-
-            if !status.success() {
-                return Err(LxmfError::Io(format!(
-                    "inbound hook failed with status {status}"
-                )));
-            }
-
-            self.inbound_hooks_run += 1;
+            self.remember_inbound_id(event.message_id.as_bytes().to_vec());
             processed += 1;
+
+            if let Some(hook_cmd) = hook_cmd.as_deref() {
+                let status = Command::new("sh")
+                    .args(["-c", hook_cmd])
+                    .env("LXMF_SOURCE", hex::encode(event.source))
+                    .env("LXMF_DESTINATION", hex::encode(event.destination))
+                    .env("LXMF_MESSAGE_ID", &event.message_id)
+                    .env("LXMF_CONTENT", &event.content)
+                    .status()
+                    .map_err(|e| LxmfError::Io(e.to_string()))?;
+
+                if !status.success() {
+                    return Err(LxmfError::Io(format!(
+                        "inbound hook failed with status {status}"
+                    )));
+                }
+
+                self.inbound_hooks_run += 1;
+            }
         }
 
         Ok(processed)
@@ -279,8 +306,27 @@ impl LxmdRuntime {
         let destination = peer_to_destination(peer_name);
         self.router
             .register_identity(destination, Some(peer_name.to_string()));
+        self.router.register_peer(destination);
+        for message_id in &self.recent_inbound_ids {
+            self.router.queue_peer_unhandled(destination, message_id);
+        }
         self.peers.insert(peer_name.to_string(), destination);
         destination
+    }
+
+    fn remember_inbound_id(&mut self, message_id: Vec<u8>) {
+        if self.recent_inbound_ids.iter().any(|id| *id == message_id) {
+            return;
+        }
+
+        self.recent_inbound_ids.push_back(message_id.clone());
+        while self.recent_inbound_ids.len() > 256 {
+            self.recent_inbound_ids.pop_front();
+        }
+
+        for destination in self.peers.values().copied() {
+            self.router.queue_peer_unhandled(destination, &message_id);
+        }
     }
 }
 
@@ -319,16 +365,19 @@ pub fn execute_with_runtime(
         LxmdCommand::Status => {
             let status = runtime.status();
             Ok(format!(
-                "lxmd status propagation_node={} propagation_enabled={} peer_count={} outbound_queue={} pending_inbound={} jobs_run={} announces_sent={} sync_runs={} unpeer_runs={}",
+                "lxmd status propagation_node={} propagation_enabled={} peer_count={} outbound_queue={} pending_inbound={} pending_sync_items={} jobs_run={} announces_sent={} sync_runs={} unpeer_runs={} peer_sync_runs={} peer_sync_items={}",
                 status.propagation_node,
                 status.propagation_enabled,
                 status.peer_count,
                 status.outbound_queue,
                 status.pending_inbound,
+                status.pending_sync_items,
                 status.jobs_run,
                 status.announces_sent,
                 status.sync_runs,
-                status.unpeer_runs
+                status.unpeer_runs,
+                status.peer_sync_runs,
+                status.peer_sync_items
             ))
         }
     }
