@@ -159,7 +159,7 @@ pub fn render(
                     .fg(theme.accent)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled(" restart daemon", Style::default().fg(theme.text)),
+            Span::styled(" start/restart daemon", Style::default().fg(theme.text)),
         ]),
         Line::from(""),
         Line::from(Span::styled(

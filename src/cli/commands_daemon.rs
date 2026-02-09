@@ -12,7 +12,9 @@ pub fn run(ctx: &RuntimeContext, command: &DaemonCommand) -> Result<()> {
             reticulumd,
             transport,
         } => {
-            let status = supervisor.start(reticulumd.clone(), Some(*managed), transport.clone())?;
+            let managed_override = (*managed).then_some(true);
+            let status =
+                supervisor.start(reticulumd.clone(), managed_override, transport.clone())?;
             ctx.output.emit_status(&status)
         }
         DaemonAction::Stop => {
@@ -24,8 +26,9 @@ pub fn run(ctx: &RuntimeContext, command: &DaemonCommand) -> Result<()> {
             reticulumd,
             transport,
         } => {
+            let managed_override = (*managed).then_some(true);
             let status =
-                supervisor.restart(reticulumd.clone(), Some(*managed), transport.clone())?;
+                supervisor.restart(reticulumd.clone(), managed_override, transport.clone())?;
             ctx.output.emit_status(&status)
         }
         DaemonAction::Status => {

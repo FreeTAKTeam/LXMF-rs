@@ -331,6 +331,10 @@ pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
     };
 
     apply_refresh(ctx, &fast_rpc, &mut state, true);
+    if ctx.profile_settings.managed && !state.connected {
+        auto_start_managed_daemon(ctx, &mut state);
+        apply_refresh(ctx, &fast_rpc, &mut state, true);
+    }
 
     let mut last_refresh = Instant::now() - Duration::from_millis(command.refresh_ms);
 
@@ -706,7 +710,7 @@ fn draw_status_bar(frame: &mut ratatui::Frame<'_>, area: Rect, state: &TuiState)
         StatusLevel::Error => state.theme.danger,
     };
 
-    let keys = "keys: q quit | Tab/Shift+Tab panes | s compose | i/t/x/a interfaces | y sync | u unpeer | r restart | n announce | e refresh";
+    let keys = "keys: q quit | Tab/Shift+Tab panes | s compose | i/t/x/a interfaces | y sync | u unpeer | r start/restart | n announce | e refresh";
     let content = vec![
         Line::from(Span::styled(
             state.status_line.as_str(),
@@ -1195,7 +1199,7 @@ fn refresh_snapshot(
             connected = false;
             warning = Some(if ctx.profile_settings.managed {
                 format!(
-                    "RPC unreachable: {err}. Managed profile detected; press r to start/restart daemon."
+                    "RPC unreachable: {err}. Managed profile detected; press r to retry start/restart daemon."
                 )
             } else {
                 format!("RPC unreachable: {err}. Start a daemon or set the correct --rpc endpoint.")
@@ -1367,8 +1371,42 @@ fn send_message_from_composer(rpc: &RpcClient, compose: &ComposeState) -> Result
 
 fn restart_daemon(ctx: &RuntimeContext) -> Result<String> {
     let supervisor = DaemonSupervisor::new(&ctx.profile_name, ctx.profile_settings.clone());
-    supervisor.restart(None, Some(true), None)?;
-    Ok("daemon restarted".into())
+    let status = supervisor.restart(None, None, None)?;
+    let mode = if status.managed { "managed" } else { "external" };
+    Ok(format!("daemon restart requested ({mode} profile)"))
+}
+
+fn auto_start_managed_daemon(ctx: &RuntimeContext, state: &mut TuiState) {
+    let supervisor = DaemonSupervisor::new(&ctx.profile_name, ctx.profile_settings.clone());
+    set_status(
+        state,
+        StatusLevel::Info,
+        "Managed profile is offline; starting daemon...",
+    );
+    match supervisor.start(None, None, None) {
+        Ok(status) => {
+            if let Some(pid) = status.pid {
+                set_status(
+                    state,
+                    StatusLevel::Success,
+                    format!("Managed daemon started (pid {pid}); connecting..."),
+                );
+            } else {
+                set_status(
+                    state,
+                    StatusLevel::Success,
+                    "Managed daemon start requested; connecting...".to_string(),
+                );
+            }
+        }
+        Err(err) => {
+            set_status(
+                state,
+                StatusLevel::Warning,
+                format!("Managed daemon auto-start failed: {err}. Press r to retry."),
+            );
+        }
+    }
 }
 
 fn apply_interfaces(ctx: &RuntimeContext, rpc: &RpcClient) -> Result<String> {
