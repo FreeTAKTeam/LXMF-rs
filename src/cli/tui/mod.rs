@@ -23,7 +23,10 @@ use std::time::{Duration, Instant};
 
 use crate::cli::app::{RuntimeContext, TuiCommand};
 use crate::cli::daemon::DaemonSupervisor;
-use crate::cli::profile::load_reticulum_config;
+use crate::cli::profile::{
+    load_reticulum_config, remove_interface, save_reticulum_config, set_interface_enabled,
+    upsert_interface, InterfaceEntry,
+};
 use crate::cli::rpc_client::RpcClient;
 
 const FAST_RPC_CONNECT_TIMEOUT: Duration = Duration::from_millis(250);
@@ -131,6 +134,7 @@ struct TuiState {
     last_refresh_ms: Option<u128>,
     welcome_dismissed: bool,
     composer: Option<ComposeState>,
+    interface_editor: Option<InterfaceEditorState>,
 }
 
 #[derive(Debug)]
@@ -139,6 +143,82 @@ struct RefreshOutcome {
     warning: Option<String>,
     new_events: usize,
     elapsed_ms: u128,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InterfaceField {
+    Name,
+    Type,
+    Host,
+    Port,
+    Enabled,
+}
+
+impl InterfaceField {
+    fn next(self) -> Self {
+        match self {
+            Self::Name => Self::Type,
+            Self::Type => Self::Host,
+            Self::Host => Self::Port,
+            Self::Port => Self::Enabled,
+            Self::Enabled => Self::Name,
+        }
+    }
+
+    fn prev(self) -> Self {
+        match self {
+            Self::Name => Self::Enabled,
+            Self::Type => Self::Name,
+            Self::Host => Self::Type,
+            Self::Port => Self::Host,
+            Self::Enabled => Self::Port,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct InterfaceEditorState {
+    name: String,
+    kind: String,
+    host: String,
+    port: String,
+    enabled: bool,
+    active: Option<InterfaceField>,
+}
+
+impl InterfaceEditorState {
+    fn new() -> Self {
+        Self {
+            name: String::new(),
+            kind: "tcp_client".to_string(),
+            host: String::new(),
+            port: String::new(),
+            enabled: true,
+            active: Some(InterfaceField::Name),
+        }
+    }
+
+    fn active_field(&self) -> InterfaceField {
+        self.active.unwrap_or(InterfaceField::Name)
+    }
+
+    fn next_field(&mut self) {
+        self.active = Some(self.active_field().next());
+    }
+
+    fn prev_field(&mut self) {
+        self.active = Some(self.active_field().prev());
+    }
+
+    fn active_value_mut(&mut self) -> Option<&mut String> {
+        match self.active_field() {
+            InterfaceField::Name => Some(&mut self.name),
+            InterfaceField::Type => Some(&mut self.kind),
+            InterfaceField::Host => Some(&mut self.host),
+            InterfaceField::Port => Some(&mut self.port),
+            InterfaceField::Enabled => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -247,6 +327,7 @@ pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
         last_refresh_ms: None,
         welcome_dismissed: false,
         composer: None,
+        interface_editor: None,
     };
 
     apply_refresh(ctx, &fast_rpc, &mut state, true);
@@ -274,6 +355,11 @@ pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
 
                 if state.composer.is_some() {
                     handle_compose_key(key, &fast_rpc, &mut state)?;
+                    continue;
+                }
+
+                if state.interface_editor.is_some() {
+                    handle_interface_editor_key(key, ctx, &mut state)?;
                     continue;
                 }
 
@@ -312,15 +398,17 @@ pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
                         ),
                     },
                     KeyCode::Char('a') => {
-                        match apply_interfaces(ctx, &fast_rpc) {
-                            Ok(msg) => set_status(&mut state, StatusLevel::Success, msg),
-                            Err(err) => set_status(
-                                &mut state,
-                                StatusLevel::Error,
-                                format!("apply failed: {err}"),
-                            ),
+                        if state.pane == Pane::Interfaces {
+                            match apply_interfaces(ctx, &fast_rpc) {
+                                Ok(msg) => set_status(&mut state, StatusLevel::Success, msg),
+                                Err(err) => set_status(
+                                    &mut state,
+                                    StatusLevel::Error,
+                                    format!("apply failed: {err}"),
+                                ),
+                            }
+                            apply_refresh(ctx, &fast_rpc, &mut state, true);
                         }
-                        apply_refresh(ctx, &fast_rpc, &mut state, true);
                     }
                     KeyCode::Char('y') => match sync_selected_peer(&fast_rpc, &state) {
                         Ok(msg) => set_status(&mut state, StatusLevel::Success, msg),
@@ -348,6 +436,40 @@ pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
                             StatusLevel::Info,
                             "Compose message: fill fields, Enter to advance/send, Esc to cancel",
                         );
+                    }
+                    KeyCode::Char('i') => {
+                        if state.pane == Pane::Interfaces {
+                            state.interface_editor = Some(InterfaceEditorState::new());
+                            set_status(
+                                &mut state,
+                                StatusLevel::Info,
+                                "New interface: Enter to advance/save, Esc to cancel",
+                            );
+                        }
+                    }
+                    KeyCode::Char('t') => {
+                        if state.pane == Pane::Interfaces {
+                            match toggle_selected_interface(ctx, &mut state) {
+                                Ok(msg) => set_status(&mut state, StatusLevel::Success, msg),
+                                Err(err) => set_status(
+                                    &mut state,
+                                    StatusLevel::Error,
+                                    format!("toggle failed: {err}"),
+                                ),
+                            }
+                        }
+                    }
+                    KeyCode::Char('x') => {
+                        if state.pane == Pane::Interfaces {
+                            match remove_selected_interface(ctx, &mut state) {
+                                Ok(msg) => set_status(&mut state, StatusLevel::Success, msg),
+                                Err(err) => set_status(
+                                    &mut state,
+                                    StatusLevel::Error,
+                                    format!("remove failed: {err}"),
+                                ),
+                            }
+                        }
                     }
                     KeyCode::Char('e') => {
                         apply_refresh(ctx, &fast_rpc, &mut state, true);
@@ -509,6 +631,10 @@ fn draw(frame: &mut ratatui::Frame<'_>, state: &TuiState) {
     if state.composer.is_some() {
         draw_compose_overlay(frame, state);
     }
+
+    if state.interface_editor.is_some() {
+        draw_interface_editor_overlay(frame, state);
+    }
 }
 
 fn draw_header(frame: &mut ratatui::Frame<'_>, area: Rect, state: &TuiState) {
@@ -580,7 +706,7 @@ fn draw_status_bar(frame: &mut ratatui::Frame<'_>, area: Rect, state: &TuiState)
         StatusLevel::Error => state.theme.danger,
     };
 
-    let keys = "keys: q quit | Tab/Shift+Tab switch | j/k move | s compose | y sync | u unpeer | a apply | r restart | n announce | e refresh";
+    let keys = "keys: q quit | Tab/Shift+Tab panes | s compose | i/t/x/a interfaces | y sync | u unpeer | r restart | n announce | e refresh";
     let content = vec![
         Line::from(Span::styled(
             state.status_line.as_str(),
@@ -621,7 +747,7 @@ fn draw_welcome_overlay(frame: &mut ratatui::Frame<'_>, state: &TuiState) {
         )),
         Line::from(""),
         Line::from(Span::styled(
-            "Quick start: Tab switch panes, s send, y sync peer, a apply interfaces.",
+            "Quick start: Tab switch panes, s send, i/t/x/a manage interfaces, y sync peer.",
             Style::default().fg(state.theme.muted),
         )),
         Line::from(Span::styled(
@@ -745,6 +871,308 @@ fn compose_line(
     ])
 }
 
+fn draw_interface_editor_overlay(frame: &mut ratatui::Frame<'_>, state: &TuiState) {
+    let Some(editor) = state.interface_editor.as_ref() else {
+        return;
+    };
+
+    let area = centered_rect(72, 54, frame.area());
+    frame.render_widget(Clear, area);
+
+    let mut lines = Vec::new();
+    lines.push(interface_line(
+        "name",
+        &editor.name,
+        editor.active_field() == InterfaceField::Name,
+        true,
+        &state.theme,
+    ));
+    lines.push(interface_line(
+        "type",
+        &editor.kind,
+        editor.active_field() == InterfaceField::Type,
+        true,
+        &state.theme,
+    ));
+    lines.push(interface_line(
+        "host",
+        &editor.host,
+        editor.active_field() == InterfaceField::Host,
+        false,
+        &state.theme,
+    ));
+    lines.push(interface_line(
+        "port",
+        &editor.port,
+        editor.active_field() == InterfaceField::Port,
+        false,
+        &state.theme,
+    ));
+    lines.push(interface_bool_line(
+        "enabled",
+        editor.enabled,
+        editor.active_field() == InterfaceField::Enabled,
+        &state.theme,
+    ));
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "Enter: next/save  Tab: next field  Shift+Tab: previous  Space on enabled toggles  Esc: cancel",
+        Style::default().fg(state.theme.muted),
+    )));
+    lines.push(Line::from(Span::styled(
+        "Supported type values: tcp_client, tcp_server",
+        Style::default().fg(state.theme.muted),
+    )));
+
+    let popup = Paragraph::new(lines)
+        .block(
+            Block::default()
+                .title(Span::styled(
+                    "Add Interface",
+                    Style::default()
+                        .fg(state.theme.accent)
+                        .add_modifier(Modifier::BOLD),
+                ))
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(state.theme.border_active))
+                .border_type(BorderType::Rounded),
+        )
+        .wrap(Wrap { trim: true });
+    frame.render_widget(popup, area);
+}
+
+fn interface_line(
+    label: &str,
+    value: &str,
+    active: bool,
+    required: bool,
+    theme: &TuiTheme,
+) -> Line<'static> {
+    let label_color = if active { theme.accent } else { theme.muted };
+    let value_style = if active {
+        Style::default()
+            .fg(theme.text)
+            .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
+    } else {
+        Style::default().fg(theme.text)
+    };
+
+    let prompt = if active { "> " } else { "  " };
+    let required_tag = if required { " *" } else { "" };
+    let shown = if value.is_empty() {
+        "<empty>".to_string()
+    } else {
+        value.to_string()
+    };
+
+    Line::from(vec![
+        Span::styled(prompt, Style::default().fg(theme.accent_dim)),
+        Span::styled(
+            format!("{label}{required_tag}: "),
+            Style::default().fg(label_color),
+        ),
+        Span::styled(shown, value_style),
+    ])
+}
+
+fn interface_bool_line(label: &str, value: bool, active: bool, theme: &TuiTheme) -> Line<'static> {
+    let prompt = if active { "> " } else { "  " };
+    let label_color = if active { theme.accent } else { theme.muted };
+    let bool_text = if value { "true" } else { "false" };
+    let bool_color = if value { theme.success } else { theme.warning };
+
+    Line::from(vec![
+        Span::styled(prompt, Style::default().fg(theme.accent_dim)),
+        Span::styled(format!("{label}: "), Style::default().fg(label_color)),
+        Span::styled(
+            bool_text,
+            Style::default().fg(bool_color).add_modifier(Modifier::BOLD),
+        ),
+    ])
+}
+
+fn handle_interface_editor_key(
+    key: KeyEvent,
+    ctx: &RuntimeContext,
+    state: &mut TuiState,
+) -> Result<()> {
+    let mut close = false;
+    let mut submit = false;
+    let mut status: Option<(StatusLevel, String)> = None;
+
+    let Some(editor) = state.interface_editor.as_mut() else {
+        return Ok(());
+    };
+
+    match key.code {
+        KeyCode::Esc => {
+            close = true;
+            status = Some((StatusLevel::Info, "interface creation canceled".into()));
+        }
+        KeyCode::Tab | KeyCode::Down => editor.next_field(),
+        KeyCode::BackTab | KeyCode::Up => editor.prev_field(),
+        KeyCode::Enter => {
+            if editor.active_field() == InterfaceField::Enabled {
+                submit = true;
+            } else {
+                editor.next_field();
+            }
+        }
+        KeyCode::Backspace => {
+            if let Some(value) = editor.active_value_mut() {
+                value.pop();
+            }
+        }
+        KeyCode::Delete => {
+            if let Some(value) = editor.active_value_mut() {
+                value.clear();
+            }
+        }
+        KeyCode::Char(' ') => {
+            if editor.active_field() == InterfaceField::Enabled {
+                editor.enabled = !editor.enabled;
+            } else if let Some(value) = editor.active_value_mut() {
+                value.push(' ');
+            }
+        }
+        KeyCode::Char(c) => {
+            if editor.active_field() == InterfaceField::Enabled {
+                match c {
+                    't' | 'y' | '1' => editor.enabled = true,
+                    'f' | 'n' | '0' => editor.enabled = false,
+                    _ => {}
+                }
+            } else if let Some(value) = editor.active_value_mut() {
+                value.push(c);
+            }
+        }
+        _ => {}
+    }
+
+    if submit {
+        let payload = state
+            .interface_editor
+            .clone()
+            .ok_or_else(|| anyhow!("interface editor state disappeared"))?;
+        match save_interface_from_editor(ctx, &payload) {
+            Ok(msg) => {
+                close = true;
+                status = Some((StatusLevel::Success, msg));
+                reload_interfaces_from_local(ctx, &mut state.snapshot)?;
+                clamp_selection(state);
+            }
+            Err(err) => {
+                status = Some((StatusLevel::Error, format!("interface save failed: {err}")));
+            }
+        }
+    }
+
+    if close {
+        state.interface_editor = None;
+    }
+
+    if let Some((level, message)) = status {
+        set_status(state, level, message);
+    }
+
+    Ok(())
+}
+
+fn save_interface_from_editor(
+    ctx: &RuntimeContext,
+    editor: &InterfaceEditorState,
+) -> Result<String> {
+    let name = editor.name.trim();
+    let kind = editor.kind.trim();
+    let host = editor.host.trim();
+    let port_raw = editor.port.trim();
+
+    if name.is_empty() {
+        return Err(anyhow!("interface name is required"));
+    }
+    if kind != "tcp_client" && kind != "tcp_server" {
+        return Err(anyhow!("interface type must be tcp_client or tcp_server"));
+    }
+
+    let port = if port_raw.is_empty() {
+        None
+    } else {
+        Some(
+            port_raw
+                .parse::<u16>()
+                .map_err(|_| anyhow!("port must be a valid u16"))?,
+        )
+    };
+
+    let mut config = load_reticulum_config(&ctx.profile_name)?;
+    upsert_interface(
+        &mut config,
+        InterfaceEntry {
+            name: name.to_string(),
+            kind: kind.to_string(),
+            enabled: editor.enabled,
+            host: if host.is_empty() {
+                None
+            } else {
+                Some(host.to_string())
+            },
+            port,
+        },
+    );
+    save_reticulum_config(&ctx.profile_name, &config)?;
+    Ok(format!("interface '{name}' saved (run a to apply)"))
+}
+
+fn toggle_selected_interface(ctx: &RuntimeContext, state: &mut TuiState) -> Result<String> {
+    let Some(name) = selected_interface_name(state) else {
+        return Err(anyhow!("no interface selected"));
+    };
+
+    let mut config = load_reticulum_config(&ctx.profile_name)?;
+    let current = config
+        .interfaces
+        .iter()
+        .find(|iface| iface.name == name)
+        .map(|iface| iface.enabled)
+        .ok_or_else(|| anyhow!("selected interface not found in profile config"))?;
+    let new_value = !current;
+    set_interface_enabled(&mut config, &name, new_value);
+    save_reticulum_config(&ctx.profile_name, &config)?;
+
+    reload_interfaces_from_local(ctx, &mut state.snapshot)?;
+    clamp_selection(state);
+    Ok(format!(
+        "interface '{}' {} (run a to apply)",
+        name,
+        if new_value { "enabled" } else { "disabled" }
+    ))
+}
+
+fn remove_selected_interface(ctx: &RuntimeContext, state: &mut TuiState) -> Result<String> {
+    let Some(name) = selected_interface_name(state) else {
+        return Err(anyhow!("no interface selected"));
+    };
+
+    let mut config = load_reticulum_config(&ctx.profile_name)?;
+    if !remove_interface(&mut config, &name) {
+        return Err(anyhow!("selected interface not found in profile config"));
+    }
+    save_reticulum_config(&ctx.profile_name, &config)?;
+
+    reload_interfaces_from_local(ctx, &mut state.snapshot)?;
+    clamp_selection(state);
+    Ok(format!("interface '{}' removed (run a to apply)", name))
+}
+
+fn reload_interfaces_from_local(ctx: &RuntimeContext, snapshot: &mut TuiSnapshot) -> Result<()> {
+    let local = load_reticulum_config(&ctx.profile_name)?;
+    snapshot.interfaces = serde_json::to_value(local.interfaces)
+        .ok()
+        .and_then(|v| v.as_array().cloned())
+        .unwrap_or_default();
+    Ok(())
+}
+
 fn refresh_snapshot(
     ctx: &RuntimeContext,
     rpc: &RpcClient,
@@ -756,8 +1184,13 @@ fn refresh_snapshot(
     let mut connected = true;
     let mut new_events = 0usize;
 
-    let daemon_status = match rpc.call("daemon_status_ex", None) {
-        Ok(value) => value,
+    match rpc.call("daemon_status_ex", None) {
+        Ok(value) => {
+            snapshot.daemon_running = value
+                .get("running")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+        }
         Err(err) => {
             connected = false;
             warning = Some(if ctx.profile_settings.managed {
@@ -768,63 +1201,61 @@ fn refresh_snapshot(
                 format!("RPC unreachable: {err}. Start a daemon or set the correct --rpc endpoint.")
             });
             snapshot.daemon_running = false;
-            return RefreshOutcome {
-                connected,
-                warning,
-                new_events,
-                elapsed_ms: started.elapsed().as_millis(),
-            };
-        }
-    };
-
-    snapshot.daemon_running = daemon_status
-        .get("running")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-
-    match rpc.call("list_messages", None) {
-        Ok(messages) => snapshot.messages = as_vec(messages),
-        Err(err) => {
-            warning.get_or_insert_with(|| format!("messages unavailable: {err}"));
         }
     }
 
-    match rpc.call("list_peers", None) {
-        Ok(peers) => snapshot.peers = as_vec(peers),
-        Err(err) => {
-            warning.get_or_insert_with(|| format!("peers unavailable: {err}"));
-        }
-    }
-
-    match rpc.call("list_interfaces", None) {
-        Ok(interfaces) => snapshot.interfaces = as_vec(interfaces),
-        Err(_) => {
-            if let Ok(local) = load_reticulum_config(&ctx.profile_name) {
-                snapshot.interfaces = serde_json::to_value(local.interfaces)
-                    .ok()
-                    .and_then(|v| v.as_array().cloned())
-                    .unwrap_or_default();
+    if connected {
+        match rpc.call("list_messages", None) {
+            Ok(messages) => snapshot.messages = as_vec(messages),
+            Err(err) => {
+                warning.get_or_insert_with(|| format!("messages unavailable: {err}"));
             }
         }
-    }
 
-    loop {
-        match rpc.poll_event() {
-            Ok(Some(event)) => {
-                snapshot
-                    .events
-                    .push(serde_json::to_string(&event).unwrap_or_else(|_| "<event>".into()));
-                new_events += 1;
-                if snapshot.events.len() > 400 {
-                    let remove = snapshot.events.len().saturating_sub(400);
-                    snapshot.events.drain(0..remove);
+        match rpc.call("list_peers", None) {
+            Ok(peers) => snapshot.peers = as_vec(peers),
+            Err(err) => {
+                warning.get_or_insert_with(|| format!("peers unavailable: {err}"));
+            }
+        }
+
+        match rpc.call("list_interfaces", None) {
+            Ok(interfaces) => snapshot.interfaces = as_vec(interfaces),
+            Err(err) => {
+                warning.get_or_insert_with(|| format!("interfaces unavailable: {err}"));
+            }
+        }
+
+        loop {
+            match rpc.poll_event() {
+                Ok(Some(event)) => {
+                    snapshot
+                        .events
+                        .push(serde_json::to_string(&event).unwrap_or_else(|_| "<event>".into()));
+                    new_events += 1;
+                    if snapshot.events.len() > 400 {
+                        let remove = snapshot.events.len().saturating_sub(400);
+                        snapshot.events.drain(0..remove);
+                    }
+                }
+                Ok(None) => break,
+                Err(err) => {
+                    warning.get_or_insert_with(|| format!("events unavailable: {err}"));
+                    break;
                 }
             }
-            Ok(None) => break,
-            Err(err) => {
-                warning.get_or_insert_with(|| format!("events unavailable: {err}"));
-                break;
-            }
+        }
+    } else {
+        snapshot.messages.clear();
+        snapshot.peers.clear();
+    }
+
+    if let Ok(local) = load_reticulum_config(&ctx.profile_name) {
+        if !connected || snapshot.interfaces.is_empty() {
+            snapshot.interfaces = serde_json::to_value(local.interfaces)
+                .ok()
+                .and_then(|v| v.as_array().cloned())
+                .unwrap_or_default();
         }
     }
 
@@ -974,6 +1405,16 @@ fn selected_peer_name(state: &TuiState) -> Option<String> {
         .peers
         .get(state.selected_peer)
         .and_then(|peer| peer.get("peer"))
+        .and_then(Value::as_str)
+        .map(ToOwned::to_owned)
+}
+
+fn selected_interface_name(state: &TuiState) -> Option<String> {
+    state
+        .snapshot
+        .interfaces
+        .get(state.selected_interface)
+        .and_then(|iface| iface.get("name"))
         .and_then(Value::as_str)
         .map(ToOwned::to_owned)
 }

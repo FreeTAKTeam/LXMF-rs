@@ -83,7 +83,7 @@ pub fn render(
     let list = List::new(items).block(
         Block::default()
             .title(Span::styled(
-                "Interfaces  (a apply)",
+                "Interfaces  (i add, t toggle, x remove, a apply)",
                 Style::default().fg(theme.accent),
             ))
             .borders(Borders::ALL)
