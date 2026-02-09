@@ -39,6 +39,20 @@ pub struct RpcClient {
 
 impl RpcClient {
     pub fn new(rpc_addr: &str) -> Self {
+        Self::new_with_timeouts(
+            rpc_addr,
+            std::time::Duration::from_secs(3),
+            std::time::Duration::from_secs(10),
+            std::time::Duration::from_secs(10),
+        )
+    }
+
+    pub fn new_with_timeouts(
+        rpc_addr: &str,
+        connect_timeout: std::time::Duration,
+        read_timeout: std::time::Duration,
+        write_timeout: std::time::Duration,
+    ) -> Self {
         let base_url = if rpc_addr.starts_with("http://") || rpc_addr.starts_with("https://") {
             rpc_addr.trim_end_matches('/').to_string()
         } else {
@@ -48,9 +62,9 @@ impl RpcClient {
         Self {
             base_url,
             agent: ureq::AgentBuilder::new()
-                .timeout_connect(std::time::Duration::from_secs(3))
-                .timeout_read(std::time::Duration::from_secs(10))
-                .timeout_write(std::time::Duration::from_secs(10))
+                .timeout_connect(connect_timeout)
+                .timeout_read(read_timeout)
+                .timeout_write(write_timeout)
                 .build(),
             next_id: AtomicU64::new(1),
         }
@@ -76,15 +90,25 @@ impl RpcClient {
 
         let decoded: RpcResponse = decode_frame(&bytes)?;
         if let Some(err) = decoded.error {
-            return Err(anyhow!("rpc {} failed [{}]: {}", method, err.code, err.message));
+            return Err(anyhow!(
+                "rpc {} failed [{}]: {}",
+                method,
+                err.code,
+                err.message
+            ));
         }
 
         Ok(decoded.result.unwrap_or(Value::Null))
     }
 
-    pub fn call_typed<T: DeserializeOwned>(&self, method: &str, params: Option<Value>) -> Result<T> {
+    pub fn call_typed<T: DeserializeOwned>(
+        &self,
+        method: &str,
+        params: Option<Value>,
+    ) -> Result<T> {
         let value = self.call(method, params)?;
-        serde_json::from_value(value).with_context(|| format!("failed to decode rpc response for method {method}"))
+        serde_json::from_value(value)
+            .with_context(|| format!("failed to decode rpc response for method {method}"))
     }
 
     pub fn poll_event(&self) -> Result<Option<RpcEvent>> {
