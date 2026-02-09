@@ -2,7 +2,7 @@ use crate::error::LxmfError;
 use crate::message::Payload;
 use ed25519_dalek::Signature;
 use rand_core::CryptoRngCore;
-use reticulum::crypt::fernet::{Fernet, PlainText, FERNET_MAX_PADDING_SIZE, FERNET_OVERHEAD_SIZE};
+use reticulum::crypt::fernet::{Fernet, PlainText};
 use reticulum::identity::{DerivedKey, Identity, PrivateIdentity, PUBLIC_KEY_LENGTH};
 use sha2::{Digest, Sha256};
 use x25519_dalek::{EphemeralSecret, PublicKey};
@@ -216,11 +216,9 @@ fn encrypt_for_identity<R: CryptoRngCore + Copy>(
     let split = key_bytes.len() / 2;
 
     let fernet = Fernet::new_from_slices(&key_bytes[..split], &key_bytes[split..], rng);
-    let mut out =
-        vec![
-            0u8;
-            PUBLIC_KEY_LENGTH + plaintext.len() + FERNET_OVERHEAD_SIZE + FERNET_MAX_PADDING_SIZE
-        ];
+    // `reticulum::crypt::fernet` does not expose overhead constants on crates.io.
+    // Keep a conservative output slack to ensure padding + HMAC fit.
+    let mut out = vec![0u8; PUBLIC_KEY_LENGTH + plaintext.len() + 128];
     out[..PUBLIC_KEY_LENGTH].copy_from_slice(ephemeral_public.as_bytes());
     let token = fernet
         .encrypt(PlainText::from(plaintext), &mut out[PUBLIC_KEY_LENGTH..])

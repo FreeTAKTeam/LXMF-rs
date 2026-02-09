@@ -2,6 +2,7 @@ pub mod constants;
 pub mod error;
 pub mod handlers;
 pub mod helpers;
+pub mod lxmd;
 pub mod message;
 pub mod peer;
 pub mod propagation;

@@ -1,0 +1,2 @@
+[patch.crates-io]
+reticulum-rs = { path = "../Reticulum-rs/crates/reticulum" }

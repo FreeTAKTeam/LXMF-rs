@@ -4,15 +4,17 @@ Last updated: 2026-02-09
 
 ## Python LXMF -> Rust LXMF-rs
 
-| Python module | Rust module | Status |
-| --- | --- | --- |
-| `LXMF/LXMF.py` | `src/constants.rs`, `src/helpers.rs` | done |
-| `LXMF/LXMessage.py` | `src/message/*` | partial |
-| `LXMF/LXMPeer.py` | `src/peer/mod.rs` | partial |
-| `LXMF/LXMRouter.py` | `src/router/mod.rs` | partial |
-| `LXMF/Handlers.py` | `src/handlers.rs` | partial |
-| `LXMF/LXStamper.py` | `src/stamper.rs`, `src/ticket.rs` | partial |
-| `LXMF/Utilities/lxmd.py` | `src/bin/lxmd.rs` | partial |
+Top-level module status is tracked here; method-level parity is tracked and enforced from `docs/plans/lxmf-parity-matrix.md`.
+
+| Python module | Rust module | Status | Source of truth |
+| --- | --- | --- | --- |
+| `LXMF/LXMF.py` | `src/constants.rs`, `src/helpers.rs` | done | `docs/plans/lxmf-parity-matrix.md` |
+| `LXMF/LXMessage.py` | `src/message/*` | partial | `docs/plans/lxmf-parity-matrix.md` |
+| `LXMF/LXMPeer.py` | `src/peer/mod.rs` | partial | `docs/plans/lxmf-parity-matrix.md` |
+| `LXMF/LXMRouter.py` | `src/router/mod.rs` | partial | `docs/plans/lxmf-parity-matrix.md` |
+| `LXMF/Handlers.py` | `src/handlers.rs` | partial | `docs/plans/lxmf-parity-matrix.md` |
+| `LXMF/LXStamper.py` | `src/stamper.rs`, `src/ticket.rs` | partial | `docs/plans/lxmf-parity-matrix.md` |
+| `LXMF/Utilities/lxmd.py` | `src/lxmd/*`, `src/bin/lxmd.rs` | partial | `docs/plans/lxmf-parity-matrix.md` |
 
 ## Python Reticulum -> Rust Reticulum-rs
 

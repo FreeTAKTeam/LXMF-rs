@@ -2,74 +2,391 @@ use crate::constants::{
     PEERING_COST, PN_META_NAME, PROPAGATION_COST, PROPAGATION_COST_FLEX, PROPAGATION_COST_MIN,
     PROPAGATION_LIMIT, SYNC_LIMIT,
 };
+use crate::error::LxmfError;
 use crate::message::WireMessage;
 use crate::propagation::PropagationService;
 use crate::reticulum::Adapter;
 use crate::storage::PropagationStore;
+use crate::ticket::Ticket;
+use serde::{Deserialize, Serialize};
 use serde_bytes::ByteBuf;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub struct Router {
-    outbound: Vec<WireMessage>,
-    propagation_service: Option<PropagationService>,
-    propagation_ingested: usize,
-    last_ingest_count: usize,
-    name: Option<String>,
-    propagation_node: bool,
-    from_static_only: bool,
-    propagation_per_transfer_limit: u32,
-    propagation_per_sync_limit: u32,
-    propagation_stamp_cost: u32,
-    propagation_stamp_cost_flexibility: u32,
-    peering_cost: u32,
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RouterConfig {
+    pub propagation_per_transfer_limit: u32,
+    pub propagation_per_sync_limit: u32,
+    pub propagation_stamp_cost: u32,
+    pub propagation_stamp_cost_flexibility: u32,
+    pub peering_cost: u32,
+    pub auth_required: bool,
+    pub transfer_state_ttl_secs: u64,
 }
 
-impl Default for Router {
+impl Default for RouterConfig {
     fn default() -> Self {
         let propagation_stamp_cost = PROPAGATION_COST.max(PROPAGATION_COST_MIN);
-        let mut propagation_per_sync_limit = SYNC_LIMIT;
-        if propagation_per_sync_limit < PROPAGATION_LIMIT {
-            propagation_per_sync_limit = PROPAGATION_LIMIT;
-        }
+        let propagation_per_transfer_limit = PROPAGATION_LIMIT;
+        let propagation_per_sync_limit = SYNC_LIMIT.max(propagation_per_transfer_limit);
 
         Self {
-            outbound: Vec::new(),
-            propagation_service: None,
-            propagation_ingested: 0,
-            last_ingest_count: 0,
-            name: None,
-            propagation_node: false,
-            from_static_only: false,
-            propagation_per_transfer_limit: PROPAGATION_LIMIT,
+            propagation_per_transfer_limit,
             propagation_per_sync_limit,
             propagation_stamp_cost,
             propagation_stamp_cost_flexibility: PROPAGATION_COST_FLEX,
             peering_cost: PEERING_COST,
+            auth_required: false,
+            transfer_state_ttl_secs: 600,
         }
     }
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RouterStats {
+    pub outbound_enqueued_total: usize,
+    pub outbound_processed_total: usize,
+    pub outbound_cancelled_total: usize,
+    pub outbound_rejected_auth_total: usize,
+    pub outbound_ignored_total: usize,
+    pub propagation_ingested_total: usize,
+    pub propagation_requests_total: usize,
+    pub propagation_completed_total: usize,
+    pub propagation_cancelled_total: usize,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum TransferPhase {
+    Requested,
+    InProgress,
+    Completed,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PropagationTransferState {
+    pub transient_id: Vec<u8>,
+    pub phase: TransferPhase,
+    pub progress: u8,
+    pub reason: Option<String>,
+    pub updated_at: u64,
+}
+
+impl PropagationTransferState {
+    fn requested(transient_id: Vec<u8>, now: u64) -> Self {
+        Self {
+            transient_id,
+            phase: TransferPhase::Requested,
+            progress: 0,
+            reason: None,
+            updated_at: now,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OutboundStatus {
+    Sent,
+    DeferredNoAdapter,
+    RejectedAuth,
+    Ignored,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutboundProcessResult {
+    pub message_id: Vec<u8>,
+    pub destination: [u8; 16],
+    pub status: OutboundStatus,
+}
+
+type DeliveryCallback = Box<dyn FnMut(&WireMessage) + Send + Sync + 'static>;
+type OutboundProgressCallback = Box<dyn FnMut(&[u8], u8) + Send + Sync + 'static>;
+
+#[derive(Default)]
+pub struct Router {
+    config: RouterConfig,
+    stats: RouterStats,
+    outbound_queue: VecDeque<Vec<u8>>,
+    outbound_messages: BTreeMap<Vec<u8>, WireMessage>,
+    outbound_progress: BTreeMap<Vec<u8>, u8>,
+    propagation_service: Option<PropagationService>,
+    last_ingest_count: usize,
+    name: Option<String>,
+    propagation_node: bool,
+    from_static_only: bool,
+    adapter: Option<Adapter>,
+    registered_identities: BTreeMap<[u8; 16], Option<String>>,
+    allowed_destinations: BTreeSet<[u8; 16]>,
+    denied_destinations: BTreeSet<[u8; 16]>,
+    ignored_destinations: BTreeSet<[u8; 16]>,
+    prioritised_destinations: BTreeSet<[u8; 16]>,
+    stamp_cache: BTreeMap<Vec<u8>, Vec<u8>>,
+    ticket_cache: BTreeMap<[u8; 16], Ticket>,
+    propagation_transfers: BTreeMap<Vec<u8>, PropagationTransferState>,
+    delivery_callbacks: Vec<DeliveryCallback>,
+    outbound_progress_callbacks: Vec<OutboundProgressCallback>,
+}
+
 impl Router {
-    pub fn with_adapter(_adapter: Adapter) -> Self {
-        Self::default()
+    pub fn with_adapter(adapter: Adapter) -> Self {
+        Self {
+            adapter: Some(adapter),
+            ..Self::default()
+        }
+    }
+
+    pub fn has_adapter(&self) -> bool {
+        self.adapter.is_some()
+    }
+
+    pub fn config(&self) -> &RouterConfig {
+        &self.config
+    }
+
+    pub fn set_config(&mut self, config: RouterConfig) {
+        self.config = config;
+    }
+
+    pub fn stats(&self) -> &RouterStats {
+        &self.stats
+    }
+
+    pub fn register_identity(&mut self, destination: [u8; 16], name: Option<String>) -> bool {
+        self.registered_identities
+            .insert(destination, name)
+            .is_none()
+    }
+
+    pub fn unregister_identity(&mut self, destination: &[u8; 16]) -> bool {
+        self.registered_identities.remove(destination).is_some()
+    }
+
+    pub fn is_identity_registered(&self, destination: &[u8; 16]) -> bool {
+        self.registered_identities.contains_key(destination)
+    }
+
+    pub fn identity_name(&self, destination: &[u8; 16]) -> Option<&str> {
+        self.registered_identities
+            .get(destination)
+            .and_then(|n| n.as_deref())
+    }
+
+    pub fn register_delivery_callback(&mut self, callback: DeliveryCallback) {
+        self.delivery_callbacks.push(callback);
+    }
+
+    pub fn register_outbound_progress_callback(&mut self, callback: OutboundProgressCallback) {
+        self.outbound_progress_callbacks.push(callback);
+    }
+
+    pub fn set_auth_required(&mut self, enabled: bool) {
+        self.config.auth_required = enabled;
+    }
+
+    pub fn auth_required(&self) -> bool {
+        self.config.auth_required
+    }
+
+    pub fn allow_destination(&mut self, destination: [u8; 16]) {
+        self.allowed_destinations.insert(destination);
+        self.denied_destinations.remove(&destination);
+    }
+
+    pub fn deny_destination(&mut self, destination: [u8; 16]) {
+        self.denied_destinations.insert(destination);
+        self.allowed_destinations.remove(&destination);
+    }
+
+    pub fn clear_destination_policy(&mut self, destination: &[u8; 16]) {
+        self.allowed_destinations.remove(destination);
+        self.denied_destinations.remove(destination);
+    }
+
+    pub fn is_destination_allowed(&self, destination: &[u8; 16]) -> bool {
+        if self.denied_destinations.contains(destination) {
+            return false;
+        }
+
+        if !self.config.auth_required {
+            return true;
+        }
+
+        if self.allowed_destinations.contains(destination) {
+            return true;
+        }
+
+        self.registered_identities.contains_key(destination)
+    }
+
+    pub fn ignore_destination(&mut self, destination: [u8; 16]) {
+        self.ignored_destinations.insert(destination);
+    }
+
+    pub fn unignore_destination(&mut self, destination: &[u8; 16]) {
+        self.ignored_destinations.remove(destination);
+    }
+
+    pub fn is_destination_ignored(&self, destination: &[u8; 16]) -> bool {
+        self.ignored_destinations.contains(destination)
+    }
+
+    pub fn prioritise_destination(&mut self, destination: [u8; 16]) {
+        self.prioritised_destinations.insert(destination);
+    }
+
+    pub fn deprioritise_destination(&mut self, destination: &[u8; 16]) {
+        self.prioritised_destinations.remove(destination);
+    }
+
+    pub fn is_destination_prioritised(&self, destination: &[u8; 16]) -> bool {
+        self.prioritised_destinations.contains(destination)
     }
 
     pub fn enqueue_outbound(&mut self, msg: WireMessage) {
-        self.outbound.push(msg);
+        let message_id = msg.message_id().to_vec();
+        let destination = msg.destination;
+        let is_new = self
+            .outbound_messages
+            .insert(message_id.clone(), msg)
+            .is_none();
+        self.outbound_progress
+            .entry(message_id.clone())
+            .or_insert(0);
+
+        if is_new {
+            if self.prioritised_destinations.contains(&destination) {
+                self.outbound_queue.push_front(message_id);
+            } else {
+                self.outbound_queue.push_back(message_id);
+            }
+            self.stats.outbound_enqueued_total += 1;
+        }
     }
 
     pub fn outbound_len(&self) -> usize {
-        self.outbound.len()
+        self.outbound_messages.len()
     }
 
     pub fn dequeue_outbound(&mut self) -> Option<WireMessage> {
-        if self.outbound.is_empty() {
-            None
-        } else {
-            Some(self.outbound.remove(0))
+        while let Some(message_id) = self.outbound_queue.pop_front() {
+            if let Some(msg) = self.outbound_messages.remove(&message_id) {
+                self.outbound_progress.remove(&message_id);
+                return Some(msg);
+            }
         }
+
+        None
+    }
+
+    pub fn handle_outbound(
+        &mut self,
+        max_items: usize,
+    ) -> Result<Vec<OutboundProcessResult>, LxmfError> {
+        let mut results = Vec::new();
+
+        for _ in 0..max_items {
+            let Some(message_id) = self.outbound_queue.pop_front() else {
+                break;
+            };
+            let Some(msg) = self.outbound_messages.remove(&message_id) else {
+                self.outbound_progress.remove(&message_id);
+                continue;
+            };
+
+            let destination = msg.destination;
+            let status = if self.is_destination_ignored(&destination) {
+                self.stats.outbound_ignored_total += 1;
+                OutboundStatus::Ignored
+            } else if !self.is_destination_allowed(&destination) {
+                self.stats.outbound_rejected_auth_total += 1;
+                OutboundStatus::RejectedAuth
+            } else if self.adapter.is_none() {
+                self.outbound_messages.insert(message_id.clone(), msg);
+                self.outbound_queue.push_back(message_id.clone());
+                OutboundStatus::DeferredNoAdapter
+            } else {
+                for callback in &mut self.delivery_callbacks {
+                    callback(&msg);
+                }
+                self.outbound_progress.insert(message_id.clone(), 100);
+                for callback in &mut self.outbound_progress_callbacks {
+                    callback(&message_id, 100);
+                }
+                self.stats.outbound_processed_total += 1;
+                OutboundStatus::Sent
+            };
+
+            results.push(OutboundProcessResult {
+                message_id,
+                destination,
+                status,
+            });
+        }
+
+        Ok(results)
+    }
+
+    pub fn cancel_outbound(&mut self, message_id: &[u8]) -> bool {
+        let removed_message = self.outbound_messages.remove(message_id);
+        let removed_progress = self.outbound_progress.remove(message_id);
+        let mut removed_from_queue = false;
+        self.outbound_queue.retain(|id| {
+            let keep = id.as_slice() != message_id;
+            if !keep {
+                removed_from_queue = true;
+            }
+            keep
+        });
+
+        let cancelled =
+            removed_message.is_some() || removed_progress.is_some() || removed_from_queue;
+        if cancelled {
+            self.stats.outbound_cancelled_total += 1;
+        }
+        cancelled
+    }
+
+    pub fn set_outbound_progress(&mut self, message_id: &[u8], progress: u8) -> bool {
+        let clamped = progress.min(100);
+        match self.outbound_progress.get_mut(message_id) {
+            Some(current) => {
+                *current = clamped;
+                for callback in &mut self.outbound_progress_callbacks {
+                    callback(message_id, clamped);
+                }
+                true
+            }
+            None => false,
+        }
+    }
+
+    pub fn outbound_progress(&self, message_id: &[u8]) -> Option<u8> {
+        self.outbound_progress.get(message_id).copied()
+    }
+
+    pub fn cache_stamp(&mut self, material: &[u8], stamp: &[u8]) {
+        self.stamp_cache.insert(material.to_vec(), stamp.to_vec());
+    }
+
+    pub fn cached_stamp(&self, material: &[u8]) -> Option<&[u8]> {
+        self.stamp_cache.get(material).map(|v| v.as_slice())
+    }
+
+    pub fn remove_cached_stamp(&mut self, material: &[u8]) -> Option<Vec<u8>> {
+        self.stamp_cache.remove(material)
+    }
+
+    pub fn cache_ticket(&mut self, destination: [u8; 16], ticket: Ticket) {
+        self.ticket_cache.insert(destination, ticket);
+    }
+
+    pub fn ticket_for(&self, destination: &[u8; 16]) -> Option<&Ticket> {
+        self.ticket_cache.get(destination)
+    }
+
+    pub fn remove_ticket(&mut self, destination: &[u8; 16]) -> Option<Ticket> {
+        self.ticket_cache.remove(destination)
     }
 
     pub fn enable_propagation(&mut self, store_root: &Path, target_cost: u32) {
@@ -81,34 +398,91 @@ impl Router {
         self.propagation_service.is_some()
     }
 
-    pub fn ingest_propagation(&mut self, bytes: &[u8]) -> Result<usize, crate::error::LxmfError> {
+    pub fn ingest_propagation(&mut self, bytes: &[u8]) -> Result<usize, LxmfError> {
         let Some(service) = &self.propagation_service else {
             return Ok(0);
         };
 
         let count = service.ingest(bytes)?;
-        self.propagation_ingested += count;
+        self.stats.propagation_ingested_total += count;
         self.last_ingest_count = count;
         Ok(count)
     }
 
-    pub fn fetch_propagated(
-        &self,
-        transient_id: &[u8],
-    ) -> Result<Vec<u8>, crate::error::LxmfError> {
+    pub fn fetch_propagated(&self, transient_id: &[u8]) -> Result<Vec<u8>, LxmfError> {
         let Some(service) = &self.propagation_service else {
-            return Err(crate::error::LxmfError::Io("propagation disabled".into()));
+            return Err(LxmfError::Io("propagation disabled".into()));
         };
 
         service.fetch(transient_id)
     }
 
     pub fn propagation_ingested_total(&self) -> usize {
-        self.propagation_ingested
+        self.stats.propagation_ingested_total
     }
 
     pub fn last_ingest_count(&self) -> usize {
         self.last_ingest_count
+    }
+
+    pub fn request_propagation_transfer(
+        &mut self,
+        transient_id: impl Into<Vec<u8>>,
+    ) -> PropagationTransferState {
+        let now = unix_now();
+        let state = PropagationTransferState::requested(transient_id.into(), now);
+        self.propagation_transfers
+            .insert(state.transient_id.clone(), state.clone());
+        self.stats.propagation_requests_total += 1;
+        state
+    }
+
+    pub fn update_propagation_transfer_progress(
+        &mut self,
+        transient_id: &[u8],
+        progress: u8,
+    ) -> bool {
+        let Some(state) = self.propagation_transfers.get_mut(transient_id) else {
+            return false;
+        };
+        state.phase = TransferPhase::InProgress;
+        state.progress = progress.min(100);
+        state.updated_at = unix_now();
+        true
+    }
+
+    pub fn complete_propagation_transfer(&mut self, transient_id: &[u8]) -> bool {
+        let Some(state) = self.propagation_transfers.get_mut(transient_id) else {
+            return false;
+        };
+        state.phase = TransferPhase::Completed;
+        state.progress = 100;
+        state.reason = None;
+        state.updated_at = unix_now();
+        self.stats.propagation_completed_total += 1;
+        true
+    }
+
+    pub fn cancel_propagation_transfer(
+        &mut self,
+        transient_id: &[u8],
+        reason: impl Into<String>,
+    ) -> bool {
+        let Some(state) = self.propagation_transfers.get_mut(transient_id) else {
+            return false;
+        };
+        state.phase = TransferPhase::Cancelled;
+        state.reason = Some(reason.into());
+        state.updated_at = unix_now();
+        self.stats.propagation_cancelled_total += 1;
+        true
+    }
+
+    pub fn propagation_transfer_state(
+        &self,
+        transient_id: &[u8],
+    ) -> Option<&PropagationTransferState> {
+        self.propagation_transfers.get(transient_id)
     }
 
     pub fn set_name(&mut self, name: impl Into<String>) {
@@ -124,17 +498,17 @@ impl Router {
     }
 
     pub fn set_propagation_limits(&mut self, per_transfer: u32, per_sync: u32) {
-        self.propagation_per_transfer_limit = per_transfer;
-        self.propagation_per_sync_limit = per_sync.max(per_transfer);
+        self.config.propagation_per_transfer_limit = per_transfer;
+        self.config.propagation_per_sync_limit = per_sync.max(per_transfer);
     }
 
     pub fn set_propagation_stamp_cost(&mut self, cost: u32, flexibility: u32) {
-        self.propagation_stamp_cost = cost.max(PROPAGATION_COST_MIN);
-        self.propagation_stamp_cost_flexibility = flexibility;
+        self.config.propagation_stamp_cost = cost.max(PROPAGATION_COST_MIN);
+        self.config.propagation_stamp_cost_flexibility = flexibility;
     }
 
     pub fn set_peering_cost(&mut self, cost: u32) {
-        self.peering_cost = cost;
+        self.config.peering_cost = cost;
     }
 
     fn propagation_node_announce_metadata(&self) -> BTreeMap<u8, ByteBuf> {
@@ -146,31 +520,61 @@ impl Router {
     }
 
     pub fn get_propagation_node_app_data(&self) -> Vec<u8> {
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-        self.get_propagation_node_app_data_at(timestamp)
+        self.get_propagation_node_app_data_at(unix_now())
     }
 
     pub fn get_propagation_node_app_data_at(&self, timestamp: u64) -> Vec<u8> {
         let metadata = self.propagation_node_announce_metadata();
         let node_state = self.propagation_node && !self.from_static_only;
         let stamp_cost = [
-            self.propagation_stamp_cost,
-            self.propagation_stamp_cost_flexibility,
-            self.peering_cost,
+            self.config.propagation_stamp_cost,
+            self.config.propagation_stamp_cost_flexibility,
+            self.config.peering_cost,
         ];
         let announce_data = (
             false,
             timestamp,
             node_state,
-            self.propagation_per_transfer_limit,
-            self.propagation_per_sync_limit,
+            self.config.propagation_per_transfer_limit,
+            self.config.propagation_per_sync_limit,
             stamp_cost,
             metadata,
         );
 
         rmp_serde::to_vec(&announce_data).expect("propagation node app data msgpack")
     }
+
+    pub fn jobs(&mut self) {
+        self.jobs_at(unix_now());
+    }
+
+    pub fn jobs_at(&mut self, now: u64) {
+        self.expire_tickets(now as f64);
+        self.prune_transfer_state(now);
+    }
+
+    fn expire_tickets(&mut self, now: f64) {
+        self.ticket_cache
+            .retain(|_, ticket| ticket.is_valid_with_grace(now));
+    }
+
+    fn prune_transfer_state(&mut self, now: u64) {
+        let ttl = self.config.transfer_state_ttl_secs;
+        self.propagation_transfers.retain(|_, state| {
+            if matches!(
+                state.phase,
+                TransferPhase::Requested | TransferPhase::InProgress
+            ) {
+                return true;
+            }
+            now.saturating_sub(state.updated_at) <= ttl
+        });
+    }
+}
+
+fn unix_now() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
 }

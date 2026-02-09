@@ -11,6 +11,7 @@ This checklist is the publication gate for `lxmf-rs`.
 ## 2. Interop gates
 
 - Python fixture compatibility tests must pass (`tests/*parity*.rs`, `tests/fixture_loader.rs`, `tests/python_interop_gate.rs`).
+- Live Python interop gate is enabled with `LXMF_PYTHON_INTEROP=1` and is required on Linux before release.
 - Any wire/storage format changes require updated fixtures and parity tests.
 
 ## 3. API stability
@@ -22,7 +23,7 @@ This checklist is the publication gate for `lxmf-rs`.
 
 - GitHub CI must pass on Linux and macOS.
 - Required checks:
-  - `cargo fmt --all -- --check`
+  - `git ls-files '*.rs' | xargs rustfmt --edition 2021 --check`
   - `cargo clippy --workspace --all-targets -- -D warnings`
   - `cargo test --workspace --all-targets`
 

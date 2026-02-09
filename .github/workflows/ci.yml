@@ -8,6 +8,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  RETICULUM_RS_REV: 68ddf879e36888ed01d24895562faa9eea0520a6
 
 jobs:
   lint:
@@ -17,9 +18,11 @@ jobs:
       - name: Checkout LXMF-rs
         uses: actions/checkout@v4
 
-      - name: Checkout Reticulum-rs sibling dependency
+      - name: Checkout Reticulum-rs sibling dependency (pinned)
         run: |
-          git clone --depth 1 https://github.com/FreeTAKTeam/Reticulum-rs.git ../Reticulum-rs
+          git clone https://github.com/FreeTAKTeam/Reticulum-rs.git ../Reticulum-rs
+          cd ../Reticulum-rs
+          git checkout "$RETICULUM_RS_REV"
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -47,9 +50,11 @@ jobs:
       - name: Checkout LXMF-rs
         uses: actions/checkout@v4
 
-      - name: Checkout Reticulum-rs sibling dependency
+      - name: Checkout Reticulum-rs sibling dependency (pinned)
         run: |
-          git clone --depth 1 https://github.com/FreeTAKTeam/Reticulum-rs.git ../Reticulum-rs
+          git clone https://github.com/FreeTAKTeam/Reticulum-rs.git ../Reticulum-rs
+          cd ../Reticulum-rs
+          git checkout "$RETICULUM_RS_REV"
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
