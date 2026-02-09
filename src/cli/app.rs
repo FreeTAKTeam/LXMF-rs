@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Result};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 
+use crate::cli::commands_contact;
 use crate::cli::commands_daemon;
 use crate::cli::commands_iface;
 use crate::cli::commands_message;
@@ -39,6 +40,7 @@ pub struct Cli {
 #[derive(Debug, Clone, Subcommand)]
 pub enum Command {
     Profile(ProfileCommand),
+    Contact(ContactCommand),
     Daemon(DaemonCommand),
     Iface(IfaceCommand),
     Peer(PeerCommand),
@@ -49,6 +51,49 @@ pub enum Command {
     Announce(AnnounceCommand),
     Events(EventsCommand),
     Tui(TuiCommand),
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct ContactCommand {
+    #[command(subcommand)]
+    pub action: ContactAction,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum ContactAction {
+    List {
+        #[arg(long)]
+        query: Option<String>,
+        #[arg(long)]
+        limit: Option<usize>,
+    },
+    Add(ContactUpsertArgs),
+    Show {
+        selector: String,
+        #[arg(long)]
+        exact: bool,
+    },
+    Remove {
+        selector: String,
+        #[arg(long)]
+        exact: bool,
+    },
+    Import {
+        path: String,
+        #[arg(long)]
+        replace: bool,
+    },
+    Export {
+        path: String,
+    },
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct ContactUpsertArgs {
+    pub alias: String,
+    pub hash: String,
+    #[arg(long)]
+    pub notes: Option<String>,
 }
 
 #[derive(Debug, Clone, Args)]
@@ -397,6 +442,10 @@ pub fn run_cli(cli: Cli) -> Result<()> {
     let command = cli.command.clone();
     match command {
         Command::Profile(command) => commands_profile::run(&cli, &command, &output),
+        Command::Contact(command) => {
+            let ctx = RuntimeContext::load(cli)?;
+            commands_contact::run(&ctx, &command)
+        }
         Command::Tui(command) => {
             let ctx = RuntimeContext::load(cli)?;
             tui::run_tui(&ctx, &command)

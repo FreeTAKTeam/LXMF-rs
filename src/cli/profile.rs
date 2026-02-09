@@ -38,6 +38,7 @@ impl Default for ProfileSettings {
 pub struct ProfilePaths {
     pub root: PathBuf,
     pub profile_toml: PathBuf,
+    pub contacts_toml: PathBuf,
     pub reticulum_toml: PathBuf,
     pub daemon_pid: PathBuf,
     pub daemon_log: PathBuf,
@@ -83,6 +84,7 @@ pub fn profile_paths(name: &str) -> Result<ProfilePaths> {
     let root = profiles_root()?.join(name);
     Ok(ProfilePaths {
         profile_toml: root.join("profile.toml"),
+        contacts_toml: root.join("contacts.toml"),
         reticulum_toml: root.join("reticulum.toml"),
         daemon_pid: root.join("daemon.pid"),
         daemon_log: root.join("daemon.log"),

@@ -2,6 +2,7 @@ use crate::cli::app::{
     AnnounceAction, AnnounceCommand, DeliveryMethodArg, EventsAction, EventsCommand, MessageAction,
     MessageCommand, MessageSendArgs, RuntimeContext,
 };
+use crate::cli::contacts::{load_contacts, resolve_contact_hash};
 use anyhow::{anyhow, Context, Result};
 use serde_json::{json, Value};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -60,11 +61,16 @@ pub fn run_events(ctx: &RuntimeContext, command: &EventsCommand) -> Result<()> {
 }
 
 fn send_message(ctx: &RuntimeContext, args: &MessageSendArgs) -> Result<()> {
+    let contacts = load_contacts(&ctx.profile_name)?;
+    let source =
+        resolve_contact_hash(&contacts, &args.source).unwrap_or_else(|| args.source.clone());
+    let destination = resolve_contact_hash(&contacts, &args.destination)
+        .unwrap_or_else(|| args.destination.clone());
     let id = args.id.clone().unwrap_or_else(generate_message_id);
     let mut params = json!({
         "id": id,
-        "source": args.source,
-        "destination": args.destination,
+        "source": source,
+        "destination": destination,
         "title": args.title,
         "content": args.content,
     });
@@ -89,6 +95,17 @@ fn send_message(ctx: &RuntimeContext, args: &MessageSendArgs) -> Result<()> {
         Ok(v) => v,
         Err(_) => ctx.rpc.call("send_message", Some(params))?,
     };
+
+    if source != args.source || destination != args.destination {
+        return ctx.output.emit_status(&json!({
+            "result": result,
+            "resolved": {
+                "source": source,
+                "destination": destination,
+            }
+        }));
+    }
+
     ctx.output.emit_status(&result)
 }
 

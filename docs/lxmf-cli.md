@@ -20,6 +20,7 @@ The CLI targets `reticulumd` over framed msgpack RPC (`POST /rpc`) and event pol
 ## Command Tree
 
 - `lxmf profile init|list|show|select|set|import-identity|export-identity|delete`
+- `lxmf contact list|add|show|remove|import|export`
 - `lxmf daemon start|stop|restart|status|logs`
 - `lxmf iface list|add|remove|enable|disable|apply`
 - `lxmf peer list|show|watch|sync|unpeer|clear`
@@ -90,6 +91,15 @@ Search peers and inspect details:
 lxmf --profile ops peer list --query alice --limit 10
 lxmf --profile ops peer show alice
 lxmf --profile ops peer show 6b33cafe --exact
+```
+
+Manage contacts and use aliases for sending:
+
+```bash
+lxmf --profile ops contact add alice 6b3362bd2c1dbf87b66a85f79a8d8c75 --notes "team relay"
+lxmf --profile ops contact list --query ali
+lxmf --profile ops message send --source my-self --destination @alice --content "hi"
+lxmf --profile ops contact export ./contacts.json
 ```
 
 Send a message with `send_message_v2` semantics:

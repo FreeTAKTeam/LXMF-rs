@@ -1,7 +1,7 @@
 use clap::Parser;
 use lxmf::cli::app::{
-    Cli, Command, MessageAction, MessageCommand, PeerAction, PeerCommand, ProfileAction,
-    ProfileCommand,
+    Cli, Command, ContactAction, ContactCommand, MessageAction, MessageCommand, PeerAction,
+    PeerCommand, ProfileAction, ProfileCommand,
 };
 
 #[test]
@@ -107,6 +107,42 @@ fn parses_peer_query_and_exact_flags() {
         }) => {
             assert_eq!(selector, "abc123");
             assert!(exact);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parses_contact_commands() {
+    let add_cli = Cli::try_parse_from([
+        "lxmf",
+        "contact",
+        "add",
+        "alice",
+        "0123456789abcdef0123456789abcdef",
+        "--notes",
+        "friend",
+    ])
+    .unwrap();
+    match add_cli.command {
+        Command::Contact(ContactCommand {
+            action: ContactAction::Add(args),
+        }) => {
+            assert_eq!(args.alias, "alice");
+            assert_eq!(args.hash, "0123456789abcdef0123456789abcdef");
+            assert_eq!(args.notes.as_deref(), Some("friend"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let list_cli =
+        Cli::try_parse_from(["lxmf", "contact", "list", "--query", "ali", "--limit", "5"]).unwrap();
+    match list_cli.command {
+        Command::Contact(ContactCommand {
+            action: ContactAction::List { query, limit },
+        }) => {
+            assert_eq!(query.as_deref(), Some("ali"));
+            assert_eq!(limit, Some(5));
         }
         other => panic!("unexpected command: {other:?}"),
     }

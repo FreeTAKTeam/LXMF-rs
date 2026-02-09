@@ -55,6 +55,7 @@ pub fn run(cli: &Cli, command: &ProfileCommand, output: &Output) -> Result<()> {
                 "paths": {
                     "root": paths.root,
                     "profile_toml": paths.profile_toml,
+                    "contacts_toml": paths.contacts_toml,
                     "reticulum_toml": paths.reticulum_toml,
                     "daemon_pid": paths.daemon_pid,
                     "daemon_log": paths.daemon_log,

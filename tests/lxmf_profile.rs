@@ -1,3 +1,4 @@
+use lxmf::cli::contacts::{load_contacts, save_contacts, ContactEntry};
 use lxmf::cli::profile::{
     init_profile, list_profiles, load_profile_settings, load_reticulum_config, profile_paths,
     remove_interface, save_profile_settings, save_reticulum_config, select_profile,
@@ -96,6 +97,35 @@ rpc = "127.0.0.1:4243"
 
     let migrated = load_profile_settings("gamma").unwrap();
     assert_eq!(migrated.display_name, None);
+
+    std::env::remove_var("LXMF_CONFIG_ROOT");
+}
+
+#[test]
+fn contacts_roundtrip_persists_with_profile() {
+    let _guard = env_lock().lock().unwrap();
+    let temp = tempfile::tempdir().unwrap();
+    std::env::set_var("LXMF_CONFIG_ROOT", temp.path());
+
+    init_profile("contacts", false, None).unwrap();
+    let contacts = vec![
+        ContactEntry {
+            alias: "Alice".into(),
+            hash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
+            notes: Some("friend".into()),
+        },
+        ContactEntry {
+            alias: "Bob".into(),
+            hash: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".into(),
+            notes: None,
+        },
+    ];
+    save_contacts("contacts", &contacts).unwrap();
+
+    let loaded = load_contacts("contacts").unwrap();
+    assert_eq!(loaded.len(), 2);
+    assert_eq!(loaded[0].alias, "Alice");
+    assert_eq!(loaded[1].alias, "Bob");
 
     std::env::remove_var("LXMF_CONFIG_ROOT");
 }
