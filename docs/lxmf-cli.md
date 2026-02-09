@@ -102,6 +102,8 @@ lxmf --profile ops message send --source my-self --destination @alice --content 
 lxmf --profile ops contact export ./contacts.json
 ```
 
+When `--source` is omitted, `lxmf` uses daemon-reported `identity_hash` automatically.
+
 Send a message with `send_message_v2` semantics:
 
 ```bash

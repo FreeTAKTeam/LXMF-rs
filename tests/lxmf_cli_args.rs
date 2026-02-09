@@ -53,12 +53,37 @@ fn parses_message_send_command() {
         Command::Message(MessageCommand {
             action: MessageAction::Send(args),
         }) => {
-            assert_eq!(args.source, "0011");
+            assert_eq!(args.source.as_deref(), Some("0011"));
             assert_eq!(args.destination, "ffee");
             assert_eq!(args.content, "hello");
             assert_eq!(args.title, "subject");
             assert!(args.include_ticket);
             assert!(args.method.is_some());
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parses_message_send_without_source() {
+    let cli = Cli::try_parse_from([
+        "lxmf",
+        "message",
+        "send",
+        "--destination",
+        "ffee",
+        "--content",
+        "hello",
+    ])
+    .unwrap();
+
+    match cli.command {
+        Command::Message(MessageCommand {
+            action: MessageAction::Send(args),
+        }) => {
+            assert!(args.source.is_none());
+            assert_eq!(args.destination, "ffee");
+            assert_eq!(args.content, "hello");
         }
         other => panic!("unexpected command: {other:?}"),
     }

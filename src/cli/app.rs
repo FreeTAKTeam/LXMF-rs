@@ -271,7 +271,7 @@ pub struct MessageSendArgs {
     #[arg(long)]
     pub id: Option<String>,
     #[arg(long)]
-    pub source: String,
+    pub source: Option<String>,
     #[arg(long)]
     pub destination: String,
     #[arg(long, default_value = "")]

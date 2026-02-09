@@ -123,6 +123,7 @@ enum StatusLevel {
 pub struct TuiSnapshot {
     pub profile: String,
     pub rpc: String,
+    pub identity_hash: Option<String>,
     pub daemon_running: bool,
     pub messages: Vec<Value>,
     pub peers: Vec<Value>,
@@ -536,23 +537,30 @@ struct ComposeState {
 }
 
 impl ComposeState {
-    fn new() -> Self {
+    fn new_with_source(source: Option<String>) -> Self {
+        let normalized_source = source.and_then(normalize_identity_hash);
         Self {
             destination: String::new(),
-            source: String::new(),
+            source: normalized_source.unwrap_or_default(),
             title: String::new(),
             content: String::new(),
             active: Some(ComposeField::Destination),
         }
     }
 
-    fn with_destination(destination: impl Into<String>) -> Self {
+    fn with_destination_and_source(destination: impl Into<String>, source: Option<String>) -> Self {
+        let normalized_source = source.and_then(normalize_identity_hash);
+        let has_source = normalized_source.is_some();
         Self {
             destination: destination.into(),
-            source: String::new(),
+            source: normalized_source.unwrap_or_default(),
             title: String::new(),
             content: String::new(),
-            active: Some(ComposeField::Source),
+            active: Some(if has_source {
+                ComposeField::Content
+            } else {
+                ComposeField::Source
+            }),
         }
     }
 
@@ -847,11 +855,12 @@ pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
                                 ),
                             }
                         } else {
-                            state.composer = Some(ComposeState::new());
+                            let source = preferred_source_identity(&state);
+                            state.composer = Some(ComposeState::new_with_source(source));
                             set_status(
                                 &mut state,
                                 StatusLevel::Info,
-                                "Compose message: fill fields, Enter to advance/send, Esc to cancel",
+                                "Compose message: destination/content required, source auto-fills when daemon identity is available",
                             );
                         }
                     }
@@ -1371,7 +1380,7 @@ fn draw_compose_overlay(frame: &mut ratatui::Frame<'_>, state: &TuiState) {
     ));
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
-        "Enter: next/send  Tab: next field  Shift+Tab: previous  Backspace: delete  Esc: cancel",
+        "Enter: next/send  Tab: next field  Shift+Tab: previous  Backspace: delete  Esc: cancel  (source auto-fills from daemon identity)",
         Style::default().fg(state.theme.muted),
     )));
 
@@ -2269,11 +2278,13 @@ fn refresh_snapshot(
                 .get("running")
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
+            snapshot.identity_hash = identity_hash_from_status(&value);
         }
         Err(err) => {
             connected = false;
             warning = Some(rpc_unreachable_warning(managed_profile, &err));
             snapshot.daemon_running = false;
+            snapshot.identity_hash = None;
         }
     }
 
@@ -2441,19 +2452,23 @@ fn send_message_from_composer(
 ) -> Result<String> {
     let contacts = load_contacts(&ctx.profile_name).unwrap_or_default();
     let destination = compose.destination.trim();
-    let source = compose.source.trim();
     let content = compose.content.trim();
 
-    if destination.is_empty() || source.is_empty() || content.is_empty() {
+    if destination.is_empty() || content.is_empty() {
         return Err(anyhow!(
-            "destination, source, and content are required before sending"
+            "destination and content are required before sending"
         ));
     }
 
+    let source = if compose.source.trim().is_empty() {
+        resolve_runtime_identity_hash(rpc)?
+    } else {
+        compose.source.trim().to_string()
+    };
+
     let resolved_destination =
         resolve_contact_hash(&contacts, destination).unwrap_or_else(|| destination.to_string());
-    let resolved_source =
-        resolve_contact_hash(&contacts, source).unwrap_or_else(|| source.to_string());
+    let resolved_source = resolve_contact_hash(&contacts, &source).unwrap_or(source);
 
     let params = json!({
         "id": format!("tui-{}", chrono_like_now_secs()),
@@ -2470,6 +2485,19 @@ fn send_message_from_composer(
             Ok("message queued (legacy api)".into())
         }
     }
+}
+
+fn resolve_runtime_identity_hash(rpc: &RpcClient) -> Result<String> {
+    for method in ["daemon_status_ex", "status"] {
+        if let Ok(response) = rpc.call(method, None) {
+            if let Some(identity_hash) = identity_hash_from_status(&response) {
+                return Ok(identity_hash);
+            }
+        }
+    }
+    Err(anyhow!(
+        "source missing and daemon identity unavailable; start daemon or set source explicitly"
+    ))
 }
 
 fn restart_daemon(ctx: &RuntimeContext) -> Result<String> {
@@ -2731,10 +2759,19 @@ fn open_compose_with_destination(
     destination_hash: String,
     label: String,
 ) -> Result<String> {
+    let source = preferred_source_identity(state);
     state.pane = Pane::Messages;
-    state.composer = Some(ComposeState::with_destination(destination_hash.clone()));
+    state.composer = Some(ComposeState::with_destination_and_source(
+        destination_hash.clone(),
+        source.clone(),
+    ));
+    let source_hint = if source.is_some() {
+        "source auto-filled"
+    } else {
+        "source required"
+    };
     Ok(format!(
-        "Compose to {label}: destination prefilled ({destination_hash}). Fill source/content, Enter to send"
+        "Compose to {label}: destination prefilled ({destination_hash}), {source_hint}. Fill content, Enter to send"
     ))
 }
 
@@ -2809,6 +2846,32 @@ pub(super) fn peer_display_name(peer: &Value) -> Option<&str> {
         }
     }
     None
+}
+
+fn normalize_identity_hash(value: String) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
+fn identity_hash_from_status(value: &Value) -> Option<String> {
+    value
+        .get("identity_hash")
+        .and_then(Value::as_str)
+        .map(ToOwned::to_owned)
+        .and_then(normalize_identity_hash)
+}
+
+fn preferred_source_identity(state: &TuiState) -> Option<String> {
+    state
+        .snapshot
+        .identity_hash
+        .as_ref()
+        .cloned()
+        .and_then(normalize_identity_hash)
 }
 
 fn selected_contact_value(state: &TuiState) -> Option<&Value> {
@@ -3139,7 +3202,7 @@ mod tests {
         assert_eq!(state.pane, Pane::Messages);
         let composer = state.composer.expect("composer state");
         assert_eq!(composer.destination, "deadbeefcafe0011");
-        assert!(composer.source.is_empty());
+        assert_eq!(composer.source, "self-hash");
         assert!(message.contains("destination prefilled"));
     }
 
@@ -3155,6 +3218,7 @@ mod tests {
         assert_eq!(state.pane, Pane::Messages);
         let composer = state.composer.expect("composer state");
         assert_eq!(composer.destination, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+        assert_eq!(composer.source, "self-hash");
         assert!(message.contains("destination prefilled"));
     }
 
@@ -3195,6 +3259,7 @@ mod tests {
             snapshot: TuiSnapshot {
                 profile: "default".into(),
                 rpc: "127.0.0.1:4243".into(),
+                identity_hash: Some("self-hash".into()),
                 daemon_running: false,
                 messages: Vec::new(),
                 peers,

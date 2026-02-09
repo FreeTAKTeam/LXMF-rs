@@ -69,7 +69,7 @@ fn message_send_uses_v2_when_available() {
     let command = MessageCommand {
         action: MessageAction::Send(MessageSendArgs {
             id: Some("m-1".into()),
-            source: "aa".into(),
+            source: Some("aa".into()),
             destination: "bb".into(),
             title: "hello".into(),
             content: "world".into(),
@@ -130,7 +130,7 @@ fn message_send_resolves_contact_alias_destination() {
     let command = MessageCommand {
         action: MessageAction::Send(MessageSendArgs {
             id: Some("m-contact".into()),
-            source: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".into(),
+            source: Some("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".into()),
             destination: "@alice".into(),
             title: String::new(),
             content: "hello".into(),

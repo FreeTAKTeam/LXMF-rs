@@ -62,8 +62,16 @@ pub fn run_events(ctx: &RuntimeContext, command: &EventsCommand) -> Result<()> {
 
 fn send_message(ctx: &RuntimeContext, args: &MessageSendArgs) -> Result<()> {
     let contacts = load_contacts(&ctx.profile_name)?;
-    let source =
-        resolve_contact_hash(&contacts, &args.source).unwrap_or_else(|| args.source.clone());
+    let source_input = match args
+        .source
+        .as_deref()
+        .and_then(trimmed_nonempty)
+        .map(ToOwned::to_owned)
+    {
+        Some(value) => value,
+        None => resolve_runtime_identity_hash(&ctx.rpc)?,
+    };
+    let source = resolve_contact_hash(&contacts, &source_input).unwrap_or(source_input.clone());
     let destination = resolve_contact_hash(&contacts, &args.destination)
         .unwrap_or_else(|| args.destination.clone());
     let id = args.id.clone().unwrap_or_else(generate_message_id);
@@ -96,7 +104,12 @@ fn send_message(ctx: &RuntimeContext, args: &MessageSendArgs) -> Result<()> {
         Err(_) => ctx.rpc.call("send_message", Some(params))?,
     };
 
-    if source != args.source || destination != args.destination {
+    let source_changed = args
+        .source
+        .as_deref()
+        .map(|raw| raw != source)
+        .unwrap_or(true);
+    if source_changed || destination != args.destination {
         return ctx.output.emit_status(&json!({
             "result": result,
             "resolved": {
@@ -143,4 +156,31 @@ fn generate_message_id() -> String {
 
 fn delivery_method_to_string(method: DeliveryMethodArg) -> String {
     method.as_str().to_string()
+}
+
+fn resolve_runtime_identity_hash(rpc: &crate::cli::rpc_client::RpcClient) -> Result<String> {
+    for method in ["daemon_status_ex", "status"] {
+        if let Ok(response) = rpc.call(method, None) {
+            if let Some(identity_hash) = response
+                .get("identity_hash")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                return Ok(identity_hash.to_string());
+            }
+        }
+    }
+    Err(anyhow!(
+        "source not provided and daemon did not report identity_hash; pass --source or start daemon"
+    ))
+}
+
+fn trimmed_nonempty(value: &str) -> Option<&str> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed)
+    }
 }
