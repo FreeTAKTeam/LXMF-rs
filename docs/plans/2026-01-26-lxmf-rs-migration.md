@@ -2,7 +2,7 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Achieve feature and wire-format parity between Python LXMF in `/Users/tommy/Documents/TAK/LXMF-rs/LXMF` and Rust LXMF in `/Users/tommy/Documents/TAK/LXMF-rs`, including router, propagation, stamps, tickets, and lxmd daemon/CLI.
+**Goal:** Achieve feature and wire-format parity between Python LXMF in `https://github.com/FreeTAKTeam/LXMF-rs/LXMF` and Rust LXMF in `https://github.com/FreeTAKTeam/LXMF-rs`, including router, propagation, stamps, tickets, and lxmd daemon/CLI.
 
 **Architecture:** Implement Rust modules mirroring Python LXMF: constants/helpers, message model, payload encoding, wire packing, stamps and tickets, peer tracking, router state machine, propagation node, storage, handlers, and daemon utilities. Drive sequencing via a parity matrix and dependency map against Reticulum-rs capabilities.
 

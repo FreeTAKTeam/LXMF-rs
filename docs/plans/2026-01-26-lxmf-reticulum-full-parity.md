@@ -15,9 +15,9 @@ Last updated: 2026-01-26
 ## Task 0: Inventory & parity map bootstrap
 
 **Files:**
-- Modify: `/Users/tommy/Documents/TAK/LXMF-rs/docs/plans/lxmf-parity-matrix.md`
-- Create: `/Users/tommy/Documents/TAK/LXMF-rs/docs/plans/reticulum-parity-matrix.md`
-- Modify: `/Users/tommy/Documents/TAK/LXMF-rs/docs/plans/2026-01-26-lxmf-reticulum-full-parity.md`
+- Modify: `https://github.com/FreeTAKTeam/LXMF-rs/docs/plans/lxmf-parity-matrix.md`
+- Create: `https://github.com/FreeTAKTeam/LXMF-rs/docs/plans/reticulum-parity-matrix.md`
+- Modify: `https://github.com/FreeTAKTeam/LXMF-rs/docs/plans/2026-01-26-lxmf-reticulum-full-parity.md`
 
 **Step 1: Enumerate Python reference surfaces**
 - Scan Python LXMF: `/Users/tommy/Documents/TAK/LXMF/` for message formats, storage, CLI, propagation, stamps/tickets.
@@ -29,9 +29,9 @@ Last updated: 2026-01-26
 
 **Step 3: Commit**
 ```bash
-git add /Users/tommy/Documents/TAK/LXMF-rs/docs/plans/lxmf-parity-matrix.md \
-  /Users/tommy/Documents/TAK/LXMF-rs/docs/plans/reticulum-parity-matrix.md \
-  /Users/tommy/Documents/TAK/LXMF-rs/docs/plans/2026-01-26-lxmf-reticulum-full-parity.md
+git add https://github.com/FreeTAKTeam/LXMF-rs/docs/plans/lxmf-parity-matrix.md \
+  https://github.com/FreeTAKTeam/LXMF-rs/docs/plans/reticulum-parity-matrix.md \
+  https://github.com/FreeTAKTeam/LXMF-rs/docs/plans/2026-01-26-lxmf-reticulum-full-parity.md
 
 git commit -m "docs: add full LXMF/Reticulum parity plan"
 ```
@@ -43,10 +43,10 @@ git commit -m "docs: add full LXMF/Reticulum parity plan"
 ### Task A1: Fixture harness for Reticulum primitives
 
 **Files:**
-- Create: `/Users/tommy/Documents/TAK/Reticulum-rs/tests/fixtures/python/gen_reticulum_fixtures.py`
-- Create: `/Users/tommy/Documents/TAK/Reticulum-rs/tests/fixtures/python/.reticulum/` (config)
-- Create: `/Users/tommy/Documents/TAK/Reticulum-rs/tests/fixtures/reticulum/*.bin`
-- Create: `/Users/tommy/Documents/TAK/Reticulum-rs/tests/reticulum_fixtures.rs`
+- Create: `https://github.com/FreeTAKTeam/Reticulum-rs/tests/fixtures/python/gen_reticulum_fixtures.py`
+- Create: `https://github.com/FreeTAKTeam/Reticulum-rs/tests/fixtures/python/.reticulum/` (config)
+- Create: `https://github.com/FreeTAKTeam/Reticulum-rs/tests/fixtures/reticulum/*.bin`
+- Create: `https://github.com/FreeTAKTeam/Reticulum-rs/tests/reticulum_fixtures.rs`
 
 **Step 1: Write failing test**
 ```rust
@@ -70,9 +70,9 @@ Expected: PASS
 
 **Step 5: Commit**
 ```bash
-git add /Users/tommy/Documents/TAK/Reticulum-rs/tests/fixtures/python/gen_reticulum_fixtures.py \
-  /Users/tommy/Documents/TAK/Reticulum-rs/tests/fixtures/reticulum \
-  /Users/tommy/Documents/TAK/Reticulum-rs/tests/reticulum_fixtures.rs
+git add https://github.com/FreeTAKTeam/Reticulum-rs/tests/fixtures/python/gen_reticulum_fixtures.py \
+  https://github.com/FreeTAKTeam/Reticulum-rs/tests/fixtures/reticulum \
+  https://github.com/FreeTAKTeam/Reticulum-rs/tests/reticulum_fixtures.rs
 
 git commit -m "test: add Reticulum fixture harness"
 ```
@@ -80,8 +80,8 @@ git commit -m "test: add Reticulum fixture harness"
 ### Task A2: Identity & key material parity
 
 **Files:**
-- Modify: `/Users/tommy/Documents/TAK/Reticulum-rs/src/identity.rs`
-- Create: `/Users/tommy/Documents/TAK/Reticulum-rs/tests/identity_parity.rs`
+- Modify: `https://github.com/FreeTAKTeam/Reticulum-rs/src/identity.rs`
+- Create: `https://github.com/FreeTAKTeam/Reticulum-rs/tests/identity_parity.rs`
 
 **Step 1: Write failing test**
 ```rust
@@ -106,8 +106,8 @@ Expected: PASS
 
 **Step 5: Commit**
 ```bash
-git add /Users/tommy/Documents/TAK/Reticulum-rs/src/identity.rs \
-  /Users/tommy/Documents/TAK/Reticulum-rs/tests/identity_parity.rs
+git add https://github.com/FreeTAKTeam/Reticulum-rs/src/identity.rs \
+  https://github.com/FreeTAKTeam/Reticulum-rs/tests/identity_parity.rs
 
 git commit -m "feat: add identity serialization parity"
 ```
@@ -115,8 +115,8 @@ git commit -m "feat: add identity serialization parity"
 ### Task A3: Destination/addressing parity
 
 **Files:**
-- Modify: `/Users/tommy/Documents/TAK/Reticulum-rs/src/destination.rs`
-- Create: `/Users/tommy/Documents/TAK/Reticulum-rs/tests/destination_parity.rs`
+- Modify: `https://github.com/FreeTAKTeam/Reticulum-rs/src/destination.rs`
+- Create: `https://github.com/FreeTAKTeam/Reticulum-rs/tests/destination_parity.rs`
 
 **Step 1: Write failing test**
 ```rust
@@ -141,8 +141,8 @@ Expected: PASS
 
 **Step 5: Commit**
 ```bash
-git add /Users/tommy/Documents/TAK/Reticulum-rs/src/destination.rs \
-  /Users/tommy/Documents/TAK/Reticulum-rs/tests/destination_parity.rs
+git add https://github.com/FreeTAKTeam/Reticulum-rs/src/destination.rs \
+  https://github.com/FreeTAKTeam/Reticulum-rs/tests/destination_parity.rs
 
 git commit -m "feat: add destination hash parity"
 ```
@@ -150,8 +150,8 @@ git commit -m "feat: add destination hash parity"
 ### Task A4: Packet framing and transport header parity
 
 **Files:**
-- Modify: `/Users/tommy/Documents/TAK/Reticulum-rs/src/packet.rs`
-- Create: `/Users/tommy/Documents/TAK/Reticulum-rs/tests/packet_parity.rs`
+- Modify: `https://github.com/FreeTAKTeam/Reticulum-rs/src/packet.rs`
+- Create: `https://github.com/FreeTAKTeam/Reticulum-rs/tests/packet_parity.rs`
 
 **Step 1: Write failing test**
 ```rust
@@ -176,8 +176,8 @@ Expected: PASS
 
 **Step 5: Commit**
 ```bash
-git add /Users/tommy/Documents/TAK/Reticulum-rs/src/packet.rs \
-  /Users/tommy/Documents/TAK/Reticulum-rs/tests/packet_parity.rs
+git add https://github.com/FreeTAKTeam/Reticulum-rs/src/packet.rs \
+  https://github.com/FreeTAKTeam/Reticulum-rs/tests/packet_parity.rs
 
 git commit -m "feat: add packet header parity"
 ```
@@ -185,8 +185,8 @@ git commit -m "feat: add packet header parity"
 ### Task A5: Encryption/decryption parity for packet payloads
 
 **Files:**
-- Modify: `/Users/tommy/Documents/TAK/Reticulum-rs/src/crypto.rs`
-- Create: `/Users/tommy/Documents/TAK/Reticulum-rs/tests/crypto_parity.rs`
+- Modify: `https://github.com/FreeTAKTeam/Reticulum-rs/src/crypto.rs`
+- Create: `https://github.com/FreeTAKTeam/Reticulum-rs/tests/crypto_parity.rs`
 
 **Step 1: Write failing test**
 ```rust
@@ -213,8 +213,8 @@ Expected: PASS
 
 **Step 5: Commit**
 ```bash
-git add /Users/tommy/Documents/TAK/Reticulum-rs/src/crypto.rs \
-  /Users/tommy/Documents/TAK/Reticulum-rs/tests/crypto_parity.rs
+git add https://github.com/FreeTAKTeam/Reticulum-rs/src/crypto.rs \
+  https://github.com/FreeTAKTeam/Reticulum-rs/tests/crypto_parity.rs
 
 git commit -m "feat: add crypto parity for payloads"
 ```
@@ -222,10 +222,10 @@ git commit -m "feat: add crypto parity for payloads"
 ### Task A6: Transport routing basics and persistence parity
 
 **Files:**
-- Modify: `/Users/tommy/Documents/TAK/Reticulum-rs/src/router.rs`
-- Modify: `/Users/tommy/Documents/TAK/Reticulum-rs/src/storage.rs`
-- Create: `/Users/tommy/Documents/TAK/Reticulum-rs/tests/router_parity.rs`
-- Create: `/Users/tommy/Documents/TAK/Reticulum-rs/tests/storage_parity.rs`
+- Modify: `https://github.com/FreeTAKTeam/Reticulum-rs/src/router.rs`
+- Modify: `https://github.com/FreeTAKTeam/Reticulum-rs/src/storage.rs`
+- Create: `https://github.com/FreeTAKTeam/Reticulum-rs/tests/router_parity.rs`
+- Create: `https://github.com/FreeTAKTeam/Reticulum-rs/tests/storage_parity.rs`
 
 **Step 1: Write failing tests**
 ```rust
@@ -250,10 +250,10 @@ Expected: PASS
 
 **Step 5: Commit**
 ```bash
-git add /Users/tommy/Documents/TAK/Reticulum-rs/src/router.rs \
-  /Users/tommy/Documents/TAK/Reticulum-rs/src/storage.rs \
-  /Users/tommy/Documents/TAK/Reticulum-rs/tests/router_parity.rs \
-  /Users/tommy/Documents/TAK/Reticulum-rs/tests/storage_parity.rs
+git add https://github.com/FreeTAKTeam/Reticulum-rs/src/router.rs \
+  https://github.com/FreeTAKTeam/Reticulum-rs/src/storage.rs \
+  https://github.com/FreeTAKTeam/Reticulum-rs/tests/router_parity.rs \
+  https://github.com/FreeTAKTeam/Reticulum-rs/tests/storage_parity.rs
 
 git commit -m "feat: add routing/persistence parity"
 ```
@@ -261,8 +261,8 @@ git commit -m "feat: add routing/persistence parity"
 ### Task A7: Reticulum CLI parity
 
 **Files:**
-- Modify: `/Users/tommy/Documents/TAK/Reticulum-rs/src/cli.rs`
-- Create: `/Users/tommy/Documents/TAK/Reticulum-rs/tests/cli_parity.rs`
+- Modify: `https://github.com/FreeTAKTeam/Reticulum-rs/src/cli.rs`
+- Create: `https://github.com/FreeTAKTeam/Reticulum-rs/tests/cli_parity.rs`
 
 **Step 1: Write failing test**
 ```rust
@@ -286,8 +286,8 @@ Expected: PASS
 
 **Step 5: Commit**
 ```bash
-git add /Users/tommy/Documents/TAK/Reticulum-rs/src/cli.rs \
-  /Users/tommy/Documents/TAK/Reticulum-rs/tests/cli_parity.rs
+git add https://github.com/FreeTAKTeam/Reticulum-rs/src/cli.rs \
+  https://github.com/FreeTAKTeam/Reticulum-rs/tests/cli_parity.rs
 
 git commit -m "feat: add Reticulum CLI parity"
 ```
@@ -299,9 +299,9 @@ git commit -m "feat: add Reticulum CLI parity"
 ### Task B1: LXMF fixture harness expansion
 
 **Files:**
-- Modify: `/Users/tommy/Documents/TAK/LXMF-rs/tests/fixtures/python/lxmf/gen_message_fixtures.py`
-- Create: `/Users/tommy/Documents/TAK/LXMF-rs/tests/fixtures/lxmf/*.bin`
-- Create: `/Users/tommy/Documents/TAK/LXMF-rs/tests/lxmf_fixtures.rs`
+- Modify: `https://github.com/FreeTAKTeam/LXMF-rs/tests/fixtures/python/lxmf/gen_message_fixtures.py`
+- Create: `https://github.com/FreeTAKTeam/LXMF-rs/tests/fixtures/lxmf/*.bin`
+- Create: `https://github.com/FreeTAKTeam/LXMF-rs/tests/lxmf_fixtures.rs`
 
 **Step 1: Write failing test**
 ```rust
@@ -325,9 +325,9 @@ Expected: PASS
 
 **Step 5: Commit**
 ```bash
-git add /Users/tommy/Documents/TAK/LXMF-rs/tests/fixtures/python/lxmf/gen_message_fixtures.py \
-  /Users/tommy/Documents/TAK/LXMF-rs/tests/fixtures/lxmf \
-  /Users/tommy/Documents/TAK/LXMF-rs/tests/lxmf_fixtures.rs
+git add https://github.com/FreeTAKTeam/LXMF-rs/tests/fixtures/python/lxmf/gen_message_fixtures.py \
+  https://github.com/FreeTAKTeam/LXMF-rs/tests/fixtures/lxmf \
+  https://github.com/FreeTAKTeam/LXMF-rs/tests/lxmf_fixtures.rs
 
 git commit -m "test: expand LXMF fixture harness"
 ```
@@ -335,8 +335,8 @@ git commit -m "test: expand LXMF fixture harness"
 ### Task B2: Message pack/unpack parity
 
 **Files:**
-- Modify: `/Users/tommy/Documents/TAK/LXMF-rs/src/message/mod.rs`
-- Create: `/Users/tommy/Documents/TAK/LXMF-rs/tests/message_pack_parity.rs`
+- Modify: `https://github.com/FreeTAKTeam/LXMF-rs/src/message/mod.rs`
+- Create: `https://github.com/FreeTAKTeam/LXMF-rs/tests/message_pack_parity.rs`
 
 **Step 1: Write failing test**
 ```rust
@@ -361,8 +361,8 @@ Expected: PASS
 
 **Step 5: Commit**
 ```bash
-git add /Users/tommy/Documents/TAK/LXMF-rs/src/message/mod.rs \
-  /Users/tommy/Documents/TAK/LXMF-rs/tests/message_pack_parity.rs
+git add https://github.com/FreeTAKTeam/LXMF-rs/src/message/mod.rs \
+  https://github.com/FreeTAKTeam/LXMF-rs/tests/message_pack_parity.rs
 
 git commit -m "feat: add LXMF message pack parity"
 ```
@@ -370,8 +370,8 @@ git commit -m "feat: add LXMF message pack parity"
 ### Task B3: Propagation message parity
 
 **Files:**
-- Modify: `/Users/tommy/Documents/TAK/LXMF-rs/src/propagation.rs`
-- Create: `/Users/tommy/Documents/TAK/LXMF-rs/tests/propagation_parity.rs`
+- Modify: `https://github.com/FreeTAKTeam/LXMF-rs/src/propagation.rs`
+- Create: `https://github.com/FreeTAKTeam/LXMF-rs/tests/propagation_parity.rs`
 
 **Step 1: Write failing test**
 ```rust
@@ -396,8 +396,8 @@ Expected: PASS
 
 **Step 5: Commit**
 ```bash
-git add /Users/tommy/Documents/TAK/LXMF-rs/src/propagation.rs \
-  /Users/tommy/Documents/TAK/LXMF-rs/tests/propagation_parity.rs
+git add https://github.com/FreeTAKTeam/LXMF-rs/src/propagation.rs \
+  https://github.com/FreeTAKTeam/LXMF-rs/tests/propagation_parity.rs
 
 git commit -m "feat: add propagation pack parity"
 ```
@@ -405,10 +405,10 @@ git commit -m "feat: add propagation pack parity"
 ### Task B4: Stamps/tickets parity
 
 **Files:**
-- Modify: `/Users/tommy/Documents/TAK/LXMF-rs/src/stamps.rs`
-- Modify: `/Users/tommy/Documents/TAK/LXMF-rs/src/tickets.rs`
-- Create: `/Users/tommy/Documents/TAK/LXMF-rs/tests/stamps_parity.rs`
-- Create: `/Users/tommy/Documents/TAK/LXMF-rs/tests/tickets_parity.rs`
+- Modify: `https://github.com/FreeTAKTeam/LXMF-rs/src/stamps.rs`
+- Modify: `https://github.com/FreeTAKTeam/LXMF-rs/src/tickets.rs`
+- Create: `https://github.com/FreeTAKTeam/LXMF-rs/tests/stamps_parity.rs`
+- Create: `https://github.com/FreeTAKTeam/LXMF-rs/tests/tickets_parity.rs`
 
 **Step 1: Write failing tests**
 ```rust
@@ -433,10 +433,10 @@ Expected: PASS
 
 **Step 5: Commit**
 ```bash
-git add /Users/tommy/Documents/TAK/LXMF-rs/src/stamps.rs \
-  /Users/tommy/Documents/TAK/LXMF-rs/src/tickets.rs \
-  /Users/tommy/Documents/TAK/LXMF-rs/tests/stamps_parity.rs \
-  /Users/tommy/Documents/TAK/LXMF-rs/tests/tickets_parity.rs
+git add https://github.com/FreeTAKTeam/LXMF-rs/src/stamps.rs \
+  https://github.com/FreeTAKTeam/LXMF-rs/src/tickets.rs \
+  https://github.com/FreeTAKTeam/LXMF-rs/tests/stamps_parity.rs \
+  https://github.com/FreeTAKTeam/LXMF-rs/tests/tickets_parity.rs
 
 git commit -m "feat: add stamps/tickets parity"
 ```
@@ -444,8 +444,8 @@ git commit -m "feat: add stamps/tickets parity"
 ### Task B5: Storage file layout parity
 
 **Files:**
-- Modify: `/Users/tommy/Documents/TAK/LXMF-rs/src/storage.rs`
-- Create: `/Users/tommy/Documents/TAK/LXMF-rs/tests/storage_parity.rs`
+- Modify: `https://github.com/FreeTAKTeam/LXMF-rs/src/storage.rs`
+- Create: `https://github.com/FreeTAKTeam/LXMF-rs/tests/storage_parity.rs`
 
 **Step 1: Write failing test**
 ```rust
@@ -470,8 +470,8 @@ Expected: PASS
 
 **Step 5: Commit**
 ```bash
-git add /Users/tommy/Documents/TAK/LXMF-rs/src/storage.rs \
-  /Users/tommy/Documents/TAK/LXMF-rs/tests/storage_parity.rs
+git add https://github.com/FreeTAKTeam/LXMF-rs/src/storage.rs \
+  https://github.com/FreeTAKTeam/LXMF-rs/tests/storage_parity.rs
 
 git commit -m "feat: add storage container parity"
 ```
@@ -479,10 +479,10 @@ git commit -m "feat: add storage container parity"
 ### Task B6: Router API and CLI parity
 
 **Files:**
-- Modify: `/Users/tommy/Documents/TAK/LXMF-rs/src/router.rs`
-- Modify: `/Users/tommy/Documents/TAK/LXMF-rs/src/cli.rs`
-- Create: `/Users/tommy/Documents/TAK/LXMF-rs/tests/router_parity.rs`
-- Create: `/Users/tommy/Documents/TAK/LXMF-rs/tests/cli_parity.rs`
+- Modify: `https://github.com/FreeTAKTeam/LXMF-rs/src/router.rs`
+- Modify: `https://github.com/FreeTAKTeam/LXMF-rs/src/cli.rs`
+- Create: `https://github.com/FreeTAKTeam/LXMF-rs/tests/router_parity.rs`
+- Create: `https://github.com/FreeTAKTeam/LXMF-rs/tests/cli_parity.rs`
 
 **Step 1: Write failing tests**
 ```rust
@@ -506,10 +506,10 @@ Expected: PASS
 
 **Step 5: Commit**
 ```bash
-git add /Users/tommy/Documents/TAK/LXMF-rs/src/router.rs \
-  /Users/tommy/Documents/TAK/LXMF-rs/src/cli.rs \
-  /Users/tommy/Documents/TAK/LXMF-rs/tests/router_parity.rs \
-  /Users/tommy/Documents/TAK/LXMF-rs/tests/cli_parity.rs
+git add https://github.com/FreeTAKTeam/LXMF-rs/src/router.rs \
+  https://github.com/FreeTAKTeam/LXMF-rs/src/cli.rs \
+  https://github.com/FreeTAKTeam/LXMF-rs/tests/router_parity.rs \
+  https://github.com/FreeTAKTeam/LXMF-rs/tests/cli_parity.rs
 
 git commit -m "feat: add LXMF router/CLI parity"
 ```
@@ -519,21 +519,21 @@ git commit -m "feat: add LXMF router/CLI parity"
 ## Task C: Cross‑repo integration checks
 
 **Files:**
-- Modify: `/Users/tommy/Documents/TAK/LXMF-rs/docs/plans/lxmf-parity-matrix.md`
-- Modify: `/Users/tommy/Documents/TAK/LXMF-rs/docs/plans/reticulum-parity-matrix.md`
+- Modify: `https://github.com/FreeTAKTeam/LXMF-rs/docs/plans/lxmf-parity-matrix.md`
+- Modify: `https://github.com/FreeTAKTeam/LXMF-rs/docs/plans/reticulum-parity-matrix.md`
 
 **Step 1: Update parity status**
 - Mark each feature as complete, partial, or blocked.
 
 **Step 2: Run full tests**
-Run: `cargo test -p reticulum -v` (from `/Users/tommy/Documents/TAK/Reticulum-rs`)
-Run: `cargo test -p lxmf -v` (from `/Users/tommy/Documents/TAK/LXMF-rs`)
+Run: `cargo test -p reticulum -v` (from `https://github.com/FreeTAKTeam/Reticulum-rs`)
+Run: `cargo test -p lxmf -v` (from `https://github.com/FreeTAKTeam/LXMF-rs`)
 Expected: PASS
 
 **Step 3: Commit**
 ```bash
-git add /Users/tommy/Documents/TAK/LXMF-rs/docs/plans/lxmf-parity-matrix.md \
-  /Users/tommy/Documents/TAK/LXMF-rs/docs/plans/reticulum-parity-matrix.md
+git add https://github.com/FreeTAKTeam/LXMF-rs/docs/plans/lxmf-parity-matrix.md \
+  https://github.com/FreeTAKTeam/LXMF-rs/docs/plans/reticulum-parity-matrix.md
 
 git commit -m "docs: update parity matrices"
 ```
@@ -541,7 +541,7 @@ git commit -m "docs: update parity matrices"
 ---
 
 ## Notes & Constraints
-- No worktrees. All work in the current repo and `/Users/tommy/Documents/TAK/Reticulum-rs`.
+- No worktrees. All work in the current repo and `https://github.com/FreeTAKTeam/Reticulum-rs`.
 - Python reference trees live at `/Users/tommy/Documents/TAK/LXMF` and `/Users/tommy/Documents/TAK/Reticulum`.
 - All parity tests must be byte‑exact against fixtures generated from Python.
 - Prefer small commits per task.
