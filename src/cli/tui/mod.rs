@@ -6,7 +6,7 @@ mod messages;
 mod peers;
 
 use anyhow::{anyhow, Result};
-use crossterm::event::{self, Event, KeyCode, KeyEventKind};
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use crossterm::execute;
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
@@ -18,7 +18,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph, Tabs, Wrap};
 use ratatui::Terminal;
 use serde_json::{json, Value};
-use std::io::{self, Write};
+use std::io;
 use std::time::{Duration, Instant};
 
 use crate::cli::app::{RuntimeContext, TuiCommand};
@@ -28,6 +28,7 @@ use crate::cli::rpc_client::RpcClient;
 
 const FAST_RPC_CONNECT_TIMEOUT: Duration = Duration::from_millis(250);
 const FAST_RPC_IO_TIMEOUT: Duration = Duration::from_millis(800);
+const WELCOME_TIMEOUT: Duration = Duration::from_secs(6);
 const SPINNER: [char; 4] = ['|', '/', '-', '\\'];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -128,6 +129,8 @@ struct TuiState {
     spinner_tick: usize,
     started_at: Instant,
     last_refresh_ms: Option<u128>,
+    welcome_dismissed: bool,
+    composer: Option<ComposeState>,
 }
 
 #[derive(Debug)]
@@ -136,6 +139,76 @@ struct RefreshOutcome {
     warning: Option<String>,
     new_events: usize,
     elapsed_ms: u128,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ComposeField {
+    Destination,
+    Source,
+    Title,
+    Content,
+}
+
+impl ComposeField {
+    fn next(self) -> Self {
+        match self {
+            Self::Destination => Self::Source,
+            Self::Source => Self::Title,
+            Self::Title => Self::Content,
+            Self::Content => Self::Destination,
+        }
+    }
+
+    fn prev(self) -> Self {
+        match self {
+            Self::Destination => Self::Content,
+            Self::Source => Self::Destination,
+            Self::Title => Self::Source,
+            Self::Content => Self::Title,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+struct ComposeState {
+    destination: String,
+    source: String,
+    title: String,
+    content: String,
+    active: Option<ComposeField>,
+}
+
+impl ComposeState {
+    fn new() -> Self {
+        Self {
+            destination: String::new(),
+            source: String::new(),
+            title: String::new(),
+            content: String::new(),
+            active: Some(ComposeField::Destination),
+        }
+    }
+
+    fn active_field(&self) -> ComposeField {
+        self.active.unwrap_or(ComposeField::Destination)
+    }
+
+    fn next_field(&mut self) {
+        self.active = Some(self.active_field().next());
+    }
+
+    fn prev_field(&mut self) {
+        self.active = Some(self.active_field().prev());
+    }
+
+    fn active_value_mut(&mut self) -> &mut String {
+        match self.active_field() {
+            ComposeField::Destination => &mut self.destination,
+            ComposeField::Source => &mut self.source,
+            ComposeField::Title => &mut self.title,
+            ComposeField::Content => &mut self.content,
+        }
+    }
 }
 
 pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
@@ -172,6 +245,8 @@ pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
         spinner_tick: 0,
         started_at: Instant::now(),
         last_refresh_ms: None,
+        welcome_dismissed: false,
+        composer: None,
     };
 
     apply_refresh(ctx, &fast_rpc, &mut state, true);
@@ -192,6 +267,13 @@ pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
             let event = event::read()?;
             if let Event::Key(key) = event {
                 if key.kind != KeyEventKind::Press {
+                    continue;
+                }
+
+                state.welcome_dismissed = true;
+
+                if state.composer.is_some() {
+                    handle_compose_key(key, &fast_rpc, &mut state)?;
                     continue;
                 }
 
@@ -260,16 +342,12 @@ pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
                         apply_refresh(ctx, &fast_rpc, &mut state, true);
                     }
                     KeyCode::Char('s') => {
-                        set_status(&mut state, StatusLevel::Info, "Opening send prompt...");
-                        match prompt_send_message(&mut terminal, &fast_rpc) {
-                            Ok(msg) => set_status(&mut state, StatusLevel::Success, msg),
-                            Err(err) => set_status(
-                                &mut state,
-                                StatusLevel::Error,
-                                format!("send failed: {err}"),
-                            ),
-                        }
-                        apply_refresh(ctx, &fast_rpc, &mut state, true);
+                        state.composer = Some(ComposeState::new());
+                        set_status(
+                            &mut state,
+                            StatusLevel::Info,
+                            "Compose message: fill fields, Enter to advance/send, Esc to cancel",
+                        );
                     }
                     KeyCode::Char('e') => {
                         apply_refresh(ctx, &fast_rpc, &mut state, true);
@@ -296,8 +374,8 @@ fn apply_refresh(ctx: &RuntimeContext, rpc: &RpcClient, state: &mut TuiState, ma
     clamp_selection(state);
 
     if !state.first_refresh_done {
+        state.first_refresh_done = true;
         if outcome.connected {
-            state.first_refresh_done = true;
             set_status(
                 state,
                 StatusLevel::Success,
@@ -424,8 +502,12 @@ fn draw(frame: &mut ratatui::Frame<'_>, state: &TuiState) {
 
     draw_status_bar(frame, chunks[3], state);
 
-    if !state.first_refresh_done || state.started_at.elapsed() < Duration::from_secs(2) {
+    if should_show_welcome_overlay(state) {
         draw_welcome_overlay(frame, state);
+    }
+
+    if state.composer.is_some() {
+        draw_compose_overlay(frame, state);
     }
 }
 
@@ -498,7 +580,7 @@ fn draw_status_bar(frame: &mut ratatui::Frame<'_>, area: Rect, state: &TuiState)
         StatusLevel::Error => state.theme.danger,
     };
 
-    let keys = "keys: q quit | Tab/Shift+Tab switch | j/k move | s send | y sync | u unpeer | a apply | r restart | n announce | e refresh";
+    let keys = "keys: q quit | Tab/Shift+Tab switch | j/k move | s compose | y sync | u unpeer | a apply | r restart | n announce | e refresh";
     let content = vec![
         Line::from(Span::styled(
             state.status_line.as_str(),
@@ -543,7 +625,7 @@ fn draw_welcome_overlay(frame: &mut ratatui::Frame<'_>, state: &TuiState) {
             Style::default().fg(state.theme.muted),
         )),
         Line::from(Span::styled(
-            "Press q to quit.",
+            "Press any key to dismiss.",
             Style::default().fg(state.theme.muted),
         )),
     ];
@@ -564,6 +646,105 @@ fn draw_welcome_overlay(frame: &mut ratatui::Frame<'_>, state: &TuiState) {
     frame.render_widget(popup, area);
 }
 
+fn should_show_welcome_overlay(state: &TuiState) -> bool {
+    !state.welcome_dismissed && state.started_at.elapsed() < WELCOME_TIMEOUT
+}
+
+fn draw_compose_overlay(frame: &mut ratatui::Frame<'_>, state: &TuiState) {
+    let Some(compose) = state.composer.as_ref() else {
+        return;
+    };
+
+    let area = centered_rect(74, 52, frame.area());
+    frame.render_widget(Clear, area);
+
+    let mut lines = Vec::new();
+    lines.push(compose_line(
+        "destination",
+        &compose.destination,
+        compose.active_field() == ComposeField::Destination,
+        true,
+        &state.theme,
+    ));
+    lines.push(compose_line(
+        "source",
+        &compose.source,
+        compose.active_field() == ComposeField::Source,
+        true,
+        &state.theme,
+    ));
+    lines.push(compose_line(
+        "title",
+        &compose.title,
+        compose.active_field() == ComposeField::Title,
+        false,
+        &state.theme,
+    ));
+    lines.push(compose_line(
+        "content",
+        &compose.content,
+        compose.active_field() == ComposeField::Content,
+        true,
+        &state.theme,
+    ));
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "Enter: next/send  Tab: next field  Shift+Tab: previous  Backspace: delete  Esc: cancel",
+        Style::default().fg(state.theme.muted),
+    )));
+
+    let popup = Paragraph::new(lines)
+        .block(
+            Block::default()
+                .title(Span::styled(
+                    "Compose Message",
+                    Style::default()
+                        .fg(state.theme.accent)
+                        .add_modifier(Modifier::BOLD),
+                ))
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(state.theme.border_active))
+                .border_type(BorderType::Rounded),
+        )
+        .wrap(Wrap { trim: true });
+
+    frame.render_widget(popup, area);
+}
+
+fn compose_line(
+    label: &str,
+    value: &str,
+    active: bool,
+    required: bool,
+    theme: &TuiTheme,
+) -> Line<'static> {
+    let label_color = if active { theme.accent } else { theme.muted };
+    let value_style = if active {
+        Style::default()
+            .fg(theme.text)
+            .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
+    } else {
+        Style::default().fg(theme.text)
+    };
+
+    let prompt = if active { "> " } else { "  " };
+    let required_tag = if required { " *" } else { "" };
+    let shown = if value.is_empty() {
+        "<empty>".to_string()
+    } else {
+        value.to_string()
+    };
+
+    Line::from(vec![
+        Span::styled(prompt, Style::default().fg(theme.accent_dim)),
+        Span::styled(
+            format!("{label}{required_tag}: "),
+            Style::default().fg(label_color),
+        ),
+        Span::styled(shown, value_style),
+    ])
+}
+
 fn refresh_snapshot(
     ctx: &RuntimeContext,
     rpc: &RpcClient,
@@ -579,7 +760,13 @@ fn refresh_snapshot(
         Ok(value) => value,
         Err(err) => {
             connected = false;
-            warning = Some(format!("RPC unreachable: {err}"));
+            warning = Some(if ctx.profile_settings.managed {
+                format!(
+                    "RPC unreachable: {err}. Managed profile detected; press r to start/restart daemon."
+                )
+            } else {
+                format!("RPC unreachable: {err}. Start a daemon or set the correct --rpc endpoint.")
+            });
             snapshot.daemon_running = false;
             return RefreshOutcome {
                 connected,
@@ -657,24 +844,76 @@ fn refresh_snapshot(
     }
 }
 
-fn prompt_send_message(
-    terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
-    rpc: &RpcClient,
-) -> Result<String> {
-    disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+fn handle_compose_key(key: KeyEvent, rpc: &RpcClient, state: &mut TuiState) -> Result<()> {
+    let mut close = false;
+    let mut submit = false;
+    let mut status: Option<(StatusLevel, String)> = None;
 
-    let destination = prompt_line("destination (hex)")?;
-    let source = prompt_line("source (hex)")?;
-    let title = prompt_line("title")?;
-    let content = prompt_line("content")?;
+    let Some(composer) = state.composer.as_mut() else {
+        return Ok(());
+    };
 
-    execute!(terminal.backend_mut(), EnterAlternateScreen)?;
-    enable_raw_mode()?;
+    match key.code {
+        KeyCode::Esc => {
+            close = true;
+            status = Some((StatusLevel::Info, "message composition canceled".into()));
+        }
+        KeyCode::Tab | KeyCode::Down => composer.next_field(),
+        KeyCode::BackTab | KeyCode::Up => composer.prev_field(),
+        KeyCode::Enter => {
+            if composer.active_field() == ComposeField::Content {
+                submit = true;
+            } else {
+                composer.next_field();
+            }
+        }
+        KeyCode::Backspace => {
+            composer.active_value_mut().pop();
+        }
+        KeyCode::Delete => {
+            composer.active_value_mut().clear();
+        }
+        KeyCode::Char(c) => {
+            composer.active_value_mut().push(c);
+        }
+        _ => {}
+    }
+
+    if submit {
+        let payload = state
+            .composer
+            .clone()
+            .ok_or_else(|| anyhow!("composer state disappeared"))?;
+        match send_message_from_composer(rpc, &payload) {
+            Ok(message) => {
+                close = true;
+                status = Some((StatusLevel::Success, message));
+            }
+            Err(err) => {
+                status = Some((StatusLevel::Error, format!("send failed: {err}")));
+            }
+        }
+    }
+
+    if close {
+        state.composer = None;
+    }
+
+    if let Some((level, message)) = status {
+        set_status(state, level, message);
+    }
+
+    Ok(())
+}
+
+fn send_message_from_composer(rpc: &RpcClient, compose: &ComposeState) -> Result<String> {
+    let destination = compose.destination.trim();
+    let source = compose.source.trim();
+    let content = compose.content.trim();
 
     if destination.is_empty() || source.is_empty() || content.is_empty() {
         return Err(anyhow!(
-            "destination, source, and content are required for send"
+            "destination, source, and content are required before sending"
         ));
     }
 
@@ -682,7 +921,7 @@ fn prompt_send_message(
         "id": format!("tui-{}", chrono_like_now_secs()),
         "destination": destination,
         "source": source,
-        "title": title,
+        "title": compose.title.trim(),
         "content": content,
     });
 
@@ -693,14 +932,6 @@ fn prompt_send_message(
             Ok("message queued (legacy api)".into())
         }
     }
-}
-
-fn prompt_line(label: &str) -> Result<String> {
-    print!("{label}: ");
-    io::stdout().flush()?;
-    let mut line = String::new();
-    io::stdin().read_line(&mut line)?;
-    Ok(line.trim().to_string())
 }
 
 fn restart_daemon(ctx: &RuntimeContext) -> Result<String> {
