@@ -84,6 +84,34 @@ pub fn pn_stamp_cost_from_app_data(data: &[u8]) -> Option<u32> {
     value_to_u32(stamp_costs.first()?)
 }
 
+pub fn display_name_from_app_data(data: &[u8]) -> Option<String> {
+    if data.is_empty() {
+        return None;
+    }
+
+    if is_msgpack_array_prefix(data[0]) {
+        let decoded: Value = rmp_serde::from_slice(data).ok()?;
+        let entries = match decoded {
+            Value::Array(entries) => entries,
+            _ => return None,
+        };
+
+        let first = entries.first()?;
+        return match first {
+            Value::Nil => None,
+            Value::Binary(bytes) => String::from_utf8(bytes.clone()).ok(),
+            Value::String(text) => text.as_str().map(|s| s.to_string()),
+            _ => None,
+        };
+    }
+
+    std::str::from_utf8(data).ok().map(|s| s.to_string())
+}
+
+fn is_msgpack_array_prefix(byte: u8) -> bool {
+    (0x90..=0x9f).contains(&byte) || byte == 0xdc || byte == 0xdd
+}
+
 fn value_is_int(value: &Value) -> bool {
     value.as_i64().is_some() || value.as_u64().is_some()
 }
