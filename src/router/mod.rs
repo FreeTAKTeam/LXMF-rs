@@ -59,6 +59,8 @@ pub struct RouterStats {
     pub peer_sync_runs_total: usize,
     pub peer_sync_items_total: usize,
     pub peer_sync_rejected_total: usize,
+    pub paper_uri_ingested_total: usize,
+    pub paper_uri_duplicate_total: usize,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -106,6 +108,14 @@ pub struct OutboundProcessResult {
     pub status: OutboundStatus,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PaperIngestResult {
+    pub destination: [u8; 16],
+    pub transient_id: Vec<u8>,
+    pub bytes_len: usize,
+    pub duplicate: bool,
+}
+
 type DeliveryCallback = Box<dyn FnMut(&WireMessage) + Send + Sync + 'static>;
 type OutboundProgressCallback = Box<dyn FnMut(&[u8], u8) + Send + Sync + 'static>;
 
@@ -131,6 +141,7 @@ pub struct Router {
     ticket_cache: BTreeMap<[u8; 16], Ticket>,
     propagation_transfers: BTreeMap<Vec<u8>, PropagationTransferState>,
     peers: BTreeMap<[u8; 16], Peer>,
+    paper_messages: BTreeMap<Vec<u8>, Vec<u8>>,
     delivery_callbacks: Vec<DeliveryCallback>,
     outbound_progress_callbacks: Vec<OutboundProgressCallback>,
 }
@@ -448,6 +459,54 @@ impl Router {
         };
         peer.process_queues();
         true
+    }
+
+    pub fn ingest_lxm_uri(&mut self, uri: &str) -> Result<PaperIngestResult, LxmfError> {
+        let paper = WireMessage::decode_lxm_uri(uri)?;
+        self.ingest_paper_message_bytes(&paper)
+    }
+
+    pub fn ingest_paper_message_bytes(
+        &mut self,
+        paper: &[u8],
+    ) -> Result<PaperIngestResult, LxmfError> {
+        if paper.len() <= 16 {
+            return Err(LxmfError::Decode("paper message too short".into()));
+        }
+
+        let mut destination = [0u8; 16];
+        destination.copy_from_slice(&paper[..16]);
+        let transient_id = reticulum::hash::Hash::new_from_slice(paper)
+            .to_bytes()
+            .to_vec();
+        let duplicate = self.paper_messages.contains_key(&transient_id);
+
+        if duplicate {
+            self.stats.paper_uri_duplicate_total += 1;
+        } else {
+            self.paper_messages
+                .insert(transient_id.clone(), paper.to_vec());
+            self.stats.paper_uri_ingested_total += 1;
+            self.register_peer(destination);
+            self.queue_peer_unhandled(destination, &transient_id);
+        }
+
+        Ok(PaperIngestResult {
+            destination,
+            transient_id,
+            bytes_len: paper.len(),
+            duplicate,
+        })
+    }
+
+    pub fn paper_message(&self, transient_id: &[u8]) -> Option<&[u8]> {
+        self.paper_messages
+            .get(transient_id)
+            .map(std::vec::Vec::as_slice)
+    }
+
+    pub fn paper_message_count(&self) -> usize {
+        self.paper_messages.len()
     }
 
     pub fn build_peer_sync_batch(

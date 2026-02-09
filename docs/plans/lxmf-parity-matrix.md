@@ -42,6 +42,7 @@ Status legend: `not-started` | `partial` | `done`.
 - PARITY_ITEM id=router.outbound_queue status=done tests=tests/router_api.rs,tests/router_parity.rs
 - PARITY_ITEM id=router.handle_outbound_policy status=done tests=tests/router_behavior.rs
 - PARITY_ITEM id=router.adapter_transport status=done tests=tests/router_transport.rs
+- PARITY_ITEM id=router.paper_uri_ingest status=done tests=tests/router_paper_uri.rs
 - PARITY_ITEM id=router.cancel_outbound status=done tests=tests/router_behavior.rs
 - PARITY_ITEM id=router.propagation_ingest_fetch status=done tests=tests/router_propagation.rs
 - PARITY_ITEM id=router.transfer_state_lifecycle status=done tests=tests/router_behavior.rs
