@@ -276,6 +276,13 @@ struct InterfaceEditorState {
     port: String,
     enabled: bool,
     active: Option<InterfaceField>,
+    mode: InterfaceEditorMode,
+}
+
+#[derive(Debug, Clone)]
+enum InterfaceEditorMode {
+    Add,
+    Edit { original_name: String },
 }
 
 impl InterfaceEditorState {
@@ -287,6 +294,44 @@ impl InterfaceEditorState {
             port: String::new(),
             enabled: true,
             active: Some(InterfaceField::Name),
+            mode: InterfaceEditorMode::Add,
+        }
+    }
+
+    fn from_existing(iface: &Value) -> Self {
+        Self {
+            name: iface
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            kind: iface
+                .get("type")
+                .and_then(Value::as_str)
+                .unwrap_or("tcp_client")
+                .to_string(),
+            host: iface
+                .get("host")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            port: iface
+                .get("port")
+                .and_then(Value::as_u64)
+                .map(|port| port.to_string())
+                .unwrap_or_default(),
+            enabled: iface
+                .get("enabled")
+                .and_then(Value::as_bool)
+                .unwrap_or(true),
+            active: Some(InterfaceField::Name),
+            mode: InterfaceEditorMode::Edit {
+                original_name: iface
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+            },
         }
     }
 
@@ -600,6 +645,18 @@ pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
                             );
                         }
                     }
+                    KeyCode::Enter => {
+                        if state.pane == Pane::Interfaces {
+                            match open_selected_interface_editor(&mut state) {
+                                Ok(msg) => set_status(&mut state, StatusLevel::Info, msg),
+                                Err(err) => set_status(
+                                    &mut state,
+                                    StatusLevel::Error,
+                                    format!("edit failed: {err}"),
+                                ),
+                            }
+                        }
+                    }
                     KeyCode::Char('t') => {
                         if state.pane == Pane::Interfaces {
                             match toggle_selected_interface(ctx, &mut state) {
@@ -910,7 +967,7 @@ fn draw_status_bar(frame: &mut ratatui::Frame<'_>, area: Rect, state: &TuiState)
         StatusLevel::Error => state.theme.danger,
     };
 
-    let keys = "keys: q quit | Tab/Shift+Tab panes | s compose | p profile | i/t/x/a interfaces | y sync | u unpeer | r start/restart | n announce | e refresh";
+    let keys = "keys: q quit | Tab/Shift+Tab panes | s compose | p profile | Enter edit iface | i/t/x/a interfaces | y sync | u unpeer | r start/restart | n announce | e refresh";
     let content = vec![
         Line::from(Span::styled(
             state.status_line.as_str(),
@@ -951,7 +1008,7 @@ fn draw_welcome_overlay(frame: &mut ratatui::Frame<'_>, state: &TuiState) {
         )),
         Line::from(""),
         Line::from(Span::styled(
-            "Quick start: Tab switch panes, n announce, s send, p profile settings, i/t/x/a interfaces, y sync peer.",
+            "Quick start: Tab panes, n announce, s send, p profile, Enter edit iface, i/t/x/a interfaces.",
             Style::default().fg(state.theme.muted),
         )),
         Line::from(Span::styled(
@@ -1128,11 +1185,16 @@ fn draw_interface_editor_overlay(frame: &mut ratatui::Frame<'_>, state: &TuiStat
         Style::default().fg(state.theme.muted),
     )));
 
+    let title = match editor.mode {
+        InterfaceEditorMode::Add => "Add Interface",
+        InterfaceEditorMode::Edit { .. } => "Edit Interface",
+    };
+
     let popup = Paragraph::new(lines)
         .block(
             Block::default()
                 .title(Span::styled(
-                    "Add Interface",
+                    title,
                     Style::default()
                         .fg(state.theme.accent)
                         .add_modifier(Modifier::BOLD),
@@ -1518,6 +1580,11 @@ fn save_interface_from_editor(
     };
 
     let mut config = load_reticulum_config(&ctx.profile_name)?;
+    if let InterfaceEditorMode::Edit { original_name } = &editor.mode {
+        if original_name != name {
+            remove_interface(&mut config, original_name);
+        }
+    }
     upsert_interface(
         &mut config,
         InterfaceEntry {
@@ -1533,7 +1600,11 @@ fn save_interface_from_editor(
         },
     );
     save_reticulum_config(&ctx.profile_name, &config)?;
-    Ok(format!("interface '{name}' saved (run a to apply)"))
+    let verb = match editor.mode {
+        InterfaceEditorMode::Add => "added",
+        InterfaceEditorMode::Edit { .. } => "updated",
+    };
+    Ok(format!("interface '{name}' {verb} (run a to apply)"))
 }
 
 fn toggle_selected_interface(ctx: &RuntimeContext, state: &mut TuiState) -> Result<String> {
@@ -1575,6 +1646,20 @@ fn remove_selected_interface(ctx: &RuntimeContext, state: &mut TuiState) -> Resu
     reload_interfaces_from_local(ctx, &mut state.snapshot)?;
     clamp_selection(state);
     Ok(format!("interface '{}' removed (run a to apply)", name))
+}
+
+fn open_selected_interface_editor(state: &mut TuiState) -> Result<String> {
+    let Some(iface) = state.snapshot.interfaces.get(state.selected_interface) else {
+        return Err(anyhow!("no interface selected"));
+    };
+    let name = iface
+        .get("name")
+        .and_then(Value::as_str)
+        .unwrap_or("<unnamed>");
+    state.interface_editor = Some(InterfaceEditorState::from_existing(iface));
+    Ok(format!(
+        "Edit interface '{name}': Enter to save, Esc to cancel"
+    ))
 }
 
 fn reload_interfaces_from_local(ctx: &RuntimeContext, snapshot: &mut TuiSnapshot) -> Result<()> {

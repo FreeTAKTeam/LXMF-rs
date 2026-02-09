@@ -17,10 +17,16 @@ pub fn render(
     active: bool,
 ) {
     let items = if interfaces.is_empty() {
-        vec![ListItem::new(Line::from(Span::styled(
-            "No interfaces configured. Use CLI: lxmf iface add ...",
-            Style::default().fg(theme.muted),
-        )))]
+        vec![
+            ListItem::new(Line::from(Span::styled(
+                "No interfaces configured.",
+                Style::default().fg(theme.muted),
+            ))),
+            ListItem::new(Line::from(Span::styled(
+                "Press i to add a new interface.",
+                Style::default().fg(theme.accent_dim),
+            ))),
+        ]
     } else {
         interfaces
             .iter()
@@ -83,7 +89,7 @@ pub fn render(
     let list = List::new(items).block(
         Block::default()
             .title(Span::styled(
-                "Interfaces  (i add, t toggle, x remove, a apply)",
+                "Interfaces  (Enter edit, i add, t toggle, x remove, a apply)",
                 Style::default().fg(theme.accent),
             ))
             .borders(Borders::ALL)
