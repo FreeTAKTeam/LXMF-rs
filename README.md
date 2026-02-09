@@ -128,6 +128,19 @@ Release hardening and publication gates are tracked in:
 - `docs/plans/lxmf-parity-matrix.md`
 - `docs/plans/reticulum-parity-matrix.md`
 
+## Rust Operator CLI + TUI
+
+In addition to the compatibility `lxmd` binary, this repository now includes an operator-facing Rust CLI:
+
+```bash
+cargo run --bin lxmf -- --help
+```
+
+Operator docs:
+
+- `docs/lxmf-cli.md`
+- `docs/lxmf-tui.md`
+
 ## Example Paper Message
 
 You can try out the paper messaging functionality by using the following QR code. It is a paper message sent to the LXMF address `6b3362bd2c1dbf87b66a85f79a8d8c75`. To be able to decrypt and read the message, you will need to import the following Reticulum Identity to an LXMF messaging app:
