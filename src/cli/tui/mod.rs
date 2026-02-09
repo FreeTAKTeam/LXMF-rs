@@ -1,3 +1,4 @@
+mod contacts;
 mod dashboard;
 mod events;
 mod interfaces;
@@ -22,13 +23,17 @@ use std::io;
 use std::time::{Duration, Instant};
 
 use crate::cli::app::{RuntimeContext, TuiCommand};
+use crate::cli::contacts::{
+    find_contact_by_hash, load_contacts, remove_contact_by_alias, resolve_contact_hash,
+    save_contacts, upsert_contact, validate_contact, ContactEntry,
+};
 use crate::cli::daemon::DaemonSupervisor;
 use crate::cli::profile::{
     load_profile_settings, load_reticulum_config, normalize_optional_display_name,
     remove_interface, save_profile_settings, save_reticulum_config, set_interface_enabled,
     upsert_interface, InterfaceEntry, ProfileSettings,
 };
-use crate::cli::rpc_client::RpcClient;
+use crate::cli::rpc_client::{RpcClient, RpcEvent};
 
 const FAST_RPC_CONNECT_TIMEOUT: Duration = Duration::from_millis(120);
 const FAST_RPC_IO_TIMEOUT: Duration = Duration::from_millis(240);
@@ -45,17 +50,19 @@ enum Pane {
     Dashboard,
     Messages,
     Peers,
+    Contacts,
     Interfaces,
     Events,
     Logs,
 }
 
 impl Pane {
-    fn all() -> [Self; 6] {
+    fn all() -> [Self; 7] {
         [
             Self::Dashboard,
             Self::Messages,
             Self::Peers,
+            Self::Contacts,
             Self::Interfaces,
             Self::Events,
             Self::Logs,
@@ -67,6 +74,7 @@ impl Pane {
             Self::Dashboard => "Dashboard",
             Self::Messages => "Messages",
             Self::Peers => "Peers",
+            Self::Contacts => "Contacts",
             Self::Interfaces => "Interfaces",
             Self::Events => "Events",
             Self::Logs => "Logs",
@@ -118,6 +126,7 @@ pub struct TuiSnapshot {
     pub daemon_running: bool,
     pub messages: Vec<Value>,
     pub peers: Vec<Value>,
+    pub contacts: Vec<Value>,
     pub interfaces: Vec<Value>,
     pub events: Vec<String>,
     pub logs: Vec<String>,
@@ -128,6 +137,7 @@ struct TuiState {
     pane: Pane,
     selected_message: usize,
     selected_peer: usize,
+    selected_contact: usize,
     selected_interface: usize,
     status_line: String,
     status_level: StatusLevel,
@@ -140,6 +150,7 @@ struct TuiState {
     last_refresh_ms: Option<u128>,
     welcome_dismissed: bool,
     composer: Option<ComposeState>,
+    contact_editor: Option<ContactEditorState>,
     interface_editor: Option<InterfaceEditorState>,
     profile_editor: Option<ProfileEditorState>,
     peer_filter: String,
@@ -248,6 +259,122 @@ impl ProfileEditorState {
 struct ProfileSaveResult {
     rpc: String,
     managed: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ContactField {
+    Alias,
+    Hash,
+    Notes,
+}
+
+impl ContactField {
+    fn next(self) -> Self {
+        match self {
+            Self::Alias => Self::Hash,
+            Self::Hash => Self::Notes,
+            Self::Notes => Self::Alias,
+        }
+    }
+
+    fn prev(self) -> Self {
+        match self {
+            Self::Alias => Self::Notes,
+            Self::Hash => Self::Alias,
+            Self::Notes => Self::Hash,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct ContactEditorState {
+    alias: String,
+    hash: String,
+    notes: String,
+    active: Option<ContactField>,
+    mode: ContactEditorMode,
+}
+
+#[derive(Debug, Clone)]
+enum ContactEditorMode {
+    Add,
+    Edit { original_alias: String },
+}
+
+impl ContactEditorState {
+    fn new() -> Self {
+        Self {
+            alias: String::new(),
+            hash: String::new(),
+            notes: String::new(),
+            active: Some(ContactField::Alias),
+            mode: ContactEditorMode::Add,
+        }
+    }
+
+    fn from_existing(contact: &Value) -> Self {
+        Self {
+            alias: contact
+                .get("alias")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            hash: contact
+                .get("hash")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            notes: contact
+                .get("notes")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            active: Some(ContactField::Alias),
+            mode: ContactEditorMode::Edit {
+                original_alias: contact
+                    .get("alias")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+            },
+        }
+    }
+
+    fn from_peer(peer: &Value) -> Self {
+        let alias = peer_display_name(peer).unwrap_or_default().to_string();
+        let hash = peer
+            .get("peer")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        Self {
+            alias,
+            hash,
+            notes: String::new(),
+            active: Some(ContactField::Alias),
+            mode: ContactEditorMode::Add,
+        }
+    }
+
+    fn active_field(&self) -> ContactField {
+        self.active.unwrap_or(ContactField::Alias)
+    }
+
+    fn next_field(&mut self) {
+        self.active = Some(self.active_field().next());
+    }
+
+    fn prev_field(&mut self) {
+        self.active = Some(self.active_field().prev());
+    }
+
+    fn active_value_mut(&mut self) -> &mut String {
+        match self.active_field() {
+            ContactField::Alias => &mut self.alias,
+            ContactField::Hash => &mut self.hash,
+            ContactField::Notes => &mut self.notes,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -466,6 +593,7 @@ pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
         pane: Pane::Dashboard,
         selected_message: 0,
         selected_peer: 0,
+        selected_contact: 0,
         selected_interface: 0,
         status_line: format!("Opening LXMF TUI on {}...", ctx.profile_settings.rpc),
         status_level: StatusLevel::Info,
@@ -482,6 +610,7 @@ pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
         last_refresh_ms: None,
         welcome_dismissed: false,
         composer: None,
+        contact_editor: None,
         interface_editor: None,
         profile_editor: None,
         peer_filter: String::new(),
@@ -503,6 +632,7 @@ pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
 
         let now = Instant::now();
         if state.composer.is_none()
+            && state.contact_editor.is_none()
             && state.interface_editor.is_none()
             && state.profile_editor.is_none()
             && now >= next_refresh_due
@@ -523,7 +653,12 @@ pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
                 state.welcome_dismissed = true;
 
                 if state.composer.is_some() {
-                    handle_compose_key(key, &fast_rpc, &mut state)?;
+                    handle_compose_key(key, ctx, &fast_rpc, &mut state)?;
+                    continue;
+                }
+
+                if state.contact_editor.is_some() {
+                    handle_contact_editor_key(key, ctx, &mut state)?;
                     continue;
                 }
 
@@ -662,6 +797,13 @@ pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
                             apply_refresh(ctx, &fast_rpc, &mut state, true);
                             next_refresh_due =
                                 next_refresh_deadline(command.refresh_ms, state.connected);
+                        } else if state.pane == Pane::Contacts {
+                            state.contact_editor = Some(ContactEditorState::new());
+                            set_status(
+                                &mut state,
+                                StatusLevel::Info,
+                                "New contact: Enter to advance/save, Esc to cancel",
+                            );
                         }
                     }
                     KeyCode::Char('y') => match sync_selected_peer(&fast_rpc, &state) {
@@ -686,7 +828,16 @@ pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
                             next_refresh_deadline(command.refresh_ms, state.connected);
                     }
                     KeyCode::Char('s') => {
-                        if state.pane == Pane::Peers {
+                        if state.pane == Pane::Contacts {
+                            match open_compose_from_selected_contact(&mut state) {
+                                Ok(msg) => set_status(&mut state, StatusLevel::Info, msg),
+                                Err(err) => set_status(
+                                    &mut state,
+                                    StatusLevel::Error,
+                                    format!("compose failed: {err}"),
+                                ),
+                            }
+                        } else if state.pane == Pane::Peers {
                             match open_compose_from_selected_peer(&mut state) {
                                 Ok(msg) => set_status(&mut state, StatusLevel::Info, msg),
                                 Err(err) => set_status(
@@ -736,6 +887,15 @@ pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
                                     format!("edit failed: {err}"),
                                 ),
                             }
+                        } else if state.pane == Pane::Contacts {
+                            match open_selected_contact_editor(&mut state) {
+                                Ok(msg) => set_status(&mut state, StatusLevel::Info, msg),
+                                Err(err) => set_status(
+                                    &mut state,
+                                    StatusLevel::Error,
+                                    format!("edit failed: {err}"),
+                                ),
+                            }
                         } else if state.pane == Pane::Peers {
                             match open_selected_peer_details(&mut state) {
                                 Ok(msg) => set_status(&mut state, StatusLevel::Info, msg),
@@ -767,6 +927,27 @@ pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
                                     &mut state,
                                     StatusLevel::Error,
                                     format!("remove failed: {err}"),
+                                ),
+                            }
+                        } else if state.pane == Pane::Contacts {
+                            match remove_selected_contact(ctx, &mut state) {
+                                Ok(msg) => set_status(&mut state, StatusLevel::Success, msg),
+                                Err(err) => set_status(
+                                    &mut state,
+                                    StatusLevel::Error,
+                                    format!("remove failed: {err}"),
+                                ),
+                            }
+                        }
+                    }
+                    KeyCode::Char('c') => {
+                        if state.pane == Pane::Peers {
+                            match open_contact_editor_from_selected_peer(&mut state) {
+                                Ok(msg) => set_status(&mut state, StatusLevel::Info, msg),
+                                Err(err) => set_status(
+                                    &mut state,
+                                    StatusLevel::Error,
+                                    format!("contact add failed: {err}"),
                                 ),
                             }
                         }
@@ -959,6 +1140,14 @@ fn draw(frame: &mut ratatui::Frame<'_>, state: &TuiState) {
             &state.peer_filter,
             state.peer_filter_editing,
         ),
+        Pane::Contacts => contacts::render(
+            frame,
+            chunks[2],
+            &state.snapshot.contacts,
+            state.selected_contact,
+            &state.theme,
+            true,
+        ),
         Pane::Interfaces => interfaces::render(
             frame,
             chunks[2],
@@ -981,6 +1170,10 @@ fn draw(frame: &mut ratatui::Frame<'_>, state: &TuiState) {
 
     if state.composer.is_some() {
         draw_compose_overlay(frame, state);
+    }
+
+    if state.contact_editor.is_some() {
+        draw_contact_editor_overlay(frame, state);
     }
 
     if state.interface_editor.is_some() {
@@ -1069,7 +1262,7 @@ fn draw_status_bar(frame: &mut ratatui::Frame<'_>, area: Rect, state: &TuiState)
         StatusLevel::Error => state.theme.danger,
     };
 
-    let keys = "keys: q quit | Tab/Shift+Tab panes | s compose (Peers: prefilled destination) | p profile | / peer filter | Enter peer details/iface edit | i/t/x/a interfaces | d discover | y sync | u unpeer | r start/restart | n announce | e refresh";
+    let keys = "keys: q quit | Tab/Shift+Tab panes | s compose (Peers/Contacts prefilled) | c save peer->contact | p profile | / peer filter | Enter peer details/contact edit/iface edit | a add contact or apply iface | x remove contact/iface | d discover | y sync | u unpeer | r start/restart | n announce | e refresh";
     let content = vec![
         Line::from(Span::styled(
             state.status_line.as_str(),
@@ -1110,7 +1303,7 @@ fn draw_welcome_overlay(frame: &mut ratatui::Frame<'_>, state: &TuiState) {
         )),
         Line::from(""),
         Line::from(Span::styled(
-            "Quick start: Tab panes, d discover, n announce, s send (Peers prefill destination), / filter peers, Enter peer details/edit iface, p profile, i/t/x/a interfaces.",
+            "Quick start: Tab panes, d discover, n announce, s send (Peers/Contacts prefill destination), c save peer as contact, / filter peers, Enter peer details/contact edit/iface edit, p profile, i/t/x/a interfaces.",
             Style::default().fg(state.theme.muted),
         )),
         Line::from(Span::styled(
@@ -1197,6 +1390,64 @@ fn draw_compose_overlay(frame: &mut ratatui::Frame<'_>, state: &TuiState) {
         )
         .wrap(Wrap { trim: true });
 
+    frame.render_widget(popup, area);
+}
+
+fn draw_contact_editor_overlay(frame: &mut ratatui::Frame<'_>, state: &TuiState) {
+    let Some(editor) = state.contact_editor.as_ref() else {
+        return;
+    };
+
+    let area = centered_rect(72, 48, frame.area());
+    frame.render_widget(Clear, area);
+
+    let mut lines = Vec::new();
+    lines.push(interface_line(
+        "alias",
+        &editor.alias,
+        editor.active_field() == ContactField::Alias,
+        true,
+        &state.theme,
+    ));
+    lines.push(interface_line(
+        "hash",
+        &editor.hash,
+        editor.active_field() == ContactField::Hash,
+        true,
+        &state.theme,
+    ));
+    lines.push(interface_line(
+        "notes",
+        &editor.notes,
+        editor.active_field() == ContactField::Notes,
+        false,
+        &state.theme,
+    ));
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "Enter: next/save  Tab: next field  Shift+Tab: previous  Esc: cancel",
+        Style::default().fg(state.theme.muted),
+    )));
+
+    let title = match editor.mode {
+        ContactEditorMode::Add => "Add Contact",
+        ContactEditorMode::Edit { .. } => "Edit Contact",
+    };
+
+    let popup = Paragraph::new(lines)
+        .block(
+            Block::default()
+                .title(Span::styled(
+                    title,
+                    Style::default()
+                        .fg(state.theme.accent)
+                        .add_modifier(Modifier::BOLD),
+                ))
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(state.theme.border_active))
+                .border_type(BorderType::Rounded),
+        )
+        .wrap(Wrap { trim: true });
     frame.render_widget(popup, area);
 }
 
@@ -1510,11 +1761,7 @@ fn draw_peer_details_overlay(frame: &mut ratatui::Frame<'_>, state: &TuiState) {
     let area = centered_rect(70, 50, frame.area());
     frame.render_widget(Clear, area);
 
-    let name = peer
-        .get("name")
-        .and_then(Value::as_str)
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or("<unknown>");
+    let name = peer_display_name(peer).unwrap_or("<unknown>");
     let hash = peer
         .get("peer")
         .and_then(Value::as_str)
@@ -1714,6 +1961,75 @@ fn optional_trimmed_string(value: &str) -> Option<String> {
     } else {
         Some(trimmed.to_string())
     }
+}
+
+fn handle_contact_editor_key(
+    key: KeyEvent,
+    ctx: &RuntimeContext,
+    state: &mut TuiState,
+) -> Result<()> {
+    let mut close = false;
+    let mut submit = false;
+    let mut status: Option<(StatusLevel, String)> = None;
+
+    let Some(editor) = state.contact_editor.as_mut() else {
+        return Ok(());
+    };
+
+    match key.code {
+        KeyCode::Esc => {
+            close = true;
+            status = Some((StatusLevel::Info, "contact edit canceled".into()));
+        }
+        KeyCode::Tab | KeyCode::Down => editor.next_field(),
+        KeyCode::BackTab | KeyCode::Up => editor.prev_field(),
+        KeyCode::Enter => {
+            if editor.active_field() == ContactField::Notes {
+                submit = true;
+            } else {
+                editor.next_field();
+            }
+        }
+        KeyCode::Backspace => {
+            editor.active_value_mut().pop();
+        }
+        KeyCode::Delete => {
+            editor.active_value_mut().clear();
+        }
+        KeyCode::Char(c) => {
+            editor.active_value_mut().push(c);
+        }
+        _ => {}
+    }
+
+    if submit {
+        let payload = state
+            .contact_editor
+            .clone()
+            .ok_or_else(|| anyhow!("contact editor state disappeared"))?;
+        match save_contact_from_editor(ctx, &payload) {
+            Ok(msg) => {
+                close = true;
+                status = Some((StatusLevel::Success, msg));
+                reload_contacts_from_local(ctx, &mut state.snapshot)?;
+                annotate_snapshot_peers_with_contacts(&mut state.snapshot);
+                clamp_selection(state);
+            }
+            Err(err) => {
+                status = Some((StatusLevel::Error, format!("contact save failed: {err}")));
+            }
+        }
+    }
+
+    if close {
+        state.contact_editor = None;
+    }
+
+    if let Some((level, message)) = status {
+        set_status(state, level, message);
+    }
+
+    Ok(())
 }
 
 fn handle_interface_editor_key(
@@ -1933,6 +2249,19 @@ fn refresh_snapshot(
     let mut warning = None;
     let mut connected = true;
     let mut new_events = 0usize;
+    let mut peers_changed_from_events = false;
+    let mut contacts = Vec::new();
+
+    match load_contacts(&ctx.profile_name) {
+        Ok(value) => {
+            contacts = value;
+            snapshot.contacts = contacts_to_values(&contacts);
+        }
+        Err(err) => {
+            warning.get_or_insert_with(|| format!("contacts unavailable: {err}"));
+            snapshot.contacts.clear();
+        }
+    }
 
     match rpc.call("daemon_status_ex", None) {
         Ok(value) => {
@@ -1957,7 +2286,10 @@ fn refresh_snapshot(
         }
 
         match rpc.call("list_peers", None) {
-            Ok(peers) => snapshot.peers = as_vec(peers, "peers"),
+            Ok(peers) => {
+                snapshot.peers = as_vec(peers, "peers");
+                annotate_peers_with_contacts(&mut snapshot.peers, &contacts);
+            }
             Err(err) => {
                 warning.get_or_insert_with(|| format!("peers unavailable: {err}"));
             }
@@ -1977,6 +2309,7 @@ fn refresh_snapshot(
                         .events
                         .push(serde_json::to_string(&event).unwrap_or_else(|_| "<event>".into()));
                     new_events += 1;
+                    peers_changed_from_events |= merge_peer_from_event(&mut snapshot.peers, &event);
                     if snapshot.events.len() > 400 {
                         let remove = snapshot.events.len().saturating_sub(400);
                         snapshot.events.drain(0..remove);
@@ -1988,6 +2321,19 @@ fn refresh_snapshot(
                     break;
                 }
             }
+        }
+
+        if peers_changed_from_events {
+            snapshot.peers.sort_by(|a, b| {
+                let a_last_seen = a.get("last_seen").and_then(Value::as_i64).unwrap_or(0);
+                let b_last_seen = b.get("last_seen").and_then(Value::as_i64).unwrap_or(0);
+                let a_hash = a.get("peer").and_then(Value::as_str).unwrap_or("");
+                let b_hash = b.get("peer").and_then(Value::as_str).unwrap_or("");
+                b_last_seen
+                    .cmp(&a_last_seen)
+                    .then_with(|| a_hash.cmp(b_hash))
+            });
+            annotate_peers_with_contacts(&mut snapshot.peers, &contacts);
         }
     } else {
         snapshot.messages.clear();
@@ -2021,7 +2367,12 @@ fn refresh_snapshot(
     }
 }
 
-fn handle_compose_key(key: KeyEvent, rpc: &RpcClient, state: &mut TuiState) -> Result<()> {
+fn handle_compose_key(
+    key: KeyEvent,
+    ctx: &RuntimeContext,
+    rpc: &RpcClient,
+    state: &mut TuiState,
+) -> Result<()> {
     let mut close = false;
     let mut submit = false;
     let mut status: Option<(StatusLevel, String)> = None;
@@ -2061,7 +2412,7 @@ fn handle_compose_key(key: KeyEvent, rpc: &RpcClient, state: &mut TuiState) -> R
             .composer
             .clone()
             .ok_or_else(|| anyhow!("composer state disappeared"))?;
-        match send_message_from_composer(rpc, &payload) {
+        match send_message_from_composer(ctx, rpc, &payload) {
             Ok(message) => {
                 close = true;
                 status = Some((StatusLevel::Success, message));
@@ -2083,7 +2434,12 @@ fn handle_compose_key(key: KeyEvent, rpc: &RpcClient, state: &mut TuiState) -> R
     Ok(())
 }
 
-fn send_message_from_composer(rpc: &RpcClient, compose: &ComposeState) -> Result<String> {
+fn send_message_from_composer(
+    ctx: &RuntimeContext,
+    rpc: &RpcClient,
+    compose: &ComposeState,
+) -> Result<String> {
+    let contacts = load_contacts(&ctx.profile_name).unwrap_or_default();
     let destination = compose.destination.trim();
     let source = compose.source.trim();
     let content = compose.content.trim();
@@ -2094,10 +2450,15 @@ fn send_message_from_composer(rpc: &RpcClient, compose: &ComposeState) -> Result
         ));
     }
 
+    let resolved_destination =
+        resolve_contact_hash(&contacts, destination).unwrap_or_else(|| destination.to_string());
+    let resolved_source =
+        resolve_contact_hash(&contacts, source).unwrap_or_else(|| source.to_string());
+
     let params = json!({
         "id": format!("tui-{}", chrono_like_now_secs()),
-        "destination": destination,
-        "source": source,
+        "destination": resolved_destination,
+        "source": resolved_source,
         "title": compose.title.trim(),
         "content": content,
     });
@@ -2282,6 +2643,43 @@ fn apply_interfaces(ctx: &RuntimeContext, rpc: &RpcClient) -> Result<String> {
     Ok("interfaces applied".into())
 }
 
+fn save_contact_from_editor(ctx: &RuntimeContext, editor: &ContactEditorState) -> Result<String> {
+    let mut contacts = load_contacts(&ctx.profile_name)?;
+    let alias = editor.alias.trim().to_string();
+    let hash = editor.hash.trim().to_string();
+    let notes = optional_trimmed_string(&editor.notes);
+
+    let contact = validate_contact(ContactEntry { alias, hash, notes })?;
+    let saved_alias = contact.alias.clone();
+    let verb = match &editor.mode {
+        ContactEditorMode::Add => "saved",
+        ContactEditorMode::Edit { original_alias } => {
+            if !original_alias.eq_ignore_ascii_case(&contact.alias) {
+                let _ = remove_contact_by_alias(&mut contacts, original_alias);
+            }
+            "updated"
+        }
+    };
+    upsert_contact(&mut contacts, contact);
+    save_contacts(&ctx.profile_name, &contacts)?;
+    Ok(format!("contact '{saved_alias}' {verb}"))
+}
+
+fn reload_contacts_from_local(ctx: &RuntimeContext, snapshot: &mut TuiSnapshot) -> Result<()> {
+    let contacts = load_contacts(&ctx.profile_name)?;
+    snapshot.contacts = contacts_to_values(&contacts);
+    Ok(())
+}
+
+fn annotate_snapshot_peers_with_contacts(snapshot: &mut TuiSnapshot) {
+    let contacts = snapshot
+        .contacts
+        .iter()
+        .filter_map(|value| serde_json::from_value::<ContactEntry>(value.clone()).ok())
+        .collect::<Vec<_>>();
+    annotate_peers_with_contacts(&mut snapshot.peers, &contacts);
+}
+
 fn sync_selected_peer(rpc: &RpcClient, state: &TuiState) -> Result<String> {
     let Some(peer) = selected_peer_name(state) else {
         return Err(anyhow!("no peer selected"));
@@ -2304,17 +2702,77 @@ fn open_compose_from_selected_peer(state: &mut TuiState) -> Result<String> {
     };
 
     let peer_label = selected_peer_value(state)
-        .and_then(|peer| peer.get("name").and_then(Value::as_str))
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
+        .and_then(peer_display_name)
         .map(ToOwned::to_owned)
         .unwrap_or_else(|| peer_hash.clone());
 
+    open_compose_with_destination(state, peer_hash, peer_label)
+}
+
+fn open_compose_from_selected_contact(state: &mut TuiState) -> Result<String> {
+    let Some(contact) = selected_contact_value(state) else {
+        return Err(anyhow!("no contact selected"));
+    };
+    let hash = contact
+        .get("hash")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("selected contact has no hash"))?
+        .to_string();
+    let label = contact
+        .get("alias")
+        .and_then(Value::as_str)
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| hash.clone());
+    open_compose_with_destination(state, hash, label)
+}
+
+fn open_compose_with_destination(
+    state: &mut TuiState,
+    destination_hash: String,
+    label: String,
+) -> Result<String> {
     state.pane = Pane::Messages;
-    state.composer = Some(ComposeState::with_destination(peer_hash.clone()));
+    state.composer = Some(ComposeState::with_destination(destination_hash.clone()));
     Ok(format!(
-        "Compose to {peer_label}: destination prefilled ({peer_hash}). Fill source/content, Enter to send"
+        "Compose to {label}: destination prefilled ({destination_hash}). Fill source/content, Enter to send"
     ))
+}
+
+fn open_contact_editor_from_selected_peer(state: &mut TuiState) -> Result<String> {
+    let Some(peer) = selected_peer_value(state) else {
+        return Err(anyhow!("no peer selected"));
+    };
+    state.contact_editor = Some(ContactEditorState::from_peer(peer));
+    Ok("New contact from peer: set alias if needed, Enter to save".into())
+}
+
+fn open_selected_contact_editor(state: &mut TuiState) -> Result<String> {
+    let Some(contact) = selected_contact_value(state) else {
+        return Err(anyhow!("no contact selected"));
+    };
+    let alias = contact
+        .get("alias")
+        .and_then(Value::as_str)
+        .unwrap_or("<unknown>")
+        .to_string();
+    state.contact_editor = Some(ContactEditorState::from_existing(contact));
+    Ok(format!("Edit contact '{alias}'"))
+}
+
+fn remove_selected_contact(ctx: &RuntimeContext, state: &mut TuiState) -> Result<String> {
+    let Some(alias) = selected_contact_alias(state) else {
+        return Err(anyhow!("no contact selected"));
+    };
+
+    let mut contacts = load_contacts(&ctx.profile_name)?;
+    if !remove_contact_by_alias(&mut contacts, &alias) {
+        return Err(anyhow!("selected contact not found"));
+    }
+    save_contacts(&ctx.profile_name, &contacts)?;
+    reload_contacts_from_local(ctx, &mut state.snapshot)?;
+    annotate_snapshot_peers_with_contacts(&mut state.snapshot);
+    clamp_selection(state);
+    Ok(format!("contact '{alias}' removed"))
 }
 
 fn selected_peer_name(state: &TuiState) -> Option<String> {
@@ -2337,6 +2795,31 @@ fn selected_peer_source_index(state: &TuiState) -> Option<usize> {
 fn selected_peer_value(state: &TuiState) -> Option<&Value> {
     let index = selected_peer_source_index(state)?;
     state.snapshot.peers.get(index)
+}
+
+pub(super) fn peer_display_name(peer: &Value) -> Option<&str> {
+    for key in ["name", "display_name", "alias"] {
+        if let Some(name) = peer
+            .get(key)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            return Some(name);
+        }
+    }
+    None
+}
+
+fn selected_contact_value(state: &TuiState) -> Option<&Value> {
+    state.snapshot.contacts.get(state.selected_contact)
+}
+
+fn selected_contact_alias(state: &TuiState) -> Option<String> {
+    selected_contact_value(state)
+        .and_then(|contact| contact.get("alias"))
+        .and_then(Value::as_str)
+        .map(ToOwned::to_owned)
 }
 
 fn filtered_peers(state: &TuiState) -> Vec<Value> {
@@ -2363,12 +2846,15 @@ fn filtered_peer_indices(state: &TuiState) -> Vec<usize> {
                 .and_then(Value::as_str)
                 .map(str::to_ascii_lowercase)
                 .unwrap_or_default();
-            let name = peer
-                .get("name")
+            let name = peer_display_name(peer)
+                .map(str::to_ascii_lowercase)
+                .unwrap_or_default();
+            let contact_alias = peer
+                .get("contact_alias")
                 .and_then(Value::as_str)
                 .map(str::to_ascii_lowercase)
                 .unwrap_or_default();
-            if hash.contains(&query) || name.contains(&query) {
+            if hash.contains(&query) || name.contains(&query) || contact_alias.contains(&query) {
                 Some(index)
             } else {
                 None
@@ -2387,15 +2873,11 @@ fn open_selected_peer_details(state: &mut TuiState) -> Result<String> {
         .peers
         .get(index)
         .and_then(|peer| {
-            peer.get("name")
-                .and_then(Value::as_str)
-                .filter(|value| !value.trim().is_empty())
-                .map(ToOwned::to_owned)
-                .or_else(|| {
-                    peer.get("peer")
-                        .and_then(Value::as_str)
-                        .map(ToOwned::to_owned)
-                })
+            peer_display_name(peer).map(ToOwned::to_owned).or_else(|| {
+                peer.get("peer")
+                    .and_then(Value::as_str)
+                    .map(ToOwned::to_owned)
+            })
         })
         .unwrap_or_else(|| "<unknown>".to_string());
     Ok(format!("Peer details: {label} (Esc/Enter to close)"))
@@ -2461,6 +2943,101 @@ fn selected_interface_name(state: &TuiState) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
+fn contacts_to_values(contacts: &[ContactEntry]) -> Vec<Value> {
+    serde_json::to_value(contacts)
+        .ok()
+        .and_then(|value| value.as_array().cloned())
+        .unwrap_or_default()
+}
+
+fn annotate_peers_with_contacts(peers: &mut [Value], contacts: &[ContactEntry]) {
+    for peer in peers.iter_mut() {
+        let Some(hash) = peer.get("peer").and_then(Value::as_str) else {
+            continue;
+        };
+        if let Some(contact) = find_contact_by_hash(contacts, hash) {
+            peer["contact_alias"] = Value::String(contact.alias.clone());
+        }
+    }
+}
+
+fn merge_peer_from_event(peers: &mut Vec<Value>, event: &RpcEvent) -> bool {
+    let event_type = event.event_type.as_str();
+    if !(event_type.contains("peer") || event_type.contains("announce")) {
+        return false;
+    }
+
+    let payload = &event.payload;
+    let (peer_hash, peer_payload) = if let Some(hash) = payload.get("peer").and_then(Value::as_str)
+    {
+        (hash.to_string(), payload)
+    } else if let Some(peer_obj) = payload.get("peer").and_then(Value::as_object) {
+        let Some(hash) = peer_obj.get("peer").and_then(Value::as_str) else {
+            return false;
+        };
+        let Some(peer_payload) = payload.get("peer") else {
+            return false;
+        };
+        (hash.to_string(), peer_payload)
+    } else {
+        return false;
+    };
+
+    let index = if let Some(index) = peers.iter().position(|peer| {
+        peer.get("peer")
+            .and_then(Value::as_str)
+            .is_some_and(|existing| existing.eq_ignore_ascii_case(&peer_hash))
+    }) {
+        index
+    } else {
+        peers.push(json!({ "peer": peer_hash }));
+        peers.len().saturating_sub(1)
+    };
+
+    let Some(peer) = peers.get_mut(index) else {
+        return false;
+    };
+
+    let mut changed = false;
+    if !peer
+        .get("peer")
+        .and_then(Value::as_str)
+        .is_some_and(|existing| existing.eq_ignore_ascii_case(&peer_hash))
+    {
+        peer["peer"] = Value::String(peer_hash);
+        changed = true;
+    }
+
+    if let Some(name) = peer_display_name(peer_payload) {
+        if peer_display_name(peer) != Some(name) {
+            peer["name"] = Value::String(name.to_string());
+            changed = true;
+        }
+    }
+
+    for key in ["name_source", "first_seen", "seen_count"] {
+        if let Some(value) = peer_payload.get(key) {
+            if peer.get(key) != Some(value) {
+                peer[key] = value.clone();
+                changed = true;
+            }
+        }
+    }
+
+    if let Some(last_seen) = peer_payload
+        .get("last_seen")
+        .cloned()
+        .or_else(|| peer_payload.get("timestamp").cloned())
+    {
+        if peer.get("last_seen") != Some(&last_seen) {
+            peer["last_seen"] = last_seen;
+            changed = true;
+        }
+    }
+
+    changed
+}
+
 fn as_vec(value: Value, key: &str) -> Vec<Value> {
     if let Some(items) = value.get(key).and_then(Value::as_array) {
         return items.clone();
@@ -2471,9 +3048,11 @@ fn as_vec(value: Value, key: &str) -> Vec<Value> {
 #[cfg(test)]
 mod tests {
     use super::{
-        as_vec, filtered_peer_indices, open_compose_from_selected_peer, selected_peer_name, Pane,
-        StatusLevel, TuiSnapshot, TuiState, TuiTheme,
+        as_vec, filtered_peer_indices, merge_peer_from_event, open_compose_from_selected_contact,
+        open_compose_from_selected_peer, selected_peer_name, Pane, StatusLevel, TuiSnapshot,
+        TuiState, TuiTheme,
     };
+    use crate::cli::rpc_client::RpcEvent;
     use serde_json::json;
     use std::time::Instant;
 
@@ -2522,6 +3101,20 @@ mod tests {
     }
 
     #[test]
+    fn filtered_peer_indices_matches_display_name_and_contact_alias() {
+        let mut state = sample_state(vec![
+            json!({"peer": "abc123", "display_name": "Alpha Relay", "contact_alias": "work-relay"}),
+            json!({"peer": "def456", "name": "Beta"}),
+        ]);
+
+        state.peer_filter = "alpha".into();
+        assert_eq!(filtered_peer_indices(&state), vec![0]);
+
+        state.peer_filter = "work".into();
+        assert_eq!(filtered_peer_indices(&state), vec![0]);
+    }
+
+    #[test]
     fn selected_peer_name_uses_filtered_selection() {
         let mut state = sample_state(vec![
             json!({"peer": "hash-a", "name": "Alice"}),
@@ -2550,11 +3143,52 @@ mod tests {
         assert!(message.contains("destination prefilled"));
     }
 
+    #[test]
+    fn compose_from_contact_prefills_destination_and_switches_to_messages() {
+        let mut state = sample_state(vec![]);
+        state.snapshot.contacts = vec![json!({
+            "alias": "alice",
+            "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        })];
+
+        let message = open_compose_from_selected_contact(&mut state).expect("compose opens");
+        assert_eq!(state.pane, Pane::Messages);
+        let composer = state.composer.expect("composer state");
+        assert_eq!(composer.destination, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+        assert!(message.contains("destination prefilled"));
+    }
+
+    #[test]
+    fn merge_peer_from_event_applies_name_fields() {
+        let mut peers = vec![json!({
+            "peer": "deadbeef",
+            "last_seen": 1
+        })];
+        let event = RpcEvent {
+            event_type: "announce_received".into(),
+            payload: json!({
+                "peer": "deadbeef",
+                "name": "Alice Node",
+                "name_source": "pn_meta",
+                "first_seen": 1,
+                "timestamp": 10,
+                "seen_count": 2
+            }),
+        };
+
+        assert!(merge_peer_from_event(&mut peers, &event));
+        assert_eq!(peers[0]["name"], "Alice Node");
+        assert_eq!(peers[0]["name_source"], "pn_meta");
+        assert_eq!(peers[0]["last_seen"], 10);
+        assert_eq!(peers[0]["seen_count"], 2);
+    }
+
     fn sample_state(peers: Vec<serde_json::Value>) -> TuiState {
         TuiState {
             pane: Pane::Peers,
             selected_message: 0,
             selected_peer: 0,
+            selected_contact: 0,
             selected_interface: 0,
             status_line: String::new(),
             status_level: StatusLevel::Info,
@@ -2564,6 +3198,7 @@ mod tests {
                 daemon_running: false,
                 messages: Vec::new(),
                 peers,
+                contacts: Vec::new(),
                 interfaces: Vec::new(),
                 events: Vec::new(),
                 logs: Vec::new(),
@@ -2576,6 +3211,7 @@ mod tests {
             last_refresh_ms: None,
             welcome_dismissed: false,
             composer: None,
+            contact_editor: None,
             interface_editor: None,
             profile_editor: None,
             peer_filter: String::new(),
@@ -2597,6 +3233,9 @@ fn clamp_selection(state: &mut TuiState) {
     if filtered_len == 0 {
         state.peer_details_open = false;
     }
+    if state.selected_contact >= state.snapshot.contacts.len() {
+        state.selected_contact = state.snapshot.contacts.len().saturating_sub(1);
+    }
     if state.selected_interface >= state.snapshot.interfaces.len() {
         state.selected_interface = state.snapshot.interfaces.len().saturating_sub(1);
     }
@@ -2612,6 +3251,11 @@ fn increment_selection(state: &mut TuiState) {
         Pane::Peers => {
             if state.selected_peer + 1 < filtered_peer_indices(state).len() {
                 state.selected_peer += 1;
+            }
+        }
+        Pane::Contacts => {
+            if state.selected_contact + 1 < state.snapshot.contacts.len() {
+                state.selected_contact += 1;
             }
         }
         Pane::Interfaces => {
@@ -2631,6 +3275,9 @@ fn decrement_selection(state: &mut TuiState) {
         Pane::Peers => {
             state.selected_peer = state.selected_peer.saturating_sub(1);
         }
+        Pane::Contacts => {
+            state.selected_contact = state.selected_contact.saturating_sub(1);
+        }
         Pane::Interfaces => {
             state.selected_interface = state.selected_interface.saturating_sub(1);
         }
@@ -2642,7 +3289,8 @@ fn next_pane(current: Pane) -> Pane {
     match current {
         Pane::Dashboard => Pane::Messages,
         Pane::Messages => Pane::Peers,
-        Pane::Peers => Pane::Interfaces,
+        Pane::Peers => Pane::Contacts,
+        Pane::Contacts => Pane::Interfaces,
         Pane::Interfaces => Pane::Events,
         Pane::Events => Pane::Logs,
         Pane::Logs => Pane::Dashboard,
@@ -2654,7 +3302,8 @@ fn previous_pane(current: Pane) -> Pane {
         Pane::Dashboard => Pane::Logs,
         Pane::Messages => Pane::Dashboard,
         Pane::Peers => Pane::Messages,
-        Pane::Interfaces => Pane::Peers,
+        Pane::Contacts => Pane::Peers,
+        Pane::Interfaces => Pane::Contacts,
         Pane::Events => Pane::Interfaces,
         Pane::Logs => Pane::Events,
     }
@@ -2665,9 +3314,10 @@ fn index_of(pane: Pane) -> usize {
         Pane::Dashboard => 0,
         Pane::Messages => 1,
         Pane::Peers => 2,
-        Pane::Interfaces => 3,
-        Pane::Events => 4,
-        Pane::Logs => 5,
+        Pane::Contacts => 3,
+        Pane::Interfaces => 4,
+        Pane::Events => 5,
+        Pane::Logs => 6,
     }
 }
 

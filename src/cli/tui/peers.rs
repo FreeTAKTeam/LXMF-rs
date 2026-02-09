@@ -6,7 +6,7 @@ use ratatui::{
 };
 use serde_json::Value;
 
-use super::TuiTheme;
+use super::{peer_display_name, TuiTheme};
 
 pub fn render(
     frame: &mut Frame<'_>,
@@ -52,12 +52,13 @@ pub fn render(
                     .get("peer")
                     .and_then(Value::as_str)
                     .unwrap_or("<unknown>");
-                let name = peer
-                    .get("name")
+                let name = peer_display_name(peer);
+                let contact_alias = peer
+                    .get("contact_alias")
                     .and_then(Value::as_str)
                     .map(str::trim)
                     .filter(|value| !value.is_empty());
-                let primary = name.unwrap_or(hash);
+                let primary = contact_alias.or(name).unwrap_or(hash);
                 let secondary = if name.is_some() {
                     format!("hash={} ", short(hash, 20))
                 } else {
@@ -105,7 +106,7 @@ pub fn render(
         Block::default()
             .title(Span::styled(
                 format!(
-                    "Peers  (s send, / filter{edit_suffix}, Enter details, y sync, u unpeer)  filter={filter_label}"
+                    "Peers  (s send, c add contact, / filter{edit_suffix}, Enter details, y sync, u unpeer)  filter={filter_label}"
                 ),
                 Style::default().fg(theme.accent),
             ))

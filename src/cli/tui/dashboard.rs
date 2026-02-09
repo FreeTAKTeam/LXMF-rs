@@ -80,6 +80,13 @@ pub fn render(
             ),
         ]),
         Line::from(vec![
+            Span::styled("Contacts: ", Style::default().fg(theme.muted)),
+            Span::styled(
+                snapshot.contacts.len().to_string(),
+                Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+            ),
+        ]),
+        Line::from(vec![
             Span::styled("Events buffered: ", Style::default().fg(theme.muted)),
             Span::styled(
                 snapshot.events.len().to_string(),
@@ -124,7 +131,19 @@ pub fn render(
                     .add_modifier(Modifier::BOLD),
             ),
             Span::styled(
-                " send message (Peers: prefilled destination)",
+                " send message (Peers/Contacts: prefilled destination)",
+                Style::default().fg(theme.text),
+            ),
+        ]),
+        Line::from(vec![
+            Span::styled(
+                "c",
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                " save selected peer as contact",
                 Style::default().fg(theme.text),
             ),
         ]),
@@ -214,7 +233,7 @@ pub fn render(
         ]),
         Line::from(""),
         Line::from(Span::styled(
-            "Use Tab / Shift+Tab to move between panes.",
+            "Use Tab / Shift+Tab to move between panes (including Contacts).",
             Style::default().fg(theme.muted),
         )),
     ];

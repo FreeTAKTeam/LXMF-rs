@@ -13,6 +13,7 @@ cargo run --bin lxmf -- --profile <name> tui
 - Dashboard
 - Messages
 - Peers
+- Contacts
 - Interfaces
 - Events
 - Logs
@@ -23,7 +24,11 @@ cargo run --bin lxmf -- --profile <name> tui
 - `Tab`: next pane
 - `j` / `Down`: move selection down (messages/peers/interfaces)
 - `k` / `Up`: move selection up (messages/peers/interfaces)
-- `s`: send message (from Peers pane, destination is prefilled from selected peer and view jumps to Messages)
+- `s`: send message (from Peers/Contacts, destination is prefilled and view jumps to Messages)
+- `c` (in Peers): add selected peer as contact
+- `a` (in Contacts): add contact
+- `Enter` (in Contacts): edit selected contact
+- `x` (in Contacts): remove selected contact
 - `/`: open peer search filter (hash or name, live)
 - `Esc` (while filtering): clear peer filter
 - `Enter` in Peers: open selected peer details
@@ -50,4 +55,5 @@ The TUI refreshes from:
 
 - The TUI is intended for operator workflows and daemon introspection.
 - The Peers pane supports hash/name filtering and per-peer details without leaving TUI.
+- Contacts are profile-local and can be used as message aliases in compose/send flows.
 - For scripted automation, prefer `lxmf --json ...` CLI subcommands.

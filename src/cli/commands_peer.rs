@@ -209,10 +209,17 @@ fn peer_hash(peer: &Value) -> Option<&str> {
 }
 
 fn peer_name(peer: &Value) -> Option<&str> {
-    peer.get("name")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
+    for key in ["name", "display_name", "alias"] {
+        if let Some(name) = peer
+            .get(key)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            return Some(name);
+        }
+    }
+    None
 }
 
 fn peer_last_seen(peer: &Value) -> i64 {
@@ -278,6 +285,17 @@ mod tests {
             json!({"peer": "abc222", "name": "Alice B"}),
         ];
         let exact = select_peers(&peers, "alice", true);
+        assert_eq!(exact.len(), 1);
+        assert_eq!(exact[0]["peer"], "abc111");
+    }
+
+    #[test]
+    fn select_peers_uses_display_name_fallback() {
+        let peers = vec![
+            json!({"peer": "abc111", "display_name": "Relay One"}),
+            json!({"peer": "abc222", "name": "Relay Two"}),
+        ];
+        let exact = select_peers(&peers, "relay one", true);
         assert_eq!(exact.len(), 1);
         assert_eq!(exact[0]["peer"], "abc111");
     }
