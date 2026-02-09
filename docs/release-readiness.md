@@ -22,6 +22,7 @@ This checklist is the publication gate for `lxmf-rs`.
 ## 4. CI quality gates
 
 - GitHub CI must pass on Linux and macOS.
+- Linux CI installs pinned Python `Reticulum` and `LXMF` commits and runs interop gate with `LXMF_PYTHON_INTEROP=1`.
 - Required checks:
   - `git ls-files '*.rs' | xargs rustfmt --edition 2021 --check`
   - `cargo clippy --workspace --all-targets -- -D warnings`

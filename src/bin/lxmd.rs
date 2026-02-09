@@ -1,6 +1,6 @@
 use clap::{Parser, Subcommand};
 use lxmf::lxmd::config::LxmdConfig;
-use lxmf::lxmd::runtime::{execute, LxmdCommand};
+use lxmf::lxmd::runtime::{execute_with_runtime, LxmdCommand, LxmdRuntime};
 
 #[derive(Parser)]
 struct Args {
@@ -78,11 +78,46 @@ fn main() {
         None => LxmdCommand::Serve,
     };
 
+    let mut runtime = match LxmdRuntime::new(config) {
+        Ok(runtime) => runtime,
+        Err(err) => {
+            eprintln!("lxmd runtime init error: {}", err);
+            std::process::exit(1);
+        }
+    };
+
     if args.verbose && !args.quiet {
         eprintln!("lxmd runtime command={command:?}");
     }
 
-    let output = match execute(command, &config) {
+    if args.service {
+        let max_ticks = std::env::var("LXMD_SERVICE_MAX_TICKS")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok());
+        let status = match runtime.run_service(max_ticks) {
+            Ok(status) => status,
+            Err(err) => {
+                eprintln!("lxmd service error: {}", err);
+                std::process::exit(1);
+            }
+        };
+        if !args.quiet {
+            println!(
+                "lxmd service done peer_count={} jobs_run={} announces_sent={}",
+                status.peer_count, status.jobs_run, status.announces_sent
+            );
+        }
+        return;
+    }
+
+    let output = match execute_with_runtime(
+        &mut runtime,
+        command,
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs(),
+    ) {
         Ok(output) => output,
         Err(err) => {
             eprintln!("lxmd runtime error: {}", err);

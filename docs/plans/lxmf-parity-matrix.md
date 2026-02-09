@@ -47,5 +47,5 @@ Status legend: `not-started` | `partial` | `done`.
 - PARITY_ITEM id=handlers.propagation_app_data status=done tests=tests/handlers_behavior.rs
 - PARITY_ITEM id=lxmd.config_load status=done tests=tests/lxmd_runtime.rs
 - PARITY_ITEM id=lxmd.serve_sync_unpeer_status status=done tests=tests/lxmd_runtime.rs
-- PARITY_ITEM id=lxmd.live_daemon_runtime status=partial tests=none
+- PARITY_ITEM id=lxmd.live_daemon_runtime status=done tests=tests/lxmd_runtime.rs,tests/lxmd_cli.rs
 - PARITY_ITEM id=interop.python_live_gate status=partial tests=tests/python_interop_gate.rs

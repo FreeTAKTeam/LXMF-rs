@@ -7,6 +7,8 @@ use std::path::Path;
 pub struct LxmdConfig {
     pub propagation_node: bool,
     pub announce_interval_secs: u64,
+    pub service_tick_interval_secs: u64,
+    pub propagation_target_cost: u32,
     pub on_inbound: Option<String>,
     pub rnsconfig: Option<String>,
     pub storage_path: Option<String>,
@@ -18,6 +20,8 @@ impl Default for LxmdConfig {
         Self {
             propagation_node: false,
             announce_interval_secs: 3600,
+            service_tick_interval_secs: 1,
+            propagation_target_cost: crate::constants::PROPAGATION_COST,
             on_inbound: None,
             rnsconfig: None,
             storage_path: None,
