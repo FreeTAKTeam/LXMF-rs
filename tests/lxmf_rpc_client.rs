@@ -4,6 +4,7 @@ use serde_json::{json, Value};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::thread;
+use std::time::Duration;
 
 #[derive(Debug, Serialize)]
 struct RpcResponse {
@@ -68,6 +69,33 @@ fn rpc_client_roundtrip_and_event_polling() {
     let event = client.poll_event().unwrap().expect("event expected");
     assert_eq!(event.event_type, "outbound.progress");
     assert_eq!(event.payload["progress"], Value::from(42));
+
+    worker.join().unwrap();
+}
+
+#[test]
+fn rpc_client_formats_status_line_timeouts_cleanly() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+
+    let worker = thread::spawn(move || {
+        let (_stream, _) = listener.accept().unwrap();
+        std::thread::sleep(Duration::from_millis(350));
+    });
+
+    let client = RpcClient::new_with_timeouts(
+        &format!("127.0.0.1:{}", addr.port()),
+        Duration::from_millis(100),
+        Duration::from_millis(120),
+        Duration::from_millis(120),
+    );
+    let err = client.call("status", None).unwrap_err().to_string();
+
+    assert!(err.contains("rpc request failed"));
+    assert!(!err.contains("Error encountered in the status line"));
+    assert!(
+        err.contains("did not return valid rpc/http response") || err.contains("network i/o error")
+    );
 
     worker.join().unwrap();
 }

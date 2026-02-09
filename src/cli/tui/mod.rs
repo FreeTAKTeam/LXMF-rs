@@ -29,8 +29,9 @@ use crate::cli::profile::{
 };
 use crate::cli::rpc_client::RpcClient;
 
-const FAST_RPC_CONNECT_TIMEOUT: Duration = Duration::from_millis(250);
-const FAST_RPC_IO_TIMEOUT: Duration = Duration::from_millis(800);
+const FAST_RPC_CONNECT_TIMEOUT: Duration = Duration::from_millis(120);
+const FAST_RPC_IO_TIMEOUT: Duration = Duration::from_millis(240);
+const OFFLINE_REFRESH_BACKOFF: Duration = Duration::from_millis(2_500);
 const WELCOME_TIMEOUT: Duration = Duration::from_secs(6);
 const SPINNER: [char; 4] = ['|', '/', '-', '\\'];
 
@@ -336,14 +337,18 @@ pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
         apply_refresh(ctx, &fast_rpc, &mut state, true);
     }
 
-    let mut last_refresh = Instant::now() - Duration::from_millis(command.refresh_ms);
+    let mut next_refresh_due = next_refresh_deadline(command.refresh_ms, state.connected);
 
     let run_result = loop {
         state.spinner_tick = state.spinner_tick.wrapping_add(1);
 
-        if last_refresh.elapsed() >= Duration::from_millis(command.refresh_ms.max(150)) {
+        let now = Instant::now();
+        if state.composer.is_none()
+            && state.interface_editor.is_none()
+            && now >= next_refresh_due
+        {
             apply_refresh(ctx, &fast_rpc, &mut state, false);
-            last_refresh = Instant::now();
+            next_refresh_due = next_refresh_deadline(command.refresh_ms, state.connected);
         }
 
         terminal.draw(|frame| draw(frame, &state))?;
@@ -392,6 +397,7 @@ pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
                             ),
                         }
                         apply_refresh(ctx, &fast_rpc, &mut state, true);
+                        next_refresh_due = next_refresh_deadline(command.refresh_ms, state.connected);
                     }
                     KeyCode::Char('n') => match fast_rpc.call("announce_now", None) {
                         Ok(_) => set_status(&mut state, StatusLevel::Success, "announce sent"),
@@ -412,6 +418,8 @@ pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
                                 ),
                             }
                             apply_refresh(ctx, &fast_rpc, &mut state, true);
+                            next_refresh_due =
+                                next_refresh_deadline(command.refresh_ms, state.connected);
                         }
                     }
                     KeyCode::Char('y') => match sync_selected_peer(&fast_rpc, &state) {
@@ -432,6 +440,7 @@ pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
                             ),
                         }
                         apply_refresh(ctx, &fast_rpc, &mut state, true);
+                        next_refresh_due = next_refresh_deadline(command.refresh_ms, state.connected);
                     }
                     KeyCode::Char('s') => {
                         state.composer = Some(ComposeState::new());
@@ -477,6 +486,7 @@ pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
                     }
                     KeyCode::Char('e') => {
                         apply_refresh(ctx, &fast_rpc, &mut state, true);
+                        next_refresh_due = next_refresh_deadline(command.refresh_ms, state.connected);
                     }
                     _ => {}
                 }
@@ -544,6 +554,32 @@ fn apply_refresh(ctx: &RuntimeContext, rpc: &RpcClient, state: &mut TuiState, ma
 fn set_status(state: &mut TuiState, level: StatusLevel, message: impl Into<String>) {
     state.status_level = level;
     state.status_line = message.into();
+}
+
+fn next_refresh_deadline(refresh_ms: u64, connected: bool) -> Instant {
+    let base = Duration::from_millis(refresh_ms.max(150));
+    let interval = if connected {
+        base
+    } else {
+        std::cmp::max(base, OFFLINE_REFRESH_BACKOFF)
+    };
+    Instant::now() + interval
+}
+
+fn rpc_unreachable_warning(managed: bool, err: &anyhow::Error) -> String {
+    let detail = err.to_string();
+    let mut suffix = if managed {
+        "Press r to start/restart daemon."
+    } else {
+        "Start daemon or set --rpc endpoint."
+    }
+    .to_string();
+
+    if detail.to_ascii_lowercase().contains("status line") {
+        suffix.push_str(" Endpoint appears reachable but is not speaking LXMF RPC.");
+    }
+
+    format!("RPC unreachable ({detail}). {suffix}")
 }
 
 fn draw(frame: &mut ratatui::Frame<'_>, state: &TuiState) {
@@ -1197,13 +1233,7 @@ fn refresh_snapshot(
         }
         Err(err) => {
             connected = false;
-            warning = Some(if ctx.profile_settings.managed {
-                format!(
-                    "RPC unreachable: {err}. Managed profile detected; press r to retry start/restart daemon."
-                )
-            } else {
-                format!("RPC unreachable: {err}. Start a daemon or set the correct --rpc endpoint.")
-            });
+            warning = Some(rpc_unreachable_warning(ctx.profile_settings.managed, &err));
             snapshot.daemon_running = false;
         }
     }

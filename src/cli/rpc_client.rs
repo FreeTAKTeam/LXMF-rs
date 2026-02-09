@@ -218,10 +218,20 @@ fn summarize_transport_error(transport: &ureq::Transport) -> String {
         }
     }
 
+    let detail_text = details.join(": ");
+    let detail_text_lower = detail_text.to_ascii_lowercase();
+    if detail_text_lower.contains("status line") {
+        if detail_text_lower.contains("timed out") || detail_text_lower.contains("timeout") {
+            return "endpoint reachable but did not return valid rpc/http response (timed out reading status line)"
+                .to_string();
+        }
+        return "endpoint reachable but did not return valid rpc/http response".to_string();
+    }
+
     if details.is_empty() {
         category.to_string()
     } else {
-        format!("{category}: {}", details.join(": "))
+        format!("{category}: {detail_text}")
     }
 }
 
@@ -233,6 +243,10 @@ fn clean_transport_text(input: &str) -> String {
         "Connection Failed:",
         "connection failed:",
         "Error encountered:",
+        "Error encountered in the status line:",
+        "error encountered in the status line:",
+        "Error encountered while reading response:",
+        "error encountered while reading response:",
     ] {
         loop {
             if text.starts_with(prefix) {
