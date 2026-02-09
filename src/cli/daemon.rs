@@ -5,6 +5,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct DaemonStatus {
@@ -71,12 +72,10 @@ impl DaemonSupervisor {
             .try_clone()
             .context("failed to clone log file descriptor")?;
 
-        let reticulumd_bin = reticulumd_override
-            .or_else(|| self.settings.reticulumd_path.clone())
-            .or_else(|| std::env::var("RETICULUMD_BIN").ok())
-            .unwrap_or_else(|| "reticulumd".into());
+        let reticulumd_bin = resolve_reticulumd_binary(&reticulumd_override, &self.settings);
 
         let identity_path = resolve_identity_path(&self.settings, &paths);
+        drop_empty_identity_stub(&identity_path)?;
         let db_path = self
             .settings
             .db_path
@@ -102,10 +101,43 @@ impl DaemonSupervisor {
             cmd.arg("--transport").arg(transport);
         }
 
-        let child = cmd
-            .spawn()
-            .with_context(|| format!("failed to spawn {}", reticulumd_bin))?;
+        let mut child = match cmd.spawn() {
+            Ok(child) => child,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                return Err(anyhow!(
+                    "failed to spawn '{}' (not found). set profile reticulumd_path, pass --reticulumd, set RETICULUMD_BIN, or build Reticulum-rs",
+                    reticulumd_bin
+                ))
+            }
+            Err(err) => {
+                return Err(err).with_context(|| format!("failed to spawn {}", reticulumd_bin))
+            }
+        };
         let pid = child.id();
+
+        let startup_deadline = Instant::now() + Duration::from_millis(800);
+        loop {
+            if let Some(status) = child
+                .try_wait()
+                .context("failed to check reticulumd process status")?
+            {
+                let hint = startup_failure_hint(&paths.daemon_log, &self.settings.rpc);
+                let hint_suffix = hint
+                    .as_ref()
+                    .map(|value| format!(". {value}"))
+                    .unwrap_or_default();
+                return Err(anyhow!(
+                    "reticulumd exited during startup with status {}. check daemon log at {}{}",
+                    status,
+                    paths.daemon_log.display(),
+                    hint_suffix
+                ));
+            }
+            if Instant::now() >= startup_deadline {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(80));
+        }
 
         let mut pid_file = File::create(&paths.daemon_pid)
             .with_context(|| format!("failed to create {}", paths.daemon_pid.display()))?;
@@ -212,4 +244,66 @@ fn is_pid_running(pid: u32) -> bool {
         Ok(status) => status.success(),
         Err(_) => false,
     }
+}
+
+fn drop_empty_identity_stub(path: &PathBuf) -> Result<()> {
+    if let Ok(meta) = fs::metadata(path) {
+        if meta.is_file() && meta.len() == 0 {
+            fs::remove_file(path).with_context(|| {
+                format!("failed to remove empty identity stub {}", path.display())
+            })?;
+        }
+    }
+    Ok(())
+}
+
+fn startup_failure_hint(log_path: &PathBuf, rpc: &str) -> Option<String> {
+    let bytes = fs::read(log_path).ok()?;
+    let start = bytes.len().saturating_sub(8192);
+    let tail = String::from_utf8_lossy(&bytes[start..]).to_ascii_lowercase();
+
+    if tail.contains("address already in use") {
+        return Some(format!(
+            "rpc endpoint {rpc} is already in use by another process; choose a different --rpc or stop the conflicting service"
+        ));
+    }
+    if tail.contains("invalid identity") {
+        return Some(
+            "profile identity appears invalid; import a valid identity or remove it so reticulumd can regenerate".to_string(),
+        );
+    }
+    None
+}
+
+fn resolve_reticulumd_binary(
+    reticulumd_override: &Option<String>,
+    settings: &ProfileSettings,
+) -> String {
+    if let Some(path) = reticulumd_override.clone() {
+        return path;
+    }
+    if let Some(path) = settings.reticulumd_path.clone() {
+        return path;
+    }
+    if let Ok(path) = std::env::var("RETICULUMD_BIN") {
+        if !path.trim().is_empty() {
+            return path;
+        }
+    }
+
+    // Dev-friendly fallback for sibling checkout layout:
+    // /.../LXMF-rs and /.../Reticulum-rs
+    if let Some(parent) = PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent() {
+        let candidates = [
+            parent.join("Reticulum-rs/target/debug/reticulumd"),
+            parent.join("Reticulum-rs/target/release/reticulumd"),
+        ];
+        for candidate in candidates {
+            if candidate.exists() {
+                return candidate.display().to_string();
+            }
+        }
+    }
+
+    "reticulumd".to_string()
 }

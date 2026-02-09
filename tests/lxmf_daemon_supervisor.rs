@@ -12,7 +12,7 @@ fn env_lock() -> &'static Mutex<()> {
 
 #[test]
 fn daemon_supervisor_start_stop_cycle() {
-    let _guard = env_lock().lock().unwrap();
+    let _guard = env_lock().lock().unwrap_or_else(|err| err.into_inner());
     let temp = tempfile::tempdir().unwrap();
     std::env::set_var("LXMF_CONFIG_ROOT", temp.path());
 
@@ -50,6 +50,102 @@ fn daemon_supervisor_start_stop_cycle() {
 
     let stopped = supervisor.stop().unwrap();
     assert!(!stopped.running);
+
+    std::env::remove_var("LXMF_CONFIG_ROOT");
+}
+
+#[test]
+fn daemon_supervisor_errors_when_reticulumd_missing() {
+    let _guard = env_lock().lock().unwrap_or_else(|err| err.into_inner());
+    let temp = tempfile::tempdir().unwrap();
+    std::env::set_var("LXMF_CONFIG_ROOT", temp.path());
+
+    init_profile("daemon-missing", true, Some("127.0.0.1:4554".into())).unwrap();
+    let settings = ProfileSettings {
+        name: "daemon-missing".into(),
+        managed: true,
+        rpc: "127.0.0.1:4554".into(),
+        reticulumd_path: Some(temp.path().join("nope-reticulumd").display().to_string()),
+        db_path: None,
+        identity_path: None,
+        transport: None,
+    };
+    save_profile_settings(&settings).unwrap();
+
+    let supervisor = DaemonSupervisor::new("daemon-missing", settings);
+    let err = supervisor.start(None, None, None).unwrap_err().to_string();
+    assert!(err.contains("not found"));
+
+    std::env::remove_var("LXMF_CONFIG_ROOT");
+}
+
+#[test]
+fn daemon_supervisor_errors_when_process_exits_immediately() {
+    let _guard = env_lock().lock().unwrap_or_else(|err| err.into_inner());
+    let temp = tempfile::tempdir().unwrap();
+    std::env::set_var("LXMF_CONFIG_ROOT", temp.path());
+
+    init_profile("daemon-exit-fast", true, Some("127.0.0.1:4555".into())).unwrap();
+
+    let fake = temp.path().join("exit-fast-reticulumd.sh");
+    std::fs::write(&fake, "#!/bin/sh\nexit 1\n").unwrap();
+    let mut perms = std::fs::metadata(&fake).unwrap().permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&fake, perms).unwrap();
+
+    let settings = ProfileSettings {
+        name: "daemon-exit-fast".into(),
+        managed: true,
+        rpc: "127.0.0.1:4555".into(),
+        reticulumd_path: Some(fake.display().to_string()),
+        db_path: None,
+        identity_path: None,
+        transport: None,
+    };
+    save_profile_settings(&settings).unwrap();
+
+    let supervisor = DaemonSupervisor::new("daemon-exit-fast", settings);
+    let err = supervisor.start(None, None, None).unwrap_err().to_string();
+    assert!(err.contains("exited during startup"));
+
+    std::env::remove_var("LXMF_CONFIG_ROOT");
+}
+
+#[test]
+fn daemon_supervisor_drops_empty_identity_stub_before_start() {
+    let _guard = env_lock().lock().unwrap_or_else(|err| err.into_inner());
+    let temp = tempfile::tempdir().unwrap();
+    std::env::set_var("LXMF_CONFIG_ROOT", temp.path());
+
+    init_profile("daemon-empty-id", true, Some("127.0.0.1:4556".into())).unwrap();
+    let paths = profile_paths("daemon-empty-id").unwrap();
+    std::fs::write(&paths.identity_file, []).unwrap();
+
+    let fake = temp.path().join("fake-reticulumd.sh");
+    std::fs::write(
+        &fake,
+        "#!/bin/sh\ntrap 'exit 0' TERM INT\nwhile true; do sleep 1; done\n",
+    )
+    .unwrap();
+    let mut perms = std::fs::metadata(&fake).unwrap().permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&fake, perms).unwrap();
+
+    let settings = ProfileSettings {
+        name: "daemon-empty-id".into(),
+        managed: true,
+        rpc: "127.0.0.1:4556".into(),
+        reticulumd_path: Some(fake.display().to_string()),
+        db_path: None,
+        identity_path: None,
+        transport: None,
+    };
+    save_profile_settings(&settings).unwrap();
+
+    let supervisor = DaemonSupervisor::new("daemon-empty-id", settings);
+    supervisor.start(None, None, None).unwrap();
+    assert!(!paths.identity_file.exists());
+    supervisor.stop().unwrap();
 
     std::env::remove_var("LXMF_CONFIG_ROOT");
 }

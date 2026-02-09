@@ -546,7 +546,9 @@ fn apply_refresh(ctx: &RuntimeContext, rpc: &RpcClient, state: &mut TuiState, ma
 
     if !outcome.connected {
         if let Some(warning) = outcome.warning {
-            set_status(state, StatusLevel::Warning, warning);
+            if state.status_level != StatusLevel::Error {
+                set_status(state, StatusLevel::Warning, warning);
+            }
         }
     }
 }

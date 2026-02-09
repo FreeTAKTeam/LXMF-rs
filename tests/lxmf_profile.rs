@@ -33,6 +33,7 @@ fn profile_init_and_select_roundtrip() {
     let paths = profile_paths("alpha").unwrap();
     assert!(paths.profile_toml.exists());
     assert!(paths.reticulum_toml.exists());
+    assert!(!paths.identity_file.exists());
 
     std::env::remove_var("LXMF_CONFIG_ROOT");
 }

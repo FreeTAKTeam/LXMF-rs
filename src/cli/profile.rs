@@ -114,10 +114,6 @@ pub fn init_profile(name: &str, managed: bool, rpc: Option<String>) -> Result<Pr
     if !paths.reticulum_toml.exists() {
         save_reticulum_config(name, &ReticulumConfig::default())?;
     }
-    if !paths.identity_file.exists() {
-        fs::write(&paths.identity_file, [])
-            .with_context(|| format!("failed to create {}", paths.identity_file.display()))?;
-    }
 
     Ok(settings)
 }
