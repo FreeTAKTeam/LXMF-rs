@@ -1,0 +1,13 @@
+{
+  "id": "C03",
+  "description": "Cancel queued message before tick",
+  "destination_hex": "55555555555555555555555555555555",
+  "source_hex": "66666666666666666666666666666666",
+  "content": "contract-c03-content",
+  "title": "contract-c03-title",
+  "cancel_before_tick": true,
+  "run_tick": false,
+  "expected_state_before_tick": "queued",
+  "expected_state_after_tick": "cancelled",
+  "expect_cancel_result": true
+}

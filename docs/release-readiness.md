@@ -14,12 +14,19 @@ This checklist is the publication gate for `lxmf-rs`.
 - Live Python interop gate is enabled with `LXMF_PYTHON_INTEROP=1` and is required on Linux before release.
 - Any wire/storage format changes require updated fixtures and parity tests.
 
-## 3. API stability
+## 3. Async contract conformance
+
+- Async client contract is documented in `docs/lxmf-async-api.yaml`.
+- Scenario matrix and migration gates are tracked in `docs/async-conformance-matrix.md`.
+- Contract harness baseline scenarios (`C01-C03`) must pass in `tests/contract_harness.rs`.
+- Before defaulting clients to Rust backend, required matrix lanes in `docs/async-conformance-matrix.md` must be marked `done`.
+
+## 4. API stability
 
 - Public API surface is documented in `docs/lxmf-rs-api.md`.
 - Breaking changes must be called out in release notes.
 
-## 4. CI quality gates
+## 5. CI quality gates
 
 - GitHub CI must pass on Linux and macOS.
 - Linux CI installs pinned Python `Reticulum` and `LXMF` commits and runs interop gate with `LXMF_PYTHON_INTEROP=1`.
@@ -28,7 +35,7 @@ This checklist is the publication gate for `lxmf-rs`.
   - `cargo clippy --workspace --all-targets -- -D warnings`
   - `cargo test --workspace --all-targets`
 
-## 5. Release metadata
+## 6. Release metadata
 
 - `Cargo.toml` version bumped intentionally.
 - `Cargo.lock` committed for reproducible builds.

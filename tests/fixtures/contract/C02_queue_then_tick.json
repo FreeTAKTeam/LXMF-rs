@@ -1,0 +1,12 @@
+{
+  "id": "C02",
+  "description": "Message remains queued before tick and transitions after tick",
+  "destination_hex": "33333333333333333333333333333333",
+  "source_hex": "44444444444444444444444444444444",
+  "content": "contract-c02-content",
+  "title": "contract-c02-title",
+  "run_tick": true,
+  "max_outbound": 1,
+  "expected_state_before_tick": "queued",
+  "expected_state_after_tick": "sent"
+}
