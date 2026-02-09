@@ -419,6 +419,16 @@ impl ComposeState {
         }
     }
 
+    fn with_destination(destination: impl Into<String>) -> Self {
+        Self {
+            destination: destination.into(),
+            source: String::new(),
+            title: String::new(),
+            content: String::new(),
+            active: Some(ComposeField::Source),
+        }
+    }
+
     fn active_field(&self) -> ComposeField {
         self.active.unwrap_or(ComposeField::Destination)
     }
@@ -676,12 +686,23 @@ pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
                             next_refresh_deadline(command.refresh_ms, state.connected);
                     }
                     KeyCode::Char('s') => {
-                        state.composer = Some(ComposeState::new());
-                        set_status(
-                            &mut state,
-                            StatusLevel::Info,
-                            "Compose message: fill fields, Enter to advance/send, Esc to cancel",
-                        );
+                        if state.pane == Pane::Peers {
+                            match open_compose_from_selected_peer(&mut state) {
+                                Ok(msg) => set_status(&mut state, StatusLevel::Info, msg),
+                                Err(err) => set_status(
+                                    &mut state,
+                                    StatusLevel::Error,
+                                    format!("compose failed: {err}"),
+                                ),
+                            }
+                        } else {
+                            state.composer = Some(ComposeState::new());
+                            set_status(
+                                &mut state,
+                                StatusLevel::Info,
+                                "Compose message: fill fields, Enter to advance/send, Esc to cancel",
+                            );
+                        }
                     }
                     KeyCode::Char('p') => {
                         let mut settings = load_profile_settings(&ctx.profile_name)
@@ -1048,7 +1069,7 @@ fn draw_status_bar(frame: &mut ratatui::Frame<'_>, area: Rect, state: &TuiState)
         StatusLevel::Error => state.theme.danger,
     };
 
-    let keys = "keys: q quit | Tab/Shift+Tab panes | s compose | p profile | / peer filter | Enter peer details/iface edit | i/t/x/a interfaces | d discover | y sync | u unpeer | r start/restart | n announce | e refresh";
+    let keys = "keys: q quit | Tab/Shift+Tab panes | s compose (Peers: prefilled destination) | p profile | / peer filter | Enter peer details/iface edit | i/t/x/a interfaces | d discover | y sync | u unpeer | r start/restart | n announce | e refresh";
     let content = vec![
         Line::from(Span::styled(
             state.status_line.as_str(),
@@ -1089,7 +1110,7 @@ fn draw_welcome_overlay(frame: &mut ratatui::Frame<'_>, state: &TuiState) {
         )),
         Line::from(""),
         Line::from(Span::styled(
-            "Quick start: Tab panes, d discover, n announce, s send, / filter peers, Enter peer details/edit iface, p profile, i/t/x/a interfaces.",
+            "Quick start: Tab panes, d discover, n announce, s send (Peers prefill destination), / filter peers, Enter peer details/edit iface, p profile, i/t/x/a interfaces.",
             Style::default().fg(state.theme.muted),
         )),
         Line::from(Span::styled(
@@ -2277,6 +2298,25 @@ fn unpeer_selected_peer(rpc: &RpcClient, state: &TuiState) -> Result<String> {
     Ok(format!("unpeered {peer}"))
 }
 
+fn open_compose_from_selected_peer(state: &mut TuiState) -> Result<String> {
+    let Some(peer_hash) = selected_peer_name(state) else {
+        return Err(anyhow!("no peer selected"));
+    };
+
+    let peer_label = selected_peer_value(state)
+        .and_then(|peer| peer.get("name").and_then(Value::as_str))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| peer_hash.clone());
+
+    state.pane = Pane::Messages;
+    state.composer = Some(ComposeState::with_destination(peer_hash.clone()));
+    Ok(format!(
+        "Compose to {peer_label}: destination prefilled ({peer_hash}). Fill source/content, Enter to send"
+    ))
+}
+
 fn selected_peer_name(state: &TuiState) -> Option<String> {
     let index = selected_peer_source_index(state)?;
     state
@@ -2431,8 +2471,8 @@ fn as_vec(value: Value, key: &str) -> Vec<Value> {
 #[cfg(test)]
 mod tests {
     use super::{
-        as_vec, filtered_peer_indices, selected_peer_name, Pane, StatusLevel, TuiSnapshot,
-        TuiState, TuiTheme,
+        as_vec, filtered_peer_indices, open_compose_from_selected_peer, selected_peer_name, Pane,
+        StatusLevel, TuiSnapshot, TuiState, TuiTheme,
     };
     use serde_json::json;
     use std::time::Instant;
@@ -2493,6 +2533,21 @@ mod tests {
 
         let selected = selected_peer_name(&state);
         assert_eq!(selected.as_deref(), Some("hash-c"));
+    }
+
+    #[test]
+    fn compose_from_peer_prefills_destination_and_switches_to_messages() {
+        let mut state = sample_state(vec![json!({
+            "peer": "deadbeefcafe0011",
+            "name": "Alice Node"
+        })]);
+        let message = open_compose_from_selected_peer(&mut state).expect("compose opens");
+
+        assert_eq!(state.pane, Pane::Messages);
+        let composer = state.composer.expect("composer state");
+        assert_eq!(composer.destination, "deadbeefcafe0011");
+        assert!(composer.source.is_empty());
+        assert!(message.contains("destination prefilled"));
     }
 
     fn sample_state(peers: Vec<serde_json::Value>) -> TuiState {

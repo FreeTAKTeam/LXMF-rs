@@ -105,7 +105,7 @@ pub fn render(
         Block::default()
             .title(Span::styled(
                 format!(
-                    "Peers  (/ filter{edit_suffix}, Enter details, y sync, u unpeer)  filter={filter_label}"
+                    "Peers  (s send, / filter{edit_suffix}, Enter details, y sync, u unpeer)  filter={filter_label}"
                 ),
                 Style::default().fg(theme.accent),
             ))

@@ -123,7 +123,10 @@ pub fn render(
                     .fg(theme.accent)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled(" send message", Style::default().fg(theme.text)),
+            Span::styled(
+                " send message (Peers: prefilled destination)",
+                Style::default().fg(theme.text),
+            ),
         ]),
         Line::from(vec![
             Span::styled(

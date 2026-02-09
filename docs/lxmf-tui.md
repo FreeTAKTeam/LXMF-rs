@@ -23,7 +23,7 @@ cargo run --bin lxmf -- --profile <name> tui
 - `Tab`: next pane
 - `j` / `Down`: move selection down (messages/peers/interfaces)
 - `k` / `Up`: move selection up (messages/peers/interfaces)
-- `s`: send message (interactive prompt)
+- `s`: send message (from Peers pane, destination is prefilled from selected peer and view jumps to Messages)
 - `/`: open peer search filter (hash or name, live)
 - `Esc` (while filtering): clear peer filter
 - `Enter` in Peers: open selected peer details
