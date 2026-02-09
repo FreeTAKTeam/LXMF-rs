@@ -1721,21 +1721,21 @@ fn refresh_snapshot(
 
     if connected {
         match rpc.call("list_messages", None) {
-            Ok(messages) => snapshot.messages = as_vec(messages),
+            Ok(messages) => snapshot.messages = as_vec(messages, "messages"),
             Err(err) => {
                 warning.get_or_insert_with(|| format!("messages unavailable: {err}"));
             }
         }
 
         match rpc.call("list_peers", None) {
-            Ok(peers) => snapshot.peers = as_vec(peers),
+            Ok(peers) => snapshot.peers = as_vec(peers, "peers"),
             Err(err) => {
                 warning.get_or_insert_with(|| format!("peers unavailable: {err}"));
             }
         }
 
         match rpc.call("list_interfaces", None) {
-            Ok(interfaces) => snapshot.interfaces = as_vec(interfaces),
+            Ok(interfaces) => snapshot.interfaces = as_vec(interfaces, "interfaces"),
             Err(err) => {
                 warning.get_or_insert_with(|| format!("interfaces unavailable: {err}"));
             }
@@ -2089,8 +2089,43 @@ fn selected_interface_name(state: &TuiState) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
-fn as_vec(value: Value) -> Vec<Value> {
+fn as_vec(value: Value, key: &str) -> Vec<Value> {
+    if let Some(items) = value.get(key).and_then(Value::as_array) {
+        return items.clone();
+    }
     value.as_array().cloned().unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::as_vec;
+    use serde_json::json;
+
+    #[test]
+    fn as_vec_extracts_wrapped_array() {
+        let value = json!({
+            "peers": [
+                { "peer": "abc" },
+                { "peer": "def" }
+            ]
+        });
+        let peers = as_vec(value, "peers");
+        assert_eq!(peers.len(), 2);
+    }
+
+    #[test]
+    fn as_vec_extracts_direct_array() {
+        let value = json!([{ "id": "m1" }]);
+        let messages = as_vec(value, "messages");
+        assert_eq!(messages.len(), 1);
+    }
+
+    #[test]
+    fn as_vec_returns_empty_for_missing_key() {
+        let value = json!({ "items": [] });
+        let peers = as_vec(value, "peers");
+        assert!(peers.is_empty());
+    }
 }
 
 fn clamp_selection(state: &mut TuiState) {
