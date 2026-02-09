@@ -17,10 +17,20 @@ pub fn render(
     active: bool,
 ) {
     let items = if peers.is_empty() {
-        vec![ListItem::new(Line::from(Span::styled(
-            "No peers discovered yet.",
-            Style::default().fg(theme.muted),
-        )))]
+        vec![
+            ListItem::new(Line::from(Span::styled(
+                "No peers discovered yet.",
+                Style::default().fg(theme.muted),
+            ))),
+            ListItem::new(Line::from(Span::styled(
+                "Press n to announce local identity.",
+                Style::default().fg(theme.accent_dim),
+            ))),
+            ListItem::new(Line::from(Span::styled(
+                "Verify interfaces are enabled and applied (i/t/x/a).",
+                Style::default().fg(theme.accent_dim),
+            ))),
+        ]
     } else {
         peers
             .iter()
@@ -61,7 +71,7 @@ pub fn render(
     let list = List::new(items).block(
         Block::default()
             .title(Span::styled(
-                "Peers  (y sync, u unpeer)",
+                "Peers  (n announce, y sync, u unpeer)",
                 Style::default().fg(theme.accent),
             ))
             .borders(Borders::ALL)

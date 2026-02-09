@@ -509,7 +509,25 @@ pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
                             next_refresh_deadline(command.refresh_ms, state.connected);
                     }
                     KeyCode::Char('n') => match fast_rpc.call("announce_now", None) {
-                        Ok(_) => set_status(&mut state, StatusLevel::Success, "announce sent"),
+                        Ok(_) => {
+                            apply_refresh(ctx, &fast_rpc, &mut state, true);
+                            next_refresh_due =
+                                next_refresh_deadline(command.refresh_ms, state.connected);
+                            let peer_count = state.snapshot.peers.len();
+                            if peer_count == 0 {
+                                set_status(
+                                    &mut state,
+                                    StatusLevel::Success,
+                                    "announce sent; waiting for peers...",
+                                );
+                            } else {
+                                set_status(
+                                    &mut state,
+                                    StatusLevel::Success,
+                                    format!("announce sent; {peer_count} peer(s) visible"),
+                                );
+                            }
+                        }
                         Err(err) => set_status(
                             &mut state,
                             StatusLevel::Error,
@@ -933,7 +951,7 @@ fn draw_welcome_overlay(frame: &mut ratatui::Frame<'_>, state: &TuiState) {
         )),
         Line::from(""),
         Line::from(Span::styled(
-            "Quick start: Tab switch panes, s send, p profile settings, i/t/x/a interfaces, y sync peer.",
+            "Quick start: Tab switch panes, n announce, s send, p profile settings, i/t/x/a interfaces, y sync peer.",
             Style::default().fg(state.theme.muted),
         )),
         Line::from(Span::styled(

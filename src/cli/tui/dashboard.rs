@@ -145,6 +145,15 @@ pub fn render(
         ]),
         Line::from(vec![
             Span::styled(
+                "n",
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" announce now", Style::default().fg(theme.text)),
+        ]),
+        Line::from(vec![
+            Span::styled(
                 "u",
                 Style::default()
                     .fg(theme.accent)
