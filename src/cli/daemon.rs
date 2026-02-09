@@ -11,6 +11,7 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 const INFERRED_TRANSPORT_BIND: &str = "127.0.0.1:0";
+const DEFAULT_MANAGED_ANNOUNCE_INTERVAL_SECS: u64 = 900;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct DaemonStatus {
@@ -99,6 +100,8 @@ impl DaemonSupervisor {
             .arg(&self.settings.rpc)
             .arg("--db")
             .arg(&db_path)
+            .arg("--announce-interval-secs")
+            .arg(DEFAULT_MANAGED_ANNOUNCE_INTERVAL_SECS.to_string())
             .arg("--identity")
             .arg(identity_path)
             .arg("--config")
