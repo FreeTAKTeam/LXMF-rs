@@ -3,6 +3,7 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::Value;
 use std::io::Read;
 use std::sync::atomic::{AtomicU64, Ordering};
+use ureq::ErrorKind;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct RpcRequest {
@@ -84,7 +85,7 @@ impl RpcClient {
             .post(&url)
             .set("Content-Type", "application/msgpack")
             .send_bytes(&body)
-            .map_err(|err| anyhow!("rpc request failed: {err}"))?;
+            .map_err(|err| format_http_error("rpc request failed", &url, err))?;
 
         let bytes = read_response_body(response).context("failed to read rpc response")?;
 
@@ -116,7 +117,7 @@ impl RpcClient {
         let response = match self.agent.get(&url).call() {
             Ok(resp) => resp,
             Err(ureq::Error::Status(204, _)) => return Ok(None),
-            Err(err) => return Err(anyhow!("event poll failed: {err}")),
+            Err(err) => return Err(format_http_error("event poll failed", &url, err)),
         };
 
         if response.status() == 204 {
@@ -173,4 +174,73 @@ fn read_response_body(response: ureq::Response) -> Result<Vec<u8>> {
         .read_to_end(&mut bytes)
         .context("failed to read response body")?;
     Ok(bytes)
+}
+
+fn format_http_error(prefix: &str, url: &str, err: ureq::Error) -> anyhow::Error {
+    match err {
+        ureq::Error::Status(code, _) => anyhow!("{prefix}: http status {code} from {url}"),
+        ureq::Error::Transport(transport) => {
+            let summary = summarize_transport_error(&transport);
+            anyhow!("{prefix}: {summary}")
+        }
+    }
+}
+
+fn summarize_transport_error(transport: &ureq::Transport) -> String {
+    let category = match transport.kind() {
+        ErrorKind::ConnectionFailed => "connection refused or target unavailable",
+        ErrorKind::Dns => "dns lookup failed",
+        ErrorKind::Io => "network i/o error",
+        ErrorKind::InvalidUrl => "invalid rpc url",
+        ErrorKind::UnknownScheme => "unsupported rpc url scheme",
+        ErrorKind::TooManyRedirects => "too many redirects",
+        ErrorKind::ProxyConnect => "proxy connect failed",
+        ErrorKind::ProxyUnauthorized => "proxy authentication failed",
+        ErrorKind::InvalidProxyUrl => "invalid proxy url",
+        ErrorKind::BadStatus => "bad status line from server",
+        ErrorKind::BadHeader => "bad header from server",
+        ErrorKind::InsecureRequestHttpsOnly => "insecure request blocked by https-only setting",
+        ErrorKind::HTTP => "http status error",
+    };
+
+    let mut details = Vec::new();
+    if let Some(message) = transport.message() {
+        let cleaned = clean_transport_text(message);
+        if !cleaned.is_empty() {
+            details.push(cleaned);
+        }
+    }
+
+    if let Some(source) = std::error::Error::source(transport) {
+        let cleaned = clean_transport_text(&source.to_string());
+        if !cleaned.is_empty() && !details.iter().any(|existing| existing == &cleaned) {
+            details.push(cleaned);
+        }
+    }
+
+    if details.is_empty() {
+        category.to_string()
+    } else {
+        format!("{category}: {}", details.join(": "))
+    }
+}
+
+fn clean_transport_text(input: &str) -> String {
+    let mut text = input.trim().to_string();
+    for prefix in [
+        "Network Error:",
+        "network error:",
+        "Connection Failed:",
+        "connection failed:",
+        "Error encountered:",
+    ] {
+        loop {
+            if text.starts_with(prefix) {
+                text = text[prefix.len()..].trim_start().to_string();
+            } else {
+                break;
+            }
+        }
+    }
+    text
 }
