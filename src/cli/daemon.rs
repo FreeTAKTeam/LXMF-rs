@@ -1,5 +1,6 @@
 use crate::cli::profile::{
-    load_reticulum_config, profile_paths, resolve_identity_path, ProfileSettings,
+    load_reticulum_config, normalize_optional_display_name, profile_paths, resolve_identity_path,
+    ProfileSettings,
 };
 use anyhow::{anyhow, Context, Result};
 use serde::Serialize;
@@ -108,6 +109,14 @@ impl DaemonSupervisor {
 
         if let Some(transport) = transport.as_deref() {
             cmd.arg("--transport").arg(transport);
+        }
+
+        let normalized_display_name =
+            normalize_optional_display_name(self.settings.display_name.as_deref())?;
+        if let Some(display_name) = normalized_display_name {
+            cmd.env("LXMF_DISPLAY_NAME", display_name);
+        } else {
+            cmd.env_remove("LXMF_DISPLAY_NAME");
         }
 
         let mut child = match cmd.spawn() {

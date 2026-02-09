@@ -1,4 +1,5 @@
 use crate::cli::app::{PropagationAction, PropagationCommand, RuntimeContext};
+use crate::cli::commands_peer::extract_peers;
 use anyhow::Result;
 use serde_json::{json, Value};
 
@@ -50,18 +51,16 @@ pub fn run(ctx: &RuntimeContext, command: &PropagationCommand) -> Result<()> {
 }
 
 fn sync(ctx: &RuntimeContext) -> Result<()> {
-    let peers = ctx.rpc.call("list_peers", None)?;
+    let peers = extract_peers(ctx.rpc.call("list_peers", None)?);
     let mut synced = Vec::new();
 
-    if let Some(items) = peers.as_array() {
-        for item in items {
-            if let Some(peer) = item.get("peer").and_then(Value::as_str) {
-                let result = ctx
-                    .rpc
-                    .call("peer_sync", Some(json!({"peer": peer})))
-                    .unwrap_or_else(|_| json!({"ok": false, "peer": peer}));
-                synced.push(result);
-            }
+    for item in peers {
+        if let Some(peer) = item.get("peer").and_then(Value::as_str) {
+            let result = ctx
+                .rpc
+                .call("peer_sync", Some(json!({"peer": peer})))
+                .unwrap_or_else(|_| json!({"ok": false, "peer": peer}));
+            synced.push(result);
         }
     }
 

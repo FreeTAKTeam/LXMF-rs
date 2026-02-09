@@ -4,12 +4,15 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 const ACTIVE_PROFILE_FILE: &str = "active_profile";
+pub const MAX_DISPLAY_NAME_CHARS: usize = 64;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProfileSettings {
     pub name: String,
     pub managed: bool,
     pub rpc: String,
+    #[serde(default)]
+    pub display_name: Option<String>,
     pub reticulumd_path: Option<String>,
     pub db_path: Option<String>,
     pub identity_path: Option<String>,
@@ -22,6 +25,7 @@ impl Default for ProfileSettings {
             name: "default".into(),
             managed: false,
             rpc: "127.0.0.1:4243".into(),
+            display_name: None,
             reticulumd_path: None,
             db_path: None,
             identity_path: None,
@@ -152,7 +156,9 @@ pub fn save_profile_settings(settings: &ProfileSettings) -> Result<()> {
     let paths = profile_paths(&settings.name)?;
     fs::create_dir_all(&paths.root)
         .with_context(|| format!("failed to create {}", paths.root.display()))?;
-    let encoded = toml::to_string_pretty(settings).context("failed to encode profile.toml")?;
+    let mut normalized = settings.clone();
+    normalized.display_name = normalize_optional_display_name(settings.display_name.as_deref())?;
+    let encoded = toml::to_string_pretty(&normalized).context("failed to encode profile.toml")?;
     fs::write(&paths.profile_toml, encoded)
         .with_context(|| format!("failed to write {}", paths.profile_toml.display()))
 }
@@ -243,7 +249,11 @@ pub fn export_identity(dst: &Path, profile_name: &str) -> Result<PathBuf> {
 }
 
 pub fn upsert_interface(config: &mut ReticulumConfig, entry: InterfaceEntry) {
-    if let Some(current) = config.interfaces.iter_mut().find(|iface| iface.name == entry.name) {
+    if let Some(current) = config
+        .interfaces
+        .iter_mut()
+        .find(|iface| iface.name == entry.name)
+    {
         *current = entry;
         return;
     }
@@ -252,11 +262,34 @@ pub fn upsert_interface(config: &mut ReticulumConfig, entry: InterfaceEntry) {
 }
 
 pub fn set_interface_enabled(config: &mut ReticulumConfig, name: &str, enabled: bool) -> bool {
-    if let Some(iface) = config.interfaces.iter_mut().find(|iface| iface.name == name) {
+    if let Some(iface) = config
+        .interfaces
+        .iter_mut()
+        .find(|iface| iface.name == name)
+    {
         iface.enabled = enabled;
         return true;
     }
     false
+}
+
+pub fn normalize_display_name(value: &str) -> Result<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(anyhow!("display name cannot be empty"));
+    }
+    if trimmed.chars().any(char::is_control) {
+        return Err(anyhow!("display name cannot contain control characters"));
+    }
+    let normalized: String = trimmed.chars().take(MAX_DISPLAY_NAME_CHARS).collect();
+    if normalized.is_empty() {
+        return Err(anyhow!("display name cannot be empty"));
+    }
+    Ok(normalized)
+}
+
+pub fn normalize_optional_display_name(value: Option<&str>) -> Result<Option<String>> {
+    value.map(normalize_display_name).transpose()
 }
 
 pub fn remove_interface(config: &mut ReticulumConfig, name: &str) -> bool {

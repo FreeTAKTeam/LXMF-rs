@@ -1,8 +1,9 @@
 use crate::cli::app::{Cli, ProfileAction, ProfileCommand};
 use crate::cli::output::Output;
 use crate::cli::profile::{
-    export_identity, import_identity, init_profile, list_profiles, load_profile_settings, profile_exists,
-    profile_paths, remove_profile, save_profile_settings, select_profile, selected_profile_name,
+    export_identity, import_identity, init_profile, list_profiles, load_profile_settings,
+    normalize_display_name, profile_exists, profile_paths, remove_profile, save_profile_settings,
+    select_profile, selected_profile_name,
 };
 use anyhow::{anyhow, Context, Result};
 use serde_json::json;
@@ -68,6 +69,37 @@ pub fn run(cli: &Cli, command: &ProfileCommand, output: &Output) -> Result<()> {
             }
             select_profile(name)?;
             output.emit_status(&json!({"selected": name}))
+        }
+        ProfileAction::Set {
+            display_name,
+            clear_display_name,
+            name,
+        } => {
+            if display_name.is_some() && *clear_display_name {
+                return Err(anyhow!(
+                    "cannot set and clear display name at the same time"
+                ));
+            }
+            if display_name.is_none() && !clear_display_name {
+                return Err(anyhow!(
+                    "no changes requested; use --display-name or --clear-display-name"
+                ));
+            }
+
+            let name = resolve_profile_name(name.as_deref(), &cli.profile)?;
+            let mut profile = load_profile_settings(&name)?;
+
+            if *clear_display_name {
+                profile.display_name = None;
+            } else if let Some(display_name) = display_name {
+                profile.display_name = Some(normalize_display_name(display_name)?);
+            }
+
+            save_profile_settings(&profile)?;
+            output.emit_status(&json!({
+                "profile": name,
+                "display_name": profile.display_name,
+            }))
         }
         ProfileAction::ImportIdentity { path, name } => {
             let name = resolve_profile_name(name.as_deref(), &cli.profile)?;

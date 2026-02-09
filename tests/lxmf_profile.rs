@@ -1,8 +1,9 @@
 use lxmf::cli::profile::{
     init_profile, list_profiles, load_profile_settings, load_reticulum_config, profile_paths,
-    remove_interface, save_reticulum_config, select_profile, selected_profile_name,
-    set_interface_enabled, upsert_interface, InterfaceEntry,
+    remove_interface, save_profile_settings, save_reticulum_config, select_profile,
+    selected_profile_name, set_interface_enabled, upsert_interface, InterfaceEntry,
 };
+use std::fs;
 use std::sync::{Mutex, OnceLock};
 
 fn env_lock() -> &'static Mutex<()> {
@@ -65,6 +66,36 @@ fn reticulum_interface_mutations_persist() {
     assert!(!loaded.interfaces[0].enabled);
     assert!(remove_interface(&mut loaded, "uplink"));
     assert!(loaded.interfaces.is_empty());
+
+    std::env::remove_var("LXMF_CONFIG_ROOT");
+}
+
+#[test]
+fn display_name_roundtrip_and_migration_compat() {
+    let _guard = env_lock().lock().unwrap();
+    let temp = tempfile::tempdir().unwrap();
+    std::env::set_var("LXMF_CONFIG_ROOT", temp.path());
+
+    let mut created = init_profile("gamma", false, None).unwrap();
+    created.display_name = Some("  Tommy Display  ".into());
+    save_profile_settings(&created).unwrap();
+
+    let loaded = load_profile_settings("gamma").unwrap();
+    assert_eq!(loaded.display_name.as_deref(), Some("Tommy Display"));
+
+    let paths = profile_paths("gamma").unwrap();
+    fs::write(
+        &paths.profile_toml,
+        r#"
+name = "gamma"
+managed = false
+rpc = "127.0.0.1:4243"
+"#,
+    )
+    .unwrap();
+
+    let migrated = load_profile_settings("gamma").unwrap();
+    assert_eq!(migrated.display_name, None);
 
     std::env::remove_var("LXMF_CONFIG_ROOT");
 }

@@ -1,5 +1,5 @@
-use clap::{Args, Parser, Subcommand, ValueEnum};
 use anyhow::{anyhow, Result};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 
 use crate::cli::commands_daemon;
 use crate::cli::commands_iface;
@@ -73,6 +73,14 @@ pub enum ProfileAction {
     },
     Select {
         name: String,
+    },
+    Set {
+        #[arg(long)]
+        display_name: Option<String>,
+        #[arg(long)]
+        clear_display_name: bool,
+        #[arg(long)]
+        name: Option<String>,
     },
     ImportIdentity {
         path: String,
@@ -169,14 +177,27 @@ pub struct PeerCommand {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum PeerAction {
-    List,
-    Show { peer: String },
+    List {
+        #[arg(long)]
+        query: Option<String>,
+        #[arg(long)]
+        limit: Option<usize>,
+    },
+    Show {
+        selector: String,
+        #[arg(long)]
+        exact: bool,
+    },
     Watch {
         #[arg(long, default_value_t = 2)]
         interval_secs: u64,
     },
-    Sync { peer: String },
-    Unpeer { peer: String },
+    Sync {
+        peer: String,
+    },
+    Unpeer {
+        peer: String,
+    },
     Clear,
 }
 
@@ -190,7 +211,9 @@ pub struct MessageCommand {
 pub enum MessageAction {
     Send(MessageSendArgs),
     List,
-    Show { id: String },
+    Show {
+        id: String,
+    },
     Watch {
         #[arg(long, default_value_t = 2)]
         interval_secs: u64,

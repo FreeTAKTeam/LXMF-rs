@@ -1,6 +1,7 @@
 use clap::Parser;
 use lxmf::cli::app::{
-    Cli, Command, MessageAction, MessageCommand, ProfileAction, ProfileCommand,
+    Cli, Command, MessageAction, MessageCommand, PeerAction, PeerCommand, ProfileAction,
+    ProfileCommand,
 };
 
 #[test]
@@ -58,6 +59,54 @@ fn parses_message_send_command() {
             assert_eq!(args.title, "subject");
             assert!(args.include_ticket);
             assert!(args.method.is_some());
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parses_profile_set_command() {
+    let cli = Cli::try_parse_from(["lxmf", "profile", "set", "--display-name", "Tommy Operator"])
+        .unwrap();
+
+    match cli.command {
+        Command::Profile(ProfileCommand {
+            action:
+                ProfileAction::Set {
+                    display_name,
+                    clear_display_name,
+                    name,
+                },
+        }) => {
+            assert_eq!(display_name.as_deref(), Some("Tommy Operator"));
+            assert!(!clear_display_name);
+            assert!(name.is_none());
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parses_peer_query_and_exact_flags() {
+    let list_cli =
+        Cli::try_parse_from(["lxmf", "peer", "list", "--query", "alice", "--limit", "7"]).unwrap();
+    match list_cli.command {
+        Command::Peer(PeerCommand {
+            action: PeerAction::List { query, limit },
+        }) => {
+            assert_eq!(query.as_deref(), Some("alice"));
+            assert_eq!(limit, Some(7));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let show_cli = Cli::try_parse_from(["lxmf", "peer", "show", "abc123", "--exact"]).unwrap();
+    match show_cli.command {
+        Command::Peer(PeerCommand {
+            action: PeerAction::Show { selector, exact },
+        }) => {
+            assert_eq!(selector, "abc123");
+            assert!(exact);
         }
         other => panic!("unexpected command: {other:?}"),
     }

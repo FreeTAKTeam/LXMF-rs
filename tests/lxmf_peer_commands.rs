@@ -45,7 +45,10 @@ fn peer_sync_invokes_peer_sync_rpc() {
             quiet: true,
             verbose: 0,
             command: Command::Peer(PeerCommand {
-                action: PeerAction::List,
+                action: PeerAction::List {
+                    query: None,
+                    limit: None,
+                },
             }),
         },
         profile_name: "peer-test".into(),
@@ -62,6 +65,113 @@ fn peer_sync_invokes_peer_sync_rpc() {
     };
 
     commands_peer::run(&ctx, &command).unwrap();
+    assert!(worker.join().unwrap());
+    std::env::remove_var("LXMF_CONFIG_ROOT");
+}
+
+#[test]
+fn peer_show_supports_wrapped_list_and_name_search() {
+    let temp = tempfile::tempdir().unwrap();
+    std::env::set_var("LXMF_CONFIG_ROOT", temp.path());
+    init_profile("peer-show", false, None).unwrap();
+
+    let (rpc_addr, worker) = spawn_one_rpc_server(json!({
+        "peers": [
+            {"peer": "aa11", "name": "Alice Node", "last_seen": 10},
+            {"peer": "bb22", "name": "Bob Node", "last_seen": 8}
+        ]
+    }));
+
+    let settings = {
+        let mut s = load_profile_settings("peer-show").unwrap();
+        s.rpc = rpc_addr;
+        s
+    };
+
+    let ctx = RuntimeContext {
+        cli: Cli {
+            profile: "peer-show".into(),
+            rpc: None,
+            json: false,
+            no_color: true,
+            quiet: true,
+            verbose: 0,
+            command: Command::Peer(PeerCommand {
+                action: PeerAction::Show {
+                    selector: "alice".into(),
+                    exact: false,
+                },
+            }),
+        },
+        profile_name: "peer-show".into(),
+        profile_paths: profile_paths("peer-show").unwrap(),
+        rpc: RpcClient::new(&settings.rpc),
+        output: Output::new(false, true, true),
+        profile_settings: settings,
+    };
+
+    let command = PeerCommand {
+        action: PeerAction::Show {
+            selector: "alice".into(),
+            exact: false,
+        },
+    };
+
+    commands_peer::run(&ctx, &command).unwrap();
+    assert!(worker.join().unwrap());
+    std::env::remove_var("LXMF_CONFIG_ROOT");
+}
+
+#[test]
+fn peer_show_reports_ambiguous_selector() {
+    let temp = tempfile::tempdir().unwrap();
+    std::env::set_var("LXMF_CONFIG_ROOT", temp.path());
+    init_profile("peer-ambiguous", false, None).unwrap();
+
+    let (rpc_addr, worker) = spawn_one_rpc_server(json!({
+        "peers": [
+            {"peer": "aa11", "name": "Alice", "last_seen": 10},
+            {"peer": "aa22", "name": "Alice Two", "last_seen": 8}
+        ]
+    }));
+
+    let settings = {
+        let mut s = load_profile_settings("peer-ambiguous").unwrap();
+        s.rpc = rpc_addr;
+        s
+    };
+
+    let ctx = RuntimeContext {
+        cli: Cli {
+            profile: "peer-ambiguous".into(),
+            rpc: None,
+            json: false,
+            no_color: true,
+            quiet: true,
+            verbose: 0,
+            command: Command::Peer(PeerCommand {
+                action: PeerAction::Show {
+                    selector: "alice".into(),
+                    exact: false,
+                },
+            }),
+        },
+        profile_name: "peer-ambiguous".into(),
+        profile_paths: profile_paths("peer-ambiguous").unwrap(),
+        rpc: RpcClient::new(&settings.rpc),
+        output: Output::new(false, true, true),
+        profile_settings: settings,
+    };
+
+    let command = PeerCommand {
+        action: PeerAction::Show {
+            selector: "alice".into(),
+            exact: false,
+        },
+    };
+
+    let err = commands_peer::run(&ctx, &command).expect_err("ambiguous selector should fail");
+    assert!(err.to_string().contains("ambiguous"));
     assert!(worker.join().unwrap());
     std::env::remove_var("LXMF_CONFIG_ROOT");
 }
