@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::path::Path;
+use std::sync::{Mutex, MutexGuard};
 use std::thread;
 
 #[derive(Debug, Serialize)]
@@ -33,10 +35,32 @@ struct RpcRequest {
     params: Option<Value>,
 }
 
+static LXMF_CONFIG_ROOT_LOCK: Mutex<()> = Mutex::new(());
+
+struct ConfigRootGuard {
+    _lock: MutexGuard<'static, ()>,
+}
+
+impl ConfigRootGuard {
+    fn new(path: &Path) -> Self {
+        let lock = LXMF_CONFIG_ROOT_LOCK
+            .lock()
+            .expect("LXMF config root env lock poisoned");
+        std::env::set_var("LXMF_CONFIG_ROOT", path);
+        Self { _lock: lock }
+    }
+}
+
+impl Drop for ConfigRootGuard {
+    fn drop(&mut self) {
+        std::env::remove_var("LXMF_CONFIG_ROOT");
+    }
+}
+
 #[test]
 fn message_send_uses_v2_when_available() {
     let temp = tempfile::tempdir().unwrap();
-    std::env::set_var("LXMF_CONFIG_ROOT", temp.path());
+    let _config_root_guard = ConfigRootGuard::new(temp.path());
     init_profile("msg-test", false, None).unwrap();
 
     let (rpc_addr, worker) = spawn_one_rpc_server(json!({"id": "m-1", "queued": true}));
@@ -83,13 +107,12 @@ fn message_send_uses_v2_when_available() {
     commands_message::run(&ctx, &command).unwrap();
     let saw_post_rpc = worker.join().unwrap();
     assert!(saw_post_rpc);
-    std::env::remove_var("LXMF_CONFIG_ROOT");
 }
 
 #[test]
 fn message_send_resolves_contact_alias_destination() {
     let temp = tempfile::tempdir().unwrap();
-    std::env::set_var("LXMF_CONFIG_ROOT", temp.path());
+    let _config_root_guard = ConfigRootGuard::new(temp.path());
     init_profile("msg-contact", false, None).unwrap();
     save_contacts(
         "msg-contact",
@@ -151,7 +174,6 @@ fn message_send_resolves_contact_alias_destination() {
             .unwrap_or_default(),
         "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     );
-    std::env::remove_var("LXMF_CONFIG_ROOT");
 }
 
 fn spawn_one_rpc_server(result: Value) -> (String, thread::JoinHandle<bool>) {
