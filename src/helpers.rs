@@ -2,6 +2,14 @@ use rmpv::Value;
 
 use crate::constants::PN_META_NAME;
 
+pub const MAX_DISPLAY_NAME_CHARS: usize = 64;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DisplayNameError {
+    Empty,
+    ControlChars,
+}
+
 pub fn pn_announce_data_is_valid(data: &[u8]) -> bool {
     let decoded: Vec<Value> = match rmp_serde::from_slice(data) {
         Ok(decoded) => decoded,
@@ -108,7 +116,25 @@ pub fn display_name_from_app_data(data: &[u8]) -> Option<String> {
     std::str::from_utf8(data).ok().map(|s| s.to_string())
 }
 
-fn is_msgpack_array_prefix(byte: u8) -> bool {
+pub fn normalize_display_name(value: &str) -> Result<String, DisplayNameError> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(DisplayNameError::Empty);
+    }
+
+    if trimmed.chars().any(char::is_control) {
+        return Err(DisplayNameError::ControlChars);
+    }
+
+    let normalized: String = trimmed.chars().take(MAX_DISPLAY_NAME_CHARS).collect();
+    if normalized.is_empty() {
+        Err(DisplayNameError::Empty)
+    } else {
+        Ok(normalized)
+    }
+}
+
+pub fn is_msgpack_array_prefix(byte: u8) -> bool {
     (0x90..=0x9f).contains(&byte) || byte == 0xdc || byte == 0xdd
 }
 

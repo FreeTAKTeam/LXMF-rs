@@ -3,7 +3,7 @@ use crate::cli::output::Output;
 use crate::cli::profile::{
     clear_selected_profile, export_identity, import_identity, init_profile, list_profiles,
     load_profile_settings, normalize_display_name, profile_exists, profile_paths, remove_profile,
-    save_profile_settings, select_profile, selected_profile_name,
+    resolve_command_profile_name, save_profile_settings, select_profile, selected_profile_name,
 };
 use anyhow::{anyhow, Context, Result};
 use serde_json::json;
@@ -46,7 +46,7 @@ pub fn run(cli: &Cli, command: &ProfileCommand, output: &Output) -> Result<()> {
             }
         }
         ProfileAction::Show { name } => {
-            let name = resolve_profile_name(name.as_deref(), &cli.profile)?;
+            let name = resolve_command_profile_name(name.as_deref(), &cli.profile)?;
             let profile = load_profile_settings(&name)?;
             let paths = profile_paths(&name)?;
             output.emit_status(&json!({
@@ -87,7 +87,7 @@ pub fn run(cli: &Cli, command: &ProfileCommand, output: &Output) -> Result<()> {
                 ));
             }
 
-            let name = resolve_profile_name(name.as_deref(), &cli.profile)?;
+            let name = resolve_command_profile_name(name.as_deref(), &cli.profile)?;
             let mut profile = load_profile_settings(&name)?;
 
             if *clear_display_name {
@@ -103,7 +103,7 @@ pub fn run(cli: &Cli, command: &ProfileCommand, output: &Output) -> Result<()> {
             }))
         }
         ProfileAction::ImportIdentity { path, name } => {
-            let name = resolve_profile_name(name.as_deref(), &cli.profile)?;
+            let name = resolve_command_profile_name(name.as_deref(), &cli.profile)?;
             let imported = import_identity(Path::new(path), &name)
                 .with_context(|| format!("failed to import identity from {}", path))?;
             output.emit_status(&json!({
@@ -112,7 +112,7 @@ pub fn run(cli: &Cli, command: &ProfileCommand, output: &Output) -> Result<()> {
             }))
         }
         ProfileAction::ExportIdentity { path, name } => {
-            let name = resolve_profile_name(name.as_deref(), &cli.profile)?;
+            let name = resolve_command_profile_name(name.as_deref(), &cli.profile)?;
             let exported = export_identity(Path::new(path), &name)
                 .with_context(|| format!("failed to export identity to {}", path))?;
             output.emit_status(&json!({
@@ -140,26 +140,4 @@ pub fn run(cli: &Cli, command: &ProfileCommand, output: &Output) -> Result<()> {
             output.emit_status(&json!({"deleted": name}))
         }
     }
-}
-
-fn resolve_profile_name(requested: Option<&str>, cli_profile: &str) -> Result<String> {
-    if let Some(name) = requested {
-        return Ok(name.to_string());
-    }
-
-    if profile_exists(cli_profile)? {
-        return Ok(cli_profile.to_string());
-    }
-
-    if let Some(selected) = selected_profile_name()? {
-        return Ok(selected);
-    }
-
-    let default_name = "default";
-    if !profile_exists(default_name)? {
-        let mut profile = init_profile(default_name, false, None)?;
-        profile.name = default_name.to_string();
-        save_profile_settings(&profile)?;
-    }
-    Ok(default_name.to_string())
 }

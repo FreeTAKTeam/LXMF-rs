@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 
 use crate::cli::commands_contact;
@@ -12,7 +12,7 @@ use crate::cli::commands_propagation;
 use crate::cli::commands_stamp;
 use crate::cli::output::Output;
 use crate::cli::profile::{
-    load_profile_settings, profile_exists, profile_paths, selected_profile_name, ProfilePaths,
+    load_profile_settings, profile_paths, resolve_runtime_profile_name, ProfilePaths,
     ProfileSettings,
 };
 use crate::cli::rpc_client::RpcClient;
@@ -490,26 +490,5 @@ pub fn run_cli(cli: Cli) -> Result<()> {
 }
 
 fn resolve_profile_name(cli_profile: &str) -> Result<String> {
-    if profile_exists(cli_profile)? {
-        return Ok(cli_profile.to_string());
-    }
-
-    if cli_profile != "default" {
-        return Err(anyhow!(
-            "profile '{}' does not exist; run `lxmf profile init {}` first",
-            cli_profile,
-            cli_profile
-        ));
-    }
-
-    if let Some(selected) = selected_profile_name()? {
-        if profile_exists(&selected)? {
-            return Ok(selected);
-        }
-    }
-
-    Err(anyhow!(
-        "no profile found (requested '{}'). run `lxmf profile init <name>` first",
-        cli_profile
-    ))
+    resolve_runtime_profile_name(cli_profile)
 }

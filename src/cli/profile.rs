@@ -3,8 +3,10 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::helpers::{normalize_display_name as normalize_display_name_shared, DisplayNameError};
+
 const ACTIVE_PROFILE_FILE: &str = "active_profile";
-pub const MAX_DISPLAY_NAME_CHARS: usize = 64;
+pub const MAX_DISPLAY_NAME_CHARS: usize = crate::helpers::MAX_DISPLAY_NAME_CHARS;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProfileSettings {
@@ -181,6 +183,60 @@ pub fn selected_profile_name() -> Result<Option<String>> {
     }
 }
 
+pub fn resolve_runtime_profile_name(cli_profile: &str) -> Result<String> {
+    if profile_exists(cli_profile)? {
+        return Ok(cli_profile.to_string());
+    }
+
+    if cli_profile != "default" {
+        return Err(anyhow!(
+            "profile '{}' does not exist; run `lxmf profile init {}` first",
+            cli_profile,
+            cli_profile
+        ));
+    }
+
+    if let Some(selected) = selected_profile_name()? {
+        if profile_exists(&selected)? {
+            return Ok(selected);
+        }
+    }
+
+    Err(anyhow!(
+        "no profile found (requested '{}'). run `lxmf profile init <name>` first",
+        cli_profile
+    ))
+}
+
+pub fn resolve_command_profile_name(requested: Option<&str>, cli_profile: &str) -> Result<String> {
+    if let Some(name) = requested {
+        return Ok(name.to_string());
+    }
+
+    if profile_exists(cli_profile)? {
+        return Ok(cli_profile.to_string());
+    }
+
+    if let Some(selected) = selected_profile_name()? {
+        if profile_exists(&selected)? {
+            return Ok(selected);
+        }
+    }
+
+    ensure_default_profile_exists()?;
+    Ok("default".to_string())
+}
+
+fn ensure_default_profile_exists() -> Result<()> {
+    let default_name = "default";
+    if !profile_exists(default_name)? {
+        let mut profile = init_profile(default_name, false, None)?;
+        profile.name = default_name.to_string();
+        save_profile_settings(&profile)?;
+    }
+    Ok(())
+}
+
 pub fn select_profile(name: &str) -> Result<()> {
     let path = active_profile_path()?;
     let root = config_root()?;
@@ -285,18 +341,12 @@ pub fn set_interface_enabled(config: &mut ReticulumConfig, name: &str, enabled: 
 }
 
 pub fn normalize_display_name(value: &str) -> Result<String> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        return Err(anyhow!("display name cannot be empty"));
-    }
-    if trimmed.chars().any(char::is_control) {
-        return Err(anyhow!("display name cannot contain control characters"));
-    }
-    let normalized: String = trimmed.chars().take(MAX_DISPLAY_NAME_CHARS).collect();
-    if normalized.is_empty() {
-        return Err(anyhow!("display name cannot be empty"));
-    }
-    Ok(normalized)
+    normalize_display_name_shared(value).map_err(|err| match err {
+        DisplayNameError::Empty => anyhow!("display name cannot be empty"),
+        DisplayNameError::ControlChars => {
+            anyhow!("display name cannot contain control characters")
+        }
+    })
 }
 
 pub fn normalize_optional_display_name(value: Option<&str>) -> Result<Option<String>> {
