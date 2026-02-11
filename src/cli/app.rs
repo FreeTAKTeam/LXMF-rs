@@ -494,14 +494,18 @@ fn resolve_profile_name(cli_profile: &str) -> Result<String> {
         return Ok(cli_profile.to_string());
     }
 
+    if cli_profile != "default" {
+        return Err(anyhow!(
+            "profile '{}' does not exist; run `lxmf profile init {}` first",
+            cli_profile,
+            cli_profile
+        ));
+    }
+
     if let Some(selected) = selected_profile_name()? {
         if profile_exists(&selected)? {
             return Ok(selected);
         }
-    }
-
-    if profile_exists("default")? {
-        return Ok("default".into());
     }
 
     Err(anyhow!(

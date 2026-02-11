@@ -29,11 +29,17 @@ impl Adapter {
         }
     }
 
+    pub fn has_outbound_sender(&self) -> bool {
+        self.outbound_sender.is_some()
+    }
+
     pub fn send_outbound(&self, message: &WireMessage) -> Result<(), LxmfError> {
-        if let Some(sender) = &self.outbound_sender {
-            sender(message)?;
+        match &self.outbound_sender {
+            Some(sender) => sender(message),
+            None => Err(LxmfError::Io(
+                "no outbound sender configured for reticulum adapter".into(),
+            )),
         }
-        Ok(())
     }
 
     pub fn address_hash(identity: &Identity) -> [u8; Self::DEST_HASH_LEN] {

@@ -321,22 +321,28 @@ impl Router {
                 self.stats.outbound_rejected_auth_total += 1;
                 OutboundStatus::RejectedAuth
             } else if let Some(adapter) = self.adapter.as_ref() {
-                let send_result = adapter.send_outbound(&msg);
-                if let Err(_error) = send_result {
+                if !adapter.has_outbound_sender() {
                     self.outbound_messages.insert(message_id.clone(), msg);
                     self.outbound_queue.push_back(message_id.clone());
-                    self.stats.outbound_adapter_errors_total += 1;
-                    OutboundStatus::DeferredAdapterError
+                    OutboundStatus::DeferredNoAdapter
                 } else {
-                    for callback in &mut self.delivery_callbacks {
-                        callback(&msg);
+                    let send_result = adapter.send_outbound(&msg);
+                    if let Err(_error) = send_result {
+                        self.outbound_messages.insert(message_id.clone(), msg);
+                        self.outbound_queue.push_back(message_id.clone());
+                        self.stats.outbound_adapter_errors_total += 1;
+                        OutboundStatus::DeferredAdapterError
+                    } else {
+                        for callback in &mut self.delivery_callbacks {
+                            callback(&msg);
+                        }
+                        self.outbound_progress.insert(message_id.clone(), 100);
+                        for callback in &mut self.outbound_progress_callbacks {
+                            callback(&message_id, 100);
+                        }
+                        self.stats.outbound_processed_total += 1;
+                        OutboundStatus::Sent
                     }
-                    self.outbound_progress.insert(message_id.clone(), 100);
-                    for callback in &mut self.outbound_progress_callbacks {
-                        callback(&message_id, 100);
-                    }
-                    self.stats.outbound_processed_total += 1;
-                    OutboundStatus::Sent
                 }
             } else {
                 self.outbound_messages.insert(message_id.clone(), msg);
@@ -756,15 +762,8 @@ impl Router {
 
     fn prune_transfer_state(&mut self, now: u64) {
         let ttl = self.config.transfer_state_ttl_secs;
-        self.propagation_transfers.retain(|_, state| {
-            if matches!(
-                state.phase,
-                TransferPhase::Requested | TransferPhase::InProgress
-            ) {
-                return true;
-            }
-            now.saturating_sub(state.updated_at) <= ttl
-        });
+        self.propagation_transfers
+            .retain(|_, state| now.saturating_sub(state.updated_at) <= ttl);
     }
 }
 

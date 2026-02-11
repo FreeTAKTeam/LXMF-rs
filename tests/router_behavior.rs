@@ -10,7 +10,8 @@ fn make_message(destination: [u8; 16], source: [u8; 16]) -> WireMessage {
 
 #[test]
 fn handle_outbound_enforces_auth_and_ignore_policy() {
-    let mut router = lxmf::router::Router::with_adapter(Adapter::new());
+    let adapter = Adapter::with_outbound_sender(|_message| Ok(()));
+    let mut router = lxmf::router::Router::with_adapter(adapter);
     router.set_auth_required(true);
 
     let destination = [0xAA; 16];
@@ -81,6 +82,25 @@ fn propagation_transfer_lifecycle_is_tracked_and_pruned() {
 
     let ttl = router.config().transfer_state_ttl_secs;
     router.jobs_at(completed.updated_at + ttl + 1);
+    assert!(router.propagation_transfer_state(&transient_id).is_none());
+}
+
+#[test]
+fn jobs_prune_stale_inflight_transfers() {
+    let mut router = lxmf::router::Router::default();
+    let transient_id = b"transfer-stale".to_vec();
+
+    let requested = router.request_propagation_transfer(transient_id.clone());
+    assert_eq!(requested.phase, TransferPhase::Requested);
+    assert!(router.update_propagation_transfer_progress(&transient_id, 25));
+
+    let in_progress = router
+        .propagation_transfer_state(&transient_id)
+        .expect("in progress state");
+    assert_eq!(in_progress.phase, TransferPhase::InProgress);
+
+    let ttl = router.config().transfer_state_ttl_secs;
+    router.jobs_at(in_progress.updated_at + ttl + 1);
     assert!(router.propagation_transfer_state(&transient_id).is_none());
 }
 

@@ -79,6 +79,23 @@ fn router_does_not_retry_deferred_no_adapter_in_same_batch() {
 }
 
 #[test]
+fn router_with_unconfigured_adapter_defers_without_dropping() {
+    let mut router = Router::with_adapter(Adapter::new());
+    router.set_auth_required(true);
+    let destination = [0xEA; 16];
+    router.allow_destination(destination);
+    let message = make_message(destination, [0xFB; 16]);
+    let message_id = message.message_id().to_vec();
+    router.enqueue_outbound(message);
+
+    let result = router.handle_outbound(5).expect("outbound processing");
+    assert_eq!(result.len(), 1);
+    assert_eq!(result[0].status, OutboundStatus::DeferredNoAdapter);
+    assert_eq!(result[0].message_id, message_id);
+    assert_eq!(router.outbound_len(), 1);
+}
+
+#[test]
 fn router_does_not_retry_adapter_errors_in_same_batch() {
     let adapter = Adapter::with_outbound_sender(|_message| {
         Err(LxmfError::Io("simulated adapter failure".into()))
