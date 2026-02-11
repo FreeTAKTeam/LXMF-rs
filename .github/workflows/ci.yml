@@ -152,5 +152,8 @@ jobs:
       - name: Release gate - Python interop
         run: make interop-gate RETICULUM_PY_PATH=../reticulum
 
+      - name: Release gate - build reticulumd for e2e
+        run: cargo build --manifest-path ../Reticulum-rs/crates/reticulum/Cargo.toml --bin reticulumd
+
       - name: Release gate - reticulum e2e
         run: cargo run --manifest-path ../Reticulum-rs/crates/reticulum/Cargo.toml --bin rnx -- e2e --timeout-secs 20
