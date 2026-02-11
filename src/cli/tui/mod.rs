@@ -2509,10 +2509,8 @@ fn handle_compose_key(
             Ok(result) => {
                 close = true;
                 refresh_after_compose_send(ctx, rpc, state, &result.message_id);
-                let receipt_status = message_receipt_status(
-                    &state.snapshot.messages,
-                    &result.message_id,
-                );
+                let receipt_status =
+                    message_receipt_status(&state.snapshot.messages, &result.message_id);
                 status = Some((
                     StatusLevel::Success,
                     compose_send_status(&result, receipt_status),

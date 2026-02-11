@@ -31,6 +31,11 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      - name: Install protoc (Linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+
       - name: Cargo fmt
         run: |
           git ls-files '*.rs' \
@@ -60,6 +65,16 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Install protoc (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+
+      - name: Install protoc (macOS)
+        if: matrix.os == 'macos-latest'
+        run: brew install protobuf
 
       - name: Setup Python
         if: matrix.os == 'ubuntu-latest'
@@ -113,6 +128,11 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Install protoc (Linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
 
       - name: Setup Python
         uses: actions/setup-python@v5
