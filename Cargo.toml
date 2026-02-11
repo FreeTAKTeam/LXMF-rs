@@ -8,7 +8,7 @@ description = "Rust implementation of LXMF with parity-focused tests against the
 readme = "README.md"
 
 [dependencies]
-reticulum = { package = "reticulum-rs", git = "https://github.com/FreeTAKTeam/Reticulum-rs.git", rev = "aab37ce03871a035ea4aca3ba7963dc091c7c212" }
+reticulum = { package = "reticulum-rs", git = "https://github.com/FreeTAKTeam/Reticulum-rs.git", rev = "510397e007505498ad9e3c61394234b0453e274b" }
 serde = { version = "1", features = ["derive"] }
 thiserror = "1"
 rmp-serde = "1"
