@@ -40,13 +40,13 @@ interop-gate:
 	fi
 	LXMF_PYTHON_INTEROP=1 \
 	PYTHONPATH="$(CURDIR):$(RETICULUM_PY_PATH):$$PYTHONPATH" \
-	cargo test --test python_interop_gate -- --nocapture
+	cargo test -p lxmf --test python_interop_gate --features cli -- --nocapture
 
 soak-rnx:
 	./scripts/soak-rnx.sh
 
 release-gate-local:
-	cargo test --workspace --all-targets
+	cargo test --workspace --all-targets --all-features
 	make interop-gate RETICULUM_PY_PATH="$(RETICULUM_PY_PATH)"
 	cargo run --manifest-path ../Reticulum-rs/crates/reticulum/Cargo.toml --bin rnx -- e2e --timeout-secs 20
 

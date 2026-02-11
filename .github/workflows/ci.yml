@@ -1,129 +1,49 @@
 name: CI
 
 on:
-  push:
-    branches:
-      - main
-      - master
   pull_request:
+  push:
+    branches: [main, master]
 
 env:
   CARGO_TERM_COLOR: always
-  RETICULUM_RS_VERSION: "0.1.2"
-  PYTHON_RETICULUM_REV: 1bee46ed814e671d268801958bb2aa4746e4ed5e
-  PYTHON_LXMF_REV: 269ce43afc6552e934c212887c2450718311396a
 
 jobs:
-  lint:
-    name: Lint (fmt + clippy)
+  quality:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout LXMF-rs
-        uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny,cargo-audit,cargo-udeps
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - name: Tests
+        run: cargo test --workspace --all-targets --all-features
+      - name: Docs
+        run: cargo doc --workspace --no-deps
+      - name: Dependency policy
+        run: cargo deny check
+      - name: Security audit
+        run: cargo audit
+      - name: Unused dependencies
+        run: cargo +nightly udeps --workspace --all-targets
 
-      - name: Install protoc (Linux)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y protobuf-compiler
-
-      - name: Cargo fmt
-        run: |
-          git ls-files '*.rs' \
-            | xargs rustfmt --edition 2021 --check
-
-      - name: Cargo clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
-
-  coverage:
-    name: Coverage (Linux)
+  compatibility-reticulum-main:
     runs-on: ubuntu-latest
+    needs: quality
     steps:
-      - name: Checkout LXMF-rs
-        uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: llvm-tools-preview
-
-      - name: Install protoc (Linux)
+      - uses: actions/checkout@v4
+      - name: Checkout Reticulum-rs (main)
+        run: git clone --depth 1 https://github.com/FreeTAKTeam/Reticulum-rs.git ../Reticulum-rs
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Pin lxmf to sibling reticulum checkout
         run: |
-          sudo apt-get update
-          sudo apt-get install -y protobuf-compiler
-
-      - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-llvm-cov
-
-      - name: Generate coverage (lcov)
-        run: cargo llvm-cov --workspace --all-targets --lcov --output-path coverage.lcov
-
-      - name: Upload coverage artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-lcov
-          path: coverage.lcov
-
-  release-gate:
-    name: Release Gate (Linux)
-    runs-on: ubuntu-latest
-    needs:
-      - lint
-      - coverage
-    steps:
-      - name: Checkout LXMF-rs
-        uses: actions/checkout@v4
-
-      - name: Checkout Reticulum-rs sibling dependency (versioned)
-        run: |
-          git clone https://github.com/FreeTAKTeam/Reticulum-rs.git ../Reticulum-rs
-          cd ../Reticulum-rs
-          if git rev-parse -q --verify "refs/tags/v${RETICULUM_RS_VERSION}" >/dev/null; then
-            git checkout "v${RETICULUM_RS_VERSION}"
-          elif git rev-parse -q --verify "refs/tags/${RETICULUM_RS_VERSION}" >/dev/null; then
-            git checkout "${RETICULUM_RS_VERSION}"
-          else
-            echo "Missing Reticulum-rs tag for version ${RETICULUM_RS_VERSION}" >&2
-            exit 1
-          fi
-
-      - name: Checkout Python Reticulum sibling (pinned)
-        run: |
-          git clone https://github.com/markqvist/Reticulum.git ../reticulum
-          cd ../reticulum
-          git checkout "$PYTHON_RETICULUM_REV"
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install protoc (Linux)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y protobuf-compiler
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install pinned Python LXMF stack
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install \
-            "git+https://github.com/markqvist/Reticulum.git@${PYTHON_RETICULUM_REV}" \
-            "git+https://github.com/markqvist/LXMF.git@${PYTHON_LXMF_REV}"
-
-      - name: Release gate - Python interop
-        run: make interop-gate RETICULUM_PY_PATH=../reticulum
-
-      - name: Release gate - build reticulumd for e2e
-        run: cargo build --manifest-path ../Reticulum-rs/Cargo.toml -p reticulum-daemon --bin reticulumd
-
-      - name: Release gate - reticulum e2e
-        run: cargo run --manifest-path ../Reticulum-rs/crates/reticulum/Cargo.toml --bin rnx -- e2e --timeout-secs 20
+          perl -0pi -e 's#reticulum = \{ package = "reticulum-rs", version = "[^"]+" \}#reticulum = { package = "reticulum-rs", path = "../../../Reticulum-rs/crates/reticulum" }#g' crates/lxmf/Cargo.toml
+      - name: Build lxmf against reticulum main
+        run: cargo check -p lxmf --all-targets --all-features

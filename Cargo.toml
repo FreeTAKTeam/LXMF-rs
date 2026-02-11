@@ -1,31 +1,5 @@
-[package]
-name = "lxmf"
-version = "0.1.0"
-edition = "2021"
-license = "MIT"
-repository = "https://github.com/FreeTAKTeam/LXMF-rs"
-description = "Rust implementation of LXMF with parity-focused tests against the Python reference."
-readme = "README.md"
-
-[dependencies]
-reticulum = { package = "reticulum-rs", version = "0.1.2" }
-serde = { version = "1", features = ["derive"] }
-thiserror = "1"
-rmp-serde = "1"
-serde_json = "1"
-sha2 = "0.10"
-hkdf = "0.12"
-rmpv = { version = "1.0", features = ["with-serde"] }
-serde_bytes = "0.11"
-tempfile = "3"
-hex = "0.4"
-ed25519-dalek = { version = "2.1.1", features = ["rand_core"] }
-clap = { version = "4.5.4", features = ["derive"] }
-rand_core = { version = "0.6.4", features = ["getrandom"] }
-x25519-dalek = "2.0.1"
-base64 = "0.22"
-toml = "0.8"
-anyhow = "1"
-dirs = "6"
-ureq = "2.10"
-comfy-table = { version = "7.1", default-features = false }
+[workspace]
+resolver = "2"
+members = [
+  "crates/lxmf",
+]

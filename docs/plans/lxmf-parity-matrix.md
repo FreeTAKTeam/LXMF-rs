@@ -10,12 +10,12 @@ Status legend: `not-started` | `partial` | `done`.
 
 | Python Module | Rust Module | Status |
 | --- | --- | --- |
-| `LXMF/LXMF.py` | `src/constants.rs`, `src/helpers.rs` | done |
-| `LXMF/LXMessage.py` | `src/message/*` | done |
-| `LXMF/LXMPeer.py` | `src/peer/mod.rs` | done |
-| `LXMF/LXMRouter.py` | `src/router/mod.rs` | done |
-| `LXMF/Handlers.py` | `src/handlers.rs` | done |
-| `LXMF/LXStamper.py` | `src/stamper.rs`, `src/ticket.rs` | done |
+| `LXMF/LXMF.py` | `crates/lxmf/src/constants.rs`, `crates/lxmf/src/helpers.rs` | done |
+| `LXMF/LXMessage.py` | `crates/lxmf/src/message/*` | done |
+| `LXMF/LXMPeer.py` | `crates/lxmf/src/peer/mod.rs` | done |
+| `LXMF/LXMRouter.py` | `crates/lxmf/src/router/mod.rs` | done |
+| `LXMF/Handlers.py` | `crates/lxmf/src/handlers.rs` | done |
+| `LXMF/LXStamper.py` | `crates/lxmf/src/stamper.rs`, `crates/lxmf/src/ticket.rs` | done |
 
 ## Required Method-Level Checklist
 
