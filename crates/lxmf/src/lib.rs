@@ -17,6 +17,7 @@ pub mod router_api;
 pub mod stamper;
 pub mod storage;
 pub mod ticket;
+pub mod transport;
 
 pub use error::LxmfError;
 pub use message::{Message, Payload, WireMessage};

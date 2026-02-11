@@ -1,5 +1,6 @@
 use crate::error::LxmfError;
 use crate::message::WireMessage;
+use crate::transport::TransportPlugin;
 use ed25519_dalek::Signature;
 use reticulum::hash::AddressHash;
 use reticulum::identity::{Identity, PrivateIdentity};
@@ -66,5 +67,19 @@ impl Adapter {
 impl Default for Adapter {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl TransportPlugin for Adapter {
+    fn name(&self) -> &str {
+        "reticulum"
+    }
+
+    fn has_outbound_sender(&self) -> bool {
+        Adapter::has_outbound_sender(self)
+    }
+
+    fn send_outbound(&self, message: &WireMessage) -> Result<(), LxmfError> {
+        Adapter::send_outbound(self, message)
     }
 }

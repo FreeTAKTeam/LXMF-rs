@@ -55,13 +55,13 @@ impl Router {
             } else if !self.is_destination_allowed(&destination) {
                 self.stats.outbound_rejected_auth_total += 1;
                 OutboundStatus::RejectedAuth
-            } else if let Some(adapter) = self.adapter.as_ref() {
-                if !adapter.has_outbound_sender() {
+            } else if let Some(transport_plugin) = self.transport_plugin.as_ref() {
+                if !transport_plugin.has_outbound_sender() {
                     self.outbound_messages.insert(message_id.clone(), msg);
                     self.outbound_queue.push_back(message_id.clone());
                     OutboundStatus::DeferredNoAdapter
                 } else {
-                    let send_result = adapter.send_outbound(&msg);
+                    let send_result = transport_plugin.send_outbound(&msg);
                     if let Err(_error) = send_result {
                         self.outbound_messages.insert(message_id.clone(), msg);
                         self.outbound_queue.push_back(message_id.clone());

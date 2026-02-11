@@ -9,10 +9,12 @@ use crate::propagation::PropagationService;
 use crate::reticulum::Adapter;
 use crate::storage::PropagationStore;
 use crate::ticket::Ticket;
+use crate::transport::TransportPlugin;
 use serde::{Deserialize, Serialize};
 use serde_bytes::ByteBuf;
 use std::collections::{btree_map::Entry, BTreeMap, BTreeSet, VecDeque};
 use std::path::Path;
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 // Router internals are split by responsibility to keep the public surface stable and auditable.
@@ -143,7 +145,7 @@ pub struct Router {
     name: Option<String>,
     propagation_node: bool,
     from_static_only: bool,
-    adapter: Option<Adapter>,
+    transport_plugin: Option<Arc<dyn TransportPlugin>>,
     registered_identities: BTreeMap<[u8; 16], Option<String>>,
     allowed_destinations: BTreeSet<[u8; 16]>,
     denied_destinations: BTreeSet<[u8; 16]>,
@@ -160,11 +162,22 @@ pub struct Router {
 
 impl Router {
     pub fn with_adapter(adapter: Adapter) -> Self {
-        Self { adapter: Some(adapter), ..Self::default() }
+        Self::with_transport_plugin(adapter)
+    }
+
+    pub fn with_transport_plugin<P>(plugin: P) -> Self
+    where
+        P: TransportPlugin + 'static,
+    {
+        Self { transport_plugin: Some(Arc::new(plugin)), ..Self::default() }
     }
 
     pub fn has_adapter(&self) -> bool {
-        self.adapter.is_some()
+        self.transport_plugin.is_some()
+    }
+
+    pub fn transport_plugin_name(&self) -> Option<&str> {
+        self.transport_plugin.as_deref().map(TransportPlugin::name)
     }
 
     pub fn config(&self) -> &RouterConfig {
