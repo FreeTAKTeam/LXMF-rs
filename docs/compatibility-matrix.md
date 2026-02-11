@@ -14,7 +14,6 @@ Top-level module status is tracked here; method-level parity is tracked and enfo
 | `LXMF/LXMRouter.py` | `src/router/mod.rs` | done | `docs/plans/lxmf-parity-matrix.md` |
 | `LXMF/Handlers.py` | `src/handlers.rs` | done | `docs/plans/lxmf-parity-matrix.md` |
 | `LXMF/LXStamper.py` | `src/stamper.rs`, `src/ticket.rs` | done | `docs/plans/lxmf-parity-matrix.md` |
-| `LXMF/Utilities/lxmd.py` | `src/lxmd/*`, `src/bin/lxmd.rs` | done | `docs/plans/lxmf-parity-matrix.md` |
 
 ## Python Reticulum -> Rust Reticulum-rs
 

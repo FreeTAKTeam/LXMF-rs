@@ -14,9 +14,7 @@ The stable CLI RPC contract is documented in `docs/rpc-contract.md`.
 - `--profile <name>`: profile name (default `default`)
 - `--rpc <host:port>`: override profile RPC endpoint
 - `--json`: machine-readable output
-- `--no-color`: disable colored tabular output
 - `--quiet`: suppress non-error output
-- `--verbose`: increase verbosity (`-v`, `-vv`, ...)
 
 ## Command Tree
 
@@ -31,7 +29,6 @@ The stable CLI RPC contract is documented in `docs/rpc-contract.md`.
 - `lxmf stamp target|get|set|generate-ticket|cache`
 - `lxmf announce now`
 - `lxmf events watch`
-- `lxmf tui`
 
 ## Profiles and Runtime Files
 
@@ -114,7 +111,3 @@ lxmf --profile ops message send \
   --title "status" \
   --content "hello from lxmf"
 ```
-
-## Compatibility
-
-`lxmd` remains available for legacy flows and scripts.

@@ -16,7 +16,6 @@ Status legend: `not-started` | `partial` | `done`.
 | `LXMF/LXMRouter.py` | `src/router/mod.rs` | done |
 | `LXMF/Handlers.py` | `src/handlers.rs` | done |
 | `LXMF/LXStamper.py` | `src/stamper.rs`, `src/ticket.rs` | done |
-| `LXMF/Utilities/lxmd.py` | `src/lxmd/*`, `src/bin/lxmd.rs` | done |
 
 ## Required Method-Level Checklist
 
@@ -50,7 +49,4 @@ Status legend: `not-started` | `partial` | `done`.
 - PARITY_ITEM id=handlers.delivery_callback status=done tests=tests/handlers_behavior.rs
 - PARITY_ITEM id=handlers.propagation_app_data status=done tests=tests/handlers_behavior.rs
 - PARITY_ITEM id=handlers.router_side_effects status=done tests=tests/handlers_parity.rs
-- PARITY_ITEM id=lxmd.config_load status=done tests=tests/lxmd_runtime.rs
-- PARITY_ITEM id=lxmd.serve_sync_unpeer_status status=done tests=tests/lxmd_runtime.rs
-- PARITY_ITEM id=lxmd.live_daemon_runtime status=done tests=tests/lxmd_runtime.rs,tests/lxmd_cli.rs
 - PARITY_ITEM id=interop.python_live_gate status=done tests=tests/python_interop_gate.rs

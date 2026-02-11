@@ -13,6 +13,5 @@ pub mod daemon;
 pub mod output;
 pub mod profile;
 pub mod rpc_client;
-pub mod tui;
 
 pub use app::{Cli, Command};

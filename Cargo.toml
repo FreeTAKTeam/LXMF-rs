@@ -28,6 +28,4 @@ toml = "0.8"
 anyhow = "1"
 dirs = "6"
 ureq = "2.10"
-comfy-table = "7.1"
-ratatui = "0.28"
-crossterm = "0.28"
+comfy-table = { version = "7.1", default-features = false }

@@ -581,9 +581,7 @@ fn runtime_ctx(profile_name: &str, rpc_addr: &str) -> RuntimeContext {
             profile: profile_name.to_string(),
             rpc: None,
             json: true,
-            no_color: true,
             quiet: true,
-            verbose: 0,
             command: Command::Message(MessageCommand {
                 action: MessageAction::List,
             }),
@@ -591,7 +589,7 @@ fn runtime_ctx(profile_name: &str, rpc_addr: &str) -> RuntimeContext {
         profile_name: profile_name.to_string(),
         profile_paths: profile_paths(profile_name).expect("profile paths"),
         rpc: RpcClient::new(&settings.rpc),
-        output: Output::new(true, true, true),
+        output: Output::new(true, true),
         profile_settings: settings,
     }
 }

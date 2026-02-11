@@ -41,9 +41,7 @@ fn peer_sync_invokes_peer_sync_rpc() {
             profile: "peer-test".into(),
             rpc: None,
             json: true,
-            no_color: true,
             quiet: true,
-            verbose: 0,
             command: Command::Peer(PeerCommand {
                 action: PeerAction::List {
                     query: None,
@@ -54,7 +52,7 @@ fn peer_sync_invokes_peer_sync_rpc() {
         profile_name: "peer-test".into(),
         profile_paths: profile_paths("peer-test").unwrap(),
         rpc: RpcClient::new(&settings.rpc),
-        output: Output::new(true, true, true),
+        output: Output::new(true, true),
         profile_settings: settings,
     };
 
@@ -93,9 +91,7 @@ fn peer_show_supports_wrapped_list_and_name_search() {
             profile: "peer-show".into(),
             rpc: None,
             json: false,
-            no_color: true,
             quiet: true,
-            verbose: 0,
             command: Command::Peer(PeerCommand {
                 action: PeerAction::Show {
                     selector: "alice".into(),
@@ -106,7 +102,7 @@ fn peer_show_supports_wrapped_list_and_name_search() {
         profile_name: "peer-show".into(),
         profile_paths: profile_paths("peer-show").unwrap(),
         rpc: RpcClient::new(&settings.rpc),
-        output: Output::new(false, true, true),
+        output: Output::new(false, true),
         profile_settings: settings,
     };
 
@@ -146,9 +142,7 @@ fn peer_show_reports_ambiguous_selector() {
             profile: "peer-ambiguous".into(),
             rpc: None,
             json: false,
-            no_color: true,
             quiet: true,
-            verbose: 0,
             command: Command::Peer(PeerCommand {
                 action: PeerAction::Show {
                     selector: "alice".into(),
@@ -159,7 +153,7 @@ fn peer_show_reports_ambiguous_selector() {
         profile_name: "peer-ambiguous".into(),
         profile_paths: profile_paths("peer-ambiguous").unwrap(),
         rpc: RpcClient::new(&settings.rpc),
-        output: Output::new(false, true, true),
+        output: Output::new(false, true),
         profile_settings: settings,
     };
 

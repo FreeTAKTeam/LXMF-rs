@@ -76,9 +76,7 @@ fn message_send_uses_v2_when_available() {
             profile: "msg-test".into(),
             rpc: None,
             json: true,
-            no_color: true,
             quiet: true,
-            verbose: 0,
             command: Command::Message(MessageCommand {
                 action: MessageAction::List,
             }),
@@ -86,7 +84,7 @@ fn message_send_uses_v2_when_available() {
         profile_name: "msg-test".into(),
         profile_paths: profile_paths("msg-test").unwrap(),
         rpc: RpcClient::new(&settings.rpc),
-        output: Output::new(true, true, true),
+        output: Output::new(true, true),
         profile_settings: settings,
     };
 
@@ -136,9 +134,7 @@ fn message_send_resolves_contact_alias_destination() {
             profile: "msg-contact".into(),
             rpc: None,
             json: true,
-            no_color: true,
             quiet: true,
-            verbose: 0,
             command: Command::Message(MessageCommand {
                 action: MessageAction::List,
             }),
@@ -146,7 +142,7 @@ fn message_send_resolves_contact_alias_destination() {
         profile_name: "msg-contact".into(),
         profile_paths: profile_paths("msg-contact").unwrap(),
         rpc: RpcClient::new(&settings.rpc),
-        output: Output::new(true, true, true),
+        output: Output::new(true, true),
         profile_settings: settings,
     };
 

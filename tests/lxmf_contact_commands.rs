@@ -19,9 +19,7 @@ fn contact_add_show_remove_roundtrip() {
             profile: "contact-test".into(),
             rpc: None,
             json: true,
-            no_color: true,
             quiet: true,
-            verbose: 0,
             command: Command::Contact(ContactCommand {
                 action: ContactAction::List {
                     query: None,
@@ -33,7 +31,7 @@ fn contact_add_show_remove_roundtrip() {
         profile_settings: settings.clone(),
         profile_paths: profile_paths("contact-test").unwrap(),
         rpc: RpcClient::new(&settings.rpc),
-        output: Output::new(true, true, true),
+        output: Output::new(true, true),
     };
 
     commands_contact::run(

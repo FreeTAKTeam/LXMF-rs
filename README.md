@@ -128,9 +128,9 @@ Release hardening and publication gates are tracked in:
 - `docs/plans/lxmf-parity-matrix.md`
 - `docs/plans/reticulum-parity-matrix.md`
 
-## Rust Operator CLI + TUI
+## Rust Operator CLI
 
-In addition to the compatibility `lxmd` binary, this repository now includes an operator-facing Rust CLI:
+This repository includes an operator-facing Rust CLI:
 
 ```bash
 cargo run --bin lxmf -- --help
@@ -139,7 +139,6 @@ cargo run --bin lxmf -- --help
 Operator docs:
 
 - `docs/lxmf-cli.md`
-- `docs/lxmf-tui.md`
 
 ## Rust Coverage
 

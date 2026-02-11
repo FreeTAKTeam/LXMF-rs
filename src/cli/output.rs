@@ -1,5 +1,5 @@
 use anyhow::Result;
-use comfy_table::{presets::UTF8_FULL, Attribute, Cell, Color, ContentArrangement, Table};
+use comfy_table::{presets::UTF8_FULL, Cell, ContentArrangement, Table};
 use serde::Serialize;
 use serde_json::{Map, Value};
 
@@ -7,16 +7,11 @@ use serde_json::{Map, Value};
 pub struct Output {
     pub json: bool,
     pub quiet: bool,
-    pub no_color: bool,
 }
 
 impl Output {
-    pub fn new(json: bool, quiet: bool, no_color: bool) -> Self {
-        Self {
-            json,
-            quiet,
-            no_color,
-        }
+    pub fn new(json: bool, quiet: bool) -> Self {
+        Self { json, quiet }
     }
 
     pub fn emit_status<T: Serialize>(&self, value: &T) -> Result<()> {
@@ -96,11 +91,7 @@ impl Output {
             .set_content_arrangement(ContentArrangement::Dynamic);
         table.set_header(vec!["field", "value"]);
         for (k, v) in rows {
-            let key_cell = if self.no_color {
-                Cell::new(k)
-            } else {
-                Cell::new(k).fg(Color::Blue).add_attribute(Attribute::Bold)
-            };
+            let key_cell = Cell::new(k);
             table.add_row(vec![key_cell, Cell::new(v)]);
         }
 

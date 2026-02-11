@@ -16,10 +16,9 @@ use crate::cli::profile::{
     ProfileSettings,
 };
 use crate::cli::rpc_client::RpcClient;
-use crate::cli::tui;
 
 #[derive(Debug, Clone, Parser)]
-#[command(name = "lxmf", about = "LXMF operator CLI and TUI", version)]
+#[command(name = "lxmf", about = "LXMF operator CLI", version)]
 pub struct Cli {
     #[arg(long, default_value = "default")]
     pub profile: String,
@@ -28,11 +27,7 @@ pub struct Cli {
     #[arg(long)]
     pub json: bool,
     #[arg(long)]
-    pub no_color: bool,
-    #[arg(long)]
     pub quiet: bool,
-    #[arg(long, short = 'v', action = clap::ArgAction::Count)]
-    pub verbose: u8,
     #[command(subcommand)]
     pub command: Command,
 }
@@ -50,7 +45,6 @@ pub enum Command {
     Stamp(StampCommand),
     Announce(AnnounceCommand),
     Events(EventsCommand),
-    Tui(TuiCommand),
 }
 
 #[derive(Debug, Clone, Args)]
@@ -399,12 +393,6 @@ pub enum EventsAction {
     },
 }
 
-#[derive(Debug, Clone, Args)]
-pub struct TuiCommand {
-    #[arg(long, default_value_t = 1000)]
-    pub refresh_ms: u64,
-}
-
 #[derive(Debug)]
 pub struct RuntimeContext {
     pub cli: Cli,
@@ -424,7 +412,7 @@ impl RuntimeContext {
         }
         let profile_paths = profile_paths(&profile_name)?;
         let rpc = RpcClient::new(&profile_settings.rpc);
-        let output = Output::new(cli.json, cli.quiet, cli.no_color);
+        let output = Output::new(cli.json, cli.quiet);
 
         Ok(Self {
             cli,
@@ -438,17 +426,13 @@ impl RuntimeContext {
 }
 
 pub fn run_cli(cli: Cli) -> Result<()> {
-    let output = Output::new(cli.json, cli.quiet, cli.no_color);
+    let output = Output::new(cli.json, cli.quiet);
     let command = cli.command.clone();
     match command {
         Command::Profile(command) => commands_profile::run(&cli, &command, &output),
         Command::Contact(command) => {
             let ctx = RuntimeContext::load(cli)?;
             commands_contact::run(&ctx, &command)
-        }
-        Command::Tui(command) => {
-            let ctx = RuntimeContext::load(cli)?;
-            tui::run_tui(&ctx, &command)
         }
         Command::Daemon(command) => {
             let ctx = RuntimeContext::load(cli)?;

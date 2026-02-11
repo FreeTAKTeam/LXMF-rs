@@ -78,8 +78,6 @@ fn parity_matrix_has_required_method_items() {
         "router.transfer_state_lifecycle",
         "handlers.delivery_callback",
         "handlers.propagation_app_data",
-        "lxmd.config_load",
-        "lxmd.serve_sync_unpeer_status",
     ];
 
     for id in required {

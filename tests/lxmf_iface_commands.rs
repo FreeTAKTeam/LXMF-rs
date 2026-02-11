@@ -42,9 +42,7 @@ fn iface_apply_pushes_interfaces_to_rpc() {
             profile: "iface-test".into(),
             rpc: None,
             json: true,
-            no_color: true,
             quiet: true,
-            verbose: 0,
             command: Command::Iface(IfaceCommand {
                 action: IfaceAction::List,
             }),
@@ -52,7 +50,7 @@ fn iface_apply_pushes_interfaces_to_rpc() {
         profile_name: "iface-test".into(),
         profile_paths: profile_paths("iface-test").unwrap(),
         rpc: RpcClient::new(&settings.rpc),
-        output: Output::new(true, true, true),
+        output: Output::new(true, true),
         profile_settings: settings,
     };
 
@@ -100,9 +98,7 @@ fn iface_apply_restart_preserves_external_mode() {
             profile: "iface-external".into(),
             rpc: None,
             json: true,
-            no_color: true,
             quiet: true,
-            verbose: 0,
             command: Command::Iface(IfaceCommand {
                 action: IfaceAction::Apply { restart: true },
             }),
@@ -110,7 +106,7 @@ fn iface_apply_restart_preserves_external_mode() {
         profile_name: "iface-external".into(),
         profile_paths: profile_paths("iface-external").unwrap(),
         rpc: RpcClient::new(&settings.rpc),
-        output: Output::new(true, true, true),
+        output: Output::new(true, true),
         profile_settings: settings,
     };
 
