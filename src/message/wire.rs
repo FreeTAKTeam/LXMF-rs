@@ -3,7 +3,7 @@ use crate::message::Payload;
 use base64::Engine;
 use ed25519_dalek::Signature;
 use rand_core::CryptoRngCore;
-use reticulum::crypt::fernet::{Fernet, PlainText};
+use reticulum::crypt::fernet::{Fernet, PlainText, FERNET_MAX_PADDING_SIZE, FERNET_OVERHEAD_SIZE};
 use reticulum::identity::{DerivedKey, Identity, PrivateIdentity, PUBLIC_KEY_LENGTH};
 use sha2::{Digest, Sha256};
 use std::path::Path;
@@ -14,8 +14,6 @@ pub const LXM_URI_PREFIX: &str = "lxm://";
 const STORAGE_MAGIC: &[u8; 8] = b"LXMFSTR0";
 const STORAGE_VERSION: u8 = 1;
 const STORAGE_FLAG_HAS_SIGNATURE: u8 = 0x01;
-const AES_BLOCK_SIZE: usize = 16;
-const FERNET_TOKEN_FIXED_OVERHEAD: usize = 1 + 8 + 16 + 32;
 
 #[derive(Debug, Clone)]
 pub struct WireMessage {
@@ -266,9 +264,8 @@ fn encrypt_for_identity<R: CryptoRngCore + Copy>(
     let split = key_bytes.len() / 2;
 
     let fernet = Fernet::new_from_slices(&key_bytes[..split], &key_bytes[split..], rng);
-    // Fernet token size = fixed overhead + AES-CBC ciphertext (with at least one block of PKCS7 padding).
-    let ciphertext_len = ((plaintext.len() / AES_BLOCK_SIZE) + 1) * AES_BLOCK_SIZE;
-    let token_capacity = FERNET_TOKEN_FIXED_OVERHEAD + ciphertext_len;
+    // Use shared Fernet bounds from reticulum-rs to avoid token sizing drift.
+    let token_capacity = plaintext.len() + FERNET_OVERHEAD_SIZE + FERNET_MAX_PADDING_SIZE;
     let mut out = vec![0u8; PUBLIC_KEY_LENGTH + token_capacity];
     out[..PUBLIC_KEY_LENGTH].copy_from_slice(ephemeral_public.as_bytes());
     let token = fernet
