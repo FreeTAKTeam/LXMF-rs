@@ -93,6 +93,7 @@ impl MessagePaneModel {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn render(
     frame: &mut Frame<'_>,
     area: Rect,

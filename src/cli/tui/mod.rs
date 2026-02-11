@@ -1385,36 +1385,37 @@ fn draw_compose_overlay(frame: &mut ratatui::Frame<'_>, state: &TuiState) {
     let area = centered_rect(74, 52, frame.area());
     frame.render_widget(Clear, area);
 
-    let mut lines = Vec::new();
-    lines.push(compose_line(
-        "destination",
-        &compose.destination,
-        compose.active_field() == ComposeField::Destination,
-        true,
-        &state.theme,
-    ));
-    lines.push(compose_line(
-        "source",
-        &compose.source,
-        compose.active_field() == ComposeField::Source,
-        true,
-        &state.theme,
-    ));
-    lines.push(compose_line(
-        "title",
-        &compose.title,
-        compose.active_field() == ComposeField::Title,
-        false,
-        &state.theme,
-    ));
-    lines.push(compose_line(
-        "content",
-        &compose.content,
-        compose.active_field() == ComposeField::Content,
-        true,
-        &state.theme,
-    ));
-    lines.push(Line::from(""));
+    let mut lines = vec![
+        compose_line(
+            "destination",
+            &compose.destination,
+            compose.active_field() == ComposeField::Destination,
+            true,
+            &state.theme,
+        ),
+        compose_line(
+            "source",
+            &compose.source,
+            compose.active_field() == ComposeField::Source,
+            true,
+            &state.theme,
+        ),
+        compose_line(
+            "title",
+            &compose.title,
+            compose.active_field() == ComposeField::Title,
+            false,
+            &state.theme,
+        ),
+        compose_line(
+            "content",
+            &compose.content,
+            compose.active_field() == ComposeField::Content,
+            true,
+            &state.theme,
+        ),
+        Line::from(""),
+    ];
     if compose.send_armed {
         lines.push(Line::from(Span::styled(
             "Send armed: press Enter again on content to queue message. Any edit cancels arm.",
@@ -1454,33 +1455,34 @@ fn draw_contact_editor_overlay(frame: &mut ratatui::Frame<'_>, state: &TuiState)
     let area = centered_rect(72, 48, frame.area());
     frame.render_widget(Clear, area);
 
-    let mut lines = Vec::new();
-    lines.push(interface_line(
-        "alias",
-        &editor.alias,
-        editor.active_field() == ContactField::Alias,
-        true,
-        &state.theme,
-    ));
-    lines.push(interface_line(
-        "hash",
-        &editor.hash,
-        editor.active_field() == ContactField::Hash,
-        true,
-        &state.theme,
-    ));
-    lines.push(interface_line(
-        "notes",
-        &editor.notes,
-        editor.active_field() == ContactField::Notes,
-        false,
-        &state.theme,
-    ));
-    lines.push(Line::from(""));
-    lines.push(Line::from(Span::styled(
-        "Enter: next/save  Tab: next field  Shift+Tab: previous  Esc: cancel",
-        Style::default().fg(state.theme.muted),
-    )));
+    let lines = vec![
+        interface_line(
+            "alias",
+            &editor.alias,
+            editor.active_field() == ContactField::Alias,
+            true,
+            &state.theme,
+        ),
+        interface_line(
+            "hash",
+            &editor.hash,
+            editor.active_field() == ContactField::Hash,
+            true,
+            &state.theme,
+        ),
+        interface_line(
+            "notes",
+            &editor.notes,
+            editor.active_field() == ContactField::Notes,
+            false,
+            &state.theme,
+        ),
+        Line::from(""),
+        Line::from(Span::styled(
+            "Enter: next/save  Tab: next field  Shift+Tab: previous  Esc: cancel",
+            Style::default().fg(state.theme.muted),
+        )),
+    ];
 
     let title = match editor.mode {
         ContactEditorMode::Add => "Add Contact",
@@ -1546,50 +1548,51 @@ fn draw_interface_editor_overlay(frame: &mut ratatui::Frame<'_>, state: &TuiStat
     let area = centered_rect(72, 54, frame.area());
     frame.render_widget(Clear, area);
 
-    let mut lines = Vec::new();
-    lines.push(interface_line(
-        "name",
-        &editor.name,
-        editor.active_field() == InterfaceField::Name,
-        true,
-        &state.theme,
-    ));
-    lines.push(interface_line(
-        "type",
-        &editor.kind,
-        editor.active_field() == InterfaceField::Type,
-        true,
-        &state.theme,
-    ));
-    lines.push(interface_line(
-        "host",
-        &editor.host,
-        editor.active_field() == InterfaceField::Host,
-        false,
-        &state.theme,
-    ));
-    lines.push(interface_line(
-        "port",
-        &editor.port,
-        editor.active_field() == InterfaceField::Port,
-        false,
-        &state.theme,
-    ));
-    lines.push(interface_bool_line(
-        "enabled",
-        editor.enabled,
-        editor.active_field() == InterfaceField::Enabled,
-        &state.theme,
-    ));
-    lines.push(Line::from(""));
-    lines.push(Line::from(Span::styled(
-        "Enter: next/save  Tab: next field  Shift+Tab: previous  Space on enabled toggles  Esc: cancel",
-        Style::default().fg(state.theme.muted),
-    )));
-    lines.push(Line::from(Span::styled(
-        "Supported type values: tcp_client, tcp_server",
-        Style::default().fg(state.theme.muted),
-    )));
+    let lines = vec![
+        interface_line(
+            "name",
+            &editor.name,
+            editor.active_field() == InterfaceField::Name,
+            true,
+            &state.theme,
+        ),
+        interface_line(
+            "type",
+            &editor.kind,
+            editor.active_field() == InterfaceField::Type,
+            true,
+            &state.theme,
+        ),
+        interface_line(
+            "host",
+            &editor.host,
+            editor.active_field() == InterfaceField::Host,
+            false,
+            &state.theme,
+        ),
+        interface_line(
+            "port",
+            &editor.port,
+            editor.active_field() == InterfaceField::Port,
+            false,
+            &state.theme,
+        ),
+        interface_bool_line(
+            "enabled",
+            editor.enabled,
+            editor.active_field() == InterfaceField::Enabled,
+            &state.theme,
+        ),
+        Line::from(""),
+        Line::from(Span::styled(
+            "Enter: next/save  Tab: next field  Shift+Tab: previous  Space on enabled toggles  Esc: cancel",
+            Style::default().fg(state.theme.muted),
+        )),
+        Line::from(Span::styled(
+            "Supported type values: tcp_client, tcp_server",
+            Style::default().fg(state.theme.muted),
+        )),
+    ];
 
     let title = match editor.mode {
         InterfaceEditorMode::Add => "Add Interface",
@@ -3407,6 +3410,7 @@ fn as_vec(value: Value, key: &str) -> Vec<Value> {
     value.as_array().cloned().unwrap_or_default()
 }
 
+#[allow(clippy::items_after_test_module)]
 #[cfg(test)]
 mod tests {
     use super::{

@@ -8,6 +8,7 @@ use serde_json::Value;
 
 use super::{peer_display_name, TuiTheme};
 
+#[allow(clippy::too_many_arguments)]
 pub fn render(
     frame: &mut Frame<'_>,
     area: Rect,
