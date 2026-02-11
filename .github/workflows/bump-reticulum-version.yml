@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       reticulum_version:
-        description: "reticulum-rs crate version (e.g. 0.1.2)"
+        description: "reticulum-rs crate version (e.g. 0.1.3)"
         required: false
         default: ""
 
