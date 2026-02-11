@@ -9,7 +9,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  RETICULUM_RS_REV: c4d02b13bbd3a6f704f664292a90efc0a1431205
+  RETICULUM_RS_VERSION: "0.1.2"
   PYTHON_RETICULUM_REV: 1bee46ed814e671d268801958bb2aa4746e4ed5e
   PYTHON_LXMF_REV: 269ce43afc6552e934c212887c2450718311396a
 
@@ -20,12 +20,6 @@ jobs:
     steps:
       - name: Checkout LXMF-rs
         uses: actions/checkout@v4
-
-      - name: Checkout Reticulum-rs sibling dependency (pinned)
-        run: |
-          git clone https://github.com/FreeTAKTeam/Reticulum-rs.git ../Reticulum-rs
-          cd ../Reticulum-rs
-          git checkout "$RETICULUM_RS_REV"
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -51,12 +45,6 @@ jobs:
     steps:
       - name: Checkout LXMF-rs
         uses: actions/checkout@v4
-
-      - name: Checkout Reticulum-rs sibling dependency (pinned)
-        run: |
-          git clone https://github.com/FreeTAKTeam/Reticulum-rs.git ../Reticulum-rs
-          cd ../Reticulum-rs
-          git checkout "$RETICULUM_RS_REV"
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -92,11 +80,18 @@ jobs:
       - name: Checkout LXMF-rs
         uses: actions/checkout@v4
 
-      - name: Checkout Reticulum-rs sibling dependency (pinned)
+      - name: Checkout Reticulum-rs sibling dependency (versioned)
         run: |
           git clone https://github.com/FreeTAKTeam/Reticulum-rs.git ../Reticulum-rs
           cd ../Reticulum-rs
-          git checkout "$RETICULUM_RS_REV"
+          if git rev-parse -q --verify "refs/tags/v${RETICULUM_RS_VERSION}" >/dev/null; then
+            git checkout "v${RETICULUM_RS_VERSION}"
+          elif git rev-parse -q --verify "refs/tags/${RETICULUM_RS_VERSION}" >/dev/null; then
+            git checkout "${RETICULUM_RS_VERSION}"
+          else
+            echo "Missing Reticulum-rs tag for version ${RETICULUM_RS_VERSION}" >&2
+            exit 1
+          fi
 
       - name: Checkout Python Reticulum sibling (pinned)
         run: |

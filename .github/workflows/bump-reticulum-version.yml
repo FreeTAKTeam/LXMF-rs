@@ -1,0 +1,94 @@
+name: Bump Reticulum Version
+
+on:
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+    inputs:
+      reticulum_version:
+        description: "reticulum-rs crate version (e.g. 0.1.2)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  bump-reticulum-version:
+    name: Bump reticulum-rs crate version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout LXMF-rs
+        uses: actions/checkout@v4
+
+      - name: Resolve target reticulum-rs version
+        id: resolve
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.reticulum_version }}
+        run: |
+          set -euo pipefail
+          VERSION="${INPUT_VERSION:-}"
+          if [[ -z "${VERSION}" ]]; then
+            VERSION="$(cargo search '^reticulum-rs$' --limit 1 | sed -nE 's/^reticulum-rs = "([^"]+)".*/\1/p' | head -n1)"
+          fi
+          if [[ -z "${VERSION}" ]]; then
+            echo "Unable to resolve reticulum-rs version"
+            exit 1
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Resolved reticulum-rs version ${VERSION}"
+
+      - name: Update crate version references
+        id: bump
+        env:
+          NEW_VERSION: ${{ steps.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          cargo_version="$(sed -nE 's/.*package = "reticulum-rs", version = "([^"]+)".*/\1/p' Cargo.toml | head -n1)"
+          ci_version="$(sed -nE 's/^[[:space:]]*RETICULUM_RS_VERSION: "?([^"]+)"?/\1/p' .github/workflows/ci.yml | head -n1)"
+
+          if [[ -z "${cargo_version}" || -z "${ci_version}" ]]; then
+            echo "Failed to parse existing reticulum-rs versions"
+            exit 1
+          fi
+
+          echo "old_cargo_version=${cargo_version}" >> "$GITHUB_OUTPUT"
+          echo "old_ci_version=${ci_version}" >> "$GITHUB_OUTPUT"
+
+          if [[ "${cargo_version}" != "${NEW_VERSION}" ]]; then
+            perl -0pi -e 's#(package = "reticulum-rs", version = ")[^"]+(")#$1$ENV{NEW_VERSION}$2#g' Cargo.toml
+          fi
+          if [[ "${ci_version}" != "${NEW_VERSION}" ]]; then
+            perl -0pi -e 's#(RETICULUM_RS_VERSION: "?)\d+\.\d+\.\d+("?)#$1$ENV{NEW_VERSION}$2#g' .github/workflows/ci.yml
+          fi
+
+          if [[ "${cargo_version}" == "${NEW_VERSION}" && "${ci_version}" == "${NEW_VERSION}" ]]; then
+            echo "Versions already up to date (${NEW_VERSION})"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          cargo update -p reticulum-rs
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Create pull request
+        if: steps.bump.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: automation/bump-reticulum-rs-version
+          delete-branch: true
+          commit-message: "chore: bump reticulum-rs to v${{ steps.resolve.outputs.version }}"
+          title: "chore: bump reticulum-rs version"
+          body: |
+            Automated reticulum-rs crate version update.
+
+            - New version: `${{ steps.resolve.outputs.version }}`
+            - Previous Cargo.toml version: `${{ steps.bump.outputs.old_cargo_version }}`
+            - Previous CI version: `${{ steps.bump.outputs.old_ci_version }}`
+
+            Updated files:
+            - `Cargo.toml`
+            - `.github/workflows/ci.yml`
+            - `Cargo.lock`
