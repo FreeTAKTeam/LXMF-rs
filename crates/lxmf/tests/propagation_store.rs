@@ -19,7 +19,9 @@ fn propagation_store_roundtrip() {
     let tmp = tempfile::tempdir().unwrap();
     let store = PropagationStore::new(tmp.path());
 
-    store.save(&stamp.transient_id, &case.transient_data).unwrap();
+    store
+        .save(&stamp.transient_id, &case.transient_data)
+        .unwrap();
     let loaded = store.get(&stamp.transient_id).unwrap();
     assert_eq!(loaded, case.transient_data);
 

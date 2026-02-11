@@ -87,7 +87,9 @@ pub fn ingest_envelope(bytes: &[u8], target_cost: u32) -> Result<Vec<IngestedMes
                 stamp: Some(stamped.stamp),
             });
         } else if target_cost == 0 {
-            let transient_id = reticulum::hash::Hash::new_from_slice(&data).to_bytes().to_vec();
+            let transient_id = reticulum::hash::Hash::new_from_slice(&data)
+                .to_bytes()
+                .to_vec();
             out.push(IngestedMessage {
                 transient_id,
                 lxmf_data: data,
