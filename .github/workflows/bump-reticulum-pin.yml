@@ -62,22 +62,27 @@ jobs:
           cargo_sha="$(sed -nE 's/.*reticulum-rs.git", rev = "([0-9a-f]{40})".*/\1/p' Cargo.toml | head -n1)"
           ci_sha="$(sed -nE 's/^[[:space:]]*RETICULUM_RS_REV: ([0-9a-f]{40})/\1/p' .github/workflows/ci.yml | head -n1)"
 
-          if [[ -z "${cargo_sha}" || -z "${ci_sha}" ]]; then
+          if [[ -z "${ci_sha}" ]]; then
             echo "Failed to parse existing Reticulum-rs pins"
             exit 1
           fi
 
-          echo "old_cargo_sha=${cargo_sha}" >> "$GITHUB_OUTPUT"
+          echo "old_cargo_sha=${cargo_sha:-n/a}" >> "$GITHUB_OUTPUT"
           echo "old_ci_sha=${ci_sha}" >> "$GITHUB_OUTPUT"
 
-          if [[ "${cargo_sha}" == "${NEW_SHA}" && "${ci_sha}" == "${NEW_SHA}" ]]; then
+          if [[ -n "${cargo_sha}" && "${cargo_sha}" != "${NEW_SHA}" ]]; then
+            perl -0pi -e 's#(reticulum-rs\.git", rev = ")[0-9a-f]{40}(")#$1$ENV{NEW_SHA}$2#g' Cargo.toml
+          fi
+
+          if [[ "${ci_sha}" != "${NEW_SHA}" ]]; then
+            perl -0pi -e 's#(RETICULUM_RS_REV: )[0-9a-f]{40}#$1$ENV{NEW_SHA}#g' .github/workflows/ci.yml
+          fi
+
+          if [[ "${ci_sha}" == "${NEW_SHA}" && ( -z "${cargo_sha}" || "${cargo_sha}" == "${NEW_SHA}" ) ]]; then
             echo "Pins already up to date (${NEW_SHA})"
             echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-
-          perl -0pi -e 's#(reticulum-rs\.git", rev = ")[0-9a-f]{40}(")#$1$ENV{NEW_SHA}$2#g' Cargo.toml
-          perl -0pi -e 's#(RETICULUM_RS_REV: )[0-9a-f]{40}#$1$ENV{NEW_SHA}#g' .github/workflows/ci.yml
 
           cargo update -p reticulum-rs
 

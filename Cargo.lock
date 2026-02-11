@@ -1573,8 +1573,9 @@ checksum = "7a2d987857b319362043e95f5353c0535c1f58eec5336fdfcf626430af7def58"
 
 [[package]]
 name = "reticulum-rs"
-version = "0.1.1"
-source = "git+https://github.com/FreeTAKTeam/Reticulum-rs.git?rev=c4d02b13bbd3a6f704f664292a90efc0a1431205#c4d02b13bbd3a6f704f664292a90efc0a1431205"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d7eed9eaca9e868916d5210d0825998b1a02d9a1be126305888ecfade7dbf30d"
 dependencies = [
  "aes",
  "bzip2",
