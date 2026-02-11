@@ -91,16 +91,8 @@ impl Message {
             destination_hash: Some(wire.destination),
             source_hash: Some(wire.source),
             signature: wire.signature,
-            content: payload
-                .content
-                .as_ref()
-                .map(|c| c.to_vec())
-                .unwrap_or_default(),
-            title: payload
-                .title
-                .as_ref()
-                .map(|t| t.to_vec())
-                .unwrap_or_default(),
+            content: payload.content.as_ref().map(|c| c.to_vec()).unwrap_or_default(),
+            title: payload.title.as_ref().map(|t| t.to_vec()).unwrap_or_default(),
             fields: payload.fields,
             stamp: payload.stamp.as_ref().map(|s| s.to_vec()),
             timestamp: Some(payload.timestamp),

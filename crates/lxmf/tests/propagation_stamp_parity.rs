@@ -18,8 +18,5 @@ fn propagation_stamp_validation_matches_fixture() {
 
     assert_eq!(stamp.transient_id.len(), 32);
     assert_eq!(stamp.stamp.len(), 32);
-    assert_eq!(
-        stamp.lxmf_data.len() + stamp.stamp.len(),
-        case.transient_data.len()
-    );
+    assert_eq!(stamp.lxmf_data.len() + stamp.stamp.len(), case.transient_data.len());
 }
