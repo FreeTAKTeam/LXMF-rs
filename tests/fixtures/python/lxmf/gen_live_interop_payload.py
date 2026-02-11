@@ -3,7 +3,6 @@ import json
 import os
 import tempfile
 
-import LXMF
 import RNS
 import RNS.vendor.umsgpack as msgpack
 from LXMF.LXMessage import LXMessage

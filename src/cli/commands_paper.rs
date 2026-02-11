@@ -13,7 +13,7 @@ pub fn run(ctx: &RuntimeContext, command: &PaperCommand) -> Result<()> {
         PaperAction::Show => {
             let messages = ctx.rpc.call("list_messages", None)?;
             let mut paper = Vec::new();
-            if let Some(items) = messages.as_array() {
+            if let Some(items) = message_records(&messages) {
                 for item in items {
                     let is_paper = item
                         .get("fields")
@@ -32,5 +32,32 @@ pub fn run(ctx: &RuntimeContext, command: &PaperCommand) -> Result<()> {
             }
             ctx.output.emit_status(&json!({"paper_messages": paper}))
         }
+    }
+}
+
+fn message_records(messages: &Value) -> Option<&[Value]> {
+    if let Some(items) = messages.as_array() {
+        return Some(items.as_slice());
+    }
+    messages.get("messages")?.as_array().map(Vec::as_slice)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::message_records;
+    use serde_json::json;
+
+    #[test]
+    fn message_records_accept_top_level_array() {
+        let payload = json!([{"id":"a"},{"id":"b"}]);
+        let records = message_records(&payload).expect("records");
+        assert_eq!(records.len(), 2);
+    }
+
+    #[test]
+    fn message_records_accept_wrapped_messages_array() {
+        let payload = json!({"messages":[{"id":"a"},{"id":"b"}]});
+        let records = message_records(&payload).expect("records");
+        assert_eq!(records.len(), 2);
     }
 }

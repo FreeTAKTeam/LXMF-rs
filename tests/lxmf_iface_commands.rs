@@ -83,6 +83,49 @@ fn iface_apply_pushes_interfaces_to_rpc() {
     std::env::remove_var("LXMF_CONFIG_ROOT");
 }
 
+#[test]
+fn iface_apply_restart_preserves_external_mode() {
+    let temp = tempfile::tempdir().unwrap();
+    std::env::set_var("LXMF_CONFIG_ROOT", temp.path());
+    init_profile("iface-external", false, None).unwrap();
+
+    let settings = {
+        let mut s = load_profile_settings("iface-external").unwrap();
+        s.rpc = "127.0.0.1:9".into();
+        s
+    };
+
+    let ctx = RuntimeContext {
+        cli: Cli {
+            profile: "iface-external".into(),
+            rpc: None,
+            json: true,
+            no_color: true,
+            quiet: true,
+            verbose: 0,
+            command: Command::Iface(IfaceCommand {
+                action: IfaceAction::Apply { restart: true },
+            }),
+        },
+        profile_name: "iface-external".into(),
+        profile_paths: profile_paths("iface-external").unwrap(),
+        rpc: RpcClient::new(&settings.rpc),
+        output: Output::new(true, true, true),
+        profile_settings: settings,
+    };
+
+    let err = commands_iface::run(
+        &ctx,
+        &IfaceCommand {
+            action: IfaceAction::Apply { restart: true },
+        },
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("external mode"));
+
+    std::env::remove_var("LXMF_CONFIG_ROOT");
+}
+
 fn spawn_apply_rpc_server() -> (String, thread::JoinHandle<Vec<String>>) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let addr = listener.local_addr().unwrap();

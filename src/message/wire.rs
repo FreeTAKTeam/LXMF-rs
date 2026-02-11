@@ -14,6 +14,8 @@ pub const LXM_URI_PREFIX: &str = "lxm://";
 const STORAGE_MAGIC: &[u8; 8] = b"LXMFSTR0";
 const STORAGE_VERSION: u8 = 1;
 const STORAGE_FLAG_HAS_SIGNATURE: u8 = 0x01;
+const AES_BLOCK_SIZE: usize = 16;
+const FERNET_TOKEN_FIXED_OVERHEAD: usize = 1 + 8 + 16 + 32;
 
 #[derive(Debug, Clone)]
 pub struct WireMessage {
@@ -264,9 +266,10 @@ fn encrypt_for_identity<R: CryptoRngCore + Copy>(
     let split = key_bytes.len() / 2;
 
     let fernet = Fernet::new_from_slices(&key_bytes[..split], &key_bytes[split..], rng);
-    // `reticulum::crypt::fernet` does not expose overhead constants on crates.io.
-    // Keep a conservative output slack to ensure padding + HMAC fit.
-    let mut out = vec![0u8; PUBLIC_KEY_LENGTH + plaintext.len() + 128];
+    // Fernet token size = fixed overhead + AES-CBC ciphertext (with at least one block of PKCS7 padding).
+    let ciphertext_len = ((plaintext.len() / AES_BLOCK_SIZE) + 1) * AES_BLOCK_SIZE;
+    let token_capacity = FERNET_TOKEN_FIXED_OVERHEAD + ciphertext_len;
+    let mut out = vec![0u8; PUBLIC_KEY_LENGTH + token_capacity];
     out[..PUBLIC_KEY_LENGTH].copy_from_slice(ephemeral_public.as_bytes());
     let token = fernet
         .encrypt(PlainText::from(plaintext), &mut out[PUBLIC_KEY_LENGTH..])

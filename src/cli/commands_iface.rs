@@ -91,7 +91,7 @@ fn apply_interfaces(ctx: &RuntimeContext, force_restart: bool) -> Result<()> {
     } else {
         applied_via = "daemon_restart";
         let supervisor = DaemonSupervisor::new(&ctx.profile_name, ctx.profile_settings.clone());
-        let _ = supervisor.restart(None, Some(true), None)?;
+        let _ = supervisor.restart(None, Some(ctx.profile_settings.managed), None)?;
     }
 
     ctx.output.emit_status(&json!({

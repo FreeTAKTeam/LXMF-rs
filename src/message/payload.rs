@@ -67,14 +67,14 @@ impl Payload {
             .first()
             .and_then(|value| value.as_f64())
             .ok_or_else(|| LxmfError::Decode("invalid payload timestamp".into()))?;
-        let title = value_to_bytes(items.get(1)).map(ByteBuf::from);
-        let content = value_to_bytes(items.get(2)).map(ByteBuf::from);
+        let title = value_to_bytes(items.get(1), "title")?.map(ByteBuf::from);
+        let content = value_to_bytes(items.get(2), "content")?.map(ByteBuf::from);
         let fields = match items.get(3) {
             Some(rmpv::Value::Nil) | None => None,
             Some(value) => Some(value.clone()),
         };
         let stamp = if items.len() == 5 {
-            value_to_bytes(items.get(4)).map(ByteBuf::from)
+            value_to_bytes(items.get(4), "stamp")?.map(ByteBuf::from)
         } else {
             None
         };
@@ -88,11 +88,14 @@ impl Payload {
     }
 }
 
-fn value_to_bytes(value: Option<&rmpv::Value>) -> Option<Vec<u8>> {
+fn value_to_bytes(value: Option<&rmpv::Value>, field: &str) -> Result<Option<Vec<u8>>, LxmfError> {
     match value {
-        Some(rmpv::Value::Binary(bin)) => Some(bin.clone()),
-        Some(rmpv::Value::String(text)) => text.as_str().map(|s| s.as_bytes().to_vec()),
-        Some(rmpv::Value::Nil) | None => None,
-        _ => None,
+        Some(rmpv::Value::Binary(bin)) => Ok(Some(bin.clone())),
+        Some(rmpv::Value::String(text)) => text
+            .as_str()
+            .map(|s| Some(s.as_bytes().to_vec()))
+            .ok_or_else(|| LxmfError::Decode(format!("invalid payload {field} string"))),
+        Some(rmpv::Value::Nil) | None => Ok(None),
+        _ => Err(LxmfError::Decode(format!("invalid payload {field}"))),
     }
 }
