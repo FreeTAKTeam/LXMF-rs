@@ -19,6 +19,14 @@ fn cancelled_work_prevents_stamp_generation() {
 }
 
 #[test]
+fn cancelled_work_is_one_shot_for_material() {
+    let material = b"cancel-once";
+    cancel_work(material);
+    assert!(generate_stamp(material, 0, WORKBLOCK_EXPAND_ROUNDS).is_none());
+    assert!(generate_stamp(material, 0, WORKBLOCK_EXPAND_ROUNDS).is_some());
+}
+
+#[test]
 fn ticket_helpers_cover_grace_renew_and_stamp_derivation() {
     let expires = 1_000_000.0;
     let ticket = Ticket::new(expires, vec![0x33; TICKET_LENGTH]);

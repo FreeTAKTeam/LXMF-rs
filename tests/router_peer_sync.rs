@@ -53,3 +53,25 @@ fn apply_peer_sync_result_updates_peer_and_transfer_state() {
         TransferPhase::Cancelled
     );
 }
+
+#[test]
+fn register_peer_keeps_existing_peer_state() {
+    let mut router = lxmf::router::Router::default();
+    let destination = [0xCC; 16];
+
+    assert!(router.register_peer(destination));
+    router.queue_peer_unhandled(destination, b"queued-id");
+    assert!(router.process_peer_queues(&destination));
+
+    {
+        let peer = router.peer_mut(&destination).expect("peer");
+        peer.set_name("Alice");
+        peer.set_sync_backoff(9);
+    }
+
+    assert!(!router.register_peer(destination));
+    let peer = router.peer(&destination).expect("peer");
+    assert_eq!(peer.name(), Some("Alice"));
+    assert_eq!(peer.sync_backoff(), 9);
+    assert_eq!(peer.unhandled_message_count(), 1);
+}

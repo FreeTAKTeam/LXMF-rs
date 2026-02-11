@@ -80,21 +80,24 @@ pub fn cancel_work(material: &[u8]) {
     }
 }
 
+fn take_cancelled(material: &[u8]) -> bool {
+    if let Ok(mut cancelled) = cancelled_work().lock() {
+        return cancelled.remove(material);
+    }
+    false
+}
+
 pub fn generate_stamp(material: &[u8], stamp_cost: u32, expand_rounds: usize) -> Option<Vec<u8>> {
-    if let Ok(cancelled) = cancelled_work().lock() {
-        if cancelled.contains(material) {
-            return None;
-        }
+    if take_cancelled(material) {
+        return None;
     }
 
     let workblock = stamp_workblock(material, expand_rounds);
     let mut nonce = 0u64;
 
     loop {
-        if let Ok(cancelled) = cancelled_work().lock() {
-            if cancelled.contains(material) {
-                return None;
-            }
+        if take_cancelled(material) {
+            return None;
         }
 
         let stamp = nonce.to_le_bytes().to_vec();

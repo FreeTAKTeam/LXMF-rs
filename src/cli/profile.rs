@@ -189,6 +189,15 @@ pub fn select_profile(name: &str) -> Result<()> {
         .with_context(|| format!("failed to write selected profile at {}", path.display()))
 }
 
+pub fn clear_selected_profile() -> Result<()> {
+    let path = active_profile_path()?;
+    if path.exists() {
+        fs::remove_file(&path)
+            .with_context(|| format!("failed to remove selected profile at {}", path.display()))?;
+    }
+    Ok(())
+}
+
 pub fn remove_profile(name: &str) -> Result<()> {
     let paths = profile_paths(name)?;
     if paths.root.exists() {

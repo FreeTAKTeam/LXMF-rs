@@ -11,7 +11,7 @@ use crate::storage::PropagationStore;
 use crate::ticket::Ticket;
 use serde::{Deserialize, Serialize};
 use serde_bytes::ByteBuf;
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{btree_map::Entry, BTreeMap, BTreeSet, VecDeque};
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -302,8 +302,9 @@ impl Router {
         max_items: usize,
     ) -> Result<Vec<OutboundProcessResult>, LxmfError> {
         let mut results = Vec::new();
+        let items_to_process = max_items.min(self.outbound_queue.len());
 
-        for _ in 0..max_items {
+        for _ in 0..items_to_process {
             let Some(message_id) = self.outbound_queue.pop_front() else {
                 break;
             };
@@ -416,9 +417,13 @@ impl Router {
     }
 
     pub fn register_peer(&mut self, destination: [u8; 16]) -> bool {
-        self.peers
-            .insert(destination, Peer::new(destination))
-            .is_none()
+        match self.peers.entry(destination) {
+            Entry::Vacant(entry) => {
+                entry.insert(Peer::new(destination));
+                true
+            }
+            Entry::Occupied(_) => false,
+        }
     }
 
     pub fn remove_peer(&mut self, destination: &[u8; 16]) -> Option<Peer> {
