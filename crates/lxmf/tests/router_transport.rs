@@ -2,6 +2,7 @@ use lxmf::error::LxmfError;
 use lxmf::message::{Payload, WireMessage};
 use lxmf::reticulum::Adapter;
 use lxmf::router::{OutboundStatus, Router};
+use lxmf::transport::TransportPlugin;
 use std::sync::{Arc, Mutex};
 
 fn make_message(destination: [u8; 16], source: [u8; 16]) -> WireMessage {
@@ -111,4 +112,40 @@ fn router_does_not_retry_adapter_errors_in_same_batch() {
     assert!(result.iter().all(|item| item.status == OutboundStatus::DeferredAdapterError));
     assert_eq!(router.stats().outbound_adapter_errors_total, 2);
     assert_eq!(router.outbound_len(), 2);
+}
+
+struct RecordingPlugin {
+    delivered: Arc<Mutex<Vec<[u8; 16]>>>,
+}
+
+impl TransportPlugin for RecordingPlugin {
+    fn name(&self) -> &str {
+        "recording"
+    }
+
+    fn has_outbound_sender(&self) -> bool {
+        true
+    }
+
+    fn send_outbound(&self, message: &WireMessage) -> Result<(), LxmfError> {
+        self.delivered.lock().expect("delivered state").push(message.destination);
+        Ok(())
+    }
+}
+
+#[test]
+fn router_accepts_custom_transport_plugin() {
+    let delivered: Arc<Mutex<Vec<[u8; 16]>>> = Arc::new(Mutex::new(Vec::new()));
+    let plugin = RecordingPlugin { delivered: Arc::clone(&delivered) };
+    let mut router = Router::with_transport_plugin(plugin);
+    router.set_auth_required(true);
+    let destination = [0xCD; 16];
+    router.allow_destination(destination);
+    router.enqueue_outbound(make_message(destination, [0xDC; 16]));
+
+    let result = router.handle_outbound(1).expect("outbound processing");
+    assert_eq!(result.len(), 1);
+    assert_eq!(result[0].status, OutboundStatus::Sent);
+    assert_eq!(delivered.lock().expect("delivered state").as_slice(), &[destination]);
+    assert_eq!(router.transport_plugin_name(), Some("recording"));
 }
