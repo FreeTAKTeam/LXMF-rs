@@ -1,6 +1,6 @@
 RETICULUM_PY_PATH ?= ../reticulum
 
-.PHONY: all clean remove_symlinks create_symlinks build_wheel build_sdist build_spkg release upload interop-gate soak-rnx release-gate-local
+.PHONY: all clean remove_symlinks create_symlinks build_wheel build_sdist build_spkg release upload interop-gate soak-rnx release-gate-local coverage
 
 all: release
 
@@ -49,3 +49,8 @@ release-gate-local:
 	cargo test --workspace --all-targets
 	make interop-gate RETICULUM_PY_PATH="$(RETICULUM_PY_PATH)"
 	cargo run --manifest-path ../Reticulum-rs/crates/reticulum/Cargo.toml --bin rnx -- e2e --timeout-secs 20
+
+coverage:
+	@command -v cargo-llvm-cov >/dev/null || cargo install cargo-llvm-cov --locked
+	rustup component add llvm-tools-preview
+	cargo llvm-cov --workspace --all-targets --lcov --output-path coverage.lcov

@@ -141,6 +141,16 @@ Operator docs:
 - `docs/lxmf-cli.md`
 - `docs/lxmf-tui.md`
 
+## Rust Coverage
+
+Generate an LCOV coverage report locally with:
+
+```bash
+make coverage
+```
+
+This writes `coverage.lcov` in the repository root. CI also publishes the same file as the `coverage-lcov` artifact.
+
 ## Example Paper Message
 
 You can try out the paper messaging functionality by using the following QR code. It is a paper message sent to the LXMF address `6b3362bd2c1dbf87b66a85f79a8d8c75`. To be able to decrypt and read the message, you will need to import the following Reticulum Identity to an LXMF messaging app:
