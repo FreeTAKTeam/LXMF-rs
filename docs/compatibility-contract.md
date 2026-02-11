@@ -1,7 +1,7 @@
 # LXMF-rs <-> Reticulum-rs Compatibility Contract
 
 ## Version Mapping
-- `lxmf` `0.2.x` supports `reticulum-rs` `0.2.x`.
+- `lxmf` `0.2.x` currently supports `reticulum-rs` `0.1.x` (tested against `0.1.2`).
 - During active refactor development, integration CI may pin exact git revisions.
 
 ## Wire/RPC Invariants

@@ -13,7 +13,10 @@ allow = [
   "BSD-2-Clause",
   "BSD-3-Clause",
   "ISC",
-  "Unicode-DFS-2016",
+  "Zlib",
+  "Unicode-3.0",
+  "MPL-2.0",
+  "CDLA-Permissive-2.0",
 ]
 
 [bans]

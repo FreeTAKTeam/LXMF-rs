@@ -75,3 +75,17 @@ fn register_peer_keeps_existing_peer_state() {
     assert_eq!(peer.sync_backoff(), 9);
     assert_eq!(peer.unhandled_message_count(), 1);
 }
+
+#[test]
+fn peer_sync_batch_requested_zero_returns_empty() {
+    let mut router = lxmf::router::Router::default();
+    let destination = [0xDD; 16];
+
+    router.register_peer(destination);
+    router.queue_peer_unhandled(destination, b"id-1");
+
+    let batch = router.build_peer_sync_batch(&destination, 0);
+    assert!(batch.is_empty());
+    assert_eq!(router.stats().peer_sync_runs_total, 0);
+    assert!(router.propagation_transfer_state(b"id-1").is_none());
+}

@@ -14,7 +14,9 @@ fn propagation_node_app_data_custom_matches_fixture() {
     router.set_propagation_stamp_cost(20, 4);
     router.set_peering_cost(25);
 
-    let app_data = router.get_propagation_node_app_data_at(APP_DATA_TIMESTAMP);
+    let app_data = router
+        .get_propagation_node_app_data_at(APP_DATA_TIMESTAMP)
+        .expect("custom propagation node app-data");
 
     assert_eq!(app_data, fixture);
 }

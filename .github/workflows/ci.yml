@@ -19,6 +19,8 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-deny,cargo-audit,cargo-udeps
+      - name: Install nightly toolchain (for cargo-udeps)
+        run: rustup toolchain install nightly --profile minimal
       - name: Install protobuf compiler
         run: |
           sudo apt-get update

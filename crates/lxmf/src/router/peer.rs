@@ -88,6 +88,9 @@ impl Router {
         destination: &[u8; 16],
         requested: usize,
     ) -> Vec<Vec<u8>> {
+        if requested == 0 {
+            return Vec::new();
+        }
         let max_items = requested.min(self.config.propagation_per_sync_limit as usize).max(1);
         let Some(batch) = self.peers.get_mut(destination).map(|peer| {
             peer.process_queues();

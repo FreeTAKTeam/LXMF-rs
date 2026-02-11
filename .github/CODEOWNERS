@@ -1,5 +1,5 @@
 * @FreeTAKTeam
 
 /docs/ @FreeTAKTeam
-/src/ @FreeTAKTeam
-/tests/ @FreeTAKTeam
+/crates/lxmf/src/ @FreeTAKTeam
+/crates/lxmf/tests/ @FreeTAKTeam

@@ -35,11 +35,11 @@ impl Router {
         metadata
     }
 
-    pub fn get_propagation_node_app_data(&self) -> Vec<u8> {
+    pub fn get_propagation_node_app_data(&self) -> Result<Vec<u8>, LxmfError> {
         self.get_propagation_node_app_data_at(unix_now())
     }
 
-    pub fn get_propagation_node_app_data_at(&self, timestamp: u64) -> Vec<u8> {
+    pub fn get_propagation_node_app_data_at(&self, timestamp: u64) -> Result<Vec<u8>, LxmfError> {
         let metadata = self.propagation_node_announce_metadata();
         let node_state = self.propagation_node && !self.from_static_only;
         let stamp_cost = [
@@ -57,7 +57,8 @@ impl Router {
             metadata,
         );
 
-        rmp_serde::to_vec(&announce_data).expect("propagation node app data msgpack")
+        rmp_serde::to_vec(&announce_data)
+            .map_err(|err| LxmfError::Encode(format!("propagation node app data msgpack: {err}")))
     }
 
     pub fn jobs(&mut self) {

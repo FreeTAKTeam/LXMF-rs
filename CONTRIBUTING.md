@@ -6,7 +6,7 @@
 - Keep operational tooling separate from core protocol logic.
 
 ## Development Setup
-- Rust stable (MSRV is tracked in `Cargo.toml`).
+- Rust stable (MSRV `1.75` is tracked in `crates/lxmf/Cargo.toml`).
 - `cargo install cargo-deny cargo-audit cargo-udeps`
 
 ## Local Quality Gates

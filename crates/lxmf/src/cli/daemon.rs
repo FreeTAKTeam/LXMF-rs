@@ -360,10 +360,21 @@ fn resolve_reticulumd_binary(
 
     // Dev-friendly fallback for sibling checkout layout:
     // /.../LXMF-rs and /.../Reticulum-rs
-    if let Some(parent) = PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let workspace_root = manifest_dir.parent().and_then(|dir| dir.parent());
+    let sibling_root = workspace_root.and_then(std::path::Path::parent);
+    let mut search_roots = Vec::new();
+    if let Some(root) = workspace_root {
+        search_roots.push(root.to_path_buf());
+    }
+    if let Some(root) = sibling_root {
+        search_roots.push(root.to_path_buf());
+    }
+
+    for root in search_roots {
         let candidates = [
-            parent.join("Reticulum-rs/target/debug/reticulumd"),
-            parent.join("Reticulum-rs/target/release/reticulumd"),
+            root.join("Reticulum-rs/target/debug/reticulumd"),
+            root.join("Reticulum-rs/target/release/reticulumd"),
         ];
         for candidate in candidates {
             if candidate.exists() {

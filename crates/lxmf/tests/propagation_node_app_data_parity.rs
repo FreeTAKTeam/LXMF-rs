@@ -8,7 +8,9 @@ fn propagation_node_app_data_matches_fixture() {
         .expect("propagation node app-data fixture");
 
     let router = Router::default();
-    let app_data = router.get_propagation_node_app_data_at(APP_DATA_TIMESTAMP);
+    let app_data = router
+        .get_propagation_node_app_data_at(APP_DATA_TIMESTAMP)
+        .expect("propagation node app-data");
 
     assert_eq!(app_data, fixture);
 }

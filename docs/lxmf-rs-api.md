@@ -1,12 +1,14 @@
 # LXMF Rust API (v0.2)
 
 ## Stable Surface
-The intended public contract is the explicit module set exported from `crates/lxmf/src/lib.rs`:
+The stable compatibility contract is the explicit module subset:
 
 - `lxmf::message`
 - `lxmf::identity`
 - `lxmf::router_api`
 - `lxmf::errors`
+
+Other public modules may exist for internal composition and testing, but are not contract-stable.
 
 ## Core Re-exports
 - `lxmf::Message`
