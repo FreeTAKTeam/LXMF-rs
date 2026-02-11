@@ -99,9 +99,7 @@ impl Output {
             let key_cell = if self.no_color {
                 Cell::new(k)
             } else {
-                Cell::new(k)
-                    .fg(Color::Blue)
-                    .add_attribute(Attribute::Bold)
+                Cell::new(k).fg(Color::Blue).add_attribute(Attribute::Bold)
             };
             table.add_row(vec![key_cell, Cell::new(v)]);
         }

@@ -118,9 +118,22 @@ pub fn render(
 }
 
 fn short(input: &str, max: usize) -> String {
-    if input.len() <= max {
+    if max == 0 {
+        return String::new();
+    }
+
+    let len = input.chars().count();
+    if len <= max {
         return input.to_string();
     }
-    let take = max.saturating_sub(1);
-    format!("{}~", &input[..take])
+
+    if max == 1 {
+        return "~".to_string();
+    }
+
+    input
+        .chars()
+        .take(max.saturating_sub(1))
+        .collect::<String>()
+        + "~"
 }

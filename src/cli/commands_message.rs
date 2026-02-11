@@ -137,7 +137,11 @@ fn watch_messages(ctx: &RuntimeContext, interval_secs: u64) -> Result<()> {
 }
 
 fn find_message(messages: &Value, id: &str) -> Option<Value> {
-    let list = messages.as_array()?;
+    let list = if let Some(list) = messages.as_array() {
+        list
+    } else {
+        messages.get("messages")?.as_array()?
+    };
     for message in list {
         if message.get("id").and_then(Value::as_str) == Some(id) {
             return Some(message.clone());
@@ -161,19 +165,28 @@ fn delivery_method_to_string(method: DeliveryMethodArg) -> String {
 fn resolve_runtime_identity_hash(rpc: &crate::cli::rpc_client::RpcClient) -> Result<String> {
     for method in ["daemon_status_ex", "status"] {
         if let Ok(response) = rpc.call(method, None) {
-            if let Some(identity_hash) = response
-                .get("identity_hash")
-                .and_then(Value::as_str)
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-            {
-                return Ok(identity_hash.to_string());
+            if let Some(source_hash) = source_hash_from_status(&response) {
+                return Ok(source_hash);
             }
         }
     }
     Err(anyhow!(
-        "source not provided and daemon did not report identity_hash; pass --source or start daemon"
+        "source not provided and daemon did not report delivery/identity hash; pass --source or start daemon"
     ))
+}
+
+fn source_hash_from_status(value: &Value) -> Option<String> {
+    for key in ["delivery_destination_hash", "identity_hash"] {
+        if let Some(hash) = value
+            .get(key)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|candidate| !candidate.is_empty())
+        {
+            return Some(hash.to_string());
+        }
+    }
+    None
 }
 
 fn trimmed_nonempty(value: &str) -> Option<&str> {
@@ -182,5 +195,48 @@ fn trimmed_nonempty(value: &str) -> Option<&str> {
         None
     } else {
         Some(trimmed)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{find_message, source_hash_from_status};
+    use serde_json::json;
+
+    #[test]
+    fn find_message_accepts_top_level_array() {
+        let payload = json!([
+            {"id": "a", "content": "x"},
+            {"id": "b", "content": "y"}
+        ]);
+        let found = find_message(&payload, "b");
+        assert_eq!(found.and_then(|v| v.get("id").cloned()), Some(json!("b")));
+    }
+
+    #[test]
+    fn find_message_accepts_wrapped_messages_array() {
+        let payload = json!({
+            "messages": [
+                {"id": "a", "content": "x"},
+                {"id": "b", "content": "y"}
+            ]
+        });
+        let found = find_message(&payload, "b");
+        assert_eq!(found.and_then(|v| v.get("id").cloned()), Some(json!("b")));
+    }
+
+    #[test]
+    fn source_hash_prefers_delivery_destination_hash() {
+        let status = json!({
+            "identity_hash": "identity",
+            "delivery_destination_hash": "delivery"
+        });
+        assert_eq!(source_hash_from_status(&status), Some("delivery".into()));
+    }
+
+    #[test]
+    fn source_hash_falls_back_to_identity_hash() {
+        let status = json!({ "identity_hash": "identity" });
+        assert_eq!(source_hash_from_status(&status), Some("identity".into()));
     }
 }

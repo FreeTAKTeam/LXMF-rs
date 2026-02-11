@@ -95,12 +95,10 @@ fn rust_to_python_wire_roundtrip() {
 import RNS.vendor.umsgpack as msgpack\n\
 b = base64.b64decode(sys.argv[1])\n\
 payload = msgpack.unpackb(b[96:])\n\
-content = payload[1]\n\
-title = payload[2]\n\
-if isinstance(content, bytes):\n\
-    content = content.decode('utf-8')\n\
-if isinstance(title, bytes):\n\
-    title = title.decode('utf-8')\n\
+title = payload[1]\n\
+content = payload[2]\n\
+content = content.decode('utf-8') if isinstance(content, bytes) else content\n\
+title = title.decode('utf-8') if isinstance(title, bytes) else title\n\
 print(json.dumps({'content': content, 'title': title, 'signature_len': len(b[32:96])}))",
             &packed_b64,
         ])

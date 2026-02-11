@@ -22,9 +22,13 @@ cargo run --bin lxmf -- --profile <name> tui
 
 - `q`: quit
 - `Tab`: next pane
+- `h` / `Left` (in Messages): previous message channel
+- `l` / `Right` (in Messages): next message channel
 - `j` / `Down`: move selection down (messages/peers/interfaces)
 - `k` / `Up`: move selection up (messages/peers/interfaces)
-- `s`: send message (from Peers/Contacts, destination is prefilled and view jumps to Messages)
+- `s`: compose/reply message
+  - from Messages/Peers/Contacts, destination is prefilled and view jumps to Messages
+  - on compose `content`, press `Enter` once to arm send and `Enter` again to queue
   - source auto-fills from daemon `identity_hash` when available
 - `c` (in Peers): add selected peer as contact
 - `a` (in Contacts): add contact

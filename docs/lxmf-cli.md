@@ -7,6 +7,7 @@ cargo run --bin lxmf -- --help
 ```
 
 The CLI targets `reticulumd` over framed msgpack RPC (`POST /rpc`) and event polling (`GET /events`).
+The stable CLI RPC contract is documented in `docs/rpc-contract.md`.
 
 ## Global Flags
 

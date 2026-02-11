@@ -24,6 +24,8 @@ This checklist is the publication gate for `lxmf-rs`.
 ## 4. API stability
 
 - Public API surface is documented in `docs/lxmf-rs-api.md`.
+- CLI daemon RPC method contract is documented in `docs/rpc-contract.md`.
+- RPC contract tests must pass (`tests/rpc_contract_methods.rs`).
 - Breaking changes must be called out in release notes.
 
 ## 5. CI quality gates
@@ -40,3 +42,4 @@ This checklist is the publication gate for `lxmf-rs`.
 - `Cargo.toml` version bumped intentionally.
 - `Cargo.lock` committed for reproducible builds.
 - Changelog/release notes summarize parity changes and migrations.
+- RC execution and tagging follow `docs/release-candidate-runbook.md`.

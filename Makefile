@@ -1,3 +1,7 @@
+RETICULUM_PY_PATH ?= ../reticulum
+
+.PHONY: all clean remove_symlinks create_symlinks build_wheel build_sdist build_spkg release upload interop-gate soak-rnx release-gate-local
+
 all: release
 
 clean:
@@ -28,3 +32,20 @@ release: remove_symlinks build_wheel create_symlinks
 upload:
 	@echo Uploading to PyPi...
 	twine upload dist/*
+
+interop-gate:
+	@if [ ! -d "$(RETICULUM_PY_PATH)/RNS" ]; then \
+		echo "RETICULUM_PY_PATH must point to the Python Reticulum repo (missing $(RETICULUM_PY_PATH)/RNS)"; \
+		exit 1; \
+	fi
+	LXMF_PYTHON_INTEROP=1 \
+	PYTHONPATH="$(CURDIR):$(RETICULUM_PY_PATH):$$PYTHONPATH" \
+	cargo test --test python_interop_gate -- --nocapture
+
+soak-rnx:
+	./scripts/soak-rnx.sh
+
+release-gate-local:
+	cargo test --workspace --all-targets
+	make interop-gate RETICULUM_PY_PATH="$(RETICULUM_PY_PATH)"
+	cargo run --manifest-path ../Reticulum-rs/crates/reticulum/Cargo.toml --bin rnx -- e2e --timeout-secs 20

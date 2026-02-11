@@ -137,6 +137,7 @@ pub struct TuiSnapshot {
 struct TuiState {
     pane: Pane,
     selected_message: usize,
+    selected_channel: usize,
     selected_peer: usize,
     selected_contact: usize,
     selected_interface: usize,
@@ -534,6 +535,7 @@ struct ComposeState {
     title: String,
     content: String,
     active: Option<ComposeField>,
+    send_armed: bool,
 }
 
 impl ComposeState {
@@ -545,6 +547,7 @@ impl ComposeState {
             title: String::new(),
             content: String::new(),
             active: Some(ComposeField::Destination),
+            send_armed: false,
         }
     }
 
@@ -561,6 +564,7 @@ impl ComposeState {
             } else {
                 ComposeField::Source
             }),
+            send_armed: false,
         }
     }
 
@@ -570,10 +574,12 @@ impl ComposeState {
 
     fn next_field(&mut self) {
         self.active = Some(self.active_field().next());
+        self.send_armed = false;
     }
 
     fn prev_field(&mut self) {
         self.active = Some(self.active_field().prev());
+        self.send_armed = false;
     }
 
     fn active_value_mut(&mut self) -> &mut String {
@@ -583,6 +589,10 @@ impl ComposeState {
             ComposeField::Title => &mut self.title,
             ComposeField::Content => &mut self.content,
         }
+    }
+
+    fn disarm_send(&mut self) {
+        self.send_armed = false;
     }
 }
 
@@ -600,6 +610,7 @@ pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
     let mut state = TuiState {
         pane: Pane::Dashboard,
         selected_message: 0,
+        selected_channel: 0,
         selected_peer: 0,
         selected_contact: 0,
         selected_interface: 0,
@@ -711,6 +722,16 @@ pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
                         state.pane = previous_pane(state.pane);
                         let pane_title = state.pane.title().to_string();
                         set_status(&mut state, StatusLevel::Info, pane_title);
+                    }
+                    KeyCode::Char('h') | KeyCode::Left => {
+                        if state.pane == Pane::Messages {
+                            select_previous_message_channel(&mut state);
+                        }
+                    }
+                    KeyCode::Char('l') | KeyCode::Right => {
+                        if state.pane == Pane::Messages {
+                            select_next_message_channel(&mut state);
+                        }
                     }
                     KeyCode::Char('j') | KeyCode::Down => increment_selection(&mut state),
                     KeyCode::Char('k') | KeyCode::Up => decrement_selection(&mut state),
@@ -854,13 +875,22 @@ pub fn run_tui(ctx: &RuntimeContext, command: &TuiCommand) -> Result<()> {
                                     format!("compose failed: {err}"),
                                 ),
                             }
+                        } else if state.pane == Pane::Messages {
+                            match open_compose_from_selected_message(&mut state) {
+                                Ok(msg) => set_status(&mut state, StatusLevel::Info, msg),
+                                Err(err) => set_status(
+                                    &mut state,
+                                    StatusLevel::Error,
+                                    format!("compose failed: {err}"),
+                                ),
+                            }
                         } else {
                             let source = preferred_source_identity(&state);
                             state.composer = Some(ComposeState::new_with_source(source));
                             set_status(
                                 &mut state,
                                 StatusLevel::Info,
-                                "Compose message: destination/content required, source auto-fills when daemon identity is available",
+                                "Compose message: destination/content required, source auto-fills when daemon identity is available (Enter on content twice to send)",
                             );
                         }
                     }
@@ -1121,6 +1151,10 @@ fn draw(frame: &mut ratatui::Frame<'_>, state: &TuiState) {
     frame.render_widget(tabs, chunks[1]);
 
     let filtered_peers = filtered_peers(state);
+    let message_model = messages::MessagePaneModel::from_messages(
+        &state.snapshot.messages,
+        state.snapshot.identity_hash.as_deref(),
+    );
 
     match state.pane {
         Pane::Dashboard => dashboard::render(
@@ -1135,6 +1169,8 @@ fn draw(frame: &mut ratatui::Frame<'_>, state: &TuiState) {
             frame,
             chunks[2],
             &state.snapshot.messages,
+            &message_model,
+            state.selected_channel,
             state.selected_message,
             &state.theme,
             true,
@@ -1271,7 +1307,7 @@ fn draw_status_bar(frame: &mut ratatui::Frame<'_>, area: Rect, state: &TuiState)
         StatusLevel::Error => state.theme.danger,
     };
 
-    let keys = "keys: q quit | Tab/Shift+Tab panes | s compose (Peers/Contacts prefilled) | c save peer->contact | p profile | / peer filter | Enter peer details/contact edit/iface edit | a add contact or apply iface | x remove contact/iface | d discover | y sync | u unpeer | r start/restart | n announce | e refresh";
+    let keys = "keys: q quit | Tab/Shift+Tab panes | h/l message channels | j/k select rows | s compose/reply (Messages/Peers/Contacts prefilled) | c save peer->contact | p profile | / peer filter | Enter peer details/contact edit/iface edit | a add contact or apply iface | x remove contact/iface | d discover | y sync | u unpeer | r start/restart | n announce | e refresh";
     let content = vec![
         Line::from(Span::styled(
             state.status_line.as_str(),
@@ -1312,7 +1348,7 @@ fn draw_welcome_overlay(frame: &mut ratatui::Frame<'_>, state: &TuiState) {
         )),
         Line::from(""),
         Line::from(Span::styled(
-            "Quick start: Tab panes, d discover, n announce, s send (Peers/Contacts prefill destination), c save peer as contact, / filter peers, Enter peer details/contact edit/iface edit, p profile, i/t/x/a interfaces.",
+            "Quick start: Tab panes, h/l switch message channels, j/k move, d discover, n announce, s compose/reply (Messages/Peers/Contacts prefill destination), c save peer as contact, / filter peers, Enter peer details/contact edit/iface edit, p profile, i/t/x/a interfaces.",
             Style::default().fg(state.theme.muted),
         )),
         Line::from(Span::styled(
@@ -1379,8 +1415,16 @@ fn draw_compose_overlay(frame: &mut ratatui::Frame<'_>, state: &TuiState) {
         &state.theme,
     ));
     lines.push(Line::from(""));
+    if compose.send_armed {
+        lines.push(Line::from(Span::styled(
+            "Send armed: press Enter again on content to queue message. Any edit cancels arm.",
+            Style::default()
+                .fg(state.theme.warning)
+                .add_modifier(Modifier::BOLD),
+        )));
+    }
     lines.push(Line::from(Span::styled(
-        "Enter: next/send  Tab: next field  Shift+Tab: previous  Backspace: delete  Esc: cancel  (source auto-fills from daemon identity)",
+        "Enter: next field (on content: arm/send)  Tab: next  Shift+Tab: previous  Backspace: delete  Esc: cancel  (source auto-fills from daemon identity)",
         Style::default().fg(state.theme.muted),
     )));
 
@@ -2413,34 +2457,47 @@ fn handle_compose_key(
     let mut submit = false;
     let mut status: Option<(StatusLevel, String)> = None;
 
-    let Some(composer) = state.composer.as_mut() else {
-        return Ok(());
-    };
+    {
+        let Some(composer) = state.composer.as_mut() else {
+            return Ok(());
+        };
 
-    match key.code {
-        KeyCode::Esc => {
-            close = true;
-            status = Some((StatusLevel::Info, "message composition canceled".into()));
-        }
-        KeyCode::Tab | KeyCode::Down => composer.next_field(),
-        KeyCode::BackTab | KeyCode::Up => composer.prev_field(),
-        KeyCode::Enter => {
-            if composer.active_field() == ComposeField::Content {
-                submit = true;
-            } else {
-                composer.next_field();
+        match key.code {
+            KeyCode::Esc => {
+                close = true;
+                status = Some((StatusLevel::Info, "message composition canceled".into()));
             }
+            KeyCode::Tab | KeyCode::Down => composer.next_field(),
+            KeyCode::BackTab | KeyCode::Up => composer.prev_field(),
+            KeyCode::Enter => {
+                if composer.active_field() == ComposeField::Content {
+                    if composer.send_armed {
+                        submit = true;
+                    } else {
+                        composer.send_armed = true;
+                        status = Some((
+                            StatusLevel::Info,
+                            "Message ready. Press Enter again on content to send.".into(),
+                        ));
+                    }
+                } else {
+                    composer.next_field();
+                }
+            }
+            KeyCode::Backspace => {
+                composer.active_value_mut().pop();
+                composer.disarm_send();
+            }
+            KeyCode::Delete => {
+                composer.active_value_mut().clear();
+                composer.disarm_send();
+            }
+            KeyCode::Char(c) => {
+                composer.active_value_mut().push(c);
+                composer.disarm_send();
+            }
+            _ => {}
         }
-        KeyCode::Backspace => {
-            composer.active_value_mut().pop();
-        }
-        KeyCode::Delete => {
-            composer.active_value_mut().clear();
-        }
-        KeyCode::Char(c) => {
-            composer.active_value_mut().push(c);
-        }
-        _ => {}
     }
 
     if submit {
@@ -2449,11 +2506,22 @@ fn handle_compose_key(
             .clone()
             .ok_or_else(|| anyhow!("composer state disappeared"))?;
         match send_message_from_composer(ctx, rpc, &payload) {
-            Ok(message) => {
+            Ok(result) => {
                 close = true;
-                status = Some((StatusLevel::Success, message));
+                refresh_after_compose_send(ctx, rpc, state, &result.message_id);
+                let receipt_status = message_receipt_status(
+                    &state.snapshot.messages,
+                    &result.message_id,
+                );
+                status = Some((
+                    StatusLevel::Success,
+                    compose_send_status(&result, receipt_status),
+                ));
             }
             Err(err) => {
+                if let Some(composer) = state.composer.as_mut() {
+                    composer.disarm_send();
+                }
                 status = Some((StatusLevel::Error, format!("send failed: {err}")));
             }
         }
@@ -2470,11 +2538,110 @@ fn handle_compose_key(
     Ok(())
 }
 
+#[derive(Debug, Clone)]
+struct ComposeSendResult {
+    message_id: String,
+    destination: String,
+    used_legacy_api: bool,
+}
+
+fn compose_send_status(result: &ComposeSendResult, receipt_status: Option<&str>) -> String {
+    if let Some(receipt_status) = receipt_status.filter(|value| !value.trim().is_empty()) {
+        if result.used_legacy_api {
+            format!(
+                "message {}: {} -> {} (legacy api)",
+                receipt_status, result.message_id, result.destination
+            )
+        } else {
+            format!(
+                "message {}: {} -> {}",
+                receipt_status, result.message_id, result.destination
+            )
+        }
+    } else if result.used_legacy_api {
+        format!(
+            "message queued: {} -> {} (legacy api)",
+            result.message_id, result.destination
+        )
+    } else {
+        format!(
+            "message queued: {} -> {}",
+            result.message_id, result.destination
+        )
+    }
+}
+
+fn message_receipt_status<'a>(messages: &'a [Value], message_id: &str) -> Option<&'a str> {
+    messages.iter().find_map(|message| {
+        if message
+            .get("id")
+            .and_then(Value::as_str)
+            .is_some_and(|value| value == message_id)
+        {
+            return message.get("receipt_status").and_then(Value::as_str);
+        }
+        None
+    })
+}
+
+fn refresh_after_compose_send(
+    ctx: &RuntimeContext,
+    rpc: &RpcClient,
+    state: &mut TuiState,
+    sent_message_id: &str,
+) {
+    let rpc_display = state.snapshot.rpc.clone();
+    let outcome = refresh_snapshot(
+        ctx,
+        rpc,
+        &mut state.snapshot,
+        false,
+        state.profile_managed,
+        &rpc_display,
+    );
+    state.connected = outcome.connected;
+    state.last_refresh_ms = Some(outcome.elapsed_ms);
+
+    if let Some((channel_index, message_index)) = message_selection_for_message_id(
+        &state.snapshot.messages,
+        state.snapshot.identity_hash.as_deref(),
+        sent_message_id,
+    ) {
+        state.selected_channel = channel_index;
+        state.selected_message = message_index;
+    }
+
+    clamp_selection(state);
+}
+
+fn message_selection_for_message_id(
+    messages: &[Value],
+    self_identity: Option<&str>,
+    sent_message_id: &str,
+) -> Option<(usize, usize)> {
+    let model = messages::MessagePaneModel::from_messages(messages, self_identity);
+    for (channel_index, channel) in model.channels.iter().enumerate() {
+        for (message_index, source_index) in channel.indices.iter().enumerate() {
+            let Some(message) = messages.get(*source_index) else {
+                continue;
+            };
+            if message
+                .get("id")
+                .and_then(Value::as_str)
+                .is_some_and(|value| value == sent_message_id)
+            {
+                return Some((channel_index, message_index));
+            }
+        }
+    }
+    None
+}
+
 fn send_message_from_composer(
     ctx: &RuntimeContext,
     rpc: &RpcClient,
     compose: &ComposeState,
-) -> Result<String> {
+) -> Result<ComposeSendResult> {
     let contacts = load_contacts(&ctx.profile_name).unwrap_or_default();
     let destination = compose.destination.trim();
     let content = compose.content.trim();
@@ -2494,22 +2661,29 @@ fn send_message_from_composer(
     let resolved_destination =
         resolve_contact_hash(&contacts, destination).unwrap_or_else(|| destination.to_string());
     let resolved_source = resolve_contact_hash(&contacts, &source).unwrap_or(source);
+    let message_id = format!("tui-{}", chrono_like_now_secs());
 
     let params = json!({
-        "id": format!("tui-{}", chrono_like_now_secs()),
-        "destination": resolved_destination,
+        "id": message_id.clone(),
+        "destination": resolved_destination.clone(),
         "source": resolved_source,
         "title": compose.title.trim(),
         "content": content,
     });
 
-    match rpc.call("send_message_v2", Some(params.clone())) {
-        Ok(_) => Ok("message queued".into()),
+    let used_legacy_api = match rpc.call("send_message_v2", Some(params.clone())) {
+        Ok(_) => false,
         Err(_) => {
             rpc.call("send_message", Some(params))?;
-            Ok("message queued (legacy api)".into())
+            true
         }
-    }
+    };
+
+    Ok(ComposeSendResult {
+        message_id,
+        destination: resolved_destination,
+        used_legacy_api,
+    })
 }
 
 fn resolve_runtime_identity_hash(rpc: &RpcClient) -> Result<String> {
@@ -2779,6 +2953,36 @@ fn open_compose_from_selected_contact(state: &mut TuiState) -> Result<String> {
     open_compose_with_destination(state, hash, label)
 }
 
+fn open_compose_from_selected_message(state: &mut TuiState) -> Result<String> {
+    let Some(message) = selected_message_value(state) else {
+        return Err(anyhow!("no message selected"));
+    };
+
+    let source = preferred_source_identity(state);
+    let Some(destination_hash) = reply_destination_from_message(message, source.as_deref()) else {
+        return Err(anyhow!("selected message has no source/destination"));
+    };
+
+    let label = destination_hash.clone();
+    let mut composer =
+        ComposeState::with_destination_and_source(destination_hash.clone(), source.clone());
+    if let Some(reply_title) = message_reply_title(message) {
+        composer.title = reply_title;
+    }
+
+    state.pane = Pane::Messages;
+    state.composer = Some(composer);
+
+    let source_hint = if source.is_some() {
+        "source auto-filled"
+    } else {
+        "source required"
+    };
+    Ok(format!(
+        "Reply compose to {label}: destination prefilled ({destination_hash}), {source_hint}. Fill content, Enter twice to send"
+    ))
+}
+
 fn open_compose_with_destination(
     state: &mut TuiState,
     destination_hash: String,
@@ -2796,8 +3000,74 @@ fn open_compose_with_destination(
         "source required"
     };
     Ok(format!(
-        "Compose to {label}: destination prefilled ({destination_hash}), {source_hint}. Fill content, Enter to send"
+        "Compose to {label}: destination prefilled ({destination_hash}), {source_hint}. Fill content, Enter twice to send"
     ))
+}
+
+fn selected_message_source_index(state: &TuiState) -> Option<usize> {
+    let message_model = messages::MessagePaneModel::from_messages(
+        &state.snapshot.messages,
+        state.snapshot.identity_hash.as_deref(),
+    );
+    message_model.message_index(state.selected_channel, state.selected_message)
+}
+
+fn selected_message_value(state: &TuiState) -> Option<&Value> {
+    let index = selected_message_source_index(state)?;
+    state.snapshot.messages.get(index)
+}
+
+fn message_identity_field(message: &Value, keys: &[&str]) -> Option<String> {
+    for key in keys {
+        if let Some(value) = message
+            .get(*key)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            return Some(value.to_string());
+        }
+    }
+    None
+}
+
+fn reply_destination_from_message(message: &Value, self_identity: Option<&str>) -> Option<String> {
+    let source = message_identity_field(message, &["source", "from", "sender"]);
+    let destination = message_identity_field(message, &["destination", "to", "recipient"]);
+
+    if let Some(self_id) = self_identity
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        if destination
+            .as_deref()
+            .is_some_and(|value| value.eq_ignore_ascii_case(self_id))
+        {
+            if let Some(source_value) = source.clone() {
+                return Some(source_value);
+            }
+        }
+
+        if source
+            .as_deref()
+            .is_some_and(|value| value.eq_ignore_ascii_case(self_id))
+        {
+            if let Some(destination_value) = destination.clone() {
+                return Some(destination_value);
+            }
+        }
+    }
+
+    destination.or(source)
+}
+
+fn message_reply_title(message: &Value) -> Option<String> {
+    let title = message_identity_field(message, &["title", "subject"])?;
+    if title.to_ascii_lowercase().starts_with("re:") {
+        Some(title)
+    } else {
+        Some(format!("Re: {title}"))
+    }
 }
 
 fn open_contact_editor_from_selected_peer(state: &mut TuiState) -> Result<String> {
@@ -2883,11 +3153,17 @@ fn normalize_identity_hash(value: String) -> Option<String> {
 }
 
 fn identity_hash_from_status(value: &Value) -> Option<String> {
-    value
-        .get("identity_hash")
-        .and_then(Value::as_str)
-        .map(ToOwned::to_owned)
-        .and_then(normalize_identity_hash)
+    for key in ["delivery_destination_hash", "identity_hash"] {
+        if let Some(hash) = value
+            .get(key)
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned)
+            .and_then(normalize_identity_hash)
+        {
+            return Some(hash);
+        }
+    }
+    None
 }
 
 fn preferred_source_identity(state: &TuiState) -> Option<String> {
@@ -3137,7 +3413,8 @@ fn as_vec(value: Value, key: &str) -> Vec<Value> {
 mod tests {
     use super::{
         as_vec, filtered_peer_indices, merge_peer_from_event, open_compose_from_selected_contact,
-        open_compose_from_selected_peer, selected_peer_name, Pane, StatusLevel, TuiSnapshot,
+        open_compose_from_selected_message, open_compose_from_selected_peer,
+        reply_destination_from_message, selected_peer_name, Pane, StatusLevel, TuiSnapshot,
         TuiState, TuiTheme,
     };
     use crate::cli::rpc_client::RpcEvent;
@@ -3248,6 +3525,49 @@ mod tests {
     }
 
     #[test]
+    fn compose_from_selected_message_prefills_reply_target_and_title() {
+        let mut state = sample_state(vec![]);
+        state.pane = Pane::Messages;
+        state.snapshot.messages = vec![json!({
+            "id": "msg-1",
+            "source": "peer-hash",
+            "destination": "self-hash",
+            "title": "status update",
+            "content": "hello"
+        })];
+        state.selected_message = 0;
+
+        let message = open_compose_from_selected_message(&mut state).expect("compose opens");
+        let composer = state.composer.expect("composer state");
+        assert_eq!(composer.destination, "peer-hash");
+        assert_eq!(composer.source, "self-hash");
+        assert_eq!(composer.title, "Re: status update");
+        assert!(!composer.send_armed);
+        assert!(message.contains("Enter twice"));
+    }
+
+    #[test]
+    fn reply_destination_prefers_counterparty_when_self_identity_is_present() {
+        let inbound = json!({
+            "source": "peer-a",
+            "destination": "self-hash"
+        });
+        assert_eq!(
+            reply_destination_from_message(&inbound, Some("self-hash")).as_deref(),
+            Some("peer-a")
+        );
+
+        let outbound = json!({
+            "source": "self-hash",
+            "destination": "peer-b"
+        });
+        assert_eq!(
+            reply_destination_from_message(&outbound, Some("self-hash")).as_deref(),
+            Some("peer-b")
+        );
+    }
+
+    #[test]
     fn merge_peer_from_event_applies_name_fields() {
         let mut peers = vec![json!({
             "peer": "deadbeef",
@@ -3276,6 +3596,7 @@ mod tests {
         TuiState {
             pane: Pane::Peers,
             selected_message: 0,
+            selected_channel: 0,
             selected_peer: 0,
             selected_contact: 0,
             selected_interface: 0,
@@ -3313,9 +3634,18 @@ mod tests {
 }
 
 fn clamp_selection(state: &mut TuiState) {
-    if state.selected_message >= state.snapshot.messages.len() {
-        state.selected_message = state.snapshot.messages.len().saturating_sub(1);
+    let message_model = messages::MessagePaneModel::from_messages(
+        &state.snapshot.messages,
+        state.snapshot.identity_hash.as_deref(),
+    );
+    if state.selected_channel >= message_model.channels.len() {
+        state.selected_channel = message_model.channels.len().saturating_sub(1);
     }
+    let channel_messages = message_model.channel_len(state.selected_channel);
+    if state.selected_message >= channel_messages {
+        state.selected_message = channel_messages.saturating_sub(1);
+    }
+
     let filtered_len = filtered_peer_indices(state).len();
     if state.selected_peer >= filtered_len {
         state.selected_peer = filtered_len.saturating_sub(1);
@@ -3334,7 +3664,11 @@ fn clamp_selection(state: &mut TuiState) {
 fn increment_selection(state: &mut TuiState) {
     match state.pane {
         Pane::Messages => {
-            if state.selected_message + 1 < state.snapshot.messages.len() {
+            let message_model = messages::MessagePaneModel::from_messages(
+                &state.snapshot.messages,
+                state.snapshot.identity_hash.as_deref(),
+            );
+            if state.selected_message + 1 < message_model.channel_len(state.selected_channel) {
                 state.selected_message += 1;
             }
         }
@@ -3373,6 +3707,38 @@ fn decrement_selection(state: &mut TuiState) {
         }
         _ => {}
     }
+}
+
+fn select_next_message_channel(state: &mut TuiState) {
+    let message_model = messages::MessagePaneModel::from_messages(
+        &state.snapshot.messages,
+        state.snapshot.identity_hash.as_deref(),
+    );
+    if message_model.channels.is_empty() {
+        state.selected_channel = 0;
+        state.selected_message = 0;
+        return;
+    }
+    if state.selected_channel + 1 < message_model.channels.len() {
+        state.selected_channel += 1;
+    }
+    state.selected_message = 0;
+    clamp_selection(state);
+}
+
+fn select_previous_message_channel(state: &mut TuiState) {
+    let message_model = messages::MessagePaneModel::from_messages(
+        &state.snapshot.messages,
+        state.snapshot.identity_hash.as_deref(),
+    );
+    if message_model.channels.is_empty() {
+        state.selected_channel = 0;
+        state.selected_message = 0;
+        return;
+    }
+    state.selected_channel = state.selected_channel.saturating_sub(1);
+    state.selected_message = 0;
+    clamp_selection(state);
 }
 
 fn next_pane(current: Pane) -> Pane {

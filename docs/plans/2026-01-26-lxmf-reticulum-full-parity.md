@@ -20,8 +20,8 @@ Last updated: 2026-01-26
 - Modify: `https://github.com/FreeTAKTeam/LXMF-rs/docs/plans/2026-01-26-lxmf-reticulum-full-parity.md`
 
 **Step 1: Enumerate Python reference surfaces**
-- Scan Python LXMF: `/Users/tommy/Documents/TAK/LXMF/` for message formats, storage, CLI, propagation, stamps/tickets.
-- Scan Python Reticulum: `/Users/tommy/Documents/TAK/Reticulum/` for identity, crypto, addressing, packet framing, transport, routing, persistence, CLI.
+- Scan Python LXMF reference tree for message formats, storage, CLI, propagation, stamps/tickets.
+- Scan Python Reticulum reference tree for identity, crypto, addressing, packet framing, transport, routing, persistence, CLI.
 
 **Step 2: Build parity matrices**
 - Update `docs/plans/lxmf-parity-matrix.md` with any missing LXMF items and map to Rust files.
@@ -542,6 +542,6 @@ git commit -m "docs: update parity matrices"
 
 ## Notes & Constraints
 - No worktrees. All work in the current repo and `https://github.com/FreeTAKTeam/Reticulum-rs`.
-- Python reference trees live at `/Users/tommy/Documents/TAK/LXMF` and `/Users/tommy/Documents/TAK/Reticulum`.
+- Python reference trees should be checked out locally by contributors before running parity tasks.
 - All parity tests must be byte‑exact against fixtures generated from Python.
 - Prefer small commits per task.

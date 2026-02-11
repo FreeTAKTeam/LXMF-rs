@@ -55,7 +55,13 @@ fn daemon_start_external_without_managed_flag_fails() {
 
     init_profile("daemon-cmd-external", false, Some("127.0.0.1:4553".into())).unwrap();
 
-    let start = Cli::parse_from(["lxmf", "--profile", "daemon-cmd-external", "daemon", "start"]);
+    let start = Cli::parse_from([
+        "lxmf",
+        "--profile",
+        "daemon-cmd-external",
+        "daemon",
+        "start",
+    ]);
     let err = run_cli(start).unwrap_err().to_string();
     assert!(err.contains("external mode"));
 

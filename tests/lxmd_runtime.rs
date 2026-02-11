@@ -22,7 +22,7 @@ announce_interval_secs = 120
 service_tick_interval_secs = 2
 propagation_target_cost = 20
 on_inbound = "echo inbound"
-rnsconfig = "/tmp/rns"
+rnsconfig = "rns"
 "#,
     )
     .unwrap();
@@ -33,7 +33,7 @@ rnsconfig = "/tmp/rns"
     assert_eq!(config.service_tick_interval_secs, 2);
     assert_eq!(config.propagation_target_cost, 20);
     assert_eq!(config.on_inbound.as_deref(), Some("echo inbound"));
-    assert_eq!(config.rnsconfig.as_deref(), Some("/tmp/rns"));
+    assert_eq!(config.rnsconfig.as_deref(), Some("rns"));
 }
 
 #[test]

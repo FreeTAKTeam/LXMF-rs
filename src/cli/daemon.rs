@@ -6,12 +6,16 @@ use anyhow::{anyhow, Context, Result};
 use serde::Serialize;
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 const INFERRED_TRANSPORT_BIND: &str = "127.0.0.1:0";
 const DEFAULT_MANAGED_ANNOUNCE_INTERVAL_SECS: u64 = 900;
+const STARTUP_PROCESS_GRACE: Duration = Duration::from_secs(3);
+const STARTUP_POLL_INTERVAL: Duration = Duration::from_millis(80);
 
 #[derive(Debug, Clone, Serialize)]
 pub struct DaemonStatus {
@@ -121,6 +125,11 @@ impl DaemonSupervisor {
         } else {
             cmd.env_remove("LXMF_DISPLAY_NAME");
         }
+        #[cfg(unix)]
+        {
+            // Start daemon in a dedicated process group so it is not tied to the caller's group.
+            cmd.process_group(0);
+        }
 
         let mut child = match cmd.spawn() {
             Ok(child) => child,
@@ -136,7 +145,7 @@ impl DaemonSupervisor {
         };
         let pid = child.id();
 
-        let startup_deadline = Instant::now() + Duration::from_millis(800);
+        let startup_deadline = Instant::now() + STARTUP_PROCESS_GRACE;
         loop {
             if let Some(status) = child
                 .try_wait()
@@ -157,7 +166,7 @@ impl DaemonSupervisor {
             if Instant::now() >= startup_deadline {
                 break;
             }
-            std::thread::sleep(Duration::from_millis(80));
+            std::thread::sleep(STARTUP_POLL_INTERVAL);
         }
 
         let mut pid_file = File::create(&paths.daemon_pid)
@@ -219,6 +228,9 @@ impl DaemonSupervisor {
         let paths = profile_paths(&self.profile)?;
         let pid = read_pid(&paths.daemon_pid)?;
         let running = pid.map(is_pid_running).unwrap_or(false);
+        if !running && pid.is_some() {
+            let _ = fs::remove_file(&paths.daemon_pid);
+        }
 
         Ok(DaemonStatus {
             running,
@@ -267,7 +279,14 @@ fn read_pid(path: &PathBuf) -> Result<Option<u32>> {
 }
 
 fn is_pid_running(pid: u32) -> bool {
-    match Command::new("kill").arg("-0").arg(pid.to_string()).status() {
+    match Command::new("kill")
+        .arg("-0")
+        .arg(pid.to_string())
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+    {
         Ok(status) => status.success(),
         Err(_) => false,
     }

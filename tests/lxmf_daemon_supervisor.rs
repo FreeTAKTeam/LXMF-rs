@@ -220,3 +220,34 @@ fn daemon_supervisor_infers_transport_when_interfaces_are_enabled() {
 
     std::env::remove_var("LXMF_CONFIG_ROOT");
 }
+
+#[test]
+fn daemon_status_clears_stale_pid_file() {
+    let _guard = env_lock().lock().unwrap_or_else(|err| err.into_inner());
+    let temp = tempfile::tempdir().unwrap();
+    std::env::set_var("LXMF_CONFIG_ROOT", temp.path());
+
+    init_profile("daemon-stale-pid", true, Some("127.0.0.1:4558".into())).unwrap();
+    let paths = profile_paths("daemon-stale-pid").unwrap();
+    std::fs::write(&paths.daemon_pid, "999999\n").unwrap();
+
+    let settings = ProfileSettings {
+        name: "daemon-stale-pid".into(),
+        managed: true,
+        rpc: "127.0.0.1:4558".into(),
+        display_name: None,
+        reticulumd_path: None,
+        db_path: None,
+        identity_path: None,
+        transport: None,
+    };
+    save_profile_settings(&settings).unwrap();
+
+    let supervisor = DaemonSupervisor::new("daemon-stale-pid", settings);
+    let status = supervisor.status().unwrap();
+    assert!(!status.running);
+    assert_eq!(status.pid, None);
+    assert!(!paths.daemon_pid.exists());
+
+    std::env::remove_var("LXMF_CONFIG_ROOT");
+}
