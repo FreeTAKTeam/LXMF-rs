@@ -1573,8 +1573,8 @@ checksum = "7a2d987857b319362043e95f5353c0535c1f58eec5336fdfcf626430af7def58"
 
 [[package]]
 name = "reticulum-rs"
-version = "0.1.0"
-source = "git+https://github.com/FreeTAKTeam/Reticulum-rs.git?rev=510397e007505498ad9e3c61394234b0453e274b#510397e007505498ad9e3c61394234b0453e274b"
+version = "0.1.1"
+source = "git+https://github.com/FreeTAKTeam/Reticulum-rs.git?rev=c4d02b13bbd3a6f704f664292a90efc0a1431205#c4d02b13bbd3a6f704f664292a90efc0a1431205"
 dependencies = [
  "aes",
  "bzip2",
