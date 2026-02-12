@@ -1,7 +1,10 @@
-RETICULUM_PY_PATH ?= ../reticulum
+RETICULUM_PY_PATH ?= ../Reticulum
 RETICULUM_PY_ABS := $(abspath $(RETICULUM_PY_PATH))
+SIDEBAND_PATH ?= ../Sideband
+SIDEBAND_ABS := $(abspath $(SIDEBAND_PATH))
+RUN_SIDEBAND_E2E ?= 0
 
-.PHONY: all clean remove_symlinks create_symlinks build_wheel build_sdist build_spkg release upload interop-gate soak-rnx release-gate-local coverage
+.PHONY: all clean remove_symlinks create_symlinks build_wheel build_sdist build_spkg release upload interop-gate soak-rnx sideband-e2e release-gate-local production-gate-local coverage
 
 all: release
 
@@ -52,10 +55,30 @@ interop-gate:
 soak-rnx:
 	./scripts/soak-rnx.sh
 
+sideband-e2e:
+	@if [ ! -d "$(RETICULUM_PY_ABS)/RNS" ]; then \
+		echo "RETICULUM_PY_PATH must point to the Python Reticulum repo (missing $(RETICULUM_PY_ABS)/RNS)"; \
+		exit 1; \
+	fi
+	@if [ ! -d "$(SIDEBAND_ABS)/sbapp" ]; then \
+		echo "SIDEBAND_PATH must point to the Sideband repo (missing $(SIDEBAND_ABS)/sbapp)"; \
+		exit 1; \
+	fi
+	./scripts/sideband-e2e.py \
+		--reticulum-rs-path ../Reticulum-rs \
+		--sideband-path "$(SIDEBAND_ABS)" \
+		--reticulum-py-path "$(RETICULUM_PY_ABS)"
+
 release-gate-local:
 	cargo test --workspace --all-targets --all-features
 	make interop-gate RETICULUM_PY_PATH="$(RETICULUM_PY_PATH)"
 	cargo run --manifest-path ../Reticulum-rs/crates/reticulum/Cargo.toml --features cli-tools --bin rnx -- e2e --timeout-secs 20
+	@if [ "$(RUN_SIDEBAND_E2E)" = "1" ]; then \
+		make sideband-e2e RETICULUM_PY_PATH="$(RETICULUM_PY_PATH)" SIDEBAND_PATH="$(SIDEBAND_PATH)"; \
+	fi
+
+production-gate-local:
+	make release-gate-local RETICULUM_PY_PATH="$(RETICULUM_PY_PATH)" SIDEBAND_PATH="$(SIDEBAND_PATH)" RUN_SIDEBAND_E2E=1
 
 coverage:
 	@command -v cargo-llvm-cov >/dev/null || cargo install cargo-llvm-cov --locked

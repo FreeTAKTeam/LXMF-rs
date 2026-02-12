@@ -6,6 +6,7 @@ Scope:
 - Transport: HTTP `POST /rpc` with framed MessagePack payloads.
 - Event stream: HTTP `GET /events` with framed MessagePack events.
 - Stability target: this method set and parameter shapes are considered stable for `0.1.x`.
+- Message field-level payload IDs and structures are documented in `docs/payload-contract.md`.
 
 Reference tests:
 - `tests/rpc_contract_methods.rs`

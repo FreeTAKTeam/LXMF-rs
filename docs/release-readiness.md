@@ -12,6 +12,7 @@ This checklist is the publication gate for `lxmf-rs`.
 
 - Python fixture compatibility tests must pass (`tests/*parity*.rs`, `tests/fixture_loader.rs`, `tests/python_interop_gate.rs`).
 - Live Python interop gate is enabled with `LXMF_PYTHON_INTEROP=1` and is required on Linux before release.
+- Sideband interoperability gate must pass (`make sideband-e2e`) for release candidates.
 - Any wire/storage format changes require updated fixtures and parity tests.
 
 ## 3. Async contract conformance
@@ -25,6 +26,7 @@ This checklist is the publication gate for `lxmf-rs`.
 
 - Public API surface is documented in `docs/lxmf-rs-api.md`.
 - CLI daemon RPC method contract is documented in `docs/rpc-contract.md`.
+- Message/announce payload contract is documented in `docs/payload-contract.md`.
 - RPC contract tests must pass (`tests/rpc_contract_methods.rs`).
 - Breaking changes must be called out in release notes.
 
@@ -32,6 +34,7 @@ This checklist is the publication gate for `lxmf-rs`.
 
 - GitHub CI must pass on Linux and macOS.
 - Linux CI installs pinned Python `Reticulum` and `LXMF` commits and runs interop gate with `LXMF_PYTHON_INTEROP=1`.
+- Sideband end-to-end workflow (`.github/workflows/sideband-e2e.yml`) must pass for release candidates.
 - Required checks:
   - `git ls-files '*.rs' | xargs rustfmt --edition 2021 --check`
   - `cargo clippy --workspace --all-targets -- -D warnings`

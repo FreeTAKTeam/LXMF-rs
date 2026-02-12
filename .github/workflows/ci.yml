@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Checkout Reticulum-rs (workspace patch dependency)
+        run: git clone --depth 1 https://github.com/FreeTAKTeam/Reticulum-rs.git ../Reticulum-rs
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -39,6 +41,23 @@ jobs:
         run: cargo audit
       - name: Unused dependencies
         run: cargo +nightly udeps --workspace --all-targets
+
+  interop-python-live:
+    runs-on: ubuntu-latest
+    needs: quality
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout Reticulum-rs (workspace patch dependency)
+        run: git clone --depth 1 https://github.com/FreeTAKTeam/Reticulum-rs.git ../Reticulum-rs
+      - name: Checkout Python Reticulum
+        run: git clone --depth 1 https://github.com/markqvist/Reticulum.git ../Reticulum
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install protobuf compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+      - name: Run Python interop gates
+        run: make interop-gate RETICULUM_PY_PATH=../Reticulum
 
   compatibility-reticulum-main:
     runs-on: ubuntu-latest

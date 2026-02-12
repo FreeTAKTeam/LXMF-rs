@@ -95,12 +95,24 @@ def _extract_metadata(message):
         "signature_validated": bool(message.signature_validated),
         "field_keys": _field_key_ints(fields),
         "attachment_names": _attachment_names(fields),
+        "has_embedded_lxms": LXMF.FIELD_EMBEDDED_LXMS in fields,
         "has_image": LXMF.FIELD_IMAGE in fields,
         "has_audio": LXMF.FIELD_AUDIO in fields,
+        "has_telemetry_stream": LXMF.FIELD_TELEMETRY_STREAM in fields,
+        "has_thread": LXMF.FIELD_THREAD in fields,
+        "has_results": LXMF.FIELD_RESULTS in fields,
+        "has_group": LXMF.FIELD_GROUP in fields,
+        "has_event": LXMF.FIELD_EVENT in fields,
+        "has_rnr_refs": LXMF.FIELD_RNR_REFS in fields,
         "renderer": fields.get(LXMF.FIELD_RENDERER),
         "commands_count": len(commands) if isinstance(commands, list) else 0,
         "has_telemetry": LXMF.FIELD_TELEMETRY in fields,
         "has_ticket": LXMF.FIELD_TICKET in fields,
+        "has_custom_type": LXMF.FIELD_CUSTOM_TYPE in fields,
+        "has_custom_data": LXMF.FIELD_CUSTOM_DATA in fields,
+        "has_custom_meta": LXMF.FIELD_CUSTOM_META in fields,
+        "has_non_specific": LXMF.FIELD_NON_SPECIFIC in fields,
+        "has_debug": LXMF.FIELD_DEBUG in fields,
     }
 
 
@@ -185,6 +197,40 @@ def _build_vectors(source, destination):
                 ),
                 LXMF.FIELD_CUSTOM_TYPE: b"meshchatx/location",
                 LXMF.FIELD_CUSTOM_DATA: b"\x10\x20\x30",
+            },
+        },
+        {
+            "id": "thread_group_event_refs",
+            "title": "Context",
+            "content": "threaded",
+            "fields": {
+                LXMF.FIELD_THREAD: b"thread-001",
+                LXMF.FIELD_RESULTS: [{0x01: b"ok"}, {0x02: b"accepted"}],
+                LXMF.FIELD_GROUP: b"group-alpha",
+                LXMF.FIELD_EVENT: b"event-join",
+                LXMF.FIELD_RNR_REFS: [b"ref-1", b"ref-2"],
+                LXMF.FIELD_RENDERER: LXMF.RENDERER_MICRON,
+            },
+        },
+        {
+            "id": "embedded_stream_debug",
+            "title": "Embedded",
+            "content": "capsule",
+            "fields": {
+                LXMF.FIELD_EMBEDDED_LXMS: [b"embedded-lxm-1", b"embedded-lxm-2"],
+                LXMF.FIELD_TELEMETRY_STREAM: [
+                    [
+                        bytes([0x22] * 16),
+                        1_700_001_999,
+                        msgpack.packb({"alt": 120, "ok": True}, use_bin_type=True),
+                        [b"person", bytes([0, 0, 0]), bytes([255, 255, 255])],
+                    ]
+                ],
+                LXMF.FIELD_CUSTOM_TYPE: b"meshchatx/blob",
+                LXMF.FIELD_CUSTOM_DATA: b"\xaa\xbb\xcc\xdd",
+                LXMF.FIELD_CUSTOM_META: {b"scope": b"debug", b"v": 1},
+                LXMF.FIELD_NON_SPECIFIC: b"nonspecific",
+                LXMF.FIELD_DEBUG: {b"trace_id": b"abc123"},
             },
         },
     ]

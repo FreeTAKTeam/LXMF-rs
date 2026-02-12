@@ -1,0 +1,38 @@
+name: Sideband E2E
+
+on:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  sideband-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout Reticulum-rs (workspace patch dependency)
+        run: git clone --depth 1 https://github.com/FreeTAKTeam/Reticulum-rs.git ../Reticulum-rs
+      - name: Checkout Python Reticulum
+        run: git clone --depth 1 https://github.com/markqvist/Reticulum.git ../Reticulum
+      - name: Checkout Sideband
+        run: git clone --depth 1 https://github.com/markqvist/Sideband.git ../Sideband
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install protobuf compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+      - name: Run Sideband E2E harness
+        run: |
+          ./scripts/sideband-e2e.py \
+            --reticulum-rs-path ../Reticulum-rs \
+            --sideband-path ../Sideband \
+            --reticulum-py-path ../Reticulum \
+            --artifact-root ./sideband-e2e-artifacts \
+            --timeout-secs 90
+      - name: Upload Sideband E2E artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sideband-e2e-artifacts
+          path: ./sideband-e2e-artifacts

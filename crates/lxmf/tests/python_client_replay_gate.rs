@@ -53,12 +53,24 @@ struct ReplayVector {
 struct ReplayExpected {
     field_keys: Vec<i64>,
     attachment_names: Vec<String>,
+    has_embedded_lxms: bool,
     has_image: bool,
     has_audio: bool,
+    has_telemetry_stream: bool,
+    has_thread: bool,
+    has_results: bool,
+    has_group: bool,
+    has_event: bool,
+    has_rnr_refs: bool,
     renderer: Option<i64>,
     commands_count: usize,
     has_telemetry: bool,
     has_ticket: bool,
+    has_custom_type: bool,
+    has_custom_data: bool,
+    has_custom_meta: bool,
+    has_non_specific: bool,
+    has_debug: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -81,12 +93,24 @@ struct ReplayObserved {
     signature_validated: bool,
     field_keys: Vec<i64>,
     attachment_names: Vec<String>,
+    has_embedded_lxms: bool,
     has_image: bool,
     has_audio: bool,
+    has_telemetry_stream: bool,
+    has_thread: bool,
+    has_results: bool,
+    has_group: bool,
+    has_event: bool,
+    has_rnr_refs: bool,
     renderer: Option<i64>,
     commands_count: usize,
     has_telemetry: bool,
     has_ticket: bool,
+    has_custom_type: bool,
+    has_custom_data: bool,
+    has_custom_meta: bool,
+    has_non_specific: bool,
+    has_debug: bool,
 }
 
 #[test]
@@ -217,8 +241,15 @@ fn observed_from_wire(wire: &WireMessage) -> ReplayExpected {
     ReplayExpected {
         field_keys: field_keys(fields),
         attachment_names: attachment_names(fields),
+        has_embedded_lxms: field_value(fields, 1).is_some(),
         has_image: field_value(fields, 6).is_some(),
         has_audio: field_value(fields, 7).is_some(),
+        has_telemetry_stream: field_value(fields, 3).is_some(),
+        has_thread: field_value(fields, 8).is_some(),
+        has_results: field_value(fields, 10).is_some(),
+        has_group: field_value(fields, 11).is_some(),
+        has_event: field_value(fields, 13).is_some(),
+        has_rnr_refs: field_value(fields, 14).is_some(),
         renderer: field_value(fields, 15).and_then(value_to_i64),
         commands_count: field_value(fields, 9)
             .and_then(|value| match value {
@@ -228,6 +259,11 @@ fn observed_from_wire(wire: &WireMessage) -> ReplayExpected {
             .unwrap_or(0),
         has_telemetry: field_value(fields, 2).is_some(),
         has_ticket: field_value(fields, 12).is_some(),
+        has_custom_type: field_value(fields, 251).is_some(),
+        has_custom_data: field_value(fields, 252).is_some(),
+        has_custom_meta: field_value(fields, 253).is_some(),
+        has_non_specific: field_value(fields, 254).is_some(),
+        has_debug: field_value(fields, 255).is_some(),
     }
 }
 
@@ -296,12 +332,24 @@ fn decode_utf8(value: Option<&serde_bytes::ByteBuf>) -> Option<String> {
 fn assert_expected(observed: &ReplayExpected, expected: &ReplayExpected) {
     assert_eq!(observed.field_keys, expected.field_keys);
     assert_eq!(observed.attachment_names, expected.attachment_names);
+    assert_eq!(observed.has_embedded_lxms, expected.has_embedded_lxms);
     assert_eq!(observed.has_image, expected.has_image);
     assert_eq!(observed.has_audio, expected.has_audio);
+    assert_eq!(observed.has_telemetry_stream, expected.has_telemetry_stream);
+    assert_eq!(observed.has_thread, expected.has_thread);
+    assert_eq!(observed.has_results, expected.has_results);
+    assert_eq!(observed.has_group, expected.has_group);
+    assert_eq!(observed.has_event, expected.has_event);
+    assert_eq!(observed.has_rnr_refs, expected.has_rnr_refs);
     assert_eq!(observed.renderer, expected.renderer);
     assert_eq!(observed.commands_count, expected.commands_count);
     assert_eq!(observed.has_telemetry, expected.has_telemetry);
     assert_eq!(observed.has_ticket, expected.has_ticket);
+    assert_eq!(observed.has_custom_type, expected.has_custom_type);
+    assert_eq!(observed.has_custom_data, expected.has_custom_data);
+    assert_eq!(observed.has_custom_meta, expected.has_custom_meta);
+    assert_eq!(observed.has_non_specific, expected.has_non_specific);
+    assert_eq!(observed.has_debug, expected.has_debug);
 }
 
 fn assert_observed(
@@ -315,12 +363,24 @@ fn assert_observed(
     assert_eq!(observed.content.as_deref(), Some(expected_content));
     assert_eq!(observed.field_keys, expected.field_keys);
     assert_eq!(observed.attachment_names, expected.attachment_names);
+    assert_eq!(observed.has_embedded_lxms, expected.has_embedded_lxms);
     assert_eq!(observed.has_image, expected.has_image);
     assert_eq!(observed.has_audio, expected.has_audio);
+    assert_eq!(observed.has_telemetry_stream, expected.has_telemetry_stream);
+    assert_eq!(observed.has_thread, expected.has_thread);
+    assert_eq!(observed.has_results, expected.has_results);
+    assert_eq!(observed.has_group, expected.has_group);
+    assert_eq!(observed.has_event, expected.has_event);
+    assert_eq!(observed.has_rnr_refs, expected.has_rnr_refs);
     assert_eq!(observed.renderer, expected.renderer);
     assert_eq!(observed.commands_count, expected.commands_count);
     assert_eq!(observed.has_telemetry, expected.has_telemetry);
     assert_eq!(observed.has_ticket, expected.has_ticket);
+    assert_eq!(observed.has_custom_type, expected.has_custom_type);
+    assert_eq!(observed.has_custom_data, expected.has_custom_data);
+    assert_eq!(observed.has_custom_meta, expected.has_custom_meta);
+    assert_eq!(observed.has_non_specific, expected.has_non_specific);
+    assert_eq!(observed.has_debug, expected.has_debug);
 }
 
 fn decode_b64(value: &str) -> Vec<u8> {
