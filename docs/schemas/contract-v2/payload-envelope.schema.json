@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://weft.tak/contracts/v2/payload-envelope.schema.json",
+  "title": "LXMF Payload Envelope v2",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "_lxmf_fields_msgpack_b64": {
+      "type": "string",
+      "minLength": 1
+    },
+    "2": {
+      "oneOf": [
+        { "type": "object" },
+        { "type": "array" }
+      ]
+    },
+    "5": {
+      "type": "array"
+    },
+    "9": {
+      "type": "array"
+    },
+    "12": {},
+    "14": {
+      "type": "object"
+    },
+    "16": {
+      "type": "object"
+    },
+    "attachments": {
+      "type": "array"
+    },
+    "paper": {
+      "type": "object"
+    },
+    "announce": {
+      "type": "object"
+    },
+    "peer_snapshot": {
+      "type": "object"
+    },
+    "interface_snapshot": {
+      "type": "object"
+    }
+  }
+}

@@ -52,27 +52,137 @@ def _decode_text(value):
     return None
 
 
+def _normalize_key(value):
+    if isinstance(value, bytes):
+        try:
+            value = value.decode("utf-8")
+        except Exception:
+            return value
+    if isinstance(value, str):
+        try:
+            return int(value, 0)
+        except Exception:
+            return value
+    return value
+
+
+def _normalize_map(value):
+    if not isinstance(value, dict):
+        return {}
+    return {_normalize_key(key): item for key, item in value.items()}
+
+
+def _field_value(fields, field_id):
+    return _normalize_map(fields).get(field_id)
+
+
+def _decode_msgpack_value(value):
+    if isinstance(value, (bytes, bytearray)):
+        try:
+            return msgpack.unpackb(value)
+        except Exception:
+            return value
+    return value
+
+
+def _map_get(map_value, *keys):
+    normalized = _normalize_map(map_value)
+    for key in keys:
+        if key in normalized:
+            return normalized[key]
+    return None
+
+
+def _value_to_float(value):
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except Exception:
+            return None
+    return None
+
+
+def _extract_location(fields):
+    telemetry = _decode_msgpack_value(_field_value(fields, LXMF.FIELD_TELEMETRY))
+    if telemetry is None:
+        return None
+    if isinstance(telemetry, dict):
+        location = _map_get(telemetry, "location")
+        if isinstance(location, dict):
+            telemetry = location
+    if not isinstance(telemetry, dict):
+        return None
+    lat = _value_to_float(_map_get(telemetry, "lat", "latitude"))
+    lon = _value_to_float(_map_get(telemetry, "lon", "lng", "longitude"))
+    if lat is None or lon is None:
+        return None
+    result = {"lat": lat, "lon": lon}
+    alt = _value_to_float(_map_get(telemetry, "alt", "altitude"))
+    if alt is not None:
+        result["alt"] = alt
+    return result
+
+
+def _extract_extensions(fields):
+    extensions = _field_value(fields, 0x10)
+    if not isinstance(extensions, dict):
+        return {"reply_to": None, "reaction": None, "capabilities": []}
+    reply_to = _decode_text(_map_get(extensions, "reply_to", "replyTo"))
+    reaction_to = _decode_text(_map_get(extensions, "reaction_to", "reactionTo"))
+    reaction_emoji = _decode_text(_map_get(extensions, "reaction_emoji", "reactionEmoji"))
+    reaction_sender = _decode_text(_map_get(extensions, "reaction_sender", "reactionSender"))
+    capabilities = _map_get(extensions, "capabilities")
+    capability_list = []
+    if isinstance(capabilities, (list, tuple)):
+        for capability in capabilities:
+            text = _decode_text(capability)
+            if isinstance(text, str) and text:
+                capability_list.append(text)
+    reaction = None
+    if isinstance(reaction_to, str) and isinstance(reaction_emoji, str):
+        reaction = {
+            "to": reaction_to,
+            "emoji": reaction_emoji,
+            "sender": reaction_sender if isinstance(reaction_sender, str) else None,
+        }
+    return {
+        "reply_to": reply_to if isinstance(reply_to, str) else None,
+        "reaction": reaction,
+        "capabilities": sorted(set(capability_list)),
+    }
+
+
+def _command_ids(fields):
+    commands = _field_value(fields, LXMF.FIELD_COMMANDS)
+    if not isinstance(commands, list):
+        return []
+    command_ids = []
+    for command in commands:
+        if not isinstance(command, dict):
+            continue
+        for key in _normalize_map(command).keys():
+            if isinstance(key, int):
+                command_ids.append(key)
+    return sorted(set(command_ids))
+
+
 def _field_key_ints(fields):
     keys = []
     if not isinstance(fields, dict):
         return keys
-    for key in fields.keys():
+    for key in _normalize_map(fields).keys():
         if isinstance(key, int):
             keys.append(key)
             continue
-        if isinstance(key, str):
-            try:
-                keys.append(int(key, 0))
-                continue
-            except Exception:
-                pass
     return sorted(set(keys))
 
 
 def _attachment_names(fields):
     if not isinstance(fields, dict):
         return []
-    attachments = fields.get(LXMF.FIELD_FILE_ATTACHMENTS, [])
+    attachments = _field_value(fields, LXMF.FIELD_FILE_ATTACHMENTS)
     if not isinstance(attachments, list):
         return []
 
@@ -88,7 +198,9 @@ def _attachment_names(fields):
 
 def _extract_metadata(message):
     fields = message.fields if isinstance(message.fields, dict) else {}
-    commands = fields.get(LXMF.FIELD_COMMANDS, [])
+    extensions = _extract_extensions(fields)
+    reaction = extensions["reaction"]
+    commands = _field_value(fields, LXMF.FIELD_COMMANDS)
     return {
         "title": message.title_as_string(),
         "content": message.content_as_string(),
@@ -104,8 +216,9 @@ def _extract_metadata(message):
         "has_group": LXMF.FIELD_GROUP in fields,
         "has_event": LXMF.FIELD_EVENT in fields,
         "has_rnr_refs": LXMF.FIELD_RNR_REFS in fields,
-        "renderer": fields.get(LXMF.FIELD_RENDERER),
+        "renderer": _field_value(fields, LXMF.FIELD_RENDERER),
         "commands_count": len(commands) if isinstance(commands, list) else 0,
+        "command_ids": _command_ids(fields),
         "has_telemetry": LXMF.FIELD_TELEMETRY in fields,
         "has_ticket": LXMF.FIELD_TICKET in fields,
         "has_custom_type": LXMF.FIELD_CUSTOM_TYPE in fields,
@@ -113,6 +226,12 @@ def _extract_metadata(message):
         "has_custom_meta": LXMF.FIELD_CUSTOM_META in fields,
         "has_non_specific": LXMF.FIELD_NON_SPECIFIC in fields,
         "has_debug": LXMF.FIELD_DEBUG in fields,
+        "reply_to": extensions["reply_to"],
+        "reaction_to": reaction["to"] if reaction else None,
+        "reaction_emoji": reaction["emoji"] if reaction else None,
+        "reaction_sender": reaction["sender"] if reaction else None,
+        "telemetry_location": _extract_location(fields),
+        "capabilities": extensions["capabilities"],
     }
 
 
@@ -231,6 +350,25 @@ def _build_vectors(source, destination):
                 LXMF.FIELD_CUSTOM_META: {b"scope": b"debug", b"v": 1},
                 LXMF.FIELD_NON_SPECIFIC: b"nonspecific",
                 LXMF.FIELD_DEBUG: {b"trace_id": b"abc123"},
+            },
+        },
+        {
+            "id": "reply_reaction_location",
+            "title": "Actions",
+            "content": "react + locate",
+            "fields": {
+                LXMF.FIELD_COMMANDS: [{0x20: b"status"}, {0x21: b"ack"}],
+                LXMF.FIELD_TELEMETRY: msgpack.packb(
+                    {"location": {"lat": 37.7749, "lon": -122.4194, "alt": 12.5}},
+                    use_bin_type=True,
+                ),
+                0x10: {
+                    "reply_to": "msg-100",
+                    "reaction_to": "msg-099",
+                    "reaction_emoji": ":+1:",
+                    "reaction_sender": "interop-bot",
+                    "capabilities": ["commands", "paper", "propagation", "commands"],
+                },
             },
         },
     ]

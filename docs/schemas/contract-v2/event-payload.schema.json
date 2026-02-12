@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://weft.tak/contracts/v2/event-payload.schema.json",
+  "title": "LXMF RPC Event Payload v2",
+  "type": "object",
+  "required": ["event_type", "payload"],
+  "properties": {
+    "event_type": { "type": "string", "minLength": 1 },
+    "payload": {}
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "event_type": { "const": "announce_received" } }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": ["peer", "timestamp", "seen_count"],
+            "properties": {
+              "peer": { "type": "string" },
+              "timestamp": { "type": "number" },
+              "seen_count": { "type": "number" },
+              "name": { "type": ["string", "null"] },
+              "name_source": { "type": ["string", "null"] },
+              "app_data_hex": { "type": ["string", "null"] },
+              "capabilities": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "rssi": { "type": ["number", "null"] },
+              "snr": { "type": ["number", "null"] },
+              "q": { "type": ["number", "null"] }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "event_type": { "const": "receipt" } }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": ["message_id", "status"],
+            "properties": {
+              "message_id": { "type": "string" },
+              "status": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

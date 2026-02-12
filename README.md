@@ -46,6 +46,40 @@ cargo check --workspace --all-targets --all-features
 cargo run -p lxmf --features cli --bin lxmf -- --help
 ```
 
+## Embedded Runtime API
+
+For desktop apps (for example Tauri), use the embedded runtime feature and typed send helpers:
+
+```rust
+use lxmf::payload_fields::CommandEntry;
+use lxmf::runtime::{self, RuntimeConfig, SendCommandRequest, SendMessageRequest};
+
+let handle = runtime::start(RuntimeConfig {
+    profile: "default".into(),
+    rpc: None,
+    transport: Some("127.0.0.1:0".into()),
+})?;
+
+let msg = SendMessageRequest::new(
+    "ffeeddccbbaa99887766554433221100",
+    "hello",
+);
+let _ = handle.send_message(msg)?;
+
+let cmd = SendCommandRequest::new(
+    "ffeeddccbbaa99887766554433221100",
+    "ops bundle",
+    vec![CommandEntry::from_text(1, "ping")],
+);
+let _ = handle.send_command(cmd)?;
+```
+
+Build with:
+
+```bash
+cargo add lxmf --features embedded-runtime
+```
+
 ## Compatibility
 - Cross-repo compatibility policy: `docs/compatibility-contract.md`
 - Detailed parity mapping: `docs/compatibility-matrix.md`

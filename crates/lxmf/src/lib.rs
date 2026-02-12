@@ -11,6 +11,7 @@ pub mod handlers;
 pub mod helpers;
 pub mod identity;
 pub mod message;
+pub mod payload_fields;
 pub mod peer;
 pub mod propagation;
 pub mod reticulum;

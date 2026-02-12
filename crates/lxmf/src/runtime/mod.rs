@@ -5,6 +5,7 @@ use crate::cli::profile::{
 };
 use crate::helpers::{display_name_from_app_data, is_msgpack_array_prefix, normalize_display_name};
 use crate::message::Message;
+use crate::payload_fields::{decode_transport_fields_json, CommandEntry, WireFields};
 use crate::LxmfError;
 use rand_core::OsRng;
 use reticulum::destination::link::{LinkEvent, LinkStatus};
@@ -27,7 +28,7 @@ use reticulum::transport::{
 use serde::Serialize;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Write;
 use std::net::SocketAddr;
@@ -42,7 +43,9 @@ use tokio::sync::watch;
 use tokio::task::LocalSet;
 
 const INFERRED_TRANSPORT_BIND: &str = "127.0.0.1:0";
-const DEFAULT_ANNOUNCE_INTERVAL_SECS: u64 = 900;
+const DEFAULT_ANNOUNCE_INTERVAL_SECS: u64 = 60;
+const STARTUP_ANNOUNCE_BURST_DELAYS_SECS: &[u64] = &[5, 15, 30];
+const POST_SEND_ANNOUNCE_MIN_INTERVAL_SECS: u64 = 20;
 
 #[derive(Debug, Clone)]
 pub struct RuntimeConfig {
@@ -55,6 +58,49 @@ impl Default for RuntimeConfig {
     fn default() -> Self {
         Self { profile: "default".to_string(), rpc: None, transport: None }
     }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SendMessageRequest {
+    pub id: Option<String>,
+    pub source: Option<String>,
+    pub destination: String,
+    pub title: String,
+    pub content: String,
+    pub fields: Option<Value>,
+    pub method: Option<String>,
+    pub stamp_cost: Option<u32>,
+    pub include_ticket: bool,
+}
+
+impl SendMessageRequest {
+    pub fn new(destination: impl Into<String>, content: impl Into<String>) -> Self {
+        Self { destination: destination.into(), content: content.into(), ..Self::default() }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SendCommandRequest {
+    pub message: SendMessageRequest,
+    pub commands: Vec<CommandEntry>,
+}
+
+impl SendCommandRequest {
+    pub fn new(
+        destination: impl Into<String>,
+        content: impl Into<String>,
+        commands: Vec<CommandEntry>,
+    ) -> Self {
+        Self { message: SendMessageRequest::new(destination, content), commands }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SendMessageResponse {
+    pub id: String,
+    pub source: String,
+    pub destination: String,
+    pub result: Value,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -102,6 +148,14 @@ struct RuntimeInner {
     command_tx: UnboundedSender<RuntimeRequest>,
 }
 
+#[derive(Debug)]
+struct PreparedSendMessage {
+    id: String,
+    source: String,
+    destination: String,
+    params: Value,
+}
+
 struct RuntimeRequest {
     command: RuntimeCommand,
     respond_to: std_mpsc::Sender<Result<RuntimeResponse, String>>,
@@ -134,6 +188,8 @@ struct WorkerState {
     profile: String,
     status_template: DaemonStatus,
     daemon: Rc<RpcDaemon>,
+    peer_announce_meta: Arc<Mutex<HashMap<String, PeerAnnounceMeta>>>,
+    selected_propagation_node: Arc<Mutex<Option<String>>>,
     shutdown_tx: watch::Sender<bool>,
     scheduler_handle: Option<tokio::task::JoinHandle<()>>,
     shutdown: bool,
@@ -144,14 +200,22 @@ struct PeerCrypto {
     identity: Identity,
 }
 
+#[derive(Clone, Debug, Default)]
+struct PeerAnnounceMeta {
+    app_data_hex: Option<String>,
+}
+
 struct EmbeddedTransportBridge {
     transport: Arc<Transport>,
     signer: PrivateIdentity,
     delivery_source_hash: [u8; 16],
     announce_destination: Arc<tokio::sync::Mutex<SingleInputDestination>>,
     announce_app_data: Option<Vec<u8>>,
+    last_announce_epoch_secs: Arc<AtomicU64>,
     peer_crypto: Arc<Mutex<HashMap<String, PeerCrypto>>>,
+    selected_propagation_node: Arc<Mutex<Option<String>>>,
     receipt_map: Arc<Mutex<HashMap<String, String>>>,
+    delivered_messages: Arc<Mutex<HashSet<String>>>,
     receipt_tx: tokio::sync::mpsc::UnboundedSender<ReceiptEvent>,
 }
 
@@ -164,6 +228,7 @@ struct ReceiptEvent {
 #[derive(Clone)]
 struct ReceiptBridge {
     map: Arc<Mutex<HashMap<String, String>>>,
+    delivered_messages: Arc<Mutex<HashSet<String>>>,
     tx: tokio::sync::mpsc::UnboundedSender<ReceiptEvent>,
 }
 
@@ -233,6 +298,46 @@ impl RuntimeHandle {
                 Err(err)
             }
         }
+    }
+
+    pub fn send_message(
+        &self,
+        request: SendMessageRequest,
+    ) -> Result<SendMessageResponse, LxmfError> {
+        let source = self.resolve_source_for_send(request.source.clone())?;
+        let prepared = build_send_params_with_source(request, source)?;
+        let PreparedSendMessage { id, source, destination, params } = prepared;
+
+        let result = match self.call("send_message_v2", Some(params.clone())) {
+            Ok(value) => value,
+            Err(_) => self.call("send_message", Some(params))?,
+        };
+
+        Ok(SendMessageResponse { id, source, destination, result })
+    }
+
+    pub fn send_command(
+        &self,
+        request: SendCommandRequest,
+    ) -> Result<SendMessageResponse, LxmfError> {
+        if request.commands.is_empty() {
+            return Err(LxmfError::Io(
+                "send_command requires at least one command entry".to_string(),
+            ));
+        }
+        if request.message.fields.is_some() {
+            return Err(LxmfError::Io(
+                "send_command does not accept pre-populated fields; use send_message for custom field maps"
+                    .to_string(),
+            ));
+        }
+
+        let mut fields = WireFields::new();
+        fields.set_commands(request.commands);
+
+        let mut message = request.message;
+        message.fields = Some(fields.to_transport_json()?);
+        self.send_message(message)
     }
 
     pub fn probe(&self) -> RuntimeProbeReport {
@@ -336,6 +441,31 @@ impl RuntimeHandle {
             transport_inferred: self.inner.transport_inferred,
             log_path: self.inner.log_path.clone(),
         }
+    }
+
+    fn resolve_source_for_send(&self, source: Option<String>) -> Result<String, LxmfError> {
+        if let Some(value) = clean_non_empty(source) {
+            return Ok(value);
+        }
+
+        let mut failures = Vec::new();
+        for method in ["daemon_status_ex", "status"] {
+            match self.call(method, None) {
+                Ok(response) => {
+                    if let Some(hash) = extract_identity_hash(&response) {
+                        return Ok(hash);
+                    }
+                    failures.push(format!("{method}: missing identity hash"));
+                }
+                Err(err) => failures.push(format!("{method}: {err}")),
+            }
+        }
+
+        let detail =
+            if failures.is_empty() { String::new() } else { format!(" ({})", failures.join("; ")) };
+        Err(LxmfError::Io(format!(
+            "source not provided and daemon did not report delivery/identity hash{detail}"
+        )))
     }
 }
 
@@ -473,6 +603,7 @@ fn handle_runtime_request(
             Ok(RuntimeResponse::Status(status))
         }
         RuntimeCommand::Call(request) => {
+            let method = request.method.clone();
             let response = state
                 .daemon
                 .handle_rpc(request)
@@ -480,7 +611,24 @@ fn handle_runtime_request(
             if let Some(err) = response.error {
                 return Err(format!("rpc failed [{}]: {}", err.code, err.message));
             }
-            Ok(RuntimeResponse::Value(response.result.unwrap_or(Value::Null)))
+            let mut result = response.result.unwrap_or(Value::Null);
+            if method == "list_peers" {
+                let snapshot =
+                    state.peer_announce_meta.lock().map(|guard| guard.clone()).unwrap_or_default();
+                annotate_peer_records_with_announce_metadata(&mut result, &snapshot);
+            }
+            if method == "set_outbound_propagation_node" {
+                let selected = result
+                    .get("peer")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(ToOwned::to_owned);
+                if let Ok(mut guard) = state.selected_propagation_node.lock() {
+                    *guard = selected;
+                }
+            }
+            Ok(RuntimeResponse::Value(result))
         }
         RuntimeCommand::PollEvent => Ok(RuntimeResponse::Event(state.daemon.take_event())),
         RuntimeCommand::Stop => {
@@ -510,7 +658,12 @@ impl WorkerState {
 
         let peer_crypto: Arc<Mutex<HashMap<String, PeerCrypto>>> =
             Arc::new(Mutex::new(HashMap::new()));
+        let peer_announce_meta: Arc<Mutex<HashMap<String, PeerAnnounceMeta>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+        let selected_propagation_node: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
         let receipt_map: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
+        let delivered_messages: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
+        let last_announce_epoch_secs = Arc::new(AtomicU64::new(0));
         let (receipt_tx, mut receipt_rx) = unbounded_channel();
         let (shutdown_tx, _) = watch::channel(false);
 
@@ -521,11 +674,14 @@ impl WorkerState {
         let mut delivery_source_hash = [0u8; 16];
 
         if let Some(bind) = init.transport.clone() {
+            // Embedded desktop runtime should behave as an endpoint, not a transit router.
+            // Keep announce/path functionality, but avoid rebroadcasting arbitrary transit traffic.
             let mut transport_instance =
-                Transport::new(TransportConfig::new("embedded", &identity, true));
+                Transport::new(TransportConfig::new("embedded", &identity, false));
             transport_instance
                 .set_receipt_handler(Box::new(ReceiptBridge::new(
                     receipt_map.clone(),
+                    delivered_messages.clone(),
                     receipt_tx.clone(),
                 )))
                 .await;
@@ -587,8 +743,11 @@ impl WorkerState {
                             encode_delivery_display_name_app_data(&display_name)
                         })
                     }),
+                    last_announce_epoch_secs.clone(),
                     peer_crypto.clone(),
+                    selected_propagation_node.clone(),
                     receipt_map.clone(),
+                    delivered_messages.clone(),
                     receipt_tx.clone(),
                 ))
             });
@@ -672,6 +831,7 @@ impl WorkerState {
 
             let daemon_announce = daemon.clone();
             let peer_crypto = peer_crypto.clone();
+            let peer_announce_meta = peer_announce_meta.clone();
             let announce_transport = transport.clone();
             let mut shutdown_rx = shutdown_tx.subscribe();
             tokio::task::spawn_local(async move {
@@ -689,7 +849,14 @@ impl WorkerState {
                                     let dest = event.destination.lock().await;
                                     let peer = hex::encode(dest.desc.address_hash.as_slice());
                                     let identity = dest.desc.identity;
-                                    let (peer_name, peer_name_source) = parse_peer_name_from_app_data(event.app_data.as_slice())
+                                    let app_data = event.app_data.as_slice();
+                                    let app_data_hex = if app_data.is_empty() {
+                                        None
+                                    } else {
+                                        Some(hex::encode(app_data))
+                                    };
+                                    let announce_capabilities = parse_peer_capabilities_from_app_data(app_data);
+                                    let (peer_name, peer_name_source) = parse_peer_name_from_app_data(app_data)
                                         .map(|(name, source)| (Some(name), Some(source)))
                                         .unwrap_or((None, None));
 
@@ -697,17 +864,31 @@ impl WorkerState {
                                         .lock()
                                         .expect("peer map")
                                         .insert(peer.clone(), PeerCrypto { identity });
+                                    update_peer_announce_meta(
+                                        &peer_announce_meta,
+                                        &peer,
+                                        app_data,
+                                    );
 
                                     let timestamp = SystemTime::now()
                                         .duration_since(UNIX_EPOCH)
                                         .map(|value| value.as_secs() as i64)
                                         .unwrap_or(0);
 
-                                    let _ = daemon_announce.accept_announce_with_details(
+                                    let _ = daemon_announce.accept_announce_with_metadata(
                                         peer,
                                         timestamp,
                                         peer_name,
                                         peer_name_source,
+                                        app_data_hex,
+                                        if announce_capabilities.is_empty() {
+                                            None
+                                        } else {
+                                            Some(announce_capabilities)
+                                        },
+                                        None,
+                                        None,
+                                        None,
                                     );
                                 }
                                 Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
@@ -725,6 +906,17 @@ impl WorkerState {
             None
         };
 
+        if let Some(bridge) = bridge.clone() {
+            tokio::task::spawn_local(async move {
+                // Emit a short announce burst after startup to improve cross-client
+                // discovery when peers/interfaces come online slightly later.
+                for delay_secs in STARTUP_ANNOUNCE_BURST_DELAYS_SECS {
+                    tokio::time::sleep(Duration::from_secs(*delay_secs)).await;
+                    let _ = bridge.announce_now();
+                }
+            });
+        }
+
         Ok(Self {
             profile: init.profile.clone(),
             status_template: DaemonStatus {
@@ -738,6 +930,8 @@ impl WorkerState {
                 log_path: init.paths.daemon_log.display().to_string(),
             },
             daemon,
+            peer_announce_meta,
+            selected_propagation_node,
             shutdown_tx,
             scheduler_handle,
             shutdown: false,
@@ -768,8 +962,11 @@ impl EmbeddedTransportBridge {
         delivery_source_hash: [u8; 16],
         announce_destination: Arc<tokio::sync::Mutex<SingleInputDestination>>,
         announce_app_data: Option<Vec<u8>>,
+        last_announce_epoch_secs: Arc<AtomicU64>,
         peer_crypto: Arc<Mutex<HashMap<String, PeerCrypto>>>,
+        selected_propagation_node: Arc<Mutex<Option<String>>>,
         receipt_map: Arc<Mutex<HashMap<String, String>>>,
+        delivered_messages: Arc<Mutex<HashSet<String>>>,
         receipt_tx: tokio::sync::mpsc::UnboundedSender<ReceiptEvent>,
     ) -> Self {
         Self {
@@ -778,8 +975,11 @@ impl EmbeddedTransportBridge {
             delivery_source_hash,
             announce_destination,
             announce_app_data,
+            last_announce_epoch_secs,
             peer_crypto,
+            selected_propagation_node,
             receipt_map,
+            delivered_messages,
             receipt_tx,
         }
     }
@@ -805,12 +1005,25 @@ impl OutboundBridge for EmbeddedTransportBridge {
         let destination_hash = AddressHash::new(destination);
         let transport = self.transport.clone();
         let peer_crypto = self.peer_crypto.clone();
+        let selected_propagation_node = self.selected_propagation_node.clone();
         let receipt_map = self.receipt_map.clone();
+        let delivered_messages = self.delivered_messages.clone();
         let receipt_tx = self.receipt_tx.clone();
+        let announce_destination = self.announce_destination.clone();
+        let announce_app_data = self.announce_app_data.clone();
+        let announce_last = self.last_announce_epoch_secs.clone();
         let message_id = record.id.clone();
         let destination_hex = record.destination.clone();
 
         tokio::spawn(async move {
+            if let Ok(mut delivered) = delivered_messages.lock() {
+                delivered.remove(&message_id);
+            }
+
+            let _ = receipt_tx.send(ReceiptEvent {
+                message_id: message_id.clone(),
+                status: "outbound_attempt: link".to_string(),
+            });
             let mut identity = peer_identity;
             transport.request_path(&destination_hash, None, None).await;
 
@@ -854,61 +1067,168 @@ impl OutboundBridge for EmbeddedTransportBridge {
                 Ok(packet) => {
                     let packet_hash = hex::encode(packet.hash().to_bytes());
                     track_receipt_mapping(&receipt_map, &packet_hash, &message_id);
+                    trigger_rate_limited_announce(
+                        &transport,
+                        &announce_destination,
+                        announce_app_data.clone(),
+                        &announce_last,
+                        POST_SEND_ANNOUNCE_MIN_INTERVAL_SECS,
+                    );
                     let _ = receipt_tx
                         .send(ReceiptEvent { message_id, status: "sent: link".to_string() });
+                    return;
                 }
                 Err(err) => {
                     let _ = receipt_tx.send(ReceiptEvent {
                         message_id: message_id.clone(),
-                        status: format!("link failed: {err}; trying opportunistic"),
-                    });
-
-                    let opportunistic_payload =
-                        opportunistic_payload(payload.as_slice(), &destination);
-                    let mut data = PacketDataBuffer::new();
-                    if data.write(opportunistic_payload).is_err() {
-                        let _ = receipt_tx.send(ReceiptEvent {
-                            message_id,
-                            status: "failed: payload too large".to_string(),
-                        });
-                        return;
-                    }
-
-                    let packet = Packet {
-                        header: Header {
-                            ifac_flag: IfacFlag::Open,
-                            header_type: HeaderType::Type1,
-                            context_flag: ContextFlag::Unset,
-                            propagation_type: PropagationType::Broadcast,
-                            destination_type: DestinationType::Single,
-                            packet_type: PacketType::Data,
-                            hops: 0,
-                        },
-                        ifac: None,
-                        destination: destination_hash,
-                        transport: None,
-                        context: PacketContext::None,
-                        data,
-                    };
-
-                    let packet_hash = hex::encode(packet.hash().to_bytes());
-                    track_receipt_mapping(&receipt_map, &packet_hash, &message_id);
-                    let trace = transport.send_packet_with_trace(packet).await;
-                    if !matches!(
-                        trace.outcome,
-                        SendPacketOutcome::SentDirect | SendPacketOutcome::SentBroadcast
-                    ) {
-                        if let Ok(mut map) = receipt_map.lock() {
-                            map.remove(&packet_hash);
-                        }
-                    }
-
-                    let _ = receipt_tx.send(ReceiptEvent {
-                        message_id,
-                        status: send_outcome_status("opportunistic", trace.outcome),
+                        status: format!("retrying: opportunistic after link error ({err})"),
                     });
                 }
             }
+
+            let opportunistic_payload = opportunistic_payload(payload.as_slice(), &destination);
+            let mut opportunistic_data = PacketDataBuffer::new();
+            if opportunistic_data.write(opportunistic_payload).is_err() {
+                let _ = receipt_tx.send(ReceiptEvent {
+                    message_id: message_id.clone(),
+                    status: "failed: opportunistic payload too large".to_string(),
+                });
+                return;
+            }
+            let opportunistic_packet = Packet {
+                header: Header {
+                    ifac_flag: IfacFlag::Open,
+                    header_type: HeaderType::Type1,
+                    context_flag: ContextFlag::Unset,
+                    propagation_type: PropagationType::Broadcast,
+                    destination_type: DestinationType::Single,
+                    packet_type: PacketType::Data,
+                    hops: 0,
+                },
+                ifac: None,
+                destination: destination_hash,
+                transport: None,
+                context: PacketContext::None,
+                data: opportunistic_data,
+            };
+            let opportunistic_hash = hex::encode(opportunistic_packet.hash().to_bytes());
+            track_receipt_mapping(&receipt_map, &opportunistic_hash, &message_id);
+            let opportunistic_trace = transport.send_packet_with_trace(opportunistic_packet).await;
+            if !send_outcome_is_sent(opportunistic_trace.outcome) {
+                if let Ok(mut map) = receipt_map.lock() {
+                    map.remove(&opportunistic_hash);
+                }
+                let _ = receipt_tx.send(ReceiptEvent {
+                    message_id: message_id.clone(),
+                    status: send_outcome_status("opportunistic", opportunistic_trace.outcome),
+                });
+            } else {
+                trigger_rate_limited_announce(
+                    &transport,
+                    &announce_destination,
+                    announce_app_data.clone(),
+                    &announce_last,
+                    POST_SEND_ANNOUNCE_MIN_INTERVAL_SECS,
+                );
+                let _ = receipt_tx.send(ReceiptEvent {
+                    message_id: message_id.clone(),
+                    status: send_outcome_status("opportunistic", opportunistic_trace.outcome),
+                });
+                tokio::time::sleep(Duration::from_secs(20)).await;
+                if is_message_marked_delivered(&delivered_messages, &message_id) {
+                    return;
+                }
+                let _ = receipt_tx.send(ReceiptEvent {
+                    message_id: message_id.clone(),
+                    status: "retrying: propagated relay after opportunistic timeout".to_string(),
+                });
+            }
+
+            let relay_peer = selected_propagation_node
+                .lock()
+                .ok()
+                .and_then(|guard| guard.clone())
+                .filter(|value| !value.trim().is_empty());
+            let Some(relay_peer) = relay_peer else {
+                prune_receipt_mappings_for_message(&receipt_map, &message_id);
+                let _ = receipt_tx.send(ReceiptEvent {
+                    message_id,
+                    status: "failed: no propagation relay selected".to_string(),
+                });
+                return;
+            };
+            let Some(relay_destination) = parse_destination_hex(&relay_peer) else {
+                prune_receipt_mappings_for_message(&receipt_map, &message_id);
+                let _ = receipt_tx.send(ReceiptEvent {
+                    message_id,
+                    status: format!("failed: invalid propagation relay hash '{relay_peer}'"),
+                });
+                return;
+            };
+            let relay_hash = AddressHash::new(relay_destination);
+
+            let mut last_failure = "failed: propagated relay unavailable".to_string();
+            for attempt in 1..=2u8 {
+                if is_message_marked_delivered(&delivered_messages, &message_id) {
+                    return;
+                }
+                let _ = receipt_tx.send(ReceiptEvent {
+                    message_id: message_id.clone(),
+                    status: format!("retrying: propagated relay attempt {attempt}/2"),
+                });
+
+                let mut relay_data = PacketDataBuffer::new();
+                if relay_data.write(payload.as_slice()).is_err() {
+                    prune_receipt_mappings_for_message(&receipt_map, &message_id);
+                    let _ = receipt_tx.send(ReceiptEvent {
+                        message_id,
+                        status: "failed: propagated relay payload too large".to_string(),
+                    });
+                    return;
+                }
+                let relay_packet = Packet {
+                    header: Header {
+                        ifac_flag: IfacFlag::Open,
+                        header_type: HeaderType::Type1,
+                        context_flag: ContextFlag::Unset,
+                        propagation_type: PropagationType::Broadcast,
+                        destination_type: DestinationType::Single,
+                        packet_type: PacketType::Data,
+                        hops: 0,
+                    },
+                    ifac: None,
+                    destination: relay_hash,
+                    transport: None,
+                    context: PacketContext::None,
+                    data: relay_data,
+                };
+                let relay_packet_hash = hex::encode(relay_packet.hash().to_bytes());
+                track_receipt_mapping(&receipt_map, &relay_packet_hash, &message_id);
+                let relay_trace = transport.send_packet_with_trace(relay_packet).await;
+                if send_outcome_is_sent(relay_trace.outcome) {
+                    trigger_rate_limited_announce(
+                        &transport,
+                        &announce_destination,
+                        announce_app_data.clone(),
+                        &announce_last,
+                        POST_SEND_ANNOUNCE_MIN_INTERVAL_SECS,
+                    );
+                    let _ = receipt_tx.send(ReceiptEvent {
+                        message_id,
+                        status: send_outcome_status("propagated relay", relay_trace.outcome),
+                    });
+                    return;
+                }
+                if let Ok(mut map) = receipt_map.lock() {
+                    map.remove(&relay_packet_hash);
+                }
+                last_failure = send_outcome_status("propagated relay", relay_trace.outcome);
+                if attempt < 2 {
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+                }
+            }
+            prune_receipt_mappings_for_message(&receipt_map, &message_id);
+            let _ = receipt_tx.send(ReceiptEvent { message_id, status: last_failure });
         });
 
         Ok(())
@@ -917,6 +1237,7 @@ impl OutboundBridge for EmbeddedTransportBridge {
 
 impl AnnounceBridge for EmbeddedTransportBridge {
     fn announce_now(&self) -> Result<(), std::io::Error> {
+        self.last_announce_epoch_secs.store(now_epoch_secs(), Ordering::Relaxed);
         let transport = self.transport.clone();
         let destination = self.announce_destination.clone();
         let app_data = self.announce_app_data.clone();
@@ -930,9 +1251,10 @@ impl AnnounceBridge for EmbeddedTransportBridge {
 impl ReceiptBridge {
     fn new(
         map: Arc<Mutex<HashMap<String, String>>>,
+        delivered_messages: Arc<Mutex<HashSet<String>>>,
         tx: tokio::sync::mpsc::UnboundedSender<ReceiptEvent>,
     ) -> Self {
-        Self { map, tx }
+        Self { map, delivered_messages, tx }
     }
 }
 
@@ -941,6 +1263,9 @@ impl ReceiptHandler for ReceiptBridge {
         let key = hex::encode(receipt.message_id);
         let message_id = self.map.lock().ok().and_then(|mut map| map.remove(&key));
         if let Some(message_id) = message_id {
+            if let Ok(mut delivered) = self.delivered_messages.lock() {
+                delivered.insert(message_id.clone());
+            }
             let _ = self.tx.send(ReceiptEvent { message_id, status: "delivered".into() });
         }
     }
@@ -1045,6 +1370,10 @@ fn send_outcome_label(outcome: SendPacketOutcome) -> &'static str {
     }
 }
 
+fn send_outcome_is_sent(outcome: SendPacketOutcome) -> bool {
+    matches!(outcome, SendPacketOutcome::SentDirect | SendPacketOutcome::SentBroadcast)
+}
+
 fn send_outcome_status(method: &str, outcome: SendPacketOutcome) -> String {
     match outcome {
         SendPacketOutcome::SentDirect | SendPacketOutcome::SentBroadcast => {
@@ -1059,6 +1388,62 @@ fn send_outcome_status(method: &str, outcome: SendPacketOutcome) -> String {
         SendPacketOutcome::DroppedEncryptFailed => format!("failed: {method} encrypt failed"),
         SendPacketOutcome::DroppedNoRoute => format!("failed: {method} no route"),
     }
+}
+
+fn is_message_marked_delivered(
+    delivered_messages: &Arc<Mutex<HashSet<String>>>,
+    message_id: &str,
+) -> bool {
+    delivered_messages.lock().map(|guard| guard.contains(message_id)).unwrap_or(false)
+}
+
+fn prune_receipt_mappings_for_message(
+    receipt_map: &Arc<Mutex<HashMap<String, String>>>,
+    message_id: &str,
+) {
+    if let Ok(mut guard) = receipt_map.lock() {
+        guard.retain(|_, mapped_message_id| mapped_message_id != message_id);
+    }
+}
+
+fn now_epoch_secs() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs()
+}
+
+fn try_acquire_announce_window(
+    last_announce_epoch_secs: &Arc<AtomicU64>,
+    min_interval_secs: u64,
+) -> bool {
+    let now = now_epoch_secs();
+    loop {
+        let previous = last_announce_epoch_secs.load(Ordering::Relaxed);
+        if previous != 0 && now.saturating_sub(previous) < min_interval_secs {
+            return false;
+        }
+        if last_announce_epoch_secs
+            .compare_exchange(previous, now, Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok()
+        {
+            return true;
+        }
+    }
+}
+
+fn trigger_rate_limited_announce(
+    transport: &Arc<Transport>,
+    destination: &Arc<tokio::sync::Mutex<SingleInputDestination>>,
+    app_data: Option<Vec<u8>>,
+    last_announce_epoch_secs: &Arc<AtomicU64>,
+    min_interval_secs: u64,
+) {
+    if !try_acquire_announce_window(last_announce_epoch_secs, min_interval_secs) {
+        return;
+    }
+    let announce_transport = transport.clone();
+    let announce_destination = destination.clone();
+    tokio::spawn(async move {
+        announce_transport.send_announce(&announce_destination, app_data.as_deref()).await;
+    });
 }
 
 fn opportunistic_payload<'a>(payload: &'a [u8], destination: &[u8; 16]) -> &'a [u8] {
@@ -1259,9 +1644,16 @@ fn build_wire_message(
     message.set_title_from_string(title);
     message.set_content_from_string(content);
     if let Some(fields) = fields {
-        message.fields = Some(json_to_rmpv(&fields)?);
+        message.fields = Some(wire_fields_from_json(&fields)?);
     }
     message.to_wire(Some(signer))
+}
+
+fn wire_fields_from_json(value: &Value) -> Result<rmpv::Value, LxmfError> {
+    if let Some(raw) = decode_transport_fields_json(value)? {
+        return Ok(raw);
+    }
+    json_to_rmpv(value)
 }
 
 fn json_to_rmpv(value: &Value) -> Result<rmpv::Value, LxmfError> {
@@ -1342,6 +1734,140 @@ fn parse_peer_name_from_app_data(app_data: &[u8]) -> Option<(String, String)> {
     Some((name, "app_data_utf8".to_string()))
 }
 
+fn parse_peer_capabilities_from_app_data(app_data: &[u8]) -> Vec<String> {
+    if app_data.is_empty() {
+        return Vec::new();
+    }
+    let Ok(value) = rmp_serde::from_slice::<Value>(app_data) else {
+        return Vec::new();
+    };
+    let Some(entries) = value.as_array() else {
+        return Vec::new();
+    };
+    if entries.len() < 3 {
+        return Vec::new();
+    }
+    extract_capabilities_from_json_value(entries.get(2))
+}
+
+fn extract_capabilities_from_json_value(value: Option<&Value>) -> Vec<String> {
+    let Some(value) = value else {
+        return Vec::new();
+    };
+    let mut raw = Vec::new();
+
+    if let Some(array) = value.as_array() {
+        raw.extend(array.iter().filter_map(|entry| entry.as_str().map(|text| text.to_string())));
+        return normalize_capabilities(raw);
+    }
+
+    if let Some(object) = value.as_object() {
+        for key in ["caps", "capabilities"] {
+            if let Some(array) = object.get(key).and_then(Value::as_array) {
+                raw.extend(
+                    array.iter().filter_map(|entry| entry.as_str().map(|text| text.to_string())),
+                );
+                return normalize_capabilities(raw);
+            }
+        }
+    }
+
+    Vec::new()
+}
+
+fn normalize_capabilities(values: Vec<String>) -> Vec<String> {
+    let mut seen = HashSet::new();
+    let mut out = Vec::new();
+    for value in values {
+        let normalized = value.trim().to_ascii_lowercase();
+        if normalized.is_empty() || !seen.insert(normalized.clone()) {
+            continue;
+        }
+        out.push(normalized);
+    }
+    out
+}
+
+fn update_peer_announce_meta(
+    peer_announce_meta: &Arc<Mutex<HashMap<String, PeerAnnounceMeta>>>,
+    peer: &str,
+    app_data: &[u8],
+) {
+    let app_data_hex = if app_data.is_empty() { None } else { Some(hex::encode(app_data)) };
+
+    let mut guard = peer_announce_meta.lock().expect("peer metadata map");
+    guard.insert(peer.to_string(), PeerAnnounceMeta { app_data_hex });
+}
+
+fn annotate_peer_records_with_announce_metadata(
+    result: &mut Value,
+    metadata: &HashMap<String, PeerAnnounceMeta>,
+) {
+    if metadata.is_empty() {
+        return;
+    }
+
+    if let Some(object) = result.as_object_mut() {
+        if let Some(Value::Array(peers)) = object.get_mut("peers") {
+            annotate_peer_array(peers, metadata);
+        }
+        return;
+    }
+
+    if let Value::Array(peers) = result {
+        annotate_peer_array(peers, metadata);
+    }
+}
+
+fn annotate_peer_array(peers: &mut [Value], metadata: &HashMap<String, PeerAnnounceMeta>) {
+    for peer in peers {
+        let Some(record) = peer.as_object_mut() else {
+            continue;
+        };
+        let Some(peer_hash) = record.get("peer").and_then(Value::as_str) else {
+            continue;
+        };
+        let Some(meta) = metadata.get(peer_hash) else {
+            continue;
+        };
+        if let Some(app_data_hex) = meta.app_data_hex.as_ref() {
+            record.insert("app_data_hex".to_string(), Value::String(app_data_hex.clone()));
+        }
+    }
+}
+
+fn build_send_params_with_source(
+    request: SendMessageRequest,
+    source: String,
+) -> Result<PreparedSendMessage, LxmfError> {
+    let destination = clean_non_empty(Some(request.destination))
+        .ok_or_else(|| LxmfError::Io("destination is required".to_string()))?;
+    let id = clean_non_empty(request.id).unwrap_or_else(generate_message_id);
+
+    let mut params = json!({
+        "id": id,
+        "source": source,
+        "destination": destination,
+        "title": request.title,
+        "content": request.content,
+    });
+
+    if let Some(fields) = request.fields {
+        params["fields"] = fields;
+    }
+    if let Some(method) = clean_non_empty(request.method) {
+        params["method"] = Value::String(method);
+    }
+    if let Some(stamp_cost) = request.stamp_cost {
+        params["stamp_cost"] = Value::from(stamp_cost);
+    }
+    if request.include_ticket {
+        params["include_ticket"] = Value::Bool(true);
+    }
+
+    Ok(PreparedSendMessage { id, source, destination, params })
+}
+
 fn parse_bind_host_port(bind: &str) -> Option<(String, u16)> {
     if let Ok(addr) = bind.parse::<SocketAddr>() {
         return Some((addr.ip().to_string(), addr.port()));
@@ -1366,6 +1892,11 @@ fn resolve_transport(
 
 fn clean_non_empty(value: Option<String>) -> Option<String> {
     value.map(|value| value.trim().to_string()).filter(|value| !value.is_empty())
+}
+
+fn generate_message_id() -> String {
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis();
+    format!("lxmf-{now}")
 }
 
 fn interface_to_rpc(entry: InterfaceEntry) -> InterfaceRecord {
@@ -1471,7 +2002,17 @@ fn write_private_key_tmp(path: &Path, key_bytes: &[u8]) -> Result<(), LxmfError>
 
 #[cfg(test)]
 mod tests {
-    use super::decode_inbound_payload;
+    use super::{
+        annotate_peer_records_with_announce_metadata, build_send_params_with_source,
+        build_wire_message, decode_inbound_payload, PeerAnnounceMeta,
+    };
+    use crate::constants::FIELD_COMMANDS;
+    use crate::message::Message;
+    use crate::payload_fields::{CommandEntry, WireFields};
+    use crate::runtime::SendMessageRequest;
+    use reticulum::identity::PrivateIdentity;
+    use serde_json::Value;
+    use std::collections::HashMap;
 
     #[test]
     fn decode_inbound_payload_accepts_integer_timestamp_wire() {
@@ -1498,5 +2039,88 @@ mod tests {
         assert_eq!(record.content, "hello from python-like payload");
         assert_eq!(record.timestamp, 1_770_000_000_i64);
         assert_eq!(record.direction, "in");
+    }
+
+    #[test]
+    fn build_wire_message_prefers_transport_msgpack_fields() {
+        let mut fields = WireFields::new();
+        fields.set_commands(vec![CommandEntry::from_text(0x01, "ping")]);
+        let json_fields = fields.to_transport_json().expect("transport fields");
+
+        let signer = PrivateIdentity::new_from_name("wire-fields-test");
+        let source = [0x10; 16];
+        let destination = [0x20; 16];
+        let wire =
+            build_wire_message(source, destination, "title", "content", Some(json_fields), &signer)
+                .expect("wire");
+
+        let decoded = Message::from_wire(&wire).expect("decode");
+        let Some(rmpv::Value::Map(entries)) = decoded.fields else {
+            panic!("fields should decode to map")
+        };
+        let commands = entries
+            .iter()
+            .find_map(|(key, value)| (key.as_i64() == Some(FIELD_COMMANDS as i64)).then_some(value))
+            .expect("commands field");
+        let rmpv::Value::Array(commands_list) = commands else {
+            panic!("commands should be an array")
+        };
+        assert_eq!(commands_list.len(), 1);
+    }
+
+    #[test]
+    fn build_send_params_includes_expected_rpc_keys() {
+        let request = SendMessageRequest {
+            id: Some("msg-123".to_string()),
+            source: Some("ignored".to_string()),
+            destination: "ffeeddccbbaa99887766554433221100".to_string(),
+            title: "subject".to_string(),
+            content: "body".to_string(),
+            fields: Some(serde_json::json!({ "k": "v" })),
+            method: Some("direct".to_string()),
+            stamp_cost: Some(7),
+            include_ticket: true,
+        };
+
+        let prepared =
+            build_send_params_with_source(request, "00112233445566778899aabbccddeeff".to_string())
+                .expect("prepared");
+        assert_eq!(prepared.id, "msg-123");
+        assert_eq!(prepared.source, "00112233445566778899aabbccddeeff");
+        assert_eq!(prepared.destination, "ffeeddccbbaa99887766554433221100");
+        assert_eq!(prepared.params["method"], Value::String("direct".to_string()));
+        assert_eq!(prepared.params["stamp_cost"], Value::from(7));
+        assert_eq!(prepared.params["include_ticket"], Value::Bool(true));
+        assert_eq!(prepared.params["fields"]["k"], Value::String("v".to_string()));
+    }
+
+    #[test]
+    fn build_send_params_rejects_empty_destination() {
+        let request = SendMessageRequest {
+            destination: "   ".to_string(),
+            content: "body".to_string(),
+            ..SendMessageRequest::default()
+        };
+        let err = build_send_params_with_source(request, "source".to_string()).expect_err("err");
+        assert!(err.to_string().contains("destination is required"));
+    }
+
+    #[test]
+    fn annotate_list_peers_result_with_app_data_hex() {
+        let mut result = serde_json::json!({
+            "peers": [
+                { "peer": "aa11", "last_seen": 1 },
+                { "peer": "bb22", "last_seen": 2 }
+            ]
+        });
+        let mut metadata = HashMap::new();
+        metadata.insert(
+            "aa11".to_string(),
+            PeerAnnounceMeta { app_data_hex: Some("cafe".to_string()) },
+        );
+
+        annotate_peer_records_with_announce_metadata(&mut result, &metadata);
+        assert_eq!(result["peers"][0]["app_data_hex"], Value::String("cafe".to_string()));
+        assert_eq!(result["peers"][1]["app_data_hex"], Value::Null);
     }
 }

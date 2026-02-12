@@ -23,7 +23,7 @@ The stable CLI RPC contract is documented in `docs/rpc-contract.md`.
 - `lxmf daemon start|stop|restart|status|probe|logs`
 - `lxmf iface list|add|remove|enable|disable|apply`
 - `lxmf peer list|show|watch|sync|unpeer|clear`
-- `lxmf message send|list|show|watch|clear`
+- `lxmf message send|send-command|list|show|watch|clear`
 - `lxmf propagation status|enable|ingest|fetch|sync`
 - `lxmf paper ingest-uri|show`
 - `lxmf stamp target|get|set|generate-ticket|cache`
@@ -153,3 +153,16 @@ lxmf --profile ops message send \
   --title "status" \
   --content "hello from lxmf"
 ```
+
+Send LXMF command payloads with integer field IDs preserved:
+
+```bash
+lxmf --profile ops message send-command \
+  --source 00112233445566778899aabbccddeeff \
+  --destination ffeeddccbbaa99887766554433221100 \
+  --content "ops command bundle" \
+  --command "1:ping" \
+  --command-hex "2:deadbeef"
+```
+
+`send-command` encodes command fields using a raw msgpack envelope so downstream Python/LXMF clients receive canonical integer field IDs (`FIELD_COMMANDS = 0x09`).

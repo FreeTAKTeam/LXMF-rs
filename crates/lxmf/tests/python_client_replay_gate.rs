@@ -49,7 +49,7 @@ struct ReplayVector {
     expected: ReplayExpected,
 }
 
-#[derive(Debug, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Deserialize, PartialEq)]
 struct ReplayExpected {
     field_keys: Vec<i64>,
     attachment_names: Vec<String>,
@@ -71,6 +71,13 @@ struct ReplayExpected {
     has_custom_meta: bool,
     has_non_specific: bool,
     has_debug: bool,
+    command_ids: Vec<i64>,
+    reply_to: Option<String>,
+    reaction_to: Option<String>,
+    reaction_emoji: Option<String>,
+    reaction_sender: Option<String>,
+    telemetry_location: Option<ReplayLocation>,
+    capabilities: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -111,6 +118,21 @@ struct ReplayObserved {
     has_custom_meta: bool,
     has_non_specific: bool,
     has_debug: bool,
+    command_ids: Vec<i64>,
+    reply_to: Option<String>,
+    reaction_to: Option<String>,
+    reaction_emoji: Option<String>,
+    reaction_sender: Option<String>,
+    telemetry_location: Option<ReplayLocation>,
+    capabilities: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+struct ReplayLocation {
+    lat: f64,
+    lon: f64,
+    #[serde(default)]
+    alt: Option<f64>,
 }
 
 #[test]
@@ -238,6 +260,18 @@ fn run_python_verify(input: serde_json::Value) -> ReplayVerifyPayload {
 
 fn observed_from_wire(wire: &WireMessage) -> ReplayExpected {
     let fields = wire.payload.fields.as_ref();
+    let extensions = field_value(fields, 16).and_then(extension_map);
+    let reply_to =
+        extensions.as_ref().and_then(|map| extension_string(map, &["reply_to", "replyTo"]));
+    let reaction_to =
+        extensions.as_ref().and_then(|map| extension_string(map, &["reaction_to", "reactionTo"]));
+    let reaction_emoji = extensions
+        .as_ref()
+        .and_then(|map| extension_string(map, &["reaction_emoji", "reactionEmoji"]));
+    let reaction_sender = extensions
+        .as_ref()
+        .and_then(|map| extension_string(map, &["reaction_sender", "reactionSender"]));
+
     ReplayExpected {
         field_keys: field_keys(fields),
         attachment_names: attachment_names(fields),
@@ -264,6 +298,13 @@ fn observed_from_wire(wire: &WireMessage) -> ReplayExpected {
         has_custom_meta: field_value(fields, 253).is_some(),
         has_non_specific: field_value(fields, 254).is_some(),
         has_debug: field_value(fields, 255).is_some(),
+        command_ids: command_ids(fields),
+        reply_to,
+        reaction_to,
+        reaction_emoji,
+        reaction_sender,
+        telemetry_location: telemetry_location(fields),
+        capabilities: extension_capabilities(extensions.as_deref()),
     }
 }
 
@@ -314,6 +355,127 @@ fn attachment_names(fields: Option<&rmpv::Value>) -> Vec<String> {
         .collect()
 }
 
+fn command_ids(fields: Option<&rmpv::Value>) -> Vec<i64> {
+    let Some(rmpv::Value::Array(commands)) = field_value(fields, 9) else {
+        return Vec::new();
+    };
+
+    let mut ids = Vec::new();
+    for command in commands {
+        let rmpv::Value::Map(entries) = command else {
+            continue;
+        };
+        for (key, _) in entries {
+            if let Some(id) = value_to_i64(key) {
+                ids.push(id);
+            }
+        }
+    }
+    ids.sort_unstable();
+    ids.dedup();
+    ids
+}
+
+fn extension_map(value: &rmpv::Value) -> Option<Vec<(String, rmpv::Value)>> {
+    let rmpv::Value::Map(entries) = value else {
+        return None;
+    };
+    let mut out = Vec::new();
+    for (key, value) in entries {
+        let Some(key) = value_to_string(key) else {
+            continue;
+        };
+        out.push((key, value.clone()));
+    }
+    Some(out)
+}
+
+fn extension_string(entries: &[(String, rmpv::Value)], keys: &[&str]) -> Option<String> {
+    entries.iter().find_map(|(key, value)| {
+        if keys.iter().any(|needle| needle == key) {
+            value_to_string(value)
+        } else {
+            None
+        }
+    })
+}
+
+fn extension_capabilities(entries: Option<&[(String, rmpv::Value)]>) -> Vec<String> {
+    let Some(entries) = entries else {
+        return Vec::new();
+    };
+    let Some(value) =
+        entries.iter().find_map(|(key, value)| (key == "capabilities").then_some(value))
+    else {
+        return Vec::new();
+    };
+    let rmpv::Value::Array(items) = value else {
+        return Vec::new();
+    };
+    let mut capabilities: Vec<String> = items.iter().filter_map(value_to_string).collect();
+    capabilities.sort();
+    capabilities.dedup();
+    capabilities
+}
+
+fn telemetry_location(fields: Option<&rmpv::Value>) -> Option<ReplayLocation> {
+    let telemetry = decode_telemetry_value(field_value(fields, 2)?)?;
+    location_from_value(telemetry)
+}
+
+fn decode_telemetry_value(value: &rmpv::Value) -> Option<rmpv::Value> {
+    match value {
+        rmpv::Value::Binary(bytes) => {
+            let mut cursor = std::io::Cursor::new(bytes);
+            rmpv::decode::read_value(&mut cursor).ok()
+        }
+        other => Some(other.clone()),
+    }
+}
+
+fn location_from_value(value: rmpv::Value) -> Option<ReplayLocation> {
+    let rmpv::Value::Map(entries) = value else {
+        return None;
+    };
+
+    let nested_location = map_lookup(&entries, &["location"]);
+    if let Some(location) = nested_location {
+        if let Some(parsed) = location_from_value(location.clone()) {
+            return Some(parsed);
+        }
+    }
+
+    let lat = map_lookup(&entries, &["lat", "latitude"]).and_then(value_to_f64)?;
+    let lon = map_lookup(&entries, &["lon", "lng", "longitude"]).and_then(value_to_f64)?;
+    let alt = map_lookup(&entries, &["alt", "altitude"]).and_then(value_to_f64);
+    Some(ReplayLocation { lat, lon, alt })
+}
+
+fn map_lookup<'a>(
+    entries: &'a [(rmpv::Value, rmpv::Value)],
+    keys: &[&str],
+) -> Option<&'a rmpv::Value> {
+    entries.iter().find_map(|(key, value)| match key {
+        rmpv::Value::String(text) => {
+            let name = text.as_str()?;
+            keys.iter().any(|needle| needle == &name).then_some(value)
+        }
+        _ => None,
+    })
+}
+
+fn value_to_f64(value: &rmpv::Value) -> Option<f64> {
+    match value {
+        rmpv::Value::F32(v) => Some(f64::from(*v)),
+        rmpv::Value::F64(v) => Some(*v),
+        rmpv::Value::Integer(v) => {
+            v.as_i64().map(|n| n as f64).or_else(|| v.as_u64().map(|n| n as f64))
+        }
+        rmpv::Value::String(text) => text.as_str().and_then(|s| s.parse::<f64>().ok()),
+        _ => None,
+    }
+}
+
 fn value_to_string(value: &rmpv::Value) -> Option<String> {
     match value {
         rmpv::Value::String(text) => text.as_str().map(str::to_string),
@@ -350,6 +512,13 @@ fn assert_expected(observed: &ReplayExpected, expected: &ReplayExpected) {
     assert_eq!(observed.has_custom_meta, expected.has_custom_meta);
     assert_eq!(observed.has_non_specific, expected.has_non_specific);
     assert_eq!(observed.has_debug, expected.has_debug);
+    assert_eq!(observed.command_ids, expected.command_ids);
+    assert_eq!(observed.reply_to, expected.reply_to);
+    assert_eq!(observed.reaction_to, expected.reaction_to);
+    assert_eq!(observed.reaction_emoji, expected.reaction_emoji);
+    assert_eq!(observed.reaction_sender, expected.reaction_sender);
+    assert_eq!(observed.telemetry_location, expected.telemetry_location);
+    assert_eq!(observed.capabilities, expected.capabilities);
 }
 
 fn assert_observed(
@@ -381,6 +550,13 @@ fn assert_observed(
     assert_eq!(observed.has_custom_meta, expected.has_custom_meta);
     assert_eq!(observed.has_non_specific, expected.has_non_specific);
     assert_eq!(observed.has_debug, expected.has_debug);
+    assert_eq!(observed.command_ids, expected.command_ids);
+    assert_eq!(observed.reply_to, expected.reply_to);
+    assert_eq!(observed.reaction_to, expected.reaction_to);
+    assert_eq!(observed.reaction_emoji, expected.reaction_emoji);
+    assert_eq!(observed.reaction_sender, expected.reaction_sender);
+    assert_eq!(observed.telemetry_location, expected.telemetry_location);
+    assert_eq!(observed.capabilities, expected.capabilities);
 }
 
 fn decode_b64(value: &str) -> Vec<u8> {

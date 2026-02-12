@@ -1,8 +1,9 @@
 use crate::cli::app::{
     AnnounceAction, AnnounceCommand, DeliveryMethodArg, EventsAction, EventsCommand, MessageAction,
-    MessageCommand, MessageSendArgs, RuntimeContext,
+    MessageCommand, MessageSendArgs, MessageSendCommandArgs, RuntimeContext,
 };
 use crate::cli::contacts::{load_contacts, resolve_contact_hash};
+use crate::payload_fields::{CommandEntry, WireFields};
 use anyhow::{anyhow, Context, Result};
 use serde_json::{json, Value};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -10,6 +11,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub fn run(ctx: &RuntimeContext, command: &MessageCommand) -> Result<()> {
     match &command.action {
         MessageAction::Send(args) => send_message(ctx, args),
+        MessageAction::SendCommand(args) => send_command_message(ctx, args),
         MessageAction::List => {
             let messages = ctx.rpc.call("list_messages", None)?;
             ctx.output.emit_status(&json!({ "messages": messages }))
@@ -58,6 +60,42 @@ pub fn run_events(ctx: &RuntimeContext, command: &EventsCommand) -> Result<()> {
 }
 
 fn send_message(ctx: &RuntimeContext, args: &MessageSendArgs) -> Result<()> {
+    let prepared = prepare_send_params(ctx, args, None)?;
+    emit_send_result(ctx, args, prepared)
+}
+
+fn send_command_message(ctx: &RuntimeContext, args: &MessageSendCommandArgs) -> Result<()> {
+    if args.message.fields_json.is_some() {
+        return Err(anyhow!(
+            "--fields-json is not supported with `message send-command`; use --command/--command-hex only"
+        ));
+    }
+
+    let command_entries = parse_command_entries(&args.commands, &args.commands_hex)?;
+    if command_entries.is_empty() {
+        return Err(anyhow!("provide at least one --command or --command-hex entry"));
+    }
+
+    let mut fields = WireFields::new();
+    fields.set_commands(command_entries);
+    let transport_fields = fields.to_transport_json().map_err(|err| anyhow!("{err}"))?;
+
+    let prepared = prepare_send_params(ctx, &args.message, Some(transport_fields))?;
+    emit_send_result(ctx, &args.message, prepared)
+}
+
+struct PreparedSend {
+    params: Value,
+    source: String,
+    destination: String,
+    source_changed: bool,
+}
+
+fn prepare_send_params(
+    ctx: &RuntimeContext,
+    args: &MessageSendArgs,
+    fields_override: Option<Value>,
+) -> Result<PreparedSend> {
     let contacts = load_contacts(&ctx.profile_name)?;
     let source_input =
         match args.source.as_deref().and_then(trimmed_nonempty).map(ToOwned::to_owned) {
@@ -76,7 +114,9 @@ fn send_message(ctx: &RuntimeContext, args: &MessageSendArgs) -> Result<()> {
         "content": args.content,
     });
 
-    if let Some(fields_json) = args.fields_json.as_ref() {
+    if let Some(fields_value) = fields_override {
+        params["fields"] = fields_value;
+    } else if let Some(fields_json) = args.fields_json.as_ref() {
         let parsed: Value = serde_json::from_str(fields_json)
             .with_context(|| "--fields-json must be valid JSON")?;
         params["fields"] = parsed;
@@ -92,12 +132,21 @@ fn send_message(ctx: &RuntimeContext, args: &MessageSendArgs) -> Result<()> {
         params["include_ticket"] = Value::Bool(true);
     }
 
+    let source_changed = args.source.as_deref().map(|raw| raw != source).unwrap_or(true);
+    Ok(PreparedSend { params, source, destination, source_changed })
+}
+
+fn emit_send_result(
+    ctx: &RuntimeContext,
+    args: &MessageSendArgs,
+    prepared: PreparedSend,
+) -> Result<()> {
+    let PreparedSend { params, source, destination, source_changed } = prepared;
     let result = match ctx.rpc.call("send_message_v2", Some(params.clone())) {
         Ok(v) => v,
         Err(_) => ctx.rpc.call("send_message", Some(params))?,
     };
 
-    let source_changed = args.source.as_deref().map(|raw| raw != source).unwrap_or(true);
     if source_changed || destination != args.destination {
         return ctx.output.emit_status(&json!({
             "result": result,
@@ -148,6 +197,42 @@ fn delivery_method_to_string(method: DeliveryMethodArg) -> String {
     method.as_str().to_string()
 }
 
+fn parse_command_entries(
+    commands: &[String],
+    commands_hex: &[String],
+) -> Result<Vec<CommandEntry>> {
+    let mut out = Vec::new();
+
+    for value in commands {
+        let (command_id, payload) = split_command_spec(value)?;
+        out.push(CommandEntry::from_text(command_id, payload));
+    }
+
+    for value in commands_hex {
+        let (command_id, payload_hex) = split_command_spec(value)?;
+        let payload = hex::decode(payload_hex)
+            .with_context(|| format!("invalid command hex payload '{payload_hex}'"))?;
+        out.push(CommandEntry::from_bytes(command_id, payload));
+    }
+
+    Ok(out)
+}
+
+fn split_command_spec(value: &str) -> Result<(u8, &str)> {
+    let (id_raw, payload_raw) = value
+        .split_once(':')
+        .ok_or_else(|| anyhow!("invalid command spec '{value}', expected ID:PAYLOAD"))?;
+    let id = id_raw
+        .trim()
+        .parse::<u8>()
+        .with_context(|| format!("invalid command id '{id_raw}' in '{value}'"))?;
+    let payload = payload_raw.trim();
+    if payload.is_empty() {
+        return Err(anyhow!("command payload cannot be empty in '{value}'"));
+    }
+    Ok((id, payload))
+}
+
 fn resolve_runtime_identity_hash(rpc: &crate::cli::rpc_client::RpcClient) -> Result<String> {
     for method in ["daemon_status_ex", "status"] {
         if let Ok(response) = rpc.call(method, None) {
@@ -186,7 +271,9 @@ fn trimmed_nonempty(value: &str) -> Option<&str> {
 
 #[cfg(test)]
 mod tests {
-    use super::{find_message, source_hash_from_status};
+    use super::{find_message, parse_command_entries, source_hash_from_status};
+    use crate::constants::FIELD_COMMANDS;
+    use crate::payload_fields::WireFields;
     use serde_json::json;
 
     #[test]
@@ -224,5 +311,27 @@ mod tests {
     fn source_hash_falls_back_to_identity_hash() {
         let status = json!({ "identity_hash": "identity" });
         assert_eq!(source_hash_from_status(&status), Some("identity".into()));
+    }
+
+    #[test]
+    fn parse_command_entries_supports_text_and_hex() {
+        let parsed = parse_command_entries(&["1:ping".into()], &["2:deadbeef".into()])
+            .expect("command parse");
+
+        let mut fields = WireFields::new();
+        fields.set_commands(parsed);
+        let rmpv::Value::Map(entries) = fields.to_rmpv() else { panic!("expected map") };
+        let commands = entries
+            .iter()
+            .find_map(|(key, value)| (key.as_i64() == Some(FIELD_COMMANDS as i64)).then_some(value))
+            .expect("commands field");
+        let Some(items) = commands.as_array() else { panic!("commands array expected") };
+        assert_eq!(items.len(), 2);
+    }
+
+    #[test]
+    fn parse_command_entries_rejects_bad_specs() {
+        let err = parse_command_entries(&["oops".into()], &[]).expect_err("invalid spec");
+        assert!(err.to_string().contains("ID:PAYLOAD"));
     }
 }

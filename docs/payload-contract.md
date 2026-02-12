@@ -1,145 +1,121 @@
-# Payload Contract (LXMF + Daemon RPC)
+# Payload Contract v2 (LXMF + Reticulum RPC)
 
-This is the implementation-facing payload contract for Rust LXMF (`crates/lxmf`) and daemon RPC (`reticulumd`).
+This file is the single contract source for desktop parity work across:
 
-Scope:
-- Message payload fields (wire/paper/propagation payload body).
-- Announce payload data used for peers and propagation nodes.
-- Daemon RPC request/response/event payloads used by desktop clients (Tauri/UI).
+- `/Users/tommy/Documents/TAK/LXMF-rs`
+- `/Users/tommy/Documents/TAK/Reticulum-rs`
+- `/Users/tommy/Documents/TAK/Weft-Web`
 
-Reference tests:
-- `crates/lxmf/tests/constants_parity.rs`
-- `crates/lxmf/tests/python_client_interop_gate.rs`
-- `crates/lxmf/tests/python_client_replay_gate.rs`
-- `crates/lxmf/tests/rpc_contract_methods.rs`
+The mirrored frontend copy is:
 
-## Message Field IDs
+- `/Users/tommy/Documents/TAK/Weft-Web/docs/payload-contract.md`
 
-Core field IDs:
+## Version
 
-| Name | Hex | Purpose |
-| --- | --- | --- |
-| `FIELD_EMBEDDED_LXMS` | `0x01` | Nested/embedded LXMF payloads |
-| `FIELD_TELEMETRY` | `0x02` | Packed telemetry payload |
-| `FIELD_TELEMETRY_STREAM` | `0x03` | Batched telemetry stream entries |
-| `FIELD_ICON_APPEARANCE` | `0x04` | Icon appearance tuple |
-| `FIELD_FILE_ATTACHMENTS` | `0x05` | File attachments |
-| `FIELD_IMAGE` | `0x06` | Image payload tuple |
-| `FIELD_AUDIO` | `0x07` | Audio payload tuple |
-| `FIELD_THREAD` | `0x08` | Thread identifier |
-| `FIELD_COMMANDS` | `0x09` | Command list |
-| `FIELD_RESULTS` | `0x0A` | Command/result payloads |
-| `FIELD_GROUP` | `0x0B` | Group identifier |
-| `FIELD_TICKET` | `0x0C` | Stamp ticket |
-| `FIELD_EVENT` | `0x0D` | Event payload |
-| `FIELD_RNR_REFS` | `0x0E` | References (reply/relay/ref) |
-| `FIELD_RENDERER` | `0x0F` | Preferred renderer |
+- Contract version: `v2`
+- Scope: desktop runtime only (Tauri embedded runtime, no sidecar)
 
-Extension/debug field IDs:
+## Canonical Field Coverage
 
-| Name | Hex | Purpose |
-| --- | --- | --- |
-| `FIELD_CUSTOM_TYPE` | `0xFB` | Custom content type identifier |
-| `FIELD_CUSTOM_DATA` | `0xFC` | Custom payload body |
-| `FIELD_CUSTOM_META` | `0xFD` | Custom payload metadata |
-| `FIELD_NON_SPECIFIC` | `0xFE` | Non-specific payload |
-| `FIELD_DEBUG` | `0xFF` | Debug/development payload |
+Required LXMF field coverage for parity:
 
-## Renderer IDs
+| Domain | Field | Hex | JSON key form |
+| --- | --- | --- | --- |
+| telemetry | `FIELD_TELEMETRY` | `0x02` | `"2"` |
+| attachments | `FIELD_FILE_ATTACHMENTS` | `0x05` | `"5"` |
+| commands | `FIELD_COMMANDS` | `0x09` | `"9"` |
+| ticket | `FIELD_TICKET` | `0x0C` | `"12"` |
+| refs | `FIELD_RNR_REFS` | `0x0E` | `"14"` |
+| app extensions | extension map | `0x10` | `"16"` |
 
-| Name | Hex |
-| --- | --- |
-| `RENDERER_PLAIN` | `0x00` |
-| `RENDERER_MICRON` | `0x01` |
-| `RENDERER_MARKDOWN` | `0x02` |
-| `RENDERER_BBCODE` | `0x03` |
+Notes:
 
-## Audio Mode IDs
+- Integer LXMF keys must be preserved end-to-end via `_lxmf_fields_msgpack_b64`.
+- JSON key forms are expected when fields are rendered back to JSON from msgpack.
 
-| Family | Values |
-| --- | --- |
-| Codec2 | `0x01..0x09` (`AM_CODEC2_450PWB` .. `AM_CODEC2_3200`) |
-| Opus | `0x10..0x19` (`AM_OPUS_OGG` .. `AM_OPUS_LOSSLESS`) |
-| Custom | `0xFF` (`AM_CUSTOM`) |
+## Schema Artifacts
 
-## Canonical Payload Shapes
+- `/Users/tommy/Documents/TAK/LXMF-rs/docs/schemas/contract-v2/payload-envelope.schema.json`
+- `/Users/tommy/Documents/TAK/LXMF-rs/docs/schemas/contract-v2/event-payload.schema.json`
 
-These shapes are interoperability targets used in Python fixture gates:
+## Message Envelope (v2)
 
-1. Attachments:
-`FIELD_FILE_ATTACHMENTS: [[name, data], ...]`
+Transport envelope key:
 
-2. Image:
-`FIELD_IMAGE: [media_type, data]`
+- `_lxmf_fields_msgpack_b64`: base64 msgpack map preserving integer field IDs.
 
-3. Audio:
-`FIELD_AUDIO: [audio_mode, data]`
+App-extension conventions in field `16`:
 
-4. Commands:
-`FIELD_COMMANDS: [{command_id: command_payload}, ...]`
+- `reply_to: string`
+- `reaction_to: string`
+- `emoji: string`
+- `sender?: string`
 
-5. Telemetry stream:
-`FIELD_TELEMETRY_STREAM: [[peer_hash, unix_ts, packed_payload, appearance?], ...]`
+Telemetry location conventions in field `2`:
 
-6. Paper payload representation:
-- Delivered as paper-packed LXMF bytes (wire body encrypted for destination, prefixed by destination hash).
-- Verified in `python_client_interop_gate` and `python_client_replay_gate`.
+- `{ lat: number, lon: number, alt?: number, speed?: number, accuracy?: number }`
 
-## Announce Payloads
+## Announce Contract (backend-backed)
 
-### Delivery announce app-data
+`list_announces(limit?, before_ts?)` response:
 
-`display_name_from_app_data` and `stamp_cost_from_app_data` compatibility follows Python LXMF behavior:
-- Legacy string app-data supported.
-- v0.5.0+ msgpack list layout supported.
+```json
+{
+  "announces": [
+    {
+      "id": "announce-...",
+      "peer": "hex32",
+      "timestamp": 1770855315,
+      "name": "Hub",
+      "name_source": "pn_meta",
+      "first_seen": 1770855300,
+      "seen_count": 3,
+      "app_data_hex": "hex",
+      "capabilities": ["topic_broker", "telemetry_relay"],
+      "rssi": -70.0,
+      "snr": 10.5,
+      "q": 0.91
+    }
+  ]
+}
+```
 
-### Propagation node announce app-data
+## RPC Additions (v2)
 
-Validated by `pn_announce_data_is_valid` parity and fixtures.
-Metadata keys:
-- `PN_META_VERSION = 0x00`
-- `PN_META_NAME = 0x01`
-- `PN_META_SYNC_STRATUM = 0x02`
-- `PN_META_SYNC_THROTTLE = 0x03`
-- `PN_META_AUTH_BAND = 0x04`
-- `PN_META_UTIL_PRESSURE = 0x05`
-- `PN_META_CUSTOM = 0xFF`
+- `list_announces(limit?, before_ts?)`
+- `get_outbound_propagation_node()`
+- `set_outbound_propagation_node(peer?)`
+- `list_propagation_nodes()`
+- `message_delivery_trace(message_id)`
 
-## Daemon RPC Payload Families
+## Event Payload Additions (v2)
 
-### Messaging
-- `list_messages` -> `{ "messages": [MessageRecord] }`
-- `send_message_v2` params:
-  - required: `id`, `source`, `destination`, `title`, `content`
-  - optional: `fields`, `method`, `stamp_cost`, `include_ticket`
-- `send_message` legacy params:
-  - required: `id`, `source`, `destination`, `title`, `content`
-  - optional: `fields`
+- `announce_received`
+- `propagation_node_selected`
+- `receipt`
+- `outbound` (with method/error metadata)
+- `runtime_started`
+- `runtime_stopped`
 
-`MessageRecord` includes:
-- `id`, `source`, `destination`, `title`, `content`, `timestamp`, `direction`
-- `fields` (optional JSON object)
-- `receipt_status` (optional)
+`announce_received` payload includes:
 
-### Peers
-- `list_peers` -> `{ "peers": [PeerRecord] }`
-- `peer_sync` params: `peer`
-- `peer_unpeer` params: `peer`
-- `clear_peers`
+- `peer`, `timestamp`, `name`, `name_source`, `first_seen`, `seen_count`
+- `app_data_hex`, `capabilities`
+- optional signal fields: `rssi`, `snr`, `q`
 
-### Interfaces
-- `list_interfaces` -> `{ "interfaces": [InterfaceRecord] }`
-- `set_interfaces` params: `{ "interfaces": [...] }`
-- `reload_config`
+## Delivery Trace States
 
-### Announce/Propagation
-- `announce_now`
-- `propagation_status`
-- `propagation_enable` params: `enabled`, `store_root`, `target_cost`
-- `propagation_ingest` params: `transient_id`, `payload_hex`
-- `propagation_fetch` params: `transient_id`
+Persisted transition status strings include:
 
-### Stamp/Tickets
-- `stamp_policy_get`
-- `stamp_policy_set` params: `target_cost`, `flexibility`
-- `ticket_generate` params: `destination`, `ttl_secs`
+- `queued`
+- `sending`
+- `outbound_attempt: link`
+- `sent: link`
+- `retrying: opportunistic ...`
+- `sent: opportunistic`
+- `retrying: propagated relay ...`
+- `sent: propagated relay`
+- `delivered`
+- `failed:*`
+
+No outbound message should remain indefinitely in an ambiguous non-terminal state without subsequent retry/failure transition visibility.

@@ -1,12 +1,15 @@
 #![cfg(feature = "cli")]
 
 use lxmf::cli::app::RuntimeContext;
-use lxmf::cli::app::{Cli, Command, MessageAction, MessageCommand, MessageSendArgs};
+use lxmf::cli::app::{
+    Cli, Command, MessageAction, MessageCommand, MessageSendArgs, MessageSendCommandArgs,
+};
 use lxmf::cli::commands_message;
 use lxmf::cli::contacts::{save_contacts, ContactEntry};
 use lxmf::cli::output::Output;
 use lxmf::cli::profile::{init_profile, load_profile_settings, profile_paths};
 use lxmf::cli::rpc_client::RpcClient;
+use lxmf::payload_fields::TRANSPORT_FIELDS_MSGPACK_B64_KEY;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::io::{Read, Write};
@@ -163,6 +166,63 @@ fn message_send_resolves_contact_alias_destination() {
         params.get("destination").and_then(Value::as_str).unwrap_or_default(),
         "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     );
+}
+
+#[test]
+fn message_send_command_uses_transport_msgpack_fields() {
+    let temp = tempfile::tempdir().unwrap();
+    let _config_root_guard = ConfigRootGuard::new(temp.path());
+    init_profile("msg-send-command", false, None).unwrap();
+
+    let (rpc_addr, worker) = spawn_one_rpc_server_with_params(json!({"ok": true}));
+    let settings = {
+        let mut s = load_profile_settings("msg-send-command").unwrap();
+        s.rpc = rpc_addr;
+        s
+    };
+
+    let ctx = RuntimeContext {
+        cli: Cli {
+            profile: "msg-send-command".into(),
+            rpc: None,
+            json: true,
+            quiet: true,
+            command: Command::Message(MessageCommand { action: MessageAction::List }),
+        },
+        profile_name: "msg-send-command".into(),
+        profile_paths: profile_paths("msg-send-command").unwrap(),
+        rpc: RpcClient::new(&settings.rpc),
+        output: Output::new(true, true),
+        profile_settings: settings,
+    };
+
+    let command = MessageCommand {
+        action: MessageAction::SendCommand(MessageSendCommandArgs {
+            message: MessageSendArgs {
+                id: Some("m-cmd".into()),
+                source: Some("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".into()),
+                destination: "cccccccccccccccccccccccccccccccc".into(),
+                title: "ops".into(),
+                content: "payload".into(),
+                fields_json: None,
+                method: None,
+                stamp_cost: None,
+                include_ticket: false,
+            },
+            commands: vec!["1:ping".into()],
+            commands_hex: vec!["2:deadbeef".into()],
+        }),
+    };
+
+    commands_message::run(&ctx, &command).unwrap();
+    let (saw_post_rpc, params) = worker.join().unwrap();
+    assert!(saw_post_rpc);
+    assert!(params.get("fields").is_some());
+    assert!(params
+        .get("fields")
+        .and_then(|value| value.get(TRANSPORT_FIELDS_MSGPACK_B64_KEY))
+        .and_then(Value::as_str)
+        .is_some());
 }
 
 fn spawn_one_rpc_server(result: Value) -> (String, thread::JoinHandle<bool>) {

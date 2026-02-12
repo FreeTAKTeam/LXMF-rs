@@ -86,6 +86,34 @@ fn parses_message_send_without_source() {
 }
 
 #[test]
+fn parses_message_send_command_entries() {
+    let cli = Cli::try_parse_from([
+        "lxmf",
+        "message",
+        "send-command",
+        "--destination",
+        "ffee",
+        "--content",
+        "ops payload",
+        "--command",
+        "1:ping",
+        "--command-hex",
+        "2:deadbeef",
+    ])
+    .unwrap();
+
+    match cli.command {
+        Command::Message(MessageCommand { action: MessageAction::SendCommand(args) }) => {
+            assert_eq!(args.message.destination, "ffee");
+            assert_eq!(args.message.content, "ops payload");
+            assert_eq!(args.commands, vec!["1:ping"]);
+            assert_eq!(args.commands_hex, vec!["2:deadbeef"]);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parses_profile_set_command() {
     let cli = Cli::try_parse_from(["lxmf", "profile", "set", "--display-name", "Tommy Operator"])
         .unwrap();

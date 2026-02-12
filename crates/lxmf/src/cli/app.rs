@@ -250,6 +250,7 @@ pub struct MessageCommand {
 #[derive(Debug, Clone, Subcommand)]
 pub enum MessageAction {
     Send(MessageSendArgs),
+    SendCommand(MessageSendCommandArgs),
     List,
     Show {
         id: String,
@@ -281,6 +282,16 @@ pub struct MessageSendArgs {
     pub stamp_cost: Option<u32>,
     #[arg(long)]
     pub include_ticket: bool,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct MessageSendCommandArgs {
+    #[command(flatten)]
+    pub message: MessageSendArgs,
+    #[arg(long = "command", value_name = "ID:TEXT")]
+    pub commands: Vec<String>,
+    #[arg(long = "command-hex", value_name = "ID:HEX")]
+    pub commands_hex: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
