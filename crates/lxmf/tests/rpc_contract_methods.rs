@@ -473,7 +473,10 @@ fn stamp_contract_methods() {
 }
 
 fn test_guard() -> std::sync::MutexGuard<'static, ()> {
-    TEST_LOCK.get_or_init(|| Mutex::new(())).lock().expect("test mutex lock")
+    TEST_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 fn runtime_ctx(profile_name: &str, rpc_addr: &str) -> RuntimeContext {
@@ -511,6 +514,9 @@ fn spawn_scripted_rpc_server(
         while idx < expected.len() && start.elapsed() < Duration::from_secs(10) {
             match listener.accept() {
                 Ok((mut stream, _)) => {
+                    stream.set_nonblocking(false).expect("set stream blocking");
+                    let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
+                    let _ = stream.set_write_timeout(Some(Duration::from_secs(2)));
                     let request = read_http_request(&mut stream);
                     assert_eq!(request.path, "/rpc");
                     assert_eq!(request.http_method, "POST");
@@ -580,10 +586,23 @@ fn read_http_request(stream: &mut TcpStream) -> HttpRequest {
     let mut bytes = Vec::new();
     let mut header_end = None;
     let mut content_length = 0usize;
+    let start = Instant::now();
 
     loop {
         let mut buf = [0u8; 1024];
-        let read = stream.read(&mut buf).unwrap();
+        let read = match stream.read(&mut buf) {
+            Ok(read) => read,
+            Err(err)
+                if err.kind() == ErrorKind::WouldBlock || err.kind() == ErrorKind::Interrupted =>
+            {
+                if start.elapsed() > Duration::from_secs(3) {
+                    panic!("timed out while reading http request body");
+                }
+                thread::sleep(Duration::from_millis(10));
+                continue;
+            }
+            Err(err) => panic!("read http request failed: {err}"),
+        };
         if read == 0 {
             break;
         }

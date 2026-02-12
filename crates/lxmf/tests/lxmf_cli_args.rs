@@ -2,8 +2,8 @@
 
 use clap::Parser;
 use lxmf::cli::app::{
-    Cli, Command, ContactAction, ContactCommand, MessageAction, MessageCommand, PeerAction,
-    PeerCommand, ProfileAction, ProfileCommand,
+    Cli, Command, ContactAction, ContactCommand, DaemonAction, DaemonCommand, MessageAction,
+    MessageCommand, PeerAction, PeerCommand, ProfileAction, ProfileCommand,
 };
 
 #[test]
@@ -152,6 +152,15 @@ fn parses_contact_commands() {
             assert_eq!(query.as_deref(), Some("ali"));
             assert_eq!(limit, Some(5));
         }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parses_daemon_probe_command() {
+    let cli = Cli::try_parse_from(["lxmf", "daemon", "probe"]).unwrap();
+    match cli.command {
+        Command::Daemon(DaemonCommand { action: DaemonAction::Probe }) => {}
         other => panic!("unexpected command: {other:?}"),
     }
 }

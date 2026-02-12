@@ -42,6 +42,12 @@ interop-gate:
 	LXMF_PYTHON_INTEROP=1 \
 	PYTHONPATH="$(CURDIR):$(RETICULUM_PY_ABS):$$PYTHONPATH" \
 	cargo test -p lxmf --test python_interop_gate --features cli -- --nocapture
+	LXMF_PYTHON_INTEROP=1 \
+	PYTHONPATH="$(CURDIR):$(RETICULUM_PY_ABS):$$PYTHONPATH" \
+	cargo test -p lxmf --test python_client_interop_gate --features cli -- --nocapture
+	LXMF_PYTHON_INTEROP=1 \
+	PYTHONPATH="$(CURDIR):$(RETICULUM_PY_ABS):$$PYTHONPATH" \
+	cargo test -p lxmf --test python_client_replay_gate --features cli -- --nocapture
 
 soak-rnx:
 	./scripts/soak-rnx.sh
@@ -49,7 +55,7 @@ soak-rnx:
 release-gate-local:
 	cargo test --workspace --all-targets --all-features
 	make interop-gate RETICULUM_PY_PATH="$(RETICULUM_PY_PATH)"
-	cargo run --manifest-path ../Reticulum-rs/crates/reticulum/Cargo.toml --bin rnx -- e2e --timeout-secs 20
+	cargo run --manifest-path ../Reticulum-rs/crates/reticulum/Cargo.toml --features cli-tools --bin rnx -- e2e --timeout-secs 20
 
 coverage:
 	@command -v cargo-llvm-cov >/dev/null || cargo install cargo-llvm-cov --locked

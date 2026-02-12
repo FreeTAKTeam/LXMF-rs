@@ -20,7 +20,7 @@ The stable CLI RPC contract is documented in `docs/rpc-contract.md`.
 
 - `lxmf profile init|list|show|select|set|import-identity|export-identity|delete`
 - `lxmf contact list|add|show|remove|import|export`
-- `lxmf daemon start|stop|restart|status|logs`
+- `lxmf daemon start|stop|restart|status|probe|logs`
 - `lxmf iface list|add|remove|enable|disable|apply`
 - `lxmf peer list|show|watch|sync|unpeer|clear`
 - `lxmf message send|list|show|watch|clear`
@@ -67,7 +67,49 @@ Start daemon and check status:
 ```bash
 lxmf --profile ops daemon start --managed
 lxmf --profile ops daemon status
+lxmf --profile ops daemon probe
 ```
+
+`daemon probe` JSON contract (`--json`):
+
+```json
+{
+  "profile": "ops",
+  "local": {
+    "running": true,
+    "pid": 12345,
+    "rpc": "127.0.0.1:4243",
+    "profile": "ops",
+    "managed": true,
+    "transport": "127.0.0.1:0",
+    "transport_inferred": false,
+    "log_path": "/.../daemon.log"
+  },
+  "rpc": {
+    "reachable": true,
+    "endpoint": "127.0.0.1:4243",
+    "method": "daemon_status_ex",
+    "roundtrip_ms": 4,
+    "identity_hash": "00112233445566778899aabbccddeeff",
+    "status": { "...": "daemon status object" },
+    "errors": []
+  },
+  "events": {
+    "reachable": true,
+    "endpoint": "127.0.0.1:4243",
+    "roundtrip_ms": 2,
+    "event_type": null,
+    "payload": null,
+    "error": null
+  }
+}
+```
+
+Notes:
+- `rpc.errors` contains failed probe attempts (for example failed `daemon_status_ex` before fallback `status`).
+- `rpc.method`, `rpc.roundtrip_ms`, `rpc.status`, and `rpc.identity_hash` are `null` when RPC is unreachable.
+- `events.event_type` and `events.payload` are `null` when no event is pending (`204 No Content`).
+- `events.error` is non-null when `/events` is unreachable or returns an unexpected status.
 
 Add an interface and apply:
 

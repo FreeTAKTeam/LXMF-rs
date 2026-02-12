@@ -49,4 +49,4 @@ Status legend: `not-started` | `partial` | `done`.
 - PARITY_ITEM id=handlers.delivery_callback status=done tests=tests/handlers_behavior.rs
 - PARITY_ITEM id=handlers.propagation_app_data status=done tests=tests/handlers_behavior.rs
 - PARITY_ITEM id=handlers.router_side_effects status=done tests=tests/handlers_parity.rs
-- PARITY_ITEM id=interop.python_live_gate status=done tests=tests/python_interop_gate.rs
+- PARITY_ITEM id=interop.python_live_gate status=done tests=tests/python_interop_gate.rs,tests/python_client_interop_gate.rs,tests/python_client_replay_gate.rs

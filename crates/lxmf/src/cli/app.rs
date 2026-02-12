@@ -164,6 +164,7 @@ pub enum DaemonAction {
         transport: Option<String>,
     },
     Status,
+    Probe,
     Logs {
         #[arg(long, default_value_t = 100)]
         tail: usize,

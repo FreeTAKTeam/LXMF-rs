@@ -1,5 +1,7 @@
 #[cfg(feature = "cli")]
 pub mod cli;
+#[cfg(feature = "embedded-runtime")]
+pub mod runtime;
 
 pub mod constants;
 #[doc(hidden)]
