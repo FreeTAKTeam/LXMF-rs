@@ -1,0 +1,206 @@
+{
+  "message_list": {
+    "messages": [
+      {
+        "id": "lxmf-interop-001",
+        "source": "11111111111111111111111111111111",
+        "destination": "22222222222222222222222222222222",
+        "title": "Parity Fixture",
+        "content": "Hello from shared fixture",
+        "timestamp": 1770855315,
+        "direction": "out",
+        "fields": {
+          "_lxmf": {
+            "method": "propagated",
+            "stamp_cost": 8,
+            "include_ticket": true
+          },
+          "2": {
+            "location": {
+              "lat": 37.7749,
+              "lon": -122.4194
+            },
+            "speed": 1.2
+          },
+          "5": [
+            {
+              "filename": "photo.jpg",
+              "mime": "image/jpeg",
+              "size": 3,
+              "data": [1, 2, 3]
+            }
+          ],
+          "9": {
+            "commands": ["join", "ping"]
+          },
+          "12": {
+            "ticket": "ticket-fixture-001",
+            "expires_at": 1770955315
+          },
+          "14": {
+            "reply_to": "lxmf-interop-root"
+          },
+          "16": {
+            "reaction": {
+              "to": "lxmf-interop-root",
+              "emoji": "👍"
+            },
+            "location": {
+              "lat": 37.7749,
+              "lon": -122.4194
+            },
+            "app": "weft"
+          },
+          "attachments": [
+            {
+              "name": "report.pdf",
+              "mime": "application/pdf",
+              "size_bytes": 1024,
+              "inline_base64": "AQID"
+            }
+          ],
+          "paper": {
+            "uri": "paper://incident/42",
+            "title": "Incident 42",
+            "category": "ops"
+          },
+          "announce": {
+            "name": "Relay Hub",
+            "capabilities": ["propagation", "telemetry_relay"]
+          },
+          "peer_snapshot": {
+            "peer": "33333333333333333333333333333333",
+            "endpoint": "tcp://127.0.0.1:4242",
+            "transport": "tcp",
+            "latency_ms": 32,
+            "queue_depth": 1
+          },
+          "interface_snapshot": {
+            "name": "rmap.world",
+            "type": "tcp_client",
+            "enabled": true,
+            "host": "rmap.world",
+            "port": 4242
+          }
+        },
+        "receipt_status": "sent: opportunistic"
+      }
+    ],
+    "meta": {
+      "contract_version": "v2",
+      "profile": "weft2",
+      "rpc_endpoint": "127.0.0.1:4245"
+    }
+  },
+  "announce_list": {
+    "announces": [
+      {
+        "id": "announce-interop-001",
+        "peer": "44444444444444444444444444444444",
+        "timestamp": 1770855315,
+        "name": "Hub Node",
+        "name_source": "app_data",
+        "first_seen": 1770855200,
+        "seen_count": 3,
+        "app_data_hex": "deadbeef",
+        "capabilities": ["topic_broker", "telemetry_relay"],
+        "rssi": -72.5,
+        "snr": 11.25,
+        "q": 0.91
+      }
+    ],
+    "next_cursor": "1770855200",
+    "meta": {
+      "contract_version": "v2",
+      "profile": "weft2",
+      "rpc_endpoint": "127.0.0.1:4245"
+    }
+  },
+  "peer_list": {
+    "peers": [
+      {
+        "peer": "55555555555555555555555555555555",
+        "last_seen": 1770855310,
+        "name": "Peer Alpha",
+        "name_source": "announce",
+        "first_seen": 1770854000,
+        "seen_count": 9
+      }
+    ],
+    "meta": {
+      "contract_version": "v2",
+      "profile": "weft2",
+      "rpc_endpoint": "127.0.0.1:4245"
+    }
+  },
+  "interface_list": {
+    "interfaces": [
+      {
+        "type": "tcp_client",
+        "enabled": true,
+        "host": "rmap.world",
+        "port": 4242,
+        "name": "rmap.world"
+      }
+    ],
+    "meta": {
+      "contract_version": "v2",
+      "profile": "weft2",
+      "rpc_endpoint": "127.0.0.1:4245"
+    }
+  },
+  "propagation_node_list": {
+    "nodes": [
+      {
+        "peer": "66666666666666666666666666666666",
+        "name": "Relay One",
+        "last_seen": 1770855313,
+        "capabilities": ["propagation", "telemetry_relay"],
+        "selected": true
+      }
+    ],
+    "meta": {
+      "contract_version": "v2",
+      "profile": "weft2",
+      "rpc_endpoint": "127.0.0.1:4245"
+    }
+  },
+  "outbound_propagation_node": {
+    "peer": "66666666666666666666666666666666",
+    "meta": {
+      "contract_version": "v2",
+      "profile": "weft2",
+      "rpc_endpoint": "127.0.0.1:4245"
+    }
+  },
+  "message_delivery_trace": {
+    "message_id": "lxmf-interop-001",
+    "transitions": [
+      {
+        "status": "queued",
+        "timestamp": 1770855315
+      },
+      {
+        "status": "retrying: propagated relay",
+        "timestamp": 1770855320,
+        "reason_code": "timeout"
+      },
+      {
+        "status": "delivered",
+        "timestamp": 1770855330
+      }
+    ],
+    "meta": {
+      "contract_version": "v2",
+      "profile": "weft2",
+      "rpc_endpoint": "127.0.0.1:4245"
+    }
+  },
+  "rpc_event": {
+    "event_type": "announce_received",
+    "payload": {
+      "peer": "44444444444444444444444444444444",
+      "capabilities": ["topic_broker", "telemetry_relay"]
+    }
+  }
+}
