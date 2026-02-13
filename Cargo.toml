@@ -3,6 +3,3 @@ resolver = "2"
 members = [
   "crates/lxmf",
 ]
-
-[patch.crates-io]
-reticulum-rs = { path = "../Reticulum-rs/crates/reticulum" }

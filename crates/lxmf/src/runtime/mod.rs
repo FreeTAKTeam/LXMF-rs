@@ -297,11 +297,21 @@ impl RuntimeHandle {
             Ok(RuntimeResponse::Value(value)) => Ok(value),
             Ok(_) => Err(LxmfError::Io("unexpected runtime response".to_string())),
             Err(err) => {
+                if Self::is_recoverable_rpc_error(&err) {
+                    return Err(err);
+                }
                 self.inner.running.store(false, Ordering::Relaxed);
                 Err(err)
             }
         }
     }
+
+fn is_recoverable_rpc_error(error: &LxmfError) -> bool {
+    match error {
+        LxmfError::Io(msg) => msg.starts_with("rpc failed ["),
+        _ => false,
+    }
+}
 
     pub fn send_message(
         &self,
