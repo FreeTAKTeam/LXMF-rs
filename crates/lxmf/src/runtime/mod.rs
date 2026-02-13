@@ -1463,7 +1463,7 @@ async fn send_via_link(
                     send_outcome_label(outcome)
                 )));
             }
-            Ok(LinkSendResult::Packet(packet))
+            Ok(LinkSendResult::Packet(Box::new(packet)))
         }
         Err(RnsError::OutOfMemory | RnsError::InvalidArgument) => {
             let resource_hash = transport
@@ -1477,7 +1477,7 @@ async fn send_via_link(
 }
 
 enum LinkSendResult {
-    Packet(Packet),
+    Packet(Box<Packet>),
     Resource(reticulum::hash::Hash),
 }
 
@@ -2083,7 +2083,7 @@ fn annotate_response_meta(result: &mut Value, profile: &str, rpc_endpoint: &str)
     let Some(root) = result.as_object_mut() else {
         return;
     };
-    if root.get("meta").map(Value::is_object).unwrap_or(false) == false {
+    if !root.get("meta").map(Value::is_object).unwrap_or(false) {
         root.insert("meta".to_string(), serde_json::json!({}));
     }
     let Some(meta) = root.get_mut("meta").and_then(Value::as_object_mut) else {
