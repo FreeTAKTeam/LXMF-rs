@@ -1237,8 +1237,8 @@ impl OutboundBridge for EmbeddedTransportBridge {
                 });
                 return;
             };
-            let relay_peer = normalize_relay_destination_hash(&peer_crypto, &relay_peer)
-                .unwrap_or(relay_peer);
+            let relay_peer =
+                normalize_relay_destination_hash(&peer_crypto, &relay_peer).unwrap_or(relay_peer);
             let Some(relay_destination) = parse_destination_hex(&relay_peer) else {
                 prune_receipt_mappings_for_message(&receipt_map, &message_id);
                 let _ = receipt_tx.send(ReceiptEvent {
