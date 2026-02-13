@@ -1841,6 +1841,9 @@ fn annotate_response_meta(result: &mut Value, profile: &str, rpc_endpoint: &str)
     let Some(root) = result.as_object_mut() else {
         return;
     };
+    if root.get("meta").map(Value::is_object).unwrap_or(false) == false {
+        root.insert("meta".to_string(), serde_json::json!({}));
+    }
     let Some(meta) = root.get_mut("meta").and_then(Value::as_object_mut) else {
         return;
     };
@@ -2160,5 +2163,34 @@ mod tests {
         assert_eq!(result["meta"]["contract_version"], "v2");
         assert_eq!(result["meta"]["profile"], "weft2");
         assert_eq!(result["meta"]["rpc_endpoint"], "127.0.0.1:4243");
+    }
+
+    #[test]
+    fn annotate_response_meta_creates_meta_when_missing() {
+        let mut result = serde_json::json!({
+            "messages": []
+        });
+
+        annotate_response_meta(&mut result, "weft2", "127.0.0.1:4243");
+        assert_eq!(result["meta"]["contract_version"], "v2");
+        assert_eq!(result["meta"]["profile"], "weft2");
+        assert_eq!(result["meta"]["rpc_endpoint"], "127.0.0.1:4243");
+    }
+
+    #[test]
+    fn annotate_response_meta_preserves_existing_non_null_values() {
+        let mut result = serde_json::json!({
+            "messages": [],
+            "meta": {
+                "contract_version": "v9",
+                "profile": "custom",
+                "rpc_endpoint": "192.168.1.10:9999"
+            }
+        });
+
+        annotate_response_meta(&mut result, "weft2", "127.0.0.1:4243");
+        assert_eq!(result["meta"]["contract_version"], "v9");
+        assert_eq!(result["meta"]["profile"], "custom");
+        assert_eq!(result["meta"]["rpc_endpoint"], "192.168.1.10:9999");
     }
 }
