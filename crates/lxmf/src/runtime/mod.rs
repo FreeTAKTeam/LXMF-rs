@@ -217,6 +217,7 @@ struct EmbeddedTransportBridge {
     peer_crypto: Arc<Mutex<HashMap<String, PeerCrypto>>>,
     selected_propagation_node: Arc<Mutex<Option<String>>>,
     receipt_map: Arc<Mutex<HashMap<String, String>>>,
+    outbound_resource_map: Arc<Mutex<HashMap<String, String>>>,
     delivered_messages: Arc<Mutex<HashSet<String>>>,
     receipt_tx: tokio::sync::mpsc::UnboundedSender<ReceiptEvent>,
 }
@@ -665,6 +666,8 @@ impl WorkerState {
             Arc::new(Mutex::new(HashMap::new()));
         let selected_propagation_node: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
         let receipt_map: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
+        let outbound_resource_map: Arc<Mutex<HashMap<String, String>>> =
+            Arc::new(Mutex::new(HashMap::new()));
         let delivered_messages: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
         let last_announce_epoch_secs = Arc::new(AtomicU64::new(0));
         let (receipt_tx, mut receipt_rx) = unbounded_channel();
@@ -750,6 +753,7 @@ impl WorkerState {
                     peer_crypto.clone(),
                     selected_propagation_node.clone(),
                     receipt_map.clone(),
+                    outbound_resource_map.clone(),
                     delivered_messages.clone(),
                     receipt_tx.clone(),
                 ))
@@ -834,6 +838,8 @@ impl WorkerState {
 
             let daemon_resource_inbound = daemon.clone();
             let resource_transport = transport.clone();
+            let resource_receipt_tx = receipt_tx.clone();
+            let resource_outbound_map = outbound_resource_map.clone();
             let mut shutdown_rx = shutdown_tx.subscribe();
             tokio::task::spawn_local(async move {
                 let mut rx = resource_transport.resource_events();
@@ -847,12 +853,28 @@ impl WorkerState {
                         result = rx.recv() => {
                             match result {
                                 Ok(event) => {
-                                    if let ResourceEventKind::Complete(complete) = event.kind {
-                                        if let Some(destination) = resolve_link_destination(&resource_transport, &event.link_id).await {
-                                            if let Some(record) = decode_inbound_payload(destination, &complete.data) {
-                                                let _ = daemon_resource_inbound.accept_inbound(record);
+                                    match event.kind {
+                                        ResourceEventKind::Complete(complete) => {
+                                            if let Some(destination) = resolve_link_destination(&resource_transport, &event.link_id).await {
+                                                if let Some(record) = decode_inbound_payload(destination, &complete.data) {
+                                                    let _ = daemon_resource_inbound.accept_inbound(record);
+                                                }
                                             }
                                         }
+                                        ResourceEventKind::OutboundComplete => {
+                                            let resource_hash_hex = hex::encode(event.hash.as_slice());
+                                            let message_id = resource_outbound_map
+                                                .lock()
+                                                .ok()
+                                                .and_then(|mut guard| guard.remove(&resource_hash_hex));
+                                            if let Some(message_id) = message_id {
+                                                let _ = resource_receipt_tx.send(ReceiptEvent {
+                                                    message_id,
+                                                    status: "sent: link resource".to_string(),
+                                                });
+                                            }
+                                        }
+                                        ResourceEventKind::Progress(_) => {}
                                     }
                                 }
                                 Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
@@ -1000,6 +1022,7 @@ impl EmbeddedTransportBridge {
         peer_crypto: Arc<Mutex<HashMap<String, PeerCrypto>>>,
         selected_propagation_node: Arc<Mutex<Option<String>>>,
         receipt_map: Arc<Mutex<HashMap<String, String>>>,
+        outbound_resource_map: Arc<Mutex<HashMap<String, String>>>,
         delivered_messages: Arc<Mutex<HashSet<String>>>,
         receipt_tx: tokio::sync::mpsc::UnboundedSender<ReceiptEvent>,
     ) -> Self {
@@ -1013,6 +1036,7 @@ impl EmbeddedTransportBridge {
             peer_crypto,
             selected_propagation_node,
             receipt_map,
+            outbound_resource_map,
             delivered_messages,
             receipt_tx,
         }
@@ -1041,6 +1065,7 @@ impl OutboundBridge for EmbeddedTransportBridge {
         let peer_crypto = self.peer_crypto.clone();
         let selected_propagation_node = self.selected_propagation_node.clone();
         let receipt_map = self.receipt_map.clone();
+        let outbound_resource_map = self.outbound_resource_map.clone();
         let delivered_messages = self.delivered_messages.clone();
         let receipt_tx = self.receipt_tx.clone();
         let announce_destination = self.announce_destination.clone();
@@ -1112,7 +1137,12 @@ impl OutboundBridge for EmbeddedTransportBridge {
                         .send(ReceiptEvent { message_id, status: "sent: link".to_string() });
                     return;
                 }
-                Ok(LinkSendResult::Resource(_resource_hash)) => {
+                Ok(LinkSendResult::Resource(resource_hash)) => {
+                    track_outbound_resource_mapping(
+                        &outbound_resource_map,
+                        &resource_hash,
+                        &message_id,
+                    );
                     trigger_rate_limited_announce(
                         &transport,
                         &announce_destination,
@@ -1122,7 +1152,7 @@ impl OutboundBridge for EmbeddedTransportBridge {
                     );
                     let _ = receipt_tx.send(ReceiptEvent {
                         message_id,
-                        status: "sent: link resource".to_string(),
+                        status: "sending: link resource".to_string(),
                     });
                     return;
                 }
@@ -1136,59 +1166,61 @@ impl OutboundBridge for EmbeddedTransportBridge {
 
             let opportunistic_payload = opportunistic_payload(payload.as_slice(), &destination);
             let mut opportunistic_data = PacketDataBuffer::new();
-            if opportunistic_data.write(opportunistic_payload).is_err() {
-                let _ = receipt_tx.send(ReceiptEvent {
-                    message_id: message_id.clone(),
-                    status: "failed: opportunistic payload too large".to_string(),
-                });
-                return;
-            }
-            let opportunistic_packet = Packet {
-                header: Header {
-                    ifac_flag: IfacFlag::Open,
-                    header_type: HeaderType::Type1,
-                    context_flag: ContextFlag::Unset,
-                    propagation_type: PropagationType::Broadcast,
-                    destination_type: DestinationType::Single,
-                    packet_type: PacketType::Data,
-                    hops: 0,
-                },
-                ifac: None,
-                destination: destination_hash,
-                transport: None,
-                context: PacketContext::None,
-                data: opportunistic_data,
-            };
-            let opportunistic_hash = hex::encode(opportunistic_packet.hash().to_bytes());
-            track_receipt_mapping(&receipt_map, &opportunistic_hash, &message_id);
-            let opportunistic_trace = transport.send_packet_with_trace(opportunistic_packet).await;
-            if !send_outcome_is_sent(opportunistic_trace.outcome) {
-                if let Ok(mut map) = receipt_map.lock() {
-                    map.remove(&opportunistic_hash);
+            if opportunistic_data.write(opportunistic_payload).is_ok() {
+                let opportunistic_packet = Packet {
+                    header: Header {
+                        ifac_flag: IfacFlag::Open,
+                        header_type: HeaderType::Type1,
+                        context_flag: ContextFlag::Unset,
+                        propagation_type: PropagationType::Broadcast,
+                        destination_type: DestinationType::Single,
+                        packet_type: PacketType::Data,
+                        hops: 0,
+                    },
+                    ifac: None,
+                    destination: destination_hash,
+                    transport: None,
+                    context: PacketContext::None,
+                    data: opportunistic_data,
+                };
+                let opportunistic_hash = hex::encode(opportunistic_packet.hash().to_bytes());
+                track_receipt_mapping(&receipt_map, &opportunistic_hash, &message_id);
+                let opportunistic_trace =
+                    transport.send_packet_with_trace(opportunistic_packet).await;
+                if !send_outcome_is_sent(opportunistic_trace.outcome) {
+                    if let Ok(mut map) = receipt_map.lock() {
+                        map.remove(&opportunistic_hash);
+                    }
+                    let _ = receipt_tx.send(ReceiptEvent {
+                        message_id: message_id.clone(),
+                        status: send_outcome_status("opportunistic", opportunistic_trace.outcome),
+                    });
+                } else {
+                    trigger_rate_limited_announce(
+                        &transport,
+                        &announce_destination,
+                        announce_app_data.clone(),
+                        &announce_last,
+                        POST_SEND_ANNOUNCE_MIN_INTERVAL_SECS,
+                    );
+                    let _ = receipt_tx.send(ReceiptEvent {
+                        message_id: message_id.clone(),
+                        status: send_outcome_status("opportunistic", opportunistic_trace.outcome),
+                    });
+                    tokio::time::sleep(Duration::from_secs(20)).await;
+                    if is_message_marked_delivered(&delivered_messages, &message_id) {
+                        return;
+                    }
+                    let _ = receipt_tx.send(ReceiptEvent {
+                        message_id: message_id.clone(),
+                        status: "retrying: propagated relay after opportunistic timeout"
+                            .to_string(),
+                    });
                 }
-                let _ = receipt_tx.send(ReceiptEvent {
-                    message_id: message_id.clone(),
-                    status: send_outcome_status("opportunistic", opportunistic_trace.outcome),
-                });
             } else {
-                trigger_rate_limited_announce(
-                    &transport,
-                    &announce_destination,
-                    announce_app_data.clone(),
-                    &announce_last,
-                    POST_SEND_ANNOUNCE_MIN_INTERVAL_SECS,
-                );
                 let _ = receipt_tx.send(ReceiptEvent {
                     message_id: message_id.clone(),
-                    status: send_outcome_status("opportunistic", opportunistic_trace.outcome),
-                });
-                tokio::time::sleep(Duration::from_secs(20)).await;
-                if is_message_marked_delivered(&delivered_messages, &message_id) {
-                    return;
-                }
-                let _ = receipt_tx.send(ReceiptEvent {
-                    message_id: message_id.clone(),
-                    status: "retrying: propagated relay after opportunistic timeout".to_string(),
+                    status: "retrying: propagated relay after opportunistic size limit".to_string(),
                 });
             }
 
@@ -1338,6 +1370,16 @@ fn track_receipt_mapping(
 ) {
     if let Ok(mut guard) = map.lock() {
         guard.insert(packet_hash.to_string(), message_id.to_string());
+    }
+}
+
+fn track_outbound_resource_mapping(
+    map: &Arc<Mutex<HashMap<String, String>>>,
+    resource_hash: &reticulum::hash::Hash,
+    message_id: &str,
+) {
+    if let Ok(mut guard) = map.lock() {
+        guard.insert(hex::encode(resource_hash.as_slice()), message_id.to_string());
     }
 }
 
