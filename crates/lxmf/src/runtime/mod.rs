@@ -628,6 +628,7 @@ fn handle_runtime_request(
                     *guard = selected;
                 }
             }
+            annotate_response_meta(&mut result, &state.profile, &state.status_template.rpc);
             Ok(RuntimeResponse::Value(result))
         }
         RuntimeCommand::PollEvent => Ok(RuntimeResponse::Event(state.daemon.take_event())),
@@ -1836,6 +1837,25 @@ fn annotate_peer_array(peers: &mut [Value], metadata: &HashMap<String, PeerAnnou
     }
 }
 
+fn annotate_response_meta(result: &mut Value, profile: &str, rpc_endpoint: &str) {
+    let Some(root) = result.as_object_mut() else {
+        return;
+    };
+    let Some(meta) = root.get_mut("meta").and_then(Value::as_object_mut) else {
+        return;
+    };
+
+    if meta.get("contract_version").map(Value::is_null).unwrap_or(true) {
+        meta.insert("contract_version".to_string(), Value::String("v2".to_string()));
+    }
+    if meta.get("profile").map(Value::is_null).unwrap_or(true) {
+        meta.insert("profile".to_string(), Value::String(profile.to_string()));
+    }
+    if meta.get("rpc_endpoint").map(Value::is_null).unwrap_or(true) {
+        meta.insert("rpc_endpoint".to_string(), Value::String(rpc_endpoint.to_string()));
+    }
+}
+
 fn build_send_params_with_source(
     request: SendMessageRequest,
     source: String,
@@ -2003,8 +2023,9 @@ fn write_private_key_tmp(path: &Path, key_bytes: &[u8]) -> Result<(), LxmfError>
 #[cfg(test)]
 mod tests {
     use super::{
-        annotate_peer_records_with_announce_metadata, build_send_params_with_source,
-        build_wire_message, decode_inbound_payload, PeerAnnounceMeta,
+        annotate_peer_records_with_announce_metadata, annotate_response_meta,
+        build_send_params_with_source, build_wire_message, decode_inbound_payload,
+        PeerAnnounceMeta,
     };
     use crate::constants::FIELD_COMMANDS;
     use crate::message::Message;
@@ -2122,5 +2143,22 @@ mod tests {
         annotate_peer_records_with_announce_metadata(&mut result, &metadata);
         assert_eq!(result["peers"][0]["app_data_hex"], Value::String("cafe".to_string()));
         assert_eq!(result["peers"][1]["app_data_hex"], Value::Null);
+    }
+
+    #[test]
+    fn annotate_response_meta_populates_profile_and_rpc() {
+        let mut result = serde_json::json!({
+            "nodes": [],
+            "meta": {
+                "contract_version": "v2",
+                "profile": null,
+                "rpc_endpoint": null
+            }
+        });
+
+        annotate_response_meta(&mut result, "weft2", "127.0.0.1:4243");
+        assert_eq!(result["meta"]["contract_version"], "v2");
+        assert_eq!(result["meta"]["profile"], "weft2");
+        assert_eq!(result["meta"]["rpc_endpoint"], "127.0.0.1:4243");
     }
 }
