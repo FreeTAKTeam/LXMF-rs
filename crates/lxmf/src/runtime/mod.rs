@@ -306,12 +306,12 @@ impl RuntimeHandle {
         }
     }
 
-fn is_recoverable_rpc_error(error: &LxmfError) -> bool {
-    match error {
-        LxmfError::Io(msg) => msg.starts_with("rpc failed ["),
-        _ => false,
+    fn is_recoverable_rpc_error(error: &LxmfError) -> bool {
+        match error {
+            LxmfError::Io(msg) => msg.starts_with("rpc failed ["),
+            _ => false,
+        }
     }
-}
 
     pub fn send_message(
         &self,
