@@ -10,6 +10,7 @@ use crate::LxmfError;
 use rand_core::OsRng;
 use reticulum::destination::link::{LinkEvent, LinkStatus};
 use reticulum::destination::{DestinationDesc, DestinationName, SingleInputDestination};
+use reticulum::error::RnsError;
 use reticulum::hash::AddressHash;
 use reticulum::identity::{Identity, PrivateIdentity};
 use reticulum::iface::tcp_client::TcpClient;
@@ -18,6 +19,7 @@ use reticulum::packet::{
     ContextFlag, DestinationType, Header, HeaderType, IfacFlag, Packet, PacketContext,
     PacketDataBuffer, PacketType, PropagationType,
 };
+use reticulum::resource::ResourceEventKind;
 use reticulum::rpc::{
     AnnounceBridge, InterfaceRecord, OutboundBridge, RpcDaemon, RpcEvent, RpcRequest,
 };
@@ -830,6 +832,37 @@ impl WorkerState {
                 }
             });
 
+            let daemon_resource_inbound = daemon.clone();
+            let resource_transport = transport.clone();
+            let mut shutdown_rx = shutdown_tx.subscribe();
+            tokio::task::spawn_local(async move {
+                let mut rx = resource_transport.resource_events();
+                loop {
+                    tokio::select! {
+                        changed = shutdown_rx.changed() => {
+                            if changed.is_err() || *shutdown_rx.borrow() {
+                                break;
+                            }
+                        }
+                        result = rx.recv() => {
+                            match result {
+                                Ok(event) => {
+                                    if let ResourceEventKind::Complete(complete) = event.kind {
+                                        if let Some(destination) = resolve_link_destination(&resource_transport, &event.link_id).await {
+                                            if let Some(record) = decode_inbound_payload(destination, &complete.data) {
+                                                let _ = daemon_resource_inbound.accept_inbound(record);
+                                            }
+                                        }
+                                    }
+                                }
+                                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                            }
+                        }
+                    }
+                }
+            });
+
             let daemon_announce = daemon.clone();
             let peer_crypto = peer_crypto.clone();
             let peer_announce_meta = peer_announce_meta.clone();
@@ -1065,7 +1098,7 @@ impl OutboundBridge for EmbeddedTransportBridge {
             )
             .await
             {
-                Ok(packet) => {
+                Ok(LinkSendResult::Packet(packet)) => {
                     let packet_hash = hex::encode(packet.hash().to_bytes());
                     track_receipt_mapping(&receipt_map, &packet_hash, &message_id);
                     trigger_rate_limited_announce(
@@ -1077,6 +1110,20 @@ impl OutboundBridge for EmbeddedTransportBridge {
                     );
                     let _ = receipt_tx
                         .send(ReceiptEvent { message_id, status: "sent: link".to_string() });
+                    return;
+                }
+                Ok(LinkSendResult::Resource(_resource_hash)) => {
+                    trigger_rate_limited_announce(
+                        &transport,
+                        &announce_destination,
+                        announce_app_data.clone(),
+                        &announce_last,
+                        POST_SEND_ANNOUNCE_MIN_INTERVAL_SECS,
+                    );
+                    let _ = receipt_tx.send(ReceiptEvent {
+                        message_id,
+                        status: "sent: link resource".to_string(),
+                    });
                     return;
                 }
                 Err(err) => {
@@ -1299,7 +1346,7 @@ async fn send_via_link(
     destination: DestinationDesc,
     payload: &[u8],
     wait_timeout: Duration,
-) -> Result<Packet, std::io::Error> {
+) -> Result<LinkSendResult, std::io::Error> {
     let link = transport.link(destination).await;
     let link_id = *link.lock().await.id();
 
@@ -1343,21 +1390,55 @@ async fn send_via_link(
         }
     }
 
-    let packet = link
-        .lock()
-        .await
-        .data_packet(payload)
-        .map_err(|err| std::io::Error::other(format!("{err:?}")))?;
-
-    let outcome = transport.send_packet_with_outcome(packet).await;
-    if !matches!(outcome, SendPacketOutcome::SentDirect | SendPacketOutcome::SentBroadcast) {
-        return Err(std::io::Error::other(format!(
-            "link packet not sent: {}",
-            send_outcome_label(outcome)
-        )));
+    let packet = {
+        let guard = link.lock().await;
+        guard.data_packet(payload)
+    };
+    match packet {
+        Ok(packet) => {
+            let outcome = transport.send_packet_with_outcome(packet).await;
+            if !matches!(outcome, SendPacketOutcome::SentDirect | SendPacketOutcome::SentBroadcast)
+            {
+                return Err(std::io::Error::other(format!(
+                    "link packet not sent: {}",
+                    send_outcome_label(outcome)
+                )));
+            }
+            Ok(LinkSendResult::Packet(packet))
+        }
+        Err(RnsError::OutOfMemory | RnsError::InvalidArgument) => {
+            let resource_hash = transport
+                .send_resource(&link_id, payload.to_vec(), None)
+                .await
+                .map_err(|err| std::io::Error::other(format!("link resource not sent: {err:?}")))?;
+            Ok(LinkSendResult::Resource(resource_hash))
+        }
+        Err(err) => Err(std::io::Error::other(format!("{err:?}"))),
     }
+}
 
-    Ok(packet)
+enum LinkSendResult {
+    Packet(Packet),
+    Resource(reticulum::hash::Hash),
+}
+
+async fn resolve_link_destination(
+    transport: &Transport,
+    link_id: &AddressHash,
+) -> Option<[u8; 16]> {
+    if let Some(link) = transport.find_in_link(link_id).await {
+        let guard = link.lock().await;
+        let mut destination = [0u8; 16];
+        destination.copy_from_slice(guard.destination().address_hash.as_slice());
+        return Some(destination);
+    }
+    if let Some(link) = transport.find_out_link(link_id).await {
+        let guard = link.lock().await;
+        let mut destination = [0u8; 16];
+        destination.copy_from_slice(guard.destination().address_hash.as_slice());
+        return Some(destination);
+    }
+    None
 }
 
 fn send_outcome_label(outcome: SendPacketOutcome) -> &'static str {
