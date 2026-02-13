@@ -1237,6 +1237,8 @@ impl OutboundBridge for EmbeddedTransportBridge {
                 });
                 return;
             };
+            let relay_peer = normalize_relay_destination_hash(&peer_crypto, &relay_peer)
+                .unwrap_or(relay_peer);
             let Some(relay_destination) = parse_destination_hex(&relay_peer) else {
                 prune_receipt_mappings_for_message(&receipt_map, &message_id);
                 let _ = receipt_tx.send(ReceiptEvent {
@@ -1246,6 +1248,21 @@ impl OutboundBridge for EmbeddedTransportBridge {
                 return;
             };
             let relay_hash = AddressHash::new(relay_destination);
+            transport.request_path(&relay_hash, None, None).await;
+            let relay_known_deadline = tokio::time::Instant::now() + Duration::from_secs(8);
+            let mut relay_known = transport.destination_identity(&relay_hash).await.is_some();
+            while !relay_known && tokio::time::Instant::now() < relay_known_deadline {
+                tokio::time::sleep(Duration::from_millis(250)).await;
+                relay_known = transport.destination_identity(&relay_hash).await.is_some();
+            }
+            if !relay_known {
+                prune_receipt_mappings_for_message(&receipt_map, &message_id);
+                let _ = receipt_tx.send(ReceiptEvent {
+                    message_id,
+                    status: "failed: propagation relay not announced".to_string(),
+                });
+                return;
+            }
 
             let mut last_failure = "failed: propagated relay unavailable".to_string();
             for attempt in 1..=2u8 {
@@ -1576,6 +1593,23 @@ fn opportunistic_payload<'a>(payload: &'a [u8], destination: &[u8; 16]) -> &'a [
     } else {
         payload
     }
+}
+
+fn normalize_relay_destination_hash(
+    peer_crypto: &Arc<Mutex<HashMap<String, PeerCrypto>>>,
+    selected_hash: &str,
+) -> Option<String> {
+    let selected_destination = parse_destination_hex(selected_hash)?;
+    let guard = peer_crypto.lock().ok()?;
+    if guard.contains_key(selected_hash) {
+        return Some(selected_hash.to_string());
+    }
+    for (destination_hash, crypto) in guard.iter() {
+        if crypto.identity.address_hash.as_slice() == selected_destination {
+            return Some(destination_hash.clone());
+        }
+    }
+    None
 }
 
 fn parse_destination_hex(input: &str) -> Option<[u8; 16]> {
@@ -2235,8 +2269,8 @@ fn write_private_key_tmp(path: &Path, key_bytes: &[u8]) -> Result<(), LxmfError>
 mod tests {
     use super::{
         annotate_peer_records_with_announce_metadata, annotate_response_meta,
-        build_send_params_with_source, build_wire_message, decode_inbound_payload, rmpv_to_json,
-        PeerAnnounceMeta,
+        build_send_params_with_source, build_wire_message, decode_inbound_payload,
+        normalize_relay_destination_hash, rmpv_to_json, PeerAnnounceMeta, PeerCrypto,
     };
     use crate::constants::FIELD_COMMANDS;
     use crate::message::Message;
@@ -2245,6 +2279,7 @@ mod tests {
     use reticulum::identity::PrivateIdentity;
     use serde_json::Value;
     use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
 
     #[test]
     fn decode_inbound_payload_accepts_integer_timestamp_wire() {
@@ -2400,6 +2435,35 @@ mod tests {
         assert_eq!(result["meta"]["contract_version"], "v9");
         assert_eq!(result["meta"]["profile"], "custom");
         assert_eq!(result["meta"]["rpc_endpoint"], "192.168.1.10:9999");
+    }
+
+    #[test]
+    fn normalize_relay_destination_hash_preserves_destination_hash_input() {
+        let destination_hash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string();
+        let signer = PrivateIdentity::new_from_name("relay-preserve");
+        let identity = *signer.as_identity();
+        let mut peer_map = HashMap::new();
+        peer_map.insert(destination_hash.clone(), PeerCrypto { identity });
+        let peer_crypto = Arc::new(Mutex::new(peer_map));
+
+        let resolved = normalize_relay_destination_hash(&peer_crypto, &destination_hash)
+            .expect("should preserve known destination hash");
+        assert_eq!(resolved, destination_hash);
+    }
+
+    #[test]
+    fn normalize_relay_destination_hash_maps_identity_hash_to_destination_hash() {
+        let destination_hash = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string();
+        let signer = PrivateIdentity::new_from_name("relay-normalize");
+        let identity = *signer.as_identity();
+        let identity_hash = hex::encode(identity.address_hash.as_slice());
+        let mut peer_map = HashMap::new();
+        peer_map.insert(destination_hash.clone(), PeerCrypto { identity });
+        let peer_crypto = Arc::new(Mutex::new(peer_map));
+
+        let resolved = normalize_relay_destination_hash(&peer_crypto, &identity_hash)
+            .expect("should map known identity hash to destination hash");
+        assert_eq!(resolved, destination_hash);
     }
 
     #[test]
