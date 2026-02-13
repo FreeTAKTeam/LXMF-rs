@@ -1695,12 +1695,97 @@ fn rmpv_to_json(value: &rmpv::Value) -> Option<Value> {
                         .or_else(|| int.as_u64().map(|v| v.to_string())),
                     other => Some(format!("{other:?}")),
                 }?;
+                if key_str == "2" {
+                    if let rmpv::Value::Binary(bytes) = value {
+                        if let Some(decoded) = decode_sideband_location_telemetry(bytes) {
+                            object.insert(key_str, decoded);
+                            continue;
+                        }
+                    }
+                }
                 object.insert(key_str, rmpv_to_json(value)?);
             }
             Some(Value::Object(object))
         }
         _ => None,
     }
+}
+
+fn decode_sideband_location_telemetry(packed: &[u8]) -> Option<Value> {
+    let mut cursor = std::io::Cursor::new(packed);
+    let decoded = rmpv::decode::read_value(&mut cursor).ok()?;
+    let rmpv::Value::Map(map) = decoded else {
+        return None;
+    };
+    let location = map
+        .iter()
+        .find(|(key, _)| key.as_i64() == Some(0x02) || key.as_u64() == Some(0x02))
+        .map(|(_, value)| value)?;
+    let rmpv::Value::Array(items) = location else {
+        return None;
+    };
+    if items.len() < 7 {
+        return None;
+    }
+
+    let lat = decode_i32_be(items.first()?)? as f64 / 1e6;
+    let lon = decode_i32_be(items.get(1)?)? as f64 / 1e6;
+    let alt = decode_i32_be(items.get(2)?)? as f64 / 1e2;
+    let speed = decode_u32_be(items.get(3)?)? as f64 / 1e2;
+    let bearing = decode_i32_be(items.get(4)?)? as f64 / 1e2;
+    let accuracy = decode_u16_be(items.get(5)?)? as f64 / 1e2;
+    let updated = items.get(6).and_then(|value| {
+        value.as_i64().or_else(|| value.as_u64().and_then(|raw| i64::try_from(raw).ok()))
+    });
+
+    let mut out = serde_json::Map::new();
+    out.insert("lat".to_string(), Value::from(lat));
+    out.insert("lon".to_string(), Value::from(lon));
+    out.insert("alt".to_string(), Value::from(alt));
+    out.insert("speed".to_string(), Value::from(speed));
+    out.insert("bearing".to_string(), Value::from(bearing));
+    out.insert("accuracy".to_string(), Value::from(accuracy));
+    if let Some(updated) = updated {
+        out.insert("updated".to_string(), Value::from(updated));
+    }
+    Some(Value::Object(out))
+}
+
+fn decode_binary_bytes(value: &rmpv::Value) -> Option<&[u8]> {
+    match value {
+        rmpv::Value::Binary(bytes) => Some(bytes.as_slice()),
+        _ => None,
+    }
+}
+
+fn decode_i32_be(value: &rmpv::Value) -> Option<i32> {
+    let bytes = decode_binary_bytes(value)?;
+    if bytes.len() != 4 {
+        return None;
+    }
+    let mut raw = [0u8; 4];
+    raw.copy_from_slice(bytes);
+    Some(i32::from_be_bytes(raw))
+}
+
+fn decode_u32_be(value: &rmpv::Value) -> Option<u32> {
+    let bytes = decode_binary_bytes(value)?;
+    if bytes.len() != 4 {
+        return None;
+    }
+    let mut raw = [0u8; 4];
+    raw.copy_from_slice(bytes);
+    Some(u32::from_be_bytes(raw))
+}
+
+fn decode_u16_be(value: &rmpv::Value) -> Option<u16> {
+    let bytes = decode_binary_bytes(value)?;
+    if bytes.len() != 2 {
+        return None;
+    }
+    let mut raw = [0u8; 2];
+    raw.copy_from_slice(bytes);
+    Some(u16::from_be_bytes(raw))
 }
 
 fn encode_delivery_display_name_app_data(display_name: &str) -> Option<Vec<u8>> {
@@ -2027,7 +2112,7 @@ fn write_private_key_tmp(path: &Path, key_bytes: &[u8]) -> Result<(), LxmfError>
 mod tests {
     use super::{
         annotate_peer_records_with_announce_metadata, annotate_response_meta,
-        build_send_params_with_source, build_wire_message, decode_inbound_payload,
+        build_send_params_with_source, build_wire_message, decode_inbound_payload, rmpv_to_json,
         PeerAnnounceMeta,
     };
     use crate::constants::FIELD_COMMANDS;
@@ -2192,5 +2277,36 @@ mod tests {
         assert_eq!(result["meta"]["contract_version"], "v9");
         assert_eq!(result["meta"]["profile"], "custom");
         assert_eq!(result["meta"]["rpc_endpoint"], "192.168.1.10:9999");
+    }
+
+    #[test]
+    fn rmpv_to_json_decodes_sideband_packed_location_sensor() {
+        let packed = rmp_serde::to_vec(&rmpv::Value::Map(vec![
+            (rmpv::Value::Integer(1_i64.into()), rmpv::Value::Integer(1_770_855_315_i64.into())),
+            (
+                rmpv::Value::Integer(2_i64.into()),
+                rmpv::Value::Array(vec![
+                    rmpv::Value::Binary((48_856_600_i32).to_be_bytes().to_vec()),
+                    rmpv::Value::Binary((2_352_200_i32).to_be_bytes().to_vec()),
+                    rmpv::Value::Binary((3550_i32).to_be_bytes().to_vec()),
+                    rmpv::Value::Binary((420_u32).to_be_bytes().to_vec()),
+                    rmpv::Value::Binary((18_000_i32).to_be_bytes().to_vec()),
+                    rmpv::Value::Binary((340_u16).to_be_bytes().to_vec()),
+                    rmpv::Value::Integer(1_770_855_315_i64.into()),
+                ]),
+            ),
+        ]))
+        .expect("pack telemetry");
+
+        let fields = rmpv::Value::Map(vec![(
+            rmpv::Value::Integer(2_i64.into()),
+            rmpv::Value::Binary(packed),
+        )]);
+        let decoded = rmpv_to_json(&fields).expect("decoded");
+
+        assert_eq!(decoded["2"]["lat"], serde_json::json!(48.8566));
+        assert_eq!(decoded["2"]["lon"], serde_json::json!(2.3522));
+        assert_eq!(decoded["2"]["accuracy"], serde_json::json!(3.4));
+        assert_eq!(decoded["2"]["updated"], serde_json::json!(1_770_855_315_i64));
     }
 }

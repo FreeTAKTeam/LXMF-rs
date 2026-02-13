@@ -3,6 +3,7 @@
 import base64
 import json
 import os
+import struct
 import sys
 import tempfile
 
@@ -108,6 +109,21 @@ def _extract_location(fields):
     telemetry = _decode_msgpack_value(_field_value(fields, LXMF.FIELD_TELEMETRY))
     if telemetry is None:
         return None
+    if isinstance(telemetry, dict) and 2 in _normalize_map(telemetry):
+        sensor = _normalize_map(telemetry).get(2)
+        if isinstance(sensor, (list, tuple)) and len(sensor) >= 2:
+            try:
+                lat_raw = sensor[0]
+                lon_raw = sensor[1]
+                if isinstance(lat_raw, (bytes, bytearray)) and isinstance(lon_raw, (bytes, bytearray)):
+                    lat = struct.unpack("!i", lat_raw)[0] / 1e6
+                    lon = struct.unpack("!i", lon_raw)[0] / 1e6
+                    result = {"lat": float(lat), "lon": float(lon)}
+                    if len(sensor) >= 3 and isinstance(sensor[2], (bytes, bytearray)):
+                        result["alt"] = struct.unpack("!i", sensor[2])[0] / 1e2
+                    return result
+            except Exception:
+                pass
     if isinstance(telemetry, dict):
         location = _map_get(telemetry, "location")
         if isinstance(location, dict):
