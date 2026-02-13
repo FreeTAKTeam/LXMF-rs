@@ -916,12 +916,6 @@ impl WorkerState {
                                     let peer = hex::encode(dest.desc.address_hash.as_slice());
                                     let identity = dest.desc.identity;
                                     let app_data = event.app_data.as_slice();
-                                    let app_data_hex = if app_data.is_empty() {
-                                        None
-                                    } else {
-                                        Some(hex::encode(app_data))
-                                    };
-                                    let announce_capabilities = parse_peer_capabilities_from_app_data(app_data);
                                     let (peer_name, peer_name_source) = parse_peer_name_from_app_data(app_data)
                                         .map(|(name, source)| (Some(name), Some(source)))
                                         .unwrap_or((None, None));
@@ -941,20 +935,11 @@ impl WorkerState {
                                         .map(|value| value.as_secs() as i64)
                                         .unwrap_or(0);
 
-                                    let _ = daemon_announce.accept_announce_with_metadata(
+                                    let _ = daemon_announce.accept_announce_with_details(
                                         peer,
                                         timestamp,
                                         peer_name,
                                         peer_name_source,
-                                        app_data_hex,
-                                        if announce_capabilities.is_empty() {
-                                            None
-                                        } else {
-                                            Some(announce_capabilities)
-                                        },
-                                        None,
-                                        None,
-                                        None,
                                     );
                                 }
                                 Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
@@ -1985,60 +1970,6 @@ fn parse_peer_name_from_app_data(app_data: &[u8]) -> Option<(String, String)> {
     let text = std::str::from_utf8(app_data).ok()?;
     let name = normalize_display_name(text).ok()?;
     Some((name, "app_data_utf8".to_string()))
-}
-
-fn parse_peer_capabilities_from_app_data(app_data: &[u8]) -> Vec<String> {
-    if app_data.is_empty() {
-        return Vec::new();
-    }
-    let Ok(value) = rmp_serde::from_slice::<Value>(app_data) else {
-        return Vec::new();
-    };
-    let Some(entries) = value.as_array() else {
-        return Vec::new();
-    };
-    if entries.len() < 3 {
-        return Vec::new();
-    }
-    extract_capabilities_from_json_value(entries.get(2))
-}
-
-fn extract_capabilities_from_json_value(value: Option<&Value>) -> Vec<String> {
-    let Some(value) = value else {
-        return Vec::new();
-    };
-    let mut raw = Vec::new();
-
-    if let Some(array) = value.as_array() {
-        raw.extend(array.iter().filter_map(|entry| entry.as_str().map(|text| text.to_string())));
-        return normalize_capabilities(raw);
-    }
-
-    if let Some(object) = value.as_object() {
-        for key in ["caps", "capabilities"] {
-            if let Some(array) = object.get(key).and_then(Value::as_array) {
-                raw.extend(
-                    array.iter().filter_map(|entry| entry.as_str().map(|text| text.to_string())),
-                );
-                return normalize_capabilities(raw);
-            }
-        }
-    }
-
-    Vec::new()
-}
-
-fn normalize_capabilities(values: Vec<String>) -> Vec<String> {
-    let mut seen = HashSet::new();
-    let mut out = Vec::new();
-    for value in values {
-        let normalized = value.trim().to_ascii_lowercase();
-        if normalized.is_empty() || !seen.insert(normalized.clone()) {
-            continue;
-        }
-        out.push(normalized);
-    }
-    out
 }
 
 fn update_peer_announce_meta(
