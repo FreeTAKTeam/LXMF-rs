@@ -992,10 +992,7 @@ async fn request_messages_from_propagation_node_live(
         guard.sync_progress = 0.65;
     });
 
-    let wants = available_transient_ids
-        .into_iter()
-        .take(max_messages)
-        .collect::<Vec<_>>();
+    let wants = available_transient_ids.into_iter().take(max_messages).collect::<Vec<_>>();
     if wants.is_empty() {
         let completed = now_epoch_secs() as i64;
         state.daemon.update_propagation_sync_state(|guard| {
@@ -1024,25 +1021,15 @@ async fn request_messages_from_propagation_node_live(
     let get_payload = build_link_request_payload(
         "/get",
         rmpv::Value::Array(vec![
-            rmpv::Value::Array(
-                wants
-                    .iter()
-                    .cloned()
-                    .map(rmpv::Value::Binary)
-                    .collect::<Vec<_>>(),
-            ),
+            rmpv::Value::Array(wants.iter().cloned().map(rmpv::Value::Binary).collect::<Vec<_>>()),
             rmpv::Value::Array(Vec::new()),
             rmpv::Value::Nil,
         ]),
     )?;
-    let get_request_id = send_link_context_packet(
-        &transport,
-        &link,
-        PacketContext::Request,
-        get_payload.as_slice(),
-    )
-    .await?
-    .ok_or_else(|| std::io::Error::other("missing propagation get request id"))?;
+    let get_request_id =
+        send_link_context_packet(&transport, &link, PacketContext::Request, get_payload.as_slice())
+            .await?
+            .ok_or_else(|| std::io::Error::other("missing propagation get request id"))?;
 
     state.daemon.update_propagation_sync_state(|guard| {
         guard.sync_state = PR_REQUEST_SENT;
@@ -1131,11 +1118,7 @@ async fn request_messages_from_propagation_node_live(
             rmpv::Value::Array(vec![
                 rmpv::Value::Nil,
                 rmpv::Value::Array(
-                    haves
-                        .iter()
-                        .cloned()
-                        .map(rmpv::Value::Binary)
-                        .collect::<Vec<_>>(),
+                    haves.iter().cloned().map(rmpv::Value::Binary).collect::<Vec<_>>(),
                 ),
             ]),
         ) {
@@ -1191,10 +1174,7 @@ fn build_link_identify_payload(identity: &PrivateIdentity, link_id: &AddressHash
 }
 
 fn build_link_request_payload(path: &str, data: rmpv::Value) -> Result<Vec<u8>, std::io::Error> {
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs_f64();
+    let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs_f64();
     let path_hash = address_hash(path.as_bytes());
     rmp_serde::to_vec(&rmpv::Value::Array(vec![
         rmpv::Value::F64(timestamp),
@@ -1257,10 +1237,7 @@ async fn send_link_context_packet(
 
     let outcome = transport.send_packet_with_outcome(packet).await;
     if !send_outcome_is_sent(outcome) {
-        return Err(std::io::Error::other(send_outcome_status(
-            "propagation request",
-            outcome,
-        )));
+        return Err(std::io::Error::other(send_outcome_status("propagation request", outcome)));
     }
     Ok(request_id)
 }
@@ -1353,8 +1330,12 @@ fn propagation_error_from_response_value(
 ) -> Option<(u32, &'static str, &'static str, &'static str)> {
     let code = value.as_u64().or_else(|| value.as_i64().map(|raw| raw as u64))?;
     match code as u32 {
-        PR_NO_PATH => Some((PR_NO_PATH, "no_path", "No path known for propagation node", "NO_PATH")),
-        PR_LINK_FAILED => Some((PR_LINK_FAILED, "link_failed", "Propagation link failed", "LINK_FAILED")),
+        PR_NO_PATH => {
+            Some((PR_NO_PATH, "no_path", "No path known for propagation node", "NO_PATH"))
+        }
+        PR_LINK_FAILED => {
+            Some((PR_LINK_FAILED, "link_failed", "Propagation link failed", "LINK_FAILED"))
+        }
         PR_TRANSFER_FAILED => Some((
             PR_TRANSFER_FAILED,
             "transfer_failed",
@@ -1367,7 +1348,9 @@ fn propagation_error_from_response_value(
             "Propagation node requires identity",
             "NO_IDENTITY_RCVD",
         )),
-        PR_NO_ACCESS => Some((PR_NO_ACCESS, "no_access", "Propagation node denied access", "NO_ACCESS")),
+        PR_NO_ACCESS => {
+            Some((PR_NO_ACCESS, "no_access", "Propagation node denied access", "NO_ACCESS"))
+        }
         _ => None,
     }
 }
@@ -1500,9 +1483,8 @@ impl WorkerState {
                     Some(hex::encode(dest.desc.address_hash.as_slice()));
             }
 
-            let delivery_app_data = normalized_display_name
-                .as_deref()
-                .and_then(encode_delivery_display_name_app_data);
+            let delivery_app_data =
+                normalized_display_name.as_deref().and_then(encode_delivery_display_name_app_data);
             announce_targets.push(AnnounceTarget { destination, app_data: delivery_app_data });
 
             let propagation_destination = transport_instance
@@ -1518,22 +1500,22 @@ impl WorkerState {
         }
 
         let bridge: Option<Arc<EmbeddedTransportBridge>> = transport.as_ref().map(|transport| {
-                Arc::new(EmbeddedTransportBridge::new(
-                    transport.clone(),
-                    identity.clone(),
-                    delivery_source_hash,
-                    announce_targets.clone(),
-                    last_announce_epoch_secs.clone(),
-                    peer_crypto.clone(),
-                    peer_identity_cache_path.clone(),
-                    selected_propagation_node.clone(),
-                    known_propagation_nodes.clone(),
-                    receipt_map.clone(),
-                    outbound_resource_map.clone(),
-                    delivered_messages.clone(),
-                    receipt_tx.clone(),
-                ))
-            });
+            Arc::new(EmbeddedTransportBridge::new(
+                transport.clone(),
+                identity.clone(),
+                delivery_source_hash,
+                announce_targets.clone(),
+                last_announce_epoch_secs.clone(),
+                peer_crypto.clone(),
+                peer_identity_cache_path.clone(),
+                selected_propagation_node.clone(),
+                known_propagation_nodes.clone(),
+                receipt_map.clone(),
+                outbound_resource_map.clone(),
+                delivered_messages.clone(),
+                receipt_tx.clone(),
+            ))
+        });
 
         let outbound_bridge: Option<Arc<dyn OutboundBridge>> =
             bridge.as_ref().map(|bridge| bridge.clone() as Arc<dyn OutboundBridge>);
@@ -1550,11 +1532,7 @@ impl WorkerState {
         daemon.set_delivery_destination_hash(delivery_destination_hash_hex);
         daemon.replace_interfaces(configured_interfaces);
         let propagation_enabled = bridge.is_some();
-        daemon.set_propagation_state(
-            propagation_enabled,
-            None,
-            crate::constants::PROPAGATION_COST,
-        );
+        daemon.set_propagation_state(propagation_enabled, None, crate::constants::PROPAGATION_COST);
         daemon.push_event(RpcEvent {
             event_type: "runtime_started".to_string(),
             payload: json!({ "profile": init.profile }),
@@ -2333,10 +2311,7 @@ impl OutboundBridge for EmbeddedTransportBridge {
                 });
             }
             prune_receipt_mappings_for_message(&receipt_map, &message_id);
-            let _ = receipt_tx.send(ReceiptEvent {
-                message_id,
-                status: last_relay_failure,
-            });
+            let _ = receipt_tx.send(ReceiptEvent { message_id, status: last_relay_failure });
         });
 
         Ok(())
@@ -2350,9 +2325,7 @@ impl AnnounceBridge for EmbeddedTransportBridge {
         let announce_targets = self.announce_targets.clone();
         tokio::spawn(async move {
             for target in announce_targets {
-                transport
-                    .send_announce(&target.destination, target.app_data.as_deref())
-                    .await;
+                transport.send_announce(&target.destination, target.app_data.as_deref()).await;
             }
         });
         Ok(())
@@ -2712,9 +2685,7 @@ fn trigger_rate_limited_announce(
     let announce_targets = announce_targets.to_vec();
     tokio::spawn(async move {
         for target in announce_targets {
-            announce_transport
-                .send_announce(&target.destination, target.app_data.as_deref())
-                .await;
+            announce_transport.send_announce(&target.destination, target.app_data.as_deref()).await;
         }
     });
 }
@@ -2850,7 +2821,7 @@ fn annotate_inbound_transport_metadata(
     if let Some(hops) = event.hops {
         transport.insert("hops".to_string(), Value::from(hops));
     }
-    if let Some(interface) = event.interface {
+    if let Some(interface) = event.interface.as_ref() {
         transport.insert("interface".to_string(), Value::String(hex::encode(interface.as_slice())));
     }
 
@@ -3447,10 +3418,7 @@ fn load_peer_identity_cache(path: &Path) -> Result<HashMap<String, PeerCrypto>, 
     Ok(out)
 }
 
-fn persist_peer_identity_cache(
-    peer_crypto: &Arc<Mutex<HashMap<String, PeerCrypto>>>,
-    path: &Path,
-) {
+fn persist_peer_identity_cache(peer_crypto: &Arc<Mutex<HashMap<String, PeerCrypto>>>, path: &Path) {
     let snapshot = peer_crypto
         .lock()
         .map(|guard| {
@@ -3819,8 +3787,8 @@ mod tests {
     };
     use crate::constants::FIELD_COMMANDS;
     use crate::message::Message;
-    use crate::propagation::unpack_envelope;
     use crate::payload_fields::{CommandEntry, WireFields};
+    use crate::propagation::unpack_envelope;
     use crate::runtime::SendMessageRequest;
     use reticulum::identity::PrivateIdentity;
     use serde_json::Value;
@@ -4025,9 +3993,7 @@ mod tests {
 
     #[test]
     fn propagation_relay_candidates_prefer_selected_then_known_nodes() {
-        let selected = Arc::new(Mutex::new(Some(
-            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string(),
-        )));
+        let selected = Arc::new(Mutex::new(Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string())));
         let known_nodes = Arc::new(Mutex::new(HashSet::from([
             "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(),
             "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string(),

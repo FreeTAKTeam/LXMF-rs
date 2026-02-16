@@ -938,7 +938,6 @@ name = "reticulum-rs"
 version = "0.1.3"
 dependencies = [
  "aes",
- "base64",
  "bzip2",
  "cbc",
  "crypto-common",
@@ -950,7 +949,6 @@ dependencies = [
  "rand_core",
  "rmp",
  "rmp-serde",
- "rmpv",
  "rusqlite",
  "serde",
  "serde_bytes",
