@@ -25,8 +25,7 @@ use reticulum::packet::{
 };
 use reticulum::resource::ResourceEventKind;
 use reticulum::rpc::{
-    AnnounceBridge, InterfaceRecord, OutboundBridge, OutboundDeliveryOptions, RpcDaemon, RpcEvent,
-    RpcRequest,
+    AnnounceBridge, InterfaceRecord, OutboundBridge, RpcDaemon, RpcEvent, RpcRequest,
 };
 use reticulum::storage::messages::{MessageRecord, MessagesStore};
 use reticulum::transport::{
@@ -57,6 +56,7 @@ const MAX_ALTERNATIVE_PROPAGATION_RELAYS: usize = 3;
 const PROPAGATION_PATH_TIMEOUT: Duration = Duration::from_secs(8);
 const PROPAGATION_LINK_TIMEOUT: Duration = Duration::from_secs(15);
 const PROPAGATION_REQUEST_TIMEOUT: Duration = Duration::from_secs(45);
+const OUTBOUND_DELIVERY_OPTIONS_FIELD: &str = "__delivery_options";
 
 const PR_IDLE: u32 = 0x00;
 const PR_PATH_REQUESTED: u32 = 0x01;
@@ -221,9 +221,49 @@ struct WorkerState {
     peer_crypto: Arc<Mutex<HashMap<String, PeerCrypto>>>,
     peer_identity_cache_path: PathBuf,
     selected_propagation_node: Arc<Mutex<Option<String>>>,
+    propagation_sync_state: Arc<Mutex<RuntimePropagationSyncState>>,
     shutdown_tx: watch::Sender<bool>,
     scheduler_handle: Option<tokio::task::JoinHandle<()>>,
     shutdown: bool,
+}
+
+#[derive(Debug, Clone)]
+struct RuntimePropagationSyncState {
+    sync_state: u32,
+    state_name: String,
+    sync_progress: f64,
+    messages_received: u32,
+    max_messages: u32,
+    selected_node: Option<String>,
+    last_sync_started: Option<i64>,
+    last_sync_completed: Option<i64>,
+    last_sync_error: Option<String>,
+}
+
+impl Default for RuntimePropagationSyncState {
+    fn default() -> Self {
+        Self {
+            sync_state: PR_IDLE,
+            state_name: "idle".to_string(),
+            sync_progress: 0.0,
+            messages_received: 0,
+            max_messages: 0,
+            selected_node: None,
+            last_sync_started: None,
+            last_sync_completed: None,
+            last_sync_error: None,
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct OutboundDeliveryOptionsCompat {
+    method: Option<String>,
+    stamp_cost: Option<u32>,
+    include_ticket: bool,
+    try_propagation_on_fail: bool,
+    source_private_key: Option<String>,
+    ticket: Option<String>,
 }
 
 #[derive(Clone, Copy)]
@@ -270,6 +310,117 @@ struct RuntimePropagationSyncParams {
     identity_private_key: Option<String>,
     #[serde(default)]
     max_messages: Option<u32>,
+}
+
+fn update_runtime_propagation_sync_state(
+    state: &Arc<Mutex<RuntimePropagationSyncState>>,
+    update: impl FnOnce(&mut RuntimePropagationSyncState),
+) {
+    if let Ok(mut guard) = state.lock() {
+        update(&mut guard);
+    }
+}
+
+fn parse_u32_field(value: &Value) -> Option<u32> {
+    match value {
+        Value::Number(number) => number.as_u64().and_then(|value| u32::try_from(value).ok()),
+        Value::String(value) => value.parse().ok(),
+        _ => None,
+    }
+}
+
+fn parse_bool_field(value: &Value) -> Option<bool> {
+    match value {
+        Value::Bool(value) => Some(*value),
+        Value::String(value) => value.parse().ok(),
+        _ => None,
+    }
+}
+
+fn parse_string_field(value: &Value) -> Option<String> {
+    value.as_str().map(str::trim).filter(|value| !value.is_empty()).map(|value| value.to_string())
+}
+
+fn merge_outbound_delivery_options(
+    api_options: &reticulum::rpc::OutboundDeliveryOptions,
+    record: &MessageRecord,
+) -> OutboundDeliveryOptionsCompat {
+    let mut out = extract_outbound_delivery_options(record);
+    if out.method.is_none() {
+        out.method = api_options.method.clone();
+    }
+    if out.stamp_cost.is_none() {
+        out.stamp_cost = api_options.stamp_cost;
+    }
+    out.include_ticket = api_options.include_ticket || out.include_ticket;
+    out.try_propagation_on_fail =
+        api_options.try_propagation_on_fail || out.try_propagation_on_fail;
+    if out.ticket.is_none() {
+        out.ticket = api_options.ticket.clone();
+    }
+    if out.source_private_key.is_none() {
+        out.source_private_key = api_options.source_private_key.clone();
+    }
+
+    out
+}
+
+fn extract_outbound_delivery_options(record: &MessageRecord) -> OutboundDeliveryOptionsCompat {
+    let mut out = OutboundDeliveryOptionsCompat::default();
+    let Some(fields) = record.fields.as_ref().and_then(Value::as_object) else {
+        return out;
+    };
+
+    if let Some(options) = fields.get(OUTBOUND_DELIVERY_OPTIONS_FIELD).and_then(Value::as_object) {
+        if let Some(method) = parse_string_field(options.get("method").unwrap_or(&Value::Null)) {
+            out.method = Some(method);
+        }
+        if let Some(cost) = parse_u32_field(options.get("stamp_cost").unwrap_or(&Value::Null)) {
+            out.stamp_cost = Some(cost);
+        }
+        if let Some(include_ticket) =
+            parse_bool_field(options.get("include_ticket").unwrap_or(&Value::Null))
+        {
+            out.include_ticket = include_ticket;
+        }
+        if let Some(try_propagation_on_fail) =
+            parse_bool_field(options.get("try_propagation_on_fail").unwrap_or(&Value::Null))
+        {
+            out.try_propagation_on_fail = try_propagation_on_fail;
+        }
+        if let Some(ticket) = parse_string_field(options.get("ticket").unwrap_or(&Value::Null)) {
+            out.ticket = Some(ticket);
+        }
+        if let Some(source_private_key) =
+            parse_string_field(options.get("source_private_key").unwrap_or(&Value::Null))
+        {
+            out.source_private_key = Some(source_private_key);
+        }
+    }
+
+    if let Some(lxmf) = fields
+        .get("_lxmf")
+        .and_then(Value::as_object)
+        .or_else(|| fields.get("lxmf").and_then(Value::as_object))
+    {
+        if out.method.is_none() {
+            if let Some(method) = parse_string_field(lxmf.get("method").unwrap_or(&Value::Null)) {
+                out.method = Some(method);
+            }
+        }
+        if out.stamp_cost.is_none() {
+            if let Some(cost) = parse_u32_field(lxmf.get("stamp_cost").unwrap_or(&Value::Null)) {
+                out.stamp_cost = Some(cost);
+            }
+        }
+        if let Some(include_ticket) =
+            parse_bool_field(lxmf.get("include_ticket").unwrap_or(&Value::Null))
+        {
+            out.include_ticket = include_ticket;
+        }
+    }
+
+    out
 }
 
 #[derive(Clone)]
@@ -739,7 +890,8 @@ async fn request_messages_from_propagation_node_live(
         .transpose()
         .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?
         .unwrap_or_default();
-    let max_messages = parsed.max_messages.unwrap_or(256).clamp(1, 4096) as usize;
+    let max_messages = parsed.max_messages.unwrap_or(256).clamp(1, 4096);
+    let max_messages_usize = max_messages as usize;
     let started_at = now_epoch_secs() as i64;
 
     let selected_node = state
@@ -751,7 +903,7 @@ async fn request_messages_from_propagation_node_live(
         .filter(|value| !value.is_empty());
     let Some(selected_node) = selected_node else {
         let completed = now_epoch_secs() as i64;
-        state.daemon.update_propagation_sync_state(|guard| {
+        update_runtime_propagation_sync_state(&state.propagation_sync_state, |guard| {
             guard.sync_state = PR_IDLE;
             guard.state_name = "idle".to_string();
             guard.sync_progress = 0.0;
@@ -800,7 +952,7 @@ async fn request_messages_from_propagation_node_live(
         .unwrap_or(selected_node.clone());
     let Some(relay_destination) = parse_destination_hex(&relay_peer) else {
         let completed = now_epoch_secs() as i64;
-        state.daemon.update_propagation_sync_state(|guard| {
+        update_runtime_propagation_sync_state(&state.propagation_sync_state, |guard| {
             guard.sync_state = PR_NO_PATH;
             guard.state_name = "no_path".to_string();
             guard.sync_progress = 0.0;
@@ -825,7 +977,7 @@ async fn request_messages_from_propagation_node_live(
     };
     let relay_hash = AddressHash::new(relay_destination);
 
-    state.daemon.update_propagation_sync_state(|guard| {
+    update_runtime_propagation_sync_state(&state.propagation_sync_state, |guard| {
         guard.sync_state = PR_PATH_REQUESTED;
         guard.state_name = "path_requested".to_string();
         guard.sync_progress = 0.05;
@@ -848,7 +1000,7 @@ async fn request_messages_from_propagation_node_live(
     }
     let Some(relay_identity) = relay_identity else {
         let completed = now_epoch_secs() as i64;
-        state.daemon.update_propagation_sync_state(|guard| {
+        update_runtime_propagation_sync_state(&state.propagation_sync_state, |guard| {
             guard.sync_state = PR_NO_PATH;
             guard.state_name = "no_path".to_string();
             guard.sync_progress = 0.0;
@@ -872,7 +1024,7 @@ async fn request_messages_from_propagation_node_live(
         }));
     };
 
-    state.daemon.update_propagation_sync_state(|guard| {
+    update_runtime_propagation_sync_state(&state.propagation_sync_state, |guard| {
         guard.sync_state = PR_LINK_ESTABLISHING;
         guard.state_name = "link_establishing".to_string();
         guard.sync_progress = 0.2;
@@ -883,7 +1035,7 @@ async fn request_messages_from_propagation_node_live(
     let link = transport.link(relay_destination.desc).await;
     if let Err(err) = await_link_activation(&transport, &link, PROPAGATION_LINK_TIMEOUT).await {
         let completed = now_epoch_secs() as i64;
-        state.daemon.update_propagation_sync_state(|guard| {
+        update_runtime_propagation_sync_state(&state.propagation_sync_state, |guard| {
             guard.sync_state = PR_LINK_FAILED;
             guard.state_name = "link_failed".to_string();
             guard.sync_progress = 0.0;
@@ -905,7 +1057,7 @@ async fn request_messages_from_propagation_node_live(
         }));
     }
 
-    state.daemon.update_propagation_sync_state(|guard| {
+    update_runtime_propagation_sync_state(&state.propagation_sync_state, |guard| {
         guard.sync_state = PR_LINK_ESTABLISHED;
         guard.state_name = "link_established".to_string();
         guard.sync_progress = 0.35;
@@ -937,7 +1089,7 @@ async fn request_messages_from_propagation_node_live(
     .await?
     .ok_or_else(|| std::io::Error::other("missing propagation request id"))?;
 
-    state.daemon.update_propagation_sync_state(|guard| {
+    update_runtime_propagation_sync_state(&state.propagation_sync_state, |guard| {
         guard.sync_state = PR_REQUEST_SENT;
         guard.state_name = "request_sent".to_string();
         guard.sync_progress = 0.5;
@@ -957,7 +1109,7 @@ async fn request_messages_from_propagation_node_live(
         propagation_error_from_response_value(&list_response)
     {
         let completed = now_epoch_secs() as i64;
-        state.daemon.update_propagation_sync_state(|guard| {
+        update_runtime_propagation_sync_state(&state.propagation_sync_state, |guard| {
             guard.sync_state = state_code;
             guard.state_name = state_name.to_string();
             guard.sync_progress = 0.0;
@@ -986,16 +1138,16 @@ async fn request_messages_from_propagation_node_live(
         )
     })?;
 
-    state.daemon.update_propagation_sync_state(|guard| {
+    update_runtime_propagation_sync_state(&state.propagation_sync_state, |guard| {
         guard.sync_state = PR_RESPONSE_RECEIVED;
         guard.state_name = "response_received".to_string();
         guard.sync_progress = 0.65;
     });
 
-    let wants = available_transient_ids.into_iter().take(max_messages).collect::<Vec<_>>();
+    let wants = available_transient_ids.into_iter().take(max_messages_usize).collect::<Vec<_>>();
     if wants.is_empty() {
         let completed = now_epoch_secs() as i64;
-        state.daemon.update_propagation_sync_state(|guard| {
+        update_runtime_propagation_sync_state(&state.propagation_sync_state, |guard| {
             guard.sync_state = PR_COMPLETE;
             guard.state_name = "complete".to_string();
             guard.sync_progress = 1.0;
@@ -1031,7 +1183,7 @@ async fn request_messages_from_propagation_node_live(
             .await?
             .ok_or_else(|| std::io::Error::other("missing propagation get request id"))?;
 
-    state.daemon.update_propagation_sync_state(|guard| {
+    update_runtime_propagation_sync_state(&state.propagation_sync_state, |guard| {
         guard.sync_state = PR_REQUEST_SENT;
         guard.state_name = "request_sent".to_string();
         guard.sync_progress = 0.75;
@@ -1051,7 +1203,7 @@ async fn request_messages_from_propagation_node_live(
         propagation_error_from_response_value(&get_response)
     {
         let completed = now_epoch_secs() as i64;
-        state.daemon.update_propagation_sync_state(|guard| {
+        update_runtime_propagation_sync_state(&state.propagation_sync_state, |guard| {
             guard.sync_state = state_code;
             guard.state_name = state_name.to_string();
             guard.sync_progress = 0.0;
@@ -1080,7 +1232,7 @@ async fn request_messages_from_propagation_node_live(
         )
     })?;
 
-    state.daemon.update_propagation_sync_state(|guard| {
+    update_runtime_propagation_sync_state(&state.propagation_sync_state, |guard| {
         guard.sync_state = PR_RECEIVING;
         guard.state_name = "receiving".to_string();
         guard.sync_progress = 0.85;
@@ -1133,11 +1285,11 @@ async fn request_messages_from_propagation_node_live(
     }
 
     let completed = now_epoch_secs() as i64;
-    state.daemon.update_propagation_sync_state(|guard| {
+    update_runtime_propagation_sync_state(&state.propagation_sync_state, |guard| {
         guard.sync_state = PR_COMPLETE;
         guard.state_name = "complete".to_string();
         guard.sync_progress = 1.0;
-        guard.messages_received = propagation_messages.len();
+        guard.messages_received = u32::try_from(propagation_messages.len()).unwrap_or(u32::MAX);
         guard.last_sync_started = Some(started_at);
         guard.last_sync_completed = Some(completed);
         guard.last_sync_error = None;
@@ -1266,9 +1418,6 @@ async fn wait_for_link_request_response(
                 match result {
                     Ok(event) => {
                         if event.destination != expected_destination {
-                            continue;
-                        }
-                        if event.context != Some(PacketContext::Response) {
                             continue;
                         }
                         if let Some((response_id, payload)) = parse_link_response_frame(event.data.as_slice()) {
@@ -1690,16 +1839,17 @@ impl WorkerState {
                                         .duration_since(UNIX_EPOCH)
                                         .map(|value| value.as_secs() as i64)
                                         .unwrap_or(0);
-                                    let app_data_hex =
-                                        (!app_data.is_empty()).then(|| hex::encode(app_data));
-                                    let aspect = lxmf_aspect_from_name_hash(&event.name_hash);
+                                    let app_data_hex = (!app_data.is_empty()).then(|| hex::encode(app_data));
+                                    let aspect =
+                                        lxmf_aspect_from_name_hash(dest.desc.name.as_name_hash_slice());
                                     if aspect.as_deref() == Some("lxmf.propagation") {
                                         if let Ok(mut nodes) = known_propagation_nodes.lock() {
                                             nodes.insert(peer.clone());
                                         }
                                     }
                                     let hops = Some(u32::from(event.hops));
-                                    let interface = Some(hex::encode(event.interface.as_slice()));
+                                    let interface =
+                                        Some(hex::encode(event.interface.as_slice()));
 
                                     let _ = daemon_announce.accept_announce_with_metadata(
                                         peer,
@@ -1764,6 +1914,7 @@ impl WorkerState {
             peer_crypto,
             peer_identity_cache_path,
             selected_propagation_node,
+            propagation_sync_state: Arc::new(Mutex::new(RuntimePropagationSyncState::default())),
             shutdown_tx,
             scheduler_handle,
             shutdown: false,
@@ -1825,14 +1976,15 @@ impl OutboundBridge for EmbeddedTransportBridge {
     fn deliver(
         &self,
         record: &MessageRecord,
-        options: &OutboundDeliveryOptions,
+        options: &reticulum::rpc::OutboundDeliveryOptions,
     ) -> Result<(), std::io::Error> {
         let destination = parse_destination_hex_required(&record.destination)?;
+        let options = merge_outbound_delivery_options(options, record);
         let peer_info =
             self.peer_crypto.lock().expect("peer map").get(&record.destination).copied();
         let peer_identity = peer_info.map(|info| info.identity);
         let (signer, source_hash) = if let Some(source_private_key) =
-            clean_non_empty(options.source_private_key.clone())
+            clean_non_empty(options.source_private_key)
         {
             let source_key_bytes = hex::decode(source_private_key.trim()).map_err(|_| {
                 std::io::Error::new(
@@ -2367,7 +2519,7 @@ fn handle_receipt_event(daemon: &RpcDaemon, event: ReceiptEvent) -> Result<(), s
         })),
     })?;
     if let Some(exclude_relays) = parse_alternative_relay_request_status(status.as_str()) {
-        daemon.emit_event(RpcEvent {
+        daemon.push_event(RpcEvent {
             event_type: "alternative_relay_request".to_string(),
             payload: json!({
                 "message_id": message_id,
@@ -2812,18 +2964,6 @@ fn annotate_inbound_transport_metadata(
 ) {
     let mut transport = serde_json::Map::new();
     transport.insert("ratchet_used".to_string(), Value::Bool(event.ratchet_used));
-    if let Some(context) = event.context {
-        transport.insert("context".to_string(), Value::from(context as u8));
-    }
-    if let Some(request_id) = event.request_id {
-        transport.insert("request_id".to_string(), Value::String(hex::encode(request_id)));
-    }
-    if let Some(hops) = event.hops {
-        transport.insert("hops".to_string(), Value::from(hops));
-    }
-    if let Some(interface) = event.interface.as_ref() {
-        transport.insert("interface".to_string(), Value::String(hex::encode(interface.as_slice())));
-    }
 
     let mut root = match record.fields.take() {
         Some(Value::Object(existing)) => existing,
@@ -3323,21 +3463,19 @@ fn parse_peer_name_from_app_data(app_data: &[u8]) -> Option<(String, String)> {
     Some((name, "app_data_utf8".to_string()))
 }
 
-fn lxmf_aspect_from_name_hash(
-    name_hash: &[u8; reticulum::destination::NAME_HASH_LENGTH],
-) -> Option<String> {
+fn lxmf_aspect_from_name_hash(name_hash: &[u8]) -> Option<String> {
     let delivery = DestinationName::new("lxmf", "delivery");
-    if delivery.as_name_hash_slice() == name_hash.as_slice() {
+    if name_hash == delivery.as_name_hash_slice() {
         return Some("lxmf.delivery".to_string());
     }
 
     let propagation = DestinationName::new("lxmf", "propagation");
-    if propagation.as_name_hash_slice() == name_hash.as_slice() {
+    if name_hash == propagation.as_name_hash_slice() {
         return Some("lxmf.propagation".to_string());
     }
 
     let rmsp_maps = DestinationName::new("rmsp", "maps");
-    if rmsp_maps.as_name_hash_slice() == name_hash.as_slice() {
+    if name_hash == rmsp_maps.as_name_hash_slice() {
         return Some("rmsp.maps".to_string());
     }
 
