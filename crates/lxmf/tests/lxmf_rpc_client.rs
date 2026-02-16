@@ -82,14 +82,14 @@ fn rpc_client_formats_status_line_timeouts_cleanly() {
 
     let worker = thread::spawn(move || {
         let (_stream, _) = listener.accept().unwrap();
-        std::thread::sleep(Duration::from_millis(350));
+        std::thread::sleep(Duration::from_millis(140));
     });
 
     let client = RpcClient::new_with_timeouts(
         &format!("127.0.0.1:{}", addr.port()),
-        Duration::from_millis(100),
-        Duration::from_millis(120),
-        Duration::from_millis(120),
+        Duration::from_millis(40),
+        Duration::from_millis(60),
+        Duration::from_millis(60),
     );
     let err = client.call("status", None).unwrap_err().to_string();
 

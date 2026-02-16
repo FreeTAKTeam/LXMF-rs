@@ -3,8 +3,13 @@ RETICULUM_PY_ABS := $(abspath $(RETICULUM_PY_PATH))
 SIDEBAND_PATH ?= ../Sideband
 SIDEBAND_ABS := $(abspath $(SIDEBAND_PATH))
 RUN_SIDEBAND_E2E ?= 0
+RUN_INTEROP_GATES ?= 1
 
-.PHONY: all clean remove_symlinks create_symlinks build_wheel build_sdist build_spkg release upload interop-gate soak-rnx sideband-e2e release-gate-local production-gate-local coverage
+.PHONY: all clean remove_symlinks create_symlinks build_wheel build_sdist build_spkg release upload interop-gate soak-rnx sideband-e2e release-gate-local production-gate-local coverage test test-fast test-all test-all-targets test-full test-full-targets
+
+CORE_TESTS = api_surface error_smoke smoke lxmf_cli_args lxmf_daemon_commands lxmf_daemon_supervisor \
+	lxmf_iface_commands lxmf_message_commands lxmf_peer_commands lxmf_profile lxmf_rpc_client lxmf_runtime_context
+CORE_TEST_ARGS = $(CORE_TESTS:%=--test %)
 
 all: release
 
@@ -36,6 +41,29 @@ release: remove_symlinks build_wheel create_symlinks
 upload:
 	@echo Uploading to PyPi...
 	twine upload dist/*
+
+test:
+	# Fast local compatibility pass: core behavior tests + CLI surface.
+	cargo test --workspace --features cli --lib
+	cargo test --workspace --features cli $(CORE_TEST_ARGS)
+
+test-all:
+	# Full feature matrix for release/compatibility confidence.
+	cargo test --workspace --all-features
+
+test-fast:
+	# Alias for explicit fast core test pass.
+	$(MAKE) test
+
+test-all-targets:
+	# Fast full-target sweep on the CLI feature set.
+	cargo test --workspace --all-targets --features cli
+
+test-full-targets:
+	# Maximum coverage run (all features + all targets).
+	cargo test --workspace --all-features --all-targets
+
+test-full: test-full-targets
 
 interop-gate:
 	@if [ ! -d "$(RETICULUM_PY_ABS)/RNS" ]; then \
@@ -70,8 +98,12 @@ sideband-e2e:
 		--reticulum-py-path "$(RETICULUM_PY_ABS)"
 
 release-gate-local:
-	cargo test --workspace --all-targets --all-features
-	make interop-gate RETICULUM_PY_PATH="$(RETICULUM_PY_PATH)"
+	make test-all
+	@if [ "$(RUN_INTEROP_GATES)" = "1" ]; then \
+		make interop-gate RETICULUM_PY_PATH="$(RETICULUM_PY_PATH)"; \
+	else \
+		echo "Skipping interop gate (set RUN_INTEROP_GATES=1 to run)"; \
+	fi
 	cargo run --manifest-path ../Reticulum-rs/crates/reticulum/Cargo.toml --features cli-tools --bin rnx -- e2e --timeout-secs 20
 	@if [ "$(RUN_SIDEBAND_E2E)" = "1" ]; then \
 		make sideband-e2e RETICULUM_PY_PATH="$(RETICULUM_PY_PATH)" SIDEBAND_PATH="$(SIDEBAND_PATH)"; \

@@ -511,12 +511,12 @@ fn spawn_scripted_rpc_server(
         let start = Instant::now();
         let mut idx = 0usize;
 
-        while idx < expected.len() && start.elapsed() < Duration::from_secs(10) {
+        while idx < expected.len() && start.elapsed() < Duration::from_secs(3) {
             match listener.accept() {
                 Ok((mut stream, _)) => {
                     stream.set_nonblocking(false).expect("set stream blocking");
-                    let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
-                    let _ = stream.set_write_timeout(Some(Duration::from_secs(2)));
+                    let _ = stream.set_read_timeout(Some(Duration::from_secs(1)));
+                    let _ = stream.set_write_timeout(Some(Duration::from_secs(1)));
                     let request = read_http_request(&mut stream);
                     assert_eq!(request.path, "/rpc");
                     assert_eq!(request.http_method, "POST");
@@ -548,7 +548,7 @@ fn spawn_scripted_rpc_server(
                     idx += 1;
                 }
                 Err(err) if err.kind() == ErrorKind::WouldBlock => {
-                    thread::sleep(Duration::from_millis(20));
+                    thread::sleep(Duration::from_millis(5));
                 }
                 Err(err) => panic!("accept failed: {err}"),
             }
@@ -595,10 +595,10 @@ fn read_http_request(stream: &mut TcpStream) -> HttpRequest {
             Err(err)
                 if err.kind() == ErrorKind::WouldBlock || err.kind() == ErrorKind::Interrupted =>
             {
-                if start.elapsed() > Duration::from_secs(3) {
+                if start.elapsed() > Duration::from_secs(1) {
                     panic!("timed out while reading http request body");
                 }
-                thread::sleep(Duration::from_millis(10));
+                thread::sleep(Duration::from_millis(2));
                 continue;
             }
             Err(err) => panic!("read http request failed: {err}"),

@@ -7,7 +7,7 @@ use lxmf::cli::profile::{init_profile, load_profile_settings, profile_paths};
 use lxmf::cli::rpc_client::RpcClient;
 use serde::Serialize;
 use serde_json::{json, Value};
-use std::io::{ErrorKind, Read, Write};
+use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -114,15 +114,17 @@ fn iface_apply_restart_preserves_external_mode() {
 fn spawn_apply_rpc_server() -> (String, thread::JoinHandle<Vec<String>>) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let addr = listener.local_addr().unwrap();
-    listener.set_nonblocking(true).unwrap();
 
     let worker = thread::spawn(move || {
         let mut paths = Vec::new();
         let start = Instant::now();
 
-        while start.elapsed() < Duration::from_secs(5) && paths.len() < 2 {
+        while start.elapsed() < Duration::from_secs(2) && paths.len() < 2 {
             match listener.accept() {
                 Ok((mut stream, _)) => {
+                    stream
+                        .set_read_timeout(Some(Duration::from_millis(250)))
+                        .expect("set read timeout");
                     let request = read_http_request(&mut stream);
                     assert_eq!(request.path, "/rpc");
                     assert_eq!(request.http_method, "POST");
@@ -137,9 +139,6 @@ fn spawn_apply_rpc_server() -> (String, thread::JoinHandle<Vec<String>>) {
                     let response =
                         RpcResponse { id: paths.len() as u64, result: Some(result), error: None };
                     write_http_response(&mut stream, 200, &encode_frame(&response));
-                }
-                Err(err) if err.kind() == ErrorKind::WouldBlock => {
-                    thread::sleep(Duration::from_millis(20));
                 }
                 Err(err) => panic!("accept failed: {err}"),
             }

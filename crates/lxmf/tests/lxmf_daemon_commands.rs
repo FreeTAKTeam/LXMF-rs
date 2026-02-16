@@ -7,14 +7,36 @@ use lxmf::cli::profile::{init_profile, load_profile_settings, save_profile_setti
 use std::os::unix::fs::PermissionsExt;
 use std::sync::{Mutex, OnceLock};
 
+const STARTUP_GRACE_ENV_MS: &str = "LXMF_DAEMON_STARTUP_GRACE_MS";
+const STARTUP_POLL_ENV_MS: &str = "LXMF_DAEMON_STARTUP_POLL_MS";
+
 fn env_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| Mutex::new(()))
 }
 
+struct StartupTimingGuard;
+
+impl StartupTimingGuard {
+    fn fast() -> Self {
+        // Keep startup checks fast for deterministic unit test runtime.
+        std::env::set_var(STARTUP_GRACE_ENV_MS, "150");
+        std::env::set_var(STARTUP_POLL_ENV_MS, "10");
+        Self
+    }
+}
+
+impl Drop for StartupTimingGuard {
+    fn drop(&mut self) {
+        std::env::remove_var(STARTUP_GRACE_ENV_MS);
+        std::env::remove_var(STARTUP_POLL_ENV_MS);
+    }
+}
+
 #[test]
 fn daemon_start_uses_profile_managed_when_flag_omitted() {
     let _guard = env_lock().lock().unwrap();
+    let _startup = StartupTimingGuard::fast();
     let temp = tempfile::tempdir().unwrap();
     std::env::set_var("LXMF_CONFIG_ROOT", temp.path());
 
@@ -49,6 +71,7 @@ fn daemon_start_uses_profile_managed_when_flag_omitted() {
 #[test]
 fn daemon_start_external_without_managed_flag_fails() {
     let _guard = env_lock().lock().unwrap();
+    let _startup = StartupTimingGuard::fast();
     let temp = tempfile::tempdir().unwrap();
     std::env::set_var("LXMF_CONFIG_ROOT", temp.path());
 

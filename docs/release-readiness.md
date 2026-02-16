@@ -55,7 +55,9 @@ This checklist is the publication gate for `lxmf-rs`.
 - Required checks:
   - `git ls-files '*.rs' | xargs rustfmt --edition 2021 --check`
   - `cargo clippy --workspace --all-targets -- -D warnings`
-  - `cargo test --workspace --all-targets`
+  - `make test`
+  - `make test-all` (compatibility pass)
+  - `make test-full-targets` (full-target sweep when validating release binaries/examples)
 
 ## 6. Release metadata
 

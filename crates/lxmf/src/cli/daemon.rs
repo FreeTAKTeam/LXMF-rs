@@ -16,6 +16,8 @@ const INFERRED_TRANSPORT_BIND: &str = "127.0.0.1:0";
 const DEFAULT_MANAGED_ANNOUNCE_INTERVAL_SECS: u64 = 900;
 const STARTUP_PROCESS_GRACE: Duration = Duration::from_secs(3);
 const STARTUP_POLL_INTERVAL: Duration = Duration::from_millis(80);
+const STARTUP_PROCESS_GRACE_ENV_MS: &str = "LXMF_DAEMON_STARTUP_GRACE_MS";
+const STARTUP_POLL_INTERVAL_ENV_MS: &str = "LXMF_DAEMON_STARTUP_POLL_MS";
 
 #[derive(Debug, Clone, Serialize)]
 pub struct DaemonStatus {
@@ -140,7 +142,8 @@ impl DaemonSupervisor {
         };
         let pid = child.id();
 
-        let startup_deadline = Instant::now() + STARTUP_PROCESS_GRACE;
+        let startup_deadline = Instant::now() + startup_process_grace();
+        let startup_poll_interval = startup_poll_interval();
         loop {
             if let Some(status) =
                 child.try_wait().context("failed to check reticulumd process status")?
@@ -158,7 +161,7 @@ impl DaemonSupervisor {
             if Instant::now() >= startup_deadline {
                 break;
             }
-            std::thread::sleep(STARTUP_POLL_INTERVAL);
+            std::thread::sleep(startup_poll_interval);
         }
 
         let mut pid_file = File::create(&paths.daemon_pid)
@@ -322,6 +325,22 @@ fn should_infer_transport(profile: &str) -> bool {
 
 fn clean_non_empty(value: Option<String>) -> Option<String> {
     value.map(|value| value.trim().to_string()).filter(|value| !value.is_empty())
+}
+
+fn startup_process_grace() -> Duration {
+    duration_ms_from_env(STARTUP_PROCESS_GRACE_ENV_MS).unwrap_or(STARTUP_PROCESS_GRACE)
+}
+
+fn startup_poll_interval() -> Duration {
+    duration_ms_from_env(STARTUP_POLL_INTERVAL_ENV_MS)
+        .map(|duration| duration.max(Duration::from_millis(1)))
+        .unwrap_or(STARTUP_POLL_INTERVAL)
+}
+
+fn duration_ms_from_env(key: &str) -> Option<Duration> {
+    let raw = std::env::var(key).ok()?;
+    let millis = raw.parse::<u64>().ok()?;
+    Some(Duration::from_millis(millis))
 }
 
 fn startup_failure_hint(log_path: &PathBuf, rpc: &str) -> Option<String> {

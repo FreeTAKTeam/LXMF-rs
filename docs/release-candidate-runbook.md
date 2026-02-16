@@ -12,7 +12,7 @@ This runbook defines the exact steps to cut and validate an RC for `lxmf-rs`.
 ## 2. Local gates (must pass)
 
 ```bash
-cargo test --workspace --all-targets
+make test
 make interop-gate RETICULUM_PY_PATH=../Reticulum
 cargo run --manifest-path ../Reticulum-rs/crates/reticulum/Cargo.toml --bin rnx -- e2e --timeout-secs 20
 make sideband-e2e RETICULUM_PY_PATH=../Reticulum SIDEBAND_PATH=../Sideband

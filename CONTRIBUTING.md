@@ -15,7 +15,11 @@ Run these before opening a PR:
 ```bash
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo test --workspace --all-targets
+make test
+# Optional compatibility coverage:
+# make test-all
+# Full-target sweep:
+# make test-full-targets
 cargo doc --workspace --no-deps
 cargo deny check
 cargo audit

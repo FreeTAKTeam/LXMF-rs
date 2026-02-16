@@ -1,6 +1,6 @@
 # LXMF Parity Matrix
 
-Last verified: 2026-02-09 (`cargo fmt -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace --all-targets`)
+Last verified: 2026-02-16 (`cargo fmt -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace --all-features`)
 
 Status legend: `not-started` | `partial` | `done`.
 

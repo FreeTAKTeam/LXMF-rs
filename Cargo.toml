@@ -3,3 +3,9 @@ resolver = "2"
 members = [
   "crates/lxmf",
 ]
+
+[patch.crates-io]
+reticulum-rs = { path = "../Reticulum-rs/crates/reticulum" }
+
+[patch."https://github.com/FreeTAKTeam/Reticulum-rs.git"]
+reticulum-rs = { path = "../Reticulum-rs/crates/reticulum" }

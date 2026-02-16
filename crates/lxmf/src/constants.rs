@@ -13,6 +13,7 @@ pub const FIELD_TICKET: u8 = 0x0C;
 pub const FIELD_EVENT: u8 = 0x0D;
 pub const FIELD_RNR_REFS: u8 = 0x0E;
 pub const FIELD_RENDERER: u8 = 0x0F;
+pub const FIELD_COLUMBA_META: u8 = 0x70;
 pub const FIELD_CUSTOM_TYPE: u8 = 0xFB;
 pub const FIELD_CUSTOM_DATA: u8 = 0xFC;
 pub const FIELD_CUSTOM_META: u8 = 0xFD;

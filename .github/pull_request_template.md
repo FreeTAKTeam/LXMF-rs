@@ -9,7 +9,9 @@
 ## Validation
 - [ ] `cargo fmt --all -- --check`
 - [ ] `cargo clippy --workspace --all-targets --all-features -- -D warnings`
-- [ ] `cargo test --workspace --all-targets`
+- [ ] `make test`
+- [ ] `make test-all` (optional compatibility pass)
+- [ ] `make test-full-targets` (optional full-target parity check)
 - [ ] `cargo doc --workspace --no-deps`
 - [ ] `cargo deny check`
 - [ ] `cargo audit`

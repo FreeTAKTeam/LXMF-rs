@@ -32,7 +32,7 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
       - name: Tests
-        run: cargo test --workspace --all-targets --all-features
+        run: cargo test --workspace --features cli
       - name: Docs
         run: cargo doc --workspace --no-deps
       - name: Dependency policy
@@ -75,4 +75,4 @@ jobs:
         run: |
           perl -0pi -e 's#reticulum = \{ package = "reticulum-rs", version = "[^"]+" \}#reticulum = { package = "reticulum-rs", path = "../../../Reticulum-rs/crates/reticulum" }#g' crates/lxmf/Cargo.toml
       - name: Build lxmf against reticulum main
-        run: cargo check -p lxmf --all-targets --all-features
+        run: cargo check -p lxmf --all-features

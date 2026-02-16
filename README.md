@@ -42,6 +42,13 @@ cargo check --workspace --all-targets
 # CLI-enabled build
 cargo check --workspace --all-targets --all-features
 
+# Fast local test run (core suite + CLI)
+make test
+
+# Optional compatibility/fullness sweeps
+make test-all
+make test-full-targets
+
 # Run CLI
 cargo run -p lxmf --features cli --bin lxmf -- --help
 ```
