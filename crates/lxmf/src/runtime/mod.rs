@@ -3,7 +3,13 @@ use crate::cli::profile::{
     load_profile_settings, load_reticulum_config, profile_paths, resolve_identity_path,
     resolve_runtime_profile_name, InterfaceEntry, ProfilePaths, ProfileSettings,
 };
+#[cfg(not(reticulum_api_v2))]
 use crate::helpers::{display_name_from_app_data, is_msgpack_array_prefix, normalize_display_name};
+#[cfg(reticulum_api_v2)]
+use crate::helpers::{
+    display_name_from_app_data, is_msgpack_array_prefix, normalize_display_name,
+    pn_peering_cost_from_app_data, pn_stamp_cost_flexibility_from_app_data,
+};
 use crate::message::{Message, WireMessage};
 use crate::payload_fields::{decode_transport_fields_json, CommandEntry, WireFields};
 use crate::LxmfError;
@@ -1870,6 +1876,9 @@ impl WorkerState {
                                             None,
                                             None,
                                             None,
+                                            None,
+                                            Some(pn_stamp_cost_flexibility_from_app_data(app_data)),
+                                            Some(pn_peering_cost_from_app_data(app_data)),
                                             aspect,
                                             hops,
                                             interface,
