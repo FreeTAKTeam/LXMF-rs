@@ -259,7 +259,7 @@ pub fn rmpv_to_json(value: &Value) -> Option<JsonValue> {
                 }?;
                 if key_str == "112" {
                     if let Value::String(text) = value {
-                        if let Some(decoded) = decode_columba_meta(text.as_str()) {
+                        if let Some(decoded) = text.as_str().and_then(decode_columba_meta) {
                             object.insert(key_str, decoded);
                             continue;
                         }
