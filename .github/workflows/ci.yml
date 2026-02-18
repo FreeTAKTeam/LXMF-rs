@@ -13,6 +13,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Remove local reticulum workspace patch for CI
+        run: |
+          awk '
+          /^\[patch\.crates-io\]/ || /^\[patch\."https:\/\/github\.com\/FreeTAKTeam\/Reticulum-rs\.git"\]/ {
+            skip = 1
+            next
+          }
+          /^\[/ {
+            if (skip) { skip = 0 }
+            print
+            next
+          }
+          {
+            if (!skip) print
+          }
+          ' Cargo.toml > Cargo.toml.no-patch
+          mv Cargo.toml.no-patch Cargo.toml
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy

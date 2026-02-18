@@ -936,13 +936,14 @@ dependencies = [
 [[package]]
 name = "reticulum-rs"
 version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "620bbb82f8f4cfb221fe1ab723783d9ebae77648e5282042166efcea33442b4f"
 dependencies = [
  "aes",
  "bzip2",
  "cbc",
  "crypto-common",
  "ed25519-dalek",
- "hex",
  "hkdf",
  "hmac",
  "log",

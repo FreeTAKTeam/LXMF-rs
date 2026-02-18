@@ -341,6 +341,7 @@ fn parse_string_field(value: &Value) -> Option<String> {
     value.as_str().map(str::trim).filter(|value| !value.is_empty()).map(|value| value.to_string())
 }
 
+#[cfg(reticulum_api_v2)]
 fn merge_outbound_delivery_options(
     api_options: &reticulum::rpc::OutboundDeliveryOptions,
     record: &MessageRecord,
@@ -363,6 +364,11 @@ fn merge_outbound_delivery_options(
     }
 
     out
+}
+
+#[cfg(not(reticulum_api_v2))]
+fn merge_outbound_delivery_options(record: &MessageRecord) -> OutboundDeliveryOptionsCompat {
+    extract_outbound_delivery_options(record)
 }
 
 fn extract_outbound_delivery_options(record: &MessageRecord) -> OutboundDeliveryOptionsCompat {
@@ -1839,7 +1845,6 @@ impl WorkerState {
                                         .duration_since(UNIX_EPOCH)
                                         .map(|value| value.as_secs() as i64)
                                         .unwrap_or(0);
-                                    let app_data_hex = (!app_data.is_empty()).then(|| hex::encode(app_data));
                                     let aspect =
                                         lxmf_aspect_from_name_hash(dest.desc.name.as_name_hash_slice());
                                     if aspect.as_deref() == Some("lxmf.propagation") {
@@ -1847,27 +1852,42 @@ impl WorkerState {
                                             nodes.insert(peer.clone());
                                         }
                                     }
-                                    let hops = Some(u32::from(event.hops));
-                                    let interface =
-                                        Some(hex::encode(event.interface.as_slice()));
+                                    #[cfg(reticulum_api_v2)]
+                                    {
+                                        let app_data_hex = (!app_data.is_empty())
+                                            .then(|| hex::encode(app_data));
+                                        let hops = Some(u32::from(event.hops));
+                                        let interface =
+                                            Some(hex::encode(event.interface.as_slice()));
 
-                                    let _ = daemon_announce.accept_announce_with_metadata(
-                                        peer,
-                                        timestamp,
-                                        peer_name,
-                                        peer_name_source,
-                                        app_data_hex,
-                                        None,
-                                        None,
-                                        None,
-                                        None,
-                                        aspect,
-                                        hops,
-                                        interface,
-                                        None,
-                                        None,
-                                        None,
-                                    );
+                                        let _ = daemon_announce.accept_announce_with_metadata(
+                                            peer,
+                                            timestamp,
+                                            peer_name,
+                                            peer_name_source,
+                                            app_data_hex,
+                                            None,
+                                            None,
+                                            None,
+                                            None,
+                                            aspect,
+                                            hops,
+                                            interface,
+                                            None,
+                                            None,
+                                            None,
+                                        );
+                                    }
+
+                                    #[cfg(not(reticulum_api_v2))]
+                                    {
+                                        let _ = daemon_announce.accept_announce_with_details(
+                                            peer,
+                                            timestamp,
+                                            peer_name,
+                                            peer_name_source,
+                                        );
+                                    }
                                 }
                                 Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
                                 Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
@@ -1972,14 +1992,13 @@ impl EmbeddedTransportBridge {
     }
 }
 
-impl OutboundBridge for EmbeddedTransportBridge {
-    fn deliver(
+impl EmbeddedTransportBridge {
+    fn deliver_with_options(
         &self,
         record: &MessageRecord,
-        options: &reticulum::rpc::OutboundDeliveryOptions,
+        options: OutboundDeliveryOptionsCompat,
     ) -> Result<(), std::io::Error> {
         let destination = parse_destination_hex_required(&record.destination)?;
-        let options = merge_outbound_delivery_options(options, record);
         let peer_info =
             self.peer_crypto.lock().expect("peer map").get(&record.destination).copied();
         let peer_identity = peer_info.map(|info| info.identity);
@@ -2468,6 +2487,22 @@ impl OutboundBridge for EmbeddedTransportBridge {
         });
 
         Ok(())
+    }
+}
+
+impl OutboundBridge for EmbeddedTransportBridge {
+    #[cfg(reticulum_api_v2)]
+    fn deliver(
+        &self,
+        record: &MessageRecord,
+        options: &reticulum::rpc::OutboundDeliveryOptions,
+    ) -> Result<(), std::io::Error> {
+        self.deliver_with_options(record, merge_outbound_delivery_options(options, record))
+    }
+
+    #[cfg(not(reticulum_api_v2))]
+    fn deliver(&self, record: &MessageRecord) -> Result<(), std::io::Error> {
+        self.deliver_with_options(record, merge_outbound_delivery_options(record))
     }
 }
 
