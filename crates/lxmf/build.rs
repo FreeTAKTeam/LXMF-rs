@@ -7,10 +7,23 @@ use serde_json::Value;
 
 fn main() {
     println!("cargo:rustc-check-cfg=cfg(reticulum_api_v2)");
-    println!("cargo:rerun-if-changed=build.rs");
+    emit_rerun_markers();
 
     if is_reticulum_api_v2() {
         println!("cargo:rustc-cfg=reticulum_api_v2");
+    }
+}
+
+fn emit_rerun_markers() {
+    println!("cargo:rerun-if-changed=build.rs");
+
+    // In monorepo mode we inspect reticulum source directly for API shape detection,
+    // so build script reruns must include those files.
+    if let Some(manifest_path) = monorepo_reticulum_manifest_path() {
+        println!("cargo:rerun-if-changed={}", manifest_path.display());
+        if let Some(crate_root) = manifest_path.parent() {
+            println!("cargo:rerun-if-changed={}", crate_root.join("src").display());
+        }
     }
 }
 
