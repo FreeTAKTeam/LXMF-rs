@@ -84,23 +84,32 @@ pub fn run(cli: &Cli, command: &ProfileCommand, output: &Output) -> Result<()> {
 
             let name = resolve_command_profile_name(name.as_deref(), &cli.profile)?;
             let mut profile = load_profile_settings(&name)?;
-
-            if *clear_display_name {
-                profile.display_name = None;
+            let previous_display_name = profile.display_name.clone();
+            let next_display_name = if *clear_display_name {
+                None
             } else if let Some(display_name) = display_name {
-                profile.display_name = Some(normalize_display_name(display_name)?);
-            }
+                Some(normalize_display_name(display_name)?)
+            } else {
+                return Err(anyhow!(
+                    "no changes requested; use --display-name or --clear-display-name"
+                ));
+            };
+            profile.display_name = next_display_name;
+
+            let did_display_name_change = previous_display_name != profile.display_name;
 
             save_profile_settings(&profile)?;
 
             let supervisor = DaemonSupervisor::new(&name, profile.clone());
             if profile.managed {
-                if let Ok(status) = supervisor.status() {
-                    if status.running {
-                        if let Err(err) = supervisor.restart(None, Some(profile.managed), None) {
-                            eprintln!(
-                                "warning: profile display name was updated but daemon restart failed: {err}"
-                            );
+                if did_display_name_change {
+                    if let Ok(status) = supervisor.status() {
+                        if status.running {
+                            if let Err(err) = supervisor.restart(None, Some(profile.managed), None) {
+                                eprintln!(
+                                    "warning: profile display name was updated but daemon restart failed: {err}"
+                                );
+                            }
                         }
                     }
                 }
