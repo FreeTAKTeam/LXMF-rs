@@ -1,5 +1,6 @@
 use crate::cli::app::{Cli, ProfileAction, ProfileCommand};
 use crate::cli::output::Output;
+use crate::cli::daemon::DaemonSupervisor;
 use crate::cli::profile::{
     clear_selected_profile, export_identity, import_identity, init_profile, list_profiles,
     load_profile_settings, normalize_display_name, profile_exists, profile_paths, remove_profile,
@@ -91,6 +92,20 @@ pub fn run(cli: &Cli, command: &ProfileCommand, output: &Output) -> Result<()> {
             }
 
             save_profile_settings(&profile)?;
+
+            let supervisor = DaemonSupervisor::new(&name, profile.clone());
+            if profile.managed {
+                if let Ok(status) = supervisor.status() {
+                    if status.running {
+                        if let Err(err) = supervisor.restart(None, Some(profile.managed), None) {
+                            eprintln!(
+                                "warning: profile display name was updated but daemon restart failed: {err}"
+                            );
+                        }
+                    }
+                }
+            }
+
             output.emit_status(&json!({
                 "profile": name,
                 "display_name": profile.display_name,
