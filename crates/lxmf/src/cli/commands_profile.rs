@@ -105,7 +105,8 @@ pub fn run(cli: &Cli, command: &ProfileCommand, output: &Output) -> Result<()> {
                 if did_display_name_change {
                     if let Ok(status) = supervisor.status() {
                         if status.running {
-                            if let Err(err) = supervisor.restart(None, Some(profile.managed), None) {
+                            if let Err(err) = supervisor.restart(None, Some(profile.managed), None)
+                            {
                                 eprintln!(
                                     "warning: profile display name was updated but daemon restart failed: {err}"
                                 );
