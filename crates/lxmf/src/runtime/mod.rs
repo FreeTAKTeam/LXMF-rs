@@ -3435,11 +3435,13 @@ fn rmpv_to_json(value: &rmpv::Value) -> Option<Value> {
                     }
                 }
                 if key_str == "112" {
-                    if let rmpv::Value::Binary(bytes) = value {
-                        if let Some(decoded) = decode_columba_meta(bytes) {
+                    if let Some(decoded) = match value {
+                        rmpv::Value::Binary(bytes) => decode_columba_meta(bytes),
+                        rmpv::Value::String(text) => decode_columba_meta(text.as_bytes()),
+                        _ => None,
+                    } {
                             object.insert(key_str, decoded);
                             continue;
-                        }
                     }
                 }
                 object.insert(key_str, rmpv_to_json(value)?);
@@ -4580,5 +4582,24 @@ mod tests {
         assert_eq!(decoded["2"]["lon"], serde_json::json!(2.3522));
         assert_eq!(decoded["2"]["accuracy"], serde_json::json!(3.4));
         assert_eq!(decoded["2"]["updated"], serde_json::json!(1_770_855_315_i64));
+    }
+
+    #[test]
+    fn rmpv_to_json_decodes_columba_meta_from_string() {
+        let fields = rmpv::Value::Map(vec![
+            (
+                rmpv::Value::Integer(112_i64.into()),
+                rmpv::Value::String(r#"{"sender":"alpha","type":"columba"}"#.into()),
+            ),
+            (
+                rmpv::Value::Integer(113_i64.into()),
+                rmpv::Value::String("fallback-text".to_string().into()),
+            ),
+        ]);
+        let decoded = rmpv_to_json(&fields).expect("decoded");
+
+        assert_eq!(decoded["112"]["sender"], serde_json::json!("alpha"));
+        assert_eq!(decoded["112"]["type"], serde_json::json!("columba"));
+        assert_eq!(decoded["113"], serde_json::json!("fallback-text"));
     }
 }

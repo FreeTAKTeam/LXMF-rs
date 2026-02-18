@@ -257,10 +257,26 @@ pub fn rmpv_to_json(value: &Value) -> Option<JsonValue> {
                         .or_else(|| int.as_u64().map(|v| v.to_string())),
                     other => Some(format!("{:?}", other)),
                 }?;
+                if key_str == "112" {
+                    if let Value::String(text) = value {
+                        if let Some(decoded) = decode_columba_meta(text.as_str()) {
+                            object.insert(key_str, decoded);
+                            continue;
+                        }
+                    }
+                }
                 object.insert(key_str, rmpv_to_json(value)?);
             }
             Some(JsonValue::Object(object))
         }
         _ => None,
+    }
+}
+
+fn decode_columba_meta(text: &str) -> Option<JsonValue> {
+    if let Ok(json) = serde_json::from_str::<JsonValue>(text) {
+        Some(json)
+    } else {
+        Some(JsonValue::String(text.to_string()))
     }
 }

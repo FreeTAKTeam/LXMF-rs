@@ -23,6 +23,17 @@ fn wire_roundtrip_preserves_content_title_fields() {
 }
 
 #[test]
+fn rmpv_to_json_decodes_columba_meta_from_string() {
+    let fields = serde_json::json!({
+        "112": r#"{"sender":"alpha","type":"columba"}"#
+    });
+
+    let value = json_to_rmpv(&fields).expect("to rmpv");
+    let output = rmpv_to_json(&value).expect("to json");
+    assert_eq!(output["112"], serde_json::json!({"sender":"alpha","type":"columba"}));
+}
+
+#[test]
 fn json_to_rmpv_roundtrip() {
     let input = serde_json::json!({"arr": [1, true, "ok"], "n": 9});
     let value = json_to_rmpv(&input).expect("to rmpv");
