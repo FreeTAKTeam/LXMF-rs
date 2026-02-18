@@ -377,8 +377,7 @@ fn resolve_reticulumd_binary(
         }
     }
 
-    // Dev-friendly fallback for sibling checkout layout:
-    // /.../LXMF-rs and /.../Reticulum-rs
+    // Dev-friendly fallback for monorepo and legacy sibling checkout layouts.
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let workspace_root = manifest_dir.parent().and_then(|dir| dir.parent());
     let sibling_root = workspace_root.and_then(std::path::Path::parent);
@@ -392,6 +391,8 @@ fn resolve_reticulumd_binary(
 
     for root in search_roots {
         let candidates = [
+            root.join("target/debug/reticulumd"),
+            root.join("target/release/reticulumd"),
             root.join("Reticulum-rs/target/debug/reticulumd"),
             root.join("Reticulum-rs/target/release/reticulumd"),
         ];

@@ -2,5 +2,6 @@
 resolver = "2"
 members = [
   "crates/lxmf",
+  "crates/reticulum",
+  "crates/reticulum-daemon",
 ]
-

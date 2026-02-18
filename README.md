@@ -1,6 +1,6 @@
-# LXMF-rs
+# LXMF-rs Monorepo
 
-Rust implementation of LXMF with a reliability-first design.
+Rust monorepo for LXMF-rs and Reticulum-rs with a reliability-first design.
 
 ## Project Goals
 - Lightweight, portable protocol library by default.
@@ -12,9 +12,9 @@ Rust implementation of LXMF with a reliability-first design.
 ```text
 LXMF-rs/
 ├── crates/
-│   └── lxmf/                # Core LXMF crate
-│       ├── src/
-│       └── tests/
+│   ├── lxmf/                # Core LXMF crate
+│   ├── reticulum/           # Core Reticulum-rs crate
+│   └── reticulum-daemon/    # reticulumd daemon crate
 ├── docs/
 │   ├── architecture/
 │   ├── adr/

@@ -93,7 +93,6 @@ sideband-e2e:
 		exit 1; \
 	fi
 	./scripts/sideband-e2e.py \
-		--reticulum-rs-path ../Reticulum-rs \
 		--sideband-path "$(SIDEBAND_ABS)" \
 		--reticulum-py-path "$(RETICULUM_PY_ABS)"
 
@@ -104,7 +103,7 @@ release-gate-local:
 	else \
 		echo "Skipping interop gate (set RUN_INTEROP_GATES=1 to run)"; \
 	fi
-	cargo run --manifest-path ../Reticulum-rs/crates/reticulum/Cargo.toml --features cli-tools --bin rnx -- e2e --timeout-secs 20
+	cargo run --manifest-path crates/reticulum/Cargo.toml --features cli-tools --bin rnx -- e2e --timeout-secs 20
 	@if [ "$(RUN_SIDEBAND_E2E)" = "1" ]; then \
 		make sideband-e2e RETICULUM_PY_PATH="$(RETICULUM_PY_PATH)" SIDEBAND_PATH="$(SIDEBAND_PATH)"; \
 	fi

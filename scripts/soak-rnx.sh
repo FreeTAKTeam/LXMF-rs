@@ -5,7 +5,7 @@ set -euo pipefail
 # Each round starts fresh daemons, performs peer discovery,
 # sends A->B and B->A messages, and requires delivery confirmations.
 
-MANIFEST_PATH="${MANIFEST_PATH:-../Reticulum-rs/crates/reticulum/Cargo.toml}"
+MANIFEST_PATH="${MANIFEST_PATH:-crates/reticulum/Cargo.toml}"
 CYCLES="${CYCLES:-3}"
 BURST_ROUNDS="${BURST_ROUNDS:-10}"
 TIMEOUT_SECS="${TIMEOUT_SECS:-20}"

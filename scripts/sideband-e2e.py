@@ -22,7 +22,7 @@ from typing import Any
 
 def parse_args() -> argparse.Namespace:
     repo_root = Path(__file__).resolve().parents[1]
-    default_reticulum_rs = repo_root.parent / "Reticulum-rs"
+    default_reticulum_rs = repo_root
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--reticulum-rs-path", default=str(default_reticulum_rs))

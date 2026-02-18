@@ -3,7 +3,7 @@
 This file is the single contract source for desktop parity work across:
 
 - `/Users/tommy/Documents/TAK/LXMF-rs`
-- `/Users/tommy/Documents/TAK/Reticulum-rs`
+- `/Users/tommy/Documents/TAK/LXMF-rs/crates/reticulum`
 - `/Users/tommy/Documents/TAK/Weft-Web`
 
 The mirrored frontend copy is:
