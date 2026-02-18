@@ -3575,10 +3575,10 @@ fn decode_columba_meta(packed: &[u8]) -> Option<Value> {
     }
     let mut cursor = std::io::Cursor::new(packed);
     if let Ok(decoded) = rmpv::decode::read_value(&mut cursor) {
-        if usize::try_from(cursor.position()).ok() == Some(packed.len())
-            && let Some(decoded) = rmpv_to_json(&decoded)
-        {
-            return Some(decoded);
+        if usize::try_from(cursor.position()).ok() == Some(packed.len()) {
+            if let Some(decoded) = rmpv_to_json(&decoded) {
+                return Some(decoded);
+            }
         }
     }
     text.map(|value| Value::String(value.to_string()))

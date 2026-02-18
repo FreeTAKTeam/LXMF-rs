@@ -385,10 +385,10 @@ fn decode_columba_meta_bytes(bytes: &[u8]) -> Option<JsonValue> {
     }
     let mut cursor = std::io::Cursor::new(bytes);
     if let Ok(decoded) = rmpv::decode::read_value(&mut cursor) {
-        if usize::try_from(cursor.position()).ok() == Some(bytes.len())
-            && let Some(decoded) = rmpv_to_json(&decoded)
-        {
-            return Some(decoded);
+        if usize::try_from(cursor.position()).ok() == Some(bytes.len()) {
+            if let Some(decoded) = rmpv_to_json(&decoded) {
+                return Some(decoded);
+            }
         }
     }
     text.map(|value| JsonValue::String(value.to_string()))
