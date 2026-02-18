@@ -3419,19 +3419,39 @@ fn rmpv_to_json(value: &rmpv::Value) -> Option<Value> {
                     other => Some(format!("{other:?}")),
                 }?;
                 if key_str == "2" {
-                    if let rmpv::Value::Binary(bytes) = value {
-                        if let Some(decoded) = decode_sideband_location_telemetry(bytes) {
-                            object.insert(key_str, decoded);
-                            continue;
+                    match value {
+                        rmpv::Value::Binary(bytes) => {
+                            if let Some(decoded) = decode_sideband_location_telemetry(bytes) {
+                                object.insert(key_str, decoded);
+                                continue;
+                            }
                         }
+                        rmpv::Value::String(text) => {
+                            if let Some(decoded) =
+                                decode_sideband_location_telemetry(text.as_bytes())
+                            {
+                                object.insert(key_str, decoded);
+                                continue;
+                            }
+                        }
+                        _ => {}
                     }
                 }
                 if key_str == "3" {
-                    if let rmpv::Value::Binary(bytes) = value {
-                        if let Some(decoded) = decode_telemetry_stream(bytes) {
-                            object.insert(key_str, decoded);
-                            continue;
+                    match value {
+                        rmpv::Value::Binary(bytes) => {
+                            if let Some(decoded) = decode_telemetry_stream(bytes) {
+                                object.insert(key_str, decoded);
+                                continue;
+                            }
                         }
+                        rmpv::Value::String(text) => {
+                            if let Some(decoded) = decode_telemetry_stream(text.as_bytes()) {
+                                object.insert(key_str, decoded);
+                                continue;
+                            }
+                        }
+                        _ => {}
                     }
                 }
                 if key_str == "112" {
@@ -3440,8 +3460,8 @@ fn rmpv_to_json(value: &rmpv::Value) -> Option<Value> {
                         rmpv::Value::String(text) => decode_columba_meta(text.as_bytes()),
                         _ => None,
                     } {
-                            object.insert(key_str, decoded);
-                            continue;
+                        object.insert(key_str, decoded);
+                        continue;
                     }
                 }
                 object.insert(key_str, rmpv_to_json(value)?);
@@ -3547,15 +3567,21 @@ fn decode_telemetry_stream(packed: &[u8]) -> Option<Value> {
 }
 
 fn decode_columba_meta(packed: &[u8]) -> Option<Value> {
-    if let Ok(text) = std::str::from_utf8(packed) {
+    let text = std::str::from_utf8(packed).ok();
+    if let Some(text) = text {
         if let Ok(json) = serde_json::from_str::<Value>(text) {
             return Some(json);
         }
-        return Some(Value::String(text.to_string()));
     }
     let mut cursor = std::io::Cursor::new(packed);
-    let decoded = rmpv::decode::read_value(&mut cursor).ok()?;
-    rmpv_to_json(&decoded)
+    if let Some(decoded) = rmpv::decode::read_value(&mut cursor)
+        .ok()
+        .and_then(|value| rmpv_to_json(&value))
+    {
+        return Some(decoded);
+    }
+    text.map(|value| Value::String(value.to_string()))
+        .or_else(|| rmpv_to_json(&rmpv::Value::Binary(packed.to_vec())))
 }
 
 fn enrich_app_extension_fields(object: &mut serde_json::Map<String, Value>) {
@@ -4129,7 +4155,7 @@ mod tests {
     use super::{
         annotate_peer_records_with_announce_metadata, annotate_response_meta,
         build_propagation_envelope, build_send_params_with_source, build_wire_message,
-        can_send_opportunistic, decode_inbound_payload, format_relay_request_status,
+        can_send_opportunistic, decode_inbound_payload, format_relay_request_status, json_to_rmpv,
         normalize_relay_destination_hash, parse_alternative_relay_request_status,
         propagation_relay_candidates, rmpv_to_json, sanitize_outbound_wire_fields,
         PeerAnnounceMeta, PeerCrypto,
@@ -4601,5 +4627,86 @@ mod tests {
         assert_eq!(decoded["112"]["sender"], serde_json::json!("alpha"));
         assert_eq!(decoded["112"]["type"], serde_json::json!("columba"));
         assert_eq!(decoded["113"], serde_json::json!("fallback-text"));
+    }
+
+    #[test]
+    fn rmpv_to_json_decodes_columba_meta_from_binary_json() {
+        let fields = rmpv::Value::Map(vec![(
+            rmpv::Value::Integer(112_i64.into()),
+            rmpv::Value::Binary(br#"{"sender":"beta","type":"columba"}"#.to_vec()),
+        )]);
+        let decoded = rmpv_to_json(&fields).expect("decoded");
+
+        assert_eq!(decoded["112"]["sender"], serde_json::json!("beta"));
+        assert_eq!(decoded["112"]["type"], serde_json::json!("columba"));
+    }
+
+    #[test]
+    fn rmpv_to_json_decodes_columba_meta_from_binary_utf8_msgpack() {
+        let packed = rmp_serde::to_vec(&rmpv::Value::Integer(77_i64.into())).expect("pack meta");
+        let fields = rmpv::Value::Map(vec![(
+            rmpv::Value::Integer(112_i64.into()),
+            rmpv::Value::Binary(packed),
+        )]);
+        let decoded = rmpv_to_json(&fields).expect("decoded");
+
+        assert_eq!(decoded["112"], serde_json::json!(77));
+    }
+
+    #[test]
+    fn rmpv_to_json_preserves_unparseable_columba_meta_from_binary() {
+        let fields = rmpv::Value::Map(vec![(
+            rmpv::Value::Integer(112_i64.into()),
+            rmpv::Value::Binary(vec![0xc4]),
+        )]);
+        let decoded = rmpv_to_json(&fields).expect("decoded");
+
+        assert_eq!(decoded["112"], serde_json::json!([196]));
+    }
+
+    #[test]
+    fn rmpv_to_json_decodes_telemetry_stream_from_string_payload() {
+        let fields = rmpv::Value::Map(vec![(
+            rmpv::Value::Integer(3_i64.into()),
+            rmpv::Value::String("\u{7f}".into()),
+        )]);
+
+        let decoded = rmpv_to_json(&fields).expect("decoded");
+        assert_eq!(decoded["3"], serde_json::json!(127));
+    }
+
+    #[test]
+    fn rmpv_to_json_preserves_nonbinary_telemetry_payload_as_string() {
+        let fields = rmpv::Value::Map(vec![(
+            rmpv::Value::Integer(2_i64.into()),
+            rmpv::Value::String("\u{0100}".into()),
+        )]);
+
+        let decoded = rmpv_to_json(&fields).expect("decoded");
+        assert_eq!(decoded["2"], serde_json::json!("\u{0100}"));
+    }
+
+    #[test]
+    fn rmpv_to_json_preserves_unparseable_telemetry_from_string_payload() {
+        let fields = rmpv::Value::Map(vec![(
+            rmpv::Value::String("3".into()),
+            rmpv::Value::String("\u{0100}".into()),
+        )]);
+
+        let decoded = rmpv_to_json(&fields).expect("decoded");
+        assert_eq!(decoded["3"], serde_json::json!("\u{0100}"));
+    }
+
+    #[test]
+    fn json_to_rmpv_normalizes_noncanonical_numeric_keys_for_compat() {
+        let fields = serde_json::json!({
+            "01": "leading-zero",
+            "-01": "noncanonical-negative",
+        });
+        let converted = json_to_rmpv(&fields).expect("to rmpv");
+        let decoded = rmpv_to_json(&converted).expect("decoded");
+
+        assert_eq!(decoded["1"], serde_json::json!("leading-zero"));
+        assert_eq!(decoded["-1"], serde_json::json!("noncanonical-negative"));
     }
 }
