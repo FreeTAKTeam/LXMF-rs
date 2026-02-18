@@ -5,7 +5,7 @@ This runbook defines the exact steps to cut and validate an RC for `lxmf-rs`.
 ## 1. Preconditions
 
 - Working tree is clean except intended release changes.
-- `../Reticulum-rs` exists and builds.
+- Monorepo `crates/reticulum` builds.
 - Python Reticulum source exists (default local path: `../Reticulum`).
 - Sideband source clone exists (default local path: `../Sideband`).
 
@@ -14,7 +14,7 @@ This runbook defines the exact steps to cut and validate an RC for `lxmf-rs`.
 ```bash
 make test
 make interop-gate RETICULUM_PY_PATH=../Reticulum
-cargo run --manifest-path ../Reticulum-rs/crates/reticulum/Cargo.toml --bin rnx -- e2e --timeout-secs 20
+cargo run --manifest-path crates/reticulum/Cargo.toml --bin rnx -- e2e --timeout-secs 20
 make sideband-e2e RETICULUM_PY_PATH=../Reticulum SIDEBAND_PATH=../Sideband
 ```
 
@@ -33,11 +33,8 @@ make production-gate-local RETICULUM_PY_PATH=../Reticulum SIDEBAND_PATH=../Sideb
 
 ## 3. CI gates (must pass)
 
-- `Lint (fmt + clippy)`
-- `Test (ubuntu-latest)`
-- `Test (macos-latest)`
-- `Release Gate (Linux)`
-- `Interop Python Live` (from `.github/workflows/ci.yml`)
+- `CI / quality` (from `.github/workflows/ci.yml`)
+- `CI / interop-python-live` (from `.github/workflows/ci.yml`)
 - `Sideband E2E` workflow dispatch run (from `.github/workflows/sideband-e2e.yml`)
 
 ## 4. Manual interop validation (macOS + Sideband)

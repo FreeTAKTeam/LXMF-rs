@@ -13,23 +13,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Remove local reticulum workspace patch for CI
-        run: |
-          awk '
-          /^\[patch\.crates-io\]/ || /^\[patch\."https:\/\/github\.com\/FreeTAKTeam\/Reticulum-rs\.git"\]/ {
-            skip = 1
-            next
-          }
-          /^\[/ {
-            if (skip) { skip = 0 }
-            print
-            next
-          }
-          {
-            if (!skip) print
-          }
-          ' Cargo.toml > Cargo.toml.no-patch
-          mv Cargo.toml.no-patch Cargo.toml
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -62,8 +45,6 @@ jobs:
     needs: quality
     steps:
       - uses: actions/checkout@v4
-      - name: Checkout Reticulum-rs (workspace patch dependency)
-        run: git clone --depth 1 https://github.com/FreeTAKTeam/Reticulum-rs.git ../Reticulum-rs
       - name: Checkout Python Reticulum
         run: git clone --depth 1 https://github.com/markqvist/Reticulum.git ../Reticulum
       - uses: dtolnay/rust-toolchain@stable
@@ -73,21 +54,3 @@ jobs:
           sudo apt-get install -y protobuf-compiler
       - name: Run Python interop gates
         run: make interop-gate RETICULUM_PY_PATH=../Reticulum
-
-  compatibility-reticulum-main:
-    runs-on: ubuntu-latest
-    needs: quality
-    steps:
-      - uses: actions/checkout@v4
-      - name: Checkout Reticulum-rs (main)
-        run: git clone --depth 1 https://github.com/FreeTAKTeam/Reticulum-rs.git ../Reticulum-rs
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Install protobuf compiler
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y protobuf-compiler
-      - name: Pin lxmf to sibling reticulum checkout
-        run: |
-          perl -0pi -e 's#reticulum = \{ package = "reticulum-rs", version = "[^"]+" \}#reticulum = { package = "reticulum-rs", path = "../../../Reticulum-rs/crates/reticulum" }#g' crates/lxmf/Cargo.toml
-      - name: Build lxmf against reticulum main
-        run: cargo check -p lxmf --all-features

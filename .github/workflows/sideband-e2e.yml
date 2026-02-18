@@ -11,8 +11,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Checkout Reticulum-rs (workspace patch dependency)
-        run: git clone --depth 1 https://github.com/FreeTAKTeam/Reticulum-rs.git ../Reticulum-rs
       - name: Checkout Python Reticulum
         run: git clone --depth 1 https://github.com/markqvist/Reticulum.git ../Reticulum
       - name: Checkout Sideband
@@ -25,7 +23,6 @@ jobs:
       - name: Run Sideband E2E harness
         run: |
           ./scripts/sideband-e2e.py \
-            --reticulum-rs-path ../Reticulum-rs \
             --sideband-path ../Sideband \
             --reticulum-py-path ../Reticulum \
             --artifact-root ./sideband-e2e-artifacts \
