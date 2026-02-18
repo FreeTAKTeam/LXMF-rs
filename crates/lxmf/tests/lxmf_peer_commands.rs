@@ -1,5 +1,7 @@
 #![cfg(feature = "cli")]
 
+mod support;
+
 use lxmf::cli::app::{Cli, Command, PeerAction, PeerCommand, RuntimeContext};
 use lxmf::cli::commands_peer;
 use lxmf::cli::output::Output;
@@ -10,6 +12,7 @@ use serde_json::{json, Value};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::thread;
+use support::lock_config_root;
 
 #[derive(Debug, Serialize)]
 struct RpcResponse {
@@ -27,7 +30,7 @@ struct RpcError {
 #[test]
 fn peer_sync_invokes_peer_sync_rpc() {
     let temp = tempfile::tempdir().unwrap();
-    std::env::set_var("LXMF_CONFIG_ROOT", temp.path());
+    let _config_root_guard = lock_config_root(temp.path());
     init_profile("peer-test", false, None).unwrap();
 
     let (rpc_addr, worker) = spawn_one_rpc_server(json!({"peer": "alpha", "synced": true}));
@@ -59,13 +62,12 @@ fn peer_sync_invokes_peer_sync_rpc() {
 
     commands_peer::run(&ctx, &command).unwrap();
     assert!(worker.join().unwrap());
-    std::env::remove_var("LXMF_CONFIG_ROOT");
 }
 
 #[test]
 fn peer_show_supports_wrapped_list_and_name_search() {
     let temp = tempfile::tempdir().unwrap();
-    std::env::set_var("LXMF_CONFIG_ROOT", temp.path());
+    let _config_root_guard = lock_config_root(temp.path());
     init_profile("peer-show", false, None).unwrap();
 
     let (rpc_addr, worker) = spawn_one_rpc_server(json!({
@@ -103,13 +105,12 @@ fn peer_show_supports_wrapped_list_and_name_search() {
 
     commands_peer::run(&ctx, &command).unwrap();
     assert!(worker.join().unwrap());
-    std::env::remove_var("LXMF_CONFIG_ROOT");
 }
 
 #[test]
 fn peer_show_reports_ambiguous_selector() {
     let temp = tempfile::tempdir().unwrap();
-    std::env::set_var("LXMF_CONFIG_ROOT", temp.path());
+    let _config_root_guard = lock_config_root(temp.path());
     init_profile("peer-ambiguous", false, None).unwrap();
 
     let (rpc_addr, worker) = spawn_one_rpc_server(json!({
@@ -148,7 +149,6 @@ fn peer_show_reports_ambiguous_selector() {
     let err = commands_peer::run(&ctx, &command).expect_err("ambiguous selector should fail");
     assert!(err.to_string().contains("ambiguous"));
     assert!(worker.join().unwrap());
-    std::env::remove_var("LXMF_CONFIG_ROOT");
 }
 
 fn spawn_one_rpc_server(result: Value) -> (String, thread::JoinHandle<bool>) {

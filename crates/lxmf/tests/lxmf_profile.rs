@@ -1,5 +1,7 @@
 #![cfg(feature = "cli")]
 
+mod support;
+
 use lxmf::cli::contacts::{load_contacts, save_contacts, ContactEntry};
 use lxmf::cli::profile::{
     init_profile, list_profiles, load_profile_settings, load_reticulum_config, profile_paths,
@@ -7,18 +9,12 @@ use lxmf::cli::profile::{
     selected_profile_name, set_interface_enabled, upsert_interface, InterfaceEntry,
 };
 use std::fs;
-use std::sync::{Mutex, OnceLock};
-
-fn env_lock() -> &'static Mutex<()> {
-    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(()))
-}
+use support::lock_config_root;
 
 #[test]
 fn profile_init_and_select_roundtrip() {
-    let _guard = env_lock().lock().unwrap();
     let temp = tempfile::tempdir().unwrap();
-    std::env::set_var("LXMF_CONFIG_ROOT", temp.path());
+    let _config_root_guard = lock_config_root(temp.path());
 
     let created = init_profile("alpha", true, Some("127.0.0.1:9999".into())).unwrap();
     assert_eq!(created.name, "alpha");
@@ -38,15 +34,12 @@ fn profile_init_and_select_roundtrip() {
     assert!(paths.profile_toml.exists());
     assert!(paths.reticulum_toml.exists());
     assert!(!paths.identity_file.exists());
-
-    std::env::remove_var("LXMF_CONFIG_ROOT");
 }
 
 #[test]
 fn reticulum_interface_mutations_persist() {
-    let _guard = env_lock().lock().unwrap();
     let temp = tempfile::tempdir().unwrap();
-    std::env::set_var("LXMF_CONFIG_ROOT", temp.path());
+    let _config_root_guard = lock_config_root(temp.path());
 
     init_profile("beta", false, None).unwrap();
 
@@ -69,15 +62,12 @@ fn reticulum_interface_mutations_persist() {
     assert!(!loaded.interfaces[0].enabled);
     assert!(remove_interface(&mut loaded, "uplink"));
     assert!(loaded.interfaces.is_empty());
-
-    std::env::remove_var("LXMF_CONFIG_ROOT");
 }
 
 #[test]
 fn display_name_roundtrip_and_migration_compat() {
-    let _guard = env_lock().lock().unwrap();
     let temp = tempfile::tempdir().unwrap();
-    std::env::set_var("LXMF_CONFIG_ROOT", temp.path());
+    let _config_root_guard = lock_config_root(temp.path());
 
     let mut created = init_profile("gamma", false, None).unwrap();
     created.display_name = Some("  Tommy Display  ".into());
@@ -99,15 +89,12 @@ rpc = "127.0.0.1:4243"
 
     let migrated = load_profile_settings("gamma").unwrap();
     assert_eq!(migrated.display_name, None);
-
-    std::env::remove_var("LXMF_CONFIG_ROOT");
 }
 
 #[test]
 fn contacts_roundtrip_persists_with_profile() {
-    let _guard = env_lock().lock().unwrap();
     let temp = tempfile::tempdir().unwrap();
-    std::env::set_var("LXMF_CONFIG_ROOT", temp.path());
+    let _config_root_guard = lock_config_root(temp.path());
 
     init_profile("contacts", false, None).unwrap();
     let contacts = vec![
@@ -128,6 +115,4 @@ fn contacts_roundtrip_persists_with_profile() {
     assert_eq!(loaded.len(), 2);
     assert_eq!(loaded[0].alias, "Alice");
     assert_eq!(loaded[1].alias, "Bob");
-
-    std::env::remove_var("LXMF_CONFIG_ROOT");
 }

@@ -1,5 +1,7 @@
 #![cfg(feature = "cli")]
 
+mod support;
+
 use lxmf::cli::app::{
     Cli, Command, ContactAction, ContactCommand, ContactUpsertArgs, RuntimeContext,
 };
@@ -8,11 +10,12 @@ use lxmf::cli::contacts::load_contacts;
 use lxmf::cli::output::Output;
 use lxmf::cli::profile::{init_profile, load_profile_settings, profile_paths};
 use lxmf::cli::rpc_client::RpcClient;
+use support::lock_config_root;
 
 #[test]
 fn contact_add_show_remove_roundtrip() {
     let temp = tempfile::tempdir().unwrap();
-    std::env::set_var("LXMF_CONFIG_ROOT", temp.path());
+    let _config_root_guard = lock_config_root(temp.path());
     init_profile("contact-test", false, None).unwrap();
 
     let settings = load_profile_settings("contact-test").unwrap();
@@ -62,5 +65,4 @@ fn contact_add_show_remove_roundtrip() {
     .unwrap();
 
     assert!(load_contacts("contact-test").unwrap().is_empty());
-    std::env::remove_var("LXMF_CONFIG_ROOT");
 }

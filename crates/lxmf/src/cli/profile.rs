@@ -269,6 +269,10 @@ pub fn load_reticulum_config(name: &str) -> Result<ReticulumConfig> {
 
 pub fn save_reticulum_config(name: &str, config: &ReticulumConfig) -> Result<()> {
     let path = profile_paths(name)?.reticulum_toml;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {}", parent.display()))?;
+    }
     let encoded = toml::to_string_pretty(config).context("failed to encode reticulum config")?;
     fs::write(&path, encoded)
         .with_context(|| format!("failed to write reticulum config {}", path.display()))

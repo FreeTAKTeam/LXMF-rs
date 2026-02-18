@@ -1,11 +1,14 @@
 #![cfg(feature = "cli")]
 
+mod support;
+
 use clap::Parser;
 use lxmf::cli::app::{run_cli, Cli};
 use lxmf::cli::daemon::DaemonSupervisor;
 use lxmf::cli::profile::{init_profile, load_profile_settings, save_profile_settings};
 use std::os::unix::fs::PermissionsExt;
 use std::sync::{Mutex, OnceLock};
+use support::lock_config_root;
 
 const STARTUP_GRACE_ENV_MS: &str = "LXMF_DAEMON_STARTUP_GRACE_MS";
 const STARTUP_POLL_ENV_MS: &str = "LXMF_DAEMON_STARTUP_POLL_MS";
@@ -38,7 +41,7 @@ fn daemon_start_uses_profile_managed_when_flag_omitted() {
     let _guard = env_lock().lock().unwrap();
     let _startup = StartupTimingGuard::fast();
     let temp = tempfile::tempdir().unwrap();
-    std::env::set_var("LXMF_CONFIG_ROOT", temp.path());
+    let _config_root_guard = lock_config_root(temp.path());
 
     init_profile("daemon-cmd-managed", true, Some("127.0.0.1:4552".into())).unwrap();
 
@@ -64,8 +67,6 @@ fn daemon_start_uses_profile_managed_when_flag_omitted() {
 
     let stop = Cli::parse_from(["lxmf", "--profile", "daemon-cmd-managed", "daemon", "stop"]);
     run_cli(stop).unwrap();
-
-    std::env::remove_var("LXMF_CONFIG_ROOT");
 }
 
 #[test]
@@ -73,13 +74,11 @@ fn daemon_start_external_without_managed_flag_fails() {
     let _guard = env_lock().lock().unwrap();
     let _startup = StartupTimingGuard::fast();
     let temp = tempfile::tempdir().unwrap();
-    std::env::set_var("LXMF_CONFIG_ROOT", temp.path());
+    let _config_root_guard = lock_config_root(temp.path());
 
     init_profile("daemon-cmd-external", false, Some("127.0.0.1:4553".into())).unwrap();
 
     let start = Cli::parse_from(["lxmf", "--profile", "daemon-cmd-external", "daemon", "start"]);
     let err = run_cli(start).unwrap_err().to_string();
     assert!(err.contains("external mode"));
-
-    std::env::remove_var("LXMF_CONFIG_ROOT");
 }

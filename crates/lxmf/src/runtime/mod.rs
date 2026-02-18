@@ -2013,19 +2013,20 @@ impl OutboundBridge for EmbeddedTransportBridge {
             }
             (self.signer.clone(), self.delivery_source_hash)
         };
+        let outbound_fields = sanitize_outbound_wire_fields(record.fields.as_ref());
 
         let payload = build_wire_message(
             source_hash,
             destination,
             &record.title,
             &record.content,
-            record.fields.clone(),
+            outbound_fields.clone(),
             &signer,
         )
         .map_err(std::io::Error::other)?;
         let requested_method = parse_delivery_method(options.method.as_deref());
         let opportunistic_supported = can_send_opportunistic(
-            record.fields.as_ref(),
+            outbound_fields.as_ref(),
             opportunistic_payload(payload.as_slice(), &destination).len(),
         );
         let mut effective_method = requested_method;
@@ -3290,6 +3291,39 @@ fn json_fields_with_raw_preserved(value: &rmpv::Value) -> Option<Value> {
     Some(converted)
 }
 
+fn sanitize_outbound_wire_fields(fields: Option<&Value>) -> Option<Value> {
+    let Some(Value::Object(fields)) = fields else {
+        return fields.cloned();
+    };
+
+    let mut out = fields.clone();
+    out.remove(OUTBOUND_DELIVERY_OPTIONS_FIELD);
+
+    for key in ["_lxmf", "lxmf"] {
+        let Some(Value::Object(lxmf_fields)) = out.get_mut(key) else {
+            continue;
+        };
+        for reserved in [
+            "method",
+            "stamp_cost",
+            "include_ticket",
+            "try_propagation_on_fail",
+            "source_private_key",
+        ] {
+            lxmf_fields.remove(reserved);
+        }
+        if lxmf_fields.is_empty() {
+            out.remove(key);
+        }
+    }
+
+    if out.is_empty() {
+        None
+    } else {
+        Some(Value::Object(out))
+    }
+}
+
 fn decode_sideband_location_telemetry(packed: &[u8]) -> Option<Value> {
     let mut cursor = std::io::Cursor::new(packed);
     let decoded = rmpv::decode::read_value(&mut cursor).ok()?;
@@ -3921,7 +3955,7 @@ mod tests {
         build_propagation_envelope, build_send_params_with_source, build_wire_message,
         decode_inbound_payload, format_relay_request_status, normalize_relay_destination_hash,
         parse_alternative_relay_request_status, propagation_relay_candidates, rmpv_to_json,
-        PeerAnnounceMeta, PeerCrypto,
+        sanitize_outbound_wire_fields, PeerAnnounceMeta, PeerCrypto,
     };
     use crate::constants::FIELD_COMMANDS;
     use crate::message::Message;
@@ -3929,7 +3963,7 @@ mod tests {
     use crate::propagation::unpack_envelope;
     use crate::runtime::SendMessageRequest;
     use reticulum::identity::PrivateIdentity;
-    use serde_json::Value;
+    use serde_json::{json, Value};
     use std::collections::{HashMap, HashSet};
     use std::sync::{Arc, Mutex};
 
@@ -4022,6 +4056,43 @@ mod tests {
             )
         );
         assert_eq!(prepared.params["fields"]["k"], Value::String("v".to_string()));
+    }
+
+    #[test]
+    fn sanitize_outbound_wire_fields_removes_transport_controls() {
+        let fields = json!({
+            "__delivery_options": {
+                "method": "propagated",
+                "stamp_cost": 128,
+                "include_ticket": true
+            },
+            "_lxmf": {
+                "method": "direct",
+                "scope": "chat",
+                "app": "weft",
+            },
+            "lxmf": {
+                "try_propagation_on_fail": true,
+                "app": "bridge",
+            },
+            "attachments": [],
+        });
+        let sanitized = sanitize_outbound_wire_fields(Some(&fields)).expect("sanitized");
+        assert!(sanitized.get("__delivery_options").is_none());
+
+        let Some(sanitized_lxmf) = sanitized.get("_lxmf").and_then(Value::as_object) else {
+            panic!("_lxmf preserved")
+        };
+        assert!(sanitized_lxmf.get("method").is_none());
+        assert_eq!(sanitized_lxmf.get("scope"), Some(&Value::String("chat".to_string())));
+        assert_eq!(sanitized_lxmf.get("app"), Some(&Value::String("weft".to_string())));
+
+        let Some(sanitized_alt_lxmf) = sanitized.get("lxmf").and_then(Value::as_object) else {
+            panic!("lxmf preserved")
+        };
+        assert!(sanitized_alt_lxmf.get("try_propagation_on_fail").is_none());
+        assert_eq!(sanitized_alt_lxmf.get("app"), Some(&Value::String("bridge".to_string())));
+        assert_eq!(sanitized.get("attachments"), Some(&Value::Array(vec![])));
     }
 
     #[test]

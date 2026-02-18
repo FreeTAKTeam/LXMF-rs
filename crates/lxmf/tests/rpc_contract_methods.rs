@@ -1,5 +1,7 @@
 #![cfg(feature = "cli")]
 
+mod support;
+
 use lxmf::cli::app::{
     AnnounceAction, AnnounceCommand, Cli, Command, DaemonAction, DaemonCommand, IfaceAction,
     IfaceCommand, MessageAction, MessageCommand, MessageSendArgs, PeerAction, PeerCommand,
@@ -55,7 +57,7 @@ struct ExpectedCall {
 fn message_and_announce_methods_contract() {
     let _guard = test_guard();
     let temp = tempfile::tempdir().unwrap();
-    std::env::set_var("LXMF_CONFIG_ROOT", temp.path());
+    let _config_root_guard = support::lock_config_root(temp.path());
     init_profile("rpc-contract-message", false, None).unwrap();
 
     let expected = vec![
@@ -157,15 +159,13 @@ fn message_and_announce_methods_contract() {
             "send_message",
         ]
     );
-
-    std::env::remove_var("LXMF_CONFIG_ROOT");
 }
 
 #[test]
 fn identity_resolution_contract_uses_status_fallback() {
     let _guard = test_guard();
     let temp = tempfile::tempdir().unwrap();
-    std::env::set_var("LXMF_CONFIG_ROOT", temp.path());
+    let _config_root_guard = support::lock_config_root(temp.path());
     init_profile("rpc-contract-identity", false, None).unwrap();
 
     let expected = vec![
@@ -215,15 +215,13 @@ fn identity_resolution_contract_uses_status_fallback() {
 
     let observed = worker.join().unwrap();
     assert_eq!(observed, vec!["daemon_status_ex", "status", "send_message_v2"]);
-
-    std::env::remove_var("LXMF_CONFIG_ROOT");
 }
 
 #[test]
 fn peer_iface_and_daemon_contract_methods() {
     let _guard = test_guard();
     let temp = tempfile::tempdir().unwrap();
-    std::env::set_var("LXMF_CONFIG_ROOT", temp.path());
+    let _config_root_guard = support::lock_config_root(temp.path());
     init_profile("rpc-contract-peer", false, None).unwrap();
 
     let expected = vec![
@@ -295,15 +293,13 @@ fn peer_iface_and_daemon_contract_methods() {
             "daemon_status_ex",
         ]
     );
-
-    std::env::remove_var("LXMF_CONFIG_ROOT");
 }
 
 #[test]
 fn propagation_contract_methods() {
     let _guard = test_guard();
     let temp = tempfile::tempdir().unwrap();
-    std::env::set_var("LXMF_CONFIG_ROOT", temp.path());
+    let _config_root_guard = support::lock_config_root(temp.path());
     init_profile("rpc-contract-propagation", false, None).unwrap();
 
     let expected = vec![
@@ -391,15 +387,13 @@ fn propagation_contract_methods() {
             "peer_sync",
         ]
     );
-
-    std::env::remove_var("LXMF_CONFIG_ROOT");
 }
 
 #[test]
 fn stamp_contract_methods() {
     let _guard = test_guard();
     let temp = tempfile::tempdir().unwrap();
-    std::env::set_var("LXMF_CONFIG_ROOT", temp.path());
+    let _config_root_guard = support::lock_config_root(temp.path());
     init_profile("rpc-contract-stamp", false, None).unwrap();
 
     let expected = vec![
@@ -468,8 +462,6 @@ fn stamp_contract_methods() {
             "stamp_policy_get",
         ]
     );
-
-    std::env::remove_var("LXMF_CONFIG_ROOT");
 }
 
 fn test_guard() -> std::sync::MutexGuard<'static, ()> {

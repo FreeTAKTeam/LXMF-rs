@@ -1,5 +1,7 @@
 #![cfg(feature = "cli")]
 
+mod support;
+
 use lxmf::cli::app::RuntimeContext;
 use lxmf::cli::app::{
     Cli, Command, MessageAction, MessageCommand, MessageSendArgs, MessageSendCommandArgs,
@@ -14,9 +16,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::path::Path;
-use std::sync::{Mutex, MutexGuard};
 use std::thread;
+use support::lock_config_root;
 
 #[derive(Debug, Serialize)]
 struct RpcResponse {
@@ -40,30 +41,10 @@ struct RpcRequest {
     params: Option<Value>,
 }
 
-static LXMF_CONFIG_ROOT_LOCK: Mutex<()> = Mutex::new(());
-
-struct ConfigRootGuard {
-    _lock: MutexGuard<'static, ()>,
-}
-
-impl ConfigRootGuard {
-    fn new(path: &Path) -> Self {
-        let lock = LXMF_CONFIG_ROOT_LOCK.lock().expect("LXMF config root env lock poisoned");
-        std::env::set_var("LXMF_CONFIG_ROOT", path);
-        Self { _lock: lock }
-    }
-}
-
-impl Drop for ConfigRootGuard {
-    fn drop(&mut self) {
-        std::env::remove_var("LXMF_CONFIG_ROOT");
-    }
-}
-
 #[test]
 fn message_send_uses_v2_when_available() {
     let temp = tempfile::tempdir().unwrap();
-    let _config_root_guard = ConfigRootGuard::new(temp.path());
+    let _config_root_guard = lock_config_root(temp.path());
     init_profile("msg-test", false, None).unwrap();
 
     let (rpc_addr, worker) = spawn_one_rpc_server(json!({"id": "m-1", "queued": true}));
@@ -111,7 +92,7 @@ fn message_send_uses_v2_when_available() {
 #[test]
 fn message_send_resolves_contact_alias_destination() {
     let temp = tempfile::tempdir().unwrap();
-    let _config_root_guard = ConfigRootGuard::new(temp.path());
+    let _config_root_guard = lock_config_root(temp.path());
     init_profile("msg-contact", false, None).unwrap();
     save_contacts(
         "msg-contact",
@@ -171,7 +152,7 @@ fn message_send_resolves_contact_alias_destination() {
 #[test]
 fn message_send_command_uses_transport_msgpack_fields() {
     let temp = tempfile::tempdir().unwrap();
-    let _config_root_guard = ConfigRootGuard::new(temp.path());
+    let _config_root_guard = lock_config_root(temp.path());
     init_profile("msg-send-command", false, None).unwrap();
 
     let (rpc_addr, worker) = spawn_one_rpc_server_with_params(json!({"ok": true}));

@@ -1,5 +1,7 @@
 #![cfg(feature = "cli")]
 
+mod support;
+
 use lxmf::cli::app::{Cli, Command, IfaceAction, IfaceCommand, IfaceMutationArgs, RuntimeContext};
 use lxmf::cli::commands_iface;
 use lxmf::cli::output::Output;
@@ -11,6 +13,7 @@ use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::thread;
 use std::time::{Duration, Instant};
+use support::lock_config_root;
 
 #[derive(Debug, Serialize)]
 struct RpcResponse {
@@ -28,7 +31,7 @@ struct RpcError {
 #[test]
 fn iface_apply_pushes_interfaces_to_rpc() {
     let temp = tempfile::tempdir().unwrap();
-    std::env::set_var("LXMF_CONFIG_ROOT", temp.path());
+    let _config_root_guard = lock_config_root(temp.path());
     init_profile("iface-test", true, None).unwrap();
 
     let (rpc_addr, worker) = spawn_apply_rpc_server();
@@ -73,13 +76,12 @@ fn iface_apply_pushes_interfaces_to_rpc() {
 
     let paths = worker.join().unwrap();
     assert!(!paths.is_empty());
-    std::env::remove_var("LXMF_CONFIG_ROOT");
 }
 
 #[test]
 fn iface_apply_restart_preserves_external_mode() {
     let temp = tempfile::tempdir().unwrap();
-    std::env::set_var("LXMF_CONFIG_ROOT", temp.path());
+    let _config_root_guard = lock_config_root(temp.path());
     init_profile("iface-external", false, None).unwrap();
 
     let settings = {
@@ -107,8 +109,6 @@ fn iface_apply_restart_preserves_external_mode() {
         commands_iface::run(&ctx, &IfaceCommand { action: IfaceAction::Apply { restart: true } })
             .unwrap_err();
     assert!(err.to_string().contains("external mode"));
-
-    std::env::remove_var("LXMF_CONFIG_ROOT");
 }
 
 fn spawn_apply_rpc_server() -> (String, thread::JoinHandle<Vec<String>>) {
