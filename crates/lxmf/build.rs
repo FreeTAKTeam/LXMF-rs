@@ -15,19 +15,31 @@ fn main() {
 }
 
 fn is_reticulum_api_v2() -> bool {
+    if let Some(manifest_path) = monorepo_reticulum_manifest_path() {
+        return has_text_in_reticulum_source(&manifest_path, "accept_announce_with_metadata")
+            || has_text_in_reticulum_source(&manifest_path, "OutboundDeliveryOptions")
+            || has_reticulum_outbound_bridge_with_options(&manifest_path);
+    }
+
     if let Some(version) = reticulum_version() {
         if is_definitely_v2_by_version(&version) {
             return true;
         }
+    }
 
-        if let Some(manifest_path) = reticulum_manifest_path() {
-            return has_text_in_reticulum_source(&manifest_path, "accept_announce_with_metadata")
-                || has_text_in_reticulum_source(&manifest_path, "OutboundDeliveryOptions")
-                || has_reticulum_outbound_bridge_with_options(&manifest_path);
-        }
+    if let Some(manifest_path) = reticulum_manifest_path() {
+        return has_text_in_reticulum_source(&manifest_path, "accept_announce_with_metadata")
+            || has_text_in_reticulum_source(&manifest_path, "OutboundDeliveryOptions")
+            || has_reticulum_outbound_bridge_with_options(&manifest_path);
     }
 
     false
+}
+
+fn monorepo_reticulum_manifest_path() -> Option<PathBuf> {
+    let manifest_dir = env::var_os("CARGO_MANIFEST_DIR")?;
+    let local_manifest = Path::new(&manifest_dir).join("../reticulum/Cargo.toml");
+    local_manifest.exists().then_some(local_manifest)
 }
 
 fn reticulum_version() -> Option<String> {
