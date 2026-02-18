@@ -23,10 +23,7 @@ fn is_reticulum_api_v2() -> bool {
         if let Some(manifest_path) = reticulum_manifest_path() {
             return has_text_in_reticulum_source(&manifest_path, "accept_announce_with_metadata")
                 || has_text_in_reticulum_source(&manifest_path, "OutboundDeliveryOptions")
-                || has_text_in_reticulum_source(
-                    &manifest_path,
-                    "deliver(&self, record: &MessageRecord, options",
-                );
+                || has_reticulum_outbound_bridge_with_options(&manifest_path);
         }
     }
 
@@ -111,6 +108,56 @@ fn has_text_in_reticulum_source(manifest_path: &Path, needle: &str) -> bool {
     };
     let src_dir = crate_root.join("src");
     walk_rs_files(&src_dir).into_iter().any(|source| read_and_contains(&source, needle))
+}
+
+fn has_reticulum_outbound_bridge_with_options(manifest_path: &Path) -> bool {
+    let crate_root = manifest_path.parent();
+    let Some(crate_root) = crate_root else {
+        return false;
+    };
+    let src_dir = crate_root.join("src");
+    walk_rs_files(&src_dir)
+        .into_iter()
+        .any(|source| has_outbound_bridge_v2_signature_in_file(&source))
+}
+
+fn has_outbound_bridge_v2_signature_in_file(path: &Path) -> bool {
+    let Ok(content) = fs::read_to_string(path) else {
+        return false;
+    };
+
+    let Some(start_index) = content.find("trait OutboundBridge") else {
+        return false;
+    };
+
+    let Some(open_offset) = content[start_index..].find('{') else {
+        return false;
+    };
+    let open_index = start_index + open_offset;
+
+    let mut depth = 0usize;
+    let mut end_index = None;
+    for (offset, ch) in content[open_index..].char_indices() {
+        match ch {
+            '{' => depth += 1,
+            '}' => {
+                if depth > 0 {
+                    depth -= 1;
+                    if depth == 0 {
+                        end_index = Some(open_index + offset);
+                        break;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let Some(end_index) = end_index else {
+        return false;
+    };
+    let bridge_body = &content[open_index + 1..end_index];
+    bridge_body.contains("fn deliver") && bridge_body.contains("OutboundDeliveryOptions")
 }
 
 fn walk_rs_files(base: &Path) -> Vec<PathBuf> {
