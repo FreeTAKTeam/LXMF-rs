@@ -1,6 +1,6 @@
 use crate::cli::app::{Cli, ProfileAction, ProfileCommand};
-use crate::cli::output::Output;
 use crate::cli::daemon::DaemonSupervisor;
+use crate::cli::output::Output;
 use crate::cli::profile::{
     clear_selected_profile, export_identity, import_identity, init_profile, list_profiles,
     load_profile_settings, normalize_display_name, profile_exists, profile_paths, remove_profile,

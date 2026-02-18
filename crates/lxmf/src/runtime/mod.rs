@@ -3440,8 +3440,8 @@ fn rmpv_to_json(value: &rmpv::Value) -> Option<Value> {
                         rmpv::Value::String(text) => decode_columba_meta(text.as_bytes()),
                         _ => None,
                     } {
-                            object.insert(key_str, decoded);
-                            continue;
+                        object.insert(key_str, decoded);
+                        continue;
                     }
                 }
                 object.insert(key_str, rmpv_to_json(value)?);
