@@ -2833,13 +2833,7 @@ fn normalize_attachment_data(value: &Value) -> Option<Value> {
                 }
                 normalized
             }
-            Value::String(text) => {
-                let text = text.trim();
-                if text.is_empty() {
-                    return None;
-                }
-                decode_hex_attachment_data(text).or_else(|| BASE64_STANDARD.decode(text).ok())?
-            }
+            Value::String(text) => decode_attachment_text_data(text)?,
             _ => return None,
         };
 
@@ -2860,6 +2854,30 @@ fn decode_hex_attachment_data(text: &str) -> Option<Vec<u8>> {
         index += 2;
     }
     Some(bytes)
+}
+
+fn decode_attachment_text_data(text: &str) -> Option<Vec<u8>> {
+    let text = text.trim();
+    if text.is_empty() {
+        return None;
+    }
+
+    if let Some(payload) = text.strip_prefix("hex:").or_else(|| text.strip_prefix("HEX:")) {
+        return decode_hex_attachment_data(payload.trim());
+    }
+
+    if let Some(payload) = text.strip_prefix("base64:").or_else(|| text.strip_prefix("BASE64:")) {
+        return BASE64_STANDARD.decode(payload.trim()).ok();
+    }
+
+    let hex = decode_hex_attachment_data(text);
+    let base64 = BASE64_STANDARD.decode(text).ok();
+    match (hex, base64) {
+        (Some(bytes), None) => Some(bytes),
+        (None, Some(bytes)) => Some(bytes),
+        (Some(_), Some(_)) => None,
+        (None, None) => None,
+    }
 }
 
 fn normalize_file_attachment_fields(fields: &mut JsonMap<String, Value>) {
@@ -4297,6 +4315,24 @@ mod tests {
             sanitized.get("5"),
             Some(&json!([["hex.bin", [10, 11, 12]], ["b64.bin", [1, 2, 3]]]))
         );
+    }
+
+    #[test]
+    fn sanitize_outbound_wire_fields_rejects_ambiguous_text_attachment_data() {
+        let fields = json!({
+            "attachments": [
+                {
+                    "filename": "ambiguous.bin",
+                    "data": "deadbeef",
+                },
+                {
+                    "filename": "explicit-hex.bin",
+                    "data": "hex:deadbeef",
+                }
+            ],
+        });
+        let sanitized = sanitize_outbound_wire_fields(Some(&fields)).expect("sanitized");
+        assert_eq!(sanitized.get("5"), Some(&json!([["explicit-hex.bin", [222, 173, 190, 239]]])));
     }
 
     #[test]
