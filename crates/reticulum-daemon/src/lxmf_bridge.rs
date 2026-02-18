@@ -195,34 +195,13 @@ fn json_to_rmpv_lossless(value: &JsonValue) -> Result<Value, LxmfError> {
 }
 
 fn json_key_to_rmpv(key: &str) -> Value {
-    if is_canonical_signed_integer_key(key) {
-        if let Ok(value) = key.parse::<i64>() {
-            return Value::Integer(value.into());
-        }
+    if let Ok(value) = key.parse::<i64>() {
+        return Value::Integer(value.into());
     }
-    if is_canonical_unsigned_integer_key(key) {
-        if let Ok(value) = key.parse::<u64>() {
-            return Value::Integer(value.into());
-        }
+    if let Ok(value) = key.parse::<u64>() {
+        return Value::Integer(value.into());
     }
     Value::String(key.into())
-}
-
-fn is_canonical_unsigned_integer_key(key: &str) -> bool {
-    if key.is_empty() || !key.bytes().all(|byte| byte.is_ascii_digit()) {
-        return false;
-    }
-    key == "0" || !key.starts_with('0')
-}
-
-fn is_canonical_signed_integer_key(key: &str) -> bool {
-    let Some(rest) = key.strip_prefix('-') else {
-        return false;
-    };
-    if rest.is_empty() || !rest.bytes().all(|byte| byte.is_ascii_digit()) {
-        return false;
-    }
-    rest != "0" && !rest.starts_with('0')
 }
 
 pub fn rmpv_to_json(value: &Value) -> Option<JsonValue> {
@@ -257,9 +236,42 @@ pub fn rmpv_to_json(value: &Value) -> Option<JsonValue> {
                         .or_else(|| int.as_u64().map(|v| v.to_string())),
                     other => Some(format!("{:?}", other)),
                 }?;
+                if key_str == "2" {
+                    if let Value::Binary(bytes) = value {
+                        if let Some(decoded) = decode_sideband_location_telemetry(bytes) {
+                            object.insert(key_str, decoded);
+                            continue;
+                        }
+                    }
+                    if let Value::String(text) = value {
+                        if let Some(decoded) = decode_sideband_location_telemetry(text.as_bytes()) {
+                            object.insert(key_str, decoded);
+                            continue;
+                        }
+                    }
+                }
+                if key_str == "3" {
+                    if let Value::Binary(bytes) = value {
+                        if let Some(decoded) = decode_telemetry_stream(bytes) {
+                            object.insert(key_str, decoded);
+                            continue;
+                        }
+                    }
+                    if let Value::String(text) = value {
+                        if let Some(decoded) = decode_telemetry_stream(text.as_bytes()) {
+                            object.insert(key_str, decoded);
+                            continue;
+                        }
+                    }
+                }
                 if key_str == "112" {
                     if let Value::String(text) = value {
-                        if let Some(decoded) = decode_columba_meta(text.as_str()) {
+                        if let Some(decoded) = text.as_str().and_then(decode_columba_meta) {
+                            object.insert(key_str, decoded);
+                            continue;
+                        }
+                    } else if let Value::Binary(bytes) = value {
+                        if let Some(decoded) = decode_columba_meta_bytes(bytes) {
                             object.insert(key_str, decoded);
                             continue;
                         }
@@ -273,10 +285,112 @@ pub fn rmpv_to_json(value: &Value) -> Option<JsonValue> {
     }
 }
 
+fn decode_sideband_location_telemetry(packed: &[u8]) -> Option<JsonValue> {
+    let mut cursor = std::io::Cursor::new(packed);
+    let decoded = rmpv::decode::read_value(&mut cursor).ok()?;
+    let rmpv::Value::Map(map) = decoded else {
+        return None;
+    };
+    let location = map
+        .iter()
+        .find(|(key, _)| key.as_i64() == Some(0x02) || key.as_u64() == Some(0x02))
+        .map(|(_, value)| value)?;
+    let rmpv::Value::Array(items) = location else {
+        return None;
+    };
+    if items.len() < 7 {
+        return None;
+    }
+
+    let lat = decode_i32_be(items.first()?)? as f64 / 1e6;
+    let lon = decode_i32_be(items.get(1)?)? as f64 / 1e6;
+    let alt = decode_i32_be(items.get(2)?)? as f64 / 1e2;
+    let speed = decode_u32_be(items.get(3)?)? as f64 / 1e2;
+    let bearing = decode_i32_be(items.get(4)?)? as f64 / 1e2;
+    let accuracy = decode_u16_be(items.get(5)?)? as f64 / 1e2;
+    let updated = items.get(6).and_then(|value| {
+        value.as_i64().or_else(|| value.as_u64().and_then(|raw| i64::try_from(raw).ok()))
+    });
+
+    let mut out = serde_json::Map::new();
+    out.insert("lat".to_string(), JsonValue::from(lat));
+    out.insert("lon".to_string(), JsonValue::from(lon));
+    out.insert("alt".to_string(), JsonValue::from(alt));
+    out.insert("speed".to_string(), JsonValue::from(speed));
+    out.insert("bearing".to_string(), JsonValue::from(bearing));
+    out.insert("accuracy".to_string(), JsonValue::from(accuracy));
+    if let Some(updated) = updated {
+        out.insert("updated".to_string(), JsonValue::from(updated));
+    }
+    Some(JsonValue::Object(out))
+}
+
+fn decode_telemetry_stream(packed: &[u8]) -> Option<JsonValue> {
+    let mut cursor = std::io::Cursor::new(packed);
+    let decoded = rmpv::decode::read_value(&mut cursor).ok()?;
+    rmpv_to_json(&decoded)
+}
+
+fn decode_i32_be(value: &Value) -> Option<i32> {
+    let value = decode_binary_bytes(value)?;
+    if value.len() != 4 {
+        return None;
+    }
+    let mut raw = [0u8; 4];
+    raw.copy_from_slice(value);
+    Some(i32::from_be_bytes(raw))
+}
+
+fn decode_u32_be(value: &Value) -> Option<u32> {
+    let value = decode_binary_bytes(value)?;
+    if value.len() != 4 {
+        return None;
+    }
+    let mut raw = [0u8; 4];
+    raw.copy_from_slice(value);
+    Some(u32::from_be_bytes(raw))
+}
+
+fn decode_u16_be(value: &Value) -> Option<u16> {
+    let value = decode_binary_bytes(value)?;
+    if value.len() != 2 {
+        return None;
+    }
+    let mut raw = [0u8; 2];
+    raw.copy_from_slice(value);
+    Some(u16::from_be_bytes(raw))
+}
+
+fn decode_binary_bytes(value: &Value) -> Option<&[u8]> {
+    match value {
+        Value::Binary(bytes) => Some(bytes.as_slice()),
+        _ => None,
+    }
+}
+
 fn decode_columba_meta(text: &str) -> Option<JsonValue> {
     if let Ok(json) = serde_json::from_str::<JsonValue>(text) {
         Some(json)
     } else {
         Some(JsonValue::String(text.to_string()))
     }
+}
+
+fn decode_columba_meta_bytes(bytes: &[u8]) -> Option<JsonValue> {
+    let text = std::str::from_utf8(bytes).ok();
+    if let Some(text) = text {
+        if let Ok(json) = serde_json::from_str::<JsonValue>(text) {
+            return Some(json);
+        }
+    }
+    let mut cursor = std::io::Cursor::new(bytes);
+    if let Ok(decoded) = rmpv::decode::read_value(&mut cursor) {
+        if usize::try_from(cursor.position()).ok() == Some(bytes.len()) {
+            if let Some(decoded) = rmpv_to_json(&decoded) {
+                return Some(decoded);
+            }
+        }
+    }
+    text.map(|value| JsonValue::String(value.to_string()))
+        .or_else(|| rmpv_to_json(&Value::Binary(bytes.to_vec())))
 }

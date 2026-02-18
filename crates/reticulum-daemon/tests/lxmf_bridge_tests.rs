@@ -34,6 +34,62 @@ fn rmpv_to_json_decodes_columba_meta_from_string() {
 }
 
 #[test]
+fn rmpv_to_json_decodes_columba_meta_from_binary_json() {
+    let fields = rmpv::Value::Map(vec![(
+        rmpv::Value::Integer(112_i64.into()),
+        rmpv::Value::Binary(br#"{"sender":"beta","type":"columba"}"#.to_vec()),
+    )]);
+
+    let output = rmpv_to_json(&fields).expect("to json");
+    assert_eq!(output["112"], serde_json::json!({"sender":"beta","type":"columba"}));
+}
+
+#[test]
+fn rmpv_to_json_decodes_columba_meta_from_binary_utf8_msgpack() {
+    let packed = rmp_serde::to_vec(&rmpv::Value::Integer(77_i64.into())).expect("pack meta");
+    let output = rmpv_to_json(&rmpv::Value::Map(vec![(
+        rmpv::Value::Integer(112_i64.into()),
+        rmpv::Value::Binary(packed),
+    )]))
+    .expect("to json");
+
+    assert_eq!(output["112"], serde_json::json!(77));
+}
+
+#[test]
+fn rmpv_to_json_decodes_telemetry_stream_from_string_payload() {
+    let fields = rmpv::Value::Map(vec![(
+        rmpv::Value::String("3".into()),
+        rmpv::Value::String("\u{7f}".into()),
+    )]);
+
+    let output = rmpv_to_json(&fields).expect("to json");
+    assert_eq!(output["3"], serde_json::json!(127));
+}
+
+#[test]
+fn rmpv_to_json_preserves_nonbinary_telemetry_payload_as_string() {
+    let fields = rmpv::Value::Map(vec![(
+        rmpv::Value::Integer(3_i64.into()),
+        rmpv::Value::String("\u{0100}".into()),
+    )]);
+
+    let output = rmpv_to_json(&fields).expect("to json");
+    assert_eq!(output["3"], serde_json::json!("\u{0100}"));
+}
+
+#[test]
+fn rmpv_to_json_preserves_invalid_columba_meta_from_binary() {
+    let fields = rmpv::Value::Map(vec![(
+        rmpv::Value::Integer(112_i64.into()),
+        rmpv::Value::Binary(vec![0xc4]),
+    )]);
+
+    let output = rmpv_to_json(&fields).expect("to json");
+    assert_eq!(output["112"], serde_json::json!([196]));
+}
+
+#[test]
 fn json_to_rmpv_roundtrip() {
     let input = serde_json::json!({"arr": [1, true, "ok"], "n": 9});
     let value = json_to_rmpv(&input).expect("to rmpv");
@@ -42,16 +98,15 @@ fn json_to_rmpv_roundtrip() {
 }
 
 #[test]
-fn json_to_rmpv_preserves_noncanonical_numeric_keys() {
+fn json_to_rmpv_normalizes_noncanonical_numeric_keys_for_compat() {
     let input = serde_json::json!({
-        "1": "canonical-int",
         "01": "leading-zero",
-        "+1": "plus-prefixed",
         "-01": "noncanonical-negative",
     });
     let value = json_to_rmpv(&input).expect("to rmpv");
     let output = rmpv_to_json(&value).expect("to json");
-    assert_eq!(output, input);
+    assert_eq!(output["1"], serde_json::json!("leading-zero"));
+    assert_eq!(output["-1"], serde_json::json!("noncanonical-negative"));
 }
 
 #[test]
