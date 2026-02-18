@@ -38,7 +38,7 @@ use reticulum::transport::{
     DeliveryReceipt, ReceiptHandler, SendPacketOutcome, Transport, TransportConfig,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{json, Map as JsonMap, Value};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -2780,6 +2780,120 @@ fn fields_contain_attachments(fields: Option<&Value>) -> bool {
     false
 }
 
+fn normalize_attachment_field_entries(entries: &[Value]) -> Option<Value> {
+    let mut normalized = Vec::with_capacity(entries.len());
+    for entry in entries {
+        if let Some(normalized_entry) = normalize_attachment_entry(entry) {
+            normalized.push(normalized_entry);
+        }
+    }
+    if normalized.is_empty() {
+        return None;
+    }
+    Some(Value::Array(normalized))
+}
+
+fn normalize_attachment_entry(entry: &Value) -> Option<Value> {
+    match entry {
+        Value::Array(items) if items.len() >= 2 => {
+            let filename = items[0].as_str()?;
+            let data = normalize_attachment_data(&items[1])?;
+            Some(Value::Array(vec![Value::String(filename.to_string()), data]))
+        }
+        Value::Object(map) => {
+            let filename = map
+                .get("filename")
+                .or_else(|| map.get("name"))
+                .and_then(Value::as_str)?;
+            let data = map.get("data").and_then(normalize_attachment_data)?;
+            Some(Value::Array(vec![Value::String(filename.to_string()), data]))
+        }
+        _ => None,
+    }
+}
+
+fn normalize_attachment_data(value: &Value) -> Option<Value> {
+    let bytes = match value {
+        Value::Array(items) => {
+            let mut normalized = Vec::with_capacity(items.len());
+            for item in items {
+                let byte = item.as_u64().and_then(|value| {
+                    if value <= u8::MAX as u64 {
+                        Some(value as u8)
+                    } else {
+                        None
+                    }
+                }).or_else(|| item.as_i64().and_then(|value| u8::try_from(value).ok()));
+                let Some(byte) = byte else {
+                    return None;
+                };
+                normalized.push(byte);
+            }
+            normalized
+        }
+        Value::String(text) => {
+            let text = text.trim();
+            if text.is_empty() {
+                return None;
+            }
+            decode_hex_attachment_data(text).or_else(|| BASE64_STANDARD.decode(text).ok())?
+        }
+        _ => return None,
+    };
+
+    Some(Value::Array(
+        bytes
+            .into_iter()
+            .map(|byte| Value::Number(u64::from(byte).into()))
+            .collect(),
+    ))
+}
+
+fn decode_hex_attachment_data(text: &str) -> Option<Vec<u8>> {
+    if text.len() % 2 != 0 || !text.chars().all(|ch| ch.is_ascii_hexdigit()) {
+        return None;
+    }
+
+    let mut bytes = Vec::with_capacity(text.len() / 2);
+    let mut index = 0;
+    while index < text.len() {
+        bytes.push(u8::from_str_radix(&text[index..index + 2], 16).ok()?);
+        index += 2;
+    }
+    Some(bytes)
+}
+
+fn normalize_file_attachment_fields(fields: &mut JsonMap<String, Value>) {
+    let normalized_field_5 = fields
+        .get("5")
+        .and_then(Value::as_array)
+        .and_then(|entries| normalize_attachment_field_entries(entries));
+    if let Some(value) = normalized_field_5 {
+        fields.insert("5".to_string(), value);
+        fields.remove("attachments");
+        fields.remove("files");
+        return;
+    }
+
+    let normalized_attachments = fields
+        .get("attachments")
+        .and_then(Value::as_array)
+        .and_then(|entries| normalize_attachment_field_entries(entries));
+    let normalized_files = fields
+        .get("files")
+        .and_then(Value::as_array)
+        .and_then(|entries| normalize_attachment_field_entries(entries));
+
+    if let Some(value) = normalized_attachments.or(normalized_files) {
+        fields.insert("5".to_string(), value);
+        fields.remove("attachments");
+        fields.remove("files");
+        return;
+    }
+
+    fields.remove("5");
+}
+
 async fn resolve_link_destination(
     transport: &Transport,
     link_id: &AddressHash,
@@ -3341,6 +3455,7 @@ fn sanitize_outbound_wire_fields(fields: Option<&Value>) -> Option<Value> {
     };
 
     let mut out = fields.clone();
+    normalize_file_attachment_fields(&mut out);
     out.remove(OUTBOUND_DELIVERY_OPTIONS_FIELD);
 
     for key in ["_lxmf", "lxmf"] {
@@ -4137,6 +4252,122 @@ mod tests {
         assert!(sanitized_alt_lxmf.get("try_propagation_on_fail").is_none());
         assert_eq!(sanitized_alt_lxmf.get("app"), Some(&Value::String("bridge".to_string())));
         assert_eq!(sanitized.get("attachments"), Some(&Value::Array(vec![])));
+    }
+
+    #[test]
+    fn sanitize_outbound_wire_fields_normalizes_attachment_entry_objects() {
+        let fields = json!({
+            "5": [
+                {
+                    "name": "sideband_note.txt",
+                    "data": [110, 111, 116, 101],
+                    "media_type": "text/plain",
+                },
+                {
+                    "filename": "sideband_meta.bin",
+                }
+            ],
+            "attachments": [
+                {
+                    "name": "legacy.json",
+                    "data": [123, 125]
+                }
+            ],
+        });
+        let sanitized = sanitize_outbound_wire_fields(Some(&fields)).expect("sanitized");
+        assert_eq!(
+            sanitized.get("5"),
+            Some(&json!([["sideband_note.txt", [110, 111, 116, 101]]))
+        );
+        assert!(sanitized.get("attachments").is_none());
+    }
+
+    #[test]
+    fn sanitize_outbound_wire_fields_normalizes_hex_and_base64_attachment_data() {
+        let fields = json!({
+            "attachments": [
+                {
+                    "filename": "hex.bin",
+                    "data": "0a0b0c",
+                },
+                {
+                    "name": "b64.bin",
+                    "data": "AQID",
+                }
+            ],
+        });
+        let sanitized = sanitize_outbound_wire_fields(Some(&fields)).expect("sanitized");
+        assert_eq!(
+            sanitized.get("5"),
+            Some(&json!([["hex.bin", [10, 11, 12]], ["b64.bin", [1, 2, 3]]))
+        );
+    }
+
+    #[test]
+    fn sanitize_outbound_wire_fields_skips_invalid_attachment_entries() {
+        let fields = json!({
+            "attachments": [
+                {
+                    "filename": "good.bin",
+                    "data": [7, 8, 9],
+                },
+                {
+                    "filename": "bad.hex",
+                    "data": "0a0b",
+                },
+                {
+                    "filename": "bad.string",
+                    "data": "not-bytes",
+                },
+                {
+                    "filename": "bad.decimal",
+                    "data": -1,
+                },
+                "bad-entry",
+            ]
+        });
+        let sanitized = sanitize_outbound_wire_fields(Some(&fields)).expect("sanitized");
+        assert_eq!(
+            sanitized.get("5"),
+            Some(&json!([["good.bin", [7, 8, 9]]))
+        );
+    }
+
+    #[test]
+    fn sanitize_outbound_wire_fields_normalizes_legacy_files_alias_when_field_5_invalid() {
+        let fields = json!({
+            "5": [
+                {
+                    "filename": "bad.hex",
+                    "data": "0a0b",
+                },
+                "bad-entry"
+            ],
+            "files": [
+                ["good.bin", [1, 2, 3]],
+                ["bad.decimal", -1]
+            ],
+        });
+
+        let sanitized = sanitize_outbound_wire_fields(Some(&fields)).expect("sanitized");
+        assert_eq!(
+            sanitized.get("5"),
+            Some(&json!([["good.bin", [1, 2, 3]]))
+        );
+        assert!(sanitized.get("files").is_none());
+    }
+
+    #[test]
+    fn fields_contain_attachments_from_sideband_metadata() {
+        let fields = json!({
+            "attachments": [
+                {
+                    "name": "legacy.txt",
+                    "size": 3
+                }
+            ]
+        });
+        assert!(!can_send_opportunistic(Some(&fields), 1));
     }
 
     #[test]
