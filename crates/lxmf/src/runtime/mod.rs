@@ -2801,10 +2801,8 @@ fn normalize_attachment_entry(entry: &Value) -> Option<Value> {
             Some(Value::Array(vec![Value::String(filename.to_string()), data]))
         }
         Value::Object(map) => {
-            let filename = map
-                .get("filename")
-                .or_else(|| map.get("name"))
-                .and_then(Value::as_str)?;
+            let filename =
+                map.get("filename").or_else(|| map.get("name")).and_then(Value::as_str)?;
             let data = map.get("data").and_then(normalize_attachment_data)?;
             Some(Value::Array(vec![Value::String(filename.to_string()), data]))
         }
@@ -2813,39 +2811,40 @@ fn normalize_attachment_entry(entry: &Value) -> Option<Value> {
 }
 
 fn normalize_attachment_data(value: &Value) -> Option<Value> {
-    let bytes = match value {
-        Value::Array(items) => {
-            let mut normalized = Vec::with_capacity(items.len());
-            for item in items {
-                let byte = item.as_u64().and_then(|value| {
-                    if value <= u8::MAX as u64 {
-                        Some(value as u8)
-                    } else {
-                        None
-                    }
-                }).or_else(|| item.as_i64().and_then(|value| u8::try_from(value).ok()));
-                let Some(byte) = byte else {
+    let bytes =
+        match value {
+            Value::Array(items) => {
+                let mut normalized = Vec::with_capacity(items.len());
+                for item in items {
+                    let byte =
+                        item.as_u64()
+                            .and_then(|value| {
+                                if value <= u8::MAX as u64 {
+                                    Some(value as u8)
+                                } else {
+                                    None
+                                }
+                            })
+                            .or_else(|| item.as_i64().and_then(|value| u8::try_from(value).ok()));
+                    let Some(byte) = byte else {
+                        return None;
+                    };
+                    normalized.push(byte);
+                }
+                normalized
+            }
+            Value::String(text) => {
+                let text = text.trim();
+                if text.is_empty() {
                     return None;
-                };
-                normalized.push(byte);
+                }
+                decode_hex_attachment_data(text).or_else(|| BASE64_STANDARD.decode(text).ok())?
             }
-            normalized
-        }
-        Value::String(text) => {
-            let text = text.trim();
-            if text.is_empty() {
-                return None;
-            }
-            decode_hex_attachment_data(text).or_else(|| BASE64_STANDARD.decode(text).ok())?
-        }
-        _ => return None,
-    };
+            _ => return None,
+        };
 
     Some(Value::Array(
-        bytes
-            .into_iter()
-            .map(|byte| Value::Number(u64::from(byte).into()))
-            .collect(),
+        bytes.into_iter().map(|byte| Value::Number(u64::from(byte).into())).collect(),
     ))
 }
 
@@ -4275,10 +4274,7 @@ mod tests {
             ],
         });
         let sanitized = sanitize_outbound_wire_fields(Some(&fields)).expect("sanitized");
-        assert_eq!(
-            sanitized.get("5"),
-            Some(&json!([["sideband_note.txt", [110, 111, 116, 101]]))
-        );
+        assert_eq!(sanitized.get("5"), Some(&json!([["sideband_note.txt", [110, 111, 116, 101]]])));
         assert!(sanitized.get("attachments").is_none());
     }
 
@@ -4299,7 +4295,7 @@ mod tests {
         let sanitized = sanitize_outbound_wire_fields(Some(&fields)).expect("sanitized");
         assert_eq!(
             sanitized.get("5"),
-            Some(&json!([["hex.bin", [10, 11, 12]], ["b64.bin", [1, 2, 3]]))
+            Some(&json!([["hex.bin", [10, 11, 12]], ["b64.bin", [1, 2, 3]]]))
         );
     }
 
@@ -4327,10 +4323,7 @@ mod tests {
             ]
         });
         let sanitized = sanitize_outbound_wire_fields(Some(&fields)).expect("sanitized");
-        assert_eq!(
-            sanitized.get("5"),
-            Some(&json!([["good.bin", [7, 8, 9]]))
-        );
+        assert_eq!(sanitized.get("5"), Some(&json!([["good.bin", [7, 8, 9]]])));
     }
 
     #[test]
@@ -4350,10 +4343,7 @@ mod tests {
         });
 
         let sanitized = sanitize_outbound_wire_fields(Some(&fields)).expect("sanitized");
-        assert_eq!(
-            sanitized.get("5"),
-            Some(&json!([["good.bin", [1, 2, 3]]))
-        );
+        assert_eq!(sanitized.get("5"), Some(&json!([["good.bin", [1, 2, 3]]])));
         assert!(sanitized.get("files").is_none());
     }
 
