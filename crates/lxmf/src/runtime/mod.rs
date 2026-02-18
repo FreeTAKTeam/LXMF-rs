@@ -2816,19 +2816,17 @@ fn normalize_attachment_data(value: &Value) -> Option<Value> {
             Value::Array(items) => {
                 let mut normalized = Vec::with_capacity(items.len());
                 for item in items {
-                    let byte =
-                        item.as_u64()
-                            .and_then(|value| {
-                                if value <= u8::MAX as u64 {
-                                    Some(value as u8)
+                let byte =
+                    item.as_u64()
+                        .and_then(|value| {
+                            if value <= u8::MAX as u64 {
+                                Some(value as u8)
                                 } else {
                                     None
                                 }
-                            })
-                            .or_else(|| item.as_i64().and_then(|value| u8::try_from(value).ok()));
-                    let Some(byte) = byte else {
-                        return None;
-                    };
+                        })
+                        .or_else(|| item.as_i64().and_then(|value| u8::try_from(value).ok()));
+                    let byte = byte?;
                     normalized.push(byte);
                 }
                 normalized
@@ -4129,6 +4127,7 @@ mod tests {
     use super::{
         annotate_peer_records_with_announce_metadata, annotate_response_meta,
         build_propagation_envelope, build_send_params_with_source, build_wire_message,
+        can_send_opportunistic,
         decode_inbound_payload, format_relay_request_status, normalize_relay_destination_hash,
         parse_alternative_relay_request_status, propagation_relay_candidates, rmpv_to_json,
         sanitize_outbound_wire_fields, PeerAnnounceMeta, PeerCrypto,
