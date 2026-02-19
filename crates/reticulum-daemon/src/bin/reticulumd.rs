@@ -1,5 +1,15 @@
 #![allow(clippy::items_after_test_module)]
 
+#[path = "reticulumd/bridge_helpers.rs"]
+mod bridge_helpers;
+#[cfg(test)]
+#[path = "reticulumd/tests.rs"]
+mod tests;
+
+use crate::bridge_helpers::{
+    diagnostics_enabled, log_delivery_trace, opportunistic_payload, payload_preview,
+    send_trace_detail,
+};
 use clap::Parser;
 use lxmf::inbound_decode::InboundPayloadMode;
 use reticulum::delivery::{send_outcome_status, LinkSendResult};
@@ -7,7 +17,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::task::LocalSet;
@@ -24,7 +34,7 @@ use reticulum::packet::{
 };
 use reticulum::rpc::{http, AnnounceBridge, InterfaceRecord, OutboundBridge, RpcDaemon};
 use reticulum::storage::messages::MessagesStore;
-use reticulum::transport::{SendPacketOutcome, SendPacketTrace, Transport, TransportConfig};
+use reticulum::transport::{SendPacketOutcome, Transport, TransportConfig};
 use tokio::sync::mpsc::unbounded_channel;
 
 use reticulum_daemon::announce_names::{
@@ -316,107 +326,6 @@ impl AnnounceBridge for TransportBridge {
             transport.send_announce(&destination, app_data.as_deref()).await;
         });
         Ok(())
-    }
-}
-
-fn opportunistic_payload<'a>(payload: &'a [u8], destination: &[u8; 16]) -> &'a [u8] {
-    if payload.len() > 16 && payload[..16] == destination[..] {
-        &payload[16..]
-    } else {
-        payload
-    }
-}
-
-fn log_delivery_trace(message_id: &str, destination: &str, stage: &str, detail: &str) {
-    eprintln!(
-        "[delivery-trace] msg_id={} dst={} stage={} {}",
-        message_id, destination, stage, detail
-    );
-}
-
-fn diagnostics_enabled() -> bool {
-    static ENABLED: OnceLock<bool> = OnceLock::new();
-    *ENABLED.get_or_init(|| {
-        std::env::var("RETICULUMD_DIAGNOSTICS")
-            .ok()
-            .map(|value| {
-                matches!(
-                    value.trim().to_ascii_lowercase().as_str(),
-                    "1" | "true" | "yes" | "on" | "debug"
-                )
-            })
-            .unwrap_or(false)
-    })
-}
-
-fn payload_preview(bytes: &[u8], limit: usize) -> String {
-    let end = bytes.len().min(limit);
-    hex::encode(&bytes[..end])
-}
-
-fn send_trace_detail(trace: SendPacketTrace) -> String {
-    let direct_iface =
-        trace.direct_iface.map(|iface| iface.to_string()).unwrap_or_else(|| "-".to_string());
-    format!(
-        "outcome={:?} direct_iface={} broadcast={} dispatch(matched={},sent={},failed={})",
-        trace.outcome,
-        direct_iface,
-        trace.broadcast,
-        trace.dispatch.matched_ifaces,
-        trace.dispatch.sent_ifaces,
-        trace.dispatch.failed_ifaces
-    )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::opportunistic_payload;
-    use reticulum::delivery::send_outcome_status;
-    use reticulum::destination_hash::parse_destination_hash_required;
-    use reticulum::transport::SendPacketOutcome;
-
-    #[test]
-    fn opportunistic_payload_strips_destination_prefix() {
-        let destination = [0xAA; 16];
-        let mut payload = destination.to_vec();
-        payload.extend_from_slice(&[1, 2, 3, 4]);
-        assert_eq!(opportunistic_payload(&payload, &destination), &[1, 2, 3, 4]);
-    }
-
-    #[test]
-    fn opportunistic_payload_keeps_payload_without_prefix() {
-        let destination = [0xAA; 16];
-        let payload = vec![0xBB; 24];
-        assert_eq!(opportunistic_payload(&payload, &destination), payload.as_slice());
-    }
-
-    #[test]
-    fn send_outcome_status_maps_success() {
-        assert_eq!(
-            send_outcome_status("opportunistic", SendPacketOutcome::SentDirect),
-            "sent: opportunistic"
-        );
-    }
-
-    #[test]
-    fn send_outcome_status_maps_failures() {
-        assert_eq!(
-            send_outcome_status(
-                "opportunistic",
-                SendPacketOutcome::DroppedMissingDestinationIdentity
-            ),
-            "failed: opportunistic missing destination identity"
-        );
-        assert_eq!(
-            send_outcome_status("opportunistic", SendPacketOutcome::DroppedNoRoute),
-            "failed: opportunistic no route"
-        );
-    }
-
-    #[test]
-    fn parse_destination_hex_required_rejects_invalid_hashes() {
-        let err = parse_destination_hash_required("not-hex").expect_err("invalid hash");
-        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
     }
 }
 
