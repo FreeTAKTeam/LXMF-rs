@@ -1,3 +1,9 @@
+mod identity_io;
+mod receipt_helpers;
+mod relay_helpers;
+mod send_helpers;
+mod support;
+
 use crate::cli::daemon::DaemonStatus;
 use crate::cli::profile::{
     load_profile_settings, load_reticulum_config, profile_paths, resolve_identity_path,
@@ -14,25 +20,28 @@ use crate::inbound_decode::{decode_inbound_message, InboundPayloadMode};
 use crate::message::{Message, WireMessage};
 use crate::payload_fields::{decode_transport_fields_json, CommandEntry, WireFields};
 use crate::wire_fields::{
-    contains_attachment_aliases, json_to_rmpv as json_to_rmpv_shared, rmpv_to_json_with_options,
-    RmpvToJsonOptions,
+    json_to_rmpv as json_to_rmpv_shared, rmpv_to_json_with_options, RmpvToJsonOptions,
 };
 use crate::LxmfError;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
+use identity_io::{drop_empty_identity_stub, load_or_create_identity};
 use rand_core::OsRng;
+use receipt_helpers::{
+    format_relay_request_status, is_message_marked_delivered,
+    parse_alternative_relay_request_status, prune_receipt_mappings_for_message,
+    track_outbound_resource_mapping, track_receipt_mapping,
+};
+use relay_helpers::{
+    normalize_relay_destination_hash, parse_destination_hex, parse_destination_hex_required,
+    propagation_relay_candidates, short_hash_prefix, wait_for_external_relay_selection,
+};
 use reticulum::delivery::{
-    await_link_activation, send_outcome_is_sent as shared_send_outcome_is_sent,
-    send_outcome_status as shared_send_outcome_status, send_via_link as shared_send_via_link,
-    LinkSendResult,
+    await_link_activation, send_via_link as shared_send_via_link, LinkSendResult,
 };
 use reticulum::destination::link::{Link, LinkStatus};
 use reticulum::destination::{
     DestinationDesc, DestinationName, SingleInputDestination, SingleOutputDestination,
-};
-use reticulum::destination_hash::{
-    parse_destination_hash as shared_parse_destination_hash,
-    parse_destination_hash_required as shared_parse_destination_hash_required,
 };
 use reticulum::hash::{address_hash, AddressHash, Hash};
 use reticulum::identity::{Identity, PrivateIdentity};
@@ -43,31 +52,33 @@ use reticulum::packet::{
     PacketDataBuffer, PacketType, PropagationType,
 };
 use reticulum::receipt::{
-    prune_receipt_mappings_for_message as shared_prune_receipt_mappings_for_message,
     record_receipt_status as shared_record_receipt_status,
     resolve_receipt_message_id as shared_resolve_receipt_message_id,
-    track_receipt_mapping as shared_track_receipt_mapping,
 };
 use reticulum::resource::ResourceEventKind;
 use reticulum::rpc::{
     AnnounceBridge, InterfaceRecord, OutboundBridge, RpcDaemon, RpcEvent, RpcRequest,
 };
 use reticulum::storage::messages::{MessageRecord, MessagesStore};
-use reticulum::transport::{
-    DeliveryReceipt, ReceiptHandler, SendPacketOutcome, Transport, TransportConfig,
+use reticulum::transport::{DeliveryReceipt, ReceiptHandler, Transport, TransportConfig};
+use send_helpers::{
+    can_send_opportunistic, opportunistic_payload, parse_delivery_method, send_outcome_is_sent,
+    send_outcome_status, DeliveryMethod,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::io::Write;
-use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc as std_mpsc, Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use support::{
+    clean_non_empty, extract_identity_hash, generate_message_id, interface_to_rpc,
+    parse_bind_host_port, source_hash_from_private_key_hex,
+};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::sync::watch;
 use tokio::task::LocalSet;
@@ -2181,7 +2192,7 @@ impl EmbeddedTransportBridge {
                         name: DestinationName::new("lxmf", "delivery"),
                     };
 
-                    match send_via_link(
+                    match shared_send_via_link(
                         transport.as_ref(),
                         destination_desc,
                         payload.as_slice(),
@@ -2600,114 +2611,6 @@ fn handle_receipt_event(daemon: &RpcDaemon, event: ReceiptEvent) -> Result<(), s
     Ok(())
 }
 
-fn format_relay_request_status(exclude_relays: &[String]) -> String {
-    if exclude_relays.is_empty() {
-        return "retrying: requesting alternative propagation relay".to_string();
-    }
-    format!(
-        "retrying: requesting alternative propagation relay;exclude={}",
-        exclude_relays.join(",")
-    )
-}
-
-async fn wait_for_external_relay_selection(
-    selected_propagation_node: &Arc<Mutex<Option<String>>>,
-    peer_crypto: &Arc<Mutex<HashMap<String, PeerCrypto>>>,
-    attempted_relays: &[String],
-    timeout: Duration,
-) -> Option<String> {
-    let deadline = tokio::time::Instant::now() + timeout;
-    while tokio::time::Instant::now() < deadline {
-        let selected = selected_propagation_node
-            .lock()
-            .ok()
-            .and_then(|guard| guard.clone())
-            .map(|value| value.trim().to_string())
-            .filter(|value| !value.is_empty());
-        if let Some(selected) = selected {
-            let normalized =
-                normalize_relay_destination_hash(peer_crypto, &selected).unwrap_or(selected);
-            if !attempted_relays.iter().any(|relay| relay == &normalized) {
-                return Some(normalized);
-            }
-        }
-        tokio::time::sleep(Duration::from_millis(250)).await;
-    }
-    None
-}
-
-fn parse_alternative_relay_request_status(status: &str) -> Option<Vec<String>> {
-    const PREFIX: &str = "retrying: requesting alternative propagation relay";
-    if !status.starts_with(PREFIX) {
-        return None;
-    }
-    let excludes_raw = status.split(";exclude=").nth(1).unwrap_or_default();
-    let exclude_relays = excludes_raw
-        .split(',')
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToOwned::to_owned)
-        .collect::<Vec<_>>();
-    Some(exclude_relays)
-}
-
-fn track_receipt_mapping(
-    map: &Arc<Mutex<HashMap<String, String>>>,
-    packet_hash: &str,
-    message_id: &str,
-) {
-    shared_track_receipt_mapping(map, packet_hash, message_id);
-}
-
-fn track_outbound_resource_mapping(
-    map: &Arc<Mutex<HashMap<String, String>>>,
-    resource_hash: &reticulum::hash::Hash,
-    message_id: &str,
-) {
-    if let Ok(mut guard) = map.lock() {
-        guard.insert(hex::encode(resource_hash.as_slice()), message_id.to_string());
-    }
-}
-
-async fn send_via_link(
-    transport: &Transport,
-    destination: DestinationDesc,
-    payload: &[u8],
-    wait_timeout: Duration,
-) -> Result<LinkSendResult, std::io::Error> {
-    shared_send_via_link(transport, destination, payload, wait_timeout).await
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum DeliveryMethod {
-    Auto,
-    Direct,
-    Opportunistic,
-    Propagated,
-}
-
-fn parse_delivery_method(method: Option<&str>) -> DeliveryMethod {
-    let Some(method) = method.map(str::trim).filter(|value| !value.is_empty()) else {
-        return DeliveryMethod::Auto;
-    };
-
-    match method.to_ascii_lowercase().as_str() {
-        "direct" | "link" => DeliveryMethod::Direct,
-        "opportunistic" => DeliveryMethod::Opportunistic,
-        "propagated" | "propagation" | "relay" => DeliveryMethod::Propagated,
-        _ => DeliveryMethod::Auto,
-    }
-}
-
-fn can_send_opportunistic(fields: Option<&Value>, payload_len: usize) -> bool {
-    const MAX_OPPORTUNISTIC_BYTES: usize = 295;
-    payload_len <= MAX_OPPORTUNISTIC_BYTES && !fields_contain_attachments(fields)
-}
-
-fn fields_contain_attachments(fields: Option<&Value>) -> bool {
-    contains_attachment_aliases(fields)
-}
-
 async fn resolve_link_destination(
     transport: &Transport,
     link_id: &AddressHash,
@@ -2725,28 +2628,6 @@ async fn resolve_link_destination(
         return Some(destination);
     }
     None
-}
-
-fn send_outcome_is_sent(outcome: SendPacketOutcome) -> bool {
-    shared_send_outcome_is_sent(outcome)
-}
-
-fn send_outcome_status(method: &str, outcome: SendPacketOutcome) -> String {
-    shared_send_outcome_status(method, outcome)
-}
-
-fn is_message_marked_delivered(
-    delivered_messages: &Arc<Mutex<HashSet<String>>>,
-    message_id: &str,
-) -> bool {
-    delivered_messages.lock().map(|guard| guard.contains(message_id)).unwrap_or(false)
-}
-
-fn prune_receipt_mappings_for_message(
-    receipt_map: &Arc<Mutex<HashMap<String, String>>>,
-    message_id: &str,
-) {
-    shared_prune_receipt_mappings_for_message(receipt_map, message_id);
 }
 
 fn now_epoch_secs() -> u64 {
@@ -2790,14 +2671,6 @@ fn trigger_rate_limited_announce(
     });
 }
 
-fn opportunistic_payload<'a>(payload: &'a [u8], destination: &[u8; 16]) -> &'a [u8] {
-    if payload.len() > 16 && payload[..16] == destination[..] {
-        &payload[16..]
-    } else {
-        payload
-    }
-}
-
 fn build_propagation_envelope(
     wire_payload: &[u8],
     destination_identity: &Identity,
@@ -2805,67 +2678,6 @@ fn build_propagation_envelope(
     let wire = WireMessage::unpack(wire_payload).map_err(|err: LxmfError| err.to_string())?;
     wire.pack_propagation_with_rng(destination_identity, now_epoch_secs() as f64, OsRng)
         .map_err(|err: LxmfError| err.to_string())
-}
-
-fn propagation_relay_candidates(
-    selected_propagation_node: &Arc<Mutex<Option<String>>>,
-    known_propagation_nodes: &Arc<Mutex<HashSet<String>>>,
-) -> Vec<String> {
-    let mut candidates = Vec::new();
-    let mut seen = HashSet::new();
-
-    let selected = selected_propagation_node
-        .lock()
-        .ok()
-        .and_then(|guard| guard.clone())
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty());
-    if let Some(selected) = selected {
-        seen.insert(selected.clone());
-        candidates.push(selected);
-    }
-
-    let mut known = known_propagation_nodes
-        .lock()
-        .map(|guard| guard.iter().cloned().collect::<Vec<_>>())
-        .unwrap_or_default();
-    known.sort();
-    for candidate in known {
-        if seen.insert(candidate.clone()) {
-            candidates.push(candidate);
-        }
-    }
-
-    candidates
-}
-
-fn short_hash_prefix(value: &str) -> String {
-    value.chars().take(12).collect::<String>()
-}
-
-fn normalize_relay_destination_hash(
-    peer_crypto: &Arc<Mutex<HashMap<String, PeerCrypto>>>,
-    selected_hash: &str,
-) -> Option<String> {
-    let selected_destination = parse_destination_hex(selected_hash)?;
-    let guard = peer_crypto.lock().ok()?;
-    if guard.contains_key(selected_hash) {
-        return Some(selected_hash.to_string());
-    }
-    for (destination_hash, crypto) in guard.iter() {
-        if crypto.identity.address_hash.as_slice() == selected_destination {
-            return Some(destination_hash.clone());
-        }
-    }
-    None
-}
-
-fn parse_destination_hex(input: &str) -> Option<[u8; 16]> {
-    shared_parse_destination_hash(input)
-}
-
-fn parse_destination_hex_required(input: &str) -> Result<[u8; 16], std::io::Error> {
-    shared_parse_destination_hash_required(input)
 }
 
 fn decode_inbound_payload(
@@ -3355,15 +3167,6 @@ fn build_send_params_with_source(
     Ok(PreparedSendMessage { id, source, destination, params })
 }
 
-fn parse_bind_host_port(bind: &str) -> Option<(String, u16)> {
-    if let Ok(addr) = bind.parse::<SocketAddr>() {
-        return Some((addr.ip().to_string(), addr.port()));
-    }
-
-    let (host, port) = bind.rsplit_once(':')?;
-    Some((host.to_string(), port.parse::<u16>().ok()?))
-}
-
 fn resolve_transport(
     settings: &ProfileSettings,
     has_enabled_interfaces: bool,
@@ -3375,124 +3178,6 @@ fn resolve_transport(
         return (Some(INFERRED_TRANSPORT_BIND.to_string()), true);
     }
     (None, false)
-}
-
-fn clean_non_empty(value: Option<String>) -> Option<String> {
-    value.map(|value| value.trim().to_string()).filter(|value| !value.is_empty())
-}
-
-fn source_hash_from_private_key_hex(private_key_hex: &str) -> Result<String, LxmfError> {
-    let key_bytes = hex::decode(private_key_hex.trim())
-        .map_err(|_| LxmfError::Io("source_private_key must be hex-encoded".to_string()))?;
-    let identity = PrivateIdentity::from_private_key_bytes(&key_bytes)
-        .map_err(|_| LxmfError::Io("source_private_key is invalid".to_string()))?;
-    Ok(hex::encode(identity.address_hash().as_slice()))
-}
-
-fn generate_message_id() -> String {
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis();
-    format!("lxmf-{now}")
-}
-
-fn interface_to_rpc(entry: InterfaceEntry) -> InterfaceRecord {
-    InterfaceRecord {
-        kind: entry.kind,
-        enabled: entry.enabled,
-        host: entry.host,
-        port: entry.port,
-        name: Some(entry.name),
-    }
-}
-
-fn extract_identity_hash(status: &Value) -> Option<String> {
-    for key in ["delivery_destination_hash", "identity_hash"] {
-        if let Some(hash) = status
-            .get(key)
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|candidate| !candidate.is_empty())
-        {
-            return Some(hash.to_string());
-        }
-    }
-    None
-}
-
-fn drop_empty_identity_stub(path: &Path) -> Result<(), LxmfError> {
-    if let Ok(meta) = fs::metadata(path) {
-        if meta.is_file() && meta.len() == 0 {
-            fs::remove_file(path).map_err(|err| LxmfError::Io(err.to_string()))?;
-        }
-    }
-    Ok(())
-}
-
-fn load_or_create_identity(path: &Path) -> Result<PrivateIdentity, LxmfError> {
-    match fs::read(path) {
-        Ok(bytes) => {
-            return PrivateIdentity::from_private_key_bytes(&bytes)
-                .map_err(|err| LxmfError::Io(format!("invalid identity: {err:?}")));
-        }
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
-        Err(err) => return Err(LxmfError::Io(err.to_string())),
-    }
-
-    let identity = PrivateIdentity::new_from_rand(OsRng);
-    write_identity_file(path, &identity.to_private_key_bytes())?;
-    Ok(identity)
-}
-
-fn write_identity_file(path: &Path, key_bytes: &[u8]) -> Result<(), LxmfError> {
-    if let Some(parent) = path.parent() {
-        if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent).map_err(|err| LxmfError::Io(err.to_string()))?;
-        }
-    }
-
-    let unique = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
-    let tmp_path = path.with_extension(format!("tmp-{unique}"));
-    write_private_key_tmp(&tmp_path, key_bytes)?;
-
-    #[cfg(windows)]
-    if path.exists() {
-        let _ = fs::remove_file(path);
-    }
-
-    fs::rename(&tmp_path, path).map_err(|err| LxmfError::Io(err.to_string()))?;
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(0o600))
-            .map_err(|err| LxmfError::Io(err.to_string()))?;
-    }
-
-    Ok(())
-}
-
-fn write_private_key_tmp(path: &Path, key_bytes: &[u8]) -> Result<(), LxmfError> {
-    #[cfg(unix)]
-    {
-        use std::fs::OpenOptions;
-        use std::os::unix::fs::OpenOptionsExt;
-        let mut options = OpenOptions::new();
-        options.write(true).create_new(true).mode(0o600);
-        let mut file = options.open(path).map_err(|err| LxmfError::Io(err.to_string()))?;
-        file.write_all(key_bytes).map_err(|err| LxmfError::Io(err.to_string()))?;
-        file.sync_all().map_err(|err| LxmfError::Io(err.to_string()))?;
-        Ok(())
-    }
-
-    #[cfg(not(unix))]
-    {
-        use std::fs::OpenOptions;
-        let mut options = OpenOptions::new();
-        options.write(true).create_new(true);
-        let mut file = options.open(path).map_err(|err| LxmfError::Io(err.to_string()))?;
-        file.write_all(key_bytes).map_err(|err| LxmfError::Io(err.to_string()))?;
-        file.sync_all().map_err(|err| LxmfError::Io(err.to_string()))?;
-        Ok(())
-    }
 }
 
 #[cfg(test)]
