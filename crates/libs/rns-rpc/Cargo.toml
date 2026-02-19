@@ -7,8 +7,16 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+ed25519-dalek = { workspace = true, features = ["rand_core"] }
+rand_core = { workspace = true, features = ["getrandom"] }
+rmp-serde.workspace = true
+rmpv = { workspace = true, features = ["with-serde"] }
+sha2.workspace = true
+hex.workspace = true
 serde_json.workspace = true
-legacy_rpc = { package = "reticulum", path = "../../internal/reticulum-legacy" }
+rusqlite = { workspace = true }
+serde.workspace = true
+tokio = { workspace = true, features = ["full"] }
 
 [lints]
 workspace = true

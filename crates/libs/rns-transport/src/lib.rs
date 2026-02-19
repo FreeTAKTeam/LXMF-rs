@@ -1,12 +1,29 @@
 //! Transport boundary crate for runtime crates and daemon entrypoints.
 
+#[allow(unused_imports)]
+extern crate alloc;
+
+pub mod buffer;
+pub mod channel;
+pub mod config;
+pub mod crypt;
+pub mod delivery;
+pub mod destination;
+pub mod destination_hash;
+pub mod error;
+pub mod hash;
+pub mod identity;
+pub mod iface;
+pub mod packet;
+pub mod ratchets;
+pub mod receipt;
+pub mod resource;
+pub mod serde;
+pub mod storage;
+pub mod time;
+pub mod transport;
+pub mod utils;
+
 pub mod identity_bridge;
 
-pub mod core {
-    pub use rns_core::*;
-}
-
-pub use legacy_transport::{
-    buffer, channel, config, crypt, delivery, destination, destination_hash, error, hash, identity,
-    iface, packet, ratchets, receipt, resource, storage, time, transport,
-};
+pub use packet::{DestinationType, Packet, PacketContext, PacketDataBuffer, PacketType};

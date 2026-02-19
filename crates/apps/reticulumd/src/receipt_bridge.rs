@@ -39,7 +39,21 @@ impl ReceiptHandler for ReceiptBridge {
 }
 
 pub fn handle_receipt_event(daemon: &RpcDaemon, event: ReceiptEvent) -> Result<(), std::io::Error> {
-    record_receipt_status(daemon, &event.message_id, &event.status)
+    record_receipt_status(
+        &|message_id: &str, status: &str| {
+            let _ = daemon.handle_rpc(rns_rpc::rpc::RpcRequest {
+                id: 0,
+                method: "record_receipt".into(),
+                params: Some(serde_json::json!({
+                    "message_id": message_id,
+                    "status": status,
+                })),
+            })?;
+            Ok(())
+        },
+        &event.message_id,
+        &event.status,
+    )
 }
 
 pub fn track_receipt_mapping(

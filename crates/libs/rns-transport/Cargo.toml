@@ -7,9 +7,35 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+aes.workspace = true
+bzip2.workspace = true
+cbc.workspace = true
+crypto-common = { workspace = true, features = ["rand_core"] }
+ed25519-dalek = { workspace = true, features = ["rand_core"] }
+hkdf.workspace = true
+hmac.workspace = true
+rmp-serde.workspace = true
+rmpv.workspace = true
+rmp = "0.8.14"
+rand_core = { workspace = true, features = ["getrandom"] }
+rusqlite = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-rns-core = { path = "../rns-core" }
-legacy_transport = { package = "reticulum", path = "../../internal/reticulum-legacy" }
+serde_bytes = { workspace = true }
+serde_json.workspace = true
+sha2.workspace = true
+log.workspace = true
+hex.workspace = true
+tokio = { workspace = true, features = ["full"] }
+tokio-util = { workspace = true }
+x25519-dalek = { workspace = true, features = ["static_secrets"] }
+rns-core = { path = "../rns-core", package = "rns-core" }
+
+[features]
+default = []
+fernet-aes128 = []
+
+[dev-dependencies]
+tempfile.workspace = true
 
 [lints]
 workspace = true

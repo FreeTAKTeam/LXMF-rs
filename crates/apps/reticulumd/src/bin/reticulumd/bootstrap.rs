@@ -9,11 +9,11 @@ use reticulum_daemon::announce_names::{
 use reticulum_daemon::config::DaemonConfig;
 use reticulum_daemon::identity_store::load_or_create_identity;
 use reticulum_daemon::receipt_bridge::ReceiptBridge;
+use rns_rpc::storage::messages::MessagesStore;
 use rns_rpc::{AnnounceBridge, InterfaceRecord, OutboundBridge, RpcDaemon};
 use rns_transport::destination::{DestinationName, SingleInputDestination};
 use rns_transport::iface::tcp_client::TcpClient;
 use rns_transport::iface::tcp_server::TcpServer;
-use rns_transport::storage::messages::MessagesStore;
 use rns_transport::transport::{Transport, TransportConfig};
 use std::collections::HashMap;
 use std::net::SocketAddr;
