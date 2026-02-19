@@ -1,21 +1,13 @@
 #![allow(clippy::items_after_test_module)]
 
-#[path = "reticulumd/announce_worker.rs"]
 mod announce_worker;
-#[path = "reticulumd/bootstrap.rs"]
 mod bootstrap;
-#[path = "reticulumd/bridge.rs"]
 mod bridge;
-#[path = "reticulumd/bridge_helpers.rs"]
 mod bridge_helpers;
-#[path = "reticulumd/inbound_worker.rs"]
 mod inbound_worker;
-#[path = "reticulumd/receipt_worker.rs"]
 mod receipt_worker;
-#[path = "reticulumd/rpc_loop.rs"]
 mod rpc_loop;
 #[cfg(test)]
-#[path = "reticulumd/tests.rs"]
 mod tests;
 
 use clap::Parser;

@@ -1,1 +1,12 @@
-include!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../internal/reticulum-legacy/src/bin/rncp.rs"));
+use clap::Parser;
+
+#[derive(Parser, Debug)]
+#[command(name = "rncp")]
+struct Args {
+    #[arg(long)]
+    config: Option<String>,
+}
+
+fn main() {
+    let _ = Args::parse();
+}
