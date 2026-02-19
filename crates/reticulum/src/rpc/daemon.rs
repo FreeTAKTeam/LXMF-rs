@@ -550,7 +550,7 @@ impl RpcDaemon {
                 let params = request.params.ok_or_else(|| {
                     std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing params")
                 })?;
-                let parsed: SendMessageParams = serde_json::from_value(params)
+                let parsed: ReceiveMessageParams = serde_json::from_value(params)
                     .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
                 let timestamp = now_i64();
                 let record = MessageRecord {
