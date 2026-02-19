@@ -163,7 +163,9 @@ impl DeliveryTask {
                     receipt_tx.send(ReceiptEvent { message_id, status: "sent: link".to_string() });
             }
             Ok(LinkSendResult::Resource(resource_hash)) => {
-                let detail = format!("resource_hash={}", hex::encode(resource_hash.as_slice()));
+                let resource_hash_hex = hex::encode(resource_hash.as_slice());
+                track_receipt_mapping(&receipt_map, &resource_hash_hex, &message_id);
+                let detail = format!("resource_hash={resource_hash_hex}");
                 log_delivery_trace(&message_id, &destination_hex, "link", &detail);
                 let _ = receipt_tx.send(ReceiptEvent {
                     message_id,
