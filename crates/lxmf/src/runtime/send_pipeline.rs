@@ -24,6 +24,94 @@ use reticulum::packet::{
 use reticulum::storage::messages::MessageRecord;
 use std::time::Duration;
 
+#[derive(Clone, Copy)]
+struct DeliveryMethodPlan {
+    requested: DeliveryMethod,
+    effective: DeliveryMethod,
+    allow_link: bool,
+    allow_opportunistic: bool,
+    allow_propagated: bool,
+}
+
+impl DeliveryMethodPlan {
+    fn from_request(
+        requested: DeliveryMethod,
+        opportunistic_supported: bool,
+        try_propagation_on_fail: bool,
+    ) -> Self {
+        let effective =
+            if matches!(requested, DeliveryMethod::Opportunistic) && !opportunistic_supported {
+                DeliveryMethod::Direct
+            } else {
+                requested
+            };
+
+        Self {
+            requested,
+            effective,
+            allow_link: matches!(effective, DeliveryMethod::Auto | DeliveryMethod::Direct),
+            allow_opportunistic: matches!(
+                effective,
+                DeliveryMethod::Auto | DeliveryMethod::Opportunistic
+            ),
+            allow_propagated: matches!(
+                effective,
+                DeliveryMethod::Auto | DeliveryMethod::Propagated
+            ) || try_propagation_on_fail,
+        }
+    }
+
+    fn downgraded_to_direct(self) -> bool {
+        !matches!(self.requested, DeliveryMethod::Auto) && self.requested != self.effective
+    }
+}
+
+fn resolve_signer_and_source_hash(
+    bridge: &EmbeddedTransportBridge,
+    requested_source: &str,
+    source_private_key: Option<String>,
+) -> Result<(PrivateIdentity, [u8; 16]), std::io::Error> {
+    if let Some(source_private_key) = clean_non_empty(source_private_key) {
+        let source_key_bytes = hex::decode(source_private_key.trim()).map_err(|_| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "source_private_key must be hex-encoded",
+            )
+        })?;
+        let signer = PrivateIdentity::from_private_key_bytes(&source_key_bytes).map_err(|_| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "source_private_key is not a valid identity private key",
+            )
+        })?;
+        let mut source_hash = [0u8; 16];
+        source_hash.copy_from_slice(signer.address_hash().as_slice());
+        return Ok((signer, source_hash));
+    }
+
+    if let Some(parsed_source) = parse_destination_hex(requested_source) {
+        if parsed_source != bridge.delivery_source_hash {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "source hash differs from runtime identity; set source_private_key for per-message source identities",
+            ));
+        }
+    }
+
+    Ok((bridge.signer.clone(), bridge.delivery_source_hash))
+}
+
+fn ticket_status(include_ticket: bool, ticket_present: bool) -> Option<&'static str> {
+    if !include_ticket {
+        return None;
+    }
+    if ticket_present {
+        Some("ticket: present")
+    } else {
+        Some("ticket: unavailable")
+    }
+}
+
 impl EmbeddedTransportBridge {
     pub(super) fn deliver_with_options(
         &self,
@@ -34,36 +122,8 @@ impl EmbeddedTransportBridge {
         let peer_info =
             self.peer_crypto.lock().expect("peer map").get(&record.destination).copied();
         let peer_identity = peer_info.map(|info| info.identity);
-        let (signer, source_hash) = if let Some(source_private_key) =
-            clean_non_empty(options.source_private_key)
-        {
-            let source_key_bytes = hex::decode(source_private_key.trim()).map_err(|_| {
-                std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "source_private_key must be hex-encoded",
-                )
-            })?;
-            let signer =
-                PrivateIdentity::from_private_key_bytes(&source_key_bytes).map_err(|_| {
-                    std::io::Error::new(
-                        std::io::ErrorKind::InvalidInput,
-                        "source_private_key is not a valid identity private key",
-                    )
-                })?;
-            let mut source_hash = [0u8; 16];
-            source_hash.copy_from_slice(signer.address_hash().as_slice());
-            (signer, source_hash)
-        } else {
-            if let Some(requested_source) = parse_destination_hex(&record.source) {
-                if requested_source != self.delivery_source_hash {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::InvalidInput,
-                        "source hash differs from runtime identity; set source_private_key for per-message source identities",
-                    ));
-                }
-            }
-            (self.signer.clone(), self.delivery_source_hash)
-        };
+        let (signer, source_hash) =
+            resolve_signer_and_source_hash(self, &record.source, options.source_private_key)?;
         let outbound_fields = sanitize_outbound_wire_fields(record.fields.as_ref());
 
         let payload = build_wire_message(
@@ -75,15 +135,15 @@ impl EmbeddedTransportBridge {
             &signer,
         )
         .map_err(std::io::Error::other)?;
-        let requested_method = parse_delivery_method(options.method.as_deref());
         let opportunistic_supported = can_send_opportunistic(
             outbound_fields.as_ref(),
             opportunistic_payload(payload.as_slice(), &destination).len(),
         );
-        let mut effective_method = requested_method;
-        if matches!(requested_method, DeliveryMethod::Opportunistic) && !opportunistic_supported {
-            effective_method = DeliveryMethod::Direct;
-        }
+        let method_plan = DeliveryMethodPlan::from_request(
+            parse_delivery_method(options.method.as_deref()),
+            opportunistic_supported,
+            options.try_propagation_on_fail,
+        );
 
         let destination_hash = AddressHash::new(destination);
         let transport = self.transport.clone();
@@ -99,30 +159,21 @@ impl EmbeddedTransportBridge {
         let peer_identity_cache_path = self.peer_identity_cache_path.clone();
         let message_id = record.id.clone();
         let destination_hex = record.destination.clone();
-        let try_propagation_on_fail = options.try_propagation_on_fail;
-        let include_ticket = options.include_ticket;
         let ticket_present =
             options.ticket.as_ref().map(|ticket| !ticket.trim().is_empty()).unwrap_or(false);
+        let ticket_status =
+            ticket_status(options.include_ticket, ticket_present).map(str::to_string);
 
         tokio::spawn(async move {
             if let Ok(mut delivered) = delivered_messages.lock() {
                 delivered.remove(&message_id);
             }
 
-            if include_ticket {
-                let _ = receipt_tx.send(ReceiptEvent {
-                    message_id: message_id.clone(),
-                    status: if ticket_present {
-                        "ticket: present".to_string()
-                    } else {
-                        "ticket: unavailable".to_string()
-                    },
-                });
+            if let Some(status) = ticket_status {
+                let _ = receipt_tx.send(ReceiptEvent { message_id: message_id.clone(), status });
             }
 
-            if !matches!(requested_method, DeliveryMethod::Auto)
-                && requested_method != effective_method
-            {
+            if method_plan.downgraded_to_direct() {
                 let _ = receipt_tx.send(ReceiptEvent {
                     message_id: message_id.clone(),
                     status: "retrying: direct fallback due to opportunistic constraints"
@@ -130,16 +181,9 @@ impl EmbeddedTransportBridge {
                 });
             }
 
-            let allow_link =
-                matches!(effective_method, DeliveryMethod::Auto | DeliveryMethod::Direct);
-            let allow_opportunistic =
-                matches!(effective_method, DeliveryMethod::Auto | DeliveryMethod::Opportunistic);
-            let allow_propagated =
-                matches!(effective_method, DeliveryMethod::Auto | DeliveryMethod::Propagated)
-                    || try_propagation_on_fail;
             let mut last_failure: Option<String> = None;
 
-            if allow_link {
+            if method_plan.allow_link {
                 let _ = receipt_tx.send(ReceiptEvent {
                     message_id: message_id.clone(),
                     status: "outbound_attempt: link".to_string(),
@@ -221,7 +265,7 @@ impl EmbeddedTransportBridge {
                     last_failure = Some("failed: peer not announced".to_string());
                 }
 
-                if !allow_opportunistic && !allow_propagated {
+                if !method_plan.allow_opportunistic && !method_plan.allow_propagated {
                     prune_receipt_mappings_for_message(&receipt_map, &message_id);
                     let _ = receipt_tx.send(ReceiptEvent {
                         message_id,
@@ -232,7 +276,7 @@ impl EmbeddedTransportBridge {
                 }
             }
 
-            if allow_opportunistic {
+            if method_plan.allow_opportunistic {
                 let _ = receipt_tx.send(ReceiptEvent {
                     message_id: message_id.clone(),
                     status: "outbound_attempt: opportunistic".to_string(),
@@ -269,7 +313,7 @@ impl EmbeddedTransportBridge {
                         let failed =
                             send_outcome_status("opportunistic", opportunistic_trace.outcome);
                         last_failure = Some(failed.clone());
-                        if !allow_propagated {
+                        if !method_plan.allow_propagated {
                             let _ = receipt_tx.send(ReceiptEvent { message_id, status: failed });
                             return;
                         }
@@ -284,7 +328,7 @@ impl EmbeddedTransportBridge {
                             send_outcome_status("opportunistic", opportunistic_trace.outcome);
                         let _ = receipt_tx
                             .send(ReceiptEvent { message_id: message_id.clone(), status });
-                        if !allow_propagated {
+                        if !method_plan.allow_propagated {
                             return;
                         }
 
@@ -301,7 +345,7 @@ impl EmbeddedTransportBridge {
                 } else {
                     last_failure =
                         Some("failed: opportunistic payload too large or unsupported".to_string());
-                    if !allow_propagated {
+                    if !method_plan.allow_propagated {
                         let _ = receipt_tx.send(ReceiptEvent {
                             message_id,
                             status: last_failure
@@ -317,7 +361,7 @@ impl EmbeddedTransportBridge {
                 }
             }
 
-            if !allow_propagated {
+            if !method_plan.allow_propagated {
                 prune_receipt_mappings_for_message(&receipt_map, &message_id);
                 let _ = receipt_tx.send(ReceiptEvent {
                     message_id,
