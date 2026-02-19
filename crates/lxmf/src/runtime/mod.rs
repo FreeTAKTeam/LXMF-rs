@@ -79,9 +79,9 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc as std_mpsc, Arc, Mutex};
 use std::thread;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 use support::{
-    clean_non_empty, extract_identity_hash, generate_message_id, interface_to_rpc,
+    clean_non_empty, extract_identity_hash, generate_message_id, interface_to_rpc, now_epoch_secs,
     parse_bind_host_port, source_hash_from_private_key_hex,
 };
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
@@ -346,15 +346,6 @@ struct RuntimePropagationSyncParams {
     identity_private_key: Option<String>,
     #[serde(default)]
     max_messages: Option<u32>,
-}
-
-fn update_runtime_propagation_sync_state(
-    state: &Arc<Mutex<RuntimePropagationSyncState>>,
-    update: impl FnOnce(&mut RuntimePropagationSyncState),
-) {
-    if let Ok(mut guard) = state.lock() {
-        update(&mut guard);
-    }
 }
 
 impl RuntimeHandle {
@@ -756,10 +747,6 @@ impl AnnounceBridge for EmbeddedTransportBridge {
         });
         Ok(())
     }
-}
-
-fn now_epoch_secs() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs()
 }
 
 #[cfg(test)]
