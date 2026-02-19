@@ -50,6 +50,7 @@ fn run_ci() -> Result<()> {
     )?;
     run("cargo", &["test", "--workspace"])?;
     run("cargo", &["doc", "--workspace", "--no-deps"])?;
+    run_migration_checks()?;
     run_architecture_checks()?;
     Ok(())
 }

@@ -33,7 +33,7 @@ boundaries:
 forbidden-deps:
 	cargo xtask forbidden-deps
 
-ci: fmt clippy test doc boundaries
+ci: fmt clippy test doc boundaries migration-checks
 
 release-check: ci deny audit
 

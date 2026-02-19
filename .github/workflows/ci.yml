@@ -98,5 +98,19 @@ jobs:
           tool: cargo-public-api
       - name: API surface
         run: cargo xtask api-diff
+
+  forbidden-deps:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Architecture boundaries
+        run: cargo xtask forbidden-deps
+
+  architecture-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
       - name: Architecture boundaries
         run: cargo xtask architecture-checks
