@@ -5,6 +5,7 @@ mod identity_io;
 mod inbound_helpers;
 mod peer_cache;
 mod propagation_link;
+mod receipt_flow;
 mod receipt_helpers;
 mod relay_helpers;
 mod request_handlers;
@@ -36,6 +37,7 @@ use inbound_helpers::decode_inbound_payload;
 use peer_cache::{
     apply_runtime_identity_restore, load_peer_identity_cache, persist_peer_identity_cache,
 };
+use receipt_flow::{handle_receipt_event, resolve_link_destination, ReceiptBridge, ReceiptEvent};
 use receipt_helpers::{
     format_relay_request_status, is_message_marked_delivered,
     parse_alternative_relay_request_status, prune_receipt_mappings_for_message,
@@ -47,19 +49,14 @@ use relay_helpers::{
 };
 use request_handlers::handle_runtime_request;
 use reticulum::destination::{DestinationName, SingleInputDestination};
-use reticulum::hash::AddressHash;
 use reticulum::identity::{Identity, PrivateIdentity};
 use reticulum::iface::tcp_client::TcpClient;
 use reticulum::iface::tcp_server::TcpServer;
-use reticulum::receipt::{
-    record_receipt_status as shared_record_receipt_status,
-    resolve_receipt_message_id as shared_resolve_receipt_message_id,
-};
 use reticulum::rpc::{
     AnnounceBridge, InterfaceRecord, OutboundBridge, RpcDaemon, RpcEvent, RpcRequest,
 };
 use reticulum::storage::messages::{MessageRecord, MessagesStore};
-use reticulum::transport::{DeliveryReceipt, ReceiptHandler, Transport, TransportConfig};
+use reticulum::transport::{Transport, TransportConfig};
 use send_helpers::{
     can_send_opportunistic, opportunistic_payload, parse_delivery_method, send_outcome_is_sent,
     send_outcome_status, DeliveryMethod,
@@ -338,12 +335,6 @@ struct EmbeddedTransportBridge {
     receipt_tx: tokio::sync::mpsc::UnboundedSender<ReceiptEvent>,
 }
 
-#[derive(Debug, Clone)]
-struct ReceiptEvent {
-    message_id: String,
-    status: String,
-}
-
 #[derive(Debug, Deserialize, Default)]
 struct RuntimePropagationSyncParams {
     #[serde(default)]
@@ -467,13 +458,6 @@ fn extract_outbound_delivery_options(record: &MessageRecord) -> OutboundDelivery
     }
 
     out
-}
-
-#[derive(Clone)]
-struct ReceiptBridge {
-    map: Arc<Mutex<HashMap<String, String>>>,
-    delivered_messages: Arc<Mutex<HashSet<String>>>,
-    tx: tokio::sync::mpsc::UnboundedSender<ReceiptEvent>,
 }
 
 impl RuntimeHandle {
@@ -937,64 +921,6 @@ impl AnnounceBridge for EmbeddedTransportBridge {
         });
         Ok(())
     }
-}
-
-impl ReceiptBridge {
-    fn new(
-        map: Arc<Mutex<HashMap<String, String>>>,
-        delivered_messages: Arc<Mutex<HashSet<String>>>,
-        tx: tokio::sync::mpsc::UnboundedSender<ReceiptEvent>,
-    ) -> Self {
-        Self { map, delivered_messages, tx }
-    }
-}
-
-impl ReceiptHandler for ReceiptBridge {
-    fn on_receipt(&self, receipt: &DeliveryReceipt) {
-        let message_id = shared_resolve_receipt_message_id(&self.map, receipt);
-        if let Some(message_id) = message_id {
-            if let Ok(mut delivered) = self.delivered_messages.lock() {
-                delivered.insert(message_id.clone());
-            }
-            let _ = self.tx.send(ReceiptEvent { message_id, status: "delivered".into() });
-        }
-    }
-}
-
-fn handle_receipt_event(daemon: &RpcDaemon, event: ReceiptEvent) -> Result<(), std::io::Error> {
-    let message_id = event.message_id;
-    let status = event.status;
-    shared_record_receipt_status(daemon, &message_id, &status)?;
-    if let Some(exclude_relays) = parse_alternative_relay_request_status(status.as_str()) {
-        daemon.push_event(RpcEvent {
-            event_type: "alternative_relay_request".to_string(),
-            payload: json!({
-                "message_id": message_id,
-                "exclude_relays": exclude_relays,
-                "timestamp_ms": (now_epoch_secs() as i64) * 1000,
-            }),
-        });
-    }
-    Ok(())
-}
-
-async fn resolve_link_destination(
-    transport: &Transport,
-    link_id: &AddressHash,
-) -> Option<[u8; 16]> {
-    if let Some(link) = transport.find_in_link(link_id).await {
-        let guard = link.lock().await;
-        let mut destination = [0u8; 16];
-        destination.copy_from_slice(guard.destination().address_hash.as_slice());
-        return Some(destination);
-    }
-    if let Some(link) = transport.find_out_link(link_id).await {
-        let guard = link.lock().await;
-        let mut destination = [0u8; 16];
-        destination.copy_from_slice(guard.destination().address_hash.as_slice());
-        return Some(destination);
-    }
-    None
 }
 
 fn now_epoch_secs() -> u64 {
