@@ -1,10 +1,10 @@
+use super::support::now_epoch_secs;
 use super::PeerAnnounceMeta;
 use crate::helpers::{display_name_from_app_data, is_msgpack_array_prefix, normalize_display_name};
 use reticulum::destination::DestinationName;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 pub(super) fn encode_delivery_display_name_app_data(display_name: &str) -> Option<Vec<u8>> {
     let peer_data = rmpv::Value::Array(vec![
@@ -128,8 +128,4 @@ fn annotate_peer_array(peers: &mut [Value], metadata: &HashMap<String, PeerAnnou
             record.insert("app_data_hex".to_string(), Value::String(app_data_hex.clone()));
         }
     }
-}
-
-fn now_epoch_secs() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs()
 }

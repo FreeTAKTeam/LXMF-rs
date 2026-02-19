@@ -1,16 +1,20 @@
 use super::{
     build_propagation_envelope, build_wire_message, can_send_opportunistic, clean_non_empty,
     format_relay_request_status, is_message_marked_delivered, normalize_relay_destination_hash,
-    opportunistic_payload, parse_delivery_method, parse_destination_hex,
-    parse_destination_hex_required, persist_peer_identity_cache, propagation_relay_candidates,
-    prune_receipt_mappings_for_message, sanitize_outbound_wire_fields, send_outcome_is_sent,
-    send_outcome_status, short_hash_prefix, track_outbound_resource_mapping, track_receipt_mapping,
-    trigger_rate_limited_announce, wait_for_external_relay_selection, DeliveryMethod,
-    EmbeddedTransportBridge, OutboundDeliveryOptionsCompat, PeerCrypto, ReceiptEvent,
-    MAX_ALTERNATIVE_PROPAGATION_RELAYS, POST_SEND_ANNOUNCE_MIN_INTERVAL_SECS,
+    opportunistic_payload, parse_delivery_method, persist_peer_identity_cache,
+    propagation_relay_candidates, prune_receipt_mappings_for_message,
+    sanitize_outbound_wire_fields, send_outcome_is_sent, send_outcome_status, short_hash_prefix,
+    track_outbound_resource_mapping, track_receipt_mapping, trigger_rate_limited_announce,
+    wait_for_external_relay_selection, DeliveryMethod, EmbeddedTransportBridge,
+    OutboundDeliveryOptionsCompat, PeerCrypto, ReceiptEvent, MAX_ALTERNATIVE_PROPAGATION_RELAYS,
+    POST_SEND_ANNOUNCE_MIN_INTERVAL_SECS,
 };
 use reticulum::delivery::{send_via_link as shared_send_via_link, LinkSendResult};
 use reticulum::destination::{DestinationDesc, DestinationName};
+use reticulum::destination_hash::{
+    parse_destination_hash as parse_destination_hex,
+    parse_destination_hash_required as parse_destination_hex_required,
+};
 use reticulum::hash::AddressHash;
 use reticulum::identity::PrivateIdentity;
 use reticulum::packet::{

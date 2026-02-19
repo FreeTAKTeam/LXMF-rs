@@ -48,8 +48,8 @@ use receipt_helpers::{
     track_outbound_resource_mapping, track_receipt_mapping,
 };
 use relay_helpers::{
-    normalize_relay_destination_hash, parse_destination_hex, parse_destination_hex_required,
-    propagation_relay_candidates, short_hash_prefix, wait_for_external_relay_selection,
+    normalize_relay_destination_hash, propagation_relay_candidates, short_hash_prefix,
+    wait_for_external_relay_selection,
 };
 use request_handlers::handle_runtime_request;
 use reticulum::destination::{DestinationName, SingleInputDestination};

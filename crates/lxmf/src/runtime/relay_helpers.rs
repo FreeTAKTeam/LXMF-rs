@@ -1,8 +1,5 @@
 use super::PeerCrypto;
-use reticulum::destination_hash::{
-    parse_destination_hash as shared_parse_destination_hash,
-    parse_destination_hash_required as shared_parse_destination_hash_required,
-};
+use reticulum::destination_hash::parse_destination_hash as shared_parse_destination_hash;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -47,7 +44,7 @@ pub(super) fn normalize_relay_destination_hash(
     peer_crypto: &Arc<Mutex<HashMap<String, PeerCrypto>>>,
     selected_hash: &str,
 ) -> Option<String> {
-    let selected_destination = parse_destination_hex(selected_hash)?;
+    let selected_destination = shared_parse_destination_hash(selected_hash)?;
     let guard = peer_crypto.lock().ok()?;
     if guard.contains_key(selected_hash) {
         return Some(selected_hash.to_string());
@@ -58,14 +55,6 @@ pub(super) fn normalize_relay_destination_hash(
         }
     }
     None
-}
-
-pub(super) fn parse_destination_hex(input: &str) -> Option<[u8; 16]> {
-    shared_parse_destination_hash(input)
-}
-
-pub(super) fn parse_destination_hex_required(input: &str) -> Result<[u8; 16], std::io::Error> {
-    shared_parse_destination_hash_required(input)
 }
 
 pub(super) async fn wait_for_external_relay_selection(

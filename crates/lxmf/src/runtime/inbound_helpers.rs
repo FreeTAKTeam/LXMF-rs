@@ -1,3 +1,4 @@
+use super::support::now_epoch_secs;
 use super::wire_codec::json_fields_with_raw_preserved;
 use crate::inbound_decode::{decode_inbound_message, InboundPayloadMode};
 use crate::message::WireMessage;
@@ -6,7 +7,6 @@ use rand_core::OsRng;
 use reticulum::identity::Identity;
 use reticulum::storage::messages::MessageRecord;
 use serde_json::Value;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 pub(super) fn build_propagation_envelope(
     wire_payload: &[u8],
@@ -54,8 +54,4 @@ pub(super) fn annotate_inbound_transport_metadata(
     };
     root.insert("_transport".to_string(), Value::Object(transport));
     record.fields = Some(Value::Object(root));
-}
-
-fn now_epoch_secs() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs()
 }

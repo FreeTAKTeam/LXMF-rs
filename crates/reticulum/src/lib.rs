@@ -19,6 +19,7 @@ pub mod receipt;
 pub mod resource;
 pub mod rpc;
 pub mod storage;
+pub mod time;
 pub mod transport;
 
 pub use crate::destination::{group_decrypt, group_encrypt};

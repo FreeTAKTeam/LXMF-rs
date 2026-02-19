@@ -7,6 +7,7 @@ use reticulum::iface::tcp_client::TcpClient;
 use reticulum::iface::tcp_server::TcpServer;
 use reticulum::rpc::{AnnounceBridge, InterfaceRecord, OutboundBridge, RpcDaemon};
 use reticulum::storage::messages::MessagesStore;
+use reticulum::time::now_epoch_secs_i64;
 use reticulum::transport::{Transport, TransportConfig};
 use reticulum_daemon::announce_names::{
     encode_delivery_display_name_app_data, normalize_display_name, parse_peer_name_from_app_data,
@@ -278,7 +279,7 @@ fn spawn_transport_workers(
                 } else {
                     eprintln!("[daemon] rx announce peer={}", peer);
                 }
-                let timestamp = now_epoch_secs();
+                let timestamp = now_epoch_secs_i64();
                 let _ = daemon_announce.accept_announce_with_details(
                     peer,
                     timestamp,
@@ -288,11 +289,4 @@ fn spawn_transport_workers(
             }
         }
     });
-}
-
-fn now_epoch_secs() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|value| value.as_secs() as i64)
-        .unwrap_or(0)
 }

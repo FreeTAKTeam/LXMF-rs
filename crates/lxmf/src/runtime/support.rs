@@ -33,7 +33,7 @@ pub(super) fn generate_message_id() -> String {
 }
 
 pub(super) fn now_epoch_secs() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs()
+    reticulum::time::now_epoch_secs_u64()
 }
 
 pub(super) fn interface_to_rpc(entry: InterfaceEntry) -> InterfaceRecord {
