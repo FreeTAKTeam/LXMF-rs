@@ -1,6 +1,7 @@
 mod announce_helpers;
 mod announce_rate_limit;
 mod bootstrap;
+mod bridge;
 mod config;
 mod delivery_options;
 mod handle;
@@ -18,9 +19,9 @@ mod runtime_loop;
 mod send_helpers;
 mod send_pipeline;
 mod startup_workers;
-mod state;
 mod support;
 mod wire_codec;
+mod worker_state;
 
 use crate::cli::daemon::DaemonStatus;
 use crate::cli::profile::{
@@ -124,11 +125,12 @@ const PR_TRANSFER_FAILED: u32 = 0xF2;
 const PR_NO_IDENTITY_RCVD: u32 = 0xF3;
 const PR_NO_ACCESS: u32 = 0xF4;
 
+use bridge::{AnnounceTarget, EmbeddedTransportBridge};
 pub use handle::{start, RuntimeHandle};
-use state::{
-    AnnounceTarget, EmbeddedTransportBridge, OutboundDeliveryOptionsCompat, PeerAnnounceMeta,
-    PeerCrypto, PreparedSendMessage, RuntimeCommand, RuntimePropagationSyncParams,
-    RuntimePropagationSyncState, RuntimeRequest, RuntimeResponse, WorkerInit, WorkerState,
+use worker_state::{
+    OutboundDeliveryOptionsCompat, PeerAnnounceMeta, PeerCrypto, PreparedSendMessage,
+    RuntimeCommand, RuntimePropagationSyncParams, RuntimePropagationSyncState, RuntimeRequest,
+    RuntimeResponse, WorkerInit, WorkerState,
 };
 
 #[cfg(test)]
