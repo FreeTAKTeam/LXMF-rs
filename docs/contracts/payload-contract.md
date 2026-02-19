@@ -3,8 +3,9 @@
 This file is the single contract source for desktop parity work across:
 
 - `/Users/tommy/Documents/TAK/LXMF-rs`
-- `/Users/tommy/Documents/TAK/LXMF-rs/crates/internal/reticulum-legacy`
-- `/Users/tommy/Documents/TAK/Weft-Web`
+- `docs/contracts/payload-contract.md` (this repository)
+- `crates/libs/*` and `crates/apps/*` protocol/runtime contracts
+- `<external interop repo mirror>/docs/payload-contract.md`
 
 The mirrored frontend copy is:
 

@@ -9,7 +9,7 @@ Status legend: `not-started` | `in-progress` | `done`.
 ## Targets
 
 - Adapter A: Python LXMF adapter (contract wrapper around Python implementation).
-- Adapter B: Rust lxmf-rs adapter (contract wrapper around `crates/internal/lxmf-legacy/src/router/mod.rs`).
+- Adapter B: Rust lxmf-rs adapter (contract wrapper in `crates/libs/lxmf-runtime` and `crates/libs/lxmf-router`).
 
 ## Execution matrix
 

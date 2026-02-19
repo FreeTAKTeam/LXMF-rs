@@ -15,7 +15,7 @@ This checklist is the publication gate for the Rust workspace.
 - Contract v2 schema artifacts remain valid:
   - `docs/schemas/contract-v2/payload-envelope.schema.json`
   - `docs/schemas/contract-v2/event-payload.schema.json`
-- RPC contract tests pass in `crates/internal/lxmf-legacy/tests/rpc_contract_methods.rs`.
+- RPC contract checks in this repo and external interop gate are kept aligned with `docs/contracts/rpc-contract.md` and migration evidence.
 
 ## 3. API stability gates
 

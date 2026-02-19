@@ -9,8 +9,8 @@ Scope:
 - Message field-level payload IDs and structures are documented in `docs/contracts/payload-contract.md`.
 
 Reference tests:
-- `crates/internal/lxmf-legacy/tests/rpc_contract_methods.rs`
-- `crates/internal/lxmf-legacy/tests/lxmf_rpc_client.rs`
+- In-repo contract coverage: `cargo xtask release-check` and `cargo test -p rns-tools`.
+- External interoperability contract checks are executed from the dedicated interop repository.
 
 ## Wire framing
 
