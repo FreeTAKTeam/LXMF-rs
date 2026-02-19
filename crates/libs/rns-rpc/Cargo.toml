@@ -8,7 +8,7 @@ repository.workspace = true
 
 [dependencies]
 serde_json.workspace = true
-legacy_reticulum = { package = "reticulum-rs", path = "../../internal/reticulum-legacy" }
+legacy_rpc = { package = "reticulum-rs", path = "../../internal/reticulum-legacy" }
 
 [lints]
 workspace = true
