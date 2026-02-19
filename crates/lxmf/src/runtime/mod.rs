@@ -9,11 +9,12 @@ mod identity_io;
 mod inbound_helpers;
 mod peer_cache;
 mod propagation_link;
+mod propagation_sync;
 mod public_types;
 mod receipt_flow;
 mod receipt_helpers;
 mod relay_helpers;
-mod request_handlers;
+mod rpc_dispatch;
 mod rpc_helpers;
 mod runtime_loop;
 mod send_helpers;
@@ -56,7 +57,6 @@ use relay_helpers::{
     normalize_relay_destination_hash, propagation_relay_candidates, short_hash_prefix,
     wait_for_external_relay_selection,
 };
-use request_handlers::handle_runtime_request;
 use reticulum::destination::{DestinationName, SingleInputDestination};
 use reticulum::identity::{Identity, PrivateIdentity};
 use reticulum::iface::tcp_client::TcpClient;
@@ -66,6 +66,7 @@ use reticulum::rpc::{
 };
 use reticulum::storage::messages::{MessageRecord, MessagesStore};
 use reticulum::transport::{Transport, TransportConfig};
+use rpc_dispatch::handle_runtime_request;
 use rpc_helpers::{annotate_response_meta, build_send_params_with_source, resolve_transport};
 use runtime_loop::runtime_thread;
 use send_helpers::{
