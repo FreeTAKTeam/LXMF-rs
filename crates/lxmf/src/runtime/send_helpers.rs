@@ -2,6 +2,7 @@ use crate::wire_fields::contains_attachment_aliases;
 use reticulum::delivery::{
     send_outcome_is_sent as shared_send_outcome_is_sent,
     send_outcome_status as shared_send_outcome_status,
+    strip_destination_prefix as shared_strip_destination_prefix,
 };
 use reticulum::transport::SendPacketOutcome;
 use serde_json::Value;
@@ -45,9 +46,5 @@ pub(super) fn send_outcome_status(method: &str, outcome: SendPacketOutcome) -> S
 }
 
 pub(super) fn opportunistic_payload<'a>(payload: &'a [u8], destination: &[u8; 16]) -> &'a [u8] {
-    if payload.len() > 16 && payload[..16] == destination[..] {
-        &payload[16..]
-    } else {
-        payload
-    }
+    shared_strip_destination_prefix(payload, destination)
 }

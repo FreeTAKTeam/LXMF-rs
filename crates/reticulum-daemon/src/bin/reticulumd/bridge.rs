@@ -2,7 +2,7 @@ use super::bridge_helpers::{
     diagnostics_enabled, log_delivery_trace, opportunistic_payload, payload_preview,
     send_trace_detail,
 };
-use reticulum::delivery::{send_outcome_status, LinkSendResult};
+use reticulum::delivery::{send_outcome_status, send_via_link, LinkSendResult};
 use reticulum::destination::{DestinationDesc, DestinationName, SingleInputDestination};
 use reticulum::destination_hash::parse_destination_hash_required;
 use reticulum::hash::AddressHash;
@@ -13,7 +13,6 @@ use reticulum::packet::{
 };
 use reticulum::rpc::{AnnounceBridge, OutboundBridge};
 use reticulum::transport::{SendPacketOutcome, Transport};
-use reticulum_daemon::direct_delivery::send_via_link;
 use reticulum_daemon::lxmf_bridge::build_wire_message;
 use reticulum_daemon::receipt_bridge::{track_receipt_mapping, ReceiptEvent};
 use std::collections::HashMap;

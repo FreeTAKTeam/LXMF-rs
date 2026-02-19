@@ -44,6 +44,14 @@ pub fn send_outcome_status(method: &str, outcome: SendPacketOutcome) -> String {
     }
 }
 
+pub fn strip_destination_prefix<'a>(payload: &'a [u8], destination: &[u8; 16]) -> &'a [u8] {
+    if payload.len() > 16 && payload[..16] == destination[..] {
+        &payload[16..]
+    } else {
+        payload
+    }
+}
+
 pub async fn send_via_link(
     transport: &Transport,
     destination: DestinationDesc,

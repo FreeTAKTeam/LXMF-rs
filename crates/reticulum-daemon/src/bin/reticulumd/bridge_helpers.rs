@@ -1,12 +1,9 @@
+use reticulum::delivery::strip_destination_prefix as shared_strip_destination_prefix;
 use reticulum::transport::SendPacketTrace;
 use std::sync::OnceLock;
 
 pub(crate) fn opportunistic_payload<'a>(payload: &'a [u8], destination: &[u8; 16]) -> &'a [u8] {
-    if payload.len() > 16 && payload[..16] == destination[..] {
-        &payload[16..]
-    } else {
-        payload
-    }
+    shared_strip_destination_prefix(payload, destination)
 }
 
 pub(crate) fn log_delivery_trace(message_id: &str, destination: &str, stage: &str, detail: &str) {
