@@ -1,5 +1,6 @@
 mod announce_helpers;
 mod identity_io;
+mod inbound_helpers;
 mod peer_cache;
 mod propagation_link;
 mod receipt_helpers;
@@ -16,8 +17,7 @@ use crate::cli::profile::{
 use crate::helpers::normalize_display_name;
 #[cfg(reticulum_api_v2)]
 use crate::helpers::{pn_peering_cost_from_app_data, pn_stamp_cost_flexibility_from_app_data};
-use crate::inbound_decode::{decode_inbound_message, InboundPayloadMode};
-use crate::message::WireMessage;
+use crate::inbound_decode::InboundPayloadMode;
 use crate::payload_fields::{CommandEntry, WireFields};
 use crate::LxmfError;
 use announce_helpers::{
@@ -26,6 +26,9 @@ use announce_helpers::{
     update_peer_announce_meta,
 };
 use identity_io::{drop_empty_identity_stub, load_or_create_identity};
+use inbound_helpers::{
+    annotate_inbound_transport_metadata, build_propagation_envelope, decode_inbound_payload,
+};
 use peer_cache::{
     apply_runtime_identity_restore, load_peer_identity_cache, persist_peer_identity_cache,
 };
@@ -34,7 +37,6 @@ use propagation_link::{
     propagation_error_from_response_value, send_link_context_packet,
     wait_for_link_request_response,
 };
-use rand_core::OsRng;
 use receipt_helpers::{
     format_relay_request_status, is_message_marked_delivered,
     parse_alternative_relay_request_status, prune_receipt_mappings_for_message,
@@ -89,9 +91,7 @@ use support::{
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::sync::watch;
 use tokio::task::LocalSet;
-use wire_codec::{
-    build_wire_message, json_fields_with_raw_preserved, sanitize_outbound_wire_fields,
-};
+use wire_codec::{build_wire_message, sanitize_outbound_wire_fields};
 #[cfg(test)]
 use wire_codec::{json_to_rmpv, rmpv_to_json};
 
@@ -2460,54 +2460,6 @@ fn trigger_rate_limited_announce(
             announce_transport.send_announce(&target.destination, target.app_data.as_deref()).await;
         }
     });
-}
-
-fn build_propagation_envelope(
-    wire_payload: &[u8],
-    destination_identity: &Identity,
-) -> Result<Vec<u8>, String> {
-    let wire = WireMessage::unpack(wire_payload).map_err(|err: LxmfError| err.to_string())?;
-    wire.pack_propagation_with_rng(destination_identity, now_epoch_secs() as f64, OsRng)
-        .map_err(|err: LxmfError| err.to_string())
-}
-
-fn decode_inbound_payload(
-    destination: [u8; 16],
-    payload: &[u8],
-    mode: InboundPayloadMode,
-) -> Option<MessageRecord> {
-    let message = decode_inbound_message(destination, payload, mode).ok()?;
-    Some(MessageRecord {
-        id: message.id,
-        source: hex::encode(message.source),
-        destination: hex::encode(message.destination),
-        title: message.title,
-        content: message.content,
-        timestamp: message.timestamp,
-        direction: "in".into(),
-        fields: message.fields.as_ref().and_then(json_fields_with_raw_preserved),
-        receipt_status: None,
-    })
-}
-
-fn annotate_inbound_transport_metadata(
-    record: &mut MessageRecord,
-    event: &reticulum::transport::ReceivedData,
-) {
-    let mut transport = serde_json::Map::new();
-    transport.insert("ratchet_used".to_string(), Value::Bool(event.ratchet_used));
-
-    let mut root = match record.fields.take() {
-        Some(Value::Object(existing)) => existing,
-        Some(other) => {
-            let mut root = serde_json::Map::new();
-            root.insert("_fields_raw".to_string(), other);
-            root
-        }
-        None => serde_json::Map::new(),
-    };
-    root.insert("_transport".to_string(), Value::Object(transport));
-    record.fields = Some(Value::Object(root));
 }
 
 fn annotate_response_meta(result: &mut Value, profile: &str, rpc_endpoint: &str) {
