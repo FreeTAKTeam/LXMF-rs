@@ -1,11 +1,17 @@
-pub use reticulum_legacy::crypt;
-pub use reticulum_legacy::destination;
-pub use reticulum_legacy::hash;
-pub use reticulum_legacy::identity;
-pub use reticulum_legacy::packet;
-pub use reticulum_legacy::ratchets;
+pub mod buffer;
+pub mod crypt;
+pub mod destination;
+pub mod destination_hash;
+mod error;
+pub mod hash;
+pub mod identity;
+pub mod packet;
+pub mod ratchets;
 
-pub use reticulum_legacy::destination::{group_decrypt, group_encrypt};
-pub use reticulum_legacy::hash::lxmf_address_hash;
-pub use reticulum_legacy::identity::{lxmf_sign, lxmf_verify};
-pub use reticulum_legacy::packet::{Packet, LXMF_MAX_PAYLOAD};
+pub mod serde;
+
+pub use destination::{group_decrypt, group_encrypt};
+pub use error::RnsError;
+pub use hash::lxmf_address_hash;
+pub use identity::{lxmf_sign, lxmf_verify};
+pub use packet::{Packet, LXMF_MAX_PAYLOAD};

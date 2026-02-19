@@ -1147,7 +1147,21 @@ dependencies = [
 name = "rns-core"
 version = "0.1.0"
 dependencies = [
- "reticulum-rs",
+ "aes",
+ "cbc",
+ "crypto-common",
+ "ed25519-dalek",
+ "hex",
+ "hkdf",
+ "hmac",
+ "log",
+ "rand_core",
+ "rmp-serde",
+ "serde",
+ "serde_bytes",
+ "sha2",
+ "tempfile",
+ "x25519-dalek",
 ]
 
 [[package]]
