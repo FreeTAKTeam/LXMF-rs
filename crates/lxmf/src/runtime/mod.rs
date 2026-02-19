@@ -3,6 +3,7 @@ mod receipt_helpers;
 mod relay_helpers;
 mod send_helpers;
 mod support;
+mod wire_codec;
 
 use crate::cli::daemon::DaemonStatus;
 use crate::cli::profile::{
@@ -17,11 +18,8 @@ use crate::helpers::{
     pn_peering_cost_from_app_data, pn_stamp_cost_flexibility_from_app_data,
 };
 use crate::inbound_decode::{decode_inbound_message, InboundPayloadMode};
-use crate::message::{Message, WireMessage};
-use crate::payload_fields::{decode_transport_fields_json, CommandEntry, WireFields};
-use crate::wire_fields::{
-    json_to_rmpv as json_to_rmpv_shared, rmpv_to_json_with_options, RmpvToJsonOptions,
-};
+use crate::message::WireMessage;
+use crate::payload_fields::{CommandEntry, WireFields};
 use crate::LxmfError;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
@@ -82,6 +80,11 @@ use support::{
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::sync::watch;
 use tokio::task::LocalSet;
+use wire_codec::{
+    build_wire_message, json_fields_with_raw_preserved, sanitize_outbound_wire_fields,
+};
+#[cfg(test)]
+use wire_codec::{json_to_rmpv, rmpv_to_json};
 
 const INFERRED_TRANSPORT_BIND: &str = "127.0.0.1:0";
 const DEFAULT_ANNOUNCE_INTERVAL_SECS: u64 = 60;
@@ -2717,86 +2720,6 @@ fn annotate_inbound_transport_metadata(
     };
     root.insert("_transport".to_string(), Value::Object(transport));
     record.fields = Some(Value::Object(root));
-}
-
-fn build_wire_message(
-    source: [u8; 16],
-    destination: [u8; 16],
-    title: &str,
-    content: &str,
-    fields: Option<Value>,
-    signer: &PrivateIdentity,
-) -> Result<Vec<u8>, LxmfError> {
-    let mut message = Message::new();
-    message.destination_hash = Some(destination);
-    message.source_hash = Some(source);
-    message.set_title_from_string(title);
-    message.set_content_from_string(content);
-    if let Some(fields) = fields {
-        message.fields = Some(wire_fields_from_json(&fields)?);
-    }
-    message.to_wire(Some(signer))
-}
-
-fn wire_fields_from_json(value: &Value) -> Result<rmpv::Value, LxmfError> {
-    if let Some(raw) = decode_transport_fields_json(value)? {
-        return Ok(raw);
-    }
-    json_to_rmpv(value)
-}
-
-fn json_to_rmpv(value: &Value) -> Result<rmpv::Value, LxmfError> {
-    json_to_rmpv_shared(value)
-}
-
-fn rmpv_to_json(value: &rmpv::Value) -> Option<Value> {
-    rmpv_to_json_with_options(value, RmpvToJsonOptions { enrich_app_extensions: true })
-}
-
-fn json_fields_with_raw_preserved(value: &rmpv::Value) -> Option<Value> {
-    let mut converted = rmpv_to_json(value)?;
-    if let Value::Object(object) = &mut converted {
-        if let Ok(raw) = rmp_serde::to_vec(value) {
-            object.insert(
-                "_lxmf_fields_msgpack_b64".to_string(),
-                Value::String(BASE64_STANDARD.encode(raw)),
-            );
-        }
-    }
-    Some(converted)
-}
-
-fn sanitize_outbound_wire_fields(fields: Option<&Value>) -> Option<Value> {
-    let Some(Value::Object(fields)) = fields else {
-        return fields.cloned();
-    };
-
-    let mut out = fields.clone();
-    out.remove(OUTBOUND_DELIVERY_OPTIONS_FIELD);
-
-    for key in ["_lxmf", "lxmf"] {
-        let Some(Value::Object(lxmf_fields)) = out.get_mut(key) else {
-            continue;
-        };
-        for reserved in [
-            "method",
-            "stamp_cost",
-            "include_ticket",
-            "try_propagation_on_fail",
-            "source_private_key",
-        ] {
-            lxmf_fields.remove(reserved);
-        }
-        if lxmf_fields.is_empty() {
-            out.remove(key);
-        }
-    }
-
-    if out.is_empty() {
-        None
-    } else {
-        Some(Value::Object(out))
-    }
 }
 
 fn encode_delivery_display_name_app_data(display_name: &str) -> Option<Vec<u8>> {
