@@ -8,6 +8,7 @@ repository.workspace = true
 
 [dependencies]
 serde = { workspace = true, features = ["derive"] }
+rns-core = { path = "../rns-core" }
 legacy_transport = { package = "reticulum", path = "../../internal/reticulum-legacy" }
 
 [lints]
