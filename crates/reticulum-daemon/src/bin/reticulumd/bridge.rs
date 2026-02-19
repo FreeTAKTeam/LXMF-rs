@@ -2,7 +2,9 @@ use super::bridge_helpers::{
     diagnostics_enabled, log_delivery_trace, opportunistic_payload, payload_preview,
     send_trace_detail,
 };
-use reticulum::delivery::{send_outcome_status, send_via_link, LinkSendResult};
+use reticulum::delivery::{
+    send_outcome_is_sent, send_outcome_status, send_via_link, LinkSendResult,
+};
 use reticulum::destination::{DestinationDesc, DestinationName, SingleInputDestination};
 use reticulum::destination_hash::parse_destination_hash_required;
 use reticulum::hash::AddressHash;
@@ -12,7 +14,7 @@ use reticulum::packet::{
     PacketDataBuffer, PacketType, PropagationType,
 };
 use reticulum::rpc::{AnnounceBridge, OutboundBridge};
-use reticulum::transport::{SendPacketOutcome, Transport};
+use reticulum::transport::Transport;
 use reticulum_daemon::lxmf_bridge::build_wire_message;
 use reticulum_daemon::receipt_bridge::{track_receipt_mapping, ReceiptEvent};
 use std::collections::HashMap;
@@ -247,10 +249,7 @@ impl OutboundBridge for TransportBridge {
                         &trace_detail,
                     );
                     let outcome = trace.outcome;
-                    if !matches!(
-                        outcome,
-                        SendPacketOutcome::SentDirect | SendPacketOutcome::SentBroadcast
-                    ) {
+                    if !send_outcome_is_sent(outcome) {
                         if let Ok(mut map) = receipt_map.lock() {
                             map.remove(&packet_hash);
                         }
