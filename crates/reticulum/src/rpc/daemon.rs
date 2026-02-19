@@ -526,16 +526,11 @@ impl RpcDaemon {
                     error: None,
                 })
             }
-            "send_message" => {
+            "send_message" | "send_message_v2" => {
                 let params = request.params.ok_or_else(|| {
                     std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing params")
                 })?;
-                let parsed: SendMessageParams = serde_json::from_value(params)
-                    .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
-                let options = OutboundDeliveryOptions {
-                    source_private_key: parsed.source_private_key,
-                    ..Default::default()
-                };
+                let parsed = parse_outbound_send_request(request.method.as_str(), params)?;
 
                 self.store_outbound(
                     request.id,
@@ -545,38 +540,9 @@ impl RpcDaemon {
                     parsed.title,
                     parsed.content,
                     parsed.fields,
-                    None,
-                    None,
-                    options,
-                    None,
-                )
-            }
-            "send_message_v2" => {
-                let params = request.params.ok_or_else(|| {
-                    std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing params")
-                })?;
-                let parsed: SendMessageV2Params = serde_json::from_value(params)
-                    .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
-                let outbound_method = parsed.method.clone();
-
-                self.store_outbound(
-                    request.id,
-                    parsed.id,
-                    parsed.source,
-                    parsed.destination,
-                    parsed.title,
-                    parsed.content,
-                    parsed.fields,
-                    outbound_method.clone(),
+                    parsed.method,
                     parsed.stamp_cost,
-                    OutboundDeliveryOptions {
-                        method: outbound_method,
-                        stamp_cost: parsed.stamp_cost,
-                        include_ticket: parsed.include_ticket.unwrap_or_default(),
-                        try_propagation_on_fail: parsed.try_propagation_on_fail.unwrap_or_default(),
-                        ticket: None,
-                        source_private_key: parsed.source_private_key,
-                    },
+                    parsed.options,
                     parsed.include_ticket,
                 )
             }

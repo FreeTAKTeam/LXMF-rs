@@ -117,6 +117,113 @@ fn send_message_v2_persists_lxmf_metadata() {
 }
 
 #[test]
+fn send_message_rejects_legacy_files_alias() {
+    let daemon = RpcDaemon::test_instance();
+    let err = daemon
+        .handle_rpc(RpcRequest {
+            id: 70,
+            method: "send_message".into(),
+            params: Some(json!({
+                "id": "msg-legacy-files",
+                "source": "alice",
+                "destination": "bob",
+                "content": "hello",
+                "fields": {
+                    "files": [
+                        { "name": "legacy.txt", "data": [1,2,3] }
+                    ]
+                }
+            })),
+        })
+        .expect_err("legacy alias should be rejected");
+
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+    assert!(err.to_string().contains("legacy field 'files' is not allowed"));
+}
+
+#[test]
+fn send_message_v2_rejects_public_numeric_attachment_key() {
+    let daemon = RpcDaemon::test_instance();
+    let err = daemon
+        .handle_rpc(RpcRequest {
+            id: 71,
+            method: "send_message_v2".into(),
+            params: Some(json!({
+                "id": "msg-wire-key",
+                "source": "alice",
+                "destination": "bob",
+                "content": "hello",
+                "fields": {
+                    "5": [
+                        ["payload.bin", [1,2,3]]
+                    ]
+                }
+            })),
+        })
+        .expect_err("public wire key should be rejected");
+
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+    assert!(err.to_string().contains("public field '5' is not allowed"));
+}
+
+#[test]
+fn send_message_rejects_ambiguous_attachment_text_without_prefix() {
+    let daemon = RpcDaemon::test_instance();
+    let err = daemon
+        .handle_rpc(RpcRequest {
+            id: 72,
+            method: "send_message".into(),
+            params: Some(json!({
+                "id": "msg-ambiguous-attachment",
+                "source": "alice",
+                "destination": "bob",
+                "content": "hello",
+                "fields": {
+                    "attachments": [
+                        { "name": "payload.bin", "data": "010203" }
+                    ]
+                }
+            })),
+        })
+        .expect_err("ambiguous text attachment should be rejected");
+
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+    assert!(err
+        .to_string()
+        .contains("attachment text data must use explicit 'hex:' or 'base64:' prefix"));
+}
+
+#[test]
+fn send_message_v2_accepts_canonical_attachments() {
+    let daemon = RpcDaemon::test_instance();
+    daemon
+        .handle_rpc(RpcRequest {
+            id: 73,
+            method: "send_message_v2".into(),
+            params: Some(json!({
+                "id": "msg-canonical-attachments",
+                "source": "alice",
+                "destination": "bob",
+                "content": "hello",
+                "fields": {
+                    "attachments": [
+                        { "name": "payload.bin", "data": "hex:010203" },
+                        { "name": "meta.txt", "data": [65, 66, 67] }
+                    ]
+                }
+            })),
+        })
+        .expect("canonical attachments should be accepted");
+
+    let list = daemon
+        .handle_rpc(RpcRequest { id: 74, method: "list_messages".into(), params: None })
+        .expect("list");
+    let result = list.result.expect("result");
+    let messages = result["messages"].as_array().expect("messages");
+    assert!(messages.iter().any(|message| message["id"] == "msg-canonical-attachments"));
+}
+
+#[test]
 fn delivery_policy_roundtrip() {
     let daemon = RpcDaemon::test_instance();
     daemon

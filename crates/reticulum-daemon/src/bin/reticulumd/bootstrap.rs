@@ -1,28 +1,25 @@
+use super::announce_worker::spawn_announce_worker;
 use super::bridge::{PeerCrypto, TransportBridge};
-use super::bridge_helpers::{diagnostics_enabled, log_delivery_trace, payload_preview};
+use super::inbound_worker::spawn_inbound_worker;
+use super::receipt_worker::spawn_receipt_worker;
 use super::Args;
-use lxmf::inbound_decode::InboundPayloadMode;
 use reticulum::destination::{DestinationName, SingleInputDestination};
 use reticulum::iface::tcp_client::TcpClient;
 use reticulum::iface::tcp_server::TcpServer;
 use reticulum::rpc::{AnnounceBridge, InterfaceRecord, OutboundBridge, RpcDaemon};
 use reticulum::storage::messages::MessagesStore;
-use reticulum::time::now_epoch_secs_i64;
 use reticulum::transport::{Transport, TransportConfig};
 use reticulum_daemon::announce_names::{
-    encode_delivery_display_name_app_data, normalize_display_name, parse_peer_name_from_app_data,
+    encode_delivery_display_name_app_data, normalize_display_name,
 };
 use reticulum_daemon::config::DaemonConfig;
 use reticulum_daemon::identity_store::load_or_create_identity;
-use reticulum_daemon::inbound_delivery::{
-    decode_inbound_payload, decode_inbound_payload_with_diagnostics,
-};
-use reticulum_daemon::receipt_bridge::{handle_receipt_event, ReceiptBridge, ReceiptEvent};
+use reticulum_daemon::receipt_bridge::ReceiptBridge;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
-use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
+use tokio::sync::mpsc::unbounded_channel;
 
 pub(super) struct BootstrapContext {
     pub(super) rpc_addr: SocketAddr,
@@ -172,121 +169,9 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     }
 
     if let Some(transport) = transport {
-        spawn_transport_workers(daemon.clone(), transport, peer_crypto);
+        spawn_inbound_worker(daemon.clone(), transport.clone());
+        spawn_announce_worker(daemon.clone(), transport, peer_crypto);
     }
 
     BootstrapContext { rpc_addr, daemon }
-}
-
-fn spawn_receipt_worker(daemon: Rc<RpcDaemon>, mut receipt_rx: UnboundedReceiver<ReceiptEvent>) {
-    let daemon_receipts = daemon;
-    tokio::task::spawn_local(async move {
-        while let Some(event) = receipt_rx.recv().await {
-            let message_id = event.message_id.clone();
-            let status = event.status.clone();
-            let detail = format!("status={status}");
-            log_delivery_trace(&message_id, "-", "receipt-update", &detail);
-            let result = handle_receipt_event(&daemon_receipts, event);
-            if let Err(err) = result {
-                let detail = format!("persist-failed err={err}");
-                log_delivery_trace(&message_id, "-", "receipt-persist", &detail);
-            } else {
-                log_delivery_trace(&message_id, "-", "receipt-persist", "ok");
-            }
-        }
-    });
-}
-
-fn spawn_transport_workers(
-    daemon: Rc<RpcDaemon>,
-    transport: Arc<Transport>,
-    peer_crypto: Arc<Mutex<HashMap<String, PeerCrypto>>>,
-) {
-    let daemon_inbound = daemon.clone();
-    let inbound_transport = transport.clone();
-    tokio::task::spawn_local(async move {
-        let mut rx = inbound_transport.received_data_events();
-        loop {
-            if let Ok(event) = rx.recv().await {
-                let data = event.data.as_slice();
-                let destination_hex = hex::encode(event.destination.as_slice());
-                if diagnostics_enabled() {
-                    eprintln!(
-                        "[daemon-rx] dst={} len={} ratchet_used={} data_prefix={}",
-                        destination_hex,
-                        data.len(),
-                        event.ratchet_used,
-                        payload_preview(data, 16)
-                    );
-                } else {
-                    eprintln!("[daemon] rx data len={} dst={}", data.len(), destination_hex);
-                }
-                let mut destination = [0u8; 16];
-                destination.copy_from_slice(event.destination.as_slice());
-                let record = if diagnostics_enabled() {
-                    let (record, diagnostics) = decode_inbound_payload_with_diagnostics(
-                        destination,
-                        data,
-                        InboundPayloadMode::DestinationStripped,
-                    );
-                    if let Some(ref decoded) = record {
-                        eprintln!(
-                            "[daemon-rx] decoded msg_id={} src={} dst={} title_len={} content_len={}",
-                            decoded.id,
-                            decoded.source,
-                            decoded.destination,
-                            decoded.title.len(),
-                            decoded.content.len()
-                        );
-                    } else {
-                        eprintln!(
-                            "[daemon-rx] decode-failed dst={} attempts={}",
-                            destination_hex,
-                            diagnostics.summary()
-                        );
-                    }
-                    record
-                } else {
-                    decode_inbound_payload(
-                        destination,
-                        data,
-                        InboundPayloadMode::DestinationStripped,
-                    )
-                };
-                if let Some(record) = record {
-                    let _ = daemon_inbound.accept_inbound(record);
-                }
-            }
-        }
-    });
-
-    let daemon_announce = daemon;
-    tokio::task::spawn_local(async move {
-        let mut rx = transport.recv_announces().await;
-        loop {
-            if let Ok(event) = rx.recv().await {
-                let dest = event.destination.lock().await;
-                let peer = hex::encode(dest.desc.address_hash.as_slice());
-                let identity = dest.desc.identity;
-                let (peer_name, peer_name_source) =
-                    parse_peer_name_from_app_data(event.app_data.as_slice())
-                        .map(|(name, source)| (Some(name), Some(source.to_string())))
-                        .unwrap_or((None, None));
-                let _ratchet = event.ratchet;
-                peer_crypto.lock().expect("peer map").insert(peer.clone(), PeerCrypto { identity });
-                if let Some(name) = peer_name.as_ref() {
-                    eprintln!("[daemon] rx announce peer={} name={}", peer, name);
-                } else {
-                    eprintln!("[daemon] rx announce peer={}", peer);
-                }
-                let timestamp = now_epoch_secs_i64();
-                let _ = daemon_announce.accept_announce_with_details(
-                    peer,
-                    timestamp,
-                    peer_name,
-                    peer_name_source,
-                );
-            }
-        }
-    });
 }
