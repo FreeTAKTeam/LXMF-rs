@@ -298,6 +298,7 @@ pub(super) async fn handle_data<'a>(
                 .send(ReceivedData {
                     destination: packet.destination,
                     data: buffer,
+                    payload_mode: ReceivedPayloadMode::DestinationStripped,
                     ratchet_used,
                     context: Some(packet.context),
                     request_id: if matches!(

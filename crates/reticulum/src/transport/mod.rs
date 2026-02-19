@@ -125,11 +125,18 @@ const KEEP_ALIVE_RESPONSE: u8 = 0xFE;
 pub struct ReceivedData {
     pub destination: AddressHash,
     pub data: PacketDataBuffer,
+    pub payload_mode: ReceivedPayloadMode,
     pub ratchet_used: bool,
     pub context: Option<PacketContext>,
     pub request_id: Option<[u8; 16]>,
     pub hops: Option<u8>,
     pub interface: Option<Vec<u8>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReceivedPayloadMode {
+    FullWire,
+    DestinationStripped,
 }
 
 pub struct TransportConfig {

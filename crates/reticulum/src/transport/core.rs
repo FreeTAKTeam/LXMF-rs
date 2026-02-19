@@ -80,9 +80,10 @@ impl Transport {
             let handler = handler.clone();
             tokio::spawn(manage_transport(handler, rx_receiver, iface_messages_tx.clone()))
         };
-        {
-            let mut link_rx = link_in_event_tx.subscribe();
-            let received_data_tx = received_data_tx.clone();
+        fn spawn_link_data_forwarder(
+            mut link_rx: broadcast::Receiver<LinkEventData>,
+            received_data_tx: broadcast::Sender<ReceivedData>,
+        ) {
             tokio::spawn(async move {
                 loop {
                     match link_rx.recv().await {
@@ -91,6 +92,7 @@ impl Transport {
                                 let _ = received_data_tx.send(ReceivedData {
                                     destination: event.address_hash,
                                     data: PacketDataBuffer::new_from_slice(payload.as_slice()),
+                                    payload_mode: ReceivedPayloadMode::FullWire,
                                     ratchet_used: false,
                                     context: Some(payload.context()),
                                     request_id: payload.request_id(),
@@ -104,6 +106,10 @@ impl Transport {
                     }
                 }
             });
+        }
+        {
+            spawn_link_data_forwarder(link_in_event_tx.subscribe(), received_data_tx.clone());
+            spawn_link_data_forwarder(link_out_event_tx.subscribe(), received_data_tx.clone());
         }
 
         Self {

@@ -11,7 +11,7 @@ use super::{
 use crate::helpers::{pn_peering_cost_from_app_data, pn_stamp_cost_flexibility_from_app_data};
 use crate::inbound_decode::InboundPayloadMode;
 use reticulum::resource::ResourceEventKind;
-use reticulum::transport::Transport;
+use reticulum::transport::{ReceivedPayloadMode, Transport};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -19,6 +19,13 @@ use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::sync::watch;
+
+fn inbound_payload_mode(mode: ReceivedPayloadMode) -> InboundPayloadMode {
+    match mode {
+        ReceivedPayloadMode::FullWire => InboundPayloadMode::FullWire,
+        ReceivedPayloadMode::DestinationStripped => InboundPayloadMode::DestinationStripped,
+    }
+}
 
 pub(super) fn spawn_receipt_worker(
     daemon: Rc<RpcDaemon>,
@@ -76,11 +83,12 @@ pub(super) fn spawn_transport_workers(
                             let data = event.data.as_slice();
                             let mut destination = [0u8; 16];
                             destination.copy_from_slice(event.destination.as_slice());
+                            let payload_mode = inbound_payload_mode(event.payload_mode);
                             if let Some(mut record) =
                                 decode_inbound_payload(
                                     destination,
                                     data,
-                                    InboundPayloadMode::DestinationStripped,
+                                    payload_mode,
                                 )
                             {
                                 annotate_inbound_transport_metadata(&mut record, &event);
@@ -118,7 +126,7 @@ pub(super) fn spawn_transport_workers(
                                         if let Some(record) = decode_inbound_payload(
                                             destination,
                                             &complete.data,
-                                            InboundPayloadMode::DestinationStripped,
+                                            InboundPayloadMode::FullWire,
                                         ) {
                                             let _ = daemon_resource_inbound.accept_inbound(record);
                                         }

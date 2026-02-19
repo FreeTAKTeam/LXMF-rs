@@ -1,12 +1,19 @@
 use super::bridge_helpers::{diagnostics_enabled, payload_preview};
 use lxmf::inbound_decode::InboundPayloadMode;
 use reticulum::rpc::RpcDaemon;
-use reticulum::transport::Transport;
+use reticulum::transport::{ReceivedPayloadMode, Transport};
 use reticulum_daemon::inbound_delivery::{
     decode_inbound_payload, decode_inbound_payload_with_diagnostics,
 };
 use std::rc::Rc;
 use std::sync::Arc;
+
+fn inbound_payload_mode(mode: ReceivedPayloadMode) -> InboundPayloadMode {
+    match mode {
+        ReceivedPayloadMode::FullWire => InboundPayloadMode::FullWire,
+        ReceivedPayloadMode::DestinationStripped => InboundPayloadMode::DestinationStripped,
+    }
+}
 
 pub(super) fn spawn_inbound_worker(daemon: Rc<RpcDaemon>, transport: Arc<Transport>) {
     let daemon_inbound = daemon;
@@ -30,12 +37,10 @@ pub(super) fn spawn_inbound_worker(daemon: Rc<RpcDaemon>, transport: Arc<Transpo
                 }
                 let mut destination = [0u8; 16];
                 destination.copy_from_slice(event.destination.as_slice());
+                let payload_mode = inbound_payload_mode(event.payload_mode);
                 let record = if diagnostics_enabled() {
-                    let (record, diagnostics) = decode_inbound_payload_with_diagnostics(
-                        destination,
-                        data,
-                        InboundPayloadMode::DestinationStripped,
-                    );
+                    let (record, diagnostics) =
+                        decode_inbound_payload_with_diagnostics(destination, data, payload_mode);
                     if let Some(ref decoded) = record {
                         eprintln!(
                             "[daemon-rx] decoded msg_id={} src={} dst={} title_len={} content_len={}",
@@ -54,11 +59,7 @@ pub(super) fn spawn_inbound_worker(daemon: Rc<RpcDaemon>, transport: Arc<Transpo
                     }
                     record
                 } else {
-                    decode_inbound_payload(
-                        destination,
-                        data,
-                        InboundPayloadMode::DestinationStripped,
-                    )
+                    decode_inbound_payload(destination, data, payload_mode)
                 };
                 if let Some(record) = record {
                     let _ = daemon_inbound.accept_inbound(record);

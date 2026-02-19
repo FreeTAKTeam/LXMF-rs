@@ -9,7 +9,7 @@ use rand_core::OsRng;
 use tokio::time::{timeout, Duration};
 
 #[tokio::test]
-async fn link_payload_is_forwarded_to_received_data() {
+async fn link_in_payload_is_forwarded_to_received_data() {
     let identity = PrivateIdentity::new_from_rand(OsRng);
     let config = TransportConfig::new("test", &identity, true);
     let transport = Transport::new(config);
@@ -32,6 +32,34 @@ async fn link_payload_is_forwarded_to_received_data() {
 
     assert_eq!(received.destination, address_hash);
     assert_eq!(received.data.as_slice(), b"hello");
+    assert_eq!(received.payload_mode, ReceivedPayloadMode::FullWire);
+}
+
+#[tokio::test]
+async fn link_out_payload_is_forwarded_to_received_data() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let config = TransportConfig::new("test", &identity, true);
+    let transport = Transport::new(config);
+
+    let mut rx = transport.received_data_events();
+
+    let address_hash = AddressHash::new_from_rand(OsRng);
+    let payload = LinkPayload::new_from_slice(b"outbound");
+
+    let _ = transport.link_out_event_tx.send(LinkEventData {
+        id: AddressHash::new_from_rand(OsRng),
+        address_hash,
+        event: LinkEvent::Data(Box::new(payload)),
+    });
+
+    let received = timeout(Duration::from_millis(200), rx.recv())
+        .await
+        .expect("expected forwarded payload")
+        .expect("broadcast receive");
+
+    assert_eq!(received.destination, address_hash);
+    assert_eq!(received.data.as_slice(), b"outbound");
+    assert_eq!(received.payload_mode, ReceivedPayloadMode::FullWire);
 }
 
 #[tokio::test]
