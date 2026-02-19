@@ -1,11 +1,13 @@
 mod announce_helpers;
 mod announce_rate_limit;
 mod bootstrap;
+mod config;
 mod delivery_options;
 mod identity_io;
 mod inbound_helpers;
 mod peer_cache;
 mod propagation_link;
+mod public_types;
 mod receipt_flow;
 mod receipt_helpers;
 mod relay_helpers;
@@ -26,7 +28,7 @@ use crate::cli::profile::{
 use crate::helpers::normalize_display_name;
 #[cfg(test)]
 use crate::inbound_decode::InboundPayloadMode;
-use crate::payload_fields::{CommandEntry, WireFields};
+use crate::payload_fields::WireFields;
 use crate::LxmfError;
 use announce_helpers::{
     annotate_peer_records_with_announce_metadata, encode_delivery_display_name_app_data,
@@ -67,7 +69,7 @@ use send_helpers::{
     can_send_opportunistic, opportunistic_payload, parse_delivery_method, send_outcome_is_sent,
     send_outcome_status, DeliveryMethod,
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::{json, Value};
 use startup_workers::{
     spawn_receipt_worker, spawn_startup_announce_burst, spawn_transport_workers,
@@ -89,6 +91,12 @@ use tokio::sync::watch;
 use wire_codec::{build_wire_message, sanitize_outbound_wire_fields};
 #[cfg(test)]
 use wire_codec::{json_to_rmpv, rmpv_to_json};
+
+pub use config::RuntimeConfig;
+pub use public_types::{
+    EventsProbeReport, RpcProbeReport, RuntimeProbeReport, SendCommandRequest, SendMessageRequest,
+    SendMessageResponse,
+};
 
 const INFERRED_TRANSPORT_BIND: &str = "127.0.0.1:0";
 const DEFAULT_ANNOUNCE_INTERVAL_SECS: u64 = 60;
@@ -113,93 +121,6 @@ const PR_LINK_FAILED: u32 = 0xF1;
 const PR_TRANSFER_FAILED: u32 = 0xF2;
 const PR_NO_IDENTITY_RCVD: u32 = 0xF3;
 const PR_NO_ACCESS: u32 = 0xF4;
-
-#[derive(Debug, Clone)]
-pub struct RuntimeConfig {
-    pub profile: String,
-    pub rpc: Option<String>,
-    pub transport: Option<String>,
-}
-
-impl Default for RuntimeConfig {
-    fn default() -> Self {
-        Self { profile: "default".to_string(), rpc: None, transport: None }
-    }
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct SendMessageRequest {
-    pub id: Option<String>,
-    pub source: Option<String>,
-    pub source_private_key: Option<String>,
-    pub destination: String,
-    pub title: String,
-    pub content: String,
-    pub fields: Option<Value>,
-    pub method: Option<String>,
-    pub stamp_cost: Option<u32>,
-    pub include_ticket: bool,
-    pub try_propagation_on_fail: bool,
-}
-
-impl SendMessageRequest {
-    pub fn new(destination: impl Into<String>, content: impl Into<String>) -> Self {
-        Self { destination: destination.into(), content: content.into(), ..Self::default() }
-    }
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct SendCommandRequest {
-    pub message: SendMessageRequest,
-    pub commands: Vec<CommandEntry>,
-}
-
-impl SendCommandRequest {
-    pub fn new(
-        destination: impl Into<String>,
-        content: impl Into<String>,
-        commands: Vec<CommandEntry>,
-    ) -> Self {
-        Self { message: SendMessageRequest::new(destination, content), commands }
-    }
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct SendMessageResponse {
-    pub id: String,
-    pub source: String,
-    pub destination: String,
-    pub result: Value,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct RuntimeProbeReport {
-    pub profile: String,
-    pub local: DaemonStatus,
-    pub rpc: RpcProbeReport,
-    pub events: EventsProbeReport,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct RpcProbeReport {
-    pub reachable: bool,
-    pub endpoint: String,
-    pub method: Option<String>,
-    pub roundtrip_ms: Option<u128>,
-    pub identity_hash: Option<String>,
-    pub status: Option<serde_json::Value>,
-    pub errors: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct EventsProbeReport {
-    pub reachable: bool,
-    pub endpoint: String,
-    pub roundtrip_ms: Option<u128>,
-    pub event_type: Option<String>,
-    pub payload: Option<serde_json::Value>,
-    pub error: Option<String>,
-}
 
 #[derive(Clone)]
 pub struct RuntimeHandle {
