@@ -90,10 +90,7 @@ fn run_migration_checks() -> Result<()> {
     run_boundary_checks(&enforce_legacy_imports, &enforce_legacy_shims)?;
     run(
         "bash",
-        &[
-            "-lc",
-            "! rg -n 'crates/(lxmf|reticulum|reticulum-daemon)/' README.md CONTRIBUTING.md .github/workflows || exit 1",
-        ],
+        &["-lc", "! rg -n 'crates/(lxmf|reticulum|reticulum-daemon)/' README.md .github/workflows || exit 1"],
     )?;
     Ok(())
 }

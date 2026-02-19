@@ -19,17 +19,19 @@ LXMF-rs/
 │   │   ├── lxmf-cli/
 │   │   ├── reticulumd/
 │   │   └── rns-tools/
-│   └── internal/
-│       ├── lxmf-legacy/
-│       └── reticulum-legacy/
-├── docs/
-│   ├── adr/
-│   ├── architecture/
-│   ├── contracts/
-│   ├── migrations/
-│   └── runbooks/
-├── tools/scripts/
-└── xtask/
+└── docs/
+    ├── adr/
+    ├── architecture/
+    ├── contracts/
+    ├── migrations/
+    └── runbooks/
+├── tools/
+│   └── scripts/
+├── xtask/
+└── target/
+
+Note: legacy migration-only implementation crates are retained under
+`crates/internal/` and are excluded from the active workspace graph.
 ```
 
 ## Public Crates
@@ -83,7 +85,7 @@ cargo run -p rns-tools --bin rnx -- e2e --timeout-secs 20
 
 ## Governance
 
-- Contribution guide: `CONTRIBUTING.md`
+- Governance docs: `SECURITY.md`
 - Security policy: `SECURITY.md`
 - Code ownership: `.github/CODEOWNERS`
 
