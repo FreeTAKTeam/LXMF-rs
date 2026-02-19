@@ -8,6 +8,7 @@ mod receipt_helpers;
 mod relay_helpers;
 mod request_handlers;
 mod send_helpers;
+mod startup_workers;
 mod support;
 mod wire_codec;
 
@@ -17,21 +18,19 @@ use crate::cli::profile::{
     resolve_runtime_profile_name, InterfaceEntry, ProfilePaths, ProfileSettings,
 };
 use crate::helpers::normalize_display_name;
-#[cfg(reticulum_api_v2)]
-use crate::helpers::{pn_peering_cost_from_app_data, pn_stamp_cost_flexibility_from_app_data};
+#[cfg(test)]
 use crate::inbound_decode::InboundPayloadMode;
 use crate::payload_fields::{CommandEntry, WireFields};
 use crate::LxmfError;
 use announce_helpers::{
     annotate_peer_records_with_announce_metadata, encode_delivery_display_name_app_data,
-    encode_propagation_node_app_data, lxmf_aspect_from_name_hash, parse_peer_name_from_app_data,
-    update_peer_announce_meta,
+    encode_propagation_node_app_data,
 };
 use announce_rate_limit::trigger_rate_limited_announce;
 use identity_io::{drop_empty_identity_stub, load_or_create_identity};
-use inbound_helpers::{
-    annotate_inbound_transport_metadata, build_propagation_envelope, decode_inbound_payload,
-};
+use inbound_helpers::build_propagation_envelope;
+#[cfg(test)]
+use inbound_helpers::decode_inbound_payload;
 use peer_cache::{
     apply_runtime_identity_restore, load_peer_identity_cache, persist_peer_identity_cache,
 };
@@ -59,7 +58,6 @@ use reticulum::receipt::{
     record_receipt_status as shared_record_receipt_status,
     resolve_receipt_message_id as shared_resolve_receipt_message_id,
 };
-use reticulum::resource::ResourceEventKind;
 use reticulum::rpc::{
     AnnounceBridge, InterfaceRecord, OutboundBridge, RpcDaemon, RpcEvent, RpcRequest,
 };
@@ -71,6 +69,9 @@ use send_helpers::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use startup_workers::{
+    spawn_receipt_worker, spawn_startup_announce_burst, spawn_transport_workers,
+};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
@@ -895,7 +896,7 @@ impl WorkerState {
             Arc::new(Mutex::new(HashMap::new()));
         let delivered_messages: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
         let last_announce_epoch_secs = Arc::new(AtomicU64::new(0));
-        let (receipt_tx, mut receipt_rx) = unbounded_channel();
+        let (receipt_tx, receipt_rx) = unbounded_channel();
         let (shutdown_tx, _) = watch::channel(false);
 
         let mut transport: Option<Arc<Transport>> = None;
@@ -1021,217 +1022,21 @@ impl WorkerState {
         }
 
         if transport.is_some() {
-            let daemon_receipts = daemon.clone();
-            let mut shutdown_rx = shutdown_tx.subscribe();
-            tokio::task::spawn_local(async move {
-                loop {
-                    tokio::select! {
-                        changed = shutdown_rx.changed() => {
-                            if changed.is_err() || *shutdown_rx.borrow() {
-                                break;
-                            }
-                        }
-                        event = receipt_rx.recv() => {
-                            let Some(event) = event else {
-                                break;
-                            };
-                            let _ = handle_receipt_event(&daemon_receipts, event);
-                        }
-                    }
-                }
-            });
+            spawn_receipt_worker(daemon.clone(), receipt_rx, &shutdown_tx);
         }
 
         if let Some(transport) = transport.clone() {
-            let daemon_inbound = daemon.clone();
-            let inbound_transport = transport.clone();
-            let mut shutdown_rx = shutdown_tx.subscribe();
-            tokio::task::spawn_local(async move {
-                let mut rx = inbound_transport.received_data_events();
-                loop {
-                    tokio::select! {
-                        changed = shutdown_rx.changed() => {
-                            if changed.is_err() || *shutdown_rx.borrow() {
-                                break;
-                            }
-                        }
-                        result = rx.recv() => {
-                            match result {
-                                Ok(event) => {
-                                    let data = event.data.as_slice();
-                                    let mut destination = [0u8; 16];
-                                    destination.copy_from_slice(event.destination.as_slice());
-                                    if let Some(mut record) =
-                                        decode_inbound_payload(
-                                            destination,
-                                            data,
-                                            InboundPayloadMode::DestinationStripped,
-                                        )
-                                    {
-                                        annotate_inbound_transport_metadata(&mut record, &event);
-                                        let _ = daemon_inbound.accept_inbound(record);
-                                    }
-                                }
-                                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
-                                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
-                            }
-                        }
-                    }
-                }
-            });
-
-            let daemon_resource_inbound = daemon.clone();
-            let resource_transport = transport.clone();
-            let resource_receipt_tx = receipt_tx.clone();
-            let resource_outbound_map = outbound_resource_map.clone();
-            let mut shutdown_rx = shutdown_tx.subscribe();
-            tokio::task::spawn_local(async move {
-                let mut rx = resource_transport.resource_events();
-                loop {
-                    tokio::select! {
-                        changed = shutdown_rx.changed() => {
-                            if changed.is_err() || *shutdown_rx.borrow() {
-                                break;
-                            }
-                        }
-                        result = rx.recv() => {
-                            match result {
-                                Ok(event) => {
-                                    match event.kind {
-                                        ResourceEventKind::Complete(complete) => {
-                                            if let Some(destination) = resolve_link_destination(&resource_transport, &event.link_id).await {
-                                                if let Some(record) = decode_inbound_payload(
-                                                    destination,
-                                                    &complete.data,
-                                                    InboundPayloadMode::DestinationStripped,
-                                                ) {
-                                                    let _ = daemon_resource_inbound.accept_inbound(record);
-                                                }
-                                            }
-                                        }
-                                        ResourceEventKind::OutboundComplete => {
-                                            let resource_hash_hex = hex::encode(event.hash.as_slice());
-                                            let message_id = resource_outbound_map
-                                                .lock()
-                                                .ok()
-                                                .and_then(|mut guard| guard.remove(&resource_hash_hex));
-                                            if let Some(message_id) = message_id {
-                                                let _ = resource_receipt_tx.send(ReceiptEvent {
-                                                    message_id,
-                                                    status: "sent: link resource".to_string(),
-                                                });
-                                            }
-                                        }
-                                        ResourceEventKind::Progress(_) => {}
-                                    }
-                                }
-                                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
-                                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
-                            }
-                        }
-                    }
-                }
-            });
-
-            let daemon_announce = daemon.clone();
-            let peer_crypto = peer_crypto.clone();
-            let peer_announce_meta = peer_announce_meta.clone();
-            let peer_identity_cache_path = peer_identity_cache_path.clone();
-            let known_propagation_nodes = known_propagation_nodes.clone();
-            let announce_transport = transport.clone();
-            let mut shutdown_rx = shutdown_tx.subscribe();
-            tokio::task::spawn_local(async move {
-                let mut rx = announce_transport.recv_announces().await;
-                loop {
-                    tokio::select! {
-                        changed = shutdown_rx.changed() => {
-                            if changed.is_err() || *shutdown_rx.borrow() {
-                                break;
-                            }
-                        }
-                        result = rx.recv() => {
-                            match result {
-                                Ok(event) => {
-                                    let dest = event.destination.lock().await;
-                                    let peer = hex::encode(dest.desc.address_hash.as_slice());
-                                    let identity = dest.desc.identity;
-                                    let app_data = event.app_data.as_slice();
-                                    let (peer_name, peer_name_source) = parse_peer_name_from_app_data(app_data)
-                                        .map(|(name, source)| (Some(name), Some(source)))
-                                        .unwrap_or((None, None));
-
-                                    peer_crypto
-                                        .lock()
-                                        .expect("peer map")
-                                        .insert(peer.clone(), PeerCrypto { identity });
-                                    persist_peer_identity_cache(
-                                        &peer_crypto,
-                                        &peer_identity_cache_path,
-                                    );
-                                    update_peer_announce_meta(
-                                        &peer_announce_meta,
-                                        &peer,
-                                        app_data,
-                                    );
-
-                                    let timestamp = SystemTime::now()
-                                        .duration_since(UNIX_EPOCH)
-                                        .map(|value| value.as_secs() as i64)
-                                        .unwrap_or(0);
-                                    let aspect =
-                                        lxmf_aspect_from_name_hash(dest.desc.name.as_name_hash_slice());
-                                    if aspect.as_deref() == Some("lxmf.propagation") {
-                                        if let Ok(mut nodes) = known_propagation_nodes.lock() {
-                                            nodes.insert(peer.clone());
-                                        }
-                                    }
-                                    #[cfg(reticulum_api_v2)]
-                                    {
-                                        let app_data_hex = (!app_data.is_empty())
-                                            .then(|| hex::encode(app_data));
-                                        let hops = Some(u32::from(event.hops));
-                                        let interface =
-                                            Some(hex::encode(event.interface.as_slice()));
-
-                                        let _ = daemon_announce.accept_announce_with_metadata(
-                                            peer,
-                                            timestamp,
-                                            peer_name,
-                                            peer_name_source,
-                                            app_data_hex,
-                                            None,
-                                            None,
-                                            None,
-                                            None,
-                                            None,
-                                            Some(pn_stamp_cost_flexibility_from_app_data(app_data)),
-                                            Some(pn_peering_cost_from_app_data(app_data)),
-                                            aspect,
-                                            hops,
-                                            interface,
-                                            None,
-                                            None,
-                                            None,
-                                        );
-                                    }
-
-                                    #[cfg(not(reticulum_api_v2))]
-                                    {
-                                        let _ = daemon_announce.accept_announce_with_details(
-                                            peer,
-                                            timestamp,
-                                            peer_name,
-                                            peer_name_source,
-                                        );
-                                    }
-                                }
-                                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
-                                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
-                            }
-                        }
-                    }
-                }
-            });
+            spawn_transport_workers(
+                transport,
+                daemon.clone(),
+                receipt_tx.clone(),
+                outbound_resource_map.clone(),
+                peer_crypto.clone(),
+                peer_announce_meta.clone(),
+                peer_identity_cache_path.clone(),
+                known_propagation_nodes.clone(),
+                &shutdown_tx,
+            );
         }
 
         let scheduler_handle = if bridge.is_some() {
@@ -1241,14 +1046,7 @@ impl WorkerState {
         };
 
         if let Some(bridge) = bridge.clone() {
-            tokio::task::spawn_local(async move {
-                // Emit a short announce burst after startup to improve cross-client
-                // discovery when peers/interfaces come online slightly later.
-                for delay_secs in STARTUP_ANNOUNCE_BURST_DELAYS_SECS {
-                    tokio::time::sleep(Duration::from_secs(*delay_secs)).await;
-                    let _ = bridge.announce_now();
-                }
-            });
+            spawn_startup_announce_burst(bridge);
         }
 
         Ok(Self {
