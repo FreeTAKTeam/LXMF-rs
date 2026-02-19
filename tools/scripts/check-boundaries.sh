@@ -38,6 +38,13 @@ check_source_use_imports() {
   fi
 }
 
+check_legacy_root_imports() {
+  local crate_root="$1"
+  if rg -n "^[[:space:]]*use .*\\breticulum::" "$crate_root" >/dev/null; then
+    fail "${crate_root} still imports legacy 'reticulum::' paths"
+  fi
+}
+
 check_forbidden_dependency() {
   local package="$1"
   shift
@@ -67,6 +74,7 @@ metadata_deps() {
 METADATA_FILE="$(mktemp)"
 trap 'rm -f "${METADATA_FILE}"' EXIT
 ENFORCE_RETM_LEGACY_SHIMS="${ENFORCE_RETM_LEGACY_SHIMS:-0}"
+ENFORCE_LEGACY_APP_IMPORTS="${ENFORCE_LEGACY_APP_IMPORTS:-0}"
 
 require_command jq
 require_command rg
@@ -106,6 +114,16 @@ while IFS=$'\t' read -r from to; do
       ;;
   esac
 done <<<"$(metadata_deps)"
+
+if (( ENFORCE_LEGACY_APP_IMPORTS == 1 )); then
+  # 3a) Ensure app crates migrate away from legacy crate import paths.
+  check_legacy_root_imports "crates/apps/lxmf-cli/src"
+  check_legacy_root_imports "crates/apps/rns-tools/src"
+  check_legacy_root_imports "crates/apps/reticulumd/src"
+  check_legacy_root_imports "crates/apps/reticulumd/tests"
+else
+  echo "boundary notice: legacy app import gate is currently allowed"
+fi
 
 # 4) Keep core crates free of direct runtime/CLI imports at source level.
 check_source_imports "crates/libs/lxmf-core/src" "tokio"

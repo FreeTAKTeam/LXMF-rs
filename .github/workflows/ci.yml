@@ -114,3 +114,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Architecture boundaries
         run: cargo xtask architecture-checks
+
+  migration-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Migration checks
+        run: cargo xtask migration-checks

@@ -83,6 +83,14 @@ fn run_licenses() -> Result<()> {
 }
 
 fn run_migration_checks() -> Result<()> {
+    let enforce_legacy_imports =
+        std::env::var("ENFORCE_LEGACY_APP_IMPORTS").unwrap_or("0".to_string());
+    let boundary_cmd = if enforce_legacy_imports == "1" {
+        "ENFORCE_LEGACY_APP_IMPORTS=1 ./tools/scripts/check-boundaries.sh"
+    } else {
+        "./tools/scripts/check-boundaries.sh"
+    };
+    run("bash", &["-lc", boundary_cmd])?;
     run(
         "bash",
         &[
