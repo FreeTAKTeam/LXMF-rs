@@ -10,6 +10,7 @@ pub mod errors;
 pub mod handlers;
 pub mod helpers;
 pub mod identity;
+pub mod inbound_decode;
 pub mod message;
 pub mod payload_fields;
 pub mod peer;
@@ -21,6 +22,8 @@ pub mod stamper;
 pub mod storage;
 pub mod ticket;
 pub mod transport;
+#[cfg(any(feature = "json-interop", feature = "embedded-runtime", test))]
+pub mod wire_fields;
 
 pub use error::LxmfError;
 pub use message::{Message, Payload, WireMessage};

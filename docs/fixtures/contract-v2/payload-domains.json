@@ -22,14 +22,6 @@
             },
             "speed": 1.2
           },
-          "5": [
-            {
-              "filename": "photo.jpg",
-              "mime": "image/jpeg",
-              "size": 3,
-              "data": [1, 2, 3]
-            }
-          ],
           "9": {
             "commands": ["join", "ping"]
           },
@@ -56,7 +48,7 @@
               "name": "report.pdf",
               "mime": "application/pdf",
               "size_bytes": 1024,
-              "inline_base64": "AQID"
+              "data": "base64:AQID"
             }
           ],
           "paper": {

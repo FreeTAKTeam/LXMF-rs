@@ -1,6 +1,9 @@
-use reticulum::rpc::{RpcDaemon, RpcRequest};
+use reticulum::receipt::{
+    record_receipt_status, resolve_receipt_message_id,
+    track_receipt_mapping as shared_track_receipt_mapping,
+};
+use reticulum::rpc::RpcDaemon;
 use reticulum::transport::{DeliveryReceipt, ReceiptHandler};
-use serde_json::json;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc::UnboundedSender;
@@ -28,8 +31,7 @@ impl ReceiptBridge {
 
 impl ReceiptHandler for ReceiptBridge {
     fn on_receipt(&self, receipt: &DeliveryReceipt) {
-        let key = hex::encode(receipt.message_id);
-        let message_id = self.map.lock().ok().and_then(|mut map| map.remove(&key));
+        let message_id = resolve_receipt_message_id(&self.map, receipt);
         if let Some(message_id) = message_id {
             let _ = self.tx.send(ReceiptEvent { message_id, status: "delivered".into() });
         }
@@ -37,15 +39,7 @@ impl ReceiptHandler for ReceiptBridge {
 }
 
 pub fn handle_receipt_event(daemon: &RpcDaemon, event: ReceiptEvent) -> Result<(), std::io::Error> {
-    let _ = daemon.handle_rpc(RpcRequest {
-        id: 0,
-        method: "record_receipt".into(),
-        params: Some(json!({
-            "message_id": event.message_id,
-            "status": event.status,
-        })),
-    })?;
-    Ok(())
+    record_receipt_status(daemon, &event.message_id, &event.status)
 }
 
 pub fn track_receipt_mapping(
@@ -53,7 +47,5 @@ pub fn track_receipt_mapping(
     packet_hash: &str,
     message_id: &str,
 ) {
-    if let Ok(mut guard) = map.lock() {
-        guard.insert(packet_hash.to_string(), message_id.to_string());
-    }
+    shared_track_receipt_mapping(map, packet_hash, message_id);
 }

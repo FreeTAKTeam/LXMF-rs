@@ -22,7 +22,7 @@ Required LXMF field coverage for parity:
 | Domain | Field | Hex | JSON key form |
 | --- | --- | --- | --- |
 | telemetry | `FIELD_TELEMETRY` | `0x02` | `"2"` |
-| attachments | `FIELD_FILE_ATTACHMENTS` | `0x05` | `"5"` |
+| attachments | `FIELD_FILE_ATTACHMENTS` | `0x05` | `attachments` (public), `"5"` (internal wire-json view) |
 | commands | `FIELD_COMMANDS` | `0x09` | `"9"` |
 | ticket | `FIELD_TICKET` | `0x0C` | `"12"` |
 | refs | `FIELD_RNR_REFS` | `0x0E` | `"14"` |
@@ -32,6 +32,33 @@ Notes:
 
 - Integer LXMF keys must be preserved end-to-end via `_lxmf_fields_msgpack_b64`.
 - JSON key forms are expected when fields are rendered back to JSON from msgpack.
+- Public input policy is strict for attachments:
+  - `attachments` accepted
+  - `files` rejected
+  - public `"5"` rejected
+
+## Canonical Attachment Shape
+
+Public payloads must use:
+
+```json
+{
+  "attachments": [
+    {
+      "name": "example.bin",
+      "data": [1, 2, 3]
+    }
+  ]
+}
+```
+
+`data` accepts:
+
+- byte arrays (`[0..255]`)
+- `hex:<payload>`
+- `base64:<payload>`
+
+Unprefixed text payloads are rejected.
 
 ## Schema Artifacts
 

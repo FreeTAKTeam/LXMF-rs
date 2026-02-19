@@ -15,9 +15,6 @@
         { "type": "array" }
       ]
     },
-    "5": {
-      "type": "array"
-    },
     "9": {
       "type": "array"
     },
@@ -29,7 +26,34 @@
       "type": "object"
     },
     "attachments": {
-      "type": "array"
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["name", "data"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "data": {
+            "oneOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 255
+                }
+              },
+              {
+                "type": "string",
+                "pattern": "^(hex:|HEX:|base64:|BASE64:).+"
+              }
+            ]
+          }
+        }
+      }
     },
     "paper": {
       "type": "object"

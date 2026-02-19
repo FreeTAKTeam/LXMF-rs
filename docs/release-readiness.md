@@ -22,7 +22,7 @@ This checklist is the publication gate for `lxmf-rs`.
   - extension capability list normalization (`0x10`)
 - Strict desktop interop gate must pass for core payload classes:
   - text
-  - attachments (`0x05`)
+  - attachments (`attachments` public key, `0x05` internal wire field)
   - paper URI workflows
   - commands (`0x09`)
   - reply/reaction app extensions (`0x10`)
@@ -54,7 +54,7 @@ This checklist is the publication gate for `lxmf-rs`.
 - Sideband end-to-end workflow (`.github/workflows/sideband-e2e.yml`) must pass for release candidates.
 - Required checks:
   - `git ls-files '*.rs' | xargs rustfmt --edition 2021 --check`
-  - `cargo clippy --workspace --all-targets -- -D warnings`
+  - `cargo clippy --workspace --all-targets --all-features --no-deps -- -D warnings`
   - `make test`
   - `make test-all` (compatibility pass)
   - `make test-full-targets` (full-target sweep when validating release binaries/examples)
@@ -64,4 +64,5 @@ This checklist is the publication gate for `lxmf-rs`.
 - `Cargo.toml` version bumped intentionally.
 - `Cargo.lock` committed for reproducible builds.
 - Changelog/release notes summarize parity changes and migrations.
+- Clean-break migration note is updated: `docs/migrations/2026-clean-break-unification.md`.
 - RC execution and tagging follow `docs/release-candidate-runbook.md`.

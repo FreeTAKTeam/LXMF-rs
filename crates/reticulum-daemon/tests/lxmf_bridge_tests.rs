@@ -98,19 +98,19 @@ fn json_to_rmpv_roundtrip() {
 }
 
 #[test]
-fn json_to_rmpv_normalizes_noncanonical_numeric_keys_for_compat() {
+fn json_to_rmpv_preserves_noncanonical_numeric_keys_as_strings() {
     let input = serde_json::json!({
         "01": "leading-zero",
         "-01": "noncanonical-negative",
     });
     let value = json_to_rmpv(&input).expect("to rmpv");
     let output = rmpv_to_json(&value).expect("to json");
-    assert_eq!(output["1"], serde_json::json!("leading-zero"));
-    assert_eq!(output["-1"], serde_json::json!("noncanonical-negative"));
+    assert_eq!(output["01"], serde_json::json!("leading-zero"));
+    assert_eq!(output["-01"], serde_json::json!("noncanonical-negative"));
 }
 
 #[test]
-fn build_wire_message_normalizes_attachment_object_metadata() {
+fn build_wire_message_accepts_canonical_attachment_objects() {
     let identity = PrivateIdentity::new_from_name("attachment-normalization");
     let mut source = [0u8; 16];
     source.copy_from_slice(identity.address_hash().as_slice());
@@ -120,19 +120,14 @@ fn build_wire_message_normalizes_attachment_object_metadata() {
         "attachments": [
             {
                 "name": "legacy.txt",
-                "size": 3
+                "size": 3,
+                "data": [3]
             },
             {
                 "name": "payload.bin",
                 "data": [9, 8, 7]
-            }
-        ],
-        "5": [
-            {
-                "filename": "override.bin",
-                "data": [1, 2, 3]
             },
-        ],
+        ]
     });
 
     let wire = build_wire_message(source, destination, "title", "content", Some(fields), &identity)
@@ -140,7 +135,7 @@ fn build_wire_message_normalizes_attachment_object_metadata() {
     let message = decode_wire_message(&wire).expect("decode");
 
     let fields = message.fields.and_then(|value| rmpv_to_json(&value)).expect("fields");
-    assert_eq!(fields["5"], serde_json::json!([["override.bin", [1, 2, 3]]]));
+    assert_eq!(fields["5"], serde_json::json!([["legacy.txt", [3]], ["payload.bin", [9, 8, 7]]]));
     assert!(fields.get("attachments").is_none());
 }
 
@@ -152,18 +147,14 @@ fn build_wire_message_normalizes_hex_and_base64_attachment_data() {
     let destination = [0x44u8; 16];
 
     let fields = serde_json::json!({
-        "5": [
+        "attachments": [
             {
-                "filename": "hex.bin",
-                "data": "0a0b0c",
+                "name": "hex.bin",
+                "data": "hex:0a0b0c",
             },
             {
                 "name": "b64.bin",
-                "data": "AQID",
-            },
-            {
-                "name": "invalid.skipme",
-                "data": "zz",
+                "data": "base64:AQID",
             },
         ],
     });
@@ -184,82 +175,76 @@ fn build_wire_message_rejects_ambiguous_attachment_strings_without_prefix() {
     let destination = [0x45u8; 16];
 
     let fields = serde_json::json!({
-        "5": [
+        "attachments": [
             {
-                "filename": "ambiguous.bin",
+                "name": "ambiguous.bin",
                 "data": "deadbeef",
-            },
-            {
-                "filename": "explicit-hex.bin",
-                "data": "hex:deadbeef",
             },
         ],
     });
 
-    let wire = build_wire_message(source, destination, "title", "content", Some(fields), &identity)
-        .expect("wire");
-    let message = decode_wire_message(&wire).expect("decode");
-
-    let fields = message.fields.and_then(|value| rmpv_to_json(&value)).expect("fields");
-    assert_eq!(fields["5"], serde_json::json!([["explicit-hex.bin", [222, 173, 190, 239]]]));
+    let err = build_wire_message(source, destination, "title", "content", Some(fields), &identity)
+        .expect_err("ambiguous attachment text must fail");
+    assert!(err.to_string().contains("attachment text data must use explicit"));
 }
 
 #[test]
-fn build_wire_message_skips_invalid_attachment_entries() {
+fn build_wire_message_rejects_invalid_attachment_entries() {
     let identity = PrivateIdentity::new_from_name("invalid-entries");
     let mut source = [0u8; 16];
     source.copy_from_slice(identity.address_hash().as_slice());
     let destination = [0x55u8; 16];
 
     let fields = serde_json::json!({
-        "5": [
-            ["good.bin", [1, 2, 3]],
-            ["bad.decimal", -1],
+        "attachments": [
+            {
+                "name": "good.bin",
+                "data": [1, 2, 3],
+            },
             "bad-entry",
-            {
-                "name": "bad.hex",
-                "data": "0a0b",
-            },
-            {
-                "filename": "bad.string",
-                "data": "not-bytes",
-            },
         ],
     });
 
-    let wire = build_wire_message(source, destination, "title", "content", Some(fields), &identity)
-        .expect("wire");
-    let message = decode_wire_message(&wire).expect("decode");
-
-    let fields = message.fields.and_then(|value| rmpv_to_json(&value)).expect("fields");
-    assert_eq!(fields["5"], serde_json::json!([["good.bin", [1, 2, 3]]]));
+    let err = build_wire_message(source, destination, "title", "content", Some(fields), &identity)
+        .expect_err("invalid attachment entries must fail");
+    assert!(err.to_string().contains("attachments must be objects with canonical shape"));
 }
 
 #[test]
-fn build_wire_message_uses_legacy_files_alias_when_field_5_invalid() {
+fn build_wire_message_rejects_legacy_files_alias() {
     let identity = PrivateIdentity::new_from_name("legacy-files-alias");
     let mut source = [0u8; 16];
     source.copy_from_slice(identity.address_hash().as_slice());
     let destination = [0x66u8; 16];
 
     let fields = serde_json::json!({
-        "5": [
-            {
-                "filename": "bad.hex",
-                "data": "0a0b",
-            },
-            "bad-entry",
-        ],
         "files": [
-            ["good.bin", [1, 2, 3]],
+            {
+                "name": "good.bin",
+                "data": [1, 2, 3],
+            }
         ],
     });
 
-    let wire = build_wire_message(source, destination, "title", "content", Some(fields), &identity)
-        .expect("wire");
-    let message = decode_wire_message(&wire).expect("decode");
+    let err = build_wire_message(source, destination, "title", "content", Some(fields), &identity)
+        .expect_err("legacy files alias must fail");
+    assert!(err.to_string().contains("legacy field 'files' is not allowed"));
+}
 
-    let fields = message.fields.and_then(|value| rmpv_to_json(&value)).expect("fields");
-    assert_eq!(fields["5"], serde_json::json!([["good.bin", [1, 2, 3]]]));
-    assert!(fields.get("files").is_none());
+#[test]
+fn build_wire_message_rejects_public_numeric_attachment_key() {
+    let identity = PrivateIdentity::new_from_name("numeric-attachment-key");
+    let mut source = [0u8; 16];
+    source.copy_from_slice(identity.address_hash().as_slice());
+    let destination = [0x67u8; 16];
+
+    let fields = serde_json::json!({
+        "5": [
+            ["bad.bin", [1, 2, 3]]
+        ],
+    });
+
+    let err = build_wire_message(source, destination, "title", "content", Some(fields), &identity)
+        .expect_err("public key '5' must fail");
+    assert!(err.to_string().contains("public field '5' is not allowed"));
 }

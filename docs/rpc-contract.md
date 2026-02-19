@@ -38,9 +38,9 @@ All methods below are required for full CLI feature coverage.
 - `clear_messages` (no params)
 - `announce_now` (no params)
 - `send_message_v2`
-: Params keys: `id`, `source`, `destination`, `title`, `content` (optional: `fields`, `method`, `stamp_cost`, `include_ticket`).
+: Params keys: `id`, `source`, `destination`, `title`, `content` (optional: `fields`, `method`, `stamp_cost`, `include_ticket`, `try_propagation_on_fail`, `source_private_key`).
 - `send_message`
-: Legacy fallback with params keys: `id`, `source`, `destination`, `title`, `content` (optional: `fields`).
+: Compatibility server method with params keys: `id`, `source`, `destination`, `title`, `content` (optional: `fields`, `source_private_key`).
 
 ### Identity / status
 - `daemon_status_ex` (no params)
@@ -81,5 +81,6 @@ All methods below are required for full CLI feature coverage.
 - New methods may be added without breaking this contract.
 - Existing method names in this document must not be renamed or removed in `0.1.x`.
 - Existing required parameter keys must remain accepted.
-- If `send_message_v2` is unavailable, `send_message` must continue to work.
+- CLI/runtime clients must call `send_message_v2` directly (no client fallback to `send_message`).
+- Server must keep `send_message` for compatibility and apply the same strict canonical field validation path as `send_message_v2`.
 - At least one of `daemon_status_ex` or `status` must provide `identity_hash` for source auto-resolution.

@@ -7,7 +7,7 @@ publish = false
 
 [dependencies]
 reticulum = { package = "reticulum-rs", version = "0.1.3", path = "../reticulum" }
-lxmf = { version = "0.2.2", path = "../lxmf", default-features = false }
+lxmf = { version = "0.3.0", path = "../lxmf", default-features = false, features = ["json-interop"] }
 base64 = "0.22"
 clap = { version = "4.5.29", features = ["derive"] }
 rand_core = { version = "0.6.4", features = ["getrandom"] }

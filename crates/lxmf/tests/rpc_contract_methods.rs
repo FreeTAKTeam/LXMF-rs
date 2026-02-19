@@ -94,12 +94,6 @@ fn message_and_announce_methods_contract() {
                 message: "fallback to legacy send".into(),
             }),
         },
-        ExpectedCall {
-            method: "send_message",
-            required_param_keys: &["id", "source", "destination", "title", "content"],
-            result: json!({ "queued": true }),
-            error: None,
-        },
     ];
 
     let (rpc_addr, worker) = spawn_scripted_rpc_server(expected);
@@ -129,7 +123,7 @@ fn message_and_announce_methods_contract() {
     )
     .unwrap();
 
-    commands_message::run(
+    let err = commands_message::run(
         &ctx,
         &MessageCommand {
             action: MessageAction::Send(MessageSendArgs {
@@ -145,7 +139,8 @@ fn message_and_announce_methods_contract() {
             }),
         },
     )
-    .unwrap();
+    .expect_err("send_message_v2 failure should surface to caller");
+    assert!(err.to_string().contains("fallback to legacy send"), "unexpected error: {err}");
 
     let observed = worker.join().unwrap();
     assert_eq!(
@@ -156,7 +151,6 @@ fn message_and_announce_methods_contract() {
             "announce_now",
             "send_message_v2",
             "send_message_v2",
-            "send_message",
         ]
     );
 }

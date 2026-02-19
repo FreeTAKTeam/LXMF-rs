@@ -1,6 +1,6 @@
 # Compatibility Matrix
 
-Last updated: 2026-02-11
+Last updated: 2026-02-19
 
 ## Python LXMF -> Rust LXMF-rs
 
@@ -19,4 +19,4 @@ Top-level module status is tracked here; method-level parity is tracked and enfo
 
 Detailed mapping and tests are tracked in `docs/plans/reticulum-parity-matrix.md`.
 
-Release-track compatibility: `lxmf 0.2.1` targets `reticulum-rs 0.1.3` today (or pinned branch revisions during refactor).
+Release-track compatibility: `lxmf 0.3.0` targets `reticulum-rs 0.1.3` today (or pinned branch revisions during refactor).

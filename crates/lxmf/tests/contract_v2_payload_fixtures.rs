@@ -33,7 +33,7 @@ fn shared_fixture_includes_all_payload_domains() {
         .and_then(Value::as_object)
         .expect("message fields should be an object");
 
-    for field_id in ["2", "5", "9", "12", "14", "16"] {
+    for field_id in ["2", "9", "12", "14", "16"] {
         assert!(
             fields.contains_key(field_id),
             "message fields must include canonical payload domain field {field_id}"

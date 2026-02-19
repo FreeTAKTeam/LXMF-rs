@@ -91,6 +91,12 @@ cargo add lxmf --features embedded-runtime
 - Cross-repo compatibility policy: `docs/compatibility-contract.md`
 - Detailed parity mapping: `docs/compatibility-matrix.md`
 
+## Canonical Payload Policy
+- Public attachment key: `attachments`
+- Rejected public legacy keys: `files`, `"5"`
+- Wire field `0x05` is internal-only representation
+- `send_message_v2` is the canonical client RPC send method
+
 ## Not Included
 - No bundled proprietary hardware integrations.
 - No daemon/TUI coupling in default library build.

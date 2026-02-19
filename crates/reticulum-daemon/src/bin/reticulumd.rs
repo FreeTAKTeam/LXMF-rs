@@ -1,6 +1,8 @@
 #![allow(clippy::items_after_test_module)]
 
 use clap::Parser;
+use lxmf::inbound_decode::InboundPayloadMode;
+use reticulum::delivery::{send_outcome_status, LinkSendResult};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -11,6 +13,7 @@ use tokio::net::TcpListener;
 use tokio::task::LocalSet;
 
 use reticulum::destination::{DestinationName, SingleInputDestination};
+use reticulum::destination_hash::parse_destination_hash_required;
 use reticulum::hash::AddressHash;
 use reticulum::identity::{Identity, PrivateIdentity};
 use reticulum::iface::tcp_client::TcpClient;
@@ -102,7 +105,7 @@ impl OutboundBridge for TransportBridge {
         record: &reticulum::storage::messages::MessageRecord,
         _options: &reticulum::rpc::OutboundDeliveryOptions,
     ) -> Result<(), std::io::Error> {
-        let destination = parse_destination_hex_required(&record.destination)?;
+        let destination = parse_destination_hash_required(&record.destination)?;
         let peer_info =
             self.peer_crypto.lock().expect("peer map").get(&record.destination).copied();
         let peer_identity = peer_info.map(|info| info.identity);
@@ -189,7 +192,7 @@ impl OutboundBridge for TransportBridge {
                 log_delivery_trace(&message_id, &destination_hex, "payload", &detail);
             }
             match result {
-                Ok(packet) => {
+                Ok(LinkSendResult::Packet(packet)) => {
                     let packet_hash = hex::encode(packet.hash().to_bytes());
                     track_receipt_mapping(&receipt_map, &packet_hash, &message_id);
                     let detail = if diagnostics_enabled() {
@@ -205,6 +208,14 @@ impl OutboundBridge for TransportBridge {
                     log_delivery_trace(&message_id, &destination_hex, "link", &detail);
                     let _ = receipt_tx
                         .send(ReceiptEvent { message_id, status: "sent: link".to_string() });
+                }
+                Ok(LinkSendResult::Resource(resource_hash)) => {
+                    let detail = format!("resource_hash={}", hex::encode(resource_hash.as_slice()));
+                    log_delivery_trace(&message_id, &destination_hex, "link", &detail);
+                    let _ = receipt_tx.send(ReceiptEvent {
+                        message_id,
+                        status: "sending: link resource".to_string(),
+                    });
                 }
                 Err(err) => {
                     let err_detail = format!("failed err={err}");
@@ -308,25 +319,6 @@ impl AnnounceBridge for TransportBridge {
     }
 }
 
-fn parse_destination_hex(input: &str) -> Option<[u8; 16]> {
-    let bytes = hex::decode(input).ok()?;
-    if bytes.len() != 16 {
-        return None;
-    }
-    let mut out = [0u8; 16];
-    out.copy_from_slice(&bytes);
-    Some(out)
-}
-
-fn parse_destination_hex_required(input: &str) -> Result<[u8; 16], std::io::Error> {
-    parse_destination_hex(input).ok_or_else(|| {
-        std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            format!("invalid destination hash '{input}' (expected 16-byte hex)"),
-        )
-    })
-}
-
 fn opportunistic_payload<'a>(payload: &'a [u8], destination: &[u8; 16]) -> &'a [u8] {
     if payload.len() > 16 && payload[..16] == destination[..] {
         &payload[16..]
@@ -376,25 +368,11 @@ fn send_trace_detail(trace: SendPacketTrace) -> String {
     )
 }
 
-fn send_outcome_status(method: &str, outcome: SendPacketOutcome) -> String {
-    match outcome {
-        SendPacketOutcome::SentDirect | SendPacketOutcome::SentBroadcast => {
-            format!("sent: {method}")
-        }
-        SendPacketOutcome::DroppedMissingDestinationIdentity => {
-            format!("failed: {method} missing destination identity")
-        }
-        SendPacketOutcome::DroppedCiphertextTooLarge => {
-            format!("failed: {method} payload too large")
-        }
-        SendPacketOutcome::DroppedEncryptFailed => format!("failed: {method} encrypt failed"),
-        SendPacketOutcome::DroppedNoRoute => format!("failed: {method} no route"),
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{opportunistic_payload, parse_destination_hex_required, send_outcome_status};
+    use super::opportunistic_payload;
+    use reticulum::delivery::send_outcome_status;
+    use reticulum::destination_hash::parse_destination_hash_required;
     use reticulum::transport::SendPacketOutcome;
 
     #[test]
@@ -437,7 +415,7 @@ mod tests {
 
     #[test]
     fn parse_destination_hex_required_rejects_invalid_hashes() {
-        let err = parse_destination_hex_required("not-hex").expect_err("invalid hash");
+        let err = parse_destination_hash_required("not-hex").expect_err("invalid hash");
         assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
     }
 }
@@ -644,7 +622,11 @@ async fn main() {
                             destination.copy_from_slice(event.destination.as_slice());
                             let record = if diagnostics_enabled() {
                                 let (record, diagnostics) =
-                                    decode_inbound_payload_with_diagnostics(destination, data);
+                                    decode_inbound_payload_with_diagnostics(
+                                        destination,
+                                        data,
+                                        InboundPayloadMode::DestinationStripped,
+                                    );
                                 if let Some(ref decoded) = record {
                                     eprintln!(
                                         "[daemon-rx] decoded msg_id={} src={} dst={} title_len={} content_len={}",
@@ -663,7 +645,11 @@ async fn main() {
                                 }
                                 record
                             } else {
-                                decode_inbound_payload(destination, data)
+                                decode_inbound_payload(
+                                    destination,
+                                    data,
+                                    InboundPayloadMode::DestinationStripped,
+                                )
                             };
                             if let Some(record) = record {
                                 let _ = daemon_inbound.accept_inbound(record);

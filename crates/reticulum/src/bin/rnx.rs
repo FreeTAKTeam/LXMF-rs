@@ -147,7 +147,7 @@ fn run_e2e(a_port: u16, b_port: u16, timeout_secs: u64, keep: bool) -> io::Resul
 
     let send_params =
         build_send_params(&outbound_id, &a_destination_for_b, &b_destination_for_a, content);
-    rpc_call(&a_rpc, req_id, "send_message", Some(send_params))?;
+    rpc_call(&a_rpc, req_id, "send_message_v2", Some(send_params))?;
     req_id = req_id.wrapping_add(1);
     let found = poll_for_inbound_content(&b_rpc, content, timeout, req_id)?;
     if !found {
@@ -162,7 +162,7 @@ fn run_e2e(a_port: u16, b_port: u16, timeout_secs: u64, keep: bool) -> io::Resul
 
     let reply_params =
         build_send_params(&reply_id, &b_destination_for_a, &a_destination_for_b, reply_content);
-    rpc_call(&b_rpc, req_id, "send_message", Some(reply_params))?;
+    rpc_call(&b_rpc, req_id, "send_message_v2", Some(reply_params))?;
     req_id = req_id.wrapping_add(1);
     let reply_found = poll_for_inbound_content(&a_rpc, reply_content, timeout, req_id)?;
     if !reply_found {

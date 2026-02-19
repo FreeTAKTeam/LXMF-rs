@@ -142,10 +142,7 @@ fn emit_send_result(
     prepared: PreparedSend,
 ) -> Result<()> {
     let PreparedSend { params, source, destination, source_changed } = prepared;
-    let result = match ctx.rpc.call("send_message_v2", Some(params.clone())) {
-        Ok(v) => v,
-        Err(_) => ctx.rpc.call("send_message", Some(params))?,
-    };
+    let result = ctx.rpc.call("send_message_v2", Some(params))?;
 
     if source_changed || destination != args.destination {
         return ctx.output.emit_status(&json!({

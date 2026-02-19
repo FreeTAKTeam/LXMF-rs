@@ -10,17 +10,30 @@ use crate::helpers::{
     display_name_from_app_data, is_msgpack_array_prefix, normalize_display_name,
     pn_peering_cost_from_app_data, pn_stamp_cost_flexibility_from_app_data,
 };
+use crate::inbound_decode::{decode_inbound_message, InboundPayloadMode};
 use crate::message::{Message, WireMessage};
 use crate::payload_fields::{decode_transport_fields_json, CommandEntry, WireFields};
+use crate::wire_fields::{
+    contains_attachment_aliases, json_to_rmpv as json_to_rmpv_shared, rmpv_to_json_with_options,
+    RmpvToJsonOptions,
+};
 use crate::LxmfError;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
 use rand_core::OsRng;
-use reticulum::destination::link::{Link, LinkEvent, LinkStatus};
+use reticulum::delivery::{
+    await_link_activation, send_outcome_is_sent as shared_send_outcome_is_sent,
+    send_outcome_status as shared_send_outcome_status, send_via_link as shared_send_via_link,
+    LinkSendResult,
+};
+use reticulum::destination::link::{Link, LinkStatus};
 use reticulum::destination::{
     DestinationDesc, DestinationName, SingleInputDestination, SingleOutputDestination,
 };
-use reticulum::error::RnsError;
+use reticulum::destination_hash::{
+    parse_destination_hash as shared_parse_destination_hash,
+    parse_destination_hash_required as shared_parse_destination_hash_required,
+};
 use reticulum::hash::{address_hash, AddressHash, Hash};
 use reticulum::identity::{Identity, PrivateIdentity};
 use reticulum::iface::tcp_client::TcpClient;
@@ -28,6 +41,12 @@ use reticulum::iface::tcp_server::TcpServer;
 use reticulum::packet::{
     ContextFlag, DestinationType, Header, HeaderType, IfacFlag, Packet, PacketContext,
     PacketDataBuffer, PacketType, PropagationType,
+};
+use reticulum::receipt::{
+    prune_receipt_mappings_for_message as shared_prune_receipt_mappings_for_message,
+    record_receipt_status as shared_record_receipt_status,
+    resolve_receipt_message_id as shared_resolve_receipt_message_id,
+    track_receipt_mapping as shared_track_receipt_mapping,
 };
 use reticulum::resource::ResourceEventKind;
 use reticulum::rpc::{
@@ -38,8 +57,7 @@ use reticulum::transport::{
     DeliveryReceipt, ReceiptHandler, SendPacketOutcome, Transport, TransportConfig,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Map as JsonMap, Value};
-use sha2::{Digest, Sha256};
+use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Write;
@@ -47,7 +65,7 @@ use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{mpsc as std_mpsc, Arc, Mutex, OnceLock};
+use std::sync::{mpsc as std_mpsc, Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
@@ -1259,7 +1277,11 @@ async fn request_messages_from_propagation_node_live(
         if payload.len() >= 16 {
             let mut fallback_destination = [0u8; 16];
             fallback_destination.copy_from_slice(&payload[..16]);
-            if let Some(record) = decode_inbound_payload(fallback_destination, payload.as_slice()) {
+            if let Some(record) = decode_inbound_payload(
+                fallback_destination,
+                payload.as_slice(),
+                InboundPayloadMode::FullWire,
+            ) {
                 state.daemon.accept_inbound(record)?;
                 ingested_messages.push(hex::encode(transient_id));
                 continue;
@@ -1744,7 +1766,13 @@ impl WorkerState {
                                     let data = event.data.as_slice();
                                     let mut destination = [0u8; 16];
                                     destination.copy_from_slice(event.destination.as_slice());
-                                    if let Some(mut record) = decode_inbound_payload(destination, data) {
+                                    if let Some(mut record) =
+                                        decode_inbound_payload(
+                                            destination,
+                                            data,
+                                            InboundPayloadMode::DestinationStripped,
+                                        )
+                                    {
                                         annotate_inbound_transport_metadata(&mut record, &event);
                                         let _ = daemon_inbound.accept_inbound(record);
                                     }
@@ -1777,7 +1805,11 @@ impl WorkerState {
                                     match event.kind {
                                         ResourceEventKind::Complete(complete) => {
                                             if let Some(destination) = resolve_link_destination(&resource_transport, &event.link_id).await {
-                                                if let Some(record) = decode_inbound_payload(destination, &complete.data) {
+                                                if let Some(record) = decode_inbound_payload(
+                                                    destination,
+                                                    &complete.data,
+                                                    InboundPayloadMode::DestinationStripped,
+                                                ) {
                                                     let _ = daemon_resource_inbound.accept_inbound(record);
                                                 }
                                             }
@@ -2541,8 +2573,7 @@ impl ReceiptBridge {
 
 impl ReceiptHandler for ReceiptBridge {
     fn on_receipt(&self, receipt: &DeliveryReceipt) {
-        let key = hex::encode(receipt.message_id);
-        let message_id = self.map.lock().ok().and_then(|mut map| map.remove(&key));
+        let message_id = shared_resolve_receipt_message_id(&self.map, receipt);
         if let Some(message_id) = message_id {
             if let Ok(mut delivered) = self.delivered_messages.lock() {
                 delivered.insert(message_id.clone());
@@ -2555,14 +2586,7 @@ impl ReceiptHandler for ReceiptBridge {
 fn handle_receipt_event(daemon: &RpcDaemon, event: ReceiptEvent) -> Result<(), std::io::Error> {
     let message_id = event.message_id;
     let status = event.status;
-    let _ = daemon.handle_rpc(RpcRequest {
-        id: 0,
-        method: "record_receipt".into(),
-        params: Some(json!({
-            "message_id": message_id,
-            "status": status,
-        })),
-    })?;
+    shared_record_receipt_status(daemon, &message_id, &status)?;
     if let Some(exclude_relays) = parse_alternative_relay_request_status(status.as_str()) {
         daemon.push_event(RpcEvent {
             event_type: "alternative_relay_request".to_string(),
@@ -2632,9 +2656,7 @@ fn track_receipt_mapping(
     packet_hash: &str,
     message_id: &str,
 ) {
-    if let Ok(mut guard) = map.lock() {
-        guard.insert(packet_hash.to_string(), message_id.to_string());
-    }
+    shared_track_receipt_mapping(map, packet_hash, message_id);
 }
 
 fn track_outbound_resource_mapping(
@@ -2653,89 +2675,7 @@ async fn send_via_link(
     payload: &[u8],
     wait_timeout: Duration,
 ) -> Result<LinkSendResult, std::io::Error> {
-    let link = transport.link(destination).await;
-    await_link_activation(transport, &link, wait_timeout).await?;
-    let link_id = *link.lock().await.id();
-
-    let packet = {
-        let guard = link.lock().await;
-        guard.data_packet(payload)
-    };
-    match packet {
-        Ok(packet) => {
-            let outcome = transport.send_packet_with_outcome(packet).await;
-            if !matches!(outcome, SendPacketOutcome::SentDirect | SendPacketOutcome::SentBroadcast)
-            {
-                return Err(std::io::Error::other(format!(
-                    "link packet not sent: {}",
-                    send_outcome_label(outcome)
-                )));
-            }
-            Ok(LinkSendResult::Packet(Box::new(packet)))
-        }
-        Err(RnsError::OutOfMemory | RnsError::InvalidArgument) => {
-            let resource_hash = transport
-                .send_resource(&link_id, payload.to_vec(), None)
-                .await
-                .map_err(|err| std::io::Error::other(format!("link resource not sent: {err:?}")))?;
-            Ok(LinkSendResult::Resource(resource_hash))
-        }
-        Err(err) => Err(std::io::Error::other(format!("{err:?}"))),
-    }
-}
-
-async fn await_link_activation(
-    transport: &Transport,
-    link: &Arc<tokio::sync::Mutex<Link>>,
-    wait_timeout: Duration,
-) -> Result<(), std::io::Error> {
-    let link_id = *link.lock().await.id();
-    if link.lock().await.status() == LinkStatus::Active {
-        return Ok(());
-    }
-
-    let mut events = transport.out_link_events();
-    let deadline = tokio::time::Instant::now() + wait_timeout;
-
-    loop {
-        if link.lock().await.status() == LinkStatus::Active {
-            return Ok(());
-        }
-
-        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
-        if remaining.is_zero() {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::TimedOut,
-                "link activation timed out",
-            ));
-        }
-
-        // Poll in short slices so we can observe an active link even if the
-        // activation event was emitted before we subscribed to link events.
-        let wait_slice = remaining.min(Duration::from_millis(250));
-        match tokio::time::timeout(wait_slice, events.recv()).await {
-            Ok(Ok(event)) => {
-                if event.id == link_id {
-                    if let LinkEvent::Activated = event.event {
-                        return Ok(());
-                    }
-                }
-            }
-            Ok(Err(tokio::sync::broadcast::error::RecvError::Lagged(_))) => continue,
-            Ok(Err(tokio::sync::broadcast::error::RecvError::Closed)) => {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::UnexpectedEof,
-                    "link event channel closed",
-                ));
-            }
-            Err(_) => continue,
-        }
-    }
-}
-
-enum LinkSendResult {
-    Packet(Box<Packet>),
-    Resource(reticulum::hash::Hash),
+    shared_send_via_link(transport, destination, payload, wait_timeout).await
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2765,148 +2705,7 @@ fn can_send_opportunistic(fields: Option<&Value>, payload_len: usize) -> bool {
 }
 
 fn fields_contain_attachments(fields: Option<&Value>) -> bool {
-    let Some(fields) = fields else {
-        return false;
-    };
-    let Some(map) = fields.as_object() else {
-        return false;
-    };
-
-    for key in ["5", "attachments", "files"] {
-        if map.get(key).is_some() {
-            return true;
-        }
-    }
-    false
-}
-
-fn normalize_attachment_field_entries(entries: &[Value]) -> Option<Value> {
-    let mut normalized = Vec::with_capacity(entries.len());
-    for entry in entries {
-        if let Some(normalized_entry) = normalize_attachment_entry(entry) {
-            normalized.push(normalized_entry);
-        }
-    }
-    if normalized.is_empty() {
-        return None;
-    }
-    Some(Value::Array(normalized))
-}
-
-fn normalize_attachment_entry(entry: &Value) -> Option<Value> {
-    match entry {
-        Value::Array(items) if items.len() >= 2 => {
-            let filename = items[0].as_str()?;
-            let data = normalize_attachment_data(&items[1])?;
-            Some(Value::Array(vec![Value::String(filename.to_string()), data]))
-        }
-        Value::Object(map) => {
-            let filename =
-                map.get("filename").or_else(|| map.get("name")).and_then(Value::as_str)?;
-            let data = map.get("data").and_then(normalize_attachment_data)?;
-            Some(Value::Array(vec![Value::String(filename.to_string()), data]))
-        }
-        _ => None,
-    }
-}
-
-fn normalize_attachment_data(value: &Value) -> Option<Value> {
-    let bytes =
-        match value {
-            Value::Array(items) => {
-                let mut normalized = Vec::with_capacity(items.len());
-                for item in items {
-                    let byte =
-                        item.as_u64()
-                            .and_then(|value| {
-                                if value <= u8::MAX as u64 {
-                                    Some(value as u8)
-                                } else {
-                                    None
-                                }
-                            })
-                            .or_else(|| item.as_i64().and_then(|value| u8::try_from(value).ok()));
-                    let byte = byte?;
-                    normalized.push(byte);
-                }
-                normalized
-            }
-            Value::String(text) => decode_attachment_text_data(text)?,
-            _ => return None,
-        };
-
-    Some(Value::Array(
-        bytes.into_iter().map(|byte| Value::Number(u64::from(byte).into())).collect(),
-    ))
-}
-
-fn decode_hex_attachment_data(text: &str) -> Option<Vec<u8>> {
-    if text.len() % 2 != 0 || !text.chars().all(|ch| ch.is_ascii_hexdigit()) {
-        return None;
-    }
-
-    let mut bytes = Vec::with_capacity(text.len() / 2);
-    let mut index = 0;
-    while index < text.len() {
-        bytes.push(u8::from_str_radix(&text[index..index + 2], 16).ok()?);
-        index += 2;
-    }
-    Some(bytes)
-}
-
-fn decode_attachment_text_data(text: &str) -> Option<Vec<u8>> {
-    let text = text.trim();
-    if text.is_empty() {
-        return None;
-    }
-
-    if let Some(payload) = text.strip_prefix("hex:").or_else(|| text.strip_prefix("HEX:")) {
-        return decode_hex_attachment_data(payload.trim());
-    }
-
-    if let Some(payload) = text.strip_prefix("base64:").or_else(|| text.strip_prefix("BASE64:")) {
-        return BASE64_STANDARD.decode(payload.trim()).ok();
-    }
-
-    let hex = decode_hex_attachment_data(text);
-    let base64 = BASE64_STANDARD.decode(text).ok();
-    match (hex, base64) {
-        (Some(bytes), None) => Some(bytes),
-        (None, Some(bytes)) => Some(bytes),
-        (Some(_), Some(_)) => None,
-        (None, None) => None,
-    }
-}
-
-fn normalize_file_attachment_fields(fields: &mut JsonMap<String, Value>) {
-    let normalized_field_5 = fields
-        .get("5")
-        .and_then(Value::as_array)
-        .and_then(|entries| normalize_attachment_field_entries(entries));
-    if let Some(value) = normalized_field_5 {
-        fields.insert("5".to_string(), value);
-        fields.remove("attachments");
-        fields.remove("files");
-        return;
-    }
-
-    let normalized_attachments = fields
-        .get("attachments")
-        .and_then(Value::as_array)
-        .and_then(|entries| normalize_attachment_field_entries(entries));
-    let normalized_files = fields
-        .get("files")
-        .and_then(Value::as_array)
-        .and_then(|entries| normalize_attachment_field_entries(entries));
-
-    if let Some(value) = normalized_attachments.or(normalized_files) {
-        fields.insert("5".to_string(), value);
-        fields.remove("attachments");
-        fields.remove("files");
-        return;
-    }
-
-    fields.remove("5");
+    contains_attachment_aliases(fields)
 }
 
 async fn resolve_link_destination(
@@ -2928,35 +2727,12 @@ async fn resolve_link_destination(
     None
 }
 
-fn send_outcome_label(outcome: SendPacketOutcome) -> &'static str {
-    match outcome {
-        SendPacketOutcome::SentDirect => "sent direct",
-        SendPacketOutcome::SentBroadcast => "sent broadcast",
-        SendPacketOutcome::DroppedMissingDestinationIdentity => "missing destination identity",
-        SendPacketOutcome::DroppedCiphertextTooLarge => "ciphertext too large",
-        SendPacketOutcome::DroppedEncryptFailed => "encrypt failed",
-        SendPacketOutcome::DroppedNoRoute => "no route",
-    }
-}
-
 fn send_outcome_is_sent(outcome: SendPacketOutcome) -> bool {
-    matches!(outcome, SendPacketOutcome::SentDirect | SendPacketOutcome::SentBroadcast)
+    shared_send_outcome_is_sent(outcome)
 }
 
 fn send_outcome_status(method: &str, outcome: SendPacketOutcome) -> String {
-    match outcome {
-        SendPacketOutcome::SentDirect | SendPacketOutcome::SentBroadcast => {
-            format!("sent: {method}")
-        }
-        SendPacketOutcome::DroppedMissingDestinationIdentity => {
-            format!("failed: {method} missing destination identity")
-        }
-        SendPacketOutcome::DroppedCiphertextTooLarge => {
-            format!("failed: {method} payload too large")
-        }
-        SendPacketOutcome::DroppedEncryptFailed => format!("failed: {method} encrypt failed"),
-        SendPacketOutcome::DroppedNoRoute => format!("failed: {method} no route"),
-    }
+    shared_send_outcome_status(method, outcome)
 }
 
 fn is_message_marked_delivered(
@@ -2970,9 +2746,7 @@ fn prune_receipt_mappings_for_message(
     receipt_map: &Arc<Mutex<HashMap<String, String>>>,
     message_id: &str,
 ) {
-    if let Ok(mut guard) = receipt_map.lock() {
-        guard.retain(|_, mapped_message_id| mapped_message_id != message_id);
-    }
+    shared_prune_receipt_mappings_for_message(receipt_map, message_id);
 }
 
 fn now_epoch_secs() -> u64 {
@@ -3087,49 +2861,30 @@ fn normalize_relay_destination_hash(
 }
 
 fn parse_destination_hex(input: &str) -> Option<[u8; 16]> {
-    let bytes = hex::decode(input).ok()?;
-    let mut out = [0u8; 16];
-    match bytes.len() {
-        16 => {
-            out.copy_from_slice(&bytes);
-            Some(out)
-        }
-        32 => {
-            out.copy_from_slice(&bytes[..16]);
-            Some(out)
-        }
-        _ => None,
-    }
+    shared_parse_destination_hash(input)
 }
 
 fn parse_destination_hex_required(input: &str) -> Result<[u8; 16], std::io::Error> {
-    parse_destination_hex(input).ok_or_else(|| {
-        std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            format!("invalid destination hash '{input}' (expected 16-byte or 32-byte hex)"),
-        )
-    })
+    shared_parse_destination_hash_required(input)
 }
 
-fn decode_inbound_payload(destination: [u8; 16], payload: &[u8]) -> Option<MessageRecord> {
-    let mut decode_candidates = Vec::with_capacity(3);
-    decode_candidates.push(payload.to_vec());
-
-    let mut with_destination_prefix = Vec::with_capacity(16 + payload.len());
-    with_destination_prefix.extend_from_slice(&destination);
-    with_destination_prefix.extend_from_slice(payload);
-    decode_candidates.push(with_destination_prefix);
-
-    if payload.len() > 16 && payload[..16] == destination {
-        decode_candidates.push(payload[16..].to_vec());
-    }
-
-    for candidate in decode_candidates {
-        if let Some(record) = decode_wire_candidate(destination, &candidate) {
-            return Some(record);
-        }
-    }
-    None
+fn decode_inbound_payload(
+    destination: [u8; 16],
+    payload: &[u8],
+    mode: InboundPayloadMode,
+) -> Option<MessageRecord> {
+    let message = decode_inbound_message(destination, payload, mode).ok()?;
+    Some(MessageRecord {
+        id: message.id,
+        source: hex::encode(message.source),
+        destination: hex::encode(message.destination),
+        title: message.title,
+        content: message.content,
+        timestamp: message.timestamp,
+        direction: "in".into(),
+        fields: message.fields.as_ref().and_then(json_fields_with_raw_preserved),
+        receipt_status: None,
+    })
 }
 
 fn annotate_inbound_transport_metadata(
@@ -3150,165 +2905,6 @@ fn annotate_inbound_transport_metadata(
     };
     root.insert("_transport".to_string(), Value::Object(transport));
     record.fields = Some(Value::Object(root));
-}
-
-fn decode_wire_candidate(
-    fallback_destination: [u8; 16],
-    candidate: &[u8],
-) -> Option<MessageRecord> {
-    if let Ok(message) = Message::from_wire(candidate) {
-        let source = message.source_hash.unwrap_or([0u8; 16]);
-        let destination = message.destination_hash.unwrap_or(fallback_destination);
-        let id = wire_message_id_hex(candidate).unwrap_or_else(|| hex::encode(destination));
-        return Some(MessageRecord {
-            id,
-            source: hex::encode(source),
-            destination: hex::encode(destination),
-            title: String::from_utf8(message.title).unwrap_or_default(),
-            content: String::from_utf8(message.content).unwrap_or_default(),
-            timestamp: message.timestamp.map(|value| value as i64).unwrap_or(0),
-            direction: "in".into(),
-            fields: message.fields.as_ref().and_then(json_fields_with_raw_preserved),
-            receipt_status: None,
-        });
-    }
-
-    if !relaxed_decode_enabled() {
-        return None;
-    }
-
-    let decoded = decode_wire_candidate_relaxed(candidate)?;
-    Some(MessageRecord {
-        id: decoded.id,
-        source: hex::encode(decoded.source),
-        destination: hex::encode(decoded.destination),
-        title: decoded.title,
-        content: decoded.content,
-        timestamp: decoded.timestamp,
-        direction: "in".into(),
-        fields: decoded.fields.as_ref().and_then(json_fields_with_raw_preserved),
-        receipt_status: None,
-    })
-}
-
-struct RelaxedInboundMessage {
-    id: String,
-    source: [u8; 16],
-    destination: [u8; 16],
-    title: String,
-    content: String,
-    timestamp: i64,
-    fields: Option<rmpv::Value>,
-}
-
-fn decode_wire_candidate_relaxed(candidate: &[u8]) -> Option<RelaxedInboundMessage> {
-    // LXMF wire: 16-byte destination + 16-byte source + 64-byte signature + msgpack payload.
-    const SIGNATURE_LEN: usize = 64;
-    const HEADER_LEN: usize = 16 + 16 + SIGNATURE_LEN;
-    if candidate.len() <= HEADER_LEN {
-        return None;
-    }
-
-    let mut destination = [0u8; 16];
-    destination.copy_from_slice(&candidate[..16]);
-    let mut source = [0u8; 16];
-    source.copy_from_slice(&candidate[16..32]);
-    let payload = &candidate[HEADER_LEN..];
-    let payload_value = rmp_serde::from_slice::<rmpv::Value>(payload).ok()?;
-    let rmpv::Value::Array(items) = payload_value else {
-        return None;
-    };
-    if items.len() < 4 || items.len() > 5 {
-        return None;
-    }
-
-    let timestamp = parse_payload_timestamp(items.first()?)? as i64;
-    let title = decode_payload_text(items.get(1));
-    let content = decode_payload_text(items.get(2));
-    let fields = match items.get(3) {
-        Some(rmpv::Value::Nil) | None => None,
-        Some(value) => Some(value.clone()),
-    };
-
-    let payload_without_stamp = payload_without_stamp_bytes(&items)?;
-    let id = compute_message_id_hex(destination, source, &payload_without_stamp);
-
-    Some(RelaxedInboundMessage { id, source, destination, title, content, timestamp, fields })
-}
-
-fn parse_payload_timestamp(value: &rmpv::Value) -> Option<f64> {
-    value
-        .as_f64()
-        .or_else(|| value.as_i64().map(|v| v as f64))
-        .or_else(|| value.as_u64().map(|v| v as f64))
-}
-
-fn decode_payload_text(value: Option<&rmpv::Value>) -> String {
-    match value {
-        Some(rmpv::Value::Binary(bytes)) => String::from_utf8(bytes.clone()).unwrap_or_default(),
-        Some(rmpv::Value::String(text)) => text.as_str().map(ToOwned::to_owned).unwrap_or_default(),
-        _ => String::new(),
-    }
-}
-
-fn wire_message_id_hex(candidate: &[u8]) -> Option<String> {
-    const SIGNATURE_LEN: usize = 64;
-    const HEADER_LEN: usize = 16 + 16 + SIGNATURE_LEN;
-    if candidate.len() <= HEADER_LEN {
-        return None;
-    }
-    let mut destination = [0u8; 16];
-    destination.copy_from_slice(&candidate[..16]);
-    let mut source = [0u8; 16];
-    source.copy_from_slice(&candidate[16..32]);
-    let payload_value = rmp_serde::from_slice::<rmpv::Value>(&candidate[HEADER_LEN..]).ok()?;
-    let rmpv::Value::Array(items) = payload_value else {
-        return None;
-    };
-    let payload_without_stamp = payload_without_stamp_bytes(&items)?;
-    Some(compute_message_id_hex(destination, source, &payload_without_stamp))
-}
-
-fn payload_without_stamp_bytes(items: &[rmpv::Value]) -> Option<Vec<u8>> {
-    if items.len() < 4 || items.len() > 5 {
-        return None;
-    }
-    let mut trimmed = items.to_vec();
-    if trimmed.len() == 5 {
-        trimmed.pop();
-    }
-    rmp_serde::to_vec(&rmpv::Value::Array(trimmed)).ok()
-}
-
-fn compute_message_id_hex(
-    destination: [u8; 16],
-    source: [u8; 16],
-    payload_without_stamp: &[u8],
-) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(destination);
-    hasher.update(source);
-    hasher.update(payload_without_stamp);
-    hex::encode(hasher.finalize())
-}
-
-fn relaxed_decode_enabled() -> bool {
-    static RELAXED_DECODE: OnceLock<bool> = OnceLock::new();
-    *RELAXED_DECODE.get_or_init(|| {
-        parse_env_bool("LXMF_RUNTIME_RELAXED_DECODE")
-            .or_else(|| parse_env_bool("LXMF_ALLOW_RELAXED_DECODE"))
-            .unwrap_or(false)
-    })
-}
-
-fn parse_env_bool(key: &str) -> Option<bool> {
-    let raw = std::env::var(key).ok()?;
-    let normalized = raw.trim().to_ascii_lowercase();
-    match normalized.as_str() {
-        "1" | "true" | "yes" | "on" => Some(true),
-        "0" | "false" | "no" | "off" => Some(false),
-        _ => None,
-    }
 }
 
 fn build_wire_message(
@@ -3338,139 +2934,11 @@ fn wire_fields_from_json(value: &Value) -> Result<rmpv::Value, LxmfError> {
 }
 
 fn json_to_rmpv(value: &Value) -> Result<rmpv::Value, LxmfError> {
-    json_to_rmpv_lossless(value)
-}
-
-fn json_to_rmpv_lossless(value: &Value) -> Result<rmpv::Value, LxmfError> {
-    match value {
-        Value::Null => Ok(rmpv::Value::Nil),
-        Value::Bool(v) => Ok(rmpv::Value::Boolean(*v)),
-        Value::Number(number) => {
-            if let Some(raw) = number.as_i64() {
-                return Ok(rmpv::Value::Integer(raw.into()));
-            }
-            if let Some(raw) = number.as_u64() {
-                return Ok(rmpv::Value::Integer(raw.into()));
-            }
-            number
-                .as_f64()
-                .map(rmpv::Value::F64)
-                .ok_or_else(|| LxmfError::Encode("invalid json number".to_string()))
-        }
-        Value::String(text) => Ok(rmpv::Value::String(text.as_str().into())),
-        Value::Array(values) => {
-            let mut out = Vec::with_capacity(values.len());
-            for value in values {
-                out.push(json_to_rmpv_lossless(value)?);
-            }
-            Ok(rmpv::Value::Array(out))
-        }
-        Value::Object(map) => {
-            let mut entries = Vec::with_capacity(map.len());
-            for (key, value) in map {
-                let key = json_object_key_to_rmpv(key);
-                entries.push((key, json_to_rmpv_lossless(value)?));
-            }
-            Ok(rmpv::Value::Map(entries))
-        }
-    }
-}
-
-fn json_object_key_to_rmpv(key: &str) -> rmpv::Value {
-    if let Ok(value) = key.parse::<i64>() {
-        return rmpv::Value::Integer(value.into());
-    }
-    if let Ok(value) = key.parse::<u64>() {
-        return rmpv::Value::Integer(value.into());
-    }
-    rmpv::Value::String(key.into())
+    json_to_rmpv_shared(value)
 }
 
 fn rmpv_to_json(value: &rmpv::Value) -> Option<Value> {
-    match value {
-        rmpv::Value::Nil => Some(Value::Null),
-        rmpv::Value::Boolean(v) => Some(Value::Bool(*v)),
-        rmpv::Value::Integer(v) => v
-            .as_i64()
-            .map(|i| Value::Number(i.into()))
-            .or_else(|| v.as_u64().map(|u| Value::Number(u.into()))),
-        rmpv::Value::F32(v) => serde_json::Number::from_f64(f64::from(*v)).map(Value::Number),
-        rmpv::Value::F64(v) => serde_json::Number::from_f64(*v).map(Value::Number),
-        rmpv::Value::String(s) => s.as_str().map(|v| Value::String(v.to_string())),
-        rmpv::Value::Binary(bytes) => {
-            Some(Value::Array(bytes.iter().map(|b| Value::Number((*b).into())).collect()))
-        }
-        rmpv::Value::Array(items) => {
-            let mut out = Vec::with_capacity(items.len());
-            for item in items {
-                out.push(rmpv_to_json(item)?);
-            }
-            Some(Value::Array(out))
-        }
-        rmpv::Value::Map(entries) => {
-            let mut object = serde_json::Map::new();
-            for (key, value) in entries {
-                let key_str = match key {
-                    rmpv::Value::String(text) => text.as_str().map(|v| v.to_string()),
-                    rmpv::Value::Integer(int) => int
-                        .as_i64()
-                        .map(|v| v.to_string())
-                        .or_else(|| int.as_u64().map(|v| v.to_string())),
-                    other => Some(format!("{other:?}")),
-                }?;
-                if key_str == "2" {
-                    match value {
-                        rmpv::Value::Binary(bytes) => {
-                            if let Some(decoded) = decode_sideband_location_telemetry(bytes) {
-                                object.insert(key_str, decoded);
-                                continue;
-                            }
-                        }
-                        rmpv::Value::String(text) => {
-                            if let Some(decoded) =
-                                decode_sideband_location_telemetry(text.as_bytes())
-                            {
-                                object.insert(key_str, decoded);
-                                continue;
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-                if key_str == "3" {
-                    match value {
-                        rmpv::Value::Binary(bytes) => {
-                            if let Some(decoded) = decode_telemetry_stream(bytes) {
-                                object.insert(key_str, decoded);
-                                continue;
-                            }
-                        }
-                        rmpv::Value::String(text) => {
-                            if let Some(decoded) = decode_telemetry_stream(text.as_bytes()) {
-                                object.insert(key_str, decoded);
-                                continue;
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-                if key_str == "112" {
-                    if let Some(decoded) = match value {
-                        rmpv::Value::Binary(bytes) => decode_columba_meta(bytes),
-                        rmpv::Value::String(text) => decode_columba_meta(text.as_bytes()),
-                        _ => None,
-                    } {
-                        object.insert(key_str, decoded);
-                        continue;
-                    }
-                }
-                object.insert(key_str, rmpv_to_json(value)?);
-            }
-            enrich_app_extension_fields(&mut object);
-            Some(Value::Object(object))
-        }
-        _ => None,
-    }
+    rmpv_to_json_with_options(value, RmpvToJsonOptions { enrich_app_extensions: true })
 }
 
 fn json_fields_with_raw_preserved(value: &rmpv::Value) -> Option<Value> {
@@ -3492,7 +2960,6 @@ fn sanitize_outbound_wire_fields(fields: Option<&Value>) -> Option<Value> {
     };
 
     let mut out = fields.clone();
-    normalize_file_attachment_fields(&mut out);
     out.remove(OUTBOUND_DELIVERY_OPTIONS_FIELD);
 
     for key in ["_lxmf", "lxmf"] {
@@ -3518,129 +2985,6 @@ fn sanitize_outbound_wire_fields(fields: Option<&Value>) -> Option<Value> {
     } else {
         Some(Value::Object(out))
     }
-}
-
-fn decode_sideband_location_telemetry(packed: &[u8]) -> Option<Value> {
-    let mut cursor = std::io::Cursor::new(packed);
-    let decoded = rmpv::decode::read_value(&mut cursor).ok()?;
-    let rmpv::Value::Map(map) = decoded else {
-        return None;
-    };
-    let location = map
-        .iter()
-        .find(|(key, _)| key.as_i64() == Some(0x02) || key.as_u64() == Some(0x02))
-        .map(|(_, value)| value)?;
-    let rmpv::Value::Array(items) = location else {
-        return None;
-    };
-    if items.len() < 7 {
-        return None;
-    }
-
-    let lat = decode_i32_be(items.first()?)? as f64 / 1e6;
-    let lon = decode_i32_be(items.get(1)?)? as f64 / 1e6;
-    let alt = decode_i32_be(items.get(2)?)? as f64 / 1e2;
-    let speed = decode_u32_be(items.get(3)?)? as f64 / 1e2;
-    let bearing = decode_i32_be(items.get(4)?)? as f64 / 1e2;
-    let accuracy = decode_u16_be(items.get(5)?)? as f64 / 1e2;
-    let updated = items.get(6).and_then(|value| {
-        value.as_i64().or_else(|| value.as_u64().and_then(|raw| i64::try_from(raw).ok()))
-    });
-
-    let mut out = serde_json::Map::new();
-    out.insert("lat".to_string(), Value::from(lat));
-    out.insert("lon".to_string(), Value::from(lon));
-    out.insert("alt".to_string(), Value::from(alt));
-    out.insert("speed".to_string(), Value::from(speed));
-    out.insert("bearing".to_string(), Value::from(bearing));
-    out.insert("accuracy".to_string(), Value::from(accuracy));
-    if let Some(updated) = updated {
-        out.insert("updated".to_string(), Value::from(updated));
-    }
-    Some(Value::Object(out))
-}
-
-fn decode_telemetry_stream(packed: &[u8]) -> Option<Value> {
-    let mut cursor = std::io::Cursor::new(packed);
-    let decoded = rmpv::decode::read_value(&mut cursor).ok()?;
-    rmpv_to_json(&decoded)
-}
-
-fn decode_columba_meta(packed: &[u8]) -> Option<Value> {
-    let text = std::str::from_utf8(packed).ok();
-    if let Some(text) = text {
-        if let Ok(json) = serde_json::from_str::<Value>(text) {
-            return Some(json);
-        }
-    }
-    let mut cursor = std::io::Cursor::new(packed);
-    if let Ok(decoded) = rmpv::decode::read_value(&mut cursor) {
-        if usize::try_from(cursor.position()).ok() == Some(packed.len()) {
-            if let Some(decoded) = rmpv_to_json(&decoded) {
-                return Some(decoded);
-            }
-        }
-    }
-    text.map(|value| Value::String(value.to_string()))
-        .or_else(|| rmpv_to_json(&rmpv::Value::Binary(packed.to_vec())))
-}
-
-fn enrich_app_extension_fields(object: &mut serde_json::Map<String, Value>) {
-    let Some(app_extensions) = object.get("16").and_then(Value::as_object).cloned() else {
-        return;
-    };
-
-    if let Some(reaction_to) = app_extensions.get("reaction_to").and_then(Value::as_str) {
-        object.insert("is_reaction".to_string(), Value::Bool(true));
-        object.insert("reaction_to".to_string(), Value::String(reaction_to.to_string()));
-        if let Some(emoji) = app_extensions.get("emoji").and_then(Value::as_str) {
-            object.insert("reaction_emoji".to_string(), Value::String(emoji.to_string()));
-        }
-        if let Some(sender) = app_extensions.get("sender").and_then(Value::as_str) {
-            object.insert("reaction_sender".to_string(), Value::String(sender.to_string()));
-        }
-    }
-
-    if let Some(reply_to) = app_extensions.get("reply_to").and_then(Value::as_str) {
-        object.insert("reply_to".to_string(), Value::String(reply_to.to_string()));
-    }
-}
-
-fn decode_binary_bytes(value: &rmpv::Value) -> Option<&[u8]> {
-    match value {
-        rmpv::Value::Binary(bytes) => Some(bytes.as_slice()),
-        _ => None,
-    }
-}
-
-fn decode_i32_be(value: &rmpv::Value) -> Option<i32> {
-    let bytes = decode_binary_bytes(value)?;
-    if bytes.len() != 4 {
-        return None;
-    }
-    let mut raw = [0u8; 4];
-    raw.copy_from_slice(bytes);
-    Some(i32::from_be_bytes(raw))
-}
-
-fn decode_u32_be(value: &rmpv::Value) -> Option<u32> {
-    let bytes = decode_binary_bytes(value)?;
-    if bytes.len() != 4 {
-        return None;
-    }
-    let mut raw = [0u8; 4];
-    raw.copy_from_slice(bytes);
-    Some(u32::from_be_bytes(raw))
-}
-
-fn decode_u16_be(value: &rmpv::Value) -> Option<u16> {
-    let bytes = decode_binary_bytes(value)?;
-    if bytes.len() != 2 {
-        return None;
-    }
-    let mut raw = [0u8; 2];
-    raw.copy_from_slice(bytes);
-    Some(u16::from_be_bytes(raw))
 }
 
 fn encode_delivery_display_name_app_data(display_name: &str) -> Option<Vec<u8>> {
@@ -4159,7 +3503,7 @@ mod tests {
         can_send_opportunistic, decode_inbound_payload, format_relay_request_status, json_to_rmpv,
         normalize_relay_destination_hash, parse_alternative_relay_request_status,
         propagation_relay_candidates, rmpv_to_json, sanitize_outbound_wire_fields,
-        PeerAnnounceMeta, PeerCrypto,
+        InboundPayloadMode, PeerAnnounceMeta, PeerCrypto,
     };
     use crate::constants::FIELD_COMMANDS;
     use crate::message::Message;
@@ -4189,7 +3533,8 @@ mod tests {
         wire.extend_from_slice(&signature);
         wire.extend_from_slice(&payload);
 
-        let record = decode_inbound_payload(destination, &wire).expect("decoded record");
+        let record = decode_inbound_payload(destination, &wire, InboundPayloadMode::FullWire)
+            .expect("decoded record");
         assert_eq!(record.source, hex::encode(source));
         assert_eq!(record.destination, hex::encode(destination));
         assert_eq!(record.title, "title");
@@ -4300,19 +3645,14 @@ mod tests {
     }
 
     #[test]
-    fn sanitize_outbound_wire_fields_normalizes_attachment_entry_objects() {
+    fn sanitize_outbound_wire_fields_preserves_canonical_attachments() {
         let fields = json!({
-            "5": [
+            "attachments": [
                 {
                     "name": "sideband_note.txt",
                     "data": [110, 111, 116, 101],
                     "media_type": "text/plain",
                 },
-                {
-                    "filename": "sideband_meta.bin",
-                }
-            ],
-            "attachments": [
                 {
                     "name": "legacy.json",
                     "data": [123, 125]
@@ -4320,95 +3660,109 @@ mod tests {
             ],
         });
         let sanitized = sanitize_outbound_wire_fields(Some(&fields)).expect("sanitized");
-        assert_eq!(sanitized.get("5"), Some(&json!([["sideband_note.txt", [110, 111, 116, 101]]])));
-        assert!(sanitized.get("attachments").is_none());
+        assert_eq!(sanitized.get("attachments"), fields.get("attachments"));
     }
 
     #[test]
-    fn sanitize_outbound_wire_fields_normalizes_hex_and_base64_attachment_data() {
+    fn build_wire_message_rejects_ambiguous_attachment_text_data() {
+        let signer = PrivateIdentity::new_from_name("runtime-ambiguous-attachment");
+        let source = [0x10; 16];
+        let destination = [0x20; 16];
         let fields = json!({
             "attachments": [
                 {
-                    "filename": "hex.bin",
-                    "data": "0a0b0c",
+                    "name": "ambiguous.bin",
+                    "data": "deadbeef",
+                },
+            ],
+        });
+        let err =
+            build_wire_message(source, destination, "title", "content", Some(fields), &signer)
+                .expect_err("ambiguous attachment text must fail");
+        assert!(err.to_string().contains("attachment text data must use explicit"));
+    }
+
+    #[test]
+    fn build_wire_message_accepts_prefixed_attachment_data() {
+        let signer = PrivateIdentity::new_from_name("runtime-prefixed-attachment");
+        let source = [0x30; 16];
+        let destination = [0x40; 16];
+        let fields = json!({
+            "attachments": [
+                {
+                    "name": "hex.bin",
+                    "data": "hex:0a0b0c",
                 },
                 {
                     "name": "b64.bin",
-                    "data": "AQID",
-                }
-            ],
+                    "data": "base64:AQID",
+                },
+            ]
         });
-        let sanitized = sanitize_outbound_wire_fields(Some(&fields)).expect("sanitized");
+        let wire =
+            build_wire_message(source, destination, "title", "content", Some(fields), &signer)
+                .expect("wire");
+        let decoded = Message::from_wire(&wire).expect("decode");
+        let parsed = decoded.fields.as_ref().and_then(rmpv_to_json).expect("fields");
         assert_eq!(
-            sanitized.get("5"),
+            parsed.get("5"),
             Some(&json!([["hex.bin", [10, 11, 12]], ["b64.bin", [1, 2, 3]]]))
         );
     }
 
     #[test]
-    fn sanitize_outbound_wire_fields_rejects_ambiguous_text_attachment_data() {
+    fn build_wire_message_rejects_invalid_attachment_entries() {
+        let signer = PrivateIdentity::new_from_name("runtime-invalid-attachment-entry");
+        let source = [0x50; 16];
+        let destination = [0x60; 16];
         let fields = json!({
             "attachments": [
-                {
-                    "filename": "ambiguous.bin",
-                    "data": "deadbeef",
-                },
-                {
-                    "filename": "explicit-hex.bin",
-                    "data": "hex:deadbeef",
-                }
-            ],
-        });
-        let sanitized = sanitize_outbound_wire_fields(Some(&fields)).expect("sanitized");
-        assert_eq!(sanitized.get("5"), Some(&json!([["explicit-hex.bin", [222, 173, 190, 239]]])));
-    }
-
-    #[test]
-    fn sanitize_outbound_wire_fields_skips_invalid_attachment_entries() {
-        let fields = json!({
-            "attachments": [
-                {
-                    "filename": "good.bin",
-                    "data": [7, 8, 9],
-                },
-                {
-                    "filename": "bad.hex",
-                    "data": "0a0b",
-                },
-                {
-                    "filename": "bad.string",
-                    "data": "not-bytes",
-                },
-                {
-                    "filename": "bad.decimal",
-                    "data": -1,
-                },
-                "bad-entry",
-            ]
-        });
-        let sanitized = sanitize_outbound_wire_fields(Some(&fields)).expect("sanitized");
-        assert_eq!(sanitized.get("5"), Some(&json!([["good.bin", [7, 8, 9]]])));
-    }
-
-    #[test]
-    fn sanitize_outbound_wire_fields_normalizes_legacy_files_alias_when_field_5_invalid() {
-        let fields = json!({
-            "5": [
-                {
-                    "filename": "bad.hex",
-                    "data": "0a0b",
-                },
                 "bad-entry"
             ],
-            "files": [
-                ["good.bin", [1, 2, 3]],
-                ["bad.decimal", -1]
-            ],
         });
+        let err =
+            build_wire_message(source, destination, "title", "content", Some(fields), &signer)
+                .expect_err("invalid attachment entries must fail");
+        assert!(err.to_string().contains("attachments must be objects with canonical shape"));
+    }
 
-        let sanitized = sanitize_outbound_wire_fields(Some(&fields)).expect("sanitized");
-        assert_eq!(sanitized.get("5"), Some(&json!([["good.bin", [1, 2, 3]]])));
-        assert!(sanitized.get("files").is_none());
+    #[test]
+    fn build_wire_message_rejects_legacy_attachment_aliases() {
+        let signer = PrivateIdentity::new_from_name("runtime-legacy-aliases");
+        let source = [0x70; 16];
+        let destination = [0x80; 16];
+        let err = build_wire_message(
+            source,
+            destination,
+            "title",
+            "content",
+            Some(json!({
+                "files": [
+                    {
+                        "name": "bad.bin",
+                        "data": [1, 2, 3]
+                    }
+                ]
+            })),
+            &signer,
+        )
+        .expect_err("legacy files alias must fail");
+        assert!(err.to_string().contains("legacy field 'files' is not allowed"));
+
+        let err = build_wire_message(
+            source,
+            destination,
+            "title",
+            "content",
+            Some(json!({
+                "5": [
+                    ["bad.bin", [1, 2, 3]]
+                ]
+            })),
+            &signer,
+        )
+        .expect_err("public field 5 must fail");
+        assert!(err.to_string().contains("public field '5' is not allowed"));
     }
 
     #[test]
@@ -4699,7 +4053,7 @@ mod tests {
     }
 
     #[test]
-    fn json_to_rmpv_normalizes_noncanonical_numeric_keys_for_compat() {
+    fn json_to_rmpv_preserves_noncanonical_numeric_keys_as_strings() {
         let fields = serde_json::json!({
             "01": "leading-zero",
             "-01": "noncanonical-negative",
@@ -4707,7 +4061,7 @@ mod tests {
         let converted = json_to_rmpv(&fields).expect("to rmpv");
         let decoded = rmpv_to_json(&converted).expect("decoded");
 
-        assert_eq!(decoded["1"], serde_json::json!("leading-zero"));
-        assert_eq!(decoded["-1"], serde_json::json!("noncanonical-negative"));
+        assert_eq!(decoded["01"], serde_json::json!("leading-zero"));
+        assert_eq!(decoded["-01"], serde_json::json!("noncanonical-negative"));
     }
 }
