@@ -1,4 +1,5 @@
 mod announce_helpers;
+mod announce_rate_limit;
 mod identity_io;
 mod inbound_helpers;
 mod peer_cache;
@@ -25,6 +26,7 @@ use announce_helpers::{
     encode_propagation_node_app_data, lxmf_aspect_from_name_hash, parse_peer_name_from_app_data,
     update_peer_announce_meta,
 };
+use announce_rate_limit::trigger_rate_limited_announce;
 use identity_io::{drop_empty_identity_stub, load_or_create_identity};
 use inbound_helpers::{
     annotate_inbound_transport_metadata, build_propagation_envelope, decode_inbound_payload,
@@ -2423,43 +2425,6 @@ async fn resolve_link_destination(
 
 fn now_epoch_secs() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs()
-}
-
-fn try_acquire_announce_window(
-    last_announce_epoch_secs: &Arc<AtomicU64>,
-    min_interval_secs: u64,
-) -> bool {
-    let now = now_epoch_secs();
-    loop {
-        let previous = last_announce_epoch_secs.load(Ordering::Relaxed);
-        if previous != 0 && now.saturating_sub(previous) < min_interval_secs {
-            return false;
-        }
-        if last_announce_epoch_secs
-            .compare_exchange(previous, now, Ordering::SeqCst, Ordering::SeqCst)
-            .is_ok()
-        {
-            return true;
-        }
-    }
-}
-
-fn trigger_rate_limited_announce(
-    transport: &Arc<Transport>,
-    announce_targets: &[AnnounceTarget],
-    last_announce_epoch_secs: &Arc<AtomicU64>,
-    min_interval_secs: u64,
-) {
-    if !try_acquire_announce_window(last_announce_epoch_secs, min_interval_secs) {
-        return;
-    }
-    let announce_transport = transport.clone();
-    let announce_targets = announce_targets.to_vec();
-    tokio::spawn(async move {
-        for target in announce_targets {
-            announce_transport.send_announce(&target.destination, target.app_data.as_deref()).await;
-        }
-    });
 }
 
 fn annotate_response_meta(result: &mut Value, profile: &str, rpc_endpoint: &str) {
