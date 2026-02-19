@@ -448,16 +448,7 @@ impl RuntimeHandle {
         let prepared = build_send_params_with_source(request, source)?;
         let PreparedSendMessage { id, source, destination, params } = prepared;
 
-        let has_v2_only_options = params.get("method").is_some()
-            || params.get("stamp_cost").is_some()
-            || params.get("include_ticket").is_some()
-            || params.get("try_propagation_on_fail").is_some()
-            || params.get("source_private_key").is_some();
-        let result = match self.call("send_message_v2", Some(params.clone())) {
-            Ok(value) => value,
-            Err(_err) if !has_v2_only_options => self.call("send_message", Some(params))?,
-            Err(err) => return Err(err),
-        };
+        let result = self.call("send_message_v2", Some(params))?;
 
         Ok(SendMessageResponse { id, source, destination, result })
     }
