@@ -38,8 +38,8 @@
     },
     {
       "path": "docs/contracts/rpc-contract.md",
-      "bytes": 3325,
-      "sha256": "cedde7e8b517167fdb02d723b4119479376fc93c551dd962f3f97368f63b5298"
+      "bytes": 3471,
+      "sha256": "e4b0e3de4a6f7c709be92abb2440730a6122e348820b8c67da73afee8ae38415"
     },
     {
       "path": "docs/contracts/sdk-v2-attachments.md",
@@ -810,6 +810,11 @@
       "path": "docs/fixtures/sdk-v2/rpc/release-c/sdk_voice_session_update_v2.request.valid.json",
       "bytes": 146,
       "sha256": "aa9865e8862c43e7ba084d505b03759abcf9e4f9927a1b09adeae195998b173b"
+    },
+    {
+      "path": "docs/fixtures/sdk-v2/rpc/replay_known_send_cancel.v1.json",
+      "bytes": 2808,
+      "sha256": "a0f3cc5d43dfab5e4c0806d9b3baca0a6cd0217b73c3e80978bf92ed52c0e037"
     },
     {
       "path": "docs/fixtures/sdk-v2/rpc/sdk_cancel_message_v2.request.invalid.json",

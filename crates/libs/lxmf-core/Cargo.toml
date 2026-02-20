@@ -25,5 +25,12 @@ x25519-dalek.workspace = true
 [features]
 default = []
 
+[dev-dependencies]
+criterion.workspace = true
+
+[[bench]]
+name = "core_message_paths"
+harness = false
+
 [lints]
 workspace = true

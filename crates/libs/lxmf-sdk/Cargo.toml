@@ -24,5 +24,12 @@ sdk-async = []
 rpc-backend = ["std", "dep:rns-rpc", "dep:rustls", "dep:rustls-pemfile"]
 embedded-alloc = []
 
+[dev-dependencies]
+criterion.workspace = true
+
+[[bench]]
+name = "sdk_client_paths"
+harness = false
+
 [lints]
 workspace = true

@@ -44,6 +44,7 @@ This checklist is the publication gate for the Rust workspace.
 cargo xtask release-check
 cargo run -p rns-tools --bin rnx -- e2e --timeout-secs 20
 cargo run -p rns-tools --bin rnx -- replay --trace docs/fixtures/sdk-v2/rpc/replay_known_send_cancel.v1.json
+cargo run -p xtask -- sdk-bench-check
 ```
 
 Optional soak:

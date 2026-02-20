@@ -171,6 +171,20 @@ jobs:
       - name: SDK replay determinism suite
         run: cargo xtask ci --stage sdk-replay-check
 
+  sdk-bench-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: SDK benchmark baseline
+        run: cargo xtask ci --stage sdk-bench-check
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdk-bench-report
+          path: |
+            target/criterion/bench-summary.txt
+            target/criterion/**/estimates.json
+
   sdk-matrix-check:
     runs-on: ubuntu-latest
     steps:
