@@ -110,6 +110,11 @@ impl Lifecycle {
         self.state = RuntimeState::Failed;
     }
 
+    pub fn reset_to_new(&mut self) {
+        self.state = RuntimeState::New;
+        self.active_start_request = None;
+    }
+
     fn state_name(&self) -> &'static str {
         match self.state {
             RuntimeState::New => "new",

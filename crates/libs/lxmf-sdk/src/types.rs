@@ -192,59 +192,88 @@ impl SdkConfig {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[non_exhaustive]
 pub struct EventStreamPatch {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub max_poll_events: Option<Option<usize>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub max_event_bytes: Option<Option<usize>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub max_batch_bytes: Option<Option<usize>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub max_extension_keys: Option<Option<usize>>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[non_exhaustive]
 pub struct RedactionPatch {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub enabled: Option<Option<bool>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub sensitive_transform: Option<Option<RedactionTransform>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub break_glass_allowed: Option<Option<bool>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub break_glass_ttl_ms: Option<Option<u64>>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[non_exhaustive]
 pub struct TokenAuthPatch {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub issuer: Option<Option<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub audience: Option<Option<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub jti_cache_ttl_ms: Option<Option<u64>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub clock_skew_ms: Option<Option<u64>>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[non_exhaustive]
 pub struct MtlsAuthPatch {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub ca_bundle_path: Option<Option<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub require_client_cert: Option<Option<bool>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub allowed_san: Option<Option<String>>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[non_exhaustive]
 pub struct RpcBackendPatch {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub listen_addr: Option<Option<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub read_timeout_ms: Option<Option<u64>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub write_timeout_ms: Option<Option<u64>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub max_header_bytes: Option<Option<usize>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub max_body_bytes: Option<Option<usize>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub token_auth: Option<Option<TokenAuthPatch>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub mtls_auth: Option<Option<MtlsAuthPatch>>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[non_exhaustive]
 pub struct ConfigPatch {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub overflow_policy: Option<Option<OverflowPolicy>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub block_timeout_ms: Option<Option<u64>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub event_stream: Option<Option<EventStreamPatch>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub idempotency_ttl_ms: Option<Option<u64>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub redaction: Option<Option<RedactionPatch>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub rpc_backend: Option<Option<RpcBackendPatch>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub extensions: Option<Option<BTreeMap<String, JsonValue>>>,
 }
 
@@ -497,5 +526,32 @@ mod tests {
     fn config_accepts_local_trusted_profile() {
         let config = base_config();
         assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn config_patch_serialization_preserves_absent_vs_null() {
+        let absent_patch = ConfigPatch {
+            overflow_policy: None,
+            block_timeout_ms: None,
+            event_stream: None,
+            idempotency_ttl_ms: None,
+            redaction: None,
+            rpc_backend: None,
+            extensions: None,
+        };
+        let absent_json = serde_json::to_value(&absent_patch).expect("serialize absent patch");
+        assert!(!absent_json.as_object().expect("object").contains_key("overflow_policy"));
+
+        let clear_patch = ConfigPatch {
+            overflow_policy: Some(None),
+            block_timeout_ms: None,
+            event_stream: None,
+            idempotency_ttl_ms: None,
+            redaction: None,
+            rpc_backend: None,
+            extensions: None,
+        };
+        let clear_json = serde_json::to_value(&clear_patch).expect("serialize clear patch");
+        assert!(clear_json["overflow_policy"].is_null());
     }
 }

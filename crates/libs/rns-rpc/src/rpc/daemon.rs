@@ -15,6 +15,8 @@ impl RpcDaemon {
             sdk_active_contract_version: Mutex::new(2),
             sdk_profile: Mutex::new("desktop-full".to_string()),
             sdk_config_revision: Mutex::new(0),
+            sdk_runtime_config: Mutex::new(JsonValue::Object(JsonMap::new())),
+            sdk_config_apply_lock: Mutex::new(()),
             sdk_effective_capabilities: Mutex::new(Self::sdk_supported_capabilities()),
             sdk_stream_degraded: Mutex::new(false),
             peers: Mutex::new(HashMap::new()),
@@ -51,6 +53,8 @@ impl RpcDaemon {
             sdk_active_contract_version: Mutex::new(2),
             sdk_profile: Mutex::new("desktop-full".to_string()),
             sdk_config_revision: Mutex::new(0),
+            sdk_runtime_config: Mutex::new(JsonValue::Object(JsonMap::new())),
+            sdk_config_apply_lock: Mutex::new(()),
             sdk_effective_capabilities: Mutex::new(Self::sdk_supported_capabilities()),
             sdk_stream_degraded: Mutex::new(false),
             peers: Mutex::new(HashMap::new()),
@@ -88,6 +92,8 @@ impl RpcDaemon {
             sdk_active_contract_version: Mutex::new(2),
             sdk_profile: Mutex::new("desktop-full".to_string()),
             sdk_config_revision: Mutex::new(0),
+            sdk_runtime_config: Mutex::new(JsonValue::Object(JsonMap::new())),
+            sdk_config_apply_lock: Mutex::new(()),
             sdk_effective_capabilities: Mutex::new(Self::sdk_supported_capabilities()),
             sdk_stream_degraded: Mutex::new(false),
             peers: Mutex::new(HashMap::new()),
@@ -405,6 +411,20 @@ impl RpcDaemon {
         }
         {
             let mut guard =
+                self.sdk_runtime_config.lock().expect("sdk_runtime_config mutex poisoned");
+            *guard = json!({
+                "profile": profile,
+                "event_stream": {
+                    "max_poll_events": limits.get("max_poll_events").and_then(JsonValue::as_u64).unwrap_or(256),
+                    "max_event_bytes": limits.get("max_event_bytes").and_then(JsonValue::as_u64).unwrap_or(65_536),
+                    "max_batch_bytes": limits.get("max_batch_bytes").and_then(JsonValue::as_u64).unwrap_or(1_048_576),
+                    "max_extension_keys": limits.get("max_extension_keys").and_then(JsonValue::as_u64).unwrap_or(32),
+                },
+                "idempotency_ttl_ms": limits.get("idempotency_ttl_ms").and_then(JsonValue::as_u64).unwrap_or(86_400_000_u64),
+            });
+        }
+        {
+            let mut guard =
                 self.sdk_stream_degraded.lock().expect("sdk_stream_degraded mutex poisoned");
             *guard = false;
         }
@@ -658,6 +678,134 @@ impl RpcDaemon {
         })
     }
 
+    fn handle_sdk_status_v2(&self, request: RpcRequest) -> Result<RpcResponse, std::io::Error> {
+        let params = request.params.ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing params")
+        })?;
+        let parsed: SdkStatusV2Params = serde_json::from_value(params)
+            .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
+        let message_id = parsed.message_id.trim();
+        if message_id.is_empty() {
+            return Ok(self.sdk_error_response(
+                request.id,
+                "SDK_VALIDATION_INVALID_ARGUMENT",
+                "message_id must not be empty",
+            ));
+        }
+        let message = self.store.get_message(message_id).map_err(std::io::Error::other)?;
+        Ok(RpcResponse {
+            id: request.id,
+            result: Some(json!({
+                "message": message,
+                "meta": self.response_meta(),
+            })),
+            error: None,
+        })
+    }
+
+    fn handle_sdk_configure_v2(&self, request: RpcRequest) -> Result<RpcResponse, std::io::Error> {
+        let params = request.params.ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing params")
+        })?;
+        let parsed: SdkConfigureV2Params = serde_json::from_value(params)
+            .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
+
+        let patch_map = parsed.patch.as_object().ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::InvalidInput, "patch must be an object")
+        })?;
+        const ALLOWED_KEYS: &[&str] = &[
+            "overflow_policy",
+            "block_timeout_ms",
+            "event_stream",
+            "idempotency_ttl_ms",
+            "redaction",
+            "rpc_backend",
+            "extensions",
+        ];
+        if let Some(key) = patch_map.keys().find(|key| !ALLOWED_KEYS.contains(&key.as_str())) {
+            return Ok(self.sdk_error_response(
+                request.id,
+                "SDK_CONFIG_UNKNOWN_KEY",
+                &format!("unknown config key '{key}'"),
+            ));
+        }
+
+        let _apply_guard =
+            self.sdk_config_apply_lock.lock().expect("sdk_config_apply_lock mutex poisoned");
+        let mut revision_guard =
+            self.sdk_config_revision.lock().expect("sdk_config_revision mutex poisoned");
+        if parsed.expected_revision != *revision_guard {
+            return Ok(self.sdk_error_response(
+                request.id,
+                "SDK_CONFIG_CONFLICT",
+                "config revision mismatch",
+            ));
+        }
+        *revision_guard = revision_guard.saturating_add(1);
+        let revision = *revision_guard;
+
+        {
+            let mut config_guard =
+                self.sdk_runtime_config.lock().expect("sdk_runtime_config mutex poisoned");
+            merge_json_patch(&mut config_guard, &parsed.patch);
+        }
+        drop(revision_guard);
+
+        let event = RpcEvent {
+            event_type: "config_updated".into(),
+            payload: json!({
+                "revision": revision,
+                "patch": parsed.patch,
+            }),
+        };
+        self.push_event(event.clone());
+        let _ = self.events.send(event);
+
+        Ok(RpcResponse {
+            id: request.id,
+            result: Some(json!({
+                "accepted": true,
+                "revision": revision,
+            })),
+            error: None,
+        })
+    }
+
+    fn handle_sdk_shutdown_v2(&self, request: RpcRequest) -> Result<RpcResponse, std::io::Error> {
+        let params = request.params.ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing params")
+        })?;
+        let parsed: SdkShutdownV2Params = serde_json::from_value(params)
+            .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
+        let mode = parsed.mode.trim().to_ascii_lowercase();
+        if mode != "graceful" && mode != "immediate" {
+            return Ok(self.sdk_error_response(
+                request.id,
+                "SDK_VALIDATION_INVALID_ARGUMENT",
+                "shutdown mode must be 'graceful' or 'immediate'",
+            ));
+        }
+
+        let event = RpcEvent {
+            event_type: "runtime_shutdown_requested".into(),
+            payload: json!({
+                "mode": mode,
+                "flush_timeout_ms": parsed.flush_timeout_ms,
+            }),
+        };
+        self.push_event(event.clone());
+        let _ = self.events.send(event);
+
+        Ok(RpcResponse {
+            id: request.id,
+            result: Some(json!({
+                "accepted": true,
+                "mode": mode,
+            })),
+            error: None,
+        })
+    }
+
     fn handle_sdk_snapshot_v2(&self, request: RpcRequest) -> Result<RpcResponse, std::io::Error> {
         let params = request
             .params
@@ -746,6 +894,9 @@ impl RpcDaemon {
                 })
             }
             "sdk_snapshot_v2" => self.handle_sdk_snapshot_v2(request),
+            "sdk_status_v2" => self.handle_sdk_status_v2(request),
+            "sdk_configure_v2" => self.handle_sdk_configure_v2(request),
+            "sdk_shutdown_v2" => self.handle_sdk_shutdown_v2(request),
             "list_messages" => {
                 let items = self.store.list_messages(100, None).map_err(std::io::Error::other)?;
                 Ok(RpcResponse {
@@ -1557,8 +1708,7 @@ impl RpcDaemon {
 
     fn is_terminal_receipt_status(status: &str) -> bool {
         let normalized = status.trim().to_ascii_lowercase();
-        normalized.starts_with("sent")
-            || normalized.starts_with("failed")
+        normalized.starts_with("failed")
             || matches!(normalized.as_str(), "cancelled" | "delivered" | "expired" | "rejected")
     }
 
@@ -1570,7 +1720,13 @@ impl RpcDaemon {
     }
 
     fn sdk_supported_capabilities() -> Vec<String> {
-        vec!["sdk.capability.cursor_replay".to_string(), "sdk.capability.async_events".to_string()]
+        vec![
+            "sdk.capability.cursor_replay".to_string(),
+            "sdk.capability.async_events".to_string(),
+            "sdk.capability.receipt_terminality".to_string(),
+            "sdk.capability.config_revision_cas".to_string(),
+            "sdk.capability.idempotency_ttl".to_string(),
+        ]
     }
 
     fn sdk_supported_capabilities_for_profile(profile: &str) -> Vec<String> {
@@ -1608,6 +1764,17 @@ impl RpcDaemon {
     }
 
     fn sdk_max_poll_events(&self) -> usize {
+        if let Some(value) = self
+            .sdk_runtime_config
+            .lock()
+            .expect("sdk_runtime_config mutex poisoned")
+            .get("event_stream")
+            .and_then(|value| value.get("max_poll_events"))
+            .and_then(JsonValue::as_u64)
+            .and_then(|value| usize::try_from(value).ok())
+        {
+            return value;
+        }
         match self.sdk_profile.lock().expect("sdk_profile mutex poisoned").as_str() {
             "desktop-local-runtime" => 64,
             "embedded-alloc" => 32,
@@ -1804,9 +1971,12 @@ impl RpcDaemon {
             "send_message",
             "send_message_v2",
             "sdk_negotiate_v2",
+            "sdk_status_v2",
+            "sdk_configure_v2",
             "sdk_poll_events_v2",
             "sdk_cancel_message_v2",
             "sdk_snapshot_v2",
+            "sdk_shutdown_v2",
             "announce_now",
             "list_interfaces",
             "set_interfaces",
@@ -1994,6 +2164,32 @@ fn delivery_reason_code(status: &str) -> Option<&'static str> {
         return Some("retry_budget_exhausted");
     }
     None
+}
+
+fn merge_json_patch(target: &mut JsonValue, patch: &JsonValue) {
+    let JsonValue::Object(patch_map) = patch else {
+        *target = patch.clone();
+        return;
+    };
+
+    if !target.is_object() {
+        *target = JsonValue::Object(JsonMap::new());
+    }
+    let target_map = target.as_object_mut().expect("target must be object after initialization");
+    for (key, value) in patch_map {
+        if value.is_null() {
+            target_map.remove(key);
+            continue;
+        }
+        match target_map.get_mut(key) {
+            Some(existing) if existing.is_object() && value.is_object() => {
+                merge_json_patch(existing, value);
+            }
+            _ => {
+                target_map.insert(key.clone(), value.clone());
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -2224,6 +2420,78 @@ mod tests {
             ))
             .expect("cancel");
         assert_eq!(too_late.result.expect("result")["result"], json!("TooLateToCancel"));
+    }
+
+    #[test]
+    fn sdk_status_v2_returns_message_record() {
+        let daemon = RpcDaemon::test_instance();
+        let _ = daemon
+            .handle_rpc(rpc_request(
+                40,
+                "send_message_v2",
+                json!({
+                    "id": "status-1",
+                    "source": "src",
+                    "destination": "dst",
+                    "title": "",
+                    "content": "hello"
+                }),
+            ))
+            .expect("send");
+        let response = daemon
+            .handle_rpc(rpc_request(
+                41,
+                "sdk_status_v2",
+                json!({
+                    "message_id": "status-1"
+                }),
+            ))
+            .expect("status");
+        assert_eq!(response.result.expect("result")["message"]["id"], json!("status-1"));
+    }
+
+    #[test]
+    fn sdk_configure_v2_applies_revision_cas() {
+        let daemon = RpcDaemon::test_instance();
+        let first = daemon
+            .handle_rpc(rpc_request(
+                42,
+                "sdk_configure_v2",
+                json!({
+                    "expected_revision": 0,
+                    "patch": { "event_stream": { "max_poll_events": 64 } }
+                }),
+            ))
+            .expect("configure");
+        assert_eq!(first.result.expect("result")["revision"], json!(1));
+
+        let conflict = daemon
+            .handle_rpc(rpc_request(
+                43,
+                "sdk_configure_v2",
+                json!({
+                    "expected_revision": 0,
+                    "patch": { "event_stream": { "max_poll_events": 32 } }
+                }),
+            ))
+            .expect("configure conflict");
+        assert_eq!(conflict.error.expect("error").code, "SDK_CONFIG_CONFLICT");
+    }
+
+    #[test]
+    fn sdk_shutdown_v2_accepts_graceful_mode() {
+        let daemon = RpcDaemon::test_instance();
+        let response = daemon
+            .handle_rpc(rpc_request(
+                44,
+                "sdk_shutdown_v2",
+                json!({
+                    "mode": "graceful"
+                }),
+            ))
+            .expect("shutdown");
+        assert!(response.error.is_none());
+        assert_eq!(response.result.expect("result")["accepted"], json!(true));
     }
 
     #[test]

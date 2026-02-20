@@ -1,6 +1,7 @@
 pub mod api;
 pub mod backend;
 pub mod capability;
+pub mod client;
 pub mod error;
 pub mod event;
 pub mod lifecycle;
@@ -8,11 +9,14 @@ pub mod profiles;
 pub mod types;
 
 pub use api::{LxmfSdk, LxmfSdkAsync, LxmfSdkManualTick};
+#[cfg(all(feature = "rpc-backend", feature = "std"))]
+pub use backend::rpc::RpcBackendClient;
 pub use backend::{SdkBackend, SdkBackendAsyncEvents};
 pub use capability::{
     effective_capabilities_for_profile, negotiate_contract_version, CapabilityDescriptor,
     CapabilityState, EffectiveLimits, NegotiationRequest, NegotiationResponse,
 };
+pub use client::Client;
 pub use error::{code as error_code, ErrorCategory, ErrorDetails, SdkError};
 pub use event::{
     EventBatch, EventCursor, EventSubscription, SdkEvent, Severity, SubscriptionStart,

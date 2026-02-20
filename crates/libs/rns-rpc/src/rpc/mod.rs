@@ -105,6 +105,8 @@ pub struct RpcDaemon {
     sdk_active_contract_version: Mutex<u16>,
     sdk_profile: Mutex<String>,
     sdk_config_revision: Mutex<u64>,
+    sdk_runtime_config: Mutex<JsonValue>,
+    sdk_config_apply_lock: Mutex<()>,
     sdk_effective_capabilities: Mutex<Vec<String>>,
     sdk_stream_degraded: Mutex<bool>,
     peers: Mutex<HashMap<String, PeerRecord>>,
@@ -327,11 +329,32 @@ struct SdkCancelMessageV2Params {
     message_id: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SdkStatusV2Params {
+    message_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SdkConfigureV2Params {
+    expected_revision: u64,
+    patch: JsonValue,
+}
+
 #[derive(Debug, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 struct SdkSnapshotV2Params {
     #[serde(default)]
     include_counts: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SdkShutdownV2Params {
+    mode: String,
+    #[serde(default)]
+    flush_timeout_ms: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
