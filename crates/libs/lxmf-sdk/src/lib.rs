@@ -1,13 +1,13 @@
 #![allow(clippy::result_large_err)]
 
-pub mod api;
-pub mod backend;
+mod api;
+mod backend;
 pub mod capability;
-pub mod client;
+mod client;
 pub mod domain;
-pub mod error;
+mod error;
 pub mod event;
-pub mod lifecycle;
+mod lifecycle;
 pub mod profiles;
 pub mod types;
 

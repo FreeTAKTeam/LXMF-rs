@@ -1,14 +1,11 @@
 use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion};
-use lxmf_sdk::backend::SdkBackend;
-use lxmf_sdk::capability::{EffectiveLimits, NegotiationRequest, NegotiationResponse};
-use lxmf_sdk::event::{EventBatch, EventCursor};
-use lxmf_sdk::profiles::required_capabilities;
-use lxmf_sdk::types::{
-    Ack, AuthMode, BindMode, CancelResult, ConfigPatch, DeliverySnapshot, DeliveryState,
-    EventStreamConfig, MessageId, OverflowPolicy, Profile, RedactionConfig, RedactionTransform,
-    RuntimeSnapshot, RuntimeState, SdkConfig, SendRequest, ShutdownMode, StartRequest,
+use lxmf_sdk::{
+    required_capabilities, Ack, AuthMode, BindMode, CancelResult, Client, ConfigPatch,
+    DeliverySnapshot, DeliveryState, EffectiveLimits, EventBatch, EventCursor, EventStreamConfig,
+    LxmfSdk, MessageId, NegotiationRequest, NegotiationResponse, OverflowPolicy, Profile,
+    RedactionConfig, RedactionTransform, RuntimeSnapshot, RuntimeState, SdkBackend, SdkConfig,
+    SdkError, SendRequest, ShutdownMode, StartRequest,
 };
-use lxmf_sdk::{Client, LxmfSdk, SdkError};
 use serde::de::DeserializeOwned;
 use serde_json::json;
 use std::sync::atomic::{AtomicU64, Ordering};

@@ -252,7 +252,7 @@ impl DeliveryTask {
 impl OutboundBridge for TransportBridge {
     fn deliver(
         &self,
-        record: &rns_rpc::storage::messages::MessageRecord,
+        record: &rns_rpc::MessageRecord,
         _options: &rns_rpc::OutboundDeliveryOptions,
     ) -> Result<(), std::io::Error> {
         let destination = parse_destination_hash_required(&record.destination)?;

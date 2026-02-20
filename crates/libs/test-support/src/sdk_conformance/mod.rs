@@ -5,8 +5,7 @@ use lxmf_sdk::{
 use rns_rpc::e2e_harness::{
     build_http_post, build_rpc_frame, parse_http_response_body, parse_rpc_frame, timestamp_millis,
 };
-use rns_rpc::storage::messages::MessagesStore;
-use rns_rpc::{http, RpcDaemon, RpcEvent, RpcResponse};
+use rns_rpc::{http, MessagesStore, RpcDaemon, RpcEvent, RpcResponse};
 use serde_json::{json, Value as JsonValue};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
