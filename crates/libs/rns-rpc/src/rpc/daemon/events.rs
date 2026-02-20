@@ -1,4 +1,106 @@
 impl RpcDaemon {
+    fn redaction_enabled(&self) -> bool {
+        self.sdk_runtime_config
+            .lock()
+            .expect("sdk_runtime_config mutex poisoned")
+            .get("redaction")
+            .and_then(|value| value.get("enabled"))
+            .and_then(JsonValue::as_bool)
+            .unwrap_or(true)
+    }
+
+    fn redaction_transform(&self) -> &'static str {
+        match self
+            .sdk_runtime_config
+            .lock()
+            .expect("sdk_runtime_config mutex poisoned")
+            .get("redaction")
+            .and_then(|value| value.get("sensitive_transform"))
+            .and_then(JsonValue::as_str)
+            .unwrap_or("hash")
+            .trim()
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "truncate" => "truncate",
+            "redact" => "redact",
+            _ => "hash",
+        }
+    }
+
+    fn is_sensitive_key(key: &str) -> bool {
+        matches!(
+            key.to_ascii_lowercase().as_str(),
+            "peer_id"
+                | "destination_hash"
+                | "correlation_id"
+                | "trace_id"
+                | "source_ip"
+                | "principal"
+                | "shared_secret"
+                | "authorization"
+                | "token"
+                | "passphrase"
+        )
+    }
+
+    fn redact_scalar(value: &str, transform: &str) -> String {
+        match transform {
+            "truncate" => {
+                let preview = value.chars().take(8).collect::<String>();
+                if value.chars().count() <= 8 {
+                    preview
+                } else {
+                    format!("{preview}...")
+                }
+            }
+            "redact" => "[redacted]".to_string(),
+            _ => {
+                let mut hasher = Sha256::new();
+                hasher.update(value.as_bytes());
+                let digest = hex::encode(hasher.finalize());
+                format!("sha256:{}", &digest[..16])
+            }
+        }
+    }
+
+    fn redact_sensitive_value(value: &mut JsonValue, transform: &str) {
+        let replacement = match value {
+            JsonValue::String(current) => Self::redact_scalar(current, transform),
+            _ => Self::redact_scalar(value.to_string().as_str(), transform),
+        };
+        *value = JsonValue::String(replacement);
+    }
+
+    fn redact_json_value(value: &mut JsonValue, transform: &str) {
+        match value {
+            JsonValue::Object(map) => {
+                for (key, inner) in map.iter_mut() {
+                    if Self::is_sensitive_key(key) {
+                        Self::redact_sensitive_value(inner, transform);
+                    } else {
+                        Self::redact_json_value(inner, transform);
+                    }
+                }
+            }
+            JsonValue::Array(items) => {
+                for item in items.iter_mut() {
+                    Self::redact_json_value(item, transform);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn redact_event(&self, mut event: RpcEvent) -> RpcEvent {
+        if !self.redaction_enabled() {
+            return event;
+        }
+        let transform = self.redaction_transform();
+        Self::redact_json_value(&mut event.payload, transform);
+        event
+    }
+
     pub fn handle_framed_request(&self, bytes: &[u8]) -> Result<Vec<u8>, std::io::Error> {
         let request: RpcRequest = codec::decode_frame(bytes)
             .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
@@ -15,7 +117,8 @@ impl RpcDaemon {
         guard.pop_front()
     }
 
-    pub fn push_event(&self, event: RpcEvent) {
+    pub fn push_event(&self, event: RpcEvent) -> RpcEvent {
+        let event = self.redact_event(event);
         {
             let mut guard = self.event_queue.lock().expect("event_queue mutex poisoned");
             if guard.len() >= 32 {
@@ -39,12 +142,17 @@ impl RpcDaemon {
                 .expect("sdk_dropped_event_count mutex poisoned");
             *dropped = dropped.saturating_add(1);
         }
-        log_guard.push_back(SequencedRpcEvent { seq_no, event });
+        log_guard.push_back(SequencedRpcEvent { seq_no, event: event.clone() });
+        event
+    }
+
+    pub fn publish_event(&self, event: RpcEvent) {
+        let event = self.push_event(event);
+        let _ = self.events.send(event);
     }
 
     pub fn emit_event(&self, event: RpcEvent) {
-        self.push_event(event.clone());
-        let _ = self.events.send(event);
+        self.publish_event(event);
     }
 
     pub fn schedule_announce_for_test(&self, id: u64) {
@@ -53,8 +161,7 @@ impl RpcDaemon {
             event_type: "announce_sent".into(),
             payload: json!({ "timestamp": timestamp, "announce_id": id }),
         };
-        self.push_event(event.clone());
-        let _ = self.events.send(event);
+        self.publish_event(event);
     }
 
     pub fn start_announce_scheduler(
@@ -84,8 +191,7 @@ impl RpcDaemon {
                     event_type: "announce_sent".into(),
                     payload: json!({ "timestamp": timestamp, "announce_id": id }),
                 };
-                self.push_event(event.clone());
-                let _ = self.events.send(event);
+                self.publish_event(event);
             }
         })
     }
@@ -106,8 +212,7 @@ impl RpcDaemon {
         let _ = self.store.insert_message(&record);
         let event =
             RpcEvent { event_type: "inbound".into(), payload: json!({ "message": record }) };
-        self.push_event(event.clone());
-        let _ = self.events.send(event);
+        self.publish_event(event);
     }
 
     pub fn emit_link_event_for_test(&self) {
@@ -115,7 +220,6 @@ impl RpcDaemon {
             event_type: "link_activated".into(),
             payload: json!({ "link_id": "test-link" }),
         };
-        self.push_event(event.clone());
-        let _ = self.events.send(event);
+        self.publish_event(event);
     }
 }

@@ -262,8 +262,7 @@ impl RpcDaemon {
                         "count": *count,
                     }),
                 };
-                self.push_event(event.clone());
-                let _ = self.events.send(event);
+                self.publish_event(event);
                 return Err(RpcError {
                     code: "SDK_SECURITY_RATE_LIMITED".to_string(),
                     message: "per-ip request rate limit exceeded".to_string(),
@@ -289,8 +288,7 @@ impl RpcDaemon {
                         "count": *count,
                     }),
                 };
-                self.push_event(event.clone());
-                let _ = self.events.send(event);
+                self.publish_event(event);
                 return Err(RpcError {
                     code: "SDK_SECURITY_RATE_LIMITED".to_string(),
                     message: "per-principal request rate limit exceeded".to_string(),

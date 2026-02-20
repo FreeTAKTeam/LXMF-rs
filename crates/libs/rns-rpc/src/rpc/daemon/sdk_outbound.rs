@@ -67,8 +67,7 @@ impl RpcDaemon {
                     "reason_code": reason_code,
                 }),
             };
-            self.push_event(event.clone());
-            let _ = self.events.send(event);
+            self.publish_event(event);
             return Ok(RpcResponse {
                 id: request_id,
                 result: None,
@@ -103,8 +102,7 @@ impl RpcDaemon {
                 "reason_code": delivery_reason_code(&resolved_status),
             }),
         };
-        self.push_event(event.clone());
-        let _ = self.events.send(event);
+        self.publish_event(event);
 
         Ok(RpcResponse { id: request_id, result: Some(json!({ "message_id": id })), error: None })
     }

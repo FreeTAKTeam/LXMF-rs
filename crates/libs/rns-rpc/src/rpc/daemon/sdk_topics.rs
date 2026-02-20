@@ -48,8 +48,7 @@ impl RpcDaemon {
                 "created_ts_ms": record.created_ts_ms,
             }),
         };
-        self.push_event(event.clone());
-        let _ = self.events.send(event);
+        self.publish_event(event);
         Ok(RpcResponse { id: request.id, result: Some(json!({ "topic": record })), error: None })
     }
 
@@ -289,8 +288,7 @@ impl RpcDaemon {
                 "payload": parsed.payload,
             }),
         };
-        self.push_event(event.clone());
-        let _ = self.events.send(event);
+        self.publish_event(event);
         Ok(RpcResponse { id: request.id, result: Some(json!({ "accepted": true })), error: None })
     }
 
@@ -359,8 +357,7 @@ impl RpcDaemon {
                 "limit": parsed.limit,
             }),
         };
-        self.push_event(event.clone());
-        let _ = self.events.send(event);
+        self.publish_event(event);
         Ok(RpcResponse { id: request.id, result: Some(json!({ "accepted": true })), error: None })
     }
 }

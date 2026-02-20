@@ -399,3 +399,127 @@
         assert!(found_security_event, "rate-limit violations should emit security event");
     }
 
+    #[test]
+    fn sdk_security_events_redact_sensitive_fields_by_default() {
+        let daemon = RpcDaemon::test_instance();
+        let _ = daemon.handle_rpc(rpc_request(
+            26,
+            "sdk_negotiate_v2",
+            json!({
+                "supported_contract_versions": [2],
+                "requested_capabilities": [],
+                "config": {
+                    "profile": "desktop-full",
+                    "bind_mode": "local_only",
+                    "auth_mode": "local_trusted"
+                }
+            }),
+        ));
+
+        let configure = daemon
+            .handle_rpc(rpc_request(
+                27,
+                "sdk_configure_v2",
+                json!({
+                    "expected_revision": 0,
+                    "patch": {
+                        "rpc_backend": {
+                            "token_auth": {
+                                "issuer": "test-issuer",
+                                "audience": "test-audience",
+                                "jti_cache_ttl_ms": 60000,
+                                "clock_skew_ms": 0,
+                                "shared_secret": "top-secret-token"
+                            }
+                        }
+                    }
+                }),
+            ))
+            .expect("configure");
+        assert!(configure.error.is_none(), "configure should succeed");
+
+        let mut redacted_value = None;
+        for _ in 0..8 {
+            let Some(event) = daemon.take_event() else {
+                break;
+            };
+            if event.event_type == "config_updated" {
+                redacted_value = event
+                    .payload
+                    .get("patch")
+                    .and_then(|value| value.get("rpc_backend"))
+                    .and_then(|value| value.get("token_auth"))
+                    .and_then(|value| value.get("shared_secret"))
+                    .and_then(JsonValue::as_str)
+                    .map(str::to_owned);
+                break;
+            }
+        }
+
+        let redacted_value = redacted_value.expect("config_updated event should include shared_secret");
+        assert_ne!(redacted_value, "top-secret-token");
+        assert!(
+            redacted_value.starts_with("sha256:"),
+            "default redaction transform should hash sensitive values"
+        );
+    }
+
+    #[test]
+    fn sdk_security_rate_limit_event_redacts_source_ip_and_principal() {
+        let daemon = RpcDaemon::test_instance();
+        let _ = daemon.handle_rpc(rpc_request(
+            28,
+            "sdk_negotiate_v2",
+            json!({
+                "supported_contract_versions": [2],
+                "requested_capabilities": [],
+                "config": {
+                    "profile": "desktop-full",
+                    "bind_mode": "local_only",
+                    "auth_mode": "local_trusted"
+                }
+            }),
+        ));
+        let _ = daemon.handle_rpc(rpc_request(
+            29,
+            "sdk_configure_v2",
+            json!({
+                "expected_revision": 0,
+                "patch": {
+                    "extensions": {
+                        "rate_limits": {
+                            "per_ip_per_minute": 1,
+                            "per_principal_per_minute": 1
+                        }
+                    }
+                }
+            }),
+        ));
+
+        daemon.authorize_http_request(&[], Some("127.0.0.1")).expect("first request should pass");
+        let _ = daemon
+            .authorize_http_request(&[], Some("127.0.0.1"))
+            .expect_err("second request should be rate limited");
+
+        let mut source_ip = None;
+        let mut principal = None;
+        for _ in 0..8 {
+            let Some(event) = daemon.take_event() else {
+                break;
+            };
+            if event.event_type == "sdk_security_rate_limited" {
+                source_ip =
+                    event.payload.get("source_ip").and_then(JsonValue::as_str).map(str::to_owned);
+                principal =
+                    event.payload.get("principal").and_then(JsonValue::as_str).map(str::to_owned);
+                break;
+            }
+        }
+
+        let source_ip = source_ip.expect("security event should include redacted source_ip");
+        let principal = principal.expect("security event should include redacted principal");
+        assert_ne!(source_ip, "127.0.0.1");
+        assert_ne!(principal, "local");
+        assert!(source_ip.starts_with("sha256:"));
+        assert!(principal.starts_with("sha256:"));
+    }

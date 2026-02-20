@@ -88,8 +88,7 @@ impl RpcDaemon {
                 "byte_len": record.byte_len,
             }),
         };
-        self.push_event(event.clone());
-        let _ = self.events.send(event);
+        self.publish_event(event);
         Ok(RpcResponse {
             id: request.id,
             result: Some(json!({ "attachment": record })),

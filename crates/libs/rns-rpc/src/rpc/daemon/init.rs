@@ -231,8 +231,7 @@ impl RpcDaemon {
         self.store.insert_message(&record).map_err(std::io::Error::other)?;
         let event =
             RpcEvent { event_type: "inbound".into(), payload: json!({ "message": record }) };
-        self.push_event(event.clone());
-        let _ = self.events.send(event);
+        self.publish_event(event);
         Ok(())
     }
 
@@ -351,8 +350,7 @@ impl RpcDaemon {
                 "source_node": source_node,
             }),
         };
-        self.push_event(event.clone());
-        let _ = self.events.send(event);
+        self.publish_event(event);
         Ok(())
     }
 

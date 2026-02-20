@@ -113,8 +113,7 @@ impl RpcDaemon {
                     event_type: "interfaces_updated".into(),
                     payload: json!({ "interfaces": parsed.interfaces }),
                 };
-                self.push_event(event.clone());
-                let _ = self.events.send(event);
+                self.publish_event(event);
 
                 Ok(RpcResponse {
                     id: request.id,
@@ -128,8 +127,7 @@ impl RpcDaemon {
                     event_type: "config_reloaded".into(),
                     payload: json!({ "timestamp": timestamp }),
                 };
-                self.push_event(event.clone());
-                let _ = self.events.send(event);
+                self.publish_event(event);
                 Ok(RpcResponse {
                     id: request.id,
                     result: Some(json!({ "reloaded": true, "timestamp": timestamp })),
@@ -156,8 +154,7 @@ impl RpcDaemon {
                         "seen_count": record.seen_count,
                     }),
                 };
-                self.push_event(event.clone());
-                let _ = self.events.send(event);
+                self.publish_event(event);
 
                 Ok(RpcResponse {
                     id: request.id,
@@ -180,8 +177,7 @@ impl RpcDaemon {
                     event_type: "peer_unpeer".into(),
                     payload: json!({ "peer": parsed.peer, "removed": removed }),
                 };
-                self.push_event(event.clone());
-                let _ = self.events.send(event);
+                self.publish_event(event);
                 Ok(RpcResponse {
                     id: request.id,
                     result: Some(json!({ "removed": removed })),
@@ -278,8 +274,7 @@ impl RpcDaemon {
                         "reason_code": reason_code,
                     }),
                 };
-                self.push_event(event.clone());
-                let _ = self.events.send(event);
+                self.publish_event(event);
                 Ok(RpcResponse {
                     id: request.id,
                     result: Some(json!({

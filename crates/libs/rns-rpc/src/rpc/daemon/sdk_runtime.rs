@@ -81,8 +81,7 @@ impl RpcDaemon {
                 event_type: "delivery_cancelled".into(),
                 payload: json!({ "message_id": message_id, "result": "Accepted" }),
             };
-            self.push_event(event.clone());
-            let _ = self.events.send(event);
+            self.publish_event(event);
         }
 
         Ok(RpcResponse {
@@ -175,8 +174,7 @@ impl RpcDaemon {
                 "patch": parsed.patch,
             }),
         };
-        self.push_event(event.clone());
-        let _ = self.events.send(event);
+        self.publish_event(event);
 
         Ok(RpcResponse {
             id: request.id,
@@ -210,8 +208,7 @@ impl RpcDaemon {
                 "flush_timeout_ms": parsed.flush_timeout_ms,
             }),
         };
-        self.push_event(event.clone());
-        let _ = self.events.send(event);
+        self.publish_event(event);
 
         Ok(RpcResponse {
             id: request.id,

@@ -177,8 +177,7 @@ impl RpcDaemon {
                     event_type: "propagation_node_selected".into(),
                     payload: json!({ "peer": peer }),
                 };
-                self.push_event(event.clone());
-                let _ = self.events.send(event);
+                self.publish_event(event);
                 Ok(RpcResponse {
                     id: request.id,
                     result: Some(json!({
