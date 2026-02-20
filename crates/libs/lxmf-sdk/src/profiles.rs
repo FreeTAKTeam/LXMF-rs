@@ -25,6 +25,13 @@ const CAP_REMOTE_COMMANDS: &str = "sdk.capability.remote_commands";
 const CAP_VOICE_SIGNALING: &str = "sdk.capability.voice_signaling";
 const CAP_SHARED_INSTANCE_RPC_AUTH: &str = "sdk.capability.shared_instance_rpc_auth";
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MemoryBudget {
+    pub max_heap_bytes: usize,
+    pub max_event_queue_bytes: usize,
+    pub max_attachment_spool_bytes: usize,
+}
+
 const DESKTOP_FULL_REQUIRED: &[&str] = &[
     CAP_CURSOR_REPLAY,
     CAP_ASYNC_EVENTS,
@@ -141,6 +148,26 @@ pub fn default_effective_limits(profile: Profile) -> EffectiveLimits {
     }
 }
 
+pub fn default_memory_budget(profile: Profile) -> MemoryBudget {
+    match profile {
+        Profile::DesktopFull => MemoryBudget {
+            max_heap_bytes: 268_435_456,
+            max_event_queue_bytes: 67_108_864,
+            max_attachment_spool_bytes: 536_870_912,
+        },
+        Profile::DesktopLocalRuntime => MemoryBudget {
+            max_heap_bytes: 134_217_728,
+            max_event_queue_bytes: 33_554_432,
+            max_attachment_spool_bytes: 268_435_456,
+        },
+        Profile::EmbeddedAlloc => MemoryBudget {
+            max_heap_bytes: 8_388_608,
+            max_event_queue_bytes: 2_097_152,
+            max_attachment_spool_bytes: 16_777_216,
+        },
+    }
+}
+
 pub fn required_capabilities(profile: Profile) -> &'static [&'static str] {
     match profile {
         Profile::DesktopFull => DESKTOP_FULL_REQUIRED,
@@ -183,6 +210,9 @@ mod tests {
         let limits = default_effective_limits(Profile::EmbeddedAlloc);
         assert_eq!(limits.max_poll_events, 32);
         assert_eq!(limits.max_event_bytes, 8_192);
+        let memory = default_memory_budget(Profile::EmbeddedAlloc);
+        assert_eq!(memory.max_heap_bytes, 8_388_608);
+        assert_eq!(memory.max_event_queue_bytes, 2_097_152);
     }
 
     #[test]
@@ -205,5 +235,18 @@ mod tests {
         assert!(is_profile_method_supported(Profile::DesktopFull, "tick"));
         assert!(is_profile_method_supported(Profile::DesktopLocalRuntime, "tick"));
         assert!(is_profile_method_supported(Profile::EmbeddedAlloc, "tick"));
+    }
+
+    #[test]
+    fn memory_budgets_reduce_for_more_constrained_profiles() {
+        let full = default_memory_budget(Profile::DesktopFull);
+        let local = default_memory_budget(Profile::DesktopLocalRuntime);
+        let embedded = default_memory_budget(Profile::EmbeddedAlloc);
+        assert!(local.max_heap_bytes <= full.max_heap_bytes);
+        assert!(embedded.max_heap_bytes <= local.max_heap_bytes);
+        assert!(local.max_event_queue_bytes <= full.max_event_queue_bytes);
+        assert!(embedded.max_event_queue_bytes <= local.max_event_queue_bytes);
+        assert!(local.max_attachment_spool_bytes <= full.max_attachment_spool_bytes);
+        assert!(embedded.max_attachment_spool_bytes <= local.max_attachment_spool_bytes);
     }
 }

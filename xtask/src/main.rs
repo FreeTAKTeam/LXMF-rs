@@ -149,6 +149,7 @@ enum XtaskCommand {
     SdkReplayCheck,
     SdkBenchCheck,
     SdkPerfBudgetCheck,
+    SdkMemoryBudgetCheck,
     SdkMatrixCheck,
 }
 
@@ -180,6 +181,7 @@ enum CiStage {
     SdkReplayCheck,
     SdkBenchCheck,
     SdkPerfBudgetCheck,
+    SdkMemoryBudgetCheck,
     SdkMatrixCheck,
     MigrationChecks,
     ArchitectureChecks,
@@ -215,6 +217,7 @@ fn main() -> Result<()> {
         XtaskCommand::SdkReplayCheck => run_sdk_replay_check(),
         XtaskCommand::SdkBenchCheck => run_sdk_bench_check(),
         XtaskCommand::SdkPerfBudgetCheck => run_sdk_perf_budget_check(),
+        XtaskCommand::SdkMemoryBudgetCheck => run_sdk_memory_budget_check(),
         XtaskCommand::SdkMatrixCheck => run_sdk_matrix_check(),
     }
 }
@@ -255,6 +258,7 @@ fn run_ci(stage: Option<CiStage>) -> Result<()> {
     run_sdk_race_check()?;
     run_sdk_replay_check()?;
     run_sdk_perf_budget_check()?;
+    run_sdk_memory_budget_check()?;
     run_sdk_matrix_check()?;
     run_migration_checks()?;
     run_architecture_checks()?;
@@ -294,6 +298,7 @@ fn run_ci_stage(stage: CiStage) -> Result<()> {
         CiStage::SdkReplayCheck => run_sdk_replay_check(),
         CiStage::SdkBenchCheck => run_sdk_bench_check(),
         CiStage::SdkPerfBudgetCheck => run_sdk_perf_budget_check(),
+        CiStage::SdkMemoryBudgetCheck => run_sdk_memory_budget_check(),
         CiStage::SdkMatrixCheck => run_sdk_matrix_check(),
         CiStage::MigrationChecks => run_migration_checks(),
         CiStage::ArchitectureChecks => run_architecture_checks(),
@@ -942,6 +947,10 @@ fn evaluate_perf_budgets() -> Result<()> {
 fn percentile(values: &[f64], p: f64) -> f64 {
     let index = ((values.len() as f64 - 1.0) * p).round() as usize;
     values[index.min(values.len() - 1)]
+}
+
+fn run_sdk_memory_budget_check() -> Result<()> {
+    run("cargo", &["test", "-p", "test-support", "sdk_memory_budget", "--", "--nocapture"])
 }
 
 fn write_bench_summary() -> Result<()> {

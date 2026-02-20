@@ -38,7 +38,10 @@ pub use event::{
     EventBatch, EventCursor, EventSubscription, SdkEvent, Severity, SubscriptionStart,
 };
 pub use lifecycle::{Lifecycle, SdkMethod};
-pub use profiles::{default_effective_limits, required_capabilities, supports_capability};
+pub use profiles::{
+    default_effective_limits, default_memory_budget, required_capabilities, supports_capability,
+    MemoryBudget,
+};
 pub use types::{
     Ack, AuthMode, CancelResult, ClientHandle, ConfigPatch, DeliverySnapshot, DeliveryState,
     EventStreamConfig, MessageId, Profile, RedactionConfig, RedactionTransform, RpcBackendConfig,

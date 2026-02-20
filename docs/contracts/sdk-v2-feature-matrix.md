@@ -93,6 +93,16 @@ Budgets are expressed as maximum latency (`p50`/`p95`/`p99` in nanoseconds) and 
 | `rns_rpc/sdk_snapshot_v2` | 25,000 | 35,000 | 45,000 | 45,000 |
 | `rns_rpc/sdk_topic_create_v2` | 70,000 | 95,000 | 130,000 | 14,000 |
 
+## Memory Budget Matrix
+
+Profile memory ceilings are release-gated with `cargo run -p xtask -- sdk-memory-budget-check`.
+
+| Profile | max_heap_bytes | max_event_queue_bytes | max_attachment_spool_bytes |
+| --- | --- | --- | --- |
+| `desktop-full` | 268,435,456 | 67,108,864 | 536,870,912 |
+| `desktop-local-runtime` | 134,217,728 | 33,554,432 | 268,435,456 |
+| `embedded-alloc` | 8,388,608 | 2,097,152 | 16,777,216 |
+
 ## CI Mapping Matrix
 
 | Gate | Status |
@@ -103,6 +113,7 @@ Budgets are expressed as maximum latency (`p50`/`p95`/`p99` in nanoseconds) and 
 | `sdk-api-break` | required |
 | `sdk-security-check` | required |
 | `sdk-perf-budget-check` | required |
+| `sdk-memory-budget-check` | required |
 | `sdk-migration-check` | required |
 | `sdk-matrix-check` | required |
 | `embedded-alloc` profile build | required |

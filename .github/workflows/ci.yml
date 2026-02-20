@@ -199,6 +199,14 @@ jobs:
             target/criterion/bench-budget-report.txt
             target/criterion/bench-summary.txt
 
+  sdk-memory-budget-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: SDK memory budget gate
+        run: cargo xtask ci --stage sdk-memory-budget-check
+
   sdk-matrix-check:
     runs-on: ubuntu-latest
     steps:

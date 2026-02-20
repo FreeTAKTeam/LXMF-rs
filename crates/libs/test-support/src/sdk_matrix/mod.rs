@@ -1,4 +1,4 @@
-use lxmf_sdk::{required_capabilities, supports_capability, Profile};
+use lxmf_sdk::{default_memory_budget, required_capabilities, supports_capability, Profile};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -9,6 +9,14 @@ struct CapabilityRow {
     desktop_full: String,
     desktop_local_runtime: String,
     embedded_alloc: String,
+}
+
+#[derive(Debug)]
+struct MemoryBudgetRow {
+    profile: String,
+    max_heap_bytes: usize,
+    max_event_queue_bytes: usize,
+    max_attachment_spool_bytes: usize,
 }
 
 fn workspace_root() -> PathBuf {
@@ -75,6 +83,54 @@ fn parse_capability_rows(markdown: &str) -> Vec<CapabilityRow> {
     }
 
     rows
+}
+
+fn parse_memory_budget_rows(markdown: &str) -> Vec<MemoryBudgetRow> {
+    let mut rows = Vec::new();
+    let mut in_table = false;
+
+    for line in markdown.lines() {
+        let trimmed = line.trim();
+        if !in_table {
+            if trimmed.starts_with("| Profile |")
+                && trimmed.contains("| max_heap_bytes |")
+                && trimmed.contains("| max_event_queue_bytes |")
+                && trimmed.contains("| max_attachment_spool_bytes |")
+            {
+                in_table = true;
+            }
+            continue;
+        }
+
+        if !trimmed.starts_with('|') {
+            if !rows.is_empty() {
+                break;
+            }
+            continue;
+        }
+        if trimmed.contains("---") {
+            continue;
+        }
+
+        let cells = trimmed.trim_matches('|').split('|').map(str::trim).collect::<Vec<_>>();
+        if cells.len() != 4 {
+            continue;
+        }
+        rows.push(MemoryBudgetRow {
+            profile: cells[0].trim_matches('`').to_ascii_lowercase(),
+            max_heap_bytes: parse_budget_cell(cells[1]),
+            max_event_queue_bytes: parse_budget_cell(cells[2]),
+            max_attachment_spool_bytes: parse_budget_cell(cells[3]),
+        });
+    }
+
+    rows
+}
+
+fn parse_budget_cell(raw: &str) -> usize {
+    raw.replace(',', "")
+        .parse::<usize>()
+        .unwrap_or_else(|err| panic!("invalid memory budget value '{raw}': {err}"))
 }
 
 fn parse_table_first_column(markdown: &str, header_pattern: &str) -> Vec<String> {
@@ -251,6 +307,41 @@ fn sdk_matrix_release_windows_and_clients_cover_n_n1_n2_contracts() {
         assert!(
             client_rows.iter().any(|row| row.contains(client)),
             "compatibility matrix missing required client row containing '{client}'"
+        );
+    }
+}
+
+#[test]
+fn sdk_memory_budget_table_matches_profile_budgets() {
+    let markdown = load_feature_matrix();
+    let rows = parse_memory_budget_rows(&markdown);
+    assert!(!rows.is_empty(), "feature matrix memory budget table is empty");
+
+    let mut by_profile = HashMap::new();
+    for row in rows {
+        by_profile.insert(row.profile.clone(), row);
+    }
+
+    for (profile_key, profile) in [
+        ("desktop-full", Profile::DesktopFull),
+        ("desktop-local-runtime", Profile::DesktopLocalRuntime),
+        ("embedded-alloc", Profile::EmbeddedAlloc),
+    ] {
+        let row = by_profile
+            .get(profile_key)
+            .unwrap_or_else(|| panic!("missing memory budget row for profile '{profile_key}'"));
+        let budget = default_memory_budget(profile);
+        assert_eq!(
+            row.max_heap_bytes, budget.max_heap_bytes,
+            "memory budget drift for {profile_key}: max_heap_bytes"
+        );
+        assert_eq!(
+            row.max_event_queue_bytes, budget.max_event_queue_bytes,
+            "memory budget drift for {profile_key}: max_event_queue_bytes"
+        );
+        assert_eq!(
+            row.max_attachment_spool_bytes, budget.max_attachment_spool_bytes,
+            "memory budget drift for {profile_key}: max_attachment_spool_bytes"
         );
     }
 }
