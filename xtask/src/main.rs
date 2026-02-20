@@ -16,6 +16,7 @@ const PAYLOAD_CONTRACT_PATH: &str = "docs/contracts/payload-contract.md";
 const SECURITY_THREAT_MODEL_PATH: &str = "docs/adr/0004-sdk-v25-threat-model.md";
 const SECURITY_REVIEW_CHECKLIST_PATH: &str = "docs/runbooks/security-review-checklist.md";
 const SDK_DOCS_CHECKLIST_PATH: &str = "docs/runbooks/sdk-docs-checklist.md";
+const INCIDENT_RUNBOOK_PATH: &str = "docs/runbooks/incident-response-playbooks.md";
 const BENCH_SUMMARY_PATH: &str = "target/criterion/bench-summary.txt";
 const PERF_BUDGET_REPORT_PATH: &str = "target/criterion/bench-budget-report.txt";
 const SUPPLY_CHAIN_SBOM_PATH: &str = "target/supply-chain/sbom/cargo-metadata.sbom.json";
@@ -215,6 +216,7 @@ enum XtaskCommand {
     SdkErgonomicsCheck,
     LxmfCliCheck,
     DxBootstrapCheck,
+    SdkIncidentRunbookCheck,
     InteropArtifacts {
         #[arg(long)]
         update: bool,
@@ -265,6 +267,7 @@ enum CiStage {
     SdkErgonomicsCheck,
     LxmfCliCheck,
     DxBootstrapCheck,
+    SdkIncidentRunbookCheck,
     InteropArtifacts,
     InteropMatrixCheck,
     InteropCorpusCheck,
@@ -311,6 +314,7 @@ fn main() -> Result<()> {
         XtaskCommand::SdkErgonomicsCheck => run_sdk_ergonomics_check(),
         XtaskCommand::LxmfCliCheck => run_lxmf_cli_check(),
         XtaskCommand::DxBootstrapCheck => run_dx_bootstrap_check(),
+        XtaskCommand::SdkIncidentRunbookCheck => run_sdk_incident_runbook_check(),
         XtaskCommand::InteropArtifacts { update } => run_interop_artifacts(update),
         XtaskCommand::InteropMatrixCheck => run_interop_matrix_check(),
         XtaskCommand::InteropCorpusCheck => run_interop_corpus_check(),
@@ -365,6 +369,7 @@ fn run_ci(stage: Option<CiStage>) -> Result<()> {
     run_sdk_ergonomics_check()?;
     run_lxmf_cli_check()?;
     run_dx_bootstrap_check()?;
+    run_sdk_incident_runbook_check()?;
     run_sdk_schema_check()?;
     run_interop_artifacts(false)?;
     run_interop_matrix_check()?;
@@ -415,6 +420,7 @@ fn run_ci_stage(stage: CiStage) -> Result<()> {
         CiStage::SdkErgonomicsCheck => run_sdk_ergonomics_check(),
         CiStage::LxmfCliCheck => run_lxmf_cli_check(),
         CiStage::DxBootstrapCheck => run_dx_bootstrap_check(),
+        CiStage::SdkIncidentRunbookCheck => run_sdk_incident_runbook_check(),
         CiStage::InteropArtifacts => run_interop_artifacts(false),
         CiStage::InteropMatrixCheck => run_interop_matrix_check(),
         CiStage::InteropCorpusCheck => run_interop_corpus_check(),
@@ -531,6 +537,31 @@ fn run_lxmf_cli_check() -> Result<()> {
 
 fn run_dx_bootstrap_check() -> Result<()> {
     run("bash", &["tools/scripts/bootstrap-dev.sh", "--check", "--skip-tools", "--skip-smoke"])
+}
+
+fn run_sdk_incident_runbook_check() -> Result<()> {
+    let runbook = fs::read_to_string(INCIDENT_RUNBOOK_PATH)
+        .with_context(|| format!("read {INCIDENT_RUNBOOK_PATH}"))?;
+    for heading in [
+        "# Incident Response Playbooks",
+        "## Incident Severity and Escalation",
+        "## P0: RPC Auth Failure Spike",
+        "## P0: Event Stream Degraded or Cursor Expired",
+        "## P1: Message Delivery Stall",
+        "## P1: Durable Store Corruption or Restart Loop",
+        "## Post-Incident Review and Follow-up",
+    ] {
+        if !runbook.contains(heading) {
+            bail!("missing incident runbook heading in {INCIDENT_RUNBOOK_PATH}: {heading}");
+        }
+    }
+    let playbook_count = runbook.lines().filter(|line| line.starts_with("## P")).count();
+    if playbook_count < 4 {
+        bail!(
+            "incident runbook must define at least 4 playbook sections in {INCIDENT_RUNBOOK_PATH}"
+        );
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

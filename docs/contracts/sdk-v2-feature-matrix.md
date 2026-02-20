@@ -144,6 +144,7 @@ Metrics export is available at `GET /metrics` and covered by `cargo run -p xtask
 | `sdk-docs-check` | required |
 | `sdk-cookbook-check` | required |
 | `sdk-ergonomics-check` | required |
+| `sdk-incident-runbook-check` | required |
 | `lxmf-cli-check` | required |
 | `dx-bootstrap-check` | required |
 | `supply-chain-check` | required |

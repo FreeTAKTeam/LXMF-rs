@@ -100,6 +100,14 @@ jobs:
       - name: Developer bootstrap prerequisites
         run: cargo xtask ci --stage dx-bootstrap-check
 
+  sdk-incident-runbook-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Incident runbook completeness
+        run: cargo xtask ci --stage sdk-incident-runbook-check
+
   security:
     runs-on: ubuntu-latest
     steps:
