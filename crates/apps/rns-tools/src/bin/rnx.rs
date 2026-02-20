@@ -4,6 +4,7 @@ use rns_rpc::e2e_harness::{
     build_tcp_client_config, is_ready_line, parse_http_response_body, parse_rpc_frame,
     timestamp_millis,
 };
+use rns_rpc::rpc::replay::{execute_trace, load_trace_file, save_capture_file};
 use std::collections::HashSet;
 use std::fs;
 use std::io::{self, BufRead, BufReader, Read, Write};
@@ -49,6 +50,14 @@ enum Command {
         #[arg(long = "mode", value_enum)]
         modes: Vec<DeliveryMode>,
     },
+    Replay {
+        #[arg(long)]
+        trace: PathBuf,
+        #[arg(long)]
+        capture_out: Option<PathBuf>,
+        #[arg(long, default_value = "replay-identity")]
+        identity_hash: String,
+    },
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum, Hash)]
@@ -75,7 +84,38 @@ fn run(cli: Cli) -> io::Result<()> {
         Command::MeshSim { nodes, base_rpc_port, timeout_secs, keep, modes } => {
             run_mesh_sim(nodes, base_rpc_port, timeout_secs, keep, modes)
         }
+        Command::Replay { trace, capture_out, identity_hash } => {
+            run_replay(trace, capture_out, identity_hash)
+        }
     }
+}
+
+fn run_replay(
+    trace: PathBuf,
+    capture_out: Option<PathBuf>,
+    identity_hash: String,
+) -> io::Result<()> {
+    let trace_data = load_trace_file(&trace).map_err(|error| {
+        io::Error::new(
+            error.kind(),
+            format!("failed to load replay trace '{}': {error}", trace.display()),
+        )
+    })?;
+    let daemon = rns_rpc::RpcDaemon::test_instance_with_identity(identity_hash.as_str());
+    let capture = execute_trace(&daemon, &trace_data).map_err(io::Error::other)?;
+    if let Some(path) = capture_out {
+        save_capture_file(&path, &capture).map_err(|error| {
+            io::Error::new(
+                error.kind(),
+                format!("failed to write replay capture '{}': {error}", path.display()),
+            )
+        })?;
+    }
+    println!(
+        "REPLAY ok: trace='{}' steps={} digest={}",
+        capture.trace_name, capture.steps_executed, capture.response_digest_sha256
+    );
+    Ok(())
 }
 
 fn run_e2e(

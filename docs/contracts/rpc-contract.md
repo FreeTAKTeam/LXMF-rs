@@ -16,6 +16,7 @@ Compatibility slice:
 Reference tests:
 - In-repo contract coverage: `cargo xtask release-check` and `cargo test -p rns-tools`.
 - Golden corpus replay: `cargo run -p xtask -- interop-corpus-check`.
+- Deterministic RPC replay trace: `cargo run -p rns-tools --bin rnx -- replay --trace docs/fixtures/sdk-v2/rpc/replay_known_send_cancel.v1.json`.
 - External interoperability contract checks are executed from the dedicated interop repository.
 
 ## Wire framing

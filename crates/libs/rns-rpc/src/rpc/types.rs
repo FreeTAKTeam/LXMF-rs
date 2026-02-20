@@ -1,11 +1,11 @@
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct RpcRequest {
     pub id: u64,
     pub method: String,
     pub params: Option<JsonValue>,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct RpcResponse {
     pub id: u64,
     pub result: Option<JsonValue>,

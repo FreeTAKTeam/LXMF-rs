@@ -163,6 +163,14 @@ jobs:
       - name: SDK race stress suite
         run: cargo xtask ci --stage sdk-race-check
 
+  sdk-replay-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: SDK replay determinism suite
+        run: cargo xtask ci --stage sdk-replay-check
+
   sdk-matrix-check:
     runs-on: ubuntu-latest
     steps:

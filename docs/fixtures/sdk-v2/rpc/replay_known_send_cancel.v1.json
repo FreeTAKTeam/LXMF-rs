@@ -1,0 +1,128 @@
+{
+  "version": 1,
+  "name": "known-send-cancel-trace",
+  "seed": 20260220,
+  "steps": [
+    {
+      "label": "negotiate",
+      "request": {
+        "id": 1,
+        "method": "sdk_negotiate_v2",
+        "params": {
+          "supported_contract_versions": [2],
+          "requested_capabilities": ["sdk.capability.cursor_replay"],
+          "config": {
+            "profile": "desktop-full",
+            "bind_mode": "local_only",
+            "auth_mode": "local_trusted",
+            "overflow_policy": "reject"
+          }
+        }
+      },
+      "expect": {
+        "result_subset": {
+          "active_contract_version": 2,
+          "contract_release": "v2.5"
+        }
+      }
+    },
+    {
+      "label": "send-message",
+      "request": {
+        "id": 2,
+        "method": "sdk_send_v2",
+        "params": {
+          "id": "replay-msg-1",
+          "source": "replay-source",
+          "destination": "replay-destination",
+          "title": "Replay",
+          "content": "deterministic replay payload",
+          "fields": null,
+          "method": "direct"
+        }
+      },
+      "expect": {
+        "result_subset": {
+          "message_id": "replay-msg-1"
+        }
+      }
+    },
+    {
+      "label": "status-check",
+      "request": {
+        "id": 3,
+        "method": "sdk_status_v2",
+        "params": {
+          "message_id": "replay-msg-1"
+        }
+      },
+      "expect": {
+        "result_subset": {
+          "message": {
+            "id": "replay-msg-1",
+            "receipt_status": "sent: direct"
+          }
+        }
+      }
+    },
+    {
+      "label": "cancel-too-late",
+      "request": {
+        "id": 4,
+        "method": "sdk_cancel_message_v2",
+        "params": {
+          "message_id": "replay-msg-1"
+        }
+      },
+      "expect": {
+        "result_subset": {
+          "message_id": "replay-msg-1",
+          "result": "TooLateToCancel"
+        }
+      }
+    },
+    {
+      "label": "trace-check",
+      "request": {
+        "id": 5,
+        "method": "message_delivery_trace",
+        "params": {
+          "message_id": "replay-msg-1"
+        }
+      },
+      "expect": {
+        "result_subset": {
+          "message_id": "replay-msg-1",
+          "transitions": [
+            {
+              "status": "queued"
+            },
+            {
+              "status": "sending"
+            },
+            {
+              "status": "sent: direct"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "label": "snapshot",
+      "request": {
+        "id": 6,
+        "method": "sdk_snapshot_v2",
+        "params": {
+          "include_counts": true
+        }
+      },
+      "expect": {
+        "result_subset": {
+          "state": "running",
+          "active_contract_version": 2,
+          "profile": "desktop-full"
+        }
+      }
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 pub mod codec;
 mod daemon;
 pub mod http;
+pub mod replay;
 mod send_request;
 
 use rmpv::Value as MsgPackValue;

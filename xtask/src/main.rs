@@ -55,6 +55,7 @@ enum XtaskCommand {
     SdkPropertyCheck,
     SdkModelCheck,
     SdkRaceCheck,
+    SdkReplayCheck,
     SdkMatrixCheck,
 }
 
@@ -83,6 +84,7 @@ enum CiStage {
     SdkPropertyCheck,
     SdkModelCheck,
     SdkRaceCheck,
+    SdkReplayCheck,
     SdkMatrixCheck,
     MigrationChecks,
     ArchitectureChecks,
@@ -115,6 +117,7 @@ fn main() -> Result<()> {
         XtaskCommand::SdkPropertyCheck => run_sdk_property_check(),
         XtaskCommand::SdkModelCheck => run_sdk_model_check(),
         XtaskCommand::SdkRaceCheck => run_sdk_race_check(),
+        XtaskCommand::SdkReplayCheck => run_sdk_replay_check(),
         XtaskCommand::SdkMatrixCheck => run_sdk_matrix_check(),
     }
 }
@@ -153,6 +156,7 @@ fn run_ci(stage: Option<CiStage>) -> Result<()> {
     run_sdk_property_check()?;
     run_sdk_model_check()?;
     run_sdk_race_check()?;
+    run_sdk_replay_check()?;
     run_sdk_matrix_check()?;
     run_migration_checks()?;
     run_architecture_checks()?;
@@ -189,6 +193,7 @@ fn run_ci_stage(stage: CiStage) -> Result<()> {
         CiStage::SdkPropertyCheck => run_sdk_property_check(),
         CiStage::SdkModelCheck => run_sdk_model_check(),
         CiStage::SdkRaceCheck => run_sdk_race_check(),
+        CiStage::SdkReplayCheck => run_sdk_replay_check(),
         CiStage::SdkMatrixCheck => run_sdk_matrix_check(),
         CiStage::MigrationChecks => run_migration_checks(),
         CiStage::ArchitectureChecks => run_architecture_checks(),
@@ -656,6 +661,34 @@ fn run_sdk_model_check() -> Result<()> {
 fn run_sdk_race_check() -> Result<()> {
     run("cargo", &["test", "-p", "lxmf-sdk", "race_idempot", "--", "--nocapture"])?;
     run("cargo", &["test", "-p", "rns-rpc", "sdk_race", "--", "--nocapture"])
+}
+
+fn run_sdk_replay_check() -> Result<()> {
+    run(
+        "cargo",
+        &[
+            "test",
+            "-p",
+            "rns-rpc",
+            "replay_fixture_trace_executes_successfully",
+            "--",
+            "--nocapture",
+        ],
+    )?;
+    run(
+        "cargo",
+        &[
+            "run",
+            "-p",
+            "rns-tools",
+            "--bin",
+            "rnx",
+            "--",
+            "replay",
+            "--trace",
+            "docs/fixtures/sdk-v2/rpc/replay_known_send_cancel.v1.json",
+        ],
+    )
 }
 
 fn run_sdk_matrix_check() -> Result<()> {
