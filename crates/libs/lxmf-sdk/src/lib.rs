@@ -1,74 +1,30 @@
-#![cfg_attr(not(feature = "std"), no_std)]
+pub mod api;
+pub mod backend;
+pub mod capability;
+pub mod error;
+pub mod event;
+pub mod lifecycle;
+pub mod profiles;
+pub mod types;
+
+pub use api::{LxmfSdk, LxmfSdkAsync, LxmfSdkManualTick};
+pub use backend::{SdkBackend, SdkBackendAsyncEvents};
+pub use capability::{
+    effective_capabilities_for_profile, negotiate_contract_version, CapabilityDescriptor,
+    CapabilityState, EffectiveLimits, NegotiationRequest, NegotiationResponse,
+};
+pub use error::{code as error_code, ErrorCategory, ErrorDetails, SdkError};
+pub use event::{
+    EventBatch, EventCursor, EventSubscription, SdkEvent, Severity, SubscriptionStart,
+};
+pub use lifecycle::{Lifecycle, SdkMethod};
+pub use profiles::{default_effective_limits, required_capabilities, supports_capability};
+pub use types::{
+    Ack, AuthMode, CancelResult, ClientHandle, ConfigPatch, DeliverySnapshot, DeliveryState,
+    EventStreamConfig, MessageId, Profile, RedactionConfig, RedactionTransform, RpcBackendConfig,
+    RuntimeSnapshot, RuntimeState, SdkConfig, SendRequest, ShutdownMode, StartRequest, TickBudget,
+    TickResult,
+};
 
 pub const CONTRACT_RELEASE: &str = "v2.5";
 pub const SCHEMA_NAMESPACE: &str = "v2";
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct StartRequest;
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct ClientHandle;
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct SendRequest;
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct MessageId;
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct DeliverySnapshot;
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct ConfigPatch;
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Ack;
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct EventCursor;
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct EventBatch;
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct RuntimeSnapshot;
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct ShutdownMode;
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct TickBudget;
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct TickResult;
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct EventSubscription;
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct SubscriptionStart;
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct CancelResult;
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct SdkError;
-
-pub trait LxmfSdk {
-    fn start(&self, req: StartRequest) -> Result<ClientHandle, SdkError>;
-    fn send(&self, req: SendRequest) -> Result<MessageId, SdkError>;
-    fn cancel(&self, id: MessageId) -> Result<CancelResult, SdkError>;
-    fn status(&self, id: MessageId) -> Result<Option<DeliverySnapshot>, SdkError>;
-    fn configure(&self, expected_revision: u64, patch: ConfigPatch) -> Result<Ack, SdkError>;
-    fn poll_events(&self, cursor: Option<EventCursor>, max: usize) -> Result<EventBatch, SdkError>;
-    fn snapshot(&self) -> Result<RuntimeSnapshot, SdkError>;
-    fn shutdown(&self, mode: ShutdownMode) -> Result<Ack, SdkError>;
-}
-
-pub trait LxmfSdkManualTick {
-    fn tick(&self, budget: TickBudget) -> Result<TickResult, SdkError>;
-}
-
-pub trait LxmfSdkAsync {
-    fn subscribe_events(&self, start: SubscriptionStart) -> Result<EventSubscription, SdkError>;
-}

@@ -6,11 +6,17 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[dependencies]
+rns-rpc = { path = "../rns-rpc", optional = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+thiserror.workspace = true
+
 [features]
-default = ["std", "rpc-backend"]
+default = ["std", "sdk-async", "rpc-backend"]
 std = []
 sdk-async = []
-rpc-backend = []
+rpc-backend = ["dep:rns-rpc"]
 embedded-alloc = []
 
 [lints]

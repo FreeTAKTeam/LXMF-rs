@@ -572,6 +572,12 @@ dependencies = [
 [[package]]
 name = "lxmf-sdk"
 version = "0.1.0"
+dependencies = [
+ "rns-rpc",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
 
 [[package]]
 name = "memchr"
