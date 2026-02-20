@@ -1,6 +1,7 @@
 //! Transport boundary crate for runtime crates and daemon entrypoints.
 
-#[allow(unused_imports)]
+#![allow(clippy::unwrap_used)]
+
 extern crate alloc;
 
 pub mod buffer;
