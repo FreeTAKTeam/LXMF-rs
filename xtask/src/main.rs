@@ -13,6 +13,8 @@ const INTEROP_MATRIX_PATH: &str = "docs/contracts/compatibility-matrix.md";
 const INTEROP_CORPUS_PATH: &str = "docs/fixtures/interop/v1/golden-corpus.json";
 const RPC_CONTRACT_PATH: &str = "docs/contracts/rpc-contract.md";
 const PAYLOAD_CONTRACT_PATH: &str = "docs/contracts/payload-contract.md";
+const SECURITY_THREAT_MODEL_PATH: &str = "docs/adr/0004-sdk-v25-threat-model.md";
+const SECURITY_REVIEW_CHECKLIST_PATH: &str = "docs/runbooks/security-review-checklist.md";
 const BENCH_SUMMARY_PATH: &str = "target/criterion/bench-summary.txt";
 const PERF_BUDGET_REPORT_PATH: &str = "target/criterion/bench-budget-report.txt";
 
@@ -142,6 +144,7 @@ enum XtaskCommand {
     SdkExamplesCheck,
     SdkApiBreak,
     SdkMigrationCheck,
+    SecurityReviewCheck,
     SdkSecurityCheck,
     SdkPropertyCheck,
     SdkModelCheck,
@@ -175,6 +178,7 @@ enum CiStage {
     SdkExamplesCheck,
     SdkApiBreak,
     SdkMigrationCheck,
+    SecurityReviewCheck,
     SdkSecurityCheck,
     SdkPropertyCheck,
     SdkModelCheck,
@@ -212,6 +216,7 @@ fn main() -> Result<()> {
         XtaskCommand::SdkExamplesCheck => run_sdk_examples_check(),
         XtaskCommand::SdkApiBreak => run_sdk_api_break(),
         XtaskCommand::SdkMigrationCheck => run_sdk_migration_check(),
+        XtaskCommand::SecurityReviewCheck => run_security_review_check(),
         XtaskCommand::SdkSecurityCheck => run_sdk_security_check(),
         XtaskCommand::SdkPropertyCheck => run_sdk_property_check(),
         XtaskCommand::SdkModelCheck => run_sdk_model_check(),
@@ -255,6 +260,7 @@ fn run_ci(stage: Option<CiStage>) -> Result<()> {
     run_sdk_conformance()?;
     run_sdk_profile_build()?;
     run_sdk_examples_check()?;
+    run_security_review_check()?;
     run_sdk_security_check()?;
     run_sdk_property_check()?;
     run_sdk_model_check()?;
@@ -280,7 +286,8 @@ fn run_ci_stage(stage: CiStage) -> Result<()> {
         CiStage::Doc => run("cargo", &["doc", "--workspace", "--no-deps"]),
         CiStage::Security => {
             run("cargo", &["deny", "check"])?;
-            run("cargo", &["audit"])
+            run("cargo", &["audit"])?;
+            run_security_review_check()
         }
         CiStage::UnusedDeps => run_unused_deps(),
         CiStage::ApiSurfaceCheck => run_api_diff(),
@@ -295,6 +302,7 @@ fn run_ci_stage(stage: CiStage) -> Result<()> {
         CiStage::SdkExamplesCheck => run_sdk_examples_check(),
         CiStage::SdkApiBreak => run_sdk_api_break(),
         CiStage::SdkMigrationCheck => run_sdk_migration_check(),
+        CiStage::SecurityReviewCheck => run_security_review_check(),
         CiStage::SdkSecurityCheck => run_sdk_security_check(),
         CiStage::SdkPropertyCheck => run_sdk_property_check(),
         CiStage::SdkModelCheck => run_sdk_model_check(),
@@ -742,6 +750,47 @@ fn run_sdk_migration_check() -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+fn run_security_review_check() -> Result<()> {
+    let threat_model = fs::read_to_string(SECURITY_THREAT_MODEL_PATH)
+        .with_context(|| format!("missing {SECURITY_THREAT_MODEL_PATH}"))?;
+    for marker in [
+        "## STRIDE Threat Inventory",
+        "| Spoofing |",
+        "| Tampering |",
+        "| Repudiation |",
+        "| Information Disclosure |",
+        "| Denial of Service |",
+        "| Elevation of Privilege |",
+        "## Mitigation Map",
+    ] {
+        if !threat_model.contains(marker) {
+            bail!(
+                "security threat model missing required marker '{marker}' in {SECURITY_THREAT_MODEL_PATH}"
+            );
+        }
+    }
+
+    let checklist = fs::read_to_string(SECURITY_REVIEW_CHECKLIST_PATH)
+        .with_context(|| format!("missing {SECURITY_REVIEW_CHECKLIST_PATH}"))?;
+    if !checklist.contains("## Checklist") {
+        bail!(
+            "security review checklist missing `## Checklist` heading in {SECURITY_REVIEW_CHECKLIST_PATH}"
+        );
+    }
+    if checklist.contains("| FAIL |") || checklist.contains("| TODO |") {
+        bail!(
+            "security review checklist contains non-pass statuses in {SECURITY_REVIEW_CHECKLIST_PATH}"
+        );
+    }
+    let pass_rows = checklist.lines().filter(|line| line.contains("| PASS |")).count();
+    if pass_rows < 6 {
+        bail!(
+            "security review checklist requires at least 6 PASS controls in {SECURITY_REVIEW_CHECKLIST_PATH}"
+        );
+    }
     Ok(())
 }
 
