@@ -388,6 +388,51 @@ fn sdk_conformance_negotiation_success_and_no_overlap_failure() {
 }
 
 #[test]
+fn sdk_conformance_negotiation_release_window_fallback_and_unknown_capability_handling() {
+    let harness = RpcHarness::new();
+
+    let fallback_client = harness.client();
+    let mut fallback_request = base_start_request();
+    fallback_request.supported_contract_versions = vec![4, 3, 2];
+    let fallback_handle = fallback_client
+        .start(fallback_request)
+        .expect("start with future versions should fall back");
+    assert_eq!(fallback_handle.active_contract_version, 2);
+
+    let future_only_client = harness.client();
+    let mut future_only_request = base_start_request();
+    future_only_request.supported_contract_versions = vec![4, 3];
+    let future_only_error = future_only_client
+        .start(future_only_request)
+        .expect_err("future-only contract set must fail");
+    assert_eq!(future_only_error.machine_code, "SDK_CAPABILITY_CONTRACT_INCOMPATIBLE");
+
+    let overlap_client = harness.client();
+    let mut overlap_request = base_start_request();
+    overlap_request.requested_capabilities = vec![
+        "sdk.capability.shared_instance_rpc_auth".to_owned(),
+        "sdk.capability.future_contract_extension".to_owned(),
+    ];
+    let overlap_handle = overlap_client
+        .start(overlap_request)
+        .expect("known capability overlap should succeed even with unknown capability present");
+    assert!(
+        overlap_handle
+            .effective_capabilities
+            .iter()
+            .any(|capability| capability == "sdk.capability.shared_instance_rpc_auth"),
+        "known requested capability must be retained in effective set"
+    );
+    assert!(
+        overlap_handle
+            .effective_capabilities
+            .iter()
+            .all(|capability| capability != "sdk.capability.future_contract_extension"),
+        "unknown requested capability must not appear in effective set"
+    );
+}
+
+#[test]
 fn sdk_conformance_idempotent_send_reuses_message_id() {
     let harness = RpcHarness::new();
     let client = harness.client();

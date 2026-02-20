@@ -13,7 +13,7 @@ use crate::event::{EventBatch, EventCursor};
 #[cfg(feature = "sdk-async")]
 use crate::event::{EventSubscription, SubscriptionStart};
 use crate::lifecycle::{Lifecycle, SdkMethod};
-use crate::profiles::required_capabilities;
+use crate::profiles::{required_capabilities, supports_capability};
 use crate::types::{
     Ack, CancelResult, ClientHandle, ConfigPatch, DeliverySnapshot, MessageId, Profile,
     RuntimeSnapshot, RuntimeState, SendRequest, ShutdownMode, StartRequest, TickBudget, TickResult,
@@ -58,11 +58,21 @@ impl<B: SdkBackend> Client<B> {
         requested_capabilities: &[String],
         negotiation: &NegotiationResponse,
     ) -> Result<(), SdkError> {
-        let mut expected = required_capabilities(profile)
+        let mut expected = required_capabilities(profile.clone())
             .iter()
             .map(|capability| (*capability).to_owned())
             .collect::<Vec<_>>();
-        expected.extend(requested_capabilities.iter().cloned());
+        for capability in requested_capabilities {
+            let normalized = capability.trim().to_ascii_lowercase();
+            if normalized.is_empty() {
+                continue;
+            }
+            // Unknown/future capability IDs are treated as optional hints. Only enforce
+            // requested capabilities that this profile can actually support.
+            if supports_capability(profile.clone(), normalized.as_str()) {
+                expected.push(normalized);
+            }
+        }
 
         for capability in expected {
             let normalized = capability.trim().to_ascii_lowercase();

@@ -66,3 +66,26 @@ pub fn negotiate_contract_version(
 pub fn effective_capabilities_for_profile(profile: Profile) -> Vec<String> {
     required_capabilities(profile).iter().map(|capability| (*capability).to_owned()).collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::negotiate_contract_version;
+
+    #[test]
+    fn negotiate_contract_version_selects_highest_overlap() {
+        let selected = negotiate_contract_version(&[1, 2], &[2]);
+        assert_eq!(selected, Some(2));
+    }
+
+    #[test]
+    fn negotiate_contract_version_falls_back_when_future_versions_are_advertised() {
+        let selected = negotiate_contract_version(&[4, 3, 2], &[2]);
+        assert_eq!(selected, Some(2));
+    }
+
+    #[test]
+    fn negotiate_contract_version_returns_none_without_overlap() {
+        let selected = negotiate_contract_version(&[4, 3], &[2]);
+        assert_eq!(selected, None);
+    }
+}

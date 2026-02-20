@@ -201,6 +201,24 @@ fn start_failure_rolls_back_to_new_and_can_retry() {
 }
 
 #[test]
+fn start_ignores_unknown_requested_capabilities_when_known_overlap_exists() {
+    let backend = MockBackend::new(vec![successful_negotiation()]);
+    let client = Client::new(backend);
+    let mut request = sample_start_request();
+    request.requested_capabilities = vec![
+        "sdk.capability.cursor_replay".to_owned(),
+        "sdk.capability.future_contract_extension".to_owned(),
+    ];
+
+    let handle = client.start(request).expect("unknown requested capability should be ignored");
+    assert_eq!(handle.active_contract_version, 2);
+    assert!(handle
+        .effective_capabilities
+        .iter()
+        .any(|capability| capability == "sdk.capability.cursor_replay"));
+}
+
+#[test]
 fn shutdown_is_noop_once_stopped() {
     let backend = MockBackend::new(vec![successful_negotiation()]).with_shutdown_results(vec![
         Ok(Ack { accepted: true, revision: None }),

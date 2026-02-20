@@ -25,6 +25,43 @@
     }
 
     #[test]
+    fn sdk_negotiate_v2_falls_back_to_n_when_future_versions_are_advertised() {
+        let daemon = RpcDaemon::test_instance();
+        let response = daemon
+            .handle_rpc(rpc_request(
+                11,
+                "sdk_negotiate_v2",
+                json!({
+                    "supported_contract_versions": [4, 3, 2],
+                    "requested_capabilities": [],
+                    "config": { "profile": "desktop-full" }
+                }),
+            ))
+            .expect("negotiate should succeed");
+        assert!(response.error.is_none(), "negotiation should fall back to contract N");
+        let result = response.result.expect("result");
+        assert_eq!(result["active_contract_version"], json!(2));
+    }
+
+    #[test]
+    fn sdk_negotiate_v2_rejects_when_only_future_versions_are_present() {
+        let daemon = RpcDaemon::test_instance();
+        let response = daemon
+            .handle_rpc(rpc_request(
+                12,
+                "sdk_negotiate_v2",
+                json!({
+                    "supported_contract_versions": [4, 3],
+                    "requested_capabilities": [],
+                    "config": { "profile": "desktop-full" }
+                }),
+            ))
+            .expect("rpc call");
+        let error = response.error.expect("must fail");
+        assert_eq!(error.code, "SDK_CAPABILITY_CONTRACT_INCOMPATIBLE");
+    }
+
+    #[test]
     fn sdk_negotiate_v2_fails_on_capability_overlap_miss() {
         let daemon = RpcDaemon::test_instance();
         let response = daemon
@@ -75,6 +112,43 @@
         assert!(
             capabilities.iter().any(|value| value == "sdk.capability.config_revision_cas"),
             "required capability config_revision_cas must remain present"
+        );
+    }
+
+    #[test]
+    fn sdk_negotiate_v2_ignores_unknown_capabilities_when_overlap_exists() {
+        let daemon = RpcDaemon::test_instance();
+        let response = daemon
+            .handle_rpc(rpc_request(
+                23,
+                "sdk_negotiate_v2",
+                json!({
+                    "supported_contract_versions": [2],
+                    "requested_capabilities": [
+                        "sdk.capability.shared_instance_rpc_auth",
+                        "sdk.capability.future_contract_extension"
+                    ],
+                    "config": { "profile": "desktop-full" }
+                }),
+            ))
+            .expect("rpc call");
+        assert!(response.error.is_none(), "known overlap should negotiate successfully");
+        let capabilities = response
+            .result
+            .expect("result")
+            .get("effective_capabilities")
+            .and_then(JsonValue::as_array)
+            .cloned()
+            .expect("effective capabilities");
+        assert!(
+            capabilities.iter().any(|value| value == "sdk.capability.shared_instance_rpc_auth"),
+            "known requested capability must be preserved"
+        );
+        assert!(
+            !capabilities
+                .iter()
+                .any(|value| value == "sdk.capability.future_contract_extension"),
+            "unknown capability must be ignored, not echoed into effective set"
         );
     }
 

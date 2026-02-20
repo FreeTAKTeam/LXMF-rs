@@ -25,6 +25,12 @@ fn load_feature_matrix() -> String {
         .unwrap_or_else(|err| panic!("failed to read {}: {err}", path.display()))
 }
 
+fn load_compatibility_matrix() -> String {
+    let path = workspace_root().join("docs/contracts/compatibility-matrix.md");
+    fs::read_to_string(&path)
+        .unwrap_or_else(|err| panic!("failed to read {}: {err}", path.display()))
+}
+
 fn parse_capability_rows(markdown: &str) -> Vec<CapabilityRow> {
     let mut rows = Vec::new();
     let mut in_table = false;
@@ -66,6 +72,38 @@ fn parse_capability_rows(markdown: &str) -> Vec<CapabilityRow> {
             desktop_local_runtime: cells[2].to_ascii_lowercase(),
             embedded_alloc: cells[3].to_ascii_lowercase(),
         });
+    }
+
+    rows
+}
+
+fn parse_table_first_column(markdown: &str, header_pattern: &str) -> Vec<String> {
+    let mut rows = Vec::new();
+    let mut in_table = false;
+
+    for line in markdown.lines() {
+        let trimmed = line.trim();
+        if !in_table {
+            if trimmed.starts_with(header_pattern) {
+                in_table = true;
+            }
+            continue;
+        }
+
+        if !trimmed.starts_with('|') {
+            if !rows.is_empty() {
+                break;
+            }
+            continue;
+        }
+        if trimmed.contains("---") {
+            continue;
+        }
+
+        let cells = trimmed.trim_matches('|').split('|').map(str::trim).collect::<Vec<_>>();
+        if let Some(first_cell) = cells.first() {
+            rows.push(first_cell.trim_matches('`').to_ascii_lowercase());
+        }
     }
 
     rows
@@ -189,6 +227,30 @@ fn sdk_matrix_capability_table_matches_profile_capabilities() {
         assert!(
             seen.contains_key(*capability),
             "matrix missing embedded-alloc required capability {capability}"
+        );
+    }
+}
+
+#[test]
+fn sdk_matrix_release_windows_and_clients_cover_n_n1_n2_contracts() {
+    let markdown = load_compatibility_matrix();
+
+    let window_rows = parse_table_first_column(&markdown, "| Window |");
+    assert!(window_rows.contains(&"n".to_string()), "compatibility matrix missing window N row");
+    assert!(
+        window_rows.contains(&"n+1".to_string()),
+        "compatibility matrix missing window N+1 row"
+    );
+    assert!(
+        window_rows.contains(&"n+2".to_string()),
+        "compatibility matrix missing window N+2 row"
+    );
+
+    let client_rows = parse_table_first_column(&markdown, "| Client |");
+    for client in ["lxmf-sdk", "reticulumd", "sideband", "rch", "columba"] {
+        assert!(
+            client_rows.iter().any(|row| row.contains(client)),
+            "compatibility matrix missing required client row containing '{client}'"
         );
     }
 }
