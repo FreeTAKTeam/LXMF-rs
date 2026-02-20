@@ -40,7 +40,7 @@ release-check: ci deny audit
 api-diff:
 	@for manifest in \
 		crates/libs/lxmf-core/Cargo.toml \
-		crates/libs/lxmf-runtime/Cargo.toml \
+		crates/libs/lxmf-sdk/Cargo.toml \
 		crates/libs/rns-core/Cargo.toml \
 		crates/libs/rns-transport/Cargo.toml \
 		crates/libs/rns-rpc/Cargo.toml; do \

@@ -21,7 +21,7 @@ This checklist is the publication gate for the Rust workspace.
 
 - Public API surface checks pass for:
   - `lxmf-core`
-  - `lxmf-runtime`
+  - `lxmf-sdk`
   - `rns-core`
   - `rns-transport`
   - `rns-rpc`

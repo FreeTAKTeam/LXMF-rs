@@ -99,8 +99,6 @@ fi
 check_forbidden_dependency "lxmf-core" "tokio" "clap" "ureq"
 check_forbidden_dependency "rns-core" "tokio" "clap"
 check_no_app_dependencies "lxmf-core" "lxmf-cli" "rns-tools" "reticulumd"
-check_no_app_dependencies "lxmf-router" "lxmf-cli" "rns-tools" "reticulumd"
-check_no_app_dependencies "lxmf-runtime" "lxmf-cli" "rns-tools" "reticulumd"
 check_no_app_dependencies "rns-core" "lxmf-cli" "rns-tools" "reticulumd"
 check_no_app_dependencies "rns-transport" "lxmf-cli" "rns-tools" "reticulumd"
 check_no_app_dependencies "rns-rpc" "lxmf-cli" "rns-tools" "reticulumd"
