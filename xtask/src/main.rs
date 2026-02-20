@@ -213,6 +213,7 @@ enum XtaskCommand {
     SdkDocsCheck,
     SdkCookbookCheck,
     SdkErgonomicsCheck,
+    LxmfCliCheck,
     InteropArtifacts {
         #[arg(long)]
         update: bool,
@@ -260,6 +261,7 @@ enum CiStage {
     SdkDocsCheck,
     SdkCookbookCheck,
     SdkErgonomicsCheck,
+    LxmfCliCheck,
     InteropArtifacts,
     InteropMatrixCheck,
     InteropCorpusCheck,
@@ -303,6 +305,7 @@ fn main() -> Result<()> {
         XtaskCommand::SdkDocsCheck => run_sdk_docs_check(),
         XtaskCommand::SdkCookbookCheck => run_sdk_cookbook_check(),
         XtaskCommand::SdkErgonomicsCheck => run_sdk_ergonomics_check(),
+        XtaskCommand::LxmfCliCheck => run_lxmf_cli_check(),
         XtaskCommand::InteropArtifacts { update } => run_interop_artifacts(update),
         XtaskCommand::InteropMatrixCheck => run_interop_matrix_check(),
         XtaskCommand::InteropCorpusCheck => run_interop_corpus_check(),
@@ -354,6 +357,7 @@ fn run_ci(stage: Option<CiStage>) -> Result<()> {
     run_sdk_docs_check()?;
     run_sdk_cookbook_check()?;
     run_sdk_ergonomics_check()?;
+    run_lxmf_cli_check()?;
     run_sdk_schema_check()?;
     run_interop_artifacts(false)?;
     run_interop_matrix_check()?;
@@ -401,6 +405,7 @@ fn run_ci_stage(stage: CiStage) -> Result<()> {
         CiStage::SdkDocsCheck => run_sdk_docs_check(),
         CiStage::SdkCookbookCheck => run_sdk_cookbook_check(),
         CiStage::SdkErgonomicsCheck => run_sdk_ergonomics_check(),
+        CiStage::LxmfCliCheck => run_lxmf_cli_check(),
         CiStage::InteropArtifacts => run_interop_artifacts(false),
         CiStage::InteropMatrixCheck => run_interop_matrix_check(),
         CiStage::InteropCorpusCheck => run_interop_corpus_check(),
@@ -506,6 +511,18 @@ fn run_sdk_ergonomics_check() -> Result<()> {
         run("cargo", &["test", "-p", "lxmf-sdk", test_name, "--", "--nocapture"])?;
     }
     run("cargo", &["test", "-p", "lxmf-sdk", "--examples", "--no-run"])
+}
+
+fn run_lxmf_cli_check() -> Result<()> {
+    run("cargo", &["test", "-p", "lxmf-cli"])?;
+    run("cargo", &["run", "-p", "lxmf-cli", "--", "--help"])?;
+    run(
+        "bash",
+        &[
+            "-lc",
+            "cargo run -p lxmf-cli -- completions --shell bash > /dev/null",
+        ],
+    )
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

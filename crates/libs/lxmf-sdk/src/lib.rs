@@ -43,10 +43,10 @@ pub use profiles::{
     MemoryBudget,
 };
 pub use types::{
-    Ack, AuthMode, CancelResult, ClientHandle, ConfigPatch, DeliverySnapshot, DeliveryState,
-    EventStreamConfig, MessageId, Profile, RedactionConfig, RedactionTransform, RpcBackendConfig,
-    RuntimeSnapshot, RuntimeState, SdkConfig, SendRequest, ShutdownMode, StartRequest, TickBudget,
-    TickResult,
+    Ack, AuthMode, BindMode, CancelResult, ClientHandle, ConfigPatch, DeliverySnapshot,
+    DeliveryState, EventStreamConfig, MessageId, OverflowPolicy, Profile, RedactionConfig,
+    RedactionTransform, RpcBackendConfig, RuntimeSnapshot, RuntimeState, SdkConfig, SendRequest,
+    ShutdownMode, StartRequest, TickBudget, TickResult,
 };
 
 pub const CONTRACT_RELEASE: &str = "v2.5";
