@@ -18,8 +18,8 @@
     },
     {
       "path": "docs/contracts/compatibility-matrix.md",
-      "bytes": 3567,
-      "sha256": "276e77e930019ea8410e335e64190525d0562de0d38e3af227ef253754afed90"
+      "bytes": 3640,
+      "sha256": "eda8bd26c2cad38c33901d26f81d50e0cb5124c720adef8c3b830e34a2481259"
     },
     {
       "path": "docs/contracts/interop-revision-lock.example.json",

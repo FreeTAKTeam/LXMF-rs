@@ -52,6 +52,7 @@ Legend: `required`, `optional`, `planned`, `n/a`.
 - Schema and fixture drift: `cargo run -p xtask -- interop-artifacts`
 - Golden corpus replay: `cargo run -p xtask -- interop-corpus-check`
 - Semantic drift classification: `cargo run -p xtask -- interop-drift-check`
+- Delivery workflow E2E suite: `cargo run -p xtask -- e2e-compatibility`
 - SDK conformance coverage: `cargo run -p xtask -- sdk-conformance`
 
 ## Change Control

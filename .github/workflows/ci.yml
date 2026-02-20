@@ -115,6 +115,14 @@ jobs:
       - name: Interop artifacts manifest
         run: cargo xtask ci --stage interop-artifacts
 
+  e2e-compatibility:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: E2E compatibility workflows
+        run: cargo xtask ci --stage e2e-compatibility
+
   sdk-conformance:
     runs-on: ubuntu-latest
     steps:

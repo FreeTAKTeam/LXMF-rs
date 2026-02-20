@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use rns_rpc::e2e_harness::{
     build_daemon_args, build_http_post, build_rpc_frame, build_send_params,
     build_tcp_client_config, is_ready_line, parse_http_response_body, parse_rpc_frame,
@@ -34,7 +34,17 @@ enum Command {
         timeout_secs: u64,
         #[arg(long, default_value_t = false)]
         keep: bool,
+        #[arg(long = "mode", value_enum)]
+        modes: Vec<DeliveryMode>,
     },
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum, Hash)]
+enum DeliveryMode {
+    Direct,
+    Opportunistic,
+    Propagated,
+    Paper,
 }
 
 fn main() {
@@ -47,13 +57,19 @@ fn main() {
 
 fn run(cli: Cli) -> io::Result<()> {
     match cli.command {
-        Command::E2e { a_port, b_port, timeout_secs, keep } => {
-            run_e2e(a_port, b_port, timeout_secs, keep)
+        Command::E2e { a_port, b_port, timeout_secs, keep, modes } => {
+            run_e2e(a_port, b_port, timeout_secs, keep, modes)
         }
     }
 }
 
-fn run_e2e(a_port: u16, b_port: u16, timeout_secs: u64, keep: bool) -> io::Result<()> {
+fn run_e2e(
+    a_port: u16,
+    b_port: u16,
+    timeout_secs: u64,
+    keep: bool,
+    modes: Vec<DeliveryMode>,
+) -> io::Result<()> {
     let timeout = Duration::from_secs(timeout_secs);
     let mut reserved_ports = HashSet::new();
     let a_rpc_listener = reserve_port(a_port, &reserved_ports)?;
@@ -140,46 +156,258 @@ fn run_e2e(a_port: u16, b_port: u16, timeout_secs: u64, keep: bool) -> io::Resul
     };
     req_id = req_id.wrapping_add(1);
 
-    let outbound_id = format!("e2e-outbound-{}", timestamp_millis());
-    let reply_id = format!("e2e-reply-{}", timestamp_millis());
-    let content = "hello from rnx e2e";
-    let reply_content = "reply from rnx e2e";
-
-    let send_params =
-        build_send_params(&outbound_id, &a_destination_for_b, &b_destination_for_a, content);
-    rpc_call(&a_rpc, req_id, "send_message_v2", Some(send_params))?;
-    req_id = req_id.wrapping_add(1);
-    let found = poll_for_inbound_content(&b_rpc, content, timeout, req_id)?;
-    if !found {
-        cleanup_child(&mut a_child, keep);
-        cleanup_child(&mut b_child, keep);
-        return Err(io::Error::new(
-            io::ErrorKind::TimedOut,
-            "message from daemon A to daemon B not delivered",
-        ));
-    }
-    req_id = req_id.wrapping_add(1);
-
-    let reply_params =
-        build_send_params(&reply_id, &b_destination_for_a, &a_destination_for_b, reply_content);
-    rpc_call(&b_rpc, req_id, "send_message_v2", Some(reply_params))?;
-    req_id = req_id.wrapping_add(1);
-    let reply_found = poll_for_inbound_content(&a_rpc, reply_content, timeout, req_id)?;
-    if !reply_found {
-        cleanup_child(&mut a_child, keep);
-        cleanup_child(&mut b_child, keep);
-        return Err(io::Error::new(
-            io::ErrorKind::TimedOut,
-            "message from daemon B to daemon A not delivered",
-        ));
+    let selected_modes = selected_delivery_modes(&modes);
+    for mode in selected_modes {
+        match mode {
+            DeliveryMode::Direct | DeliveryMode::Opportunistic | DeliveryMode::Propagated => {
+                run_delivery_mode(
+                    mode,
+                    &a_rpc,
+                    &b_rpc,
+                    &a_destination_for_b,
+                    &b_destination_for_a,
+                    timeout,
+                    &mut req_id,
+                )?;
+                run_delivery_mode(
+                    mode,
+                    &b_rpc,
+                    &a_rpc,
+                    &b_destination_for_a,
+                    &a_destination_for_b,
+                    timeout,
+                    &mut req_id,
+                )?;
+            }
+            DeliveryMode::Paper => {
+                run_paper_workflow(
+                    &a_rpc,
+                    &b_rpc,
+                    &a_destination_for_b,
+                    &b_destination_for_a,
+                    timeout,
+                    &mut req_id,
+                )?;
+            }
+        }
     }
 
     cleanup_child(&mut a_child, keep);
     cleanup_child(&mut b_child, keep);
     println!("E2E ok: peer discovery A<->B succeeded");
-    println!("E2E ok: message {} delivered A->B", outbound_id);
-    println!("E2E ok: message {} delivered B->A", reply_id);
+    println!("E2E ok: compatibility delivery modes completed");
     Ok(())
+}
+
+fn selected_delivery_modes(modes: &[DeliveryMode]) -> Vec<DeliveryMode> {
+    if modes.is_empty() {
+        return vec![
+            DeliveryMode::Direct,
+            DeliveryMode::Opportunistic,
+            DeliveryMode::Propagated,
+            DeliveryMode::Paper,
+        ];
+    }
+    let mut selected = Vec::new();
+    let mut seen = HashSet::new();
+    for mode in modes {
+        if seen.insert(*mode) {
+            selected.push(*mode);
+        }
+    }
+    selected
+}
+
+fn mode_label(mode: DeliveryMode) -> &'static str {
+    match mode {
+        DeliveryMode::Direct => "direct",
+        DeliveryMode::Opportunistic => "opportunistic",
+        DeliveryMode::Propagated => "propagated",
+        DeliveryMode::Paper => "paper",
+    }
+}
+
+fn build_mode_send_params(
+    message_id: &str,
+    source: &str,
+    destination: &str,
+    content: &str,
+    mode: DeliveryMode,
+) -> serde_json::Value {
+    let mut params = build_send_params(message_id, source, destination, content);
+    if let Some(object) = params.as_object_mut() {
+        object.insert("method".to_string(), serde_json::json!(mode_label(mode)));
+        if matches!(mode, DeliveryMode::Propagated) {
+            object.insert("include_ticket".to_string(), serde_json::json!(true));
+            object.insert("try_propagation_on_fail".to_string(), serde_json::json!(true));
+            object.insert("stamp_cost".to_string(), serde_json::json!(8));
+        }
+    }
+    params
+}
+
+fn run_delivery_mode(
+    mode: DeliveryMode,
+    sender_rpc: &str,
+    receiver_rpc: &str,
+    sender_destination: &str,
+    receiver_destination: &str,
+    timeout: Duration,
+    request_id: &mut u64,
+) -> io::Result<()> {
+    let label = mode_label(mode);
+    let message_id = format!("e2e-{}-{}", label, timestamp_millis());
+    let content = format!("hello from rnx e2e ({label})");
+    let params = build_mode_send_params(
+        &message_id,
+        sender_destination,
+        receiver_destination,
+        &content,
+        mode,
+    );
+    let response = rpc_call(sender_rpc, *request_id, "send_message_v2", Some(params))?;
+    ensure_rpc_ok(response, format!("send_message_v2 ({label})").as_str())?;
+    *request_id = (*request_id).wrapping_add(1);
+
+    let delivered = poll_for_inbound_content(receiver_rpc, &content, timeout, *request_id)?;
+    if !delivered {
+        return Err(io::Error::new(
+            io::ErrorKind::TimedOut,
+            format!("delivery mode '{label}' did not deliver message '{message_id}'"),
+        ));
+    }
+    *request_id = (*request_id).wrapping_add(1);
+
+    let trace_contains_status =
+        poll_for_delivery_trace_status(sender_rpc, &message_id, label, timeout, *request_id)?;
+    if !trace_contains_status {
+        return Err(io::Error::new(
+            io::ErrorKind::TimedOut,
+            format!("delivery trace for '{message_id}' did not contain mode '{label}'"),
+        ));
+    }
+    *request_id = (*request_id).wrapping_add(1);
+
+    println!("E2E ok: mode={} message {} delivered", label, message_id);
+    Ok(())
+}
+
+fn run_paper_workflow(
+    sender_rpc: &str,
+    receiver_rpc: &str,
+    sender_destination: &str,
+    receiver_destination: &str,
+    timeout: Duration,
+    request_id: &mut u64,
+) -> io::Result<()> {
+    let message_id = format!("e2e-paper-{}", timestamp_millis());
+    let content = "hello from rnx e2e (paper)";
+    let send_params = build_mode_send_params(
+        &message_id,
+        sender_destination,
+        receiver_destination,
+        content,
+        DeliveryMode::Paper,
+    );
+    let response = rpc_call(sender_rpc, *request_id, "send_message_v2", Some(send_params))?;
+    ensure_rpc_ok(response, "send_message_v2 (paper)")?;
+    *request_id = (*request_id).wrapping_add(1);
+
+    let delivered = poll_for_inbound_content(receiver_rpc, content, timeout, *request_id)?;
+    if !delivered {
+        return Err(io::Error::new(
+            io::ErrorKind::TimedOut,
+            "paper workflow did not deliver baseline message",
+        ));
+    }
+    *request_id = (*request_id).wrapping_add(1);
+
+    let paper_encode_response = rpc_call(
+        sender_rpc,
+        *request_id,
+        "sdk_paper_encode_v2",
+        Some(serde_json::json!({ "message_id": message_id })),
+    )?;
+    let paper_encode_result = ensure_rpc_ok(paper_encode_response, "sdk_paper_encode_v2")?
+        .ok_or_else(|| io::Error::other("sdk_paper_encode_v2 missing result body"))?;
+    let uri = paper_encode_result
+        .get("envelope")
+        .and_then(|value| value.get("uri"))
+        .and_then(|value| value.as_str())
+        .ok_or_else(|| io::Error::other("sdk_paper_encode_v2 missing envelope uri"))?
+        .to_string();
+    *request_id = (*request_id).wrapping_add(1);
+
+    let paper_decode_response = rpc_call(
+        receiver_rpc,
+        *request_id,
+        "sdk_paper_decode_v2",
+        Some(serde_json::json!({ "uri": uri })),
+    )?;
+    let paper_decode_result = ensure_rpc_ok(paper_decode_response, "sdk_paper_decode_v2")?
+        .ok_or_else(|| io::Error::other("sdk_paper_decode_v2 missing result body"))?;
+    let accepted =
+        paper_decode_result.get("accepted").and_then(|value| value.as_bool()).unwrap_or(false);
+    if !accepted {
+        return Err(io::Error::other("sdk_paper_decode_v2 returned accepted=false"));
+    }
+    *request_id = (*request_id).wrapping_add(1);
+
+    println!("E2E ok: mode=paper message {} encoded/decoded", message_id);
+    Ok(())
+}
+
+fn poll_for_delivery_trace_status(
+    rpc: &str,
+    message_id: &str,
+    expected_mode: &str,
+    timeout: Duration,
+    mut request_id: u64,
+) -> io::Result<bool> {
+    let deadline = Instant::now() + timeout;
+    let expected_status = format!("sent: {expected_mode}");
+    loop {
+        let response = rpc_call(
+            rpc,
+            request_id,
+            "message_delivery_trace",
+            Some(serde_json::json!({ "message_id": message_id })),
+        )?;
+        request_id = request_id.wrapping_add(1);
+        let result = ensure_rpc_ok(response, "message_delivery_trace")?;
+        let has_expected_status = result
+            .and_then(|value| value.get("transitions").cloned())
+            .and_then(|value| value.as_array().cloned())
+            .map(|transitions| {
+                transitions.iter().any(|transition| {
+                    transition
+                        .get("status")
+                        .and_then(|value| value.as_str())
+                        .is_some_and(|status| status.contains(&expected_status))
+                })
+            })
+            .unwrap_or(false);
+        if has_expected_status {
+            return Ok(true);
+        }
+        if Instant::now() >= deadline {
+            return Ok(false);
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    }
+}
+
+fn ensure_rpc_ok(
+    response: rns_rpc::RpcResponse,
+    context: &str,
+) -> io::Result<Option<serde_json::Value>> {
+    if let Some(error) = response.error {
+        return Err(io::Error::other(format!(
+            "{} failed: {} ({})",
+            context, error.message, error.code
+        )));
+    }
+    Ok(response.result)
 }
 
 fn spawn_daemon(rpc: &str, db_path: &Path, transport: &str, config: &Path) -> io::Result<Child> {

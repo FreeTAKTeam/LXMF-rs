@@ -45,6 +45,7 @@ enum XtaskCommand {
         #[arg(long)]
         update: bool,
     },
+    E2eCompatibility,
     SdkProfileBuild,
     SdkExamplesCheck,
     SdkApiBreak,
@@ -70,6 +71,7 @@ enum CiStage {
     InteropMatrixCheck,
     InteropCorpusCheck,
     InteropDriftCheck,
+    E2eCompatibility,
     SdkProfileBuild,
     SdkExamplesCheck,
     SdkApiBreak,
@@ -98,6 +100,7 @@ fn main() -> Result<()> {
         XtaskCommand::InteropMatrixCheck => run_interop_matrix_check(),
         XtaskCommand::InteropCorpusCheck => run_interop_corpus_check(),
         XtaskCommand::InteropDriftCheck { update } => run_interop_drift_check(update),
+        XtaskCommand::E2eCompatibility => run_e2e_compatibility(),
         XtaskCommand::SdkProfileBuild => run_sdk_profile_build(),
         XtaskCommand::SdkExamplesCheck => run_sdk_examples_check(),
         XtaskCommand::SdkApiBreak => run_sdk_api_break(),
@@ -134,6 +137,7 @@ fn run_ci(stage: Option<CiStage>) -> Result<()> {
     run_interop_matrix_check()?;
     run_interop_corpus_check()?;
     run_interop_drift_check(false)?;
+    run_e2e_compatibility()?;
     run_sdk_conformance()?;
     run_sdk_profile_build()?;
     run_sdk_examples_check()?;
@@ -166,6 +170,7 @@ fn run_ci_stage(stage: CiStage) -> Result<()> {
         CiStage::InteropMatrixCheck => run_interop_matrix_check(),
         CiStage::InteropCorpusCheck => run_interop_corpus_check(),
         CiStage::InteropDriftCheck => run_interop_drift_check(false),
+        CiStage::E2eCompatibility => run_e2e_compatibility(),
         CiStage::SdkProfileBuild => run_sdk_profile_build(),
         CiStage::SdkExamplesCheck => run_sdk_examples_check(),
         CiStage::SdkApiBreak => run_sdk_api_break(),
@@ -724,6 +729,10 @@ fn run_interop_matrix_check() -> Result<()> {
 
 fn run_interop_corpus_check() -> Result<()> {
     run("cargo", &["test", "-p", "test-support", "sdk_interop_corpus", "--", "--nocapture"])
+}
+
+fn run_e2e_compatibility() -> Result<()> {
+    run("cargo", &["run", "-p", "rns-tools", "--bin", "rnx", "--", "e2e", "--timeout-secs", "20"])
 }
 
 fn run_unused_deps() -> Result<()> {
