@@ -11,10 +11,10 @@ publish = false
 name = "reticulum_daemon"
 
 [dependencies]
-rns_transport = { package = "rns-transport", path = "../../libs/rns-transport" }
-rns_rpc = { package = "rns-rpc", path = "../../libs/rns-rpc" }
-lxmf = { package = "lxmf-core", path = "../../libs/lxmf-core", default-features = false }
-rns_core = { package = "rns-core", path = "../../libs/rns-core" }
+rns_transport = { package = "rns-transport", path = "../../libs/rns-transport", version = "0.1.0" }
+rns_rpc = { package = "rns-rpc", path = "../../libs/rns-rpc", version = "0.1.0" }
+lxmf = { package = "lxmf-core", path = "../../libs/lxmf-core", version = "0.1.0", default-features = false }
+rns_core = { package = "rns-core", path = "../../libs/rns-core", version = "0.1.0" }
 base64 = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 rand_core = { workspace = true, features = ["getrandom"] }

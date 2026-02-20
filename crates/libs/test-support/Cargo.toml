@@ -12,6 +12,6 @@ workspace = true
 
 [dev-dependencies]
 jsonschema = { version = "0.18.0", features = ["draft202012"] }
-lxmf-sdk = { path = "../lxmf-sdk", features = ["rpc-backend", "std", "sdk-async"] }
-rns-rpc = { path = "../rns-rpc" }
+lxmf-sdk = { workspace = true, features = ["rpc-backend", "std", "sdk-async"] }
+rns-rpc.workspace = true
 serde_json.workspace = true

@@ -34,6 +34,11 @@ repository = "https://github.com/FreeTAKTeam/LXMF-rs"
 [workspace.dependencies]
 anyhow = "1"
 clap = { version = "4.5.29", features = ["derive"] }
+lxmf-core = { version = "0.1.0", path = "crates/libs/lxmf-core" }
+lxmf-sdk = { version = "0.1.0", path = "crates/libs/lxmf-sdk" }
+rns-core = { version = "0.1.0", path = "crates/libs/rns-core" }
+rns-rpc = { version = "0.1.0", path = "crates/libs/rns-rpc" }
+rns-transport = { version = "0.1.0", path = "crates/libs/rns-transport" }
 aes = "0.8.4"
 base64 = "0.22"
 cbc = "0.1.2"

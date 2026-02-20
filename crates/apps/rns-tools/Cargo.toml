@@ -11,7 +11,7 @@ publish = false
 clap.workspace = true
 tempfile.workspace = true
 serde_json.workspace = true
-rns_rpc = { package = "rns-rpc", path = "../../libs/rns-rpc" }
+rns_rpc = { package = "rns-rpc", path = "../../libs/rns-rpc", version = "0.1.0" }
 
 [lints]
 workspace = true

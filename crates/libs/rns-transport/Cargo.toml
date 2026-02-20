@@ -28,7 +28,7 @@ hex.workspace = true
 tokio = { workspace = true, features = ["full"] }
 tokio-util = { workspace = true }
 x25519-dalek = { workspace = true, features = ["static_secrets"] }
-rns-core = { path = "../rns-core", package = "rns-core" }
+rns-core.workspace = true
 
 [features]
 default = []
