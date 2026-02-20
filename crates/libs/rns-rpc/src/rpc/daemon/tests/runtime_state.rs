@@ -272,6 +272,18 @@
             "SDK_VALIDATION_INVALID_ARGUMENT"
         );
 
+        let unknown_event_stream_key = daemon
+            .handle_rpc(rpc_request(
+                4351,
+                "sdk_configure_v2",
+                json!({
+                    "expected_revision": 0,
+                    "patch": { "event_stream": { "unknown_limit": 10 } }
+                }),
+            ))
+            .expect("configure");
+        assert_eq!(unknown_event_stream_key.error.expect("error").code, "SDK_CONFIG_UNKNOWN_KEY");
+
         let inconsistent_event_and_batch = daemon
             .handle_rpc(rpc_request(
                 436,

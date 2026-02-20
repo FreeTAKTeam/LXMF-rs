@@ -72,6 +72,22 @@ impl RpcDaemon {
             }
         }
         if let Some(event_stream) = config.get("event_stream").and_then(JsonValue::as_object) {
+            const ALLOWED_EVENT_STREAM_KEYS: &[&str] = &[
+                "max_poll_events",
+                "max_event_bytes",
+                "max_batch_bytes",
+                "max_extension_keys",
+            ];
+            if let Some(key) = event_stream
+                .keys()
+                .find(|key| !ALLOWED_EVENT_STREAM_KEYS.contains(&key.as_str()))
+            {
+                return Err(Self::sdk_config_error(
+                    "SDK_CONFIG_UNKNOWN_KEY",
+                    &format!("unknown event_stream key '{key}'"),
+                ));
+            }
+
             let parse_u64_field = |key: &str| -> Result<Option<u64>, RpcError> {
                 match event_stream.get(key) {
                     None | Some(JsonValue::Null) => Ok(None),
