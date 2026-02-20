@@ -2,12 +2,15 @@ use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 const INTEROP_BASELINE_PATH: &str = "docs/contracts/baselines/interop-artifacts-manifest.json";
+const INTEROP_DRIFT_BASELINE_PATH: &str = "docs/contracts/baselines/interop-drift-baseline.json";
 const INTEROP_MATRIX_PATH: &str = "docs/contracts/compatibility-matrix.md";
+const INTEROP_CORPUS_PATH: &str = "docs/fixtures/interop/v1/golden-corpus.json";
 const RPC_CONTRACT_PATH: &str = "docs/contracts/rpc-contract.md";
 const PAYLOAD_CONTRACT_PATH: &str = "docs/contracts/payload-contract.md";
 
@@ -38,6 +41,10 @@ enum XtaskCommand {
     },
     InteropMatrixCheck,
     InteropCorpusCheck,
+    InteropDriftCheck {
+        #[arg(long)]
+        update: bool,
+    },
     SdkProfileBuild,
     SdkExamplesCheck,
     SdkApiBreak,
@@ -62,6 +69,7 @@ enum CiStage {
     InteropArtifacts,
     InteropMatrixCheck,
     InteropCorpusCheck,
+    InteropDriftCheck,
     SdkProfileBuild,
     SdkExamplesCheck,
     SdkApiBreak,
@@ -89,6 +97,7 @@ fn main() -> Result<()> {
         XtaskCommand::InteropArtifacts { update } => run_interop_artifacts(update),
         XtaskCommand::InteropMatrixCheck => run_interop_matrix_check(),
         XtaskCommand::InteropCorpusCheck => run_interop_corpus_check(),
+        XtaskCommand::InteropDriftCheck { update } => run_interop_drift_check(update),
         XtaskCommand::SdkProfileBuild => run_sdk_profile_build(),
         XtaskCommand::SdkExamplesCheck => run_sdk_examples_check(),
         XtaskCommand::SdkApiBreak => run_sdk_api_break(),
@@ -124,6 +133,7 @@ fn run_ci(stage: Option<CiStage>) -> Result<()> {
     run_interop_artifacts(false)?;
     run_interop_matrix_check()?;
     run_interop_corpus_check()?;
+    run_interop_drift_check(false)?;
     run_sdk_conformance()?;
     run_sdk_profile_build()?;
     run_sdk_examples_check()?;
@@ -155,6 +165,7 @@ fn run_ci_stage(stage: CiStage) -> Result<()> {
         CiStage::InteropArtifacts => run_interop_artifacts(false),
         CiStage::InteropMatrixCheck => run_interop_matrix_check(),
         CiStage::InteropCorpusCheck => run_interop_corpus_check(),
+        CiStage::InteropDriftCheck => run_interop_drift_check(false),
         CiStage::SdkProfileBuild => run_sdk_profile_build(),
         CiStage::SdkExamplesCheck => run_sdk_examples_check(),
         CiStage::SdkApiBreak => run_sdk_api_break(),
@@ -172,6 +183,7 @@ fn run_release_check() -> Result<()> {
     run_ci(None)?;
     run_interop_matrix_check()?;
     run_interop_corpus_check()?;
+    run_interop_drift_check(false)?;
     run_sdk_api_break()?;
     run("cargo", &["deny", "check"])?;
     run("cargo", &["audit"])?;
@@ -219,6 +231,54 @@ struct InteropArtifactEntry {
     sha256: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct InteropDriftBaseline {
+    version: u32,
+    corpus_version: u32,
+    clients: BTreeMap<String, InteropClientSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct InteropClientSummary {
+    release_track: String,
+    entry_ids: Vec<String>,
+    slices: Vec<String>,
+    rpc_methods: Vec<String>,
+    event_types: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct InteropCorpus {
+    version: u32,
+    entries: Vec<InteropCorpusEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+struct InteropCorpusEntry {
+    id: String,
+    client: String,
+    release_track: String,
+    slices: Vec<String>,
+    rpc_send_request: InteropRpcRequest,
+    event_payload: InteropEventPayload,
+}
+
+#[derive(Debug, Deserialize)]
+struct InteropRpcRequest {
+    method: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct InteropEventPayload {
+    event_type: String,
+}
+
+#[derive(Debug, Default)]
+struct InteropDriftClassification {
+    breaking: Vec<String>,
+    additive: Vec<String>,
+}
+
 fn run_interop_artifacts(update: bool) -> Result<()> {
     let manifest = build_interop_artifacts_manifest()?;
     if update {
@@ -242,6 +302,163 @@ fn run_interop_artifacts(update: bool) -> Result<()> {
         );
     }
     Ok(())
+}
+
+fn run_interop_drift_check(update: bool) -> Result<()> {
+    let current = build_interop_drift_baseline()?;
+    if update {
+        let serialized =
+            serde_json::to_string_pretty(&current).context("serialize interop drift baseline")?;
+        fs::write(INTEROP_DRIFT_BASELINE_PATH, format!("{serialized}\n"))
+            .with_context(|| format!("write {INTEROP_DRIFT_BASELINE_PATH}"))?;
+        return Ok(());
+    }
+
+    let baseline_raw = fs::read_to_string(INTEROP_DRIFT_BASELINE_PATH).with_context(|| {
+        format!(
+            "missing interop drift baseline at {INTEROP_DRIFT_BASELINE_PATH}; run `cargo run -p xtask -- interop-drift-check --update`"
+        )
+    })?;
+    let baseline: InteropDriftBaseline =
+        serde_json::from_str(&baseline_raw).context("parse interop drift baseline")?;
+    let classification = classify_interop_drift(&baseline, &current);
+
+    for note in &classification.additive {
+        println!("interop drift additive: {note}");
+    }
+    if !classification.breaking.is_empty() {
+        let details = classification.breaking.join("; ");
+        bail!("interop semantic drift detected (breaking): {details}");
+    }
+    Ok(())
+}
+
+fn build_interop_drift_baseline() -> Result<InteropDriftBaseline> {
+    let corpus_raw = fs::read_to_string(INTEROP_CORPUS_PATH)
+        .with_context(|| format!("read {INTEROP_CORPUS_PATH}"))?;
+    let corpus: InteropCorpus =
+        serde_json::from_str(&corpus_raw).context("parse interop golden corpus")?;
+
+    #[derive(Default)]
+    struct ClientAccumulator {
+        release_track: String,
+        entry_ids: BTreeSet<String>,
+        slices: BTreeSet<String>,
+        rpc_methods: BTreeSet<String>,
+        event_types: BTreeSet<String>,
+    }
+
+    let mut by_client: BTreeMap<String, ClientAccumulator> = BTreeMap::new();
+    for entry in corpus.entries {
+        let slot = by_client.entry(entry.client.clone()).or_default();
+        if slot.release_track.is_empty() {
+            slot.release_track = entry.release_track.clone();
+        }
+        slot.entry_ids.insert(entry.id);
+        slot.rpc_methods.insert(entry.rpc_send_request.method);
+        slot.event_types.insert(entry.event_payload.event_type);
+        for slice in entry.slices {
+            slot.slices.insert(slice);
+        }
+    }
+
+    let clients = by_client
+        .into_iter()
+        .map(|(client, acc)| {
+            (
+                client,
+                InteropClientSummary {
+                    release_track: acc.release_track,
+                    entry_ids: acc.entry_ids.into_iter().collect(),
+                    slices: acc.slices.into_iter().collect(),
+                    rpc_methods: acc.rpc_methods.into_iter().collect(),
+                    event_types: acc.event_types.into_iter().collect(),
+                },
+            )
+        })
+        .collect();
+
+    Ok(InteropDriftBaseline { version: 1, corpus_version: corpus.version, clients })
+}
+
+fn classify_interop_drift(
+    baseline: &InteropDriftBaseline,
+    current: &InteropDriftBaseline,
+) -> InteropDriftClassification {
+    let mut drift = InteropDriftClassification::default();
+
+    for (client, baseline_summary) in &baseline.clients {
+        let Some(current_summary) = current.clients.get(client) else {
+            drift.breaking.push(format!("client '{client}' removed from corpus"));
+            continue;
+        };
+
+        if baseline_summary.release_track != current_summary.release_track {
+            drift.breaking.push(format!(
+                "client '{client}' release_track changed '{}' -> '{}'",
+                baseline_summary.release_track, current_summary.release_track
+            ));
+        }
+
+        classify_vector_drift(
+            &mut drift,
+            client,
+            "entry_ids",
+            &baseline_summary.entry_ids,
+            &current_summary.entry_ids,
+        );
+        classify_vector_drift(
+            &mut drift,
+            client,
+            "slices",
+            &baseline_summary.slices,
+            &current_summary.slices,
+        );
+        classify_vector_drift(
+            &mut drift,
+            client,
+            "rpc_methods",
+            &baseline_summary.rpc_methods,
+            &current_summary.rpc_methods,
+        );
+        classify_vector_drift(
+            &mut drift,
+            client,
+            "event_types",
+            &baseline_summary.event_types,
+            &current_summary.event_types,
+        );
+    }
+
+    for client in current.clients.keys() {
+        if !baseline.clients.contains_key(client) {
+            drift.additive.push(format!("client '{client}' added to corpus"));
+        }
+    }
+
+    drift
+}
+
+fn classify_vector_drift(
+    drift: &mut InteropDriftClassification,
+    client: &str,
+    field: &str,
+    baseline: &[String],
+    current: &[String],
+) {
+    let baseline_set = baseline.iter().cloned().collect::<BTreeSet<_>>();
+    let current_set = current.iter().cloned().collect::<BTreeSet<_>>();
+
+    for removed in baseline_set.difference(&current_set) {
+        drift.breaking.push(format!(
+            "client '{client}' removed {field} value '{removed}' from interop baseline"
+        ));
+    }
+    for added in current_set.difference(&baseline_set) {
+        drift
+            .additive
+            .push(format!("client '{client}' added {field} value '{added}' to interop corpus"));
+    }
 }
 
 fn build_interop_artifacts_manifest() -> Result<InteropArtifactsManifest> {

@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "corpus_version": 1,
+  "clients": {
+    "columba": {
+      "release_track": "pinned-interop-baseline",
+      "entry_ids": [
+        "columba.send.delivery.v1"
+      ],
+      "slices": [
+        "auth_token_v1",
+        "delivery_modes_v1",
+        "event_cursor_v2",
+        "payload_v2",
+        "rpc_v2"
+      ],
+      "rpc_methods": [
+        "sdk_send_v2"
+      ],
+      "event_types": [
+        "receipt"
+      ]
+    },
+    "rch": {
+      "release_track": "pinned-interop-baseline",
+      "entry_ids": [
+        "rch.send.announce.v1"
+      ],
+      "slices": [
+        "auth_token_v1",
+        "delivery_modes_v1",
+        "event_cursor_v2",
+        "payload_v2",
+        "rpc_v2"
+      ],
+      "rpc_methods": [
+        "sdk_send_v2"
+      ],
+      "event_types": [
+        "announce_received"
+      ]
+    },
+    "sideband": {
+      "release_track": "pinned-interop-baseline",
+      "entry_ids": [
+        "sideband.send.basic.v1"
+      ],
+      "slices": [
+        "auth_token_v1",
+        "delivery_modes_v1",
+        "event_cursor_v2",
+        "payload_v2",
+        "rpc_v2"
+      ],
+      "rpc_methods": [
+        "sdk_send_v2"
+      ],
+      "event_types": [
+        "receipt"
+      ]
+    }
+  }
+}

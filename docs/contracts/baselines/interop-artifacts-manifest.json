@@ -2,6 +2,11 @@
   "version": 1,
   "files": [
     {
+      "path": "docs/contracts/baselines/interop-drift-baseline.json",
+      "bytes": 1229,
+      "sha256": "0f8302220b996fc3fa4c9932a0c633f9327dbd815f7f35f90a645c83000a28b9"
+    },
+    {
       "path": "docs/contracts/baselines/lxmf-sdk-public-api.txt",
       "bytes": 162214,
       "sha256": "dec343e925df5c0fed3d900102967f84d4d0cbeddeeafd5ab8cf6ef9903a99e1"
@@ -13,8 +18,8 @@
     },
     {
       "path": "docs/contracts/compatibility-matrix.md",
-      "bytes": 3490,
-      "sha256": "aea8a559b6f8735ee9168663bb124fb8a463ac6945fd0cea6fd62057697541e7"
+      "bytes": 3567,
+      "sha256": "276e77e930019ea8410e335e64190525d0562de0d38e3af227ef253754afed90"
     },
     {
       "path": "docs/contracts/interop-revision-lock.example.json",
