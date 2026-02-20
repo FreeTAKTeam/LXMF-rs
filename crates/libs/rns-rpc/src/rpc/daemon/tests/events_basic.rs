@@ -441,3 +441,148 @@
             "drop_oldest policy should retain newest event"
         );
     }
+
+    #[test]
+    fn sdk_property_cursor_monotonicity_randomized_poll_batches() {
+        let daemon = RpcDaemon::test_instance();
+        let total_events = 240_u64;
+        for idx in 0..total_events {
+            daemon.emit_event(RpcEvent {
+                event_type: "property_cursor".to_string(),
+                payload: json!({ "idx": idx }),
+            });
+        }
+
+        let mut cursor: Option<String> = None;
+        let mut last_seq = 0_u64;
+        let mut seen = std::collections::BTreeSet::new();
+        let mut seed = 0x9E37_79B9_7F4A_7C15_u64;
+
+        for iteration in 0..512_u64 {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+            let max = ((seed % 11) + 1) as usize;
+            let response = daemon
+                .handle_rpc(rpc_request(
+                    1_000 + iteration,
+                    "sdk_poll_events_v2",
+                    json!({
+                        "cursor": cursor.clone(),
+                        "max": max,
+                    }),
+                ))
+                .expect("poll");
+            assert!(response.error.is_none(), "poll should remain stable for randomized batches");
+            let result = response.result.expect("result");
+            let events = result["events"].as_array().expect("events array");
+            for event in events {
+                let seq = event["seq_no"].as_u64().expect("seq_no");
+                assert!(seq > last_seq, "event sequence must remain strictly increasing");
+                assert!(seen.insert(seq), "sequence IDs must not repeat");
+                last_seq = seq;
+            }
+            cursor = result["next_cursor"].as_str().map(ToOwned::to_owned);
+            if seen.len() >= total_events as usize {
+                break;
+            }
+        }
+
+        assert_eq!(
+            seen.len(),
+            total_events as usize,
+            "randomized cursor polling should read every emitted event exactly once"
+        );
+    }
+
+    #[test]
+    fn sdk_property_stream_gap_reports_consistent_drop_metadata() {
+        let daemon = RpcDaemon::test_instance();
+        let configure = daemon
+            .handle_rpc(rpc_request(
+                1_100,
+                "sdk_configure_v2",
+                json!({
+                    "expected_revision": 0,
+                    "patch": {
+                        "overflow_policy": "drop_oldest",
+                        "event_stream": { "max_poll_events": 4096 }
+                    }
+                }),
+            ))
+            .expect("configure");
+        assert!(configure.error.is_none());
+
+        for idx in 0..(SDK_EVENT_LOG_CAPACITY + 64) {
+            daemon.emit_event(RpcEvent {
+                event_type: "property_gap".to_string(),
+                payload: json!({ "idx": idx }),
+            });
+        }
+
+        let first = daemon
+            .handle_rpc(rpc_request(
+                1_101,
+                "sdk_poll_events_v2",
+                json!({
+                    "cursor": null,
+                    "max": 32
+                }),
+            ))
+            .expect("first poll");
+        assert!(first.error.is_none(), "first poll should succeed");
+        let first_result = first.result.expect("result");
+        let dropped_count = first_result["dropped_count"].as_u64().unwrap_or(0);
+        assert!(dropped_count > 0, "overflow run should report dropped_count");
+
+        let events = first_result["events"].as_array().expect("events array");
+        let gap_event = events
+            .iter()
+            .find(|event| event.get("event_type").and_then(JsonValue::as_str) == Some("StreamGap"))
+            .expect("first poll should include StreamGap marker");
+        let gap_payload = gap_event["payload"].as_object().expect("gap payload object");
+        let expected_seq_no =
+            gap_payload.get("expected_seq_no").and_then(JsonValue::as_u64).expect("expected");
+        let observed_seq_no =
+            gap_payload.get("observed_seq_no").and_then(JsonValue::as_u64).expect("observed");
+        let payload_dropped =
+            gap_payload.get("dropped_count").and_then(JsonValue::as_u64).expect("dropped");
+        assert_eq!(payload_dropped, dropped_count, "gap payload must match top-level dropped_count");
+        assert_eq!(
+            expected_seq_no.saturating_add(payload_dropped),
+            observed_seq_no,
+            "gap metadata invariant expected + dropped == observed must hold"
+        );
+
+        let mut last_seq = 0_u64;
+        for event in events {
+            let seq = event["seq_no"].as_u64().expect("seq");
+            assert!(seq > last_seq, "first poll sequence should be strictly increasing");
+            last_seq = seq;
+        }
+
+        let follow_cursor = first_result["next_cursor"].as_str().expect("cursor").to_string();
+        let follow = daemon
+            .handle_rpc(rpc_request(
+                1_102,
+                "sdk_poll_events_v2",
+                json!({
+                    "cursor": follow_cursor,
+                    "max": 16
+                }),
+            ))
+            .expect("follow poll");
+        assert!(follow.error.is_none(), "follow-up poll should succeed");
+        let follow_result = follow.result.expect("result");
+        assert_eq!(
+            follow_result["dropped_count"].as_u64().unwrap_or(u64::MAX),
+            0,
+            "cursored polls must not re-report dropped_count"
+        );
+        assert!(
+            follow_result["events"].as_array().is_some_and(|rows| {
+                rows.iter().all(|event| {
+                    event.get("event_type").and_then(JsonValue::as_str) != Some("StreamGap")
+                })
+            }),
+            "cursored polls must not inject StreamGap events"
+        );
+    }

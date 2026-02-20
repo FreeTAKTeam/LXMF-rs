@@ -374,17 +374,15 @@ impl RpcDaemon {
         let oldest_seq = log_guard.front().map(|entry| entry.seq_no);
         let latest_seq = log_guard.back().map(|entry| entry.seq_no);
 
-        if let (Some(cursor_seq), Some(oldest_seq)) = (cursor_seq, oldest_seq) {
-            if cursor_seq.saturating_add(1) < oldest_seq {
-                let mut degraded =
-                    self.sdk_stream_degraded.lock().expect("sdk_stream_degraded mutex poisoned");
-                *degraded = true;
-                return Ok(self.sdk_error_response(
-                    request.id,
-                    "SDK_RUNTIME_CURSOR_EXPIRED",
-                    "cursor is outside retained event window",
-                ));
-            }
+        if cursor_is_expired(cursor_seq, oldest_seq) {
+            let mut degraded =
+                self.sdk_stream_degraded.lock().expect("sdk_stream_degraded mutex poisoned");
+            *degraded = true;
+            return Ok(self.sdk_error_response(
+                request.id,
+                "SDK_RUNTIME_CURSOR_EXPIRED",
+                "cursor is outside retained event window",
+            ));
         }
 
         let start_seq = cursor_seq.map(|value| value.saturating_add(1)).or(oldest_seq).unwrap_or(0);
@@ -428,28 +426,28 @@ impl RpcDaemon {
                 Ok(())
             };
 
-        if parsed.cursor.is_none() && dropped_count > 0 && event_rows.len() < parsed.max {
-            let observed_seq_no = oldest_seq.unwrap_or(0);
-            let expected_seq_no = observed_seq_no.saturating_sub(dropped_count);
-            let gap_seq_no = observed_seq_no.saturating_sub(1);
+        if parsed.cursor.is_none() && event_rows.len() < parsed.max {
+            if let Some(gap_meta) = compute_stream_gap(dropped_count, oldest_seq) {
             let gap_row = json!({
-                "event_id": format!("gap-{}", gap_seq_no),
+                    "event_id": format!("gap-{}", gap_meta.gap_seq_no),
                 "runtime_id": self.identity_hash,
                 "stream_id": SDK_STREAM_ID,
-                "seq_no": gap_seq_no,
+                    "seq_no": gap_meta.gap_seq_no,
                 "contract_version": self.active_contract_version(),
                 "ts_ms": (now_i64().max(0) as u64) * 1000,
                 "event_type": "StreamGap",
                 "severity": "warn",
                 "source_component": "rns-rpc",
                 "payload": {
-                    "expected_seq_no": expected_seq_no,
-                    "observed_seq_no": observed_seq_no,
-                    "dropped_count": dropped_count,
+                        "expected_seq_no": gap_meta.expected_seq_no,
+                        "observed_seq_no": gap_meta.observed_seq_no,
+                        "dropped_count": gap_meta.dropped_count,
                 },
             });
-            if let Err(response) = append_event_row(gap_row, &mut event_rows, &mut batch_bytes) {
-                return Ok(response);
+                if let Err(response) = append_event_row(gap_row, &mut event_rows, &mut batch_bytes)
+                {
+                    return Ok(response);
+                }
             }
         }
 

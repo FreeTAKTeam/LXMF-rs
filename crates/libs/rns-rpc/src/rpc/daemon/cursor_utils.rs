@@ -4,6 +4,31 @@ struct SdkCursorError {
     message: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct StreamGapMeta {
+    gap_seq_no: u64,
+    expected_seq_no: u64,
+    observed_seq_no: u64,
+    dropped_count: u64,
+}
+
+fn cursor_is_expired(cursor_seq: Option<u64>, oldest_seq: Option<u64>) -> bool {
+    matches!(
+        (cursor_seq, oldest_seq),
+        (Some(cursor), Some(oldest)) if cursor.saturating_add(1) < oldest
+    )
+}
+
+fn compute_stream_gap(dropped_count: u64, oldest_seq: Option<u64>) -> Option<StreamGapMeta> {
+    if dropped_count == 0 {
+        return None;
+    }
+    let observed_seq_no = oldest_seq?;
+    let expected_seq_no = observed_seq_no.saturating_sub(dropped_count);
+    let gap_seq_no = observed_seq_no.saturating_sub(1);
+    Some(StreamGapMeta { gap_seq_no, expected_seq_no, observed_seq_no, dropped_count })
+}
+
 fn parse_announce_cursor(cursor: Option<&str>) -> Option<(Option<i64>, Option<String>)> {
     let raw = cursor?.trim();
     if raw.is_empty() {
@@ -69,3 +94,49 @@ fn merge_json_patch(target: &mut JsonValue, patch: &JsonValue) {
     }
 }
 
+#[cfg(test)]
+mod cursor_utils_tests {
+    use super::{compute_stream_gap, cursor_is_expired};
+
+    #[test]
+    fn cursor_expiry_threshold_respects_retained_window_boundary() {
+        for oldest in [1_u64, 2, 8, 32, 1024] {
+            let not_expired_cursor = oldest.saturating_sub(1);
+            assert!(
+                !cursor_is_expired(Some(not_expired_cursor), Some(oldest)),
+                "cursor at oldest-1 must remain valid (oldest={oldest})"
+            );
+            if oldest > 1 {
+                let expired_cursor = oldest.saturating_sub(2);
+                assert!(
+                    cursor_is_expired(Some(expired_cursor), Some(oldest)),
+                    "cursor older than retained window must expire (cursor={expired_cursor}, oldest={oldest})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn stream_gap_meta_preserves_expected_observed_invariant() {
+        for dropped in [1_u64, 2, 5, 64, 512] {
+            for oldest in [dropped, dropped + 1, dropped + 32, dropped + 1000] {
+                let gap = compute_stream_gap(dropped, Some(oldest)).expect("gap meta");
+                assert_eq!(
+                    gap.expected_seq_no.saturating_add(gap.dropped_count),
+                    gap.observed_seq_no,
+                    "expected + dropped must equal observed"
+                );
+                assert_eq!(
+                    gap.gap_seq_no,
+                    gap.observed_seq_no.saturating_sub(1),
+                    "gap sequence should be one before observed sequence"
+                );
+            }
+        }
+        assert!(compute_stream_gap(0, Some(10)).is_none(), "no drops must not produce gap meta");
+        assert!(
+            compute_stream_gap(3, None).is_none(),
+            "missing observed sequence must not produce gap meta"
+        );
+    }
+}
