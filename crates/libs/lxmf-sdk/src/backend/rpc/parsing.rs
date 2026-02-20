@@ -171,36 +171,42 @@ impl RpcBackendClient {
         let Some(raw) = receipt_status else {
             return DeliveryState::Queued;
         };
-        let normalized = raw.trim().to_ascii_lowercase();
-        if normalized.starts_with("sent") {
+        let normalized = raw.trim();
+        if starts_with_ignore_ascii_case(normalized, "sent") {
             return DeliveryState::Sent;
         }
-        if normalized.starts_with("failed") {
+        if starts_with_ignore_ascii_case(normalized, "failed") {
             return DeliveryState::Failed;
         }
-        if normalized == "queued" {
+        if normalized.eq_ignore_ascii_case("queued") {
             return DeliveryState::Queued;
         }
-        if normalized == "dispatching" {
+        if normalized.eq_ignore_ascii_case("dispatching") {
             return DeliveryState::Dispatching;
         }
-        if normalized == "in_flight" || normalized == "inflight" {
+        if normalized.eq_ignore_ascii_case("in_flight")
+            || normalized.eq_ignore_ascii_case("inflight")
+        {
             return DeliveryState::InFlight;
         }
-        if normalized == "cancelled" {
+        if normalized.eq_ignore_ascii_case("cancelled") {
             return DeliveryState::Cancelled;
         }
-        if normalized == "delivered" {
+        if normalized.eq_ignore_ascii_case("delivered") {
             return DeliveryState::Delivered;
         }
-        if normalized == "expired" {
+        if normalized.eq_ignore_ascii_case("expired") {
             return DeliveryState::Expired;
         }
-        if normalized == "rejected" {
+        if normalized.eq_ignore_ascii_case("rejected") {
             return DeliveryState::Rejected;
         }
         DeliveryState::Unknown
     }
+}
+
+fn starts_with_ignore_ascii_case(value: &str, prefix: &str) -> bool {
+    value.get(..prefix.len()).is_some_and(|candidate| candidate.eq_ignore_ascii_case(prefix))
 }
 
 #[cfg(test)]
@@ -252,6 +258,18 @@ mod tests {
         assert_eq!(
             RpcBackendClient::parse_delivery_state(Some("in_flight")),
             crate::types::DeliveryState::InFlight
+        );
+    }
+
+    #[test]
+    fn parse_delivery_state_terminal_prefixes_are_case_insensitive() {
+        assert_eq!(
+            RpcBackendClient::parse_delivery_state(Some("  SENT_via_path ")),
+            crate::types::DeliveryState::Sent
+        );
+        assert_eq!(
+            RpcBackendClient::parse_delivery_state(Some("FaIlEd_ttl_expired")),
+            crate::types::DeliveryState::Failed
         );
     }
 }
