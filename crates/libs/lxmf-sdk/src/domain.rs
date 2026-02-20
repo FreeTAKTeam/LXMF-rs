@@ -248,6 +248,8 @@ pub enum VoiceSessionState {
     Holding,
     Closed,
     Failed,
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -264,4 +266,17 @@ pub struct VoiceSessionUpdateRequest {
     pub state: VoiceSessionState,
     #[serde(default)]
     pub extensions: BTreeMap<String, JsonValue>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::VoiceSessionState;
+
+    #[test]
+    fn voice_session_state_deserializes_unknown_variant() {
+        let value = serde_json::json!("paused_by_gateway");
+        let state: VoiceSessionState =
+            serde_json::from_value(value).expect("unknown voice state should map to Unknown");
+        assert_eq!(state, VoiceSessionState::Unknown);
+    }
 }

@@ -81,6 +81,9 @@ impl RpcBackendClient {
         if value.eq_ignore_ascii_case("debug") {
             return Severity::Debug;
         }
+        if value.eq_ignore_ascii_case("info") {
+            return Severity::Info;
+        }
         if value.eq_ignore_ascii_case("warn") || value.eq_ignore_ascii_case("warning") {
             return Severity::Warn;
         }
@@ -90,7 +93,7 @@ impl RpcBackendClient {
         if value.eq_ignore_ascii_case("critical") || value.eq_ignore_ascii_case("fatal") {
             return Severity::Critical;
         }
-        Severity::Info
+        Severity::Unknown
     }
 
     pub(super) fn parse_runtime_state(value: &str) -> RuntimeState {
@@ -109,7 +112,7 @@ impl RpcBackendClient {
         if value.eq_ignore_ascii_case("failed") {
             return RuntimeState::Failed;
         }
-        RuntimeState::Running
+        RuntimeState::Unknown
     }
 
     pub(super) fn decode_value<T: DeserializeOwned>(
@@ -184,6 +187,35 @@ impl RpcBackendClient {
         if normalized == "rejected" {
             return DeliveryState::Rejected;
         }
-        DeliveryState::InFlight
+        DeliveryState::Unknown
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RpcBackendClient;
+
+    #[test]
+    fn parse_severity_unknown_maps_to_unknown_variant() {
+        assert_eq!(
+            RpcBackendClient::parse_severity("future_notice"),
+            crate::event::Severity::Unknown
+        );
+    }
+
+    #[test]
+    fn parse_runtime_state_unknown_maps_to_unknown_variant() {
+        assert_eq!(
+            RpcBackendClient::parse_runtime_state("migrating"),
+            crate::types::RuntimeState::Unknown
+        );
+    }
+
+    #[test]
+    fn parse_delivery_state_unknown_maps_to_unknown_variant() {
+        assert_eq!(
+            RpcBackendClient::parse_delivery_state(Some("processing_retry")),
+            crate::types::DeliveryState::Unknown
+        );
     }
 }

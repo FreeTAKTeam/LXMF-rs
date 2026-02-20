@@ -78,3 +78,19 @@ fn config_patch_serialization_preserves_absent_vs_null() {
     let clear_json = serde_json::to_value(&clear_patch).expect("serialize clear patch");
     assert!(clear_json["overflow_policy"].is_null());
 }
+
+#[test]
+fn delivery_state_deserializes_unknown_variant() {
+    let value = serde_json::json!("future_state");
+    let state: DeliveryState =
+        serde_json::from_value(value).expect("unknown delivery state should map to Unknown");
+    assert_eq!(state, DeliveryState::Unknown);
+}
+
+#[test]
+fn runtime_state_deserializes_unknown_variant() {
+    let value = serde_json::json!("maintenance");
+    let state: RuntimeState =
+        serde_json::from_value(value).expect("unknown runtime state should map to Unknown");
+    assert_eq!(state, RuntimeState::Unknown);
+}

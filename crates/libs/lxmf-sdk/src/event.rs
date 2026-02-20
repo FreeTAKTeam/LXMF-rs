@@ -20,6 +20,8 @@ pub enum Severity {
     Warn,
     Error,
     Critical,
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -81,4 +83,17 @@ pub enum SubscriptionStart {
 pub struct EventSubscription {
     pub start: SubscriptionStart,
     pub cursor: Option<EventCursor>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Severity;
+
+    #[test]
+    fn severity_deserializes_unknown_variant() {
+        let value = serde_json::json!("notice");
+        let severity: Severity =
+            serde_json::from_value(value).expect("unknown severity should map to Unknown");
+        assert_eq!(severity, Severity::Unknown);
+    }
 }

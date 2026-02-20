@@ -203,7 +203,10 @@ impl RpcBackendClient {
             | DeliveryState::Cancelled
             | DeliveryState::Expired
             | DeliveryState::Rejected => true,
-            DeliveryState::Queued | DeliveryState::Dispatching | DeliveryState::InFlight => false,
+            DeliveryState::Queued
+            | DeliveryState::Dispatching
+            | DeliveryState::InFlight
+            | DeliveryState::Unknown => false,
         };
         let timestamp = record.get("timestamp").and_then(JsonValue::as_i64).unwrap_or(0_i64);
         let last_updated_ms = u64::try_from(timestamp.max(0)).unwrap_or(0).saturating_mul(1000);

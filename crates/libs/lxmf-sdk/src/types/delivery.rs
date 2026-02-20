@@ -43,6 +43,8 @@ pub enum DeliveryState {
     Cancelled,
     Expired,
     Rejected,
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

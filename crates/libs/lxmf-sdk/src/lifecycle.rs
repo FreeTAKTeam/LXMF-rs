@@ -123,6 +123,7 @@ impl Lifecycle {
             RuntimeState::Draining => "draining",
             RuntimeState::Stopped => "stopped",
             RuntimeState::Failed => "failed",
+            RuntimeState::Unknown => "unknown",
         }
     }
 }

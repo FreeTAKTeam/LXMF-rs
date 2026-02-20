@@ -10,6 +10,8 @@ pub enum RuntimeState {
     Draining,
     Stopped,
     Failed,
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
