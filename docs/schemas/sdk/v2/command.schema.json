@@ -1,0 +1,276 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://weft.tak/contracts/sdk/v2/command.schema.json",
+  "title": "LXMF SDK Command v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["method", "params"],
+  "properties": {
+    "request_id": {
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        { "type": "integer", "minimum": 0 }
+      ]
+    },
+    "method": {
+      "type": "string",
+      "enum": [
+        "start",
+        "send",
+        "cancel",
+        "status",
+        "configure",
+        "tick",
+        "poll_events",
+        "snapshot",
+        "shutdown",
+        "subscribe_events"
+      ]
+    },
+    "params": { "type": "object" },
+    "trace_id": { "type": "string", "minLength": 1 },
+    "operation_id": { "type": "string", "minLength": 1 },
+    "extensions": { "$ref": "#/$defs/extension_map" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "method": { "const": "start" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "supported_contract_versions",
+              "requested_capabilities",
+              "config"
+            ],
+            "properties": {
+              "supported_contract_versions": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": { "type": "integer", "minimum": 1, "maximum": 65535 }
+              },
+              "requested_capabilities": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": { "type": "string", "minLength": 1 }
+              },
+              "config": { "$ref": "config.schema.json#/$defs/sdk_config" },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "send" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["source", "destination", "payload"],
+            "properties": {
+              "source": { "type": "string", "minLength": 1 },
+              "destination": { "type": "string", "minLength": 1 },
+              "payload": { "type": "object", "additionalProperties": true },
+              "idempotency_key": { "type": "string", "minLength": 1, "maxLength": 128 },
+              "ttl_ms": { "type": "integer", "minimum": 1 },
+              "correlation_id": { "type": "string", "minLength": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "cancel" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["message_id"],
+            "properties": {
+              "message_id": { "type": "string", "minLength": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "status" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["message_id"],
+            "properties": {
+              "message_id": { "type": "string", "minLength": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "configure" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["patch", "expected_revision"],
+            "properties": {
+              "patch": { "$ref": "config.schema.json#/$defs/config_patch" },
+              "expected_revision": { "type": "integer", "minimum": 0 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "tick" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["budget"],
+            "properties": {
+              "budget": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["max_work_items"],
+                "properties": {
+                  "max_work_items": { "type": "integer", "minimum": 1 },
+                  "max_duration_ms": { "type": "integer", "minimum": 1 }
+                }
+              },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "poll_events" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["cursor", "max"],
+            "properties": {
+              "cursor": {
+                "type": ["string", "null"]
+              },
+              "max": { "type": "integer", "minimum": 1, "maximum": 10000 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "snapshot" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "include_counts": { "type": "boolean" },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "shutdown" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["mode"],
+            "properties": {
+              "mode": {
+                "type": "string",
+                "enum": ["graceful", "immediate"]
+              },
+              "flush_timeout_ms": { "type": "integer", "minimum": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "subscribe_events" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["start"],
+            "properties": {
+              "start": {
+                "type": "string",
+                "enum": ["head", "tail", "snapshot"]
+              },
+              "cursor": { "type": ["string", "null"] },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "extension_map": {
+      "type": "object",
+      "maxProperties": 32,
+      "propertyNames": {
+        "pattern": "^[a-z0-9][a-z0-9_.-]{0,63}$"
+      },
+      "additionalProperties": true
+    }
+  }
+}

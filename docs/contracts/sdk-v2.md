@@ -91,13 +91,19 @@ Capability descriptor fields:
 
 All methods are fallible and return typed SDK errors.
 
+`start` request shape:
+
+- `supported_contract_versions`
+- `requested_capabilities`
+- `config`
+
 Required API:
 
-- `start(config) -> Result<ClientHandle, SdkError>`
+- `start(req) -> Result<ClientHandle, SdkError>`
 - `send(req) -> Result<MessageId, SdkError>`
 - `cancel(id) -> Result<CancelResult, SdkError>`
 - `status(id) -> Result<Option<DeliverySnapshot>, SdkError>`
-- `configure(patch) -> Result<Ack, SdkError>`
+- `configure(expected_revision, patch) -> Result<Ack, SdkError>`
 - `poll_events(cursor, max) -> Result<EventBatch, SdkError>`
 - `snapshot() -> Result<RuntimeSnapshot, SdkError>`
 - `shutdown(mode) -> Result<Ack, SdkError>`
@@ -135,7 +141,7 @@ Rules:
 2. Illegal-state call returns `SDK_RUNTIME_INVALID_STATE`.
 3. `shutdown()` is idempotent.
 4. `start()` in `Running` returns existing handle.
-5. `start(config)` with different active config revision fails with `SDK_RUNTIME_ALREADY_RUNNING_WITH_DIFFERENT_CONFIG`.
+5. `start(req)` in `Running` with different negotiated request/config values fails with `SDK_RUNTIME_ALREADY_RUNNING_WITH_DIFFERENT_CONFIG`.
 
 Method legality matrix:
 
@@ -195,11 +201,12 @@ Rules:
 
 Rules:
 
-1. Patch semantics: RFC7396 over typed config.
+1. Patch semantics: RFC7396 over the typed mutable-config subset.
 2. Validate before commit.
 3. Apply atomically.
 4. Unknown config keys are rejected with `SDK_CONFIG_UNKNOWN_KEY`.
 5. Concurrent config updates use revision CAS (`SDK_CONFIG_CONFLICT` on mismatch).
+6. `configure(expected_revision, patch)` targets the mutable typed-config subset only; immutable startup keys (`profile`, `bind_mode`, `auth_mode`) must be rejected.
 
 ## Config Layering
 
@@ -216,8 +223,8 @@ Non-RPC backends may ignore `RpcBackendConfig`.
 
 Auth mode defaults and requirements:
 
-1. `local_only` is default bind mode.
-2. `local_trusted` is required baseline auth mode for loopback/local-only operation.
+1. `bind_mode` and `auth_mode` are required config inputs.
+2. Safe baseline is `bind_mode=local_only` with `auth_mode=local_trusted`.
 3. Remote bind requires explicit auth mode: `token` or `mtls`.
 4. Remote bind without an explicit auth mode fails with `SDK_SECURITY_AUTH_REQUIRED`.
 5. Token mode must reject replayed `jti` (`SDK_SECURITY_TOKEN_REPLAYED`).
@@ -227,7 +234,7 @@ Auth mode defaults and requirements:
 1. Additive minor changes only.
 2. Renames/removals/required behavior changes require major version.
 3. Unknown fields in event payloads must be ignored.
-4. Unknown fields in command payloads must be rejected with `SDK_VALIDATION_UNKNOWN_FIELD`, unless explicitly marked as extension fields for that command.
+4. Unknown fields in command payloads must be rejected with `SDK_VALIDATION_UNKNOWN_FIELD`, unless explicitly marked as extension fields for that command; unknown keys under `configure.patch` must be rejected with `SDK_CONFIG_UNKNOWN_KEY`.
 5. Unknown enum variants map to `Unknown`.
 6. All major payloads support optional `extensions`.
 
