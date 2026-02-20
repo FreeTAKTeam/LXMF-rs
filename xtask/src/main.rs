@@ -53,6 +53,7 @@ enum XtaskCommand {
     SdkMigrationCheck,
     SdkSecurityCheck,
     SdkPropertyCheck,
+    SdkModelCheck,
     SdkMatrixCheck,
 }
 
@@ -79,6 +80,7 @@ enum CiStage {
     SdkMigrationCheck,
     SdkSecurityCheck,
     SdkPropertyCheck,
+    SdkModelCheck,
     SdkMatrixCheck,
     MigrationChecks,
     ArchitectureChecks,
@@ -109,6 +111,7 @@ fn main() -> Result<()> {
         XtaskCommand::SdkMigrationCheck => run_sdk_migration_check(),
         XtaskCommand::SdkSecurityCheck => run_sdk_security_check(),
         XtaskCommand::SdkPropertyCheck => run_sdk_property_check(),
+        XtaskCommand::SdkModelCheck => run_sdk_model_check(),
         XtaskCommand::SdkMatrixCheck => run_sdk_matrix_check(),
     }
 }
@@ -145,6 +148,7 @@ fn run_ci(stage: Option<CiStage>) -> Result<()> {
     run_sdk_examples_check()?;
     run_sdk_security_check()?;
     run_sdk_property_check()?;
+    run_sdk_model_check()?;
     run_sdk_matrix_check()?;
     run_migration_checks()?;
     run_architecture_checks()?;
@@ -179,6 +183,7 @@ fn run_ci_stage(stage: CiStage) -> Result<()> {
         CiStage::SdkMigrationCheck => run_sdk_migration_check(),
         CiStage::SdkSecurityCheck => run_sdk_security_check(),
         CiStage::SdkPropertyCheck => run_sdk_property_check(),
+        CiStage::SdkModelCheck => run_sdk_model_check(),
         CiStage::SdkMatrixCheck => run_sdk_matrix_check(),
         CiStage::MigrationChecks => run_migration_checks(),
         CiStage::ArchitectureChecks => run_architecture_checks(),
@@ -626,6 +631,21 @@ fn run_sdk_security_check() -> Result<()> {
 
 fn run_sdk_property_check() -> Result<()> {
     run("cargo", &["test", "-p", "rns-rpc", "sdk_property", "--", "--nocapture"])
+}
+
+fn run_sdk_model_check() -> Result<()> {
+    run(
+        "cargo",
+        &[
+            "test",
+            "-p",
+            "lxmf-sdk",
+            "lifecycle_model_transitions_and_method_legality_match_reference",
+            "--",
+            "--nocapture",
+        ],
+    )?;
+    run("cargo", &["test", "-p", "test-support", "sdk_model", "--", "--nocapture"])
 }
 
 fn run_sdk_matrix_check() -> Result<()> {

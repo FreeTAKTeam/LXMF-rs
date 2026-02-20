@@ -178,6 +178,15 @@ impl RpcBackendClient {
         if normalized.starts_with("failed") {
             return DeliveryState::Failed;
         }
+        if normalized == "queued" {
+            return DeliveryState::Queued;
+        }
+        if normalized == "dispatching" {
+            return DeliveryState::Dispatching;
+        }
+        if normalized == "in_flight" || normalized == "inflight" {
+            return DeliveryState::InFlight;
+        }
         if normalized == "cancelled" {
             return DeliveryState::Cancelled;
         }
@@ -227,6 +236,22 @@ mod tests {
         assert_eq!(
             RpcBackendClient::parse_delivery_state(Some("processing_retry")),
             crate::types::DeliveryState::Unknown
+        );
+    }
+
+    #[test]
+    fn parse_delivery_state_transient_states_map_to_enum_variants() {
+        assert_eq!(
+            RpcBackendClient::parse_delivery_state(Some("queued")),
+            crate::types::DeliveryState::Queued
+        );
+        assert_eq!(
+            RpcBackendClient::parse_delivery_state(Some("dispatching")),
+            crate::types::DeliveryState::Dispatching
+        );
+        assert_eq!(
+            RpcBackendClient::parse_delivery_state(Some("in_flight")),
+            crate::types::DeliveryState::InFlight
         );
     }
 }

@@ -16,6 +16,7 @@ use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 mod auth_mode_tests;
+mod model_tests;
 mod release_bc_tests;
 
 const EVENT_LOG_OVERFLOW_TRIGGER: usize = 1_100;

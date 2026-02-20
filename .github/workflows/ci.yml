@@ -147,6 +147,14 @@ jobs:
       - name: SDK property suite
         run: cargo xtask ci --stage sdk-property-check
 
+  sdk-model-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: SDK model conformance suite
+        run: cargo xtask ci --stage sdk-model-check
+
   sdk-matrix-check:
     runs-on: ubuntu-latest
     steps:

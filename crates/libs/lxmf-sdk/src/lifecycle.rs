@@ -153,6 +153,35 @@ mod tests {
     };
     use std::collections::BTreeMap;
 
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum ModelState {
+        New,
+        Starting,
+        Running,
+        Draining,
+        Stopped,
+        Failed,
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum ModelOp {
+        Start,
+        Run,
+        Drain,
+        Stop,
+        Fail,
+        Reset,
+    }
+
+    const MODEL_OPS: [ModelOp; 6] = [
+        ModelOp::Start,
+        ModelOp::Run,
+        ModelOp::Drain,
+        ModelOp::Stop,
+        ModelOp::Fail,
+        ModelOp::Reset,
+    ];
+
     fn sample_start_request() -> StartRequest {
         StartRequest {
             supported_contract_versions: vec![2, 1],
@@ -179,6 +208,123 @@ mod tests {
                 rpc_backend: None,
                 extensions: BTreeMap::new(),
             },
+        }
+    }
+
+    fn apply_model(state: ModelState, op: ModelOp) -> Result<ModelState, ()> {
+        match op {
+            ModelOp::Start if state == ModelState::New => Ok(ModelState::Starting),
+            ModelOp::Run if state == ModelState::Starting => Ok(ModelState::Running),
+            ModelOp::Drain if matches!(state, ModelState::Starting | ModelState::Running) => {
+                Ok(ModelState::Draining)
+            }
+            ModelOp::Stop => Ok(ModelState::Stopped),
+            ModelOp::Fail => Ok(ModelState::Failed),
+            ModelOp::Reset => Ok(ModelState::New),
+            _ => Err(()),
+        }
+    }
+
+    fn apply_lifecycle(lifecycle: &mut Lifecycle, op: ModelOp) -> Result<(), SdkError> {
+        match op {
+            ModelOp::Start => lifecycle.mark_starting(),
+            ModelOp::Run => lifecycle.mark_running(sample_start_request()),
+            ModelOp::Drain => lifecycle.mark_draining(),
+            ModelOp::Stop => {
+                lifecycle.mark_stopped();
+                Ok(())
+            }
+            ModelOp::Fail => {
+                lifecycle.mark_failed();
+                Ok(())
+            }
+            ModelOp::Reset => {
+                lifecycle.reset_to_new();
+                Ok(())
+            }
+        }
+    }
+
+    fn model_to_runtime(state: ModelState) -> RuntimeState {
+        match state {
+            ModelState::New => RuntimeState::New,
+            ModelState::Starting => RuntimeState::Starting,
+            ModelState::Running => RuntimeState::Running,
+            ModelState::Draining => RuntimeState::Draining,
+            ModelState::Stopped => RuntimeState::Stopped,
+            ModelState::Failed => RuntimeState::Failed,
+        }
+    }
+
+    fn model_method_legal(state: ModelState, method: SdkMethod) -> bool {
+        match method {
+            SdkMethod::Start => matches!(state, ModelState::New | ModelState::Running),
+            SdkMethod::Send => state == ModelState::Running,
+            SdkMethod::Cancel
+            | SdkMethod::Status
+            | SdkMethod::Tick
+            | SdkMethod::PollEvents
+            | SdkMethod::Snapshot
+            | SdkMethod::SubscribeEvents => {
+                matches!(state, ModelState::Running | ModelState::Draining)
+            }
+            SdkMethod::Configure => state == ModelState::Running,
+            SdkMethod::Shutdown => {
+                matches!(
+                    state,
+                    ModelState::Starting
+                        | ModelState::Running
+                        | ModelState::Draining
+                        | ModelState::Stopped
+                        | ModelState::Failed
+                )
+            }
+        }
+    }
+
+    fn generate_sequences(max_len: usize) -> Vec<Vec<ModelOp>> {
+        fn recurse(target_len: usize, current: &mut Vec<ModelOp>, out: &mut Vec<Vec<ModelOp>>) {
+            if current.len() == target_len {
+                out.push(current.clone());
+                return;
+            }
+            for op in MODEL_OPS {
+                current.push(op);
+                recurse(target_len, current, out);
+                current.pop();
+            }
+        }
+
+        let mut out = Vec::new();
+        for len in 1..=max_len {
+            let mut current = Vec::new();
+            recurse(len, &mut current, &mut out);
+        }
+        out
+    }
+
+    fn assert_method_legality_matches_model(lifecycle: &Lifecycle, model_state: ModelState) {
+        let all_methods = [
+            SdkMethod::Start,
+            SdkMethod::Send,
+            SdkMethod::Cancel,
+            SdkMethod::Status,
+            SdkMethod::Configure,
+            SdkMethod::Tick,
+            SdkMethod::PollEvents,
+            SdkMethod::Snapshot,
+            SdkMethod::Shutdown,
+            SdkMethod::SubscribeEvents,
+        ];
+
+        for method in all_methods {
+            let expected_ok = model_method_legal(model_state, method);
+            let actual_ok = lifecycle.ensure_method_legal(method).is_ok();
+            assert_eq!(
+                actual_ok, expected_ok,
+                "method legality mismatch for state {:?} and method {:?}",
+                model_state, method
+            );
         }
     }
 
@@ -215,5 +361,43 @@ mod tests {
         lifecycle.mark_running(request).expect("starting -> running");
         let err = lifecycle.check_start_reentry(&other_request).expect_err("must reject mismatch");
         assert_eq!(err.machine_code, code::RUNTIME_ALREADY_RUNNING_WITH_DIFFERENT_CONFIG);
+    }
+
+    #[test]
+    fn lifecycle_model_transitions_and_method_legality_match_reference() {
+        let sequences = generate_sequences(4);
+        for sequence in sequences {
+            let mut lifecycle = Lifecycle::default();
+            let mut model_state = ModelState::New;
+            assert_method_legality_matches_model(&lifecycle, model_state);
+
+            for op in &sequence {
+                let expected = apply_model(model_state, *op);
+                let actual = apply_lifecycle(&mut lifecycle, *op);
+
+                assert_eq!(
+                    actual.is_ok(),
+                    expected.is_ok(),
+                    "operation mismatch: op={:?}, sequence={:?}, runtime_state={:?}, model_state={:?}",
+                    op,
+                    sequence,
+                    lifecycle.state(),
+                    model_state
+                );
+
+                if let Ok(next_state) = expected {
+                    model_state = next_state;
+                }
+
+                assert_eq!(
+                    lifecycle.state(),
+                    model_to_runtime(model_state),
+                    "state mismatch after op {:?} in sequence {:?}",
+                    op,
+                    sequence
+                );
+                assert_method_legality_matches_model(&lifecycle, model_state);
+            }
+        }
     }
 }
