@@ -11,7 +11,7 @@ use serde_json::{json, Value as JsonValue};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
@@ -20,6 +20,11 @@ mod release_bc_tests;
 
 const EVENT_LOG_OVERFLOW_TRIGGER: usize = 1_100;
 const RPC_IO_TIMEOUT_SECS: u64 = 10;
+static RPC_HARNESS_SERIAL_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+fn rpc_harness_serial_lock() -> &'static Mutex<()> {
+    RPC_HARNESS_SERIAL_LOCK.get_or_init(|| Mutex::new(()))
+}
 
 fn find_header_end(bytes: &[u8]) -> Option<usize> {
     bytes.windows(4).position(|window| window == b"\r\n\r\n").map(|idx| idx + 4)
@@ -75,6 +80,7 @@ fn read_http_request(stream: &mut TcpStream) -> std::io::Result<Vec<u8>> {
 }
 
 struct RpcHarness {
+    _serial_guard: MutexGuard<'static, ()>,
     endpoint: String,
     daemon: Arc<Mutex<RpcDaemon>>,
     stop: Arc<AtomicBool>,
@@ -84,6 +90,8 @@ struct RpcHarness {
 
 impl RpcHarness {
     fn new() -> Self {
+        let serial_guard =
+            rpc_harness_serial_lock().lock().expect("sdk conformance harness lock poisoned");
         let daemon = Arc::new(Mutex::new(RpcDaemon::with_store(
             MessagesStore::in_memory().expect("in-memory message store"),
             "sdk-test-runtime".to_owned(),
@@ -129,7 +137,14 @@ impl RpcHarness {
             }
         });
 
-        Self { endpoint, daemon, stop, next_request_id: AtomicU64::new(1), join: Some(join) }
+        Self {
+            _serial_guard: serial_guard,
+            endpoint,
+            daemon,
+            stop,
+            next_request_id: AtomicU64::new(1),
+            join: Some(join),
+        }
     }
 
     fn client(&self) -> Client<RpcBackendClient> {

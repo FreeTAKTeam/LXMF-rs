@@ -40,14 +40,13 @@ fn sdk_conformance_token_mode_supports_multiple_authenticated_rpc_calls() {
 }
 
 #[test]
-fn sdk_conformance_mtls_mode_supports_authenticated_rpc_calls() {
+fn sdk_conformance_mtls_mode_requires_client_material_when_certs_are_mandatory() {
     let harness = RpcHarness::new();
     let client = harness.client();
-    client.start(mtls_remote_start_request()).expect("mtls-mode start with config should succeed");
-
-    let first = client.snapshot().expect("first snapshot");
-    let second = client.snapshot().expect("second snapshot");
-    assert_eq!(first.runtime_id, second.runtime_id);
+    let err = client
+        .start(mtls_remote_start_request())
+        .expect_err("mtls mode with require_client_cert=true must require client cert paths");
+    assert_eq!(err.machine_code, "SDK_SECURITY_AUTH_REQUIRED");
 }
 
 #[test]
