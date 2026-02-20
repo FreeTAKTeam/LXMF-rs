@@ -2,7 +2,7 @@
 
 This file is the single contract source for desktop parity work across:
 
-- `/Users/tommy/Documents/TAK/LXMF-rs`
+- repository root (`./`)
 - `docs/contracts/payload-contract.md` (this repository)
 - `crates/libs/*` and `crates/apps/*` protocol/runtime contracts
 - `<external interop repo mirror>/docs/payload-contract.md`
@@ -63,8 +63,8 @@ Unprefixed text payloads are rejected.
 
 ## Schema Artifacts
 
-- `/Users/tommy/Documents/TAK/LXMF-rs/docs/schemas/contract-v2/payload-envelope.schema.json`
-- `/Users/tommy/Documents/TAK/LXMF-rs/docs/schemas/contract-v2/event-payload.schema.json`
+- `docs/schemas/contract-v2/payload-envelope.schema.json`
+- `docs/schemas/contract-v2/event-payload.schema.json`
 
 ## Message Envelope (v2)
 
