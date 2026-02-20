@@ -59,6 +59,26 @@ cargo xtask release-check
 cargo xtask api-diff
 ```
 
+## Developer Bootstrap
+
+One-command local setup:
+
+```bash
+make bootstrap
+```
+
+Direct script form:
+
+```bash
+./tools/scripts/bootstrap-dev.sh
+```
+
+Verification-only mode (used by CI):
+
+```bash
+./tools/scripts/bootstrap-dev.sh --check --skip-smoke
+```
+
 ## Binaries
 
 - `lxmf-cli`

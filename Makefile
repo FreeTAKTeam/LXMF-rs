@@ -1,4 +1,7 @@
-.PHONY: fmt clippy test test-all test-full-targets doc deny audit udeps boundaries ci release-check api-diff licenses migration-checks forbidden-deps
+.PHONY: bootstrap fmt clippy test test-all test-full-targets doc deny audit udeps boundaries ci release-check api-diff licenses migration-checks forbidden-deps
+
+bootstrap:
+	./tools/scripts/bootstrap-dev.sh
 
 fmt:
 	cargo fmt --all -- --check

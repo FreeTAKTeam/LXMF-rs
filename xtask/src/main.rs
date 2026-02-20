@@ -214,6 +214,7 @@ enum XtaskCommand {
     SdkCookbookCheck,
     SdkErgonomicsCheck,
     LxmfCliCheck,
+    DxBootstrapCheck,
     InteropArtifacts {
         #[arg(long)]
         update: bool,
@@ -262,6 +263,7 @@ enum CiStage {
     SdkCookbookCheck,
     SdkErgonomicsCheck,
     LxmfCliCheck,
+    DxBootstrapCheck,
     InteropArtifacts,
     InteropMatrixCheck,
     InteropCorpusCheck,
@@ -306,6 +308,7 @@ fn main() -> Result<()> {
         XtaskCommand::SdkCookbookCheck => run_sdk_cookbook_check(),
         XtaskCommand::SdkErgonomicsCheck => run_sdk_ergonomics_check(),
         XtaskCommand::LxmfCliCheck => run_lxmf_cli_check(),
+        XtaskCommand::DxBootstrapCheck => run_dx_bootstrap_check(),
         XtaskCommand::InteropArtifacts { update } => run_interop_artifacts(update),
         XtaskCommand::InteropMatrixCheck => run_interop_matrix_check(),
         XtaskCommand::InteropCorpusCheck => run_interop_corpus_check(),
@@ -358,6 +361,7 @@ fn run_ci(stage: Option<CiStage>) -> Result<()> {
     run_sdk_cookbook_check()?;
     run_sdk_ergonomics_check()?;
     run_lxmf_cli_check()?;
+    run_dx_bootstrap_check()?;
     run_sdk_schema_check()?;
     run_interop_artifacts(false)?;
     run_interop_matrix_check()?;
@@ -406,6 +410,7 @@ fn run_ci_stage(stage: CiStage) -> Result<()> {
         CiStage::SdkCookbookCheck => run_sdk_cookbook_check(),
         CiStage::SdkErgonomicsCheck => run_sdk_ergonomics_check(),
         CiStage::LxmfCliCheck => run_lxmf_cli_check(),
+        CiStage::DxBootstrapCheck => run_dx_bootstrap_check(),
         CiStage::InteropArtifacts => run_interop_artifacts(false),
         CiStage::InteropMatrixCheck => run_interop_matrix_check(),
         CiStage::InteropCorpusCheck => run_interop_corpus_check(),
@@ -516,13 +521,11 @@ fn run_sdk_ergonomics_check() -> Result<()> {
 fn run_lxmf_cli_check() -> Result<()> {
     run("cargo", &["test", "-p", "lxmf-cli"])?;
     run("cargo", &["run", "-p", "lxmf-cli", "--", "--help"])?;
-    run(
-        "bash",
-        &[
-            "-lc",
-            "cargo run -p lxmf-cli -- completions --shell bash > /dev/null",
-        ],
-    )
+    run("bash", &["-lc", "cargo run -p lxmf-cli -- completions --shell bash > /dev/null"])
+}
+
+fn run_dx_bootstrap_check() -> Result<()> {
+    run("bash", &["tools/scripts/bootstrap-dev.sh", "--check", "--skip-tools", "--skip-smoke"])
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

@@ -92,6 +92,14 @@ jobs:
       - name: LXMF CLI smoke and tests
         run: cargo xtask ci --stage lxmf-cli-check
 
+  dx-bootstrap-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Developer bootstrap prerequisites
+        run: cargo xtask ci --stage dx-bootstrap-check
+
   security:
     runs-on: ubuntu-latest
     steps:
