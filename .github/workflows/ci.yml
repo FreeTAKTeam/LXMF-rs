@@ -139,6 +139,14 @@ jobs:
       - name: SDK security suite
         run: cargo xtask ci --stage sdk-security-check
 
+  sdk-fuzz-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: SDK parser fuzz smoke suite
+        run: cargo xtask ci --stage sdk-fuzz-check
+
   sdk-property-check:
     runs-on: ubuntu-latest
     steps:

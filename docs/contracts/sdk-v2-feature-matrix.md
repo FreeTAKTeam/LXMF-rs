@@ -122,6 +122,7 @@ Queue overflow behavior is release-gated with `cargo run -p xtask -- sdk-queue-p
 | `sdk-property-check` | required |
 | `sdk-api-break` | required |
 | `sdk-security-check` | required |
+| `sdk-fuzz-check` | required |
 | `sdk-perf-budget-check` | required |
 | `sdk-memory-budget-check` | required |
 | `sdk-queue-pressure-check` | required |

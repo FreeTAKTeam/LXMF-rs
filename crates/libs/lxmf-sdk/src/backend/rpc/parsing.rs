@@ -212,6 +212,7 @@ fn starts_with_ignore_ascii_case(value: &str, prefix: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::RpcBackendClient;
+    use crate::{ConfigPatch, DeliverySnapshot, EventBatch, RuntimeSnapshot, SdkError, SdkEvent};
 
     #[test]
     fn parse_severity_unknown_maps_to_unknown_variant() {
@@ -271,5 +272,27 @@ mod tests {
             RpcBackendClient::parse_delivery_state(Some("FaIlEd_ttl_expired")),
             crate::types::DeliveryState::Failed
         );
+    }
+
+    #[test]
+    fn fuzz_smoke_sdk_json_decoders_do_not_panic() {
+        let mut seed = 0xC001_D00D_1BAD_B002_u64;
+        for _ in 0..6_000 {
+            seed = seed.wrapping_mul(2862933555777941757).wrapping_add(3037000493);
+            let len = ((seed >> 21) as usize) % 1024;
+            let mut bytes = vec![0_u8; len];
+            let mut stream = seed ^ 0xA24B_AED4_963E_E407;
+            for byte in &mut bytes {
+                stream = stream.wrapping_mul(0x9E37_79B1_85EB_CA87).rotate_left(7);
+                *byte = (stream & 0xFF) as u8;
+            }
+
+            let _ = serde_json::from_slice::<EventBatch>(&bytes);
+            let _ = serde_json::from_slice::<SdkEvent>(&bytes);
+            let _ = serde_json::from_slice::<SdkError>(&bytes);
+            let _ = serde_json::from_slice::<RuntimeSnapshot>(&bytes);
+            let _ = serde_json::from_slice::<DeliverySnapshot>(&bytes);
+            let _ = serde_json::from_slice::<ConfigPatch>(&bytes);
+        }
     }
 }

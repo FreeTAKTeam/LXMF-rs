@@ -49,6 +49,7 @@ cargo run -p xtask -- sdk-perf-budget-check
 cargo run -p xtask -- sdk-memory-budget-check
 cargo run -p xtask -- sdk-queue-pressure-check
 cargo run -p xtask -- security-review-check
+cargo run -p xtask -- sdk-fuzz-check
 ```
 
 Optional soak:
@@ -71,6 +72,7 @@ Queue pressure tuning and overflow policy guidance:
 
 - `docs/runbooks/queue-pressure-tuning.md`
 - `docs/runbooks/security-review-checklist.md`
+- `docs/runbooks/fuzzing-campaign.md`
 
 ## 6. Release metadata
 

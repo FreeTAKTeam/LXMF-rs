@@ -37,6 +37,7 @@ pub fn decode_frame<T: DeserializeOwned>(bytes: &[u8]) -> io::Result<T> {
 #[cfg(test)]
 mod tests {
     use super::{decode_frame, encode_frame};
+    use crate::rpc::{RpcRequest, RpcResponse};
     use serde::{Deserialize, Serialize};
     use std::io;
 
@@ -70,5 +71,27 @@ mod tests {
         incomplete.extend_from_slice(&[1, 2, 3, 4]);
         let err = decode_frame::<Probe>(&incomplete).expect_err("incomplete payload should fail");
         assert_eq!(err.kind(), io::ErrorKind::UnexpectedEof);
+    }
+
+    #[test]
+    fn fuzz_smoke_rpc_frame_and_http_parsers_do_not_panic() {
+        let mut seed = 0xA5A5_5A5A_1234_5678_u64;
+        for _ in 0..6_000 {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+            let len = ((seed >> 16) as usize) % 1024;
+            let mut bytes = vec![0_u8; len];
+            let mut stream = seed ^ 0x9E37_79B9_7F4A_7C15;
+            for byte in &mut bytes {
+                stream = stream.rotate_left(9).wrapping_mul(0xD134_2543_DE82_E285);
+                *byte = (stream & 0xFF) as u8;
+            }
+
+            let _ = decode_frame::<RpcRequest>(&bytes);
+            let _ = decode_frame::<RpcResponse>(&bytes);
+            let _ = crate::e2e_harness::parse_http_response_body(&bytes);
+            if let Ok(text) = std::str::from_utf8(&bytes) {
+                let _ = crate::e2e_harness::parse_rpc_response(text);
+            }
+        }
     }
 }
