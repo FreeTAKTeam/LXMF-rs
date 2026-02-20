@@ -279,6 +279,125 @@ impl RpcDaemon {
             .any(|current| current == capability)
     }
 
+    fn should_trace_sdk_lifecycle(method: &str) -> bool {
+        matches!(
+            method,
+            "sdk_send_v2"
+                | "send_message"
+                | "send_message_v2"
+                | "sdk_cancel_message_v2"
+                | "sdk_configure_v2"
+                | "sdk_shutdown_v2"
+        )
+    }
+
+    fn sdk_lifecycle_trace_id(method: &str, request_id: u64) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(method.as_bytes());
+        hasher.update(request_id.to_le_bytes());
+        hasher.update(now_millis_u64().to_le_bytes());
+        let digest = hex::encode(hasher.finalize());
+        format!("sdk-trace-{}", &digest[..24])
+    }
+
+    fn sdk_lifecycle_trace_ref(trace_id: &str) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(trace_id.as_bytes());
+        let digest = hex::encode(hasher.finalize());
+        format!("ref-{}", &digest[..12])
+    }
+
+    fn sdk_lifecycle_details(method: &str, response: &RpcResponse) -> JsonMap<String, JsonValue> {
+        let mut details = JsonMap::new();
+        if let Some(error) = response.error.as_ref() {
+            details.insert("error_code".to_string(), JsonValue::String(error.code.clone()));
+        }
+        let Some(result) = response.result.as_ref() else {
+            return details;
+        };
+        match method {
+            "sdk_send_v2" | "send_message" | "send_message_v2" => {
+                if let Some(message_id) = result.get("message_id").and_then(JsonValue::as_str) {
+                    details.insert(
+                        "message_id".to_string(),
+                        JsonValue::String(message_id.to_string()),
+                    );
+                }
+            }
+            "sdk_cancel_message_v2" => {
+                if let Some(cancel_result) = result.get("result").and_then(JsonValue::as_str) {
+                    details.insert(
+                        "cancel_result".to_string(),
+                        JsonValue::String(cancel_result.to_string()),
+                    );
+                }
+            }
+            "sdk_poll_events_v2" => {
+                let event_count = result
+                    .get("events")
+                    .and_then(JsonValue::as_array)
+                    .map_or(0_u64, |events| events.len() as u64);
+                details.insert(
+                    "event_count".to_string(),
+                    JsonValue::Number(serde_json::Number::from(event_count)),
+                );
+                if let Some(dropped_count) = result.get("dropped_count").and_then(JsonValue::as_u64)
+                {
+                    details.insert(
+                        "dropped_count".to_string(),
+                        JsonValue::Number(serde_json::Number::from(dropped_count)),
+                    );
+                }
+                details.insert(
+                    "next_cursor_present".to_string(),
+                    JsonValue::Bool(
+                        result.get("next_cursor").is_some_and(|cursor| !cursor.is_null()),
+                    ),
+                );
+            }
+            "sdk_configure_v2" => {
+                if let Some(revision) = result.get("revision").and_then(JsonValue::as_u64) {
+                    details.insert(
+                        "revision".to_string(),
+                        JsonValue::Number(serde_json::Number::from(revision)),
+                    );
+                }
+            }
+            "sdk_shutdown_v2" => {
+                if let Some(mode) = result.get("mode").and_then(JsonValue::as_str) {
+                    details.insert("mode".to_string(), JsonValue::String(mode.to_string()));
+                }
+            }
+            _ => {}
+        }
+        details
+    }
+
+    fn emit_sdk_lifecycle_trace(
+        &self,
+        trace_id: &str,
+        request_id: u64,
+        method: &str,
+        phase: &str,
+        outcome: &str,
+        details: JsonMap<String, JsonValue>,
+    ) {
+        let event = RpcEvent {
+            event_type: "sdk_lifecycle_trace".to_string(),
+            payload: json!({
+                "trace_id": trace_id,
+                "trace_ref": Self::sdk_lifecycle_trace_ref(trace_id),
+                "request_id": request_id,
+                "method": method,
+                "phase": phase,
+                "outcome": outcome,
+                "timestamp_ms": now_millis_u64(),
+                "details": details,
+            }),
+        };
+        self.publish_event(event);
+    }
+
     fn collection_cursor_index(
         &self,
         cursor: Option<&str>,

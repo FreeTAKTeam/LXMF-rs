@@ -3,6 +3,21 @@ impl RpcDaemon {
         let request_id = request.id;
         let method = request.method.clone();
         let is_sdk_method = method.starts_with("sdk_");
+        let trace_lifecycle = Self::should_trace_sdk_lifecycle(method.as_str());
+        let lifecycle_trace_id =
+            trace_lifecycle.then(|| Self::sdk_lifecycle_trace_id(method.as_str(), request_id));
+        if let Some(trace_id) = lifecycle_trace_id.as_deref() {
+            let mut details = JsonMap::new();
+            details.insert("is_sdk_method".to_string(), JsonValue::Bool(is_sdk_method));
+            self.emit_sdk_lifecycle_trace(
+                trace_id,
+                request_id,
+                method.as_str(),
+                "start",
+                "pending",
+                details,
+            );
+        }
         let response = match method.as_str() {
             "status" => Ok(RpcResponse {
                 id: request.id,
@@ -83,7 +98,21 @@ impl RpcDaemon {
         };
 
         match response {
-            Ok(response) => Ok(response),
+            Ok(response) => {
+                if let Some(trace_id) = lifecycle_trace_id.as_deref() {
+                    let details = Self::sdk_lifecycle_details(method.as_str(), &response);
+                    let outcome = if response.error.is_some() { "error" } else { "ok" };
+                    self.emit_sdk_lifecycle_trace(
+                        trace_id,
+                        request_id,
+                        method.as_str(),
+                        "finish",
+                        outcome,
+                        details,
+                    );
+                }
+                Ok(response)
+            }
             Err(error) if is_sdk_method && error.kind() == std::io::ErrorKind::InvalidInput => {
                 let message = error.to_string();
                 let normalized = message.to_ascii_lowercase();
@@ -92,9 +121,41 @@ impl RpcDaemon {
                 } else {
                     ("SDK_VALIDATION_INVALID_ARGUMENT", message.as_str())
                 };
-                Ok(self.sdk_error_response(request_id, code, message))
+                let mapped = self.sdk_error_response(request_id, code, message);
+                if let Some(trace_id) = lifecycle_trace_id.as_deref() {
+                    let mut details = Self::sdk_lifecycle_details(method.as_str(), &mapped);
+                    details
+                        .insert("mapped_invalid_input".to_string(), JsonValue::Bool(true));
+                    self.emit_sdk_lifecycle_trace(
+                        trace_id,
+                        request_id,
+                        method.as_str(),
+                        "finish",
+                        "error",
+                        details,
+                    );
+                }
+                Ok(mapped)
             }
-            Err(error) => Err(error),
+            Err(error) => {
+                if let Some(trace_id) = lifecycle_trace_id.as_deref() {
+                    let mut details = JsonMap::new();
+                    details.insert(
+                        "io_error_kind".to_string(),
+                        JsonValue::String(format!("{:?}", error.kind())),
+                    );
+                    details.insert("io_error".to_string(), JsonValue::String(error.to_string()));
+                    self.emit_sdk_lifecycle_trace(
+                        trace_id,
+                        request_id,
+                        method.as_str(),
+                        "finish",
+                        "error",
+                        details,
+                    );
+                }
+                Err(error)
+            }
         }
     }
     fn append_delivery_trace(&self, message_id: &str, status: String) {

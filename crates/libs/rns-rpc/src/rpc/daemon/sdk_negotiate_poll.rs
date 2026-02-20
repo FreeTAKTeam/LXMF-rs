@@ -454,8 +454,11 @@ impl RpcDaemon {
         }
 
         let remaining_slots = parsed.max.saturating_sub(event_rows.len());
-        for entry in
-            log_guard.iter().filter(|entry| entry.seq_no >= start_seq).take(remaining_slots)
+        for entry in log_guard
+            .iter()
+            .filter(|entry| entry.seq_no >= start_seq)
+            .filter(|entry| entry.event.event_type != "sdk_lifecycle_trace")
+            .take(remaining_slots)
         {
             let event_row = json!({
                 "event_id": format!("evt-{}", entry.seq_no),

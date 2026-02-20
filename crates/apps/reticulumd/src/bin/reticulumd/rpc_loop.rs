@@ -1,8 +1,10 @@
 use super::bootstrap::RpcTlsConfig;
-use rns_rpc::{http, RpcDaemon};
+use rns_rpc::rpc::codec;
+use rns_rpc::{http, RpcDaemon, RpcRequest};
 use rustls::server::WebPkiClientVerifier;
 use rustls::{RootCertStore, ServerConfig};
 use rustls_pemfile::private_key;
+use serde_json::json;
 use std::fs::File;
 use std::io::{self, BufReader};
 use std::net::{IpAddr, SocketAddr};
@@ -14,6 +16,15 @@ use tokio_rustls::server::TlsStream;
 use tokio_rustls::TlsAcceptor;
 use x509_parser::extensions::ParsedExtension;
 use x509_parser::prelude::{FromDer, GeneralName, X509Certificate};
+
+#[derive(Debug, Default, Clone)]
+struct RpcRequestLogMeta {
+    http_method: String,
+    path: String,
+    rpc_method: Option<String>,
+    rpc_request_id: Option<u64>,
+    trace_ref: Option<String>,
+}
 
 pub(super) async fn run_rpc_loop(
     addr: SocketAddr,
@@ -96,15 +107,99 @@ async fn handle_connection<S>(
         return;
     }
 
-    let response = http::handle_http_request_with_transport_auth(
+    let request_meta = parse_request_log_meta(&buffer);
+    let started_at = std::time::Instant::now();
+    let response_result = http::handle_http_request_with_transport_auth(
         daemon,
         &buffer,
         Some(peer_addr),
         transport_auth,
-    )
-    .unwrap_or_else(|err| http::build_error_response(&format!("rpc error: {}", err)));
+    );
+    let elapsed_ms = started_at.elapsed().as_millis() as u64;
+    let (response, error_text) = match response_result {
+        Ok(response) => (response, None),
+        Err(err) => {
+            let err_text = err.to_string();
+            (http::build_error_response(&format!("rpc error: {err_text}")), Some(err_text))
+        }
+    };
+    emit_rpc_access_log(peer_addr, &request_meta, &response, elapsed_ms, error_text.as_deref());
     let _ = stream.write_all(&response).await;
     let _ = stream.shutdown().await;
+}
+
+fn parse_request_log_meta(request: &[u8]) -> RpcRequestLogMeta {
+    let mut meta = RpcRequestLogMeta::default();
+    let Some(header_end) = http::find_header_end(request) else {
+        return meta;
+    };
+    let headers = &request[..header_end];
+    let Some((http_method, path)) = parse_http_request_line(headers) else {
+        return meta;
+    };
+    meta.http_method = http_method.to_string();
+    meta.path = path.to_string();
+
+    if http_method != "POST" || path != "/rpc" {
+        return meta;
+    }
+    let Some(content_length) = http::parse_content_length(headers) else {
+        return meta;
+    };
+    let body_start = header_end + 4;
+    if request.len() < body_start.saturating_add(content_length) {
+        return meta;
+    }
+    let body = &request[body_start..body_start + content_length];
+    let Ok(rpc_request) = codec::decode_frame::<RpcRequest>(body) else {
+        return meta;
+    };
+    meta.trace_ref = Some(format!("rpc:{}:{:016x}", rpc_request.method, rpc_request.id));
+    meta.rpc_method = Some(rpc_request.method);
+    meta.rpc_request_id = Some(rpc_request.id);
+    meta
+}
+
+fn parse_http_request_line(headers: &[u8]) -> Option<(&str, &str)> {
+    let text = std::str::from_utf8(headers).ok()?;
+    let line = text.lines().next()?;
+    let mut parts = line.split_whitespace();
+    let method = parts.next()?;
+    let path = parts.next()?;
+    Some((method, path))
+}
+
+fn parse_status_code(response: &[u8]) -> Option<u16> {
+    let text = std::str::from_utf8(response).ok()?;
+    let line = text.lines().next()?;
+    let mut parts = line.split_whitespace();
+    let _http_version = parts.next()?;
+    let code = parts.next()?;
+    code.parse::<u16>().ok()
+}
+
+fn emit_rpc_access_log(
+    peer_addr: SocketAddr,
+    meta: &RpcRequestLogMeta,
+    response: &[u8],
+    elapsed_ms: u64,
+    error_text: Option<&str>,
+) {
+    let status_code = parse_status_code(response).unwrap_or(0);
+    let payload = json!({
+        "event": "rpc_request",
+        "peer": peer_addr.to_string(),
+        "http_method": meta.http_method,
+        "path": meta.path,
+        "rpc_method": meta.rpc_method,
+        "rpc_request_id": meta.rpc_request_id,
+        "trace_ref": meta.trace_ref,
+        "status_code": status_code,
+        "elapsed_ms": elapsed_ms,
+        "ok": error_text.is_none(),
+        "error": error_text,
+    });
+    eprintln!("{}", payload);
 }
 
 fn build_tls_server_config(config: &RpcTlsConfig) -> io::Result<std::sync::Arc<ServerConfig>> {
@@ -259,4 +354,52 @@ fn parse_subject_alt_names(cert: &X509Certificate<'_>) -> Vec<String> {
         }
     }
     sans
+}
+
+#[cfg(test)]
+mod rpc_loop_tests {
+    use super::*;
+
+    #[test]
+    fn parse_request_log_meta_extracts_rpc_fields() {
+        let rpc_body = codec::encode_frame(&RpcRequest {
+            id: 44,
+            method: "sdk_poll_events_v2".to_string(),
+            params: Some(json!({ "cursor": null, "max": 1 })),
+        })
+        .expect("encode rpc body");
+        let request = format!(
+            "POST /rpc HTTP/1.1\r\nHost: localhost\r\nContent-Length: {}\r\n\r\n",
+            rpc_body.len()
+        );
+        let mut raw = request.into_bytes();
+        raw.extend_from_slice(&rpc_body);
+
+        let meta = parse_request_log_meta(&raw);
+        assert_eq!(meta.http_method, "POST");
+        assert_eq!(meta.path, "/rpc");
+        assert_eq!(meta.rpc_method.as_deref(), Some("sdk_poll_events_v2"));
+        assert_eq!(meta.rpc_request_id, Some(44));
+        assert!(meta
+            .trace_ref
+            .as_deref()
+            .is_some_and(|value| value.contains("sdk_poll_events_v2")));
+    }
+
+    #[test]
+    fn parse_request_log_meta_keeps_non_rpc_requests_lightweight() {
+        let raw = b"GET /healthz HTTP/1.1\r\nHost: localhost\r\n\r\n";
+        let meta = parse_request_log_meta(raw);
+        assert_eq!(meta.http_method, "GET");
+        assert_eq!(meta.path, "/healthz");
+        assert!(meta.rpc_method.is_none());
+        assert!(meta.rpc_request_id.is_none());
+        assert!(meta.trace_ref.is_none());
+    }
+
+    #[test]
+    fn parse_status_code_extracts_numeric_status() {
+        let response = b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n";
+        assert_eq!(parse_status_code(response), Some(200));
+    }
 }

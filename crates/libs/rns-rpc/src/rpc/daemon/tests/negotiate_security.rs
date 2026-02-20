@@ -582,3 +582,134 @@
         assert!(source_ip.starts_with("sha256:"));
         assert!(principal.starts_with("sha256:"));
     }
+
+    #[test]
+    fn sdk_lifecycle_traces_include_correlation_fields() {
+        let daemon = RpcDaemon::test_instance();
+
+        let configure = daemon
+            .handle_rpc(rpc_request(
+                40,
+                "sdk_configure_v2",
+                json!({
+                    "expected_revision": 0,
+                    "patch": {
+                        "event_stream": { "max_poll_events": 16 }
+                    }
+                }),
+            ))
+            .expect("configure");
+        assert!(configure.error.is_none());
+
+        let shutdown = daemon
+            .handle_rpc(rpc_request(
+                41,
+                "sdk_shutdown_v2",
+                json!({
+                    "mode": "graceful",
+                    "flush_timeout_ms": 50
+                }),
+            ))
+            .expect("shutdown");
+        assert!(shutdown.error.is_none());
+
+        let mut found_config_finish = false;
+        let mut found_shutdown_finish = false;
+        for _ in 0..24 {
+            let Some(event) = daemon.take_event() else {
+                break;
+            };
+            if event.event_type != "sdk_lifecycle_trace" {
+                continue;
+            }
+            let method = event.payload.get("method").and_then(JsonValue::as_str).unwrap_or("");
+            let phase = event.payload.get("phase").and_then(JsonValue::as_str).unwrap_or("");
+            let trace_ref = event.payload.get("trace_ref").and_then(JsonValue::as_str).unwrap_or("");
+            assert!(
+                trace_ref.starts_with("ref-"),
+                "trace_ref should provide a stable non-secret correlation handle"
+            );
+
+            if method == "sdk_configure_v2" && phase == "finish" {
+                found_config_finish = true;
+                assert!(event
+                    .payload
+                    .get("details")
+                    .and_then(|details| details.get("revision"))
+                    .and_then(JsonValue::as_u64)
+                    .is_some());
+                assert!(event
+                    .payload
+                    .get("details")
+                    .and_then(|details| details.get("error_code"))
+                    .is_none());
+            }
+            if method == "sdk_shutdown_v2" && phase == "finish" {
+                found_shutdown_finish = true;
+                assert!(event
+                    .payload
+                    .get("details")
+                    .and_then(|details| details.get("mode"))
+                    .and_then(JsonValue::as_str)
+                    .is_some_and(|mode| mode == "graceful"));
+                assert!(event
+                    .payload
+                    .get("details")
+                    .and_then(|details| details.get("error_code"))
+                    .is_none());
+            }
+        }
+        assert!(found_config_finish, "configure should emit lifecycle finish trace");
+        assert!(found_shutdown_finish, "shutdown should emit lifecycle finish trace");
+    }
+
+    #[test]
+    fn sdk_lifecycle_trace_redacts_sensitive_trace_id() {
+        let daemon = RpcDaemon::test_instance();
+        let _ = daemon.handle_rpc(rpc_request(
+            42,
+            "sdk_shutdown_v2",
+            json!({
+                "mode": "graceful",
+                "flush_timeout_ms": 10
+            }),
+        ));
+
+        let mut trace_id = None;
+        let mut trace_ref = None;
+        for _ in 0..16 {
+            let Some(event) = daemon.take_event() else {
+                break;
+            };
+            if event.event_type != "sdk_lifecycle_trace" {
+                continue;
+            }
+            if event.payload.get("method").and_then(JsonValue::as_str)
+                == Some("sdk_shutdown_v2")
+                && event.payload.get("phase").and_then(JsonValue::as_str) == Some("finish")
+            {
+                trace_id = event
+                    .payload
+                    .get("trace_id")
+                    .and_then(JsonValue::as_str)
+                    .map(str::to_owned);
+                trace_ref = event
+                    .payload
+                    .get("trace_ref")
+                    .and_then(JsonValue::as_str)
+                    .map(str::to_owned);
+                break;
+            }
+        }
+
+        let trace_id = trace_id.expect("shutdown lifecycle trace should include trace_id");
+        let trace_ref = trace_ref.expect("shutdown lifecycle trace should include trace_ref");
+        assert!(
+            trace_id.starts_with("sha256:"),
+            "redaction should hash sensitive trace_id field by default"
+        );
+        assert!(
+            trace_ref.starts_with("ref-"),
+            "trace_ref should remain available for correlation"
+        );
+    }
