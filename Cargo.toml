@@ -12,10 +12,6 @@ members = [
   "crates/apps/rns-tools",
   "xtask",
 ]
-exclude = [
-  "crates/internal/lxmf-legacy",
-  "crates/internal/reticulum-legacy",
-]
 default-members = [
   "crates/libs/lxmf-core",
   "crates/libs/lxmf-sdk",

@@ -94,3 +94,5 @@ path = "examples/testnet_client.rs"
 [[example]]
 name = "multihop"
 path = "examples/multihop.rs"
+
+[workspace]

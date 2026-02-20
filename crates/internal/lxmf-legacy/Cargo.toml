@@ -56,3 +56,5 @@ cli = [
   "dep:ureq",
 ]
 embedded-runtime = ["cli", "dep:tokio"]
+
+[workspace]
