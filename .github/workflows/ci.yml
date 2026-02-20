@@ -125,6 +125,22 @@ jobs:
       - name: SDK security suite
         run: cargo xtask sdk-security-check
 
+  sdk-property-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: SDK property suite
+        run: cargo xtask sdk-property-check
+
+  sdk-matrix-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: SDK feature matrix gate
+        run: cargo xtask sdk-matrix-check
+
   sdk-profile-build:
     runs-on: ubuntu-latest
     steps:

@@ -25,6 +25,8 @@ enum XtaskCommand {
     SdkApiBreak,
     SdkMigrationCheck,
     SdkSecurityCheck,
+    SdkPropertyCheck,
+    SdkMatrixCheck,
 }
 
 fn main() -> Result<()> {
@@ -43,6 +45,8 @@ fn main() -> Result<()> {
         XtaskCommand::SdkApiBreak => run_sdk_api_break(),
         XtaskCommand::SdkMigrationCheck => run_sdk_migration_check(),
         XtaskCommand::SdkSecurityCheck => run_sdk_security_check(),
+        XtaskCommand::SdkPropertyCheck => run_sdk_property_check(),
+        XtaskCommand::SdkMatrixCheck => run_sdk_matrix_check(),
     }
 }
 
@@ -67,6 +71,8 @@ fn run_ci() -> Result<()> {
     run_sdk_conformance()?;
     run_sdk_profile_build()?;
     run_sdk_security_check()?;
+    run_sdk_property_check()?;
+    run_sdk_matrix_check()?;
     run_migration_checks()?;
     run_architecture_checks()?;
     Ok(())
@@ -202,6 +208,14 @@ fn run_sdk_migration_check() -> Result<()> {
 
 fn run_sdk_security_check() -> Result<()> {
     run("cargo", &["test", "-p", "rns-rpc", "sdk_security", "--", "--nocapture"])
+}
+
+fn run_sdk_property_check() -> Result<()> {
+    run("cargo", &["test", "-p", "rns-rpc", "sdk_property", "--", "--nocapture"])
+}
+
+fn run_sdk_matrix_check() -> Result<()> {
+    run("cargo", &["test", "-p", "test-support", "sdk_matrix", "--", "--nocapture"])
 }
 
 fn run_migration_checks() -> Result<()> {
