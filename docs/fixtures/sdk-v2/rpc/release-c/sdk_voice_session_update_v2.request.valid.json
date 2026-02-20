@@ -1,0 +1,8 @@
+{
+  "id": "req-voice-update-1",
+  "method": "sdk_voice_session_update_v2",
+  "params": {
+    "session_id": "voice-1",
+    "state": "active"
+  }
+}

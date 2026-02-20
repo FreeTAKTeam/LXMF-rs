@@ -1,0 +1,5 @@
+{
+  "id": "req-identity-export-invalid",
+  "method": "sdk_identity_export_v2",
+  "params": {}
+}

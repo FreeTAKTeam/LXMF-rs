@@ -1,0 +1,5 @@
+{
+  "id": "req-topic-unsubscribe-invalid",
+  "method": "sdk_topic_unsubscribe_v2",
+  "params": {}
+}

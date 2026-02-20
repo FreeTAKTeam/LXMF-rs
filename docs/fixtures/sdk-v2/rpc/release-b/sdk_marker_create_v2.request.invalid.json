@@ -1,0 +1,7 @@
+{
+  "id": "req-marker-create-invalid",
+  "method": "sdk_marker_create_v2",
+  "params": {
+    "label": "Ops HQ"
+  }
+}

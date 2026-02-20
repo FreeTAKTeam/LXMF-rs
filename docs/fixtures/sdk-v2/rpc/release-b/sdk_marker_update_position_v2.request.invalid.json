@@ -1,0 +1,7 @@
+{
+  "id": "req-marker-update-invalid",
+  "method": "sdk_marker_update_position_v2",
+  "params": {
+    "marker_id": "marker-1"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "id": "req-attach-assoc-1",
+  "method": "sdk_attachment_associate_topic_v2",
+  "params": {
+    "attachment_id": "att-1",
+    "topic_id": "topic-1"
+  }
+}

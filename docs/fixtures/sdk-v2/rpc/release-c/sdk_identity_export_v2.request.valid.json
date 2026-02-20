@@ -1,0 +1,7 @@
+{
+  "id": "req-identity-export-1",
+  "method": "sdk_identity_export_v2",
+  "params": {
+    "identity": "id:alpha"
+  }
+}

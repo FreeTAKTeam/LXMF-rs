@@ -1,0 +1,8 @@
+{
+  "id": "req-topic-create-invalid",
+  "method": "sdk_topic_create_v2",
+  "params": {
+    "topic_path": "ops/alerts",
+    "unexpected": true
+  }
+}

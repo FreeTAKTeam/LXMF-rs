@@ -1,0 +1,7 @@
+{
+  "id": "req-topic-get-invalid",
+  "method": "sdk_topic_get_v2",
+  "params": {
+    "id": "topic-123"
+  }
+}

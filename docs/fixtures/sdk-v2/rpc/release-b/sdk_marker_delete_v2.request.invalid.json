@@ -1,0 +1,5 @@
+{
+  "id": "req-marker-delete-invalid",
+  "method": "sdk_marker_delete_v2",
+  "params": {}
+}

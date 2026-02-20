@@ -1,0 +1,5 @@
+{
+  "id": "req-topic-subscribe-invalid",
+  "method": "sdk_topic_subscribe_v2",
+  "params": {}
+}

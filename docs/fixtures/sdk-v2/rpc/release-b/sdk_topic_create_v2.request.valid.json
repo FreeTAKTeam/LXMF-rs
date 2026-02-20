@@ -1,0 +1,10 @@
+{
+  "id": "req-topic-create-1",
+  "method": "sdk_topic_create_v2",
+  "params": {
+    "topic_path": "ops/alerts",
+    "metadata": {
+      "priority": "high"
+    }
+  }
+}

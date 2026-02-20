@@ -131,6 +131,11 @@ struct RpcCoreSchemaSet {
     sdk_shutdown_v2: JSONSchema,
 }
 
+struct RpcDomainSchemaSet {
+    release_b_methods: JSONSchema,
+    release_c_methods: JSONSchema,
+}
+
 fn load_schemas() -> SchemaSet {
     let root = workspace_root();
     let schema_dir = root.join("docs/schemas/sdk/v2");
@@ -189,15 +194,37 @@ fn load_rpc_core_schemas() -> RpcCoreSchemaSet {
     }
 }
 
+fn load_rpc_domain_schemas() -> RpcDomainSchemaSet {
+    let root = workspace_root();
+    let schema_dir = root.join("docs/schemas/sdk/v2/rpc");
+
+    let release_b_methods = read_json(&schema_dir.join("sdk_release_b_methods.schema.json"));
+    let release_c_methods = read_json(&schema_dir.join("sdk_release_c_methods.schema.json"));
+
+    RpcDomainSchemaSet {
+        release_b_methods: compile_schema(&release_b_methods, "rpc/sdk_release_b_methods"),
+        release_c_methods: compile_schema(&release_c_methods, "rpc/sdk_release_c_methods"),
+    }
+}
+
 fn fixture(path: &str) -> JsonValue {
     let root = workspace_root();
     read_json(&root.join(path))
+}
+
+fn fixture_paths(dir: &str) -> Vec<PathBuf> {
+    let root = workspace_root().join(dir);
+    let mut paths = Vec::new();
+    collect_json_files(&root, &mut paths);
+    paths.sort();
+    paths
 }
 
 #[test]
 fn sdk_schema_documents_parse_and_compile() {
     let _schemas = load_schemas();
     let _rpc_schemas = load_rpc_core_schemas();
+    let _rpc_domain_schemas = load_rpc_domain_schemas();
 
     let root = workspace_root();
     let schema_root = root.join("docs/schemas/sdk/v2");
@@ -746,4 +773,48 @@ fn sdk_rpc_core_schema_invalid_fixtures_are_rejected() {
         "docs/fixtures/sdk-v2/rpc/sdk_shutdown_v2.request.invalid.json",
         &fixture("docs/fixtures/sdk-v2/rpc/sdk_shutdown_v2.request.invalid.json"),
     );
+}
+
+#[test]
+fn sdk_rpc_domain_schema_release_b_fixtures_are_validated() {
+    let schemas = load_rpc_domain_schemas();
+    let root = workspace_root();
+    for path in fixture_paths("docs/fixtures/sdk-v2/rpc/release-b") {
+        let relative = path
+            .strip_prefix(&root)
+            .map(|item| item.to_string_lossy().to_string())
+            .unwrap_or_else(|_| path.to_string_lossy().to_string());
+        let json = read_json(&path);
+        if relative.contains(".valid.") {
+            assert_schema_valid(&schemas.release_b_methods, relative.as_str(), &json);
+            continue;
+        }
+        if relative.contains(".invalid.") {
+            assert_schema_invalid(&schemas.release_b_methods, relative.as_str(), &json);
+            continue;
+        }
+        panic!("unexpected fixture naming, expected .valid. or .invalid. in {relative}");
+    }
+}
+
+#[test]
+fn sdk_rpc_domain_schema_release_c_fixtures_are_validated() {
+    let schemas = load_rpc_domain_schemas();
+    let root = workspace_root();
+    for path in fixture_paths("docs/fixtures/sdk-v2/rpc/release-c") {
+        let relative = path
+            .strip_prefix(&root)
+            .map(|item| item.to_string_lossy().to_string())
+            .unwrap_or_else(|_| path.to_string_lossy().to_string());
+        let json = read_json(&path);
+        if relative.contains(".valid.") {
+            assert_schema_valid(&schemas.release_c_methods, relative.as_str(), &json);
+            continue;
+        }
+        if relative.contains(".invalid.") {
+            assert_schema_invalid(&schemas.release_c_methods, relative.as_str(), &json);
+            continue;
+        }
+        panic!("unexpected fixture naming, expected .valid. or .invalid. in {relative}");
+    }
 }

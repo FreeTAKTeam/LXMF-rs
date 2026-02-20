@@ -1,0 +1,7 @@
+{
+  "id": "req-voice-update-invalid",
+  "method": "sdk_voice_session_update_v2",
+  "params": {
+    "session_id": "voice-1"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "id": "req-voice-close-1",
+  "method": "sdk_voice_session_close_v2",
+  "params": {
+    "session_id": "voice-1"
+  }
+}

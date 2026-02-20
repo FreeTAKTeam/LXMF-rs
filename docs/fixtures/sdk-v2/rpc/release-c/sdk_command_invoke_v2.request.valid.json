@@ -1,0 +1,12 @@
+{
+  "id": "req-command-invoke-1",
+  "method": "sdk_command_invoke_v2",
+  "params": {
+    "command": "ping",
+    "target": "peer-1",
+    "payload": {
+      "nonce": "abc123"
+    },
+    "timeout_ms": 5000
+  }
+}
