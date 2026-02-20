@@ -52,6 +52,7 @@ cargo run -p xtask -- security-review-check
 cargo run -p xtask -- sdk-fuzz-check
 cargo run -p xtask -- sdk-docs-check
 cargo run -p xtask -- sdk-cookbook-check
+cargo run -p xtask -- sdk-ergonomics-check
 cargo run -p xtask -- supply-chain-check
 cargo run -p xtask -- reproducible-build-check
 ```

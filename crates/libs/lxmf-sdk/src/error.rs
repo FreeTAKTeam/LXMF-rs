@@ -105,6 +105,18 @@ impl SdkError {
         self
     }
 
+    pub fn code(&self) -> &str {
+        self.machine_code.as_str()
+    }
+
+    pub fn is_retryable(&self) -> bool {
+        self.retryable
+    }
+
+    pub fn is_user_actionable(&self) -> bool {
+        self.is_user_actionable
+    }
+
     pub fn invalid_state(method: &'static str, state: &'static str) -> Self {
         Self::new(
             code::RUNTIME_INVALID_STATE,

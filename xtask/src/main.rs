@@ -212,6 +212,7 @@ enum XtaskCommand {
     SdkSchemaCheck,
     SdkDocsCheck,
     SdkCookbookCheck,
+    SdkErgonomicsCheck,
     InteropArtifacts {
         #[arg(long)]
         update: bool,
@@ -258,6 +259,7 @@ enum CiStage {
     SdkSchemaCheck,
     SdkDocsCheck,
     SdkCookbookCheck,
+    SdkErgonomicsCheck,
     InteropArtifacts,
     InteropMatrixCheck,
     InteropCorpusCheck,
@@ -300,6 +302,7 @@ fn main() -> Result<()> {
         XtaskCommand::SdkSchemaCheck => run_sdk_schema_check(),
         XtaskCommand::SdkDocsCheck => run_sdk_docs_check(),
         XtaskCommand::SdkCookbookCheck => run_sdk_cookbook_check(),
+        XtaskCommand::SdkErgonomicsCheck => run_sdk_ergonomics_check(),
         XtaskCommand::InteropArtifacts { update } => run_interop_artifacts(update),
         XtaskCommand::InteropMatrixCheck => run_interop_matrix_check(),
         XtaskCommand::InteropCorpusCheck => run_interop_corpus_check(),
@@ -350,6 +353,7 @@ fn run_ci(stage: Option<CiStage>) -> Result<()> {
     run("cargo", &["doc", "--workspace", "--no-deps"])?;
     run_sdk_docs_check()?;
     run_sdk_cookbook_check()?;
+    run_sdk_ergonomics_check()?;
     run_sdk_schema_check()?;
     run_interop_artifacts(false)?;
     run_interop_matrix_check()?;
@@ -396,6 +400,7 @@ fn run_ci_stage(stage: CiStage) -> Result<()> {
         CiStage::SdkSchemaCheck => run_sdk_schema_check(),
         CiStage::SdkDocsCheck => run_sdk_docs_check(),
         CiStage::SdkCookbookCheck => run_sdk_cookbook_check(),
+        CiStage::SdkErgonomicsCheck => run_sdk_ergonomics_check(),
         CiStage::InteropArtifacts => run_interop_artifacts(false),
         CiStage::InteropMatrixCheck => run_interop_matrix_check(),
         CiStage::InteropCorpusCheck => run_interop_corpus_check(),
@@ -488,6 +493,19 @@ fn run_sdk_docs_check() -> Result<()> {
 
 fn run_sdk_cookbook_check() -> Result<()> {
     run("cargo", &["test", "-p", "test-support", "sdk_cookbook", "--", "--nocapture"])
+}
+
+fn run_sdk_ergonomics_check() -> Result<()> {
+    for test_name in [
+        "start_request_builder_defaults_and_customization_validate",
+        "send_request_builder_sets_optional_fields_and_extensions",
+        "sdk_config_default_profiles_validate",
+        "sdk_config_remote_auth_helpers_apply_valid_security_modes",
+        "config_patch_builder_accumulates_mutations",
+    ] {
+        run("cargo", &["test", "-p", "lxmf-sdk", test_name, "--", "--nocapture"])?;
+    }
+    run("cargo", &["test", "-p", "lxmf-sdk", "--examples", "--no-run"])
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

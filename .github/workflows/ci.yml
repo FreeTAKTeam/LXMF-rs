@@ -76,6 +76,14 @@ jobs:
       - name: SDK cookbook fixtures
         run: cargo xtask ci --stage sdk-cookbook-check
 
+  sdk-ergonomics-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: SDK ergonomics tests and examples
+        run: cargo xtask ci --stage sdk-ergonomics-check
+
   security:
     runs-on: ubuntu-latest
     steps:

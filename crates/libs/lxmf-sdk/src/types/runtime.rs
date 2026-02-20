@@ -41,6 +41,17 @@ pub struct TickBudget {
     pub max_duration_ms: Option<u64>,
 }
 
+impl TickBudget {
+    pub fn new(max_work_items: usize) -> Self {
+        Self { max_work_items, max_duration_ms: None }
+    }
+
+    pub fn with_max_duration_ms(mut self, max_duration_ms: u64) -> Self {
+        self.max_duration_ms = Some(max_duration_ms);
+        self
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct TickResult {

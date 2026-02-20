@@ -113,7 +113,172 @@ pub struct SdkConfig {
     pub extensions: BTreeMap<String, JsonValue>,
 }
 
+const DEFAULT_RPC_LISTEN_ADDR: &str = "127.0.0.1:4242";
+
+fn default_event_stream(profile: &Profile) -> EventStreamConfig {
+    match profile {
+        Profile::DesktopFull | Profile::DesktopLocalRuntime => EventStreamConfig {
+            max_poll_events: 256,
+            max_event_bytes: 65_536,
+            max_batch_bytes: 1_048_576,
+            max_extension_keys: 32,
+        },
+        Profile::EmbeddedAlloc => EventStreamConfig {
+            max_poll_events: 64,
+            max_event_bytes: 8_192,
+            max_batch_bytes: 65_536,
+            max_extension_keys: 8,
+        },
+    }
+}
+
+fn default_redaction() -> RedactionConfig {
+    RedactionConfig {
+        enabled: true,
+        sensitive_transform: RedactionTransform::Hash,
+        break_glass_allowed: false,
+        break_glass_ttl_ms: None,
+    }
+}
+
+fn default_rpc_backend(listen_addr: impl Into<String>) -> RpcBackendConfig {
+    RpcBackendConfig {
+        listen_addr: listen_addr.into(),
+        read_timeout_ms: 5_000,
+        write_timeout_ms: 5_000,
+        max_header_bytes: 16_384,
+        max_body_bytes: 1_048_576,
+        token_auth: None,
+        mtls_auth: None,
+    }
+}
+
 impl SdkConfig {
+    pub fn desktop_local_default() -> Self {
+        Self {
+            profile: Profile::DesktopLocalRuntime,
+            bind_mode: BindMode::LocalOnly,
+            auth_mode: AuthMode::LocalTrusted,
+            overflow_policy: OverflowPolicy::Reject,
+            block_timeout_ms: None,
+            event_stream: default_event_stream(&Profile::DesktopLocalRuntime),
+            idempotency_ttl_ms: 86_400_000,
+            redaction: default_redaction(),
+            rpc_backend: Some(default_rpc_backend(DEFAULT_RPC_LISTEN_ADDR)),
+            extensions: BTreeMap::new(),
+        }
+    }
+
+    pub fn desktop_full_default() -> Self {
+        Self {
+            profile: Profile::DesktopFull,
+            bind_mode: BindMode::LocalOnly,
+            auth_mode: AuthMode::LocalTrusted,
+            overflow_policy: OverflowPolicy::Reject,
+            block_timeout_ms: None,
+            event_stream: default_event_stream(&Profile::DesktopFull),
+            idempotency_ttl_ms: 86_400_000,
+            redaction: default_redaction(),
+            rpc_backend: Some(default_rpc_backend(DEFAULT_RPC_LISTEN_ADDR)),
+            extensions: BTreeMap::new(),
+        }
+    }
+
+    pub fn embedded_alloc_default() -> Self {
+        Self {
+            profile: Profile::EmbeddedAlloc,
+            bind_mode: BindMode::LocalOnly,
+            auth_mode: AuthMode::LocalTrusted,
+            overflow_policy: OverflowPolicy::Reject,
+            block_timeout_ms: None,
+            event_stream: default_event_stream(&Profile::EmbeddedAlloc),
+            idempotency_ttl_ms: 60_000,
+            redaction: default_redaction(),
+            rpc_backend: Some(RpcBackendConfig {
+                listen_addr: DEFAULT_RPC_LISTEN_ADDR.to_owned(),
+                read_timeout_ms: 2_000,
+                write_timeout_ms: 2_000,
+                max_header_bytes: 8_192,
+                max_body_bytes: 65_536,
+                token_auth: None,
+                mtls_auth: None,
+            }),
+            extensions: BTreeMap::new(),
+        }
+    }
+
+    pub fn with_rpc_listen_addr(mut self, listen_addr: impl Into<String>) -> Self {
+        let listen_addr = listen_addr.into();
+        match self.rpc_backend.as_mut() {
+            Some(backend) => backend.listen_addr = listen_addr,
+            None => self.rpc_backend = Some(default_rpc_backend(listen_addr)),
+        }
+        self
+    }
+
+    pub fn with_token_auth(
+        mut self,
+        issuer: impl Into<String>,
+        audience: impl Into<String>,
+        shared_secret: impl Into<String>,
+    ) -> Self {
+        self.bind_mode = BindMode::Remote;
+        self.auth_mode = AuthMode::Token;
+        let backend =
+            self.rpc_backend.get_or_insert_with(|| default_rpc_backend(DEFAULT_RPC_LISTEN_ADDR));
+        backend.mtls_auth = None;
+        backend.token_auth = Some(TokenAuthConfig {
+            issuer: issuer.into(),
+            audience: audience.into(),
+            jti_cache_ttl_ms: 60_000,
+            clock_skew_ms: 5_000,
+            shared_secret: shared_secret.into(),
+        });
+        self
+    }
+
+    pub fn with_mtls_auth(mut self, ca_bundle_path: impl Into<String>) -> Self {
+        self.bind_mode = BindMode::Remote;
+        self.auth_mode = AuthMode::Mtls;
+        let backend =
+            self.rpc_backend.get_or_insert_with(|| default_rpc_backend(DEFAULT_RPC_LISTEN_ADDR));
+        backend.token_auth = None;
+        backend.mtls_auth = Some(MtlsAuthConfig {
+            ca_bundle_path: ca_bundle_path.into(),
+            require_client_cert: false,
+            allowed_san: None,
+            client_cert_path: None,
+            client_key_path: None,
+        });
+        self
+    }
+
+    pub fn with_mtls_client_credentials(
+        mut self,
+        client_cert_path: impl Into<String>,
+        client_key_path: impl Into<String>,
+    ) -> Self {
+        self.bind_mode = BindMode::Remote;
+        self.auth_mode = AuthMode::Mtls;
+        let mtls =
+            self.rpc_backend.get_or_insert_with(|| default_rpc_backend(DEFAULT_RPC_LISTEN_ADDR));
+        mtls.token_auth = None;
+        if mtls.mtls_auth.is_none() {
+            mtls.mtls_auth = Some(MtlsAuthConfig {
+                ca_bundle_path: "ca.pem".to_owned(),
+                require_client_cert: true,
+                allowed_san: None,
+                client_cert_path: None,
+                client_key_path: None,
+            });
+        }
+        let auth = mtls.mtls_auth.as_mut().expect("mtls auth");
+        auth.require_client_cert = true;
+        auth.client_cert_path = Some(client_cert_path.into());
+        auth.client_key_path = Some(client_key_path.into());
+        self
+    }
+
     pub fn validate(&self) -> Result<(), SdkError> {
         if self.overflow_policy == OverflowPolicy::Block && self.block_timeout_ms.is_none() {
             return Err(SdkError::new(

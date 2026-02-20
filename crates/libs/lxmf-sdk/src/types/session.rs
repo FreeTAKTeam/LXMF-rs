@@ -12,7 +12,39 @@ pub struct StartRequest {
     pub config: SdkConfig,
 }
 
+pub const DEFAULT_SUPPORTED_CONTRACT_VERSION: u16 = 2;
+
 impl StartRequest {
+    pub fn new(config: SdkConfig) -> Self {
+        Self {
+            supported_contract_versions: vec![DEFAULT_SUPPORTED_CONTRACT_VERSION],
+            requested_capabilities: Vec::new(),
+            config,
+        }
+    }
+
+    pub fn with_supported_contract_versions(
+        mut self,
+        versions: impl IntoIterator<Item = u16>,
+    ) -> Self {
+        self.supported_contract_versions = versions.into_iter().collect();
+        self
+    }
+
+    pub fn with_requested_capabilities(
+        mut self,
+        capabilities: impl IntoIterator<Item = impl Into<String>>,
+    ) -> Self {
+        self.requested_capabilities =
+            capabilities.into_iter().map(Into::into).collect::<Vec<String>>();
+        self
+    }
+
+    pub fn with_requested_capability(mut self, capability: impl Into<String>) -> Self {
+        self.requested_capabilities.push(capability.into());
+        self
+    }
+
     pub fn validate(&self) -> Result<(), SdkError> {
         if self.supported_contract_versions.is_empty() {
             return Err(SdkError::new(

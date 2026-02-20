@@ -143,3 +143,68 @@ fn runtime_state_deserializes_unknown_variant() {
         serde_json::from_value(value).expect("unknown runtime state should map to Unknown");
     assert_eq!(state, RuntimeState::Unknown);
 }
+
+#[test]
+fn start_request_builder_defaults_and_customization_validate() {
+    let request = StartRequest::new(SdkConfig::desktop_full_default())
+        .with_requested_capability("sdk.capability.cursor_replay")
+        .with_supported_contract_versions(vec![2, 1]);
+    assert_eq!(request.supported_contract_versions, vec![2, 1]);
+    assert_eq!(request.requested_capabilities, vec!["sdk.capability.cursor_replay"]);
+    assert!(request.validate().is_ok());
+}
+
+#[test]
+fn send_request_builder_sets_optional_fields_and_extensions() {
+    let request = SendRequest::new(
+        "source",
+        "destination",
+        serde_json::json!({"title": "hello", "content": "world"}),
+    )
+    .with_idempotency_key("idem-1")
+    .with_ttl_ms(42_000)
+    .with_correlation_id("corr-1")
+    .with_extension("sdk.ext.example", serde_json::json!({"enabled": true}));
+
+    assert_eq!(request.source, "source");
+    assert_eq!(request.destination, "destination");
+    assert_eq!(request.idempotency_key.as_deref(), Some("idem-1"));
+    assert_eq!(request.ttl_ms, Some(42_000));
+    assert_eq!(request.correlation_id.as_deref(), Some("corr-1"));
+    assert_eq!(request.extensions.len(), 1);
+}
+
+#[test]
+fn sdk_config_default_profiles_validate() {
+    assert!(SdkConfig::desktop_local_default().validate().is_ok());
+    assert!(SdkConfig::desktop_full_default().validate().is_ok());
+    assert!(SdkConfig::embedded_alloc_default().validate().is_ok());
+}
+
+#[test]
+fn sdk_config_remote_auth_helpers_apply_valid_security_modes() {
+    let token = SdkConfig::desktop_full_default().with_token_auth("issuer", "audience", "secret");
+    assert!(token.validate().is_ok());
+    assert_eq!(token.bind_mode, BindMode::Remote);
+    assert_eq!(token.auth_mode, AuthMode::Token);
+
+    let mtls = SdkConfig::desktop_full_default()
+        .with_mtls_auth("/tmp/ca.pem")
+        .with_mtls_client_credentials("/tmp/client.pem", "/tmp/client.key");
+    assert!(mtls.validate().is_ok());
+    assert_eq!(mtls.bind_mode, BindMode::Remote);
+    assert_eq!(mtls.auth_mode, AuthMode::Mtls);
+}
+
+#[test]
+fn config_patch_builder_accumulates_mutations() {
+    let patch = ConfigPatch::new()
+        .with_overflow_policy(OverflowPolicy::Block)
+        .with_block_timeout_ms(250)
+        .with_idempotency_ttl_ms(5_000)
+        .with_extension("sdk.ext.sample", serde_json::json!("on"));
+    assert!(!patch.is_empty());
+    assert_eq!(patch.block_timeout_ms, Some(Some(250)));
+    assert_eq!(patch.idempotency_ttl_ms, Some(Some(5_000)));
+    assert!(patch.extensions.as_ref().and_then(Option::as_ref).is_some());
+}

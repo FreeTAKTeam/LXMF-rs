@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use std::collections::BTreeMap;
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[non_exhaustive]
 pub struct EventStreamPatch {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -16,7 +16,7 @@ pub struct EventStreamPatch {
     pub max_extension_keys: Option<Option<usize>>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[non_exhaustive]
 pub struct RedactionPatch {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -29,7 +29,7 @@ pub struct RedactionPatch {
     pub break_glass_ttl_ms: Option<Option<u64>>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[non_exhaustive]
 pub struct TokenAuthPatch {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -44,7 +44,7 @@ pub struct TokenAuthPatch {
     pub shared_secret: Option<Option<String>>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[non_exhaustive]
 pub struct MtlsAuthPatch {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -59,7 +59,7 @@ pub struct MtlsAuthPatch {
     pub client_key_path: Option<Option<String>>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[non_exhaustive]
 pub struct RpcBackendPatch {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -78,7 +78,7 @@ pub struct RpcBackendPatch {
     pub mtls_auth: Option<Option<MtlsAuthPatch>>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[non_exhaustive]
 pub struct ConfigPatch {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -98,6 +98,32 @@ pub struct ConfigPatch {
 }
 
 impl ConfigPatch {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn with_overflow_policy(mut self, policy: OverflowPolicy) -> Self {
+        self.overflow_policy = Some(Some(policy));
+        self
+    }
+
+    pub fn with_block_timeout_ms(mut self, timeout_ms: u64) -> Self {
+        self.block_timeout_ms = Some(Some(timeout_ms));
+        self
+    }
+
+    pub fn with_idempotency_ttl_ms(mut self, ttl_ms: u64) -> Self {
+        self.idempotency_ttl_ms = Some(Some(ttl_ms));
+        self
+    }
+
+    pub fn with_extension(mut self, key: impl Into<String>, value: JsonValue) -> Self {
+        let mut extensions = self.extensions.unwrap_or(Some(BTreeMap::new())).unwrap_or_default();
+        extensions.insert(key.into(), value);
+        self.extensions = Some(Some(extensions));
+        self
+    }
+
     pub fn is_empty(&self) -> bool {
         self.overflow_policy.is_none()
             && self.block_timeout_ms.is_none()
