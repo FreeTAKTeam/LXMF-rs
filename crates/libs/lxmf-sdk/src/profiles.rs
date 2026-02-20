@@ -9,6 +9,21 @@ const CAP_MTLS_AUTH: &str = "sdk.capability.mtls_auth";
 const CAP_RECEIPT_TERMINALITY: &str = "sdk.capability.receipt_terminality";
 const CAP_CONFIG_REVISION_CAS: &str = "sdk.capability.config_revision_cas";
 const CAP_IDEMPOTENCY_TTL: &str = "sdk.capability.idempotency_ttl";
+const CAP_TOPICS: &str = "sdk.capability.topics";
+const CAP_TOPIC_SUBSCRIPTIONS: &str = "sdk.capability.topic_subscriptions";
+const CAP_TOPIC_FANOUT: &str = "sdk.capability.topic_fanout";
+const CAP_TELEMETRY_QUERY: &str = "sdk.capability.telemetry_query";
+const CAP_TELEMETRY_STREAM: &str = "sdk.capability.telemetry_stream";
+const CAP_ATTACHMENTS: &str = "sdk.capability.attachments";
+const CAP_ATTACHMENT_DELETE: &str = "sdk.capability.attachment_delete";
+const CAP_MARKERS: &str = "sdk.capability.markers";
+const CAP_IDENTITY_MULTI: &str = "sdk.capability.identity_multi";
+const CAP_IDENTITY_IMPORT_EXPORT: &str = "sdk.capability.identity_import_export";
+const CAP_IDENTITY_HASH_RESOLUTION: &str = "sdk.capability.identity_hash_resolution";
+const CAP_PAPER_MESSAGES: &str = "sdk.capability.paper_messages";
+const CAP_REMOTE_COMMANDS: &str = "sdk.capability.remote_commands";
+const CAP_VOICE_SIGNALING: &str = "sdk.capability.voice_signaling";
+const CAP_SHARED_INSTANCE_RPC_AUTH: &str = "sdk.capability.shared_instance_rpc_auth";
 
 const DESKTOP_FULL_REQUIRED: &[&str] = &[
     CAP_CURSOR_REPLAY,
@@ -33,6 +48,21 @@ const DESKTOP_FULL_SUPPORTED: &[&str] = &[
     CAP_RECEIPT_TERMINALITY,
     CAP_CONFIG_REVISION_CAS,
     CAP_IDEMPOTENCY_TTL,
+    CAP_TOPICS,
+    CAP_TOPIC_SUBSCRIPTIONS,
+    CAP_TOPIC_FANOUT,
+    CAP_TELEMETRY_QUERY,
+    CAP_TELEMETRY_STREAM,
+    CAP_ATTACHMENTS,
+    CAP_ATTACHMENT_DELETE,
+    CAP_MARKERS,
+    CAP_IDENTITY_MULTI,
+    CAP_IDENTITY_IMPORT_EXPORT,
+    CAP_IDENTITY_HASH_RESOLUTION,
+    CAP_PAPER_MESSAGES,
+    CAP_REMOTE_COMMANDS,
+    CAP_VOICE_SIGNALING,
+    CAP_SHARED_INSTANCE_RPC_AUTH,
 ];
 
 const DESKTOP_LOCAL_RUNTIME_SUPPORTED: &[&str] = &[
@@ -44,6 +74,21 @@ const DESKTOP_LOCAL_RUNTIME_SUPPORTED: &[&str] = &[
     CAP_RECEIPT_TERMINALITY,
     CAP_CONFIG_REVISION_CAS,
     CAP_IDEMPOTENCY_TTL,
+    CAP_TOPICS,
+    CAP_TOPIC_SUBSCRIPTIONS,
+    CAP_TOPIC_FANOUT,
+    CAP_TELEMETRY_QUERY,
+    CAP_TELEMETRY_STREAM,
+    CAP_ATTACHMENTS,
+    CAP_ATTACHMENT_DELETE,
+    CAP_MARKERS,
+    CAP_IDENTITY_MULTI,
+    CAP_IDENTITY_IMPORT_EXPORT,
+    CAP_IDENTITY_HASH_RESOLUTION,
+    CAP_PAPER_MESSAGES,
+    CAP_REMOTE_COMMANDS,
+    CAP_VOICE_SIGNALING,
+    CAP_SHARED_INSTANCE_RPC_AUTH,
 ];
 
 const EMBEDDED_ALLOC_SUPPORTED: &[&str] = &[
@@ -53,6 +98,21 @@ const EMBEDDED_ALLOC_SUPPORTED: &[&str] = &[
     CAP_RECEIPT_TERMINALITY,
     CAP_CONFIG_REVISION_CAS,
     CAP_IDEMPOTENCY_TTL,
+    CAP_TOPICS,
+    CAP_TOPIC_SUBSCRIPTIONS,
+    CAP_TOPIC_FANOUT,
+    CAP_TELEMETRY_QUERY,
+    CAP_TELEMETRY_STREAM,
+    CAP_ATTACHMENTS,
+    CAP_ATTACHMENT_DELETE,
+    CAP_MARKERS,
+    CAP_IDENTITY_MULTI,
+    CAP_IDENTITY_IMPORT_EXPORT,
+    CAP_IDENTITY_HASH_RESOLUTION,
+    CAP_PAPER_MESSAGES,
+    CAP_REMOTE_COMMANDS,
+    CAP_VOICE_SIGNALING,
+    CAP_SHARED_INSTANCE_RPC_AUTH,
 ];
 
 pub fn default_effective_limits(profile: Profile) -> EffectiveLimits {

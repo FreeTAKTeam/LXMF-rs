@@ -153,6 +153,21 @@ fn sdk_matrix_capability_table_matches_profile_capabilities() {
         "sdk.capability.receipt_terminality",
         "sdk.capability.config_revision_cas",
         "sdk.capability.idempotency_ttl",
+        "sdk.capability.topics",
+        "sdk.capability.topic_subscriptions",
+        "sdk.capability.topic_fanout",
+        "sdk.capability.telemetry_query",
+        "sdk.capability.telemetry_stream",
+        "sdk.capability.attachments",
+        "sdk.capability.attachment_delete",
+        "sdk.capability.markers",
+        "sdk.capability.identity_multi",
+        "sdk.capability.identity_import_export",
+        "sdk.capability.identity_hash_resolution",
+        "sdk.capability.paper_messages",
+        "sdk.capability.remote_commands",
+        "sdk.capability.voice_signaling",
+        "sdk.capability.shared_instance_rpc_auth",
     ];
     for capability in KNOWN_CAPABILITIES {
         assert!(seen.contains_key(*capability), "matrix missing known capability row {capability}");

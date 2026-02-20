@@ -532,11 +532,25 @@ impl RpcDaemon {
                 let _clock_skew_ms = token_auth.clock_skew_ms.unwrap_or(0);
             }
             "mtls" => {
-                return Ok(self.sdk_error_response(
-                    request.id,
-                    "SDK_CAPABILITY_DISABLED",
-                    "mtls auth mode is not available until transport-bound certificate verification is implemented",
-                ));
+                let Some(mtls_auth) = parsed
+                    .config
+                    .rpc_backend
+                    .as_ref()
+                    .and_then(|backend| backend.mtls_auth.as_ref())
+                else {
+                    return Ok(self.sdk_error_response(
+                        request.id,
+                        "SDK_SECURITY_AUTH_REQUIRED",
+                        "mtls auth mode requires rpc_backend.mtls_auth configuration",
+                    ));
+                };
+                if mtls_auth.ca_bundle_path.trim().is_empty() {
+                    return Ok(self.sdk_error_response(
+                        request.id,
+                        "SDK_VALIDATION_INVALID_ARGUMENT",
+                        "mtls auth configuration requires ca_bundle_path",
+                    ));
+                }
             }
             _ => {}
         }
@@ -3835,12 +3849,43 @@ impl RpcDaemon {
                 replay_cache.insert(jti, now.saturating_add(jti_ttl_ms.max(1)));
             }
             "mtls" => {
-                return Err(RpcError {
-                    code: "SDK_CAPABILITY_DISABLED".to_string(),
-                    message:
-                        "mtls auth mode is not available until transport-bound certificate verification is implemented"
-                            .to_string(),
-                });
+                let (require_client_cert, allowed_san) =
+                    self.sdk_mtls_auth_config().ok_or_else(|| RpcError {
+                        code: "SDK_SECURITY_AUTH_REQUIRED".to_string(),
+                        message: "mtls auth mode requires mtls auth configuration".to_string(),
+                    })?;
+                let cert_present = Self::header_value(headers, "x-client-cert-present")
+                    .map(|value| {
+                        value.eq_ignore_ascii_case("1") || value.eq_ignore_ascii_case("true")
+                    })
+                    .unwrap_or(false);
+                if require_client_cert && !cert_present {
+                    return Err(RpcError {
+                        code: "SDK_SECURITY_AUTH_REQUIRED".to_string(),
+                        message: "client certificate is required for mtls auth mode".to_string(),
+                    });
+                }
+                if let Some(expected_san) = allowed_san {
+                    let observed_san = Self::header_value(headers, "x-client-san")
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .ok_or_else(|| RpcError {
+                            code: "SDK_SECURITY_AUTHZ_DENIED".to_string(),
+                            message: "client SAN header is required for configured mtls policy"
+                                .to_string(),
+                        })?;
+                    if observed_san != expected_san {
+                        return Err(RpcError {
+                            code: "SDK_SECURITY_AUTHZ_DENIED".to_string(),
+                            message: "client SAN is not authorized by mtls policy".to_string(),
+                        });
+                    }
+                }
+                principal = Self::header_value(headers, "x-client-subject")
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("mtls-client")
+                    .to_string();
             }
             _ => {
                 return Err(RpcError {
@@ -3963,6 +4008,20 @@ impl RpcDaemon {
         Some((issuer, audience, jti_ttl_ms, clock_skew_secs, shared_secret))
     }
 
+    fn sdk_mtls_auth_config(&self) -> Option<(bool, Option<String>)> {
+        let config =
+            self.sdk_runtime_config.lock().expect("sdk_runtime_config mutex poisoned").clone();
+        let mtls_auth = config.get("rpc_backend")?.get("mtls_auth")?;
+        let require_client_cert =
+            mtls_auth.get("require_client_cert").and_then(JsonValue::as_bool).unwrap_or(true);
+        let allowed_san = mtls_auth
+            .get("allowed_san")
+            .and_then(JsonValue::as_str)
+            .map(str::trim)
+            .and_then(|value| if value.is_empty() { None } else { Some(value.to_string()) });
+        Some((require_client_cert, allowed_san))
+    }
+
     fn header_value<'a>(headers: &'a [(String, String)], key: &str) -> Option<&'a str> {
         headers
             .iter()
@@ -4020,6 +4079,7 @@ impl RpcDaemon {
             "sdk.capability.cursor_replay".to_string(),
             "sdk.capability.async_events".to_string(),
             "sdk.capability.token_auth".to_string(),
+            "sdk.capability.mtls_auth".to_string(),
             "sdk.capability.receipt_terminality".to_string(),
             "sdk.capability.config_revision_cas".to_string(),
             "sdk.capability.idempotency_ttl".to_string(),
@@ -4037,6 +4097,7 @@ impl RpcDaemon {
             "sdk.capability.paper_messages".to_string(),
             "sdk.capability.remote_commands".to_string(),
             "sdk.capability.voice_signaling".to_string(),
+            "sdk.capability.shared_instance_rpc_auth".to_string(),
         ]
     }
 
@@ -4781,6 +4842,92 @@ mod tests {
             .authorize_http_request(&tampered_headers, Some("10.5.6.7"))
             .expect_err("tampered signature should be rejected");
         assert_eq!(tampered.code, "SDK_SECURITY_TOKEN_INVALID");
+    }
+
+    #[test]
+    fn sdk_negotiate_v2_accepts_mtls_auth_mode_with_backend_config() {
+        let daemon = RpcDaemon::test_instance();
+        let response = daemon
+            .handle_rpc(rpc_request(
+                24,
+                "sdk_negotiate_v2",
+                json!({
+                    "supported_contract_versions": [2],
+                    "requested_capabilities": ["sdk.capability.mtls_auth"],
+                    "config": {
+                        "profile": "desktop-full",
+                        "bind_mode": "remote",
+                        "auth_mode": "mtls",
+                        "rpc_backend": {
+                            "mtls_auth": {
+                                "ca_bundle_path": "/tmp/test-ca.pem",
+                                "require_client_cert": true,
+                                "allowed_san": "urn:test-san"
+                            }
+                        }
+                    }
+                }),
+            ))
+            .expect("negotiate");
+        assert!(response.error.is_none(), "mtls negotiation should succeed");
+        let result = response.result.expect("result");
+        let capabilities =
+            result["effective_capabilities"].as_array().expect("effective_capabilities");
+        assert!(
+            capabilities.iter().any(|capability| capability == "sdk.capability.mtls_auth"),
+            "mtls capability should be advertised after mtls negotiation"
+        );
+    }
+
+    #[test]
+    fn sdk_security_authorize_http_request_enforces_mtls_headers_and_policy() {
+        let daemon = RpcDaemon::test_instance();
+        let response = daemon
+            .handle_rpc(rpc_request(
+                25,
+                "sdk_negotiate_v2",
+                json!({
+                    "supported_contract_versions": [2],
+                    "requested_capabilities": [],
+                    "config": {
+                        "profile": "desktop-full",
+                        "bind_mode": "remote",
+                        "auth_mode": "mtls",
+                        "rpc_backend": {
+                            "mtls_auth": {
+                                "ca_bundle_path": "/tmp/test-ca.pem",
+                                "require_client_cert": true,
+                                "allowed_san": "urn:test-san"
+                            }
+                        }
+                    }
+                }),
+            ))
+            .expect("negotiate");
+        assert!(response.error.is_none());
+
+        let missing_cert = daemon
+            .authorize_http_request(&[], Some("10.5.6.7"))
+            .expect_err("missing mtls cert header should be rejected");
+        assert_eq!(missing_cert.code, "SDK_SECURITY_AUTH_REQUIRED");
+
+        let wrong_san_headers = vec![
+            ("x-client-cert-present".to_string(), "1".to_string()),
+            ("x-client-san".to_string(), "urn:wrong-san".to_string()),
+        ];
+        let wrong_san = daemon
+            .authorize_http_request(&wrong_san_headers, Some("10.5.6.7"))
+            .expect_err("non-matching mtls SAN should be rejected");
+        assert_eq!(wrong_san.code, "SDK_SECURITY_AUTHZ_DENIED");
+
+        let valid_headers = vec![
+            ("x-client-cert-present".to_string(), "1".to_string()),
+            ("x-client-san".to_string(), "urn:test-san".to_string()),
+            ("x-client-subject".to_string(), "sdk-client-mtls".to_string()),
+        ];
+        daemon
+            .authorize_http_request(&valid_headers, Some("10.5.6.7"))
+            .expect("valid mtls headers should authorize request");
     }
 
     #[test]

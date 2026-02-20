@@ -38,21 +38,21 @@ Legend:
 | `sdk.capability.receipt_terminality` | required | required | optional |
 | `sdk.capability.config_revision_cas` | required | required | required |
 | `sdk.capability.idempotency_ttl` | required | required | required (`effective_limits.idempotency_ttl_ms`) |
-| `sdk.capability.topics` | experimental | experimental | experimental |
-| `sdk.capability.topic_subscriptions` | experimental | experimental | experimental |
-| `sdk.capability.topic_fanout` | experimental | experimental | experimental |
-| `sdk.capability.telemetry_query` | experimental | experimental | experimental |
-| `sdk.capability.telemetry_stream` | experimental | experimental | experimental |
-| `sdk.capability.attachments` | experimental | experimental | experimental |
-| `sdk.capability.attachment_delete` | experimental | experimental | experimental |
-| `sdk.capability.markers` | experimental | experimental | experimental |
-| `sdk.capability.identity_multi` | experimental | experimental | experimental |
-| `sdk.capability.identity_import_export` | experimental | experimental | experimental |
-| `sdk.capability.identity_hash_resolution` | experimental | experimental | experimental |
-| `sdk.capability.paper_messages` | experimental | experimental | experimental |
-| `sdk.capability.remote_commands` | experimental | experimental | experimental |
-| `sdk.capability.voice_signaling` | experimental | experimental | experimental |
-| `sdk.capability.shared_instance_rpc_auth` | experimental | experimental | experimental |
+| `sdk.capability.topics` | optional | optional | optional |
+| `sdk.capability.topic_subscriptions` | optional | optional | optional |
+| `sdk.capability.topic_fanout` | optional | optional | optional |
+| `sdk.capability.telemetry_query` | optional | optional | optional |
+| `sdk.capability.telemetry_stream` | optional | optional | optional |
+| `sdk.capability.attachments` | optional | optional | optional |
+| `sdk.capability.attachment_delete` | optional | optional | optional |
+| `sdk.capability.markers` | optional | optional | optional |
+| `sdk.capability.identity_multi` | optional | optional | optional |
+| `sdk.capability.identity_import_export` | optional | optional | optional |
+| `sdk.capability.identity_hash_resolution` | optional | optional | optional |
+| `sdk.capability.paper_messages` | optional | optional | optional |
+| `sdk.capability.remote_commands` | optional | optional | optional |
+| `sdk.capability.voice_signaling` | optional | optional | optional |
+| `sdk.capability.shared_instance_rpc_auth` | optional | optional | optional |
 
 ## Backend Support Matrix
 

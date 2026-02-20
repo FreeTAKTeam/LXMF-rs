@@ -43,7 +43,7 @@ pub struct RpcBackendClient {
 enum SessionAuth {
     LocalTrusted,
     Token { issuer: String, audience: String, shared_secret: String, ttl_secs: u64 },
-    Mtls,
+    Mtls { allowed_san: Option<String> },
 }
 
 impl RpcBackendClient {
@@ -213,7 +213,27 @@ impl RpcBackendClient {
     fn session_auth_from_request(&self, req: &NegotiationRequest) -> Result<SessionAuth, SdkError> {
         match req.auth_mode {
             AuthMode::LocalTrusted => Ok(SessionAuth::LocalTrusted),
-            AuthMode::Mtls => Ok(SessionAuth::Mtls),
+            AuthMode::Mtls => {
+                let mtls_auth = req
+                    .rpc_backend
+                    .as_ref()
+                    .and_then(|config| config.mtls_auth.as_ref())
+                    .ok_or_else(|| {
+                        SdkError::new(
+                            code::SECURITY_AUTH_REQUIRED,
+                            ErrorCategory::Security,
+                            "mtls auth mode requires rpc_backend.mtls_auth",
+                        )
+                    })?;
+                if mtls_auth.ca_bundle_path.trim().is_empty() {
+                    return Err(SdkError::new(
+                        code::SECURITY_AUTH_REQUIRED,
+                        ErrorCategory::Security,
+                        "mtls auth mode requires non-empty rpc_backend.mtls_auth.ca_bundle_path",
+                    ));
+                }
+                Ok(SessionAuth::Mtls { allowed_san: mtls_auth.allowed_san.clone() })
+            }
             AuthMode::Token => {
                 let token_auth = req
                     .rpc_backend
@@ -253,7 +273,16 @@ impl RpcBackendClient {
     fn headers_for_session_auth(&self, auth: &SessionAuth) -> Vec<(String, String)> {
         match auth {
             SessionAuth::LocalTrusted => Vec::new(),
-            SessionAuth::Mtls => vec![("X-Client-Cert-Present".to_owned(), "1".to_owned())],
+            SessionAuth::Mtls { allowed_san } => {
+                let mut headers = vec![("X-Client-Cert-Present".to_owned(), "1".to_owned())];
+                if let Some(allowed_san) =
+                    allowed_san.as_deref().map(str::trim).filter(|value| !value.is_empty())
+                {
+                    headers.push(("X-Client-SAN".to_owned(), allowed_san.to_owned()));
+                }
+                headers.push(("X-Client-Subject".to_owned(), "sdk-client-mtls".to_owned()));
+                headers
+            }
             SessionAuth::Token { issuer, audience, shared_secret, ttl_secs } => {
                 let jti = format!("sdk-jti-{}", self.next_request_id());
                 let iat = Self::now_seconds();
