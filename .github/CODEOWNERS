@@ -1,14 +1,17 @@
 * @FreeTAKTeam
 
+/SECURITY.md @FreeTAKTeam
+/.github/CODEOWNERS @FreeTAKTeam
+
 /docs/ @FreeTAKTeam
 /docs/adr/ @FreeTAKTeam
 /docs/contracts/ @FreeTAKTeam
+/docs/schemas/ @FreeTAKTeam
 /docs/migrations/ @FreeTAKTeam
 /docs/runbooks/ @FreeTAKTeam
 
 /crates/libs/lxmf-core/ @FreeTAKTeam
-/crates/libs/lxmf-router/ @FreeTAKTeam
-/crates/libs/lxmf-runtime/ @FreeTAKTeam
+/crates/libs/lxmf-sdk/ @FreeTAKTeam
 /crates/libs/rns-core/ @FreeTAKTeam
 /crates/libs/rns-transport/ @FreeTAKTeam
 /crates/libs/rns-rpc/ @FreeTAKTeam

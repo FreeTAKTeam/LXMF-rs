@@ -13,6 +13,8 @@ const INTEROP_MATRIX_PATH: &str = "docs/contracts/compatibility-matrix.md";
 const INTEROP_CORPUS_PATH: &str = "docs/fixtures/interop/v1/golden-corpus.json";
 const RPC_CONTRACT_PATH: &str = "docs/contracts/rpc-contract.md";
 const PAYLOAD_CONTRACT_PATH: &str = "docs/contracts/payload-contract.md";
+const CODEOWNERS_PATH: &str = ".github/CODEOWNERS";
+const CI_WORKFLOW_PATH: &str = ".github/workflows/ci.yml";
 const SECURITY_THREAT_MODEL_PATH: &str = "docs/adr/0004-sdk-v25-threat-model.md";
 const SECURITY_REVIEW_CHECKLIST_PATH: &str = "docs/runbooks/security-review-checklist.md";
 const SDK_DOCS_CHECKLIST_PATH: &str = "docs/runbooks/sdk-docs-checklist.md";
@@ -44,6 +46,29 @@ const RELEASE_BINARIES: &[&str] = &[
     "rnstatus",
     "rnx",
 ];
+
+const GOVERNANCE_REQUIRED_CODEOWNER_PATHS: &[&str] = &[
+    "/SECURITY.md",
+    "/docs/contracts/",
+    "/docs/schemas/",
+    "/docs/migrations/",
+    "/docs/runbooks/",
+    "/crates/libs/lxmf-core/",
+    "/crates/libs/lxmf-sdk/",
+    "/crates/libs/rns-core/",
+    "/crates/libs/rns-transport/",
+    "/crates/libs/rns-rpc/",
+    "/crates/libs/test-support/",
+    "/crates/apps/lxmf-cli/",
+    "/crates/apps/reticulumd/",
+    "/crates/apps/rns-tools/",
+    "/.github/workflows/",
+    "/xtask/",
+    "/tools/scripts/",
+];
+
+const GOVERNANCE_FORBIDDEN_CODEOWNER_PATHS: &[&str] =
+    &["/crates/libs/lxmf-router/", "/crates/libs/lxmf-runtime/"];
 
 #[derive(Copy, Clone)]
 struct PerfBudget {
@@ -238,6 +263,7 @@ enum XtaskCommand {
     SdkExamplesCheck,
     SdkApiBreak,
     SdkMigrationCheck,
+    GovernanceCheck,
     SecurityReviewCheck,
     SdkSecurityCheck,
     SdkFuzzCheck,
@@ -284,6 +310,7 @@ enum CiStage {
     SdkExamplesCheck,
     SdkApiBreak,
     SdkMigrationCheck,
+    GovernanceCheck,
     SecurityReviewCheck,
     SdkSecurityCheck,
     SdkFuzzCheck,
@@ -334,6 +361,7 @@ fn main() -> Result<()> {
         XtaskCommand::SdkExamplesCheck => run_sdk_examples_check(),
         XtaskCommand::SdkApiBreak => run_sdk_api_break(),
         XtaskCommand::SdkMigrationCheck => run_sdk_migration_check(),
+        XtaskCommand::GovernanceCheck => run_governance_check(),
         XtaskCommand::SecurityReviewCheck => run_security_review_check(),
         XtaskCommand::SdkSecurityCheck => run_sdk_security_check(),
         XtaskCommand::SdkFuzzCheck => run_sdk_fuzz_check(),
@@ -390,6 +418,7 @@ fn run_ci(stage: Option<CiStage>) -> Result<()> {
     run_sdk_conformance()?;
     run_sdk_profile_build()?;
     run_sdk_examples_check()?;
+    run_governance_check()?;
     run_security_review_check()?;
     run_sdk_security_check()?;
     run_sdk_fuzz_check()?;
@@ -443,6 +472,7 @@ fn run_ci_stage(stage: CiStage) -> Result<()> {
         CiStage::SdkExamplesCheck => run_sdk_examples_check(),
         CiStage::SdkApiBreak => run_sdk_api_break(),
         CiStage::SdkMigrationCheck => run_sdk_migration_check(),
+        CiStage::GovernanceCheck => run_governance_check(),
         CiStage::SecurityReviewCheck => run_security_review_check(),
         CiStage::SdkSecurityCheck => run_sdk_security_check(),
         CiStage::SdkFuzzCheck => run_sdk_fuzz_check(),
@@ -1005,6 +1035,59 @@ fn run_sdk_migration_check() -> Result<()> {
         if classification == "wrap" && removal_version.eq_ignore_ascii_case("n/a") {
             bail!("cutover row {idx} classification=wrap requires explicit removal version");
         }
+    }
+
+    Ok(())
+}
+
+fn run_governance_check() -> Result<()> {
+    let codeowners = fs::read_to_string(CODEOWNERS_PATH)
+        .with_context(|| format!("missing {CODEOWNERS_PATH}"))?;
+
+    let parsed_lines: Vec<(&str, Vec<&str>)> = codeowners
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(|line| {
+            let mut fields = line.split_whitespace();
+            let path = fields.next().unwrap_or_default();
+            let owners = fields.collect::<Vec<_>>();
+            (path, owners)
+        })
+        .collect();
+
+    for forbidden in GOVERNANCE_FORBIDDEN_CODEOWNER_PATHS {
+        if parsed_lines.iter().any(|(path, _)| path == forbidden) {
+            bail!("CODEOWNERS contains deprecated path '{forbidden}'");
+        }
+    }
+
+    for required_path in GOVERNANCE_REQUIRED_CODEOWNER_PATHS {
+        let owners = parsed_lines
+            .iter()
+            .find_map(|(path, owners)| (*path == *required_path).then_some(owners))
+            .with_context(|| {
+                format!("CODEOWNERS missing required ownership entry '{required_path}'")
+            })?;
+
+        if owners.is_empty() {
+            bail!("CODEOWNERS entry '{required_path}' must declare at least one owner");
+        }
+        if !owners.iter().any(|owner| owner.starts_with('@')) {
+            bail!("CODEOWNERS entry '{required_path}' must use explicit GitHub owner handles");
+        }
+        if !owners.contains(&"@FreeTAKTeam") {
+            bail!("CODEOWNERS entry '{required_path}' must include @FreeTAKTeam");
+        }
+    }
+
+    let workflow = fs::read_to_string(CI_WORKFLOW_PATH)
+        .with_context(|| format!("missing {CI_WORKFLOW_PATH}"))?;
+    if !workflow.contains("governance-check:") {
+        bail!("ci workflow must include a 'governance-check' job");
+    }
+    if !workflow.contains("cargo xtask ci --stage governance-check") {
+        bail!("ci workflow must execute `cargo xtask ci --stage governance-check`");
     }
 
     Ok(())

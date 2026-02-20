@@ -373,6 +373,14 @@ jobs:
       - name: SDK migration gate
         run: cargo xtask ci --stage sdk-migration-check
 
+  governance-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Governance ownership and PR policy simulation
+        run: cargo xtask ci --stage governance-check
+
   forbidden-deps:
     runs-on: ubuntu-latest
     steps:
