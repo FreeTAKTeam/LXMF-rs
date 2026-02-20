@@ -570,15 +570,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "lxmf-router"
+name = "lxmf-sdk"
 version = "0.1.0"
-
-[[package]]
-name = "lxmf-runtime"
-version = "0.1.0"
-dependencies = [
- "serde",
-]
 
 [[package]]
 name = "memchr"

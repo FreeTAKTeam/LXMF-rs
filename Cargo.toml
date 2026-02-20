@@ -2,8 +2,7 @@
 resolver = "2"
 members = [
   "crates/libs/lxmf-core",
-  "crates/libs/lxmf-router",
-  "crates/libs/lxmf-runtime",
+  "crates/libs/lxmf-sdk",
   "crates/libs/rns-core",
   "crates/libs/rns-transport",
   "crates/libs/rns-rpc",
@@ -15,8 +14,7 @@ members = [
 ]
 default-members = [
   "crates/libs/lxmf-core",
-  "crates/libs/lxmf-router",
-  "crates/libs/lxmf-runtime",
+  "crates/libs/lxmf-sdk",
   "crates/libs/rns-core",
   "crates/libs/rns-transport",
   "crates/libs/rns-rpc",
