@@ -5,21 +5,8 @@ use rns_rpc::RpcError;
 use sha2::Sha256;
 use std::io::{Read, Write};
 use std::net::{Shutdown, TcpStream};
-use std::sync::OnceLock;
 
 impl RpcBackendClient {
-    pub(super) fn legacy_send_fallback_enabled(&self) -> bool {
-        static ENABLED: OnceLock<bool> = OnceLock::new();
-        *ENABLED.get_or_init(|| {
-            std::env::var("LXMF_SDK_ALLOW_LEGACY_SEND_FALLBACK")
-                .ok()
-                .map(|raw| {
-                    matches!(raw.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on")
-                })
-                .unwrap_or(false)
-        })
-    }
-
     pub(super) fn call_rpc(
         &self,
         method: &str,
@@ -28,21 +15,6 @@ impl RpcBackendClient {
         let auth = self.session_auth.read().expect("session_auth rwlock poisoned").clone();
         let headers = self.headers_for_session_auth(&auth);
         self.call_rpc_with_headers(method, params, &headers)
-    }
-
-    pub(super) fn call_rpc_with_fallback(
-        &self,
-        primary_method: &str,
-        fallback_method: &str,
-        params: Option<JsonValue>,
-    ) -> Result<JsonValue, SdkError> {
-        match self.call_rpc(primary_method, params.clone()) {
-            Ok(result) => Ok(result),
-            Err(err) if err.machine_code == "NOT_IMPLEMENTED" => {
-                self.call_rpc(fallback_method, params)
-            }
-            Err(err) => Err(err),
-        }
     }
 
     pub(super) fn call_rpc_with_headers(

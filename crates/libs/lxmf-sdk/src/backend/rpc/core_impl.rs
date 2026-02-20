@@ -143,11 +143,7 @@ impl RpcBackendClient {
             "content": content,
             "fields": fields,
         }));
-        let result = if self.legacy_send_fallback_enabled() {
-            self.call_rpc_with_fallback("sdk_send_v2", "send_message_v2", params)?
-        } else {
-            self.call_rpc("sdk_send_v2", params)?
-        };
+        let result = self.call_rpc("sdk_send_v2", params)?;
         let message_id = Self::parse_required_string(&result, "message_id")?;
         Ok(MessageId(message_id))
     }
