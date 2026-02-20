@@ -356,6 +356,14 @@ jobs:
       - name: SDK feature matrix gate
         run: cargo xtask ci --stage sdk-matrix-check
 
+  embedded-link-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Embedded transport adapter conformance
+        run: cargo xtask ci --stage embedded-link-check
+
   sdk-profile-build:
     runs-on: ubuntu-latest
     steps:

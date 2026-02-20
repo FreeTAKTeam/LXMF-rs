@@ -288,6 +288,7 @@ enum XtaskCommand {
     SupplyChainCheck,
     ReproducibleBuildCheck,
     SdkMatrixCheck,
+    EmbeddedLinkCheck,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
@@ -340,6 +341,7 @@ enum CiStage {
     SupplyChainCheck,
     ReproducibleBuildCheck,
     SdkMatrixCheck,
+    EmbeddedLinkCheck,
     MigrationChecks,
     ArchitectureChecks,
     ForbiddenDeps,
@@ -396,6 +398,7 @@ fn main() -> Result<()> {
         XtaskCommand::SupplyChainCheck => run_supply_chain_check(),
         XtaskCommand::ReproducibleBuildCheck => run_reproducible_build_check(),
         XtaskCommand::SdkMatrixCheck => run_sdk_matrix_check(),
+        XtaskCommand::EmbeddedLinkCheck => run_embedded_link_check(),
     }
 }
 
@@ -455,6 +458,7 @@ fn run_ci(stage: Option<CiStage>) -> Result<()> {
     run_sdk_queue_pressure_check()?;
     run_reproducible_build_check()?;
     run_sdk_matrix_check()?;
+    run_embedded_link_check()?;
     run_migration_checks()?;
     run_architecture_checks()?;
     Ok(())
@@ -516,6 +520,7 @@ fn run_ci_stage(stage: CiStage) -> Result<()> {
         CiStage::SupplyChainCheck => run_supply_chain_check(),
         CiStage::ReproducibleBuildCheck => run_reproducible_build_check(),
         CiStage::SdkMatrixCheck => run_sdk_matrix_check(),
+        CiStage::EmbeddedLinkCheck => run_embedded_link_check(),
         CiStage::MigrationChecks => run_migration_checks(),
         CiStage::ArchitectureChecks => run_architecture_checks(),
         CiStage::ForbiddenDeps => run_forbidden_deps(),
@@ -1818,6 +1823,32 @@ fn sha256_hex(bytes: &[u8]) -> String {
 
 fn run_sdk_matrix_check() -> Result<()> {
     run("cargo", &["test", "-p", "test-support", "sdk_matrix", "--", "--nocapture"])
+}
+
+fn run_embedded_link_check() -> Result<()> {
+    run("cargo", &["test", "-p", "rns-transport", "--test", "embedded_link_contract", "--no-run"])?;
+
+    let backends = fs::read_to_string("docs/contracts/sdk-v2-backends.md")
+        .context("missing docs/contracts/sdk-v2-backends.md")?;
+    for marker in [
+        "## Embedded Link Adapter Contract",
+        "EmbeddedLinkAdapter",
+        "send_frame",
+        "poll_frame",
+        "FrameTooLarge",
+    ] {
+        if !backends.contains(marker) {
+            bail!("backend contract missing embedded-link marker '{marker}'");
+        }
+    }
+
+    let rpc_contract = fs::read_to_string(RPC_CONTRACT_PATH)
+        .with_context(|| format!("missing {RPC_CONTRACT_PATH}"))?;
+    if !rpc_contract.contains("Embedded link adapters (serial/BLE/LoRa)") {
+        bail!("rpc contract must document embedded link adapter compatibility note");
+    }
+
+    Ok(())
 }
 
 fn run_interop_matrix_check() -> Result<()> {

@@ -93,3 +93,4 @@ All methods below are required for full CLI feature coverage.
 - CLI/runtime clients must call `send_message_v2` directly (no client fallback to `send_message`).
 - Server must keep `send_message` for compatibility and apply the same strict canonical field validation path as `send_message_v2`.
 - At least one of `daemon_status_ex` or `status` must provide `identity_hash` for source auto-resolution.
+- Embedded link adapters (serial/BLE/LoRa) must preserve this RPC method/field contract when bridged through transport runtimes.

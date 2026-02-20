@@ -62,6 +62,26 @@ Required behavior:
 2. Delivery transition order must obey core state machine.
 3. Cancellation race handling must preserve single-terminal guarantee.
 
+## Embedded Link Adapter Contract
+
+Constrained link adapters (serial, BLE, LoRa) are modeled via:
+
+- `rns_transport::embedded_link::EmbeddedLinkAdapter`
+- `rns_transport::embedded_link::EmbeddedLinkCapabilities`
+- `rns_transport::embedded_link::EmbeddedLinkConfig`
+
+Required embedded-link semantics:
+
+1. Adapter ID must be stable and unique in a runtime process.
+2. `send_frame` must reject frames over adapter MTU with deterministic `FrameTooLarge`.
+3. `poll_frame` must be non-blocking and return `Ok(None)` when idle.
+4. Capability flags must truthfully describe ordering/ack/fragmentation behavior.
+5. Adapter implementations must preserve raw frame bytes without implicit transcoding.
+
+Mock conformance gate:
+
+- `cargo run -p xtask -- embedded-link-check`
+
 ## Config Layering
 
 `SdkCoreConfig`:
