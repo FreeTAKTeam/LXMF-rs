@@ -37,6 +37,7 @@ enum XtaskCommand {
         update: bool,
     },
     InteropMatrixCheck,
+    InteropCorpusCheck,
     SdkProfileBuild,
     SdkExamplesCheck,
     SdkApiBreak,
@@ -60,6 +61,7 @@ enum CiStage {
     SdkSchemaCheck,
     InteropArtifacts,
     InteropMatrixCheck,
+    InteropCorpusCheck,
     SdkProfileBuild,
     SdkExamplesCheck,
     SdkApiBreak,
@@ -86,6 +88,7 @@ fn main() -> Result<()> {
         XtaskCommand::SdkSchemaCheck => run_sdk_schema_check(),
         XtaskCommand::InteropArtifacts { update } => run_interop_artifacts(update),
         XtaskCommand::InteropMatrixCheck => run_interop_matrix_check(),
+        XtaskCommand::InteropCorpusCheck => run_interop_corpus_check(),
         XtaskCommand::SdkProfileBuild => run_sdk_profile_build(),
         XtaskCommand::SdkExamplesCheck => run_sdk_examples_check(),
         XtaskCommand::SdkApiBreak => run_sdk_api_break(),
@@ -120,6 +123,7 @@ fn run_ci(stage: Option<CiStage>) -> Result<()> {
     run_sdk_schema_check()?;
     run_interop_artifacts(false)?;
     run_interop_matrix_check()?;
+    run_interop_corpus_check()?;
     run_sdk_conformance()?;
     run_sdk_profile_build()?;
     run_sdk_examples_check()?;
@@ -150,6 +154,7 @@ fn run_ci_stage(stage: CiStage) -> Result<()> {
         CiStage::SdkSchemaCheck => run_sdk_schema_check(),
         CiStage::InteropArtifacts => run_interop_artifacts(false),
         CiStage::InteropMatrixCheck => run_interop_matrix_check(),
+        CiStage::InteropCorpusCheck => run_interop_corpus_check(),
         CiStage::SdkProfileBuild => run_sdk_profile_build(),
         CiStage::SdkExamplesCheck => run_sdk_examples_check(),
         CiStage::SdkApiBreak => run_sdk_api_break(),
@@ -166,6 +171,7 @@ fn run_ci_stage(stage: CiStage) -> Result<()> {
 fn run_release_check() -> Result<()> {
     run_ci(None)?;
     run_interop_matrix_check()?;
+    run_interop_corpus_check()?;
     run_sdk_api_break()?;
     run("cargo", &["deny", "check"])?;
     run("cargo", &["audit"])?;
@@ -497,6 +503,10 @@ fn run_interop_matrix_check() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn run_interop_corpus_check() -> Result<()> {
+    run("cargo", &["test", "-p", "test-support", "sdk_interop_corpus", "--", "--nocapture"])
 }
 
 fn run_unused_deps() -> Result<()> {

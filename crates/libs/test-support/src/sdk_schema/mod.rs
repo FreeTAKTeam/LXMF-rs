@@ -4,6 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 mod fixtures_contract_tests;
+mod interop_corpus_tests;
 mod rpc_core_tests;
 mod rpc_domain_tests;
 

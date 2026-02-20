@@ -69,6 +69,11 @@ Unprefixed text payloads are rejected.
 
 - `docs/schemas/contract-v2/payload-envelope.schema.json`
 - `docs/schemas/contract-v2/event-payload.schema.json`
+- `docs/schemas/contract-v2/interop-golden-corpus.schema.json`
+
+Golden fixtures:
+
+- `docs/fixtures/interop/v1/golden-corpus.json`
 
 ## Message Envelope (v2)
 

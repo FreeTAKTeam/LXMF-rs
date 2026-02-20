@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://weft.tak/contracts/v2/interop-golden-corpus.schema.json",
+  "title": "LXMF Interop Golden Corpus v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "entries"],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "generated_on": {
+      "type": "string",
+      "format": "date"
+    },
+    "entries": {
+      "type": "array",
+      "minItems": 3,
+      "items": {
+        "$ref": "#/$defs/entry"
+      }
+    }
+  },
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "client",
+        "release_track",
+        "slices",
+        "payload_envelope",
+        "rpc_send_request",
+        "rpc_send_response",
+        "event_payload",
+        "wire_envelope"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"
+        },
+        "client": {
+          "type": "string",
+          "enum": ["sideband", "rch", "columba"]
+        },
+        "release_track": {
+          "type": "string",
+          "minLength": 1
+        },
+        "slices": {
+          "type": "array",
+          "minItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "rpc_v2",
+              "payload_v2",
+              "event_cursor_v2",
+              "domain_release_b",
+              "domain_release_c",
+              "delivery_modes_v1",
+              "auth_token_v1",
+              "auth_mtls_v1"
+            ]
+          }
+        },
+        "payload_envelope": {
+          "type": "object",
+          "minProperties": 1
+        },
+        "rpc_send_request": {
+          "type": "object",
+          "minProperties": 1
+        },
+        "rpc_send_response": {
+          "type": "object",
+          "minProperties": 1
+        },
+        "event_payload": {
+          "type": "object",
+          "required": ["event_type", "payload"],
+          "properties": {
+            "event_type": {
+              "type": "string",
+              "minLength": 1
+            },
+            "payload": {}
+          }
+        },
+        "wire_envelope": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["frame_format", "content_type", "body_hex"],
+          "properties": {
+            "frame_format": {
+              "const": "msgpack_u32be_http"
+            },
+            "content_type": {
+              "const": "application/msgpack"
+            },
+            "body_hex": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]+$",
+              "minLength": 2
+            }
+          }
+        }
+      }
+    }
+  }
+}

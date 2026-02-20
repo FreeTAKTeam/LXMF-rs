@@ -13,8 +13,8 @@
     },
     {
       "path": "docs/contracts/compatibility-matrix.md",
-      "bytes": 3421,
-      "sha256": "ab5ba0de9d617f87fd606e3eb3f65b543da5605a6f66acfa0c5b5abcdf0fd573"
+      "bytes": 3490,
+      "sha256": "aea8a559b6f8735ee9168663bb124fb8a463ac6945fd0cea6fd62057697541e7"
     },
     {
       "path": "docs/contracts/interop-revision-lock.example.json",
@@ -28,13 +28,13 @@
     },
     {
       "path": "docs/contracts/payload-contract.md",
-      "bytes": 3744,
-      "sha256": "6b28c335d4f345c54e0c94088021d79f7b65fbea3ad30340e8004706bfee4ad7"
+      "bytes": 3874,
+      "sha256": "1eed4f48835b6966d98ced90a3c1b856c654eca06b1ccae47aea6b54133f85c9"
     },
     {
       "path": "docs/contracts/rpc-contract.md",
-      "bytes": 3255,
-      "sha256": "9cdbe6c36ee64167565cee93c39d8f97e6882b83256b6647697b5b7619bb0631"
+      "bytes": 3325,
+      "sha256": "cedde7e8b517167fdb02d723b4119479376fc93c551dd962f3f97368f63b5298"
     },
     {
       "path": "docs/contracts/sdk-v2-attachments.md",
@@ -120,6 +120,16 @@
       "path": "docs/fixtures/contract-v2/payload-domains.json",
       "bytes": 4924,
       "sha256": "c737a3858f703b061267e82ae4035420f42a8812842a23bc84f25b8d55e3dc8e"
+    },
+    {
+      "path": "docs/fixtures/interop/v1/README.md",
+      "bytes": 491,
+      "sha256": "5e35bc944b3292831d836d22a5d5f2cff246d28517cdd873364b7854b9223268"
+    },
+    {
+      "path": "docs/fixtures/interop/v1/golden-corpus.json",
+      "bytes": 4846,
+      "sha256": "a6995019a6d9138b0936ee94b4d08ca8b600afdb93bfab644f2328edca820619"
     },
     {
       "path": "docs/fixtures/sdk-v2/attachment.meta.valid.json",
@@ -935,6 +945,11 @@
       "path": "docs/schemas/contract-v2/event-payload.schema.json",
       "bytes": 1696,
       "sha256": "e3f4725567d78f16e3ec03457288aebd398c30c72499a9c1973d18eab9111168"
+    },
+    {
+      "path": "docs/schemas/contract-v2/interop-golden-corpus.schema.json",
+      "bytes": 2787,
+      "sha256": "3d689247b26918678dd359839fd1e2b88f8e95c2366316b24c920348378df538"
     },
     {
       "path": "docs/schemas/contract-v2/payload-envelope.schema.json",

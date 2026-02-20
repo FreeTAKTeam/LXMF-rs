@@ -50,6 +50,7 @@ Legend: `required`, `optional`, `planned`, `n/a`.
 
 - Matrix structure lint: `cargo run -p xtask -- interop-matrix-check`
 - Schema and fixture drift: `cargo run -p xtask -- interop-artifacts`
+- Golden corpus replay: `cargo run -p xtask -- interop-corpus-check`
 - SDK conformance coverage: `cargo run -p xtask -- sdk-conformance`
 
 ## Change Control

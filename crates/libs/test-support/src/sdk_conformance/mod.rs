@@ -90,8 +90,7 @@ struct RpcHarness {
 
 impl RpcHarness {
     fn new() -> Self {
-        let serial_guard =
-            rpc_harness_serial_lock().lock().expect("sdk conformance harness lock poisoned");
+        let serial_guard = rpc_harness_serial_lock().lock().unwrap_or_else(|err| err.into_inner());
         let daemon = Arc::new(Mutex::new(RpcDaemon::with_store(
             MessagesStore::in_memory().expect("in-memory message store"),
             "sdk-test-runtime".to_owned(),
@@ -109,6 +108,7 @@ impl RpcHarness {
             while !stop_for_thread.load(Ordering::Relaxed) {
                 match listener.accept() {
                     Ok((mut stream, addr)) => {
+                        let _ = stream.set_nonblocking(false);
                         let _ =
                             stream.set_read_timeout(Some(Duration::from_secs(RPC_IO_TIMEOUT_SECS)));
                         let _ = stream
@@ -121,7 +121,8 @@ impl RpcHarness {
                             continue;
                         }
                         let response = {
-                            let guard = daemon_for_thread.lock().expect("rpc daemon lock poisoned");
+                            let guard =
+                                daemon_for_thread.lock().unwrap_or_else(|err| err.into_inner());
                             http::handle_http_request_with_peer(&guard, &request, Some(addr))
                         }
                         .unwrap_or_else(|_| {
@@ -154,7 +155,7 @@ impl RpcHarness {
     fn emit_event(&self, event_type: &str, payload: JsonValue) {
         self.daemon
             .lock()
-            .expect("rpc daemon lock poisoned")
+            .unwrap_or_else(|err| err.into_inner())
             .emit_event(RpcEvent { event_type: event_type.to_owned(), payload });
     }
 
