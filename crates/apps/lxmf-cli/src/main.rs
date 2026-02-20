@@ -514,3 +514,50 @@ fn emit_error(cli: &Cli, err: SdkError) {
         eprintln!("details: {}", JsonValue::Object(err.details.into_iter().collect()));
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse_cli(args: &[&str]) -> Cli {
+        Cli::try_parse_from(args).expect("cli args should parse")
+    }
+
+    #[test]
+    fn payload_requires_content_when_payload_json_missing() {
+        let err = build_payload(None, None, None).expect_err("missing content should fail");
+        assert_eq!(err.machine_code, error_code::VALIDATION_INVALID_ARGUMENT);
+    }
+
+    #[test]
+    fn payload_json_cannot_be_combined_with_content_flags() {
+        let err = build_payload(Some("hello"), None, Some("{\"content\":\"x\"}"))
+            .expect_err("payload_json + content should fail");
+        assert_eq!(err.machine_code, error_code::VALIDATION_INVALID_ARGUMENT);
+    }
+
+    #[test]
+    fn start_request_defaults_are_valid() {
+        let cli = parse_cli(&["lxmf-cli", "start"]);
+        let request = build_start_request(&cli).expect("default start request should be valid");
+        assert_eq!(request.supported_contract_versions, vec![2]);
+    }
+
+    #[test]
+    fn token_auth_mode_requires_shared_secret() {
+        let cli = parse_cli(&[
+            "lxmf-cli",
+            "--bind-mode",
+            "remote",
+            "--auth-mode",
+            "token",
+            "--token-issuer",
+            "issuer-a",
+            "--token-audience",
+            "aud-a",
+            "start",
+        ]);
+        let err = build_start_request(&cli).expect_err("missing token secret should fail");
+        assert_eq!(err.machine_code, error_code::VALIDATION_INVALID_ARGUMENT);
+    }
+}
