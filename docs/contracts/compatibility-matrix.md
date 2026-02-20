@@ -10,9 +10,9 @@ Top-level module status is tracked here; method-level parity is tracked and enfo
 | --- | --- | --- | --- |
 | `LXMF/LXMF.py` | `crates/libs/lxmf-core` | done | `docs/plans/lxmf-parity-matrix.md` |
 | `LXMF/LXMessage.py` | `crates/libs/lxmf-core` | done | `docs/plans/lxmf-parity-matrix.md` |
-| `LXMF/LXMPeer.py` | `crates/libs/lxmf-router` | done | `docs/plans/lxmf-parity-matrix.md` |
-| `LXMF/LXMRouter.py` | `crates/libs/lxmf-router` | done | `docs/plans/lxmf-parity-matrix.md` |
-| `LXMF/Handlers.py` | `crates/libs/lxmf-runtime` | done | `docs/plans/lxmf-parity-matrix.md` |
+| `LXMF/LXMPeer.py` | `crates/libs/lxmf-sdk` | done | `docs/plans/lxmf-parity-matrix.md` |
+| `LXMF/LXMRouter.py` | `crates/libs/rns-rpc` | done | `docs/plans/lxmf-parity-matrix.md` |
+| `LXMF/Handlers.py` | `crates/apps/reticulumd` + `crates/libs/rns-rpc` | done | `docs/plans/lxmf-parity-matrix.md` |
 | `LXMF/LXStamper.py` | `crates/libs/lxmf-core` | done | `docs/plans/lxmf-parity-matrix.md` |
 
 ## Python Reticulum -> Rust Reticulum-rs

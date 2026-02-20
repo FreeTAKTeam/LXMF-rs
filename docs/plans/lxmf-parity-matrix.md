@@ -12,9 +12,9 @@ Status legend: `not-started` | `partial` | `done`.
 | --- | --- | --- |
 | `LXMF/LXMF.py` | `crates/libs/lxmf-core` | done |
 | `LXMF/LXMessage.py` | `crates/libs/lxmf-core` | done |
-| `LXMF/LXMPeer.py` | `crates/libs/lxmf-router` | done |
-| `LXMF/LXMRouter.py` | `crates/libs/lxmf-router` | done |
-| `LXMF/Handlers.py` | `crates/libs/lxmf-runtime` | done |
+| `LXMF/LXMPeer.py` | `crates/libs/lxmf-sdk` | done |
+| `LXMF/LXMRouter.py` | `crates/libs/rns-rpc` | done |
+| `LXMF/Handlers.py` | `crates/apps/reticulumd` + `crates/libs/rns-rpc` | done |
 | `LXMF/LXStamper.py` | `crates/libs/lxmf-core` | done |
 
 ## Required Method-Level Checklist

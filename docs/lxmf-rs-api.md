@@ -1,23 +1,32 @@
-# LXMF Rust API (v0.2)
+# LXMF Rust API (SDK v2.5)
 
-## Stable Surface
-The stable compatibility contract is the explicit module subset:
+## Stable Crate Surfaces
 
-- `lxmf::message`
-- `lxmf::identity`
-- `lxmf::router_api`
-- `lxmf::errors`
+The hard-break public API is crate-based, not monolithic module fan-out.
 
-Other public modules may exist for internal composition and testing, but are not contract-stable.
+- `crates/libs/lxmf-core`
+  - protocol/message/payload primitives
+  - wire-field and payload-field encoding/decoding
+- `crates/libs/lxmf-sdk`
+  - host-facing client facade (`start/send/cancel/status/poll/configure/snapshot/shutdown/tick`)
+  - capability negotiation, profile limits, lifecycle guardrails
+- `crates/libs/rns-rpc`
+  - daemon RPC contracts and runtime method surface (`sdk_*_v2`)
+  - shared transport/auth/event contract types used by app crates
 
-## Core Re-exports
-- `lxmf::Message`
-- `lxmf::Payload`
-- `lxmf::WireMessage`
-- `lxmf::Router`
-- `lxmf::LxmfError`
+## Operator/App Surfaces
 
-## Policy
-- CLI/runtime tooling is feature-gated (`feature = "cli"`).
-- Default build targets lightweight protocol usage.
-- Breaking changes are expected during `0.x`, but contract updates must be documented.
+- `crates/apps/lxmf-cli`: operator-facing CLI over `lxmf-sdk`
+- `crates/apps/reticulumd`: daemon binary hosting `rns-rpc`
+- `crates/apps/rns-tools`: diagnostics and interop helpers
+
+App crates are not intended as stable library APIs.
+
+## API Policy
+
+- No legacy crate path compatibility guarantees (`crates/lxmf`, `crates/reticulum`, `crates/reticulum-daemon`).
+- Public API drift is gated by `docs/contracts/baselines/lxmf-sdk-public-api.txt`.
+- Contract behavior is governed by:
+  - `docs/contracts/sdk-v2.md`
+  - `docs/contracts/sdk-v2-events.md`
+  - `docs/contracts/sdk-v2-errors.md`
