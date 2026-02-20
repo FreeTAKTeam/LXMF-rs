@@ -12,6 +12,7 @@ Last updated: 2026-02-20
   - `docs/contracts/payload-contract.md`
   - `docs/contracts/sdk-v2.md`
   - `docs/contracts/sdk-v2-events.md`
+  - `docs/contracts/third-party-compatibility-kit.md`
 
 ## Protocol Slice Definitions
 
@@ -54,6 +55,7 @@ Legend: `required`, `optional`, `planned`, `n/a`.
 - Semantic drift classification: `cargo run -p xtask -- interop-drift-check`
 - Delivery workflow E2E suite: `cargo run -p xtask -- e2e-compatibility`
 - SDK conformance coverage: `cargo run -p xtask -- sdk-conformance`
+- External kit dry-run gate: `cargo run -p xtask -- compat-kit-check`
 
 ## Change Control
 

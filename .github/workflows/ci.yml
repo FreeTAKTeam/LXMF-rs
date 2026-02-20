@@ -210,6 +210,14 @@ jobs:
       - name: Interop artifacts manifest
         run: cargo xtask ci --stage interop-artifacts
 
+  compat-kit-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: External compatibility kit dry-run
+        run: cargo xtask ci --stage compat-kit-check
+
   e2e-compatibility:
     runs-on: ubuntu-latest
     steps:

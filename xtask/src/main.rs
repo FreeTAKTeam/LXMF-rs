@@ -257,6 +257,7 @@ enum XtaskCommand {
         #[arg(long)]
         update: bool,
     },
+    CompatKitCheck,
     E2eCompatibility,
     MeshSim,
     SdkProfileBuild,
@@ -305,6 +306,7 @@ enum CiStage {
     InteropMatrixCheck,
     InteropCorpusCheck,
     InteropDriftCheck,
+    CompatKitCheck,
     E2eCompatibility,
     SdkProfileBuild,
     SdkExamplesCheck,
@@ -355,6 +357,7 @@ fn main() -> Result<()> {
         XtaskCommand::InteropMatrixCheck => run_interop_matrix_check(),
         XtaskCommand::InteropCorpusCheck => run_interop_corpus_check(),
         XtaskCommand::InteropDriftCheck { update } => run_interop_drift_check(update),
+        XtaskCommand::CompatKitCheck => run_compat_kit_check(),
         XtaskCommand::E2eCompatibility => run_e2e_compatibility(),
         XtaskCommand::MeshSim => run_mesh_sim(),
         XtaskCommand::SdkProfileBuild => run_sdk_profile_build(),
@@ -414,6 +417,7 @@ fn run_ci(stage: Option<CiStage>) -> Result<()> {
     run_interop_matrix_check()?;
     run_interop_corpus_check()?;
     run_interop_drift_check(false)?;
+    run_compat_kit_check()?;
     run_e2e_compatibility()?;
     run_sdk_conformance()?;
     run_sdk_profile_build()?;
@@ -467,6 +471,7 @@ fn run_ci_stage(stage: CiStage) -> Result<()> {
         CiStage::InteropMatrixCheck => run_interop_matrix_check(),
         CiStage::InteropCorpusCheck => run_interop_corpus_check(),
         CiStage::InteropDriftCheck => run_interop_drift_check(false),
+        CiStage::CompatKitCheck => run_compat_kit_check(),
         CiStage::E2eCompatibility => run_e2e_compatibility(),
         CiStage::SdkProfileBuild => run_sdk_profile_build(),
         CiStage::SdkExamplesCheck => run_sdk_examples_check(),
@@ -499,6 +504,7 @@ fn run_release_check() -> Result<()> {
     run_interop_matrix_check()?;
     run_interop_corpus_check()?;
     run_interop_drift_check(false)?;
+    run_compat_kit_check()?;
     run_sdk_api_break()?;
     run_supply_chain_check()?;
     run("cargo", &["deny", "check"])?;
@@ -1693,6 +1699,10 @@ fn run_interop_matrix_check() -> Result<()> {
 
 fn run_interop_corpus_check() -> Result<()> {
     run("cargo", &["test", "-p", "test-support", "sdk_interop_corpus", "--", "--nocapture"])
+}
+
+fn run_compat_kit_check() -> Result<()> {
+    run("bash", &["tools/scripts/compatibility-kit.sh", "--dry-run"])
 }
 
 fn run_e2e_compatibility() -> Result<()> {

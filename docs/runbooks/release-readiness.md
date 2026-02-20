@@ -37,6 +37,7 @@ This checklist is the publication gate for the Rust workspace.
 - `security`
 - `unused-deps`
 - `api-surface-check`
+- `compat-kit-check`
 
 ## 5. Local release checks
 
@@ -59,6 +60,7 @@ cargo run -p xtask -- sdk-drill-check
 cargo run -p xtask -- sdk-soak-check
 cargo run -p xtask -- lxmf-cli-check
 cargo run -p xtask -- dx-bootstrap-check
+cargo run -p xtask -- compat-kit-check
 cargo run -p xtask -- supply-chain-check
 cargo run -p xtask -- reproducible-build-check
 ```
