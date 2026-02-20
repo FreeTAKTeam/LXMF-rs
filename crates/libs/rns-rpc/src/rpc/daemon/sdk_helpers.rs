@@ -508,6 +508,15 @@ impl RpcDaemon {
     fn build_sdk_domain_snapshot(&self) -> SdkDomainSnapshotV1 {
         let next_domain_seq =
             *self.sdk_next_domain_seq.lock().expect("sdk_next_domain_seq mutex poisoned");
+        let config_revision = *self
+            .sdk_config_revision
+            .lock()
+            .expect("sdk_config_revision mutex poisoned");
+        let runtime_config = self
+            .sdk_runtime_config
+            .lock()
+            .expect("sdk_runtime_config mutex poisoned")
+            .clone();
         let topics = self.sdk_topics.lock().expect("sdk_topics mutex poisoned").clone();
         let topic_order =
             self.sdk_topic_order.lock().expect("sdk_topic_order mutex poisoned").clone();
@@ -556,6 +565,8 @@ impl RpcDaemon {
 
         SdkDomainSnapshotV1 {
             next_domain_seq,
+            config_revision,
+            runtime_config,
             topics,
             topic_order,
             topic_subscriptions,
@@ -606,6 +617,12 @@ impl RpcDaemon {
                 .find(|identity| identity == self.identity_hash.as_str())
                 .or_else(|| snapshot.identities.keys().min().cloned());
         }
+        if !snapshot.runtime_config.is_object()
+            || self.validate_sdk_runtime_config(&snapshot.runtime_config).is_err()
+        {
+            snapshot.runtime_config = JsonValue::Object(JsonMap::new());
+            snapshot.config_revision = 0;
+        }
         snapshot.next_domain_seq = Self::infer_snapshot_domain_sequence(&snapshot);
         snapshot
     }
@@ -621,9 +638,19 @@ impl RpcDaemon {
         let parsed: SdkDomainSnapshotV1 =
             serde_json::from_value(snapshot).map_err(std::io::Error::other)?;
         let parsed = self.normalize_sdk_domain_snapshot(parsed);
+        let config_revision = parsed.config_revision;
+        let runtime_config = parsed.runtime_config.clone();
 
         *self.sdk_next_domain_seq.lock().expect("sdk_next_domain_seq mutex poisoned") =
             parsed.next_domain_seq;
+        *self
+            .sdk_config_revision
+            .lock()
+            .expect("sdk_config_revision mutex poisoned") = config_revision;
+        *self
+            .sdk_runtime_config
+            .lock()
+            .expect("sdk_runtime_config mutex poisoned") = runtime_config;
         *self.sdk_topics.lock().expect("sdk_topics mutex poisoned") = parsed.topics;
         *self.sdk_topic_order.lock().expect("sdk_topic_order mutex poisoned") = parsed.topic_order;
         *self

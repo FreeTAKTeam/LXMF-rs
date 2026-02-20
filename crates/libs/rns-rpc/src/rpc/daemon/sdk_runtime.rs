@@ -175,6 +175,11 @@ impl RpcDaemon {
         let revision = *revision_guard;
         drop(revision_guard);
 
+        {
+            let _domain_guard = self.lock_and_restore_sdk_domain_snapshot()?;
+            self.persist_sdk_domain_snapshot()?;
+        }
+
         let event = RpcEvent {
             event_type: "config_updated".into(),
             payload: json!({

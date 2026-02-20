@@ -87,6 +87,10 @@ struct SdkDomainSnapshotV1 {
     #[serde(default)]
     next_domain_seq: u64,
     #[serde(default)]
+    config_revision: u64,
+    #[serde(default)]
+    runtime_config: JsonValue,
+    #[serde(default)]
     topics: HashMap<String, SdkTopicRecord>,
     #[serde(default)]
     topic_order: Vec<String>,

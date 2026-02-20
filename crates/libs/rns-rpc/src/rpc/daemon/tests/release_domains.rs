@@ -728,3 +728,141 @@
 
         let _ = std::fs::remove_file(&db_path);
     }
+
+    #[test]
+    fn sdk_config_and_terminal_state_survive_restart_without_orphan_transitions() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let run_id = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("unix epoch")
+            .as_nanos();
+        let db_path = std::env::temp_dir()
+            .join(format!("lxmf-rs-sdk-recovery-{run_id}-{}.sqlite", std::process::id()));
+
+        let topic_id: String;
+        let message_id = "recovery-pending-1";
+
+        {
+            let store = MessagesStore::open(db_path.as_path()).expect("open sqlite store");
+            let daemon = RpcDaemon::with_store(store, "recovery-node".to_string());
+
+            let configure = daemon
+                .handle_rpc(rpc_request(
+                    400,
+                    "sdk_configure_v2",
+                    json!({
+                        "expected_revision": 0,
+                        "patch": {
+                            "event_stream": { "max_poll_events": 64 },
+                            "overflow_policy": "reject"
+                        }
+                    }),
+                ))
+                .expect("configure");
+            assert!(configure.error.is_none());
+            assert_eq!(configure.result.expect("result")["revision"], json!(1));
+
+            let topic = daemon
+                .handle_rpc(rpc_request(
+                    401,
+                    "sdk_topic_create_v2",
+                    json!({ "topic_path": "ops/recovery" }),
+                ))
+                .expect("topic create");
+            assert!(topic.error.is_none());
+            topic_id = topic.result.expect("topic result")["topic"]["topic_id"]
+                .as_str()
+                .expect("topic id")
+                .to_string();
+
+            let receive = daemon
+                .handle_rpc(rpc_request(
+                    402,
+                    "receive_message",
+                    json!({
+                        "id": message_id,
+                        "source": "source.recovery",
+                        "destination": "destination.recovery",
+                        "title": "",
+                        "content": "pending message",
+                        "fields": null
+                    }),
+                ))
+                .expect("receive_message");
+            assert!(receive.error.is_none());
+
+            let cancel = daemon
+                .handle_rpc(rpc_request(
+                    403,
+                    "sdk_cancel_message_v2",
+                    json!({ "message_id": message_id }),
+                ))
+                .expect("cancel");
+            assert!(cancel.error.is_none());
+            assert_eq!(cancel.result.expect("result")["result"], json!("Accepted"));
+        }
+
+        {
+            let store = MessagesStore::open(db_path.as_path()).expect("reopen sqlite store");
+            let daemon = RpcDaemon::with_store(store, "recovery-node".to_string());
+
+            let snapshot = daemon
+                .handle_rpc(rpc_request(
+                    404,
+                    "sdk_snapshot_v2",
+                    json!({ "include_counts": true }),
+                ))
+                .expect("snapshot");
+            assert!(snapshot.error.is_none());
+            assert_eq!(snapshot.result.expect("result")["config_revision"], json!(1));
+
+            let poll_over_limit = daemon
+                .handle_rpc(rpc_request(
+                    405,
+                    "sdk_poll_events_v2",
+                    json!({
+                        "cursor": null,
+                        "max": 65
+                    }),
+                ))
+                .expect("poll over limit");
+            assert_eq!(
+                poll_over_limit.error.expect("error").code,
+                "SDK_VALIDATION_MAX_POLL_EVENTS_EXCEEDED"
+            );
+
+            let topic_get = daemon
+                .handle_rpc(rpc_request(
+                    406,
+                    "sdk_topic_get_v2",
+                    json!({ "topic_id": topic_id }),
+                ))
+                .expect("topic get");
+            assert!(topic_get.error.is_none());
+
+            let status = daemon
+                .handle_rpc(rpc_request(
+                    407,
+                    "sdk_status_v2",
+                    json!({ "message_id": message_id }),
+                ))
+                .expect("status");
+            assert!(status.error.is_none());
+            assert_eq!(
+                status.result.expect("result")["message"]["receipt_status"],
+                json!("cancelled")
+            );
+
+            let second_cancel = daemon
+                .handle_rpc(rpc_request(
+                    408,
+                    "sdk_cancel_message_v2",
+                    json!({ "message_id": message_id }),
+                ))
+                .expect("second cancel");
+            assert_eq!(second_cancel.result.expect("result")["result"], json!("AlreadyTerminal"));
+        }
+
+        let _ = std::fs::remove_file(&db_path);
+    }
