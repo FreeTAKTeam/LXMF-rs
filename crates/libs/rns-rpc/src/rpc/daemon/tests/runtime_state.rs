@@ -176,6 +176,54 @@
     }
 
     #[test]
+    fn sdk_property_cursor_churn_keeps_monotonic_progress() {
+        let daemon = RpcDaemon::test_instance();
+        for idx in 0..96_u64 {
+            daemon.emit_event(RpcEvent {
+                event_type: "property_churn".to_string(),
+                payload: json!({ "idx": idx }),
+            });
+        }
+
+        let mut cursor: Option<String> = None;
+        let mut last_seq = 0_u64;
+        let mut seen = HashSet::new();
+
+        for iteration in 0..256_u64 {
+            let response = daemon
+                .handle_rpc(rpc_request(
+                    5_000 + iteration,
+                    "sdk_poll_events_v2",
+                    json!({
+                        "cursor": cursor.clone(),
+                        "max": ((iteration % 7) + 1) as usize,
+                    }),
+                ))
+                .expect("poll");
+            assert!(response.error.is_none(), "poll should remain stable under churn");
+            let result = response.result.expect("result");
+            let events = result["events"].as_array().expect("events array");
+            for event in events {
+                let seq = event["seq_no"].as_u64().expect("sequence number");
+                assert!(seq > last_seq, "sequence must be strictly increasing");
+                assert!(seen.insert(seq), "sequence IDs must not repeat");
+                last_seq = seq;
+            }
+
+            cursor = result["next_cursor"].as_str().map(ToOwned::to_owned);
+            if seen.len() >= 96 {
+                break;
+            }
+        }
+
+        assert_eq!(
+            seen.len(),
+            96,
+            "variable-batch polling should consume each emitted event exactly once"
+        );
+    }
+
+    #[test]
     fn sdk_configure_v2_applies_revision_cas() {
         let daemon = RpcDaemon::test_instance();
         let first = daemon
