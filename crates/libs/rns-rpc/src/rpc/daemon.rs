@@ -1063,6 +1063,156 @@ impl RpcDaemon {
             "sdk_status_v2" => self.handle_sdk_status_v2(request),
             "sdk_configure_v2" => self.handle_sdk_configure_v2(request),
             "sdk_shutdown_v2" => self.handle_sdk_shutdown_v2(request),
+            "sdk_topic_create_v2" => Ok(self.sdk_capability_disabled_response(
+                request.id,
+                "sdk_topic_create_v2",
+                "sdk.capability.topics",
+            )),
+            "sdk_topic_get_v2" => Ok(self.sdk_capability_disabled_response(
+                request.id,
+                "sdk_topic_get_v2",
+                "sdk.capability.topics",
+            )),
+            "sdk_topic_list_v2" => Ok(self.sdk_capability_disabled_response(
+                request.id,
+                "sdk_topic_list_v2",
+                "sdk.capability.topics",
+            )),
+            "sdk_topic_subscribe_v2" => Ok(self.sdk_capability_disabled_response(
+                request.id,
+                "sdk_topic_subscribe_v2",
+                "sdk.capability.topic_subscriptions",
+            )),
+            "sdk_topic_unsubscribe_v2" => Ok(self.sdk_capability_disabled_response(
+                request.id,
+                "sdk_topic_unsubscribe_v2",
+                "sdk.capability.topic_subscriptions",
+            )),
+            "sdk_topic_publish_v2" => Ok(self.sdk_capability_disabled_response(
+                request.id,
+                "sdk_topic_publish_v2",
+                "sdk.capability.topic_fanout",
+            )),
+            "sdk_telemetry_query_v2" => Ok(self.sdk_capability_disabled_response(
+                request.id,
+                "sdk_telemetry_query_v2",
+                "sdk.capability.telemetry_query",
+            )),
+            "sdk_telemetry_subscribe_v2" => Ok(self.sdk_capability_disabled_response(
+                request.id,
+                "sdk_telemetry_subscribe_v2",
+                "sdk.capability.telemetry_stream",
+            )),
+            "sdk_attachment_store_v2" => Ok(self.sdk_capability_disabled_response(
+                request.id,
+                "sdk_attachment_store_v2",
+                "sdk.capability.attachments",
+            )),
+            "sdk_attachment_get_v2" => Ok(self.sdk_capability_disabled_response(
+                request.id,
+                "sdk_attachment_get_v2",
+                "sdk.capability.attachments",
+            )),
+            "sdk_attachment_list_v2" => Ok(self.sdk_capability_disabled_response(
+                request.id,
+                "sdk_attachment_list_v2",
+                "sdk.capability.attachments",
+            )),
+            "sdk_attachment_delete_v2" => Ok(self.sdk_capability_disabled_response(
+                request.id,
+                "sdk_attachment_delete_v2",
+                "sdk.capability.attachment_delete",
+            )),
+            "sdk_attachment_download_v2" => Ok(self.sdk_capability_disabled_response(
+                request.id,
+                "sdk_attachment_download_v2",
+                "sdk.capability.attachments",
+            )),
+            "sdk_attachment_associate_topic_v2" => Ok(self.sdk_capability_disabled_response(
+                request.id,
+                "sdk_attachment_associate_topic_v2",
+                "sdk.capability.attachments",
+            )),
+            "sdk_marker_create_v2" => Ok(self.sdk_capability_disabled_response(
+                request.id,
+                "sdk_marker_create_v2",
+                "sdk.capability.markers",
+            )),
+            "sdk_marker_list_v2" => Ok(self.sdk_capability_disabled_response(
+                request.id,
+                "sdk_marker_list_v2",
+                "sdk.capability.markers",
+            )),
+            "sdk_marker_update_position_v2" => Ok(self.sdk_capability_disabled_response(
+                request.id,
+                "sdk_marker_update_position_v2",
+                "sdk.capability.markers",
+            )),
+            "sdk_marker_delete_v2" => Ok(self.sdk_capability_disabled_response(
+                request.id,
+                "sdk_marker_delete_v2",
+                "sdk.capability.markers",
+            )),
+            "sdk_identity_list_v2" => Ok(self.sdk_capability_disabled_response(
+                request.id,
+                "sdk_identity_list_v2",
+                "sdk.capability.identity_multi",
+            )),
+            "sdk_identity_activate_v2" => Ok(self.sdk_capability_disabled_response(
+                request.id,
+                "sdk_identity_activate_v2",
+                "sdk.capability.identity_multi",
+            )),
+            "sdk_identity_import_v2" => Ok(self.sdk_capability_disabled_response(
+                request.id,
+                "sdk_identity_import_v2",
+                "sdk.capability.identity_import_export",
+            )),
+            "sdk_identity_export_v2" => Ok(self.sdk_capability_disabled_response(
+                request.id,
+                "sdk_identity_export_v2",
+                "sdk.capability.identity_import_export",
+            )),
+            "sdk_identity_resolve_v2" => Ok(self.sdk_capability_disabled_response(
+                request.id,
+                "sdk_identity_resolve_v2",
+                "sdk.capability.identity_hash_resolution",
+            )),
+            "sdk_paper_encode_v2" => Ok(self.sdk_capability_disabled_response(
+                request.id,
+                "sdk_paper_encode_v2",
+                "sdk.capability.paper_messages",
+            )),
+            "sdk_paper_decode_v2" => Ok(self.sdk_capability_disabled_response(
+                request.id,
+                "sdk_paper_decode_v2",
+                "sdk.capability.paper_messages",
+            )),
+            "sdk_command_invoke_v2" => Ok(self.sdk_capability_disabled_response(
+                request.id,
+                "sdk_command_invoke_v2",
+                "sdk.capability.remote_commands",
+            )),
+            "sdk_command_reply_v2" => Ok(self.sdk_capability_disabled_response(
+                request.id,
+                "sdk_command_reply_v2",
+                "sdk.capability.remote_commands",
+            )),
+            "sdk_voice_session_open_v2" => Ok(self.sdk_capability_disabled_response(
+                request.id,
+                "sdk_voice_session_open_v2",
+                "sdk.capability.voice_signaling",
+            )),
+            "sdk_voice_session_update_v2" => Ok(self.sdk_capability_disabled_response(
+                request.id,
+                "sdk_voice_session_update_v2",
+                "sdk.capability.voice_signaling",
+            )),
+            "sdk_voice_session_close_v2" => Ok(self.sdk_capability_disabled_response(
+                request.id,
+                "sdk_voice_session_close_v2",
+                "sdk.capability.voice_signaling",
+            )),
             "list_messages" => {
                 let items = self.store.list_messages(100, None).map_err(std::io::Error::other)?;
                 Ok(RpcResponse {
@@ -2315,6 +2465,19 @@ impl RpcDaemon {
         }
     }
 
+    fn sdk_capability_disabled_response(
+        &self,
+        id: u64,
+        method: &str,
+        capability: &str,
+    ) -> RpcResponse {
+        self.sdk_error_response(
+            id,
+            "SDK_CAPABILITY_DISABLED",
+            &format!("method '{method}' requires capability '{capability}'"),
+        )
+    }
+
     fn sdk_encode_cursor(&self, seq_no: u64) -> String {
         format!("v2:{}:{}:{}", self.identity_hash, SDK_STREAM_ID, seq_no)
     }
@@ -3149,6 +3312,27 @@ mod tests {
             .expect("sdk_send_v2");
         assert!(response.error.is_none());
         assert_eq!(response.result.expect("result")["message_id"], json!("sdk-send-1"));
+    }
+
+    #[test]
+    fn sdk_domain_methods_return_capability_disabled_when_not_enabled() {
+        let daemon = RpcDaemon::test_instance();
+        for method in [
+            "sdk_topic_create_v2",
+            "sdk_telemetry_query_v2",
+            "sdk_attachment_store_v2",
+            "sdk_marker_create_v2",
+            "sdk_identity_list_v2",
+            "sdk_paper_encode_v2",
+            "sdk_command_invoke_v2",
+            "sdk_voice_session_open_v2",
+        ] {
+            let response =
+                daemon.handle_rpc(rpc_request(77, method, json!({}))).expect("rpc response");
+            let error = response.error.expect("expected capability error");
+            assert_eq!(error.code, "SDK_CAPABILITY_DISABLED", "unexpected code for {method}");
+            assert!(error.message.contains(method), "error message should include method");
+        }
     }
 
     #[test]
