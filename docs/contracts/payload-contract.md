@@ -18,6 +18,7 @@ The mirrored frontend copy is:
 - Compatibility slice:
   - `slice_id`: `payload_v2`
   - Matrix source: `docs/contracts/compatibility-matrix.md`
+  - Extension registry: `docs/contracts/extension-registry.md`
   - Support windows: `N`, `N+1`, `N+2`
 
 ## Canonical Field Coverage
@@ -87,6 +88,8 @@ App-extension conventions in field `16`:
 - `reaction_to: string`
 - `emoji: string`
 - `sender?: string`
+
+All additive payload extension keys must be listed in `docs/contracts/extension-registry.md`.
 
 Telemetry location conventions in field `2`:
 

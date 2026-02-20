@@ -99,6 +99,7 @@ cargo run -p rns-tools --bin rnx -- e2e --timeout-secs 20
 - Compatibility matrix: `docs/contracts/compatibility-matrix.md`
 - Third-party compatibility kit: `docs/contracts/third-party-compatibility-kit.md`
 - Support and LTS policy: `docs/contracts/support-policy.md`
+- Extension registry: `docs/contracts/extension-registry.md`
 - RPC contract: `docs/contracts/rpc-contract.md`
 - Payload contract: `docs/contracts/payload-contract.md`
 - Release readiness: `docs/runbooks/release-readiness.md`

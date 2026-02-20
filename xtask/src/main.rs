@@ -11,6 +11,8 @@ const INTEROP_BASELINE_PATH: &str = "docs/contracts/baselines/interop-artifacts-
 const INTEROP_DRIFT_BASELINE_PATH: &str = "docs/contracts/baselines/interop-drift-baseline.json";
 const INTEROP_MATRIX_PATH: &str = "docs/contracts/compatibility-matrix.md";
 const SUPPORT_POLICY_PATH: &str = "docs/contracts/support-policy.md";
+const EXTENSION_REGISTRY_PATH: &str = "docs/contracts/extension-registry.md";
+const EXTENSION_REGISTRY_ADR_PATH: &str = "docs/adr/0005-extension-registry-governance.md";
 const INTEROP_CORPUS_PATH: &str = "docs/fixtures/interop/v1/golden-corpus.json";
 const RPC_CONTRACT_PATH: &str = "docs/contracts/rpc-contract.md";
 const PAYLOAD_CONTRACT_PATH: &str = "docs/contracts/payload-contract.md";
@@ -268,6 +270,7 @@ enum XtaskCommand {
     GovernanceCheck,
     SupportPolicyCheck,
     ReleaseScorecardCheck,
+    ExtensionRegistryCheck,
     SecurityReviewCheck,
     SdkSecurityCheck,
     SdkFuzzCheck,
@@ -318,6 +321,7 @@ enum CiStage {
     GovernanceCheck,
     SupportPolicyCheck,
     ReleaseScorecardCheck,
+    ExtensionRegistryCheck,
     SecurityReviewCheck,
     SdkSecurityCheck,
     SdkFuzzCheck,
@@ -372,6 +376,7 @@ fn main() -> Result<()> {
         XtaskCommand::GovernanceCheck => run_governance_check(),
         XtaskCommand::SupportPolicyCheck => run_support_policy_check(),
         XtaskCommand::ReleaseScorecardCheck => run_release_scorecard_check(),
+        XtaskCommand::ExtensionRegistryCheck => run_extension_registry_check(),
         XtaskCommand::SecurityReviewCheck => run_security_review_check(),
         XtaskCommand::SdkSecurityCheck => run_sdk_security_check(),
         XtaskCommand::SdkFuzzCheck => run_sdk_fuzz_check(),
@@ -432,6 +437,7 @@ fn run_ci(stage: Option<CiStage>) -> Result<()> {
     run_governance_check()?;
     run_support_policy_check()?;
     run_release_scorecard_check()?;
+    run_extension_registry_check()?;
     run_security_review_check()?;
     run_sdk_security_check()?;
     run_sdk_fuzz_check()?;
@@ -489,6 +495,7 @@ fn run_ci_stage(stage: CiStage) -> Result<()> {
         CiStage::GovernanceCheck => run_governance_check(),
         CiStage::SupportPolicyCheck => run_support_policy_check(),
         CiStage::ReleaseScorecardCheck => run_release_scorecard_check(),
+        CiStage::ExtensionRegistryCheck => run_extension_registry_check(),
         CiStage::SecurityReviewCheck => run_security_review_check(),
         CiStage::SdkSecurityCheck => run_sdk_security_check(),
         CiStage::SdkFuzzCheck => run_sdk_fuzz_check(),
@@ -518,6 +525,7 @@ fn run_release_check() -> Result<()> {
     run_compat_kit_check()?;
     run_support_policy_check()?;
     run_release_scorecard_check()?;
+    run_extension_registry_check()?;
     run_sdk_api_break()?;
     run_supply_chain_check()?;
     run("cargo", &["deny", "check"])?;
@@ -1182,6 +1190,60 @@ fn run_release_scorecard_check() -> Result<()> {
         if !json.contains(marker) {
             bail!("generated scorecard json missing marker '{marker}' in {json_path}");
         }
+    }
+
+    Ok(())
+}
+
+fn run_extension_registry_check() -> Result<()> {
+    let registry = fs::read_to_string(EXTENSION_REGISTRY_PATH)
+        .with_context(|| format!("missing {EXTENSION_REGISTRY_PATH}"))?;
+    for marker in [
+        "# Protocol Extension Registry",
+        "## Namespace Rules",
+        "## Registry Entries",
+        "| Extension ID | Scope | Status | Owner | Introduced in | Notes |",
+        "`rpc.`",
+        "`payload.`",
+        "`event.`",
+        "`domain.`",
+    ] {
+        if !registry.contains(marker) {
+            bail!("extension registry missing marker '{marker}' in {EXTENSION_REGISTRY_PATH}");
+        }
+    }
+
+    let active_rows =
+        registry.lines().filter(|line| line.contains("| `") && line.contains("| active |")).count();
+    if active_rows < 4 {
+        bail!("extension registry requires at least 4 active entries, found {active_rows}");
+    }
+
+    let rpc_contract = fs::read_to_string(RPC_CONTRACT_PATH)
+        .with_context(|| format!("missing {RPC_CONTRACT_PATH}"))?;
+    if !rpc_contract.contains("docs/contracts/extension-registry.md") {
+        bail!("rpc contract must reference docs/contracts/extension-registry.md");
+    }
+
+    let payload_contract = fs::read_to_string(PAYLOAD_CONTRACT_PATH)
+        .with_context(|| format!("missing {PAYLOAD_CONTRACT_PATH}"))?;
+    if !payload_contract.contains("docs/contracts/extension-registry.md") {
+        bail!("payload contract must reference docs/contracts/extension-registry.md");
+    }
+
+    let adr = fs::read_to_string(EXTENSION_REGISTRY_ADR_PATH)
+        .with_context(|| format!("missing {EXTENSION_REGISTRY_ADR_PATH}"))?;
+    if !adr.contains("ADR 0005") {
+        bail!("extension registry ADR must include identifier ADR 0005");
+    }
+
+    let workflow = fs::read_to_string(CI_WORKFLOW_PATH)
+        .with_context(|| format!("missing {CI_WORKFLOW_PATH}"))?;
+    if !workflow.contains("extension-registry-check:") {
+        bail!("ci workflow must include an 'extension-registry-check' job");
+    }
+    if !workflow.contains("cargo xtask ci --stage extension-registry-check") {
+        bail!("ci workflow must execute `cargo xtask ci --stage extension-registry-check`");
     }
 
     Ok(())

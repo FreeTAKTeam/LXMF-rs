@@ -5,6 +5,7 @@
 - Runtime behavior is explicit and testable.
 - Public API surfaces are narrow and crate-scoped.
 - Security controls are default-on, measurable, and contract-backed.
+- Protocol extension growth is versioned and governed by registry.
 
 ## Stable Public Crates
 - `lxmf-core`
@@ -12,6 +13,11 @@
 - `rns-core`
 - `rns-transport`
 - `rns-rpc`
+
+## Extension Governance
+- Registry source of truth: `docs/contracts/extension-registry.md`
+- Governance ADR: `docs/adr/0005-extension-registry-governance.md`
+- CI gate: `extension-registry-check`
 
 ## SDK Integration Guide
 - Guide index: `docs/sdk/README.md`

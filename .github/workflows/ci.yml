@@ -411,6 +411,14 @@ jobs:
       - name: Support and LTS policy gate
         run: cargo xtask ci --stage support-policy-check
 
+  extension-registry-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Extension registry governance gate
+        run: cargo xtask ci --stage extension-registry-check
+
   forbidden-deps:
     runs-on: ubuntu-latest
     steps:

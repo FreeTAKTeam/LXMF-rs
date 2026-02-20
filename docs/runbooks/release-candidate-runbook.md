@@ -34,6 +34,7 @@ Optional longer soak:
 - `CI / unused-deps`
 - `CI / api-surface-check`
 - `CI / release-scorecard-check`
+- `CI / extension-registry-check`
 
 ## 4. RC tagging
 

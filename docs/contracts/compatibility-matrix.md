@@ -13,6 +13,7 @@ Last updated: 2026-02-20
   - `docs/contracts/sdk-v2.md`
   - `docs/contracts/sdk-v2-events.md`
   - `docs/contracts/third-party-compatibility-kit.md`
+  - `docs/contracts/extension-registry.md`
 
 ## Protocol Slice Definitions
 
@@ -56,6 +57,7 @@ Legend: `required`, `optional`, `planned`, `n/a`.
 - Delivery workflow E2E suite: `cargo run -p xtask -- e2e-compatibility`
 - SDK conformance coverage: `cargo run -p xtask -- sdk-conformance`
 - External kit dry-run gate: `cargo run -p xtask -- compat-kit-check`
+- Extension registry governance: `cargo run -p xtask -- extension-registry-check`
 
 ## Change Control
 

@@ -11,6 +11,7 @@ Scope:
 Compatibility slice:
 - `slice_id`: `rpc_v2`
 - Matrix source: `docs/contracts/compatibility-matrix.md`
+- Extension registry: `docs/contracts/extension-registry.md`
 - Support windows: `N`, `N+1`, `N+2` with additive-only method evolution.
 
 Reference tests:
@@ -88,6 +89,7 @@ All methods below are required for full CLI feature coverage.
 - New methods may be added without breaking this contract.
 - Existing method names in this document must not be renamed or removed in `0.1.x`.
 - Existing required parameter keys must remain accepted.
+- Additive extension behavior must be tracked in `docs/contracts/extension-registry.md` with versioned IDs.
 - CLI/runtime clients must call `send_message_v2` directly (no client fallback to `send_message`).
 - Server must keep `send_message` for compatibility and apply the same strict canonical field validation path as `send_message_v2`.
 - At least one of `daemon_status_ex` or `status` must provide `identity_hash` for source auto-resolution.
