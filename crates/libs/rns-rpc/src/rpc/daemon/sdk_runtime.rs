@@ -157,14 +157,22 @@ impl RpcDaemon {
                 "config revision mismatch",
             ));
         }
-        *revision_guard = revision_guard.saturating_add(1);
-        let revision = *revision_guard;
+
+        let mut next_config = {
+            self.sdk_runtime_config.lock().expect("sdk_runtime_config mutex poisoned").clone()
+        };
+        merge_json_patch(&mut next_config, &parsed.patch);
+        if let Err(error) = self.validate_sdk_runtime_config(&next_config) {
+            return Ok(RpcResponse { id: request.id, result: None, error: Some(error) });
+        }
 
         {
             let mut config_guard =
                 self.sdk_runtime_config.lock().expect("sdk_runtime_config mutex poisoned");
-            merge_json_patch(&mut config_guard, &parsed.patch);
+            *config_guard = next_config;
         }
+        *revision_guard = revision_guard.saturating_add(1);
+        let revision = *revision_guard;
         drop(revision_guard);
 
         let event = RpcEvent {

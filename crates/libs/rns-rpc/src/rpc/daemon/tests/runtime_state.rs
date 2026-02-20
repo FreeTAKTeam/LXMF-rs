@@ -204,6 +204,42 @@
     }
 
     #[test]
+    fn sdk_configure_v2_validates_patch_before_commit_and_revision_bump() {
+        let daemon = RpcDaemon::test_instance();
+        let invalid = daemon
+            .handle_rpc(rpc_request(
+                430,
+                "sdk_configure_v2",
+                json!({
+                    "expected_revision": 0,
+                    "patch": { "overflow_policy": "block" }
+                }),
+            ))
+            .expect("configure invalid patch");
+        assert_eq!(
+            invalid.error.expect("error").code,
+            "SDK_VALIDATION_INVALID_ARGUMENT",
+            "invalid patch should fail before config commit"
+        );
+
+        let valid = daemon
+            .handle_rpc(rpc_request(
+                431,
+                "sdk_configure_v2",
+                json!({
+                    "expected_revision": 0,
+                    "patch": { "event_stream": { "max_poll_events": 64 } }
+                }),
+            ))
+            .expect("configure valid patch");
+        assert_eq!(
+            valid.result.expect("result")["revision"],
+            json!(1),
+            "failed patch must not consume config revision"
+        );
+    }
+
+    #[test]
     fn sdk_shutdown_v2_accepts_graceful_mode() {
         let daemon = RpcDaemon::test_instance();
         let response = daemon
