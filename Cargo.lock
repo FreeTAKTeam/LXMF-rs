@@ -1341,7 +1341,6 @@ dependencies = [
  "hex",
  "hkdf",
  "hmac",
- "log",
  "rand_core",
  "rmp-serde",
  "serde",
@@ -1356,7 +1355,6 @@ name = "rns-rpc"
 version = "0.1.0"
 dependencies = [
  "base64",
- "ed25519-dalek",
  "hex",
  "hmac",
  "rand_core",
@@ -1375,7 +1373,6 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "rns-rpc",
- "rns-transport",
  "serde_json",
  "tempfile",
 ]

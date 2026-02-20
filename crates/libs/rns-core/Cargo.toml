@@ -14,7 +14,6 @@ ed25519-dalek = { workspace = true, features = ["rand_core"] }
 hex.workspace = true
 hkdf.workspace = true
 hmac.workspace = true
-log.workspace = true
 rand_core = { workspace = true, features = ["getrandom"] }
 rmp-serde.workspace = true
 serde = { workspace = true, features = ["derive"] }

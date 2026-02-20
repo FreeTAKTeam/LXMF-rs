@@ -121,7 +121,7 @@ fn run_ci_stage(stage: CiStage) -> Result<()> {
             run("cargo", &["deny", "check"])?;
             run("cargo", &["audit"])
         }
-        CiStage::UnusedDeps => run("cargo", &["+nightly", "udeps", "--workspace", "--all-targets"]),
+        CiStage::UnusedDeps => run_unused_deps(),
         CiStage::ApiSurfaceCheck => run_api_diff(),
         CiStage::SdkConformance => run_sdk_conformance(),
         CiStage::SdkSchemaCheck => run_sdk_schema_check(),
@@ -154,9 +154,8 @@ fn run_api_diff() -> Result<()> {
         "crates/libs/rns-transport/Cargo.toml",
         "crates/libs/rns-rpc/Cargo.toml",
     ] {
-        let command = format!(
-            "RUSTUP_TOOLCHAIN={toolchain} RUSTC=\"$(rustup which --toolchain {toolchain} rustc)\" RUSTDOC=\"$(rustup which --toolchain {toolchain} rustdoc)\" cargo public-api --manifest-path {manifest} -sss --color never"
-        );
+        let args = format!("public-api --manifest-path {manifest} -sss --color never");
+        let command = toolchain_cargo_command(&toolchain, &args);
         run("bash", &["-lc", &command])?;
     }
     Ok(())
@@ -277,6 +276,21 @@ fn run_sdk_matrix_check() -> Result<()> {
     run("cargo", &["test", "-p", "test-support", "sdk_matrix", "--", "--nocapture"])
 }
 
+fn run_unused_deps() -> Result<()> {
+    let rustup_available = Command::new("rustup")
+        .arg("--version")
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false);
+
+    if rustup_available {
+        let nightly_udeps = toolchain_cargo_command("nightly", "udeps --workspace --all-targets");
+        return run("bash", &["-lc", &nightly_udeps]);
+    }
+
+    run("cargo", &["+nightly", "udeps", "--workspace", "--all-targets"])
+}
+
 fn run_migration_checks() -> Result<()> {
     let enforce_legacy_imports =
         std::env::var("ENFORCE_LEGACY_APP_IMPORTS").unwrap_or("1".to_string());
@@ -352,9 +366,8 @@ fn parse_cutover_rows(markdown: &str) -> Result<Vec<Vec<String>>> {
 
 fn capture_public_api(manifest: &str) -> Result<String> {
     let toolchain = public_api_toolchain();
-    let command = format!(
-        "RUSTUP_TOOLCHAIN={toolchain} RUSTC=\"$(rustup which --toolchain {toolchain} rustc)\" RUSTDOC=\"$(rustup which --toolchain {toolchain} rustdoc)\" cargo public-api --manifest-path {manifest} -sss --color never"
-    );
+    let args = format!("public-api --manifest-path {manifest} -sss --color never");
+    let command = toolchain_cargo_command(&toolchain, &args);
     let output = Command::new("bash")
         .args(["-lc", &command])
         .output()
@@ -369,6 +382,20 @@ fn capture_public_api(manifest: &str) -> Result<String> {
 
 fn public_api_toolchain() -> String {
     std::env::var("SDK_API_BREAK_TOOLCHAIN").unwrap_or_else(|_| "nightly".to_string())
+}
+
+fn toolchain_cargo_command(toolchain: &str, cargo_args: &str) -> String {
+    format!(
+        "set -euo pipefail; \
+         CARGO_BIN=\"$(rustup which --toolchain {toolchain} cargo)\"; \
+         RUSTC_BIN=\"$(rustup which --toolchain {toolchain} rustc)\"; \
+         RUSTDOC_BIN=\"$(rustup which --toolchain {toolchain} rustdoc)\"; \
+         PATH=\"$(dirname \"$CARGO_BIN\"):$PATH\" \
+         RUSTUP_TOOLCHAIN={toolchain} \
+         RUSTC=\"$RUSTC_BIN\" \
+         RUSTDOC=\"$RUSTDOC_BIN\" \
+         \"$CARGO_BIN\" {cargo_args}"
+    )
 }
 
 fn normalize_public_api(raw: &str) -> String {
