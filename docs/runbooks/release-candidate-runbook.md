@@ -19,6 +19,8 @@ Optional longer soak:
 ```bash
 ./tools/scripts/soak-rnx.sh
 # Example: CYCLES=5 BURST_ROUNDS=20 ./tools/scripts/soak-rnx.sh
+# Example with explicit threshold + report artifact:
+# CYCLES=5 BURST_ROUNDS=20 MAX_FAILURES=0 REPORT_PATH=target/soak/soak-report.json ./tools/scripts/soak-rnx.sh
 ```
 
 ## 3. CI gates (must pass)

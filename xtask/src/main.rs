@@ -19,6 +19,7 @@ const SDK_DOCS_CHECKLIST_PATH: &str = "docs/runbooks/sdk-docs-checklist.md";
 const INCIDENT_RUNBOOK_PATH: &str = "docs/runbooks/incident-response-playbooks.md";
 const DISASTER_RECOVERY_RUNBOOK_PATH: &str = "docs/runbooks/disaster-recovery-drills.md";
 const BACKUP_RESTORE_DRILL_SCRIPT_PATH: &str = "tools/scripts/backup-restore-drill.sh";
+const SOAK_REPORT_PATH: &str = "target/soak/soak-report.json";
 const BENCH_SUMMARY_PATH: &str = "target/criterion/bench-summary.txt";
 const PERF_BUDGET_REPORT_PATH: &str = "target/criterion/bench-budget-report.txt";
 const SUPPLY_CHAIN_SBOM_PATH: &str = "target/supply-chain/sbom/cargo-metadata.sbom.json";
@@ -220,6 +221,7 @@ enum XtaskCommand {
     DxBootstrapCheck,
     SdkIncidentRunbookCheck,
     SdkDrillCheck,
+    SdkSoakCheck,
     InteropArtifacts {
         #[arg(long)]
         update: bool,
@@ -272,6 +274,7 @@ enum CiStage {
     DxBootstrapCheck,
     SdkIncidentRunbookCheck,
     SdkDrillCheck,
+    SdkSoakCheck,
     InteropArtifacts,
     InteropMatrixCheck,
     InteropCorpusCheck,
@@ -320,6 +323,7 @@ fn main() -> Result<()> {
         XtaskCommand::DxBootstrapCheck => run_dx_bootstrap_check(),
         XtaskCommand::SdkIncidentRunbookCheck => run_sdk_incident_runbook_check(),
         XtaskCommand::SdkDrillCheck => run_sdk_drill_check(),
+        XtaskCommand::SdkSoakCheck => run_sdk_soak_check(),
         XtaskCommand::InteropArtifacts { update } => run_interop_artifacts(update),
         XtaskCommand::InteropMatrixCheck => run_interop_matrix_check(),
         XtaskCommand::InteropCorpusCheck => run_interop_corpus_check(),
@@ -376,6 +380,7 @@ fn run_ci(stage: Option<CiStage>) -> Result<()> {
     run_dx_bootstrap_check()?;
     run_sdk_incident_runbook_check()?;
     run_sdk_drill_check()?;
+    run_sdk_soak_check()?;
     run_sdk_schema_check()?;
     run_interop_artifacts(false)?;
     run_interop_matrix_check()?;
@@ -428,6 +433,7 @@ fn run_ci_stage(stage: CiStage) -> Result<()> {
         CiStage::DxBootstrapCheck => run_dx_bootstrap_check(),
         CiStage::SdkIncidentRunbookCheck => run_sdk_incident_runbook_check(),
         CiStage::SdkDrillCheck => run_sdk_drill_check(),
+        CiStage::SdkSoakCheck => run_sdk_soak_check(),
         CiStage::InteropArtifacts => run_interop_artifacts(false),
         CiStage::InteropMatrixCheck => run_interop_matrix_check(),
         CiStage::InteropCorpusCheck => run_interop_corpus_check(),
@@ -588,6 +594,25 @@ fn run_sdk_drill_check() -> Result<()> {
         }
     }
     run("bash", &[BACKUP_RESTORE_DRILL_SCRIPT_PATH])
+}
+
+fn run_sdk_soak_check() -> Result<()> {
+    run(
+        "bash",
+        &[
+            "-lc",
+            "CYCLES=1 BURST_ROUNDS=2 TIMEOUT_SECS=20 PAUSE_SECS=0 CHAOS_INTERVAL=2 CHAOS_NODES=4 CHAOS_TIMEOUT_SECS=60 MAX_FAILURES=0 REPORT_PATH=target/soak/soak-report.json ./tools/scripts/soak-rnx.sh",
+        ],
+    )?;
+    let report =
+        fs::read_to_string(SOAK_REPORT_PATH).with_context(|| format!("read {SOAK_REPORT_PATH}"))?;
+    if !report.contains("\"status\": \"pass\"") {
+        bail!("soak report indicates non-pass status in {SOAK_REPORT_PATH}");
+    }
+    if !report.contains("\"max_failures\": 0") {
+        bail!("soak report must include enforced regression threshold in {SOAK_REPORT_PATH}");
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
