@@ -23,7 +23,9 @@ thiserror.workspace = true
 x25519-dalek.workspace = true
 
 [features]
-default = []
+default = ["std"]
+std = []
+alloc = []
 
 [dev-dependencies]
 criterion.workspace = true

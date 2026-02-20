@@ -62,6 +62,20 @@ Legend:
 | In-process runtime adapter | optional | deferred from foundation slice |
 | External custom backend | experimental | allowed via backend SPI, not release-blocking |
 
+## `no_std` / `alloc` Capability Audit
+
+This table is the source of truth for constrained-device portability planning.
+
+| Crate | std_required | alloc_target | status | removal_plan |
+| --- | --- | --- | --- | --- |
+| `lxmf-core` | `wire_fields` JSON conversion paths, attachment text decoding helpers | message encode/decode primitives and msgpack payload model | `std-first` | split JSON bridge into `std` adapter module and keep protocol encode/decode under `alloc` |
+| `rns-core` | identity key generation entropy plumbing (`rand_core/getrandom`) | packet/hash/destination/ratchet primitives | `std-first` | introduce host entropy trait + feature-gated std adapter for key material generation |
+
+Status legend:
+- `std-first`: currently std-coupled with documented `alloc` migration plan.
+- `alloc-ready`: compile-tested in `alloc` mode.
+- `planned`: identified but not yet audited.
+
 ## Security Feature Matrix
 
 | Security Control | desktop-full | desktop-local-runtime | embedded-alloc |

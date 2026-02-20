@@ -19,6 +19,12 @@ struct MemoryBudgetRow {
     max_attachment_spool_bytes: usize,
 }
 
+#[derive(Debug)]
+struct NoStdAuditRow {
+    crate_name: String,
+    status: String,
+}
+
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
@@ -121,6 +127,47 @@ fn parse_memory_budget_rows(markdown: &str) -> Vec<MemoryBudgetRow> {
             max_heap_bytes: parse_budget_cell(cells[1]),
             max_event_queue_bytes: parse_budget_cell(cells[2]),
             max_attachment_spool_bytes: parse_budget_cell(cells[3]),
+        });
+    }
+
+    rows
+}
+
+fn parse_nostd_audit_rows(markdown: &str) -> Vec<NoStdAuditRow> {
+    let mut rows = Vec::new();
+    let mut in_table = false;
+
+    for line in markdown.lines() {
+        let trimmed = line.trim();
+        if !in_table {
+            if trimmed.starts_with("| Crate |")
+                && trimmed.contains("| std_required |")
+                && trimmed.contains("| alloc_target |")
+                && trimmed.contains("| status |")
+                && trimmed.contains("| removal_plan |")
+            {
+                in_table = true;
+            }
+            continue;
+        }
+
+        if !trimmed.starts_with('|') {
+            if !rows.is_empty() {
+                break;
+            }
+            continue;
+        }
+        if trimmed.contains("---") {
+            continue;
+        }
+
+        let cells = trimmed.trim_matches('|').split('|').map(str::trim).collect::<Vec<_>>();
+        if cells.len() != 5 {
+            continue;
+        }
+        rows.push(NoStdAuditRow {
+            crate_name: cells[0].trim_matches('`').to_ascii_lowercase(),
+            status: cells[3].trim_matches('`').to_ascii_lowercase(),
         });
     }
 
@@ -344,4 +391,43 @@ fn sdk_memory_budget_table_matches_profile_budgets() {
             "memory budget drift for {profile_key}: max_attachment_spool_bytes"
         );
     }
+}
+
+#[test]
+fn sdk_nostd_capability_table_has_required_rows() {
+    let markdown = load_feature_matrix();
+    let rows = parse_nostd_audit_rows(&markdown);
+    assert!(!rows.is_empty(), "feature matrix no_std audit table is empty");
+
+    let mut by_crate = HashMap::new();
+    for row in rows {
+        assert!(
+            matches!(row.status.as_str(), "std-first" | "alloc-ready" | "planned"),
+            "invalid no_std audit status '{}'",
+            row.status
+        );
+        by_crate.insert(row.crate_name.clone(), row);
+    }
+
+    for required in ["lxmf-core", "rns-core"] {
+        assert!(by_crate.contains_key(required), "no_std audit table missing crate '{required}'");
+    }
+
+    let lxmf_core_manifest =
+        fs::read_to_string(workspace_root().join("crates/libs/lxmf-core/Cargo.toml"))
+            .expect("read lxmf-core Cargo.toml");
+    assert!(
+        lxmf_core_manifest.contains("default = [\"std\"]")
+            && lxmf_core_manifest.contains("alloc = []"),
+        "lxmf-core Cargo.toml must declare std default and alloc feature for no_std audit tracking"
+    );
+
+    let rns_core_manifest =
+        fs::read_to_string(workspace_root().join("crates/libs/rns-core/Cargo.toml"))
+            .expect("read rns-core Cargo.toml");
+    assert!(
+        rns_core_manifest.contains("default = [\"std\"]")
+            && rns_core_manifest.contains("alloc = []"),
+        "rns-core Cargo.toml must declare std default and alloc feature for no_std audit tracking"
+    );
 }

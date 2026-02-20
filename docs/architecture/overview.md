@@ -32,6 +32,8 @@
 - Module size policy and exception registry:
   - `docs/architecture/module-size-policy.md`
   - `docs/architecture/module-size-allowlist.txt`
+- `no_std` / `alloc` capability map:
+  - `docs/contracts/sdk-v2-feature-matrix.md` (`no_std` audit table)
 
 ## Security Architecture
 - Threat model source of truth: `docs/adr/0004-sdk-v25-threat-model.md`.
