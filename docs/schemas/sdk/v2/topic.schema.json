@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://weft.tak/contracts/sdk/v2/topic.schema.json",
+  "title": "LXMF SDK Topic Domain v2",
+  "anyOf": [
+    { "$ref": "#/$defs/topic_record" },
+    { "$ref": "#/$defs/topic_create_request" },
+    { "$ref": "#/$defs/topic_publish_request" },
+    { "$ref": "#/$defs/topic_subscription_request" },
+    { "$ref": "#/$defs/topic_list_request" },
+    { "$ref": "#/$defs/topic_list_result" }
+  ],
+  "$defs": {
+    "topic_id": { "type": "string", "minLength": 1 },
+    "topic_path": { "type": "string", "minLength": 1 },
+    "topic_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["topic_id", "created_ts_ms"],
+      "properties": {
+        "topic_id": { "$ref": "#/$defs/topic_id" },
+        "topic_path": { "$ref": "#/$defs/topic_path" },
+        "created_ts_ms": { "type": "integer", "minimum": 0 },
+        "metadata": { "type": "object", "additionalProperties": true },
+        "extensions": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "topic_create_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "topic_path": { "$ref": "#/$defs/topic_path" },
+        "metadata": { "type": "object", "additionalProperties": true },
+        "extensions": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "topic_publish_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["topic_id", "payload"],
+      "properties": {
+        "topic_id": { "$ref": "#/$defs/topic_id" },
+        "payload": { "type": "object", "additionalProperties": true },
+        "correlation_id": { "type": "string", "minLength": 1 },
+        "extensions": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "topic_subscription_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["topic_id"],
+      "properties": {
+        "topic_id": { "$ref": "#/$defs/topic_id" },
+        "cursor": { "type": ["string", "null"] },
+        "extensions": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "topic_list_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cursor": { "type": ["string", "null"] },
+        "limit": { "type": "integer", "minimum": 1 },
+        "extensions": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "topic_list_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["topics"],
+      "properties": {
+        "topics": { "type": "array", "items": { "$ref": "#/$defs/topic_record" } },
+        "next_cursor": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

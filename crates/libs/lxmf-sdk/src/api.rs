@@ -1,3 +1,10 @@
+use crate::domain::{
+    AttachmentId, AttachmentListRequest, AttachmentListResult, AttachmentMeta,
+    AttachmentStoreRequest, MarkerCreateRequest, MarkerId, MarkerListRequest, MarkerListResult,
+    MarkerRecord, MarkerUpdatePositionRequest, TelemetryPoint, TelemetryQuery, TopicCreateRequest,
+    TopicId, TopicListRequest, TopicListResult, TopicPublishRequest, TopicRecord,
+    TopicSubscriptionRequest,
+};
 use crate::error::SdkError;
 use crate::event::{EventBatch, EventCursor};
 #[cfg(feature = "sdk-async")]
@@ -29,3 +36,96 @@ pub trait LxmfSdkAsync {
 
 #[cfg(not(feature = "sdk-async"))]
 pub trait LxmfSdkAsync {}
+
+pub trait LxmfSdkTopics {
+    fn topic_create(&self, _req: TopicCreateRequest) -> Result<TopicRecord, SdkError> {
+        Err(SdkError::capability_disabled("sdk.capability.topics"))
+    }
+
+    fn topic_get(&self, _topic_id: TopicId) -> Result<Option<TopicRecord>, SdkError> {
+        Err(SdkError::capability_disabled("sdk.capability.topics"))
+    }
+
+    fn topic_list(&self, _req: TopicListRequest) -> Result<TopicListResult, SdkError> {
+        Err(SdkError::capability_disabled("sdk.capability.topics"))
+    }
+
+    fn topic_subscribe(&self, _req: TopicSubscriptionRequest) -> Result<Ack, SdkError> {
+        Err(SdkError::capability_disabled("sdk.capability.topic_subscriptions"))
+    }
+
+    fn topic_unsubscribe(&self, _topic_id: TopicId) -> Result<Ack, SdkError> {
+        Err(SdkError::capability_disabled("sdk.capability.topic_subscriptions"))
+    }
+
+    fn topic_publish(&self, _req: TopicPublishRequest) -> Result<Ack, SdkError> {
+        Err(SdkError::capability_disabled("sdk.capability.topic_fanout"))
+    }
+}
+
+pub trait LxmfSdkTelemetry {
+    fn telemetry_query(&self, _query: TelemetryQuery) -> Result<Vec<TelemetryPoint>, SdkError> {
+        Err(SdkError::capability_disabled("sdk.capability.telemetry_query"))
+    }
+
+    fn telemetry_subscribe(&self, _query: TelemetryQuery) -> Result<Ack, SdkError> {
+        Err(SdkError::capability_disabled("sdk.capability.telemetry_stream"))
+    }
+}
+
+pub trait LxmfSdkAttachments {
+    fn attachment_store(&self, _req: AttachmentStoreRequest) -> Result<AttachmentMeta, SdkError> {
+        Err(SdkError::capability_disabled("sdk.capability.attachments"))
+    }
+
+    fn attachment_get(
+        &self,
+        _attachment_id: AttachmentId,
+    ) -> Result<Option<AttachmentMeta>, SdkError> {
+        Err(SdkError::capability_disabled("sdk.capability.attachments"))
+    }
+
+    fn attachment_list(
+        &self,
+        _req: AttachmentListRequest,
+    ) -> Result<AttachmentListResult, SdkError> {
+        Err(SdkError::capability_disabled("sdk.capability.attachments"))
+    }
+
+    fn attachment_delete(&self, _attachment_id: AttachmentId) -> Result<Ack, SdkError> {
+        Err(SdkError::capability_disabled("sdk.capability.attachment_delete"))
+    }
+
+    fn attachment_download(&self, _attachment_id: AttachmentId) -> Result<Ack, SdkError> {
+        Err(SdkError::capability_disabled("sdk.capability.attachments"))
+    }
+
+    fn attachment_associate_topic(
+        &self,
+        _attachment_id: AttachmentId,
+        _topic_id: TopicId,
+    ) -> Result<Ack, SdkError> {
+        Err(SdkError::capability_disabled("sdk.capability.attachments"))
+    }
+}
+
+pub trait LxmfSdkMarkers {
+    fn marker_create(&self, _req: MarkerCreateRequest) -> Result<MarkerRecord, SdkError> {
+        Err(SdkError::capability_disabled("sdk.capability.markers"))
+    }
+
+    fn marker_list(&self, _req: MarkerListRequest) -> Result<MarkerListResult, SdkError> {
+        Err(SdkError::capability_disabled("sdk.capability.markers"))
+    }
+
+    fn marker_update_position(
+        &self,
+        _req: MarkerUpdatePositionRequest,
+    ) -> Result<MarkerRecord, SdkError> {
+        Err(SdkError::capability_disabled("sdk.capability.markers"))
+    }
+
+    fn marker_delete(&self, _marker_id: MarkerId) -> Result<Ack, SdkError> {
+        Err(SdkError::capability_disabled("sdk.capability.markers"))
+    }
+}

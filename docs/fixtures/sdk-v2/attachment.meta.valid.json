@@ -1,0 +1,10 @@
+{
+  "attachment_id": "att-1",
+  "name": "photo.jpg",
+  "content_type": "image/jpeg",
+  "byte_len": 5,
+  "checksum_sha256": "2cf24dba5fb0a30e26e83b2ac5b9e29e",
+  "created_ts_ms": 1739750402000,
+  "expires_ts_ms": 1893456000000,
+  "topic_ids": ["topic-1"]
+}

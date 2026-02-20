@@ -124,6 +124,13 @@ Rules:
 2. Additive minor features must use capability-gated command variants and extension traits.
 3. Public contract structs/enums should be `#[non_exhaustive]`.
 
+Current additive extension traits:
+
+1. `LxmfSdkTopics`
+2. `LxmfSdkTelemetry`
+3. `LxmfSdkAttachments`
+4. `LxmfSdkMarkers`
+
 ## Lifecycle State Machine
 
 States:

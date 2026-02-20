@@ -91,6 +91,10 @@ struct SchemaSet {
     command: JSONSchema,
     event: JSONSchema,
     error: JSONSchema,
+    topic: JSONSchema,
+    telemetry: JSONSchema,
+    attachment: JSONSchema,
+    marker: JSONSchema,
 }
 
 fn load_schemas() -> SchemaSet {
@@ -100,6 +104,10 @@ fn load_schemas() -> SchemaSet {
     let command_schema = read_json(&schema_dir.join("command.schema.json"));
     let event_schema = read_json(&schema_dir.join("event.schema.json"));
     let error_schema = read_json(&schema_dir.join("error.schema.json"));
+    let topic_schema = read_json(&schema_dir.join("topic.schema.json"));
+    let telemetry_schema = read_json(&schema_dir.join("telemetry.schema.json"));
+    let attachment_schema = read_json(&schema_dir.join("attachment.schema.json"));
+    let marker_schema = read_json(&schema_dir.join("marker.schema.json"));
     let command_schema = command_schema_with_embedded_config(&config_schema, command_schema);
 
     SchemaSet {
@@ -107,6 +115,10 @@ fn load_schemas() -> SchemaSet {
         command: compile_schema(&command_schema, "command"),
         event: compile_schema(&event_schema, "event"),
         error: compile_schema(&error_schema, "error"),
+        topic: compile_schema(&topic_schema, "topic"),
+        telemetry: compile_schema(&telemetry_schema, "telemetry"),
+        attachment: compile_schema(&attachment_schema, "attachment"),
+        marker: compile_schema(&marker_schema, "marker"),
     }
 }
 
@@ -167,9 +179,44 @@ fn sdk_schema_valid_fixtures_pass_contract_checks() {
         &fixture("docs/fixtures/sdk-v2/command.start.valid.json"),
     );
     assert_schema_valid(
+        &schemas.command,
+        "docs/fixtures/sdk-v2/command.topic_get.valid.json",
+        &fixture("docs/fixtures/sdk-v2/command.topic_get.valid.json"),
+    );
+    assert_schema_valid(
+        &schemas.command,
+        "docs/fixtures/sdk-v2/command.attachment_store.valid.json",
+        &fixture("docs/fixtures/sdk-v2/command.attachment_store.valid.json"),
+    );
+    assert_schema_valid(
+        &schemas.command,
+        "docs/fixtures/sdk-v2/command.attachment_associate_topic.valid.json",
+        &fixture("docs/fixtures/sdk-v2/command.attachment_associate_topic.valid.json"),
+    );
+    assert_schema_valid(
         &schemas.error,
         "docs/fixtures/sdk-v2/error.validation.valid.json",
         &fixture("docs/fixtures/sdk-v2/error.validation.valid.json"),
+    );
+    assert_schema_valid(
+        &schemas.topic,
+        "docs/fixtures/sdk-v2/topic.record.valid.json",
+        &fixture("docs/fixtures/sdk-v2/topic.record.valid.json"),
+    );
+    assert_schema_valid(
+        &schemas.telemetry,
+        "docs/fixtures/sdk-v2/telemetry.point.valid.json",
+        &fixture("docs/fixtures/sdk-v2/telemetry.point.valid.json"),
+    );
+    assert_schema_valid(
+        &schemas.attachment,
+        "docs/fixtures/sdk-v2/attachment.meta.valid.json",
+        &fixture("docs/fixtures/sdk-v2/attachment.meta.valid.json"),
+    );
+    assert_schema_valid(
+        &schemas.marker,
+        "docs/fixtures/sdk-v2/marker.record.valid.json",
+        &fixture("docs/fixtures/sdk-v2/marker.record.valid.json"),
     );
 }
 
@@ -190,6 +237,16 @@ fn sdk_schema_invalid_fixtures_are_rejected() {
         &schemas.command,
         "docs/fixtures/sdk-v2/command.send_unknown_field.invalid.json",
         &fixture("docs/fixtures/sdk-v2/command.send_unknown_field.invalid.json"),
+    );
+    assert_schema_invalid(
+        &schemas.command,
+        "docs/fixtures/sdk-v2/command.topic_get.invalid.json",
+        &fixture("docs/fixtures/sdk-v2/command.topic_get.invalid.json"),
+    );
+    assert_schema_invalid(
+        &schemas.command,
+        "docs/fixtures/sdk-v2/command.attachment_associate_topic.invalid.json",
+        &fixture("docs/fixtures/sdk-v2/command.attachment_associate_topic.invalid.json"),
     );
     assert_schema_invalid(
         &schemas.error,

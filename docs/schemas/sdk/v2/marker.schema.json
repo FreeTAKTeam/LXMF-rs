@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://weft.tak/contracts/sdk/v2/marker.schema.json",
+  "title": "LXMF SDK Marker Domain v2",
+  "oneOf": [
+    { "$ref": "#/$defs/marker_record" },
+    { "$ref": "#/$defs/marker_create_request" },
+    { "$ref": "#/$defs/marker_update_position_request" },
+    { "$ref": "#/$defs/marker_list_request" },
+    { "$ref": "#/$defs/marker_list_result" }
+  ],
+  "$defs": {
+    "marker_id": { "type": "string", "minLength": 1 },
+    "geo_point": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lat", "lon"],
+      "properties": {
+        "lat": { "type": "number", "minimum": -90, "maximum": 90 },
+        "lon": { "type": "number", "minimum": -180, "maximum": 180 },
+        "alt_m": { "type": ["number", "null"] }
+      }
+    },
+    "marker_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["marker_id", "label", "position", "updated_ts_ms"],
+      "properties": {
+        "marker_id": { "$ref": "#/$defs/marker_id" },
+        "label": { "type": "string", "minLength": 1 },
+        "position": { "$ref": "#/$defs/geo_point" },
+        "topic_id": { "type": ["string", "null"] },
+        "updated_ts_ms": { "type": "integer", "minimum": 0 },
+        "extensions": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "marker_create_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "position"],
+      "properties": {
+        "label": { "type": "string", "minLength": 1 },
+        "position": { "$ref": "#/$defs/geo_point" },
+        "topic_id": { "type": ["string", "null"] },
+        "extensions": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "marker_update_position_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["marker_id", "position"],
+      "properties": {
+        "marker_id": { "$ref": "#/$defs/marker_id" },
+        "position": { "$ref": "#/$defs/geo_point" },
+        "extensions": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "marker_list_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "topic_id": { "type": ["string", "null"] },
+        "cursor": { "type": ["string", "null"] },
+        "limit": { "type": "integer", "minimum": 1 },
+        "extensions": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "marker_list_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["markers"],
+      "properties": {
+        "markers": { "type": "array", "items": { "$ref": "#/$defs/marker_record" } },
+        "next_cursor": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

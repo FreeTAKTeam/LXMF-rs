@@ -1,0 +1,8 @@
+{
+  "topic_id": "topic-123",
+  "topic_path": "ops/alpha",
+  "created_ts_ms": 1739750400000,
+  "metadata": {
+    "owner": "ops-team"
+  }
+}

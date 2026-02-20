@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://weft.tak/contracts/sdk/v2/attachment.schema.json",
+  "title": "LXMF SDK Attachment Domain v2",
+  "oneOf": [
+    { "$ref": "#/$defs/attachment_meta" },
+    { "$ref": "#/$defs/attachment_store_request" },
+    { "$ref": "#/$defs/attachment_list_request" },
+    { "$ref": "#/$defs/attachment_list_result" }
+  ],
+  "$defs": {
+    "attachment_id": { "type": "string", "minLength": 1 },
+    "attachment_meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attachment_id",
+        "name",
+        "content_type",
+        "byte_len",
+        "checksum_sha256",
+        "created_ts_ms"
+      ],
+      "properties": {
+        "attachment_id": { "$ref": "#/$defs/attachment_id" },
+        "name": { "type": "string", "minLength": 1 },
+        "content_type": { "type": "string", "minLength": 1 },
+        "byte_len": { "type": "integer", "minimum": 0 },
+        "checksum_sha256": { "type": "string", "minLength": 1 },
+        "created_ts_ms": { "type": "integer", "minimum": 0 },
+        "expires_ts_ms": { "type": ["integer", "null"], "minimum": 0 },
+        "topic_ids": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "extensions": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "attachment_store_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "content_type", "bytes_base64"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "content_type": { "type": "string", "minLength": 1 },
+        "bytes_base64": { "type": "string", "minLength": 1 },
+        "expires_ts_ms": { "type": ["integer", "null"], "minimum": 0 },
+        "topic_ids": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "extensions": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "attachment_list_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "topic_id": { "type": ["string", "null"] },
+        "cursor": { "type": ["string", "null"] },
+        "limit": { "type": "integer", "minimum": 1 },
+        "extensions": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "attachment_list_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["attachments"],
+      "properties": {
+        "attachments": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/attachment_meta" }
+        },
+        "next_cursor": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

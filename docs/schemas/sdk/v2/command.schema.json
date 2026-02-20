@@ -24,7 +24,25 @@
         "poll_events",
         "snapshot",
         "shutdown",
-        "subscribe_events"
+        "subscribe_events",
+        "topic_create",
+        "topic_get",
+        "topic_list",
+        "topic_subscribe",
+        "topic_unsubscribe",
+        "topic_publish",
+        "telemetry_query",
+        "telemetry_subscribe",
+        "attachment_store",
+        "attachment_get",
+        "attachment_list",
+        "attachment_delete",
+        "attachment_download",
+        "attachment_associate_topic",
+        "marker_create",
+        "marker_list",
+        "marker_update_position",
+        "marker_delete"
       ]
     },
     "params": { "type": "object" },
@@ -256,6 +274,329 @@
                 "enum": ["head", "tail", "snapshot"]
               },
               "cursor": { "type": ["string", "null"] },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "topic_create" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "topic_path": { "type": ["string", "null"] },
+              "metadata": { "type": "object", "additionalProperties": true },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "topic_list" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "cursor": { "type": ["string", "null"] },
+              "limit": { "type": "integer", "minimum": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "topic_get" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["topic_id"],
+            "properties": {
+              "topic_id": { "type": "string", "minLength": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "topic_subscribe" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["topic_id"],
+            "properties": {
+              "topic_id": { "type": "string", "minLength": 1 },
+              "cursor": { "type": ["string", "null"] },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "topic_unsubscribe" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["topic_id"],
+            "properties": {
+              "topic_id": { "type": "string", "minLength": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "method": {
+            "enum": ["attachment_get", "attachment_delete", "attachment_download"]
+          }
+        },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["attachment_id"],
+            "properties": {
+              "attachment_id": { "type": "string", "minLength": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "topic_publish" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["topic_id", "payload"],
+            "properties": {
+              "topic_id": { "type": "string", "minLength": 1 },
+              "payload": { "type": "object", "additionalProperties": true },
+              "correlation_id": { "type": "string", "minLength": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "enum": ["telemetry_query", "telemetry_subscribe"] } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "peer_id": { "type": "string", "minLength": 1 },
+              "topic_id": { "type": "string", "minLength": 1 },
+              "from_ts_ms": { "type": "integer", "minimum": 0 },
+              "to_ts_ms": { "type": "integer", "minimum": 0 },
+              "limit": { "type": "integer", "minimum": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "attachment_store" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "content_type", "bytes_base64"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "content_type": { "type": "string", "minLength": 1 },
+              "bytes_base64": { "type": "string", "minLength": 1 },
+              "expires_ts_ms": { "type": ["integer", "null"], "minimum": 0 },
+              "topic_ids": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "attachment_list" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "topic_id": { "type": "string", "minLength": 1 },
+              "cursor": { "type": ["string", "null"] },
+              "limit": { "type": "integer", "minimum": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "attachment_associate_topic" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["attachment_id", "topic_id"],
+            "properties": {
+              "attachment_id": { "type": "string", "minLength": 1 },
+              "topic_id": { "type": "string", "minLength": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "marker_delete" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["marker_id"],
+            "properties": {
+              "marker_id": { "type": "string", "minLength": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "marker_create" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["label", "position"],
+            "properties": {
+              "label": { "type": "string", "minLength": 1 },
+              "position": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["lat", "lon"],
+                "properties": {
+                  "lat": { "type": "number", "minimum": -90, "maximum": 90 },
+                  "lon": { "type": "number", "minimum": -180, "maximum": 180 },
+                  "alt_m": { "type": ["number", "null"] }
+                }
+              },
+              "topic_id": { "type": ["string", "null"] },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "marker_list" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "topic_id": { "type": ["string", "null"] },
+              "cursor": { "type": ["string", "null"] },
+              "limit": { "type": "integer", "minimum": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "marker_update_position" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["marker_id", "position"],
+            "properties": {
+              "marker_id": { "type": "string", "minLength": 1 },
+              "position": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["lat", "lon"],
+                "properties": {
+                  "lat": { "type": "number", "minimum": -90, "maximum": 90 },
+                  "lon": { "type": "number", "minimum": -180, "maximum": 180 },
+                  "alt_m": { "type": ["number", "null"] }
+                }
+              },
               "extensions": { "$ref": "#/$defs/extension_map" }
             }
           }

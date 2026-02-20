@@ -38,6 +38,14 @@ Legend:
 | `sdk.capability.receipt_terminality` | required | required | optional |
 | `sdk.capability.config_revision_cas` | required | required | required |
 | `sdk.capability.idempotency_ttl` | required | required | required (`effective_limits.idempotency_ttl_ms`) |
+| `sdk.capability.topics` | experimental | experimental | experimental |
+| `sdk.capability.topic_subscriptions` | experimental | experimental | experimental |
+| `sdk.capability.topic_fanout` | experimental | experimental | experimental |
+| `sdk.capability.telemetry_query` | experimental | experimental | experimental |
+| `sdk.capability.telemetry_stream` | experimental | experimental | experimental |
+| `sdk.capability.attachments` | experimental | experimental | experimental |
+| `sdk.capability.attachment_delete` | experimental | experimental | experimental |
+| `sdk.capability.markers` | experimental | experimental | experimental |
 
 ## Backend Support Matrix
 

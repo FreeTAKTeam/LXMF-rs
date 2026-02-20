@@ -1,0 +1,7 @@
+{
+  "request_id": "req-attach-assoc-invalid",
+  "method": "attachment_associate_topic",
+  "params": {
+    "attachment_id": "att-1"
+  }
+}
