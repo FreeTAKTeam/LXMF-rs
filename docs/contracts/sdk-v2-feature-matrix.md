@@ -100,6 +100,15 @@ Status legend:
 | Field redaction policy | required | required | required |
 | Break-glass diagnostics with audit trail | optional | optional | unsupported |
 
+## Compliance Deployment Profiles
+
+Profile requirements are operationalized in `docs/runbooks/compliance-profiles.md`.
+
+| Compliance profile | Target environment | Auth baseline | Key management baseline | Evidence bundle |
+| --- | --- | --- | --- | --- |
+| `regulated-baseline` | enterprise/internal regulated workloads | `token` or `mtls` for remote bind | `os_keystore` or approved custom backend with fallback checks | required |
+| `regulated-strict` | high-assurance deployments | `mtls` required | `hsm` or approved `os_keystore` with rotation controls | required |
+
 ## Performance Budget Matrix
 
 All budgets are enforced from Criterion sample data via `cargo run -p xtask -- sdk-perf-budget-check`.

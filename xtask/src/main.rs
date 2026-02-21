@@ -30,6 +30,7 @@ const SECURITY_THREAT_MODEL_PATH: &str = "docs/adr/0004-sdk-v25-threat-model.md"
 const CRYPTO_AGILITY_ADR_PATH: &str = "docs/adr/0007-crypto-agility-roadmap.md";
 const SECURITY_REVIEW_CHECKLIST_PATH: &str = "docs/runbooks/security-review-checklist.md";
 const SDK_DOCS_CHECKLIST_PATH: &str = "docs/runbooks/sdk-docs-checklist.md";
+const COMPLIANCE_PROFILES_RUNBOOK_PATH: &str = "docs/runbooks/compliance-profiles.md";
 const INCIDENT_RUNBOOK_PATH: &str = "docs/runbooks/incident-response-playbooks.md";
 const DISASTER_RECOVERY_RUNBOOK_PATH: &str = "docs/runbooks/disaster-recovery-drills.md";
 const EMBEDDED_HIL_RUNBOOK_PATH: &str = "docs/runbooks/embedded-hil-esp32.md";
@@ -293,6 +294,7 @@ enum XtaskCommand {
     SdkMigrationCheck,
     ChangelogMigrationCheck,
     GovernanceCheck,
+    ComplianceProfileCheck,
     SupportPolicyCheck,
     UnsafeAuditCheck,
     CanaryCriteriaCheck,
@@ -354,6 +356,7 @@ enum CiStage {
     SdkMigrationCheck,
     ChangelogMigrationCheck,
     GovernanceCheck,
+    ComplianceProfileCheck,
     SupportPolicyCheck,
     UnsafeAuditCheck,
     CanaryCriteriaCheck,
@@ -423,6 +426,7 @@ fn main() -> Result<()> {
         XtaskCommand::SdkMigrationCheck => run_sdk_migration_check(),
         XtaskCommand::ChangelogMigrationCheck => run_changelog_migration_check(),
         XtaskCommand::GovernanceCheck => run_governance_check(),
+        XtaskCommand::ComplianceProfileCheck => run_compliance_profile_check(),
         XtaskCommand::SupportPolicyCheck => run_support_policy_check(),
         XtaskCommand::UnsafeAuditCheck => run_unsafe_audit_check(),
         XtaskCommand::CanaryCriteriaCheck => run_canary_criteria_check(),
@@ -496,6 +500,7 @@ fn run_ci(stage: Option<CiStage>) -> Result<()> {
     run_sdk_examples_check()?;
     run_changelog_migration_check()?;
     run_governance_check()?;
+    run_compliance_profile_check()?;
     run_support_policy_check()?;
     run_unsafe_audit_check()?;
     run_release_scorecard_check()?;
@@ -561,6 +566,7 @@ fn run_ci_stage(stage: CiStage) -> Result<()> {
         CiStage::SdkMigrationCheck => run_sdk_migration_check(),
         CiStage::ChangelogMigrationCheck => run_changelog_migration_check(),
         CiStage::GovernanceCheck => run_governance_check(),
+        CiStage::ComplianceProfileCheck => run_compliance_profile_check(),
         CiStage::SupportPolicyCheck => run_support_policy_check(),
         CiStage::UnsafeAuditCheck => run_unsafe_audit_check(),
         CiStage::CanaryCriteriaCheck => run_canary_criteria_check(),
@@ -602,6 +608,7 @@ fn run_release_check() -> Result<()> {
     run_interop_corpus_check()?;
     run_interop_drift_check(false)?;
     run_compat_kit_check()?;
+    run_compliance_profile_check()?;
     run_support_policy_check()?;
     run_unsafe_audit_check()?;
     run_release_scorecard_check()?;
@@ -1355,6 +1362,67 @@ fn run_governance_check() -> Result<()> {
     }
     if !workflow.contains("cargo xtask ci --stage governance-check") {
         bail!("ci workflow must execute `cargo xtask ci --stage governance-check`");
+    }
+
+    Ok(())
+}
+
+fn run_compliance_profile_check() -> Result<()> {
+    let runbook = fs::read_to_string(COMPLIANCE_PROFILES_RUNBOOK_PATH)
+        .with_context(|| format!("missing {COMPLIANCE_PROFILES_RUNBOOK_PATH}"))?;
+    for marker in [
+        "# Compliance Deployment Profiles",
+        "## Objectives",
+        "## Profile: Regulated Baseline",
+        "## Profile: Regulated Strict",
+        "## Audit Logging and Evidence",
+        "## Release Gate Mapping",
+        "## Operational Checklist",
+        "regulated-baseline",
+        "regulated-strict",
+        "key-management-check",
+    ] {
+        if !runbook.contains(marker) {
+            bail!(
+                "compliance profiles runbook missing marker '{marker}' in {COMPLIANCE_PROFILES_RUNBOOK_PATH}"
+            );
+        }
+    }
+
+    let matrix = fs::read_to_string(SDK_FEATURE_MATRIX_PATH)
+        .with_context(|| format!("missing {SDK_FEATURE_MATRIX_PATH}"))?;
+    for marker in [
+        "## Compliance Deployment Profiles",
+        "docs/runbooks/compliance-profiles.md",
+        "regulated-baseline",
+        "regulated-strict",
+    ] {
+        if !matrix.contains(marker) {
+            bail!(
+                "feature matrix missing compliance marker '{marker}' in {SDK_FEATURE_MATRIX_PATH}"
+            );
+        }
+    }
+
+    let release_readiness = fs::read_to_string("docs/runbooks/release-readiness.md")
+        .context("missing docs/runbooks/release-readiness.md")?;
+    for marker in [
+        "compliance-profile-check",
+        "cargo run -p xtask -- compliance-profile-check",
+        "docs/runbooks/compliance-profiles.md",
+    ] {
+        if !release_readiness.contains(marker) {
+            bail!("release readiness runbook missing compliance marker '{marker}'");
+        }
+    }
+
+    let workflow = fs::read_to_string(CI_WORKFLOW_PATH)
+        .with_context(|| format!("missing {CI_WORKFLOW_PATH}"))?;
+    if !workflow.contains("compliance-profile-check:") {
+        bail!("ci workflow must include a 'compliance-profile-check' job");
+    }
+    if !workflow.contains("cargo xtask ci --stage compliance-profile-check") {
+        bail!("ci workflow must execute `cargo xtask ci --stage compliance-profile-check`");
     }
 
     Ok(())

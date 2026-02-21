@@ -247,6 +247,14 @@ jobs:
       - name: External compatibility kit dry-run
         run: cargo xtask ci --stage compat-kit-check
 
+  compliance-profile-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Regulated deployment profile gate
+        run: cargo xtask ci --stage compliance-profile-check
+
   e2e-compatibility:
     runs-on: ubuntu-latest
     steps:
