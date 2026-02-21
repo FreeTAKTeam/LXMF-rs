@@ -42,6 +42,8 @@ This checklist is the publication gate for the Rust workspace.
 - `unsafe-audit-check`
 - `release-scorecard-check`
 - `extension-registry-check`
+- `architecture-lint`
+- `architecture-checks`
 
 ## 5. Local release checks
 
@@ -70,6 +72,8 @@ cargo run -p xtask -- support-policy-check
 cargo run -p xtask -- unsafe-audit-check
 cargo run -p xtask -- release-scorecard-check
 cargo run -p xtask -- extension-registry-check
+cargo run -p xtask -- architecture-lint-check
+cargo run -p xtask -- architecture-checks
 cargo run -p xtask -- supply-chain-check
 cargo run -p xtask -- reproducible-build-check
 cargo run -p xtask -- leader-readiness-check

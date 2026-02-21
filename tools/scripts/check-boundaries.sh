@@ -125,6 +125,7 @@ METADATA_FILE="$(mktemp)"
 trap 'rm -f "${METADATA_FILE}"' EXIT
 ENFORCE_RETM_LEGACY_SHIMS="${ENFORCE_RETM_LEGACY_SHIMS:-0}"
 ENFORCE_LEGACY_APP_IMPORTS="${ENFORCE_LEGACY_APP_IMPORTS:-0}"
+ARCH_REPORT_PATH="${ARCH_REPORT_PATH:-target/architecture/boundary-report.txt}"
 
 require_command jq
 require_command rg
@@ -161,6 +162,24 @@ allowed_library_edges="$(load_allowlisted_edges "allowed_library_edges")"
 allowed_app_edges="$(load_allowlisted_edges "allowed_app_edges")"
 actual_library_edges="$(metadata_lib_workspace_edges)"
 actual_app_edges="$(metadata_app_workspace_edges)"
+
+mkdir -p "$(dirname "${ARCH_REPORT_PATH}")"
+{
+  echo "# Architecture Boundary Report"
+  echo
+  echo "## Allowed library edges"
+  printf '%s\n' "${allowed_library_edges}"
+  echo
+  echo "## Actual library edges"
+  printf '%s\n' "${actual_library_edges}"
+  echo
+  echo "## Allowed app edges"
+  printf '%s\n' "${allowed_app_edges}"
+  echo
+  echo "## Actual app edges"
+  printf '%s\n' "${actual_app_edges}"
+} > "${ARCH_REPORT_PATH}"
+
 check_edge_set_matches_allowlist "library" "$actual_library_edges" "$allowed_library_edges"
 check_edge_set_matches_allowlist "app" "$actual_app_edges" "$allowed_app_edges"
 
@@ -227,4 +246,5 @@ else
   echo "boundary notice: rns-transport/rns-rpc legacy shim references are currently allowed"
 fi
 
+echo "boundary report: ${ARCH_REPORT_PATH}"
 echo "boundary checks: ok"

@@ -476,6 +476,14 @@ jobs:
       - name: Architecture boundaries
         run: cargo xtask ci --stage forbidden-deps
 
+  architecture-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Architecture dependency graph lint
+        run: cargo xtask ci --stage architecture-lint
+
   architecture-checks:
     runs-on: ubuntu-latest
     steps:

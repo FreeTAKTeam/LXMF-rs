@@ -17,6 +17,7 @@ const UNSAFE_POLICY_PATH: &str = "docs/architecture/unsafe-code-policy.md";
 const UNSAFE_INVENTORY_PATH: &str = "docs/architecture/unsafe-inventory.md";
 const UNSAFE_GOVERNANCE_ADR_PATH: &str = "docs/adr/0006-unsafe-code-audit-governance.md";
 const UNSAFE_AUDIT_SCRIPT_PATH: &str = "tools/scripts/check-unsafe.sh";
+const ARCH_BOUNDARY_REPORT_PATH: &str = "target/architecture/boundary-report.txt";
 const INTEROP_CORPUS_PATH: &str = "docs/fixtures/interop/v1/golden-corpus.json";
 const RPC_CONTRACT_PATH: &str = "docs/contracts/rpc-contract.md";
 const PAYLOAD_CONTRACT_PATH: &str = "docs/contracts/payload-contract.md";
@@ -250,6 +251,7 @@ enum XtaskCommand {
     ApiDiff,
     Licenses,
     MigrationChecks,
+    ArchitectureLintCheck,
     ArchitectureChecks,
     ForbiddenDeps,
     CorrectnessCheck,
@@ -364,6 +366,7 @@ enum CiStage {
     EmbeddedHilCheck,
     Correctness,
     MigrationChecks,
+    ArchitectureLint,
     ArchitectureChecks,
     ForbiddenDeps,
 }
@@ -376,6 +379,7 @@ fn main() -> Result<()> {
         XtaskCommand::ApiDiff => run_api_diff(),
         XtaskCommand::Licenses => run_licenses(),
         XtaskCommand::MigrationChecks => run_migration_checks(),
+        XtaskCommand::ArchitectureLintCheck => run_architecture_lint_check(),
         XtaskCommand::ArchitectureChecks => run_architecture_checks(),
         XtaskCommand::ForbiddenDeps => run_forbidden_deps(),
         XtaskCommand::CorrectnessCheck => run_correctness_check(),
@@ -557,6 +561,7 @@ fn run_ci_stage(stage: CiStage) -> Result<()> {
         CiStage::EmbeddedHilCheck => run_embedded_hil_check(),
         CiStage::Correctness => run_correctness_check(),
         CiStage::MigrationChecks => run_migration_checks(),
+        CiStage::ArchitectureLint => run_architecture_lint_check(),
         CiStage::ArchitectureChecks => run_architecture_checks(),
         CiStage::ForbiddenDeps => run_forbidden_deps(),
     }
@@ -2230,7 +2235,7 @@ fn run_migration_checks() -> Result<()> {
 }
 
 fn run_architecture_checks() -> Result<()> {
-    run_forbidden_deps()?;
+    run_architecture_lint_check()?;
     run_module_size_check()
 }
 
@@ -2240,6 +2245,36 @@ fn run_forbidden_deps() -> Result<()> {
     let enforce_legacy_shims =
         std::env::var("ENFORCE_RETM_LEGACY_SHIMS").unwrap_or("1".to_string());
     run_boundary_checks(&enforce_legacy_imports, &enforce_legacy_shims)
+}
+
+fn run_architecture_lint_check() -> Result<()> {
+    run_forbidden_deps()?;
+
+    let report = fs::read_to_string(ARCH_BOUNDARY_REPORT_PATH).with_context(|| {
+        format!("missing architecture boundary report at {ARCH_BOUNDARY_REPORT_PATH}")
+    })?;
+    for marker in [
+        "# Architecture Boundary Report",
+        "## Allowed library edges",
+        "## Actual library edges",
+        "## Allowed app edges",
+        "## Actual app edges",
+    ] {
+        if !report.contains(marker) {
+            bail!("architecture boundary report missing marker '{marker}'");
+        }
+    }
+
+    let workflow = fs::read_to_string(CI_WORKFLOW_PATH)
+        .with_context(|| format!("missing {CI_WORKFLOW_PATH}"))?;
+    if !workflow.contains("architecture-lint:") {
+        bail!("ci workflow must include an 'architecture-lint' job");
+    }
+    if !workflow.contains("cargo xtask ci --stage architecture-lint") {
+        bail!("ci workflow must execute `cargo xtask ci --stage architecture-lint`");
+    }
+
+    Ok(())
 }
 
 fn run_boundary_checks(enforce_legacy_imports: &str, enforce_legacy_shims: &str) -> Result<()> {

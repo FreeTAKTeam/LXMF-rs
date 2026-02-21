@@ -34,6 +34,9 @@
   - `docs/architecture/module-size-allowlist.txt`
 - `no_std` / `alloc` capability map:
   - `docs/contracts/sdk-v2-feature-matrix.md` (`no_std` audit table)
+- Architecture lint gate:
+  - `cargo xtask ci --stage architecture-lint`
+  - report artifact: `target/architecture/boundary-report.txt`
 
 ## Security Architecture
 - Threat model source of truth: `docs/adr/0004-sdk-v25-threat-model.md`.
