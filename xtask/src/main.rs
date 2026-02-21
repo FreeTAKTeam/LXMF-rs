@@ -1743,13 +1743,7 @@ fn run_release_scorecard_check() -> Result<()> {
     run_sdk_perf_budget_check()?;
     run_sdk_soak_check()?;
     run_supply_chain_check()?;
-    run(
-        "bash",
-        &[
-            "-lc",
-            "SCORECARD_MAX_SOAK_FAILURES=1 tools/scripts/release-scorecard.sh",
-        ],
-    )?;
+    run("bash", &["-lc", "SCORECARD_MAX_SOAK_FAILURES=1 tools/scripts/release-scorecard.sh"])?;
 
     let markdown_path = "target/release-scorecard/release-scorecard.md";
     let json_path = "target/release-scorecard/release-scorecard.json";
