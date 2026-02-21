@@ -171,6 +171,7 @@ Metrics export is available at `GET /metrics` and covered by `cargo run -p xtask
 | `sdk-migration-check` | required |
 | `sdk-matrix-check` | required |
 | `sdk-docs-check` | required |
+| `correctness` (`miri` + `loom` + strict clippy) | required |
 | `sdk-cookbook-check` | required |
 | `sdk-ergonomics-check` | required |
 | `sdk-incident-runbook-check` | required |

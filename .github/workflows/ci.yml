@@ -19,6 +19,19 @@ jobs:
       - name: Format
         run: cargo xtask ci --stage lint-format
 
+  correctness:
+    runs-on: ubuntu-latest
+    env:
+      SDK_CORRECTNESS_MIRI_TOOLCHAIN: nightly
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+          components: miri,rust-src
+      - name: Correctness (strict clippy + miri + loom)
+        run: cargo xtask ci --stage correctness
+
   build-matrix:
     runs-on: ubuntu-latest
     strategy:

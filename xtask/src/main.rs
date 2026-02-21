@@ -244,6 +244,7 @@ enum XtaskCommand {
     MigrationChecks,
     ArchitectureChecks,
     ForbiddenDeps,
+    CorrectnessCheck,
     SdkConformance,
     SdkSchemaCheck,
     SdkDocsCheck,
@@ -351,6 +352,7 @@ enum CiStage {
     EmbeddedCoreCheck,
     EmbeddedFootprintCheck,
     EmbeddedHilCheck,
+    Correctness,
     MigrationChecks,
     ArchitectureChecks,
     ForbiddenDeps,
@@ -366,6 +368,7 @@ fn main() -> Result<()> {
         XtaskCommand::MigrationChecks => run_migration_checks(),
         XtaskCommand::ArchitectureChecks => run_architecture_checks(),
         XtaskCommand::ForbiddenDeps => run_forbidden_deps(),
+        XtaskCommand::CorrectnessCheck => run_correctness_check(),
         XtaskCommand::SdkConformance => run_sdk_conformance(),
         XtaskCommand::SdkSchemaCheck => run_sdk_schema_check(),
         XtaskCommand::SdkDocsCheck => run_sdk_docs_check(),
@@ -433,6 +436,7 @@ fn run_ci(stage: Option<CiStage>) -> Result<()> {
             "warnings",
         ],
     )?;
+    run_correctness_check()?;
     run("cargo", &["test", "--workspace"])?;
     run("cargo", &["doc", "--workspace", "--no-deps"])?;
     run_sdk_docs_check()?;
@@ -538,6 +542,7 @@ fn run_ci_stage(stage: CiStage) -> Result<()> {
         CiStage::EmbeddedCoreCheck => run_embedded_core_check(),
         CiStage::EmbeddedFootprintCheck => run_embedded_footprint_check(),
         CiStage::EmbeddedHilCheck => run_embedded_hil_check(),
+        CiStage::Correctness => run_correctness_check(),
         CiStage::MigrationChecks => run_migration_checks(),
         CiStage::ArchitectureChecks => run_architecture_checks(),
         CiStage::ForbiddenDeps => run_forbidden_deps(),
@@ -1430,6 +1435,50 @@ fn run_sdk_model_check() -> Result<()> {
         ],
     )?;
     run("cargo", &["test", "-p", "test-support", "sdk_model", "--", "--nocapture"])
+}
+
+fn run_correctness_check() -> Result<()> {
+    run(
+        "cargo",
+        &[
+            "clippy",
+            "-p",
+            "lxmf-sdk",
+            "-p",
+            "rns-rpc",
+            "--lib",
+            "--all-features",
+            "--no-deps",
+            "--",
+            "-D",
+            "clippy::manual_assert",
+            "-D",
+            "clippy::redundant_clone",
+            "-D",
+            "clippy::iter_cloned_collect",
+        ],
+    )?;
+
+    let miri_toolchain =
+        std::env::var("SDK_CORRECTNESS_MIRI_TOOLCHAIN").unwrap_or_else(|_| "nightly".to_string());
+    let miri_command =
+        format!("cargo +{miri_toolchain} miri test -p lxmf-core --lib -- --nocapture");
+    run("bash", &["-lc", &miri_command])?;
+
+    run(
+        "cargo",
+        &[
+            "test",
+            "-p",
+            "lxmf-sdk",
+            "--test",
+            "loom_lifecycle",
+            "--features",
+            "loom-tests",
+            "--",
+            "--nocapture",
+        ],
+    )
 }
 
 fn run_sdk_race_check() -> Result<()> {
