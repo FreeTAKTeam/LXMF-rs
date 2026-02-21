@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "spec_hash": "9661ede99e682cb54fdfb15ad7cc01b6679897f7105aafbd5114b7cb7b1f9be6",
+  "target_hashes": {
+    "go": "f6872fc8aa27b01bb7688ccac64207e6e1904dd65b953c4c69ae567726572884",
+    "javascript": "7fe4430a7758fc47d537801f842cb5a6f6bd565cb16e4bbe25f960100884b3e0",
+    "python": "943565cb64e7ae92c9cd2e651f500ed2a57c07e0223a12ace815008470ce54d4"
+  }
+}
