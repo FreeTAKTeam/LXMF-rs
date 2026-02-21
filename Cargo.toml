@@ -39,6 +39,7 @@ allowed_library_edges = [
   "lxmf-sdk->rns-rpc",
   "rns-transport->rns-core",
   "test-support->lxmf-sdk",
+  "test-support->rns-core",
   "test-support->rns-rpc",
 ]
 allowed_app_edges = [

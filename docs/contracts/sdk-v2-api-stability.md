@@ -20,7 +20,6 @@ Rule matching is ordered top-to-bottom (first match wins).
 | Class | Match Prefix | Lifecycle Rule |
 | --- | --- | --- |
 | `internal` | `lxmf_sdk::SdkBackend` | May evolve on any release with migration notes. |
-| `internal` | `lxmf_sdk::SdkBackendAsyncEvents` | May evolve on any release with migration notes. |
 | `internal` | `lxmf_sdk::RpcBackendClient` | Backend wiring surface, not host-stable API. |
 | `internal` | `lxmf_sdk::Client` | Concrete generic wrapper; behavior-oriented use only. |
 | `experimental` | `lxmf_sdk::LxmfSdkTopics` | Extension trait, additive/shape changes allowed with release notes. |

@@ -22,8 +22,31 @@ require_command() {
   command -v "$cmd" >/dev/null || fail "required command missing: $cmd"
 }
 
+grep_value() {
+  local pattern="$1"
+  local file="$2"
+  grep -nE "$pattern" "$file" | tail -n1 | awk '{print $2}'
+}
+
+if command -v rg >/dev/null; then
+  grep_perf_status() {
+    rg -n "^Status:\\s+[A-Z]+$" "$bench_report" | tail -n1 | awk '{print $2}'
+  }
+
+  count_pass_rows() {
+    rg -c "\\| PASS \\|" "$security_checklist" || true
+  }
+else
+  grep_perf_status() {
+    grep_value '^Status:[[:space:]]+[A-Z]+$' "$bench_report"
+  }
+
+  count_pass_rows() {
+    grep -cF "| PASS |" "$security_checklist" || true
+  }
+fi
+
 require_command jq
-require_command rg
 require_file "$bench_report"
 require_file "$soak_report"
 require_file "$provenance_report"
@@ -31,7 +54,7 @@ require_file "$security_checklist"
 
 mkdir -p "$out_dir"
 
-perf_status="$(rg -n "^Status:\\s+[A-Z]+$" "$bench_report" | tail -n1 | awk '{print $2}')"
+perf_status="$(grep_perf_status)"
 [ -n "$perf_status" ] || fail "unable to read performance status from $bench_report"
 
 soak_status="$(jq -r '.status // "unknown"' "$soak_report")"
@@ -44,7 +67,7 @@ artifact_count="$(jq -r '.artifacts | length' "$provenance_report")"
 git_commit="$(jq -r '.git_commit // "unknown"' "$provenance_report")"
 generated_at_unix_secs="$(jq -r '.generated_at_unix_secs // 0' "$provenance_report")"
 
-security_pass_rows="$(rg -c "\\| PASS \\|" "$security_checklist" || true)"
+security_pass_rows="$(count_pass_rows)"
 security_pass_rows="${security_pass_rows:-0}"
 
 overall_status="PASS"

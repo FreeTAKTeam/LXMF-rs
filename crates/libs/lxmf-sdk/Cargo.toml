@@ -30,6 +30,9 @@ loom-tests = []
 criterion.workspace = true
 loom.workspace = true
 
+[package.metadata.cargo-udeps]
+ignore = ["loom"]
+
 [[bench]]
 name = "sdk_client_paths"
 harness = false
