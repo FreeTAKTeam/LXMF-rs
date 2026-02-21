@@ -53,13 +53,21 @@ impl RpcDaemon {
                     .get_message(&id)
                     .map_err(std::io::Error::other)?
                     .and_then(|message| message.receipt_status);
-                if let Some(status) = existing_status && Self::is_terminal_receipt_status(&status) {
-                    status
+                if let Some(existing_status) = existing_status {
+                    if Self::is_terminal_receipt_status(&existing_status) {
+                        existing_status
+                    } else {
+                        self.store
+                            .update_receipt_status(&id, &status)
+                            .map_err(std::io::Error::other)?;
+                        self.append_delivery_trace(&id, status.clone());
+                        status
+                    }
                 } else {
                     self.store
                         .update_receipt_status(&id, &status)
                         .map_err(std::io::Error::other)?;
-                    self.append_delivery_trace(&id, status);
+                    self.append_delivery_trace(&id, status.clone());
                     status
                 }
             };
@@ -90,13 +98,21 @@ impl RpcDaemon {
                 .get_message(&id)
                 .map_err(std::io::Error::other)?
                 .and_then(|message| message.receipt_status);
-            if let Some(sent_status) = existing_status && Self::is_terminal_receipt_status(&sent_status) {
-                sent_status
+            if let Some(existing_status) = existing_status {
+                if Self::is_terminal_receipt_status(&existing_status) {
+                    existing_status
+                } else {
+                    self.store
+                        .update_receipt_status(&id, &sent_status)
+                        .map_err(std::io::Error::other)?;
+                    self.append_delivery_trace(&id, sent_status.clone());
+                    sent_status
+                }
             } else {
                 self.store
                     .update_receipt_status(&id, &sent_status)
                     .map_err(std::io::Error::other)?;
-                self.append_delivery_trace(&id, sent_status);
+                self.append_delivery_trace(&id, sent_status.clone());
                 sent_status
             }
         };
