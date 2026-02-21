@@ -28,13 +28,15 @@ pub use domain::{
     AttachmentDownloadChunk, AttachmentDownloadChunkRequest, AttachmentId, AttachmentListRequest,
     AttachmentListResult, AttachmentMeta, AttachmentStoreRequest, AttachmentUploadChunkAck,
     AttachmentUploadChunkRequest, AttachmentUploadCommitRequest, AttachmentUploadId,
-    AttachmentUploadSession, AttachmentUploadStartRequest, GeoPoint, IdentityBundle,
+    AttachmentUploadSession, AttachmentUploadStartRequest, ContactListRequest, ContactListResult,
+    ContactRecord, ContactUpdateRequest, GeoPoint, IdentityBootstrapRequest, IdentityBundle,
     IdentityImportRequest, IdentityRef, IdentityResolveRequest, MarkerCreateRequest,
     MarkerDeleteRequest, MarkerId, MarkerListRequest, MarkerListResult, MarkerRecord,
-    MarkerUpdatePositionRequest, PaperMessageEnvelope, RemoteCommandRequest, RemoteCommandResponse,
-    TelemetryPoint, TelemetryQuery, TopicCreateRequest, TopicId, TopicListRequest, TopicListResult,
-    TopicPath, TopicPublishRequest, TopicRecord, TopicSubscriptionRequest, VoiceSessionId,
-    VoiceSessionOpenRequest, VoiceSessionState, VoiceSessionUpdateRequest,
+    MarkerUpdatePositionRequest, PaperMessageEnvelope, PresenceListRequest, PresenceListResult,
+    PresenceRecord, RemoteCommandRequest, RemoteCommandResponse, TelemetryPoint, TelemetryQuery,
+    TopicCreateRequest, TopicId, TopicListRequest, TopicListResult, TopicPath, TopicPublishRequest,
+    TopicRecord, TopicSubscriptionRequest, TrustLevel, VoiceSessionId, VoiceSessionOpenRequest,
+    VoiceSessionState, VoiceSessionUpdateRequest,
 };
 pub use error::{code as error_code, ErrorCategory, ErrorDetails, SdkError};
 pub use event::{

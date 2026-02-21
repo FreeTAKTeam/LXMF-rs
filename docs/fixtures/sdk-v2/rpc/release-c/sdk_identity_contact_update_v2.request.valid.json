@@ -1,0 +1,13 @@
+{
+  "id": "req-identity-contact-update-1",
+  "method": "sdk_identity_contact_update_v2",
+  "params": {
+    "identity": "peer-alpha",
+    "display_name": "Peer Alpha",
+    "trust_level": "trusted",
+    "bootstrap": true,
+    "metadata": {
+      "source": "manual"
+    }
+  }
+}

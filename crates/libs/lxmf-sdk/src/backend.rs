@@ -3,13 +3,14 @@ use crate::domain::{
     AttachmentDownloadChunk, AttachmentDownloadChunkRequest, AttachmentId, AttachmentListRequest,
     AttachmentListResult, AttachmentMeta, AttachmentStoreRequest, AttachmentUploadChunkAck,
     AttachmentUploadChunkRequest, AttachmentUploadCommitRequest, AttachmentUploadSession,
-    AttachmentUploadStartRequest, IdentityBundle, IdentityImportRequest, IdentityRef,
-    IdentityResolveRequest, MarkerCreateRequest, MarkerDeleteRequest, MarkerListRequest,
-    MarkerListResult, MarkerRecord, MarkerUpdatePositionRequest, PaperMessageEnvelope,
-    RemoteCommandRequest, RemoteCommandResponse, TelemetryPoint, TelemetryQuery,
-    TopicCreateRequest, TopicId, TopicListRequest, TopicListResult, TopicPublishRequest,
-    TopicRecord, TopicSubscriptionRequest, VoiceSessionId, VoiceSessionOpenRequest,
-    VoiceSessionState, VoiceSessionUpdateRequest,
+    AttachmentUploadStartRequest, ContactListRequest, ContactListResult, ContactRecord,
+    ContactUpdateRequest, IdentityBootstrapRequest, IdentityBundle, IdentityImportRequest,
+    IdentityRef, IdentityResolveRequest, MarkerCreateRequest, MarkerDeleteRequest,
+    MarkerListRequest, MarkerListResult, MarkerRecord, MarkerUpdatePositionRequest,
+    PaperMessageEnvelope, PresenceListRequest, PresenceListResult, RemoteCommandRequest,
+    RemoteCommandResponse, TelemetryPoint, TelemetryQuery, TopicCreateRequest, TopicId,
+    TopicListRequest, TopicListResult, TopicPublishRequest, TopicRecord, TopicSubscriptionRequest,
+    VoiceSessionId, VoiceSessionOpenRequest, VoiceSessionState, VoiceSessionUpdateRequest,
 };
 use crate::error::{code, ErrorCategory, SdkError};
 use crate::event::{EventBatch, EventCursor};
@@ -162,6 +163,17 @@ pub trait SdkBackend: Send + Sync {
         Err(SdkError::capability_disabled("sdk.capability.identity_multi"))
     }
 
+    fn identity_announce_now(&self) -> Result<Ack, SdkError> {
+        Err(SdkError::capability_disabled("sdk.capability.identity_discovery"))
+    }
+
+    fn identity_presence_list(
+        &self,
+        _req: PresenceListRequest,
+    ) -> Result<PresenceListResult, SdkError> {
+        Err(SdkError::capability_disabled("sdk.capability.identity_discovery"))
+    }
+
     fn identity_activate(&self, _identity: IdentityRef) -> Result<Ack, SdkError> {
         Err(SdkError::capability_disabled("sdk.capability.identity_multi"))
     }
@@ -179,6 +191,27 @@ pub trait SdkBackend: Send + Sync {
         _req: IdentityResolveRequest,
     ) -> Result<Option<IdentityRef>, SdkError> {
         Err(SdkError::capability_disabled("sdk.capability.identity_hash_resolution"))
+    }
+
+    fn identity_contact_update(
+        &self,
+        _req: ContactUpdateRequest,
+    ) -> Result<ContactRecord, SdkError> {
+        Err(SdkError::capability_disabled("sdk.capability.contact_management"))
+    }
+
+    fn identity_contact_list(
+        &self,
+        _req: ContactListRequest,
+    ) -> Result<ContactListResult, SdkError> {
+        Err(SdkError::capability_disabled("sdk.capability.contact_management"))
+    }
+
+    fn identity_bootstrap(
+        &self,
+        _req: IdentityBootstrapRequest,
+    ) -> Result<ContactRecord, SdkError> {
+        Err(SdkError::capability_disabled("sdk.capability.contact_management"))
     }
 
     fn paper_encode(&self, _message_id: MessageId) -> Result<PaperMessageEnvelope, SdkError> {

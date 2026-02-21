@@ -1,0 +1,7 @@
+{
+  "id": "req-identity-contact-list-invalid",
+  "method": "sdk_identity_contact_list_v2",
+  "params": {
+    "limit": 0
+  }
+}

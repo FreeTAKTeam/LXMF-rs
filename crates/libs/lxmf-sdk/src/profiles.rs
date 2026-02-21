@@ -19,8 +19,10 @@ const CAP_ATTACHMENT_DELETE: &str = "sdk.capability.attachment_delete";
 const CAP_ATTACHMENT_STREAMING: &str = "sdk.capability.attachment_streaming";
 const CAP_MARKERS: &str = "sdk.capability.markers";
 const CAP_IDENTITY_MULTI: &str = "sdk.capability.identity_multi";
+const CAP_IDENTITY_DISCOVERY: &str = "sdk.capability.identity_discovery";
 const CAP_IDENTITY_IMPORT_EXPORT: &str = "sdk.capability.identity_import_export";
 const CAP_IDENTITY_HASH_RESOLUTION: &str = "sdk.capability.identity_hash_resolution";
+const CAP_CONTACT_MANAGEMENT: &str = "sdk.capability.contact_management";
 const CAP_PAPER_MESSAGES: &str = "sdk.capability.paper_messages";
 const CAP_REMOTE_COMMANDS: &str = "sdk.capability.remote_commands";
 const CAP_VOICE_SIGNALING: &str = "sdk.capability.voice_signaling";
@@ -67,8 +69,10 @@ const DESKTOP_FULL_SUPPORTED: &[&str] = &[
     CAP_ATTACHMENT_STREAMING,
     CAP_MARKERS,
     CAP_IDENTITY_MULTI,
+    CAP_IDENTITY_DISCOVERY,
     CAP_IDENTITY_IMPORT_EXPORT,
     CAP_IDENTITY_HASH_RESOLUTION,
+    CAP_CONTACT_MANAGEMENT,
     CAP_PAPER_MESSAGES,
     CAP_REMOTE_COMMANDS,
     CAP_VOICE_SIGNALING,
@@ -95,8 +99,10 @@ const DESKTOP_LOCAL_RUNTIME_SUPPORTED: &[&str] = &[
     CAP_ATTACHMENT_STREAMING,
     CAP_MARKERS,
     CAP_IDENTITY_MULTI,
+    CAP_IDENTITY_DISCOVERY,
     CAP_IDENTITY_IMPORT_EXPORT,
     CAP_IDENTITY_HASH_RESOLUTION,
+    CAP_CONTACT_MANAGEMENT,
     CAP_PAPER_MESSAGES,
     CAP_REMOTE_COMMANDS,
     CAP_VOICE_SIGNALING,
@@ -121,8 +127,10 @@ const EMBEDDED_ALLOC_SUPPORTED: &[&str] = &[
     CAP_ATTACHMENT_STREAMING,
     CAP_MARKERS,
     CAP_IDENTITY_MULTI,
+    CAP_IDENTITY_DISCOVERY,
     CAP_IDENTITY_IMPORT_EXPORT,
     CAP_IDENTITY_HASH_RESOLUTION,
+    CAP_CONTACT_MANAGEMENT,
     CAP_PAPER_MESSAGES,
     CAP_REMOTE_COMMANDS,
     CAP_VOICE_SIGNALING,

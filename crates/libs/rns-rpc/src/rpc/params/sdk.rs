@@ -89,6 +89,38 @@ struct SdkIdentityBundle {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+struct SdkContactRecord {
+    identity: String,
+    #[serde(default)]
+    display_name: Option<String>,
+    trust_level: String,
+    bootstrap: bool,
+    updated_ts_ms: u64,
+    #[serde(default)]
+    metadata: JsonMap<String, JsonValue>,
+    #[serde(default)]
+    extensions: JsonMap<String, JsonValue>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+struct SdkPresenceRecord {
+    peer_id: String,
+    last_seen_ts_ms: i64,
+    first_seen_ts_ms: i64,
+    seen_count: u64,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    name_source: Option<String>,
+    #[serde(default)]
+    trust_level: Option<String>,
+    #[serde(default)]
+    bootstrap: Option<bool>,
+    #[serde(default)]
+    extensions: JsonMap<String, JsonValue>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 struct SdkVoiceSessionRecord {
     session_id: String,
     peer_id: String,
@@ -127,6 +159,10 @@ struct SdkDomainSnapshotV1 {
     marker_order: Vec<String>,
     #[serde(default)]
     identities: HashMap<String, SdkIdentityBundle>,
+    #[serde(default)]
+    contacts: HashMap<String, SdkContactRecord>,
+    #[serde(default)]
+    contact_order: Vec<String>,
     #[serde(default)]
     active_identity: Option<String>,
     #[serde(default)]
@@ -339,9 +375,31 @@ fn sdk_default_marker_revision() -> u64 {
     1
 }
 
+fn sdk_default_identity_bootstrap_auto_sync() -> bool {
+    true
+}
+
 #[derive(Debug, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 struct SdkIdentityListV2Params {
+    #[serde(default)]
+    extensions: JsonMap<String, JsonValue>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+struct SdkIdentityAnnounceNowV2Params {
+    #[serde(default)]
+    extensions: JsonMap<String, JsonValue>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SdkIdentityPresenceListV2Params {
+    #[serde(default)]
+    cursor: Option<String>,
+    #[serde(default)]
+    limit: Option<usize>,
     #[serde(default)]
     extensions: JsonMap<String, JsonValue>,
 }
@@ -376,6 +434,43 @@ struct SdkIdentityExportV2Params {
 #[serde(deny_unknown_fields)]
 struct SdkIdentityResolveV2Params {
     hash: String,
+    #[serde(default)]
+    extensions: JsonMap<String, JsonValue>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SdkIdentityContactUpdateV2Params {
+    identity: String,
+    #[serde(default)]
+    display_name: Option<String>,
+    #[serde(default)]
+    trust_level: Option<String>,
+    #[serde(default)]
+    bootstrap: Option<bool>,
+    #[serde(default)]
+    metadata: JsonMap<String, JsonValue>,
+    #[serde(default)]
+    extensions: JsonMap<String, JsonValue>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SdkIdentityContactListV2Params {
+    #[serde(default)]
+    cursor: Option<String>,
+    #[serde(default)]
+    limit: Option<usize>,
+    #[serde(default)]
+    extensions: JsonMap<String, JsonValue>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SdkIdentityBootstrapV2Params {
+    identity: String,
+    #[serde(default = "sdk_default_identity_bootstrap_auto_sync")]
+    auto_sync: bool,
     #[serde(default)]
     extensions: JsonMap<String, JsonValue>,
 }

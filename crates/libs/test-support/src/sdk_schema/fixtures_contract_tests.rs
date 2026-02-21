@@ -160,6 +160,31 @@ fn sdk_schema_valid_fixtures_pass_contract_checks() {
     );
     assert_schema_valid(
         &schemas.command,
+        "docs/fixtures/sdk-v2/command.identity_announce_now.valid.json",
+        &fixture("docs/fixtures/sdk-v2/command.identity_announce_now.valid.json"),
+    );
+    assert_schema_valid(
+        &schemas.command,
+        "docs/fixtures/sdk-v2/command.identity_presence_list.valid.json",
+        &fixture("docs/fixtures/sdk-v2/command.identity_presence_list.valid.json"),
+    );
+    assert_schema_valid(
+        &schemas.command,
+        "docs/fixtures/sdk-v2/command.identity_contact_update.valid.json",
+        &fixture("docs/fixtures/sdk-v2/command.identity_contact_update.valid.json"),
+    );
+    assert_schema_valid(
+        &schemas.command,
+        "docs/fixtures/sdk-v2/command.identity_contact_list.valid.json",
+        &fixture("docs/fixtures/sdk-v2/command.identity_contact_list.valid.json"),
+    );
+    assert_schema_valid(
+        &schemas.command,
+        "docs/fixtures/sdk-v2/command.identity_bootstrap.valid.json",
+        &fixture("docs/fixtures/sdk-v2/command.identity_bootstrap.valid.json"),
+    );
+    assert_schema_valid(
+        &schemas.command,
         "docs/fixtures/sdk-v2/command.identity_import.valid.json",
         &fixture("docs/fixtures/sdk-v2/command.identity_import.valid.json"),
     );
@@ -237,6 +262,16 @@ fn sdk_schema_valid_fixtures_pass_contract_checks() {
         &schemas.identity,
         "docs/fixtures/sdk-v2/identity.bundle.valid.json",
         &fixture("docs/fixtures/sdk-v2/identity.bundle.valid.json"),
+    );
+    assert_schema_valid(
+        &schemas.identity,
+        "docs/fixtures/sdk-v2/identity.contact_record.valid.json",
+        &fixture("docs/fixtures/sdk-v2/identity.contact_record.valid.json"),
+    );
+    assert_schema_valid(
+        &schemas.identity,
+        "docs/fixtures/sdk-v2/identity.presence_list.valid.json",
+        &fixture("docs/fixtures/sdk-v2/identity.presence_list.valid.json"),
     );
     assert_schema_valid(
         &schemas.paper,
@@ -397,6 +432,31 @@ fn sdk_schema_invalid_fixtures_are_rejected() {
         &schemas.command,
         "docs/fixtures/sdk-v2/command.identity_list.invalid.json",
         &fixture("docs/fixtures/sdk-v2/command.identity_list.invalid.json"),
+    );
+    assert_schema_invalid(
+        &schemas.command,
+        "docs/fixtures/sdk-v2/command.identity_announce_now.invalid.json",
+        &fixture("docs/fixtures/sdk-v2/command.identity_announce_now.invalid.json"),
+    );
+    assert_schema_invalid(
+        &schemas.command,
+        "docs/fixtures/sdk-v2/command.identity_presence_list.invalid.json",
+        &fixture("docs/fixtures/sdk-v2/command.identity_presence_list.invalid.json"),
+    );
+    assert_schema_invalid(
+        &schemas.command,
+        "docs/fixtures/sdk-v2/command.identity_contact_update.invalid.json",
+        &fixture("docs/fixtures/sdk-v2/command.identity_contact_update.invalid.json"),
+    );
+    assert_schema_invalid(
+        &schemas.command,
+        "docs/fixtures/sdk-v2/command.identity_contact_list.invalid.json",
+        &fixture("docs/fixtures/sdk-v2/command.identity_contact_list.invalid.json"),
+    );
+    assert_schema_invalid(
+        &schemas.command,
+        "docs/fixtures/sdk-v2/command.identity_bootstrap.invalid.json",
+        &fixture("docs/fixtures/sdk-v2/command.identity_bootstrap.invalid.json"),
     );
     assert_schema_invalid(
         &schemas.command,

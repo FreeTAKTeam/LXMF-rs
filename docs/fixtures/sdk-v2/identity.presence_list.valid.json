@@ -1,0 +1,15 @@
+{
+  "peers": [
+    {
+      "peer_id": "peer-alpha",
+      "last_seen_ts_ms": 1739750403000,
+      "first_seen_ts_ms": 1739750000000,
+      "seen_count": 4,
+      "name": "Peer Alpha",
+      "name_source": "announce",
+      "trust_level": "trusted",
+      "bootstrap": true
+    }
+  ],
+  "next_cursor": null
+}

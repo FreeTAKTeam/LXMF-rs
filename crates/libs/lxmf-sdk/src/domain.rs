@@ -286,6 +286,95 @@ pub struct IdentityResolveRequest {
     pub extensions: BTreeMap<String, JsonValue>,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TrustLevel {
+    Unknown,
+    Untrusted,
+    Trusted,
+    Blocked,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct ContactUpdateRequest {
+    pub identity: IdentityRef,
+    pub display_name: Option<String>,
+    pub trust_level: Option<TrustLevel>,
+    pub bootstrap: Option<bool>,
+    #[serde(default)]
+    pub metadata: BTreeMap<String, JsonValue>,
+    #[serde(default)]
+    pub extensions: BTreeMap<String, JsonValue>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct ContactRecord {
+    pub identity: IdentityRef,
+    pub display_name: Option<String>,
+    pub trust_level: TrustLevel,
+    pub bootstrap: bool,
+    pub updated_ts_ms: u64,
+    #[serde(default)]
+    pub metadata: BTreeMap<String, JsonValue>,
+    #[serde(default)]
+    pub extensions: BTreeMap<String, JsonValue>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct ContactListRequest {
+    pub cursor: Option<String>,
+    pub limit: Option<usize>,
+    #[serde(default)]
+    pub extensions: BTreeMap<String, JsonValue>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct ContactListResult {
+    pub contacts: Vec<ContactRecord>,
+    pub next_cursor: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct PresenceListRequest {
+    pub cursor: Option<String>,
+    pub limit: Option<usize>,
+    #[serde(default)]
+    pub extensions: BTreeMap<String, JsonValue>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct PresenceRecord {
+    pub peer_id: String,
+    pub last_seen_ts_ms: i64,
+    pub first_seen_ts_ms: i64,
+    pub seen_count: u64,
+    pub name: Option<String>,
+    pub name_source: Option<String>,
+    pub trust_level: Option<TrustLevel>,
+    pub bootstrap: Option<bool>,
+    #[serde(default)]
+    pub extensions: BTreeMap<String, JsonValue>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct PresenceListResult {
+    pub peers: Vec<PresenceRecord>,
+    pub next_cursor: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct IdentityBootstrapRequest {
+    pub identity: IdentityRef,
+    #[serde(default = "default_auto_sync")]
+    pub auto_sync: bool,
+    #[serde(default)]
+    pub extensions: BTreeMap<String, JsonValue>,
+}
+
+fn default_auto_sync() -> bool {
+    true
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct PaperMessageEnvelope {
     pub uri: String,

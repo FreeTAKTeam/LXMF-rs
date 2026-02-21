@@ -547,6 +547,10 @@ impl RpcDaemon {
             self.sdk_marker_order.lock().expect("sdk_marker_order mutex poisoned").clone();
         let identities =
             self.sdk_identities.lock().expect("sdk_identities mutex poisoned").clone();
+        let contacts =
+            self.sdk_contacts.lock().expect("sdk_contacts mutex poisoned").clone();
+        let contact_order =
+            self.sdk_contact_order.lock().expect("sdk_contact_order mutex poisoned").clone();
         let active_identity = self
             .sdk_active_identity
             .lock()
@@ -577,6 +581,8 @@ impl RpcDaemon {
             markers,
             marker_order,
             identities,
+            contacts,
+            contact_order,
             active_identity,
             remote_commands,
             voice_sessions,
@@ -595,6 +601,9 @@ impl RpcDaemon {
             .attachment_order
             .retain(|attachment_id| snapshot.attachments.contains_key(attachment_id));
         snapshot.marker_order.retain(|marker_id| snapshot.markers.contains_key(marker_id));
+        snapshot
+            .contact_order
+            .retain(|identity| snapshot.contacts.contains_key(identity));
         snapshot.attachment_payloads.retain(|attachment_id, _| {
             snapshot.attachments.contains_key(attachment_id)
         });
@@ -673,6 +682,8 @@ impl RpcDaemon {
         *self.sdk_markers.lock().expect("sdk_markers mutex poisoned") = parsed.markers;
         *self.sdk_marker_order.lock().expect("sdk_marker_order mutex poisoned") = parsed.marker_order;
         *self.sdk_identities.lock().expect("sdk_identities mutex poisoned") = parsed.identities;
+        *self.sdk_contacts.lock().expect("sdk_contacts mutex poisoned") = parsed.contacts;
+        *self.sdk_contact_order.lock().expect("sdk_contact_order mutex poisoned") = parsed.contact_order;
         *self
             .sdk_active_identity
             .lock()

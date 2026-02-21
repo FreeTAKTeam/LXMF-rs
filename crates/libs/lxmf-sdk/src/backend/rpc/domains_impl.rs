@@ -274,6 +274,22 @@ impl RpcBackendClient {
         Self::decode_value(result, "identity_list response")
     }
 
+    pub(super) fn identity_announce_now_impl(&self) -> Result<Ack, SdkError> {
+        let result = self.call_rpc("sdk_identity_announce_now_v2", Some(json!({})))?;
+        Ok(Self::parse_ack(&result))
+    }
+
+    pub(super) fn identity_presence_list_impl(
+        &self,
+        req: PresenceListRequest,
+    ) -> Result<PresenceListResult, SdkError> {
+        let params = serde_json::to_value(req).map_err(|err| {
+            SdkError::new(code::INTERNAL, ErrorCategory::Internal, err.to_string())
+        })?;
+        let result = self.call_rpc("sdk_identity_presence_list_v2", Some(params))?;
+        Self::decode_field_or_root(&result, "presence_list", "identity_presence_list response")
+    }
+
     pub(super) fn identity_activate_impl(&self, identity: IdentityRef) -> Result<Ack, SdkError> {
         let result = self.call_rpc(
             "sdk_identity_activate_v2",
@@ -323,6 +339,39 @@ impl RpcBackendClient {
             return Ok(None);
         }
         Self::decode_value(result, "identity_resolve response").map(Some)
+    }
+
+    pub(super) fn identity_contact_update_impl(
+        &self,
+        req: ContactUpdateRequest,
+    ) -> Result<ContactRecord, SdkError> {
+        let params = serde_json::to_value(req).map_err(|err| {
+            SdkError::new(code::INTERNAL, ErrorCategory::Internal, err.to_string())
+        })?;
+        let result = self.call_rpc("sdk_identity_contact_update_v2", Some(params))?;
+        Self::decode_field_or_root(&result, "contact", "identity_contact_update response")
+    }
+
+    pub(super) fn identity_contact_list_impl(
+        &self,
+        req: ContactListRequest,
+    ) -> Result<ContactListResult, SdkError> {
+        let params = serde_json::to_value(req).map_err(|err| {
+            SdkError::new(code::INTERNAL, ErrorCategory::Internal, err.to_string())
+        })?;
+        let result = self.call_rpc("sdk_identity_contact_list_v2", Some(params))?;
+        Self::decode_field_or_root(&result, "contact_list", "identity_contact_list response")
+    }
+
+    pub(super) fn identity_bootstrap_impl(
+        &self,
+        req: IdentityBootstrapRequest,
+    ) -> Result<ContactRecord, SdkError> {
+        let params = serde_json::to_value(req).map_err(|err| {
+            SdkError::new(code::INTERNAL, ErrorCategory::Internal, err.to_string())
+        })?;
+        let result = self.call_rpc("sdk_identity_bootstrap_v2", Some(params))?;
+        Self::decode_field_or_root(&result, "contact", "identity_bootstrap response")
     }
 
     pub(super) fn paper_encode_impl(

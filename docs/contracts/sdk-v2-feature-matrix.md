@@ -26,6 +26,11 @@ Legend:
 | `subscribe_events` | required | optional | unsupported |
 | `snapshot` | required | required | required |
 | `shutdown` | required | required | required |
+| `identity_announce_now` | optional | optional | optional |
+| `identity_presence_list` | optional | optional | optional |
+| `identity_contact_update` | optional | optional | optional |
+| `identity_contact_list` | optional | optional | optional |
+| `identity_bootstrap` | optional | optional | optional |
 
 ## Capability Matrix by Profile
 
@@ -49,8 +54,10 @@ Legend:
 | `sdk.capability.attachment_streaming` | optional | optional | optional |
 | `sdk.capability.markers` | optional | optional | optional |
 | `sdk.capability.identity_multi` | optional | optional | optional |
+| `sdk.capability.identity_discovery` | optional | optional | optional |
 | `sdk.capability.identity_import_export` | optional | optional | optional |
 | `sdk.capability.identity_hash_resolution` | optional | optional | optional |
+| `sdk.capability.contact_management` | optional | optional | optional |
 | `sdk.capability.paper_messages` | optional | optional | optional |
 | `sdk.capability.remote_commands` | optional | optional | optional |
 | `sdk.capability.voice_signaling` | optional | optional | optional |

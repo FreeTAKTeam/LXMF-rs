@@ -156,6 +156,17 @@ impl<B: SdkBackend> LxmfSdkIdentity for Client<B> {
         self.backend.identity_list()
     }
 
+    fn identity_announce_now(&self) -> Result<Ack, SdkError> {
+        self.backend.identity_announce_now()
+    }
+
+    fn identity_presence_list(
+        &self,
+        req: crate::domain::PresenceListRequest,
+    ) -> Result<crate::domain::PresenceListResult, SdkError> {
+        self.backend.identity_presence_list(req)
+    }
+
     fn identity_activate(&self, identity: crate::domain::IdentityRef) -> Result<Ack, SdkError> {
         self.backend.identity_activate(identity)
     }
@@ -179,6 +190,27 @@ impl<B: SdkBackend> LxmfSdkIdentity for Client<B> {
         req: crate::domain::IdentityResolveRequest,
     ) -> Result<Option<crate::domain::IdentityRef>, SdkError> {
         self.backend.identity_resolve(req)
+    }
+
+    fn identity_contact_update(
+        &self,
+        req: crate::domain::ContactUpdateRequest,
+    ) -> Result<crate::domain::ContactRecord, SdkError> {
+        self.backend.identity_contact_update(req)
+    }
+
+    fn identity_contact_list(
+        &self,
+        req: crate::domain::ContactListRequest,
+    ) -> Result<crate::domain::ContactListResult, SdkError> {
+        self.backend.identity_contact_list(req)
+    }
+
+    fn identity_bootstrap(
+        &self,
+        req: crate::domain::IdentityBootstrapRequest,
+    ) -> Result<crate::domain::ContactRecord, SdkError> {
+        self.backend.identity_bootstrap(req)
     }
 }
 

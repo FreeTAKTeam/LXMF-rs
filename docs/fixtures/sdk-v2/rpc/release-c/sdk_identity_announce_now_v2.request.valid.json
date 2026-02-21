@@ -1,0 +1,9 @@
+{
+  "id": "req-identity-announce-now-1",
+  "method": "sdk_identity_announce_now_v2",
+  "params": {
+    "extensions": {
+      "reason": "startup"
+    }
+  }
+}

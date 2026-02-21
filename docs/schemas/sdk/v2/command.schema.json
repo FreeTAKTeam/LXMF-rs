@@ -49,10 +49,15 @@
         "marker_update_position",
         "marker_delete",
         "identity_list",
+        "identity_announce_now",
+        "identity_presence_list",
         "identity_activate",
         "identity_import",
         "identity_export",
         "identity_resolve",
+        "identity_contact_update",
+        "identity_contact_list",
+        "identity_bootstrap",
         "paper_encode",
         "paper_decode",
         "command_invoke",
@@ -757,6 +762,42 @@
     },
     {
       "if": {
+        "properties": { "method": { "const": "identity_announce_now" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "identity_presence_list" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "cursor": { "type": ["string", "null"] },
+              "limit": { "type": "integer", "minimum": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
         "properties": { "method": { "const": "identity_activate" } },
         "required": ["method"]
       },
@@ -768,6 +809,71 @@
             "required": ["identity"],
             "properties": {
               "identity": { "type": "string", "minLength": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "identity_contact_update" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["identity"],
+            "properties": {
+              "identity": { "type": "string", "minLength": 1 },
+              "display_name": { "type": ["string", "null"] },
+              "trust_level": {
+                "type": ["string", "null"],
+                "enum": [null, "unknown", "untrusted", "trusted", "blocked"]
+              },
+              "bootstrap": { "type": ["boolean", "null"] },
+              "metadata": { "type": "object", "additionalProperties": true },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "identity_contact_list" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "cursor": { "type": ["string", "null"] },
+              "limit": { "type": "integer", "minimum": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "identity_bootstrap" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["identity"],
+            "properties": {
+              "identity": { "type": "string", "minLength": 1 },
+              "auto_sync": { "type": "boolean" },
               "extensions": { "$ref": "#/$defs/extension_map" }
             }
           }

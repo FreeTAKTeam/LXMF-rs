@@ -273,6 +273,8 @@ pub struct RpcDaemon {
     sdk_markers: Mutex<HashMap<String, SdkMarkerRecord>>,
     sdk_marker_order: Mutex<Vec<String>>,
     sdk_identities: Mutex<HashMap<String, SdkIdentityBundle>>,
+    sdk_contacts: Mutex<HashMap<String, SdkContactRecord>>,
+    sdk_contact_order: Mutex<Vec<String>>,
     sdk_active_identity: Mutex<Option<String>>,
     sdk_remote_commands: Mutex<HashSet<String>>,
     sdk_voice_sessions: Mutex<HashMap<String, SdkVoiceSessionRecord>>,

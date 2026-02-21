@@ -43,10 +43,15 @@
           "type": "string",
           "enum": [
             "sdk_identity_list_v2",
+            "sdk_identity_announce_now_v2",
+            "sdk_identity_presence_list_v2",
             "sdk_identity_activate_v2",
             "sdk_identity_import_v2",
             "sdk_identity_export_v2",
             "sdk_identity_resolve_v2",
+            "sdk_identity_contact_update_v2",
+            "sdk_identity_contact_list_v2",
+            "sdk_identity_bootstrap_v2",
             "sdk_paper_encode_v2",
             "sdk_paper_decode_v2",
             "sdk_command_invoke_v2",
@@ -70,6 +75,42 @@
                 "type": "object",
                 "additionalProperties": false,
                 "properties": {
+                  "extensions": { "$ref": "#/$defs/extension_map" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "method": { "const": "sdk_identity_announce_now_v2" } },
+            "required": ["method"]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "extensions": { "$ref": "#/$defs/extension_map" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "method": { "const": "sdk_identity_presence_list_v2" } },
+            "required": ["method"]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "cursor": { "type": ["string", "null"] },
+                  "limit": { "type": "integer", "minimum": 1 },
                   "extensions": { "$ref": "#/$defs/extension_map" }
                 }
               }
@@ -147,6 +188,71 @@
                 "required": ["hash"],
                 "properties": {
                   "hash": { "type": "string", "minLength": 1 },
+                  "extensions": { "$ref": "#/$defs/extension_map" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "method": { "const": "sdk_identity_contact_update_v2" } },
+            "required": ["method"]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["identity"],
+                "properties": {
+                  "identity": { "type": "string", "minLength": 1 },
+                  "display_name": { "type": ["string", "null"] },
+                  "trust_level": {
+                    "type": ["string", "null"],
+                    "enum": [null, "unknown", "untrusted", "trusted", "blocked"]
+                  },
+                  "bootstrap": { "type": ["boolean", "null"] },
+                  "metadata": { "type": "object", "additionalProperties": true },
+                  "extensions": { "$ref": "#/$defs/extension_map" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "method": { "const": "sdk_identity_contact_list_v2" } },
+            "required": ["method"]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "cursor": { "type": ["string", "null"] },
+                  "limit": { "type": "integer", "minimum": 1 },
+                  "extensions": { "$ref": "#/$defs/extension_map" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "method": { "const": "sdk_identity_bootstrap_v2" } },
+            "required": ["method"]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["identity"],
+                "properties": {
+                  "identity": { "type": "string", "minLength": 1 },
+                  "auto_sync": { "type": "boolean" },
                   "extensions": { "$ref": "#/$defs/extension_map" }
                 }
               }

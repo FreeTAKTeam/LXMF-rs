@@ -3,11 +3,13 @@ use base64::Engine as _;
 use lxmf_sdk::{
     domain::{
         AttachmentDownloadChunkRequest, AttachmentStoreRequest, AttachmentUploadChunkRequest,
-        AttachmentUploadCommitRequest, AttachmentUploadStartRequest, GeoPoint,
-        IdentityImportRequest, IdentityResolveRequest, MarkerCreateRequest, MarkerDeleteRequest,
-        MarkerListRequest, MarkerUpdatePositionRequest, PaperMessageEnvelope, RemoteCommandRequest,
-        RemoteCommandResponse, TelemetryQuery, TopicCreateRequest, TopicListRequest, TopicPath,
-        TopicPublishRequest, VoiceSessionOpenRequest, VoiceSessionState, VoiceSessionUpdateRequest,
+        AttachmentUploadCommitRequest, AttachmentUploadStartRequest, ContactListRequest,
+        ContactUpdateRequest, GeoPoint, IdentityBootstrapRequest, IdentityImportRequest,
+        IdentityResolveRequest, MarkerCreateRequest, MarkerDeleteRequest, MarkerListRequest,
+        MarkerUpdatePositionRequest, PaperMessageEnvelope, PresenceListRequest,
+        RemoteCommandRequest, RemoteCommandResponse, TelemetryQuery, TopicCreateRequest,
+        TopicListRequest, TopicPath, TopicPublishRequest, TrustLevel, VoiceSessionOpenRequest,
+        VoiceSessionState, VoiceSessionUpdateRequest,
     },
     LxmfSdk, LxmfSdkAttachments, LxmfSdkIdentity, LxmfSdkMarkers, LxmfSdkPaper,
     LxmfSdkRemoteCommands, LxmfSdkTelemetry, LxmfSdkTopics, LxmfSdkVoiceSignaling,
@@ -181,6 +183,51 @@ fn sdk_conformance_release_bc_domain_methods_work_through_rpc_adapter() {
         })
         .expect("identity_resolve");
     assert!(resolved.is_some(), "imported identity should resolve by public key");
+    let contact = client
+        .identity_contact_update(ContactUpdateRequest {
+            identity: imported.identity.clone(),
+            display_name: Some("Node B Contact".to_string()),
+            trust_level: Some(TrustLevel::Untrusted),
+            bootstrap: Some(false),
+            metadata: BTreeMap::new(),
+            extensions: BTreeMap::new(),
+        })
+        .expect("identity_contact_update");
+    assert_eq!(contact.trust_level, TrustLevel::Untrusted);
+    let contacts = client
+        .identity_contact_list(ContactListRequest {
+            cursor: None,
+            limit: Some(16),
+            extensions: BTreeMap::new(),
+        })
+        .expect("identity_contact_list");
+    assert!(
+        contacts.contacts.iter().any(|row| row.identity == imported.identity),
+        "contact list should include updated contact"
+    );
+    let bootstrapped = client
+        .identity_bootstrap(IdentityBootstrapRequest {
+            identity: imported.identity.clone(),
+            auto_sync: true,
+            extensions: BTreeMap::new(),
+        })
+        .expect("identity_bootstrap");
+    assert_eq!(bootstrapped.trust_level, TrustLevel::Trusted);
+    assert!(bootstrapped.bootstrap);
+    let presence = client
+        .identity_presence_list(PresenceListRequest {
+            cursor: None,
+            limit: Some(16),
+            extensions: BTreeMap::new(),
+        })
+        .expect("identity_presence_list");
+    assert!(
+        presence.peers.iter().any(|row| {
+            row.peer_id == imported.identity.0 && row.trust_level == Some(TrustLevel::Trusted)
+        }),
+        "presence list should include bootstrapped identity with trusted state"
+    );
+    assert!(client.identity_announce_now().expect("identity_announce_now").accepted);
 
     let sent = client.send(send_request("paper", None)).expect("send");
     let envelope = client.paper_encode(sent.clone()).expect("paper_encode");

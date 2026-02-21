@@ -1,0 +1,7 @@
+{
+  "request_id": "req-identity-bootstrap-invalid",
+  "method": "identity_bootstrap",
+  "params": {
+    "identity": ""
+  }
+}

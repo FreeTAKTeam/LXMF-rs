@@ -1,0 +1,13 @@
+{
+  "request_id": "req-identity-contact-update-1",
+  "method": "identity_contact_update",
+  "params": {
+    "identity": "peer-alpha",
+    "display_name": "Peer Alpha",
+    "trust_level": "trusted",
+    "bootstrap": true,
+    "metadata": {
+      "source": "manual"
+    }
+  }
+}

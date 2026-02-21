@@ -32,6 +32,12 @@ impl RpcDaemon {
                     .clear();
                 self.sdk_markers.lock().expect("sdk_markers mutex poisoned").clear();
                 self.sdk_marker_order.lock().expect("sdk_marker_order mutex poisoned").clear();
+                self.sdk_contacts.lock().expect("sdk_contacts mutex poisoned").clear();
+                self
+                    .sdk_contact_order
+                    .lock()
+                    .expect("sdk_contact_order mutex poisoned")
+                    .clear();
                 self.persist_sdk_domain_snapshot()?;
                 Ok(RpcResponse {
                     id: request.id,
@@ -85,6 +91,12 @@ impl RpcDaemon {
                     .clear();
                 self.sdk_markers.lock().expect("sdk_markers mutex poisoned").clear();
                 self.sdk_marker_order.lock().expect("sdk_marker_order mutex poisoned").clear();
+                self.sdk_contacts.lock().expect("sdk_contacts mutex poisoned").clear();
+                self
+                    .sdk_contact_order
+                    .lock()
+                    .expect("sdk_contact_order mutex poisoned")
+                    .clear();
                 self.sdk_telemetry_points
                     .lock()
                     .expect("sdk_telemetry_points mutex poisoned")

@@ -416,6 +416,73 @@
         assert!(identity_resolve.error.is_none());
         assert_eq!(identity_resolve.result.expect("result")["identity"], json!("node-b"));
 
+        let contact_update = daemon
+            .handle_rpc(rpc_request(
+                1221,
+                "sdk_identity_contact_update_v2",
+                json!({
+                    "identity": "node-b",
+                    "display_name": "Node Bravo",
+                    "trust_level": "untrusted",
+                    "bootstrap": false,
+                    "metadata": { "source": "manual" }
+                }),
+            ))
+            .expect("contact update");
+        assert!(contact_update.error.is_none());
+        assert_eq!(
+            contact_update.result.expect("result")["contact"]["trust_level"],
+            json!("untrusted")
+        );
+
+        let contact_list = daemon
+            .handle_rpc(rpc_request(1222, "sdk_identity_contact_list_v2", json!({ "limit": 10 })))
+            .expect("contact list");
+        assert!(contact_list.error.is_none());
+        assert!(contact_list.result.expect("result")["contact_list"]["contacts"]
+            .as_array()
+            .expect("contact rows")
+            .iter()
+            .any(|row| row["identity"] == json!("node-b")));
+
+        let bootstrap = daemon
+            .handle_rpc(rpc_request(
+                1223,
+                "sdk_identity_bootstrap_v2",
+                json!({ "identity": "node-b", "auto_sync": true }),
+            ))
+            .expect("bootstrap");
+        assert!(bootstrap.error.is_none());
+        let bootstrap_result = bootstrap.result.expect("bootstrap result");
+        assert_eq!(bootstrap_result["synced"], json!(true));
+        assert_eq!(bootstrap_result["contact"]["trust_level"], json!("trusted"));
+        assert_eq!(bootstrap_result["contact"]["bootstrap"], json!(true));
+
+        let presence = daemon
+            .handle_rpc(rpc_request(
+                1224,
+                "sdk_identity_presence_list_v2",
+                json!({ "cursor": null, "limit": 10 }),
+            ))
+            .expect("presence list");
+        assert!(presence.error.is_none());
+        assert!(presence.result.expect("result")["presence_list"]["peers"]
+            .as_array()
+            .expect("presence rows")
+            .iter()
+            .any(|row| {
+                row["peer_id"] == json!("node-b")
+                    && row["trust_level"] == json!("trusted")
+                    && row["bootstrap"] == json!(true)
+            }));
+
+        let announce_now =
+            daemon.handle_rpc(rpc_request(1225, "sdk_identity_announce_now_v2", json!({}))).expect(
+                "identity announce now",
+            );
+        assert!(announce_now.error.is_none());
+        assert_eq!(announce_now.result.expect("result")["accepted"], json!(true));
+
         let identity_export = daemon
             .handle_rpc(rpc_request(123, "sdk_identity_export_v2", json!({ "identity": "node-b" })))
             .expect("identity export");

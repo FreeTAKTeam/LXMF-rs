@@ -6,13 +6,14 @@ use crate::domain::{
     AttachmentDownloadChunk, AttachmentDownloadChunkRequest, AttachmentId, AttachmentListRequest,
     AttachmentListResult, AttachmentMeta, AttachmentStoreRequest, AttachmentUploadChunkAck,
     AttachmentUploadChunkRequest, AttachmentUploadCommitRequest, AttachmentUploadSession,
-    AttachmentUploadStartRequest, IdentityBundle, IdentityImportRequest, IdentityRef,
-    IdentityResolveRequest, MarkerCreateRequest, MarkerDeleteRequest, MarkerListRequest,
-    MarkerListResult, MarkerRecord, MarkerUpdatePositionRequest, PaperMessageEnvelope,
-    RemoteCommandRequest, RemoteCommandResponse, TelemetryPoint, TelemetryQuery,
-    TopicCreateRequest, TopicId, TopicListRequest, TopicListResult, TopicPublishRequest,
-    TopicRecord, TopicSubscriptionRequest, VoiceSessionId, VoiceSessionOpenRequest,
-    VoiceSessionState, VoiceSessionUpdateRequest,
+    AttachmentUploadStartRequest, ContactListRequest, ContactListResult, ContactRecord,
+    ContactUpdateRequest, IdentityBootstrapRequest, IdentityBundle, IdentityImportRequest,
+    IdentityRef, IdentityResolveRequest, MarkerCreateRequest, MarkerDeleteRequest,
+    MarkerListRequest, MarkerListResult, MarkerRecord, MarkerUpdatePositionRequest,
+    PaperMessageEnvelope, PresenceListRequest, PresenceListResult, RemoteCommandRequest,
+    RemoteCommandResponse, TelemetryPoint, TelemetryQuery, TopicCreateRequest, TopicId,
+    TopicListRequest, TopicListResult, TopicPublishRequest, TopicRecord, TopicSubscriptionRequest,
+    VoiceSessionId, VoiceSessionOpenRequest, VoiceSessionState, VoiceSessionUpdateRequest,
 };
 use crate::error::{code, ErrorCategory, SdkError};
 use crate::event::{EventBatch, EventCursor, SdkEvent, Severity};
@@ -258,6 +259,17 @@ impl SdkBackend for RpcBackendClient {
         self.identity_list_impl()
     }
 
+    fn identity_announce_now(&self) -> Result<Ack, SdkError> {
+        self.identity_announce_now_impl()
+    }
+
+    fn identity_presence_list(
+        &self,
+        req: PresenceListRequest,
+    ) -> Result<PresenceListResult, SdkError> {
+        self.identity_presence_list_impl(req)
+    }
+
     fn identity_activate(&self, identity: IdentityRef) -> Result<Ack, SdkError> {
         self.identity_activate_impl(identity)
     }
@@ -275,6 +287,24 @@ impl SdkBackend for RpcBackendClient {
         req: IdentityResolveRequest,
     ) -> Result<Option<IdentityRef>, SdkError> {
         self.identity_resolve_impl(req)
+    }
+
+    fn identity_contact_update(
+        &self,
+        req: ContactUpdateRequest,
+    ) -> Result<ContactRecord, SdkError> {
+        self.identity_contact_update_impl(req)
+    }
+
+    fn identity_contact_list(
+        &self,
+        req: ContactListRequest,
+    ) -> Result<ContactListResult, SdkError> {
+        self.identity_contact_list_impl(req)
+    }
+
+    fn identity_bootstrap(&self, req: IdentityBootstrapRequest) -> Result<ContactRecord, SdkError> {
+        self.identity_bootstrap_impl(req)
     }
 
     fn paper_encode(&self, message_id: MessageId) -> Result<PaperMessageEnvelope, SdkError> {
