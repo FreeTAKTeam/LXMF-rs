@@ -1,6 +1,6 @@
 # Compatibility Matrix v1
 
-Last updated: 2026-02-20
+Last updated: 2026-02-21
 
 ## Matrix Version
 
@@ -40,6 +40,20 @@ Legend: `required`, `optional`, `planned`, `n/a`.
 | `RCH` (external client track) | `Pinned interop baseline` | required | required | required | optional | planned | required | optional | required |
 | `Columba` (external client track) | `Pinned interop baseline` | required | required | required | optional | planned | required | optional | required |
 
+## Third-Party Conformance Certification
+
+Certification tiers are used for external client tracks and partner integrations.
+
+| Tier | Mandatory gates | Optional gates | Badge criterion |
+| --- | --- | --- | --- |
+| Bronze | `interop-matrix-check`, `interop-corpus-check`, `sdk-conformance` (core lifecycle/event tests) | `compat-kit-check` | all mandatory gates pass on pinned baseline |
+| Silver | Bronze + `compat-kit-check`, `schema-client-check`, `plugin-negotiation-check` | `e2e-compatibility` | silver mandatory gates pass with no critical drift |
+| Gold | Silver + `e2e-compatibility`, `security-review-check`, `key-management-check` | `leader-readiness-check` | gold mandatory gates pass and security checklist floor met |
+
+Certification report gate:
+
+- `cargo run -p xtask -- certification-report-check`
+
 ## Support Windows
 
 | Window | Meaning | Compatibility rule |
@@ -58,6 +72,7 @@ Legend: `required`, `optional`, `planned`, `n/a`.
 - SDK conformance coverage: `cargo run -p xtask -- sdk-conformance`
 - External kit dry-run gate: `cargo run -p xtask -- compat-kit-check`
 - Extension registry governance: `cargo run -p xtask -- extension-registry-check`
+- Certification report generation: `cargo run -p xtask -- certification-report-check`
 
 ## Change Control
 

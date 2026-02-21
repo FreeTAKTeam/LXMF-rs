@@ -546,6 +546,20 @@ jobs:
       - name: Plugin negotiation contract gate
         run: cargo xtask ci --stage plugin-negotiation-check
 
+  certification-report-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Third-party conformance certification report gate
+        run: cargo xtask ci --stage certification-report-check
+      - uses: actions/upload-artifact@v4
+        with:
+          name: certification-report
+          path: |
+            target/release-readiness/certification-report.md
+            target/release-readiness/certification-report.json
+
   forbidden-deps:
     runs-on: ubuntu-latest
     steps:

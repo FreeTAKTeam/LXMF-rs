@@ -45,6 +45,7 @@ const BACKUP_RESTORE_DRILL_SCRIPT_PATH: &str = "tools/scripts/backup-restore-dri
 const REFERENCE_INTEGRATIONS_SMOKE_SCRIPT_PATH: &str =
     "tools/scripts/reference-integrations-smoke.sh";
 const SCHEMA_CLIENT_SMOKE_SCRIPT_PATH: &str = "tools/scripts/schema-client-smoke.sh";
+const CERTIFICATION_REPORT_SCRIPT_PATH: &str = "tools/scripts/certification-report.sh";
 const SOAK_REPORT_PATH: &str = "target/soak/soak-report.json";
 const BENCH_SUMMARY_PATH: &str = "target/criterion/bench-summary.txt";
 const PERF_BUDGET_REPORT_PATH: &str = "target/criterion/bench-budget-report.txt";
@@ -56,6 +57,8 @@ const SUPPLY_CHAIN_SIGNATURE_PATH: &str =
 const REPRODUCIBLE_BUILD_REPORT_PATH: &str =
     "target/supply-chain/reproducible/reproducible-build-report.txt";
 const SCHEMA_CLIENT_SMOKE_REPORT_PATH: &str = "target/interop/schema-client-smoke-report.txt";
+const CERTIFICATION_REPORT_PATH: &str = "target/release-readiness/certification-report.md";
+const CERTIFICATION_REPORT_JSON_PATH: &str = "target/release-readiness/certification-report.json";
 const EMBEDDED_FOOTPRINT_REPORT_PATH: &str = "target/embedded/footprint-report.txt";
 const EMBEDDED_HIL_REPORT_PATH: &str = "target/hil/esp32-smoke-report.json";
 const LEADER_READINESS_REPORT_PATH: &str = "target/release-readiness/leader-grade-readiness.md";
@@ -315,6 +318,7 @@ enum XtaskCommand {
     ReleaseScorecardCheck,
     ExtensionRegistryCheck,
     PluginNegotiationCheck,
+    CertificationReportCheck,
     LeaderReadinessCheck,
     SecurityReviewCheck,
     CryptoAgilityCheck,
@@ -380,6 +384,7 @@ enum CiStage {
     ReleaseScorecardCheck,
     ExtensionRegistryCheck,
     PluginNegotiationCheck,
+    CertificationReportCheck,
     LeaderReadinessCheck,
     SecurityReviewCheck,
     CryptoAgilityCheck,
@@ -453,6 +458,7 @@ fn main() -> Result<()> {
         XtaskCommand::ReleaseScorecardCheck => run_release_scorecard_check(),
         XtaskCommand::ExtensionRegistryCheck => run_extension_registry_check(),
         XtaskCommand::PluginNegotiationCheck => run_plugin_negotiation_check(),
+        XtaskCommand::CertificationReportCheck => run_certification_report_check(),
         XtaskCommand::LeaderReadinessCheck => run_leader_readiness_check(),
         XtaskCommand::SecurityReviewCheck => run_security_review_check(),
         XtaskCommand::CryptoAgilityCheck => run_crypto_agility_check(),
@@ -516,6 +522,7 @@ fn run_ci(stage: Option<CiStage>) -> Result<()> {
     run_interop_drift_check(false)?;
     run_schema_client_check()?;
     run_compat_kit_check()?;
+    run_certification_report_check()?;
     run_e2e_compatibility()?;
     run_sdk_conformance()?;
     run_crypto_agility_check()?;
@@ -585,6 +592,7 @@ fn run_ci_stage(stage: CiStage) -> Result<()> {
         CiStage::InteropDriftCheck => run_interop_drift_check(false),
         CiStage::SchemaClientCheck => run_schema_client_check(),
         CiStage::CompatKitCheck => run_compat_kit_check(),
+        CiStage::CertificationReportCheck => run_certification_report_check(),
         CiStage::E2eCompatibility => run_e2e_compatibility(),
         CiStage::SdkProfileBuild => run_sdk_profile_build(),
         CiStage::SdkExamplesCheck => run_sdk_examples_check(),
@@ -636,6 +644,7 @@ fn run_release_check() -> Result<()> {
     run_interop_drift_check(false)?;
     run_schema_client_check()?;
     run_compat_kit_check()?;
+    run_certification_report_check()?;
     run_reference_integration_check()?;
     run_compliance_profile_check()?;
     run_support_policy_check()?;
@@ -1877,6 +1886,55 @@ fn run_plugin_negotiation_check() -> Result<()> {
     }
     if !workflow.contains("cargo xtask ci --stage plugin-negotiation-check") {
         bail!("ci workflow must execute `cargo xtask ci --stage plugin-negotiation-check`");
+    }
+
+    Ok(())
+}
+
+fn run_certification_report_check() -> Result<()> {
+    run(
+        "cargo",
+        &["test", "-p", "test-support", "sdk_conformance_certification", "--", "--nocapture"],
+    )?;
+    run("bash", &[CERTIFICATION_REPORT_SCRIPT_PATH])?;
+
+    let matrix = fs::read_to_string("docs/contracts/compatibility-matrix.md")
+        .context("missing docs/contracts/compatibility-matrix.md")?;
+    for marker in [
+        "## Third-Party Conformance Certification",
+        "| Bronze |",
+        "| Silver |",
+        "| Gold |",
+        "cargo run -p xtask -- certification-report-check",
+    ] {
+        if !matrix.contains(marker) {
+            bail!("compatibility matrix missing certification marker '{marker}'");
+        }
+    }
+
+    let report = fs::read_to_string(CERTIFICATION_REPORT_PATH)
+        .with_context(|| format!("missing generated report at {CERTIFICATION_REPORT_PATH}"))?;
+    if !report.contains("# Certification Report") || !report.contains("status: `PASS`") {
+        bail!("certification report missing required markers in {CERTIFICATION_REPORT_PATH}");
+    }
+
+    let report_json = fs::read_to_string(CERTIFICATION_REPORT_JSON_PATH)
+        .with_context(|| format!("missing generated report at {CERTIFICATION_REPORT_JSON_PATH}"))?;
+    for marker in ["\"status\": \"PASS\"", "\"bronze\": \"PASS\"", "\"gold\": \"PASS\""] {
+        if !report_json.contains(marker) {
+            bail!(
+                "certification report json missing marker '{marker}' in {CERTIFICATION_REPORT_JSON_PATH}"
+            );
+        }
+    }
+
+    let workflow = fs::read_to_string(CI_WORKFLOW_PATH)
+        .with_context(|| format!("missing {CI_WORKFLOW_PATH}"))?;
+    if !workflow.contains("certification-report-check:") {
+        bail!("ci workflow must include a 'certification-report-check' job");
+    }
+    if !workflow.contains("cargo xtask ci --stage certification-report-check") {
+        bail!("ci workflow must execute `cargo xtask ci --stage certification-report-check`");
     }
 
     Ok(())

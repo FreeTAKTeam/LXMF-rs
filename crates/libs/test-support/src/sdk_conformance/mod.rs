@@ -16,6 +16,7 @@ use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 mod auth_mode_tests;
+mod certification_tests;
 mod crypto_agility_tests;
 mod key_management_tests;
 mod model_tests;
