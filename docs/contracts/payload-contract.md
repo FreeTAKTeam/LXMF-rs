@@ -21,6 +21,17 @@ The mirrored frontend copy is:
   - Extension registry: `docs/contracts/extension-registry.md`
   - Support windows: `N`, `N+1`, `N+2`
 
+## Cryptographic Agility Metadata
+
+Algorithm negotiation roadmap is governed by `docs/adr/0007-crypto-agility-roadmap.md`.
+
+Payload-level contract additions (additive roadmap):
+
+1. Message/session metadata may include `algorithm_set_id` (example: `rns-a1`).
+2. If present, `algorithm_set_id` must match negotiated runtime value.
+3. Unknown algorithm set ids must fail closed for signature/verification-sensitive flows.
+4. New algorithm set ids must be additive and documented before interop rollout.
+
 ## Canonical Field Coverage
 
 Required LXMF field coverage for parity:

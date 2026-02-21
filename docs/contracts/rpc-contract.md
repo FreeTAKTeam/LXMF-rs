@@ -94,3 +94,29 @@ All methods below are required for full CLI feature coverage.
 - Server must keep `send_message` for compatibility and apply the same strict canonical field validation path as `send_message_v2`.
 - At least one of `daemon_status_ex` or `status` must provide `identity_hash` for source auto-resolution.
 - Embedded link adapters (serial/BLE/LoRa) must preserve this RPC method/field contract when bridged through transport runtimes.
+
+## Cryptographic Agility Policy
+
+Algorithm negotiation roadmap is governed by `docs/adr/0007-crypto-agility-roadmap.md`.
+
+Versioned algorithm-set ids:
+
+| algorithm_set_id | Status | Baseline intent |
+| --- | --- | --- |
+| `rns-a1` | active | current baseline interoperability profile |
+| `rns-a2` | planned | strengthened signature/cipher suite profile |
+| `rns-a3` | reserved | post-quantum transition profile placeholder |
+
+Negotiation contract (additive roadmap for `sdk_negotiate_v2` extension fields):
+
+1. Client advertises ordered `supported_algorithm_sets`.
+2. Server returns one `selected_algorithm_set`.
+3. Server selection must be within client-offered set.
+4. If no overlap exists, negotiation fails with contract-incompatible semantics.
+5. Selected algorithm set must be emitted in runtime/session metadata for auditability.
+
+Downgrade and upgrade rules:
+
+1. Downgrade from client-preferred set must be explicit in negotiation response.
+2. Silent fallback to unknown/undeclared sets is forbidden.
+3. New set ids must be additive and documented before runtime enablement.

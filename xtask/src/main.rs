@@ -25,6 +25,7 @@ const PAYLOAD_CONTRACT_PATH: &str = "docs/contracts/payload-contract.md";
 const CODEOWNERS_PATH: &str = ".github/CODEOWNERS";
 const CI_WORKFLOW_PATH: &str = ".github/workflows/ci.yml";
 const SECURITY_THREAT_MODEL_PATH: &str = "docs/adr/0004-sdk-v25-threat-model.md";
+const CRYPTO_AGILITY_ADR_PATH: &str = "docs/adr/0007-crypto-agility-roadmap.md";
 const SECURITY_REVIEW_CHECKLIST_PATH: &str = "docs/runbooks/security-review-checklist.md";
 const SDK_DOCS_CHECKLIST_PATH: &str = "docs/runbooks/sdk-docs-checklist.md";
 const INCIDENT_RUNBOOK_PATH: &str = "docs/runbooks/incident-response-playbooks.md";
@@ -297,6 +298,7 @@ enum XtaskCommand {
     ExtensionRegistryCheck,
     LeaderReadinessCheck,
     SecurityReviewCheck,
+    CryptoAgilityCheck,
     SdkSecurityCheck,
     SdkFuzzCheck,
     SdkPropertyCheck,
@@ -356,6 +358,7 @@ enum CiStage {
     ExtensionRegistryCheck,
     LeaderReadinessCheck,
     SecurityReviewCheck,
+    CryptoAgilityCheck,
     SdkSecurityCheck,
     SdkFuzzCheck,
     SdkPropertyCheck,
@@ -423,6 +426,7 @@ fn main() -> Result<()> {
         XtaskCommand::ExtensionRegistryCheck => run_extension_registry_check(),
         XtaskCommand::LeaderReadinessCheck => run_leader_readiness_check(),
         XtaskCommand::SecurityReviewCheck => run_security_review_check(),
+        XtaskCommand::CryptoAgilityCheck => run_crypto_agility_check(),
         XtaskCommand::SdkSecurityCheck => run_sdk_security_check(),
         XtaskCommand::SdkFuzzCheck => run_sdk_fuzz_check(),
         XtaskCommand::SdkPropertyCheck => run_sdk_property_check(),
@@ -482,6 +486,7 @@ fn run_ci(stage: Option<CiStage>) -> Result<()> {
     run_compat_kit_check()?;
     run_e2e_compatibility()?;
     run_sdk_conformance()?;
+    run_crypto_agility_check()?;
     run_sdk_profile_build()?;
     run_sdk_examples_check()?;
     run_changelog_migration_check()?;
@@ -557,6 +562,7 @@ fn run_ci_stage(stage: CiStage) -> Result<()> {
         CiStage::ExtensionRegistryCheck => run_extension_registry_check(),
         CiStage::LeaderReadinessCheck => run_leader_readiness_check(),
         CiStage::SecurityReviewCheck => run_security_review_check(),
+        CiStage::CryptoAgilityCheck => run_crypto_agility_check(),
         CiStage::SdkSecurityCheck => run_sdk_security_check(),
         CiStage::SdkFuzzCheck => run_sdk_fuzz_check(),
         CiStage::SdkPropertyCheck => run_sdk_property_check(),
@@ -596,6 +602,7 @@ fn run_release_check() -> Result<()> {
     run_extension_registry_check()?;
     run_sdk_api_break()?;
     run_changelog_migration_check()?;
+    run_crypto_agility_check()?;
     run_supply_chain_check()?;
     run("cargo", &["deny", "check"])?;
     run("cargo", &["audit"])?;
@@ -1689,6 +1696,63 @@ fn run_security_review_check() -> Result<()> {
             "security review checklist requires at least 6 PASS controls in {SECURITY_REVIEW_CHECKLIST_PATH}"
         );
     }
+    Ok(())
+}
+
+fn run_crypto_agility_check() -> Result<()> {
+    let rpc_contract = fs::read_to_string(RPC_CONTRACT_PATH)
+        .with_context(|| format!("read {RPC_CONTRACT_PATH}"))?;
+    for marker in [
+        "## Cryptographic Agility Policy",
+        "algorithm_set_id",
+        "supported_algorithm_sets",
+        "selected_algorithm_set",
+        "rns-a1",
+        "rns-a2",
+    ] {
+        if !rpc_contract.contains(marker) {
+            bail!("rpc contract missing crypto agility marker '{marker}' in {RPC_CONTRACT_PATH}");
+        }
+    }
+
+    let payload_contract = fs::read_to_string(PAYLOAD_CONTRACT_PATH)
+        .with_context(|| format!("read {PAYLOAD_CONTRACT_PATH}"))?;
+    for marker in ["## Cryptographic Agility Metadata", "algorithm_set_id", "fail closed", "rns-a1"]
+    {
+        if !payload_contract.contains(marker) {
+            bail!(
+                "payload contract missing crypto agility marker '{marker}' in {PAYLOAD_CONTRACT_PATH}"
+            );
+        }
+    }
+
+    let crypto_adr = fs::read_to_string(CRYPTO_AGILITY_ADR_PATH)
+        .with_context(|| format!("read {CRYPTO_AGILITY_ADR_PATH}"))?;
+    for marker in [
+        "# ADR 0007: Cryptographic Agility and Algorithm Negotiation Roadmap",
+        "- Status: Accepted",
+        "rns-a1",
+        "selected_algorithm_set",
+    ] {
+        if !crypto_adr.contains(marker) {
+            bail!("crypto agility adr missing marker '{marker}' in {CRYPTO_AGILITY_ADR_PATH}");
+        }
+    }
+
+    run(
+        "cargo",
+        &["test", "-p", "test-support", "sdk_conformance_crypto_agility", "--", "--nocapture"],
+    )?;
+
+    let workflow = fs::read_to_string(CI_WORKFLOW_PATH)
+        .with_context(|| format!("missing {CI_WORKFLOW_PATH}"))?;
+    if !workflow.contains("crypto-agility-check:") {
+        bail!("ci workflow must include a 'crypto-agility-check' job");
+    }
+    if !workflow.contains("cargo xtask ci --stage crypto-agility-check") {
+        bail!("ci workflow must execute `cargo xtask ci --stage crypto-agility-check`");
+    }
+
     Ok(())
 }
 

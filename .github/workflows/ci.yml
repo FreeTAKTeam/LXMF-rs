@@ -152,6 +152,14 @@ jobs:
       - name: Security checks
         run: cargo xtask ci --stage security
 
+  crypto-agility-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Crypto agility policy and negotiation tests
+        run: cargo xtask ci --stage crypto-agility-check
+
   supply-chain-check:
     runs-on: ubuntu-latest
     steps:
