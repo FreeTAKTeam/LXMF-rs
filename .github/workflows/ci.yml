@@ -372,6 +372,18 @@ jobs:
       - name: Alloc-first core compile matrix
         run: cargo xtask ci --stage embedded-core-check
 
+  embedded-footprint-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Embedded footprint budget gate
+        run: cargo xtask ci --stage embedded-footprint-check
+      - uses: actions/upload-artifact@v4
+        with:
+          name: embedded-footprint-report
+          path: target/embedded/footprint-report.txt
+
   sdk-profile-build:
     runs-on: ubuntu-latest
     steps:

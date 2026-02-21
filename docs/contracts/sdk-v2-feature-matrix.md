@@ -110,6 +110,7 @@ Budgets are expressed as maximum latency (`p50`/`p95`/`p99` in nanoseconds) and 
 ## Memory Budget Matrix
 
 Profile memory ceilings are release-gated with `cargo run -p xtask -- sdk-memory-budget-check`.
+Embedded code-size footprint is release-gated with `cargo run -p xtask -- embedded-footprint-check`.
 
 | Profile | max_heap_bytes | max_event_queue_bytes | max_attachment_spool_bytes |
 | --- | --- | --- | --- |

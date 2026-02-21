@@ -34,6 +34,7 @@ const SUPPLY_CHAIN_SIGNATURE_PATH: &str =
     "target/supply-chain/provenance/artifact-provenance.sha256";
 const REPRODUCIBLE_BUILD_REPORT_PATH: &str =
     "target/supply-chain/reproducible/reproducible-build-report.txt";
+const EMBEDDED_FOOTPRINT_REPORT_PATH: &str = "target/embedded/footprint-report.txt";
 const LEADER_READINESS_REPORT_PATH: &str = "target/release-readiness/leader-grade-readiness.md";
 
 const RELEASE_BINARIES: &[&str] = &[
@@ -290,6 +291,7 @@ enum XtaskCommand {
     SdkMatrixCheck,
     EmbeddedLinkCheck,
     EmbeddedCoreCheck,
+    EmbeddedFootprintCheck,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
@@ -344,6 +346,7 @@ enum CiStage {
     SdkMatrixCheck,
     EmbeddedLinkCheck,
     EmbeddedCoreCheck,
+    EmbeddedFootprintCheck,
     MigrationChecks,
     ArchitectureChecks,
     ForbiddenDeps,
@@ -402,6 +405,7 @@ fn main() -> Result<()> {
         XtaskCommand::SdkMatrixCheck => run_sdk_matrix_check(),
         XtaskCommand::EmbeddedLinkCheck => run_embedded_link_check(),
         XtaskCommand::EmbeddedCoreCheck => run_embedded_core_check(),
+        XtaskCommand::EmbeddedFootprintCheck => run_embedded_footprint_check(),
     }
 }
 
@@ -463,6 +467,7 @@ fn run_ci(stage: Option<CiStage>) -> Result<()> {
     run_sdk_matrix_check()?;
     run_embedded_link_check()?;
     run_embedded_core_check()?;
+    run_embedded_footprint_check()?;
     run_migration_checks()?;
     run_architecture_checks()?;
     Ok(())
@@ -526,6 +531,7 @@ fn run_ci_stage(stage: CiStage) -> Result<()> {
         CiStage::SdkMatrixCheck => run_sdk_matrix_check(),
         CiStage::EmbeddedLinkCheck => run_embedded_link_check(),
         CiStage::EmbeddedCoreCheck => run_embedded_core_check(),
+        CiStage::EmbeddedFootprintCheck => run_embedded_footprint_check(),
         CiStage::MigrationChecks => run_migration_checks(),
         CiStage::ArchitectureChecks => run_architecture_checks(),
         CiStage::ForbiddenDeps => run_forbidden_deps(),
@@ -1873,6 +1879,28 @@ fn run_embedded_core_check() -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+fn run_embedded_footprint_check() -> Result<()> {
+    run_sdk_memory_budget_check()?;
+    run("bash", &["tools/scripts/embedded-footprint-check.sh"])?;
+
+    let report = fs::read_to_string(EMBEDDED_FOOTPRINT_REPORT_PATH)
+        .with_context(|| format!("missing {EMBEDDED_FOOTPRINT_REPORT_PATH}"))?;
+    for marker in [
+        "# Embedded Footprint Report",
+        "example_binary_bytes=",
+        "embedded_heap_budget_bytes=8388608",
+        "embedded_event_queue_budget_bytes=2097152",
+        "embedded_attachment_spool_budget_bytes=16777216",
+    ] {
+        if !report.contains(marker) {
+            bail!(
+                "embedded footprint report missing required marker '{marker}' in {EMBEDDED_FOOTPRINT_REPORT_PATH}"
+            );
+        }
+    }
     Ok(())
 }
 
