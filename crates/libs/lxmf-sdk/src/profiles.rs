@@ -27,6 +27,7 @@ const CAP_PAPER_MESSAGES: &str = "sdk.capability.paper_messages";
 const CAP_REMOTE_COMMANDS: &str = "sdk.capability.remote_commands";
 const CAP_VOICE_SIGNALING: &str = "sdk.capability.voice_signaling";
 const CAP_GROUP_DELIVERY: &str = "sdk.capability.group_delivery";
+const CAP_EVENT_SINK_BRIDGE: &str = "sdk.capability.event_sink_bridge";
 const CAP_SHARED_INSTANCE_RPC_AUTH: &str = "sdk.capability.shared_instance_rpc_auth";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -77,6 +78,7 @@ const DESKTOP_FULL_SUPPORTED: &[&str] = &[
     CAP_REMOTE_COMMANDS,
     CAP_VOICE_SIGNALING,
     CAP_GROUP_DELIVERY,
+    CAP_EVENT_SINK_BRIDGE,
     CAP_SHARED_INSTANCE_RPC_AUTH,
 ];
 
@@ -107,6 +109,7 @@ const DESKTOP_LOCAL_RUNTIME_SUPPORTED: &[&str] = &[
     CAP_REMOTE_COMMANDS,
     CAP_VOICE_SIGNALING,
     CAP_GROUP_DELIVERY,
+    CAP_EVENT_SINK_BRIDGE,
     CAP_SHARED_INSTANCE_RPC_AUTH,
 ];
 
@@ -135,6 +138,7 @@ const EMBEDDED_ALLOC_SUPPORTED: &[&str] = &[
     CAP_REMOTE_COMMANDS,
     CAP_VOICE_SIGNALING,
     CAP_GROUP_DELIVERY,
+    CAP_EVENT_SINK_BRIDGE,
     CAP_SHARED_INSTANCE_RPC_AUTH,
 ];
 

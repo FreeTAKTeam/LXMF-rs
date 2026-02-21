@@ -1,4 +1,7 @@
 {
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://weft.tak/contracts/sdk/v2/clients/smoke-requests.json",
+  "title": "LXMF SDK v2 Client Smoke Requests",
   "contract_release": "v2.5",
   "schema_namespace": "v2",
   "smoke_vectors": [
@@ -12,22 +15,29 @@
         "requested_capabilities": [
           "sdk.capability.cursor_replay"
         ],
-        "profile": "desktop-full",
-        "bind_mode": "local_only",
-        "auth_mode": "local_trusted",
-        "overflow_policy": "reject"
+        "config": {
+          "profile": "desktop-full",
+          "bind_mode": "local_only",
+          "auth_mode": "local_trusted",
+          "overflow_policy": "reject"
+        }
       }
     },
     {
       "language": "javascript",
-      "method": "send_message_v2",
+      "method": "sdk_send_v2",
       "request": {
         "source": "source-a",
         "destination": "destination-b",
-        "payload": {
-          "content": "hello"
-        },
-        "idempotency_key": "idem-1"
+        "content": "hello",
+        "id": "msg-id-1"
+      }
+    },
+    {
+      "language": "python",
+      "method": "sdk_snapshot_v2",
+      "request": {
+        "include_counts": true
       }
     },
     {
@@ -35,7 +45,7 @@
       "method": "sdk_poll_events_v2",
       "request": {
         "cursor": null,
-        "max_events": 64
+        "max": 64
       }
     }
   ]

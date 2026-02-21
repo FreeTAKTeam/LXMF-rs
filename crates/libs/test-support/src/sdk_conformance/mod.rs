@@ -198,7 +198,27 @@ impl Drop for RpcHarness {
 fn base_start_request() -> StartRequest {
     serde_json::from_value(json!({
         "supported_contract_versions": [2],
-        "requested_capabilities": [],
+        "requested_capabilities": [
+            "sdk.capability.topics",
+            "sdk.capability.topic_subscriptions",
+            "sdk.capability.topic_fanout",
+            "sdk.capability.telemetry_query",
+            "sdk.capability.telemetry_stream",
+            "sdk.capability.attachments",
+            "sdk.capability.attachment_delete",
+            "sdk.capability.attachment_streaming",
+            "sdk.capability.markers",
+            "sdk.capability.identity_multi",
+            "sdk.capability.identity_discovery",
+            "sdk.capability.identity_import_export",
+            "sdk.capability.identity_hash_resolution",
+            "sdk.capability.contact_management",
+            "sdk.capability.paper_messages",
+            "sdk.capability.remote_commands",
+            "sdk.capability.voice_signaling",
+            "sdk.capability.group_delivery",
+            "sdk.capability.shared_instance_rpc_auth"
+        ],
         "config": {
             "profile": "desktop-full",
             "bind_mode": "local_only",
