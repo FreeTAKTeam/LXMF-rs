@@ -135,10 +135,21 @@ Migration gate is passing only when all checks pass:
 3. `cargo xtask sdk-api-break`
 4. `cargo xtask sdk-schema-check`
 5. `cargo xtask sdk-conformance`
+6. `cargo xtask changelog-migration-check`
 
 API break baseline source of truth:
 
 - `docs/contracts/baselines/lxmf-sdk-public-api.txt`
+
+Generated migration notes artifact:
+
+- `target/release-readiness/generated-migration-notes.md`
+
+Generation command:
+
+```bash
+cargo xtask changelog-migration-check
+```
 
 ## Release Readiness Requirements
 

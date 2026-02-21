@@ -45,6 +45,7 @@ This checklist is the publication gate for the Rust workspace.
 - `extension-registry-check`
 - `architecture-lint`
 - `architecture-checks`
+- `changelog-migration-check`
 
 ## 5. Local release checks
 
@@ -76,6 +77,7 @@ cargo run -p xtask -- canary-criteria-check
 cargo run -p xtask -- extension-registry-check
 cargo run -p xtask -- architecture-lint-check
 cargo run -p xtask -- architecture-checks
+cargo run -p xtask -- changelog-migration-check
 cargo run -p xtask -- supply-chain-check
 cargo run -p xtask -- reproducible-build-check
 cargo run -p xtask -- leader-readiness-check

@@ -450,6 +450,18 @@ jobs:
       - name: SDK migration gate
         run: cargo xtask ci --stage sdk-migration-check
 
+  changelog-migration-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Generate changelog and migration notes
+        run: cargo xtask ci --stage changelog-migration-check
+      - uses: actions/upload-artifact@v4
+        with:
+          name: generated-migration-notes
+          path: target/release-readiness/generated-migration-notes.md
+
   governance-check:
     runs-on: ubuntu-latest
     steps:
