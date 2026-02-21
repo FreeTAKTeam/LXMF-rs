@@ -269,6 +269,7 @@ pub struct RpcDaemon {
     sdk_attachments: Mutex<HashMap<String, SdkAttachmentRecord>>,
     sdk_attachment_payloads: Mutex<HashMap<String, String>>,
     sdk_attachment_order: Mutex<Vec<String>>,
+    sdk_attachment_uploads: Mutex<HashMap<String, SdkAttachmentUploadSession>>,
     sdk_markers: Mutex<HashMap<String, SdkMarkerRecord>>,
     sdk_marker_order: Mutex<Vec<String>>,
     sdk_identities: Mutex<HashMap<String, SdkIdentityBundle>>,

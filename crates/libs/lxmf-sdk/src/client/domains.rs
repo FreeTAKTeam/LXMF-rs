@@ -87,6 +87,34 @@ impl<B: SdkBackend> LxmfSdkAttachments for Client<B> {
         self.backend.attachment_download(attachment_id)
     }
 
+    fn attachment_upload_start(
+        &self,
+        req: crate::domain::AttachmentUploadStartRequest,
+    ) -> Result<crate::domain::AttachmentUploadSession, SdkError> {
+        self.backend.attachment_upload_start(req)
+    }
+
+    fn attachment_upload_chunk(
+        &self,
+        req: crate::domain::AttachmentUploadChunkRequest,
+    ) -> Result<crate::domain::AttachmentUploadChunkAck, SdkError> {
+        self.backend.attachment_upload_chunk(req)
+    }
+
+    fn attachment_upload_commit(
+        &self,
+        req: crate::domain::AttachmentUploadCommitRequest,
+    ) -> Result<crate::domain::AttachmentMeta, SdkError> {
+        self.backend.attachment_upload_commit(req)
+    }
+
+    fn attachment_download_chunk(
+        &self,
+        req: crate::domain::AttachmentDownloadChunkRequest,
+    ) -> Result<crate::domain::AttachmentDownloadChunk, SdkError> {
+        self.backend.attachment_download_chunk(req)
+    }
+
     fn attachment_associate_topic(
         &self,
         attachment_id: crate::domain::AttachmentId,

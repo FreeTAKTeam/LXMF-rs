@@ -51,10 +51,14 @@
             "sdk_telemetry_query_v2",
             "sdk_telemetry_subscribe_v2",
             "sdk_attachment_store_v2",
+            "sdk_attachment_upload_start_v2",
+            "sdk_attachment_upload_chunk_v2",
+            "sdk_attachment_upload_commit_v2",
             "sdk_attachment_get_v2",
             "sdk_attachment_list_v2",
             "sdk_attachment_delete_v2",
             "sdk_attachment_download_v2",
+            "sdk_attachment_download_chunk_v2",
             "sdk_attachment_associate_topic_v2",
             "sdk_marker_create_v2",
             "sdk_marker_list_v2",
@@ -236,6 +240,73 @@
         },
         {
           "if": {
+            "properties": { "method": { "const": "sdk_attachment_upload_start_v2" } },
+            "required": ["method"]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name", "content_type", "total_size", "checksum_sha256"],
+                "properties": {
+                  "name": { "type": "string", "minLength": 1 },
+                  "content_type": { "type": "string", "minLength": 1 },
+                  "total_size": { "type": "integer", "minimum": 1 },
+                  "checksum_sha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" },
+                  "expires_ts_ms": { "type": ["integer", "null"], "minimum": 0 },
+                  "topic_ids": {
+                    "type": "array",
+                    "items": { "type": "string", "minLength": 1 }
+                  },
+                  "extensions": { "$ref": "#/$defs/extension_map" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "method": { "const": "sdk_attachment_upload_chunk_v2" } },
+            "required": ["method"]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["upload_id", "offset", "bytes_base64"],
+                "properties": {
+                  "upload_id": { "type": "string", "minLength": 1 },
+                  "offset": { "type": "integer", "minimum": 0 },
+                  "bytes_base64": { "type": "string", "minLength": 1 },
+                  "extensions": { "$ref": "#/$defs/extension_map" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "method": { "const": "sdk_attachment_upload_commit_v2" } },
+            "required": ["method"]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["upload_id"],
+                "properties": {
+                  "upload_id": { "type": "string", "minLength": 1 },
+                  "extensions": { "$ref": "#/$defs/extension_map" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
             "properties": {
               "method": {
                 "enum": [
@@ -255,6 +326,27 @@
                 "required": ["attachment_id"],
                 "properties": {
                   "attachment_id": { "type": "string", "minLength": 1 },
+                  "extensions": { "$ref": "#/$defs/extension_map" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "method": { "const": "sdk_attachment_download_chunk_v2" } },
+            "required": ["method"]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["attachment_id"],
+                "properties": {
+                  "attachment_id": { "type": "string", "minLength": 1 },
+                  "offset": { "type": "integer", "minimum": 0 },
+                  "max_bytes": { "type": "integer", "minimum": 1 },
                   "extensions": { "$ref": "#/$defs/extension_map" }
                 }
               }

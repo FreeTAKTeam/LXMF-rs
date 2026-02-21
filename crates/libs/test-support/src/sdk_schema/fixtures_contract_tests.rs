@@ -85,6 +85,21 @@ fn sdk_schema_valid_fixtures_pass_contract_checks() {
     );
     assert_schema_valid(
         &schemas.command,
+        "docs/fixtures/sdk-v2/command.attachment_upload_start.valid.json",
+        &fixture("docs/fixtures/sdk-v2/command.attachment_upload_start.valid.json"),
+    );
+    assert_schema_valid(
+        &schemas.command,
+        "docs/fixtures/sdk-v2/command.attachment_upload_chunk.valid.json",
+        &fixture("docs/fixtures/sdk-v2/command.attachment_upload_chunk.valid.json"),
+    );
+    assert_schema_valid(
+        &schemas.command,
+        "docs/fixtures/sdk-v2/command.attachment_upload_commit.valid.json",
+        &fixture("docs/fixtures/sdk-v2/command.attachment_upload_commit.valid.json"),
+    );
+    assert_schema_valid(
+        &schemas.command,
         "docs/fixtures/sdk-v2/command.attachment_get.valid.json",
         &fixture("docs/fixtures/sdk-v2/command.attachment_get.valid.json"),
     );
@@ -102,6 +117,11 @@ fn sdk_schema_valid_fixtures_pass_contract_checks() {
         &schemas.command,
         "docs/fixtures/sdk-v2/command.attachment_download.valid.json",
         &fixture("docs/fixtures/sdk-v2/command.attachment_download.valid.json"),
+    );
+    assert_schema_valid(
+        &schemas.command,
+        "docs/fixtures/sdk-v2/command.attachment_download_chunk.valid.json",
+        &fixture("docs/fixtures/sdk-v2/command.attachment_download_chunk.valid.json"),
     );
     assert_schema_valid(
         &schemas.command,
@@ -305,6 +325,21 @@ fn sdk_schema_invalid_fixtures_are_rejected() {
     );
     assert_schema_invalid(
         &schemas.command,
+        "docs/fixtures/sdk-v2/command.attachment_upload_start.invalid.json",
+        &fixture("docs/fixtures/sdk-v2/command.attachment_upload_start.invalid.json"),
+    );
+    assert_schema_invalid(
+        &schemas.command,
+        "docs/fixtures/sdk-v2/command.attachment_upload_chunk.invalid.json",
+        &fixture("docs/fixtures/sdk-v2/command.attachment_upload_chunk.invalid.json"),
+    );
+    assert_schema_invalid(
+        &schemas.command,
+        "docs/fixtures/sdk-v2/command.attachment_upload_commit.invalid.json",
+        &fixture("docs/fixtures/sdk-v2/command.attachment_upload_commit.invalid.json"),
+    );
+    assert_schema_invalid(
+        &schemas.command,
         "docs/fixtures/sdk-v2/command.attachment_get.invalid.json",
         &fixture("docs/fixtures/sdk-v2/command.attachment_get.invalid.json"),
     );
@@ -322,6 +357,11 @@ fn sdk_schema_invalid_fixtures_are_rejected() {
         &schemas.command,
         "docs/fixtures/sdk-v2/command.attachment_download.invalid.json",
         &fixture("docs/fixtures/sdk-v2/command.attachment_download.invalid.json"),
+    );
+    assert_schema_invalid(
+        &schemas.command,
+        "docs/fixtures/sdk-v2/command.attachment_download_chunk.invalid.json",
+        &fixture("docs/fixtures/sdk-v2/command.attachment_download_chunk.invalid.json"),
     );
     assert_schema_invalid(
         &schemas.command,

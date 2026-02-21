@@ -39,6 +39,21 @@ struct SdkAttachmentRecord {
     extensions: JsonMap<String, JsonValue>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+struct SdkAttachmentUploadSession {
+    upload_id: String,
+    attachment_id: String,
+    name: String,
+    content_type: String,
+    total_size: u64,
+    checksum_sha256: String,
+    expires_ts_ms: Option<u64>,
+    topic_ids: Vec<String>,
+    extensions: JsonMap<String, JsonValue>,
+    payload: Vec<u8>,
+    next_offset: u64,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 struct SdkGeoPoint {
     lat: f64,
@@ -226,6 +241,51 @@ struct SdkAttachmentListV2Params {
 struct SdkAttachmentAssociateTopicV2Params {
     attachment_id: String,
     topic_id: String,
+    #[serde(default)]
+    extensions: JsonMap<String, JsonValue>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SdkAttachmentUploadStartV2Params {
+    name: String,
+    content_type: String,
+    total_size: u64,
+    checksum_sha256: String,
+    #[serde(default)]
+    expires_ts_ms: Option<u64>,
+    #[serde(default)]
+    topic_ids: Vec<String>,
+    #[serde(default)]
+    extensions: JsonMap<String, JsonValue>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SdkAttachmentUploadChunkV2Params {
+    upload_id: String,
+    offset: u64,
+    bytes_base64: String,
+    #[serde(default)]
+    extensions: JsonMap<String, JsonValue>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SdkAttachmentUploadCommitV2Params {
+    upload_id: String,
+    #[serde(default)]
+    extensions: JsonMap<String, JsonValue>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SdkAttachmentDownloadChunkV2Params {
+    attachment_id: String,
+    #[serde(default)]
+    offset: Option<u64>,
+    #[serde(default)]
+    max_bytes: Option<usize>,
     #[serde(default)]
     extensions: JsonMap<String, JsonValue>,
 }

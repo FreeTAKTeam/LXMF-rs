@@ -128,6 +128,73 @@ pub struct AttachmentListResult {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub struct AttachmentUploadId(pub String);
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct AttachmentUploadStartRequest {
+    pub name: String,
+    pub content_type: String,
+    pub total_size: u64,
+    pub checksum_sha256: String,
+    pub expires_ts_ms: Option<u64>,
+    #[serde(default)]
+    pub topic_ids: Vec<TopicId>,
+    #[serde(default)]
+    pub extensions: BTreeMap<String, JsonValue>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct AttachmentUploadSession {
+    pub upload_id: AttachmentUploadId,
+    pub attachment_id: AttachmentId,
+    pub chunk_size_hint: usize,
+    pub next_offset: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct AttachmentUploadChunkRequest {
+    pub upload_id: AttachmentUploadId,
+    pub offset: u64,
+    pub bytes_base64: String,
+    #[serde(default)]
+    pub extensions: BTreeMap<String, JsonValue>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct AttachmentUploadChunkAck {
+    pub accepted: bool,
+    pub next_offset: u64,
+    pub complete: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct AttachmentUploadCommitRequest {
+    pub upload_id: AttachmentUploadId,
+    #[serde(default)]
+    pub extensions: BTreeMap<String, JsonValue>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct AttachmentDownloadChunkRequest {
+    pub attachment_id: AttachmentId,
+    pub offset: u64,
+    pub max_bytes: usize,
+    #[serde(default)]
+    pub extensions: BTreeMap<String, JsonValue>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct AttachmentDownloadChunk {
+    pub attachment_id: AttachmentId,
+    pub offset: u64,
+    pub next_offset: u64,
+    pub total_size: u64,
+    pub done: bool,
+    pub checksum_sha256: String,
+    pub bytes_base64: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct MarkerId(pub String);
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

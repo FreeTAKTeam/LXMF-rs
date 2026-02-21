@@ -38,8 +38,8 @@
     },
     {
       "path": "docs/contracts/payload-contract.md",
-      "bytes": 4032,
-      "sha256": "93c804105e3fbb91e0aecb2bd4c724ce2c0e0446cfcfca5abee24cbbd9ae8bf3"
+      "bytes": 4733,
+      "sha256": "059f92c0fd0a830543276c3fdf831d355ed6f9e6147585d0a048102461e0b999"
     },
     {
       "path": "docs/contracts/rpc-contract.md",
@@ -48,13 +48,13 @@
     },
     {
       "path": "docs/contracts/sdk-v2-attachments.md",
-      "bytes": 788,
-      "sha256": "eec33fcf66d67988e81acc23a33eddc1fa8decec5eb60e622d6c8e75c9e92789"
+      "bytes": 1580,
+      "sha256": "231d3a2e334b20e9204a7de5f0caae4d6f8ffbab3ab2815060da28d15fab18ef"
     },
     {
       "path": "docs/contracts/sdk-v2-backends.md",
-      "bytes": 3495,
-      "sha256": "00f6778fe9d2fc978fa67726b4d7d3ce77c76f19a2cc69c0d6a8ffca955c7809"
+      "bytes": 3910,
+      "sha256": "db0fb1e8185c847e6c243f06d2e716c3ab4889c16b5a8a46692d91ffec11bc66"
     },
     {
       "path": "docs/contracts/sdk-v2-commands.md",
@@ -73,8 +73,8 @@
     },
     {
       "path": "docs/contracts/sdk-v2-feature-matrix.md",
-      "bytes": 8007,
-      "sha256": "ccc2841c9b5280220a04c87620bfd362764419c21b74ff58c97a8bdf0faf9a74"
+      "bytes": 8082,
+      "sha256": "f1f7839dfd5c3af12e20ad752ac41afda55f31c9f081dbd8f735c23dea63dc1f"
     },
     {
       "path": "docs/contracts/sdk-v2-identity.md",
@@ -118,8 +118,8 @@
     },
     {
       "path": "docs/contracts/sdk-v2.md",
-      "bytes": 9838,
-      "sha256": "300d30bea2296102cce9f0905d76d4c82367569cc10c4df59a72dc49ffc1b224"
+      "bytes": 10456,
+      "sha256": "35f4aa59f7f893da76f6c32373c41684e4554b3a881b306973753cbe87df47e7"
     },
     {
       "path": "docs/contracts/support-policy.md",
@@ -192,6 +192,16 @@
       "sha256": "6761599f26bacfa538cb3e5fa05bf079b0bc65f80700b08b060d0837861d18d6"
     },
     {
+      "path": "docs/fixtures/sdk-v2/command.attachment_download_chunk.invalid.json",
+      "bytes": 150,
+      "sha256": "451457f11fab2ca8bf0b4d04a4a7b925e2f13d32a398b55dae26035f83035fe7"
+    },
+    {
+      "path": "docs/fixtures/sdk-v2/command.attachment_download_chunk.valid.json",
+      "bytes": 193,
+      "sha256": "4a6e2617dda7e55cb26a3db6d69e7087e69ccc9c5c0134db13753a5c1e35fc27"
+    },
+    {
       "path": "docs/fixtures/sdk-v2/command.attachment_get.invalid.json",
       "bytes": 95,
       "sha256": "7a5103ac488c2fdc8b9fa64935f74abf083b7ddfbcf32e5b1bf50a2d6e2cfab3"
@@ -220,6 +230,36 @@
       "path": "docs/fixtures/sdk-v2/command.attachment_store.valid.json",
       "bytes": 252,
       "sha256": "b1b81df0922c8168ce194da9d7efc47335a66bcc7570076f0ae5b7576b92e2df"
+    },
+    {
+      "path": "docs/fixtures/sdk-v2/command.attachment_upload_chunk.invalid.json",
+      "bytes": 172,
+      "sha256": "713130e2f8b2ad717fd5d63acb9c81f17c934a47e8a57269cdcdffd31446f75c"
+    },
+    {
+      "path": "docs/fixtures/sdk-v2/command.attachment_upload_chunk.valid.json",
+      "bytes": 183,
+      "sha256": "2571b62b93a525e5655837dcdbb728f2a4b031e6f72ec2f01bc7cfcc47d37f0b"
+    },
+    {
+      "path": "docs/fixtures/sdk-v2/command.attachment_upload_commit.invalid.json",
+      "bytes": 109,
+      "sha256": "6aa6c4d49376954e720ea93f990180d501e1d5b6e0296e3b06758a853e908148"
+    },
+    {
+      "path": "docs/fixtures/sdk-v2/command.attachment_upload_commit.valid.json",
+      "bytes": 140,
+      "sha256": "32de3f13e159c8d7575b404ed9bc90716313b51ebaac51ff725cdcd44220dca2"
+    },
+    {
+      "path": "docs/fixtures/sdk-v2/command.attachment_upload_start.invalid.json",
+      "bytes": 243,
+      "sha256": "2ccbb9bdb77ff7cf41bf568aa5773f515ab0047611c1b288eed3b26ade5d529e"
+    },
+    {
+      "path": "docs/fixtures/sdk-v2/command.attachment_upload_start.valid.json",
+      "bytes": 389,
+      "sha256": "bc0ab3559a9189fbf4d8e8c63dab800957f9a90a21dddb8bf8fc3ca3dfe56cd9"
     },
     {
       "path": "docs/fixtures/sdk-v2/command.command_invoke.invalid.json",
@@ -587,6 +627,16 @@
       "sha256": "b5fb26f0b2cd57260362d84c8ff8d945bff958d38528c1bb6225041e16555900"
     },
     {
+      "path": "docs/fixtures/sdk-v2/rpc/release-b/sdk_attachment_download_chunk_v2.request.invalid.json",
+      "bytes": 121,
+      "sha256": "42e6d35049bb7e8c5973a848098cb4c341a5b84fcd9250f5a9232b067604efe4"
+    },
+    {
+      "path": "docs/fixtures/sdk-v2/rpc/release-b/sdk_attachment_download_chunk_v2.request.valid.json",
+      "bytes": 161,
+      "sha256": "ef419d25e112fbc235671b46aa4f405c90d07076582ad55fd0becef02226dc72"
+    },
+    {
       "path": "docs/fixtures/sdk-v2/rpc/release-b/sdk_attachment_download_v2.request.invalid.json",
       "bytes": 104,
       "sha256": "78415702deea250532d53d7d9016ff49b9e233624a4b0791b242ec9fc05ecdb5"
@@ -625,6 +675,36 @@
       "path": "docs/fixtures/sdk-v2/rpc/release-b/sdk_attachment_store_v2.request.valid.json",
       "bytes": 251,
       "sha256": "6006aba2aee8c52996f0b924de63a54f1017792ee7671ccb5243bf91f61ae14b"
+    },
+    {
+      "path": "docs/fixtures/sdk-v2/rpc/release-b/sdk_attachment_upload_chunk_v2.request.invalid.json",
+      "bytes": 144,
+      "sha256": "a8e1785ae5897cafbad5718512a3fdcc80e03e22e360671303c7181c51fb66fe"
+    },
+    {
+      "path": "docs/fixtures/sdk-v2/rpc/release-b/sdk_attachment_upload_chunk_v2.request.valid.json",
+      "bytes": 155,
+      "sha256": "3fa621e7fd96df8298437618ed1f13f21b65555a1830acbce19d4fa2f516a86e"
+    },
+    {
+      "path": "docs/fixtures/sdk-v2/rpc/release-b/sdk_attachment_upload_commit_v2.request.invalid.json",
+      "bytes": 80,
+      "sha256": "8a060381979ef62ee5073f92b91e4e39e89e268d00d1a1f91ed187bdf1ec535c"
+    },
+    {
+      "path": "docs/fixtures/sdk-v2/rpc/release-b/sdk_attachment_upload_commit_v2.request.valid.json",
+      "bytes": 111,
+      "sha256": "c3b061ebd611d9ae2945c05b2e8ce8f8cec79498061cc3674adf70e86d9ea946"
+    },
+    {
+      "path": "docs/fixtures/sdk-v2/rpc/release-b/sdk_attachment_upload_start_v2.request.invalid.json",
+      "bytes": 206,
+      "sha256": "774ec09a1ee376cd819e7b3883fa2f158b057725fcfd9cca2787a86a7478876b"
+    },
+    {
+      "path": "docs/fixtures/sdk-v2/rpc/release-b/sdk_attachment_upload_start_v2.request.valid.json",
+      "bytes": 268,
+      "sha256": "be48d19bde9530fc33dfc72b251081304f210819b814e89f254e2a46595ae6f9"
     },
     {
       "path": "docs/fixtures/sdk-v2/rpc/release-b/sdk_marker_create_v2.request.invalid.json",
@@ -1023,8 +1103,8 @@
     },
     {
       "path": "docs/schemas/sdk/v2/attachment.schema.json",
-      "bytes": 2653,
-      "sha256": "af6f1635deea643dd9e092dd4326e2dca443cefc6b5ba798d06a18ada18002c3"
+      "bytes": 6591,
+      "sha256": "813475aea2fdd1312660bf03b534800683bcf24b2cc4e17223b0ed3f7f7d73e0"
     },
     {
       "path": "docs/schemas/sdk/v2/command-plugin.schema.json",
@@ -1033,8 +1113,8 @@
     },
     {
       "path": "docs/schemas/sdk/v2/command.schema.json",
-      "bytes": 26042,
-      "sha256": "e40984cf108f6143ffe91fc6a1d3177c195ed1c204d20d0c79b19a286e3b4d49"
+      "bytes": 29026,
+      "sha256": "165baef839489729bd44a9bb6cc54499c8a9ac0c7d41167a23b9020b37a11ef8"
     },
     {
       "path": "docs/schemas/sdk/v2/config.schema.json",
@@ -1088,8 +1168,8 @@
     },
     {
       "path": "docs/schemas/sdk/v2/rpc/sdk_release_b_methods.schema.json",
-      "bytes": 13935,
-      "sha256": "91d5ea245ebb14dca640a5ff59edefbdb04395a6951538718fd4724217c85547"
+      "bytes": 17343,
+      "sha256": "2b398c6684fd1de2c2ed2029a180728dc5c7e51d8f8cbbd9f916f811ab4f019f"
     },
     {
       "path": "docs/schemas/sdk/v2/rpc/sdk_release_c_methods.schema.json",

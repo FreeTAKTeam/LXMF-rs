@@ -11,6 +11,7 @@ publish = false
 workspace = true
 
 [dev-dependencies]
+base64.workspace = true
 jsonschema = { version = "0.18.0", features = ["draft202012"] }
 lxmf-sdk = { workspace = true, features = ["rpc-backend", "std", "sdk-async"] }
 rns-rpc.workspace = true

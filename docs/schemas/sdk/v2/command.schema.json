@@ -35,10 +35,14 @@
         "telemetry_query",
         "telemetry_subscribe",
         "attachment_store",
+        "attachment_upload_start",
+        "attachment_upload_chunk",
+        "attachment_upload_commit",
         "attachment_get",
         "attachment_list",
         "attachment_delete",
         "attachment_download",
+        "attachment_download_chunk",
         "attachment_associate_topic",
         "marker_create",
         "marker_list",
@@ -500,6 +504,94 @@
               "bytes_base64": { "type": "string", "minLength": 1 },
               "expires_ts_ms": { "type": ["integer", "null"], "minimum": 0 },
               "topic_ids": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "attachment_upload_start" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "content_type", "total_size", "checksum_sha256"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "content_type": { "type": "string", "minLength": 1 },
+              "total_size": { "type": "integer", "minimum": 1 },
+              "checksum_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-fA-F]{64}$"
+              },
+              "expires_ts_ms": { "type": ["integer", "null"], "minimum": 0 },
+              "topic_ids": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "attachment_upload_chunk" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["upload_id", "offset", "bytes_base64"],
+            "properties": {
+              "upload_id": { "type": "string", "minLength": 1 },
+              "offset": { "type": "integer", "minimum": 0 },
+              "bytes_base64": { "type": "string", "minLength": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "attachment_upload_commit" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["upload_id"],
+            "properties": {
+              "upload_id": { "type": "string", "minLength": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "attachment_download_chunk" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["attachment_id"],
+            "properties": {
+              "attachment_id": { "type": "string", "minLength": 1 },
+              "offset": { "type": "integer", "minimum": 0 },
+              "max_bytes": { "type": "integer", "minimum": 1 },
               "extensions": { "$ref": "#/$defs/extension_map" }
             }
           }

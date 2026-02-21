@@ -1,11 +1,13 @@
 use super::{base_start_request, send_request, RpcHarness};
+use base64::Engine as _;
 use lxmf_sdk::{
     domain::{
-        AttachmentStoreRequest, GeoPoint, IdentityImportRequest, IdentityResolveRequest,
-        MarkerCreateRequest, MarkerListRequest, MarkerUpdatePositionRequest, PaperMessageEnvelope,
-        RemoteCommandRequest, RemoteCommandResponse, TelemetryQuery, TopicCreateRequest,
-        TopicListRequest, TopicPath, TopicPublishRequest, VoiceSessionOpenRequest,
-        VoiceSessionState, VoiceSessionUpdateRequest,
+        AttachmentDownloadChunkRequest, AttachmentStoreRequest, AttachmentUploadChunkRequest,
+        AttachmentUploadCommitRequest, AttachmentUploadStartRequest, GeoPoint,
+        IdentityImportRequest, IdentityResolveRequest, MarkerCreateRequest, MarkerListRequest,
+        MarkerUpdatePositionRequest, PaperMessageEnvelope, RemoteCommandRequest,
+        RemoteCommandResponse, TelemetryQuery, TopicCreateRequest, TopicListRequest, TopicPath,
+        TopicPublishRequest, VoiceSessionOpenRequest, VoiceSessionState, VoiceSessionUpdateRequest,
     },
     LxmfSdk, LxmfSdkAttachments, LxmfSdkIdentity, LxmfSdkMarkers, LxmfSdkPaper,
     LxmfSdkRemoteCommands, LxmfSdkTelemetry, LxmfSdkTopics, LxmfSdkVoiceSignaling,
@@ -69,6 +71,62 @@ fn sdk_conformance_release_bc_domain_methods_work_through_rpc_adapter() {
         .expect("attachment_get")
         .expect("attachment exists");
     assert_eq!(fetched_attachment.name, "note.txt");
+
+    let chunk_payload = b"streaming-attachment".to_vec();
+    let chunk_upload = client
+        .attachment_upload_start(AttachmentUploadStartRequest {
+            name: "stream.bin".to_string(),
+            content_type: "application/octet-stream".to_string(),
+            total_size: chunk_payload.len() as u64,
+            checksum_sha256: "f66703569b2656c9eab514d35a87341514b0f489e7015bff6b0f7c460e89d104"
+                .to_string(),
+            expires_ts_ms: None,
+            topic_ids: vec![topic.topic_id.clone()],
+            extensions: BTreeMap::new(),
+        })
+        .expect("attachment_upload_start");
+    let first = &chunk_payload[..6];
+    let second = &chunk_payload[6..];
+    let chunk_ack_1 = client
+        .attachment_upload_chunk(AttachmentUploadChunkRequest {
+            upload_id: chunk_upload.upload_id.clone(),
+            offset: 0,
+            bytes_base64: base64::engine::general_purpose::STANDARD.encode(first),
+            extensions: BTreeMap::new(),
+        })
+        .expect("attachment_upload_chunk 1");
+    assert_eq!(chunk_ack_1.next_offset, 6);
+    let chunk_ack_2 = client
+        .attachment_upload_chunk(AttachmentUploadChunkRequest {
+            upload_id: chunk_upload.upload_id.clone(),
+            offset: 6,
+            bytes_base64: base64::engine::general_purpose::STANDARD.encode(second),
+            extensions: BTreeMap::new(),
+        })
+        .expect("attachment_upload_chunk 2");
+    assert!(chunk_ack_2.complete);
+    let chunk_attachment = client
+        .attachment_upload_commit(AttachmentUploadCommitRequest {
+            upload_id: chunk_upload.upload_id.clone(),
+            extensions: BTreeMap::new(),
+        })
+        .expect("attachment_upload_commit");
+    let downloaded_chunk = client
+        .attachment_download_chunk(AttachmentDownloadChunkRequest {
+            attachment_id: chunk_attachment.attachment_id,
+            offset: 6,
+            max_bytes: 64,
+            extensions: BTreeMap::new(),
+        })
+        .expect("attachment_download_chunk");
+    assert_eq!(downloaded_chunk.offset, 6);
+    assert!(downloaded_chunk.done);
+    assert_eq!(
+        base64::engine::general_purpose::STANDARD
+            .decode(downloaded_chunk.bytes_base64.as_bytes())
+            .expect("decode downloaded chunk"),
+        second
+    );
 
     let marker = client
         .marker_create(MarkerCreateRequest {

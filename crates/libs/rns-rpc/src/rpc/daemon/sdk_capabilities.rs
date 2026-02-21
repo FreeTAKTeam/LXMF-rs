@@ -118,6 +118,7 @@ impl RpcDaemon {
             "sdk.capability.telemetry_stream".to_string(),
             "sdk.capability.attachments".to_string(),
             "sdk.capability.attachment_delete".to_string(),
+            "sdk.capability.attachment_streaming".to_string(),
             "sdk.capability.markers".to_string(),
             "sdk.capability.identity_multi".to_string(),
             "sdk.capability.identity_import_export".to_string(),

@@ -16,6 +16,7 @@ const CAP_TELEMETRY_QUERY: &str = "sdk.capability.telemetry_query";
 const CAP_TELEMETRY_STREAM: &str = "sdk.capability.telemetry_stream";
 const CAP_ATTACHMENTS: &str = "sdk.capability.attachments";
 const CAP_ATTACHMENT_DELETE: &str = "sdk.capability.attachment_delete";
+const CAP_ATTACHMENT_STREAMING: &str = "sdk.capability.attachment_streaming";
 const CAP_MARKERS: &str = "sdk.capability.markers";
 const CAP_IDENTITY_MULTI: &str = "sdk.capability.identity_multi";
 const CAP_IDENTITY_IMPORT_EXPORT: &str = "sdk.capability.identity_import_export";
@@ -63,6 +64,7 @@ const DESKTOP_FULL_SUPPORTED: &[&str] = &[
     CAP_TELEMETRY_STREAM,
     CAP_ATTACHMENTS,
     CAP_ATTACHMENT_DELETE,
+    CAP_ATTACHMENT_STREAMING,
     CAP_MARKERS,
     CAP_IDENTITY_MULTI,
     CAP_IDENTITY_IMPORT_EXPORT,
@@ -90,6 +92,7 @@ const DESKTOP_LOCAL_RUNTIME_SUPPORTED: &[&str] = &[
     CAP_TELEMETRY_STREAM,
     CAP_ATTACHMENTS,
     CAP_ATTACHMENT_DELETE,
+    CAP_ATTACHMENT_STREAMING,
     CAP_MARKERS,
     CAP_IDENTITY_MULTI,
     CAP_IDENTITY_IMPORT_EXPORT,
@@ -115,6 +118,7 @@ const EMBEDDED_ALLOC_SUPPORTED: &[&str] = &[
     CAP_TELEMETRY_STREAM,
     CAP_ATTACHMENTS,
     CAP_ATTACHMENT_DELETE,
+    CAP_ATTACHMENT_STREAMING,
     CAP_MARKERS,
     CAP_IDENTITY_MULTI,
     CAP_IDENTITY_IMPORT_EXPORT,

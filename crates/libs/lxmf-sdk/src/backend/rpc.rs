@@ -3,8 +3,10 @@ use crate::backend::SdkBackend;
 use crate::backend::SdkBackendAsyncEvents;
 use crate::capability::{EffectiveLimits, NegotiationRequest, NegotiationResponse};
 use crate::domain::{
-    AttachmentId, AttachmentListRequest, AttachmentListResult, AttachmentMeta,
-    AttachmentStoreRequest, IdentityBundle, IdentityImportRequest, IdentityRef,
+    AttachmentDownloadChunk, AttachmentDownloadChunkRequest, AttachmentId, AttachmentListRequest,
+    AttachmentListResult, AttachmentMeta, AttachmentStoreRequest, AttachmentUploadChunkAck,
+    AttachmentUploadChunkRequest, AttachmentUploadCommitRequest, AttachmentUploadSession,
+    AttachmentUploadStartRequest, IdentityBundle, IdentityImportRequest, IdentityRef,
     IdentityResolveRequest, MarkerCreateRequest, MarkerId, MarkerListRequest, MarkerListResult,
     MarkerRecord, MarkerUpdatePositionRequest, PaperMessageEnvelope, RemoteCommandRequest,
     RemoteCommandResponse, TelemetryPoint, TelemetryQuery, TopicCreateRequest, TopicId,
@@ -194,6 +196,34 @@ impl SdkBackend for RpcBackendClient {
 
     fn attachment_download(&self, attachment_id: AttachmentId) -> Result<Ack, SdkError> {
         self.attachment_download_impl(attachment_id)
+    }
+
+    fn attachment_upload_start(
+        &self,
+        req: AttachmentUploadStartRequest,
+    ) -> Result<AttachmentUploadSession, SdkError> {
+        self.attachment_upload_start_impl(req)
+    }
+
+    fn attachment_upload_chunk(
+        &self,
+        req: AttachmentUploadChunkRequest,
+    ) -> Result<AttachmentUploadChunkAck, SdkError> {
+        self.attachment_upload_chunk_impl(req)
+    }
+
+    fn attachment_upload_commit(
+        &self,
+        req: AttachmentUploadCommitRequest,
+    ) -> Result<AttachmentMeta, SdkError> {
+        self.attachment_upload_commit_impl(req)
+    }
+
+    fn attachment_download_chunk(
+        &self,
+        req: AttachmentDownloadChunkRequest,
+    ) -> Result<AttachmentDownloadChunk, SdkError> {
+        self.attachment_download_chunk_impl(req)
     }
 
     fn attachment_associate_topic(

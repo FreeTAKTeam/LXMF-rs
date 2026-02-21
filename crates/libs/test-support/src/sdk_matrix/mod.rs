@@ -301,6 +301,7 @@ fn sdk_matrix_capability_table_matches_profile_capabilities() {
         "sdk.capability.telemetry_stream",
         "sdk.capability.attachments",
         "sdk.capability.attachment_delete",
+        "sdk.capability.attachment_streaming",
         "sdk.capability.markers",
         "sdk.capability.identity_multi",
         "sdk.capability.identity_import_export",
@@ -308,6 +309,7 @@ fn sdk_matrix_capability_table_matches_profile_capabilities() {
         "sdk.capability.paper_messages",
         "sdk.capability.remote_commands",
         "sdk.capability.voice_signaling",
+        "sdk.capability.group_delivery",
         "sdk.capability.shared_instance_rpc_auth",
     ];
     for capability in KNOWN_CAPABILITIES {

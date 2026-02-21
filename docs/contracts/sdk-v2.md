@@ -242,6 +242,20 @@ Rules:
 6. Group fanout is at-least-once per recipient; retries are host-controlled using `deferred`
    outcomes.
 
+## Attachment Streaming Semantics
+
+`attachment_upload_start`, `attachment_upload_chunk`, `attachment_upload_commit`, and
+`attachment_download_chunk` define resumable transfer behavior.
+
+Rules:
+
+1. Upload resume is offset-based with monotonic `next_offset`.
+2. Upload chunk offset mismatches return `SDK_RUNTIME_INVALID_CURSOR`.
+3. Commit must validate `total_size` and `checksum_sha256`.
+4. Checksum mismatch returns `SDK_VALIDATION_CHECKSUM_MISMATCH`.
+5. Download chunk returns `offset`, `next_offset`, `done`, and `checksum_sha256`.
+6. `attachment_download` remains available for full-object reads where supported.
+
 ## Config and Policy Mutation
 
 Rules:

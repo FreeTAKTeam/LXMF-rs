@@ -46,6 +46,7 @@ Legend:
 | `sdk.capability.telemetry_stream` | optional | optional | optional |
 | `sdk.capability.attachments` | optional | optional | optional |
 | `sdk.capability.attachment_delete` | optional | optional | optional |
+| `sdk.capability.attachment_streaming` | optional | optional | optional |
 | `sdk.capability.markers` | optional | optional | optional |
 | `sdk.capability.identity_multi` | optional | optional | optional |
 | `sdk.capability.identity_import_export` | optional | optional | optional |

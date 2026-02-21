@@ -66,6 +66,22 @@ Public payloads must use:
 
 Unprefixed text payloads are rejected.
 
+## Chunked Attachment Transfer (SDK v2.5)
+
+RPC-backed SDK attachment streaming methods:
+
+- `sdk_attachment_upload_start_v2`
+- `sdk_attachment_upload_chunk_v2`
+- `sdk_attachment_upload_commit_v2`
+- `sdk_attachment_download_chunk_v2`
+
+Rules:
+
+1. Upload state is identified by `upload_id`; callers resume with explicit `offset`.
+2. Upload chunks must be appended at the expected offset; mismatches return `SDK_RUNTIME_INVALID_CURSOR`.
+3. Upload commit validates declared `total_size` and `checksum_sha256`; checksum mismatch returns `SDK_VALIDATION_CHECKSUM_MISMATCH`.
+4. Download chunk responses include `offset`, `next_offset`, `done`, and `checksum_sha256` for resumable and integrity-aware readers.
+
 ## Schema Artifacts
 
 - `docs/schemas/contract-v2/payload-envelope.schema.json`

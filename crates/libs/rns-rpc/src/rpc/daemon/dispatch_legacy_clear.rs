@@ -20,6 +20,10 @@ impl RpcDaemon {
                     .lock()
                     .expect("sdk_attachment_order mutex poisoned")
                     .clear();
+                self.sdk_attachment_uploads
+                    .lock()
+                    .expect("sdk_attachment_uploads mutex poisoned")
+                    .clear();
                 self.sdk_topics.lock().expect("sdk_topics mutex poisoned").clear();
                 self.sdk_topic_order.lock().expect("sdk_topic_order mutex poisoned").clear();
                 self.sdk_topic_subscriptions
@@ -68,6 +72,10 @@ impl RpcDaemon {
                 self.sdk_attachment_order
                     .lock()
                     .expect("sdk_attachment_order mutex poisoned")
+                    .clear();
+                self.sdk_attachment_uploads
+                    .lock()
+                    .expect("sdk_attachment_uploads mutex poisoned")
                     .clear();
                 self.sdk_topics.lock().expect("sdk_topics mutex poisoned").clear();
                 self.sdk_topic_order.lock().expect("sdk_topic_order mutex poisoned").clear();

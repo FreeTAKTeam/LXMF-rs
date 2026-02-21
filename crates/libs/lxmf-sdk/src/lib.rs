@@ -25,14 +25,16 @@ pub use capability::{
 };
 pub use client::Client;
 pub use domain::{
-    AttachmentId, AttachmentListRequest, AttachmentListResult, AttachmentMeta,
-    AttachmentStoreRequest, GeoPoint, IdentityBundle, IdentityImportRequest, IdentityRef,
-    IdentityResolveRequest, MarkerCreateRequest, MarkerId, MarkerListRequest, MarkerListResult,
-    MarkerRecord, MarkerUpdatePositionRequest, PaperMessageEnvelope, RemoteCommandRequest,
-    RemoteCommandResponse, TelemetryPoint, TelemetryQuery, TopicCreateRequest, TopicId,
-    TopicListRequest, TopicListResult, TopicPath, TopicPublishRequest, TopicRecord,
-    TopicSubscriptionRequest, VoiceSessionId, VoiceSessionOpenRequest, VoiceSessionState,
-    VoiceSessionUpdateRequest,
+    AttachmentDownloadChunk, AttachmentDownloadChunkRequest, AttachmentId, AttachmentListRequest,
+    AttachmentListResult, AttachmentMeta, AttachmentStoreRequest, AttachmentUploadChunkAck,
+    AttachmentUploadChunkRequest, AttachmentUploadCommitRequest, AttachmentUploadId,
+    AttachmentUploadSession, AttachmentUploadStartRequest, GeoPoint, IdentityBundle,
+    IdentityImportRequest, IdentityRef, IdentityResolveRequest, MarkerCreateRequest, MarkerId,
+    MarkerListRequest, MarkerListResult, MarkerRecord, MarkerUpdatePositionRequest,
+    PaperMessageEnvelope, RemoteCommandRequest, RemoteCommandResponse, TelemetryPoint,
+    TelemetryQuery, TopicCreateRequest, TopicId, TopicListRequest, TopicListResult, TopicPath,
+    TopicPublishRequest, TopicRecord, TopicSubscriptionRequest, VoiceSessionId,
+    VoiceSessionOpenRequest, VoiceSessionState, VoiceSessionUpdateRequest,
 };
 pub use error::{code as error_code, ErrorCategory, ErrorDetails, SdkError};
 pub use event::{

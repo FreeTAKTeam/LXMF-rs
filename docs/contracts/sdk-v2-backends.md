@@ -62,6 +62,15 @@ Required behavior:
 2. Delivery transition order must obey core state machine.
 3. Cancellation race handling must preserve single-terminal guarantee.
 
+## Attachment Streaming Backend Invariants
+
+When `sdk.capability.attachment_streaming` is enabled:
+
+1. Upload sessions must expose deterministic `next_offset` progression.
+2. Commit must validate both declared byte length and declared SHA-256 checksum.
+3. Download chunk must support caller-provided offsets for resumable transfer.
+4. Out-of-range upload/download offsets must return `SDK_RUNTIME_INVALID_CURSOR`.
+
 ## Embedded Link Adapter Contract
 
 Constrained link adapters (serial, BLE, LoRa) are modeled via:

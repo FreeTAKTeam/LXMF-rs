@@ -1,0 +1,9 @@
+{
+  "request_id": "req-attachment-upload-chunk-2",
+  "method": "attachment_upload_chunk",
+  "params": {
+    "upload_id": "",
+    "offset": -1,
+    "bytes_base64": ""
+  }
+}

@@ -161,6 +161,50 @@ impl RpcBackendClient {
         Ok(Self::parse_ack(&result))
     }
 
+    pub(super) fn attachment_upload_start_impl(
+        &self,
+        req: AttachmentUploadStartRequest,
+    ) -> Result<AttachmentUploadSession, SdkError> {
+        let params = serde_json::to_value(req).map_err(|err| {
+            SdkError::new(code::INTERNAL, ErrorCategory::Internal, err.to_string())
+        })?;
+        let result = self.call_rpc("sdk_attachment_upload_start_v2", Some(params))?;
+        Self::decode_field_or_root(&result, "upload", "attachment_upload_start response")
+    }
+
+    pub(super) fn attachment_upload_chunk_impl(
+        &self,
+        req: AttachmentUploadChunkRequest,
+    ) -> Result<AttachmentUploadChunkAck, SdkError> {
+        let params = serde_json::to_value(req).map_err(|err| {
+            SdkError::new(code::INTERNAL, ErrorCategory::Internal, err.to_string())
+        })?;
+        let result = self.call_rpc("sdk_attachment_upload_chunk_v2", Some(params))?;
+        Self::decode_field_or_root(&result, "upload_chunk", "attachment_upload_chunk response")
+    }
+
+    pub(super) fn attachment_upload_commit_impl(
+        &self,
+        req: AttachmentUploadCommitRequest,
+    ) -> Result<AttachmentMeta, SdkError> {
+        let params = serde_json::to_value(req).map_err(|err| {
+            SdkError::new(code::INTERNAL, ErrorCategory::Internal, err.to_string())
+        })?;
+        let result = self.call_rpc("sdk_attachment_upload_commit_v2", Some(params))?;
+        Self::decode_field_or_root(&result, "attachment", "attachment_upload_commit response")
+    }
+
+    pub(super) fn attachment_download_chunk_impl(
+        &self,
+        req: AttachmentDownloadChunkRequest,
+    ) -> Result<AttachmentDownloadChunk, SdkError> {
+        let params = serde_json::to_value(req).map_err(|err| {
+            SdkError::new(code::INTERNAL, ErrorCategory::Internal, err.to_string())
+        })?;
+        let result = self.call_rpc("sdk_attachment_download_chunk_v2", Some(params))?;
+        Self::decode_field_or_root(&result, "download_chunk", "attachment_download_chunk response")
+    }
+
     pub(super) fn attachment_associate_topic_impl(
         &self,
         attachment_id: AttachmentId,

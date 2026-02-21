@@ -77,6 +77,14 @@ impl RpcDaemon {
             "sdk_attachment_list_v2" => self.handle_sdk_attachment_list_v2(request),
             "sdk_attachment_delete_v2" => self.handle_sdk_attachment_delete_v2(request),
             "sdk_attachment_download_v2" => self.handle_sdk_attachment_download_v2(request),
+            "sdk_attachment_upload_start_v2" => self.handle_sdk_attachment_upload_start_v2(request),
+            "sdk_attachment_upload_chunk_v2" => self.handle_sdk_attachment_upload_chunk_v2(request),
+            "sdk_attachment_upload_commit_v2" => {
+                self.handle_sdk_attachment_upload_commit_v2(request)
+            }
+            "sdk_attachment_download_chunk_v2" => {
+                self.handle_sdk_attachment_download_chunk_v2(request)
+            }
             "sdk_attachment_associate_topic_v2" => {
                 self.handle_sdk_attachment_associate_topic_v2(request)
             }

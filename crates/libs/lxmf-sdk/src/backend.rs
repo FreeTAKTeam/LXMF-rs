@@ -1,7 +1,9 @@
 use crate::capability::{NegotiationRequest, NegotiationResponse};
 use crate::domain::{
-    AttachmentId, AttachmentListRequest, AttachmentListResult, AttachmentMeta,
-    AttachmentStoreRequest, IdentityBundle, IdentityImportRequest, IdentityRef,
+    AttachmentDownloadChunk, AttachmentDownloadChunkRequest, AttachmentId, AttachmentListRequest,
+    AttachmentListResult, AttachmentMeta, AttachmentStoreRequest, AttachmentUploadChunkAck,
+    AttachmentUploadChunkRequest, AttachmentUploadCommitRequest, AttachmentUploadSession,
+    AttachmentUploadStartRequest, IdentityBundle, IdentityImportRequest, IdentityRef,
     IdentityResolveRequest, MarkerCreateRequest, MarkerId, MarkerListRequest, MarkerListResult,
     MarkerRecord, MarkerUpdatePositionRequest, PaperMessageEnvelope, RemoteCommandRequest,
     RemoteCommandResponse, TelemetryPoint, TelemetryQuery, TopicCreateRequest, TopicId,
@@ -98,6 +100,34 @@ pub trait SdkBackend: Send + Sync {
 
     fn attachment_download(&self, _attachment_id: AttachmentId) -> Result<Ack, SdkError> {
         Err(SdkError::capability_disabled("sdk.capability.attachments"))
+    }
+
+    fn attachment_upload_start(
+        &self,
+        _req: AttachmentUploadStartRequest,
+    ) -> Result<AttachmentUploadSession, SdkError> {
+        Err(SdkError::capability_disabled("sdk.capability.attachment_streaming"))
+    }
+
+    fn attachment_upload_chunk(
+        &self,
+        _req: AttachmentUploadChunkRequest,
+    ) -> Result<AttachmentUploadChunkAck, SdkError> {
+        Err(SdkError::capability_disabled("sdk.capability.attachment_streaming"))
+    }
+
+    fn attachment_upload_commit(
+        &self,
+        _req: AttachmentUploadCommitRequest,
+    ) -> Result<AttachmentMeta, SdkError> {
+        Err(SdkError::capability_disabled("sdk.capability.attachment_streaming"))
+    }
+
+    fn attachment_download_chunk(
+        &self,
+        _req: AttachmentDownloadChunkRequest,
+    ) -> Result<AttachmentDownloadChunk, SdkError> {
+        Err(SdkError::capability_disabled("sdk.capability.attachment_streaming"))
     }
 
     fn attachment_associate_topic(
