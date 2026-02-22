@@ -95,7 +95,7 @@ impl RpcError {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct InterfaceRecord {
     #[serde(rename = "type")]
     pub kind: String,
@@ -103,6 +103,8 @@ pub struct InterfaceRecord {
     pub host: Option<String>,
     pub port: Option<u16>,
     pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settings: Option<JsonValue>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]

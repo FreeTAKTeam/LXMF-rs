@@ -45,6 +45,11 @@ struct SetInterfacesParams {
 }
 
 #[derive(Debug, Deserialize)]
+struct ReloadConfigParams {
+    interfaces: Vec<InterfaceRecord>,
+}
+
+#[derive(Debug, Deserialize)]
 struct PeerOpParams {
     peer: String,
 }
@@ -125,4 +130,3 @@ struct SetOutboundPropagationNodeParams {
 struct MessageDeliveryTraceParams {
     message_id: String,
 }
-

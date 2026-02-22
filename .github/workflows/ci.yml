@@ -61,6 +61,162 @@ jobs:
       - name: Build
         run: cargo xtask ci --stage build-matrix
 
+  interfaces-build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Interface build (Linux)
+        run: cargo check -p reticulumd --all-targets
+
+  interfaces-build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Interface build (macOS)
+        run: cargo check -p reticulumd --all-targets
+
+  interfaces-build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Interface build (Windows)
+        run: cargo check -p reticulumd --all-targets
+
+  interfaces-test-serial:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Serial interface tests
+        run: cargo test -p rns-transport serial::tests
+
+  interfaces-test-ble-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: BLE interface tests (Linux)
+        run: cargo test -p reticulumd --bin reticulumd runtime_settings
+
+  interfaces-test-ble-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: BLE interface tests (macOS)
+        run: cargo test -p reticulumd --bin reticulumd runtime_settings
+
+  interfaces-test-ble-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: BLE interface tests (Windows)
+        run: cargo test -p reticulumd --bin reticulumd runtime_settings
+
+  interfaces-test-lora:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: LoRa interface tests
+        run: cargo test -p reticulumd --bin reticulumd lora::tests
+
+  interfaces-test-mobile-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Mobile BLE host contract and conformance tests
+        run: |
+          cargo test -p lxmf-sdk --test mobile_ble_contract
+          cargo test -p test-support --test mobile_ble_android_conformance --test mobile_ble_ios_conformance
+
+  interfaces-boundary-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Interface boundary policy check
+        run: bash tools/scripts/check-boundaries.sh
+
+  interfaces-required:
+    runs-on: ubuntu-latest
+    needs:
+      - interfaces-build-linux
+      - interfaces-build-macos
+      - interfaces-build-windows
+      - interfaces-test-serial
+      - interfaces-test-ble-linux
+      - interfaces-test-ble-macos
+      - interfaces-test-ble-windows
+      - interfaces-test-lora
+      - interfaces-test-mobile-contract
+      - interfaces-boundary-check
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Interfaces required checks
+        run: cargo xtask ci --stage interfaces-required
+
   test-nextest-unit:
     runs-on: ubuntu-latest
     steps:

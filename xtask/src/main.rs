@@ -57,6 +57,19 @@ const REPRODUCIBLE_BUILD_REPORT_PATH: &str =
     "target/supply-chain/reproducible/reproducible-build-report.txt";
 const CARGO_AUDIT_IGNORE_ADVISORIES: &[&str] =
     &["RUSTSEC-2024-0421", "RUSTSEC-2024-0436", "RUSTSEC-2026-0009", "RUSTSEC-2025-0134"];
+const REQUIRED_INTERFACE_CI_JOBS: &[&str] = &[
+    "interfaces-build-linux",
+    "interfaces-build-macos",
+    "interfaces-build-windows",
+    "interfaces-test-serial",
+    "interfaces-test-ble-linux",
+    "interfaces-test-ble-macos",
+    "interfaces-test-ble-windows",
+    "interfaces-test-lora",
+    "interfaces-test-mobile-contract",
+    "interfaces-boundary-check",
+    "interfaces-required",
+];
 const SCHEMA_CLIENT_SMOKE_REPORT_PATH: &str = "target/interop/schema-client-smoke-report.txt";
 const CERTIFICATION_REPORT_PATH: &str = "target/release-readiness/certification-report.md";
 const CERTIFICATION_REPORT_JSON_PATH: &str = "target/release-readiness/certification-report.json";
@@ -342,6 +355,7 @@ enum XtaskCommand {
     SupplyChainCheck,
     ReproducibleBuildCheck,
     SdkMatrixCheck,
+    InterfacesRequired,
     EmbeddedLinkCheck,
     EmbeddedCoreCheck,
     EmbeddedFootprintCheck,
@@ -408,6 +422,7 @@ enum CiStage {
     SupplyChainCheck,
     ReproducibleBuildCheck,
     SdkMatrixCheck,
+    InterfacesRequired,
     EmbeddedLinkCheck,
     EmbeddedCoreCheck,
     EmbeddedFootprintCheck,
@@ -485,6 +500,7 @@ fn main() -> Result<()> {
         XtaskCommand::SupplyChainCheck => run_supply_chain_check(),
         XtaskCommand::ReproducibleBuildCheck => run_reproducible_build_check(),
         XtaskCommand::SdkMatrixCheck => run_sdk_matrix_check(),
+        XtaskCommand::InterfacesRequired => run_interfaces_required(),
         XtaskCommand::EmbeddedLinkCheck => run_embedded_link_check(),
         XtaskCommand::EmbeddedCoreCheck => run_embedded_core_check(),
         XtaskCommand::EmbeddedFootprintCheck => run_embedded_footprint_check(),
@@ -633,6 +649,7 @@ fn run_ci_stage(stage: CiStage) -> Result<()> {
         CiStage::SupplyChainCheck => run_supply_chain_check(),
         CiStage::ReproducibleBuildCheck => run_reproducible_build_check(),
         CiStage::SdkMatrixCheck => run_sdk_matrix_check(),
+        CiStage::InterfacesRequired => run_interfaces_required(),
         CiStage::EmbeddedLinkCheck => run_embedded_link_check(),
         CiStage::EmbeddedCoreCheck => run_embedded_core_check(),
         CiStage::EmbeddedFootprintCheck => run_embedded_footprint_check(),
@@ -678,6 +695,60 @@ fn run_release_check() -> Result<()> {
     run_supply_chain_check()?;
     run("cargo", &["deny", "check"])?;
     run_cargo_audit()?;
+    Ok(())
+}
+
+fn run_interfaces_required() -> Result<()> {
+    ensure_required_interface_ci_jobs_declared()?;
+    run("cargo", &["check", "-p", "reticulumd", "--all-targets"])?;
+    run("cargo", &["check", "-p", "rns-rpc", "--all-targets"])?;
+    run("cargo", &["check", "-p", "lxmf-sdk", "--all-targets"])?;
+    run("cargo", &["check", "-p", "rns-transport", "--all-targets"])?;
+    run("cargo", &["test", "-p", "reticulumd", "--test", "config"])?;
+    run("cargo", &["test", "-p", "reticulumd", "--bin", "reticulumd"])?;
+    run("cargo", &["test", "-p", "rns-transport", "serial::tests"])?;
+    run("cargo", &["test", "-p", "reticulumd", "--bin", "reticulumd", "runtime_settings"])?;
+    run("cargo", &["test", "-p", "reticulumd", "--bin", "reticulumd", "lora::tests"])?;
+    run(
+        "cargo",
+        &["test", "-p", "rns-rpc", "set_interfaces_rejects_startup_only_interface_kinds"],
+    )?;
+    run("cargo", &["test", "-p", "rns-rpc", "reload_config_hot_applies_legacy_tcp_only_diff"])?;
+    run(
+        "cargo",
+        &[
+            "test",
+            "-p",
+            "rns-rpc",
+            "reload_config_rejects_mixed_startup_kind_diff_without_partial_apply",
+        ],
+    )?;
+    run("cargo", &["test", "-p", "lxmf-sdk", "--test", "mobile_ble_contract"])?;
+    run(
+        "cargo",
+        &[
+            "test",
+            "-p",
+            "test-support",
+            "--test",
+            "mobile_ble_android_conformance",
+            "--test",
+            "mobile_ble_ios_conformance",
+        ],
+    )?;
+    run("bash", &["tools/scripts/check-boundaries.sh"])?;
+    Ok(())
+}
+
+fn ensure_required_interface_ci_jobs_declared() -> Result<()> {
+    let workflow =
+        fs::read_to_string(CI_WORKFLOW_PATH).with_context(|| format!("read {CI_WORKFLOW_PATH}"))?;
+    for job in REQUIRED_INTERFACE_CI_JOBS {
+        let marker = format!("{job}:");
+        if !workflow.contains(&marker) {
+            bail!("missing required interface CI job in {CI_WORKFLOW_PATH}: {job}");
+        }
+    }
     Ok(())
 }
 

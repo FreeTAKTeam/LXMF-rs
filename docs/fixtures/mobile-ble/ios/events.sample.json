@@ -1,0 +1,34 @@
+{
+  "platform": "ios",
+  "capabilities": {
+    "supports_background_restore": true,
+    "supports_write_without_response": false,
+    "supports_operation_cancel": true,
+    "max_notification_queue": 32,
+    "max_payload_bytes": 185
+  },
+  "events": [
+    { "sequence_no": 1, "session_id": "session-1", "kind": "connected" },
+    {
+      "sequence_no": 2,
+      "session_id": "session-1",
+      "kind": "write_complete",
+      "operation_id": "write-1"
+    },
+    {
+      "sequence_no": 3,
+      "session_id": "session-1",
+      "kind": "notification",
+      "operation_id": "notify-1",
+      "payload": [42, 43]
+    },
+    {
+      "sequence_no": 4,
+      "session_id": "session-1",
+      "kind": "timeout",
+      "operation_id": "read-1",
+      "error": "read timeout"
+    },
+    { "sequence_no": 5, "session_id": "session-1", "kind": "disconnected" }
+  ]
+}

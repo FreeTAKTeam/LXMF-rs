@@ -1,0 +1,27 @@
+{
+  "platform": "android",
+  "capabilities": {
+    "supports_background_restore": true,
+    "supports_write_without_response": true,
+    "supports_operation_cancel": false,
+    "max_notification_queue": 64,
+    "max_payload_bytes": 247
+  },
+  "events": [
+    { "sequence_no": 1, "session_id": "session-1", "kind": "connected" },
+    {
+      "sequence_no": 2,
+      "session_id": "session-1",
+      "kind": "notification",
+      "payload": [1, 2, 3]
+    },
+    {
+      "sequence_no": 3,
+      "session_id": "session-1",
+      "operation_id": "timeout-1",
+      "kind": "timeout",
+      "error": "write timeout"
+    },
+    { "sequence_no": 4, "session_id": "session-1", "kind": "disconnected" }
+  ]
+}

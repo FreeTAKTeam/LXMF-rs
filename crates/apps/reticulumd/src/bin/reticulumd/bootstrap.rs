@@ -1,6 +1,7 @@
 use super::announce_worker::spawn_announce_worker;
 use super::bridge::{PeerCrypto, TransportBridge};
 use super::inbound_worker::spawn_inbound_worker;
+use super::interfaces::{ble, common::interface_label, lora, serial};
 use super::receipt_worker::spawn_receipt_worker;
 use super::Args;
 use reticulum_daemon::announce_names::{
@@ -74,10 +75,11 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
                 .iter()
                 .map(|iface| InterfaceRecord {
                     kind: iface.kind.clone(),
-                    enabled: iface.enabled.unwrap_or(false),
+                    enabled: iface.enabled(),
                     host: iface.host.clone(),
                     port: iface.port,
                     name: iface.name.clone(),
+                    settings: iface.settings_json(),
                 })
                 .collect::<Vec<_>>()
         })
@@ -109,14 +111,70 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
             .spawn(TcpServer::new(addr.clone(), iface_manager.clone()), TcpServer::spawn);
         eprintln!("[daemon] tcp_server enabled iface={} bind={}", server_iface, addr);
         if let Some(config) = daemon_config.as_ref() {
-            for (host, port) in config.tcp_client_endpoints() {
-                let endpoint = format!("{}:{}", host, port);
-                let client_iface =
-                    iface_manager.lock().await.spawn(TcpClient::new(endpoint), TcpClient::spawn);
-                eprintln!(
-                    "[daemon] tcp_client enabled iface={} name={} host={} port={}",
-                    client_iface, host, host, port
-                );
+            for (index, iface) in config.interfaces.iter().enumerate() {
+                if !iface.enabled() {
+                    continue;
+                }
+                match iface.kind.as_str() {
+                    "tcp_client" => {
+                        if let (Some(host), Some(port)) = (iface.host.as_ref(), iface.port) {
+                            let endpoint = format!("{}:{}", host, port);
+                            let client_iface = iface_manager
+                                .lock()
+                                .await
+                                .spawn(TcpClient::new(endpoint), TcpClient::spawn);
+                            eprintln!(
+                                "[daemon] tcp_client enabled iface={} name={} host={} port={}",
+                                client_iface,
+                                interface_label(iface, index),
+                                host,
+                                port
+                            );
+                        }
+                    }
+                    "serial" => match serial::build_adapter(iface) {
+                        Ok(adapter) => {
+                            let serial_iface =
+                                iface_manager.lock().await.spawn(adapter, |context| async move {
+                                    rns_transport::iface::serial::SerialInterface::spawn(context)
+                                        .await
+                                });
+                            eprintln!(
+                                "[daemon] serial enabled iface={} name={} device={} baud_rate={}",
+                                serial_iface,
+                                interface_label(iface, index),
+                                iface.device.as_deref().unwrap_or("<unset>"),
+                                iface.baud_rate.unwrap_or_default()
+                            );
+                        }
+                        Err(err) => {
+                            eprintln!(
+                                "[daemon] serial startup rejected name={} err={}",
+                                interface_label(iface, index),
+                                err
+                            );
+                        }
+                    },
+                    "ble_gatt" => {
+                        if let Err(err) = ble::startup(iface) {
+                            eprintln!(
+                                "[daemon] ble_gatt startup rejected name={} err={}",
+                                interface_label(iface, index),
+                                err
+                            );
+                        }
+                    }
+                    "lora" => {
+                        if let Err(err) = lora::startup(iface) {
+                            eprintln!(
+                                "[daemon] lora startup rejected name={} err={}",
+                                interface_label(iface, index),
+                                err
+                            );
+                        }
+                    }
+                    _ => {}
+                }
             }
         }
         eprintln!("[daemon] transport enabled");
@@ -127,6 +185,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
                 host: Some(host.to_string()),
                 port: port.parse::<u16>().ok(),
                 name: Some("daemon-transport".into()),
+                settings: None,
             });
         }
 
