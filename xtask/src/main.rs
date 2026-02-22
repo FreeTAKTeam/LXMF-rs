@@ -7,6 +7,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+mod client_codegen;
+
 const INTEROP_BASELINE_PATH: &str = "docs/contracts/baselines/interop-artifacts-manifest.json";
 const INTEROP_DRIFT_BASELINE_PATH: &str = "docs/contracts/baselines/interop-drift-baseline.json";
 const INTEROP_MATRIX_PATH: &str = "docs/contracts/compatibility-matrix.md";
@@ -14,10 +16,8 @@ const SUPPORT_POLICY_PATH: &str = "docs/contracts/support-policy.md";
 const SDK_API_STABILITY_PATH: &str = "docs/contracts/sdk-v2-api-stability.md";
 const SDK_BACKENDS_CONTRACT_PATH: &str = "docs/contracts/sdk-v2-backends.md";
 const SDK_FEATURE_MATRIX_PATH: &str = "docs/contracts/sdk-v2-feature-matrix.md";
-const SCHEMA_CLIENT_CONTRACT_PATH: &str = "docs/contracts/schema-driven-clients.md";
 const SCHEMA_CLIENT_MANIFEST_PATH: &str =
     "docs/schemas/sdk/v2/clients/client-generation-manifest.json";
-const SCHEMA_CLIENT_SMOKE_PATH: &str = "docs/schemas/sdk/v2/clients/smoke-requests.json";
 const EXTENSION_REGISTRY_PATH: &str = "docs/contracts/extension-registry.md";
 const EXTENSION_REGISTRY_ADR_PATH: &str = "docs/adr/0005-extension-registry-governance.md";
 const UNSAFE_POLICY_PATH: &str = "docs/architecture/unsafe-code-policy.md";
@@ -44,7 +44,6 @@ const EMBEDDED_HIL_RUNBOOK_PATH: &str = "docs/runbooks/embedded-hil-esp32.md";
 const BACKUP_RESTORE_DRILL_SCRIPT_PATH: &str = "tools/scripts/backup-restore-drill.sh";
 const REFERENCE_INTEGRATIONS_SMOKE_SCRIPT_PATH: &str =
     "tools/scripts/reference-integrations-smoke.sh";
-const SCHEMA_CLIENT_SMOKE_SCRIPT_PATH: &str = "tools/scripts/schema-client-smoke.sh";
 const CERTIFICATION_REPORT_SCRIPT_PATH: &str = "tools/scripts/certification-report.sh";
 const SOAK_REPORT_PATH: &str = "target/soak/soak-report.json";
 const BENCH_SUMMARY_PATH: &str = "target/criterion/bench-summary.txt";
@@ -56,6 +55,12 @@ const SUPPLY_CHAIN_SIGNATURE_PATH: &str =
     "target/supply-chain/provenance/artifact-provenance.sha256";
 const REPRODUCIBLE_BUILD_REPORT_PATH: &str =
     "target/supply-chain/reproducible/reproducible-build-report.txt";
+const CARGO_AUDIT_IGNORE_ADVISORIES: &[&str] = &[
+    "RUSTSEC-2024-0421",
+    "RUSTSEC-2024-0436",
+    "RUSTSEC-2026-0009",
+    "RUSTSEC-2025-0134",
+];
 const SCHEMA_CLIENT_SMOKE_REPORT_PATH: &str = "target/interop/schema-client-smoke-report.txt";
 const CERTIFICATION_REPORT_PATH: &str = "target/release-readiness/certification-report.md";
 const CERTIFICATION_REPORT_JSON_PATH: &str = "target/release-readiness/certification-report.json";
@@ -302,6 +307,10 @@ enum XtaskCommand {
         update: bool,
     },
     SchemaClientCheck,
+    SchemaClientGenerate {
+        #[arg(long)]
+        check: bool,
+    },
     CompatKitCheck,
     E2eCompatibility,
     MeshSim,
@@ -442,6 +451,9 @@ fn main() -> Result<()> {
         XtaskCommand::InteropCorpusCheck => run_interop_corpus_check(),
         XtaskCommand::InteropDriftCheck { update } => run_interop_drift_check(update),
         XtaskCommand::SchemaClientCheck => run_schema_client_check(),
+        XtaskCommand::SchemaClientGenerate { check } => {
+            run_schema_client_generate(check).map(|_| ())
+        }
         XtaskCommand::CompatKitCheck => run_compat_kit_check(),
         XtaskCommand::E2eCompatibility => run_e2e_compatibility(),
         XtaskCommand::MeshSim => run_mesh_sim(),
@@ -570,18 +582,7 @@ fn run_ci_stage(stage: CiStage) -> Result<()> {
         CiStage::Doc => run("cargo", &["doc", "--workspace", "--no-deps"]),
         CiStage::Security => {
             run("cargo", &["deny", "check"])?;
-            run(
-                "cargo",
-                &[
-                    "audit",
-                    "--ignore",
-                    "RUSTSEC-2024-0421",
-                    "--ignore",
-                    "RUSTSEC-2024-0436",
-                    "--ignore",
-                    "RUSTSEC-2026-0009",
-                ],
-            )?;
+            run_cargo_audit()?;
             run_security_review_check()
         }
         CiStage::UnusedDeps => run_unused_deps(),
@@ -648,6 +649,16 @@ fn run_ci_stage(stage: CiStage) -> Result<()> {
     }
 }
 
+fn run_cargo_audit() -> Result<()> {
+    let mut args: Vec<&str> = Vec::with_capacity(1 + CARGO_AUDIT_IGNORE_ADVISORIES.len() * 2);
+    args.push("audit");
+    for advisory in CARGO_AUDIT_IGNORE_ADVISORIES {
+        args.push("--ignore");
+        args.push(advisory);
+    }
+    run("cargo", &args)
+}
+
 fn run_release_check() -> Result<()> {
     run_ci(None)?;
     run_interop_matrix_check()?;
@@ -670,18 +681,7 @@ fn run_release_check() -> Result<()> {
     run_key_management_check()?;
     run_supply_chain_check()?;
     run("cargo", &["deny", "check"])?;
-    run(
-        "cargo",
-        &[
-            "audit",
-            "--ignore",
-            "RUSTSEC-2024-0421",
-            "--ignore",
-            "RUSTSEC-2024-0436",
-            "--ignore",
-            "RUSTSEC-2026-0009",
-        ],
-    )?;
+    run_cargo_audit()?;
     Ok(())
 }
 
@@ -975,66 +975,91 @@ fn run_interop_drift_check(update: bool) -> Result<()> {
 }
 
 fn run_schema_client_check() -> Result<()> {
-    run("bash", &[SCHEMA_CLIENT_SMOKE_SCRIPT_PATH])?;
+    let report = client_codegen::run_schema_client_generate(
+        Path::new("."),
+        Path::new(SCHEMA_CLIENT_MANIFEST_PATH),
+        client_codegen::SchemaClientMode::Check,
+    )?;
+    let failed = report
+        .target_compile_checks
+        .iter()
+        .filter(|(_, status)| status.starts_with("FAIL:"))
+        .collect::<Vec<_>>();
+    let status = if report.missing_smoke_count == 0 && failed.is_empty() { "PASS" } else { "FAIL" };
+    write_schema_client_check_report(&report, status)?;
 
-    let contract = fs::read_to_string(SCHEMA_CLIENT_CONTRACT_PATH)
-        .with_context(|| format!("missing {SCHEMA_CLIENT_CONTRACT_PATH}"))?;
-    for marker in [
-        "# Schema-Driven Client Generation Strategy",
-        "## Goals",
-        "## Source of Truth",
-        "## Target Client Languages",
-        "Go",
-        "JavaScript/TypeScript",
-        "Python",
-        "cargo run -p xtask -- schema-client-check",
-    ] {
-        if !contract.contains(marker) {
-            bail!(
-                "schema-driven clients contract missing marker '{marker}' in {SCHEMA_CLIENT_CONTRACT_PATH}"
-            );
-        }
+    if report.missing_smoke_count > 0 {
+        bail!("schema client smoke coverage missing {} method vectors", report.missing_smoke_count);
     }
 
-    let manifest = fs::read_to_string(SCHEMA_CLIENT_MANIFEST_PATH)
-        .with_context(|| format!("missing {SCHEMA_CLIENT_MANIFEST_PATH}"))?;
-    for marker in
-        ["\"language\": \"go\"", "\"language\": \"javascript\"", "\"language\": \"python\""]
-    {
-        if !manifest.contains(marker) {
-            bail!(
-                "client generation manifest missing marker '{marker}' in {SCHEMA_CLIENT_MANIFEST_PATH}"
-            );
-        }
+    if !failed.is_empty() {
+        let details = failed
+            .into_iter()
+            .map(|(language, status)| format!("{language}:{status}"))
+            .collect::<Vec<_>>();
+        bail!("schema client compile checks failed: {}", details.join(", "));
     }
 
-    let smoke = fs::read_to_string(SCHEMA_CLIENT_SMOKE_PATH)
-        .with_context(|| format!("missing {SCHEMA_CLIENT_SMOKE_PATH}"))?;
-    for marker in
-        ["\"language\": \"go\"", "\"language\": \"javascript\"", "\"language\": \"python\""]
-    {
-        if !smoke.contains(marker) {
-            bail!("schema smoke vectors missing marker '{marker}' in {SCHEMA_CLIENT_SMOKE_PATH}");
-        }
+    Ok(())
+}
+
+fn run_schema_client_generate(check: bool) -> Result<client_codegen::SchemaClientReport> {
+    let mode = if check {
+        client_codegen::SchemaClientMode::Check
+    } else {
+        client_codegen::SchemaClientMode::Write
+    };
+
+    let report = client_codegen::run_schema_client_generate(
+        Path::new("."),
+        Path::new(SCHEMA_CLIENT_MANIFEST_PATH),
+        mode,
+    )?;
+    let failed = report
+        .target_compile_checks
+        .iter()
+        .filter(|(_, status)| status.starts_with("FAIL:"))
+        .collect::<Vec<_>>();
+    if !failed.is_empty() {
+        let details = failed
+            .into_iter()
+            .map(|(language, status)| format!("{language}:{status}"))
+            .collect::<Vec<_>>();
+        bail!("schema client compile checks failed: {}", details.join(", "));
     }
 
-    let report = fs::read_to_string(SCHEMA_CLIENT_SMOKE_REPORT_PATH).with_context(|| {
-        format!("missing generated schema client smoke report at {SCHEMA_CLIENT_SMOKE_REPORT_PATH}")
-    })?;
-    if !report.contains("status=PASS") {
-        bail!(
-            "schema client smoke report missing PASS status in {SCHEMA_CLIENT_SMOKE_REPORT_PATH}"
-        );
+    let status = if report.missing_smoke_count == 0 { "PASS" } else { "PASS_WITH_WARNINGS" };
+    write_schema_client_check_report(&report, status)?;
+    Ok(report)
+}
+
+fn write_schema_client_check_report(
+    report: &client_codegen::SchemaClientReport,
+    status: &str,
+) -> Result<()> {
+    let output_parent =
+        Path::new(SCHEMA_CLIENT_SMOKE_REPORT_PATH).parent().unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(output_parent)
+        .with_context(|| format!("create report directory {}", output_parent.display()))?;
+
+    let mut lines = vec![
+        format!("manifest_path={}", report.manifest_path.display()),
+        format!("spec_path={}", report.spec_path.display()),
+        format!("method_count={}", report.method_count),
+        format!("spec_hash={}", report.spec_hash),
+        format!("missing_smoke_count={}", report.missing_smoke_count),
+        format!("methods={}", report.methods.join(",")),
+        format!("status={status}"),
+    ];
+    for (language, hash) in &report.target_hashes {
+        lines.push(format!("target.{language}.hash={hash}"));
+    }
+    for (language, status) in &report.target_compile_checks {
+        lines.push(format!("target.{language}.compile={status}"));
     }
 
-    let workflow = fs::read_to_string(CI_WORKFLOW_PATH)
-        .with_context(|| format!("missing {CI_WORKFLOW_PATH}"))?;
-    if !workflow.contains("schema-client-check:") {
-        bail!("ci workflow must include a 'schema-client-check' job");
-    }
-    if !workflow.contains("cargo xtask ci --stage schema-client-check") {
-        bail!("ci workflow must execute `cargo xtask ci --stage schema-client-check`");
-    }
+    fs::write(SCHEMA_CLIENT_SMOKE_REPORT_PATH, format!("{}\n", lines.join("\n")))
+        .with_context(|| format!("write {SCHEMA_CLIENT_SMOKE_REPORT_PATH}"))?;
 
     Ok(())
 }

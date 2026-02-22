@@ -5,20 +5,25 @@ use rmpv::Value;
 
 #[test]
 fn parse_peer_name_prefers_pn_metadata() {
-    let app_data = rmp_serde::to_vec(&Value::Array(vec![
+    let app_data = encode_pn_announcement_app_data("Alice PN");
+    let parsed = parse_peer_name_from_app_data(&app_data).expect("name from pn metadata");
+    assert_eq!(parsed.0, "Alice PN");
+    assert_eq!(parsed.1, "pn_meta");
+}
+
+fn encode_pn_announcement_app_data(name: &str) -> Vec<u8> {
+    // pn_meta is parsed from the final map in the router announce app_data payload:
+    // parse_peer_name_from_app_data reads key `1` from that map as `name`.
+    rmp_serde::to_vec(&Value::Array(vec![
         Value::Boolean(false),
         Value::from(1_700_000_000_u64),
         Value::Boolean(true),
         Value::from(16_u32),
         Value::from(40_u32),
         Value::Array(vec![Value::from(16_u32), Value::from(16_u32), Value::from(18_u32)]),
-        Value::Map(vec![(Value::from(1_u8), Value::Binary(b"Alice PN".to_vec()))]),
+        Value::Map(vec![(Value::from(1_u8), Value::Binary(name.as_bytes().to_vec()))]),
     ]))
-    .expect("pn app data");
-
-    let parsed = parse_peer_name_from_app_data(&app_data).expect("name from pn metadata");
-    assert_eq!(parsed.0, "Alice PN");
-    assert_eq!(parsed.1, "pn_meta");
+    .expect("pn app data")
 }
 
 #[test]

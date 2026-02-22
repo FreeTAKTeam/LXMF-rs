@@ -1,3 +1,5 @@
+// Included via `include!("helpers.rs")` from `rpc/mod.rs`, so shared imports and
+// types are declared in the parent module scope.
 fn merge_fields_with_options(
     fields: Option<JsonValue>,
     method: Option<String>,
