@@ -1748,12 +1748,24 @@ fn run_python_compile_check(output_dir: &Path) -> Result<String> {
 
     files.sort_unstable();
 
-    let mut args = vec!["-B", "-m", "py_compile"];
+    let mut args = vec![
+        "-c",
+        r#"import sys
+
+for path in sys.argv[1:]:
+    try:
+        with open(path, "rb") as handle:
+            source = handle.read()
+        compile(source, path, "exec")
+    except (OSError, SyntaxError) as error:
+        print(f"{path}: {error}")
+        raise SystemExit(1)
+"#,
+    ];
     args.extend(files.iter().map(String::as_str));
 
     let status = Command::new(python)
         .current_dir(output_dir)
-        .env("PYTHONDONTWRITEBYTECODE", "1")
         .args(args)
         .status()
         .with_context(|| format!("spawn {python}"))?;
