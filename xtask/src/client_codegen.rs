@@ -1748,7 +1748,7 @@ fn run_python_compile_check(output_dir: &Path) -> Result<String> {
 
     files.sort_unstable();
 
-    let mut args = vec!["-m", "py_compile"];
+    let mut args = vec!["-B", "-m", "py_compile"];
     args.extend(files.iter().map(String::as_str));
 
     let status = Command::new(python)
