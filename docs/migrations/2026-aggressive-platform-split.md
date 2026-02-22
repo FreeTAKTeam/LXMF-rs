@@ -11,16 +11,17 @@ Repository topology moved to layered public crates in `crates/libs/*`, app binar
 1. Old crate paths under `crates/lxmf`, `crates/reticulum`, and `crates/reticulum-daemon` were removed.
 2. Stable interfaces are now exposed through:
    - `lxmf-core`
-   - `lxmf-router`
-   - `lxmf-runtime`
+   - `lxmf-sdk`
    - `rns-core`
    - `rns-transport`
    - `rns-rpc`
-3. Binary crates moved to:
+3. `lxmf-router` and `lxmf-runtime` are retained as transitional stubs only and are excluded from
+   the active workspace graph and stable public contract surface.
+4. Binary crates moved to:
    - `crates/apps/lxmf-cli`
    - `crates/apps/reticulumd`
    - `crates/apps/rns-tools`
-4. Python interop harness scripts are no longer owned in this repository.
+5. Python interop harness scripts are no longer owned in this repository.
 
 ## Required Consumer Actions
 

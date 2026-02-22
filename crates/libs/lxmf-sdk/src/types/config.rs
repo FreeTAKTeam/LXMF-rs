@@ -165,17 +165,23 @@ const DEFAULT_RPC_LISTEN_ADDR: &str = "127.0.0.1:4242";
 
 fn default_event_stream(profile: &Profile) -> EventStreamConfig {
     match profile {
-        Profile::DesktopFull | Profile::DesktopLocalRuntime => EventStreamConfig {
+        Profile::DesktopFull => EventStreamConfig {
             max_poll_events: 256,
             max_event_bytes: 65_536,
             max_batch_bytes: 1_048_576,
             max_extension_keys: 32,
         },
-        Profile::EmbeddedAlloc => EventStreamConfig {
+        Profile::DesktopLocalRuntime => EventStreamConfig {
             max_poll_events: 64,
+            max_event_bytes: 32_768,
+            max_batch_bytes: 1_048_576,
+            max_extension_keys: 32,
+        },
+        Profile::EmbeddedAlloc => EventStreamConfig {
+            max_poll_events: 32,
             max_event_bytes: 8_192,
-            max_batch_bytes: 65_536,
-            max_extension_keys: 8,
+            max_batch_bytes: 262_144,
+            max_extension_keys: 32,
         },
     }
 }
@@ -251,7 +257,7 @@ impl SdkConfig {
             store_forward: default_store_forward(&Profile::DesktopLocalRuntime),
             event_stream: default_event_stream(&Profile::DesktopLocalRuntime),
             event_sink: default_event_sink(&Profile::DesktopLocalRuntime),
-            idempotency_ttl_ms: 86_400_000,
+            idempotency_ttl_ms: 43_200_000,
             redaction: default_redaction(),
             rpc_backend: Some(default_rpc_backend(DEFAULT_RPC_LISTEN_ADDR)),
             extensions: BTreeMap::new(),
@@ -285,7 +291,7 @@ impl SdkConfig {
             store_forward: default_store_forward(&Profile::EmbeddedAlloc),
             event_stream: default_event_stream(&Profile::EmbeddedAlloc),
             event_sink: default_event_sink(&Profile::EmbeddedAlloc),
-            idempotency_ttl_ms: 60_000,
+            idempotency_ttl_ms: 7_200_000,
             redaction: default_redaction(),
             rpc_backend: Some(RpcBackendConfig {
                 listen_addr: DEFAULT_RPC_LISTEN_ADDR.to_owned(),

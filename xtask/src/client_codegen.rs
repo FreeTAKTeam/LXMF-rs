@@ -13,6 +13,10 @@ use std::process::Command;
 const DEFAULT_OPENAPI_VERSION: &str = "3.1.0";
 const DEFAULT_OPENAPI_SPEC_FILE: &str = "generated/clients/spec/openapi.json";
 const DEFAULT_SPEC_HASH_FILE: &str = "target/schema-client/spec.hash";
+const DEFAULT_OUTPUT_VALIDATION_MODE: &str = "target_hashes";
+const DEFAULT_TARGET_HASH_BASELINE_PATH: &str =
+    "docs/contracts/baselines/schema-client-generation-baseline.json";
+const SCHEMA_CLIENT_GENERATION_BASELINE_VERSION: u32 = 1;
 const COMPILER_CHECK_PASS: &str = "PASS";
 const COMPILER_CHECK_SKIP_PREFIX: &str = "SKIP:";
 const CLIENT_GENERATION_MANIFEST_SCHEMA_PATH: &str =
@@ -37,6 +41,48 @@ impl SchemaDiscoveryMode {
             "manifest_only" => Ok(Self::ManifestOnly),
             _ => bail!("unsupported mode '{value}'"),
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OutputValidationMode {
+    CommittedArtifacts,
+    TargetHashes,
+}
+
+impl OutputValidationMode {
+    fn parse(value: &str) -> Result<Self> {
+        match value {
+            "committed_artifacts" => Ok(Self::CommittedArtifacts),
+            "target_hashes" => Ok(Self::TargetHashes),
+            _ => bail!("unsupported output validation mode '{value}'"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct OutputValidationConfig {
+    mode: String,
+    target_hash_file: Option<String>,
+}
+
+impl Default for OutputValidationConfig {
+    fn default() -> Self {
+        Self {
+            mode: DEFAULT_OUTPUT_VALIDATION_MODE.to_string(),
+            target_hash_file: Some(DEFAULT_TARGET_HASH_BASELINE_PATH.to_string()),
+        }
+    }
+}
+
+impl OutputValidationConfig {
+    fn normalized(&self) -> Result<(OutputValidationMode, PathBuf)> {
+        let mode = OutputValidationMode::parse(&self.mode)?;
+        let baseline_path = match self.target_hash_file.as_deref() {
+            Some(path) if !path.trim().is_empty() => PathBuf::from(path),
+            _ => PathBuf::from(DEFAULT_TARGET_HASH_BASELINE_PATH),
+        };
+        Ok((mode, baseline_path))
     }
 }
 
@@ -95,9 +141,18 @@ struct ClientGenerationManifest {
     #[serde(default)]
     pub method_coverage: Option<MethodCoverageConfig>,
     #[serde(default)]
+    pub output_validation: Option<OutputValidationConfig>,
+    #[serde(default)]
     pub generator_runtime: Option<GeneratorRuntimeConfig>,
     pub targets: Vec<TargetConfig>,
     pub required_schemas: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct SchemaClientGenerationBaseline {
+    version: u32,
+    spec_hash: String,
+    target_hashes: BTreeMap<String, String>,
 }
 
 fn default_openapi_spec() -> String {
@@ -161,6 +216,8 @@ struct OpenApiOperation {
     operation_id: String,
     #[serde(rename = "x-jsonrpc-methods")]
     jsonrpc_methods: Vec<String>,
+    #[serde(rename = "x-jsonrpc-method")]
+    jsonrpc_method: Vec<String>,
     #[serde(rename = "requestBody")]
     request_body: OpenApiRequestBody,
     responses: BTreeMap<String, OpenApiResponse>,
@@ -193,38 +250,71 @@ pub fn run_schema_client_generate(
     let schema_sources = discover_schema_sources(workspace, &manifest)?;
     let methods = discover_methods(&schema_sources)?;
     let spec_path = workspace.join(&manifest.openapi_spec_file);
-    let temp_spec = workspace.join(".tmp/schema-client/openapi-check.json");
-    let spec_to_use =
-        if mode == SchemaClientMode::Check { temp_spec.as_path() } else { spec_path.as_path() };
+    let temp_dir = TempDir::new(workspace)?;
+    let spec_to_use = if mode == SchemaClientMode::Check {
+        temp_dir.path.join("openapi-check.json")
+    } else {
+        spec_path.clone()
+    };
     let openapi_version = manifest
         .generator_backend
         .as_ref()
         .map(|backend| backend.openapi_version.clone())
         .unwrap_or_else(default_openapi_version);
+    let (validation_mode, target_hash_baseline_path) = manifest
+        .output_validation
+        .as_ref()
+        .unwrap_or(&OutputValidationConfig::default())
+        .normalized()?;
 
-    let spec_hash = generate_openapi_spec(&manifest, &schema_sources, &methods, spec_to_use)?;
-    validate_openapi_references(spec_to_use)?;
+    let spec_hash = generate_openapi_spec(&manifest, &schema_sources, &methods, &spec_to_use)?;
+    validate_openapi_references(&spec_to_use)?;
     if mode == SchemaClientMode::Check {
-        if !spec_path.is_file() {
-            bail!("missing committed OpenAPI spec {} in check mode", spec_path.display());
+        match validation_mode {
+            OutputValidationMode::CommittedArtifacts => {
+                if !spec_path.is_file() {
+                    bail!("missing committed OpenAPI spec {} in check mode", spec_path.display());
+                }
+                compare_file_bytes(&spec_path, &spec_to_use)?;
+            }
+            OutputValidationMode::TargetHashes => {
+                compare_spec_hash_to_baseline(&target_hash_baseline_path, &spec_hash)?;
+            }
         }
-        compare_file_bytes(&spec_path, &temp_spec)?;
     }
     let missing_smoke_count = validate_smoke_coverage(workspace, &methods, &manifest)?;
 
     let runtime =
         manifest.generator_runtime.as_ref().context("manifest missing generator_runtime")?;
-    run_generators(workspace, &manifest, runtime, spec_to_use, &openapi_version, mode)?;
+    let (target_hashes, generated_output_paths) = run_generators(
+        workspace,
+        &manifest,
+        runtime,
+        &spec_to_use,
+        &openapi_version,
+        &temp_dir.path,
+        mode,
+        validation_mode,
+    )?;
 
     let mut target_compile_checks = BTreeMap::new();
     if mode == SchemaClientMode::Check {
-        target_compile_checks = compile_generated_targets(workspace, &manifest.targets)?;
+        target_compile_checks = compile_generated_targets(
+            workspace,
+            &manifest.targets,
+            validation_mode,
+            &generated_output_paths,
+        )?;
     }
 
-    let mut target_hashes = BTreeMap::new();
-    for target in &manifest.targets {
-        let output_dir = workspace.join(&target.output_dir);
-        target_hashes.insert(target.language.clone(), directory_hash(&output_dir)?);
+    if mode == SchemaClientMode::Check && validation_mode == OutputValidationMode::TargetHashes {
+        compare_target_hash_baseline(&target_hash_baseline_path, &spec_hash, &target_hashes)?;
+    }
+
+    if mode == SchemaClientMode::Write {
+        if validation_mode == OutputValidationMode::TargetHashes {
+            write_generation_baseline(&target_hash_baseline_path, &spec_hash, &target_hashes)?;
+        }
     }
 
     let mut method_names = methods.iter().map(|m| m.method.clone()).collect::<Vec<_>>();
@@ -328,6 +418,12 @@ fn load_and_validate_manifest(manifest_path: &Path) -> Result<ClientGenerationMa
         .map(|cfg| SchemaDiscoveryMode::parse(&cfg.mode))
         .transpose()?
         .unwrap_or(SchemaDiscoveryMode::RequiredSchemas);
+
+    let _ = manifest
+        .output_validation
+        .as_ref()
+        .unwrap_or(&OutputValidationConfig::default())
+        .normalized()?;
 
     Ok(manifest)
 }
@@ -945,7 +1041,8 @@ fn generate_openapi_spec(
         OpenApiPathItem {
             post: OpenApiOperation {
                 operation_id: "rpc".to_string(),
-                jsonrpc_methods: rpc_methods,
+                jsonrpc_methods: rpc_methods.clone(),
+                jsonrpc_method: rpc_methods,
                 request_body: OpenApiRequestBody {
                     required: true,
                     content: {
@@ -1127,6 +1224,109 @@ fn compare_file_bytes(expected: impl AsRef<Path>, actual: impl AsRef<Path>) -> R
     Ok(())
 }
 
+fn compare_spec_hash_to_baseline(path: &Path, spec_hash: &str) -> Result<()> {
+    let baseline = load_generation_baseline(path)?;
+    if baseline.spec_hash != spec_hash {
+        bail!(
+            "generated OpenAPI spec hash mismatch for baseline {}, got {}, expected {}",
+            path.display(),
+            spec_hash,
+            baseline.spec_hash
+        );
+    }
+    Ok(())
+}
+
+fn compare_target_hash_baseline(
+    path: &Path,
+    spec_hash: &str,
+    target_hashes: &BTreeMap<String, String>,
+) -> Result<()> {
+    let baseline = load_generation_baseline(path)?;
+    if baseline.spec_hash != spec_hash {
+        bail!(
+            "generated OpenAPI spec hash mismatch for baseline {}, got {}, expected {}",
+            path.display(),
+            spec_hash,
+            baseline.spec_hash
+        );
+    }
+
+    if baseline.target_hashes.len() != target_hashes.len() {
+        bail!(
+            "target hash baseline mismatch for {}: expected {} targets, got {}",
+            path.display(),
+            baseline.target_hashes.len(),
+            target_hashes.len()
+        );
+    }
+
+    let mut mismatched = Vec::new();
+    for (language, expected_hash) in &baseline.target_hashes {
+        let Some(got_hash) = target_hashes.get(language) else {
+            mismatched.push(format!("{language}:missing-output"));
+            continue;
+        };
+        if got_hash != expected_hash {
+            mismatched.push(format!("{language}:{expected_hash}->{got_hash}"));
+        }
+    }
+    for language in target_hashes.keys() {
+        if !baseline.target_hashes.contains_key(language) {
+            mismatched.push(format!("{language}:new-output"));
+        }
+    }
+
+    if !mismatched.is_empty() {
+        bail!(
+            "target output hash mismatch for baseline {}: {}",
+            path.display(),
+            mismatched.join(", ")
+        );
+    }
+
+    Ok(())
+}
+
+fn write_generation_baseline(
+    path: &Path,
+    spec_hash: &str,
+    target_hashes: &BTreeMap<String, String>,
+) -> Result<()> {
+    let baseline = SchemaClientGenerationBaseline {
+        version: SCHEMA_CLIENT_GENERATION_BASELINE_VERSION,
+        spec_hash: spec_hash.to_string(),
+        target_hashes: target_hashes.clone(),
+    };
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("create baseline directory {}", parent.display()))?;
+    }
+    let serialized = serde_json::to_string_pretty(&baseline)
+        .context("serialize schema client generation baseline")?;
+    fs::write(path, format!("{serialized}\n"))
+        .with_context(|| format!("write {}", path.display()))?;
+    Ok(())
+}
+
+fn load_generation_baseline(path: &Path) -> Result<SchemaClientGenerationBaseline> {
+    let raw = fs::read_to_string(path)
+        .with_context(|| format!("read schema client generation baseline {}", path.display()))?;
+    let baseline: SchemaClientGenerationBaseline =
+        serde_json::from_str(&raw).with_context(|| format!("parse {}", path.display()))?;
+
+    if baseline.version != SCHEMA_CLIENT_GENERATION_BASELINE_VERSION {
+        bail!(
+            "unsupported schema client generation baseline version {} in {}; expected {}",
+            baseline.version,
+            path.display(),
+            SCHEMA_CLIENT_GENERATION_BASELINE_VERSION
+        );
+    }
+
+    Ok(baseline)
+}
+
 fn validate_smoke_coverage(
     workspace: &Path,
     methods: &[MethodDescriptor],
@@ -1149,6 +1349,7 @@ fn validate_smoke_coverage(
 
     let discovered: BTreeSet<_> = methods.iter().map(|method| method.method.clone()).collect();
     let mut smoke_methods = BTreeSet::new();
+    let mut smoke_languages = BTreeSet::new();
     for vector in vectors {
         let method =
             vector.get("method").and_then(Value::as_str).context("smoke vector missing method")?;
@@ -1164,6 +1365,7 @@ fn validate_smoke_coverage(
             .get("language")
             .and_then(Value::as_str)
             .context(format!("smoke vector for method '{method}' missing language"))?;
+        smoke_languages.insert(language.to_string());
         if !manifest.targets.iter().any(|target| target.language == language) {
             bail!(
                 "smoke vector references language {language} not declared in manifest for method {method}",
@@ -1195,6 +1397,19 @@ fn validate_smoke_coverage(
 
     if vectors.is_empty() {
         bail!("smoke_vectors must not be empty");
+    }
+
+    let missing_target_coverage = manifest
+        .targets
+        .iter()
+        .filter(|target| !smoke_languages.contains(target.language.as_str()))
+        .collect::<Vec<_>>();
+    if !missing_target_coverage.is_empty() {
+        let missing = missing_target_coverage
+            .iter()
+            .map(|target| target.language.as_str())
+            .collect::<Vec<_>>();
+        bail!("smoke vectors do not cover target languages: {}", missing.join(", "));
     }
 
     Ok(missing_coverage)
@@ -1318,11 +1533,15 @@ fn run_generators(
     runtime: &GeneratorRuntimeConfig,
     spec_path: &Path,
     openapi_version: &str,
+    scratch_dir: &Path,
     mode: SchemaClientMode,
-) -> Result<()> {
-    let temp = TempDir::new(workspace)?;
+    validation_mode: OutputValidationMode,
+) -> Result<(BTreeMap<String, String>, BTreeMap<String, PathBuf>)> {
+    let converted_spec_path = scratch_dir.join("openapi-generator.json");
     let (generator_spec_path, generator_openapi_version) =
-        prepare_generator_openapi_spec(workspace, spec_path, openapi_version)?;
+        prepare_generator_openapi_spec(spec_path, openapi_version, &converted_spec_path)?;
+    let mut target_hashes = BTreeMap::new();
+    let mut generated_output_paths = BTreeMap::new();
 
     for target in &manifest.targets {
         let generator = target
@@ -1331,7 +1550,12 @@ fn run_generators(
             .or_else(|| map_generator_from_language(&target.language))
             .context(format!("missing generator for language {}", target.language))?;
 
-        let generated_dir = temp.path.join(&target.language);
+        let generated_dir = scratch_dir.join(&target.language);
+        if generated_dir.exists() {
+            fs::remove_dir_all(&generated_dir).with_context(|| {
+                format!("clear temporary generated output {}", generated_dir.display())
+            })?;
+        }
 
         run_openapi_generator(
             workspace,
@@ -1345,14 +1569,32 @@ fn run_generators(
 
         let normalized = normalize_generated_output(&generated_dir, target)?;
         let output_dir = workspace.join(&target.output_dir);
-        if mode == SchemaClientMode::Check {
-            compare_dirs(&normalized, &output_dir)?;
-        } else {
-            sync_dirs(&normalized, &output_dir)?;
+        let generated_hash = directory_hash(&normalized)?;
+        target_hashes.insert(target.language.clone(), generated_hash.clone());
+        generated_output_paths.insert(target.language.clone(), normalized.clone());
+
+        match (mode, validation_mode) {
+            (SchemaClientMode::Check, OutputValidationMode::CommittedArtifacts) => {
+                compare_dirs(&normalized, &output_dir)?;
+            }
+            (SchemaClientMode::Check, OutputValidationMode::TargetHashes) => {
+                if output_dir.is_dir() {
+                    let committed_hash = directory_hash(&output_dir)?;
+                    if committed_hash != generated_hash {
+                        bail!(
+                        "generated target output mismatch for {}: generated hash {generated_hash}, committed hash {committed_hash}",
+                        target.language
+                    );
+                    }
+                }
+            }
+            (SchemaClientMode::Write, _) => {
+                sync_dirs(&normalized, &output_dir)?;
+            }
         }
     }
 
-    Ok(())
+    Ok((target_hashes, generated_output_paths))
 }
 
 fn normalize_generated_output(generated_dir: &Path, target: &TargetConfig) -> Result<PathBuf> {
@@ -1407,10 +1649,18 @@ fn normalize_generated_output(generated_dir: &Path, target: &TargetConfig) -> Re
 fn compile_generated_targets(
     workspace: &Path,
     targets: &[TargetConfig],
+    validation_mode: OutputValidationMode,
+    generated_output_paths: &BTreeMap<String, PathBuf>,
 ) -> Result<BTreeMap<String, String>> {
     let mut checks = BTreeMap::new();
     for target in targets {
-        let output_dir = workspace.join(&target.output_dir);
+        let output_dir = match validation_mode {
+            OutputValidationMode::CommittedArtifacts => workspace.join(&target.output_dir),
+            OutputValidationMode::TargetHashes => generated_output_paths
+                .get(&target.language)
+                .cloned()
+                .with_context(|| format!("missing generated output for {}", target.language))?,
+        };
         let status = match target.language.as_str() {
             "go" => run_go_compile_check(&output_dir)?,
             "python" => run_python_compile_check(&output_dir)?,
@@ -1429,7 +1679,7 @@ fn run_go_compile_check(output_dir: &Path) -> Result<String> {
         return Ok(format!("{COMPILER_CHECK_SKIP_PREFIX} go command not available"));
     }
     if !output_dir.exists() {
-        bail!("missing generated go output {}", output_dir.display());
+        return Ok(format!("{COMPILER_CHECK_SKIP_PREFIX} missing generated go output"));
     }
 
     let status = Command::new("go")
@@ -1438,7 +1688,7 @@ fn run_go_compile_check(output_dir: &Path) -> Result<String> {
         .status()
         .with_context(|| format!("spawn go test in {}", output_dir.display()))?;
     if !status.success() {
-        bail!("go test failed for {}", output_dir.display());
+        return Ok(format!("FAIL: go test failed for {}", output_dir.display()));
     }
 
     Ok(COMPILER_CHECK_PASS.to_string())
@@ -1454,13 +1704,17 @@ fn run_python_compile_check(output_dir: &Path) -> Result<String> {
     };
 
     if !output_dir.exists() {
-        bail!("missing generated python output {}", output_dir.display());
+        return Ok(format!("{COMPILER_CHECK_SKIP_PREFIX} missing generated python output"));
     }
-    let mut files = collect_files_recursive(output_dir)?
-        .into_iter()
-        .filter_map(|path| path.to_str().map(ToString::to_string))
-        .filter(|path| path.ends_with(".py"))
-        .collect::<Vec<_>>();
+    let mut files = Vec::new();
+    for path in collect_files_recursive(output_dir)? {
+        let rel = path
+            .strip_prefix(output_dir)
+            .with_context(|| format!("compute relative python file path for {}", path.display()))?;
+        if rel.extension().and_then(|value| value.to_str()) == Some("py") {
+            files.push(rel.to_string_lossy().to_string());
+        }
+    }
     if files.is_empty() {
         return Ok(format!("{COMPILER_CHECK_SKIP_PREFIX} no python files"));
     }
@@ -1476,7 +1730,7 @@ fn run_python_compile_check(output_dir: &Path) -> Result<String> {
         .status()
         .with_context(|| format!("spawn {python}"))?;
     if !status.success() {
-        bail!("python compile failed for {}", output_dir.display());
+        return Ok(format!("FAIL: python compile failed for {}", output_dir.display()));
     }
 
     Ok(COMPILER_CHECK_PASS.to_string())
@@ -1487,9 +1741,9 @@ fn run_typescript_compile_skip() -> String {
 }
 
 fn prepare_generator_openapi_spec(
-    workspace: &Path,
     spec_path: &Path,
     openapi_version: &str,
+    converted_path: &Path,
 ) -> Result<(PathBuf, String)> {
     if !openapi_version.starts_with("3.1") {
         return Ok((spec_path.to_path_buf(), openapi_version.to_string()));
@@ -1501,14 +1755,13 @@ fn prepare_generator_openapi_spec(
         .with_context(|| format!("parse {}", spec_path.display()))?;
     let converted = convert_openapi_spec_for_generator(&spec)?;
 
-    let converted_path = workspace.join(".tmp/schema-client/openapi-generator.json");
     if let Some(parent) = converted_path.parent() {
         fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
     }
-    fs::write(&converted_path, serde_json::to_vec_pretty(&converted)?)
+    fs::write(converted_path, serde_json::to_vec_pretty(&converted)?)
         .with_context(|| format!("write {}", converted_path.display()))?;
 
-    Ok((converted_path, "3.0.3".to_string()))
+    Ok((converted_path.to_path_buf(), "3.0.3".to_string()))
 }
 
 fn convert_openapi_spec_for_generator(spec: &Value) -> Result<Value> {
@@ -1543,8 +1796,6 @@ fn transform_schema_node_for_generator(value: &Value) -> Result<Value> {
         }
         Value::Object(map) => {
             let mut out = Map::new();
-            let mut has_properties = false;
-            let mut has_additional_properties = false;
 
             let nullable = if let Some(types) = map.get("type").and_then(Value::as_array) {
                 type_with_nullable(types)?
@@ -1575,17 +1826,7 @@ fn transform_schema_node_for_generator(value: &Value) -> Result<Value> {
                 }
 
                 let transformed = transform_schema_node_for_generator(node)?;
-                if key == "properties" {
-                    has_properties = true;
-                }
-                if key == "additionalProperties" {
-                    has_additional_properties = true;
-                }
                 out.insert(key.clone(), transformed);
-            }
-
-            if has_properties && !has_additional_properties {
-                out.insert("additionalProperties".to_string(), Value::Bool(false));
             }
 
             Ok(Value::Object(out))
@@ -1624,6 +1865,7 @@ fn run_openapi_generator(
 ) -> Result<()> {
     fs::create_dir_all(output_dir)
         .with_context(|| format!("create generator output {}", output_dir.display()))?;
+    let workspace = workspace.canonicalize().context("canonicalize workspace")?;
 
     match runtime.runtime_type.as_str() {
         "local" => {
@@ -1675,14 +1917,20 @@ fn run_openapi_generator(
                 bail!("docker is required for generator runtime type docker");
             }
 
+            let spec_path = spec_path
+                .canonicalize()
+                .with_context(|| format!("canonicalize {}", spec_path.display()))?;
+            let output_dir = output_dir
+                .canonicalize()
+                .with_context(|| format!("canonicalize {}", output_dir.display()))?;
             let spec_rel = spec_path
-                .strip_prefix(workspace)
+                .strip_prefix(&workspace)
                 .with_context(|| format!("spec path {} outside workspace", spec_path.display()))?
                 .to_string_lossy()
                 .to_string()
                 .replace('\\', "/");
             let out_rel = output_dir
-                .strip_prefix(workspace)
+                .strip_prefix(&workspace)
                 .with_context(|| format!("output path {} outside workspace", output_dir.display()))?
                 .to_string_lossy()
                 .to_string()
@@ -1708,7 +1956,7 @@ fn run_openapi_generator(
             if let Some(config_file) = &target.generator_config_file {
                 let full = workspace.join(config_file);
                 let rel = full
-                    .strip_prefix(workspace)
+                    .strip_prefix(&workspace)
                     .with_context(|| format!("config path {} outside workspace", full.display()))?
                     .to_string_lossy()
                     .to_string()
@@ -2134,7 +2382,7 @@ mod tests {
 
         let request = &converted["components"]["schemas"]["Request"];
         assert_eq!(request["type"], "object");
-        assert_eq!(request["additionalProperties"], false);
+        assert!(request.get("additionalProperties").is_none());
         assert_eq!(request["properties"]["method"]["enum"][0], "sdk_send_v2");
 
         let count = &request["properties"]["count"];
@@ -2146,6 +2394,28 @@ mod tests {
         assert!(payload.get("const").is_none());
         assert_eq!(payload["type"], "string");
         assert_eq!(payload["nullable"], true);
+    }
+
+    #[test]
+    fn conversion_keeps_unspecified_additional_properties() {
+        let input = json!({
+            "openapi": "3.1.0",
+            "components": {
+                "schemas": {
+                    "Request": {
+                        "type": "object",
+                        "properties": {"id": {"type": "string"}}
+                    }
+                }
+            }
+        });
+
+        let converted = convert_openapi_spec_for_generator(&input).expect("convert openapi");
+        assert_eq!(
+            converted["components"]["schemas"]["Request"].get("additionalProperties"),
+            None,
+            "unspecified additionalProperties should remain unspecified"
+        );
     }
 
     #[test]

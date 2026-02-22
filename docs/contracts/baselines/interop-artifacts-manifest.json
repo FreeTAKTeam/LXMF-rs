@@ -14,7 +14,7 @@
     {
       "path": "docs/contracts/baselines/schema-client-generation-baseline.json",
       "bytes": 373,
-      "sha256": "7c1549c55060e9930059648e3ea18904a9bf5a032b9687d171a555939f122928"
+      "sha256": "34fb56fb174eb668df5cbac045a407ef062f2919e76038c36e99e098c7a82e37"
     },
     {
       "path": "docs/contracts/compatibility-contract.md",
@@ -53,8 +53,8 @@
     },
     {
       "path": "docs/contracts/schema-driven-clients.md",
-      "bytes": 1560,
-      "sha256": "9ea81db3cecb9e8c3166268a835ec787469a14232788943e8cd806dad11a911e"
+      "bytes": 2597,
+      "sha256": "26c34031b4eb86b970fa4f8779db5e2c13b8bcd5bfa3a8257bf5c98c8bb12805"
     },
     {
       "path": "docs/contracts/sdk-v2-api-stability.md",
@@ -133,8 +133,8 @@
     },
     {
       "path": "docs/contracts/sdk-v2.md",
-      "bytes": 12867,
-      "sha256": "cbd7714331ac10bf960b730c646da7be26184d724573987c343cd5d60d238772"
+      "bytes": 12995,
+      "sha256": "f040af97b951bc587a0bba7a7870e56943f8b0bd4cd658301f4c4aea530835a6"
     },
     {
       "path": "docs/contracts/support-policy.md",
@@ -612,9 +612,14 @@
       "sha256": "3431ce3b300bd3d2fcc61e71faa829c5ace0ce2c5c370c42720e0be4ce6c1e09"
     },
     {
-      "path": "docs/fixtures/sdk-v2/config.remote_token.valid.json",
+      "path": "docs/fixtures/sdk-v2/config.remote_token.missing_shared_secret.invalid.json",
       "bytes": 676,
       "sha256": "835207f60b275854963e32c6d3a3295c096de27c49e49176935c1c89f3bf3940"
+    },
+    {
+      "path": "docs/fixtures/sdk-v2/config.remote_token.valid.json",
+      "bytes": 721,
+      "sha256": "52394a7572467a1402c5655c0e598a15d8798f3675801a453abca82646605928"
     },
     {
       "path": "docs/fixtures/sdk-v2/config.store_forward.invalid.json",
@@ -648,8 +653,8 @@
     },
     {
       "path": "docs/fixtures/sdk-v2/cookbook/config.remote_token_gateway.valid.json",
-      "bytes": 709,
-      "sha256": "fa70f64b7db5c37c9d052b081098be2c8a9c5bcbba43d78756f203ae15c93878"
+      "bytes": 757,
+      "sha256": "88de0ce854bf710c4f830d757c9654903e8f336794cf926856c7342b0f55b995"
     },
     {
       "path": "docs/fixtures/sdk-v2/error.invalid_machine_code.invalid.json",
@@ -1253,8 +1258,13 @@
     },
     {
       "path": "docs/schemas/sdk/v2/clients/client-generation-manifest.json",
-      "bytes": 1873,
-      "sha256": "c7386320ff9083525340dc46d9bc349679f829b54fcd38e8f2f3f7d31bd4a9fc"
+      "bytes": 1965,
+      "sha256": "f667449219210d7ce4343b67d2f6aca840cab90a0d4a504f645e75ba89290b99"
+    },
+    {
+      "path": "docs/schemas/sdk/v2/clients/client-generation-manifest.schema.json",
+      "bytes": 3038,
+      "sha256": "46bba9e376959637829444f2ea415cf8c30892102c4fb7a0f4a251963c27c3ec"
     },
     {
       "path": "docs/schemas/sdk/v2/clients/smoke-requests.json",
@@ -1273,8 +1283,8 @@
     },
     {
       "path": "docs/schemas/sdk/v2/config.schema.json",
-      "bytes": 15681,
-      "sha256": "531890bd53f5e251eb768a2cf723f91bfecb43812f73747675a5f9458261b68b"
+      "bytes": 15834,
+      "sha256": "92337a5aefd9263792963d2d250dee53e8969004b3041ffc47c15e39d0c457ae"
     },
     {
       "path": "docs/schemas/sdk/v2/error.schema.json",

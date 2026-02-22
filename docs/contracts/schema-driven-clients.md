@@ -46,7 +46,7 @@ Each target must include:
 2. Additive schema fields must be optional in generated clients.
 3. Breaking schema changes require migration notes and regenerated baselines.
 
-## Generation and Smoke Gate
+## Generation and Validation
 
 Run:
 
@@ -54,8 +54,25 @@ Run:
 cargo run -p xtask -- schema-client-check
 ```
 
-The gate validates:
+The gate runs the OpenAPI-first pipeline:
 
-1. manifest completeness,
-2. required schema presence,
-3. smoke fixture coverage for Go/JS/Python.
+1. manifest parse and validation,
+2. method extraction from schema contracts,
+3. canonical OpenAPI 3.1 spec generation at `generated/clients/spec/openapi.json`,
+4. canonical spec compatibility conversion to OpenAPI 3.0 for generator compatibility,
+5. generator execution for Go/JavaScript/Python targets via Docker runtime,
+6. generated output/hash stability check controlled by `output_validation` in manifest:
+   - `committed_artifacts`: compare generated files against checked-in artifacts,
+   - `target_hashes`: compare generated artifact checksums against `target_hash_file`.
+7. smoke vector coverage for all discovered methods,
+8. optional generated output compile checks for Go/Python artifacts (best-effort),
+9. drift report emission to `target/interop/schema-client-smoke-report.txt` and `target/schema-client/spec.hash`.
+
+Additional command:
+
+```bash
+cargo run -p xtask -- schema-client-generate
+cargo run -p xtask -- schema-client-generate --check
+```
+
+`schema-client-generate` writes generated clients from the manifest and generated/updates artifacts; `--check` validates drift using manifest policy.

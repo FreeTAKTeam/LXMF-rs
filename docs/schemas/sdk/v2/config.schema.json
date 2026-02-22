@@ -120,12 +120,13 @@
     "token_auth": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["issuer", "audience", "jti_cache_ttl_ms"],
+      "required": ["issuer", "audience", "jti_cache_ttl_ms", "shared_secret"],
       "properties": {
         "issuer": { "type": "string", "minLength": 1 },
         "audience": { "type": "string", "minLength": 1 },
         "jti_cache_ttl_ms": { "type": "integer", "minimum": 1 },
-        "clock_skew_ms": { "type": "integer", "minimum": 0 }
+        "clock_skew_ms": { "type": "integer", "minimum": 0 },
+        "shared_secret": { "type": "string", "minLength": 1 }
       }
     },
     "mtls_auth": {
@@ -373,7 +374,8 @@
         "clock_skew_ms": {
           "type": ["integer", "null"],
           "minimum": 0
-        }
+        },
+        "shared_secret": { "type": ["string", "null"], "minLength": 1 }
       }
     },
     "mtls_auth_patch": {

@@ -24,7 +24,7 @@ Use this for authenticated remote clients where token verification and replay co
 - Security posture:
   - `bind_mode=remote`
   - `auth_mode=token`
-  - `token_auth` required
+  - `token_auth` required (`issuer`, `audience`, `jti_cache_ttl_ms`, `shared_secret`)
 
 ## Remote mTLS Gateway
 

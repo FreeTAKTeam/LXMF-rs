@@ -346,9 +346,10 @@ Auth mode defaults and requirements:
 2. Safe baseline is `bind_mode=local_only` with `auth_mode=local_trusted`.
 3. Remote bind requires explicit auth mode: `token` or `mtls`.
 4. Remote bind without an explicit auth mode fails with `SDK_SECURITY_AUTH_REQUIRED`.
-5. Token mode must reject replayed `jti` (`SDK_SECURITY_TOKEN_REPLAYED`).
-6. `mtls` mode is transport-bound and must be evaluated from TLS peer certificate state, never from request headers.
-7. `mtls` mode requires `rpc_backend.mtls_auth.ca_bundle_path`; when `require_client_cert=true`, both `client_cert_path` and `client_key_path` are required.
+5. Token mode requires explicit `rpc_backend.token_auth` values: `issuer`, `audience`, `jti_cache_ttl_ms`, and `shared_secret`.
+6. Token mode must reject replayed `jti` (`SDK_SECURITY_TOKEN_REPLAYED`).
+7. `mtls` mode is transport-bound and must be evaluated from TLS peer certificate state, never from request headers.
+8. `mtls` mode requires `rpc_backend.mtls_auth.ca_bundle_path`; when `require_client_cert=true`, both `client_cert_path` and `client_key_path` are required.
 
 ## Compatibility Rules
 
