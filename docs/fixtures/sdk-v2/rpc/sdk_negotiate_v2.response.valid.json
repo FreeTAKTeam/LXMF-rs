@@ -1,0 +1,13 @@
+{
+  "id": 1,
+  "result": {
+    "runtime_id": "runtime-1",
+    "active_contract_version": 2,
+    "effective_capabilities": ["sdk.capability.async_events"],
+    "effective_limits": {
+      "max_poll_events": 256
+    },
+    "contract_release": "v2.5",
+    "schema_namespace": "v2"
+  }
+}

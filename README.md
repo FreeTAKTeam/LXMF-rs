@@ -1,111 +1,125 @@
 # LXMF-rs Monorepo
 
-Rust monorepo for LXMF-rs and Reticulum-rs with a reliability-first design.
-
-## Project Goals
-- Lightweight, portable protocol library by default.
-- Clear separation between protocol code and operator tooling.
-- Deterministic behavior with strict CI quality gates.
+Rust monorepo for LXMF and Reticulum with strict library/app boundaries and enterprise quality gates.
 
 ## Repository Layout
 
 ```text
 LXMF-rs/
 ├── crates/
-│   ├── lxmf/                # Core LXMF crate
-│   ├── reticulum/           # Core Reticulum-rs crate
-│   └── reticulum-daemon/    # reticulumd daemon crate
-├── docs/
-│   ├── architecture/
-│   ├── adr/
-│   ├── compatibility-contract.md
-│   └── compatibility-matrix.md
-└── .github/workflows/ci.yml
+│   ├── libs/
+│   │   ├── lxmf-core/
+│   │   ├── lxmf-sdk/
+│   │   ├── rns-core/
+│   │   ├── rns-transport/
+│   │   ├── rns-rpc/
+│   │   └── test-support/
+│   ├── apps/
+│   │   ├── lxmf-cli/
+│   │   ├── reticulumd/
+│   │   └── rns-tools/
+└── docs/
+    ├── adr/
+    ├── architecture/
+    ├── contracts/
+    ├── migrations/
+    └── runbooks/
+├── tools/
+│   └── scripts/
+├── xtask/
+└── target/
+
+Note: legacy migration-only implementation crates are retained under
+`crates/internal/` and are excluded from the active workspace graph.
 ```
 
-## Architecture
+## Public Crates
 
-```mermaid
-flowchart LR
-  A["Applications"] --> B["lxmf crate (core)"]
-  B --> C["reticulum-rs transport"]
-  B --> D["Wire/message codecs"]
-  E["Optional CLI (feature=cli)"] --> B
-```
+- `lxmf-core`: message/payload/identity primitives.
+- `lxmf-sdk`: host-facing client API (`start/send/cancel/status/configure/poll/snapshot/shutdown`).
+- `rns-core`: Reticulum cryptographic and packet primitives.
+- `rns-transport`: transport + iface + receipt/resource API.
+- `rns-rpc`: RPC request/response/event contracts and bridges.
 
-## Build
+## Build and Validation
 
 ```bash
-# Core library (minimal surface)
 cargo check --workspace --all-targets
-
-# CLI-enabled build
-cargo check --workspace --all-targets --all-features
-
-# Fast local test run (core suite + CLI)
-make test
-
-# Optional compatibility/fullness sweeps
-make test-all
-make test-full-targets
-
-# Run CLI
-cargo run -p lxmf --features cli --bin lxmf -- --help
+cargo test --workspace
+cargo clippy --workspace --all-targets --all-features --no-deps -- -D warnings
+cargo doc --workspace --no-deps
+./tools/scripts/check-boundaries.sh
 ```
 
-## Embedded Runtime API
-
-For desktop apps (for example Tauri), use the embedded runtime feature and typed send helpers:
-
-```rust
-use lxmf::payload_fields::CommandEntry;
-use lxmf::runtime::{self, RuntimeConfig, SendCommandRequest, SendMessageRequest};
-
-let handle = runtime::start(RuntimeConfig {
-    profile: "default".into(),
-    rpc: None,
-    transport: Some("127.0.0.1:0".into()),
-})?;
-
-let msg = SendMessageRequest::new(
-    "ffeeddccbbaa99887766554433221100",
-    "hello",
-);
-let _ = handle.send_message(msg)?;
-
-let cmd = SendCommandRequest::new(
-    "ffeeddccbbaa99887766554433221100",
-    "ops bundle",
-    vec![CommandEntry::from_text(1, "ping")],
-);
-let _ = handle.send_command(cmd)?;
-```
-
-Build with:
+or via `xtask`:
 
 ```bash
-cargo add lxmf --features embedded-runtime
+cargo xtask ci
+cargo xtask release-check
+cargo xtask api-diff
 ```
 
-## Compatibility
-- Cross-repo compatibility policy: `docs/compatibility-contract.md`
-- Detailed parity mapping: `docs/compatibility-matrix.md`
+## Developer Bootstrap
 
-## Canonical Payload Policy
-- Public attachment key: `attachments`
-- Rejected public legacy keys: `files`, `"5"`
-- Wire field `0x05` is internal-only representation
-- `send_message_v2` is the canonical client RPC send method
+One-command local setup:
 
-## Not Included
-- No bundled proprietary hardware integrations.
-- No daemon/TUI coupling in default library build.
-- No stability promise for pre-1.0 internals.
+```bash
+make bootstrap
+```
+
+Direct script form:
+
+```bash
+./tools/scripts/bootstrap-dev.sh
+```
+
+Verification-only mode (used by CI):
+
+```bash
+./tools/scripts/bootstrap-dev.sh --check --skip-smoke
+```
+
+## Binaries
+
+- `lxmf-cli`
+- `reticulumd`
+- `rncp`, `rnid`, `rnir`, `rnodeconf`, `rnpath`, `rnpkg`, `rnprobe`, `rnsd`, `rnstatus`, `rnx`
+
+Run examples:
+
+```bash
+cargo run -p lxmf-cli -- --help
+cargo run -p reticulumd -- --help
+cargo run -p rns-tools --bin rnx -- e2e --timeout-secs 20
+```
+
+## Contracts and Runbooks
+
+- Compatibility contract: `docs/contracts/compatibility-contract.md`
+- Compatibility matrix: `docs/contracts/compatibility-matrix.md`
+- Third-party compatibility kit: `docs/contracts/third-party-compatibility-kit.md`
+- Support and LTS policy: `docs/contracts/support-policy.md`
+- Extension registry: `docs/contracts/extension-registry.md`
+- RPC contract: `docs/contracts/rpc-contract.md`
+- Payload contract: `docs/contracts/payload-contract.md`
+- Release readiness: `docs/runbooks/release-readiness.md`
+- Release scorecard process: `docs/architecture/overview.md`
+
+## SDK Guide
+
+- Guide index: `docs/sdk/README.md`
+- Quickstart: `docs/sdk/quickstart.md`
+- Profiles/configuration: `docs/sdk/configuration-profiles.md`
+- Config cookbook: `docs/runbooks/sdk-config-cookbook.md`
+- Lifecycle/events: `docs/sdk/lifecycle-and-events.md`
+- Advanced embedding: `docs/sdk/advanced-embedding.md`
 
 ## Governance
-- Contribution guide: `CONTRIBUTING.md`
+
+- Governance docs: `SECURITY.md`
 - Security policy: `SECURITY.md`
 - Code ownership: `.github/CODEOWNERS`
 
 ## License
+
 MIT

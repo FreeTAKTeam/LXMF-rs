@@ -1,0 +1,7 @@
+{
+  "id": "req-identity-list-invalid",
+  "method": "sdk_identity_list_v2",
+  "params": {
+    "unexpected": true
+  }
+}

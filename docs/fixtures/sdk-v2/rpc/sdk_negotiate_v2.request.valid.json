@@ -1,0 +1,14 @@
+{
+  "id": 1,
+  "method": "sdk_negotiate_v2",
+  "params": {
+    "supported_contract_versions": [2],
+    "requested_capabilities": ["sdk.capability.async_events"],
+    "config": {
+      "profile": "desktop-full",
+      "bind_mode": "local_only",
+      "auth_mode": "local_trusted",
+      "overflow_policy": "reject"
+    }
+  }
+}

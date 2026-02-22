@@ -1,0 +1,15 @@
+{
+  "id": 7,
+  "result": {
+    "runtime_id": "runtime-1",
+    "state": "running",
+    "active_contract_version": 2,
+    "event_stream_position": 4,
+    "config_revision": 1,
+    "profile": "desktop-full",
+    "effective_capabilities": [],
+    "queued_messages": 0,
+    "in_flight_messages": 0,
+    "counts_included": true
+  }
+}

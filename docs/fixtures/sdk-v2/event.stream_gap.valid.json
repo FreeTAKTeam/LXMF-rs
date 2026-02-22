@@ -1,0 +1,16 @@
+{
+  "event_id": "evt-gap-9",
+  "runtime_id": "rt-1",
+  "stream_id": "sdk-events",
+  "seq_no": 9,
+  "contract_version": 2,
+  "ts_ms": 1700000000100,
+  "event_type": "StreamGap",
+  "severity": "warn",
+  "source_component": "rns-rpc",
+  "payload": {
+    "expected_seq_no": 10,
+    "observed_seq_no": 22,
+    "dropped_count": 12
+  }
+}

@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://weft.tak/contracts/sdk/v2/event.schema.json",
+  "title": "LXMF SDK Event v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_id",
+    "runtime_id",
+    "stream_id",
+    "seq_no",
+    "contract_version",
+    "ts_ms",
+    "event_type",
+    "severity",
+    "source_component",
+    "payload"
+  ],
+  "properties": {
+    "event_id": { "type": "string", "minLength": 1 },
+    "runtime_id": { "type": "string", "minLength": 1 },
+    "stream_id": { "type": "string", "minLength": 1 },
+    "seq_no": { "type": "integer", "minimum": 0 },
+    "contract_version": { "type": "integer", "minimum": 1, "maximum": 65535 },
+    "ts_ms": { "type": "integer", "minimum": 0 },
+    "event_type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "severity": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_component": { "type": "string", "minLength": 1 },
+    "operation_id": { "type": ["string", "null"] },
+    "message_id": { "type": ["string", "null"] },
+    "peer_id": { "type": ["string", "null"] },
+    "correlation_id": { "type": ["string", "null"] },
+    "trace_id": { "type": ["string", "null"] },
+    "payload": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "extensions": { "$ref": "#/$defs/extension_map" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "event_type": { "const": "StreamGap" } },
+        "required": ["event_type"]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["expected_seq_no", "observed_seq_no", "dropped_count"],
+            "properties": {
+              "expected_seq_no": { "type": "integer", "minimum": 0 },
+              "observed_seq_no": { "type": "integer", "minimum": 0 },
+              "dropped_count": { "type": "integer", "minimum": 0 }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "event_type": { "const": "ExtensionEvent" } },
+        "required": ["event_type"]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["extension_event_type"],
+            "properties": {
+              "extension_event_type": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]*(\\.[a-z0-9][a-z0-9-]*)+\\.[a-z0-9_][a-z0-9_-]*$",
+                "not": {
+                  "pattern": "^sdk\\."
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "extension_map": {
+      "type": "object",
+      "maxProperties": 32,
+      "propertyNames": {
+        "pattern": "^[a-z0-9][a-z0-9_.-]{0,63}$"
+      },
+      "additionalProperties": true
+    },
+    "event_batch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["events", "next_cursor", "dropped_count"],
+      "properties": {
+        "events": {
+          "type": "array",
+          "items": { "$ref": "#" }
+        },
+        "next_cursor": { "type": "string", "minLength": 1 },
+        "dropped_count": { "type": "integer", "minimum": 0 },
+        "snapshot_high_watermark_seq_no": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "extensions": { "$ref": "#/$defs/extension_map" }
+      }
+    }
+  }
+}

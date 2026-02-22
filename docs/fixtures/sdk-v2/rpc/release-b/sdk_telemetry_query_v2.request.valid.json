@@ -1,0 +1,8 @@
+{
+  "id": "req-telemetry-query-1",
+  "method": "sdk_telemetry_query_v2",
+  "params": {
+    "peer_id": "peer-1",
+    "limit": 100
+  }
+}

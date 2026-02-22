@@ -1,0 +1,7 @@
+{
+  "id": 4005,
+  "method": "sdk_attachment_upload_commit_v2",
+  "params": {
+    "upload_id": "upload-1"
+  }
+}

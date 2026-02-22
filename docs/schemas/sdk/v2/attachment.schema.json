@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://weft.tak/contracts/sdk/v2/attachment.schema.json",
+  "title": "LXMF SDK Attachment Domain v2",
+  "oneOf": [
+    { "$ref": "#/$defs/attachment_meta" },
+    { "$ref": "#/$defs/attachment_store_request" },
+    { "$ref": "#/$defs/attachment_list_request" },
+    { "$ref": "#/$defs/attachment_list_result" },
+    { "$ref": "#/$defs/attachment_upload_start_request" },
+    { "$ref": "#/$defs/attachment_upload_session" },
+    { "$ref": "#/$defs/attachment_upload_chunk_request" },
+    { "$ref": "#/$defs/attachment_upload_chunk_ack" },
+    { "$ref": "#/$defs/attachment_upload_commit_request" },
+    { "$ref": "#/$defs/attachment_download_chunk_request" },
+    { "$ref": "#/$defs/attachment_download_chunk_result" }
+  ],
+  "$defs": {
+    "attachment_id": { "type": "string", "minLength": 1 },
+    "attachment_upload_id": { "type": "string", "minLength": 1 },
+    "attachment_meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attachment_id",
+        "name",
+        "content_type",
+        "byte_len",
+        "checksum_sha256",
+        "created_ts_ms"
+      ],
+      "properties": {
+        "attachment_id": { "$ref": "#/$defs/attachment_id" },
+        "name": { "type": "string", "minLength": 1 },
+        "content_type": { "type": "string", "minLength": 1 },
+        "byte_len": { "type": "integer", "minimum": 0 },
+        "checksum_sha256": { "type": "string", "minLength": 1 },
+        "created_ts_ms": { "type": "integer", "minimum": 0 },
+        "expires_ts_ms": { "type": ["integer", "null"], "minimum": 0 },
+        "topic_ids": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "extensions": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "attachment_store_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "content_type", "bytes_base64"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "content_type": { "type": "string", "minLength": 1 },
+        "bytes_base64": { "type": "string", "minLength": 1 },
+        "expires_ts_ms": { "type": ["integer", "null"], "minimum": 0 },
+        "topic_ids": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "extensions": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "attachment_list_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "topic_id": { "type": ["string", "null"] },
+        "cursor": { "type": ["string", "null"] },
+        "limit": { "type": "integer", "minimum": 1 },
+        "extensions": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "attachment_list_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["attachments"],
+      "properties": {
+        "attachments": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/attachment_meta" }
+        },
+        "next_cursor": { "type": ["string", "null"] }
+      }
+    },
+    "attachment_upload_start_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "content_type", "total_size", "checksum_sha256"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "content_type": { "type": "string", "minLength": 1 },
+        "total_size": { "type": "integer", "minimum": 1 },
+        "checksum_sha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" },
+        "expires_ts_ms": { "type": ["integer", "null"], "minimum": 0 },
+        "topic_ids": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "extensions": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "attachment_upload_session": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["upload_id", "attachment_id", "chunk_size_hint", "next_offset"],
+      "properties": {
+        "upload_id": { "$ref": "#/$defs/attachment_upload_id" },
+        "attachment_id": { "$ref": "#/$defs/attachment_id" },
+        "chunk_size_hint": { "type": "integer", "minimum": 1 },
+        "next_offset": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "attachment_upload_chunk_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["upload_id", "offset", "bytes_base64"],
+      "properties": {
+        "upload_id": { "$ref": "#/$defs/attachment_upload_id" },
+        "offset": { "type": "integer", "minimum": 0 },
+        "bytes_base64": { "type": "string", "minLength": 1 },
+        "extensions": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "attachment_upload_chunk_ack": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["accepted", "next_offset", "complete"],
+      "properties": {
+        "accepted": { "type": "boolean" },
+        "next_offset": { "type": "integer", "minimum": 0 },
+        "complete": { "type": "boolean" }
+      }
+    },
+    "attachment_upload_commit_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["upload_id"],
+      "properties": {
+        "upload_id": { "$ref": "#/$defs/attachment_upload_id" },
+        "extensions": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "attachment_download_chunk_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["attachment_id", "offset", "max_bytes"],
+      "properties": {
+        "attachment_id": { "$ref": "#/$defs/attachment_id" },
+        "offset": { "type": "integer", "minimum": 0 },
+        "max_bytes": { "type": "integer", "minimum": 1 },
+        "extensions": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "attachment_download_chunk_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attachment_id",
+        "offset",
+        "next_offset",
+        "total_size",
+        "done",
+        "checksum_sha256",
+        "bytes_base64"
+      ],
+      "properties": {
+        "attachment_id": { "$ref": "#/$defs/attachment_id" },
+        "offset": { "type": "integer", "minimum": 0 },
+        "next_offset": { "type": "integer", "minimum": 0 },
+        "total_size": { "type": "integer", "minimum": 0 },
+        "done": { "type": "boolean" },
+        "checksum_sha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" },
+        "bytes_base64": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

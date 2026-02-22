@@ -1,0 +1,31 @@
+[package]
+name = "rns-rpc"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+rand_core = { workspace = true, features = ["getrandom"] }
+rmp-serde.workspace = true
+rmpv = { workspace = true, features = ["with-serde"] }
+sha2.workspace = true
+hmac.workspace = true
+hex.workspace = true
+base64.workspace = true
+serde_json.workspace = true
+rusqlite = { workspace = true }
+serde.workspace = true
+tokio = { workspace = true, features = ["full"] }
+zeroize.workspace = true
+
+[dev-dependencies]
+criterion.workspace = true
+
+[[bench]]
+name = "rpc_hotpaths"
+harness = false
+
+[lints]
+workspace = true

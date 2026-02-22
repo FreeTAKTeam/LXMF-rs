@@ -1,0 +1,11 @@
+{
+  "machine_code": "SDK_VALIDATION_INVALID_ARGUMENT",
+  "category": "Validation",
+  "retryable": false,
+  "is_user_actionable": true,
+  "message": "max must be greater than zero",
+  "details": {
+    "field": "max",
+    "observed": 0
+  }
+}

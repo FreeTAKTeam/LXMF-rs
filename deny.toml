@@ -4,6 +4,14 @@ all-features = true
 [advisories]
 version = 2
 yanked = "deny"
+ignore = [
+  # Temporary: rustls-pemfile is archived upstream while rustls-pki-types migration is tracked.
+  "RUSTSEC-2025-0134",
+  # Temporary: idna / time / paste advisories are known upstream dependency issues on this branch.
+  "RUSTSEC-2024-0421",
+  "RUSTSEC-2024-0436",
+  "RUSTSEC-2026-0009",
+]
 
 [licenses]
 version = 2
@@ -13,6 +21,7 @@ allow = [
   "BSD-2-Clause",
   "BSD-3-Clause",
   "ISC",
+  "OpenSSL",
   "Zlib",
   "Unicode-3.0",
   "MPL-2.0",

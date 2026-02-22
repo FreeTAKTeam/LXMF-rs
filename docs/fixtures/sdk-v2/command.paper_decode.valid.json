@@ -1,0 +1,8 @@
+{
+  "request_id": "req-paper-decode-1",
+  "method": "paper_decode",
+  "params": {
+    "uri": "lxm://example-message",
+    "transient_id": "transient-1"
+  }
+}

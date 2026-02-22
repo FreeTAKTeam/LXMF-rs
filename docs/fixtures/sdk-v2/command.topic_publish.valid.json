@@ -1,0 +1,10 @@
+{
+  "request_id": "req-topic-publish-1",
+  "method": "topic_publish",
+  "params": {
+    "topic_id": "topic-1",
+    "payload": {
+      "message": "hello"
+    }
+  }
+}

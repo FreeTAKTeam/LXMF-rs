@@ -1,0 +1,11 @@
+{
+  "id": 2,
+  "method": "sdk_send_v2",
+  "params": {
+    "id": "msg-1",
+    "source": "src",
+    "destination": "dst",
+    "title": "hello",
+    "content": "payload"
+  }
+}

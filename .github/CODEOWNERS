@@ -1,5 +1,31 @@
 * @FreeTAKTeam
 
+/SECURITY.md @FreeTAKTeam
+/.github/SECURITY.md @FreeTAKTeam
+/.github/CODEOWNERS @FreeTAKTeam
+
 /docs/ @FreeTAKTeam
-/crates/lxmf/src/ @FreeTAKTeam
-/crates/lxmf/tests/ @FreeTAKTeam
+/docs/adr/ @FreeTAKTeam
+/docs/contracts/ @FreeTAKTeam
+/docs/schemas/ @FreeTAKTeam
+/docs/migrations/ @FreeTAKTeam
+/docs/runbooks/ @FreeTAKTeam
+/docs/architecture/unsafe-code-policy.md @FreeTAKTeam
+/docs/architecture/unsafe-inventory.md @FreeTAKTeam
+/docs/adr/0006-unsafe-code-audit-governance.md @FreeTAKTeam
+
+/crates/libs/lxmf-core/ @FreeTAKTeam
+/crates/libs/lxmf-sdk/ @FreeTAKTeam
+/crates/libs/rns-core/ @FreeTAKTeam
+/crates/libs/rns-transport/ @FreeTAKTeam
+/crates/libs/rns-rpc/ @FreeTAKTeam
+/crates/libs/test-support/ @FreeTAKTeam
+
+/crates/apps/lxmf-cli/ @FreeTAKTeam
+/crates/apps/reticulumd/ @FreeTAKTeam
+/crates/apps/rns-tools/ @FreeTAKTeam
+
+/.github/workflows/ @FreeTAKTeam
+/xtask/ @FreeTAKTeam
+/tools/scripts/ @FreeTAKTeam
+/tools/scripts/check-unsafe.sh @FreeTAKTeam

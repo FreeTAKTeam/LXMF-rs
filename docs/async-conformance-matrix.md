@@ -1,6 +1,6 @@
 # Async Contract Conformance Matrix
 
-Last updated: 2026-02-09
+Last updated: 2026-02-20
 
 This matrix defines first-pass scenarios for validating the async client contract in `docs/lxmf-async-api.yaml` across adapters and interop paths.
 
@@ -9,7 +9,7 @@ Status legend: `not-started` | `in-progress` | `done`.
 ## Targets
 
 - Adapter A: Python LXMF adapter (contract wrapper around Python implementation).
-- Adapter B: Rust lxmf-rs adapter (contract wrapper around `crates/lxmf/src/router/mod.rs`).
+- Adapter B: Rust lxmf-rs adapter (`crates/libs/lxmf-sdk`) backed by `crates/libs/rns-rpc` and `crates/apps/reticulumd`.
 
 ## Execution matrix
 

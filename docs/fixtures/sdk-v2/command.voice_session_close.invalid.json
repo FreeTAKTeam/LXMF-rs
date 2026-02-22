@@ -1,0 +1,5 @@
+{
+  "request_id": "req-voice-close-invalid",
+  "method": "voice_session_close",
+  "params": {}
+}

@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://weft.tak/contracts/sdk/v2/error.schema.json",
+  "title": "LXMF SDK Error v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "machine_code",
+    "category",
+    "retryable",
+    "is_user_actionable",
+    "message",
+    "details"
+  ],
+  "properties": {
+    "machine_code": {
+      "type": "string",
+      "pattern": "^SDK_[A-Z]+_[A-Z0-9_]+$"
+    },
+    "category": {
+      "type": "string",
+      "minLength": 1
+    },
+    "retryable": { "type": "boolean" },
+    "is_user_actionable": { "type": "boolean" },
+    "message": { "type": "string", "minLength": 1, "maxLength": 2048 },
+    "details": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9_]*$"
+      },
+      "additionalProperties": { "$ref": "#/$defs/json_value" }
+    },
+    "cause_code": {
+      "type": "string",
+      "pattern": "^SDK_[A-Z]+_[A-Z0-9_]+$"
+    },
+    "extensions": { "$ref": "#/$defs/extension_map" }
+  },
+  "$defs": {
+    "extension_map": {
+      "type": "object",
+      "maxProperties": 32,
+      "propertyNames": {
+        "pattern": "^[a-z0-9][a-z0-9_.-]{0,63}$"
+      },
+      "additionalProperties": true
+    },
+    "json_value": {
+      "oneOf": [
+        { "type": "string" },
+        { "type": "number" },
+        { "type": "boolean" },
+        { "type": "null" },
+        {
+          "type": "array",
+          "items": { "$ref": "#/$defs/json_value" }
+        },
+        {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "additionalProperties": { "$ref": "#/$defs/json_value" }
+        }
+      ]
+    }
+  }
+}

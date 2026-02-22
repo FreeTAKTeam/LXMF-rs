@@ -1,0 +1,5 @@
+{
+  "uri": "lxm://example-message",
+  "transient_id": "transient-1",
+  "destination_hint": "dst-1"
+}

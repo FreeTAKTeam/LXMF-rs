@@ -1,0 +1,10 @@
+{
+  "id": "req-topic-publish-1",
+  "method": "sdk_topic_publish_v2",
+  "params": {
+    "topic_id": "topic-1",
+    "payload": {
+      "message": "hello"
+    }
+  }
+}

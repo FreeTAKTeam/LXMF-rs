@@ -9,48 +9,890 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  quality:
+  lint-format:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt, clippy
+          components: rustfmt
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Format
+        run: cargo xtask ci --stage lint-format
+
+  correctness:
+    runs-on: ubuntu-latest
+    env:
+      SDK_CORRECTNESS_MIRI_TOOLCHAIN: nightly
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+          components: miri,rust-src
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Correctness (strict clippy + miri + loom)
+        run: cargo xtask ci --stage correctness
+
+  build-matrix:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain: [stable]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.toolchain }}
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Build
+        run: cargo xtask ci --stage build-matrix
+
+  test-nextest-unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
       - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-deny,cargo-audit,cargo-udeps
-      - name: Install nightly toolchain (for cargo-udeps)
-        run: rustup toolchain install nightly --profile minimal
-      - name: Install protobuf compiler
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y protobuf-compiler
-      - name: Format
-        run: cargo fmt --all -- --check
-      - name: Clippy
-        run: cargo clippy --workspace --all-targets --all-features --no-deps -- -D warnings
-      - name: Tests
-        run: cargo test --workspace --features cli
-      - name: Docs
-        run: cargo doc --workspace --no-deps
-      - name: Dependency policy
-        run: cargo deny check
-      - name: Security audit
-        run: cargo audit
-      - name: Unused dependencies
-        run: cargo +nightly udeps --workspace --all-targets
+          tool: cargo-nextest
+      - name: Unit tests (nextest)
+        run: cargo xtask ci --stage test-nextest-unit
 
-  interop-python-live:
+  test-integration:
     runs-on: ubuntu-latest
-    needs: quality
     steps:
       - uses: actions/checkout@v4
-      - name: Checkout Python Reticulum
-        run: git clone --depth 1 https://github.com/markqvist/Reticulum.git ../Reticulum
       - uses: dtolnay/rust-toolchain@stable
-      - name: Install protobuf compiler
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y protobuf-compiler
-      - name: Run Python interop gates
-        run: make interop-gate RETICULUM_PY_PATH=../Reticulum
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Integration tests
+        run: cargo xtask ci --stage test-integration
+
+  doc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Docs
+        run: cargo xtask ci --stage doc
+
+  sdk-docs-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: SDK docs completeness
+        run: cargo xtask ci --stage sdk-docs-check
+
+  sdk-cookbook-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: SDK cookbook fixtures
+        run: cargo xtask ci --stage sdk-cookbook-check
+
+  sdk-ergonomics-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: SDK ergonomics tests and examples
+        run: cargo xtask ci --stage sdk-ergonomics-check
+
+  lxmf-cli-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: LXMF CLI smoke and tests
+        run: cargo xtask ci --stage lxmf-cli-check
+
+  reference-integration-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Reference service/desktop/gateway integration smoke suite
+        run: cargo xtask ci --stage reference-integration-check
+
+  dx-bootstrap-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Developer bootstrap prerequisites
+        run: cargo xtask ci --stage dx-bootstrap-check
+
+  sdk-incident-runbook-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Incident runbook completeness
+        run: cargo xtask ci --stage sdk-incident-runbook-check
+
+  sdk-drill-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Backup/restore drill gate
+        run: cargo xtask ci --stage sdk-drill-check
+
+  sdk-soak-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Soak + chaos regression gate
+        run: cargo xtask ci --stage sdk-soak-check
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdk-soak-report
+          path: target/soak/soak-report.json
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny,cargo-audit
+      - name: Security checks
+        run: cargo xtask ci --stage security
+
+  crypto-agility-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Crypto agility policy and negotiation tests
+        run: cargo xtask ci --stage crypto-agility-check
+
+  key-management-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Key management backends and fallback conformance
+        run: cargo xtask ci --stage key-management-check
+
+  supply-chain-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: SBOM + provenance metadata
+        run: cargo xtask ci --stage supply-chain-check
+      - uses: actions/upload-artifact@v4
+        with:
+          name: supply-chain-artifacts
+          path: |
+            target/supply-chain/sbom/cargo-metadata.sbom.json
+            target/supply-chain/provenance/artifact-provenance.json
+            target/supply-chain/provenance/artifact-provenance.sha256
+
+  reproducible-build-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Reproducible build verification
+        run: cargo xtask ci --stage reproducible-build-check
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reproducible-build-report
+          path: target/supply-chain/reproducible/reproducible-build-report.txt
+
+  unused-deps:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Install nightly toolchain (for cargo-udeps)
+        run: rustup toolchain install nightly --profile minimal
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-udeps
+      - name: Unused dependencies
+        run: cargo xtask ci --stage unused-deps
+
+  api-surface-check:
+    runs-on: ubuntu-latest
+    env:
+      SDK_API_BREAK_TOOLCHAIN: nightly-2026-02-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Install pinned nightly toolchain (for cargo-public-api)
+        run: rustup toolchain install nightly-2026-02-15 --profile minimal
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-public-api@0.50.2
+      - name: API surface
+        run: cargo xtask ci --stage api-surface-check
+
+  sdk-schema-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: SDK schema fixtures
+        run: cargo xtask ci --stage sdk-schema-check
+
+  interop-artifacts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Interop artifacts manifest
+        run: cargo xtask ci --stage interop-artifacts
+
+  schema-client-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Schema-driven client generation smoke gate
+        run: cargo xtask ci --stage schema-client-check
+      - uses: actions/upload-artifact@v4
+        with:
+          name: schema-client-smoke-report
+          path: target/interop/schema-client-smoke-report.txt
+
+  compat-kit-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: External compatibility kit dry-run
+        run: cargo xtask ci --stage compat-kit-check
+
+  compliance-profile-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Regulated deployment profile gate
+        run: cargo xtask ci --stage compliance-profile-check
+
+  e2e-compatibility:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: E2E compatibility workflows
+        run: cargo xtask ci --stage e2e-compatibility
+
+  sdk-conformance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: SDK conformance suite
+        run: cargo xtask ci --stage sdk-conformance
+
+  sdk-security-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: SDK security suite
+        run: cargo xtask ci --stage sdk-security-check
+
+  sdk-fuzz-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: SDK parser fuzz smoke suite
+        run: cargo xtask ci --stage sdk-fuzz-check
+
+  sdk-property-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: SDK property suite
+        run: cargo xtask ci --stage sdk-property-check
+
+  sdk-model-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: SDK model conformance suite
+        run: cargo xtask ci --stage sdk-model-check
+
+  sdk-race-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: SDK race stress suite
+        run: cargo xtask ci --stage sdk-race-check
+
+  sdk-replay-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: SDK replay determinism suite
+        run: cargo xtask ci --stage sdk-replay-check
+
+  sdk-metrics-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: SDK metrics contract and endpoint suite
+        run: cargo xtask ci --stage sdk-metrics-check
+
+  sdk-bench-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: SDK benchmark baseline
+        run: cargo xtask ci --stage sdk-bench-check
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdk-bench-report
+          path: |
+            target/criterion/bench-summary.txt
+            target/criterion/**/estimates.json
+
+  sdk-perf-budget-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: SDK performance budget gate
+        run: cargo xtask ci --stage sdk-perf-budget-check
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdk-perf-budget-report
+          path: |
+            target/criterion/bench-budget-report.txt
+            target/criterion/bench-summary.txt
+
+  release-scorecard-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Release scorecard generation gate
+        run: cargo xtask ci --stage release-scorecard-check
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-scorecard
+          path: |
+            target/release-scorecard/release-scorecard.md
+            target/release-scorecard/release-scorecard.json
+
+  canary-criteria-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Canary criteria and rollback trigger gate
+        run: cargo xtask ci --stage canary-criteria-check
+      - uses: actions/upload-artifact@v4
+        with:
+          name: canary-criteria-report
+          path: |
+            target/release-readiness/canary-criteria-report.md
+            target/release-readiness/canary-criteria-report.json
+
+  sdk-memory-budget-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: SDK memory budget gate
+        run: cargo xtask ci --stage sdk-memory-budget-check
+
+  sdk-queue-pressure-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: SDK queue pressure gate
+        run: cargo xtask ci --stage sdk-queue-pressure-check
+
+  sdk-matrix-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: SDK feature matrix gate
+        run: cargo xtask ci --stage sdk-matrix-check
+
+  embedded-link-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Embedded transport adapter conformance
+        run: cargo xtask ci --stage embedded-link-check
+
+  embedded-core-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Alloc-first core compile matrix
+        run: cargo xtask ci --stage embedded-core-check
+
+  embedded-footprint-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Embedded footprint budget gate
+        run: cargo xtask ci --stage embedded-footprint-check
+      - uses: actions/upload-artifact@v4
+        with:
+          name: embedded-footprint-report
+          path: target/embedded/footprint-report.txt
+
+  sdk-profile-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: SDK profile build matrix
+        run: cargo xtask ci --stage sdk-profile-build
+
+  sdk-examples-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: SDK example compile gate
+        run: cargo xtask ci --stage sdk-examples-check
+
+  sdk-api-break:
+    runs-on: ubuntu-latest
+    env:
+      SDK_API_BREAK_TOOLCHAIN: nightly-2026-02-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Install pinned nightly toolchain (for cargo-public-api)
+        run: rustup toolchain install nightly-2026-02-15 --profile minimal
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-public-api@0.50.2
+      - name: SDK API break gate
+        run: cargo xtask ci --stage sdk-api-break
+
+  sdk-migration-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: SDK migration gate
+        run: cargo xtask ci --stage sdk-migration-check
+
+  changelog-migration-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Generate changelog and migration notes
+        run: cargo xtask ci --stage changelog-migration-check
+      - uses: actions/upload-artifact@v4
+        with:
+          name: generated-migration-notes
+          path: target/release-readiness/generated-migration-notes.md
+
+  governance-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Governance ownership and PR policy simulation
+        run: cargo xtask ci --stage governance-check
+
+  support-policy-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Support and LTS policy gate
+        run: cargo xtask ci --stage support-policy-check
+
+  unsafe-audit-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Unsafe inventory and invariant gate
+        run: cargo xtask ci --stage unsafe-audit-check
+
+  extension-registry-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Extension registry governance gate
+        run: cargo xtask ci --stage extension-registry-check
+
+  plugin-negotiation-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Plugin negotiation contract gate
+        run: cargo xtask ci --stage plugin-negotiation-check
+
+  certification-report-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Third-party conformance certification report gate
+        run: cargo xtask ci --stage certification-report-check
+      - uses: actions/upload-artifact@v4
+        with:
+          name: certification-report
+          path: |
+            target/release-readiness/certification-report.md
+            target/release-readiness/certification-report.json
+
+  forbidden-deps:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Architecture boundaries
+        run: cargo xtask ci --stage forbidden-deps
+
+  architecture-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Architecture dependency graph lint
+        run: cargo xtask ci --stage architecture-lint
+
+  architecture-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Architecture boundaries
+        run: cargo xtask ci --stage architecture-checks
+
+  migration-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Migration checks
+        run: cargo xtask ci --stage migration-checks

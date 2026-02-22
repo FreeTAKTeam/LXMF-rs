@@ -1,0 +1,25 @@
+{
+  "profile": "embedded-alloc",
+  "bind_mode": "local_only",
+  "auth_mode": "local_trusted",
+  "overflow_policy": "reject",
+  "event_stream": {
+    "max_poll_events": 64,
+    "max_event_bytes": 8192,
+    "max_batch_bytes": 65536,
+    "max_extension_keys": 8
+  },
+  "idempotency_ttl_ms": 60000,
+  "redaction": {
+    "enabled": true,
+    "sensitive_transform": "hash",
+    "break_glass_allowed": false
+  },
+  "rpc_backend": {
+    "listen_addr": "127.0.0.1:4242",
+    "read_timeout_ms": 2000,
+    "write_timeout_ms": 2000,
+    "max_header_bytes": 8192,
+    "max_body_bytes": 65536
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "command": "ping",
+  "target": "peer-1",
+  "payload": {
+    "nonce": "abc123"
+  },
+  "timeout_ms": 5000
+}

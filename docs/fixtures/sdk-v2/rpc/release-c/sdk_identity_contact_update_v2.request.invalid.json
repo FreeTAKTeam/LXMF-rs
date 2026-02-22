@@ -1,0 +1,8 @@
+{
+  "id": "req-identity-contact-update-invalid",
+  "method": "sdk_identity_contact_update_v2",
+  "params": {
+    "identity": "peer-alpha",
+    "trust_level": "trusted-ish"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "machine_code": "sdk_validation_invalid_argument",
+  "category": "Validation",
+  "retryable": false,
+  "is_user_actionable": true,
+  "message": "invalid machine code shape",
+  "details": {}
+}

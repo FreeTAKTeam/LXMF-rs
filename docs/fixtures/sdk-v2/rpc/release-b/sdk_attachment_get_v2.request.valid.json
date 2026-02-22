@@ -1,0 +1,7 @@
+{
+  "id": "req-attachment-get-1",
+  "method": "sdk_attachment_get_v2",
+  "params": {
+    "attachment_id": "att-1"
+  }
+}

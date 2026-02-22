@@ -1,0 +1,7 @@
+{
+  "id": 8,
+  "method": "sdk_shutdown_v2",
+  "params": {
+    "mode": "graceful"
+  }
+}

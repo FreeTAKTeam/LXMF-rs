@@ -1,0 +1,18 @@
+{
+  "event_id": "evt-1",
+  "runtime_id": "rt-1",
+  "stream_id": "sdk-events",
+  "seq_no": 1,
+  "contract_version": 2,
+  "ts_ms": 1700000000000,
+  "event_type": "RuntimeStateChanged",
+  "severity": "info",
+  "source_component": "rns-rpc",
+  "payload": {
+    "from": "starting",
+    "to": "running"
+  },
+  "extensions": {
+    "ops.region": "lab"
+  }
+}

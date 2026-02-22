@@ -1,0 +1,190 @@
+{
+  "version": 1,
+  "generated_on": "2026-02-20",
+  "entries": [
+    {
+      "id": "sideband.send.basic.v1",
+      "client": "sideband",
+      "release_track": "pinned-interop-baseline",
+      "slices": [
+        "rpc_v2",
+        "payload_v2",
+        "event_cursor_v2",
+        "delivery_modes_v1",
+        "auth_token_v1"
+      ],
+      "payload_envelope": {
+        "_lxmf_fields_msgpack_b64": "gqJyb290o3Yy",
+        "attachments": [
+          {
+            "name": "hello.txt",
+            "data": "base64:SGVsbG8sIFNpZGViYW5kIQ=="
+          }
+        ],
+        "16": {
+          "reply_to": "root-0001",
+          "emoji": "👍"
+        }
+      },
+      "rpc_send_request": {
+        "id": 101,
+        "method": "sdk_send_v2",
+        "params": {
+          "id": "sideband-msg-0001",
+          "source": "sideband.source",
+          "destination": "interop.destination",
+          "title": "Sideband hello",
+          "content": "hello from sideband corpus",
+          "fields": {
+            "16": {
+              "reply_to": "root-0001",
+              "emoji": "👍"
+            }
+          }
+        }
+      },
+      "rpc_send_response": {
+        "id": 101,
+        "result": {
+          "message_id": "sideband-msg-0001"
+        }
+      },
+      "event_payload": {
+        "event_type": "receipt",
+        "payload": {
+          "message_id": "sideband-msg-0001",
+          "status": "sent"
+        }
+      },
+      "wire_envelope": {
+        "frame_format": "msgpack_u32be_http",
+        "content_type": "application/msgpack",
+        "body_hex": "82a2696465a66d6574686f64ab73646b5f73656e645f7632"
+      }
+    },
+    {
+      "id": "rch.send.announce.v1",
+      "client": "rch",
+      "release_track": "pinned-interop-baseline",
+      "slices": [
+        "rpc_v2",
+        "payload_v2",
+        "event_cursor_v2",
+        "delivery_modes_v1",
+        "auth_token_v1"
+      ],
+      "payload_envelope": {
+        "_lxmf_fields_msgpack_b64": "gqJ2YWyjdHdv",
+        "attachments": [
+          {
+            "name": "rch.bin",
+            "data": "hex:01020304"
+          }
+        ],
+        "14": {
+          "reply_to": "rch-root-001"
+        }
+      },
+      "rpc_send_request": {
+        "id": 202,
+        "method": "sdk_send_v2",
+        "params": {
+          "id": "rch-msg-0001",
+          "source": "rch.source",
+          "destination": "interop.destination",
+          "title": "RCH hello",
+          "content": "hello from rch corpus",
+          "fields": {
+            "14": {
+              "reply_to": "rch-root-001"
+            }
+          }
+        }
+      },
+      "rpc_send_response": {
+        "id": 202,
+        "result": {
+          "message_id": "rch-msg-0001"
+        }
+      },
+      "event_payload": {
+        "event_type": "announce_received",
+        "payload": {
+          "peer": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "timestamp": 1771614229,
+          "seen_count": 1,
+          "name": "RCH Relay",
+          "name_source": "app_data",
+          "capabilities": [
+            "topic_broker"
+          ]
+        }
+      },
+      "wire_envelope": {
+        "frame_format": "msgpack_u32be_http",
+        "content_type": "application/msgpack",
+        "body_hex": "82a26964cccaa66d6574686f64ab73646b5f73656e645f7632"
+      }
+    },
+    {
+      "id": "columba.send.delivery.v1",
+      "client": "columba",
+      "release_track": "pinned-interop-baseline",
+      "slices": [
+        "rpc_v2",
+        "payload_v2",
+        "event_cursor_v2",
+        "delivery_modes_v1",
+        "auth_token_v1"
+      ],
+      "payload_envelope": {
+        "_lxmf_fields_msgpack_b64": "gqNmb29iYXI=",
+        "attachments": [
+          {
+            "name": "telemetry.json",
+            "data": "base64:eyJsYXQiOjM3Ljc3LCJsb24iOi0xMjIuNDF9"
+          }
+        ],
+        "2": {
+          "lat": 37.77,
+          "lon": -122.41
+        }
+      },
+      "rpc_send_request": {
+        "id": 303,
+        "method": "sdk_send_v2",
+        "params": {
+          "id": "columba-msg-0001",
+          "source": "columba.source",
+          "destination": "interop.destination",
+          "title": "Columba hello",
+          "content": "hello from columba corpus",
+          "fields": {
+            "2": {
+              "lat": 37.77,
+              "lon": -122.41
+            }
+          }
+        }
+      },
+      "rpc_send_response": {
+        "id": 303,
+        "result": {
+          "message_id": "columba-msg-0001"
+        }
+      },
+      "event_payload": {
+        "event_type": "receipt",
+        "payload": {
+          "message_id": "columba-msg-0001",
+          "status": "delivered"
+        }
+      },
+      "wire_envelope": {
+        "frame_format": "msgpack_u32be_http",
+        "content_type": "application/msgpack",
+        "body_hex": "82a26964cd012fa66d6574686f64ab73646b5f73656e645f7632"
+      }
+    }
+  ]
+}

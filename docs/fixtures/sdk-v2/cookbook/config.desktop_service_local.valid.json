@@ -1,0 +1,25 @@
+{
+  "profile": "desktop-local-runtime",
+  "bind_mode": "local_only",
+  "auth_mode": "local_trusted",
+  "overflow_policy": "block",
+  "block_timeout_ms": 250,
+  "event_stream": {
+    "max_poll_events": 256,
+    "max_event_bytes": 65536,
+    "max_batch_bytes": 1048576,
+    "max_extension_keys": 32
+  },
+  "idempotency_ttl_ms": 86400000,
+  "redaction": {
+    "enabled": true,
+    "sensitive_transform": "hash"
+  },
+  "rpc_backend": {
+    "listen_addr": "127.0.0.1:4242",
+    "read_timeout_ms": 5000,
+    "write_timeout_ms": 5000,
+    "max_header_bytes": 16384,
+    "max_body_bytes": 1048576
+  }
+}

@@ -1,0 +1,1634 @@
+pub mod lxmf_sdk
+pub mod lxmf_sdk::capability
+#[non_exhaustive] pub enum lxmf_sdk::capability::CapabilityState
+pub lxmf_sdk::capability::CapabilityState::Deprecated
+pub lxmf_sdk::capability::CapabilityState::Disabled
+pub lxmf_sdk::capability::CapabilityState::Enabled
+pub lxmf_sdk::capability::CapabilityState::Experimental
+#[non_exhaustive] pub enum lxmf_sdk::capability::PluginState
+pub lxmf_sdk::capability::PluginState::Deprecated
+pub lxmf_sdk::capability::PluginState::Experimental
+pub lxmf_sdk::capability::PluginState::Stable
+#[non_exhaustive] pub struct lxmf_sdk::capability::CapabilityDescriptor
+pub lxmf_sdk::capability::CapabilityDescriptor::deprecated_after_contract: core::option::Option<alloc::string::String>
+pub lxmf_sdk::capability::CapabilityDescriptor::id: alloc::string::String
+pub lxmf_sdk::capability::CapabilityDescriptor::since_contract: alloc::string::String
+pub lxmf_sdk::capability::CapabilityDescriptor::state: lxmf_sdk::capability::CapabilityState
+pub lxmf_sdk::capability::CapabilityDescriptor::version: u16
+#[non_exhaustive] pub struct lxmf_sdk::capability::EffectiveLimits
+pub lxmf_sdk::capability::EffectiveLimits::idempotency_ttl_ms: u64
+pub lxmf_sdk::capability::EffectiveLimits::max_batch_bytes: usize
+pub lxmf_sdk::capability::EffectiveLimits::max_event_bytes: usize
+pub lxmf_sdk::capability::EffectiveLimits::max_extension_keys: usize
+pub lxmf_sdk::capability::EffectiveLimits::max_poll_events: usize
+#[non_exhaustive] pub struct lxmf_sdk::capability::NegotiationRequest
+pub lxmf_sdk::capability::NegotiationRequest::auth_mode: lxmf_sdk::AuthMode
+pub lxmf_sdk::capability::NegotiationRequest::bind_mode: lxmf_sdk::BindMode
+pub lxmf_sdk::capability::NegotiationRequest::block_timeout_ms: core::option::Option<u64>
+pub lxmf_sdk::capability::NegotiationRequest::overflow_policy: lxmf_sdk::OverflowPolicy
+pub lxmf_sdk::capability::NegotiationRequest::profile: lxmf_sdk::Profile
+pub lxmf_sdk::capability::NegotiationRequest::requested_capabilities: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::capability::NegotiationRequest::rpc_backend: core::option::Option<lxmf_sdk::RpcBackendConfig>
+pub lxmf_sdk::capability::NegotiationRequest::supported_contract_versions: alloc::vec::Vec<u16>
+#[non_exhaustive] pub struct lxmf_sdk::capability::NegotiationResponse
+pub lxmf_sdk::capability::NegotiationResponse::active_contract_version: u16
+pub lxmf_sdk::capability::NegotiationResponse::contract_release: alloc::string::String
+pub lxmf_sdk::capability::NegotiationResponse::effective_capabilities: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::capability::NegotiationResponse::effective_limits: lxmf_sdk::capability::EffectiveLimits
+pub lxmf_sdk::capability::NegotiationResponse::runtime_id: alloc::string::String
+pub lxmf_sdk::capability::NegotiationResponse::schema_namespace: alloc::string::String
+#[non_exhaustive] pub struct lxmf_sdk::capability::PluginDescriptor
+pub lxmf_sdk::capability::PluginDescriptor::optional_capabilities: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::capability::PluginDescriptor::plugin_id: alloc::string::String
+pub lxmf_sdk::capability::PluginDescriptor::required_capabilities: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::capability::PluginDescriptor::state: lxmf_sdk::capability::PluginState
+pub lxmf_sdk::capability::PluginDescriptor::version: u16
+pub fn lxmf_sdk::capability::effective_capabilities_for_profile(profile: lxmf_sdk::Profile) -> alloc::vec::Vec<alloc::string::String>
+pub fn lxmf_sdk::capability::negotiate_contract_version(client_supported: &[u16], backend_supported: &[u16]) -> core::option::Option<u16>
+pub fn lxmf_sdk::capability::negotiate_plugins(requested_plugin_ids: &[alloc::string::String], available_plugins: &[lxmf_sdk::capability::PluginDescriptor], effective_capabilities: &[alloc::string::String]) -> alloc::vec::Vec<alloc::string::String>
+pub mod lxmf_sdk::domain
+pub enum lxmf_sdk::domain::TrustLevel
+pub lxmf_sdk::domain::TrustLevel::Blocked
+pub lxmf_sdk::domain::TrustLevel::Trusted
+pub lxmf_sdk::domain::TrustLevel::Unknown
+pub lxmf_sdk::domain::TrustLevel::Untrusted
+pub enum lxmf_sdk::domain::VoiceSessionState
+pub lxmf_sdk::domain::VoiceSessionState::Active
+pub lxmf_sdk::domain::VoiceSessionState::Closed
+pub lxmf_sdk::domain::VoiceSessionState::Failed
+pub lxmf_sdk::domain::VoiceSessionState::Holding
+pub lxmf_sdk::domain::VoiceSessionState::New
+pub lxmf_sdk::domain::VoiceSessionState::Ringing
+pub lxmf_sdk::domain::VoiceSessionState::Unknown
+pub struct lxmf_sdk::domain::AttachmentDownloadChunk
+pub lxmf_sdk::domain::AttachmentDownloadChunk::attachment_id: lxmf_sdk::domain::AttachmentId
+pub lxmf_sdk::domain::AttachmentDownloadChunk::bytes_base64: alloc::string::String
+pub lxmf_sdk::domain::AttachmentDownloadChunk::checksum_sha256: alloc::string::String
+pub lxmf_sdk::domain::AttachmentDownloadChunk::done: bool
+pub lxmf_sdk::domain::AttachmentDownloadChunk::next_offset: u64
+pub lxmf_sdk::domain::AttachmentDownloadChunk::offset: u64
+pub lxmf_sdk::domain::AttachmentDownloadChunk::total_size: u64
+pub struct lxmf_sdk::domain::AttachmentDownloadChunkRequest
+pub lxmf_sdk::domain::AttachmentDownloadChunkRequest::attachment_id: lxmf_sdk::domain::AttachmentId
+pub lxmf_sdk::domain::AttachmentDownloadChunkRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::domain::AttachmentDownloadChunkRequest::max_bytes: usize
+pub lxmf_sdk::domain::AttachmentDownloadChunkRequest::offset: u64
+pub struct lxmf_sdk::domain::AttachmentId(pub alloc::string::String)
+pub struct lxmf_sdk::domain::AttachmentListRequest
+pub lxmf_sdk::domain::AttachmentListRequest::cursor: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::AttachmentListRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::domain::AttachmentListRequest::limit: core::option::Option<usize>
+pub lxmf_sdk::domain::AttachmentListRequest::topic_id: core::option::Option<lxmf_sdk::domain::TopicId>
+pub struct lxmf_sdk::domain::AttachmentListResult
+pub lxmf_sdk::domain::AttachmentListResult::attachments: alloc::vec::Vec<lxmf_sdk::domain::AttachmentMeta>
+pub lxmf_sdk::domain::AttachmentListResult::next_cursor: core::option::Option<alloc::string::String>
+pub struct lxmf_sdk::domain::AttachmentMeta
+pub lxmf_sdk::domain::AttachmentMeta::attachment_id: lxmf_sdk::domain::AttachmentId
+pub lxmf_sdk::domain::AttachmentMeta::byte_len: u64
+pub lxmf_sdk::domain::AttachmentMeta::checksum_sha256: alloc::string::String
+pub lxmf_sdk::domain::AttachmentMeta::content_type: alloc::string::String
+pub lxmf_sdk::domain::AttachmentMeta::created_ts_ms: u64
+pub lxmf_sdk::domain::AttachmentMeta::expires_ts_ms: core::option::Option<u64>
+pub lxmf_sdk::domain::AttachmentMeta::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::domain::AttachmentMeta::name: alloc::string::String
+pub lxmf_sdk::domain::AttachmentMeta::topic_ids: alloc::vec::Vec<lxmf_sdk::domain::TopicId>
+pub struct lxmf_sdk::domain::AttachmentStoreRequest
+pub lxmf_sdk::domain::AttachmentStoreRequest::bytes_base64: alloc::string::String
+pub lxmf_sdk::domain::AttachmentStoreRequest::content_type: alloc::string::String
+pub lxmf_sdk::domain::AttachmentStoreRequest::expires_ts_ms: core::option::Option<u64>
+pub lxmf_sdk::domain::AttachmentStoreRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::domain::AttachmentStoreRequest::name: alloc::string::String
+pub lxmf_sdk::domain::AttachmentStoreRequest::topic_ids: alloc::vec::Vec<lxmf_sdk::domain::TopicId>
+pub struct lxmf_sdk::domain::AttachmentUploadChunkAck
+pub lxmf_sdk::domain::AttachmentUploadChunkAck::accepted: bool
+pub lxmf_sdk::domain::AttachmentUploadChunkAck::complete: bool
+pub lxmf_sdk::domain::AttachmentUploadChunkAck::next_offset: u64
+pub struct lxmf_sdk::domain::AttachmentUploadChunkRequest
+pub lxmf_sdk::domain::AttachmentUploadChunkRequest::bytes_base64: alloc::string::String
+pub lxmf_sdk::domain::AttachmentUploadChunkRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::domain::AttachmentUploadChunkRequest::offset: u64
+pub lxmf_sdk::domain::AttachmentUploadChunkRequest::upload_id: lxmf_sdk::domain::AttachmentUploadId
+pub struct lxmf_sdk::domain::AttachmentUploadCommitRequest
+pub lxmf_sdk::domain::AttachmentUploadCommitRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::domain::AttachmentUploadCommitRequest::upload_id: lxmf_sdk::domain::AttachmentUploadId
+pub struct lxmf_sdk::domain::AttachmentUploadId(pub alloc::string::String)
+pub struct lxmf_sdk::domain::AttachmentUploadSession
+pub lxmf_sdk::domain::AttachmentUploadSession::attachment_id: lxmf_sdk::domain::AttachmentId
+pub lxmf_sdk::domain::AttachmentUploadSession::chunk_size_hint: usize
+pub lxmf_sdk::domain::AttachmentUploadSession::next_offset: u64
+pub lxmf_sdk::domain::AttachmentUploadSession::upload_id: lxmf_sdk::domain::AttachmentUploadId
+pub struct lxmf_sdk::domain::AttachmentUploadStartRequest
+pub lxmf_sdk::domain::AttachmentUploadStartRequest::checksum_sha256: alloc::string::String
+pub lxmf_sdk::domain::AttachmentUploadStartRequest::content_type: alloc::string::String
+pub lxmf_sdk::domain::AttachmentUploadStartRequest::expires_ts_ms: core::option::Option<u64>
+pub lxmf_sdk::domain::AttachmentUploadStartRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::domain::AttachmentUploadStartRequest::name: alloc::string::String
+pub lxmf_sdk::domain::AttachmentUploadStartRequest::topic_ids: alloc::vec::Vec<lxmf_sdk::domain::TopicId>
+pub lxmf_sdk::domain::AttachmentUploadStartRequest::total_size: u64
+pub struct lxmf_sdk::domain::ContactListRequest
+pub lxmf_sdk::domain::ContactListRequest::cursor: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::ContactListRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::domain::ContactListRequest::limit: core::option::Option<usize>
+pub struct lxmf_sdk::domain::ContactListResult
+pub lxmf_sdk::domain::ContactListResult::contacts: alloc::vec::Vec<lxmf_sdk::domain::ContactRecord>
+pub lxmf_sdk::domain::ContactListResult::next_cursor: core::option::Option<alloc::string::String>
+pub struct lxmf_sdk::domain::ContactRecord
+pub lxmf_sdk::domain::ContactRecord::bootstrap: bool
+pub lxmf_sdk::domain::ContactRecord::display_name: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::ContactRecord::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::domain::ContactRecord::identity: lxmf_sdk::domain::IdentityRef
+pub lxmf_sdk::domain::ContactRecord::metadata: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::domain::ContactRecord::trust_level: lxmf_sdk::domain::TrustLevel
+pub lxmf_sdk::domain::ContactRecord::updated_ts_ms: u64
+pub struct lxmf_sdk::domain::ContactUpdateRequest
+pub lxmf_sdk::domain::ContactUpdateRequest::bootstrap: core::option::Option<bool>
+pub lxmf_sdk::domain::ContactUpdateRequest::display_name: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::ContactUpdateRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::domain::ContactUpdateRequest::identity: lxmf_sdk::domain::IdentityRef
+pub lxmf_sdk::domain::ContactUpdateRequest::metadata: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::domain::ContactUpdateRequest::trust_level: core::option::Option<lxmf_sdk::domain::TrustLevel>
+pub struct lxmf_sdk::domain::GeoPoint
+pub lxmf_sdk::domain::GeoPoint::alt_m: core::option::Option<f64>
+pub lxmf_sdk::domain::GeoPoint::lat: f64
+pub lxmf_sdk::domain::GeoPoint::lon: f64
+pub struct lxmf_sdk::domain::IdentityBootstrapRequest
+pub lxmf_sdk::domain::IdentityBootstrapRequest::auto_sync: bool
+pub lxmf_sdk::domain::IdentityBootstrapRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::domain::IdentityBootstrapRequest::identity: lxmf_sdk::domain::IdentityRef
+pub struct lxmf_sdk::domain::IdentityBundle
+pub lxmf_sdk::domain::IdentityBundle::capabilities: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::domain::IdentityBundle::display_name: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::IdentityBundle::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::domain::IdentityBundle::identity: lxmf_sdk::domain::IdentityRef
+pub lxmf_sdk::domain::IdentityBundle::public_key: alloc::string::String
+pub struct lxmf_sdk::domain::IdentityImportRequest
+pub lxmf_sdk::domain::IdentityImportRequest::bundle_base64: alloc::string::String
+pub lxmf_sdk::domain::IdentityImportRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::domain::IdentityImportRequest::passphrase: core::option::Option<alloc::string::String>
+pub struct lxmf_sdk::domain::IdentityRef(pub alloc::string::String)
+pub struct lxmf_sdk::domain::IdentityResolveRequest
+pub lxmf_sdk::domain::IdentityResolveRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::domain::IdentityResolveRequest::hash: alloc::string::String
+pub struct lxmf_sdk::domain::MarkerCreateRequest
+pub lxmf_sdk::domain::MarkerCreateRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::domain::MarkerCreateRequest::label: alloc::string::String
+pub lxmf_sdk::domain::MarkerCreateRequest::position: lxmf_sdk::domain::GeoPoint
+pub lxmf_sdk::domain::MarkerCreateRequest::topic_id: core::option::Option<lxmf_sdk::domain::TopicId>
+pub struct lxmf_sdk::domain::MarkerDeleteRequest
+pub lxmf_sdk::domain::MarkerDeleteRequest::expected_revision: u64
+pub lxmf_sdk::domain::MarkerDeleteRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::domain::MarkerDeleteRequest::marker_id: lxmf_sdk::domain::MarkerId
+pub struct lxmf_sdk::domain::MarkerId(pub alloc::string::String)
+pub struct lxmf_sdk::domain::MarkerListRequest
+pub lxmf_sdk::domain::MarkerListRequest::cursor: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::MarkerListRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::domain::MarkerListRequest::limit: core::option::Option<usize>
+pub lxmf_sdk::domain::MarkerListRequest::topic_id: core::option::Option<lxmf_sdk::domain::TopicId>
+pub struct lxmf_sdk::domain::MarkerListResult
+pub lxmf_sdk::domain::MarkerListResult::markers: alloc::vec::Vec<lxmf_sdk::domain::MarkerRecord>
+pub lxmf_sdk::domain::MarkerListResult::next_cursor: core::option::Option<alloc::string::String>
+pub struct lxmf_sdk::domain::MarkerRecord
+pub lxmf_sdk::domain::MarkerRecord::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::domain::MarkerRecord::label: alloc::string::String
+pub lxmf_sdk::domain::MarkerRecord::marker_id: lxmf_sdk::domain::MarkerId
+pub lxmf_sdk::domain::MarkerRecord::position: lxmf_sdk::domain::GeoPoint
+pub lxmf_sdk::domain::MarkerRecord::revision: u64
+pub lxmf_sdk::domain::MarkerRecord::topic_id: core::option::Option<lxmf_sdk::domain::TopicId>
+pub lxmf_sdk::domain::MarkerRecord::updated_ts_ms: u64
+pub struct lxmf_sdk::domain::MarkerUpdatePositionRequest
+pub lxmf_sdk::domain::MarkerUpdatePositionRequest::expected_revision: u64
+pub lxmf_sdk::domain::MarkerUpdatePositionRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::domain::MarkerUpdatePositionRequest::marker_id: lxmf_sdk::domain::MarkerId
+pub lxmf_sdk::domain::MarkerUpdatePositionRequest::position: lxmf_sdk::domain::GeoPoint
+pub struct lxmf_sdk::domain::PaperMessageEnvelope
+pub lxmf_sdk::domain::PaperMessageEnvelope::destination_hint: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::PaperMessageEnvelope::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::domain::PaperMessageEnvelope::transient_id: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::PaperMessageEnvelope::uri: alloc::string::String
+pub struct lxmf_sdk::domain::PresenceListRequest
+pub lxmf_sdk::domain::PresenceListRequest::cursor: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::PresenceListRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::domain::PresenceListRequest::limit: core::option::Option<usize>
+pub struct lxmf_sdk::domain::PresenceListResult
+pub lxmf_sdk::domain::PresenceListResult::next_cursor: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::PresenceListResult::peers: alloc::vec::Vec<lxmf_sdk::domain::PresenceRecord>
+pub struct lxmf_sdk::domain::PresenceRecord
+pub lxmf_sdk::domain::PresenceRecord::bootstrap: core::option::Option<bool>
+pub lxmf_sdk::domain::PresenceRecord::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::domain::PresenceRecord::first_seen_ts_ms: i64
+pub lxmf_sdk::domain::PresenceRecord::last_seen_ts_ms: i64
+pub lxmf_sdk::domain::PresenceRecord::name: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::PresenceRecord::name_source: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::PresenceRecord::peer_id: alloc::string::String
+pub lxmf_sdk::domain::PresenceRecord::seen_count: u64
+pub lxmf_sdk::domain::PresenceRecord::trust_level: core::option::Option<lxmf_sdk::domain::TrustLevel>
+pub struct lxmf_sdk::domain::RemoteCommandRequest
+pub lxmf_sdk::domain::RemoteCommandRequest::command: alloc::string::String
+pub lxmf_sdk::domain::RemoteCommandRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::domain::RemoteCommandRequest::payload: serde_json::value::Value
+pub lxmf_sdk::domain::RemoteCommandRequest::target: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::RemoteCommandRequest::timeout_ms: core::option::Option<u64>
+pub struct lxmf_sdk::domain::RemoteCommandResponse
+pub lxmf_sdk::domain::RemoteCommandResponse::accepted: bool
+pub lxmf_sdk::domain::RemoteCommandResponse::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::domain::RemoteCommandResponse::payload: serde_json::value::Value
+pub struct lxmf_sdk::domain::TelemetryPoint
+pub lxmf_sdk::domain::TelemetryPoint::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::domain::TelemetryPoint::key: alloc::string::String
+pub lxmf_sdk::domain::TelemetryPoint::tags: alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::string::String>
+pub lxmf_sdk::domain::TelemetryPoint::ts_ms: u64
+pub lxmf_sdk::domain::TelemetryPoint::unit: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::TelemetryPoint::value: serde_json::value::Value
+pub struct lxmf_sdk::domain::TelemetryQuery
+pub lxmf_sdk::domain::TelemetryQuery::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::domain::TelemetryQuery::from_ts_ms: core::option::Option<u64>
+pub lxmf_sdk::domain::TelemetryQuery::limit: core::option::Option<usize>
+pub lxmf_sdk::domain::TelemetryQuery::peer_id: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::TelemetryQuery::to_ts_ms: core::option::Option<u64>
+pub lxmf_sdk::domain::TelemetryQuery::topic_id: core::option::Option<lxmf_sdk::domain::TopicId>
+pub struct lxmf_sdk::domain::TopicCreateRequest
+pub lxmf_sdk::domain::TopicCreateRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::domain::TopicCreateRequest::metadata: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::domain::TopicCreateRequest::topic_path: core::option::Option<lxmf_sdk::domain::TopicPath>
+pub struct lxmf_sdk::domain::TopicId(pub alloc::string::String)
+pub struct lxmf_sdk::domain::TopicListRequest
+pub lxmf_sdk::domain::TopicListRequest::cursor: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::TopicListRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::domain::TopicListRequest::limit: core::option::Option<usize>
+pub struct lxmf_sdk::domain::TopicListResult
+pub lxmf_sdk::domain::TopicListResult::next_cursor: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::TopicListResult::topics: alloc::vec::Vec<lxmf_sdk::domain::TopicRecord>
+pub struct lxmf_sdk::domain::TopicPath(pub alloc::string::String)
+pub struct lxmf_sdk::domain::TopicPublishRequest
+pub lxmf_sdk::domain::TopicPublishRequest::correlation_id: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::TopicPublishRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::domain::TopicPublishRequest::payload: serde_json::value::Value
+pub lxmf_sdk::domain::TopicPublishRequest::topic_id: lxmf_sdk::domain::TopicId
+pub struct lxmf_sdk::domain::TopicRecord
+pub lxmf_sdk::domain::TopicRecord::created_ts_ms: u64
+pub lxmf_sdk::domain::TopicRecord::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::domain::TopicRecord::metadata: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::domain::TopicRecord::topic_id: lxmf_sdk::domain::TopicId
+pub lxmf_sdk::domain::TopicRecord::topic_path: core::option::Option<lxmf_sdk::domain::TopicPath>
+pub struct lxmf_sdk::domain::TopicSubscriptionRequest
+pub lxmf_sdk::domain::TopicSubscriptionRequest::cursor: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::TopicSubscriptionRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::domain::TopicSubscriptionRequest::topic_id: lxmf_sdk::domain::TopicId
+pub struct lxmf_sdk::domain::VoiceSessionId(pub alloc::string::String)
+pub struct lxmf_sdk::domain::VoiceSessionOpenRequest
+pub lxmf_sdk::domain::VoiceSessionOpenRequest::codec_hint: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::VoiceSessionOpenRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::domain::VoiceSessionOpenRequest::peer_id: alloc::string::String
+pub struct lxmf_sdk::domain::VoiceSessionUpdateRequest
+pub lxmf_sdk::domain::VoiceSessionUpdateRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::domain::VoiceSessionUpdateRequest::session_id: lxmf_sdk::domain::VoiceSessionId
+pub lxmf_sdk::domain::VoiceSessionUpdateRequest::state: lxmf_sdk::domain::VoiceSessionState
+pub mod lxmf_sdk::error_code
+pub const lxmf_sdk::error_code::CAPABILITY_CONTRACT_INCOMPATIBLE: &str
+pub const lxmf_sdk::error_code::CAPABILITY_DISABLED: &str
+pub const lxmf_sdk::error_code::CONFIG_CONFLICT: &str
+pub const lxmf_sdk::error_code::CONFIG_UNKNOWN_KEY: &str
+pub const lxmf_sdk::error_code::INTERNAL: &str
+pub const lxmf_sdk::error_code::RUNTIME_ALREADY_RUNNING_WITH_DIFFERENT_CONFIG: &str
+pub const lxmf_sdk::error_code::RUNTIME_ALREADY_TERMINAL: &str
+pub const lxmf_sdk::error_code::RUNTIME_CURSOR_EXPIRED: &str
+pub const lxmf_sdk::error_code::RUNTIME_INVALID_CURSOR: &str
+pub const lxmf_sdk::error_code::RUNTIME_INVALID_STATE: &str
+pub const lxmf_sdk::error_code::RUNTIME_STREAM_DEGRADED: &str
+pub const lxmf_sdk::error_code::SECURITY_AUTHZ_DENIED: &str
+pub const lxmf_sdk::error_code::SECURITY_AUTH_REQUIRED: &str
+pub const lxmf_sdk::error_code::SECURITY_RATE_LIMITED: &str
+pub const lxmf_sdk::error_code::SECURITY_REDACTION_REQUIRED: &str
+pub const lxmf_sdk::error_code::SECURITY_REMOTE_BIND_DISALLOWED: &str
+pub const lxmf_sdk::error_code::SECURITY_TOKEN_INVALID: &str
+pub const lxmf_sdk::error_code::SECURITY_TOKEN_REPLAYED: &str
+pub const lxmf_sdk::error_code::VALIDATION_BATCH_TOO_LARGE: &str
+pub const lxmf_sdk::error_code::VALIDATION_CHECKSUM_MISMATCH: &str
+pub const lxmf_sdk::error_code::VALIDATION_EVENT_TOO_LARGE: &str
+pub const lxmf_sdk::error_code::VALIDATION_IDEMPOTENCY_CONFLICT: &str
+pub const lxmf_sdk::error_code::VALIDATION_INVALID_ARGUMENT: &str
+pub const lxmf_sdk::error_code::VALIDATION_MAX_EXTENSION_KEYS_EXCEEDED: &str
+pub const lxmf_sdk::error_code::VALIDATION_MAX_POLL_EVENTS_EXCEEDED: &str
+pub const lxmf_sdk::error_code::VALIDATION_UNKNOWN_FIELD: &str
+pub mod lxmf_sdk::event
+#[non_exhaustive] pub enum lxmf_sdk::event::Severity
+pub lxmf_sdk::event::Severity::Critical
+pub lxmf_sdk::event::Severity::Debug
+pub lxmf_sdk::event::Severity::Error
+pub lxmf_sdk::event::Severity::Info
+pub lxmf_sdk::event::Severity::Unknown
+pub lxmf_sdk::event::Severity::Warn
+#[non_exhaustive] pub enum lxmf_sdk::event::SubscriptionStart
+pub lxmf_sdk::event::SubscriptionStart::Head
+pub lxmf_sdk::event::SubscriptionStart::Snapshot
+pub lxmf_sdk::event::SubscriptionStart::Tail
+#[non_exhaustive] pub struct lxmf_sdk::event::EventBatch
+pub lxmf_sdk::event::EventBatch::dropped_count: u64
+pub lxmf_sdk::event::EventBatch::events: alloc::vec::Vec<lxmf_sdk::event::SdkEvent>
+pub lxmf_sdk::event::EventBatch::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::event::EventBatch::next_cursor: lxmf_sdk::event::EventCursor
+pub lxmf_sdk::event::EventBatch::snapshot_high_watermark_seq_no: core::option::Option<u64>
+impl lxmf_sdk::event::EventBatch
+pub fn lxmf_sdk::event::EventBatch::empty(next_cursor: lxmf_sdk::event::EventCursor) -> Self
+pub struct lxmf_sdk::event::EventCursor(pub alloc::string::String)
+impl core::convert::From<alloc::string::String> for lxmf_sdk::event::EventCursor
+pub fn lxmf_sdk::event::EventCursor::from(value: alloc::string::String) -> Self
+#[non_exhaustive] pub struct lxmf_sdk::event::EventSubscription
+pub lxmf_sdk::event::EventSubscription::cursor: core::option::Option<lxmf_sdk::event::EventCursor>
+pub lxmf_sdk::event::EventSubscription::start: lxmf_sdk::event::SubscriptionStart
+#[non_exhaustive] pub struct lxmf_sdk::event::SdkEvent
+pub lxmf_sdk::event::SdkEvent::contract_version: u16
+pub lxmf_sdk::event::SdkEvent::correlation_id: core::option::Option<alloc::string::String>
+pub lxmf_sdk::event::SdkEvent::event_id: alloc::string::String
+pub lxmf_sdk::event::SdkEvent::event_type: alloc::string::String
+pub lxmf_sdk::event::SdkEvent::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::event::SdkEvent::message_id: core::option::Option<alloc::string::String>
+pub lxmf_sdk::event::SdkEvent::operation_id: core::option::Option<alloc::string::String>
+pub lxmf_sdk::event::SdkEvent::payload: serde_json::value::Value
+pub lxmf_sdk::event::SdkEvent::peer_id: core::option::Option<alloc::string::String>
+pub lxmf_sdk::event::SdkEvent::runtime_id: alloc::string::String
+pub lxmf_sdk::event::SdkEvent::seq_no: u64
+pub lxmf_sdk::event::SdkEvent::severity: lxmf_sdk::event::Severity
+pub lxmf_sdk::event::SdkEvent::source_component: alloc::string::String
+pub lxmf_sdk::event::SdkEvent::stream_id: alloc::string::String
+pub lxmf_sdk::event::SdkEvent::trace_id: core::option::Option<alloc::string::String>
+pub lxmf_sdk::event::SdkEvent::ts_ms: u64
+pub mod lxmf_sdk::profiles
+pub struct lxmf_sdk::profiles::MemoryBudget
+pub lxmf_sdk::profiles::MemoryBudget::max_attachment_spool_bytes: usize
+pub lxmf_sdk::profiles::MemoryBudget::max_event_queue_bytes: usize
+pub lxmf_sdk::profiles::MemoryBudget::max_heap_bytes: usize
+pub fn lxmf_sdk::profiles::default_effective_limits(profile: lxmf_sdk::Profile) -> lxmf_sdk::capability::EffectiveLimits
+pub fn lxmf_sdk::profiles::default_memory_budget(profile: lxmf_sdk::Profile) -> lxmf_sdk::profiles::MemoryBudget
+pub fn lxmf_sdk::profiles::is_profile_method_required(profile: lxmf_sdk::Profile, method: &str) -> bool
+pub fn lxmf_sdk::profiles::is_profile_method_supported(profile: lxmf_sdk::Profile, method: &str) -> bool
+pub fn lxmf_sdk::profiles::required_capabilities(profile: lxmf_sdk::Profile) -> &'static [&'static str]
+pub fn lxmf_sdk::profiles::supports_capability(profile: lxmf_sdk::Profile, capability_id: &str) -> bool
+pub mod lxmf_sdk::types
+#[non_exhaustive] pub enum lxmf_sdk::types::AuthMode
+pub lxmf_sdk::types::AuthMode::LocalTrusted
+pub lxmf_sdk::types::AuthMode::Mtls
+pub lxmf_sdk::types::AuthMode::Token
+#[non_exhaustive] pub enum lxmf_sdk::types::BindMode
+pub lxmf_sdk::types::BindMode::LocalOnly
+pub lxmf_sdk::types::BindMode::Remote
+#[non_exhaustive] pub enum lxmf_sdk::types::CancelResult
+pub lxmf_sdk::types::CancelResult::Accepted
+pub lxmf_sdk::types::CancelResult::AlreadyTerminal
+pub lxmf_sdk::types::CancelResult::NotFound
+pub lxmf_sdk::types::CancelResult::TooLateToCancel
+pub lxmf_sdk::types::CancelResult::Unsupported
+#[non_exhaustive] pub enum lxmf_sdk::types::DeliveryState
+pub lxmf_sdk::types::DeliveryState::Cancelled
+pub lxmf_sdk::types::DeliveryState::Delivered
+pub lxmf_sdk::types::DeliveryState::Dispatching
+pub lxmf_sdk::types::DeliveryState::Expired
+pub lxmf_sdk::types::DeliveryState::Failed
+pub lxmf_sdk::types::DeliveryState::InFlight
+pub lxmf_sdk::types::DeliveryState::Queued
+pub lxmf_sdk::types::DeliveryState::Rejected
+pub lxmf_sdk::types::DeliveryState::Sent
+pub lxmf_sdk::types::DeliveryState::Unknown
+#[non_exhaustive] pub enum lxmf_sdk::types::EventSinkKind
+pub lxmf_sdk::types::EventSinkKind::Custom
+pub lxmf_sdk::types::EventSinkKind::Mqtt
+pub lxmf_sdk::types::EventSinkKind::Webhook
+#[non_exhaustive] pub enum lxmf_sdk::types::GroupRecipientState
+pub lxmf_sdk::types::GroupRecipientState::Accepted
+pub lxmf_sdk::types::GroupRecipientState::Deferred
+pub lxmf_sdk::types::GroupRecipientState::Failed
+#[non_exhaustive] pub enum lxmf_sdk::types::OverflowPolicy
+pub lxmf_sdk::types::OverflowPolicy::Block
+pub lxmf_sdk::types::OverflowPolicy::DropOldest
+pub lxmf_sdk::types::OverflowPolicy::Reject
+#[non_exhaustive] pub enum lxmf_sdk::types::Profile
+pub lxmf_sdk::types::Profile::DesktopFull
+pub lxmf_sdk::types::Profile::DesktopLocalRuntime
+pub lxmf_sdk::types::Profile::EmbeddedAlloc
+#[non_exhaustive] pub enum lxmf_sdk::types::RedactionTransform
+pub lxmf_sdk::types::RedactionTransform::Hash
+pub lxmf_sdk::types::RedactionTransform::Redact
+pub lxmf_sdk::types::RedactionTransform::Truncate
+#[non_exhaustive] pub enum lxmf_sdk::types::RuntimeState
+pub lxmf_sdk::types::RuntimeState::Draining
+pub lxmf_sdk::types::RuntimeState::Failed
+pub lxmf_sdk::types::RuntimeState::New
+pub lxmf_sdk::types::RuntimeState::Running
+pub lxmf_sdk::types::RuntimeState::Starting
+pub lxmf_sdk::types::RuntimeState::Stopped
+pub lxmf_sdk::types::RuntimeState::Unknown
+#[non_exhaustive] pub enum lxmf_sdk::types::ShutdownMode
+pub lxmf_sdk::types::ShutdownMode::Graceful
+pub lxmf_sdk::types::ShutdownMode::Immediate
+#[non_exhaustive] pub enum lxmf_sdk::types::StoreForwardCapacityPolicy
+pub lxmf_sdk::types::StoreForwardCapacityPolicy::DropOldest
+pub lxmf_sdk::types::StoreForwardCapacityPolicy::RejectNew
+#[non_exhaustive] pub enum lxmf_sdk::types::StoreForwardEvictionPriority
+pub lxmf_sdk::types::StoreForwardEvictionPriority::OldestFirst
+pub lxmf_sdk::types::StoreForwardEvictionPriority::TerminalFirst
+#[non_exhaustive] pub struct lxmf_sdk::types::Ack
+pub lxmf_sdk::types::Ack::accepted: bool
+pub lxmf_sdk::types::Ack::revision: core::option::Option<u64>
+#[non_exhaustive] pub struct lxmf_sdk::types::ClientHandle
+pub lxmf_sdk::types::ClientHandle::active_contract_version: u16
+pub lxmf_sdk::types::ClientHandle::effective_capabilities: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::types::ClientHandle::effective_limits: lxmf_sdk::capability::EffectiveLimits
+pub lxmf_sdk::types::ClientHandle::runtime_id: alloc::string::String
+#[non_exhaustive] pub struct lxmf_sdk::types::ConfigPatch
+pub lxmf_sdk::types::ConfigPatch::block_timeout_ms: core::option::Option<core::option::Option<u64>>
+pub lxmf_sdk::types::ConfigPatch::event_sink: core::option::Option<core::option::Option<lxmf_sdk::EventSinkPatch>>
+pub lxmf_sdk::types::ConfigPatch::event_stream: core::option::Option<core::option::Option<lxmf_sdk::types::EventStreamPatch>>
+pub lxmf_sdk::types::ConfigPatch::extensions: core::option::Option<core::option::Option<alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>>>
+pub lxmf_sdk::types::ConfigPatch::idempotency_ttl_ms: core::option::Option<core::option::Option<u64>>
+pub lxmf_sdk::types::ConfigPatch::overflow_policy: core::option::Option<core::option::Option<lxmf_sdk::OverflowPolicy>>
+pub lxmf_sdk::types::ConfigPatch::redaction: core::option::Option<core::option::Option<lxmf_sdk::types::RedactionPatch>>
+pub lxmf_sdk::types::ConfigPatch::rpc_backend: core::option::Option<core::option::Option<lxmf_sdk::types::RpcBackendPatch>>
+pub lxmf_sdk::types::ConfigPatch::store_forward: core::option::Option<core::option::Option<lxmf_sdk::StoreForwardPatch>>
+impl lxmf_sdk::ConfigPatch
+pub fn lxmf_sdk::ConfigPatch::is_empty(&self) -> bool
+pub fn lxmf_sdk::ConfigPatch::new() -> Self
+pub fn lxmf_sdk::ConfigPatch::with_block_timeout_ms(self, timeout_ms: u64) -> Self
+pub fn lxmf_sdk::ConfigPatch::with_event_sink_patch(self, patch: lxmf_sdk::EventSinkPatch) -> Self
+pub fn lxmf_sdk::ConfigPatch::with_extension(self, key: impl core::convert::Into<alloc::string::String>, value: serde_json::value::Value) -> Self
+pub fn lxmf_sdk::ConfigPatch::with_idempotency_ttl_ms(self, ttl_ms: u64) -> Self
+pub fn lxmf_sdk::ConfigPatch::with_overflow_policy(self, policy: lxmf_sdk::OverflowPolicy) -> Self
+pub fn lxmf_sdk::ConfigPatch::with_store_forward_patch(self, patch: lxmf_sdk::StoreForwardPatch) -> Self
+#[non_exhaustive] pub struct lxmf_sdk::types::DeliverySnapshot
+pub lxmf_sdk::types::DeliverySnapshot::attempts: u32
+pub lxmf_sdk::types::DeliverySnapshot::last_updated_ms: u64
+pub lxmf_sdk::types::DeliverySnapshot::message_id: lxmf_sdk::MessageId
+pub lxmf_sdk::types::DeliverySnapshot::reason_code: core::option::Option<alloc::string::String>
+pub lxmf_sdk::types::DeliverySnapshot::state: lxmf_sdk::DeliveryState
+pub lxmf_sdk::types::DeliverySnapshot::terminal: bool
+#[non_exhaustive] pub struct lxmf_sdk::types::EventSinkConfig
+pub lxmf_sdk::types::EventSinkConfig::allow_kinds: alloc::vec::Vec<lxmf_sdk::EventSinkKind>
+pub lxmf_sdk::types::EventSinkConfig::enabled: bool
+pub lxmf_sdk::types::EventSinkConfig::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::types::EventSinkConfig::max_event_bytes: usize
+#[non_exhaustive] pub struct lxmf_sdk::types::EventSinkPatch
+pub lxmf_sdk::types::EventSinkPatch::allow_kinds: core::option::Option<core::option::Option<alloc::vec::Vec<lxmf_sdk::EventSinkKind>>>
+pub lxmf_sdk::types::EventSinkPatch::enabled: core::option::Option<core::option::Option<bool>>
+pub lxmf_sdk::types::EventSinkPatch::extensions: core::option::Option<core::option::Option<alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>>>
+pub lxmf_sdk::types::EventSinkPatch::max_event_bytes: core::option::Option<core::option::Option<usize>>
+#[non_exhaustive] pub struct lxmf_sdk::types::EventStreamConfig
+pub lxmf_sdk::types::EventStreamConfig::max_batch_bytes: usize
+pub lxmf_sdk::types::EventStreamConfig::max_event_bytes: usize
+pub lxmf_sdk::types::EventStreamConfig::max_extension_keys: usize
+pub lxmf_sdk::types::EventStreamConfig::max_poll_events: usize
+#[non_exhaustive] pub struct lxmf_sdk::types::EventStreamPatch
+pub lxmf_sdk::types::EventStreamPatch::max_batch_bytes: core::option::Option<core::option::Option<usize>>
+pub lxmf_sdk::types::EventStreamPatch::max_event_bytes: core::option::Option<core::option::Option<usize>>
+pub lxmf_sdk::types::EventStreamPatch::max_extension_keys: core::option::Option<core::option::Option<usize>>
+pub lxmf_sdk::types::EventStreamPatch::max_poll_events: core::option::Option<core::option::Option<usize>>
+#[non_exhaustive] pub struct lxmf_sdk::types::GroupSendOutcome
+pub lxmf_sdk::types::GroupSendOutcome::destination: alloc::string::String
+pub lxmf_sdk::types::GroupSendOutcome::message_id: core::option::Option<lxmf_sdk::MessageId>
+pub lxmf_sdk::types::GroupSendOutcome::reason_code: core::option::Option<alloc::string::String>
+pub lxmf_sdk::types::GroupSendOutcome::retryable: bool
+pub lxmf_sdk::types::GroupSendOutcome::state: lxmf_sdk::GroupRecipientState
+#[non_exhaustive] pub struct lxmf_sdk::types::GroupSendRequest
+pub lxmf_sdk::types::GroupSendRequest::correlation_id: core::option::Option<alloc::string::String>
+pub lxmf_sdk::types::GroupSendRequest::destinations: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::types::GroupSendRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::types::GroupSendRequest::idempotency_key: core::option::Option<alloc::string::String>
+pub lxmf_sdk::types::GroupSendRequest::payload: serde_json::value::Value
+pub lxmf_sdk::types::GroupSendRequest::source: alloc::string::String
+pub lxmf_sdk::types::GroupSendRequest::ttl_ms: core::option::Option<u64>
+impl lxmf_sdk::GroupSendRequest
+pub fn lxmf_sdk::GroupSendRequest::new(source: impl core::convert::Into<alloc::string::String>, destinations: impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>, payload: serde_json::value::Value) -> Self
+pub fn lxmf_sdk::GroupSendRequest::with_correlation_id(self, correlation_id: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn lxmf_sdk::GroupSendRequest::with_extension(self, key: impl core::convert::Into<alloc::string::String>, value: serde_json::value::Value) -> Self
+pub fn lxmf_sdk::GroupSendRequest::with_idempotency_key(self, key: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn lxmf_sdk::GroupSendRequest::with_ttl_ms(self, ttl_ms: u64) -> Self
+#[non_exhaustive] pub struct lxmf_sdk::types::GroupSendResult
+pub lxmf_sdk::types::GroupSendResult::accepted_count: usize
+pub lxmf_sdk::types::GroupSendResult::deferred_count: usize
+pub lxmf_sdk::types::GroupSendResult::failed_count: usize
+pub lxmf_sdk::types::GroupSendResult::outcomes: alloc::vec::Vec<lxmf_sdk::GroupSendOutcome>
+pub struct lxmf_sdk::types::MessageId(pub alloc::string::String)
+impl core::convert::From<&str> for lxmf_sdk::MessageId
+pub fn lxmf_sdk::MessageId::from(value: &str) -> Self
+impl core::convert::From<alloc::string::String> for lxmf_sdk::MessageId
+pub fn lxmf_sdk::MessageId::from(value: alloc::string::String) -> Self
+impl core::fmt::Display for lxmf_sdk::MessageId
+pub fn lxmf_sdk::MessageId::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+#[non_exhaustive] pub struct lxmf_sdk::types::MtlsAuthConfig
+pub lxmf_sdk::types::MtlsAuthConfig::allowed_san: core::option::Option<alloc::string::String>
+pub lxmf_sdk::types::MtlsAuthConfig::ca_bundle_path: alloc::string::String
+pub lxmf_sdk::types::MtlsAuthConfig::client_cert_path: core::option::Option<alloc::string::String>
+pub lxmf_sdk::types::MtlsAuthConfig::client_key_path: core::option::Option<alloc::string::String>
+pub lxmf_sdk::types::MtlsAuthConfig::require_client_cert: bool
+#[non_exhaustive] pub struct lxmf_sdk::types::MtlsAuthPatch
+pub lxmf_sdk::types::MtlsAuthPatch::allowed_san: core::option::Option<core::option::Option<alloc::string::String>>
+pub lxmf_sdk::types::MtlsAuthPatch::ca_bundle_path: core::option::Option<core::option::Option<alloc::string::String>>
+pub lxmf_sdk::types::MtlsAuthPatch::client_cert_path: core::option::Option<core::option::Option<alloc::string::String>>
+pub lxmf_sdk::types::MtlsAuthPatch::client_key_path: core::option::Option<core::option::Option<alloc::string::String>>
+pub lxmf_sdk::types::MtlsAuthPatch::require_client_cert: core::option::Option<core::option::Option<bool>>
+#[non_exhaustive] pub struct lxmf_sdk::types::RedactionConfig
+pub lxmf_sdk::types::RedactionConfig::break_glass_allowed: bool
+pub lxmf_sdk::types::RedactionConfig::break_glass_ttl_ms: core::option::Option<u64>
+pub lxmf_sdk::types::RedactionConfig::enabled: bool
+pub lxmf_sdk::types::RedactionConfig::sensitive_transform: lxmf_sdk::RedactionTransform
+#[non_exhaustive] pub struct lxmf_sdk::types::RedactionPatch
+pub lxmf_sdk::types::RedactionPatch::break_glass_allowed: core::option::Option<core::option::Option<bool>>
+pub lxmf_sdk::types::RedactionPatch::break_glass_ttl_ms: core::option::Option<core::option::Option<u64>>
+pub lxmf_sdk::types::RedactionPatch::enabled: core::option::Option<core::option::Option<bool>>
+pub lxmf_sdk::types::RedactionPatch::sensitive_transform: core::option::Option<core::option::Option<lxmf_sdk::RedactionTransform>>
+#[non_exhaustive] pub struct lxmf_sdk::types::RpcBackendConfig
+pub lxmf_sdk::types::RpcBackendConfig::listen_addr: alloc::string::String
+pub lxmf_sdk::types::RpcBackendConfig::max_body_bytes: usize
+pub lxmf_sdk::types::RpcBackendConfig::max_header_bytes: usize
+pub lxmf_sdk::types::RpcBackendConfig::mtls_auth: core::option::Option<lxmf_sdk::types::MtlsAuthConfig>
+pub lxmf_sdk::types::RpcBackendConfig::read_timeout_ms: u64
+pub lxmf_sdk::types::RpcBackendConfig::token_auth: core::option::Option<lxmf_sdk::types::TokenAuthConfig>
+pub lxmf_sdk::types::RpcBackendConfig::write_timeout_ms: u64
+#[non_exhaustive] pub struct lxmf_sdk::types::RpcBackendPatch
+pub lxmf_sdk::types::RpcBackendPatch::listen_addr: core::option::Option<core::option::Option<alloc::string::String>>
+pub lxmf_sdk::types::RpcBackendPatch::max_body_bytes: core::option::Option<core::option::Option<usize>>
+pub lxmf_sdk::types::RpcBackendPatch::max_header_bytes: core::option::Option<core::option::Option<usize>>
+pub lxmf_sdk::types::RpcBackendPatch::mtls_auth: core::option::Option<core::option::Option<lxmf_sdk::types::MtlsAuthPatch>>
+pub lxmf_sdk::types::RpcBackendPatch::read_timeout_ms: core::option::Option<core::option::Option<u64>>
+pub lxmf_sdk::types::RpcBackendPatch::token_auth: core::option::Option<core::option::Option<lxmf_sdk::types::TokenAuthPatch>>
+pub lxmf_sdk::types::RpcBackendPatch::write_timeout_ms: core::option::Option<core::option::Option<u64>>
+#[non_exhaustive] pub struct lxmf_sdk::types::RuntimeSnapshot
+pub lxmf_sdk::types::RuntimeSnapshot::active_contract_version: u16
+pub lxmf_sdk::types::RuntimeSnapshot::config_revision: u64
+pub lxmf_sdk::types::RuntimeSnapshot::event_stream_position: u64
+pub lxmf_sdk::types::RuntimeSnapshot::in_flight_messages: u64
+pub lxmf_sdk::types::RuntimeSnapshot::queued_messages: u64
+pub lxmf_sdk::types::RuntimeSnapshot::runtime_id: alloc::string::String
+pub lxmf_sdk::types::RuntimeSnapshot::state: lxmf_sdk::RuntimeState
+#[non_exhaustive] pub struct lxmf_sdk::types::SdkConfig
+pub lxmf_sdk::types::SdkConfig::auth_mode: lxmf_sdk::AuthMode
+pub lxmf_sdk::types::SdkConfig::bind_mode: lxmf_sdk::BindMode
+pub lxmf_sdk::types::SdkConfig::block_timeout_ms: core::option::Option<u64>
+pub lxmf_sdk::types::SdkConfig::event_sink: lxmf_sdk::EventSinkConfig
+pub lxmf_sdk::types::SdkConfig::event_stream: lxmf_sdk::EventStreamConfig
+pub lxmf_sdk::types::SdkConfig::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::types::SdkConfig::idempotency_ttl_ms: u64
+pub lxmf_sdk::types::SdkConfig::overflow_policy: lxmf_sdk::OverflowPolicy
+pub lxmf_sdk::types::SdkConfig::profile: lxmf_sdk::Profile
+pub lxmf_sdk::types::SdkConfig::redaction: lxmf_sdk::RedactionConfig
+pub lxmf_sdk::types::SdkConfig::rpc_backend: core::option::Option<lxmf_sdk::RpcBackendConfig>
+pub lxmf_sdk::types::SdkConfig::store_forward: lxmf_sdk::StoreForwardConfig
+impl lxmf_sdk::SdkConfig
+pub fn lxmf_sdk::SdkConfig::desktop_full_default() -> Self
+pub fn lxmf_sdk::SdkConfig::desktop_local_default() -> Self
+pub fn lxmf_sdk::SdkConfig::embedded_alloc_default() -> Self
+pub fn lxmf_sdk::SdkConfig::validate(&self) -> core::result::Result<(), lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkConfig::with_event_sink(self, enabled: bool, max_event_bytes: usize, allow_kinds: alloc::vec::Vec<lxmf_sdk::EventSinkKind>) -> Self
+pub fn lxmf_sdk::SdkConfig::with_mtls_auth(self, ca_bundle_path: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn lxmf_sdk::SdkConfig::with_mtls_client_credentials(self, client_cert_path: impl core::convert::Into<alloc::string::String>, client_key_path: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn lxmf_sdk::SdkConfig::with_rpc_listen_addr(self, listen_addr: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn lxmf_sdk::SdkConfig::with_store_forward_limits(self, max_messages: usize, max_message_age_ms: u64) -> Self
+pub fn lxmf_sdk::SdkConfig::with_store_forward_policy(self, capacity_policy: lxmf_sdk::StoreForwardCapacityPolicy, eviction_priority: lxmf_sdk::StoreForwardEvictionPriority) -> Self
+pub fn lxmf_sdk::SdkConfig::with_token_auth(self, issuer: impl core::convert::Into<alloc::string::String>, audience: impl core::convert::Into<alloc::string::String>, shared_secret: impl core::convert::Into<alloc::string::String>) -> Self
+#[non_exhaustive] pub struct lxmf_sdk::types::SendRequest
+pub lxmf_sdk::types::SendRequest::correlation_id: core::option::Option<alloc::string::String>
+pub lxmf_sdk::types::SendRequest::destination: alloc::string::String
+pub lxmf_sdk::types::SendRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::types::SendRequest::idempotency_key: core::option::Option<alloc::string::String>
+pub lxmf_sdk::types::SendRequest::payload: serde_json::value::Value
+pub lxmf_sdk::types::SendRequest::source: alloc::string::String
+pub lxmf_sdk::types::SendRequest::ttl_ms: core::option::Option<u64>
+impl lxmf_sdk::SendRequest
+pub fn lxmf_sdk::SendRequest::new(source: impl core::convert::Into<alloc::string::String>, destination: impl core::convert::Into<alloc::string::String>, payload: serde_json::value::Value) -> Self
+pub fn lxmf_sdk::SendRequest::with_correlation_id(self, correlation_id: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn lxmf_sdk::SendRequest::with_extension(self, key: impl core::convert::Into<alloc::string::String>, value: serde_json::value::Value) -> Self
+pub fn lxmf_sdk::SendRequest::with_idempotency_key(self, key: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn lxmf_sdk::SendRequest::with_ttl_ms(self, ttl_ms: u64) -> Self
+#[non_exhaustive] pub struct lxmf_sdk::types::StartRequest
+pub lxmf_sdk::types::StartRequest::config: lxmf_sdk::SdkConfig
+pub lxmf_sdk::types::StartRequest::requested_capabilities: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::types::StartRequest::supported_contract_versions: alloc::vec::Vec<u16>
+impl lxmf_sdk::StartRequest
+pub fn lxmf_sdk::StartRequest::new(config: lxmf_sdk::SdkConfig) -> Self
+pub fn lxmf_sdk::StartRequest::validate(&self) -> core::result::Result<(), lxmf_sdk::SdkError>
+pub fn lxmf_sdk::StartRequest::with_requested_capabilities(self, capabilities: impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
+pub fn lxmf_sdk::StartRequest::with_requested_capability(self, capability: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn lxmf_sdk::StartRequest::with_supported_contract_versions(self, versions: impl core::iter::traits::collect::IntoIterator<Item = u16>) -> Self
+#[non_exhaustive] pub struct lxmf_sdk::types::StoreForwardConfig
+pub lxmf_sdk::types::StoreForwardConfig::capacity_policy: lxmf_sdk::StoreForwardCapacityPolicy
+pub lxmf_sdk::types::StoreForwardConfig::eviction_priority: lxmf_sdk::StoreForwardEvictionPriority
+pub lxmf_sdk::types::StoreForwardConfig::max_message_age_ms: u64
+pub lxmf_sdk::types::StoreForwardConfig::max_messages: usize
+#[non_exhaustive] pub struct lxmf_sdk::types::StoreForwardPatch
+pub lxmf_sdk::types::StoreForwardPatch::capacity_policy: core::option::Option<core::option::Option<lxmf_sdk::StoreForwardCapacityPolicy>>
+pub lxmf_sdk::types::StoreForwardPatch::eviction_priority: core::option::Option<core::option::Option<lxmf_sdk::StoreForwardEvictionPriority>>
+pub lxmf_sdk::types::StoreForwardPatch::max_message_age_ms: core::option::Option<core::option::Option<u64>>
+pub lxmf_sdk::types::StoreForwardPatch::max_messages: core::option::Option<core::option::Option<usize>>
+#[non_exhaustive] pub struct lxmf_sdk::types::TickBudget
+pub lxmf_sdk::types::TickBudget::max_duration_ms: core::option::Option<u64>
+pub lxmf_sdk::types::TickBudget::max_work_items: usize
+impl lxmf_sdk::TickBudget
+pub fn lxmf_sdk::TickBudget::new(max_work_items: usize) -> Self
+pub fn lxmf_sdk::TickBudget::with_max_duration_ms(self, max_duration_ms: u64) -> Self
+#[non_exhaustive] pub struct lxmf_sdk::types::TickResult
+pub lxmf_sdk::types::TickResult::next_recommended_delay_ms: core::option::Option<u64>
+pub lxmf_sdk::types::TickResult::processed_items: usize
+pub lxmf_sdk::types::TickResult::yielded: bool
+#[non_exhaustive] pub struct lxmf_sdk::types::TokenAuthConfig
+pub lxmf_sdk::types::TokenAuthConfig::audience: alloc::string::String
+pub lxmf_sdk::types::TokenAuthConfig::clock_skew_ms: u64
+pub lxmf_sdk::types::TokenAuthConfig::issuer: alloc::string::String
+pub lxmf_sdk::types::TokenAuthConfig::jti_cache_ttl_ms: u64
+pub lxmf_sdk::types::TokenAuthConfig::shared_secret: alloc::string::String
+#[non_exhaustive] pub struct lxmf_sdk::types::TokenAuthPatch
+pub lxmf_sdk::types::TokenAuthPatch::audience: core::option::Option<core::option::Option<alloc::string::String>>
+pub lxmf_sdk::types::TokenAuthPatch::clock_skew_ms: core::option::Option<core::option::Option<u64>>
+pub lxmf_sdk::types::TokenAuthPatch::issuer: core::option::Option<core::option::Option<alloc::string::String>>
+pub lxmf_sdk::types::TokenAuthPatch::jti_cache_ttl_ms: core::option::Option<core::option::Option<u64>>
+pub lxmf_sdk::types::TokenAuthPatch::shared_secret: core::option::Option<core::option::Option<alloc::string::String>>
+#[non_exhaustive] pub enum lxmf_sdk::AuthMode
+pub lxmf_sdk::AuthMode::LocalTrusted
+pub lxmf_sdk::AuthMode::Mtls
+pub lxmf_sdk::AuthMode::Token
+#[non_exhaustive] pub enum lxmf_sdk::BindMode
+pub lxmf_sdk::BindMode::LocalOnly
+pub lxmf_sdk::BindMode::Remote
+#[non_exhaustive] pub enum lxmf_sdk::CancelResult
+pub lxmf_sdk::CancelResult::Accepted
+pub lxmf_sdk::CancelResult::AlreadyTerminal
+pub lxmf_sdk::CancelResult::NotFound
+pub lxmf_sdk::CancelResult::TooLateToCancel
+pub lxmf_sdk::CancelResult::Unsupported
+#[non_exhaustive] pub enum lxmf_sdk::CapabilityState
+pub lxmf_sdk::CapabilityState::Deprecated
+pub lxmf_sdk::CapabilityState::Disabled
+pub lxmf_sdk::CapabilityState::Enabled
+pub lxmf_sdk::CapabilityState::Experimental
+#[non_exhaustive] pub enum lxmf_sdk::DeliveryState
+pub lxmf_sdk::DeliveryState::Cancelled
+pub lxmf_sdk::DeliveryState::Delivered
+pub lxmf_sdk::DeliveryState::Dispatching
+pub lxmf_sdk::DeliveryState::Expired
+pub lxmf_sdk::DeliveryState::Failed
+pub lxmf_sdk::DeliveryState::InFlight
+pub lxmf_sdk::DeliveryState::Queued
+pub lxmf_sdk::DeliveryState::Rejected
+pub lxmf_sdk::DeliveryState::Sent
+pub lxmf_sdk::DeliveryState::Unknown
+#[non_exhaustive] pub enum lxmf_sdk::ErrorCategory
+pub lxmf_sdk::ErrorCategory::Capability
+pub lxmf_sdk::ErrorCategory::Config
+pub lxmf_sdk::ErrorCategory::Crypto
+pub lxmf_sdk::ErrorCategory::Internal
+pub lxmf_sdk::ErrorCategory::Policy
+pub lxmf_sdk::ErrorCategory::Runtime
+pub lxmf_sdk::ErrorCategory::Security
+pub lxmf_sdk::ErrorCategory::Storage
+pub lxmf_sdk::ErrorCategory::Timeout
+pub lxmf_sdk::ErrorCategory::Transport
+pub lxmf_sdk::ErrorCategory::Validation
+#[non_exhaustive] pub enum lxmf_sdk::EventSinkKind
+pub lxmf_sdk::EventSinkKind::Custom
+pub lxmf_sdk::EventSinkKind::Mqtt
+pub lxmf_sdk::EventSinkKind::Webhook
+#[non_exhaustive] pub enum lxmf_sdk::GroupRecipientState
+pub lxmf_sdk::GroupRecipientState::Accepted
+pub lxmf_sdk::GroupRecipientState::Deferred
+pub lxmf_sdk::GroupRecipientState::Failed
+pub enum lxmf_sdk::KeyProviderClass
+pub lxmf_sdk::KeyProviderClass::Custom(alloc::string::String)
+pub lxmf_sdk::KeyProviderClass::File
+pub lxmf_sdk::KeyProviderClass::Hsm
+pub lxmf_sdk::KeyProviderClass::InMemory
+pub lxmf_sdk::KeyProviderClass::OsKeystore
+#[non_exhaustive] pub enum lxmf_sdk::OverflowPolicy
+pub lxmf_sdk::OverflowPolicy::Block
+pub lxmf_sdk::OverflowPolicy::DropOldest
+pub lxmf_sdk::OverflowPolicy::Reject
+#[non_exhaustive] pub enum lxmf_sdk::PluginState
+pub lxmf_sdk::PluginState::Deprecated
+pub lxmf_sdk::PluginState::Experimental
+pub lxmf_sdk::PluginState::Stable
+#[non_exhaustive] pub enum lxmf_sdk::Profile
+pub lxmf_sdk::Profile::DesktopFull
+pub lxmf_sdk::Profile::DesktopLocalRuntime
+pub lxmf_sdk::Profile::EmbeddedAlloc
+#[non_exhaustive] pub enum lxmf_sdk::RedactionTransform
+pub lxmf_sdk::RedactionTransform::Hash
+pub lxmf_sdk::RedactionTransform::Redact
+pub lxmf_sdk::RedactionTransform::Truncate
+#[non_exhaustive] pub enum lxmf_sdk::RuntimeState
+pub lxmf_sdk::RuntimeState::Draining
+pub lxmf_sdk::RuntimeState::Failed
+pub lxmf_sdk::RuntimeState::New
+pub lxmf_sdk::RuntimeState::Running
+pub lxmf_sdk::RuntimeState::Starting
+pub lxmf_sdk::RuntimeState::Stopped
+pub lxmf_sdk::RuntimeState::Unknown
+pub enum lxmf_sdk::SdkKeyPurpose
+pub lxmf_sdk::SdkKeyPurpose::Custom(alloc::string::String)
+pub lxmf_sdk::SdkKeyPurpose::IdentitySigning
+pub lxmf_sdk::SdkKeyPurpose::SharedSecret
+pub lxmf_sdk::SdkKeyPurpose::TransportDh
+#[non_exhaustive] pub enum lxmf_sdk::SdkMethod
+pub lxmf_sdk::SdkMethod::Cancel
+pub lxmf_sdk::SdkMethod::Configure
+pub lxmf_sdk::SdkMethod::PollEvents
+pub lxmf_sdk::SdkMethod::Send
+pub lxmf_sdk::SdkMethod::Shutdown
+pub lxmf_sdk::SdkMethod::Snapshot
+pub lxmf_sdk::SdkMethod::Start
+pub lxmf_sdk::SdkMethod::Status
+pub lxmf_sdk::SdkMethod::SubscribeEvents
+pub lxmf_sdk::SdkMethod::Tick
+impl lxmf_sdk::SdkMethod
+pub fn lxmf_sdk::SdkMethod::as_str(self) -> &'static str
+#[non_exhaustive] pub enum lxmf_sdk::Severity
+pub lxmf_sdk::Severity::Critical
+pub lxmf_sdk::Severity::Debug
+pub lxmf_sdk::Severity::Error
+pub lxmf_sdk::Severity::Info
+pub lxmf_sdk::Severity::Unknown
+pub lxmf_sdk::Severity::Warn
+#[non_exhaustive] pub enum lxmf_sdk::ShutdownMode
+pub lxmf_sdk::ShutdownMode::Graceful
+pub lxmf_sdk::ShutdownMode::Immediate
+#[non_exhaustive] pub enum lxmf_sdk::StoreForwardCapacityPolicy
+pub lxmf_sdk::StoreForwardCapacityPolicy::DropOldest
+pub lxmf_sdk::StoreForwardCapacityPolicy::RejectNew
+#[non_exhaustive] pub enum lxmf_sdk::StoreForwardEvictionPriority
+pub lxmf_sdk::StoreForwardEvictionPriority::OldestFirst
+pub lxmf_sdk::StoreForwardEvictionPriority::TerminalFirst
+#[non_exhaustive] pub enum lxmf_sdk::SubscriptionStart
+pub lxmf_sdk::SubscriptionStart::Head
+pub lxmf_sdk::SubscriptionStart::Snapshot
+pub lxmf_sdk::SubscriptionStart::Tail
+pub enum lxmf_sdk::TrustLevel
+pub lxmf_sdk::TrustLevel::Blocked
+pub lxmf_sdk::TrustLevel::Trusted
+pub lxmf_sdk::TrustLevel::Unknown
+pub lxmf_sdk::TrustLevel::Untrusted
+pub enum lxmf_sdk::VoiceSessionState
+pub lxmf_sdk::VoiceSessionState::Active
+pub lxmf_sdk::VoiceSessionState::Closed
+pub lxmf_sdk::VoiceSessionState::Failed
+pub lxmf_sdk::VoiceSessionState::Holding
+pub lxmf_sdk::VoiceSessionState::New
+pub lxmf_sdk::VoiceSessionState::Ringing
+pub lxmf_sdk::VoiceSessionState::Unknown
+#[non_exhaustive] pub struct lxmf_sdk::Ack
+pub lxmf_sdk::Ack::accepted: bool
+pub lxmf_sdk::Ack::revision: core::option::Option<u64>
+pub struct lxmf_sdk::AttachmentDownloadChunk
+pub lxmf_sdk::AttachmentDownloadChunk::attachment_id: lxmf_sdk::domain::AttachmentId
+pub lxmf_sdk::AttachmentDownloadChunk::bytes_base64: alloc::string::String
+pub lxmf_sdk::AttachmentDownloadChunk::checksum_sha256: alloc::string::String
+pub lxmf_sdk::AttachmentDownloadChunk::done: bool
+pub lxmf_sdk::AttachmentDownloadChunk::next_offset: u64
+pub lxmf_sdk::AttachmentDownloadChunk::offset: u64
+pub lxmf_sdk::AttachmentDownloadChunk::total_size: u64
+pub struct lxmf_sdk::AttachmentDownloadChunkRequest
+pub lxmf_sdk::AttachmentDownloadChunkRequest::attachment_id: lxmf_sdk::domain::AttachmentId
+pub lxmf_sdk::AttachmentDownloadChunkRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::AttachmentDownloadChunkRequest::max_bytes: usize
+pub lxmf_sdk::AttachmentDownloadChunkRequest::offset: u64
+pub struct lxmf_sdk::AttachmentId(pub alloc::string::String)
+pub struct lxmf_sdk::AttachmentListRequest
+pub lxmf_sdk::AttachmentListRequest::cursor: core::option::Option<alloc::string::String>
+pub lxmf_sdk::AttachmentListRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::AttachmentListRequest::limit: core::option::Option<usize>
+pub lxmf_sdk::AttachmentListRequest::topic_id: core::option::Option<lxmf_sdk::domain::TopicId>
+pub struct lxmf_sdk::AttachmentListResult
+pub lxmf_sdk::AttachmentListResult::attachments: alloc::vec::Vec<lxmf_sdk::domain::AttachmentMeta>
+pub lxmf_sdk::AttachmentListResult::next_cursor: core::option::Option<alloc::string::String>
+pub struct lxmf_sdk::AttachmentMeta
+pub lxmf_sdk::AttachmentMeta::attachment_id: lxmf_sdk::domain::AttachmentId
+pub lxmf_sdk::AttachmentMeta::byte_len: u64
+pub lxmf_sdk::AttachmentMeta::checksum_sha256: alloc::string::String
+pub lxmf_sdk::AttachmentMeta::content_type: alloc::string::String
+pub lxmf_sdk::AttachmentMeta::created_ts_ms: u64
+pub lxmf_sdk::AttachmentMeta::expires_ts_ms: core::option::Option<u64>
+pub lxmf_sdk::AttachmentMeta::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::AttachmentMeta::name: alloc::string::String
+pub lxmf_sdk::AttachmentMeta::topic_ids: alloc::vec::Vec<lxmf_sdk::domain::TopicId>
+pub struct lxmf_sdk::AttachmentStoreRequest
+pub lxmf_sdk::AttachmentStoreRequest::bytes_base64: alloc::string::String
+pub lxmf_sdk::AttachmentStoreRequest::content_type: alloc::string::String
+pub lxmf_sdk::AttachmentStoreRequest::expires_ts_ms: core::option::Option<u64>
+pub lxmf_sdk::AttachmentStoreRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::AttachmentStoreRequest::name: alloc::string::String
+pub lxmf_sdk::AttachmentStoreRequest::topic_ids: alloc::vec::Vec<lxmf_sdk::domain::TopicId>
+pub struct lxmf_sdk::AttachmentUploadChunkAck
+pub lxmf_sdk::AttachmentUploadChunkAck::accepted: bool
+pub lxmf_sdk::AttachmentUploadChunkAck::complete: bool
+pub lxmf_sdk::AttachmentUploadChunkAck::next_offset: u64
+pub struct lxmf_sdk::AttachmentUploadChunkRequest
+pub lxmf_sdk::AttachmentUploadChunkRequest::bytes_base64: alloc::string::String
+pub lxmf_sdk::AttachmentUploadChunkRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::AttachmentUploadChunkRequest::offset: u64
+pub lxmf_sdk::AttachmentUploadChunkRequest::upload_id: lxmf_sdk::domain::AttachmentUploadId
+pub struct lxmf_sdk::AttachmentUploadCommitRequest
+pub lxmf_sdk::AttachmentUploadCommitRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::AttachmentUploadCommitRequest::upload_id: lxmf_sdk::domain::AttachmentUploadId
+pub struct lxmf_sdk::AttachmentUploadId(pub alloc::string::String)
+pub struct lxmf_sdk::AttachmentUploadSession
+pub lxmf_sdk::AttachmentUploadSession::attachment_id: lxmf_sdk::domain::AttachmentId
+pub lxmf_sdk::AttachmentUploadSession::chunk_size_hint: usize
+pub lxmf_sdk::AttachmentUploadSession::next_offset: u64
+pub lxmf_sdk::AttachmentUploadSession::upload_id: lxmf_sdk::domain::AttachmentUploadId
+pub struct lxmf_sdk::AttachmentUploadStartRequest
+pub lxmf_sdk::AttachmentUploadStartRequest::checksum_sha256: alloc::string::String
+pub lxmf_sdk::AttachmentUploadStartRequest::content_type: alloc::string::String
+pub lxmf_sdk::AttachmentUploadStartRequest::expires_ts_ms: core::option::Option<u64>
+pub lxmf_sdk::AttachmentUploadStartRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::AttachmentUploadStartRequest::name: alloc::string::String
+pub lxmf_sdk::AttachmentUploadStartRequest::topic_ids: alloc::vec::Vec<lxmf_sdk::domain::TopicId>
+pub lxmf_sdk::AttachmentUploadStartRequest::total_size: u64
+#[non_exhaustive] pub struct lxmf_sdk::CapabilityDescriptor
+pub lxmf_sdk::CapabilityDescriptor::deprecated_after_contract: core::option::Option<alloc::string::String>
+pub lxmf_sdk::CapabilityDescriptor::id: alloc::string::String
+pub lxmf_sdk::CapabilityDescriptor::since_contract: alloc::string::String
+pub lxmf_sdk::CapabilityDescriptor::state: lxmf_sdk::capability::CapabilityState
+pub lxmf_sdk::CapabilityDescriptor::version: u16
+pub struct lxmf_sdk::Client<B: lxmf_sdk::SdkBackend>
+impl<B: lxmf_sdk::SdkBackend> lxmf_sdk::Client<B>
+pub fn lxmf_sdk::Client<B>::backend(&self) -> &B
+pub fn lxmf_sdk::Client<B>::new(backend: B) -> Self
+impl<B: lxmf_sdk::SdkBackend> lxmf_sdk::LxmfSdk for lxmf_sdk::Client<B>
+pub fn lxmf_sdk::Client<B>::cancel(&self, id: lxmf_sdk::MessageId) -> core::result::Result<lxmf_sdk::CancelResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::configure(&self, expected_revision: u64, patch: lxmf_sdk::ConfigPatch) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::poll_events(&self, cursor: core::option::Option<lxmf_sdk::event::EventCursor>, max: usize) -> core::result::Result<lxmf_sdk::event::EventBatch, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::send(&self, req: lxmf_sdk::SendRequest) -> core::result::Result<lxmf_sdk::MessageId, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::shutdown(&self, mode: lxmf_sdk::ShutdownMode) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::snapshot(&self) -> core::result::Result<lxmf_sdk::RuntimeSnapshot, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::start(&self, req: lxmf_sdk::StartRequest) -> core::result::Result<lxmf_sdk::ClientHandle, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::status(&self, id: lxmf_sdk::MessageId) -> core::result::Result<core::option::Option<lxmf_sdk::DeliverySnapshot>, lxmf_sdk::SdkError>
+impl<B: lxmf_sdk::SdkBackend> lxmf_sdk::LxmfSdkAttachments for lxmf_sdk::Client<B>
+pub fn lxmf_sdk::Client<B>::attachment_associate_topic(&self, attachment_id: lxmf_sdk::domain::AttachmentId, topic_id: lxmf_sdk::domain::TopicId) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::attachment_delete(&self, attachment_id: lxmf_sdk::domain::AttachmentId) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::attachment_download(&self, attachment_id: lxmf_sdk::domain::AttachmentId) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::attachment_download_chunk(&self, req: lxmf_sdk::domain::AttachmentDownloadChunkRequest) -> core::result::Result<lxmf_sdk::domain::AttachmentDownloadChunk, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::attachment_get(&self, attachment_id: lxmf_sdk::domain::AttachmentId) -> core::result::Result<core::option::Option<lxmf_sdk::domain::AttachmentMeta>, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::attachment_list(&self, req: lxmf_sdk::domain::AttachmentListRequest) -> core::result::Result<lxmf_sdk::domain::AttachmentListResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::attachment_store(&self, req: lxmf_sdk::domain::AttachmentStoreRequest) -> core::result::Result<lxmf_sdk::domain::AttachmentMeta, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::attachment_upload_chunk(&self, req: lxmf_sdk::domain::AttachmentUploadChunkRequest) -> core::result::Result<lxmf_sdk::domain::AttachmentUploadChunkAck, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::attachment_upload_commit(&self, req: lxmf_sdk::domain::AttachmentUploadCommitRequest) -> core::result::Result<lxmf_sdk::domain::AttachmentMeta, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::attachment_upload_start(&self, req: lxmf_sdk::domain::AttachmentUploadStartRequest) -> core::result::Result<lxmf_sdk::domain::AttachmentUploadSession, lxmf_sdk::SdkError>
+impl<B: lxmf_sdk::SdkBackend> lxmf_sdk::LxmfSdkGroupDelivery for lxmf_sdk::Client<B>
+pub fn lxmf_sdk::Client<B>::send_group(&self, req: lxmf_sdk::GroupSendRequest) -> core::result::Result<lxmf_sdk::GroupSendResult, lxmf_sdk::SdkError>
+impl<B: lxmf_sdk::SdkBackend> lxmf_sdk::LxmfSdkIdentity for lxmf_sdk::Client<B>
+pub fn lxmf_sdk::Client<B>::identity_activate(&self, identity: lxmf_sdk::domain::IdentityRef) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::identity_announce_now(&self) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::identity_bootstrap(&self, req: lxmf_sdk::domain::IdentityBootstrapRequest) -> core::result::Result<lxmf_sdk::domain::ContactRecord, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::identity_contact_list(&self, req: lxmf_sdk::domain::ContactListRequest) -> core::result::Result<lxmf_sdk::domain::ContactListResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::identity_contact_update(&self, req: lxmf_sdk::domain::ContactUpdateRequest) -> core::result::Result<lxmf_sdk::domain::ContactRecord, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::identity_export(&self, identity: lxmf_sdk::domain::IdentityRef) -> core::result::Result<lxmf_sdk::domain::IdentityImportRequest, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::identity_import(&self, req: lxmf_sdk::domain::IdentityImportRequest) -> core::result::Result<lxmf_sdk::domain::IdentityBundle, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::identity_list(&self) -> core::result::Result<alloc::vec::Vec<lxmf_sdk::domain::IdentityBundle>, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::identity_presence_list(&self, req: lxmf_sdk::domain::PresenceListRequest) -> core::result::Result<lxmf_sdk::domain::PresenceListResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::identity_resolve(&self, req: lxmf_sdk::domain::IdentityResolveRequest) -> core::result::Result<core::option::Option<lxmf_sdk::domain::IdentityRef>, lxmf_sdk::SdkError>
+impl<B: lxmf_sdk::SdkBackend> lxmf_sdk::LxmfSdkManualTick for lxmf_sdk::Client<B>
+pub fn lxmf_sdk::Client<B>::tick(&self, budget: lxmf_sdk::TickBudget) -> core::result::Result<lxmf_sdk::TickResult, lxmf_sdk::SdkError>
+impl<B: lxmf_sdk::SdkBackend> lxmf_sdk::LxmfSdkMarkers for lxmf_sdk::Client<B>
+pub fn lxmf_sdk::Client<B>::marker_create(&self, req: lxmf_sdk::domain::MarkerCreateRequest) -> core::result::Result<lxmf_sdk::domain::MarkerRecord, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::marker_delete(&self, req: lxmf_sdk::domain::MarkerDeleteRequest) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::marker_list(&self, req: lxmf_sdk::domain::MarkerListRequest) -> core::result::Result<lxmf_sdk::domain::MarkerListResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::marker_update_position(&self, req: lxmf_sdk::domain::MarkerUpdatePositionRequest) -> core::result::Result<lxmf_sdk::domain::MarkerRecord, lxmf_sdk::SdkError>
+impl<B: lxmf_sdk::SdkBackend> lxmf_sdk::LxmfSdkPaper for lxmf_sdk::Client<B>
+pub fn lxmf_sdk::Client<B>::paper_decode(&self, envelope: lxmf_sdk::domain::PaperMessageEnvelope) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::paper_encode(&self, message_id: lxmf_sdk::MessageId) -> core::result::Result<lxmf_sdk::domain::PaperMessageEnvelope, lxmf_sdk::SdkError>
+impl<B: lxmf_sdk::SdkBackend> lxmf_sdk::LxmfSdkRemoteCommands for lxmf_sdk::Client<B>
+pub fn lxmf_sdk::Client<B>::command_invoke(&self, req: lxmf_sdk::domain::RemoteCommandRequest) -> core::result::Result<lxmf_sdk::domain::RemoteCommandResponse, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::command_reply(&self, correlation_id: alloc::string::String, reply: lxmf_sdk::domain::RemoteCommandResponse) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+impl<B: lxmf_sdk::SdkBackend> lxmf_sdk::LxmfSdkTelemetry for lxmf_sdk::Client<B>
+pub fn lxmf_sdk::Client<B>::telemetry_query(&self, query: lxmf_sdk::domain::TelemetryQuery) -> core::result::Result<alloc::vec::Vec<lxmf_sdk::domain::TelemetryPoint>, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::telemetry_subscribe(&self, query: lxmf_sdk::domain::TelemetryQuery) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+impl<B: lxmf_sdk::SdkBackend> lxmf_sdk::LxmfSdkTopics for lxmf_sdk::Client<B>
+pub fn lxmf_sdk::Client<B>::topic_create(&self, req: lxmf_sdk::domain::TopicCreateRequest) -> core::result::Result<lxmf_sdk::domain::TopicRecord, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::topic_get(&self, topic_id: lxmf_sdk::domain::TopicId) -> core::result::Result<core::option::Option<lxmf_sdk::domain::TopicRecord>, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::topic_list(&self, req: lxmf_sdk::domain::TopicListRequest) -> core::result::Result<lxmf_sdk::domain::TopicListResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::topic_publish(&self, req: lxmf_sdk::domain::TopicPublishRequest) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::topic_subscribe(&self, req: lxmf_sdk::domain::TopicSubscriptionRequest) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::topic_unsubscribe(&self, topic_id: lxmf_sdk::domain::TopicId) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+impl<B: lxmf_sdk::SdkBackend> lxmf_sdk::LxmfSdkVoiceSignaling for lxmf_sdk::Client<B>
+pub fn lxmf_sdk::Client<B>::voice_session_close(&self, session_id: lxmf_sdk::domain::VoiceSessionId) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::voice_session_open(&self, req: lxmf_sdk::domain::VoiceSessionOpenRequest) -> core::result::Result<lxmf_sdk::domain::VoiceSessionId, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::voice_session_update(&self, req: lxmf_sdk::domain::VoiceSessionUpdateRequest) -> core::result::Result<lxmf_sdk::domain::VoiceSessionState, lxmf_sdk::SdkError>
+impl<B: lxmf_sdk::SdkBackendAsyncEvents> lxmf_sdk::LxmfSdkAsync for lxmf_sdk::Client<B>
+pub fn lxmf_sdk::Client<B>::subscribe_events(&self, start: lxmf_sdk::event::SubscriptionStart) -> core::result::Result<lxmf_sdk::event::EventSubscription, lxmf_sdk::SdkError>
+#[non_exhaustive] pub struct lxmf_sdk::ClientHandle
+pub lxmf_sdk::ClientHandle::active_contract_version: u16
+pub lxmf_sdk::ClientHandle::effective_capabilities: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::ClientHandle::effective_limits: lxmf_sdk::capability::EffectiveLimits
+pub lxmf_sdk::ClientHandle::runtime_id: alloc::string::String
+#[non_exhaustive] pub struct lxmf_sdk::ConfigPatch
+pub lxmf_sdk::ConfigPatch::block_timeout_ms: core::option::Option<core::option::Option<u64>>
+pub lxmf_sdk::ConfigPatch::event_sink: core::option::Option<core::option::Option<lxmf_sdk::EventSinkPatch>>
+pub lxmf_sdk::ConfigPatch::event_stream: core::option::Option<core::option::Option<lxmf_sdk::types::EventStreamPatch>>
+pub lxmf_sdk::ConfigPatch::extensions: core::option::Option<core::option::Option<alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>>>
+pub lxmf_sdk::ConfigPatch::idempotency_ttl_ms: core::option::Option<core::option::Option<u64>>
+pub lxmf_sdk::ConfigPatch::overflow_policy: core::option::Option<core::option::Option<lxmf_sdk::OverflowPolicy>>
+pub lxmf_sdk::ConfigPatch::redaction: core::option::Option<core::option::Option<lxmf_sdk::types::RedactionPatch>>
+pub lxmf_sdk::ConfigPatch::rpc_backend: core::option::Option<core::option::Option<lxmf_sdk::types::RpcBackendPatch>>
+pub lxmf_sdk::ConfigPatch::store_forward: core::option::Option<core::option::Option<lxmf_sdk::StoreForwardPatch>>
+impl lxmf_sdk::ConfigPatch
+pub fn lxmf_sdk::ConfigPatch::is_empty(&self) -> bool
+pub fn lxmf_sdk::ConfigPatch::new() -> Self
+pub fn lxmf_sdk::ConfigPatch::with_block_timeout_ms(self, timeout_ms: u64) -> Self
+pub fn lxmf_sdk::ConfigPatch::with_event_sink_patch(self, patch: lxmf_sdk::EventSinkPatch) -> Self
+pub fn lxmf_sdk::ConfigPatch::with_extension(self, key: impl core::convert::Into<alloc::string::String>, value: serde_json::value::Value) -> Self
+pub fn lxmf_sdk::ConfigPatch::with_idempotency_ttl_ms(self, ttl_ms: u64) -> Self
+pub fn lxmf_sdk::ConfigPatch::with_overflow_policy(self, policy: lxmf_sdk::OverflowPolicy) -> Self
+pub fn lxmf_sdk::ConfigPatch::with_store_forward_patch(self, patch: lxmf_sdk::StoreForwardPatch) -> Self
+pub struct lxmf_sdk::ContactListRequest
+pub lxmf_sdk::ContactListRequest::cursor: core::option::Option<alloc::string::String>
+pub lxmf_sdk::ContactListRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::ContactListRequest::limit: core::option::Option<usize>
+pub struct lxmf_sdk::ContactListResult
+pub lxmf_sdk::ContactListResult::contacts: alloc::vec::Vec<lxmf_sdk::domain::ContactRecord>
+pub lxmf_sdk::ContactListResult::next_cursor: core::option::Option<alloc::string::String>
+pub struct lxmf_sdk::ContactRecord
+pub lxmf_sdk::ContactRecord::bootstrap: bool
+pub lxmf_sdk::ContactRecord::display_name: core::option::Option<alloc::string::String>
+pub lxmf_sdk::ContactRecord::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::ContactRecord::identity: lxmf_sdk::domain::IdentityRef
+pub lxmf_sdk::ContactRecord::metadata: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::ContactRecord::trust_level: lxmf_sdk::domain::TrustLevel
+pub lxmf_sdk::ContactRecord::updated_ts_ms: u64
+pub struct lxmf_sdk::ContactUpdateRequest
+pub lxmf_sdk::ContactUpdateRequest::bootstrap: core::option::Option<bool>
+pub lxmf_sdk::ContactUpdateRequest::display_name: core::option::Option<alloc::string::String>
+pub lxmf_sdk::ContactUpdateRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::ContactUpdateRequest::identity: lxmf_sdk::domain::IdentityRef
+pub lxmf_sdk::ContactUpdateRequest::metadata: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::ContactUpdateRequest::trust_level: core::option::Option<lxmf_sdk::domain::TrustLevel>
+#[non_exhaustive] pub struct lxmf_sdk::DeliverySnapshot
+pub lxmf_sdk::DeliverySnapshot::attempts: u32
+pub lxmf_sdk::DeliverySnapshot::last_updated_ms: u64
+pub lxmf_sdk::DeliverySnapshot::message_id: lxmf_sdk::MessageId
+pub lxmf_sdk::DeliverySnapshot::reason_code: core::option::Option<alloc::string::String>
+pub lxmf_sdk::DeliverySnapshot::state: lxmf_sdk::DeliveryState
+pub lxmf_sdk::DeliverySnapshot::terminal: bool
+#[non_exhaustive] pub struct lxmf_sdk::EffectiveLimits
+pub lxmf_sdk::EffectiveLimits::idempotency_ttl_ms: u64
+pub lxmf_sdk::EffectiveLimits::max_batch_bytes: usize
+pub lxmf_sdk::EffectiveLimits::max_event_bytes: usize
+pub lxmf_sdk::EffectiveLimits::max_extension_keys: usize
+pub lxmf_sdk::EffectiveLimits::max_poll_events: usize
+#[non_exhaustive] pub struct lxmf_sdk::EventBatch
+pub lxmf_sdk::EventBatch::dropped_count: u64
+pub lxmf_sdk::EventBatch::events: alloc::vec::Vec<lxmf_sdk::event::SdkEvent>
+pub lxmf_sdk::EventBatch::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::EventBatch::next_cursor: lxmf_sdk::event::EventCursor
+pub lxmf_sdk::EventBatch::snapshot_high_watermark_seq_no: core::option::Option<u64>
+impl lxmf_sdk::event::EventBatch
+pub fn lxmf_sdk::event::EventBatch::empty(next_cursor: lxmf_sdk::event::EventCursor) -> Self
+pub struct lxmf_sdk::EventCursor(pub alloc::string::String)
+impl core::convert::From<alloc::string::String> for lxmf_sdk::event::EventCursor
+pub fn lxmf_sdk::event::EventCursor::from(value: alloc::string::String) -> Self
+#[non_exhaustive] pub struct lxmf_sdk::EventSinkConfig
+pub lxmf_sdk::EventSinkConfig::allow_kinds: alloc::vec::Vec<lxmf_sdk::EventSinkKind>
+pub lxmf_sdk::EventSinkConfig::enabled: bool
+pub lxmf_sdk::EventSinkConfig::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::EventSinkConfig::max_event_bytes: usize
+#[non_exhaustive] pub struct lxmf_sdk::EventSinkPatch
+pub lxmf_sdk::EventSinkPatch::allow_kinds: core::option::Option<core::option::Option<alloc::vec::Vec<lxmf_sdk::EventSinkKind>>>
+pub lxmf_sdk::EventSinkPatch::enabled: core::option::Option<core::option::Option<bool>>
+pub lxmf_sdk::EventSinkPatch::extensions: core::option::Option<core::option::Option<alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>>>
+pub lxmf_sdk::EventSinkPatch::max_event_bytes: core::option::Option<core::option::Option<usize>>
+#[non_exhaustive] pub struct lxmf_sdk::EventStreamConfig
+pub lxmf_sdk::EventStreamConfig::max_batch_bytes: usize
+pub lxmf_sdk::EventStreamConfig::max_event_bytes: usize
+pub lxmf_sdk::EventStreamConfig::max_extension_keys: usize
+pub lxmf_sdk::EventStreamConfig::max_poll_events: usize
+#[non_exhaustive] pub struct lxmf_sdk::EventSubscription
+pub lxmf_sdk::EventSubscription::cursor: core::option::Option<lxmf_sdk::event::EventCursor>
+pub lxmf_sdk::EventSubscription::start: lxmf_sdk::event::SubscriptionStart
+pub struct lxmf_sdk::GeoPoint
+pub lxmf_sdk::GeoPoint::alt_m: core::option::Option<f64>
+pub lxmf_sdk::GeoPoint::lat: f64
+pub lxmf_sdk::GeoPoint::lon: f64
+#[non_exhaustive] pub struct lxmf_sdk::GroupSendOutcome
+pub lxmf_sdk::GroupSendOutcome::destination: alloc::string::String
+pub lxmf_sdk::GroupSendOutcome::message_id: core::option::Option<lxmf_sdk::MessageId>
+pub lxmf_sdk::GroupSendOutcome::reason_code: core::option::Option<alloc::string::String>
+pub lxmf_sdk::GroupSendOutcome::retryable: bool
+pub lxmf_sdk::GroupSendOutcome::state: lxmf_sdk::GroupRecipientState
+#[non_exhaustive] pub struct lxmf_sdk::GroupSendRequest
+pub lxmf_sdk::GroupSendRequest::correlation_id: core::option::Option<alloc::string::String>
+pub lxmf_sdk::GroupSendRequest::destinations: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::GroupSendRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::GroupSendRequest::idempotency_key: core::option::Option<alloc::string::String>
+pub lxmf_sdk::GroupSendRequest::payload: serde_json::value::Value
+pub lxmf_sdk::GroupSendRequest::source: alloc::string::String
+pub lxmf_sdk::GroupSendRequest::ttl_ms: core::option::Option<u64>
+impl lxmf_sdk::GroupSendRequest
+pub fn lxmf_sdk::GroupSendRequest::new(source: impl core::convert::Into<alloc::string::String>, destinations: impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>, payload: serde_json::value::Value) -> Self
+pub fn lxmf_sdk::GroupSendRequest::with_correlation_id(self, correlation_id: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn lxmf_sdk::GroupSendRequest::with_extension(self, key: impl core::convert::Into<alloc::string::String>, value: serde_json::value::Value) -> Self
+pub fn lxmf_sdk::GroupSendRequest::with_idempotency_key(self, key: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn lxmf_sdk::GroupSendRequest::with_ttl_ms(self, ttl_ms: u64) -> Self
+#[non_exhaustive] pub struct lxmf_sdk::GroupSendResult
+pub lxmf_sdk::GroupSendResult::accepted_count: usize
+pub lxmf_sdk::GroupSendResult::deferred_count: usize
+pub lxmf_sdk::GroupSendResult::failed_count: usize
+pub lxmf_sdk::GroupSendResult::outcomes: alloc::vec::Vec<lxmf_sdk::GroupSendOutcome>
+pub struct lxmf_sdk::IdentityBootstrapRequest
+pub lxmf_sdk::IdentityBootstrapRequest::auto_sync: bool
+pub lxmf_sdk::IdentityBootstrapRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::IdentityBootstrapRequest::identity: lxmf_sdk::domain::IdentityRef
+pub struct lxmf_sdk::IdentityBundle
+pub lxmf_sdk::IdentityBundle::capabilities: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::IdentityBundle::display_name: core::option::Option<alloc::string::String>
+pub lxmf_sdk::IdentityBundle::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::IdentityBundle::identity: lxmf_sdk::domain::IdentityRef
+pub lxmf_sdk::IdentityBundle::public_key: alloc::string::String
+pub struct lxmf_sdk::IdentityImportRequest
+pub lxmf_sdk::IdentityImportRequest::bundle_base64: alloc::string::String
+pub lxmf_sdk::IdentityImportRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::IdentityImportRequest::passphrase: core::option::Option<alloc::string::String>
+pub struct lxmf_sdk::IdentityRef(pub alloc::string::String)
+pub struct lxmf_sdk::IdentityResolveRequest
+pub lxmf_sdk::IdentityResolveRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::IdentityResolveRequest::hash: alloc::string::String
+pub struct lxmf_sdk::Lifecycle
+impl lxmf_sdk::Lifecycle
+pub fn lxmf_sdk::Lifecycle::check_start_reentry(&self, req: &lxmf_sdk::StartRequest) -> core::result::Result<bool, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Lifecycle::ensure_method_legal(&self, method: lxmf_sdk::SdkMethod) -> core::result::Result<(), lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Lifecycle::mark_draining(&mut self) -> core::result::Result<(), lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Lifecycle::mark_failed(&mut self)
+pub fn lxmf_sdk::Lifecycle::mark_running(&mut self, req: lxmf_sdk::StartRequest) -> core::result::Result<(), lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Lifecycle::mark_starting(&mut self) -> core::result::Result<(), lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Lifecycle::mark_stopped(&mut self)
+pub fn lxmf_sdk::Lifecycle::reset_to_new(&mut self)
+pub fn lxmf_sdk::Lifecycle::state(&self) -> lxmf_sdk::RuntimeState
+impl core::default::Default for lxmf_sdk::Lifecycle
+pub fn lxmf_sdk::Lifecycle::default() -> Self
+pub struct lxmf_sdk::MarkerCreateRequest
+pub lxmf_sdk::MarkerCreateRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::MarkerCreateRequest::label: alloc::string::String
+pub lxmf_sdk::MarkerCreateRequest::position: lxmf_sdk::domain::GeoPoint
+pub lxmf_sdk::MarkerCreateRequest::topic_id: core::option::Option<lxmf_sdk::domain::TopicId>
+pub struct lxmf_sdk::MarkerDeleteRequest
+pub lxmf_sdk::MarkerDeleteRequest::expected_revision: u64
+pub lxmf_sdk::MarkerDeleteRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::MarkerDeleteRequest::marker_id: lxmf_sdk::domain::MarkerId
+pub struct lxmf_sdk::MarkerId(pub alloc::string::String)
+pub struct lxmf_sdk::MarkerListRequest
+pub lxmf_sdk::MarkerListRequest::cursor: core::option::Option<alloc::string::String>
+pub lxmf_sdk::MarkerListRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::MarkerListRequest::limit: core::option::Option<usize>
+pub lxmf_sdk::MarkerListRequest::topic_id: core::option::Option<lxmf_sdk::domain::TopicId>
+pub struct lxmf_sdk::MarkerListResult
+pub lxmf_sdk::MarkerListResult::markers: alloc::vec::Vec<lxmf_sdk::domain::MarkerRecord>
+pub lxmf_sdk::MarkerListResult::next_cursor: core::option::Option<alloc::string::String>
+pub struct lxmf_sdk::MarkerRecord
+pub lxmf_sdk::MarkerRecord::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::MarkerRecord::label: alloc::string::String
+pub lxmf_sdk::MarkerRecord::marker_id: lxmf_sdk::domain::MarkerId
+pub lxmf_sdk::MarkerRecord::position: lxmf_sdk::domain::GeoPoint
+pub lxmf_sdk::MarkerRecord::revision: u64
+pub lxmf_sdk::MarkerRecord::topic_id: core::option::Option<lxmf_sdk::domain::TopicId>
+pub lxmf_sdk::MarkerRecord::updated_ts_ms: u64
+pub struct lxmf_sdk::MarkerUpdatePositionRequest
+pub lxmf_sdk::MarkerUpdatePositionRequest::expected_revision: u64
+pub lxmf_sdk::MarkerUpdatePositionRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::MarkerUpdatePositionRequest::marker_id: lxmf_sdk::domain::MarkerId
+pub lxmf_sdk::MarkerUpdatePositionRequest::position: lxmf_sdk::domain::GeoPoint
+pub struct lxmf_sdk::MemoryBudget
+pub lxmf_sdk::MemoryBudget::max_attachment_spool_bytes: usize
+pub lxmf_sdk::MemoryBudget::max_event_queue_bytes: usize
+pub lxmf_sdk::MemoryBudget::max_heap_bytes: usize
+pub struct lxmf_sdk::MessageId(pub alloc::string::String)
+impl core::convert::From<&str> for lxmf_sdk::MessageId
+pub fn lxmf_sdk::MessageId::from(value: &str) -> Self
+impl core::convert::From<alloc::string::String> for lxmf_sdk::MessageId
+pub fn lxmf_sdk::MessageId::from(value: alloc::string::String) -> Self
+impl core::fmt::Display for lxmf_sdk::MessageId
+pub fn lxmf_sdk::MessageId::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+#[non_exhaustive] pub struct lxmf_sdk::NegotiationRequest
+pub lxmf_sdk::NegotiationRequest::auth_mode: lxmf_sdk::AuthMode
+pub lxmf_sdk::NegotiationRequest::bind_mode: lxmf_sdk::BindMode
+pub lxmf_sdk::NegotiationRequest::block_timeout_ms: core::option::Option<u64>
+pub lxmf_sdk::NegotiationRequest::overflow_policy: lxmf_sdk::OverflowPolicy
+pub lxmf_sdk::NegotiationRequest::profile: lxmf_sdk::Profile
+pub lxmf_sdk::NegotiationRequest::requested_capabilities: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::NegotiationRequest::rpc_backend: core::option::Option<lxmf_sdk::RpcBackendConfig>
+pub lxmf_sdk::NegotiationRequest::supported_contract_versions: alloc::vec::Vec<u16>
+#[non_exhaustive] pub struct lxmf_sdk::NegotiationResponse
+pub lxmf_sdk::NegotiationResponse::active_contract_version: u16
+pub lxmf_sdk::NegotiationResponse::contract_release: alloc::string::String
+pub lxmf_sdk::NegotiationResponse::effective_capabilities: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::NegotiationResponse::effective_limits: lxmf_sdk::capability::EffectiveLimits
+pub lxmf_sdk::NegotiationResponse::runtime_id: alloc::string::String
+pub lxmf_sdk::NegotiationResponse::schema_namespace: alloc::string::String
+pub struct lxmf_sdk::PaperMessageEnvelope
+pub lxmf_sdk::PaperMessageEnvelope::destination_hint: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PaperMessageEnvelope::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::PaperMessageEnvelope::transient_id: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PaperMessageEnvelope::uri: alloc::string::String
+#[non_exhaustive] pub struct lxmf_sdk::PluginDescriptor
+pub lxmf_sdk::PluginDescriptor::optional_capabilities: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::PluginDescriptor::plugin_id: alloc::string::String
+pub lxmf_sdk::PluginDescriptor::required_capabilities: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::PluginDescriptor::state: lxmf_sdk::capability::PluginState
+pub lxmf_sdk::PluginDescriptor::version: u16
+pub struct lxmf_sdk::PresenceListRequest
+pub lxmf_sdk::PresenceListRequest::cursor: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PresenceListRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::PresenceListRequest::limit: core::option::Option<usize>
+pub struct lxmf_sdk::PresenceListResult
+pub lxmf_sdk::PresenceListResult::next_cursor: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PresenceListResult::peers: alloc::vec::Vec<lxmf_sdk::domain::PresenceRecord>
+pub struct lxmf_sdk::PresenceRecord
+pub lxmf_sdk::PresenceRecord::bootstrap: core::option::Option<bool>
+pub lxmf_sdk::PresenceRecord::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::PresenceRecord::first_seen_ts_ms: i64
+pub lxmf_sdk::PresenceRecord::last_seen_ts_ms: i64
+pub lxmf_sdk::PresenceRecord::name: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PresenceRecord::name_source: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PresenceRecord::peer_id: alloc::string::String
+pub lxmf_sdk::PresenceRecord::seen_count: u64
+pub lxmf_sdk::PresenceRecord::trust_level: core::option::Option<lxmf_sdk::domain::TrustLevel>
+#[non_exhaustive] pub struct lxmf_sdk::RedactionConfig
+pub lxmf_sdk::RedactionConfig::break_glass_allowed: bool
+pub lxmf_sdk::RedactionConfig::break_glass_ttl_ms: core::option::Option<u64>
+pub lxmf_sdk::RedactionConfig::enabled: bool
+pub lxmf_sdk::RedactionConfig::sensitive_transform: lxmf_sdk::RedactionTransform
+pub struct lxmf_sdk::RemoteCommandRequest
+pub lxmf_sdk::RemoteCommandRequest::command: alloc::string::String
+pub lxmf_sdk::RemoteCommandRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::RemoteCommandRequest::payload: serde_json::value::Value
+pub lxmf_sdk::RemoteCommandRequest::target: core::option::Option<alloc::string::String>
+pub lxmf_sdk::RemoteCommandRequest::timeout_ms: core::option::Option<u64>
+pub struct lxmf_sdk::RemoteCommandResponse
+pub lxmf_sdk::RemoteCommandResponse::accepted: bool
+pub lxmf_sdk::RemoteCommandResponse::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::RemoteCommandResponse::payload: serde_json::value::Value
+pub struct lxmf_sdk::RpcBackendClient
+impl lxmf_sdk::RpcBackendClient
+pub fn lxmf_sdk::RpcBackendClient::new(endpoint: impl core::convert::Into<alloc::string::String>) -> Self
+impl lxmf_sdk::SdkBackend for lxmf_sdk::RpcBackendClient
+pub fn lxmf_sdk::RpcBackendClient::attachment_associate_topic(&self, attachment_id: lxmf_sdk::domain::AttachmentId, topic_id: lxmf_sdk::domain::TopicId) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::attachment_delete(&self, attachment_id: lxmf_sdk::domain::AttachmentId) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::attachment_download(&self, attachment_id: lxmf_sdk::domain::AttachmentId) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::attachment_download_chunk(&self, req: lxmf_sdk::domain::AttachmentDownloadChunkRequest) -> core::result::Result<lxmf_sdk::domain::AttachmentDownloadChunk, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::attachment_get(&self, attachment_id: lxmf_sdk::domain::AttachmentId) -> core::result::Result<core::option::Option<lxmf_sdk::domain::AttachmentMeta>, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::attachment_list(&self, req: lxmf_sdk::domain::AttachmentListRequest) -> core::result::Result<lxmf_sdk::domain::AttachmentListResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::attachment_store(&self, req: lxmf_sdk::domain::AttachmentStoreRequest) -> core::result::Result<lxmf_sdk::domain::AttachmentMeta, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::attachment_upload_chunk(&self, req: lxmf_sdk::domain::AttachmentUploadChunkRequest) -> core::result::Result<lxmf_sdk::domain::AttachmentUploadChunkAck, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::attachment_upload_commit(&self, req: lxmf_sdk::domain::AttachmentUploadCommitRequest) -> core::result::Result<lxmf_sdk::domain::AttachmentMeta, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::attachment_upload_start(&self, req: lxmf_sdk::domain::AttachmentUploadStartRequest) -> core::result::Result<lxmf_sdk::domain::AttachmentUploadSession, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::cancel(&self, id: lxmf_sdk::MessageId) -> core::result::Result<lxmf_sdk::CancelResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::command_invoke(&self, req: lxmf_sdk::domain::RemoteCommandRequest) -> core::result::Result<lxmf_sdk::domain::RemoteCommandResponse, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::command_reply(&self, correlation_id: alloc::string::String, reply: lxmf_sdk::domain::RemoteCommandResponse) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::configure(&self, expected_revision: u64, patch: lxmf_sdk::ConfigPatch) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::identity_activate(&self, identity: lxmf_sdk::domain::IdentityRef) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::identity_announce_now(&self) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::identity_bootstrap(&self, req: lxmf_sdk::domain::IdentityBootstrapRequest) -> core::result::Result<lxmf_sdk::domain::ContactRecord, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::identity_contact_list(&self, req: lxmf_sdk::domain::ContactListRequest) -> core::result::Result<lxmf_sdk::domain::ContactListResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::identity_contact_update(&self, req: lxmf_sdk::domain::ContactUpdateRequest) -> core::result::Result<lxmf_sdk::domain::ContactRecord, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::identity_export(&self, identity: lxmf_sdk::domain::IdentityRef) -> core::result::Result<lxmf_sdk::domain::IdentityImportRequest, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::identity_import(&self, req: lxmf_sdk::domain::IdentityImportRequest) -> core::result::Result<lxmf_sdk::domain::IdentityBundle, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::identity_list(&self) -> core::result::Result<alloc::vec::Vec<lxmf_sdk::domain::IdentityBundle>, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::identity_presence_list(&self, req: lxmf_sdk::domain::PresenceListRequest) -> core::result::Result<lxmf_sdk::domain::PresenceListResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::identity_resolve(&self, req: lxmf_sdk::domain::IdentityResolveRequest) -> core::result::Result<core::option::Option<lxmf_sdk::domain::IdentityRef>, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::marker_create(&self, req: lxmf_sdk::domain::MarkerCreateRequest) -> core::result::Result<lxmf_sdk::domain::MarkerRecord, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::marker_delete(&self, req: lxmf_sdk::domain::MarkerDeleteRequest) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::marker_list(&self, req: lxmf_sdk::domain::MarkerListRequest) -> core::result::Result<lxmf_sdk::domain::MarkerListResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::marker_update_position(&self, req: lxmf_sdk::domain::MarkerUpdatePositionRequest) -> core::result::Result<lxmf_sdk::domain::MarkerRecord, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::negotiate(&self, req: lxmf_sdk::capability::NegotiationRequest) -> core::result::Result<lxmf_sdk::capability::NegotiationResponse, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::paper_decode(&self, envelope: lxmf_sdk::domain::PaperMessageEnvelope) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::paper_encode(&self, message_id: lxmf_sdk::MessageId) -> core::result::Result<lxmf_sdk::domain::PaperMessageEnvelope, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::poll_events(&self, cursor: core::option::Option<lxmf_sdk::event::EventCursor>, max: usize) -> core::result::Result<lxmf_sdk::event::EventBatch, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::send(&self, req: lxmf_sdk::SendRequest) -> core::result::Result<lxmf_sdk::MessageId, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::shutdown(&self, mode: lxmf_sdk::ShutdownMode) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::snapshot(&self) -> core::result::Result<lxmf_sdk::RuntimeSnapshot, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::status(&self, id: lxmf_sdk::MessageId) -> core::result::Result<core::option::Option<lxmf_sdk::DeliverySnapshot>, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::telemetry_query(&self, query: lxmf_sdk::domain::TelemetryQuery) -> core::result::Result<alloc::vec::Vec<lxmf_sdk::domain::TelemetryPoint>, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::telemetry_subscribe(&self, query: lxmf_sdk::domain::TelemetryQuery) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::tick(&self, budget: lxmf_sdk::TickBudget) -> core::result::Result<lxmf_sdk::TickResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::topic_create(&self, req: lxmf_sdk::domain::TopicCreateRequest) -> core::result::Result<lxmf_sdk::domain::TopicRecord, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::topic_get(&self, topic_id: lxmf_sdk::domain::TopicId) -> core::result::Result<core::option::Option<lxmf_sdk::domain::TopicRecord>, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::topic_list(&self, req: lxmf_sdk::domain::TopicListRequest) -> core::result::Result<lxmf_sdk::domain::TopicListResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::topic_publish(&self, req: lxmf_sdk::domain::TopicPublishRequest) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::topic_subscribe(&self, req: lxmf_sdk::domain::TopicSubscriptionRequest) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::topic_unsubscribe(&self, topic_id: lxmf_sdk::domain::TopicId) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::voice_session_close(&self, session_id: lxmf_sdk::domain::VoiceSessionId) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::voice_session_open(&self, req: lxmf_sdk::domain::VoiceSessionOpenRequest) -> core::result::Result<lxmf_sdk::domain::VoiceSessionId, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::voice_session_update(&self, req: lxmf_sdk::domain::VoiceSessionUpdateRequest) -> core::result::Result<lxmf_sdk::domain::VoiceSessionState, lxmf_sdk::SdkError>
+impl lxmf_sdk::SdkBackendAsyncEvents for lxmf_sdk::RpcBackendClient
+pub fn lxmf_sdk::RpcBackendClient::subscribe_events(&self, start: lxmf_sdk::event::SubscriptionStart) -> core::result::Result<lxmf_sdk::event::EventSubscription, lxmf_sdk::SdkError>
+#[non_exhaustive] pub struct lxmf_sdk::RpcBackendConfig
+pub lxmf_sdk::RpcBackendConfig::listen_addr: alloc::string::String
+pub lxmf_sdk::RpcBackendConfig::max_body_bytes: usize
+pub lxmf_sdk::RpcBackendConfig::max_header_bytes: usize
+pub lxmf_sdk::RpcBackendConfig::mtls_auth: core::option::Option<lxmf_sdk::types::MtlsAuthConfig>
+pub lxmf_sdk::RpcBackendConfig::read_timeout_ms: u64
+pub lxmf_sdk::RpcBackendConfig::token_auth: core::option::Option<lxmf_sdk::types::TokenAuthConfig>
+pub lxmf_sdk::RpcBackendConfig::write_timeout_ms: u64
+#[non_exhaustive] pub struct lxmf_sdk::RuntimeSnapshot
+pub lxmf_sdk::RuntimeSnapshot::active_contract_version: u16
+pub lxmf_sdk::RuntimeSnapshot::config_revision: u64
+pub lxmf_sdk::RuntimeSnapshot::event_stream_position: u64
+pub lxmf_sdk::RuntimeSnapshot::in_flight_messages: u64
+pub lxmf_sdk::RuntimeSnapshot::queued_messages: u64
+pub lxmf_sdk::RuntimeSnapshot::runtime_id: alloc::string::String
+pub lxmf_sdk::RuntimeSnapshot::state: lxmf_sdk::RuntimeState
+#[non_exhaustive] pub struct lxmf_sdk::SdkConfig
+pub lxmf_sdk::SdkConfig::auth_mode: lxmf_sdk::AuthMode
+pub lxmf_sdk::SdkConfig::bind_mode: lxmf_sdk::BindMode
+pub lxmf_sdk::SdkConfig::block_timeout_ms: core::option::Option<u64>
+pub lxmf_sdk::SdkConfig::event_sink: lxmf_sdk::EventSinkConfig
+pub lxmf_sdk::SdkConfig::event_stream: lxmf_sdk::EventStreamConfig
+pub lxmf_sdk::SdkConfig::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::SdkConfig::idempotency_ttl_ms: u64
+pub lxmf_sdk::SdkConfig::overflow_policy: lxmf_sdk::OverflowPolicy
+pub lxmf_sdk::SdkConfig::profile: lxmf_sdk::Profile
+pub lxmf_sdk::SdkConfig::redaction: lxmf_sdk::RedactionConfig
+pub lxmf_sdk::SdkConfig::rpc_backend: core::option::Option<lxmf_sdk::RpcBackendConfig>
+pub lxmf_sdk::SdkConfig::store_forward: lxmf_sdk::StoreForwardConfig
+impl lxmf_sdk::SdkConfig
+pub fn lxmf_sdk::SdkConfig::desktop_full_default() -> Self
+pub fn lxmf_sdk::SdkConfig::desktop_local_default() -> Self
+pub fn lxmf_sdk::SdkConfig::embedded_alloc_default() -> Self
+pub fn lxmf_sdk::SdkConfig::validate(&self) -> core::result::Result<(), lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkConfig::with_event_sink(self, enabled: bool, max_event_bytes: usize, allow_kinds: alloc::vec::Vec<lxmf_sdk::EventSinkKind>) -> Self
+pub fn lxmf_sdk::SdkConfig::with_mtls_auth(self, ca_bundle_path: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn lxmf_sdk::SdkConfig::with_mtls_client_credentials(self, client_cert_path: impl core::convert::Into<alloc::string::String>, client_key_path: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn lxmf_sdk::SdkConfig::with_rpc_listen_addr(self, listen_addr: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn lxmf_sdk::SdkConfig::with_store_forward_limits(self, max_messages: usize, max_message_age_ms: u64) -> Self
+pub fn lxmf_sdk::SdkConfig::with_store_forward_policy(self, capacity_policy: lxmf_sdk::StoreForwardCapacityPolicy, eviction_priority: lxmf_sdk::StoreForwardEvictionPriority) -> Self
+pub fn lxmf_sdk::SdkConfig::with_token_auth(self, issuer: impl core::convert::Into<alloc::string::String>, audience: impl core::convert::Into<alloc::string::String>, shared_secret: impl core::convert::Into<alloc::string::String>) -> Self
+#[non_exhaustive] pub struct lxmf_sdk::SdkError
+pub lxmf_sdk::SdkError::category: lxmf_sdk::ErrorCategory
+pub lxmf_sdk::SdkError::cause_code: core::option::Option<alloc::string::String>
+pub lxmf_sdk::SdkError::details: lxmf_sdk::ErrorDetails
+pub lxmf_sdk::SdkError::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::SdkError::is_user_actionable: bool
+pub lxmf_sdk::SdkError::machine_code: alloc::string::String
+pub lxmf_sdk::SdkError::message: alloc::string::String
+pub lxmf_sdk::SdkError::retryable: bool
+impl lxmf_sdk::SdkError
+pub fn lxmf_sdk::SdkError::capability_disabled(capability_id: &str) -> Self
+pub fn lxmf_sdk::SdkError::code(&self) -> &str
+pub fn lxmf_sdk::SdkError::config_conflict(expected_revision: u64, observed_revision: u64) -> Self
+pub fn lxmf_sdk::SdkError::invalid_state(method: &'static str, state: &'static str) -> Self
+pub fn lxmf_sdk::SdkError::is_retryable(&self) -> bool
+pub fn lxmf_sdk::SdkError::is_user_actionable(&self) -> bool
+pub fn lxmf_sdk::SdkError::new(machine_code: impl core::convert::Into<alloc::string::String>, category: lxmf_sdk::ErrorCategory, message: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn lxmf_sdk::SdkError::with_cause_code(self, cause_code: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn lxmf_sdk::SdkError::with_detail(self, key: impl core::convert::Into<alloc::string::String>, value: serde_json::value::Value) -> Self
+pub fn lxmf_sdk::SdkError::with_retryable(self, retryable: bool) -> Self
+pub fn lxmf_sdk::SdkError::with_user_actionable(self, is_user_actionable: bool) -> Self
+#[non_exhaustive] pub struct lxmf_sdk::SdkEvent
+pub lxmf_sdk::SdkEvent::contract_version: u16
+pub lxmf_sdk::SdkEvent::correlation_id: core::option::Option<alloc::string::String>
+pub lxmf_sdk::SdkEvent::event_id: alloc::string::String
+pub lxmf_sdk::SdkEvent::event_type: alloc::string::String
+pub lxmf_sdk::SdkEvent::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::SdkEvent::message_id: core::option::Option<alloc::string::String>
+pub lxmf_sdk::SdkEvent::operation_id: core::option::Option<alloc::string::String>
+pub lxmf_sdk::SdkEvent::payload: serde_json::value::Value
+pub lxmf_sdk::SdkEvent::peer_id: core::option::Option<alloc::string::String>
+pub lxmf_sdk::SdkEvent::runtime_id: alloc::string::String
+pub lxmf_sdk::SdkEvent::seq_no: u64
+pub lxmf_sdk::SdkEvent::severity: lxmf_sdk::event::Severity
+pub lxmf_sdk::SdkEvent::source_component: alloc::string::String
+pub lxmf_sdk::SdkEvent::stream_id: alloc::string::String
+pub lxmf_sdk::SdkEvent::trace_id: core::option::Option<alloc::string::String>
+pub lxmf_sdk::SdkEvent::ts_ms: u64
+pub struct lxmf_sdk::SdkStoredKey
+pub lxmf_sdk::SdkStoredKey::key_id: alloc::string::String
+pub lxmf_sdk::SdkStoredKey::material: alloc::vec::Vec<u8>
+pub lxmf_sdk::SdkStoredKey::purpose: lxmf_sdk::SdkKeyPurpose
+#[non_exhaustive] pub struct lxmf_sdk::SendRequest
+pub lxmf_sdk::SendRequest::correlation_id: core::option::Option<alloc::string::String>
+pub lxmf_sdk::SendRequest::destination: alloc::string::String
+pub lxmf_sdk::SendRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::SendRequest::idempotency_key: core::option::Option<alloc::string::String>
+pub lxmf_sdk::SendRequest::payload: serde_json::value::Value
+pub lxmf_sdk::SendRequest::source: alloc::string::String
+pub lxmf_sdk::SendRequest::ttl_ms: core::option::Option<u64>
+impl lxmf_sdk::SendRequest
+pub fn lxmf_sdk::SendRequest::new(source: impl core::convert::Into<alloc::string::String>, destination: impl core::convert::Into<alloc::string::String>, payload: serde_json::value::Value) -> Self
+pub fn lxmf_sdk::SendRequest::with_correlation_id(self, correlation_id: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn lxmf_sdk::SendRequest::with_extension(self, key: impl core::convert::Into<alloc::string::String>, value: serde_json::value::Value) -> Self
+pub fn lxmf_sdk::SendRequest::with_idempotency_key(self, key: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn lxmf_sdk::SendRequest::with_ttl_ms(self, ttl_ms: u64) -> Self
+#[non_exhaustive] pub struct lxmf_sdk::StartRequest
+pub lxmf_sdk::StartRequest::config: lxmf_sdk::SdkConfig
+pub lxmf_sdk::StartRequest::requested_capabilities: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::StartRequest::supported_contract_versions: alloc::vec::Vec<u16>
+impl lxmf_sdk::StartRequest
+pub fn lxmf_sdk::StartRequest::new(config: lxmf_sdk::SdkConfig) -> Self
+pub fn lxmf_sdk::StartRequest::validate(&self) -> core::result::Result<(), lxmf_sdk::SdkError>
+pub fn lxmf_sdk::StartRequest::with_requested_capabilities(self, capabilities: impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
+pub fn lxmf_sdk::StartRequest::with_requested_capability(self, capability: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn lxmf_sdk::StartRequest::with_supported_contract_versions(self, versions: impl core::iter::traits::collect::IntoIterator<Item = u16>) -> Self
+#[non_exhaustive] pub struct lxmf_sdk::StoreForwardConfig
+pub lxmf_sdk::StoreForwardConfig::capacity_policy: lxmf_sdk::StoreForwardCapacityPolicy
+pub lxmf_sdk::StoreForwardConfig::eviction_priority: lxmf_sdk::StoreForwardEvictionPriority
+pub lxmf_sdk::StoreForwardConfig::max_message_age_ms: u64
+pub lxmf_sdk::StoreForwardConfig::max_messages: usize
+#[non_exhaustive] pub struct lxmf_sdk::StoreForwardPatch
+pub lxmf_sdk::StoreForwardPatch::capacity_policy: core::option::Option<core::option::Option<lxmf_sdk::StoreForwardCapacityPolicy>>
+pub lxmf_sdk::StoreForwardPatch::eviction_priority: core::option::Option<core::option::Option<lxmf_sdk::StoreForwardEvictionPriority>>
+pub lxmf_sdk::StoreForwardPatch::max_message_age_ms: core::option::Option<core::option::Option<u64>>
+pub lxmf_sdk::StoreForwardPatch::max_messages: core::option::Option<core::option::Option<usize>>
+pub struct lxmf_sdk::TelemetryPoint
+pub lxmf_sdk::TelemetryPoint::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::TelemetryPoint::key: alloc::string::String
+pub lxmf_sdk::TelemetryPoint::tags: alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::string::String>
+pub lxmf_sdk::TelemetryPoint::ts_ms: u64
+pub lxmf_sdk::TelemetryPoint::unit: core::option::Option<alloc::string::String>
+pub lxmf_sdk::TelemetryPoint::value: serde_json::value::Value
+pub struct lxmf_sdk::TelemetryQuery
+pub lxmf_sdk::TelemetryQuery::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::TelemetryQuery::from_ts_ms: core::option::Option<u64>
+pub lxmf_sdk::TelemetryQuery::limit: core::option::Option<usize>
+pub lxmf_sdk::TelemetryQuery::peer_id: core::option::Option<alloc::string::String>
+pub lxmf_sdk::TelemetryQuery::to_ts_ms: core::option::Option<u64>
+pub lxmf_sdk::TelemetryQuery::topic_id: core::option::Option<lxmf_sdk::domain::TopicId>
+#[non_exhaustive] pub struct lxmf_sdk::TickBudget
+pub lxmf_sdk::TickBudget::max_duration_ms: core::option::Option<u64>
+pub lxmf_sdk::TickBudget::max_work_items: usize
+impl lxmf_sdk::TickBudget
+pub fn lxmf_sdk::TickBudget::new(max_work_items: usize) -> Self
+pub fn lxmf_sdk::TickBudget::with_max_duration_ms(self, max_duration_ms: u64) -> Self
+#[non_exhaustive] pub struct lxmf_sdk::TickResult
+pub lxmf_sdk::TickResult::next_recommended_delay_ms: core::option::Option<u64>
+pub lxmf_sdk::TickResult::processed_items: usize
+pub lxmf_sdk::TickResult::yielded: bool
+pub struct lxmf_sdk::TopicCreateRequest
+pub lxmf_sdk::TopicCreateRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::TopicCreateRequest::metadata: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::TopicCreateRequest::topic_path: core::option::Option<lxmf_sdk::domain::TopicPath>
+pub struct lxmf_sdk::TopicId(pub alloc::string::String)
+pub struct lxmf_sdk::TopicListRequest
+pub lxmf_sdk::TopicListRequest::cursor: core::option::Option<alloc::string::String>
+pub lxmf_sdk::TopicListRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::TopicListRequest::limit: core::option::Option<usize>
+pub struct lxmf_sdk::TopicListResult
+pub lxmf_sdk::TopicListResult::next_cursor: core::option::Option<alloc::string::String>
+pub lxmf_sdk::TopicListResult::topics: alloc::vec::Vec<lxmf_sdk::domain::TopicRecord>
+pub struct lxmf_sdk::TopicPath(pub alloc::string::String)
+pub struct lxmf_sdk::TopicPublishRequest
+pub lxmf_sdk::TopicPublishRequest::correlation_id: core::option::Option<alloc::string::String>
+pub lxmf_sdk::TopicPublishRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::TopicPublishRequest::payload: serde_json::value::Value
+pub lxmf_sdk::TopicPublishRequest::topic_id: lxmf_sdk::domain::TopicId
+pub struct lxmf_sdk::TopicRecord
+pub lxmf_sdk::TopicRecord::created_ts_ms: u64
+pub lxmf_sdk::TopicRecord::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::TopicRecord::metadata: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::TopicRecord::topic_id: lxmf_sdk::domain::TopicId
+pub lxmf_sdk::TopicRecord::topic_path: core::option::Option<lxmf_sdk::domain::TopicPath>
+pub struct lxmf_sdk::TopicSubscriptionRequest
+pub lxmf_sdk::TopicSubscriptionRequest::cursor: core::option::Option<alloc::string::String>
+pub lxmf_sdk::TopicSubscriptionRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::TopicSubscriptionRequest::topic_id: lxmf_sdk::domain::TopicId
+pub struct lxmf_sdk::VoiceSessionId(pub alloc::string::String)
+pub struct lxmf_sdk::VoiceSessionOpenRequest
+pub lxmf_sdk::VoiceSessionOpenRequest::codec_hint: core::option::Option<alloc::string::String>
+pub lxmf_sdk::VoiceSessionOpenRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::VoiceSessionOpenRequest::peer_id: alloc::string::String
+pub struct lxmf_sdk::VoiceSessionUpdateRequest
+pub lxmf_sdk::VoiceSessionUpdateRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::VoiceSessionUpdateRequest::session_id: lxmf_sdk::domain::VoiceSessionId
+pub lxmf_sdk::VoiceSessionUpdateRequest::state: lxmf_sdk::domain::VoiceSessionState
+pub const lxmf_sdk::CONTRACT_RELEASE: &str
+pub const lxmf_sdk::SCHEMA_NAMESPACE: &str
+pub trait lxmf_sdk::LxmfSdk
+pub fn lxmf_sdk::LxmfSdk::cancel(&self, id: lxmf_sdk::MessageId) -> core::result::Result<lxmf_sdk::CancelResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::LxmfSdk::configure(&self, expected_revision: u64, patch: lxmf_sdk::ConfigPatch) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::LxmfSdk::poll_events(&self, cursor: core::option::Option<lxmf_sdk::event::EventCursor>, max: usize) -> core::result::Result<lxmf_sdk::event::EventBatch, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::LxmfSdk::send(&self, req: lxmf_sdk::SendRequest) -> core::result::Result<lxmf_sdk::MessageId, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::LxmfSdk::shutdown(&self, mode: lxmf_sdk::ShutdownMode) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::LxmfSdk::snapshot(&self) -> core::result::Result<lxmf_sdk::RuntimeSnapshot, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::LxmfSdk::start(&self, req: lxmf_sdk::StartRequest) -> core::result::Result<lxmf_sdk::ClientHandle, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::LxmfSdk::status(&self, id: lxmf_sdk::MessageId) -> core::result::Result<core::option::Option<lxmf_sdk::DeliverySnapshot>, lxmf_sdk::SdkError>
+impl<B: lxmf_sdk::SdkBackend> lxmf_sdk::LxmfSdk for lxmf_sdk::Client<B>
+pub fn lxmf_sdk::Client<B>::cancel(&self, id: lxmf_sdk::MessageId) -> core::result::Result<lxmf_sdk::CancelResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::configure(&self, expected_revision: u64, patch: lxmf_sdk::ConfigPatch) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::poll_events(&self, cursor: core::option::Option<lxmf_sdk::event::EventCursor>, max: usize) -> core::result::Result<lxmf_sdk::event::EventBatch, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::send(&self, req: lxmf_sdk::SendRequest) -> core::result::Result<lxmf_sdk::MessageId, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::shutdown(&self, mode: lxmf_sdk::ShutdownMode) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::snapshot(&self) -> core::result::Result<lxmf_sdk::RuntimeSnapshot, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::start(&self, req: lxmf_sdk::StartRequest) -> core::result::Result<lxmf_sdk::ClientHandle, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::status(&self, id: lxmf_sdk::MessageId) -> core::result::Result<core::option::Option<lxmf_sdk::DeliverySnapshot>, lxmf_sdk::SdkError>
+pub trait lxmf_sdk::LxmfSdkAsync
+pub fn lxmf_sdk::LxmfSdkAsync::subscribe_events(&self, start: lxmf_sdk::event::SubscriptionStart) -> core::result::Result<lxmf_sdk::event::EventSubscription, lxmf_sdk::SdkError>
+impl<B: lxmf_sdk::SdkBackendAsyncEvents> lxmf_sdk::LxmfSdkAsync for lxmf_sdk::Client<B>
+pub fn lxmf_sdk::Client<B>::subscribe_events(&self, start: lxmf_sdk::event::SubscriptionStart) -> core::result::Result<lxmf_sdk::event::EventSubscription, lxmf_sdk::SdkError>
+pub trait lxmf_sdk::LxmfSdkAttachments
+pub fn lxmf_sdk::LxmfSdkAttachments::attachment_associate_topic(&self, _attachment_id: lxmf_sdk::domain::AttachmentId, _topic_id: lxmf_sdk::domain::TopicId) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::LxmfSdkAttachments::attachment_delete(&self, _attachment_id: lxmf_sdk::domain::AttachmentId) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::LxmfSdkAttachments::attachment_download(&self, _attachment_id: lxmf_sdk::domain::AttachmentId) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::LxmfSdkAttachments::attachment_download_chunk(&self, _req: lxmf_sdk::domain::AttachmentDownloadChunkRequest) -> core::result::Result<lxmf_sdk::domain::AttachmentDownloadChunk, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::LxmfSdkAttachments::attachment_get(&self, _attachment_id: lxmf_sdk::domain::AttachmentId) -> core::result::Result<core::option::Option<lxmf_sdk::domain::AttachmentMeta>, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::LxmfSdkAttachments::attachment_list(&self, _req: lxmf_sdk::domain::AttachmentListRequest) -> core::result::Result<lxmf_sdk::domain::AttachmentListResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::LxmfSdkAttachments::attachment_store(&self, _req: lxmf_sdk::domain::AttachmentStoreRequest) -> core::result::Result<lxmf_sdk::domain::AttachmentMeta, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::LxmfSdkAttachments::attachment_upload_chunk(&self, _req: lxmf_sdk::domain::AttachmentUploadChunkRequest) -> core::result::Result<lxmf_sdk::domain::AttachmentUploadChunkAck, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::LxmfSdkAttachments::attachment_upload_commit(&self, _req: lxmf_sdk::domain::AttachmentUploadCommitRequest) -> core::result::Result<lxmf_sdk::domain::AttachmentMeta, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::LxmfSdkAttachments::attachment_upload_start(&self, _req: lxmf_sdk::domain::AttachmentUploadStartRequest) -> core::result::Result<lxmf_sdk::domain::AttachmentUploadSession, lxmf_sdk::SdkError>
+impl<B: lxmf_sdk::SdkBackend> lxmf_sdk::LxmfSdkAttachments for lxmf_sdk::Client<B>
+pub fn lxmf_sdk::Client<B>::attachment_associate_topic(&self, attachment_id: lxmf_sdk::domain::AttachmentId, topic_id: lxmf_sdk::domain::TopicId) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::attachment_delete(&self, attachment_id: lxmf_sdk::domain::AttachmentId) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::attachment_download(&self, attachment_id: lxmf_sdk::domain::AttachmentId) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::attachment_download_chunk(&self, req: lxmf_sdk::domain::AttachmentDownloadChunkRequest) -> core::result::Result<lxmf_sdk::domain::AttachmentDownloadChunk, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::attachment_get(&self, attachment_id: lxmf_sdk::domain::AttachmentId) -> core::result::Result<core::option::Option<lxmf_sdk::domain::AttachmentMeta>, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::attachment_list(&self, req: lxmf_sdk::domain::AttachmentListRequest) -> core::result::Result<lxmf_sdk::domain::AttachmentListResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::attachment_store(&self, req: lxmf_sdk::domain::AttachmentStoreRequest) -> core::result::Result<lxmf_sdk::domain::AttachmentMeta, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::attachment_upload_chunk(&self, req: lxmf_sdk::domain::AttachmentUploadChunkRequest) -> core::result::Result<lxmf_sdk::domain::AttachmentUploadChunkAck, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::attachment_upload_commit(&self, req: lxmf_sdk::domain::AttachmentUploadCommitRequest) -> core::result::Result<lxmf_sdk::domain::AttachmentMeta, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::attachment_upload_start(&self, req: lxmf_sdk::domain::AttachmentUploadStartRequest) -> core::result::Result<lxmf_sdk::domain::AttachmentUploadSession, lxmf_sdk::SdkError>
+pub trait lxmf_sdk::LxmfSdkGroupDelivery
+pub fn lxmf_sdk::LxmfSdkGroupDelivery::send_group(&self, _req: lxmf_sdk::GroupSendRequest) -> core::result::Result<lxmf_sdk::GroupSendResult, lxmf_sdk::SdkError>
+impl<B: lxmf_sdk::SdkBackend> lxmf_sdk::LxmfSdkGroupDelivery for lxmf_sdk::Client<B>
+pub fn lxmf_sdk::Client<B>::send_group(&self, req: lxmf_sdk::GroupSendRequest) -> core::result::Result<lxmf_sdk::GroupSendResult, lxmf_sdk::SdkError>
+pub trait lxmf_sdk::LxmfSdkIdentity
+pub fn lxmf_sdk::LxmfSdkIdentity::identity_activate(&self, _identity: lxmf_sdk::domain::IdentityRef) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::LxmfSdkIdentity::identity_announce_now(&self) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::LxmfSdkIdentity::identity_bootstrap(&self, _req: lxmf_sdk::domain::IdentityBootstrapRequest) -> core::result::Result<lxmf_sdk::domain::ContactRecord, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::LxmfSdkIdentity::identity_contact_list(&self, _req: lxmf_sdk::domain::ContactListRequest) -> core::result::Result<lxmf_sdk::domain::ContactListResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::LxmfSdkIdentity::identity_contact_update(&self, _req: lxmf_sdk::domain::ContactUpdateRequest) -> core::result::Result<lxmf_sdk::domain::ContactRecord, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::LxmfSdkIdentity::identity_export(&self, _identity: lxmf_sdk::domain::IdentityRef) -> core::result::Result<lxmf_sdk::domain::IdentityImportRequest, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::LxmfSdkIdentity::identity_import(&self, _req: lxmf_sdk::domain::IdentityImportRequest) -> core::result::Result<lxmf_sdk::domain::IdentityBundle, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::LxmfSdkIdentity::identity_list(&self) -> core::result::Result<alloc::vec::Vec<lxmf_sdk::domain::IdentityBundle>, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::LxmfSdkIdentity::identity_presence_list(&self, _req: lxmf_sdk::domain::PresenceListRequest) -> core::result::Result<lxmf_sdk::domain::PresenceListResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::LxmfSdkIdentity::identity_resolve(&self, _req: lxmf_sdk::domain::IdentityResolveRequest) -> core::result::Result<core::option::Option<lxmf_sdk::domain::IdentityRef>, lxmf_sdk::SdkError>
+impl<B: lxmf_sdk::SdkBackend> lxmf_sdk::LxmfSdkIdentity for lxmf_sdk::Client<B>
+pub fn lxmf_sdk::Client<B>::identity_activate(&self, identity: lxmf_sdk::domain::IdentityRef) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::identity_announce_now(&self) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::identity_bootstrap(&self, req: lxmf_sdk::domain::IdentityBootstrapRequest) -> core::result::Result<lxmf_sdk::domain::ContactRecord, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::identity_contact_list(&self, req: lxmf_sdk::domain::ContactListRequest) -> core::result::Result<lxmf_sdk::domain::ContactListResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::identity_contact_update(&self, req: lxmf_sdk::domain::ContactUpdateRequest) -> core::result::Result<lxmf_sdk::domain::ContactRecord, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::identity_export(&self, identity: lxmf_sdk::domain::IdentityRef) -> core::result::Result<lxmf_sdk::domain::IdentityImportRequest, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::identity_import(&self, req: lxmf_sdk::domain::IdentityImportRequest) -> core::result::Result<lxmf_sdk::domain::IdentityBundle, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::identity_list(&self) -> core::result::Result<alloc::vec::Vec<lxmf_sdk::domain::IdentityBundle>, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::identity_presence_list(&self, req: lxmf_sdk::domain::PresenceListRequest) -> core::result::Result<lxmf_sdk::domain::PresenceListResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::identity_resolve(&self, req: lxmf_sdk::domain::IdentityResolveRequest) -> core::result::Result<core::option::Option<lxmf_sdk::domain::IdentityRef>, lxmf_sdk::SdkError>
+pub trait lxmf_sdk::LxmfSdkManualTick
+pub fn lxmf_sdk::LxmfSdkManualTick::tick(&self, budget: lxmf_sdk::TickBudget) -> core::result::Result<lxmf_sdk::TickResult, lxmf_sdk::SdkError>
+impl<B: lxmf_sdk::SdkBackend> lxmf_sdk::LxmfSdkManualTick for lxmf_sdk::Client<B>
+pub fn lxmf_sdk::Client<B>::tick(&self, budget: lxmf_sdk::TickBudget) -> core::result::Result<lxmf_sdk::TickResult, lxmf_sdk::SdkError>
+pub trait lxmf_sdk::LxmfSdkMarkers
+pub fn lxmf_sdk::LxmfSdkMarkers::marker_create(&self, _req: lxmf_sdk::domain::MarkerCreateRequest) -> core::result::Result<lxmf_sdk::domain::MarkerRecord, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::LxmfSdkMarkers::marker_delete(&self, _req: lxmf_sdk::domain::MarkerDeleteRequest) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::LxmfSdkMarkers::marker_list(&self, _req: lxmf_sdk::domain::MarkerListRequest) -> core::result::Result<lxmf_sdk::domain::MarkerListResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::LxmfSdkMarkers::marker_update_position(&self, _req: lxmf_sdk::domain::MarkerUpdatePositionRequest) -> core::result::Result<lxmf_sdk::domain::MarkerRecord, lxmf_sdk::SdkError>
+impl<B: lxmf_sdk::SdkBackend> lxmf_sdk::LxmfSdkMarkers for lxmf_sdk::Client<B>
+pub fn lxmf_sdk::Client<B>::marker_create(&self, req: lxmf_sdk::domain::MarkerCreateRequest) -> core::result::Result<lxmf_sdk::domain::MarkerRecord, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::marker_delete(&self, req: lxmf_sdk::domain::MarkerDeleteRequest) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::marker_list(&self, req: lxmf_sdk::domain::MarkerListRequest) -> core::result::Result<lxmf_sdk::domain::MarkerListResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::marker_update_position(&self, req: lxmf_sdk::domain::MarkerUpdatePositionRequest) -> core::result::Result<lxmf_sdk::domain::MarkerRecord, lxmf_sdk::SdkError>
+pub trait lxmf_sdk::LxmfSdkPaper
+pub fn lxmf_sdk::LxmfSdkPaper::paper_decode(&self, _envelope: lxmf_sdk::domain::PaperMessageEnvelope) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::LxmfSdkPaper::paper_encode(&self, _message_id: lxmf_sdk::MessageId) -> core::result::Result<lxmf_sdk::domain::PaperMessageEnvelope, lxmf_sdk::SdkError>
+impl<B: lxmf_sdk::SdkBackend> lxmf_sdk::LxmfSdkPaper for lxmf_sdk::Client<B>
+pub fn lxmf_sdk::Client<B>::paper_decode(&self, envelope: lxmf_sdk::domain::PaperMessageEnvelope) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::paper_encode(&self, message_id: lxmf_sdk::MessageId) -> core::result::Result<lxmf_sdk::domain::PaperMessageEnvelope, lxmf_sdk::SdkError>
+pub trait lxmf_sdk::LxmfSdkRemoteCommands
+pub fn lxmf_sdk::LxmfSdkRemoteCommands::command_invoke(&self, _req: lxmf_sdk::domain::RemoteCommandRequest) -> core::result::Result<lxmf_sdk::domain::RemoteCommandResponse, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::LxmfSdkRemoteCommands::command_reply(&self, _correlation_id: alloc::string::String, _reply: lxmf_sdk::domain::RemoteCommandResponse) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+impl<B: lxmf_sdk::SdkBackend> lxmf_sdk::LxmfSdkRemoteCommands for lxmf_sdk::Client<B>
+pub fn lxmf_sdk::Client<B>::command_invoke(&self, req: lxmf_sdk::domain::RemoteCommandRequest) -> core::result::Result<lxmf_sdk::domain::RemoteCommandResponse, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::command_reply(&self, correlation_id: alloc::string::String, reply: lxmf_sdk::domain::RemoteCommandResponse) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub trait lxmf_sdk::LxmfSdkTelemetry
+pub fn lxmf_sdk::LxmfSdkTelemetry::telemetry_query(&self, _query: lxmf_sdk::domain::TelemetryQuery) -> core::result::Result<alloc::vec::Vec<lxmf_sdk::domain::TelemetryPoint>, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::LxmfSdkTelemetry::telemetry_subscribe(&self, _query: lxmf_sdk::domain::TelemetryQuery) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+impl<B: lxmf_sdk::SdkBackend> lxmf_sdk::LxmfSdkTelemetry for lxmf_sdk::Client<B>
+pub fn lxmf_sdk::Client<B>::telemetry_query(&self, query: lxmf_sdk::domain::TelemetryQuery) -> core::result::Result<alloc::vec::Vec<lxmf_sdk::domain::TelemetryPoint>, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::telemetry_subscribe(&self, query: lxmf_sdk::domain::TelemetryQuery) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub trait lxmf_sdk::LxmfSdkTopics
+pub fn lxmf_sdk::LxmfSdkTopics::topic_create(&self, _req: lxmf_sdk::domain::TopicCreateRequest) -> core::result::Result<lxmf_sdk::domain::TopicRecord, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::LxmfSdkTopics::topic_get(&self, _topic_id: lxmf_sdk::domain::TopicId) -> core::result::Result<core::option::Option<lxmf_sdk::domain::TopicRecord>, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::LxmfSdkTopics::topic_list(&self, _req: lxmf_sdk::domain::TopicListRequest) -> core::result::Result<lxmf_sdk::domain::TopicListResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::LxmfSdkTopics::topic_publish(&self, _req: lxmf_sdk::domain::TopicPublishRequest) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::LxmfSdkTopics::topic_subscribe(&self, _req: lxmf_sdk::domain::TopicSubscriptionRequest) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::LxmfSdkTopics::topic_unsubscribe(&self, _topic_id: lxmf_sdk::domain::TopicId) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+impl<B: lxmf_sdk::SdkBackend> lxmf_sdk::LxmfSdkTopics for lxmf_sdk::Client<B>
+pub fn lxmf_sdk::Client<B>::topic_create(&self, req: lxmf_sdk::domain::TopicCreateRequest) -> core::result::Result<lxmf_sdk::domain::TopicRecord, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::topic_get(&self, topic_id: lxmf_sdk::domain::TopicId) -> core::result::Result<core::option::Option<lxmf_sdk::domain::TopicRecord>, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::topic_list(&self, req: lxmf_sdk::domain::TopicListRequest) -> core::result::Result<lxmf_sdk::domain::TopicListResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::topic_publish(&self, req: lxmf_sdk::domain::TopicPublishRequest) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::topic_subscribe(&self, req: lxmf_sdk::domain::TopicSubscriptionRequest) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::topic_unsubscribe(&self, topic_id: lxmf_sdk::domain::TopicId) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub trait lxmf_sdk::LxmfSdkVoiceSignaling
+pub fn lxmf_sdk::LxmfSdkVoiceSignaling::voice_session_close(&self, _session_id: lxmf_sdk::domain::VoiceSessionId) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::LxmfSdkVoiceSignaling::voice_session_open(&self, _req: lxmf_sdk::domain::VoiceSessionOpenRequest) -> core::result::Result<lxmf_sdk::domain::VoiceSessionId, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::LxmfSdkVoiceSignaling::voice_session_update(&self, _req: lxmf_sdk::domain::VoiceSessionUpdateRequest) -> core::result::Result<lxmf_sdk::domain::VoiceSessionState, lxmf_sdk::SdkError>
+impl<B: lxmf_sdk::SdkBackend> lxmf_sdk::LxmfSdkVoiceSignaling for lxmf_sdk::Client<B>
+pub fn lxmf_sdk::Client<B>::voice_session_close(&self, session_id: lxmf_sdk::domain::VoiceSessionId) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::voice_session_open(&self, req: lxmf_sdk::domain::VoiceSessionOpenRequest) -> core::result::Result<lxmf_sdk::domain::VoiceSessionId, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::voice_session_update(&self, req: lxmf_sdk::domain::VoiceSessionUpdateRequest) -> core::result::Result<lxmf_sdk::domain::VoiceSessionState, lxmf_sdk::SdkError>
+pub trait lxmf_sdk::SdkBackend: core::marker::Send + core::marker::Sync
+pub fn lxmf_sdk::SdkBackend::attachment_associate_topic(&self, _attachment_id: lxmf_sdk::domain::AttachmentId, _topic_id: lxmf_sdk::domain::TopicId) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::attachment_delete(&self, _attachment_id: lxmf_sdk::domain::AttachmentId) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::attachment_download(&self, _attachment_id: lxmf_sdk::domain::AttachmentId) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::attachment_download_chunk(&self, _req: lxmf_sdk::domain::AttachmentDownloadChunkRequest) -> core::result::Result<lxmf_sdk::domain::AttachmentDownloadChunk, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::attachment_get(&self, _attachment_id: lxmf_sdk::domain::AttachmentId) -> core::result::Result<core::option::Option<lxmf_sdk::domain::AttachmentMeta>, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::attachment_list(&self, _req: lxmf_sdk::domain::AttachmentListRequest) -> core::result::Result<lxmf_sdk::domain::AttachmentListResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::attachment_store(&self, _req: lxmf_sdk::domain::AttachmentStoreRequest) -> core::result::Result<lxmf_sdk::domain::AttachmentMeta, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::attachment_upload_chunk(&self, _req: lxmf_sdk::domain::AttachmentUploadChunkRequest) -> core::result::Result<lxmf_sdk::domain::AttachmentUploadChunkAck, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::attachment_upload_commit(&self, _req: lxmf_sdk::domain::AttachmentUploadCommitRequest) -> core::result::Result<lxmf_sdk::domain::AttachmentMeta, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::attachment_upload_start(&self, _req: lxmf_sdk::domain::AttachmentUploadStartRequest) -> core::result::Result<lxmf_sdk::domain::AttachmentUploadSession, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::cancel(&self, id: lxmf_sdk::MessageId) -> core::result::Result<lxmf_sdk::CancelResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::command_invoke(&self, _req: lxmf_sdk::domain::RemoteCommandRequest) -> core::result::Result<lxmf_sdk::domain::RemoteCommandResponse, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::command_reply(&self, _correlation_id: alloc::string::String, _reply: lxmf_sdk::domain::RemoteCommandResponse) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::configure(&self, expected_revision: u64, patch: lxmf_sdk::ConfigPatch) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::identity_activate(&self, _identity: lxmf_sdk::domain::IdentityRef) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::identity_announce_now(&self) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::identity_bootstrap(&self, _req: lxmf_sdk::domain::IdentityBootstrapRequest) -> core::result::Result<lxmf_sdk::domain::ContactRecord, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::identity_contact_list(&self, _req: lxmf_sdk::domain::ContactListRequest) -> core::result::Result<lxmf_sdk::domain::ContactListResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::identity_contact_update(&self, _req: lxmf_sdk::domain::ContactUpdateRequest) -> core::result::Result<lxmf_sdk::domain::ContactRecord, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::identity_export(&self, _identity: lxmf_sdk::domain::IdentityRef) -> core::result::Result<lxmf_sdk::domain::IdentityImportRequest, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::identity_import(&self, _req: lxmf_sdk::domain::IdentityImportRequest) -> core::result::Result<lxmf_sdk::domain::IdentityBundle, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::identity_list(&self) -> core::result::Result<alloc::vec::Vec<lxmf_sdk::domain::IdentityBundle>, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::identity_presence_list(&self, _req: lxmf_sdk::domain::PresenceListRequest) -> core::result::Result<lxmf_sdk::domain::PresenceListResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::identity_resolve(&self, _req: lxmf_sdk::domain::IdentityResolveRequest) -> core::result::Result<core::option::Option<lxmf_sdk::domain::IdentityRef>, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::marker_create(&self, _req: lxmf_sdk::domain::MarkerCreateRequest) -> core::result::Result<lxmf_sdk::domain::MarkerRecord, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::marker_delete(&self, _req: lxmf_sdk::domain::MarkerDeleteRequest) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::marker_list(&self, _req: lxmf_sdk::domain::MarkerListRequest) -> core::result::Result<lxmf_sdk::domain::MarkerListResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::marker_update_position(&self, _req: lxmf_sdk::domain::MarkerUpdatePositionRequest) -> core::result::Result<lxmf_sdk::domain::MarkerRecord, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::negotiate(&self, req: lxmf_sdk::capability::NegotiationRequest) -> core::result::Result<lxmf_sdk::capability::NegotiationResponse, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::paper_decode(&self, _envelope: lxmf_sdk::domain::PaperMessageEnvelope) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::paper_encode(&self, _message_id: lxmf_sdk::MessageId) -> core::result::Result<lxmf_sdk::domain::PaperMessageEnvelope, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::poll_events(&self, cursor: core::option::Option<lxmf_sdk::event::EventCursor>, max: usize) -> core::result::Result<lxmf_sdk::event::EventBatch, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::send(&self, req: lxmf_sdk::SendRequest) -> core::result::Result<lxmf_sdk::MessageId, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::shutdown(&self, mode: lxmf_sdk::ShutdownMode) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::snapshot(&self) -> core::result::Result<lxmf_sdk::RuntimeSnapshot, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::status(&self, id: lxmf_sdk::MessageId) -> core::result::Result<core::option::Option<lxmf_sdk::DeliverySnapshot>, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::telemetry_query(&self, _query: lxmf_sdk::domain::TelemetryQuery) -> core::result::Result<alloc::vec::Vec<lxmf_sdk::domain::TelemetryPoint>, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::telemetry_subscribe(&self, _query: lxmf_sdk::domain::TelemetryQuery) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::tick(&self, _budget: lxmf_sdk::TickBudget) -> core::result::Result<lxmf_sdk::TickResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::topic_create(&self, _req: lxmf_sdk::domain::TopicCreateRequest) -> core::result::Result<lxmf_sdk::domain::TopicRecord, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::topic_get(&self, _topic_id: lxmf_sdk::domain::TopicId) -> core::result::Result<core::option::Option<lxmf_sdk::domain::TopicRecord>, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::topic_list(&self, _req: lxmf_sdk::domain::TopicListRequest) -> core::result::Result<lxmf_sdk::domain::TopicListResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::topic_publish(&self, _req: lxmf_sdk::domain::TopicPublishRequest) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::topic_subscribe(&self, _req: lxmf_sdk::domain::TopicSubscriptionRequest) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::topic_unsubscribe(&self, _topic_id: lxmf_sdk::domain::TopicId) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::voice_session_close(&self, _session_id: lxmf_sdk::domain::VoiceSessionId) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::voice_session_open(&self, _req: lxmf_sdk::domain::VoiceSessionOpenRequest) -> core::result::Result<lxmf_sdk::domain::VoiceSessionId, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::voice_session_update(&self, _req: lxmf_sdk::domain::VoiceSessionUpdateRequest) -> core::result::Result<lxmf_sdk::domain::VoiceSessionState, lxmf_sdk::SdkError>
+impl lxmf_sdk::SdkBackend for lxmf_sdk::RpcBackendClient
+pub fn lxmf_sdk::RpcBackendClient::attachment_associate_topic(&self, attachment_id: lxmf_sdk::domain::AttachmentId, topic_id: lxmf_sdk::domain::TopicId) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::attachment_delete(&self, attachment_id: lxmf_sdk::domain::AttachmentId) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::attachment_download(&self, attachment_id: lxmf_sdk::domain::AttachmentId) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::attachment_download_chunk(&self, req: lxmf_sdk::domain::AttachmentDownloadChunkRequest) -> core::result::Result<lxmf_sdk::domain::AttachmentDownloadChunk, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::attachment_get(&self, attachment_id: lxmf_sdk::domain::AttachmentId) -> core::result::Result<core::option::Option<lxmf_sdk::domain::AttachmentMeta>, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::attachment_list(&self, req: lxmf_sdk::domain::AttachmentListRequest) -> core::result::Result<lxmf_sdk::domain::AttachmentListResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::attachment_store(&self, req: lxmf_sdk::domain::AttachmentStoreRequest) -> core::result::Result<lxmf_sdk::domain::AttachmentMeta, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::attachment_upload_chunk(&self, req: lxmf_sdk::domain::AttachmentUploadChunkRequest) -> core::result::Result<lxmf_sdk::domain::AttachmentUploadChunkAck, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::attachment_upload_commit(&self, req: lxmf_sdk::domain::AttachmentUploadCommitRequest) -> core::result::Result<lxmf_sdk::domain::AttachmentMeta, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::attachment_upload_start(&self, req: lxmf_sdk::domain::AttachmentUploadStartRequest) -> core::result::Result<lxmf_sdk::domain::AttachmentUploadSession, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::cancel(&self, id: lxmf_sdk::MessageId) -> core::result::Result<lxmf_sdk::CancelResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::command_invoke(&self, req: lxmf_sdk::domain::RemoteCommandRequest) -> core::result::Result<lxmf_sdk::domain::RemoteCommandResponse, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::command_reply(&self, correlation_id: alloc::string::String, reply: lxmf_sdk::domain::RemoteCommandResponse) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::configure(&self, expected_revision: u64, patch: lxmf_sdk::ConfigPatch) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::identity_activate(&self, identity: lxmf_sdk::domain::IdentityRef) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::identity_announce_now(&self) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::identity_bootstrap(&self, req: lxmf_sdk::domain::IdentityBootstrapRequest) -> core::result::Result<lxmf_sdk::domain::ContactRecord, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::identity_contact_list(&self, req: lxmf_sdk::domain::ContactListRequest) -> core::result::Result<lxmf_sdk::domain::ContactListResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::identity_contact_update(&self, req: lxmf_sdk::domain::ContactUpdateRequest) -> core::result::Result<lxmf_sdk::domain::ContactRecord, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::identity_export(&self, identity: lxmf_sdk::domain::IdentityRef) -> core::result::Result<lxmf_sdk::domain::IdentityImportRequest, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::identity_import(&self, req: lxmf_sdk::domain::IdentityImportRequest) -> core::result::Result<lxmf_sdk::domain::IdentityBundle, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::identity_list(&self) -> core::result::Result<alloc::vec::Vec<lxmf_sdk::domain::IdentityBundle>, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::identity_presence_list(&self, req: lxmf_sdk::domain::PresenceListRequest) -> core::result::Result<lxmf_sdk::domain::PresenceListResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::identity_resolve(&self, req: lxmf_sdk::domain::IdentityResolveRequest) -> core::result::Result<core::option::Option<lxmf_sdk::domain::IdentityRef>, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::marker_create(&self, req: lxmf_sdk::domain::MarkerCreateRequest) -> core::result::Result<lxmf_sdk::domain::MarkerRecord, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::marker_delete(&self, req: lxmf_sdk::domain::MarkerDeleteRequest) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::marker_list(&self, req: lxmf_sdk::domain::MarkerListRequest) -> core::result::Result<lxmf_sdk::domain::MarkerListResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::marker_update_position(&self, req: lxmf_sdk::domain::MarkerUpdatePositionRequest) -> core::result::Result<lxmf_sdk::domain::MarkerRecord, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::negotiate(&self, req: lxmf_sdk::capability::NegotiationRequest) -> core::result::Result<lxmf_sdk::capability::NegotiationResponse, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::paper_decode(&self, envelope: lxmf_sdk::domain::PaperMessageEnvelope) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::paper_encode(&self, message_id: lxmf_sdk::MessageId) -> core::result::Result<lxmf_sdk::domain::PaperMessageEnvelope, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::poll_events(&self, cursor: core::option::Option<lxmf_sdk::event::EventCursor>, max: usize) -> core::result::Result<lxmf_sdk::event::EventBatch, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::send(&self, req: lxmf_sdk::SendRequest) -> core::result::Result<lxmf_sdk::MessageId, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::shutdown(&self, mode: lxmf_sdk::ShutdownMode) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::snapshot(&self) -> core::result::Result<lxmf_sdk::RuntimeSnapshot, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::status(&self, id: lxmf_sdk::MessageId) -> core::result::Result<core::option::Option<lxmf_sdk::DeliverySnapshot>, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::telemetry_query(&self, query: lxmf_sdk::domain::TelemetryQuery) -> core::result::Result<alloc::vec::Vec<lxmf_sdk::domain::TelemetryPoint>, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::telemetry_subscribe(&self, query: lxmf_sdk::domain::TelemetryQuery) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::tick(&self, budget: lxmf_sdk::TickBudget) -> core::result::Result<lxmf_sdk::TickResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::topic_create(&self, req: lxmf_sdk::domain::TopicCreateRequest) -> core::result::Result<lxmf_sdk::domain::TopicRecord, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::topic_get(&self, topic_id: lxmf_sdk::domain::TopicId) -> core::result::Result<core::option::Option<lxmf_sdk::domain::TopicRecord>, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::topic_list(&self, req: lxmf_sdk::domain::TopicListRequest) -> core::result::Result<lxmf_sdk::domain::TopicListResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::topic_publish(&self, req: lxmf_sdk::domain::TopicPublishRequest) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::topic_subscribe(&self, req: lxmf_sdk::domain::TopicSubscriptionRequest) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::topic_unsubscribe(&self, topic_id: lxmf_sdk::domain::TopicId) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::voice_session_close(&self, session_id: lxmf_sdk::domain::VoiceSessionId) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::voice_session_open(&self, req: lxmf_sdk::domain::VoiceSessionOpenRequest) -> core::result::Result<lxmf_sdk::domain::VoiceSessionId, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::voice_session_update(&self, req: lxmf_sdk::domain::VoiceSessionUpdateRequest) -> core::result::Result<lxmf_sdk::domain::VoiceSessionState, lxmf_sdk::SdkError>
+pub trait lxmf_sdk::SdkBackendAsyncEvents: lxmf_sdk::SdkBackend
+pub fn lxmf_sdk::SdkBackendAsyncEvents::subscribe_events(&self, start: lxmf_sdk::event::SubscriptionStart) -> core::result::Result<lxmf_sdk::event::EventSubscription, lxmf_sdk::SdkError>
+impl lxmf_sdk::SdkBackendAsyncEvents for lxmf_sdk::RpcBackendClient
+pub fn lxmf_sdk::RpcBackendClient::subscribe_events(&self, start: lxmf_sdk::event::SubscriptionStart) -> core::result::Result<lxmf_sdk::event::EventSubscription, lxmf_sdk::SdkError>
+pub trait lxmf_sdk::SdkBackendKeyManagement: lxmf_sdk::SdkBackend
+pub fn lxmf_sdk::SdkBackendKeyManagement::key_delete(&self, _key_id: &str) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackendKeyManagement::key_get(&self, _key_id: &str) -> core::result::Result<core::option::Option<lxmf_sdk::SdkStoredKey>, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackendKeyManagement::key_list_ids(&self) -> core::result::Result<alloc::vec::Vec<alloc::string::String>, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackendKeyManagement::key_provider_class(&self) -> core::result::Result<lxmf_sdk::KeyProviderClass, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackendKeyManagement::key_put(&self, _key: lxmf_sdk::SdkStoredKey) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::default_effective_limits(profile: lxmf_sdk::Profile) -> lxmf_sdk::capability::EffectiveLimits
+pub fn lxmf_sdk::default_memory_budget(profile: lxmf_sdk::Profile) -> lxmf_sdk::profiles::MemoryBudget
+pub fn lxmf_sdk::effective_capabilities_for_profile(profile: lxmf_sdk::Profile) -> alloc::vec::Vec<alloc::string::String>
+pub fn lxmf_sdk::negotiate_contract_version(client_supported: &[u16], backend_supported: &[u16]) -> core::option::Option<u16>
+pub fn lxmf_sdk::negotiate_plugins(requested_plugin_ids: &[alloc::string::String], available_plugins: &[lxmf_sdk::capability::PluginDescriptor], effective_capabilities: &[alloc::string::String]) -> alloc::vec::Vec<alloc::string::String>
+pub fn lxmf_sdk::required_capabilities(profile: lxmf_sdk::Profile) -> &'static [&'static str]
+pub fn lxmf_sdk::supports_capability(profile: lxmf_sdk::Profile, capability_id: &str) -> bool
+pub type lxmf_sdk::ErrorDetails = alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>

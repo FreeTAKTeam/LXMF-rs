@@ -1,0 +1,14 @@
+{
+  "event_id": "evt-ext-1",
+  "runtime_id": "rt-1",
+  "stream_id": "sdk-events",
+  "seq_no": 2,
+  "contract_version": 2,
+  "ts_ms": 1700000000200,
+  "event_type": "ExtensionEvent",
+  "severity": "info",
+  "source_component": "rns-rpc",
+  "payload": {
+    "extension_event_type": "sdk.internal.test_event"
+  }
+}

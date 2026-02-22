@@ -1,0 +1,28 @@
+{
+  "request_id": "req-1",
+  "method": "start",
+  "params": {
+    "supported_contract_versions": [2],
+    "requested_capabilities": [
+      "sdk.capability.cursor_replay",
+      "sdk.capability.receipt_terminality"
+    ],
+    "config": {
+      "profile": "desktop-full",
+      "bind_mode": "local_only",
+      "auth_mode": "local_trusted",
+      "overflow_policy": "reject",
+      "event_stream": {
+        "max_poll_events": 256,
+        "max_event_bytes": 65536,
+        "max_batch_bytes": 1048576,
+        "max_extension_keys": 32
+      },
+      "idempotency_ttl_ms": 86400000,
+      "redaction": {
+        "enabled": true,
+        "sensitive_transform": "hash"
+      }
+    }
+  }
+}

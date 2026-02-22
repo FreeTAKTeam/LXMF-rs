@@ -1,0 +1,9 @@
+{
+  "id": 3,
+  "result": {
+    "message": {
+      "id": "msg-1",
+      "receipt_status": "sent"
+    }
+  }
+}

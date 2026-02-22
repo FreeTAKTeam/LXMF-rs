@@ -1,0 +1,10 @@
+{
+  "identity": "peer-alpha",
+  "display_name": "Peer Alpha",
+  "trust_level": "trusted",
+  "bootstrap": true,
+  "updated_ts_ms": 1739750403000,
+  "metadata": {
+    "source": "manual"
+  }
+}

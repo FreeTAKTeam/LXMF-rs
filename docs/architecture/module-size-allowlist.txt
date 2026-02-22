@@ -1,0 +1,20 @@
+# Temporary exceptions to module size budgets.
+# Keep this list short and remove entries as files are split.
+
+xtask/src/main.rs
+crates/apps/lxmf-cli/src/main.rs
+crates/apps/rns-tools/src/bin/rnx.rs
+crates/libs/lxmf-sdk/src/backend/rpc/transport.rs
+crates/libs/rns-rpc/src/rpc/daemon/sdk_helpers.rs
+crates/libs/rns-rpc/src/rpc/daemon/sdk_negotiate_poll.rs
+crates/libs/rns-rpc/src/rpc/params/sdk.rs
+crates/libs/test-support/src/sdk_conformance/mod.rs
+crates/libs/lxmf-sdk/src/backend/rpc/core_impl.rs
+crates/libs/lxmf-sdk/src/types/config.rs
+crates/libs/rns-core/src/destination.rs
+crates/libs/rns-rpc/src/rpc/daemon/sdk_attachments.rs
+crates/libs/rns-rpc/src/rpc/daemon/sdk_identity.rs
+crates/libs/rns-rpc/src/rpc/daemon/tests/release_domains.rs
+crates/libs/rns-rpc/src/storage/messages.rs
+crates/libs/test-support/src/sdk_schema/fixtures_contract_tests.rs
+xtask/src/client_codegen.rs

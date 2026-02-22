@@ -1,0 +1,17 @@
+{
+  "profile": "desktop-local-runtime",
+  "bind_mode": "local_only",
+  "auth_mode": "local_trusted",
+  "overflow_policy": "reject",
+  "event_stream": {
+    "max_poll_events": 128,
+    "max_event_bytes": 32768,
+    "max_batch_bytes": 1048576,
+    "max_extension_keys": 32
+  },
+  "idempotency_ttl_ms": 86400000,
+  "redaction": {
+    "enabled": true,
+    "sensitive_transform": "hash"
+  }
+}

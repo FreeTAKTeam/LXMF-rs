@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://weft.tak/contracts/sdk/v2/clients/client-generation-manifest.json",
+  "title": "LXMF SDK v2 Client Generation Manifest",
+  "version": 1,
+  "contract_release": "v2.5",
+  "schema_namespace": "v2",
+  "generator_backend": {
+    "name": "openapi",
+    "openapi_version": "3.1.0"
+  },
+  "openapi_spec_file": "generated/clients/spec/openapi.json",
+  "output_validation": {
+    "mode": "target_hashes",
+    "target_hash_file": "docs/contracts/baselines/schema-client-generation-baseline.json"
+  },
+  "schema_discovery": {
+    "mode": "required_schemas"
+  },
+  "method_coverage": {
+    "mode": "required_schemas",
+    "allow_missing": false
+  },
+  "generator_runtime": {
+    "type": "docker",
+    "image": "openapitools/openapi-generator-cli:v7.20.0"
+  },
+  "targets": [
+    {
+      "language": "go",
+      "output_dir": "generated/clients/go",
+      "entrypoint": "openapi_client.go",
+      "generator": "go",
+      "generator_config_file": "tools/codegen/openapi/go-config.json",
+      "output_style": "multi_file"
+    },
+    {
+      "language": "javascript",
+      "output_dir": "generated/clients/javascript",
+      "entrypoint": "index.ts",
+      "generator": "typescript-axios",
+      "generator_config_file": "tools/codegen/openapi/typescript-config.json",
+      "output_style": "multi_file"
+    },
+    {
+      "language": "python",
+      "output_dir": "generated/clients/python",
+      "entrypoint": "py_client/__init__.py",
+      "generator": "python",
+      "generator_config_file": "tools/codegen/openapi/python-config.json",
+      "output_style": "multi_file"
+    }
+  ],
+  "required_schemas": [
+    "docs/schemas/sdk/v2/rpc/sdk_negotiate_v2.schema.json",
+    "docs/schemas/sdk/v2/rpc/sdk_send_v2.schema.json",
+    "docs/schemas/sdk/v2/rpc/sdk_poll_events_v2.schema.json",
+    "docs/schemas/sdk/v2/rpc/sdk_snapshot_v2.schema.json",
+    "docs/schemas/sdk/v2/error.schema.json"
+  ]
+}

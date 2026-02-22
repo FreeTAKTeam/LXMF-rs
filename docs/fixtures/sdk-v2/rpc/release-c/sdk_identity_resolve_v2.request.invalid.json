@@ -1,0 +1,5 @@
+{
+  "id": "req-identity-resolve-invalid",
+  "method": "sdk_identity_resolve_v2",
+  "params": {}
+}

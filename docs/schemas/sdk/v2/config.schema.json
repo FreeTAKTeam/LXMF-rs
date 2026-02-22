@@ -1,0 +1,533 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://weft.tak/contracts/sdk/v2/config.schema.json",
+  "title": "LXMF SDK Config v2",
+  "$ref": "#/$defs/sdk_config",
+  "$defs": {
+    "profile": {
+      "type": "string",
+      "enum": ["desktop-full", "desktop-local-runtime", "embedded-alloc"]
+    },
+    "bind_mode": {
+      "type": "string",
+      "enum": ["local_only", "remote"]
+    },
+    "auth_mode": {
+      "type": "string",
+      "enum": ["local_trusted", "token", "mtls"]
+    },
+    "overflow_policy": {
+      "type": "string",
+      "enum": ["reject", "drop_oldest", "block"]
+    },
+    "store_forward_capacity_policy": {
+      "type": "string",
+      "enum": ["reject_new", "drop_oldest"]
+    },
+    "store_forward_eviction_priority": {
+      "type": "string",
+      "enum": ["oldest_first", "terminal_first"]
+    },
+    "store_forward": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_messages",
+        "max_message_age_ms",
+        "capacity_policy",
+        "eviction_priority"
+      ],
+      "properties": {
+        "max_messages": { "type": "integer", "minimum": 1, "maximum": 1000000 },
+        "max_message_age_ms": { "type": "integer", "minimum": 1 },
+        "capacity_policy": { "$ref": "#/$defs/store_forward_capacity_policy" },
+        "eviction_priority": { "$ref": "#/$defs/store_forward_eviction_priority" }
+      }
+    },
+    "event_sink_kind": {
+      "type": "string",
+      "enum": ["webhook", "mqtt", "custom"]
+    },
+    "event_sink": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "max_event_bytes", "allow_kinds"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "max_event_bytes": {
+          "type": "integer",
+          "minimum": 256,
+          "maximum": 2097152
+        },
+        "allow_kinds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/event_sink_kind" }
+        },
+        "extensions": { "$ref": "#/$defs/extension_map" }
+      }
+    },
+    "extension_map": {
+      "type": "object",
+      "maxProperties": 32,
+      "propertyNames": {
+        "pattern": "^[a-z0-9][a-z0-9_.-]{0,63}$"
+      },
+      "additionalProperties": true
+    },
+    "event_stream": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_poll_events",
+        "max_event_bytes",
+        "max_batch_bytes",
+        "max_extension_keys"
+      ],
+      "properties": {
+        "max_poll_events": { "type": "integer", "minimum": 1, "maximum": 10000 },
+        "max_event_bytes": { "type": "integer", "minimum": 256 },
+        "max_batch_bytes": { "type": "integer", "minimum": 1024 },
+        "max_extension_keys": { "type": "integer", "minimum": 0, "maximum": 32 }
+      }
+    },
+    "redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "sensitive_transform"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "sensitive_transform": {
+          "type": "string",
+          "enum": ["hash", "truncate", "redact"]
+        },
+        "break_glass_allowed": { "type": "boolean" },
+        "break_glass_ttl_ms": { "type": "integer", "minimum": 1 }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "break_glass_allowed": { "const": true } },
+            "required": ["break_glass_allowed"]
+          },
+          "then": {
+            "required": ["break_glass_ttl_ms"]
+          }
+        }
+      ]
+    },
+    "token_auth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["issuer", "audience", "jti_cache_ttl_ms", "shared_secret"],
+      "properties": {
+        "issuer": { "type": "string", "minLength": 1 },
+        "audience": { "type": "string", "minLength": 1 },
+        "jti_cache_ttl_ms": { "type": "integer", "minimum": 1 },
+        "clock_skew_ms": { "type": "integer", "minimum": 0 },
+        "shared_secret": { "type": "string", "minLength": 1 }
+      }
+    },
+    "mtls_auth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ca_bundle_path", "require_client_cert"],
+      "dependentRequired": {
+        "client_cert_path": ["client_key_path"],
+        "client_key_path": ["client_cert_path"]
+      },
+      "properties": {
+        "ca_bundle_path": { "type": "string", "minLength": 1 },
+        "require_client_cert": { "type": "boolean" },
+        "allowed_san": { "type": "string", "minLength": 1 },
+        "client_cert_path": { "type": "string", "minLength": 1 },
+        "client_key_path": { "type": "string", "minLength": 1 }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "require_client_cert": { "const": true } },
+            "required": ["require_client_cert"]
+          },
+          "then": {
+            "required": ["client_cert_path", "client_key_path"]
+          }
+        }
+      ]
+    },
+    "rpc_backend": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "listen_addr",
+        "read_timeout_ms",
+        "write_timeout_ms",
+        "max_header_bytes",
+        "max_body_bytes"
+      ],
+      "properties": {
+        "listen_addr": { "type": "string", "minLength": 1 },
+        "read_timeout_ms": { "type": "integer", "minimum": 1 },
+        "write_timeout_ms": { "type": "integer", "minimum": 1 },
+        "max_header_bytes": { "type": "integer", "minimum": 256 },
+        "max_body_bytes": { "type": "integer", "minimum": 1024 },
+        "token_auth": { "$ref": "#/$defs/token_auth" },
+        "mtls_auth": { "$ref": "#/$defs/mtls_auth" }
+      }
+    },
+    "sdk_config": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "bind_mode",
+        "auth_mode",
+        "overflow_policy",
+        "event_stream",
+        "idempotency_ttl_ms",
+        "redaction"
+      ],
+      "properties": {
+        "profile": { "$ref": "#/$defs/profile" },
+        "bind_mode": { "$ref": "#/$defs/bind_mode" },
+        "auth_mode": { "$ref": "#/$defs/auth_mode" },
+        "overflow_policy": { "$ref": "#/$defs/overflow_policy" },
+        "block_timeout_ms": { "type": "integer", "minimum": 1 },
+        "store_forward": { "$ref": "#/$defs/store_forward" },
+        "event_stream": { "$ref": "#/$defs/event_stream" },
+        "event_sink": { "$ref": "#/$defs/event_sink" },
+        "idempotency_ttl_ms": { "type": "integer", "minimum": 1 },
+        "redaction": { "$ref": "#/$defs/redaction" },
+        "rpc_backend": { "$ref": "#/$defs/rpc_backend" },
+        "extensions": { "$ref": "#/$defs/extension_map" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "overflow_policy": { "const": "block" } },
+            "required": ["overflow_policy"]
+          },
+          "then": {
+            "required": ["block_timeout_ms"]
+          }
+        },
+        {
+          "if": {
+            "properties": { "bind_mode": { "const": "local_only" } },
+            "required": ["bind_mode"]
+          },
+          "then": {
+            "properties": { "auth_mode": { "const": "local_trusted" } }
+          }
+        },
+        {
+          "if": {
+            "properties": { "bind_mode": { "const": "local_only" } },
+            "required": ["bind_mode", "rpc_backend"]
+          },
+          "then": {
+            "properties": {
+              "rpc_backend": {
+                "type": "object",
+                "properties": {
+                  "listen_addr": {
+                    "type": "string",
+                    "pattern": "^(localhost|127\\.0\\.0\\.1|\\[::1\\])(:[0-9]{1,5})?$|^unix:"
+                  }
+                },
+                "required": ["listen_addr"]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "bind_mode": { "const": "remote" } },
+            "required": ["bind_mode"]
+          },
+          "then": {
+            "properties": {
+              "auth_mode": {
+                "type": "string",
+                "enum": ["token", "mtls"]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "auth_mode": { "const": "token" } },
+            "required": ["auth_mode"]
+          },
+          "then": {
+            "required": ["rpc_backend"],
+            "properties": {
+              "rpc_backend": {
+                "type": "object",
+                "required": ["token_auth"]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "auth_mode": { "const": "mtls" } },
+            "required": ["auth_mode"]
+          },
+          "then": {
+            "required": ["rpc_backend"],
+            "properties": {
+              "rpc_backend": {
+                "type": "object",
+                "required": ["mtls_auth"]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "profile": { "const": "embedded-alloc" } },
+            "required": ["profile"]
+          },
+          "then": {
+            "properties": {
+              "auth_mode": { "not": { "const": "mtls" } },
+              "redaction": {
+                "type": "object",
+                "properties": {
+                  "break_glass_allowed": { "not": { "const": true } }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "event_stream_patch": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_poll_events": {
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "max_event_bytes": {
+          "type": ["integer", "null"],
+          "minimum": 256
+        },
+        "max_batch_bytes": {
+          "type": ["integer", "null"],
+          "minimum": 1024
+        },
+        "max_extension_keys": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "maximum": 32
+        }
+      }
+    },
+    "redaction_patch": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": ["boolean", "null"] },
+        "sensitive_transform": {
+          "type": ["string", "null"],
+          "enum": ["hash", "truncate", "redact", null]
+        },
+        "break_glass_allowed": { "type": ["boolean", "null"] },
+        "break_glass_ttl_ms": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "break_glass_allowed": { "const": true } },
+            "required": ["break_glass_allowed"]
+          },
+          "then": {
+            "required": ["break_glass_ttl_ms"],
+            "properties": {
+              "break_glass_ttl_ms": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "token_auth_patch": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "issuer": { "type": ["string", "null"], "minLength": 1 },
+        "audience": { "type": ["string", "null"], "minLength": 1 },
+        "jti_cache_ttl_ms": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "clock_skew_ms": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "shared_secret": { "type": ["string", "null"], "minLength": 1 }
+      }
+    },
+    "mtls_auth_patch": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ca_bundle_path": { "type": ["string", "null"], "minLength": 1 },
+        "require_client_cert": { "type": ["boolean", "null"] },
+        "allowed_san": { "type": ["string", "null"], "minLength": 1 },
+        "client_cert_path": { "type": ["string", "null"], "minLength": 1 },
+        "client_key_path": { "type": ["string", "null"], "minLength": 1 }
+      },
+      "dependentRequired": {
+        "client_cert_path": ["client_key_path"],
+        "client_key_path": ["client_cert_path"]
+      }
+    },
+    "rpc_backend_patch": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "listen_addr": { "type": ["string", "null"], "minLength": 1 },
+        "read_timeout_ms": { "type": ["integer", "null"], "minimum": 1 },
+        "write_timeout_ms": { "type": ["integer", "null"], "minimum": 1 },
+        "max_header_bytes": { "type": ["integer", "null"], "minimum": 256 },
+        "max_body_bytes": { "type": ["integer", "null"], "minimum": 1024 },
+        "token_auth": {
+          "oneOf": [
+            { "$ref": "#/$defs/token_auth_patch" },
+            { "type": "null" }
+          ]
+        },
+        "mtls_auth": {
+          "oneOf": [
+            { "$ref": "#/$defs/mtls_auth_patch" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "store_forward_patch": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_messages": {
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "maximum": 1000000
+        },
+        "max_message_age_ms": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "capacity_policy": {
+          "oneOf": [
+            { "$ref": "#/$defs/store_forward_capacity_policy" },
+            { "type": "null" }
+          ]
+        },
+        "eviction_priority": {
+          "oneOf": [
+            { "$ref": "#/$defs/store_forward_eviction_priority" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "event_sink_patch": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": ["boolean", "null"] },
+        "max_event_bytes": {
+          "type": ["integer", "null"],
+          "minimum": 256,
+          "maximum": 2097152
+        },
+        "allow_kinds": {
+          "oneOf": [
+            {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": { "$ref": "#/$defs/event_sink_kind" }
+            },
+            { "type": "null" }
+          ]
+        },
+        "extensions": {
+          "oneOf": [
+            { "$ref": "#/$defs/extension_map" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "config_patch": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "overflow_policy": {
+          "oneOf": [
+            { "$ref": "#/$defs/overflow_policy" },
+            { "type": "null" }
+          ]
+        },
+        "block_timeout_ms": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "store_forward": {
+          "oneOf": [
+            { "$ref": "#/$defs/store_forward_patch" },
+            { "type": "null" }
+          ]
+        },
+        "event_sink": {
+          "oneOf": [
+            { "$ref": "#/$defs/event_sink_patch" },
+            { "type": "null" }
+          ]
+        },
+        "event_stream": {
+          "oneOf": [
+            { "$ref": "#/$defs/event_stream_patch" },
+            { "type": "null" }
+          ]
+        },
+        "idempotency_ttl_ms": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "redaction": {
+          "oneOf": [
+            { "$ref": "#/$defs/redaction_patch" },
+            { "type": "null" }
+          ]
+        },
+        "rpc_backend": {
+          "oneOf": [
+            { "$ref": "#/$defs/rpc_backend_patch" },
+            { "type": "null" }
+          ]
+        },
+        "extensions": {
+          "oneOf": [
+            { "$ref": "#/$defs/extension_map" },
+            { "type": "null" }
+          ]
+        }
+      }
+    }
+  }
+}

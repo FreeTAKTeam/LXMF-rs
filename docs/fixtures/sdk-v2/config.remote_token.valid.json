@@ -1,0 +1,30 @@
+{
+  "profile": "desktop-full",
+  "bind_mode": "remote",
+  "auth_mode": "token",
+  "overflow_policy": "reject",
+  "event_stream": {
+    "max_poll_events": 256,
+    "max_event_bytes": 65536,
+    "max_batch_bytes": 1048576,
+    "max_extension_keys": 32
+  },
+  "idempotency_ttl_ms": 86400000,
+  "redaction": {
+    "enabled": true,
+    "sensitive_transform": "truncate"
+  },
+  "rpc_backend": {
+    "listen_addr": "127.0.0.1:9776",
+    "read_timeout_ms": 5000,
+    "write_timeout_ms": 5000,
+    "max_header_bytes": 8192,
+    "max_body_bytes": 1048576,
+    "token_auth": {
+      "issuer": "test-issuer",
+      "audience": "test-audience",
+      "jti_cache_ttl_ms": 60000,
+      "shared_secret": "test-shared-secret"
+    }
+  }
+}

@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://weft.tak/contracts/sdk/v2/rpc/sdk_shutdown_v2.schema.json",
+  "title": "LXMF SDK RPC sdk_shutdown_v2 v2",
+  "oneOf": [
+    { "$ref": "#/$defs/request" },
+    { "$ref": "#/$defs/response_ok" },
+    { "$ref": "#/$defs/response_error" }
+  ],
+  "$defs": {
+    "rpc_id": {
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        { "type": "integer", "minimum": 0 }
+      ]
+    },
+    "rpc_error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 },
+        "machine_code": { "type": "string", "pattern": "^SDK_[A-Z]+_[A-Z0-9_]+$" },
+        "category": { "type": "string", "minLength": 1 },
+        "retryable": { "type": "boolean" },
+        "is_user_actionable": { "type": "boolean" },
+        "details": { "type": "object", "additionalProperties": true },
+        "cause_code": { "type": "string", "pattern": "^SDK_[A-Z]+_[A-Z0-9_]+$" },
+        "extensions": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "method", "params"],
+      "properties": {
+        "id": { "$ref": "#/$defs/rpc_id" },
+        "method": { "const": "sdk_shutdown_v2" },
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode"],
+          "properties": {
+            "mode": { "type": "string", "enum": ["graceful", "immediate"] }
+          }
+        }
+      }
+    },
+    "response_ok": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "result"],
+      "properties": {
+        "id": { "$ref": "#/$defs/rpc_id" },
+        "result": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["ack"],
+          "properties": {
+            "ack": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "response_error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "error"],
+      "properties": {
+        "id": { "$ref": "#/$defs/rpc_id" },
+        "error": { "$ref": "#/$defs/rpc_error" }
+      }
+    }
+  }
+}

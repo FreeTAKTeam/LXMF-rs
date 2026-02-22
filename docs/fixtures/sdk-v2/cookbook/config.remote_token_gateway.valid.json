@@ -1,0 +1,31 @@
+{
+  "profile": "desktop-full",
+  "bind_mode": "remote",
+  "auth_mode": "token",
+  "overflow_policy": "drop_oldest",
+  "event_stream": {
+    "max_poll_events": 512,
+    "max_event_bytes": 65536,
+    "max_batch_bytes": 2097152,
+    "max_extension_keys": 32
+  },
+  "idempotency_ttl_ms": 86400000,
+  "redaction": {
+    "enabled": true,
+    "sensitive_transform": "truncate"
+  },
+  "rpc_backend": {
+    "listen_addr": "0.0.0.0:9776",
+    "read_timeout_ms": 5000,
+    "write_timeout_ms": 5000,
+    "max_header_bytes": 16384,
+    "max_body_bytes": 2097152,
+    "token_auth": {
+      "issuer": "lxmf-gateway",
+      "audience": "lxmf-clients",
+      "jti_cache_ttl_ms": 60000,
+      "shared_secret": "gateway-shared-secret",
+      "clock_skew_ms": 5000
+    }
+  }
+}

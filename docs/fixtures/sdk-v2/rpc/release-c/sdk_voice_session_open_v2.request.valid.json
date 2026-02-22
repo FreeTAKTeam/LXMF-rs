@@ -1,0 +1,8 @@
+{
+  "id": "req-voice-open-1",
+  "method": "sdk_voice_session_open_v2",
+  "params": {
+    "peer_id": "peer-1",
+    "codec_hint": "opus"
+  }
+}

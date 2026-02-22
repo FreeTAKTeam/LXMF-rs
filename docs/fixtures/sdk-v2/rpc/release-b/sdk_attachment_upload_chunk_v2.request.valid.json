@@ -1,0 +1,9 @@
+{
+  "id": 4003,
+  "method": "sdk_attachment_upload_chunk_v2",
+  "params": {
+    "upload_id": "upload-1",
+    "offset": 0,
+    "bytes_base64": "YWJj"
+  }
+}

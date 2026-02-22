@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://weft.tak/contracts/sdk/v2/rpc/sdk_negotiate_v2.schema.json",
+  "title": "LXMF SDK RPC sdk_negotiate_v2 v2",
+  "oneOf": [
+    { "$ref": "#/$defs/request" },
+    { "$ref": "#/$defs/response_ok" },
+    { "$ref": "#/$defs/response_error" }
+  ],
+  "$defs": {
+    "rpc_id": {
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        { "type": "integer", "minimum": 0 }
+      ]
+    },
+    "rpc_error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 },
+        "machine_code": { "type": "string", "pattern": "^SDK_[A-Z]+_[A-Z0-9_]+$" },
+        "category": { "type": "string", "minLength": 1 },
+        "retryable": { "type": "boolean" },
+        "is_user_actionable": { "type": "boolean" },
+        "details": { "type": "object", "additionalProperties": true },
+        "cause_code": { "type": "string", "pattern": "^SDK_[A-Z]+_[A-Z0-9_]+$" },
+        "extensions": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "method", "params"],
+      "properties": {
+        "id": { "$ref": "#/$defs/rpc_id" },
+        "method": { "const": "sdk_negotiate_v2" },
+        "params": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["supported_contract_versions", "requested_capabilities", "config"],
+          "properties": {
+            "supported_contract_versions": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "type": "integer", "minimum": 1 }
+            },
+            "requested_capabilities": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            },
+            "config": {
+              "type": "object",
+              "required": ["profile", "bind_mode", "auth_mode", "overflow_policy"],
+              "properties": {
+                "profile": { "type": "string", "minLength": 1 },
+                "bind_mode": { "type": "string", "minLength": 1 },
+                "auth_mode": { "type": "string", "minLength": 1 },
+                "overflow_policy": { "type": "string", "minLength": 1 },
+                "block_timeout_ms": { "type": ["integer", "null"], "minimum": 1 },
+                "rpc_backend": { "type": ["object", "null"] }
+              },
+              "additionalProperties": true
+            }
+          }
+        }
+      }
+    },
+    "response_ok": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "result"],
+      "properties": {
+        "id": { "$ref": "#/$defs/rpc_id" },
+        "result": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "runtime_id",
+            "active_contract_version",
+            "effective_capabilities",
+            "effective_limits",
+            "contract_release",
+            "schema_namespace"
+          ],
+          "properties": {
+            "runtime_id": { "type": "string", "minLength": 1 },
+            "active_contract_version": { "type": "integer", "minimum": 1 },
+            "effective_capabilities": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            },
+            "effective_limits": { "type": "object", "additionalProperties": true },
+            "contract_release": { "type": "string", "minLength": 1 },
+            "schema_namespace": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "response_error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "error"],
+      "properties": {
+        "id": { "$ref": "#/$defs/rpc_id" },
+        "error": { "$ref": "#/$defs/rpc_error" }
+      }
+    }
+  }
+}

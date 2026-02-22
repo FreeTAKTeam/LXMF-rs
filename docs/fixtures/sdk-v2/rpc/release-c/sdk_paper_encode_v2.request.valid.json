@@ -1,0 +1,7 @@
+{
+  "id": "req-paper-encode-1",
+  "method": "sdk_paper_encode_v2",
+  "params": {
+    "message_id": "msg-1"
+  }
+}

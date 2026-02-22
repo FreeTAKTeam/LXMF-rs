@@ -1,0 +1,8 @@
+{
+  "id": 4008,
+  "method": "sdk_attachment_download_chunk_v2",
+  "params": {
+    "offset": -1,
+    "max_bytes": 0
+  }
+}

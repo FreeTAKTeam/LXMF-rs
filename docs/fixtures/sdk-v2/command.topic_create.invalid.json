@@ -1,0 +1,8 @@
+{
+  "request_id": "req-topic-create-invalid",
+  "method": "topic_create",
+  "params": {
+    "topic_path": "ops/alerts",
+    "unexpected": true
+  }
+}

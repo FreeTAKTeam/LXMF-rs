@@ -1,0 +1,5 @@
+{
+  "id": "req-identity-activate-invalid",
+  "method": "sdk_identity_activate_v2",
+  "params": {}
+}

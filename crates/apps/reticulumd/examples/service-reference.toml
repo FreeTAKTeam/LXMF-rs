@@ -1,0 +1,16 @@
+# Reference integration: service-hosted reticulumd
+
+[rpc]
+listen = "127.0.0.1:7443"
+bind_mode = "local_only"
+auth_mode = "local_trusted"
+
+[runtime]
+profile = "desktop-local-runtime"
+overflow_policy = "reject"
+idempotency_ttl_ms = 43200000
+
+[redaction]
+enabled = true
+sensitive_transform = "hash"
+break_glass_allowed = false

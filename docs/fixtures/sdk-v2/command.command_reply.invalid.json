@@ -1,0 +1,8 @@
+{
+  "request_id": "req-command-reply-invalid",
+  "method": "command_reply",
+  "params": {
+    "accepted": true,
+    "payload": {}
+  }
+}

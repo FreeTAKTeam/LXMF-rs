@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://weft.tak/contracts/sdk/v2/paper.schema.json",
+  "title": "LXMF SDK Paper Domain v2",
+  "oneOf": [
+    { "$ref": "#/$defs/paper_message_envelope" }
+  ],
+  "$defs": {
+    "paper_message_envelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["uri"],
+      "properties": {
+        "uri": { "type": "string", "minLength": 1 },
+        "transient_id": { "type": ["string", "null"] },
+        "destination_hint": { "type": ["string", "null"] },
+        "extensions": { "type": "object", "additionalProperties": true }
+      }
+    }
+  }
+}

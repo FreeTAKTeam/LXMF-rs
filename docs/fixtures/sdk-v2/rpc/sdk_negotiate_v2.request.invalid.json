@@ -1,0 +1,13 @@
+{
+  "id": 1,
+  "method": "sdk_negotiate_v2",
+  "params": {
+    "requested_capabilities": [],
+    "config": {
+      "profile": "desktop-full",
+      "bind_mode": "local_only",
+      "auth_mode": "local_trusted",
+      "overflow_policy": "reject"
+    }
+  }
+}

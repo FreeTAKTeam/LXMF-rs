@@ -1,0 +1,8 @@
+{
+  "id": "req-marker-delete-1",
+  "method": "sdk_marker_delete_v2",
+  "params": {
+    "marker_id": "marker-1",
+    "expected_revision": 2
+  }
+}

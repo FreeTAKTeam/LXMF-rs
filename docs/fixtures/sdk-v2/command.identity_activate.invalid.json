@@ -1,0 +1,5 @@
+{
+  "request_id": "req-identity-activate-invalid",
+  "method": "identity_activate",
+  "params": {}
+}

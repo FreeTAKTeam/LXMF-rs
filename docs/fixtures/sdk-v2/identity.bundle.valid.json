@@ -1,0 +1,6 @@
+{
+  "identity": "id:alpha",
+  "public_key": "AABBCCDDEEFF00112233445566778899",
+  "display_name": "Alpha",
+  "capabilities": ["messaging", "announce"]
+}

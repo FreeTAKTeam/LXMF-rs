@@ -1,0 +1,8 @@
+{
+  "request_id": "req-marker-delete-invalid",
+  "method": "marker_delete",
+  "params": {
+    "marker_id": "marker-1",
+    "expected_revision": 0
+  }
+}

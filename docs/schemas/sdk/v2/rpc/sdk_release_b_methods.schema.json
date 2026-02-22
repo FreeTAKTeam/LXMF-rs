@@ -1,0 +1,510 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://weft.tak/contracts/sdk/v2/rpc/sdk_release_b_methods.schema.json",
+  "title": "LXMF SDK RPC Release B Domain Methods v2",
+  "oneOf": [
+    { "$ref": "#/$defs/request" },
+    { "$ref": "#/$defs/response_error" }
+  ],
+  "$defs": {
+    "rpc_id": {
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        { "type": "integer", "minimum": 0 }
+      ]
+    },
+    "rpc_error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 },
+        "machine_code": { "type": "string", "pattern": "^SDK_[A-Z]+_[A-Z0-9_]+$" },
+        "category": { "type": "string", "minLength": 1 },
+        "retryable": { "type": "boolean" },
+        "is_user_actionable": { "type": "boolean" },
+        "details": { "type": "object", "additionalProperties": true },
+        "cause_code": { "type": "string", "pattern": "^SDK_[A-Z]+_[A-Z0-9_]+$" },
+        "extensions": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "extension_map": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "method", "params"],
+      "properties": {
+        "id": { "$ref": "#/$defs/rpc_id" },
+        "method": {
+          "type": "string",
+          "enum": [
+            "sdk_topic_create_v2",
+            "sdk_topic_get_v2",
+            "sdk_topic_list_v2",
+            "sdk_topic_subscribe_v2",
+            "sdk_topic_unsubscribe_v2",
+            "sdk_topic_publish_v2",
+            "sdk_telemetry_query_v2",
+            "sdk_telemetry_subscribe_v2",
+            "sdk_attachment_store_v2",
+            "sdk_attachment_upload_start_v2",
+            "sdk_attachment_upload_chunk_v2",
+            "sdk_attachment_upload_commit_v2",
+            "sdk_attachment_get_v2",
+            "sdk_attachment_list_v2",
+            "sdk_attachment_delete_v2",
+            "sdk_attachment_download_v2",
+            "sdk_attachment_download_chunk_v2",
+            "sdk_attachment_associate_topic_v2",
+            "sdk_marker_create_v2",
+            "sdk_marker_list_v2",
+            "sdk_marker_update_position_v2",
+            "sdk_marker_delete_v2"
+          ]
+        },
+        "params": { "type": "object" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "method": { "const": "sdk_topic_create_v2" } },
+            "required": ["method"]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "topic_path": { "type": ["string", "null"] },
+                  "metadata": { "type": "object", "additionalProperties": true },
+                  "extensions": { "$ref": "#/$defs/extension_map" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "method": { "const": "sdk_topic_get_v2" } },
+            "required": ["method"]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["topic_id"],
+                "properties": {
+                  "topic_id": { "type": "string", "minLength": 1 },
+                  "extensions": { "$ref": "#/$defs/extension_map" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "method": { "const": "sdk_topic_list_v2" } },
+            "required": ["method"]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "cursor": { "type": ["string", "null"] },
+                  "limit": { "type": "integer", "minimum": 1 },
+                  "extensions": { "$ref": "#/$defs/extension_map" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "method": { "const": "sdk_topic_subscribe_v2" } },
+            "required": ["method"]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["topic_id"],
+                "properties": {
+                  "topic_id": { "type": "string", "minLength": 1 },
+                  "cursor": { "type": ["string", "null"] },
+                  "extensions": { "$ref": "#/$defs/extension_map" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "method": { "const": "sdk_topic_unsubscribe_v2" } },
+            "required": ["method"]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["topic_id"],
+                "properties": {
+                  "topic_id": { "type": "string", "minLength": 1 },
+                  "extensions": { "$ref": "#/$defs/extension_map" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "method": { "const": "sdk_topic_publish_v2" } },
+            "required": ["method"]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["topic_id", "payload"],
+                "properties": {
+                  "topic_id": { "type": "string", "minLength": 1 },
+                  "payload": { "type": "object", "additionalProperties": true },
+                  "correlation_id": { "type": "string", "minLength": 1 },
+                  "extensions": { "$ref": "#/$defs/extension_map" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "enum": ["sdk_telemetry_query_v2", "sdk_telemetry_subscribe_v2"]
+              }
+            },
+            "required": ["method"]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "peer_id": { "type": "string", "minLength": 1 },
+                  "topic_id": { "type": "string", "minLength": 1 },
+                  "from_ts_ms": { "type": "integer", "minimum": 0 },
+                  "to_ts_ms": { "type": "integer", "minimum": 0 },
+                  "limit": { "type": "integer", "minimum": 1 },
+                  "extensions": { "$ref": "#/$defs/extension_map" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "method": { "const": "sdk_attachment_store_v2" } },
+            "required": ["method"]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name", "content_type", "bytes_base64"],
+                "properties": {
+                  "name": { "type": "string", "minLength": 1 },
+                  "content_type": { "type": "string", "minLength": 1 },
+                  "bytes_base64": { "type": "string", "minLength": 1 },
+                  "expires_ts_ms": { "type": ["integer", "null"], "minimum": 0 },
+                  "topic_ids": {
+                    "type": "array",
+                    "items": { "type": "string", "minLength": 1 }
+                  },
+                  "extensions": { "$ref": "#/$defs/extension_map" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "method": { "const": "sdk_attachment_upload_start_v2" } },
+            "required": ["method"]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name", "content_type", "total_size", "checksum_sha256"],
+                "properties": {
+                  "name": { "type": "string", "minLength": 1 },
+                  "content_type": { "type": "string", "minLength": 1 },
+                  "total_size": { "type": "integer", "minimum": 1 },
+                  "checksum_sha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" },
+                  "expires_ts_ms": { "type": ["integer", "null"], "minimum": 0 },
+                  "topic_ids": {
+                    "type": "array",
+                    "items": { "type": "string", "minLength": 1 }
+                  },
+                  "extensions": { "$ref": "#/$defs/extension_map" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "method": { "const": "sdk_attachment_upload_chunk_v2" } },
+            "required": ["method"]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["upload_id", "offset", "bytes_base64"],
+                "properties": {
+                  "upload_id": { "type": "string", "minLength": 1 },
+                  "offset": { "type": "integer", "minimum": 0 },
+                  "bytes_base64": { "type": "string", "minLength": 1 },
+                  "extensions": { "$ref": "#/$defs/extension_map" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "method": { "const": "sdk_attachment_upload_commit_v2" } },
+            "required": ["method"]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["upload_id"],
+                "properties": {
+                  "upload_id": { "type": "string", "minLength": 1 },
+                  "extensions": { "$ref": "#/$defs/extension_map" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "enum": [
+                  "sdk_attachment_get_v2",
+                  "sdk_attachment_delete_v2",
+                  "sdk_attachment_download_v2"
+                ]
+              }
+            },
+            "required": ["method"]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["attachment_id"],
+                "properties": {
+                  "attachment_id": { "type": "string", "minLength": 1 },
+                  "extensions": { "$ref": "#/$defs/extension_map" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "method": { "const": "sdk_attachment_download_chunk_v2" } },
+            "required": ["method"]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["attachment_id"],
+                "properties": {
+                  "attachment_id": { "type": "string", "minLength": 1 },
+                  "offset": { "type": "integer", "minimum": 0 },
+                  "max_bytes": { "type": "integer", "minimum": 1 },
+                  "extensions": { "$ref": "#/$defs/extension_map" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "method": { "const": "sdk_attachment_list_v2" } },
+            "required": ["method"]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "topic_id": { "type": "string", "minLength": 1 },
+                  "cursor": { "type": ["string", "null"] },
+                  "limit": { "type": "integer", "minimum": 1 },
+                  "extensions": { "$ref": "#/$defs/extension_map" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": { "const": "sdk_attachment_associate_topic_v2" }
+            },
+            "required": ["method"]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["attachment_id", "topic_id"],
+                "properties": {
+                  "attachment_id": { "type": "string", "minLength": 1 },
+                  "topic_id": { "type": "string", "minLength": 1 },
+                  "extensions": { "$ref": "#/$defs/extension_map" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "method": { "const": "sdk_marker_delete_v2" } },
+            "required": ["method"]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["marker_id", "expected_revision"],
+                "properties": {
+                  "marker_id": { "type": "string", "minLength": 1 },
+                  "expected_revision": { "type": "integer", "minimum": 1 },
+                  "extensions": { "$ref": "#/$defs/extension_map" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "method": { "const": "sdk_marker_create_v2" } },
+            "required": ["method"]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["label", "position"],
+                "properties": {
+                  "label": { "type": "string", "minLength": 1 },
+                  "position": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["lat", "lon"],
+                    "properties": {
+                      "lat": { "type": "number", "minimum": -90, "maximum": 90 },
+                      "lon": { "type": "number", "minimum": -180, "maximum": 180 },
+                      "alt_m": { "type": ["number", "null"] }
+                    }
+                  },
+                  "topic_id": { "type": ["string", "null"] },
+                  "extensions": { "$ref": "#/$defs/extension_map" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "method": { "const": "sdk_marker_list_v2" } },
+            "required": ["method"]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "topic_id": { "type": ["string", "null"] },
+                  "cursor": { "type": ["string", "null"] },
+                  "limit": { "type": "integer", "minimum": 1 },
+                  "extensions": { "$ref": "#/$defs/extension_map" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "method": { "const": "sdk_marker_update_position_v2" } },
+            "required": ["method"]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["marker_id", "expected_revision", "position"],
+                "properties": {
+                  "marker_id": { "type": "string", "minLength": 1 },
+                  "expected_revision": { "type": "integer", "minimum": 1 },
+                  "position": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["lat", "lon"],
+                    "properties": {
+                      "lat": { "type": "number", "minimum": -90, "maximum": 90 },
+                      "lon": { "type": "number", "minimum": -180, "maximum": 180 },
+                      "alt_m": { "type": ["number", "null"] }
+                    }
+                  },
+                  "extensions": { "$ref": "#/$defs/extension_map" }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "response_error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "error"],
+      "properties": {
+        "id": { "$ref": "#/$defs/rpc_id" },
+        "error": { "$ref": "#/$defs/rpc_error" }
+      }
+    }
+  }
+}

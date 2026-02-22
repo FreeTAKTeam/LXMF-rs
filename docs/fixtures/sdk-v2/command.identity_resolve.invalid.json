@@ -1,0 +1,5 @@
+{
+  "request_id": "req-identity-resolve-invalid",
+  "method": "identity_resolve",
+  "params": {}
+}

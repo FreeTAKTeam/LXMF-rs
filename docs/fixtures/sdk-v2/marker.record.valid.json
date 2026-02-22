@@ -1,0 +1,12 @@
+{
+  "marker_id": "marker-1",
+  "label": "Checkpoint",
+  "position": {
+    "lat": 37.7749,
+    "lon": -122.4194,
+    "alt_m": 15.2
+  },
+  "topic_id": "topic-1",
+  "revision": 4,
+  "updated_ts_ms": 1739750403000
+}

@@ -1,0 +1,7 @@
+{
+  "id": "req-identity-announce-now-invalid",
+  "method": "sdk_identity_announce_now_v2",
+  "params": {
+    "unexpected": true
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "id": "req-identity-import-1",
+  "method": "sdk_identity_import_v2",
+  "params": {
+    "bundle_base64": "aGVsbG8=",
+    "passphrase": "secret"
+  }
+}

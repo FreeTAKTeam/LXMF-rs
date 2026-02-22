@@ -1,0 +1,10 @@
+{
+  "request_id": "req-attachment-upload-start-2",
+  "method": "attachment_upload_start",
+  "params": {
+    "name": "stream.bin",
+    "content_type": "application/octet-stream",
+    "total_size": 0,
+    "checksum_sha256": "bad-checksum"
+  }
+}

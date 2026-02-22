@@ -1,0 +1,11 @@
+{
+  "id": "req-attachment-store-1",
+  "method": "sdk_attachment_store_v2",
+  "params": {
+    "name": "photo.jpg",
+    "content_type": "image/jpeg",
+    "bytes_base64": "aGVsbG8=",
+    "expires_ts_ms": 1893456000000,
+    "topic_ids": ["topic-1"]
+  }
+}

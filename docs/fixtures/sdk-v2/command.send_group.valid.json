@@ -1,0 +1,20 @@
+{
+  "request_id": "req-group-1",
+  "method": "send_group",
+  "params": {
+    "source": "source.test",
+    "destinations": [
+      "destination.test.a",
+      "destination.test.b"
+    ],
+    "payload": {
+      "content": "group hello"
+    },
+    "idempotency_key": "idem-group-1",
+    "ttl_ms": 60000,
+    "correlation_id": "corr-group-1",
+    "extensions": {
+      "fanout": "all"
+    }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "request_id": "req-attachment-download-chunk-2",
+  "method": "attachment_download_chunk",
+  "params": {
+    "offset": 1,
+    "max_bytes": 0
+  }
+}

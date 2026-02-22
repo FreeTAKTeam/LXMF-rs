@@ -1,0 +1,11 @@
+{
+  "id": "req-marker-create-1",
+  "method": "sdk_marker_create_v2",
+  "params": {
+    "label": "Ops HQ",
+    "position": {
+      "lat": 34.1,
+      "lon": -117.2
+    }
+  }
+}

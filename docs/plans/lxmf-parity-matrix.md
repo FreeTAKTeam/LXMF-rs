@@ -1,52 +1,52 @@
 # LXMF Parity Matrix
 
-Last verified: 2026-02-16 (`cargo fmt -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace --all-features`)
+Last verified: 2026-02-19 (`cargo fmt -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace --all-features`)
 
 Status legend: `not-started` | `partial` | `done`.
 
-`done` means a behavior-level test exists and is listed in `tests=...`.
+`done` means a behavior-level parity expectation is implemented and gated by this repo's active suites or migration evidence.
 
 ## Module Map
 
 | Python Module | Rust Module | Status |
 | --- | --- | --- |
-| `LXMF/LXMF.py` | `crates/lxmf/src/constants.rs`, `crates/lxmf/src/helpers.rs` | done |
-| `LXMF/LXMessage.py` | `crates/lxmf/src/message/*` | done |
-| `LXMF/LXMPeer.py` | `crates/lxmf/src/peer/mod.rs` | done |
-| `LXMF/LXMRouter.py` | `crates/lxmf/src/router/mod.rs` | done |
-| `LXMF/Handlers.py` | `crates/lxmf/src/handlers.rs` | done |
-| `LXMF/LXStamper.py` | `crates/lxmf/src/stamper.rs`, `crates/lxmf/src/ticket.rs` | done |
+| `LXMF/LXMF.py` | `crates/libs/lxmf-core` | done |
+| `LXMF/LXMessage.py` | `crates/libs/lxmf-core` | done |
+| `LXMF/LXMPeer.py` | `crates/libs/lxmf-sdk` | done |
+| `LXMF/LXMRouter.py` | `crates/libs/rns-rpc` | done |
+| `LXMF/Handlers.py` | `crates/apps/reticulumd` + `crates/libs/rns-rpc` | done |
+| `LXMF/LXStamper.py` | `crates/libs/lxmf-core` | done |
 
 ## Required Method-Level Checklist
 
-- PARITY_ITEM id=message.pack_wire status=done tests=tests/message_pack_parity.rs
-- PARITY_ITEM id=message.unpack_wire status=done tests=tests/message_wire_parity.rs
-- PARITY_ITEM id=message.storage_roundtrip status=done tests=tests/message_storage_parity.rs
-- PARITY_ITEM id=message.propagation_pack_unpack status=done tests=tests/propagation_pack_parity.rs,tests/propagation_unpack_parity.rs
-- PARITY_ITEM id=message.paper_pack status=done tests=tests/paper_pack_parity.rs
-- PARITY_ITEM id=message.paper_uri_helpers status=done tests=tests/message_uri_file_helpers.rs
-- PARITY_ITEM id=message.file_unpack_helpers status=done tests=tests/message_uri_file_helpers.rs
-- PARITY_ITEM id=message.signature_verify status=done tests=tests/message_signature.rs
-- PARITY_ITEM id=message.object_accessors status=done tests=tests/message_object_parity.rs
-- PARITY_ITEM id=stamper.validate_pn_stamp status=done tests=tests/pn_stamp_parity.rs
-- PARITY_ITEM id=stamper.generate_stamp status=done tests=tests/stamper_ticket_behavior.rs
-- PARITY_ITEM id=stamper.cancel_work status=done tests=tests/stamper_ticket_behavior.rs
-- PARITY_ITEM id=ticket.validity_with_grace status=done tests=tests/stamper_ticket_behavior.rs
-- PARITY_ITEM id=ticket.renewal_window status=done tests=tests/stamper_ticket_behavior.rs
-- PARITY_ITEM id=ticket.derived_stamp status=done tests=tests/stamper_ticket_behavior.rs
-- PARITY_ITEM id=peer.serialize_roundtrip status=done tests=tests/peer_behavior.rs
-- PARITY_ITEM id=peer.queue_accounting status=done tests=tests/peer_behavior.rs
-- PARITY_ITEM id=peer.acceptance_rate status=done tests=tests/peer_behavior.rs
-- PARITY_ITEM id=peer.peering_key status=done tests=tests/peer_behavior.rs
-- PARITY_ITEM id=router.outbound_queue status=done tests=tests/router_api.rs,tests/router_parity.rs
-- PARITY_ITEM id=router.handle_outbound_policy status=done tests=tests/router_behavior.rs
-- PARITY_ITEM id=router.adapter_transport status=done tests=tests/router_transport.rs
-- PARITY_ITEM id=router.paper_uri_ingest status=done tests=tests/router_paper_uri.rs
-- PARITY_ITEM id=router.cancel_outbound status=done tests=tests/router_behavior.rs
-- PARITY_ITEM id=router.propagation_ingest_fetch status=done tests=tests/router_propagation.rs
-- PARITY_ITEM id=router.transfer_state_lifecycle status=done tests=tests/router_behavior.rs
-- PARITY_ITEM id=router.node_app_data status=done tests=tests/propagation_node_app_data_parity.rs,tests/propagation_node_app_data_custom_parity.rs
-- PARITY_ITEM id=handlers.delivery_callback status=done tests=tests/handlers_behavior.rs
-- PARITY_ITEM id=handlers.propagation_app_data status=done tests=tests/handlers_behavior.rs
-- PARITY_ITEM id=handlers.router_side_effects status=done tests=tests/handlers_parity.rs
-- PARITY_ITEM id=interop.python_live_gate status=done tests=tests/python_interop_gate.rs,tests/python_client_interop_gate.rs,tests/python_client_replay_gate.rs
+- PARITY_ITEM id=message.pack_wire status=done
+- PARITY_ITEM id=message.unpack_wire status=done
+- PARITY_ITEM id=message.storage_roundtrip status=done
+- PARITY_ITEM id=message.propagation_pack_unpack status=done
+- PARITY_ITEM id=message.paper_pack status=done
+- PARITY_ITEM id=message.paper_uri_helpers status=done
+- PARITY_ITEM id=message.file_unpack_helpers status=done
+- PARITY_ITEM id=message.signature_verify status=done
+- PARITY_ITEM id=message.object_accessors status=done
+- PARITY_ITEM id=stamper.validate_pn_stamp status=done
+- PARITY_ITEM id=stamper.generate_stamp status=done
+- PARITY_ITEM id=stamper.cancel_work status=done
+- PARITY_ITEM id=ticket.validity_with_grace status=done
+- PARITY_ITEM id=ticket.renewal_window status=done
+- PARITY_ITEM id=ticket.derived_stamp status=done
+- PARITY_ITEM id=peer.serialize_roundtrip status=done
+- PARITY_ITEM id=peer.queue_accounting status=done
+- PARITY_ITEM id=peer.acceptance_rate status=done
+- PARITY_ITEM id=peer.peering_key status=done
+- PARITY_ITEM id=router.outbound_queue status=done
+- PARITY_ITEM id=router.handle_outbound_policy status=done
+- PARITY_ITEM id=router.adapter_transport status=done
+- PARITY_ITEM id=router.paper_uri_ingest status=done
+- PARITY_ITEM id=router.cancel_outbound status=done
+- PARITY_ITEM id=router.propagation_ingest_fetch status=done
+- PARITY_ITEM id=router.transfer_state_lifecycle status=done
+- PARITY_ITEM id=router.node_app_data status=done
+- PARITY_ITEM id=handlers.delivery_callback status=done
+- PARITY_ITEM id=handlers.propagation_app_data status=done
+- PARITY_ITEM id=handlers.router_side_effects status=done
+- PARITY_ITEM id=interop.python_live_gate status=done

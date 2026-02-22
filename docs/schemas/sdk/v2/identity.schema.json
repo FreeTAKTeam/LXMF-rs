@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://weft.tak/contracts/sdk/v2/identity.schema.json",
+  "title": "LXMF SDK Identity Domain v2",
+  "oneOf": [
+    { "$ref": "#/$defs/identity_ref" },
+    { "$ref": "#/$defs/identity_bundle" },
+    { "$ref": "#/$defs/identity_import_request" },
+    { "$ref": "#/$defs/identity_resolve_request" },
+    { "$ref": "#/$defs/contact_update_request" },
+    { "$ref": "#/$defs/contact_record" },
+    { "$ref": "#/$defs/contact_list_result" },
+    { "$ref": "#/$defs/presence_list_result" },
+    { "$ref": "#/$defs/identity_bootstrap_request" }
+  ],
+  "$defs": {
+    "identity_ref": { "type": "string", "minLength": 1 },
+    "trust_level": { "type": "string", "enum": ["unknown", "untrusted", "trusted", "blocked"] },
+    "identity_bundle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity", "public_key"],
+      "properties": {
+        "identity": { "$ref": "#/$defs/identity_ref" },
+        "public_key": { "type": "string", "minLength": 1 },
+        "display_name": { "type": ["string", "null"] },
+        "capabilities": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "extensions": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "identity_import_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bundle_base64"],
+      "properties": {
+        "bundle_base64": { "type": "string", "minLength": 1 },
+        "passphrase": { "type": ["string", "null"] },
+        "extensions": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "identity_resolve_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hash"],
+      "properties": {
+        "hash": { "type": "string", "minLength": 1 },
+        "extensions": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "contact_update_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity"],
+      "properties": {
+        "identity": { "$ref": "#/$defs/identity_ref" },
+        "display_name": { "type": ["string", "null"] },
+        "trust_level": { "type": ["string", "null"], "enum": [null, "unknown", "untrusted", "trusted", "blocked"] },
+        "bootstrap": { "type": ["boolean", "null"] },
+        "metadata": { "type": "object", "additionalProperties": true },
+        "extensions": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "contact_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity", "trust_level", "bootstrap", "updated_ts_ms"],
+      "properties": {
+        "identity": { "$ref": "#/$defs/identity_ref" },
+        "display_name": { "type": ["string", "null"] },
+        "trust_level": { "$ref": "#/$defs/trust_level" },
+        "bootstrap": { "type": "boolean" },
+        "updated_ts_ms": { "type": "integer", "minimum": 0 },
+        "metadata": { "type": "object", "additionalProperties": true },
+        "extensions": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "contact_list_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contacts"],
+      "properties": {
+        "contacts": { "type": "array", "items": { "$ref": "#/$defs/contact_record" } },
+        "next_cursor": { "type": ["string", "null"] }
+      }
+    },
+    "presence_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["peer_id", "last_seen_ts_ms", "first_seen_ts_ms", "seen_count"],
+      "properties": {
+        "peer_id": { "type": "string", "minLength": 1 },
+        "last_seen_ts_ms": { "type": "integer" },
+        "first_seen_ts_ms": { "type": "integer" },
+        "seen_count": { "type": "integer", "minimum": 0 },
+        "name": { "type": ["string", "null"] },
+        "name_source": { "type": ["string", "null"] },
+        "trust_level": { "type": ["string", "null"], "enum": [null, "unknown", "untrusted", "trusted", "blocked"] },
+        "bootstrap": { "type": ["boolean", "null"] },
+        "extensions": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "presence_list_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["peers"],
+      "properties": {
+        "peers": { "type": "array", "items": { "$ref": "#/$defs/presence_record" } },
+        "next_cursor": { "type": ["string", "null"] }
+      }
+    },
+    "identity_bootstrap_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity"],
+      "properties": {
+        "identity": { "$ref": "#/$defs/identity_ref" },
+        "auto_sync": { "type": "boolean" },
+        "extensions": { "type": "object", "additionalProperties": true }
+      }
+    }
+  }
+}

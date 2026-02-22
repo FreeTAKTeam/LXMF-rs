@@ -1,0 +1,33 @@
+name: Leader Readiness Audit
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*-rc*"
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  leader-readiness-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: nightly
+          components: miri
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny,cargo-audit
+      - name: Leader-grade readiness certification
+        run: cargo xtask ci --stage leader-readiness-check
+      - uses: actions/upload-artifact@v4
+        with:
+          name: leader-readiness-report
+          path: |
+            target/release-readiness/leader-grade-readiness.md
+            target/release-scorecard/release-scorecard.md
+            target/release-scorecard/release-scorecard.json
+            target/soak/soak-report.json

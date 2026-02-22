@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://weft.tak/contracts/sdk/v2/telemetry.schema.json",
+  "title": "LXMF SDK Telemetry Domain v2",
+  "oneOf": [
+    { "$ref": "#/$defs/telemetry_query" },
+    { "$ref": "#/$defs/telemetry_point" }
+  ],
+  "$defs": {
+    "telemetry_query": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "peer_id": { "type": "string", "minLength": 1 },
+        "topic_id": { "type": "string", "minLength": 1 },
+        "from_ts_ms": { "type": "integer", "minimum": 0 },
+        "to_ts_ms": { "type": "integer", "minimum": 0 },
+        "limit": { "type": "integer", "minimum": 1 },
+        "extensions": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "telemetry_point": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ts_ms", "key", "value"],
+      "properties": {
+        "ts_ms": { "type": "integer", "minimum": 0 },
+        "key": { "type": "string", "minLength": 1 },
+        "value": {},
+        "unit": { "type": "string", "minLength": 1 },
+        "tags": {
+          "type": "object",
+          "propertyNames": { "minLength": 1 },
+          "additionalProperties": { "type": "string" }
+        },
+        "extensions": { "type": "object", "additionalProperties": true }
+      }
+    }
+  }
+}

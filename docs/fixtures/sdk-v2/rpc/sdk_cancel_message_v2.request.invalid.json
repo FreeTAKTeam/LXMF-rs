@@ -1,0 +1,5 @@
+{
+  "id": 6,
+  "method": "sdk_cancel_message_v2",
+  "params": {}
+}

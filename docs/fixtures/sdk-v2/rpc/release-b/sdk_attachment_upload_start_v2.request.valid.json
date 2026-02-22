@@ -1,0 +1,10 @@
+{
+  "id": 4001,
+  "method": "sdk_attachment_upload_start_v2",
+  "params": {
+    "name": "stream.bin",
+    "content_type": "application/octet-stream",
+    "total_size": 18,
+    "checksum_sha256": "f66703569b2656c9eab514d35a87341514b0f489e7015bff6b0f7c460e89d104"
+  }
+}

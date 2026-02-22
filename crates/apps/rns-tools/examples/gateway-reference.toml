@@ -1,0 +1,16 @@
+# Reference integration: gateway bridge using rns-tools orchestration
+
+[gateway]
+mode = "bridge"
+upstream = "tcp://127.0.0.1:7443"
+downstream = "udp://0.0.0.0:4242"
+
+[runtime]
+profile = "desktop-local-runtime"
+overflow_policy = "block"
+block_timeout_ms = 5000
+
+[security]
+auth_mode = "token"
+require_jti_replay_protection = true
+event_sink_enabled = true

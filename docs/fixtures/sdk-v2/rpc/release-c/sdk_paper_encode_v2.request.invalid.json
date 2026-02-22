@@ -1,0 +1,5 @@
+{
+  "id": "req-paper-encode-invalid",
+  "method": "sdk_paper_encode_v2",
+  "params": {}
+}

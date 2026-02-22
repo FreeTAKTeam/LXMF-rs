@@ -1,0 +1,38 @@
+name: Nightly Embedded HIL
+
+on:
+  schedule:
+    - cron: "30 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  esp32-hil:
+    if: ${{ vars.HIL_ESP32_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: ESP32 hardware-in-loop smoke
+        env:
+          HIL_SERIAL_PORT: ${{ vars.HIL_ESP32_SERIAL_PORT }}
+          HIL_RPC_ENDPOINT: ${{ vars.HIL_ESP32_RPC_ENDPOINT }}
+          HIL_SEND_SOURCE: ${{ vars.HIL_ESP32_SEND_SOURCE }}
+          HIL_SEND_DESTINATION: ${{ vars.HIL_ESP32_SEND_DESTINATION }}
+          HIL_TICK_MAX_WORK_ITEMS: ${{ vars.HIL_ESP32_TICK_MAX_WORK_ITEMS }}
+          HIL_TICK_MAX_DURATION_MS: ${{ vars.HIL_ESP32_TICK_MAX_DURATION_MS }}
+        run: cargo run -p xtask -- embedded-hil-check
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: esp32-hil-artifacts
+          path: |
+            target/hil/esp32-smoke.log
+            target/hil/esp32-smoke-report.json
+
+  hil-disabled:
+    if: ${{ vars.HIL_ESP32_ENABLED != 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: HIL disabled
+        run: echo "HIL_ESP32_ENABLED is not set to true; skipping ESP32 nightly run."

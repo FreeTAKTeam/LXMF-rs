@@ -1,0 +1,11 @@
+[alias]
+xtask = "run -p xtask --"
+ci = "xtask ci"
+release-check = "xtask release-check"
+api-diff = "xtask api-diff"
+licenses = "xtask licenses"
+migration-checks = "xtask migration-checks"
+architecture-checks = "xtask architecture-checks"
+
+[build]
+target-dir = "target"

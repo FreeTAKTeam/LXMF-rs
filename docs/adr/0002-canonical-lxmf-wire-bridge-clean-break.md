@@ -49,4 +49,4 @@ The rollout is gated by:
 - workspace compile, format, clippy,
 - runtime/daemon parity tests,
 - RPC contract tests,
-- interop/sideband gates per release checklist.
+- external interop harness gates per release checklist.

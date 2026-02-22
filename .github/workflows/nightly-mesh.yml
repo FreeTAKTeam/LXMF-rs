@@ -1,0 +1,19 @@
+name: Nightly Mesh Simulation
+
+on:
+  schedule:
+    - cron: "15 3 * * *"
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  mesh-sim:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Multi-node mesh simulation
+        run: cargo run -p xtask -- mesh-sim

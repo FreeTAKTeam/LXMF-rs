@@ -1,0 +1,20 @@
+[package]
+name = "test-support"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+base64.workspace = true
+jsonschema = { version = "=0.17.0", default-features = false, features = ["draft202012"] }
+lxmf-sdk = { workspace = true, features = ["rpc-backend", "std", "sdk-async"] }
+rns-core.workspace = true
+rns-rpc.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true

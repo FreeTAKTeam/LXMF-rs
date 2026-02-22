@@ -1,0 +1,11 @@
+{
+  "request_id": "req-command-reply-1",
+  "method": "command_reply",
+  "params": {
+    "correlation_id": "corr-1",
+    "accepted": true,
+    "payload": {
+      "status": "ok"
+    }
+  }
+}

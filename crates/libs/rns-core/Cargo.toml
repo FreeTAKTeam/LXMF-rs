@@ -1,0 +1,34 @@
+[package]
+name = "rns-core"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+aes.workspace = true
+cbc.workspace = true
+crypto-common = { workspace = true, features = ["rand_core"] }
+ed25519-dalek = { workspace = true, features = ["rand_core"] }
+hex.workspace = true
+hkdf.workspace = true
+hmac.workspace = true
+rand_core = { workspace = true, features = ["getrandom"] }
+rmp-serde.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_bytes.workspace = true
+sha2.workspace = true
+x25519-dalek = { workspace = true, features = ["static_secrets"] }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[features]
+default = ["std"]
+std = []
+alloc = []
+fernet-aes128 = []
+
+[lints]
+workspace = true

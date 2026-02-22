@@ -1,7 +1,109 @@
 [workspace]
 resolver = "2"
 members = [
-  "crates/lxmf",
-  "crates/reticulum",
-  "crates/reticulum-daemon",
+  "crates/libs/lxmf-core",
+  "crates/libs/lxmf-sdk",
+  "crates/libs/rns-core",
+  "crates/libs/rns-transport",
+  "crates/libs/rns-rpc",
+  "crates/libs/test-support",
+  "crates/apps/lxmf-cli",
+  "crates/apps/reticulumd",
+  "crates/apps/rns-tools",
+  "xtask",
 ]
+default-members = [
+  "crates/libs/lxmf-core",
+  "crates/libs/lxmf-sdk",
+  "crates/libs/rns-core",
+  "crates/libs/rns-transport",
+  "crates/libs/rns-rpc",
+  "crates/libs/test-support",
+  "crates/apps/lxmf-cli",
+  "crates/apps/reticulumd",
+  "crates/apps/rns-tools",
+  "xtask",
+]
+
+[workspace.package]
+edition = "2021"
+rust-version = "1.75"
+license = "MIT"
+repository = "https://github.com/FreeTAKTeam/LXMF-rs"
+
+[workspace.metadata.boundaries]
+# Exact workspace-local dependency edges allowed between crates.
+# `tools/scripts/check-boundaries.sh` treats this as a strict allowlist.
+allowed_library_edges = [
+  "lxmf-core->rns-core",
+  "lxmf-sdk->rns-rpc",
+  "rns-transport->rns-core",
+  "test-support->lxmf-sdk",
+  "test-support->rns-core",
+  "test-support->rns-rpc",
+]
+allowed_app_edges = [
+  "lxmf-cli->lxmf-sdk",
+  "reticulumd->lxmf-core",
+  "reticulumd->rns-core",
+  "reticulumd->rns-rpc",
+  "reticulumd->rns-transport",
+  "rns-tools->rns-rpc",
+]
+
+[workspace.dependencies]
+anyhow = "1"
+clap = { version = "4.5.29", features = ["derive"] }
+clap_complete = "4.5"
+criterion = "0.5"
+lxmf-core = { version = "0.1.0", path = "crates/libs/lxmf-core" }
+lxmf-sdk = { version = "0.1.0", path = "crates/libs/lxmf-sdk" }
+rns-core = { version = "0.1.0", path = "crates/libs/rns-core" }
+rns-rpc = { version = "0.1.0", path = "crates/libs/rns-rpc" }
+rns-transport = { version = "0.1.0", path = "crates/libs/rns-transport" }
+aes = "0.8.4"
+base64 = "0.22"
+cbc = "0.1.2"
+crypto-common = "0.1.6"
+ed25519-dalek = "=2.1.1"
+hkdf = "0.12.4"
+hmac = "0.12.1"
+hex = "0.4"
+log = "0.4.27"
+loom = "0.7"
+serde_bytes = "0.11"
+rmp-serde = "1.3.0"
+rmpv = "1.3.0"
+rusqlite = "0.31.0"
+time = "0.3.45"
+tokio-util = "0.7.15"
+bzip2 = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"
+sha2 = "0.10"
+toml = "0.8"
+tokio = { version = "1.44.2", features = ["full"] }
+tokio-rustls = "0.26.2"
+rustls = "0.23.23"
+rustls-pemfile = "2.2.0"
+x509-parser = "0.16.0"
+rand_core = "0.6.4"
+x25519-dalek = "2.0.1"
+thiserror = "1"
+zeroize = "1.8"
+
+[profile.dev.package.rns-core]
+opt-level = 2
+
+[profile.test.package.rns-core]
+opt-level = 2
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+unused_imports = "warn"
+
+[workspace.lints.clippy]
+dbg_macro = "deny"
+todo = "deny"
+unwrap_used = "warn"

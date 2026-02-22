@@ -1,0 +1,7 @@
+{
+  "id": "req-topic-get-1",
+  "method": "sdk_topic_get_v2",
+  "params": {
+    "topic_id": "topic-123"
+  }
+}

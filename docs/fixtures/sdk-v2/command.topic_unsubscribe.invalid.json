@@ -1,0 +1,5 @@
+{
+  "request_id": "req-topic-unsubscribe-invalid",
+  "method": "topic_unsubscribe",
+  "params": {}
+}

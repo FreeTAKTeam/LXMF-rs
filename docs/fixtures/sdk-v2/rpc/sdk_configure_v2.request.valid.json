@@ -1,0 +1,10 @@
+{
+  "id": 4,
+  "method": "sdk_configure_v2",
+  "params": {
+    "expected_revision": 0,
+    "patch": {
+      "overflow_policy": "reject"
+    }
+  }
+}

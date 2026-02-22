@@ -1,0 +1,17 @@
+# Reference integration: desktop client using shared runtime
+
+[client]
+profile = "desktop-full"
+bind_mode = "local_only"
+auth_mode = "local_trusted"
+overflow_policy = "drop_oldest"
+
+[event_stream]
+max_poll_events = 256
+max_event_bytes = 65536
+max_batch_bytes = 1048576
+max_extension_keys = 32
+
+[security]
+redaction_enabled = true
+key_management_backend = "os_keystore"

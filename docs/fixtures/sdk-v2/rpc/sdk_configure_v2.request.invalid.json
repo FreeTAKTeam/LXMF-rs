@@ -1,0 +1,9 @@
+{
+  "id": 4,
+  "method": "sdk_configure_v2",
+  "params": {
+    "patch": {
+      "overflow_policy": "reject"
+    }
+  }
+}

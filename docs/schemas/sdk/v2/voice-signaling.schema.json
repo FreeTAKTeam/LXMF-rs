@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://weft.tak/contracts/sdk/v2/voice-signaling.schema.json",
+  "title": "LXMF SDK Voice Signaling Domain v2",
+  "oneOf": [
+    { "$ref": "#/$defs/voice_session_open_request" },
+    { "$ref": "#/$defs/voice_session_update_request" }
+  ],
+  "$defs": {
+    "voice_session_id": { "type": "string", "minLength": 1 },
+    "voice_session_state": {
+      "type": "string",
+      "enum": ["new", "ringing", "active", "holding", "closed", "failed"]
+    },
+    "voice_session_open_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["peer_id"],
+      "properties": {
+        "peer_id": { "type": "string", "minLength": 1 },
+        "codec_hint": { "type": ["string", "null"] },
+        "extensions": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "voice_session_update_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["session_id", "state"],
+      "properties": {
+        "session_id": { "$ref": "#/$defs/voice_session_id" },
+        "state": { "$ref": "#/$defs/voice_session_state" },
+        "extensions": { "type": "object", "additionalProperties": true }
+      }
+    }
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "request_id": "req-attachment-delete-invalid",
+  "method": "attachment_delete",
+  "params": {}
+}

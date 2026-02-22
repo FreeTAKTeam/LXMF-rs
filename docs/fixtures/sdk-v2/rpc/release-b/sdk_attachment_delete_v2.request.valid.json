@@ -1,0 +1,7 @@
+{
+  "id": "req-attachment-delete-1",
+  "method": "sdk_attachment_delete_v2",
+  "params": {
+    "attachment_id": "att-1"
+  }
+}

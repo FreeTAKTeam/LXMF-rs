@@ -1,0 +1,9 @@
+{
+  "ts_ms": 1739750401000,
+  "key": "battery_pct",
+  "value": 87,
+  "unit": "%",
+  "tags": {
+    "peer_id": "peer-1"
+  }
+}

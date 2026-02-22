@@ -1,0 +1,8 @@
+{
+  "request_id": "req-attachment-store-invalid",
+  "method": "attachment_store",
+  "params": {
+    "name": "doc.txt",
+    "content_type": "text/plain"
+  }
+}

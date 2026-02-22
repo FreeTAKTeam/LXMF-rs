@@ -1,0 +1,98 @@
+[package]
+name = "reticulum"
+version = "0.1.3"
+autobins = false
+edition = "2021"
+rust-version = "1.75"
+license = "MIT"
+readme = "../../../README.md"
+repository = "https://github.com/FreeTAKTeam/Reticulum-rs"
+categories = ["network-programming"]
+keywords = ["reticulum", "mesh", "radio", "async"]
+publish = false
+
+description = """
+Reticulum-rs is a Rust implementation of the Reticulum Network Stack - a cryptographic, 
+decentralised, and resilient mesh networking protocol designed for communication over any physical 
+layer.
+
+This project is open source and community-owned, focused on bringing Reticulum capabilities to the
+Rust ecosystem with clear APIs, reproducible behavior, and portable deployment options.
+"""
+
+[lib]
+name = "reticulum"
+
+[dependencies]
+
+# Crypto
+crypto-common = { version = "0.1.6", features = ["rand_core"] }
+aes = "0.8.4"
+cbc = "0.1.2"
+x25519-dalek = { version = "2.0.1", features = ["static_secrets"] }
+ed25519-dalek = { version = "2.1.1", features = ["rand_core"] }
+hkdf = "0.12.4"
+
+# Hash
+hmac = "0.12.1"
+sha2 = "0.10.8"
+
+# Random Number generator
+rand_core = { version = "0.6.4", features = ["getrandom"] }
+
+# Async IO
+tokio = { version = "1.44.2", features = ["full"] }
+tokio-util = "0.7.15"
+
+rmp = "0.8.14"
+rmpv = { version = "1.3.0", features = ["with-serde"] }
+rmp-serde = "1.1.2"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
+serde_bytes = "0.11"
+hex = "0.4.3"
+rusqlite = { version = "0.31.0", features = ["bundled"] }
+clap = { version = "4.5.29", features = ["derive"], optional = true }
+tempfile = { version = "3.19.1", optional = true }
+bzip2 = "0.4"
+
+# Logging
+log = "0.4.27"
+
+[features]
+default = ["alloc"]
+alloc = []
+fernet-aes128 = []
+cli-tools = ["dep:clap", "dep:tempfile"]
+
+[dev-dependencies]
+tokio = { version = "1.44.2", features = ["test-util"] }
+rmpv = "1.3.0"
+env_logger = "0.10"
+tempfile = "3.19.1"
+
+[[example]]
+name = "tcp_server"
+path = "examples/tcp_server.rs"
+
+[[example]]
+name = "tcp_client"
+path = "examples/tcp_client.rs"
+
+[[example]]
+name = "udp_link"
+path = "examples/udp_link.rs"
+
+[[example]]
+name = "link_client"
+path = "examples/link_client.rs"
+
+[[example]]
+name = "testnet_client"
+path = "examples/testnet_client.rs"
+
+[[example]]
+name = "multihop"
+path = "examples/multihop.rs"
+
+[workspace]

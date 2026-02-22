@@ -1,0 +1,12 @@
+{
+  "request_id": "req-marker-update-1",
+  "method": "marker_update_position",
+  "params": {
+    "marker_id": "marker-1",
+    "expected_revision": 3,
+    "position": {
+      "lat": 34.2,
+      "lon": -117.3
+    }
+  }
+}

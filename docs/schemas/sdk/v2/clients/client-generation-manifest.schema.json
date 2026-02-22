@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://weft.tak/contracts/sdk/v2/clients/client-generation-manifest.schema.json",
+  "title": "LXMF SDK v2 Client Generation Manifest Schema",
+  "type": "object",
+    "required": ["version", "contract_release", "schema_namespace", "targets", "required_schemas", "generator_runtime"],
+  "properties": {
+    "version": { "type": "integer", "minimum": 1 },
+    "contract_release": { "type": "string", "minLength": 1 },
+    "schema_namespace": { "type": "string", "minLength": 1 },
+    "generator_backend": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "enum": ["openapi"] },
+        "openapi_version": { "type": "string", "default": "3.1.0" }
+      },
+      "additionalProperties": true
+    },
+    "openapi_spec_file": { "type": "string", "minLength": 1, "default": "generated/clients/spec/openapi.json" },
+    "output_validation": {
+      "type": "object",
+      "required": ["mode"],
+      "properties": {
+        "mode": { "type": "string", "enum": ["committed_artifacts", "target_hashes"] },
+        "target_hash_file": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": true
+    },
+    "schema_discovery": {
+      "type": "object",
+      "properties": {
+        "mode": { "type": "string", "enum": ["required_schemas", "manifest_only"] },
+        "include_globs": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      },
+      "additionalProperties": true
+    },
+    "method_coverage": {
+      "type": "object",
+      "properties": {
+        "mode": { "type": "string", "enum": ["required_schemas", "manifest_only"] },
+        "allow_missing": { "type": "boolean", "default": false }
+      },
+      "required": ["mode"],
+      "additionalProperties": true
+    },
+    "generator_runtime": {
+      "type": "object",
+      "required": ["type", "image"],
+      "properties": {
+        "type": { "type": "string", "enum": ["docker", "local"] },
+        "image": { "type": "string", "minLength": 1 },
+        "command": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": true
+    },
+    "targets": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["language", "output_dir", "entrypoint"],
+        "properties": {
+          "language": { "type": "string", "minLength": 1 },
+          "output_dir": { "type": "string", "minLength": 1 },
+          "entrypoint": { "type": "string", "minLength": 1 },
+          "generator": { "type": "string", "minLength": 1 },
+          "generator_config_file": { "type": "string", "minLength": 1 },
+          "output_style": { "type": "string", "enum": ["multi_file", "single_file"] }
+        },
+        "additionalProperties": true
+      }
+    },
+    "required_schemas": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    }
+  },
+  "additionalProperties": true
+}

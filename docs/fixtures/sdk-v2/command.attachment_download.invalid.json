@@ -1,0 +1,5 @@
+{
+  "request_id": "req-attachment-download-invalid",
+  "method": "attachment_download",
+  "params": {}
+}

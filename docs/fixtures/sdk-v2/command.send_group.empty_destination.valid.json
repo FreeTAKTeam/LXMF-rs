@@ -1,0 +1,14 @@
+{
+  "request_id": "req-group-3",
+  "method": "send_group",
+  "params": {
+    "source": "source.test",
+    "destinations": [
+      "destination.test.a",
+      ""
+    ],
+    "payload": {
+      "content": "group hello"
+    }
+  }
+}

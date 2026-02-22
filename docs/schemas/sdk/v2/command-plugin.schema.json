@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://weft.tak/contracts/sdk/v2/command-plugin.schema.json",
+  "title": "LXMF SDK Remote Command Domain v2",
+  "oneOf": [
+    { "$ref": "#/$defs/remote_command_request" },
+    { "$ref": "#/$defs/remote_command_response" }
+  ],
+  "$defs": {
+    "remote_command_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command", "payload"],
+      "properties": {
+        "command": { "type": "string", "minLength": 1 },
+        "target": { "type": ["string", "null"] },
+        "payload": {},
+        "timeout_ms": { "type": ["integer", "null"], "minimum": 1 },
+        "extensions": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "remote_command_response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["accepted", "payload"],
+      "properties": {
+        "accepted": { "type": "boolean" },
+        "payload": {},
+        "extensions": { "type": "object", "additionalProperties": true }
+      }
+    }
+  }
+}

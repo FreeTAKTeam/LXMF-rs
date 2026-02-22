@@ -1,0 +1,8 @@
+{
+  "request_id": "req-attach-assoc-1",
+  "method": "attachment_associate_topic",
+  "params": {
+    "attachment_id": "att-1",
+    "topic_id": "topic-1"
+  }
+}

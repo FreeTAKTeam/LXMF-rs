@@ -1,0 +1,37 @@
+[package]
+name = "lxmf-core"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+
+[dependencies]
+rns-core.workspace = true
+base64.workspace = true
+hex.workspace = true
+rand_core = { workspace = true, features = ["getrandom"] }
+ed25519-dalek = { workspace = true, features = ["rand_core"] }
+rmp-serde.workspace = true
+rmpv = { workspace = true, features = ["with-serde"] }
+serde = { workspace = true, features = ["derive"] }
+serde_bytes.workspace = true
+serde_json = { version = "1", default-features = false, features = ["alloc"], optional = true }
+sha2.workspace = true
+x25519-dalek.workspace = true
+
+[features]
+default = ["std"]
+std = ["dep:serde_json", "serde_json/std"]
+alloc = []
+
+[dev-dependencies]
+criterion.workspace = true
+
+[[bench]]
+name = "core_message_paths"
+harness = false
+
+[lints]
+workspace = true

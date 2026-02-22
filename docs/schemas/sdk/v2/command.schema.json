@@ -1,0 +1,1097 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://weft.tak/contracts/sdk/v2/command.schema.json",
+  "title": "LXMF SDK Command v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["method", "params"],
+  "properties": {
+    "request_id": {
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        { "type": "integer", "minimum": 0 }
+      ]
+    },
+    "method": {
+      "type": "string",
+      "enum": [
+        "start",
+        "send",
+        "send_group",
+        "cancel",
+        "status",
+        "configure",
+        "tick",
+        "poll_events",
+        "snapshot",
+        "shutdown",
+        "subscribe_events",
+        "topic_create",
+        "topic_get",
+        "topic_list",
+        "topic_subscribe",
+        "topic_unsubscribe",
+        "topic_publish",
+        "telemetry_query",
+        "telemetry_subscribe",
+        "attachment_store",
+        "attachment_upload_start",
+        "attachment_upload_chunk",
+        "attachment_upload_commit",
+        "attachment_get",
+        "attachment_list",
+        "attachment_delete",
+        "attachment_download",
+        "attachment_download_chunk",
+        "attachment_associate_topic",
+        "marker_create",
+        "marker_list",
+        "marker_update_position",
+        "marker_delete",
+        "identity_list",
+        "identity_announce_now",
+        "identity_presence_list",
+        "identity_activate",
+        "identity_import",
+        "identity_export",
+        "identity_resolve",
+        "identity_contact_update",
+        "identity_contact_list",
+        "identity_bootstrap",
+        "paper_encode",
+        "paper_decode",
+        "command_invoke",
+        "command_reply",
+        "voice_session_open",
+        "voice_session_update",
+        "voice_session_close"
+      ]
+    },
+    "params": { "type": "object" },
+    "trace_id": { "type": "string", "minLength": 1 },
+    "operation_id": { "type": "string", "minLength": 1 },
+    "extensions": { "$ref": "#/$defs/extension_map" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "method": { "const": "start" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "supported_contract_versions",
+              "requested_capabilities",
+              "config"
+            ],
+            "properties": {
+              "supported_contract_versions": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": { "type": "integer", "minimum": 1, "maximum": 65535 }
+              },
+              "requested_capabilities": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": { "type": "string", "minLength": 1 }
+              },
+              "config": { "$ref": "config.schema.json#/$defs/sdk_config" },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "send" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["source", "destination", "payload"],
+            "properties": {
+              "source": { "type": "string", "minLength": 1 },
+              "destination": { "type": "string", "minLength": 1 },
+              "payload": { "type": "object", "additionalProperties": true },
+              "idempotency_key": { "type": "string", "minLength": 1, "maxLength": 128 },
+              "ttl_ms": { "type": "integer", "minimum": 1 },
+              "correlation_id": { "type": "string", "minLength": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "send_group" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["source", "destinations", "payload"],
+            "properties": {
+              "source": { "type": "string", "minLength": 1 },
+              "destinations": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "type": "string" }
+              },
+              "payload": { "type": "object", "additionalProperties": true },
+              "idempotency_key": { "type": "string", "minLength": 1, "maxLength": 128 },
+              "ttl_ms": { "type": "integer", "minimum": 1 },
+              "correlation_id": { "type": "string", "minLength": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "cancel" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["message_id"],
+            "properties": {
+              "message_id": { "type": "string", "minLength": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "status" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["message_id"],
+            "properties": {
+              "message_id": { "type": "string", "minLength": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "configure" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["patch", "expected_revision"],
+            "properties": {
+              "patch": { "$ref": "config.schema.json#/$defs/config_patch" },
+              "expected_revision": { "type": "integer", "minimum": 0 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "tick" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["budget"],
+            "properties": {
+              "budget": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["max_work_items"],
+                "properties": {
+                  "max_work_items": { "type": "integer", "minimum": 1 },
+                  "max_duration_ms": { "type": "integer", "minimum": 1 }
+                }
+              },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "poll_events" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["cursor", "max"],
+            "properties": {
+              "cursor": {
+                "type": ["string", "null"]
+              },
+              "max": { "type": "integer", "minimum": 1, "maximum": 10000 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "snapshot" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "include_counts": { "type": "boolean" },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "shutdown" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["mode"],
+            "properties": {
+              "mode": {
+                "type": "string",
+                "enum": ["graceful", "immediate"]
+              },
+              "flush_timeout_ms": { "type": "integer", "minimum": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "subscribe_events" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["start"],
+            "properties": {
+              "start": {
+                "type": "string",
+                "enum": ["head", "tail", "snapshot"]
+              },
+              "cursor": { "type": ["string", "null"] },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "topic_create" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "topic_path": { "type": ["string", "null"] },
+              "metadata": { "type": "object", "additionalProperties": true },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "topic_list" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "cursor": { "type": ["string", "null"] },
+              "limit": { "type": "integer", "minimum": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "topic_get" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["topic_id"],
+            "properties": {
+              "topic_id": { "type": "string", "minLength": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "topic_subscribe" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["topic_id"],
+            "properties": {
+              "topic_id": { "type": "string", "minLength": 1 },
+              "cursor": { "type": ["string", "null"] },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "topic_unsubscribe" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["topic_id"],
+            "properties": {
+              "topic_id": { "type": "string", "minLength": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "method": {
+            "enum": ["attachment_get", "attachment_delete", "attachment_download"]
+          }
+        },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["attachment_id"],
+            "properties": {
+              "attachment_id": { "type": "string", "minLength": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "topic_publish" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["topic_id", "payload"],
+            "properties": {
+              "topic_id": { "type": "string", "minLength": 1 },
+              "payload": { "type": "object", "additionalProperties": true },
+              "correlation_id": { "type": "string", "minLength": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "enum": ["telemetry_query", "telemetry_subscribe"] } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "peer_id": { "type": "string", "minLength": 1 },
+              "topic_id": { "type": "string", "minLength": 1 },
+              "from_ts_ms": { "type": "integer", "minimum": 0 },
+              "to_ts_ms": { "type": "integer", "minimum": 0 },
+              "limit": { "type": "integer", "minimum": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "attachment_store" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "content_type", "bytes_base64"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "content_type": { "type": "string", "minLength": 1 },
+              "bytes_base64": { "type": "string", "minLength": 1 },
+              "expires_ts_ms": { "type": ["integer", "null"], "minimum": 0 },
+              "topic_ids": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "attachment_upload_start" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "content_type", "total_size", "checksum_sha256"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "content_type": { "type": "string", "minLength": 1 },
+              "total_size": { "type": "integer", "minimum": 1 },
+              "checksum_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-fA-F]{64}$"
+              },
+              "expires_ts_ms": { "type": ["integer", "null"], "minimum": 0 },
+              "topic_ids": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "attachment_upload_chunk" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["upload_id", "offset", "bytes_base64"],
+            "properties": {
+              "upload_id": { "type": "string", "minLength": 1 },
+              "offset": { "type": "integer", "minimum": 0 },
+              "bytes_base64": { "type": "string", "minLength": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "attachment_upload_commit" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["upload_id"],
+            "properties": {
+              "upload_id": { "type": "string", "minLength": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "attachment_download_chunk" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["attachment_id"],
+            "properties": {
+              "attachment_id": { "type": "string", "minLength": 1 },
+              "offset": { "type": "integer", "minimum": 0 },
+              "max_bytes": { "type": "integer", "minimum": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "attachment_list" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "topic_id": { "type": "string", "minLength": 1 },
+              "cursor": { "type": ["string", "null"] },
+              "limit": { "type": "integer", "minimum": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "attachment_associate_topic" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["attachment_id", "topic_id"],
+            "properties": {
+              "attachment_id": { "type": "string", "minLength": 1 },
+              "topic_id": { "type": "string", "minLength": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "marker_delete" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["marker_id", "expected_revision"],
+            "properties": {
+              "marker_id": { "type": "string", "minLength": 1 },
+              "expected_revision": { "type": "integer", "minimum": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "marker_create" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["label", "position"],
+            "properties": {
+              "label": { "type": "string", "minLength": 1 },
+              "position": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["lat", "lon"],
+                "properties": {
+                  "lat": { "type": "number", "minimum": -90, "maximum": 90 },
+                  "lon": { "type": "number", "minimum": -180, "maximum": 180 },
+                  "alt_m": { "type": ["number", "null"] }
+                }
+              },
+              "topic_id": { "type": ["string", "null"] },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "marker_list" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "topic_id": { "type": ["string", "null"] },
+              "cursor": { "type": ["string", "null"] },
+              "limit": { "type": "integer", "minimum": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "marker_update_position" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["marker_id", "expected_revision", "position"],
+            "properties": {
+              "marker_id": { "type": "string", "minLength": 1 },
+              "expected_revision": { "type": "integer", "minimum": 1 },
+              "position": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["lat", "lon"],
+                "properties": {
+                  "lat": { "type": "number", "minimum": -90, "maximum": 90 },
+                  "lon": { "type": "number", "minimum": -180, "maximum": 180 },
+                  "alt_m": { "type": ["number", "null"] }
+                }
+              },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "identity_list" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "identity_announce_now" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "identity_presence_list" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "cursor": { "type": ["string", "null"] },
+              "limit": { "type": "integer", "minimum": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "identity_activate" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["identity"],
+            "properties": {
+              "identity": { "type": "string", "minLength": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "identity_contact_update" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["identity"],
+            "properties": {
+              "identity": { "type": "string", "minLength": 1 },
+              "display_name": { "type": ["string", "null"] },
+              "trust_level": {
+                "type": ["string", "null"],
+                "enum": [null, "unknown", "untrusted", "trusted", "blocked"]
+              },
+              "bootstrap": { "type": ["boolean", "null"] },
+              "metadata": { "type": "object", "additionalProperties": true },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "identity_contact_list" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "cursor": { "type": ["string", "null"] },
+              "limit": { "type": "integer", "minimum": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "identity_bootstrap" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["identity"],
+            "properties": {
+              "identity": { "type": "string", "minLength": 1 },
+              "auto_sync": { "type": "boolean" },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "identity_import" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["bundle_base64"],
+            "properties": {
+              "bundle_base64": { "type": "string", "minLength": 1 },
+              "passphrase": { "type": ["string", "null"] },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "identity_export" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["identity"],
+            "properties": {
+              "identity": { "type": "string", "minLength": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "identity_resolve" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["hash"],
+            "properties": {
+              "hash": { "type": "string", "minLength": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "paper_encode" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["message_id"],
+            "properties": {
+              "message_id": { "type": "string", "minLength": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "paper_decode" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["uri"],
+            "properties": {
+              "uri": { "type": "string", "minLength": 1 },
+              "transient_id": { "type": ["string", "null"] },
+              "destination_hint": { "type": ["string", "null"] },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "command_invoke" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["command", "payload"],
+            "properties": {
+              "command": { "type": "string", "minLength": 1 },
+              "target": { "type": ["string", "null"] },
+              "payload": {},
+              "timeout_ms": { "type": ["integer", "null"], "minimum": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "command_reply" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["correlation_id", "accepted", "payload"],
+            "properties": {
+              "correlation_id": { "type": "string", "minLength": 1 },
+              "accepted": { "type": "boolean" },
+              "payload": {},
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "voice_session_open" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["peer_id"],
+            "properties": {
+              "peer_id": { "type": "string", "minLength": 1 },
+              "codec_hint": { "type": ["string", "null"] },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "voice_session_update" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["session_id", "state"],
+            "properties": {
+              "session_id": { "type": "string", "minLength": 1 },
+              "state": {
+                "type": "string",
+                "enum": ["new", "ringing", "active", "holding", "closed", "failed"]
+              },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "voice_session_close" } },
+        "required": ["method"]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["session_id"],
+            "properties": {
+              "session_id": { "type": "string", "minLength": 1 },
+              "extensions": { "$ref": "#/$defs/extension_map" }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "extension_map": {
+      "type": "object",
+      "maxProperties": 32,
+      "propertyNames": {
+        "pattern": "^[a-z0-9][a-z0-9_.-]{0,63}$"
+      },
+      "additionalProperties": true
+    }
+  }
+}

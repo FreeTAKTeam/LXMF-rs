@@ -1,0 +1,22 @@
+name: Nightly Soak Chaos
+
+on:
+  schedule:
+    - cron: "20 3 * * *"
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  soak-chaos:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Nightly soak + chaos campaign
+        run: CYCLES=3 BURST_ROUNDS=8 TIMEOUT_SECS=25 PAUSE_SECS=1 CHAOS_INTERVAL=2 CHAOS_NODES=5 CHAOS_TIMEOUT_SECS=90 MAX_FAILURES=0 REPORT_PATH=target/soak/soak-report.json ./tools/scripts/soak-rnx.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nightly-soak-report
+          path: target/soak/soak-report.json

@@ -1,0 +1,11 @@
+{
+  "reticulum": {
+    "repo": "markqvist/Reticulum",
+    "commit": "<pin-commit-sha>"
+  },
+  "lxmf": {
+    "repo": "markqvist/LXMF",
+    "commit": "<pin-commit-sha>"
+  },
+  "notes": "Interop harness has moved to an external repository; keep pins here as contract metadata."
+}

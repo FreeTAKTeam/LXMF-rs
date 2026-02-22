@@ -1,0 +1,8 @@
+{
+  "id": "req-topic-subscribe-1",
+  "method": "sdk_topic_subscribe_v2",
+  "params": {
+    "topic_id": "topic-1",
+    "cursor": null
+  }
+}

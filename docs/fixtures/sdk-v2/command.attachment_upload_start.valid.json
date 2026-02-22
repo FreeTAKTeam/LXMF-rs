@@ -1,0 +1,14 @@
+{
+  "request_id": "req-attachment-upload-start-1",
+  "method": "attachment_upload_start",
+  "params": {
+    "name": "stream.bin",
+    "content_type": "application/octet-stream",
+    "total_size": 18,
+    "checksum_sha256": "f66703569b2656c9eab514d35a87341514b0f489e7015bff6b0f7c460e89d104",
+    "topic_ids": ["topic-1"],
+    "extensions": {
+      "transfer_profile": "chunked"
+    }
+  }
+}
