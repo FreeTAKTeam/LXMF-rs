@@ -1,0 +1,9 @@
+{
+  "packageName": "lxmfclient",
+  "packageVersion": "0.1.0",
+  "packageUrl": "https://github.com/",
+  "hideGenerationTimestamp": true,
+  "withoutRuntimeInterfaces": true,
+  "generateAliasAsModel": false,
+  "ensureUniqueParams": true
+}

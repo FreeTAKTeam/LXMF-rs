@@ -1,0 +1,10 @@
+{
+  "packageName": "lxmfclient",
+  "projectName": "lxmfclient",
+  "packageVersion": "0.1.0",
+  "projectUrl": "https://github.com/",
+  "hideGenerationTimestamp": true,
+  "packageUrl": "",
+  "usePytest": false,
+  "disallowAdditionalPropertiesIfNotPresent": false
+}

@@ -1,0 +1,18 @@
+{
+  "npmName": "lxmfclient",
+  "npmVersion": "0.1.0",
+  "supportsES6": true,
+  "withSeparateModelsAndApi": true,
+  "withNodeImports": true,
+  "useSingleRequestParameter": true,
+  "apiPackage": "api",
+  "modelPackage": "model",
+  "withInterfaces": true,
+  "useInversify": false,
+  "legacyDiscriminatorBehavior": false,
+  "supportsAsync": true,
+  "enumPropertyNaming": "original",
+  "paramNaming": "camelCase",
+  "sortModelPropertiesByRequiredFlag": true,
+  "hideGenerationTimestamp": true
+}
