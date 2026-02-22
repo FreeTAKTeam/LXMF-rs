@@ -1682,7 +1682,8 @@ fn run_go_compile_check(output_dir: &Path) -> Result<String> {
         return Ok(format!("{COMPILER_CHECK_SKIP_PREFIX} missing generated go output"));
     }
 
-    let temp_dir = TempDir::new(output_dir)?;
+    let temp_parent = output_dir.parent().context("generated go output has no parent directory")?;
+    let temp_dir = TempDir::new(temp_parent)?;
     let sandbox = temp_dir.path.join("go-compile-check");
     fs::create_dir_all(&sandbox).with_context(|| format!("create {}", sandbox.display()))?;
     copy_dir_recursively(output_dir, &sandbox)?;

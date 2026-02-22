@@ -14,7 +14,7 @@
     {
       "path": "docs/contracts/baselines/schema-client-generation-baseline.json",
       "bytes": 373,
-      "sha256": "34fb56fb174eb668df5cbac045a407ef062f2919e76038c36e99e098c7a82e37"
+      "sha256": "d3c754f25dbd0e59346755a12e8e670ea00527659c287a2d086b2f2a6e1422ae"
     },
     {
       "path": "docs/contracts/compatibility-contract.md",
