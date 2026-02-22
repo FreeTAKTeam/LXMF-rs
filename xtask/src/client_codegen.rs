@@ -1824,6 +1824,9 @@ fn transform_schema_node_for_generator(value: &Value) -> Result<Value> {
                 if key == "$schema" || key == "$id" {
                     continue;
                 }
+                if key == "propertyNames" {
+                    continue;
+                }
 
                 let transformed = transform_schema_node_for_generator(node)?;
                 out.insert(key.clone(), transformed);
@@ -2370,6 +2373,16 @@ mod tests {
                         "$id": "urn:example",
                         "$schema": "https://json-schema.org/draft/2020-12/schema",
                         "type": ["string", "null"]
+                    },
+                    "MapWithPropertyNames": {
+                        "type": "object",
+                        "propertyNames": {
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        "additionalProperties": {
+                            "type": "string"
+                        }
                     }
                 }
             },
@@ -2394,6 +2407,11 @@ mod tests {
         assert!(payload.get("const").is_none());
         assert_eq!(payload["type"], "string");
         assert_eq!(payload["nullable"], true);
+
+        let map_schema = &converted["components"]["schemas"]["MapWithPropertyNames"];
+        assert!(map_schema.get("propertyNames").is_none());
+        assert_eq!(map_schema["type"], "object");
+        assert_eq!(map_schema["additionalProperties"]["type"], "string");
     }
 
     #[test]
