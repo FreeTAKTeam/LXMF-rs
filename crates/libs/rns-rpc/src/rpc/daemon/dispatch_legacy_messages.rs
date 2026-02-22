@@ -89,8 +89,7 @@ impl RpcDaemon {
                             "interface type is required",
                         ));
                     }
-                    if iface.kind == "tcp_client" && (iface.host.is_none() || iface.port.is_none())
-                    {
+                    if iface.kind == "tcp_client" && (iface.host.is_none() || iface.port.is_none()) {
                         return Err(std::io::Error::new(
                             std::io::ErrorKind::InvalidInput,
                             "tcp_client requires host and port",
@@ -103,25 +102,124 @@ impl RpcDaemon {
                         ));
                     }
                 }
+                let blocked = parsed
+                    .interfaces
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, iface)| {
+                        (!Self::is_legacy_hot_apply_kind(iface.kind.as_str()))
+                            .then(|| Self::interface_identifier(iface, index))
+                    })
+                    .collect::<Vec<_>>();
+                if !blocked.is_empty() {
+                    return Ok(Self::restart_required_response(
+                        request.id,
+                        "set_interfaces",
+                        blocked,
+                    ));
+                }
 
                 {
                     let mut guard = self.interfaces.lock().expect("interfaces mutex poisoned");
                     *guard = parsed.interfaces.clone();
                 }
+                let applied_interfaces = parsed
+                    .interfaces
+                    .iter()
+                    .enumerate()
+                    .map(|(index, iface)| Self::interface_identifier(iface, index))
+                    .collect::<Vec<_>>();
 
                 let event = RpcEvent {
                     event_type: "interfaces_updated".into(),
-                    payload: json!({ "interfaces": parsed.interfaces }),
+                    payload: json!({ "interfaces": parsed.interfaces.clone() }),
                 };
                 self.publish_event(event);
 
                 Ok(RpcResponse {
                     id: request.id,
-                    result: Some(json!({ "updated": true })),
+                    result: Some(json!({
+                        "updated": true,
+                        "applied_interfaces": applied_interfaces,
+                        "rejected_interfaces": Vec::<String>::new(),
+                    })),
                     error: None,
                 })
             }
             "reload_config" => {
+                if let Some(params) = request.params.clone() {
+                    let parsed: ReloadConfigParams = serde_json::from_value(params).map_err(|err| {
+                        std::io::Error::new(std::io::ErrorKind::InvalidInput, err)
+                    })?;
+                    for iface in &parsed.interfaces {
+                        if iface.kind.trim().is_empty() {
+                            return Err(std::io::Error::new(
+                                std::io::ErrorKind::InvalidInput,
+                                "interface type is required",
+                            ));
+                        }
+                        if iface.kind == "tcp_client"
+                            && (iface.host.is_none() || iface.port.is_none())
+                        {
+                            return Err(std::io::Error::new(
+                                std::io::ErrorKind::InvalidInput,
+                                "tcp_client requires host and port",
+                            ));
+                        }
+                        if iface.kind == "tcp_server" && iface.port.is_none() {
+                            return Err(std::io::Error::new(
+                                std::io::ErrorKind::InvalidInput,
+                                "tcp_server requires port",
+                            ));
+                        }
+                    }
+
+                    let current = self.interfaces.lock().expect("interfaces mutex poisoned").clone();
+                    if !Self::is_reload_hot_apply_compatible(&current, &parsed.interfaces) {
+                        let mut affected = parsed
+                            .interfaces
+                            .iter()
+                            .enumerate()
+                            .filter_map(|(index, iface)| {
+                                (!Self::is_legacy_hot_apply_kind(iface.kind.as_str()))
+                                    .then(|| Self::interface_identifier(iface, index))
+                            })
+                            .collect::<Vec<_>>();
+                        if affected.is_empty() {
+                            affected = parsed
+                                .interfaces
+                                .iter()
+                                .enumerate()
+                                .map(|(index, iface)| Self::interface_identifier(iface, index))
+                                .collect::<Vec<_>>();
+                        }
+                        if affected.is_empty() {
+                            affected = current
+                                .iter()
+                                .enumerate()
+                                .map(|(index, iface)| Self::interface_identifier(iface, index))
+                                .collect::<Vec<_>>();
+                        }
+                        if affected.is_empty() {
+                            affected.push("interfaces".to_string());
+                        }
+                        return Ok(Self::restart_required_response(
+                            request.id,
+                            "reload_config",
+                            affected,
+                        ));
+                    }
+
+                    {
+                        let mut guard = self.interfaces.lock().expect("interfaces mutex poisoned");
+                        *guard = parsed.interfaces.clone();
+                    }
+                    let update_event = RpcEvent {
+                        event_type: "interfaces_updated".into(),
+                        payload: json!({ "interfaces": parsed.interfaces }),
+                    };
+                    self.publish_event(update_event);
+                }
                 let timestamp = now_i64();
                 let event = RpcEvent {
                     event_type: "config_reloaded".into(),
@@ -130,7 +228,11 @@ impl RpcDaemon {
                 self.publish_event(event);
                 Ok(RpcResponse {
                     id: request.id,
-                    result: Some(json!({ "reloaded": true, "timestamp": timestamp })),
+                    result: Some(json!({
+                        "reloaded": true,
+                        "timestamp": timestamp,
+                        "hot_applied_legacy_tcp_only": request.params.is_some(),
+                    })),
                     error: None,
                 })
             }
@@ -314,4 +416,63 @@ impl RpcDaemon {
         }
     }
 
+    fn restart_required_response(
+        id: u64,
+        operation: &str,
+        affected_interfaces: Vec<String>,
+    ) -> RpcResponse {
+        let mut error = RpcError::new(
+            "CONFIG_RESTART_REQUIRED",
+            "requested interface mutation requires daemon restart",
+        );
+        error.machine_code = Some("UNSUPPORTED_MUTATION_KIND_REQUIRES_RESTART".to_string());
+        error.category = Some("Config".to_string());
+        error.retryable = Some(false);
+        error.is_user_actionable = Some(true);
+
+        let mut details = serde_json::Map::new();
+        details.insert(
+            "operation".to_string(),
+            JsonValue::String(operation.to_string()),
+        );
+        details.insert(
+            "affected_interfaces".to_string(),
+            JsonValue::Array(
+                affected_interfaces
+                    .iter()
+                    .map(|item| JsonValue::String(item.clone()))
+                    .collect::<Vec<_>>(),
+            ),
+        );
+        details.insert(
+            "legacy_hot_apply_supported_kinds".to_string(),
+            json!(["tcp_client", "tcp_server"]),
+        );
+        error.details = Some(Box::new(details));
+
+        RpcResponse { id, result: None, error: Some(error) }
+    }
+
+    fn is_legacy_hot_apply_kind(kind: &str) -> bool {
+        matches!(kind, "tcp_client" | "tcp_server")
+    }
+
+    fn interface_identifier(iface: &InterfaceRecord, index: usize) -> String {
+        iface
+            .name
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+            .unwrap_or_else(|| format!("{}[{index}]", iface.kind))
+    }
+
+    fn is_reload_hot_apply_compatible(current: &[InterfaceRecord], next: &[InterfaceRecord]) -> bool {
+        if current.len() != next.len() {
+            return false;
+        }
+        current.iter().zip(next.iter()).all(|(before, after)| {
+            before.kind == after.kind && Self::is_legacy_hot_apply_kind(before.kind.as_str())
+        })
+    }
 }

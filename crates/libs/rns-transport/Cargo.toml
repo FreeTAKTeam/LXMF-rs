@@ -27,6 +27,7 @@ log.workspace = true
 hex.workspace = true
 tokio = { workspace = true, features = ["full"] }
 tokio-util = { workspace = true }
+tokio-serial = { workspace = true }
 x25519-dalek = { workspace = true, features = ["static_secrets"] }
 rns-core.workspace = true
 

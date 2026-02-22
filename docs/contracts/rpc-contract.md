@@ -68,6 +68,34 @@ All methods below are required for full CLI feature coverage.
 : Params keys: `interfaces`
 - `reload_config` (no params)
 
+`list_interfaces` response notes:
+
+- `interfaces[*].settings` may include a runtime metadata envelope at `_runtime` with fields:
+  `startup_status`, optional `startup_error`, and optional `iface` (runtime interface id).
+- Known `startup_status` values include: `disabled`, `inactive_transport_disabled`, `failed`,
+  `spawned`, and `active`.
+- This metadata is additive and intended for startup/degraded-mode observability.
+
+Startup policy notes:
+
+- `reticulumd --strict-interface-startup` makes startup/preflight interface failures fatal.
+- Strict preflight currently includes `tcp_client` connect checks (2s timeout) and serial port open checks.
+
+### Interface mutation policy (`set_interfaces` and `reload_config`)
+
+The following contract is mandatory in v1:
+
+1. `set_interfaces` accepts only legacy hot-apply kinds (`tcp_client`, `tcp_server`).
+2. If any startup-only kind is present (`serial`, `ble_gatt`, `lora`, or unknown future kinds),
+   the request is rejected atomically with:
+   - `error.code = "CONFIG_RESTART_REQUIRED"`
+   - `error.machine_code = "UNSUPPORTED_MUTATION_KIND_REQUIRES_RESTART"`
+   - details include operation and affected interface identifiers.
+3. No partial apply is allowed when rejection occurs.
+4. `reload_config` without params preserves legacy behavior and emits `config_reloaded`.
+5. `reload_config` with `interfaces` params hot-applies only when interface list length/order/kinds
+   remain legacy TCP-only; otherwise it returns the same restart-required error contract.
+
 ### Propagation
 - `propagation_status` (no params)
 - `propagation_enable`

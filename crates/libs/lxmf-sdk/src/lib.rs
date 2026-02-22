@@ -19,6 +19,14 @@ pub use api::{
     LxmfSdkRemoteCommands, LxmfSdkTelemetry, LxmfSdkTopics, LxmfSdkVoiceSignaling,
 };
 // Stability class: internal (backend composition surface)
+pub use backend::mobile_ble::{
+    validate_capabilities as validate_mobile_ble_capabilities,
+    validate_event_payload_bounds as validate_mobile_ble_event_payload_bounds,
+    validate_event_sequence as validate_mobile_ble_event_sequence, MobileBleCapabilities,
+    MobileBleConnectRequest, MobileBleEvent, MobileBleEventKind, MobileBleHostAdapter,
+    MobileBleReadRequest, MobileBleReadResult, MobileBleSessionDescriptor, MobileBleWriteAck,
+    MobileBleWriteRequest,
+};
 #[cfg(all(feature = "rpc-backend", feature = "std"))]
 pub use backend::rpc::RpcBackendClient;
 pub use backend::{

@@ -315,6 +315,8 @@ pub trait SdkBackendAsyncEvents: SdkBackend {
 #[cfg(not(feature = "sdk-async"))]
 pub trait SdkBackendAsyncEvents: SdkBackend {}
 
+pub mod mobile_ble;
+
 #[cfg(all(feature = "rpc-backend", feature = "std"))]
 pub mod rpc;
 

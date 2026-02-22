@@ -12,4 +12,5 @@ mod tests {
     include!("tests/runtime_state.rs");
     include!("tests/store_forward_policy.rs");
     include!("tests/event_sink_bridges.rs");
+    include!("tests/interface_mutation_policy.rs");
 }
