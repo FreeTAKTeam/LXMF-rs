@@ -1682,11 +1682,37 @@ fn run_go_compile_check(output_dir: &Path) -> Result<String> {
         return Ok(format!("{COMPILER_CHECK_SKIP_PREFIX} missing generated go output"));
     }
 
+    let temp_dir = TempDir::new(output_dir)?;
+    let sandbox = temp_dir.path.join("go-compile-check");
+    fs::create_dir_all(&sandbox).with_context(|| format!("create {}", sandbox.display()))?;
+    copy_dir_recursively(output_dir, &sandbox)?;
+    let go_mod = sandbox.join("go.mod");
+
+    if !go_mod.exists() {
+        let status = Command::new("go")
+            .current_dir(&sandbox)
+            .args(["mod", "init", "example.com/lxmfclient"])
+            .status()
+            .with_context(|| format!("spawn go mod init in {}", sandbox.display()))?;
+        if !status.success() {
+            return Ok(format!("FAIL: go mod init failed for {}", output_dir.display()));
+        }
+    }
+
     let status = Command::new("go")
-        .current_dir(output_dir)
+        .current_dir(&sandbox)
+        .args(["mod", "tidy"])
+        .status()
+        .with_context(|| format!("spawn go mod tidy in {}", sandbox.display()))?;
+    if !status.success() {
+        return Ok(format!("FAIL: go mod tidy failed for {}", output_dir.display()));
+    }
+
+    let status = Command::new("go")
+        .current_dir(&sandbox)
         .args(["test", "./..."])
         .status()
-        .with_context(|| format!("spawn go test in {}", output_dir.display()))?;
+        .with_context(|| format!("spawn go test in {}", sandbox.display()))?;
     if !status.success() {
         return Ok(format!("FAIL: go test failed for {}", output_dir.display()));
     }
@@ -1726,6 +1752,7 @@ fn run_python_compile_check(output_dir: &Path) -> Result<String> {
 
     let status = Command::new(python)
         .current_dir(output_dir)
+        .env("PYTHONDONTWRITEBYTECODE", "1")
         .args(args)
         .status()
         .with_context(|| format!("spawn {python}"))?;
@@ -2085,6 +2112,9 @@ fn collect_file_hashes(dir: &Path) -> Result<BTreeMap<String, String>> {
                 .replace('\\', "/");
 
             if entry_path.is_dir() {
+                if rel.ends_with("/__pycache__") || rel == "__pycache__" {
+                    continue;
+                }
                 stack.push(entry_path);
                 continue;
             }
