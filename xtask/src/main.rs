@@ -55,12 +55,8 @@ const SUPPLY_CHAIN_SIGNATURE_PATH: &str =
     "target/supply-chain/provenance/artifact-provenance.sha256";
 const REPRODUCIBLE_BUILD_REPORT_PATH: &str =
     "target/supply-chain/reproducible/reproducible-build-report.txt";
-const CARGO_AUDIT_IGNORE_ADVISORIES: &[&str] = &[
-    "RUSTSEC-2024-0421",
-    "RUSTSEC-2024-0436",
-    "RUSTSEC-2026-0009",
-    "RUSTSEC-2025-0134",
-];
+const CARGO_AUDIT_IGNORE_ADVISORIES: &[&str] =
+    &["RUSTSEC-2024-0421", "RUSTSEC-2024-0436", "RUSTSEC-2026-0009", "RUSTSEC-2025-0134"];
 const SCHEMA_CLIENT_SMOKE_REPORT_PATH: &str = "target/interop/schema-client-smoke-report.txt";
 const CERTIFICATION_REPORT_PATH: &str = "target/release-readiness/certification-report.md";
 const CERTIFICATION_REPORT_JSON_PATH: &str = "target/release-readiness/certification-report.json";

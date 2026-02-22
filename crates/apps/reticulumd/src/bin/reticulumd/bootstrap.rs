@@ -36,22 +36,18 @@ pub(super) struct BootstrapContext {
 
 pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     let rpc_addr: SocketAddr = args.rpc.parse().expect("invalid rpc address");
-    let rpc_tls = match (
-        args.rpc_tls_cert.clone(),
-        args.rpc_tls_key.clone(),
-        args.rpc_tls_client_ca.clone(),
-    ) {
-        (None, None, None) => None,
-        (Some(cert_chain_path), Some(private_key_path), client_ca_path) => Some(RpcTlsConfig {
-            cert_chain_path,
-            private_key_path,
-            client_ca_path,
-        }),
-        (None, None, Some(_)) => {
-            panic!("--rpc-tls-client-ca requires --rpc-tls-cert and --rpc-tls-key")
-        }
-        _ => panic!("--rpc-tls-cert and --rpc-tls-key must be provided together"),
-    };
+    let rpc_tls =
+        match (args.rpc_tls_cert.clone(), args.rpc_tls_key.clone(), args.rpc_tls_client_ca.clone())
+        {
+            (None, None, None) => None,
+            (Some(cert_chain_path), Some(private_key_path), client_ca_path) => {
+                Some(RpcTlsConfig { cert_chain_path, private_key_path, client_ca_path })
+            }
+            (None, None, Some(_)) => {
+                panic!("--rpc-tls-client-ca requires --rpc-tls-cert and --rpc-tls-key")
+            }
+            _ => panic!("--rpc-tls-cert and --rpc-tls-key must be provided together"),
+        };
     let store = MessagesStore::open(&args.db).expect("open sqlite");
 
     let identity_path = args.identity.clone().unwrap_or_else(|| {
