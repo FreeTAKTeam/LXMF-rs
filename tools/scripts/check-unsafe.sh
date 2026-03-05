@@ -117,17 +117,17 @@ while IFS=: read -r file line _; do
     fail "${key} has unsafe usage but no matching inventory entry in ${INVENTORY_PATH}"
   fi
 done < <(
-  if [[ "${PATTERN_MATCHER}" == "rg" ]]; then
+      if [[ "${PATTERN_MATCHER}" == "rg" ]]; then
     rg -n \
       --no-heading \
       --color never \
       --glob '*.rs' \
-      '(\\bunsafe\\s*\\{|\\bunsafe\\s+fn\\b|\\bunsafe\\s+impl\\b|\\bunsafe\\s+trait\\b|\\bunsafe\\s+extern\\b)' \
+      '(\bunsafe\s*\{|\bunsafe\s+fn\b|\bunsafe\s+impl\b|\bunsafe\s+trait\b|\bunsafe\s+extern\b)' \
       crates xtask/src 2>/dev/null || true
   else
     grep -RInP \
       --include='*.rs' \
-      '(\\bunsafe\\s*\\{|\\bunsafe\\s+fn\\b|\\bunsafe\\s+impl\\b|\\bunsafe\\s+trait\\b|\\bunsafe\\s+extern\\b)' \
+      '(\bunsafe\s*\{|\bunsafe\s+fn\b|\bunsafe\s+impl\b|\bunsafe\s+trait\b|\bunsafe\s+extern\b)' \
       crates xtask/src 2>/dev/null || true
   fi
 )

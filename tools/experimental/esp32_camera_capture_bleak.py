@@ -4,6 +4,7 @@ import asyncio
 import os
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from typing import Optional
 
@@ -28,7 +29,8 @@ CURRENT_LOG_LEVEL = LOG_LEVELS["info"]
 def log(level: str, msg: str) -> None:
     if LOG_LEVELS[level] < CURRENT_LOG_LEVEL:
         return
-    print(f"[bleak-{level}] {msg}", file=sys.stderr)
+    ts = time.strftime("%H:%M:%S")
+    print(f"[bleak-{level} {ts}] {msg}", file=sys.stderr)
 
 
 @dataclass
@@ -102,44 +104,72 @@ async def capture_over_ble(
     rounds: int,
     max_probes: int,
 ) -> CaptureResult:
+    capture_started = time.monotonic()
     rounds = max(1, rounds)
     max_probes = max(1, max_probes)
     for round_idx in range(1, rounds + 1):
+        round_started = time.monotonic()
         log("info", f"scan round {round_idx}/{rounds}")
         ranked = await find_devices(
             device_id, name_hint, service_uuid, scan_secs, permissive_scan
         )
+        log("info", f"scan round {round_idx} candidate_count={len(ranked)}")
         max_probe = min(len(ranked), max_probes)
         for idx, (score, _neg_rssi, device, _adv) in enumerate(ranked[:max_probe], start=1):
             dev_name = getattr(device, "name", "") or "<none>"
             dev_id = getattr(device, "address", "") or "<unknown>"
             log("info", f"probe {idx}/{max_probe} (round {round_idx}) id={dev_id} name={dev_name} score={score}")
             q: asyncio.Queue[bytes] = asyncio.Queue()
+            probe_started = time.monotonic()
             try:
                 async with BleakClient(device, timeout=6.0) as client:
+                    connect_elapsed_ms = int((time.monotonic() - probe_started) * 1000)
+                    log("info", f"connected id={dev_id} name={dev_name} connect_ms={connect_elapsed_ms}")
                     services = getattr(client, "services", None)
                     if services is None:
                         get_services = getattr(client, "get_services", None)
                         if callable(get_services):
+                            service_started = time.monotonic()
                             services = await get_services()
+                            service_elapsed_ms = int((time.monotonic() - service_started) * 1000)
+                            log("debug", f"loaded services via get_services service_load_ms={service_elapsed_ms}")
                         else:
                             raise RuntimeError("bleak client has no services accessor")
+                    service_count = len(list(services)) if services is not None else 0
+                    char_count = sum(len(service.characteristics) for service in services)
+                    log("debug", f"service graph id={dev_id} services={service_count} characteristics={char_count}")
                     notify_char = services.get_characteristic(notify_uuid)
                     write_char = services.get_characteristic(write_uuid)
                     if notify_char is None or write_char is None:
                         log("debug", "missing target characteristics, skipping")
                         continue
-                    log("info", f"matched GATT profile on id={dev_id} name={dev_name}")
+                    notify_props = ",".join(sorted(notify_char.properties))
+                    write_props = ",".join(sorted(write_char.properties))
+                    log(
+                        "info",
+                        f"matched GATT profile on id={dev_id} name={dev_name} "
+                        f"notify_handle={notify_char.handle} notify_props={notify_props} "
+                        f"write_handle={write_char.handle} write_props={write_props}",
+                    )
                     log("debug", "starting notify")
+                    notify_started = time.monotonic()
                     await client.start_notify(notify_uuid, lambda _h, data: q.put_nowait(bytes(data)))
+                    log("debug", f"notify subscription ready subscribe_ms={int((time.monotonic() - notify_started) * 1000)}")
                     log("debug", "sending capture request")
+                    request_started = time.monotonic()
                     await client.write_gatt_char(write_uuid, bytes([FRAME_CAPTURE_REQ]), response=False)
+                    log("debug", f"capture request sent request_ms={int((time.monotonic() - request_started) * 1000)}")
 
                     deadline = asyncio.get_running_loop().time() + timeout_secs
                     expected_seq = 0
                     transfer_id = None
                     chunks = bytearray()
                     frame_count = 0
+                    ack_count = 0
+                    duplicate_ack_count = 0
+                    nack_count = 0
+                    last_chunk_log_at = 0
+                    capture_wire_started = time.monotonic()
 
                     while True:
                         now = asyncio.get_running_loop().time()
@@ -154,11 +184,13 @@ async def capture_over_ble(
                             log("debug", f"frame#{frame_count} type=0x{t:02x} len={len(frame)}")
 
                         if t == FRAME_CAPTURE_ACK:
+                            log("debug", f"capture acknowledged after_ms={int((time.monotonic() - capture_wire_started) * 1000)}")
                             continue
                         if t == FRAME_ERROR:
                             msg = frame[1:].decode("utf-8", errors="replace")
                             raise RuntimeError(f"camera error: {msg}")
                         if t == FRAME_DONE:
+                            log("debug", f"received done frame after_ms={int((time.monotonic() - capture_wire_started) * 1000)}")
                             break
                         if t != FRAME_CHUNK:
                             continue
@@ -180,26 +212,51 @@ async def capture_over_ble(
                         if seq == expected_seq:
                             chunks.extend(payload)
                             ack = bytes([FRAME_CHUNK_ACK]) + fid.to_bytes(4, "little") + seq.to_bytes(2, "little")
+                            ack_started = time.monotonic()
                             await client.write_gatt_char(write_uuid, ack, response=False)
+                            ack_elapsed_ms = int((time.monotonic() - ack_started) * 1000)
+                            ack_count += 1
                             expected_seq += 1
-                            if expected_seq <= 8 or expected_seq % 20 == 0:
-                                log("info", f"accepted chunk seq={seq} total_bytes={len(chunks)}")
+                            chunk_delta = len(chunks) - last_chunk_log_at
+                            if expected_seq <= 8 or expected_seq % 20 == 0 or chunk_delta >= 2048:
+                                elapsed = max(time.monotonic() - capture_wire_started, 0.001)
+                                rate = len(chunks) / elapsed
+                                log(
+                                    "info",
+                                    f"accepted chunk seq={seq} payload_bytes={payload_len} total_bytes={len(chunks)} "
+                                    f"ack_ms={ack_elapsed_ms} rate_Bps={int(rate)}",
+                                )
+                                last_chunk_log_at = len(chunks)
                         elif seq < expected_seq:
                             ack = bytes([FRAME_CHUNK_ACK]) + fid.to_bytes(4, "little") + seq.to_bytes(2, "little")
                             await client.write_gatt_char(write_uuid, ack, response=False)
+                            duplicate_ack_count += 1
+                            if duplicate_ack_count <= 5 or duplicate_ack_count % 20 == 0:
+                                log("warn", f"duplicate chunk seq={seq} expected_seq={expected_seq} duplicate_acks={duplicate_ack_count}")
                         else:
                             nack = bytes([FRAME_NACK]) + fid.to_bytes(4, "little") + expected_seq.to_bytes(2, "little")
                             await client.write_gatt_char(write_uuid, nack, response=False)
+                            nack_count += 1
                             log("warn", f"sequence gap expected={expected_seq} got={seq}, sent NACK")
 
                     await client.stop_notify(notify_uuid)
-                    log("info", f"capture complete frames={frame_count} bytes={len(chunks)}")
+                    elapsed = max(time.monotonic() - capture_wire_started, 0.001)
+                    total_elapsed = max(time.monotonic() - capture_started, 0.001)
+                    log(
+                        "info",
+                        f"capture complete frames={frame_count} bytes={len(chunks)} "
+                        f"acks={ack_count} dup_acks={duplicate_ack_count} nacks={nack_count} "
+                        f"wire_ms={int(elapsed * 1000)} total_ms={int(total_elapsed * 1000)} rate_Bps={int(len(chunks) / elapsed)}",
+                    )
                     if not chunks:
                         raise RuntimeError("camera capture returned empty payload")
                     return CaptureResult(bytes(chunks), dev_id, dev_name)
             except Exception as exc:
-                log("warn", f"probe failed id={dev_id} name={dev_name}: {exc}")
+                probe_elapsed_ms = int((time.monotonic() - probe_started) * 1000)
+                log("warn", f"probe failed id={dev_id} name={dev_name} elapsed_ms={probe_elapsed_ms}: {exc}")
                 continue
+        round_elapsed_ms = int((time.monotonic() - round_started) * 1000)
+        log("warn", f"scan round {round_idx} exhausted probes={max_probe} round_ms={round_elapsed_ms}")
 
     raise RuntimeError("failed to find/connect camera with requested characteristics")
 
@@ -217,7 +274,11 @@ def run_upload(rnx_path: str, rpc: str, file_path: str, content_type: str, chunk
         "--chunk-size",
         str(chunk_size),
     ]
+    log("info", f"upload start rpc={rpc} file={file_path} chunk_size={chunk_size} content_type={content_type}")
+    log("debug", f"upload command={' '.join(cmd)}")
+    upload_started = time.monotonic()
     subprocess.run(cmd, check=True)
+    log("info", f"upload complete upload_ms={int((time.monotonic() - upload_started) * 1000)}")
 
 
 def main() -> int:
@@ -261,8 +322,12 @@ def main() -> int:
     )
 
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
+    write_started = time.monotonic()
     with open(args.out, "wb") as f:
         f.write(result.bytes_data)
+    write_ms = int((time.monotonic() - write_started) * 1000)
+    file_size = os.path.getsize(args.out)
+    log("info", f"wrote capture file path={args.out} bytes={file_size} write_ms={write_ms}")
 
     print(f"BLE_CAPTURE ok: bytes={len(result.bytes_data)} device_id={result.device_id} device_name={result.device_name} out={args.out}")
 

@@ -8,7 +8,7 @@ repository.workspace = true
 
 [dependencies]
 serde = { workspace = true, features = ["derive"], optional = true }
-sha2.workspace = true
+sha2 = { version = "0.10", default-features = false }
 
 [dev-dependencies]
 hex.workspace = true

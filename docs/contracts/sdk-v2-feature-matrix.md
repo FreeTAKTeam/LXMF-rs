@@ -83,6 +83,8 @@ This table is the source of truth for constrained-device portability planning.
 | --- | --- | --- | --- | --- |
 | `lxmf-core` | `wire_fields` JSON bridge only (`std`-gated module) | message encode/decode primitives and msgpack payload model | `alloc-ready` | keep JSON conversion in `std` module and preserve alloc-only protocol core |
 | `rns-core` | host entropy sources for random key generation (`rand_core/getrandom`) | packet/hash/destination/ratchet primitives | `alloc-ready` | follow-up hardening: injectable entropy adapter for `no_std` targets without OS RNG |
+| `rns-embedded-ffi` | host-only C ABI boundary with documented unsafe sites | firmware-facing create/tick/ble-wire/message queue entrypoints | `std-first` | keep unsafe isolated to FFI crate and migrate ESP call sites onto native Rust when toolchain is ready |
+| `rns-embedded-runtime` | no host-only requirement in current scaffold | announce scheduler, outbound queueing, replay-aware inbound dispatch | `alloc-ready` | keep transport and store behind traits so ESP bindings stay out of the core runtime |
 
 Status legend:
 - `std-first`: currently std-coupled with documented `alloc` migration plan.

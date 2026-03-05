@@ -1,0 +1,429 @@
+#![cfg_attr(not(feature = "std"), no_std)]
+
+extern crate alloc;
+
+pub mod ble;
+
+#[cfg(feature = "std")]
+pub mod tcp;
+
+use alloc::{collections::VecDeque, vec::Vec};
+use rns_embedded_core::{
+    EmbeddedError, EmbeddedResult,
+    lxmf_min::{MinimalEnvelope, encode_envelope},
+    packet::PacketFrame,
+    replay::ReplayWindow,
+    store::EmbeddedStore,
+    transport::{EmbeddedTransport, LinkState},
+};
+
+pub const FRAME_KIND_ANNOUNCE: u8 = 0x11;
+pub const FRAME_KIND_LXMF_MESSAGE: u8 = 0x31;
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub struct RuntimeConfig {
+    pub store_identity: [u8; 32],
+    pub lxmf_address: [u8; 16],
+    pub announce_interval_ms: u64,
+    pub max_outbound_queue: usize,
+    pub max_events: usize,
+}
+
+impl Default for RuntimeConfig {
+    fn default() -> Self {
+        Self {
+            store_identity: [0x11; 32],
+            lxmf_address: [0x22; 16],
+            announce_interval_ms: 30_000,
+            max_outbound_queue: 8,
+            max_events: 32,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub struct RuntimeStats {
+    pub announces_queued: u32,
+    pub outbound_sent: u32,
+    pub outbound_deferred: u32,
+    pub inbound_accepted: u32,
+    pub inbound_rejected: u32,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum RuntimeEvent {
+    Bootstrapped { replay_floor: u64 },
+    AnnounceQueued { sequence: u32 },
+    MessageQueued { sequence: u32, bytes: usize },
+    FrameSent { kind: u8, sequence: u32, bytes: usize },
+    FrameDeferred {
+        kind: u8,
+        sequence: u32,
+        error: EmbeddedError,
+    },
+    FrameReceived { kind: u8, sequence: u32, bytes: usize },
+    FrameRejected {
+        kind: u8,
+        sequence: u32,
+        error: EmbeddedError,
+    },
+}
+
+pub struct EmbeddedNodeRuntime {
+    config: RuntimeConfig,
+    replay_floor: u64,
+    replay_window: ReplayWindow,
+    next_sequence: u32,
+    outbound: VecDeque<PacketFrame>,
+    events: VecDeque<RuntimeEvent>,
+    last_announce_at_ms: Option<u64>,
+    bootstrapped: bool,
+    stats: RuntimeStats,
+}
+
+impl EmbeddedNodeRuntime {
+    pub fn new(config: RuntimeConfig) -> EmbeddedResult<Self> {
+        if config.store_identity == [0; 32] || config.lxmf_address == [0; 16] {
+            return Err(EmbeddedError::InvalidInput);
+        }
+        if config.max_outbound_queue == 0 || config.max_events == 0 {
+            return Err(EmbeddedError::InvalidArgument);
+        }
+        Ok(Self {
+            config,
+            replay_floor: 0,
+            replay_window: ReplayWindow::new(),
+            next_sequence: 1,
+            outbound: VecDeque::new(),
+            events: VecDeque::new(),
+            last_announce_at_ms: None,
+            bootstrapped: false,
+            stats: RuntimeStats {
+                announces_queued: 0,
+                outbound_sent: 0,
+                outbound_deferred: 0,
+                inbound_accepted: 0,
+                inbound_rejected: 0,
+            },
+        })
+    }
+
+    pub fn bootstrap<S: EmbeddedStore>(&mut self, store: &S) -> EmbeddedResult<()> {
+        let replay_floor = store.load_replay_floor(&self.config.store_identity)?;
+        self.replay_floor = replay_floor;
+        self.bootstrapped = true;
+        self.push_event(RuntimeEvent::Bootstrapped { replay_floor });
+        Ok(())
+    }
+
+    pub fn tick<T: EmbeddedTransport, S: EmbeddedStore>(
+        &mut self,
+        now_ms: u64,
+        transport: &mut T,
+        store: &mut S,
+    ) -> EmbeddedResult<()> {
+        if !self.bootstrapped {
+            self.bootstrap(store)?;
+        }
+
+        if transport.link_state() == LinkState::Up
+            && self.announce_due(now_ms)
+            && !self.has_queued_kind(FRAME_KIND_ANNOUNCE)
+        {
+            let sequence = self.queue_announce()?;
+            self.last_announce_at_ms = Some(now_ms);
+            self.stats.announces_queued = self.stats.announces_queued.saturating_add(1);
+            self.push_event(RuntimeEvent::AnnounceQueued { sequence });
+        }
+
+        self.poll_inbound(transport, store)?;
+        self.flush_outbound(transport)?;
+        Ok(())
+    }
+
+    pub fn queue_message(&mut self, destination: [u8; 16], body: &[u8]) -> EmbeddedResult<u32> {
+        let sequence = self.peek_next_sequence();
+        let envelope = MinimalEnvelope {
+            source: self.config.lxmf_address,
+            destination,
+            sequence: u64::from(sequence),
+            body: body.to_vec(),
+        };
+        let payload = encode_envelope(&envelope)?;
+        let frame = PacketFrame::new(FRAME_KIND_LXMF_MESSAGE, sequence, payload)?;
+        self.enqueue_frame(frame)?;
+        self.push_event(RuntimeEvent::MessageQueued {
+            sequence,
+            bytes: body.len(),
+        });
+        Ok(sequence)
+    }
+
+    pub fn pending_outbound_len(&self) -> usize {
+        self.outbound.len()
+    }
+
+    pub fn stats(&self) -> RuntimeStats {
+        self.stats
+    }
+
+    pub fn drain_events(&mut self) -> Vec<RuntimeEvent> {
+        self.events.drain(..).collect()
+    }
+
+    fn poll_inbound<T: EmbeddedTransport, S: EmbeddedStore>(
+        &mut self,
+        transport: &mut T,
+        store: &mut S,
+    ) -> EmbeddedResult<()> {
+        for _ in 0..8 {
+            let Some(frame) = transport.poll_frame()? else {
+                break;
+            };
+            let sequence = u64::from(frame.sequence);
+            if sequence <= self.replay_floor || !self.replay_window.accept(sequence) {
+                self.stats.inbound_rejected = self.stats.inbound_rejected.saturating_add(1);
+                self.push_event(RuntimeEvent::FrameRejected {
+                    kind: frame.kind,
+                    sequence: frame.sequence,
+                    error: EmbeddedError::ReplayRejected,
+                });
+                continue;
+            }
+
+            self.replay_floor = sequence;
+            store.save_replay_floor(&self.config.store_identity, self.replay_floor)?;
+            self.stats.inbound_accepted = self.stats.inbound_accepted.saturating_add(1);
+            self.push_event(RuntimeEvent::FrameReceived {
+                kind: frame.kind,
+                sequence: frame.sequence,
+                bytes: frame.payload.len(),
+            });
+        }
+        Ok(())
+    }
+
+    fn flush_outbound<T: EmbeddedTransport>(&mut self, transport: &mut T) -> EmbeddedResult<()> {
+        if transport.link_state() != LinkState::Up {
+            return Ok(());
+        }
+
+        loop {
+            let Some(frame) = self.outbound.front().cloned() else {
+                break;
+            };
+            match transport.send_frame(&frame) {
+                Ok(()) => {
+                    self.outbound.pop_front();
+                    self.stats.outbound_sent = self.stats.outbound_sent.saturating_add(1);
+                    self.push_event(RuntimeEvent::FrameSent {
+                        kind: frame.kind,
+                        sequence: frame.sequence,
+                        bytes: frame.payload.len(),
+                    });
+                }
+                Err(error @ (EmbeddedError::Backpressure | EmbeddedError::Disconnected)) => {
+                    self.stats.outbound_deferred = self.stats.outbound_deferred.saturating_add(1);
+                    self.push_event(RuntimeEvent::FrameDeferred {
+                        kind: frame.kind,
+                        sequence: frame.sequence,
+                        error,
+                    });
+                    break;
+                }
+                Err(error) => {
+                    self.outbound.pop_front();
+                    self.stats.outbound_deferred = self.stats.outbound_deferred.saturating_add(1);
+                    self.push_event(RuntimeEvent::FrameDeferred {
+                        kind: frame.kind,
+                        sequence: frame.sequence,
+                        error,
+                    });
+                    return Err(error);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn queue_announce(&mut self) -> EmbeddedResult<u32> {
+        let sequence = self.peek_next_sequence();
+        let frame = PacketFrame::new(
+            FRAME_KIND_ANNOUNCE,
+            sequence,
+            self.config.store_identity.to_vec(),
+        )?;
+        self.enqueue_frame(frame)?;
+        Ok(sequence)
+    }
+
+    fn enqueue_frame(&mut self, frame: PacketFrame) -> EmbeddedResult<()> {
+        if self.outbound.len() >= self.config.max_outbound_queue {
+            return Err(EmbeddedError::Backpressure);
+        }
+        self.outbound.push_back(frame);
+        self.next_sequence = self.next_sequence.saturating_add(1);
+        Ok(())
+    }
+
+    fn has_queued_kind(&self, kind: u8) -> bool {
+        self.outbound.iter().any(|frame| frame.kind == kind)
+    }
+
+    fn announce_due(&self, now_ms: u64) -> bool {
+        match self.last_announce_at_ms {
+            None => true,
+            Some(last) => now_ms.saturating_sub(last) >= self.config.announce_interval_ms,
+        }
+    }
+
+    fn peek_next_sequence(&self) -> u32 {
+        self.next_sequence
+    }
+
+    fn push_event(&mut self, event: RuntimeEvent) {
+        if self.events.len() >= self.config.max_events {
+            self.events.pop_front();
+        }
+        self.events.push_back(event);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        EmbeddedNodeRuntime, FRAME_KIND_ANNOUNCE, FRAME_KIND_LXMF_MESSAGE, RuntimeConfig,
+        RuntimeEvent,
+    };
+    use rns_embedded_core::{
+        EmbeddedError,
+        lxmf_min::decode_envelope,
+        packet::PacketFrame,
+        store::{EmbeddedStore, JournaledEmbeddedStore},
+        transport::{FaultInjectingMockTransport, FaultMode, TransportCaps},
+    };
+
+    fn config() -> RuntimeConfig {
+        RuntimeConfig {
+            store_identity: [0xAB; 32],
+            lxmf_address: [0xCD; 16],
+            announce_interval_ms: 1_000,
+            max_outbound_queue: 8,
+            max_events: 16,
+        }
+    }
+
+    fn transport() -> FaultInjectingMockTransport {
+        FaultInjectingMockTransport::new(TransportCaps {
+            mtu_hint: 1024,
+            ordered_delivery: true,
+        })
+    }
+
+    #[test]
+    fn tick_bootstraps_and_sends_initial_announce() {
+        let mut runtime = EmbeddedNodeRuntime::new(config()).expect("runtime");
+        let mut store = JournaledEmbeddedStore::new();
+        let mut tx = transport();
+
+        runtime.tick(0, &mut tx, &mut store).expect("tick");
+
+        let outbound = tx.drain_outbound();
+        assert_eq!(outbound.len(), 1);
+        assert_eq!(outbound[0].kind, FRAME_KIND_ANNOUNCE);
+        assert_eq!(outbound[0].payload, vec![0xAB; 32]);
+
+        let events = runtime.drain_events();
+        assert!(events.contains(&RuntimeEvent::Bootstrapped { replay_floor: 0 }));
+        assert!(events.contains(&RuntimeEvent::AnnounceQueued { sequence: 1 }));
+        assert!(events.contains(&RuntimeEvent::FrameSent {
+            kind: FRAME_KIND_ANNOUNCE,
+            sequence: 1,
+            bytes: 32,
+        }));
+    }
+
+    #[test]
+    fn queued_message_encodes_minimal_lxmf_envelope() {
+        let mut runtime = EmbeddedNodeRuntime::new(config()).expect("runtime");
+        let seq = runtime
+            .queue_message([0xEF; 16], b"hello from esp")
+            .expect("queue message");
+        assert_eq!(seq, 1);
+
+        let mut store = JournaledEmbeddedStore::new();
+        let mut tx = transport();
+        runtime.tick(0, &mut tx, &mut store).expect("tick");
+
+        let outbound = tx.drain_outbound();
+        assert_eq!(outbound.len(), 2);
+        assert_eq!(outbound[0].kind, FRAME_KIND_LXMF_MESSAGE);
+        assert_eq!(outbound[1].kind, FRAME_KIND_ANNOUNCE);
+
+        let envelope = decode_envelope(&outbound[0].payload).expect("decode envelope");
+        assert_eq!(envelope.source, [0xCD; 16]);
+        assert_eq!(envelope.destination, [0xEF; 16]);
+        assert_eq!(envelope.sequence, 1);
+        assert_eq!(envelope.body, b"hello from esp".to_vec());
+    }
+
+    #[test]
+    fn inbound_replay_rejection_updates_store_once() {
+        let mut runtime = EmbeddedNodeRuntime::new(config()).expect("runtime");
+        let mut store = JournaledEmbeddedStore::new();
+        let mut tx = transport();
+
+        let inbound = PacketFrame::new(0x44, 7, b"status".to_vec()).expect("frame");
+        tx.enqueue_inbound([inbound.clone()]);
+        runtime.tick(0, &mut tx, &mut store).expect("tick");
+        assert_eq!(
+            store
+                .load_replay_floor(&config().store_identity)
+                .expect("load replay"),
+            7
+        );
+
+        tx.enqueue_inbound([inbound]);
+        runtime.tick(1, &mut tx, &mut store).expect("tick duplicate");
+
+        let events = runtime.drain_events();
+        assert!(events.iter().any(|event| matches!(
+            event,
+            RuntimeEvent::FrameReceived {
+                kind: 0x44,
+                sequence: 7,
+                bytes: 6,
+            }
+        )));
+        assert!(events.iter().any(|event| matches!(
+            event,
+            RuntimeEvent::FrameRejected {
+                kind: 0x44,
+                sequence: 7,
+                error: EmbeddedError::ReplayRejected,
+            }
+        )));
+    }
+
+    #[test]
+    fn backpressure_keeps_message_queued_for_later_tick() {
+        let mut runtime = EmbeddedNodeRuntime::new(config()).expect("runtime");
+        runtime
+            .queue_message([0xEF; 16], b"retry me")
+            .expect("queue message");
+
+        let mut store = JournaledEmbeddedStore::new();
+        let mut tx = transport().with_faults(vec![FaultMode::BackpressureEvery(1)]);
+
+        runtime.tick(0, &mut tx, &mut store).expect("tick");
+        assert_eq!(runtime.pending_outbound_len(), 2);
+
+        let mut healthy_tx = transport();
+        runtime.tick(1_000, &mut healthy_tx, &mut store).expect("retry tick");
+        assert_eq!(runtime.pending_outbound_len(), 0);
+
+        let stats = runtime.stats();
+        assert_eq!(stats.outbound_deferred, 1);
+        assert_eq!(stats.outbound_sent, 2);
+    }
+}

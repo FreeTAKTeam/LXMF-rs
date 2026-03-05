@@ -23,6 +23,29 @@ RPC_ADDR="${RPC_ADDR:-127.0.0.1:4243}"
 RNS_BIN="${RNS_BIN:-${REPO_ROOT}/target/debug/rnx}"
 CHUNK_SIZE="${CHUNK_SIZE:-8192}"
 CONTENT_TYPE="${CONTENT_TYPE:-image/jpeg}"
+CAPTURE_TRACE="${CAPTURE_TRACE:-1}"
+
+timestamp() {
+  date '+%H:%M:%S'
+}
+
+trace() {
+  if [[ "${CAPTURE_TRACE}" != "1" ]]; then
+    return
+  fi
+  echo "[capture $(timestamp)] $*"
+}
+
+print_cmd() {
+  local rendered=""
+  for arg in "$@"; do
+    if [[ -n "${rendered}" ]]; then
+      rendered+=" "
+    fi
+    rendered+="$(printf '%q' "${arg}")"
+  done
+  echo "${rendered}"
+}
 
 usage() {
   cat <<USAGE
@@ -88,6 +111,8 @@ select_backend() {
 }
 
 ACTIVE_BACKEND="$(select_backend)"
+trace "resolved backend=${ACTIVE_BACKEND} requested_backend=${BACKEND} out=${OUT} upload=${UPLOAD} log_level=${LOG_LEVEL}"
+trace "config name_hint=${NAME_HINT} device_id=${DEVICE_ID:-<none>} service_uuid=${SERVICE_UUID} write_char_uuid=${WRITE_CHAR_UUID} notify_char_uuid=${NOTIFY_CHAR_UUID} scan_secs=${SCAN_SECS} timeout_secs=${TIMEOUT_SECS} rounds=${ROUNDS} max_probes=${MAX_PROBES} permissive_scan=${PERMISSIVE_SCAN}"
 
 if [[ "${ACTIVE_BACKEND}" == "bleak" ]]; then
   PYTHON_BIN="${PYTHON_BIN:-python3}"
@@ -113,14 +138,40 @@ if [[ "${ACTIVE_BACKEND}" == "bleak" ]]; then
     cmd+=(--upload --rnx "${RNS_BIN}" --rpc "${RPC_ADDR}" --chunk-size "${CHUNK_SIZE}" --content-type "${CONTENT_TYPE}")
   fi
 
+  trace "executing bleak backend"
+  trace "command=$(print_cmd "${cmd[@]}")"
+  start_epoch="$(python3 - <<'PY'
+import time
+print(f"{time.time():.6f}")
+PY
+)"
   output="$(${cmd[@]} 2>&1)"
+  end_epoch="$(python3 - <<'PY'
+import time
+print(f"{time.time():.6f}")
+PY
+)"
   echo "${output}"
   if ! grep -q "BLE_CAPTURE ok:" <<<"${output}"; then
+    trace "bleak backend failed"
     echo "CAMERA_CAPTURE_RESULT status=error backend=bleak" >&2
     exit 1
   fi
   bytes="$(sed -n 's/.*BLE_CAPTURE ok: bytes=\([0-9][0-9]*\).*/\1/p' <<<"${output}" | tail -n 1)"
   attachment_id="$(sed -n 's/.*attachment_id=\([^[:space:]]\+\).*/\1/p' <<<"${output}" | tail -n 1)"
+  if [[ -f "${OUT}" ]]; then
+    file_bytes="$(wc -c < "${OUT}" | tr -d '[:space:]')"
+    trace "output file ready path=${OUT} bytes=${file_bytes}"
+  else
+    trace "expected output file missing path=${OUT}"
+  fi
+  duration_ms="$(python3 - <<PY
+start = float("${start_epoch}")
+end = float("${end_epoch}")
+print(int((end - start) * 1000))
+PY
+)"
+  trace "bleak backend completed bytes=${bytes} duration_ms=${duration_ms}"
   if [[ -n "${attachment_id}" ]]; then
     echo "CAMERA_CAPTURE_RESULT status=ok backend=bleak bytes=${bytes} output_file=${OUT} attachment_id=${attachment_id}"
   else
@@ -135,6 +186,13 @@ if [[ "${ACTIVE_BACKEND}" == "rust" ]]; then
     echo "CAMERA_CAPTURE_RESULT status=error backend=rust" >&2
     exit 2
   fi
+  trace "executing rust backend"
+  trace "command=$(print_cmd "${RNS_BIN}" camera-capture-upload --rpc "${RPC_ADDR}" --peripheral-id "${DEVICE_ID}" --service-uuid "${SERVICE_UUID}" --write-char-uuid "${WRITE_CHAR_UUID}" --notify-char-uuid "${NOTIFY_CHAR_UUID}" --content-type "${CONTENT_TYPE}" --chunk-size "${CHUNK_SIZE}" --timeout-secs "${TIMEOUT_SECS}")"
+  start_epoch="$(python3 - <<'PY'
+import time
+print(f"{time.time():.6f}")
+PY
+)"
   output="$(${RNS_BIN} camera-capture-upload \
     --rpc "${RPC_ADDR}" \
     --peripheral-id "${DEVICE_ID}" \
@@ -144,13 +202,26 @@ if [[ "${ACTIVE_BACKEND}" == "rust" ]]; then
     --content-type "${CONTENT_TYPE}" \
     --chunk-size "${CHUNK_SIZE}" \
     --timeout-secs "${TIMEOUT_SECS}" 2>&1)"
+  end_epoch="$(python3 - <<'PY'
+import time
+print(f"{time.time():.6f}")
+PY
+)"
   echo "${output}"
   if ! grep -q "CAMERA_CAPTURE_UPLOAD ok:" <<<"${output}"; then
+    trace "rust backend failed"
     echo "CAMERA_CAPTURE_RESULT status=error backend=rust" >&2
     exit 1
   fi
   bytes="$(sed -n 's/.*bytes=\([0-9][0-9]*\).*/\1/p' <<<"${output}" | tail -n 1)"
   attachment_id="$(sed -n 's/.*attachment_id=\([^[:space:]]\+\).*/\1/p' <<<"${output}" | tail -n 1)"
+  duration_ms="$(python3 - <<PY
+start = float("${start_epoch}")
+end = float("${end_epoch}")
+print(int((end - start) * 1000))
+PY
+)"
+  trace "rust backend completed bytes=${bytes} duration_ms=${duration_ms} attachment_id=${attachment_id}"
   echo "CAMERA_CAPTURE_RESULT status=ok backend=rust bytes=${bytes} output_file=<uploaded> attachment_id=${attachment_id}"
   exit 0
 fi

@@ -1,0 +1,30 @@
+[package]
+name = "rns-embedded-ffi"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["rlib", "staticlib"]
+
+[dependencies]
+critical-section = { version = "1.2", optional = true }
+embedded-alloc = { version = "0.6", default-features = false, features = ["llff"], optional = true }
+rns-embedded-core = { path = "../rns-embedded-core", version = "0.1.0", default-features = false, features = ["alloc"] }
+rns-embedded-runtime = { path = "../rns-embedded-runtime", version = "0.1.0", default-features = false, features = ["alloc"] }
+
+[features]
+default = ["std"]
+std = ["rns-embedded-core/std", "rns-embedded-runtime/std"]
+alloc = ["dep:critical-section", "dep:embedded-alloc", "rns-embedded-core/alloc", "rns-embedded-runtime/alloc"]
+
+[lints.rust]
+unsafe_code = "allow"
+unused_imports = "warn"
+
+[lints.clippy]
+dbg_macro = "deny"
+todo = "deny"
+unwrap_used = "warn"

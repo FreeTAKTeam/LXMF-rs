@@ -1,0 +1,18 @@
+[package]
+name = "rns-embedded-runtime"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+rns-embedded-core = { path = "../rns-embedded-core", version = "0.1.0", default-features = false, features = ["alloc"] }
+
+[features]
+default = ["std"]
+std = ["rns-embedded-core/std"]
+alloc = ["rns-embedded-core/alloc"]
+
+[lints]
+workspace = true

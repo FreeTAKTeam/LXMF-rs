@@ -3140,15 +3140,35 @@ fn run_embedded_core_check() -> Result<()> {
         ],
     )?;
     run("cargo", &["check", "-p", "rns-embedded-core", "--features", "std"])?;
+    run("cargo", &["check", "-p", "rns-embedded-ffi", "--features", "std"])?;
+    run(
+        "cargo",
+        &[
+            "check",
+            "-p",
+            "rns-embedded-runtime",
+            "--no-default-features",
+            "--features",
+            "alloc",
+        ],
+    )?;
+    run(
+        "cargo",
+        &["check", "-p", "rns-embedded-runtime", "--features", "std"],
+    )?;
     run("cargo", &["check", "-p", "lxmf-core", "--no-default-features", "--features", "alloc"])?;
     run("cargo", &["check", "-p", "rns-core", "--no-default-features", "--features", "alloc"])?;
     run("cargo", &["test", "-p", "rns-embedded-core"])?;
+    run("cargo", &["test", "-p", "rns-embedded-ffi"])?;
+    run("cargo", &["test", "-p", "rns-embedded-runtime"])?;
 
     let matrix = fs::read_to_string("docs/contracts/sdk-v2-feature-matrix.md")
         .context("missing docs/contracts/sdk-v2-feature-matrix.md")?;
     for marker in [
         "| `lxmf-core` |",
         "| `rns-core` |",
+        "| `rns-embedded-ffi` |",
+        "| `rns-embedded-runtime` |",
         "`alloc-ready`",
         "`wire_fields` JSON bridge only (`std`-gated module)",
     ] {

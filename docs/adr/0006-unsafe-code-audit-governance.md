@@ -6,8 +6,8 @@
 
 ## Context
 The SDK v2.5 hard-break direction requires deterministic and auditable safety posture.
-The workspace currently has no Rust `unsafe` blocks, and workspace lint policy sets
-`unsafe_code = "forbid"`. This is strong, but it is not sufficient alone:
+The workspace defaults to zero Rust `unsafe` blocks and workspace lint policy sets
+`unsafe_code = "forbid"` for normal member crates. This is strong, but it is not sufficient alone:
 
 1. New crates or targets could bypass lint inheritance by accident.
 2. Future targeted `unsafe` exceptions could land without invariant review.
@@ -21,6 +21,9 @@ Adopt an explicit unsafe governance model with both process and CI enforcement:
 3. Automated gate: `tools/scripts/check-unsafe.sh`, executed via
    `cargo xtask ci --stage unsafe-audit-check`.
 4. Reviewer enforcement: dedicated CODEOWNERS entries for unsafe policy/inventory/ADR/script.
+
+Approved exceptions must stay isolated behind narrow crates or modules with no broader
+unsafe creep into protocol or runtime crates.
 
 The unsafe audit gate must fail when any of the following occurs:
 

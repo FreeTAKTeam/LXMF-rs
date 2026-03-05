@@ -2,6 +2,8 @@
 resolver = "2"
 members = [
   "crates/libs/rns-embedded-core",
+  "crates/libs/rns-embedded-ffi",
+  "crates/libs/rns-embedded-runtime",
   "crates/libs/lxmf-core",
   "crates/libs/lxmf-sdk",
   "crates/libs/rns-core",
@@ -15,6 +17,8 @@ members = [
 ]
 default-members = [
   "crates/libs/rns-embedded-core",
+  "crates/libs/rns-embedded-ffi",
+  "crates/libs/rns-embedded-runtime",
   "crates/libs/lxmf-core",
   "crates/libs/lxmf-sdk",
   "crates/libs/rns-core",
@@ -39,6 +43,8 @@ repository = "https://github.com/FreeTAKTeam/LXMF-rs"
 allowed_library_edges = [
   "lxmf-core->rns-core",
   "lxmf-sdk->rns-rpc",
+  "rns-embedded-ffi->rns-embedded-runtime",
+  "rns-embedded-runtime->rns-embedded-core",
   "rns-transport->rns-core",
   "test-support->lxmf-sdk",
   "test-support->rns-core",
@@ -55,6 +61,8 @@ allowed_app_edges = [
 
 [workspace.dependencies]
 rns-embedded-core = { version = "0.1.0", path = "crates/libs/rns-embedded-core" }
+rns-embedded-ffi = { version = "0.1.0", path = "crates/libs/rns-embedded-ffi" }
+rns-embedded-runtime = { version = "0.1.0", path = "crates/libs/rns-embedded-runtime" }
 anyhow = "1"
 clap = { version = "4.5.29", features = ["derive"] }
 clap_complete = "4.5"

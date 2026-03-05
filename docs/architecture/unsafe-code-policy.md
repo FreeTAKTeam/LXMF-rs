@@ -1,6 +1,7 @@
 # Unsafe Code Policy
 
-This workspace defaults to zero Rust `unsafe` usage.
+This workspace defaults to zero Rust `unsafe` usage, with any approved exception kept
+explicitly isolated and inventoried.
 
 ## Guardrails
 1. Workspace lint policy enforces `unsafe_code = "forbid"` for member crates.
