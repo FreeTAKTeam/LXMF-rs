@@ -1379,10 +1379,10 @@ fn run_tcp_native_listener(
     println!("TCP_NATIVE_LISTENER accepted peer={}", peer_addr);
     let mut transport = TcpEmbeddedTransport::from_stream(stream, u16::MAX).map_err(embedded_to_io)?;
 
-    if mode != NativeListenerMode::Passive {
+    let deferred_outbound = if mode != NativeListenerMode::Passive {
         let runtime_seq = resolve_runtime_seq(runtime_seq);
         let payload_bytes = payload.into_bytes();
-        let outbound = match mode {
+        Some(match mode {
             NativeListenerMode::Passive => unreachable!(),
             NativeListenerMode::RawPing => {
                 PacketFrame::new(FRAME_KIND_TEST_PING, runtime_seq, payload_bytes).map_err(embedded_to_io)?
@@ -1407,15 +1407,18 @@ fn run_tcp_native_listener(
                 PacketFrame::new(FRAME_KIND_CAPTURE_COMMAND, runtime_seq, b"capture".to_vec())
                     .map_err(embedded_to_io)?
             }
-        };
-        transport.send_frame(&outbound).map_err(embedded_to_io)?;
-    }
+        })
+    } else {
+        None
+    };
+    let mut outbound_sent = false;
 
     let deadline = Instant::now() + Duration::from_secs(timeout_secs.max(1));
     let mut responses = 0usize;
     let mut capture_bytes = Vec::new();
     let mut capture_total_bytes: Option<u32> = None;
     let mut capture_total_chunks: Option<u16> = None;
+    let mut capture_started = false;
     while Instant::now() < deadline {
         match transport.poll_frame().map_err(embedded_to_io)? {
             Some(frame) => match frame.kind {
@@ -1426,6 +1429,18 @@ fn run_tcp_native_listener(
                         frame.sequence,
                         frame.payload.len()
                     );
+                    if let Some(outbound) = deferred_outbound.as_ref() {
+                        if !outbound_sent || (mode == NativeListenerMode::Capture && !capture_started) {
+                            transport.send_frame(outbound).map_err(embedded_to_io)?;
+                            println!(
+                                "TCP_NATIVE_LISTENER sent request kind=0x{:02x} seq={} mode={:?}",
+                                outbound.kind,
+                                outbound.sequence,
+                                mode
+                            );
+                            outbound_sent = true;
+                        }
+                    }
                 }
                 FRAME_KIND_LXMF_MESSAGE => {
                     let envelope = decode_envelope(&frame.payload).map_err(embedded_to_io)?;
@@ -1457,6 +1472,7 @@ fn run_tcp_native_listener(
                     let width = u16::from_le_bytes([frame.payload[7], frame.payload[8]]);
                     let height = u16::from_le_bytes([frame.payload[9], frame.payload[10]]);
                     capture_total_bytes = Some(total_bytes);
+                    capture_started = true;
                     println!(
                         "TCP_NATIVE_LISTENER frame kind=0x{:02x} seq={} status={} total_bytes={} chunk_bytes={} width={} height={}",
                         frame.kind, frame.sequence, status, total_bytes, chunk_bytes, width, height
