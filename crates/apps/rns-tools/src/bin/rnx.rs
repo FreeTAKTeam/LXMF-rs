@@ -143,8 +143,8 @@ enum Command {
         notify_char_uuid: String,
         #[arg(long, value_enum, default_value_t = NativePeerMode::LxmfPing)]
         mode: NativePeerMode,
-        #[arg(long, default_value_t = 1)]
-        runtime_seq: u32,
+        #[arg(long)]
+        runtime_seq: Option<u32>,
         #[arg(long, default_value = "ping")]
         payload: String,
         #[arg(long, default_value = "22222222222222222222222222222222")]
@@ -153,6 +153,34 @@ enum Command {
         source_hex: String,
         #[arg(long, default_value_t = 8)]
         timeout_secs: u64,
+    },
+    BleNativeBridge {
+        #[arg(long, default_value_t = 12)]
+        scan_secs: u64,
+        #[arg(long, default_value = "LXMF")]
+        name_hint: String,
+        #[arg(long)]
+        peripheral_id: Option<String>,
+        #[arg(long)]
+        service_uuid: String,
+        #[arg(long)]
+        write_char_uuid: String,
+        #[arg(long)]
+        notify_char_uuid: String,
+        #[arg(long, default_value = "127.0.0.1:4243")]
+        rpc: String,
+        #[arg(long)]
+        runtime_seq: Option<u32>,
+        #[arg(long, default_value = "bridge-ping")]
+        payload: String,
+        #[arg(long, default_value = "22222222222222222222222222222222")]
+        destination_hex: String,
+        #[arg(long, default_value = "99999999999999999999999999999999")]
+        source_hex: String,
+        #[arg(long, default_value_t = 8)]
+        timeout_secs: u64,
+        #[arg(long, default_value = "text/plain")]
+        content_type: String,
     },
 }
 
@@ -255,6 +283,35 @@ fn run(cli: Cli) -> io::Result<()> {
             destination_hex,
             source_hex,
             timeout_secs,
+        ),
+        Command::BleNativeBridge {
+            scan_secs,
+            name_hint,
+            peripheral_id,
+            service_uuid,
+            write_char_uuid,
+            notify_char_uuid,
+            rpc,
+            runtime_seq,
+            payload,
+            destination_hex,
+            source_hex,
+            timeout_secs,
+            content_type,
+        } => run_ble_native_bridge(
+            scan_secs,
+            name_hint,
+            peripheral_id,
+            service_uuid,
+            write_char_uuid,
+            notify_char_uuid,
+            rpc,
+            runtime_seq,
+            payload,
+            destination_hex,
+            source_hex,
+            timeout_secs,
+            content_type,
         ),
     }
 }
@@ -809,7 +866,7 @@ fn run_ble_native_peer(
     write_char_uuid: String,
     notify_char_uuid: String,
     mode: NativePeerMode,
-    runtime_seq: u32,
+    runtime_seq: Option<u32>,
     payload: String,
     destination_hex: String,
     source_hex: String,
@@ -821,6 +878,7 @@ fn run_ble_native_peer(
     let write_uuid = parse_gatt_uuid(write_char_uuid.as_str())?;
     let notify_uuid = parse_gatt_uuid(notify_char_uuid.as_str())?;
     let device_hint = peripheral_id.unwrap_or_else(|| name_hint.clone());
+    let runtime_seq = resolve_runtime_seq(runtime_seq);
     let payload_bytes = payload.into_bytes();
     let runtime_frame = match mode {
         NativePeerMode::RawPing => {
@@ -976,7 +1034,7 @@ fn run_ble_native_peer(
     _write_char_uuid: String,
     _notify_char_uuid: String,
     _mode: NativePeerMode,
-    _runtime_seq: u32,
+    _runtime_seq: Option<u32>,
     _payload: String,
     _destination_hex: String,
     _source_hex: String,
@@ -984,6 +1042,169 @@ fn run_ble_native_peer(
 ) -> io::Result<()> {
     Err(io::Error::other(
         "ble-native-peer is only supported on linux/macos/windows",
+    ))
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+fn run_ble_native_bridge(
+    scan_secs: u64,
+    name_hint: String,
+    peripheral_id: Option<String>,
+    service_uuid: String,
+    write_char_uuid: String,
+    notify_char_uuid: String,
+    rpc: String,
+    runtime_seq: Option<u32>,
+    payload: String,
+    destination_hex: String,
+    source_hex: String,
+    timeout_secs: u64,
+    content_type: String,
+) -> io::Result<()> {
+    let scan_timeout = Duration::from_secs(scan_secs.max(1));
+    let timeout = Duration::from_secs(timeout_secs.max(1));
+    let service_uuid = parse_gatt_uuid(service_uuid.as_str())?;
+    let write_uuid = parse_gatt_uuid(write_char_uuid.as_str())?;
+    let notify_uuid = parse_gatt_uuid(notify_char_uuid.as_str())?;
+    let device_hint = peripheral_id.unwrap_or_else(|| name_hint.clone());
+    let runtime_seq = resolve_runtime_seq(runtime_seq);
+    let source = parse_hex_16(source_hex.as_str())?;
+    let destination = parse_hex_16(destination_hex.as_str())?;
+    let envelope = MinimalEnvelope {
+        source,
+        destination,
+        sequence: u64::from(runtime_seq),
+        body: payload.clone().into_bytes(),
+    };
+    let runtime_frame = encode_frame(
+        &PacketFrame::new(
+            FRAME_KIND_LXMF_MESSAGE,
+            runtime_seq,
+            encode_envelope(&envelope).map_err(embedded_to_io)?,
+        )
+        .map_err(embedded_to_io)?,
+    )
+    .map_err(embedded_to_io)?;
+
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(io::Error::other)?;
+    runtime.block_on(async move {
+        let manager = Manager::new().await.map_err(io::Error::other)?;
+        let adapters = manager.adapters().await.map_err(io::Error::other)?;
+        let adapter = adapters
+            .into_iter()
+            .next()
+            .ok_or_else(|| io::Error::other("no BLE adapter available"))?;
+        adapter.start_scan(ScanFilter::default()).await.map_err(io::Error::other)?;
+        let peripheral: Peripheral =
+            find_peripheral(&adapter, device_hint.as_str(), Some(service_uuid), scan_timeout)
+                .await?;
+
+        let connected = peripheral.is_connected().await.map_err(io::Error::other)?;
+        if !connected {
+            peripheral.connect().await.map_err(io::Error::other)?;
+        }
+        peripheral.discover_services().await.map_err(io::Error::other)?;
+        let characteristics = peripheral.characteristics();
+        let write_char = characteristics
+            .iter()
+            .find(|ch| ch.uuid == write_uuid && ch.service_uuid == service_uuid)
+            .cloned()
+            .ok_or_else(|| io::Error::other("write characteristic not found"))?;
+        let notify_char = characteristics
+            .iter()
+            .find(|ch| ch.uuid == notify_uuid && ch.service_uuid == service_uuid)
+            .cloned()
+            .ok_or_else(|| io::Error::other("notify characteristic not found"))?;
+        let write_type = if write_char.properties.contains(CharPropFlags::WRITE) {
+            WriteType::WithResponse
+        } else if write_char.properties.contains(CharPropFlags::WRITE_WITHOUT_RESPONSE) {
+            WriteType::WithoutResponse
+        } else {
+            return Err(io::Error::other("write characteristic has no write capability"));
+        };
+
+        let mut notifications = peripheral.notifications().await.map_err(io::Error::other)?;
+        peripheral.subscribe(&notify_char).await.map_err(io::Error::other)?;
+
+        let mut outbound = Vec::with_capacity(1 + runtime_frame.len());
+        outbound.push(BLE_FRAME_NATIVE_WIRE);
+        outbound.extend_from_slice(&runtime_frame);
+        peripheral
+            .write(&write_char, outbound.as_slice(), write_type)
+            .await
+            .map_err(io::Error::other)?;
+
+        let deadline = Instant::now() + timeout;
+        let mut attachment_id: Option<String> = None;
+        while Instant::now() < deadline {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            let notification = match tokio::time::timeout(remaining, notifications.next()).await {
+                Ok(Some(notification)) => notification,
+                Ok(None) => break,
+                Err(_) => break,
+            };
+            if notification.uuid != notify_uuid || notification.value.is_empty() {
+                continue;
+            }
+            if notification.value[0] != BLE_FRAME_NATIVE_WIRE {
+                continue;
+            }
+            let frame = decode_frame(&notification.value[1..]).map_err(embedded_to_io)?;
+            if frame.kind != FRAME_KIND_LXMF_MESSAGE {
+                continue;
+            }
+            let reply = decode_envelope(&frame.payload).map_err(embedded_to_io)?;
+            let attachment = upload_attachment_via_rpc(
+                rpc.as_str(),
+                "ble-native-bridge.txt".to_string(),
+                content_type.clone(),
+                reply.body.as_slice(),
+                4096,
+            )?;
+            println!(
+                "BLE_NATIVE_BRIDGE ok: device_id={} frame_seq={} body={} attachment_id={}",
+                peripheral.id(),
+                frame.sequence,
+                String::from_utf8_lossy(&reply.body),
+                attachment
+            );
+            attachment_id = Some(attachment);
+            break;
+        }
+
+        let _ = peripheral.unsubscribe(&notify_char).await;
+        let _ = peripheral.disconnect().await;
+        if attachment_id.is_none() {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "no LXMF response frame received before timeout",
+            ));
+        }
+        Ok(())
+    })
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+fn run_ble_native_bridge(
+    _scan_secs: u64,
+    _name_hint: String,
+    _peripheral_id: Option<String>,
+    _service_uuid: String,
+    _write_char_uuid: String,
+    _notify_char_uuid: String,
+    _rpc: String,
+    _runtime_seq: Option<u32>,
+    _payload: String,
+    _destination_hex: String,
+    _source_hex: String,
+    _timeout_secs: u64,
+    _content_type: String,
+) -> io::Result<()> {
+    Err(io::Error::other(
+        "ble-native-bridge is only supported on linux/macos/windows",
     ))
 }
 
@@ -1220,6 +1441,13 @@ fn parse_hex_16(value: &str) -> io::Result<[u8; 16]> {
 
 fn embedded_to_io(error: rns_embedded_core::EmbeddedError) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, format!("{error:?}"))
+}
+
+fn resolve_runtime_seq(explicit: Option<u32>) -> u32 {
+    explicit.unwrap_or_else(|| {
+        let seq = (timestamp_millis() & 0xffff_ffff) as u32;
+        seq.max(1)
+    })
 }
 
 fn run_replay(
