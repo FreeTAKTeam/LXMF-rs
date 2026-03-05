@@ -3,6 +3,7 @@
 extern crate alloc;
 
 pub mod ble;
+pub mod constants;
 
 #[cfg(feature = "std")]
 pub mod tcp;
@@ -16,14 +17,7 @@ use rns_embedded_core::{
     store::EmbeddedStore,
     transport::{EmbeddedTransport, LinkState},
 };
-
-pub const BLE_FRAME_NATIVE_ANNOUNCE_REQ: u8 = 0x21;
-pub const BLE_FRAME_NATIVE_MESSAGE_TX_REQ: u8 = 0x22;
-pub const BLE_FRAME_NATIVE_WIRE: u8 = 0x23;
-pub const FRAME_KIND_ANNOUNCE: u8 = 0x11;
-pub const FRAME_KIND_LXMF_MESSAGE: u8 = 0x31;
-pub const FRAME_KIND_TEST_PING: u8 = 0x45;
-pub const FRAME_KIND_TEST_PONG: u8 = 0x46;
+pub use constants::*;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct RuntimeConfig {
@@ -39,7 +33,7 @@ impl Default for RuntimeConfig {
         Self {
             store_identity: [0x11; 32],
             lxmf_address: [0x22; 16],
-            announce_interval_ms: 30_000,
+            announce_interval_ms: DEFAULT_ANNOUNCE_INTERVAL_MS,
             max_outbound_queue: 8,
             max_events: 32,
         }

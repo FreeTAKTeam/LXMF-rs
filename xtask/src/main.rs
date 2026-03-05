@@ -44,6 +44,7 @@ const EMBEDDED_HIL_RUNBOOK_PATH: &str = "docs/runbooks/embedded-hil-esp32.md";
 const EMBEDDED_NATIVE_LOCKFILE_PATH: &str = "docs/contracts/native-embedded-lockfile.toml";
 const EMBEDDED_NATIVE_INTEROP_PROFILE_PATH: &str =
     "docs/contracts/native-embedded-interop-profile-v1.md";
+const EMBEDDED_NATIVE_LAB_PROFILE_PATH: &str = "docs/contracts/native-embedded-lab-profile-v1.md";
 const BLE_CAMERA_WIRE_CONTRACT_PATH: &str = "docs/contracts/ble-camera-wire-v1.md";
 const BLE_TRANSPORT_RUNTIME_CONTRACT_PATH: &str = "docs/contracts/ble-transport-runtime-contract.md";
 const EMBEDDED_NATIVE_WORKFLOW_PATH: &str = ".github/workflows/nightly-embedded-hil.yml";
@@ -3062,8 +3063,12 @@ fn run_embedded_native_lock_check() -> Result<()> {
         .with_context(|| format!("missing {EMBEDDED_NATIVE_INTEROP_PROFILE_PATH}"))?;
     for marker in [
         "# Native Embedded Interop Profile v1",
+        "## Lab Profile Reference",
         "## Normative Encoding Rules",
         "## Transport Invariants",
+        "## Canonical Transport Parameters",
+        "## Lifecycle Ownership",
+        "## Success Response Schemas",
         "## Error Code Mapping",
         "## Fixture Set",
     ] {
@@ -3077,11 +3082,41 @@ fn run_embedded_native_lock_check() -> Result<()> {
     for path in [
         BLE_CAMERA_WIRE_CONTRACT_PATH,
         BLE_TRANSPORT_RUNTIME_CONTRACT_PATH,
+        EMBEDDED_NATIVE_LAB_PROFILE_PATH,
         EMBEDDED_NATIVE_WORKFLOW_PATH,
         CI_WORKFLOW_PATH,
     ] {
         if !Path::new(path).exists() {
             bail!("required path missing for embedded native lock check: {path}");
+        }
+    }
+
+    let lab_profile = fs::read_to_string(EMBEDDED_NATIVE_LAB_PROFILE_PATH)
+        .with_context(|| format!("missing {EMBEDDED_NATIVE_LAB_PROFILE_PATH}"))?;
+    for marker in [
+        "# Native Embedded Lab Profile v1",
+        "## Hardware",
+        "## Network Profiles",
+        "### LAN profile",
+        "### Internet-shaped profile",
+        "## Measurement Rules",
+    ] {
+        if !lab_profile.contains(marker) {
+            bail!(
+                "embedded native lab profile missing marker '{marker}' in {EMBEDDED_NATIVE_LAB_PROFILE_PATH}"
+            );
+        }
+    }
+
+    for marker in [
+        "contract_native_embedded_lab_profile_ref =",
+        "release_revision_mode = \"pinned\"",
+        "tcp_read_timeout_secs = 8",
+        "tcp_heartbeat_interval_ms = 30000",
+        "capture_hard_max_bytes = 2097152",
+    ] {
+        if !lockfile.contains(marker) {
+            bail!("embedded native lockfile missing marker '{marker}' in {EMBEDDED_NATIVE_LOCKFILE_PATH}");
         }
     }
 
