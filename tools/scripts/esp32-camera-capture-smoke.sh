@@ -17,6 +17,8 @@ TIMEOUT_SECS="${TIMEOUT_SECS:-25}"
 CHUNK_SIZE="${CHUNK_SIZE:-8192}"
 CONTENT_TYPE="${CONTENT_TYPE:-image/jpeg}"
 KEEP_DAEMON="${KEEP_DAEMON:-0}"
+VERBOSE="${VERBOSE:-1}"
+AUTO_DISCOVER_PERIPHERAL="${AUTO_DISCOVER_PERIPHERAL:-1}"
 
 PERIPHERAL_ID="${PERIPHERAL_ID:-}"
 SERVICE_UUID="${SERVICE_UUID:-}"
@@ -44,11 +46,19 @@ fi
 mkdir -p "$(dirname "${DB_PATH}")" "${LOG_DIR}"
 DAEMON_LOG="${LOG_DIR}/esp32-camera-smoke-reticulumd.log"
 RUN_LOG="${LOG_DIR}/esp32-camera-smoke-rnx.log"
+DISCOVERY_LOG="${LOG_DIR}/esp32-camera-smoke-discovery.log"
+ACTIVE_PERIPHERAL_ID="${PERIPHERAL_ID}"
+
+log() {
+  if [[ "${VERBOSE}" == "1" ]]; then
+    printf '[smoke %s] %s\n' "$(date '+%H:%M:%S')" "$*" >&2
+  fi
+}
 
 cleanup() {
   if [[ -n "${DAEMON_PID:-}" ]] && kill -0 "${DAEMON_PID}" 2>/dev/null; then
     if [[ "${KEEP_DAEMON}" == "1" ]]; then
-      echo "[smoke] keeping daemon running pid=${DAEMON_PID}" >&2
+      log "keeping daemon running pid=${DAEMON_PID}"
     else
       kill "${DAEMON_PID}" >/dev/null 2>&1 || true
       wait "${DAEMON_PID}" >/dev/null 2>&1 || true
@@ -57,9 +67,30 @@ cleanup() {
 }
 trap cleanup EXIT
 
+on_error() {
+  local line_no="${1:-unknown}"
+  echo "[smoke] failure at line ${line_no}" >&2
+  if [[ -f "${DISCOVERY_LOG}" ]]; then
+    echo "[smoke] discovery log tail:" >&2
+    tail -n 25 "${DISCOVERY_LOG}" >&2 || true
+  fi
+  if [[ -f "${RUN_LOG}" ]]; then
+    echo "[smoke] rnx log tail:" >&2
+    tail -n 40 "${RUN_LOG}" >&2 || true
+  fi
+  if [[ -f "${DAEMON_LOG}" ]]; then
+    echo "[smoke] daemon log tail:" >&2
+    tail -n 40 "${DAEMON_LOG}" >&2 || true
+  fi
+}
+trap 'on_error $LINENO' ERR
+
+log "config rpc=${RPC_ADDR} timeout=${TIMEOUT_SECS}s chunk_size=${CHUNK_SIZE} peripheral_id=${PERIPHERAL_ID}"
+log "building reticulumd and rnx binaries"
 cargo build -p reticulumd --bin reticulumd --quiet
 cargo build -p rns-tools --bin rnx --quiet
 
+log "starting reticulumd"
 "${REPO_ROOT}/target/debug/reticulumd" --rpc "${RPC_ADDR}" --db "${DB_PATH}" \
   >"${DAEMON_LOG}" 2>&1 &
 DAEMON_PID=$!
@@ -77,21 +108,45 @@ if ! nc -z "${RPC_ADDR%:*}" "${RPC_ADDR##*:}" >/dev/null 2>&1; then
   exit 1
 fi
 
+log "daemon ready at ${RPC_ADDR}"
+if [[ "${AUTO_DISCOVER_PERIPHERAL}" == "1" ]]; then
+  log "preflight BLE discovery using ble-find-camera"
+  if "${REPO_ROOT}/target/debug/rnx" ble-find-camera \
+    --scan-secs 12 \
+    --service-uuid "${SERVICE_UUID}" \
+    --write-char-uuid "${WRITE_CHAR_UUID}" \
+    --notify-char-uuid "${NOTIFY_CHAR_UUID}" \
+    2>&1 | tee "${DISCOVERY_LOG}"; then
+    DISCOVERED_ID="$(awk '/BLE_FIND_CAMERA match id=/{for(i=1;i<=NF;i++) if($i ~ /^id=/){sub("id=","",$i); print $i; exit}}' "${DISCOVERY_LOG}")"
+    if [[ -n "${DISCOVERED_ID}" ]]; then
+      ACTIVE_PERIPHERAL_ID="${DISCOVERED_ID}"
+      log "using discovered peripheral id=${ACTIVE_PERIPHERAL_ID}"
+    fi
+  else
+    log "ble-find-camera failed, continuing with provided peripheral id=${ACTIVE_PERIPHERAL_ID}"
+  fi
+else
+  log "auto discovery disabled, using provided peripheral id=${ACTIVE_PERIPHERAL_ID}"
+fi
+
+log "starting camera-capture-upload"
 set -x
 "${REPO_ROOT}/target/debug/rnx" camera-capture-upload \
   --rpc "${RPC_ADDR}" \
-  --peripheral-id "${PERIPHERAL_ID}" \
+  --peripheral-id "${ACTIVE_PERIPHERAL_ID}" \
   --service-uuid "${SERVICE_UUID}" \
   --write-char-uuid "${WRITE_CHAR_UUID}" \
   --notify-char-uuid "${NOTIFY_CHAR_UUID}" \
   --content-type "${CONTENT_TYPE}" \
   --chunk-size "${CHUNK_SIZE}" \
-  --timeout-secs "${TIMEOUT_SECS}" | tee "${RUN_LOG}"
+  --timeout-secs "${TIMEOUT_SECS}" 2>&1 | tee "${RUN_LOG}"
 set +x
 
+log "verifying attachment presence through sdk_attachment_list_v2"
 ATTACHMENT_COUNT=$(
   python3 - <<PY
-import json, socket
+import http.client
+import json
 rpc="${RPC_ADDR}"
 host, port = rpc.split(":")
 port = int(port)
@@ -100,26 +155,17 @@ req = {
   "method": "sdk_attachment_list_v2",
   "params": {"limit": 50}
 }
-payload = json.dumps(req).encode()
-http = (
-  f"POST /rpc HTTP/1.1\\r\\nHost: {rpc}\\r\\nContent-Type: application/json\\r\\nContent-Length: {len(payload)}\\r\\nConnection: close\\r\\n\\r\\n"
-).encode() + payload
-s = socket.create_connection((host, port), timeout=5)
-s.sendall(http)
-chunks = []
-while True:
-    part = s.recv(4096)
-    if not part:
-        break
-    chunks.append(part)
-s.close()
-resp = b"".join(chunks)
-body = resp.split(b"\\r\\n\\r\\n", 1)[1]
-obj = json.loads(body.decode())
+conn = http.client.HTTPConnection(host, port, timeout=5)
+conn.request("POST", "/rpc", body=json.dumps(req), headers={"Content-Type": "application/json"})
+resp = conn.getresponse()
+body = resp.read().decode("utf-8")
+conn.close()
+obj = json.loads(body)
 items = obj.get("result", {}).get("attachments", [])
 print(len(items))
 PY
 )
 
 echo "[smoke] attachment_count=${ATTACHMENT_COUNT}"
-echo "[smoke] logs: ${DAEMON_LOG} ${RUN_LOG}"
+echo "[smoke] active_peripheral_id=${ACTIVE_PERIPHERAL_ID}"
+echo "[smoke] logs: ${DAEMON_LOG} ${RUN_LOG} ${DISCOVERY_LOG}"

@@ -99,6 +99,28 @@ enum Command {
         #[arg(long, default_value_t = 20)]
         timeout_secs: u64,
     },
+    BleScan {
+        #[arg(long, default_value_t = 10)]
+        timeout_secs: u64,
+        #[arg(long, default_value_t = 0)]
+        limit: usize,
+        #[arg(long)]
+        service_uuid: Option<String>,
+        #[arg(long)]
+        manufacturer_prefix: Option<String>,
+    },
+    BleFindCamera {
+        #[arg(long, default_value_t = 12)]
+        scan_secs: u64,
+        #[arg(long, default_value = "LXMF")]
+        name_hint: String,
+        #[arg(long)]
+        service_uuid: String,
+        #[arg(long)]
+        write_char_uuid: String,
+        #[arg(long)]
+        notify_char_uuid: String,
+    },
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum, Hash)]
@@ -150,6 +172,24 @@ fn run(cli: Cli) -> io::Result<()> {
             chunk_size,
             timeout_secs,
         ),
+        Command::BleScan { timeout_secs, limit, service_uuid, manufacturer_prefix } => {
+            run_ble_scan(timeout_secs, limit, service_uuid, manufacturer_prefix)
+        }
+        Command::BleFindCamera {
+            scan_secs,
+            name_hint,
+            service_uuid,
+            write_char_uuid,
+            notify_char_uuid,
+        } => {
+            run_ble_find_camera(
+                scan_secs,
+                name_hint,
+                service_uuid,
+                write_char_uuid,
+                notify_char_uuid,
+            )
+        }
     }
 }
 
@@ -377,15 +417,36 @@ fn capture_camera_over_ble(
             .ok_or_else(|| io::Error::other("no BLE adapter available"))?;
         adapter.start_scan(ScanFilter::default()).await.map_err(io::Error::other)?;
 
-        let peripheral = find_peripheral(&adapter, peripheral_id, timeout).await?;
+        let service_uuid = parse_gatt_uuid(service_uuid)?;
+        let write_uuid = parse_gatt_uuid(write_char_uuid)?;
+        let notify_uuid = parse_gatt_uuid(notify_char_uuid)?;
+        let peripheral = match find_peripheral(&adapter, peripheral_id, Some(service_uuid), timeout).await {
+            Ok(peripheral) => peripheral,
+            Err(error) => {
+                #[cfg(target_os = "macos")]
+                {
+                    return Err(io::Error::other(format!(
+                        "{error}; on macOS use `rnx ble-find-camera` first and pass the returned id"
+                    )));
+                }
+                #[cfg(not(target_os = "macos"))]
+                {
+                    find_camera_peripheral_by_profile(
+                        &adapter,
+                        peripheral_id,
+                        service_uuid,
+                        write_uuid,
+                        notify_uuid,
+                        timeout,
+                    )
+                    .await?
+                }
+            }
+        };
         if !peripheral.is_connected().await.map_err(io::Error::other)? {
             peripheral.connect().await.map_err(io::Error::other)?;
         }
         peripheral.discover_services().await.map_err(io::Error::other)?;
-
-        let service_uuid = parse_gatt_uuid(service_uuid)?;
-        let write_uuid = parse_gatt_uuid(write_char_uuid)?;
-        let notify_uuid = parse_gatt_uuid(notify_char_uuid)?;
 
         let characteristics = peripheral.characteristics();
         let write_char = characteristics
@@ -503,16 +564,256 @@ fn capture_camera_over_ble(
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+fn run_ble_scan(
+    timeout_secs: u64,
+    limit: usize,
+    service_uuid: Option<String>,
+    manufacturer_prefix: Option<String>,
+) -> io::Result<()> {
+    let timeout = Duration::from_secs(timeout_secs.max(1));
+    let service_filter = match service_uuid {
+        Some(value) => Some(parse_gatt_uuid(value.as_str())?),
+        None => None,
+    };
+    let manufacturer_filter = manufacturer_prefix
+        .as_deref()
+        .map(normalize_identifier);
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(io::Error::other)?;
+    runtime.block_on(async move {
+        let manager = Manager::new().await.map_err(io::Error::other)?;
+        let adapters = manager.adapters().await.map_err(io::Error::other)?;
+        let adapter = adapters
+            .into_iter()
+            .next()
+            .ok_or_else(|| io::Error::other("no BLE adapter available"))?;
+        adapter.start_scan(ScanFilter::default()).await.map_err(io::Error::other)?;
+        tokio::time::sleep(timeout).await;
+
+        let peripherals = adapter.peripherals().await.map_err(io::Error::other)?;
+        let mut shown = 0usize;
+        for peripheral in peripherals {
+            let id = peripheral.id().to_string();
+            let properties = peripheral.properties().await.map_err(io::Error::other)?;
+            let Some(properties) = properties else {
+                continue;
+            };
+            if let Some(expected_service) = service_filter {
+                if !properties.services.iter().any(|service| *service == expected_service) {
+                    continue;
+                }
+            }
+            if let Some(expected_marker) = manufacturer_filter.as_deref() {
+                let mut marker_match = false;
+                for payload in properties.manufacturer_data.values() {
+                    let hex = hex_lower(payload);
+                    let ascii = ascii_lower(payload);
+                    if hex.contains(expected_marker) || ascii.contains(expected_marker) {
+                        marker_match = true;
+                        break;
+                    }
+                }
+                if !marker_match {
+                    continue;
+                }
+            }
+            let manufacturer = format_manufacturer_data(&properties.manufacturer_data);
+            println!(
+                "BLE_SCAN device id={} name={} address={} rssi={:?} services={:?} manufacturer={}",
+                id,
+                properties.local_name.as_deref().unwrap_or("<none>"),
+                properties.address,
+                properties.rssi,
+                properties.services,
+                manufacturer
+            );
+            shown = shown.saturating_add(1);
+            if limit > 0 && shown >= limit {
+                break;
+            }
+        }
+        println!("BLE_SCAN done: devices_shown={shown}");
+        Ok(())
+    })
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+fn run_ble_find_camera(
+    scan_secs: u64,
+    name_hint: String,
+    service_uuid: String,
+    write_char_uuid: String,
+    notify_char_uuid: String,
+) -> io::Result<()> {
+    let scan_timeout = Duration::from_secs(scan_secs.max(1));
+    let service_uuid = parse_gatt_uuid(service_uuid.as_str())?;
+    let write_uuid = parse_gatt_uuid(write_char_uuid.as_str())?;
+    let notify_uuid = parse_gatt_uuid(notify_char_uuid.as_str())?;
+
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(io::Error::other)?;
+    runtime.block_on(async move {
+        let hint_norm = normalize_identifier(name_hint.as_str());
+        let deadline = Instant::now() + scan_timeout;
+        let manager = Manager::new().await.map_err(io::Error::other)?;
+        let adapters = manager.adapters().await.map_err(io::Error::other)?;
+        let adapter = adapters
+            .into_iter()
+            .next()
+            .ok_or_else(|| io::Error::other("no BLE adapter available"))?;
+        adapter.start_scan(ScanFilter::default()).await.map_err(io::Error::other)?;
+
+        while Instant::now() < deadline {
+            let peripherals = adapter.peripherals().await.map_err(io::Error::other)?;
+            let mut candidates: Vec<(u8, i16, Peripheral, String)> = Vec::with_capacity(peripherals.len());
+            for peripheral in peripherals {
+                let mut rank = 3_u8;
+                let mut rssi = -127_i16;
+                let mut name = "<none>".to_string();
+                if let Some(props) = peripheral.properties().await.map_err(io::Error::other)? {
+                    rssi = props.rssi.unwrap_or(-127);
+                    if let Some(local_name) = props.local_name {
+                        name = local_name;
+                        let norm = normalize_identifier(name.as_str());
+                        if !hint_norm.is_empty() && norm.contains(&hint_norm) {
+                            rank = 0;
+                        } else if norm.contains("lxmf") {
+                            rank = 1;
+                        } else if norm != "<none>" {
+                            rank = 2;
+                        }
+                    }
+                }
+                candidates.push((rank, rssi, peripheral, name));
+            }
+            candidates.sort_by(|(rank_a, rssi_a, _, _), (rank_b, rssi_b, _, _)| {
+                rank_a.cmp(rank_b).then(rssi_b.cmp(rssi_a))
+            });
+
+            for (_, rssi, peripheral, name) in candidates {
+                let id = peripheral.id().to_string();
+                let connected = peripheral.is_connected().await.map_err(io::Error::other)?;
+                if !connected {
+                    if tokio::time::timeout(Duration::from_millis(650), peripheral.connect())
+                        .await
+                        .is_err()
+                    {
+                        continue;
+                    }
+                }
+                if peripheral.discover_services().await.is_err() {
+                    let _ = peripheral.disconnect().await;
+                    continue;
+                }
+                let chars = peripheral.characteristics();
+                let has_write = chars
+                    .iter()
+                    .any(|ch| ch.uuid == write_uuid && ch.service_uuid == service_uuid);
+                let has_notify = chars
+                    .iter()
+                    .any(|ch| ch.uuid == notify_uuid && ch.service_uuid == service_uuid);
+
+                if has_write && has_notify {
+                    println!("BLE_FIND_CAMERA match id={} name={} rssi={}", id, name, rssi);
+                    let _ = peripheral.disconnect().await;
+                    return Ok(());
+                }
+                let _ = peripheral.disconnect().await;
+            }
+            tokio::time::sleep(Duration::from_millis(250)).await;
+        }
+
+        Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "no scanned peripheral matched requested camera profile",
+        ))
+    })
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+fn run_ble_find_camera(
+    _scan_secs: u64,
+    _name_hint: String,
+    _service_uuid: String,
+    _write_char_uuid: String,
+    _notify_char_uuid: String,
+) -> io::Result<()> {
+    Err(io::Error::other(
+        "ble-find-camera is only supported on linux/macos/windows",
+    ))
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+fn run_ble_scan(
+    _timeout_secs: u64,
+    _limit: usize,
+    _service_uuid: Option<String>,
+    _manufacturer_prefix: Option<String>,
+) -> io::Result<()> {
+    Err(io::Error::other("ble-scan is only supported on linux/macos/windows"))
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+fn format_manufacturer_data(data: &std::collections::HashMap<u16, Vec<u8>>) -> String {
+    let mut entries: Vec<String> = data
+        .iter()
+        .map(|(company, payload)| {
+            format!(
+                "{company:#06x}:{}:{}",
+                hex_lower(payload),
+                ascii_safe(payload)
+            )
+        })
+        .collect();
+    entries.sort_unstable();
+    format!("[{}]", entries.join(","))
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+fn hex_lower(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        use std::fmt::Write as _;
+        let _ = write!(out, "{byte:02x}");
+    }
+    out
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+fn ascii_safe(bytes: &[u8]) -> String {
+    bytes
+        .iter()
+        .map(|byte| {
+            if byte.is_ascii_graphic() || *byte == b' ' {
+                *byte as char
+            } else {
+                '.'
+            }
+        })
+        .collect()
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+fn ascii_lower(bytes: &[u8]) -> String {
+    ascii_safe(bytes).to_lowercase()
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 async fn find_peripheral(
     adapter: &btleplug::platform::Adapter,
     peripheral_id: &str,
+    service_uuid: Option<Uuid>,
     timeout: Duration,
 ) -> io::Result<Peripheral> {
     let deadline = Instant::now() + timeout;
     loop {
         let peripherals = adapter.peripherals().await.map_err(io::Error::other)?;
         for peripheral in peripherals {
-            if peripheral_matches(&peripheral, peripheral_id).await? {
+            if peripheral_matches(&peripheral, peripheral_id, service_uuid).await? {
                 return Ok(peripheral);
             }
         }
@@ -523,8 +824,77 @@ async fn find_peripheral(
     }
 }
 
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+async fn find_camera_peripheral_by_profile(
+    adapter: &btleplug::platform::Adapter,
+    peripheral_hint: &str,
+    service_uuid: Uuid,
+    write_uuid: Uuid,
+    notify_uuid: Uuid,
+    timeout: Duration,
+) -> io::Result<Peripheral> {
+    let deadline = Instant::now() + timeout;
+    let hint_norm = normalize_identifier(peripheral_hint);
+    loop {
+        let peripherals = adapter.peripherals().await.map_err(io::Error::other)?;
+        let mut candidates: Vec<(u8, Peripheral)> = Vec::with_capacity(peripherals.len());
+        for peripheral in peripherals {
+            let mut rank = 3_u8;
+            if let Ok(Some(props)) = peripheral.properties().await.map_err(io::Error::other) {
+                if let Some(name) = props.local_name {
+                    let name_norm = normalize_identifier(name.as_str());
+                    if !hint_norm.is_empty() && name_norm.contains(&hint_norm) {
+                        rank = 0;
+                    } else if name_norm.contains("lxmfcamstub") || name_norm.contains("lxmf") {
+                        rank = 1;
+                    }
+                }
+            }
+            candidates.push((rank, peripheral));
+        }
+        candidates.sort_by_key(|(rank, _)| *rank);
+        for (_, peripheral) in candidates {
+            let connected = peripheral.is_connected().await.map_err(io::Error::other)?;
+            if !connected {
+                if tokio::time::timeout(Duration::from_millis(700), peripheral.connect())
+                    .await
+                    .is_err()
+                {
+                    continue;
+                }
+            }
+            if peripheral.discover_services().await.is_err() {
+                let _ = peripheral.disconnect().await;
+                continue;
+            }
+            let chars = peripheral.characteristics();
+            let has_write = chars
+                .iter()
+                .any(|ch| ch.uuid == write_uuid && ch.service_uuid == service_uuid);
+            let has_notify = chars
+                .iter()
+                .any(|ch| ch.uuid == notify_uuid && ch.service_uuid == service_uuid);
+            if has_write && has_notify {
+                return Ok(peripheral);
+            }
+            let _ = peripheral.disconnect().await;
+        }
+        if Instant::now() >= deadline {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "BLE peripheral not found",
+            ));
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+}
+
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-async fn peripheral_matches(peripheral: &Peripheral, configured_id: &str) -> io::Result<bool> {
+async fn peripheral_matches(
+    peripheral: &Peripheral,
+    configured_id: &str,
+    service_uuid: Option<Uuid>,
+) -> io::Result<bool> {
     if identifiers_match(configured_id, &peripheral.id().to_string()) {
         return Ok(true);
     }
@@ -538,13 +908,22 @@ async fn peripheral_matches(peripheral: &Peripheral, configured_id: &str) -> io:
                 return Ok(true);
             }
         }
+        if let Some(expected_service) = service_uuid {
+            if properties.services.into_iter().any(|service| service == expected_service) {
+                return Ok(true);
+            }
+        }
     }
     Ok(false)
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 fn identifiers_match(configured: &str, discovered: &str) -> bool {
-    normalize_identifier(configured) == normalize_identifier(discovered)
+    let configured = normalize_identifier(configured);
+    let discovered = normalize_identifier(discovered);
+    configured == discovered
+        || discovered.contains(&configured)
+        || configured.contains(&discovered)
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
