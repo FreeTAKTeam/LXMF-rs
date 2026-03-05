@@ -14,8 +14,14 @@ pub mod transport;
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum EmbeddedError {
     InvalidInput,
+    InvalidArgument,
+    InvalidCursor,
     InvalidState,
+    NotFound,
+    SeqGap,
     IntegrityFailure,
+    ChecksumMismatch,
+    IdempotencyConflict,
     ReplayRejected,
     Timeout,
     Backpressure,
