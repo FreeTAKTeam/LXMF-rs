@@ -3077,6 +3077,18 @@ fn run_embedded_link_check() -> Result<()> {
 }
 
 fn run_embedded_core_check() -> Result<()> {
+    run(
+        "cargo",
+        &[
+            "check",
+            "-p",
+            "rns-embedded-core",
+            "--no-default-features",
+            "--features",
+            "alloc",
+        ],
+    )?;
+    run("cargo", &["check", "-p", "rns-embedded-core", "--features", "std"])?;
     run("cargo", &["check", "-p", "lxmf-core", "--no-default-features", "--features", "alloc"])?;
     run("cargo", &["check", "-p", "rns-core", "--no-default-features", "--features", "alloc"])?;
 

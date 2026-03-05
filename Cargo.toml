@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+  "crates/libs/rns-embedded-core",
   "crates/libs/lxmf-core",
   "crates/libs/lxmf-sdk",
   "crates/libs/rns-core",
@@ -13,6 +14,7 @@ members = [
   "xtask",
 ]
 default-members = [
+  "crates/libs/rns-embedded-core",
   "crates/libs/lxmf-core",
   "crates/libs/lxmf-sdk",
   "crates/libs/rns-core",
@@ -52,6 +54,7 @@ allowed_app_edges = [
 ]
 
 [workspace.dependencies]
+rns-embedded-core = { version = "0.1.0", path = "crates/libs/rns-embedded-core" }
 anyhow = "1"
 clap = { version = "4.5.29", features = ["derive"] }
 clap_complete = "4.5"
