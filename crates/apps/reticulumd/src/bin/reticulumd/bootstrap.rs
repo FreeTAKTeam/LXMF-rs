@@ -253,13 +253,20 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
                             });
                         }
                     },
-                    "ble_gatt" => match ble::startup(iface).await {
-                        Ok(()) => {
+                    "ble_gatt" => match ble::spawn(iface_manager.clone(), iface).await {
+                        Ok(ble_iface) => {
+                            eprintln!(
+                                "[daemon] ble_gatt enabled iface={} name={} peripheral_id={}",
+                                ble_iface,
+                                label,
+                                iface.peripheral_id.as_deref().unwrap_or("<unset>")
+                            );
+                            let runtime_iface = ble_iface.to_string();
                             mark_interface_startup_status(
                                 &mut configured_interfaces[index],
-                                "active",
+                                "spawned",
                                 None,
-                                None,
+                                Some(runtime_iface.as_str()),
                             );
                             startup_successes += 1;
                         }

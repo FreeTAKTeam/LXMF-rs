@@ -1,4 +1,7 @@
 use reticulum_daemon::config::InterfaceConfig;
+use rns_transport::hash::AddressHash;
+use rns_transport::iface::InterfaceManager;
+use std::sync::Arc;
 use std::time::Duration;
 
 #[cfg(target_os = "linux")]
@@ -114,20 +117,23 @@ pub(crate) trait BleBackend {
     }
 }
 
-pub(crate) async fn startup(iface: &InterfaceConfig) -> Result<(), String> {
+pub(crate) async fn spawn(
+    iface_manager: Arc<tokio::sync::Mutex<InterfaceManager>>,
+    iface: &InterfaceConfig,
+) -> Result<AddressHash, String> {
     let settings = runtime_settings(iface)?;
 
     #[cfg(target_os = "linux")]
     {
-        return linux::startup(iface, &settings).await;
+        return linux::spawn(iface_manager, iface, settings).await;
     }
     #[cfg(target_os = "macos")]
     {
-        return macos::startup(iface, &settings).await;
+        return macos::spawn(iface_manager, iface, settings).await;
     }
     #[cfg(target_os = "windows")]
     {
-        return windows::startup(iface, &settings).await;
+        return windows::spawn(iface_manager, iface, settings).await;
     }
     #[allow(unreachable_code)]
     Err(format!(

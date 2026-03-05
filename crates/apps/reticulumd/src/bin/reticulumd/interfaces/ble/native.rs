@@ -8,7 +8,14 @@ use btleplug::api::{
 use btleplug::platform::{Adapter, Manager, Peripheral};
 use futures::{stream::Stream, StreamExt};
 use reticulum_daemon::config::InterfaceConfig;
+use rns_transport::buffer::{InputBuffer, OutputBuffer};
+use rns_transport::hash::AddressHash;
+use rns_transport::iface::hdlc::Hdlc;
+use rns_transport::iface::{Interface, InterfaceContext, InterfaceManager, RxMessage};
+use rns_transport::packet::Packet;
+use rns_transport::serde::Serialize;
 use std::pin::Pin;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::time::{sleep, timeout};
 use uuid::Uuid;
@@ -26,6 +33,195 @@ pub(super) async fn startup_with_backend(
     let report = run_startup_lifecycle(&mut backend, settings).await?;
     log_report(backend_name, iface, settings, &report);
     Ok(())
+}
+
+pub(super) async fn spawn_with_backend(
+    backend_name: &'static str,
+    iface_manager: Arc<tokio::sync::Mutex<InterfaceManager>>,
+    iface: &InterfaceConfig,
+    settings: BleRuntimeSettings,
+) -> Result<AddressHash, String> {
+    startup_with_backend(backend_name, iface, &settings).await?;
+
+    let interface = BleGattInterface {
+        backend_name,
+        settings,
+        label: iface.name.clone().unwrap_or_else(|| "<unnamed>".to_string()),
+    };
+
+    let iface = iface_manager
+        .lock()
+        .await
+        .spawn(interface, |context| async move { BleGattInterface::run(context).await });
+    Ok(iface)
+}
+
+const BLE_RAW_PACKET_BUFFER: usize = 4096;
+const BLE_HDLC_BUFFER: usize = 8192;
+
+struct BleGattInterface {
+    backend_name: &'static str,
+    settings: BleRuntimeSettings,
+    label: String,
+}
+
+impl BleGattInterface {
+    async fn run(context: InterfaceContext<Self>) {
+        let iface_stop = context.channel.stop.clone();
+        let iface_address = context.channel.address;
+        let (rx_channel, mut tx_channel) = context.channel.split();
+        let (backend_name, settings, label) = {
+            let guard = context.inner.lock().expect("ble interface mutex poisoned");
+            (guard.backend_name, guard.settings.clone(), guard.label.clone())
+        };
+
+        let mut reconnect_backoff = settings.reconnect_backoff;
+        let mut frame_buffer: Vec<u8> = Vec::with_capacity(BLE_HDLC_BUFFER * 2);
+
+        loop {
+            if context.cancel.is_cancelled() {
+                break;
+            }
+
+            let mut backend = NativeBleBackend::new(backend_name);
+            if let Err(err) = establish_session(&mut backend, &settings).await {
+                eprintln!(
+                    "ble_gatt: establish session failed iface={} backend={} err={}",
+                    label,
+                    backend_name,
+                    err.message
+                );
+                sleep(reconnect_backoff).await;
+                reconnect_backoff =
+                    next_backoff(reconnect_backoff, settings.max_reconnect_backoff);
+                continue;
+            }
+            reconnect_backoff = settings.reconnect_backoff;
+            eprintln!(
+                "ble_gatt: session established iface={} backend={} addr={}",
+                label,
+                backend_name,
+                iface_address
+            );
+
+            let mut tx_buffer = [0_u8; BLE_RAW_PACKET_BUFFER];
+            let mut hdlc_tx_buffer = [0_u8; BLE_HDLC_BUFFER];
+            let mut hdlc_rx_buffer = [0_u8; BLE_RAW_PACKET_BUFFER];
+            let mut reconnect_needed = false;
+
+            while !context.cancel.is_cancelled() && !iface_stop.is_cancelled() {
+                tokio::select! {
+                    _ = context.cancel.cancelled() => {
+                        break;
+                    }
+                    Some(message) = tx_channel.recv() => {
+                        let packet = message.packet;
+                        let mut output = OutputBuffer::new(&mut tx_buffer);
+                        if packet.serialize(&mut output).is_err() {
+                            eprintln!("ble_gatt: packet serialize failed iface={}", label);
+                            continue;
+                        }
+                        let mut hdlc_output = OutputBuffer::new(&mut hdlc_tx_buffer);
+                        if Hdlc::encode(output.as_slice(), &mut hdlc_output).is_err() {
+                            eprintln!("ble_gatt: hdlc encode failed iface={}", label);
+                            continue;
+                        }
+                        if let Err(err) = send_chunked(&mut backend, hdlc_output.as_slice(), settings.mtu).await {
+                            eprintln!(
+                                "ble_gatt: write failed iface={} backend={} err={}",
+                                label, backend_name, err.message
+                            );
+                            reconnect_needed = true;
+                            break;
+                        }
+                    }
+                    notification = backend.read_notification_value(&settings) => {
+                        match notification {
+                            Ok(payload) => {
+                                frame_buffer.extend_from_slice(payload.as_slice());
+                                while let Some((start, end)) = Hdlc::find(&frame_buffer) {
+                                    let frame = &frame_buffer[start..=end];
+                                    let mut output = OutputBuffer::new(&mut hdlc_rx_buffer);
+                                    if Hdlc::decode(frame, &mut output).is_ok() {
+                                        if let Ok(packet) = Packet::deserialize(&mut InputBuffer::new(output.as_slice())) {
+                                            let _ = rx_channel.send(RxMessage { address: iface_address, packet }).await;
+                                        }
+                                    }
+                                    frame_buffer.drain(..=end);
+                                }
+                                if frame_buffer.len() > BLE_HDLC_BUFFER * 8 {
+                                    frame_buffer.clear();
+                                }
+                            }
+                            Err(err) => {
+                                eprintln!(
+                                    "ble_gatt: read failed iface={} backend={} err={}",
+                                    label, backend_name, err.message
+                                );
+                                reconnect_needed = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            let _ = backend.cleanup(&settings).await;
+            if context.cancel.is_cancelled() {
+                break;
+            }
+            if reconnect_needed {
+                sleep(reconnect_backoff).await;
+                reconnect_backoff =
+                    next_backoff(reconnect_backoff, settings.max_reconnect_backoff);
+            }
+        }
+
+        iface_stop.cancel();
+    }
+}
+
+impl Interface for BleGattInterface {
+    fn mtu() -> usize {
+        247
+    }
+}
+
+async fn establish_session(
+    backend: &mut NativeBleBackend,
+    settings: &BleRuntimeSettings,
+) -> Result<(), BleBackendError> {
+    backend.scan(settings).await?;
+    backend.connect(settings).await?;
+    backend.subscribe(settings).await?;
+    backend.write_probe(super::BLE_STARTUP_PROBE_PAYLOAD, settings).await?;
+    let probe = backend.read_probe_notification(settings).await?;
+    if probe != super::BLE_STARTUP_PROBE_PAYLOAD {
+        return Err(BleBackendError::terminal(format!(
+            "probe payload mismatch expected={} actual={}",
+            super::BLE_STARTUP_PROBE_PAYLOAD.len(),
+            probe.len()
+        )));
+    }
+    Ok(())
+}
+
+async fn send_chunked(
+    backend: &mut NativeBleBackend,
+    payload: &[u8],
+    mtu: usize,
+) -> Result<(), BleBackendError> {
+    let chunk_size = mtu.clamp(23, 517).saturating_sub(3).max(20);
+    for chunk in payload.chunks(chunk_size) {
+        backend.write_payload(chunk).await?;
+    }
+    Ok(())
+}
+
+fn next_backoff(current: Duration, max: Duration) -> Duration {
+    let current_ms = current.as_millis() as u64;
+    let max_ms = max.as_millis() as u64;
+    Duration::from_millis(current_ms.saturating_mul(2).min(max_ms))
 }
 
 fn log_report(
@@ -85,10 +281,7 @@ impl NativeBleBackend {
         self.write_type = None;
     }
 
-    async fn select_adapter(
-        &self,
-        settings: &BleRuntimeSettings,
-    ) -> Result<Adapter, BleBackendError> {
+    async fn select_adapter(settings: &BleRuntimeSettings) -> Result<Adapter, BleBackendError> {
         let manager = Manager::new()
             .await
             .map_err(|err| BleBackendError::retryable(format!("create BLE manager: {err}")))?;
@@ -127,7 +320,7 @@ impl NativeBleBackend {
         Ok(adapters.into_iter().next().expect("adapters already checked as non-empty"))
     }
 
-    async fn resolve_characteristics(
+    fn resolve_characteristics(
         &self,
         settings: &BleRuntimeSettings,
     ) -> Result<(Characteristic, Characteristic, WriteType), BleBackendError> {
@@ -198,7 +391,6 @@ impl NativeBleBackend {
     }
 
     async fn find_peripheral(
-        &self,
         adapter: &Adapter,
         settings: &BleRuntimeSettings,
     ) -> Result<Peripheral, BleBackendError> {
@@ -225,6 +417,55 @@ impl NativeBleBackend {
             sleep(SCAN_POLL_INTERVAL).await;
         }
     }
+
+    async fn write_payload(&mut self, payload: &[u8]) -> Result<(), BleBackendError> {
+        let peripheral = self.peripheral.as_ref().ok_or_else(|| {
+            BleBackendError::terminal("connect phase did not provide a peripheral")
+        })?;
+        let write_char = self.write_char.clone().ok_or_else(|| {
+            BleBackendError::terminal("connect phase did not resolve write characteristic")
+        })?;
+        let write_type = self
+            .write_type
+            .ok_or_else(|| BleBackendError::terminal("connect phase did not resolve write mode"))?;
+
+        peripheral
+            .write(&write_char, payload, write_type)
+            .await
+            .map_err(|err| BleBackendError::retryable(format!("write payload: {err}")))
+    }
+
+    async fn read_notification_value(
+        &mut self,
+        settings: &BleRuntimeSettings,
+    ) -> Result<Vec<u8>, BleBackendError> {
+        let notify_char = self.notify_char.as_ref().ok_or_else(|| {
+            BleBackendError::terminal("connect phase did not resolve notify characteristic")
+        })?;
+        let notify_uuid = notify_char.uuid;
+
+        let stream = self.notification_stream.as_mut().ok_or_else(|| {
+            BleBackendError::terminal("subscribe phase did not initialize notification stream")
+        })?;
+
+        let notification = timeout(settings.connect_timeout, stream.as_mut().next())
+            .await
+            .map_err(|_| {
+                BleBackendError::retryable(format!(
+                    "notification timeout after {} ms",
+                    settings.connect_timeout.as_millis()
+                ))
+            })?
+            .ok_or_else(|| BleBackendError::retryable("notification stream closed"))?;
+
+        if notification.uuid != notify_uuid {
+            return Err(BleBackendError::retryable(
+                "notification for unexpected characteristic",
+            ));
+        }
+
+        Ok(notification.value)
+    }
 }
 
 impl BleBackend for NativeBleBackend {
@@ -245,14 +486,14 @@ impl BleBackend for NativeBleBackend {
         }
 
         self.clear_session_state();
-        let adapter = self.select_adapter(settings).await?;
+        let adapter = Self::select_adapter(settings).await?;
         adapter
             .start_scan(ScanFilter::default())
             .await
             .map_err(|err| BleBackendError::retryable(format!("start BLE scan: {err}")))?;
         self.adapter = Some(adapter.clone());
 
-        let peripheral = self.find_peripheral(&adapter, settings).await?;
+        let peripheral = Self::find_peripheral(&adapter, settings).await?;
         self.peripheral = Some(peripheral);
         Ok(())
     }
@@ -286,7 +527,7 @@ impl BleBackend for NativeBleBackend {
             ))
         })??;
 
-        let (write_char, notify_char, write_type) = self.resolve_characteristics(settings).await?;
+        let (write_char, notify_char, write_type) = self.resolve_characteristics(settings)?;
         self.write_char = Some(write_char);
         self.notify_char = Some(notify_char);
         self.write_type = Some(write_type);
@@ -316,61 +557,23 @@ impl BleBackend for NativeBleBackend {
         payload: &[u8],
         _settings: &BleRuntimeSettings,
     ) -> Result<(), BleBackendError> {
-        let peripheral = self.peripheral.as_ref().ok_or_else(|| {
-            BleBackendError::terminal("connect phase did not provide a peripheral")
-        })?;
-        let write_char = self.write_char.clone().ok_or_else(|| {
-            BleBackendError::terminal("connect phase did not resolve write characteristic")
-        })?;
-        let write_type = self
-            .write_type
-            .ok_or_else(|| BleBackendError::terminal("connect phase did not resolve write mode"))?;
-
-        peripheral
-            .write(&write_char, payload, write_type)
+        self.write_payload(payload)
             .await
-            .map_err(|err| BleBackendError::retryable(format!("write probe payload: {err}")))
+            .map_err(|err| BleBackendError::retryable(format!("write probe payload: {}", err.message)))
     }
 
     async fn read_probe_notification(
         &mut self,
         settings: &BleRuntimeSettings,
     ) -> Result<Vec<u8>, BleBackendError> {
-        let notify_char = self.notify_char.as_ref().ok_or_else(|| {
-            BleBackendError::terminal("connect phase did not resolve notify characteristic")
-        })?;
-        let notify_uuid = notify_char.uuid;
-
-        let stream = self.notification_stream.as_mut().ok_or_else(|| {
-            BleBackendError::terminal("subscribe phase did not initialize notification stream")
-        })?;
-
-        let deadline = Instant::now() + settings.connect_timeout;
-        loop {
-            let now = Instant::now();
-            if now >= deadline {
-                return Err(BleBackendError::retryable(format!(
-                    "probe notification timeout after {} ms",
-                    settings.connect_timeout.as_millis()
-                )));
-            }
-            let remaining = deadline.saturating_duration_since(now);
-            let notification = timeout(remaining, stream.as_mut().next())
-                .await
-                .map_err(|_| {
-                    BleBackendError::retryable(format!(
-                        "probe notification timeout after {} ms",
-                        settings.connect_timeout.as_millis()
-                    ))
-                })?
-                .ok_or_else(|| {
-                    BleBackendError::retryable("notification stream closed before probe response")
-                })?;
-
-            if notification.uuid == notify_uuid {
-                return Ok(notification.value);
-            }
-        }
+        self.read_notification_value(settings)
+            .await
+            .map_err(|err| {
+                BleBackendError::retryable(format!(
+                    "probe notification read failed: {}",
+                    err.message
+                ))
+            })
     }
 
     async fn cleanup(&mut self, _settings: &BleRuntimeSettings) -> Result<(), BleBackendError> {
