@@ -29,6 +29,28 @@ NOTIFY_CHAR_UUID="2A38" \
 ./tools/scripts/esp32-camera-capture-smoke.sh
 ```
 
+## Unified Capture Command
+
+Use a single entrypoint for capture, with backend selection:
+
+```bash
+./tools/scripts/camera-capture.sh \
+  --backend auto \
+  --name-hint LXMF \
+  --service-uuid 12345678-1234-1234-1234-1234567890ab \
+  --write-char-uuid 12345678-1234-1234-1234-1234567890ac \
+  --notify-char-uuid 12345678-1234-1234-1234-1234567890ad \
+  --scan-secs 15 \
+  --timeout-secs 30 \
+  --rounds 4 \
+  --max-probes 35 \
+  --permissive-scan 1 \
+  --log-level debug \
+  --out /tmp/lxmf-capture.bin
+```
+
+On macOS, `--backend auto` defaults to the Bleak fallback. On other platforms, it defaults to the Rust backend.
+
 ## Optional Overrides
 
 - `RPC_ADDR` default `127.0.0.1:4243`
