@@ -16,6 +16,7 @@ DESTINATION_HEX="${DESTINATION_HEX:-22222222222222222222222222222222}"
 CONTENT_TYPE="${CONTENT_TYPE:-image/jpeg}"
 CHUNK_SIZE="${CHUNK_SIZE:-8192}"
 CAPTURE_OUT="${CAPTURE_OUT:-}"
+CAPTURE_PROFILE="${CAPTURE_PROFILE:-default}"
 LOG_DIR="${LOG_DIR:-${REPO_ROOT}/target/hil}"
 mkdir -p "${LOG_DIR}"
 CAPTURE_DIR_DEFAULT="${LOG_DIR}/captures"
@@ -46,6 +47,9 @@ if [[ -n "${RUNTIME_SEQ}" ]]; then
 fi
 if [[ -n "${CAPTURE_OUT}" ]]; then
   cmd+=(--capture-out "${CAPTURE_OUT}")
+fi
+if [[ "${BRIDGE_MODE}" == "capture" ]]; then
+  cmd+=(--capture-profile "${CAPTURE_PROFILE}")
 fi
 
 echo "[esp32-tcp-native-bridge] listening bind=${BIND_ADDR} mode=${BRIDGE_MODE} rpc=${RPC_ADDR}"

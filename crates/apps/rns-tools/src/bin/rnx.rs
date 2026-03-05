@@ -218,6 +218,8 @@ enum Command {
         source_hex: String,
         #[arg(long)]
         capture_out: Option<PathBuf>,
+        #[arg(long, value_enum, default_value_t = CaptureProfileArg::Default)]
+        capture_profile: CaptureProfileArg,
         #[arg(long, default_value_t = 15)]
         timeout_secs: u64,
     },
@@ -242,6 +244,8 @@ enum Command {
         content_type: String,
         #[arg(long)]
         capture_out: Option<PathBuf>,
+        #[arg(long, value_enum, default_value_t = CaptureProfileArg::Default)]
+        capture_profile: CaptureProfileArg,
         #[arg(long, default_value_t = 8192)]
         chunk_size: usize,
         #[arg(long, default_value_t = 30)]
@@ -261,6 +265,15 @@ enum DeliveryMode {
 enum NativePeerMode {
     RawPing,
     LxmfPing,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
+enum CaptureProfileArg {
+    Default,
+    Thumbnail,
+    Balanced,
+    High,
+    VeryHigh,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
@@ -418,6 +431,7 @@ fn run(cli: Cli) -> io::Result<()> {
             destination_hex,
             source_hex,
             capture_out,
+            capture_profile,
             timeout_secs,
         } => run_tcp_native_listener(
             bind,
@@ -428,6 +442,7 @@ fn run(cli: Cli) -> io::Result<()> {
             destination_hex,
             source_hex,
             capture_out,
+            capture_profile,
             timeout_secs,
         ),
         Command::TcpNativeBridge {
@@ -441,6 +456,7 @@ fn run(cli: Cli) -> io::Result<()> {
             rpc,
             content_type,
             capture_out,
+            capture_profile,
             chunk_size,
             timeout_secs,
         } => run_tcp_native_bridge(
@@ -454,6 +470,7 @@ fn run(cli: Cli) -> io::Result<()> {
             rpc,
             content_type,
             capture_out,
+            capture_profile,
             chunk_size,
             timeout_secs,
         ),
@@ -1503,12 +1520,28 @@ fn handle_tcp_native_session(
                     let chunk_bytes = u16::from_le_bytes([frame.payload[5], frame.payload[6]]);
                     let width = u16::from_le_bytes([frame.payload[7], frame.payload[8]]);
                     let height = u16::from_le_bytes([frame.payload[9], frame.payload[10]]);
+                    let effective_profile =
+                        (frame.payload.len() >= 12).then(|| capture_profile_name_from_wire(frame.payload[11]));
                     capture_total_bytes = Some(total_bytes);
                     capture_started = true;
-                    println!(
-                        "{label} frame kind=0x{:02x} seq={} status={} total_bytes={} chunk_bytes={} width={} height={}",
-                        frame.kind, frame.sequence, status, total_bytes, chunk_bytes, width, height
-                    );
+                    if let Some(effective_profile) = effective_profile {
+                        println!(
+                            "{label} frame kind=0x{:02x} seq={} status={} total_bytes={} chunk_bytes={} width={} height={} profile={}",
+                            frame.kind,
+                            frame.sequence,
+                            status,
+                            total_bytes,
+                            chunk_bytes,
+                            width,
+                            height,
+                            effective_profile
+                        );
+                    } else {
+                        println!(
+                            "{label} frame kind=0x{:02x} seq={} status={} total_bytes={} chunk_bytes={} width={} height={}",
+                            frame.kind, frame.sequence, status, total_bytes, chunk_bytes, width, height
+                        );
+                    }
                     if status != 0 {
                         responses = responses.saturating_add(1);
                         break;
@@ -1631,6 +1664,7 @@ fn run_tcp_native_listener(
     destination_hex: String,
     source_hex: String,
     capture_out: Option<PathBuf>,
+    capture_profile: CaptureProfileArg,
     timeout_secs: u64,
 ) -> io::Result<()> {
     let listener = TcpListener::bind(bind.as_str())?;
@@ -1661,8 +1695,12 @@ fn run_tcp_native_listener(
                 .map_err(embedded_to_io)?
             }
             NativeListenerMode::Capture => {
-                PacketFrame::new(FRAME_KIND_CAPTURE_COMMAND, runtime_seq, b"capture".to_vec())
-                    .map_err(embedded_to_io)?
+                PacketFrame::new(
+                    FRAME_KIND_CAPTURE_COMMAND,
+                    runtime_seq,
+                    build_capture_command_payload(runtime_seq, capture_profile),
+                )
+                .map_err(embedded_to_io)?
             }
         })
     } else {
@@ -1703,6 +1741,7 @@ fn run_tcp_native_bridge(
     rpc: String,
     content_type: String,
     capture_out: Option<PathBuf>,
+    capture_profile: CaptureProfileArg,
     chunk_size: usize,
     timeout_secs: u64,
 ) -> io::Result<()> {
@@ -1730,7 +1769,11 @@ fn run_tcp_native_bridge(
             )
         }
         TcpBridgeMode::Capture => Some(
-            PacketFrame::new(FRAME_KIND_CAPTURE_COMMAND, runtime_seq, b"capture".to_vec())
+            PacketFrame::new(
+                FRAME_KIND_CAPTURE_COMMAND,
+                runtime_seq,
+                build_capture_command_payload(runtime_seq, capture_profile),
+            )
                 .map_err(embedded_to_io)?,
         ),
     };
@@ -2044,6 +2087,35 @@ fn parse_hex_16(value: &str) -> io::Result<[u8; 16]> {
 
 fn embedded_to_io(error: rns_embedded_core::EmbeddedError) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, format!("{error:?}"))
+}
+
+fn capture_profile_to_wire(profile: CaptureProfileArg) -> u8 {
+    match profile {
+        CaptureProfileArg::Default => 0,
+        CaptureProfileArg::Thumbnail => 1,
+        CaptureProfileArg::Balanced => 2,
+        CaptureProfileArg::High => 3,
+        CaptureProfileArg::VeryHigh => 4,
+    }
+}
+
+fn capture_profile_name_from_wire(raw: u8) -> &'static str {
+    match raw {
+        0 => "default",
+        1 => "thumbnail",
+        2 => "balanced",
+        3 => "high",
+        4 => "very_high",
+        _ => "unknown",
+    }
+}
+
+fn build_capture_command_payload(runtime_seq: u32, profile: CaptureProfileArg) -> Vec<u8> {
+    let mut payload = Vec::with_capacity(6);
+    payload.push(1);
+    payload.extend_from_slice(&runtime_seq.to_le_bytes());
+    payload.push(capture_profile_to_wire(profile));
+    payload
 }
 
 fn resolve_runtime_seq(explicit: Option<u32>) -> u32 {

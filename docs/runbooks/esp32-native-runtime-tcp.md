@@ -70,6 +70,19 @@ LISTENER_MODE=capture CAPTURE_OUT=/tmp/lxmf-tcp-capture.jpg ./tools/scripts/esp3
 
 If `CAPTURE_OUT` is omitted, captures are written under `target/hil/captures/`.
 
+Override the capture profile per request:
+
+```bash
+LISTENER_MODE=capture CAPTURE_PROFILE=very_high ./tools/scripts/esp32-tcp-native-smoke.sh
+```
+
+Supported request-time profiles:
+- `default`
+- `thumbnail`
+- `balanced`
+- `high`
+- `very_high`
+
 ## Bridge to `reticulumd`
 
 Start the daemon:
@@ -111,6 +124,12 @@ Repeated capture validation:
 
 ```bash
 RUNS=5 ./tools/scripts/esp32-tcp-native-soak.sh
+```
+
+Repeated capture validation with per-request override:
+
+```bash
+RUNS=5 CAPTURE_PROFILE=balanced ./tools/scripts/esp32-tcp-native-soak.sh
 ```
 
 Repeated LXMF ping validation:

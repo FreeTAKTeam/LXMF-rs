@@ -23,6 +23,7 @@ PAYLOAD="${PAYLOAD:-ping}"
 SOURCE_HEX="${SOURCE_HEX:-99999999999999999999999999999999}"
 DESTINATION_HEX="${DESTINATION_HEX:-22222222222222222222222222222222}"
 EXPECT_MIN_RESPONSES="${EXPECT_MIN_RESPONSES:-}"
+CAPTURE_PROFILE="${CAPTURE_PROFILE:-default}"
 
 echo "[esp32-tcp-native-smoke] building rnx"
 cargo build -p rns-tools --bin rnx --quiet
@@ -45,7 +46,7 @@ if [[ "${LISTENER_MODE}" == "lxmf-ping" ]]; then
   cmd+=(--source-hex "${SOURCE_HEX}" --destination-hex "${DESTINATION_HEX}")
 fi
 if [[ "${LISTENER_MODE}" == "capture" && -n "${CAPTURE_OUT}" ]]; then
-  cmd+=(--capture-out "${CAPTURE_OUT}")
+  cmd+=(--capture-out "${CAPTURE_OUT}" --capture-profile "${CAPTURE_PROFILE}")
 fi
 
 if [[ -z "${EXPECT_MIN_RESPONSES}" ]]; then
