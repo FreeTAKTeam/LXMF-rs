@@ -143,6 +143,57 @@ impl RpcDaemon {
         metrics.sdk_event_sink_skipped_total = metrics.sdk_event_sink_skipped_total.saturating_add(1);
     }
 
+    pub fn metrics_record_ble_connect_failure(&self, iface: &str) {
+        let mut metrics = self.sdk_metrics.lock().expect("sdk_metrics mutex poisoned");
+        metrics.ble_connect_failures_total = metrics.ble_connect_failures_total.saturating_add(1);
+        Self::metrics_increment(&mut metrics.ble_connect_failures_by_iface, iface);
+    }
+
+    pub fn metrics_record_ble_chunk_retry(&self, iface: &str, reason: &str) {
+        let mut metrics = self.sdk_metrics.lock().expect("sdk_metrics mutex poisoned");
+        metrics.ble_chunk_retries_total = metrics.ble_chunk_retries_total.saturating_add(1);
+        let key = format!("{iface}|{reason}");
+        Self::metrics_increment(&mut metrics.ble_chunk_retries_by_iface_reason, key.as_str());
+    }
+
+    pub fn metrics_record_ble_nack(&self, iface: &str) {
+        let mut metrics = self.sdk_metrics.lock().expect("sdk_metrics mutex poisoned");
+        metrics.ble_nacks_total = metrics.ble_nacks_total.saturating_add(1);
+        Self::metrics_increment(&mut metrics.ble_nacks_by_iface, iface);
+    }
+
+    pub fn metrics_record_ble_tx_queue_timeout(&self, iface: &str) {
+        let mut metrics = self.sdk_metrics.lock().expect("sdk_metrics mutex poisoned");
+        metrics.ble_tx_queue_timeout_total = metrics.ble_tx_queue_timeout_total.saturating_add(1);
+        Self::metrics_increment(&mut metrics.ble_tx_queue_timeout_by_iface, iface);
+    }
+
+    pub fn metrics_record_attachment_upload_offset_reject(&self, code: &str) {
+        let mut metrics = self.sdk_metrics.lock().expect("sdk_metrics mutex poisoned");
+        metrics.attachment_upload_offset_reject_total =
+            metrics.attachment_upload_offset_reject_total.saturating_add(1);
+        Self::metrics_increment(&mut metrics.attachment_upload_offset_reject_by_code, code);
+    }
+
+    pub fn metrics_record_attachment_upload_checksum_mismatch(&self) {
+        let mut metrics = self.sdk_metrics.lock().expect("sdk_metrics mutex poisoned");
+        metrics.attachment_upload_checksum_mismatch_total =
+            metrics.attachment_upload_checksum_mismatch_total.saturating_add(1);
+    }
+
+    pub fn metrics_record_capture_success(&self, camera_id: &str) {
+        let mut metrics = self.sdk_metrics.lock().expect("sdk_metrics mutex poisoned");
+        metrics.capture_success_total = metrics.capture_success_total.saturating_add(1);
+        Self::metrics_increment(&mut metrics.capture_success_by_camera_id, camera_id);
+    }
+
+    pub fn metrics_record_capture_failure(&self, camera_id: &str, reason: &str) {
+        let mut metrics = self.sdk_metrics.lock().expect("sdk_metrics mutex poisoned");
+        metrics.capture_failure_total = metrics.capture_failure_total.saturating_add(1);
+        let key = format!("{camera_id}|{reason}");
+        Self::metrics_increment(&mut metrics.capture_failure_by_camera_reason, key.as_str());
+    }
+
     pub fn metrics_snapshot(&self) -> JsonValue {
         let metrics = self.sdk_metrics.lock().expect("sdk_metrics mutex poisoned").clone();
         let event_queue_depth = self.event_queue.lock().expect("event_queue mutex poisoned").len();
@@ -177,6 +228,14 @@ impl RpcDaemon {
                 "sdk_event_sink_skipped_total": metrics.sdk_event_sink_skipped_total,
                 "sdk_auth_failures_total": metrics.sdk_auth_failures_total,
                 "sdk_event_dropped_count": dropped_count,
+                "ble_connect_failures_total": metrics.ble_connect_failures_total,
+                "ble_chunk_retries_total": metrics.ble_chunk_retries_total,
+                "ble_nacks_total": metrics.ble_nacks_total,
+                "ble_tx_queue_timeout_total": metrics.ble_tx_queue_timeout_total,
+                "attachment_upload_offset_reject_total": metrics.attachment_upload_offset_reject_total,
+                "attachment_upload_checksum_mismatch_total": metrics.attachment_upload_checksum_mismatch_total,
+                "capture_success_total": metrics.capture_success_total,
+                "capture_failure_total": metrics.capture_failure_total,
             },
             "depth": {
                 "legacy_event_queue_depth": event_queue_depth,
@@ -187,6 +246,13 @@ impl RpcDaemon {
             "rpc_errors_by_method": metrics.rpc_errors_by_method,
             "sdk_event_sink_publish_by_kind": metrics.sdk_event_sink_publish_by_kind,
             "sdk_event_sink_errors_by_kind": metrics.sdk_event_sink_errors_by_kind,
+            "ble_connect_failures_by_iface": metrics.ble_connect_failures_by_iface,
+            "ble_chunk_retries_by_iface_reason": metrics.ble_chunk_retries_by_iface_reason,
+            "ble_nacks_by_iface": metrics.ble_nacks_by_iface,
+            "ble_tx_queue_timeout_by_iface": metrics.ble_tx_queue_timeout_by_iface,
+            "attachment_upload_offset_reject_by_code": metrics.attachment_upload_offset_reject_by_code,
+            "capture_success_by_camera_id": metrics.capture_success_by_camera_id,
+            "capture_failure_by_camera_reason": metrics.capture_failure_by_camera_reason,
             "histograms": {
                 "sdk_send_latency_ms": metrics.sdk_send_latency_ms.as_json(),
                 "sdk_poll_latency_ms": metrics.sdk_poll_latency_ms.as_json(),

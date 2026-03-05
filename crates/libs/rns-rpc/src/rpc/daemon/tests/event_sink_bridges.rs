@@ -216,3 +216,39 @@ fn sdk_event_sink_bridge_failures_are_counted_in_metrics() {
         "failed sink delivery should increment error counter"
     );
 }
+
+#[test]
+fn ble_and_capture_metrics_are_exposed_in_snapshot() {
+    let store = MessagesStore::in_memory().expect("in-memory store");
+    let daemon =
+        RpcDaemon::with_store_and_bridges(store, "metrics-node".to_string(), None, None);
+
+    daemon.metrics_record_ble_connect_failure("ble-main");
+    daemon.metrics_record_ble_chunk_retry("ble-main", "ack_timeout");
+    daemon.metrics_record_ble_nack("ble-main");
+    daemon.metrics_record_ble_tx_queue_timeout("ble-main");
+    daemon.metrics_record_attachment_upload_offset_reject("SDK_RUNTIME_INVALID_CURSOR");
+    daemon.metrics_record_attachment_upload_checksum_mismatch();
+    daemon.metrics_record_capture_success("esp32-cam-1");
+    daemon.metrics_record_capture_failure("esp32-cam-1", "disconnect");
+
+    let snapshot = daemon.metrics_snapshot();
+    assert_eq!(snapshot["counters"]["ble_connect_failures_total"], json!(1));
+    assert_eq!(snapshot["counters"]["ble_chunk_retries_total"], json!(1));
+    assert_eq!(snapshot["counters"]["ble_nacks_total"], json!(1));
+    assert_eq!(snapshot["counters"]["ble_tx_queue_timeout_total"], json!(1));
+    assert_eq!(snapshot["counters"]["attachment_upload_offset_reject_total"], json!(1));
+    assert_eq!(snapshot["counters"]["attachment_upload_checksum_mismatch_total"], json!(1));
+    assert_eq!(snapshot["counters"]["capture_success_total"], json!(1));
+    assert_eq!(snapshot["counters"]["capture_failure_total"], json!(1));
+    assert_eq!(snapshot["ble_connect_failures_by_iface"]["ble-main"], json!(1));
+    assert_eq!(
+        snapshot["ble_chunk_retries_by_iface_reason"]["ble-main|ack_timeout"],
+        json!(1)
+    );
+    assert_eq!(snapshot["capture_success_by_camera_id"]["esp32-cam-1"], json!(1));
+    assert_eq!(
+        snapshot["capture_failure_by_camera_reason"]["esp32-cam-1|disconnect"],
+        json!(1)
+    );
+}
