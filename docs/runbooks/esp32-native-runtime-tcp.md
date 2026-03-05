@@ -34,6 +34,12 @@ Passive listener:
   --timeout-secs 15
 ```
 
+Or use the smoke wrapper:
+
+```bash
+./tools/scripts/esp32-tcp-native-smoke.sh
+```
+
 Active raw ping listener:
 
 ```bash
