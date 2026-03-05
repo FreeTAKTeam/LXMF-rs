@@ -19,6 +19,8 @@ use rns_embedded_core::{
 
 pub const FRAME_KIND_ANNOUNCE: u8 = 0x11;
 pub const FRAME_KIND_LXMF_MESSAGE: u8 = 0x31;
+pub const FRAME_KIND_TEST_PING: u8 = 0x45;
+pub const FRAME_KIND_TEST_PONG: u8 = 0x46;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct RuntimeConfig {
@@ -199,6 +201,18 @@ impl EmbeddedNodeRuntime {
                 sequence: frame.sequence,
                 bytes: frame.payload.len(),
             });
+            self.handle_inbound_frame(frame)?;
+        }
+        Ok(())
+    }
+
+    fn handle_inbound_frame(&mut self, frame: PacketFrame) -> EmbeddedResult<()> {
+        if frame.kind == FRAME_KIND_TEST_PING {
+            let mut payload = b"pong:".to_vec();
+            payload.extend_from_slice(&frame.payload);
+            let sequence = self.peek_next_sequence();
+            let response = PacketFrame::new(FRAME_KIND_TEST_PONG, sequence, payload)?;
+            self.enqueue_frame(response)?;
         }
         Ok(())
     }
@@ -292,7 +306,8 @@ impl EmbeddedNodeRuntime {
 #[cfg(test)]
 mod tests {
     use super::{
-        EmbeddedNodeRuntime, FRAME_KIND_ANNOUNCE, FRAME_KIND_LXMF_MESSAGE, RuntimeConfig,
+        EmbeddedNodeRuntime, FRAME_KIND_ANNOUNCE, FRAME_KIND_LXMF_MESSAGE, FRAME_KIND_TEST_PING,
+        FRAME_KIND_TEST_PONG, RuntimeConfig,
         RuntimeEvent,
     };
     use rns_embedded_core::{
@@ -425,5 +440,21 @@ mod tests {
         let stats = runtime.stats();
         assert_eq!(stats.outbound_deferred, 1);
         assert_eq!(stats.outbound_sent, 2);
+    }
+
+    #[test]
+    fn inbound_test_ping_enqueues_test_pong_response() {
+        let mut runtime = EmbeddedNodeRuntime::new(config()).expect("runtime");
+        let mut store = JournaledEmbeddedStore::new();
+        let mut transport = transport();
+        transport.enqueue_inbound([PacketFrame::new(FRAME_KIND_TEST_PING, 7, b"ping".to_vec()).expect("ping frame")]);
+
+        runtime.tick(0, &mut transport, &mut store).expect("tick");
+
+        let outbound = transport.drain_outbound();
+        assert_eq!(outbound.len(), 2);
+        assert_eq!(outbound[0].kind, FRAME_KIND_ANNOUNCE);
+        assert_eq!(outbound[1].kind, FRAME_KIND_TEST_PONG);
+        assert_eq!(outbound[1].payload, b"pong:ping");
     }
 }
