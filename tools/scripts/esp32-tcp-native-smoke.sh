@@ -7,6 +7,8 @@ cd "${REPO_ROOT}"
 
 LOG_DIR="${LOG_DIR:-${REPO_ROOT}/target/hil}"
 mkdir -p "${LOG_DIR}"
+LISTENER_MODE="${LISTENER_MODE:-passive}"
+CAPTURE_OUT="${CAPTURE_OUT:-}"
 CAPTURE_DIR_DEFAULT="${LOG_DIR}/captures"
 if [[ "${LISTENER_MODE}" == "capture" && -z "${CAPTURE_OUT}" ]]; then
   mkdir -p "${CAPTURE_DIR_DEFAULT}"
@@ -15,14 +17,12 @@ fi
 
 LISTENER_LOG="${LOG_DIR}/esp32-tcp-native-listener.log"
 BIND_ADDR="${BIND_ADDR:-0.0.0.0:7443}"
-LISTENER_MODE="${LISTENER_MODE:-passive}"
 TIMEOUT_SECS="${TIMEOUT_SECS:-20}"
 RUNTIME_SEQ="${RUNTIME_SEQ:-}"
 PAYLOAD="${PAYLOAD:-ping}"
 SOURCE_HEX="${SOURCE_HEX:-99999999999999999999999999999999}"
 DESTINATION_HEX="${DESTINATION_HEX:-22222222222222222222222222222222}"
 EXPECT_MIN_RESPONSES="${EXPECT_MIN_RESPONSES:-}"
-CAPTURE_OUT="${CAPTURE_OUT:-}"
 
 echo "[esp32-tcp-native-smoke] building rnx"
 cargo build -p rns-tools --bin rnx --quiet
