@@ -5,6 +5,7 @@ contract_ble_camera_wire_ref = "366c35c"
 contract_ble_transport_runtime_ref = "366c35c"
 contract_native_embedded_interop_ref = "366c35c"
 contract_native_embedded_lab_profile_ref = "phase0"
+contract_native_embedded_node_config_ref = "phase1"
 
 firmware_repo = "github.com/CoteTommy/lxmf-embedded-fw"
 firmware_ref = "5db94fe"

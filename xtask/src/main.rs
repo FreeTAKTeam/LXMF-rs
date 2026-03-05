@@ -45,6 +45,7 @@ const EMBEDDED_NATIVE_LOCKFILE_PATH: &str = "docs/contracts/native-embedded-lock
 const EMBEDDED_NATIVE_INTEROP_PROFILE_PATH: &str =
     "docs/contracts/native-embedded-interop-profile-v1.md";
 const EMBEDDED_NATIVE_LAB_PROFILE_PATH: &str = "docs/contracts/native-embedded-lab-profile-v1.md";
+const EMBEDDED_NATIVE_NODE_CONFIG_PATH: &str = "docs/contracts/native-embedded-node-config-v1.md";
 const BLE_CAMERA_WIRE_CONTRACT_PATH: &str = "docs/contracts/ble-camera-wire-v1.md";
 const BLE_TRANSPORT_RUNTIME_CONTRACT_PATH: &str = "docs/contracts/ble-transport-runtime-contract.md";
 const EMBEDDED_NATIVE_WORKFLOW_PATH: &str = ".github/workflows/nightly-embedded-hil.yml";
@@ -3083,6 +3084,7 @@ fn run_embedded_native_lock_check() -> Result<()> {
         BLE_CAMERA_WIRE_CONTRACT_PATH,
         BLE_TRANSPORT_RUNTIME_CONTRACT_PATH,
         EMBEDDED_NATIVE_LAB_PROFILE_PATH,
+        EMBEDDED_NATIVE_NODE_CONFIG_PATH,
         EMBEDDED_NATIVE_WORKFLOW_PATH,
         CI_WORKFLOW_PATH,
     ] {
@@ -3108,8 +3110,28 @@ fn run_embedded_native_lock_check() -> Result<()> {
         }
     }
 
+    let node_config = fs::read_to_string(EMBEDDED_NATIVE_NODE_CONFIG_PATH)
+        .with_context(|| format!("missing {EMBEDDED_NATIVE_NODE_CONFIG_PATH}"))?;
+    for marker in [
+        "# Native Embedded Node Config v1",
+        "## Schema Version",
+        "## Stored Fields",
+        "### Node mode",
+        "### Wi-Fi",
+        "### TCP client",
+        "### TCP server",
+        "## Lifecycle coupling",
+    ] {
+        if !node_config.contains(marker) {
+            bail!(
+                "embedded native node config missing marker '{marker}' in {EMBEDDED_NATIVE_NODE_CONFIG_PATH}"
+            );
+        }
+    }
+
     for marker in [
         "contract_native_embedded_lab_profile_ref =",
+        "contract_native_embedded_node_config_ref =",
         "release_revision_mode = \"pinned\"",
         "tcp_read_timeout_secs = 8",
         "tcp_heartbeat_interval_ms = 30000",

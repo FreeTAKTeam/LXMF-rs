@@ -118,7 +118,10 @@ impl EmbeddedTransport for BleShimTransport {
 #[cfg(test)]
 mod tests {
     use super::{BleShimConfig, BleShimTransport};
-    use crate::{EmbeddedNodeRuntime, FRAME_KIND_ANNOUNCE, RuntimeConfig};
+    use crate::{
+        CaptureDefaults, EmbeddedNodeRuntime, FRAME_KIND_ANNOUNCE, NodeTransportMode,
+        RuntimeConfig,
+    };
     use rns_embedded_core::{
         EmbeddedError,
         packet::{PacketFrame, decode_frame, encode_frame},
@@ -130,9 +133,11 @@ mod tests {
         RuntimeConfig {
             store_identity: [0x5A; 32],
             lxmf_address: [0xC3; 16],
+            node_mode: NodeTransportMode::BleOnly,
             announce_interval_ms: 1_000,
             max_outbound_queue: 8,
             max_events: 16,
+            capture_defaults: CaptureDefaults::default(),
         }
     }
 

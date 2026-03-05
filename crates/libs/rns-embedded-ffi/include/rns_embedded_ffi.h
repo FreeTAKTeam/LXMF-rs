@@ -14,9 +14,11 @@ typedef struct RnsEmbeddedNode RnsEmbeddedNode;
 typedef struct {
   uint8_t store_identity[32];
   uint8_t lxmf_address[16];
+  uint32_t node_mode;
   uint64_t announce_interval_ms;
   size_t max_outbound_queue;
   size_t max_events;
+  uint32_t capture_default_max_bytes;
   uint16_t ble_mtu_hint;
   size_t ble_max_inbound_frames;
   size_t ble_max_outbound_frames;
@@ -24,10 +26,25 @@ typedef struct {
 } RnsEmbeddedNodeConfig;
 
 typedef enum {
+  RNS_EMBEDDED_NODE_MODE_BLE_ONLY = 0,
+  RNS_EMBEDDED_NODE_MODE_TCP_CLIENT = 1,
+  RNS_EMBEDDED_NODE_MODE_TCP_SERVER = 2,
+} RnsEmbeddedNodeMode;
+
+typedef enum {
   RNS_EMBEDDED_LINK_DOWN = 0,
   RNS_EMBEDDED_LINK_CONNECTING = 1,
   RNS_EMBEDDED_LINK_UP = 2,
 } RnsEmbeddedLinkState;
+
+typedef enum {
+  RNS_EMBEDDED_LIFECYCLE_BOOT = 0,
+  RNS_EMBEDDED_LIFECYCLE_UNPROVISIONED = 1,
+  RNS_EMBEDDED_LIFECYCLE_PROVISIONED_OFFLINE = 2,
+  RNS_EMBEDDED_LIFECYCLE_TCP_ONLINE = 3,
+  RNS_EMBEDDED_LIFECYCLE_BLE_RECOVERY = 4,
+  RNS_EMBEDDED_LIFECYCLE_FAILURE_RECONNECT = 5,
+} RnsEmbeddedLifecycleState;
 
 typedef enum {
   RNS_EMBEDDED_STATUS_OK = 0,
@@ -53,6 +70,14 @@ void rns_embedded_node_free(RnsEmbeddedNode *node);
 RnsEmbeddedStatus rns_embedded_node_set_link_state(
     RnsEmbeddedNode *node,
     RnsEmbeddedLinkState state);
+RnsEmbeddedStatus rns_embedded_node_set_network_provisioned(
+    RnsEmbeddedNode *node,
+    bool provisioned);
+RnsEmbeddedStatus rns_embedded_node_set_ble_recovery_active(
+    RnsEmbeddedNode *node,
+    bool active);
+RnsEmbeddedLifecycleState rns_embedded_node_get_lifecycle_state(
+    RnsEmbeddedNode *node);
 RnsEmbeddedStatus rns_embedded_node_tick(RnsEmbeddedNode *node, uint64_t now_ms);
 RnsEmbeddedStatus rns_embedded_node_push_inbound_wire(
     RnsEmbeddedNode *node,

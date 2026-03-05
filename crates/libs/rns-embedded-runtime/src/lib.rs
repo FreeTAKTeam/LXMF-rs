@@ -4,6 +4,7 @@ extern crate alloc;
 
 pub mod ble;
 pub mod constants;
+pub mod node;
 
 #[cfg(feature = "std")]
 pub mod tcp;
@@ -18,14 +19,17 @@ use rns_embedded_core::{
     transport::{EmbeddedTransport, LinkState},
 };
 pub use constants::*;
+pub use node::{CaptureDefaults, NodeLifecycleState, NodeTransportMode};
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct RuntimeConfig {
     pub store_identity: [u8; 32],
     pub lxmf_address: [u8; 16],
+    pub node_mode: NodeTransportMode,
     pub announce_interval_ms: u64,
     pub max_outbound_queue: usize,
     pub max_events: usize,
+    pub capture_defaults: CaptureDefaults,
 }
 
 impl Default for RuntimeConfig {
@@ -33,9 +37,11 @@ impl Default for RuntimeConfig {
         Self {
             store_identity: [0x11; 32],
             lxmf_address: [0x22; 16],
+            node_mode: NodeTransportMode::BleOnly,
             announce_interval_ms: DEFAULT_ANNOUNCE_INTERVAL_MS,
             max_outbound_queue: 8,
             max_events: 32,
+            capture_defaults: CaptureDefaults::default(),
         }
     }
 }
@@ -75,6 +81,10 @@ pub enum RuntimeEvent {
         sequence: u32,
         error: EmbeddedError,
     },
+    LifecycleChanged {
+        from: NodeLifecycleState,
+        to: NodeLifecycleState,
+    },
 }
 
 pub struct EmbeddedNodeRuntime {
@@ -87,6 +97,9 @@ pub struct EmbeddedNodeRuntime {
     last_announce_at_ms: Option<u64>,
     bootstrapped: bool,
     stats: RuntimeStats,
+    network_provisioned: bool,
+    ble_recovery_active: bool,
+    lifecycle_state: NodeLifecycleState,
 }
 
 impl EmbeddedNodeRuntime {
@@ -115,6 +128,9 @@ impl EmbeddedNodeRuntime {
                 announces_received: 0,
                 lxmf_messages_received: 0,
             },
+            network_provisioned: false,
+            ble_recovery_active: false,
+            lifecycle_state: NodeLifecycleState::Boot,
         })
     }
 
@@ -135,6 +151,8 @@ impl EmbeddedNodeRuntime {
         if !self.bootstrapped {
             self.bootstrap(store)?;
         }
+
+        self.update_lifecycle(transport.link_state());
 
         if transport.link_state() == LinkState::Up
             && self.announce_due(now_ms)
@@ -171,6 +189,18 @@ impl EmbeddedNodeRuntime {
 
     pub fn pending_outbound_len(&self) -> usize {
         self.outbound.len()
+    }
+
+    pub fn lifecycle_state(&self) -> NodeLifecycleState {
+        self.lifecycle_state
+    }
+
+    pub fn set_network_provisioned(&mut self, provisioned: bool) {
+        self.network_provisioned = provisioned;
+    }
+
+    pub fn set_ble_recovery_active(&mut self, active: bool) {
+        self.ble_recovery_active = active;
     }
 
     pub fn stats(&self) -> RuntimeStats {
@@ -324,6 +354,35 @@ impl EmbeddedNodeRuntime {
         }
     }
 
+    fn update_lifecycle(&mut self, link_state: LinkState) {
+        let next = if !self.bootstrapped {
+            NodeLifecycleState::Boot
+        } else if self.ble_recovery_active {
+            NodeLifecycleState::BleRecovery
+        } else {
+            match self.config.node_mode {
+                NodeTransportMode::BleOnly => NodeLifecycleState::Unprovisioned,
+                NodeTransportMode::TcpClient | NodeTransportMode::TcpServer => {
+                    if !self.network_provisioned {
+                        NodeLifecycleState::Unprovisioned
+                    } else {
+                        match link_state {
+                            LinkState::Up => NodeLifecycleState::TcpOnline,
+                            LinkState::Connecting => NodeLifecycleState::FailureReconnect,
+                            LinkState::Down => NodeLifecycleState::ProvisionedOffline,
+                        }
+                    }
+                }
+            }
+        };
+
+        if self.lifecycle_state != next {
+            let from = self.lifecycle_state;
+            self.lifecycle_state = next;
+            self.push_event(RuntimeEvent::LifecycleChanged { from, to: next });
+        }
+    }
+
     fn peek_next_sequence(&self) -> u32 {
         self.next_sequence
     }
@@ -339,8 +398,9 @@ impl EmbeddedNodeRuntime {
 #[cfg(test)]
 mod tests {
     use super::{
-        EmbeddedNodeRuntime, FRAME_KIND_ANNOUNCE, FRAME_KIND_LXMF_MESSAGE, FRAME_KIND_TEST_PING,
-        FRAME_KIND_TEST_PONG, RuntimeConfig,
+        CaptureDefaults, EmbeddedNodeRuntime, FRAME_KIND_ANNOUNCE, FRAME_KIND_LXMF_MESSAGE,
+        FRAME_KIND_TEST_PING, FRAME_KIND_TEST_PONG, NodeLifecycleState, NodeTransportMode,
+        RuntimeConfig,
         RuntimeEvent,
     };
     use rns_embedded_core::{
@@ -355,9 +415,11 @@ mod tests {
         RuntimeConfig {
             store_identity: [0xAB; 32],
             lxmf_address: [0xCD; 16],
+            node_mode: NodeTransportMode::BleOnly,
             announce_interval_ms: 1_000,
             max_outbound_queue: 8,
             max_events: 16,
+            capture_defaults: CaptureDefaults::default(),
         }
     }
 
@@ -515,5 +577,38 @@ mod tests {
         assert_eq!(response.source, [0xCD; 16]);
         assert_eq!(response.destination, [0xEE; 16]);
         assert_eq!(response.body, b"pong:hello");
+    }
+
+    #[test]
+    fn lifecycle_moves_to_tcp_online_when_provisioned_and_link_up() {
+        let mut runtime = EmbeddedNodeRuntime::new(RuntimeConfig {
+            node_mode: NodeTransportMode::TcpClient,
+            ..config()
+        })
+        .expect("runtime");
+        let mut store = JournaledEmbeddedStore::new();
+        let mut tx = transport();
+        runtime.set_network_provisioned(true);
+
+        runtime.tick(0, &mut tx, &mut store).expect("tick");
+
+        assert_eq!(runtime.lifecycle_state(), NodeLifecycleState::TcpOnline);
+    }
+
+    #[test]
+    fn lifecycle_enters_ble_recovery_when_enabled() {
+        let mut runtime = EmbeddedNodeRuntime::new(RuntimeConfig {
+            node_mode: NodeTransportMode::TcpClient,
+            ..config()
+        })
+        .expect("runtime");
+        let mut store = JournaledEmbeddedStore::new();
+        let mut tx = transport();
+        runtime.set_network_provisioned(true);
+        runtime.set_ble_recovery_active(true);
+
+        runtime.tick(0, &mut tx, &mut store).expect("tick");
+
+        assert_eq!(runtime.lifecycle_state(), NodeLifecycleState::BleRecovery);
     }
 }

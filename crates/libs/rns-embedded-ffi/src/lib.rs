@@ -8,6 +8,7 @@ use rns_embedded_core::{EmbeddedError, store::JournaledEmbeddedStore, transport:
 use rns_embedded_runtime::{
     EmbeddedNodeRuntime, RuntimeConfig,
     ble::{BleShimConfig, BleShimTransport},
+    node::{CaptureDefaults, NodeLifecycleState, NodeTransportMode},
 };
 
 #[cfg(not(feature = "std"))]
@@ -54,13 +55,23 @@ unsafe impl critical_section::Impl for NoopCriticalSection {
 pub struct RnsEmbeddedNodeConfig {
     pub store_identity: [u8; 32],
     pub lxmf_address: [u8; 16],
+    pub node_mode: RnsEmbeddedNodeMode,
     pub announce_interval_ms: u64,
     pub max_outbound_queue: usize,
     pub max_events: usize,
+    pub capture_default_max_bytes: u32,
     pub ble_mtu_hint: u16,
     pub ble_max_inbound_frames: usize,
     pub ble_max_outbound_frames: usize,
     pub ble_ordered_delivery: bool,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum RnsEmbeddedNodeMode {
+    BleOnly = 0,
+    TcpClient = 1,
+    TcpServer = 2,
 }
 
 impl Default for RnsEmbeddedNodeConfig {
@@ -70,9 +81,11 @@ impl Default for RnsEmbeddedNodeConfig {
         Self {
             store_identity: runtime.store_identity,
             lxmf_address: runtime.lxmf_address,
+            node_mode: RnsEmbeddedNodeMode::BleOnly,
             announce_interval_ms: runtime.announce_interval_ms,
             max_outbound_queue: runtime.max_outbound_queue,
             max_events: runtime.max_events,
+            capture_default_max_bytes: runtime.capture_defaults.max_bytes,
             ble_mtu_hint: ble.mtu_hint,
             ble_max_inbound_frames: ble.max_inbound_frames,
             ble_max_outbound_frames: ble.max_outbound_frames,
@@ -87,6 +100,17 @@ pub enum RnsEmbeddedLinkState {
     Down = 0,
     Connecting = 1,
     Up = 2,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum RnsEmbeddedLifecycleState {
+    Boot = 0,
+    Unprovisioned = 1,
+    ProvisionedOffline = 2,
+    TcpOnline = 3,
+    BleRecovery = 4,
+    FailureReconnect = 5,
 }
 
 #[repr(C)]
@@ -149,9 +173,17 @@ pub extern "C" fn rns_embedded_node_new(
     let runtime = match EmbeddedNodeRuntime::new(RuntimeConfig {
         store_identity: config.store_identity,
         lxmf_address: config.lxmf_address,
+        node_mode: match config.node_mode {
+            RnsEmbeddedNodeMode::BleOnly => NodeTransportMode::BleOnly,
+            RnsEmbeddedNodeMode::TcpClient => NodeTransportMode::TcpClient,
+            RnsEmbeddedNodeMode::TcpServer => NodeTransportMode::TcpServer,
+        },
         announce_interval_ms: config.announce_interval_ms,
         max_outbound_queue: config.max_outbound_queue,
         max_events: config.max_events,
+        capture_defaults: CaptureDefaults {
+            max_bytes: config.capture_default_max_bytes,
+        },
     }) {
         Ok(runtime) => runtime,
         Err(_) => return core::ptr::null_mut(),
@@ -211,6 +243,47 @@ pub extern "C" fn rns_embedded_node_tick(
         return RnsEmbeddedStatus::InvalidArgument;
     };
     map_status(node.runtime.tick(now_ms, &mut node.transport, &mut node.store))
+}
+
+#[no_mangle]
+pub extern "C" fn rns_embedded_node_set_network_provisioned(
+    node: *mut RnsEmbeddedNode,
+    provisioned: bool,
+) -> RnsEmbeddedStatus {
+    let Some(node) = node_mut(node) else {
+        return RnsEmbeddedStatus::InvalidArgument;
+    };
+    node.runtime.set_network_provisioned(provisioned);
+    RnsEmbeddedStatus::Ok
+}
+
+#[no_mangle]
+pub extern "C" fn rns_embedded_node_set_ble_recovery_active(
+    node: *mut RnsEmbeddedNode,
+    active: bool,
+) -> RnsEmbeddedStatus {
+    let Some(node) = node_mut(node) else {
+        return RnsEmbeddedStatus::InvalidArgument;
+    };
+    node.runtime.set_ble_recovery_active(active);
+    RnsEmbeddedStatus::Ok
+}
+
+#[no_mangle]
+pub extern "C" fn rns_embedded_node_get_lifecycle_state(
+    node: *mut RnsEmbeddedNode,
+) -> RnsEmbeddedLifecycleState {
+    let Some(node) = node_mut(node) else {
+        return RnsEmbeddedLifecycleState::Boot;
+    };
+    match node.runtime.lifecycle_state() {
+        NodeLifecycleState::Boot => RnsEmbeddedLifecycleState::Boot,
+        NodeLifecycleState::Unprovisioned => RnsEmbeddedLifecycleState::Unprovisioned,
+        NodeLifecycleState::ProvisionedOffline => RnsEmbeddedLifecycleState::ProvisionedOffline,
+        NodeLifecycleState::TcpOnline => RnsEmbeddedLifecycleState::TcpOnline,
+        NodeLifecycleState::BleRecovery => RnsEmbeddedLifecycleState::BleRecovery,
+        NodeLifecycleState::FailureReconnect => RnsEmbeddedLifecycleState::FailureReconnect,
+    }
 }
 
 #[no_mangle]
