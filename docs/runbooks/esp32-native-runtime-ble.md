@@ -28,14 +28,12 @@ This runbook covers the publishable host/device path for the embedded native run
 ## Build host tool
 
 ```bash
-cd /Users/tommy/Documents/TAK/LXMF-rs
 cargo build -p rns-tools --bin rnx
 ```
 
 ## Build embedded Rust library
 
 ```bash
-cd /Users/tommy/Documents/TAK/LXMF-rs
 PATH="$HOME/.rustup/toolchains/esp/bin:$PATH" RUSTUP_TOOLCHAIN=esp \
 cargo build -Z build-std=core,alloc -p rns-embedded-ffi --release \
   --target xtensa-esp32-espidf --no-default-features --features alloc
@@ -44,9 +42,8 @@ cargo build -Z build-std=core,alloc -p rns-embedded-ffi --release \
 ## Flash firmware
 
 ```bash
-cd /Users/tommy/Documents/TAK/lxmf-esp32-cam-fw
-LXMF_RUST_FFI_LIB=/Users/tommy/Documents/TAK/LXMF-rs/target/xtensa-esp32-espidf/release/librns_embedded_ffi.a \
-LXMF_RUST_FFI_INCLUDE=/Users/tommy/Documents/TAK/LXMF-rs/crates/libs/rns-embedded-ffi/include \
+LXMF_RUST_FFI_LIB=../LXMF-rs/target/xtensa-esp32-espidf/release/librns_embedded_ffi.a \
+LXMF_RUST_FFI_INCLUDE=../LXMF-rs/crates/libs/rns-embedded-ffi/include \
 pio run -t upload
 pio device monitor
 ```
@@ -60,7 +57,6 @@ Expected boot line:
 ## Raw native runtime ping
 
 ```bash
-cd /Users/tommy/Documents/TAK/LXMF-rs
 ./target/debug/rnx ble-native-peer \
   --name-hint LXMF \
   --service-uuid 12345678-1234-1234-1234-1234567890ab \
@@ -80,7 +76,6 @@ BLE_NATIVE_PEER frame kind=0x46 ... payload_hex=706f6e673a70696e67
 ## LXMF-style runtime ping
 
 ```bash
-cd /Users/tommy/Documents/TAK/LXMF-rs
 ./target/debug/rnx ble-native-peer \
   --name-hint LXMF \
   --service-uuid 12345678-1234-1234-1234-1234567890ab \
@@ -106,7 +101,6 @@ BLE_NATIVE_PEER frame kind=0x31 ... body=pong:hello
 Start daemon:
 
 ```bash
-cd /Users/tommy/Documents/TAK/LXMF-rs
 mkdir -p .tmp/ble-native-bridge
 ./target/debug/reticulumd --rpc 127.0.0.1:4243 --db .tmp/ble-native-bridge/reticulum.db
 ```
@@ -114,7 +108,6 @@ mkdir -p .tmp/ble-native-bridge
 In another terminal:
 
 ```bash
-cd /Users/tommy/Documents/TAK/LXMF-rs
 ./target/debug/rnx ble-native-bridge \
   --name-hint LXMF \
   --service-uuid 12345678-1234-1234-1234-1234567890ab \
