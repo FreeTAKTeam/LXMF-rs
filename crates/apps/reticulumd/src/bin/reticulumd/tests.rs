@@ -1,5 +1,6 @@
 use crate::bootstrap::{
-    enforce_startup_policy, mark_interface_startup_status, InterfaceStartupFailure,
+    enforce_startup_policy, mark_interface_runtime_fields, mark_interface_startup_status,
+    InterfaceStartupFailure,
 };
 use crate::bridge_helpers::opportunistic_payload;
 use crate::interfaces::{lora, serial};
@@ -120,6 +121,33 @@ fn startup_status_metadata_is_embedded_in_interface_settings() {
         Some("permission denied")
     );
     assert_eq!(runtime.get("iface").and_then(|value| value.as_str()), Some("deadbeef"));
+}
+
+#[test]
+fn runtime_status_metadata_is_embedded_in_interface_settings() {
+    let mut record = InterfaceRecord {
+        kind: "ble_gatt".to_string(),
+        enabled: true,
+        host: None,
+        port: None,
+        name: Some("ble-main".to_string()),
+        settings: Some(json!({
+            "peripheral_id": "AA:BB:CC:DD:EE:FF"
+        })),
+    };
+
+    mark_interface_startup_status(&mut record, "spawned", None, Some("beefcafe"));
+    mark_interface_runtime_fields(&mut record, "running", 0);
+
+    let settings = record.settings.expect("settings should be present");
+    let runtime = settings
+        .get("_runtime")
+        .and_then(|value| value.as_object())
+        .expect("runtime metadata should be present");
+    assert_eq!(runtime.get("startup_status").and_then(|value| value.as_str()), Some("spawned"));
+    assert_eq!(runtime.get("runtime_status").and_then(|value| value.as_str()), Some("running"));
+    assert_eq!(runtime.get("reconnect_attempts").and_then(|value| value.as_u64()), Some(0));
+    assert_eq!(runtime.get("iface").and_then(|value| value.as_str()), Some("beefcafe"));
 }
 
 #[test]
