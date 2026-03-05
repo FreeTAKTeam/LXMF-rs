@@ -1,0 +1,18 @@
+[
+  {
+    "id": "minimal-hi",
+    "source_hex": "00112233445566778899aabbccddeeff",
+    "destination_hex": "ffeeddccbbaa99887766554433221100",
+    "sequence": 1,
+    "body_hex": "6869",
+    "encoded_hex": "454c58310100112233445566778899aabbccddeeffffeeddccbbaa998877665544332211000100000000000000020000006869"
+  },
+  {
+    "id": "minimal-ping",
+    "source_hex": "102132435465768798a9babcbddcedfe",
+    "destination_hex": "0123456789abcdeffedcba9876543210",
+    "sequence": 42,
+    "body_hex": "70696e67",
+    "encoded_hex": "454c583101102132435465768798a9babcbddcedfe0123456789abcdeffedcba98765432102a000000000000000400000070696e67"
+  }
+]
