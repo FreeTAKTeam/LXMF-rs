@@ -1429,7 +1429,6 @@ fn run_tcp_native_peer(
 struct TcpSessionOutcome {
     responses: usize,
     lxmf_reply_body: Option<Vec<u8>>,
-    capture_path: Option<PathBuf>,
     capture_bytes: Option<Vec<u8>>,
 }
 
@@ -1441,6 +1440,7 @@ fn handle_tcp_native_session(
     deferred_outbound: Option<&PacketFrame>,
     repeat_until_capture_starts: bool,
     capture_out: Option<PathBuf>,
+    print_summary: bool,
     timeout_secs: u64,
 ) -> io::Result<TcpSessionOutcome> {
     let deadline = Instant::now() + Duration::from_secs(timeout_secs.max(1));
@@ -1451,7 +1451,6 @@ fn handle_tcp_native_session(
     let mut capture_total_chunks: Option<u16> = None;
     let mut capture_started = false;
     let mut lxmf_reply_body: Option<Vec<u8>> = None;
-    let mut capture_path: Option<PathBuf> = None;
 
     while Instant::now() < deadline {
         match transport.poll_frame().map_err(embedded_to_io)? {
@@ -1596,7 +1595,6 @@ fn handle_tcp_native_session(
                         path.display(),
                         capture_bytes.len()
                     );
-                    capture_path = Some(path);
                     responses = responses.saturating_add(1);
                     break;
                 }
@@ -1614,11 +1612,12 @@ fn handle_tcp_native_session(
         }
     }
 
-    println!("{label} ok: peer={} responses={} mode={}", peer_addr, responses, mode_name);
+    if print_summary {
+        println!("{label} ok: peer={} responses={} mode={}", peer_addr, responses, mode_name);
+    }
     Ok(TcpSessionOutcome {
         responses,
         lxmf_reply_body,
-        capture_path,
         capture_bytes: (!capture_bytes.is_empty()).then_some(capture_bytes),
     })
 }
@@ -1683,6 +1682,7 @@ fn run_tcp_native_listener(
             deferred_outbound.as_ref(),
             mode == NativeListenerMode::Capture,
             capture_out.clone(),
+            true,
             timeout_secs,
         )?;
         if !serve || outcome.responses > 0 {
@@ -1748,6 +1748,7 @@ fn run_tcp_native_bridge(
             deferred_outbound.as_ref(),
             mode == TcpBridgeMode::Capture,
             capture_out.clone(),
+            false,
             timeout_secs,
         )?;
 
@@ -1775,13 +1776,6 @@ fn run_tcp_native_bridge(
                     bytes.as_slice(),
                     chunk_size.max(1),
                 )?;
-                if let Some(path) = outcome.capture_path.as_ref() {
-                    println!(
-                        "TCP_NATIVE_BRIDGE capture saved path={} bytes={}",
-                        path.display(),
-                        bytes.len()
-                    );
-                }
                 attachment
             }
         };

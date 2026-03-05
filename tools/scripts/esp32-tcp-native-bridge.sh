@@ -18,6 +18,11 @@ CHUNK_SIZE="${CHUNK_SIZE:-8192}"
 CAPTURE_OUT="${CAPTURE_OUT:-}"
 LOG_DIR="${LOG_DIR:-${REPO_ROOT}/target/hil}"
 mkdir -p "${LOG_DIR}"
+CAPTURE_DIR_DEFAULT="${LOG_DIR}/captures"
+if [[ "${BRIDGE_MODE}" == "capture" && -z "${CAPTURE_OUT}" ]]; then
+  mkdir -p "${CAPTURE_DIR_DEFAULT}"
+  CAPTURE_OUT="${CAPTURE_DIR_DEFAULT}/bridge-capture-$(date +%s).jpg"
+fi
 LOG_PATH="${LOG_DIR}/esp32-tcp-native-bridge.log"
 
 echo "[esp32-tcp-native-bridge] building rnx"

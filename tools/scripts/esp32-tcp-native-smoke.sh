@@ -7,6 +7,11 @@ cd "${REPO_ROOT}"
 
 LOG_DIR="${LOG_DIR:-${REPO_ROOT}/target/hil}"
 mkdir -p "${LOG_DIR}"
+CAPTURE_DIR_DEFAULT="${LOG_DIR}/captures"
+if [[ "${LISTENER_MODE}" == "capture" && -z "${CAPTURE_OUT}" ]]; then
+  mkdir -p "${CAPTURE_DIR_DEFAULT}"
+  CAPTURE_OUT="${CAPTURE_DIR_DEFAULT}/capture-$(date +%s).jpg"
+fi
 
 LISTENER_LOG="${LOG_DIR}/esp32-tcp-native-listener.log"
 BIND_ADDR="${BIND_ADDR:-0.0.0.0:7443}"

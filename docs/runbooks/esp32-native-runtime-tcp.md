@@ -68,6 +68,8 @@ Capture via smoke wrapper:
 LISTENER_MODE=capture CAPTURE_OUT=/tmp/lxmf-tcp-capture.jpg ./tools/scripts/esp32-tcp-native-smoke.sh
 ```
 
+If `CAPTURE_OUT` is omitted, captures are written under `target/hil/captures/`.
+
 ## Bridge to `reticulumd`
 
 Start the daemon:
@@ -82,6 +84,8 @@ Bridge a capture into the daemon:
 ```bash
 ./tools/scripts/esp32-tcp-native-bridge.sh
 ```
+
+If `CAPTURE_OUT` is omitted, bridge captures are written under `target/hil/captures/`.
 
 Bridge an LXMF reply body into the daemon:
 
@@ -99,6 +103,20 @@ Long-running bridge:
   --rpc 127.0.0.1:4243 \
   --serve \
   --timeout-secs 30
+```
+
+## Soak testing
+
+Repeated capture validation:
+
+```bash
+RUNS=5 ./tools/scripts/esp32-tcp-native-soak.sh
+```
+
+Repeated LXMF ping validation:
+
+```bash
+MODE=lxmf-ping RUNS=5 PAYLOAD=hello ./tools/scripts/esp32-tcp-native-soak.sh
 ```
 
 Active raw ping listener:
