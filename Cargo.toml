@@ -43,6 +43,7 @@ repository = "https://github.com/FreeTAKTeam/LXMF-rs"
 allowed_library_edges = [
   "lxmf-core->rns-core",
   "lxmf-sdk->rns-rpc",
+  "rns-embedded-ffi->rns-embedded-core",
   "rns-embedded-ffi->rns-embedded-runtime",
   "rns-embedded-runtime->rns-embedded-core",
   "rns-transport->rns-core",
@@ -56,6 +57,8 @@ allowed_app_edges = [
   "reticulumd->rns-core",
   "reticulumd->rns-rpc",
   "reticulumd->rns-transport",
+  "rns-tools->rns-embedded-core",
+  "rns-tools->rns-embedded-runtime",
   "rns-tools->rns-rpc",
 ]
 

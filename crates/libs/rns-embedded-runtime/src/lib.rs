@@ -10,13 +10,16 @@ pub mod tcp;
 use alloc::{collections::VecDeque, vec::Vec};
 use rns_embedded_core::{
     EmbeddedError, EmbeddedResult,
-    lxmf_min::{MinimalEnvelope, encode_envelope},
+    lxmf_min::{MinimalEnvelope, decode_envelope, encode_envelope},
     packet::PacketFrame,
     replay::ReplayWindow,
     store::EmbeddedStore,
     transport::{EmbeddedTransport, LinkState},
 };
 
+pub const BLE_FRAME_NATIVE_ANNOUNCE_REQ: u8 = 0x21;
+pub const BLE_FRAME_NATIVE_MESSAGE_TX_REQ: u8 = 0x22;
+pub const BLE_FRAME_NATIVE_WIRE: u8 = 0x23;
 pub const FRAME_KIND_ANNOUNCE: u8 = 0x11;
 pub const FRAME_KIND_LXMF_MESSAGE: u8 = 0x31;
 pub const FRAME_KIND_TEST_PING: u8 = 0x45;
@@ -50,6 +53,8 @@ pub struct RuntimeStats {
     pub outbound_deferred: u32,
     pub inbound_accepted: u32,
     pub inbound_rejected: u32,
+    pub announces_received: u32,
+    pub lxmf_messages_received: u32,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -64,6 +69,13 @@ pub enum RuntimeEvent {
         error: EmbeddedError,
     },
     FrameReceived { kind: u8, sequence: u32, bytes: usize },
+    AnnounceReceived { sequence: u32, bytes: usize },
+    LxmfMessageReceived {
+        sequence: u32,
+        source: [u8; 16],
+        destination: [u8; 16],
+        body_bytes: usize,
+    },
     FrameRejected {
         kind: u8,
         sequence: u32,
@@ -106,6 +118,8 @@ impl EmbeddedNodeRuntime {
                 outbound_deferred: 0,
                 inbound_accepted: 0,
                 inbound_rejected: 0,
+                announces_received: 0,
+                lxmf_messages_received: 0,
             },
         })
     }
@@ -207,12 +221,37 @@ impl EmbeddedNodeRuntime {
     }
 
     fn handle_inbound_frame(&mut self, frame: PacketFrame) -> EmbeddedResult<()> {
-        if frame.kind == FRAME_KIND_TEST_PING {
-            let mut payload = b"pong:".to_vec();
-            payload.extend_from_slice(&frame.payload);
-            let sequence = self.peek_next_sequence();
-            let response = PacketFrame::new(FRAME_KIND_TEST_PONG, sequence, payload)?;
-            self.enqueue_frame(response)?;
+        match frame.kind {
+            FRAME_KIND_ANNOUNCE => {
+                self.stats.announces_received = self.stats.announces_received.saturating_add(1);
+                self.push_event(RuntimeEvent::AnnounceReceived {
+                    sequence: frame.sequence,
+                    bytes: frame.payload.len(),
+                });
+            }
+            FRAME_KIND_LXMF_MESSAGE => {
+                let envelope = decode_envelope(&frame.payload)?;
+                self.stats.lxmf_messages_received = self.stats.lxmf_messages_received.saturating_add(1);
+                self.push_event(RuntimeEvent::LxmfMessageReceived {
+                    sequence: frame.sequence,
+                    source: envelope.source,
+                    destination: envelope.destination,
+                    body_bytes: envelope.body.len(),
+                });
+                if envelope.destination == self.config.lxmf_address {
+                    let mut response_body = b"pong:".to_vec();
+                    response_body.extend_from_slice(&envelope.body);
+                    self.queue_message(envelope.source, &response_body)?;
+                }
+            }
+            FRAME_KIND_TEST_PING => {
+                let mut payload = b"pong:".to_vec();
+                payload.extend_from_slice(&frame.payload);
+                let sequence = self.peek_next_sequence();
+                let response = PacketFrame::new(FRAME_KIND_TEST_PONG, sequence, payload)?;
+                self.enqueue_frame(response)?;
+            }
+            _ => {}
         }
         Ok(())
     }
@@ -312,7 +351,7 @@ mod tests {
     };
     use rns_embedded_core::{
         EmbeddedError,
-        lxmf_min::decode_envelope,
+        lxmf_min::{MinimalEnvelope, decode_envelope, encode_envelope},
         packet::PacketFrame,
         store::{EmbeddedStore, JournaledEmbeddedStore},
         transport::{FaultInjectingMockTransport, FaultMode, TransportCaps},
@@ -456,5 +495,31 @@ mod tests {
         assert_eq!(outbound[0].kind, FRAME_KIND_ANNOUNCE);
         assert_eq!(outbound[1].kind, FRAME_KIND_TEST_PONG);
         assert_eq!(outbound[1].payload, b"pong:ping");
+    }
+
+    #[test]
+    fn inbound_lxmf_message_enqueues_lxmf_pong_response() {
+        let mut runtime = EmbeddedNodeRuntime::new(config()).expect("runtime");
+        let mut store = JournaledEmbeddedStore::new();
+        let mut transport = transport();
+        let inbound_envelope = MinimalEnvelope {
+            source: [0xEE; 16],
+            destination: [0xCD; 16],
+            sequence: 77,
+            body: b"hello".to_vec(),
+        };
+        let inbound_payload = encode_envelope(&inbound_envelope).expect("encode inbound envelope");
+        transport.enqueue_inbound([PacketFrame::new(FRAME_KIND_LXMF_MESSAGE, 8, inbound_payload).expect("lxmf frame")]);
+
+        runtime.tick(0, &mut transport, &mut store).expect("tick");
+
+        let outbound = transport.drain_outbound();
+        assert_eq!(outbound.len(), 2);
+        assert_eq!(outbound[0].kind, FRAME_KIND_ANNOUNCE);
+        assert_eq!(outbound[1].kind, FRAME_KIND_LXMF_MESSAGE);
+        let response = decode_envelope(&outbound[1].payload).expect("decode response envelope");
+        assert_eq!(response.source, [0xCD; 16]);
+        assert_eq!(response.destination, [0xEE; 16]);
+        assert_eq!(response.body, b"pong:hello");
     }
 }
