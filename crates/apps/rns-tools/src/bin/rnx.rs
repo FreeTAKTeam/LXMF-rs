@@ -7,8 +7,9 @@ use rns_embedded_core::{
     transport::EmbeddedTransport,
 };
 use rns_embedded_runtime::{
-    BLE_FRAME_NATIVE_WIRE, FRAME_KIND_ANNOUNCE, FRAME_KIND_LXMF_MESSAGE, FRAME_KIND_TEST_PING,
-    tcp::TcpEmbeddedTransport,
+    BLE_FRAME_NATIVE_WIRE, FRAME_KIND_ANNOUNCE, FRAME_KIND_CAPTURE_ATTACHMENT_CHUNK,
+    FRAME_KIND_CAPTURE_ATTACHMENT_DONE, FRAME_KIND_CAPTURE_COMMAND, FRAME_KIND_CAPTURE_RESULT,
+    FRAME_KIND_LXMF_MESSAGE, FRAME_KIND_TEST_PING, tcp::TcpEmbeddedTransport,
 };
 use rns_rpc::e2e_harness::{
     build_daemon_args, build_http_post, build_rpc_frame, build_send_params,
@@ -213,6 +214,8 @@ enum Command {
         destination_hex: String,
         #[arg(long, default_value = "99999999999999999999999999999999")]
         source_hex: String,
+        #[arg(long)]
+        capture_out: Option<PathBuf>,
         #[arg(long, default_value_t = 15)]
         timeout_secs: u64,
     },
@@ -237,6 +240,7 @@ enum NativeListenerMode {
     Passive,
     RawPing,
     LxmfPing,
+    Capture,
 }
 
 fn main() {
@@ -378,6 +382,7 @@ fn run(cli: Cli) -> io::Result<()> {
             payload,
             destination_hex,
             source_hex,
+            capture_out,
             timeout_secs,
         } => run_tcp_native_listener(
             bind,
@@ -386,6 +391,7 @@ fn run(cli: Cli) -> io::Result<()> {
             payload,
             destination_hex,
             source_hex,
+            capture_out,
             timeout_secs,
         ),
     }
@@ -1364,6 +1370,7 @@ fn run_tcp_native_listener(
     payload: String,
     destination_hex: String,
     source_hex: String,
+    capture_out: Option<PathBuf>,
     timeout_secs: u64,
 ) -> io::Result<()> {
     let listener = TcpListener::bind(bind.as_str())?;
@@ -1396,12 +1403,19 @@ fn run_tcp_native_listener(
                 )
                 .map_err(embedded_to_io)?
             }
+            NativeListenerMode::Capture => {
+                PacketFrame::new(FRAME_KIND_CAPTURE_COMMAND, runtime_seq, b"capture".to_vec())
+                    .map_err(embedded_to_io)?
+            }
         };
         transport.send_frame(&outbound).map_err(embedded_to_io)?;
     }
 
     let deadline = Instant::now() + Duration::from_secs(timeout_secs.max(1));
     let mut responses = 0usize;
+    let mut capture_bytes = Vec::new();
+    let mut capture_total_bytes: Option<u32> = None;
+    let mut capture_total_chunks: Option<u16> = None;
     while Instant::now() < deadline {
         match transport.poll_frame().map_err(embedded_to_io)? {
             Some(frame) => match frame.kind {
@@ -1424,6 +1438,113 @@ fn run_tcp_native_listener(
                         hex_lower(&envelope.destination)
                     );
                     responses = responses.saturating_add(1);
+                }
+                FRAME_KIND_CAPTURE_RESULT => {
+                    if frame.payload.len() < 11 {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            "capture result payload too short",
+                        ));
+                    }
+                    let status = frame.payload[0];
+                    let total_bytes = u32::from_le_bytes([
+                        frame.payload[1],
+                        frame.payload[2],
+                        frame.payload[3],
+                        frame.payload[4],
+                    ]);
+                    let chunk_bytes = u16::from_le_bytes([frame.payload[5], frame.payload[6]]);
+                    let width = u16::from_le_bytes([frame.payload[7], frame.payload[8]]);
+                    let height = u16::from_le_bytes([frame.payload[9], frame.payload[10]]);
+                    capture_total_bytes = Some(total_bytes);
+                    println!(
+                        "TCP_NATIVE_LISTENER frame kind=0x{:02x} seq={} status={} total_bytes={} chunk_bytes={} width={} height={}",
+                        frame.kind, frame.sequence, status, total_bytes, chunk_bytes, width, height
+                    );
+                }
+                FRAME_KIND_CAPTURE_ATTACHMENT_CHUNK => {
+                    if frame.payload.len() < 6 {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            "capture chunk payload too short",
+                        ));
+                    }
+                    let seq = u16::from_le_bytes([frame.payload[0], frame.payload[1]]);
+                    let total_chunks = u16::from_le_bytes([frame.payload[2], frame.payload[3]]);
+                    let payload_len = u16::from_le_bytes([frame.payload[4], frame.payload[5]]) as usize;
+                    if frame.payload.len() != 6 + payload_len {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            "capture chunk payload length mismatch",
+                        ));
+                    }
+                    capture_total_chunks = Some(total_chunks);
+                    capture_bytes.extend_from_slice(&frame.payload[6..]);
+                    println!(
+                        "TCP_NATIVE_LISTENER frame kind=0x{:02x} seq={} chunk_seq={} total_chunks={} payload_bytes={} collected_bytes={}",
+                        frame.kind,
+                        frame.sequence,
+                        seq,
+                        total_chunks,
+                        payload_len,
+                        capture_bytes.len()
+                    );
+                }
+                FRAME_KIND_CAPTURE_ATTACHMENT_DONE => {
+                    if frame.payload.len() < 6 {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            "capture done payload too short",
+                        ));
+                    }
+                    let total_chunks = u16::from_le_bytes([frame.payload[0], frame.payload[1]]);
+                    let total_bytes = u32::from_le_bytes([
+                        frame.payload[2],
+                        frame.payload[3],
+                        frame.payload[4],
+                        frame.payload[5],
+                    ]);
+                    println!(
+                        "TCP_NATIVE_LISTENER frame kind=0x{:02x} seq={} total_chunks={} total_bytes={}",
+                        frame.kind, frame.sequence, total_chunks, total_bytes
+                    );
+                    if let Some(expected) = capture_total_bytes {
+                        if expected != total_bytes {
+                            return Err(io::Error::new(
+                                io::ErrorKind::InvalidData,
+                                format!("capture total byte mismatch expected={expected} got={total_bytes}"),
+                            ));
+                        }
+                    }
+                    if let Some(expected) = capture_total_chunks {
+                        if expected != total_chunks {
+                            return Err(io::Error::new(
+                                io::ErrorKind::InvalidData,
+                                format!("capture total chunk mismatch expected={expected} got={total_chunks}"),
+                            ));
+                        }
+                    }
+                    if capture_bytes.len() != usize::try_from(total_bytes).unwrap_or(usize::MAX) {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            format!(
+                                "capture byte count mismatch collected={} expected={}",
+                                capture_bytes.len(),
+                                total_bytes
+                            ),
+                        ));
+                    }
+                    let path = capture_out
+                        .clone()
+                        .unwrap_or_else(|| PathBuf::from(format!("capture-{}.jpg", timestamp_millis())));
+                    std::fs::write(&path, &capture_bytes)?;
+                    println!(
+                        "TCP_NATIVE_LISTENER capture saved path={} bytes={}",
+                        path.display(),
+                        capture_bytes.len()
+                    );
+                    responses = responses.saturating_add(1);
+                    break;
                 }
                 _ => {
                     println!(

@@ -52,6 +52,12 @@ Active LXMF ping via smoke wrapper:
 LISTENER_MODE=lxmf-ping PAYLOAD=hello ./tools/scripts/esp32-tcp-native-smoke.sh
 ```
 
+Capture via smoke wrapper:
+
+```bash
+LISTENER_MODE=capture CAPTURE_OUT=/tmp/lxmf-tcp-capture.jpg ./tools/scripts/esp32-tcp-native-smoke.sh
+```
+
 Active raw ping listener:
 
 ```bash
