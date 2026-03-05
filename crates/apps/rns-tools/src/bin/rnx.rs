@@ -200,6 +200,22 @@ enum Command {
         #[arg(long, default_value_t = 8)]
         timeout_secs: u64,
     },
+    TcpNativeListener {
+        #[arg(long, default_value = "0.0.0.0:7443")]
+        bind: String,
+        #[arg(long, value_enum, default_value_t = NativeListenerMode::Passive)]
+        mode: NativeListenerMode,
+        #[arg(long)]
+        runtime_seq: Option<u32>,
+        #[arg(long, default_value = "ping")]
+        payload: String,
+        #[arg(long, default_value = "22222222222222222222222222222222")]
+        destination_hex: String,
+        #[arg(long, default_value = "99999999999999999999999999999999")]
+        source_hex: String,
+        #[arg(long, default_value_t = 15)]
+        timeout_secs: u64,
+    },
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum, Hash)]
@@ -212,6 +228,13 @@ enum DeliveryMode {
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
 enum NativePeerMode {
+    RawPing,
+    LxmfPing,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
+enum NativeListenerMode {
+    Passive,
     RawPing,
     LxmfPing,
 }
@@ -341,6 +364,23 @@ fn run(cli: Cli) -> io::Result<()> {
             timeout_secs,
         } => run_tcp_native_peer(
             addr,
+            mode,
+            runtime_seq,
+            payload,
+            destination_hex,
+            source_hex,
+            timeout_secs,
+        ),
+        Command::TcpNativeListener {
+            bind,
+            mode,
+            runtime_seq,
+            payload,
+            destination_hex,
+            source_hex,
+            timeout_secs,
+        } => run_tcp_native_listener(
+            bind,
             mode,
             runtime_seq,
             payload,
@@ -1313,6 +1353,95 @@ fn run_tcp_native_peer(
     println!(
         "TCP_NATIVE_PEER ok: addr={} responses={} mode={:?}",
         addr, responses, mode
+    );
+    Ok(())
+}
+
+fn run_tcp_native_listener(
+    bind: String,
+    mode: NativeListenerMode,
+    runtime_seq: Option<u32>,
+    payload: String,
+    destination_hex: String,
+    source_hex: String,
+    timeout_secs: u64,
+) -> io::Result<()> {
+    let listener = TcpListener::bind(bind.as_str())?;
+    println!("TCP_NATIVE_LISTENER listening bind={}", bind);
+    let (stream, peer_addr) = listener.accept()?;
+    println!("TCP_NATIVE_LISTENER accepted peer={}", peer_addr);
+    let mut transport = TcpEmbeddedTransport::from_stream(stream, u16::MAX).map_err(embedded_to_io)?;
+
+    if mode != NativeListenerMode::Passive {
+        let runtime_seq = resolve_runtime_seq(runtime_seq);
+        let payload_bytes = payload.into_bytes();
+        let outbound = match mode {
+            NativeListenerMode::Passive => unreachable!(),
+            NativeListenerMode::RawPing => {
+                PacketFrame::new(FRAME_KIND_TEST_PING, runtime_seq, payload_bytes).map_err(embedded_to_io)?
+            }
+            NativeListenerMode::LxmfPing => {
+                let source = parse_hex_16(source_hex.as_str())?;
+                let destination = parse_hex_16(destination_hex.as_str())?;
+                let envelope = MinimalEnvelope {
+                    source,
+                    destination,
+                    sequence: u64::from(runtime_seq),
+                    body: payload_bytes,
+                };
+                PacketFrame::new(
+                    FRAME_KIND_LXMF_MESSAGE,
+                    runtime_seq,
+                    encode_envelope(&envelope).map_err(embedded_to_io)?,
+                )
+                .map_err(embedded_to_io)?
+            }
+        };
+        transport.send_frame(&outbound).map_err(embedded_to_io)?;
+    }
+
+    let deadline = Instant::now() + Duration::from_secs(timeout_secs.max(1));
+    let mut responses = 0usize;
+    while Instant::now() < deadline {
+        match transport.poll_frame().map_err(embedded_to_io)? {
+            Some(frame) => match frame.kind {
+                FRAME_KIND_ANNOUNCE => {
+                    println!(
+                        "TCP_NATIVE_LISTENER frame kind=0x{:02x} seq={} bytes={} role=announce",
+                        frame.kind,
+                        frame.sequence,
+                        frame.payload.len()
+                    );
+                }
+                FRAME_KIND_LXMF_MESSAGE => {
+                    let envelope = decode_envelope(&frame.payload).map_err(embedded_to_io)?;
+                    println!(
+                        "TCP_NATIVE_LISTENER frame kind=0x{:02x} seq={} body={} source={} destination={}",
+                        frame.kind,
+                        frame.sequence,
+                        String::from_utf8_lossy(&envelope.body),
+                        hex_lower(&envelope.source),
+                        hex_lower(&envelope.destination)
+                    );
+                    responses = responses.saturating_add(1);
+                }
+                _ => {
+                    println!(
+                        "TCP_NATIVE_LISTENER frame kind=0x{:02x} seq={} payload_hex={}",
+                        frame.kind,
+                        frame.sequence,
+                        hex_lower(&frame.payload)
+                    );
+                    responses = responses.saturating_add(1);
+                }
+            },
+            None => std::thread::sleep(Duration::from_millis(20)),
+        }
+    }
+
+    println!(
+        "TCP_NATIVE_LISTENER ok: peer={} responses={} mode={:?}",
+        peer_addr, responses, mode
     );
     Ok(())
 }

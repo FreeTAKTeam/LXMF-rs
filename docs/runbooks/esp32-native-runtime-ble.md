@@ -1,12 +1,12 @@
 # ESP32 Native Runtime BLE
 
-This runbook covers the publishable host/device path for the embedded native runtime over BLE.
+This runbook covers the provisioning, recovery, and diagnostics path for the embedded native runtime over BLE.
 
 ## Scope
 
 - ESP32 firmware runs `rns-embedded-ffi` linked into the firmware bridge
 - BLE carries wrapped native runtime frames on the existing service
-- Host uses Rust `rnx` commands as the primary path
+- Host uses Rust `rnx` commands as the primary path for BLE diagnostics
 - Python/Bleak helper scripts remain fallback diagnostics
 
 ## BLE wrapper constants
@@ -16,7 +16,7 @@ This runbook covers the publishable host/device path for the embedded native run
 - `0x22` `BLE_FRAME_NATIVE_MESSAGE_TX_REQ`
   - bring-up helper
 - `0x23` `BLE_FRAME_NATIVE_WIRE`
-  - primary transport wrapper for encoded runtime packet frames
+  - BLE transport wrapper for encoded runtime packet frames
 
 ## Runtime frame kinds
 
@@ -132,3 +132,4 @@ BLE_NATIVE_BRIDGE ok: ... body=pong:hello attachment_id=...
 - The BLE wrapper `0x23` is a project transport wrapper, not a standard off-the-shelf Reticulum client transport.
 - A normal client is not directly compatible unless it also speaks this BLE wrapper and runtime packet framing.
 - The host-side Rust peer in `rnx` is the reference client for this transport.
+- Wi-Fi/TCP is the primary standalone-node transport. BLE is retained for provisioning, recovery, and local diagnostics.
