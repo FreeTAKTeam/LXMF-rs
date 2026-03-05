@@ -41,6 +41,12 @@ const CVE_RESPONSE_RUNBOOK_PATH: &str = "docs/runbooks/cve-response-workflow.md"
 const INCIDENT_RUNBOOK_PATH: &str = "docs/runbooks/incident-response-playbooks.md";
 const DISASTER_RECOVERY_RUNBOOK_PATH: &str = "docs/runbooks/disaster-recovery-drills.md";
 const EMBEDDED_HIL_RUNBOOK_PATH: &str = "docs/runbooks/embedded-hil-esp32.md";
+const EMBEDDED_NATIVE_LOCKFILE_PATH: &str = "docs/contracts/native-embedded-lockfile.toml";
+const EMBEDDED_NATIVE_INTEROP_PROFILE_PATH: &str =
+    "docs/contracts/native-embedded-interop-profile-v1.md";
+const BLE_CAMERA_WIRE_CONTRACT_PATH: &str = "docs/contracts/ble-camera-wire-v1.md";
+const BLE_TRANSPORT_RUNTIME_CONTRACT_PATH: &str = "docs/contracts/ble-transport-runtime-contract.md";
+const EMBEDDED_NATIVE_WORKFLOW_PATH: &str = ".github/workflows/nightly-embedded-hil.yml";
 const BACKUP_RESTORE_DRILL_SCRIPT_PATH: &str = "tools/scripts/backup-restore-drill.sh";
 const REFERENCE_INTEGRATIONS_SMOKE_SCRIPT_PATH: &str =
     "tools/scripts/reference-integrations-smoke.sh";
@@ -392,6 +398,7 @@ enum XtaskCommand {
     SdkMatrixCheck,
     InterfacesRequired,
     EmbeddedLinkCheck,
+    EmbeddedNativeLockCheck,
     EmbeddedCoreCheck,
     EmbeddedFootprintCheck,
     EmbeddedHilCheck,
@@ -459,6 +466,7 @@ enum CiStage {
     SdkMatrixCheck,
     InterfacesRequired,
     EmbeddedLinkCheck,
+    EmbeddedNativeLockCheck,
     EmbeddedCoreCheck,
     EmbeddedFootprintCheck,
     EmbeddedHilCheck,
@@ -537,6 +545,7 @@ fn main() -> Result<()> {
         XtaskCommand::SdkMatrixCheck => run_sdk_matrix_check(),
         XtaskCommand::InterfacesRequired => run_interfaces_required(),
         XtaskCommand::EmbeddedLinkCheck => run_embedded_link_check(),
+        XtaskCommand::EmbeddedNativeLockCheck => run_embedded_native_lock_check(),
         XtaskCommand::EmbeddedCoreCheck => run_embedded_core_check(),
         XtaskCommand::EmbeddedFootprintCheck => run_embedded_footprint_check(),
         XtaskCommand::EmbeddedHilCheck => run_embedded_hil_check(),
@@ -611,6 +620,7 @@ fn run_ci(stage: Option<CiStage>) -> Result<()> {
     run_reproducible_build_check()?;
     run_sdk_matrix_check()?;
     run_embedded_link_check()?;
+    run_embedded_native_lock_check()?;
     run_embedded_core_check()?;
     run_embedded_footprint_check()?;
     run_migration_checks()?;
@@ -686,6 +696,7 @@ fn run_ci_stage(stage: CiStage) -> Result<()> {
         CiStage::SdkMatrixCheck => run_sdk_matrix_check(),
         CiStage::InterfacesRequired => run_interfaces_required(),
         CiStage::EmbeddedLinkCheck => run_embedded_link_check(),
+        CiStage::EmbeddedNativeLockCheck => run_embedded_native_lock_check(),
         CiStage::EmbeddedCoreCheck => run_embedded_core_check(),
         CiStage::EmbeddedFootprintCheck => run_embedded_footprint_check(),
         CiStage::EmbeddedHilCheck => run_embedded_hil_check(),
@@ -2984,6 +2995,59 @@ fn sha256_hex(bytes: &[u8]) -> String {
 
 fn run_sdk_matrix_check() -> Result<()> {
     run("cargo", &["test", "-p", "test-support", "sdk_matrix", "--", "--nocapture"])
+}
+
+fn run_embedded_native_lock_check() -> Result<()> {
+    let lockfile = fs::read_to_string(EMBEDDED_NATIVE_LOCKFILE_PATH)
+        .with_context(|| format!("missing {EMBEDDED_NATIVE_LOCKFILE_PATH}"))?;
+    let required_markers = [
+        "contract_ble_camera_wire_ref =",
+        "contract_ble_transport_runtime_ref =",
+        "contract_native_embedded_interop_ref =",
+        "firmware_repo =",
+        "firmware_ref =",
+        "owners = [",
+        "ci_workflow =",
+        "xtask_gate = \"embedded-native-lock-check\"",
+    ];
+    for marker in required_markers {
+        if !lockfile.contains(marker) {
+            bail!("embedded native lockfile missing marker '{marker}' in {EMBEDDED_NATIVE_LOCKFILE_PATH}");
+        }
+    }
+    for forbidden in ["<set-me>", "TODO", "TBD"] {
+        if lockfile.contains(forbidden) {
+            bail!("embedded native lockfile contains unresolved placeholder '{forbidden}'");
+        }
+    }
+
+    let interop_profile = fs::read_to_string(EMBEDDED_NATIVE_INTEROP_PROFILE_PATH)
+        .with_context(|| format!("missing {EMBEDDED_NATIVE_INTEROP_PROFILE_PATH}"))?;
+    for marker in [
+        "# Native Embedded Interop Profile v1",
+        "## Normative Encoding Rules",
+        "## Transport Invariants",
+        "## Error Code Mapping",
+        "## Fixture Set",
+    ] {
+        if !interop_profile.contains(marker) {
+            bail!(
+                "embedded native interop profile missing marker '{marker}' in {EMBEDDED_NATIVE_INTEROP_PROFILE_PATH}"
+            );
+        }
+    }
+
+    for path in [
+        BLE_CAMERA_WIRE_CONTRACT_PATH,
+        BLE_TRANSPORT_RUNTIME_CONTRACT_PATH,
+        EMBEDDED_NATIVE_WORKFLOW_PATH,
+    ] {
+        if !Path::new(path).exists() {
+            bail!("required path missing for embedded native lock check: {path}");
+        }
+    }
+
+    Ok(())
 }
 
 fn run_embedded_link_check() -> Result<()> {

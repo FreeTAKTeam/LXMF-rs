@@ -1,0 +1,13 @@
+# Native embedded rollout lockfile.
+# Checked by: cargo run -p xtask -- embedded-native-lock-check
+
+contract_ble_camera_wire_ref = "366c35c"
+contract_ble_transport_runtime_ref = "366c35c"
+contract_native_embedded_interop_ref = "366c35c"
+
+firmware_repo = "github.com/CoteTommy/lxmf-embedded-fw"
+firmware_ref = "5db94fe"
+owners = ["@CoteTommy", "@FreeTAKTeam/lxmf-maintainers"]
+
+ci_workflow = ".github/workflows/nightly-embedded-hil.yml"
+xtask_gate = "embedded-native-lock-check"
