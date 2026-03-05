@@ -13,6 +13,10 @@ BIND_ADDR="${BIND_ADDR:-0.0.0.0:7443}"
 LISTENER_MODE="${LISTENER_MODE:-passive}"
 TIMEOUT_SECS="${TIMEOUT_SECS:-20}"
 RUNTIME_SEQ="${RUNTIME_SEQ:-}"
+PAYLOAD="${PAYLOAD:-ping}"
+SOURCE_HEX="${SOURCE_HEX:-99999999999999999999999999999999}"
+DESTINATION_HEX="${DESTINATION_HEX:-22222222222222222222222222222222}"
+EXPECT_MIN_RESPONSES="${EXPECT_MIN_RESPONSES:-}"
 
 echo "[esp32-tcp-native-smoke] building rnx"
 cargo build -p rns-tools --bin rnx --quiet
@@ -28,14 +32,46 @@ cmd=(
 if [[ -n "${RUNTIME_SEQ}" ]]; then
   cmd+=(--runtime-seq "${RUNTIME_SEQ}")
 fi
+if [[ "${LISTENER_MODE}" != "passive" ]]; then
+  cmd+=(--payload "${PAYLOAD}")
+fi
+if [[ "${LISTENER_MODE}" == "lxmf-ping" ]]; then
+  cmd+=(--source-hex "${SOURCE_HEX}" --destination-hex "${DESTINATION_HEX}")
+fi
 
-echo "[esp32-tcp-native-smoke] listening bind=${BIND_ADDR} mode=${LISTENER_MODE}"
+if [[ -z "${EXPECT_MIN_RESPONSES}" ]]; then
+  if [[ "${LISTENER_MODE}" == "passive" ]]; then
+    EXPECT_MIN_RESPONSES=0
+  else
+    EXPECT_MIN_RESPONSES=1
+  fi
+fi
+
+echo "[esp32-tcp-native-smoke] listening bind=${BIND_ADDR} mode=${LISTENER_MODE} expect_min_responses=${EXPECT_MIN_RESPONSES}"
 echo "[esp32-tcp-native-smoke] log=${LISTENER_LOG}"
 "${cmd[@]}" | tee "${LISTENER_LOG}"
 
-if grep -q "TCP_NATIVE_LISTENER ok:" "${LISTENER_LOG}"; then
+if ! grep -q "TCP_NATIVE_LISTENER ok:" "${LISTENER_LOG}"; then
+  echo "[esp32-tcp-native-smoke] missing success marker; see ${LISTENER_LOG}" >&2
+  exit 1
+fi
+
+responses="$(awk '
+  /TCP_NATIVE_LISTENER ok:/ {
+    for (i = 1; i <= NF; i++) {
+      if ($i ~ /^responses=/) {
+        sub("responses=", "", $i);
+        print $i;
+        exit;
+      }
+    }
+  }
+' "${LISTENER_LOG}")"
+
+responses="${responses:-0}"
+if [[ "${responses}" =~ ^[0-9]+$ ]] && (( responses >= EXPECT_MIN_RESPONSES )); then
   echo "[esp32-tcp-native-smoke] pass"
 else
-  echo "[esp32-tcp-native-smoke] missing success marker; see ${LISTENER_LOG}" >&2
+  echo "[esp32-tcp-native-smoke] expected at least ${EXPECT_MIN_RESPONSES} responses, got ${responses}; see ${LISTENER_LOG}" >&2
   exit 1
 fi

@@ -6,7 +6,7 @@ use rns_embedded_core::{
 use std::io::{ErrorKind, Read, Write};
 use std::net::{SocketAddr, TcpStream};
 
-const HEADER_LEN: usize = 14;
+const LENGTH_PREFIX_LEN: usize = 2;
 
 pub struct TcpEmbeddedTransport {
     stream: TcpStream,
@@ -44,17 +44,15 @@ impl TcpEmbeddedTransport {
         if self.recv_buf.is_empty() {
             return Ok(None);
         }
-        if self.recv_buf.len() < HEADER_LEN {
+        if self.recv_buf.len() < LENGTH_PREFIX_LEN {
             return Ok(None);
         }
-        let payload_len = u32::from_le_bytes([
-            self.recv_buf[10],
-            self.recv_buf[11],
-            self.recv_buf[12],
-            self.recv_buf[13],
-        ]);
-        let payload_len = usize::try_from(payload_len).map_err(|_| EmbeddedError::InvalidInput)?;
-        Ok(Some(HEADER_LEN + payload_len))
+        let frame_len = u16::from_be_bytes([self.recv_buf[0], self.recv_buf[1]]);
+        let frame_len = usize::from(frame_len);
+        if frame_len == 0 {
+            return Err(EmbeddedError::InvalidInput);
+        }
+        Ok(Some(LENGTH_PREFIX_LEN + frame_len))
     }
 
     fn refill_read_buffer(&mut self) -> EmbeddedResult<()> {
@@ -98,6 +96,12 @@ impl EmbeddedTransport for TcpEmbeddedTransport {
             return Err(EmbeddedError::InvalidArgument);
         }
         let encoded = encode_frame(frame)?;
+        let encoded_len =
+            u16::try_from(encoded.len()).map_err(|_| EmbeddedError::InvalidArgument)?;
+        let header = encoded_len.to_be_bytes();
+        self.stream
+            .write_all(&header)
+            .map_err(|_| EmbeddedError::Disconnected)?;
         self.stream
             .write_all(&encoded)
             .map_err(|_| EmbeddedError::Disconnected)?;
@@ -117,8 +121,8 @@ impl EmbeddedTransport for TcpEmbeddedTransport {
             return Ok(None);
         }
 
-        let frame_bytes: Vec<u8> = self.recv_buf.drain(..frame_len).collect();
-        let frame = decode_frame(&frame_bytes)?;
+        let packet_bytes: Vec<u8> = self.recv_buf.drain(..frame_len).skip(LENGTH_PREFIX_LEN).collect();
+        let frame = decode_frame(&packet_bytes)?;
         Ok(Some(frame))
     }
 }

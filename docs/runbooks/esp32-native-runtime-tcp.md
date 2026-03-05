@@ -40,6 +40,18 @@ Or use the smoke wrapper:
 ./tools/scripts/esp32-tcp-native-smoke.sh
 ```
 
+Active raw ping via smoke wrapper:
+
+```bash
+LISTENER_MODE=raw-ping ./tools/scripts/esp32-tcp-native-smoke.sh
+```
+
+Active LXMF ping via smoke wrapper:
+
+```bash
+LISTENER_MODE=lxmf-ping PAYLOAD=hello ./tools/scripts/esp32-tcp-native-smoke.sh
+```
+
 Active raw ping listener:
 
 ```bash
