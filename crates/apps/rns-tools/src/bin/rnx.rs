@@ -1,3 +1,5 @@
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+use base64::Engine as _;
 use clap::{Parser, ValueEnum};
 use rns_rpc::e2e_harness::{
     build_daemon_args, build_http_post, build_rpc_frame, build_send_params,
@@ -13,6 +15,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command as ProcessCommand, Stdio};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
+use sha2::{Digest, Sha256};
 
 #[derive(Parser, Debug)]
 #[command(name = "rnx")]
@@ -58,6 +61,18 @@ enum Command {
         #[arg(long, default_value = "replay-identity")]
         identity_hash: String,
     },
+    CameraUpload {
+        #[arg(long, default_value = "127.0.0.1:4243")]
+        rpc: String,
+        #[arg(long)]
+        file: PathBuf,
+        #[arg(long)]
+        name: Option<String>,
+        #[arg(long, default_value = "image/jpeg")]
+        content_type: String,
+        #[arg(long, default_value_t = 8192)]
+        chunk_size: usize,
+    },
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum, Hash)]
@@ -87,7 +102,143 @@ fn run(cli: Cli) -> io::Result<()> {
         Command::Replay { trace, capture_out, identity_hash } => {
             run_replay(trace, capture_out, identity_hash)
         }
+        Command::CameraUpload { rpc, file, name, content_type, chunk_size } => {
+            run_camera_upload(rpc, file, name, content_type, chunk_size)
+        }
     }
+}
+
+fn run_camera_upload(
+    rpc: String,
+    file: PathBuf,
+    name: Option<String>,
+    content_type: String,
+    chunk_size: usize,
+) -> io::Result<()> {
+    if chunk_size == 0 {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "--chunk-size must be > 0"));
+    }
+    let payload = fs::read(&file)?;
+    if payload.is_empty() {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "input file is empty"));
+    }
+    let attachment_name = name.or_else(|| {
+        file.file_name().and_then(|value| value.to_str()).map(ToOwned::to_owned)
+    });
+    let attachment_name = attachment_name.unwrap_or_else(|| "camera-capture.bin".to_string());
+
+    let checksum_sha256 = sha256_hex(payload.as_slice());
+    let mut req_id = 1_u64;
+    let start_response = rpc_call(
+        rpc.as_str(),
+        req_id,
+        "sdk_attachment_upload_start_v2",
+        Some(serde_json::json!({
+            "name": attachment_name,
+            "content_type": content_type,
+            "total_size": payload.len(),
+            "checksum_sha256": checksum_sha256,
+            "topic_ids": [],
+            "extensions": {}
+        })),
+    )?;
+    let start_result = ensure_rpc_ok(start_response, "sdk_attachment_upload_start_v2")?
+        .ok_or_else(|| io::Error::other("upload_start missing result"))?;
+    let upload = start_result
+        .get("upload")
+        .ok_or_else(|| io::Error::other("upload_start missing upload object"))?;
+    let upload_id = upload
+        .get("upload_id")
+        .and_then(|value| value.as_str())
+        .ok_or_else(|| io::Error::other("upload_start missing upload_id"))?
+        .to_string();
+    let chunk_size_hint = upload
+        .get("chunk_size_hint")
+        .and_then(|value| value.as_u64())
+        .and_then(|value| usize::try_from(value).ok())
+        .unwrap_or(65_536);
+
+    let effective_chunk_size = chunk_size.min(chunk_size_hint).max(1);
+    let mut next_offset = upload
+        .get("next_offset")
+        .and_then(|value| value.as_u64())
+        .unwrap_or(0);
+    req_id = req_id.wrapping_add(1);
+
+    while usize::try_from(next_offset).ok().is_some_and(|offset| offset < payload.len()) {
+        let start = usize::try_from(next_offset)
+            .map_err(|_| io::Error::other("upload offset overflow"))?;
+        let end = start.saturating_add(effective_chunk_size).min(payload.len());
+        let bytes_base64 = BASE64_STANDARD.encode(&payload[start..end]);
+        let chunk_response = rpc_call(
+            rpc.as_str(),
+            req_id,
+            "sdk_attachment_upload_chunk_v2",
+            Some(serde_json::json!({
+                "upload_id": upload_id,
+                "offset": next_offset,
+                "bytes_base64": bytes_base64,
+                "extensions": {}
+            })),
+        )?;
+        let chunk_result = ensure_rpc_ok(chunk_response, "sdk_attachment_upload_chunk_v2")?
+            .ok_or_else(|| io::Error::other("upload_chunk missing result"))?;
+        let upload_chunk = chunk_result
+            .get("upload_chunk")
+            .ok_or_else(|| io::Error::other("upload_chunk missing object"))?;
+        let accepted =
+            upload_chunk.get("accepted").and_then(|value| value.as_bool()).unwrap_or(false);
+        if !accepted {
+            return Err(io::Error::other("upload_chunk returned accepted=false"));
+        }
+        let returned_next_offset = upload_chunk
+            .get("next_offset")
+            .and_then(|value| value.as_u64())
+            .ok_or_else(|| io::Error::other("upload_chunk missing next_offset"))?;
+        if returned_next_offset <= next_offset {
+            return Err(io::Error::other("upload_chunk did not advance next_offset"));
+        }
+        next_offset = returned_next_offset;
+        req_id = req_id.wrapping_add(1);
+    }
+
+    let commit_response = rpc_call(
+        rpc.as_str(),
+        req_id,
+        "sdk_attachment_upload_commit_v2",
+        Some(serde_json::json!({
+            "upload_id": upload_id,
+            "extensions": {}
+        })),
+    )?;
+    let commit_result = ensure_rpc_ok(commit_response, "sdk_attachment_upload_commit_v2")?
+        .ok_or_else(|| io::Error::other("upload_commit missing result"))?;
+    let attachment_id = commit_result
+        .get("attachment")
+        .and_then(|value| value.get("attachment_id"))
+        .and_then(|value| value.as_str())
+        .unwrap_or("<unknown>");
+
+    println!(
+        "CAMERA_UPLOAD ok: file={} bytes={} chunk_size={} attachment_id={}",
+        file.display(),
+        payload.len(),
+        effective_chunk_size,
+        attachment_id
+    );
+    Ok(())
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    let digest = hasher.finalize();
+    let mut out = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        use std::fmt::Write as _;
+        let _ = write!(out, "{byte:02x}");
+    }
+    out
 }
 
 fn run_replay(
