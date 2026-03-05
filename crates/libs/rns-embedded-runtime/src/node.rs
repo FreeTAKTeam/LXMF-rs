@@ -29,3 +29,15 @@ impl Default for CaptureDefaults {
         }
     }
 }
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct TcpClientConfig {
+    pub host: alloc::string::String,
+    pub port: u16,
+    pub reconnect_backoff_ms: alloc::vec::Vec<u64>,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub struct TcpServerConfig {
+    pub listen_port: u16,
+}

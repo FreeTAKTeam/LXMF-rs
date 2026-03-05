@@ -4,9 +4,11 @@ use clap::{Parser, ValueEnum};
 use rns_embedded_core::{
     lxmf_min::{MinimalEnvelope, decode_envelope, encode_envelope},
     packet::{PacketFrame, decode_frame, encode_frame},
+    transport::EmbeddedTransport,
 };
 use rns_embedded_runtime::{
     BLE_FRAME_NATIVE_WIRE, FRAME_KIND_ANNOUNCE, FRAME_KIND_LXMF_MESSAGE, FRAME_KIND_TEST_PING,
+    tcp::TcpEmbeddedTransport,
 };
 use rns_rpc::e2e_harness::{
     build_daemon_args, build_http_post, build_rpc_frame, build_send_params,
@@ -182,6 +184,22 @@ enum Command {
         #[arg(long, default_value = "text/plain")]
         content_type: String,
     },
+    TcpNativePeer {
+        #[arg(long)]
+        addr: String,
+        #[arg(long, value_enum, default_value_t = NativePeerMode::LxmfPing)]
+        mode: NativePeerMode,
+        #[arg(long)]
+        runtime_seq: Option<u32>,
+        #[arg(long, default_value = "ping")]
+        payload: String,
+        #[arg(long, default_value = "22222222222222222222222222222222")]
+        destination_hex: String,
+        #[arg(long, default_value = "99999999999999999999999999999999")]
+        source_hex: String,
+        #[arg(long, default_value_t = 8)]
+        timeout_secs: u64,
+    },
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum, Hash)]
@@ -312,6 +330,23 @@ fn run(cli: Cli) -> io::Result<()> {
             source_hex,
             timeout_secs,
             content_type,
+        ),
+        Command::TcpNativePeer {
+            addr,
+            mode,
+            runtime_seq,
+            payload,
+            destination_hex,
+            source_hex,
+            timeout_secs,
+        } => run_tcp_native_peer(
+            addr,
+            mode,
+            runtime_seq,
+            payload,
+            destination_hex,
+            source_hex,
+            timeout_secs,
         ),
     }
 }
@@ -1185,6 +1220,101 @@ fn run_ble_native_bridge(
         }
         Ok(())
     })
+}
+
+fn run_tcp_native_peer(
+    addr: String,
+    mode: NativePeerMode,
+    runtime_seq: Option<u32>,
+    payload: String,
+    destination_hex: String,
+    source_hex: String,
+    timeout_secs: u64,
+) -> io::Result<()> {
+    let runtime_seq = resolve_runtime_seq(runtime_seq);
+    let payload_bytes = payload.into_bytes();
+    let runtime_frame = match mode {
+        NativePeerMode::RawPing => {
+            let frame = PacketFrame::new(FRAME_KIND_TEST_PING, runtime_seq, payload_bytes)
+                .map_err(embedded_to_io)?;
+            encode_frame(&frame).map_err(embedded_to_io)?
+        }
+        NativePeerMode::LxmfPing => {
+            let source = parse_hex_16(source_hex.as_str())?;
+            let destination = parse_hex_16(destination_hex.as_str())?;
+            let envelope = MinimalEnvelope {
+                source,
+                destination,
+                sequence: u64::from(runtime_seq),
+                body: payload_bytes,
+            };
+            let frame = PacketFrame::new(
+                FRAME_KIND_LXMF_MESSAGE,
+                runtime_seq,
+                encode_envelope(&envelope).map_err(embedded_to_io)?,
+            )
+            .map_err(embedded_to_io)?;
+            encode_frame(&frame).map_err(embedded_to_io)?
+        }
+    };
+
+    let socket_addr = addr
+        .parse()
+        .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, format!("invalid addr: {err}")))?;
+    let mut transport = TcpEmbeddedTransport::connect(socket_addr, u16::MAX).map_err(embedded_to_io)?;
+    let frame = decode_frame(runtime_frame.as_slice()).map_err(embedded_to_io)?;
+    transport.send_frame(&frame).map_err(embedded_to_io)?;
+
+    let deadline = Instant::now() + Duration::from_secs(timeout_secs.max(1));
+    let mut responses = 0usize;
+    while Instant::now() < deadline {
+        match transport.poll_frame().map_err(embedded_to_io)? {
+            Some(frame) => match frame.kind {
+                FRAME_KIND_ANNOUNCE => {
+                    println!(
+                        "TCP_NATIVE_PEER frame kind=0x{:02x} seq={} bytes={} role=announce",
+                        frame.kind,
+                        frame.sequence,
+                        frame.payload.len()
+                    );
+                }
+                FRAME_KIND_LXMF_MESSAGE => {
+                    let envelope = decode_envelope(&frame.payload).map_err(embedded_to_io)?;
+                    println!(
+                        "TCP_NATIVE_PEER frame kind=0x{:02x} seq={} body={} source={} destination={}",
+                        frame.kind,
+                        frame.sequence,
+                        String::from_utf8_lossy(&envelope.body),
+                        hex_lower(&envelope.source),
+                        hex_lower(&envelope.destination)
+                    );
+                    responses = responses.saturating_add(1);
+                    if mode == NativePeerMode::LxmfPing && envelope.body.starts_with(b"pong:") {
+                        break;
+                    }
+                }
+                _ => {
+                    println!(
+                        "TCP_NATIVE_PEER frame kind=0x{:02x} seq={} payload_hex={}",
+                        frame.kind,
+                        frame.sequence,
+                        hex_lower(&frame.payload)
+                    );
+                    responses = responses.saturating_add(1);
+                    if mode == NativePeerMode::RawPing && frame.kind != FRAME_KIND_ANNOUNCE {
+                        break;
+                    }
+                }
+            },
+            None => std::thread::sleep(Duration::from_millis(20)),
+        }
+    }
+
+    println!(
+        "TCP_NATIVE_PEER ok: addr={} responses={} mode={:?}",
+        addr, responses, mode
+    );
+    Ok(())
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
