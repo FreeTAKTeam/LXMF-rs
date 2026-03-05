@@ -34,6 +34,16 @@ Passive listener:
   --timeout-secs 15
 ```
 
+Long-running service listener:
+
+```bash
+./target/debug/rnx tcp-native-listener \
+  --bind 0.0.0.0:7443 \
+  --mode passive \
+  --serve \
+  --timeout-secs 30
+```
+
 Or use the smoke wrapper:
 
 ```bash
@@ -56,6 +66,39 @@ Capture via smoke wrapper:
 
 ```bash
 LISTENER_MODE=capture CAPTURE_OUT=/tmp/lxmf-tcp-capture.jpg ./tools/scripts/esp32-tcp-native-smoke.sh
+```
+
+## Bridge to `reticulumd`
+
+Start the daemon:
+
+```bash
+mkdir -p .tmp/tcp-native-bridge
+./target/debug/reticulumd --rpc 127.0.0.1:4243 --db .tmp/tcp-native-bridge/reticulum.db
+```
+
+Bridge a capture into the daemon:
+
+```bash
+./tools/scripts/esp32-tcp-native-bridge.sh
+```
+
+Bridge an LXMF reply body into the daemon:
+
+```bash
+BRIDGE_MODE=lxmf-ping CONTENT_TYPE=text/plain PAYLOAD=hello \
+  ./tools/scripts/esp32-tcp-native-bridge.sh
+```
+
+Long-running bridge:
+
+```bash
+./target/debug/rnx tcp-native-bridge \
+  --bind 0.0.0.0:7443 \
+  --mode capture \
+  --rpc 127.0.0.1:4243 \
+  --serve \
+  --timeout-secs 30
 ```
 
 Active raw ping listener:
