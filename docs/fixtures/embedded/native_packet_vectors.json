@@ -1,0 +1,16 @@
+[
+  {
+    "id": "small-direct",
+    "kind": 2,
+    "sequence": 7,
+    "payload_hex": "aabbcc",
+    "encoded_hex": "524e453101020700000003000000aabbcc"
+  },
+  {
+    "id": "hello-seq",
+    "kind": 9,
+    "sequence": 305419896,
+    "payload_hex": "68656c6c6f",
+    "encoded_hex": "524e45310109785634120500000068656c6c6f"
+  }
+]

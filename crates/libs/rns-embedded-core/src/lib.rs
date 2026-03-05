@@ -3,9 +3,11 @@
 extern crate alloc;
 
 pub mod attachment;
+pub mod hash;
 pub mod identity;
 pub mod lxmf_min;
 pub mod packet;
+pub mod replay;
 pub mod store;
 pub mod transport;
 

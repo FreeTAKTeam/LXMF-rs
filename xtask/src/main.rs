@@ -3142,6 +3142,7 @@ fn run_embedded_core_check() -> Result<()> {
     run("cargo", &["check", "-p", "rns-embedded-core", "--features", "std"])?;
     run("cargo", &["check", "-p", "lxmf-core", "--no-default-features", "--features", "alloc"])?;
     run("cargo", &["check", "-p", "rns-core", "--no-default-features", "--features", "alloc"])?;
+    run("cargo", &["test", "-p", "rns-embedded-core"])?;
 
     let matrix = fs::read_to_string("docs/contracts/sdk-v2-feature-matrix.md")
         .context("missing docs/contracts/sdk-v2-feature-matrix.md")?;
