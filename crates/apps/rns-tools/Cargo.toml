@@ -15,5 +15,11 @@ base64.workspace = true
 sha2.workspace = true
 rns_rpc = { package = "rns-rpc", path = "../../libs/rns-rpc", version = "0.1.0" }
 
+[target.'cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))'.dependencies]
+btleplug = "0.11.8"
+futures = "0.3.31"
+uuid = "1.16.0"
+tokio = { workspace = true }
+
 [lints]
 workspace = true
