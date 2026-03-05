@@ -217,6 +217,65 @@ jobs:
       - name: Interfaces required checks
         run: cargo xtask ci --stage interfaces-required
 
+  embedded-node-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Embedded native build checks
+        run: cargo xtask ci --stage embedded-node-build
+
+  embedded-node-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Embedded native contract checks
+        run: cargo xtask ci --stage embedded-node-contract
+
+  embedded-node-failure-matrix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Embedded native failure matrix checks
+        run: cargo xtask ci --stage embedded-node-failure-matrix
+
+  embedded-node-hil:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Embedded native early interop harness
+        run: cargo xtask ci --stage embedded-node-hil
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: embedded-native-interop-artifacts
+          path: |
+            target/hil/native-node.log
+            target/hil/native-node-report.json
+
   test-nextest-unit:
     runs-on: ubuntu-latest
     steps:

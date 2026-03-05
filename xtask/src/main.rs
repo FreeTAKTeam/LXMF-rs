@@ -116,6 +116,24 @@ const CERTIFICATION_REPORT_PATH: &str = "target/release-readiness/certification-
 const CERTIFICATION_REPORT_JSON_PATH: &str = "target/release-readiness/certification-report.json";
 const EMBEDDED_FOOTPRINT_REPORT_PATH: &str = "target/embedded/footprint-report.txt";
 const EMBEDDED_HIL_REPORT_PATH: &str = "target/hil/esp32-smoke-report.json";
+const EMBEDDED_NATIVE_INTEROP_REPORT_PATH: &str = "target/hil/native-node-report.json";
+const EMBEDDED_NATIVE_INTEROP_LOG_PATH: &str = "target/hil/native-node.log";
+const EMBEDDED_NATIVE_INTEROP_SCRIPT_PATH: &str = "tools/scripts/embedded-native-interop-smoke.sh";
+const EMBEDDED_NATIVE_REQUIRED_CI_JOBS: &[&str] = &[
+    "embedded-node-build",
+    "embedded-node-contract",
+    "embedded-node-failure-matrix",
+    "embedded-node-hil",
+];
+const EMBEDDED_NATIVE_REQUIRED_JOB_COMMAND_MARKERS: &[(&str, &str)] = &[
+    ("embedded-node-build", "cargo xtask ci --stage embedded-node-build"),
+    ("embedded-node-contract", "cargo xtask ci --stage embedded-node-contract"),
+    (
+        "embedded-node-failure-matrix",
+        "cargo xtask ci --stage embedded-node-failure-matrix",
+    ),
+    ("embedded-node-hil", "cargo xtask ci --stage embedded-node-hil"),
+];
 const LEADER_READINESS_REPORT_PATH: &str = "target/release-readiness/leader-grade-readiness.md";
 const CANARY_CRITERIA_REPORT_PATH: &str = "target/release-readiness/canary-criteria-report.md";
 const CANARY_CRITERIA_REPORT_JSON_PATH: &str =
@@ -402,6 +420,10 @@ enum XtaskCommand {
     EmbeddedCoreCheck,
     EmbeddedFootprintCheck,
     EmbeddedHilCheck,
+    EmbeddedNodeBuild,
+    EmbeddedNodeContract,
+    EmbeddedNodeFailureMatrix,
+    EmbeddedNodeHil,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
@@ -470,6 +492,10 @@ enum CiStage {
     EmbeddedCoreCheck,
     EmbeddedFootprintCheck,
     EmbeddedHilCheck,
+    EmbeddedNodeBuild,
+    EmbeddedNodeContract,
+    EmbeddedNodeFailureMatrix,
+    EmbeddedNodeHil,
     Correctness,
     MigrationChecks,
     ArchitectureLint,
@@ -549,6 +575,10 @@ fn main() -> Result<()> {
         XtaskCommand::EmbeddedCoreCheck => run_embedded_core_check(),
         XtaskCommand::EmbeddedFootprintCheck => run_embedded_footprint_check(),
         XtaskCommand::EmbeddedHilCheck => run_embedded_hil_check(),
+        XtaskCommand::EmbeddedNodeBuild => run_embedded_node_build(),
+        XtaskCommand::EmbeddedNodeContract => run_embedded_node_contract(),
+        XtaskCommand::EmbeddedNodeFailureMatrix => run_embedded_node_failure_matrix(),
+        XtaskCommand::EmbeddedNodeHil => run_embedded_node_hil(),
     }
 }
 
@@ -622,6 +652,9 @@ fn run_ci(stage: Option<CiStage>) -> Result<()> {
     run_embedded_link_check()?;
     run_embedded_native_lock_check()?;
     run_embedded_core_check()?;
+    run_embedded_node_build()?;
+    run_embedded_node_contract()?;
+    run_embedded_node_failure_matrix()?;
     run_embedded_footprint_check()?;
     run_migration_checks()?;
     run_architecture_checks()?;
@@ -700,6 +733,10 @@ fn run_ci_stage(stage: CiStage) -> Result<()> {
         CiStage::EmbeddedCoreCheck => run_embedded_core_check(),
         CiStage::EmbeddedFootprintCheck => run_embedded_footprint_check(),
         CiStage::EmbeddedHilCheck => run_embedded_hil_check(),
+        CiStage::EmbeddedNodeBuild => run_embedded_node_build(),
+        CiStage::EmbeddedNodeContract => run_embedded_node_contract(),
+        CiStage::EmbeddedNodeFailureMatrix => run_embedded_node_failure_matrix(),
+        CiStage::EmbeddedNodeHil => run_embedded_node_hil(),
         CiStage::Correctness => run_correctness_check(),
         CiStage::MigrationChecks => run_migration_checks(),
         CiStage::ArchitectureLint => run_architecture_lint_check(),
@@ -3041,9 +3078,23 @@ fn run_embedded_native_lock_check() -> Result<()> {
         BLE_CAMERA_WIRE_CONTRACT_PATH,
         BLE_TRANSPORT_RUNTIME_CONTRACT_PATH,
         EMBEDDED_NATIVE_WORKFLOW_PATH,
+        CI_WORKFLOW_PATH,
     ] {
         if !Path::new(path).exists() {
             bail!("required path missing for embedded native lock check: {path}");
+        }
+    }
+
+    let workflow = fs::read_to_string(CI_WORKFLOW_PATH)
+        .with_context(|| format!("read {CI_WORKFLOW_PATH}"))?;
+    for job in EMBEDDED_NATIVE_REQUIRED_CI_JOBS {
+        if !workflow.contains(&format!("{job}:")) {
+            bail!("CI workflow missing embedded native required job '{job}' in {CI_WORKFLOW_PATH}");
+        }
+    }
+    for (job, marker) in EMBEDDED_NATIVE_REQUIRED_JOB_COMMAND_MARKERS {
+        if !workflow.contains(marker) {
+            bail!("CI workflow missing command marker for {job}: '{marker}'");
         }
     }
 
@@ -3158,6 +3209,101 @@ fn run_embedded_hil_check() -> Result<()> {
         bail!("embedded HIL report does not contain passing status in {EMBEDDED_HIL_REPORT_PATH}");
     }
 
+    Ok(())
+}
+
+fn run_embedded_node_build() -> Result<()> {
+    run(
+        "cargo",
+        &[
+            "check",
+            "-p",
+            "rns-embedded-core",
+            "--no-default-features",
+            "--features",
+            "alloc",
+        ],
+    )?;
+    run("cargo", &["check", "-p", "rns-embedded-core", "--features", "std"])?;
+    run("cargo", &["check", "-p", "rns-tools", "--bin", "rnx"])?;
+    run("cargo", &["check", "-p", "reticulumd", "--bin", "reticulumd"])?;
+    Ok(())
+}
+
+fn run_embedded_node_contract() -> Result<()> {
+    run_embedded_native_lock_check()?;
+
+    let profile = fs::read_to_string(EMBEDDED_NATIVE_INTEROP_PROFILE_PATH)
+        .with_context(|| format!("missing {EMBEDDED_NATIVE_INTEROP_PROFILE_PATH}"))?;
+    for marker in [
+        "# Native Embedded Interop Profile v1",
+        "## Normative Encoding Rules",
+        "## Transport Invariants",
+        "## Error Code Mapping",
+        "## Fixture Set",
+    ] {
+        if !profile.contains(marker) {
+            bail!(
+                "embedded interop profile missing required marker '{marker}' in {EMBEDDED_NATIVE_INTEROP_PROFILE_PATH}"
+            );
+        }
+    }
+    Ok(())
+}
+
+fn run_embedded_node_failure_matrix() -> Result<()> {
+    let failure_matrix = fs::read_to_string("docs/contracts/failure-injection-matrix.md")
+        .context("missing docs/contracts/failure-injection-matrix.md")?;
+    let sdk_errors =
+        fs::read_to_string("docs/contracts/sdk-v2-errors.md").context("missing docs/contracts/sdk-v2-errors.md")?;
+
+    let required_codes = [
+        "SDK_RUNTIME_INVALID_CURSOR",
+        "SDK_RUNTIME_NOT_FOUND",
+        "SDK_VALIDATION_INVALID_ARGUMENT",
+        "SDK_VALIDATION_CHECKSUM_MISMATCH",
+        "SDK_VALIDATION_IDEMPOTENCY_CONFLICT",
+        "SDK_RUNTIME_SEQ_GAP",
+        "SDK_RUNTIME_DISCONNECTED",
+        "SDK_RUNTIME_BACKPRESSURE_TIMEOUT",
+    ];
+    for code in required_codes {
+        if !failure_matrix.contains(code) {
+            bail!("failure matrix missing required machine code '{code}'");
+        }
+        if !sdk_errors.contains(code) {
+            bail!("sdk-v2-errors contract missing failure-matrix code '{code}'");
+        }
+    }
+
+    for marker in ["## Required Matrix", "## Test Artifact Requirement"] {
+        if !failure_matrix.contains(marker) {
+            bail!("failure matrix contract missing required section '{marker}'");
+        }
+    }
+    Ok(())
+}
+
+fn run_embedded_node_hil() -> Result<()> {
+    run("bash", &[EMBEDDED_NATIVE_INTEROP_SCRIPT_PATH])?;
+
+    let report = fs::read_to_string(EMBEDDED_NATIVE_INTEROP_REPORT_PATH)
+        .with_context(|| format!("missing {EMBEDDED_NATIVE_INTEROP_REPORT_PATH}"))?;
+    for marker in [
+        "\"status\":\"pass\"",
+        "\"announce_ok\":true",
+        "\"tiny_message_ok\":true",
+    ] {
+        if !report.contains(marker) {
+            bail!(
+                "embedded native interop report missing marker '{marker}' in {EMBEDDED_NATIVE_INTEROP_REPORT_PATH}"
+            );
+        }
+    }
+
+    if !Path::new(EMBEDDED_NATIVE_INTEROP_LOG_PATH).exists() {
+        bail!("missing embedded native interop log at {EMBEDDED_NATIVE_INTEROP_LOG_PATH}");
+    }
     Ok(())
 }
 
