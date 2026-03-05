@@ -1,0 +1,13 @@
+{
+  "id": "req-upload-commit-bad",
+  "result": {
+    "attachment": {
+      "attachment_id": "attachment-1",
+      "name": "photo.jpg",
+      "content_type": "image/jpeg",
+      "byte_len": 128000,
+      "checksum_sha256": "not-a-sha256",
+      "created_ts_ms": 1734200000000
+    }
+  }
+}

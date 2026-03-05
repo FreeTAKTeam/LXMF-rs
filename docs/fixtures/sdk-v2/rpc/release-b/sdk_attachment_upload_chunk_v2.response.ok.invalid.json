@@ -1,0 +1,10 @@
+{
+  "id": "req-upload-chunk-bad",
+  "result": {
+    "upload_chunk": {
+      "accepted": true,
+      "next_offset": -1,
+      "complete": false
+    }
+  }
+}

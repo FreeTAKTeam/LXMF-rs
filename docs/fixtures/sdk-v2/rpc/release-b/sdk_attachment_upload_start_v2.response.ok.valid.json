@@ -1,0 +1,11 @@
+{
+  "id": "req-upload-start-ok",
+  "result": {
+    "upload": {
+      "upload_id": "upload-1",
+      "attachment_id": "attachment-1",
+      "chunk_size_hint": 65536,
+      "next_offset": 0
+    }
+  }
+}

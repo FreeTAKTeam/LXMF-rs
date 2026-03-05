@@ -1,0 +1,10 @@
+{
+  "id": "req-upload-start-bad",
+  "result": {
+    "upload": {
+      "upload_id": "upload-1",
+      "attachment_id": "attachment-1",
+      "next_offset": 0
+    }
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "id": "req-upload-start-err",
+  "error": {
+    "code": "SDK_VALIDATION_INVALID_ARGUMENT",
+    "message": "attachment total_size must be greater than zero"
+  }
+}

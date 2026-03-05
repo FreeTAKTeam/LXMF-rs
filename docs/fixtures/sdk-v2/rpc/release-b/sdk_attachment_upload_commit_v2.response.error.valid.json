@@ -1,0 +1,7 @@
+{
+  "id": "req-upload-commit-err",
+  "error": {
+    "code": "SDK_VALIDATION_CHECKSUM_MISMATCH",
+    "message": "attachment checksum does not match committed bytes"
+  }
+}

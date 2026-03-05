@@ -1,0 +1,10 @@
+{
+  "id": "req-upload-chunk-ok",
+  "result": {
+    "upload_chunk": {
+      "accepted": true,
+      "next_offset": 32768,
+      "complete": false
+    }
+  }
+}

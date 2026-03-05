@@ -1,0 +1,16 @@
+{
+  "id": "req-upload-commit-ok",
+  "result": {
+    "attachment": {
+      "attachment_id": "attachment-1",
+      "name": "photo.jpg",
+      "content_type": "image/jpeg",
+      "byte_len": 128000,
+      "checksum_sha256": "5b0f5fa0f2d74f45f6dc334d4f1c84f4a2135dce0b70bc3bb8f8f7f3d21064e8",
+      "created_ts_ms": 1734200000000,
+      "expires_ts_ms": null,
+      "topic_ids": [],
+      "extensions": {}
+    }
+  }
+}

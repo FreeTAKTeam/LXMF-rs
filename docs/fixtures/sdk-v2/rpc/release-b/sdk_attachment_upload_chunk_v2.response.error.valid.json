@@ -1,0 +1,7 @@
+{
+  "id": "req-upload-chunk-err",
+  "error": {
+    "code": "SDK_RUNTIME_INVALID_CURSOR",
+    "message": "attachment upload offset does not match next_offset"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "id": "req-download-chunk-ok",
+  "result": {
+    "download_chunk": {
+      "attachment_id": "attachment-1",
+      "offset": 0,
+      "next_offset": 512,
+      "total_size": 128000,
+      "done": false,
+      "checksum_sha256": "5b0f5fa0f2d74f45f6dc334d4f1c84f4a2135dce0b70bc3bb8f8f7f3d21064e8",
+      "bytes_base64": "AQID"
+    }
+  }
+}
