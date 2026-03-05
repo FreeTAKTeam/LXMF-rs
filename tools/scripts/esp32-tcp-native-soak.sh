@@ -24,7 +24,7 @@ for ((i=1; i<=RUNS; i++)); do
   capture_out="${LOG_DIR}/capture-${i}.jpg"
   run_log="${LOG_DIR}/run-${i}.log"
   if [[ "${MODE}" == "capture" ]]; then
-    if BIND_ADDR="${BIND_ADDR}" TIMEOUT_SECS="${TIMEOUT_SECS}" CAPTURE_OUT="${capture_out}" \
+    if BIND_ADDR="${BIND_ADDR}" TIMEOUT_SECS="${TIMEOUT_SECS}" LISTENER_MODE="capture" CAPTURE_OUT="${capture_out}" \
       ./tools/scripts/esp32-tcp-native-smoke.sh >"${run_log}" 2>&1; then
       bytes=$(awk '/capture saved path=/{for(i=1;i<=NF;i++) if($i ~ /^bytes=/){sub("bytes=","",$i); print $i; exit}}' "${run_log}")
       bytes="${bytes:-0}"
