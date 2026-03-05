@@ -4,7 +4,7 @@
     "commit": "<pin-commit-sha>"
   },
   "lxmf": {
-    "repo": "markqvist/LXMF",
+    "repo": "FreeTAKTeam/LXMF-rs",
     "commit": "<pin-commit-sha>"
   },
   "notes": "Interop harness has moved to an external repository; keep pins here as contract metadata."
