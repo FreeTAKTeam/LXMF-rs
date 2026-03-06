@@ -37,6 +37,8 @@ Note: legacy migration-only implementation crates are retained under
 
 - `lxmf-core`: message/payload/identity primitives.
 - `lxmf-sdk`: host-facing client API (`start/send/cancel/status/configure/poll/snapshot/shutdown`).
+- `rns-embedded-runtime`: node-centric embedded runtime facade with lifecycle, event, and managed `std` driver support.
+- `rns-embedded-ffi`: C ABI for embedded/manual-tick compatibility and the v1 node-centric API.
 - `rns-core`: Reticulum cryptographic and packet primitives.
 - `rns-transport`: transport + iface + receipt/resource API.
 - `rns-rpc`: RPC request/response/event contracts and bridges.
@@ -113,6 +115,13 @@ cargo run -p rns-tools --bin rnx -- e2e --timeout-secs 20
 - Config cookbook: `docs/runbooks/sdk-config-cookbook.md`
 - Lifecycle/events: `docs/sdk/lifecycle-and-events.md`
 - Advanced embedding: `docs/sdk/advanced-embedding.md`
+
+## Embedded Node FFI
+
+- Header: `crates/libs/rns-embedded-ffi/include/rns_embedded_ffi.h`
+- Guide and example: `crates/libs/rns-embedded-ffi/README.md`
+- `v1` node-centric API: `rns_embedded_v1_node_new/start/stop/restart/get_status/send/broadcast/set_log_level/subscribe_events`
+- legacy compatibility API remains available for manual tick, raw wire ingress/egress, and low-level queueing
 
 ## Governance
 
