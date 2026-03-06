@@ -147,12 +147,26 @@ Introduce a new public facade around `EmbeddedNodeRuntime` rather than pushing o
 
 The FFI crate should only translate those types into C-compatible forms.
 
+Required prerequisite before the facade can actually own lifecycle:
+
+- move concrete backend ownership out of the FFI crate and behind a runtime-owned backend/session layer
+- today the FFI crate owns `JournaledEmbeddedStore` and concrete transports such as `BleShimTransport`, while `EmbeddedNodeRuntime` only operates on borrowed `transport` and `store` values during `tick(now_ms)`
+- chosen implementation pattern for this issue:
+  - introduce a runtime-owned `RuntimeSession` object
+  - `RuntimeSession` owns the active `EmbeddedNodeRuntime`, node-owned event log, concrete store instance, concrete backend transport, and managed-mode synchronization primitives
+  - `RuntimeSession` is created by `start(config)`, replaced on successful `restart(config)`, and dropped by `stop()`
+  - the concrete backend transport lives behind a closed runtime-owned enum such as `NodeBackend`, for example BLE now and TCP variants in `std` builds later
+  - manual mode and managed `std` mode share the same `RuntimeSession`; the only difference is whether a driver thread is attached to advance it
+- until that ownership move happens, `start/stop/restart` cannot truthfully live in `rns-embedded-runtime` as more than thin wrappers around FFI-owned state
+- the same prerequisite applies to synchronization: the node-centric path needs a runtime-owned synchronized interior state model, and all v1 FFI entrypoints must dispatch through that synchronized handle rather than the current raw `*mut` to `&mut` reinterpretation
+- compatibility entrypoints that remain available on node-centric handles must also route through the synchronized handle layer or reject by validated handle kind; otherwise the `std` concurrency guarantees in this plan are not achievable
+
 ### 3. Preserve manual tick in the core runtime, but add a managed `std` facade
 
 Issue `#20` asks for `start` and `stop`, but the current embedded runtime is explicitly manual-tick driven. The plan is:
 
 - `new()` creates a stopped node facade with default internal state.
-- `start(config)` validates config, marks the node runnable, and in `std` builds starts a managed driver thread.
+- `start(config)` validates config, constructs or reconfigures the runtime-owned backend session, marks the node runnable, and in `std` builds starts a managed driver thread.
 - the driver thread owns periodic `tick(now_ms)` progression for the high-level `std` API.
 - `tick(now_ms)` remains available on the low-level/manual API and remains the underlying execution primitive.
 - `stop()` disables further progression and causes send/broadcast operations to fail with `NotRunning`.
@@ -160,16 +174,40 @@ Issue `#20` asks for `start` and `stop`, but the current embedded runtime is exp
 
 This keeps the protocol engine manual-tick based while giving the `std` high-level API a real producer model for `next(timeout_ms)`.
 
+`NodeConfig` must be the single complete source of runtime backend configuration for this facade. That means it cannot stop at logical node fields only; it must also carry the transport/store parameters currently required to construct the embedded backend, for example:
+
+- transport kind/mode
+- BLE transport tuning such as MTU hint, inbound/outbound frame capacities, and ordering mode
+- any future TCP/client/server parameters needed to build the concrete transport
+- storage/session limits needed during backend construction
+
+Design rule:
+
+- `Node::new()` is no-arg and does not allocate or bind any transport/store backend
+- `start(config)` is the first point where backend-specific configuration is consumed
+- `restart(config)` fully replaces the prior backend session using the same config shape
+- the compatibility constructor may continue to accept `RnsEmbeddedNodeConfig`, but that struct should become a compatibility projection of the new `NodeConfig` shape rather than a separate source of truth
+
+Managed `std` time semantics must also be fixed as part of this API slice:
+
+- chosen decision for this issue:
+  - the managed driver thread uses `std::time::Instant` as the monotonic source of truth and derives `now_ms` from elapsed milliseconds since successful `start(config)`
+  - `occurred_at_ms`, timeout accounting, and announce scheduling all use that same monotonic timeline
+  - the managed driver thread runs with a target tick cadence of `25ms`
+  - the conformance contract is a maximum driver tick interval of `50ms` under normal operation; implementations may wake earlier on API activity or shutdown signals
+  - `next(timeout_ms)` timeout behavior in managed mode is therefore validated against the same monotonic clock plus the `<=50ms` driver cadence bound
+- manual/compatibility `tick(now_ms)` remains caller-supplied, but the managed path must not depend on ambient wall-clock APIs with unspecified drift semantics
+
 ### 4. Introduce a stable event contract above `RuntimeEvent`
 
 `RuntimeEvent` is currently an internal detail. Add a public `NodeEvent` surface with the issue’s requested categories:
 
 - `StatusChanged`
-- `PeerChanged`
 - `PacketReceived`
 - `PacketSent`
 - `Log`
 - `Error`
+- `Extension`
 
 Mapping guidance:
 
@@ -177,23 +215,20 @@ Mapping guidance:
 - inbound frames and decoded LXMF payloads map to `PacketReceived`
 - outbound frame flushes map to `PacketSent`
 - backpressure/replay/integrity failures map to `Error`
-- peer-related transport state changes map to `PeerChanged` when the runtime has enough information; until then, emit only when link-state identity actually changes
 - log emission is capability-limited and may initially be sourced from explicit runtime log hooks only
+- peer-related information should not be frozen as a core v1 event until the embedded runtime has a stable peer identity/source model; if needed before then, expose it as an `Extension` event guarded by capabilities
 
 The stable event contract should distinguish between:
 
-- stable core events: lifecycle, peer, delivery/transport outcome, log, error
+- stable core events: lifecycle, log, error
 - compatibility events: legacy/raw wire or packet-oriented events needed by older bridges
-- extension events: namespaced optional events such as announce or hub-specific updates that are not guaranteed in every profile
+- extension events: namespaced optional events such as peer snapshots, announce notifications, or hub-specific updates that are not guaranteed in every profile
 
 This prevents the first public event ABI from freezing every current integration quirk into the permanent core contract.
 
 `NodeEvent v1` freeze table:
 
 - `StatusChanged`
-  - stability: `core`
-  - required envelope: `event_id`, `epoch`, `occurred_at_ms`, `kind`
-- `PeerChanged`
   - stability: `core`
   - required envelope: `event_id`, `epoch`, `occurred_at_ms`, `kind`
 - `Log`
@@ -252,6 +287,7 @@ This is safer than copying every event into a separate per-subscriber queue.
 - `close()`, `stop()`, `restart()`, and node destruction must wake blocked waiters deterministically
 - `timeout_ms=0` means poll-only
 - if an infinite-wait sentinel is supported, it must be explicit in the ABI and capability probe rather than implied
+- in managed `std` mode, timeout accounting uses the facade-owned monotonic clock and the documented driver tick cadence; this timing contract is part of the conformance surface, not an implementation detail
 
 This keeps manual tick and timeout semantics compatible instead of letting `next()` accidentally become a second execution loop.
 
@@ -358,7 +394,10 @@ Recommended extension identifier format:
 Recommended additions in `rns-embedded-runtime`:
 
 ```rust
-pub struct NodeConfig { ... }
+pub struct NodeConfig {
+    pub runtime: RuntimeConfig,
+    pub backend: NodeBackendConfig,
+}
 pub struct NodeStatus { ... }
 pub struct NodeOperationReceipt {
     pub operation: NodeOperationKind,
@@ -382,6 +421,14 @@ pub enum NodeError {
 
 pub enum NodeEvent { ... }
 
+pub enum NodeBackendConfig {
+    Ble(BleNodeBackendConfig),
+    #[cfg(feature = "std")]
+    TcpClient(TcpClientNodeBackendConfig),
+    #[cfg(feature = "std")]
+    TcpServer(TcpServerNodeBackendConfig),
+}
+
 pub struct EmbeddedNode {
     ...
 }
@@ -402,6 +449,27 @@ impl EmbeddedNode {
 ```
 
 `EmbeddedNodeRuntime` can remain as the protocol engine beneath this facade if that keeps refactoring smaller. The low-level/manual-tick layer can continue to use `&mut self`; the managed `std` facade should present the synchronized `&self` API above it.
+
+Implementation note:
+
+- this facade is expected to own the concrete backend session for its active epoch
+- `EmbeddedNodeRuntime` remains the protocol engine, but the new `EmbeddedNode` layer owns the store, transport/backend instance, event log, and synchronization primitives
+- `rns-embedded-ffi` should construct or call into that facade rather than continuing to own the backend directly for the node-centric path
+- the concrete implementation should use an internal shape equivalent to:
+
+```rust
+struct RuntimeSession {
+    epoch: u64,
+    runtime: EmbeddedNodeRuntime,
+    store: NodeStore,
+    backend: NodeBackend,
+    event_log: NodeEventLog,
+    #[cfg(feature = "std")]
+    driver: Option<DriverState>,
+}
+```
+
+- `EmbeddedNode` then owns synchronized access to `Option<RuntimeSession>` plus stable node-level metadata needed while stopped
 
 Recommended stable metadata carried by all events:
 
@@ -483,6 +551,15 @@ Compatibility shims to keep for the first rollout:
 - `rns_embedded_node_push_inbound_wire`
 - `rns_embedded_node_take_outbound_wire`
 - `rns_embedded_node_queue_message`
+
+Handle coexistence rules must be explicit for the migration window:
+
+- legacy compatibility handles and v1 node-centric handles must be distinguishable by the library, not just by header naming
+- the implementation should use an internal tagged handle/header for all exported opaque pointers so every entrypoint can validate handle kind before dispatch
+- calling a legacy/manual function on a managed v1 handle must fail deterministically with `MODE_CONFLICT` or `INVALID_HANDLE`; it must never reinterpret the pointer as a legacy node layout and race internal state
+- calling a v1 function on a legacy compatibility handle must fail the same way
+- subscription handles need the same kind/version validation so stale or mixed-handle calls cannot pass raw-pointer checks accidentally
+- this tagging/dispatch rule is required before promising that legacy `tick` returns `InvalidState` on managed handles, because the current FFI raw-pointer model is not sufficient on its own
 
 Where possible:
 
