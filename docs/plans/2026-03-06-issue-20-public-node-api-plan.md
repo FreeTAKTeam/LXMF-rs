@@ -37,6 +37,9 @@ Current gaps against issue `#20`:
 3. There is no `NodeError` model for lifecycle/configuration failures.
 4. The exposed C ABI remains transport-centric rather than node-centric.
 5. The header file at [crates/libs/rns-embedded-ffi/include/rns_embedded_ffi.h](../../crates/libs/rns-embedded-ffi/include/rns_embedded_ffi.h) will need to evolve in lockstep with any ABI additions.
+6. There is no capability-discovery contract for clients that need to adapt to `std` vs `alloc` feature differences.
+7. There is no runtime epoch model to distinguish stale receipts/events after `restart(config)`.
+8. Ownership and blocked-wait semantics are not explicit enough for cross-language SDKs.
 
 ## Non-Goals
 
@@ -90,6 +93,24 @@ Current gaps against issue `#20`:
    - that driver thread advances the underlying manual-tick runtime and signals subscription waiters
    - the existing low-level/manual-tick entrypoints remain available for compatibility and `alloc` firmware builds
 
+7. Capability discovery must be part of the stable contract.
+   Recommended decision:
+   - expose both compile-time header macros and a runtime capability probe
+   - clients must be able to detect support for blocking `next(timeout_ms)`, managed runtime mode, broadcast target modes, event-gap signaling, and event/payload size limits before using them
+   - ABI version probing alone is insufficient for feature negotiation across `std` and `alloc` profiles
+
+8. ABI evolution must use self-describing structs.
+   Recommended decision:
+   - every new public input/output struct begins with `struct_size` and `struct_version`
+   - public structs include reserved bytes/fields for additive growth
+   - unknown trailing fields are ignored; missing trailing fields use documented defaults
+
+9. Restart semantics must be explicit.
+   Recommended decision:
+   - a successful `start(config)` or `restart(config)` increments a monotonic `epoch: u64`
+   - `epoch` is included in `NodeStatus`, `NodeOperationReceipt`, `NodeEvent`, and subscription state
+   - subscriptions must deterministically surface `NodeRestarted` or equivalent stale-generation signaling rather than silently mixing generations
+
 ## Success Criteria
 
 1. A caller can create a node, start it, stop it, restart it with a new config, and inspect status without touching transport internals directly.
@@ -99,6 +120,8 @@ Current gaps against issue `#20`:
 5. Existing firmware bridge and `rnx` diagnostics remain functional during the migration.
 6. The new ABI surface is reflected in the public header and covered by tests.
 7. For `std` builds, node and subscription handles are safe for concurrent use because the node-centric facade is internally synchronized and owns a managed producer loop.
+8. Clients can discover supported features and limits without trial-and-error.
+9. Events and receipts can be correlated reliably across restart boundaries.
 
 ## Architecture Direction
 
@@ -157,6 +180,46 @@ Mapping guidance:
 - peer-related transport state changes map to `PeerChanged` when the runtime has enough information; until then, emit only when link-state identity actually changes
 - log emission is capability-limited and may initially be sourced from explicit runtime log hooks only
 
+The stable event contract should distinguish between:
+
+- stable core events: lifecycle, peer, delivery/transport outcome, log, error
+- compatibility events: legacy/raw wire or packet-oriented events needed by older bridges
+- extension events: namespaced optional events such as announce or hub-specific updates that are not guaranteed in every profile
+
+This prevents the first public event ABI from freezing every current integration quirk into the permanent core contract.
+
+`NodeEvent v1` freeze table:
+
+- `StatusChanged`
+  - stability: `core`
+  - required envelope: `event_id`, `epoch`, `occurred_at_ms`, `kind`
+- `PeerChanged`
+  - stability: `core`
+  - required envelope: `event_id`, `epoch`, `occurred_at_ms`, `kind`
+- `Log`
+  - stability: `core`
+  - required envelope: `event_id`, `epoch`, `occurred_at_ms`, `kind`
+- `Error`
+  - stability: `core`
+  - required envelope: `event_id`, `epoch`, `occurred_at_ms`, `kind`
+- `PacketReceived`
+  - stability: `compat`
+  - required envelope: `event_id`, `epoch`, `occurred_at_ms`, `kind`
+- `PacketSent`
+  - stability: `compat`
+  - required envelope: `event_id`, `epoch`, `occurred_at_ms`, `kind`
+- `Extension`
+  - stability: `extension`
+  - required envelope: `event_id`, `epoch`, `occurred_at_ms`, `kind`
+  - required payload fields: `extension_id`, extension payload
+
+Rules:
+
+- v1 discriminants are frozen once assigned
+- `core` kinds must not change meaning within v1
+- wrappers must ignore unknown `extension` kinds safely
+- extensions do not allocate new top-level v1 discriminants; they use the fixed `Extension` discriminant plus a namespaced `extension_id`
+
 ### 5. Make subscriptions bounded and explicit
 
 Subscriptions must not imply unbounded queue growth. The runtime should expose a bounded event-log/subscription mechanism with:
@@ -170,6 +233,9 @@ Recommended policy:
 
 - each subscription tracks its own cursor into a bounded node event log
 - when a subscriber falls behind the retention window, return a deterministic gap/error event instead of silently replaying corrupted history
+- the underlying event log uses globally monotonic `event_id: u64` values scoped to the node plus `epoch`
+- gap detection uses those monotonic ids, not implicit array offsets
+- subscriptions must not observe mixed generations without explicit `epoch` signaling
 
 This is safer than copying every event into a separate per-subscriber queue.
 
@@ -183,8 +249,107 @@ This is safer than copying every event into a separate per-subscriber queue.
 - if no producer progresses the node during the timeout window, `next(timeout_ms)` returns timeout/none deterministically
 - in single-threaded/manual-tick usage, callers pair `tick()` with `next(0)` polling
 - for `alloc` firmware builds in this issue, blocking wait is not required; non-blocking polling remains sufficient until a time source contract is pinned
+- `close()`, `stop()`, `restart()`, and node destruction must wake blocked waiters deterministically
+- `timeout_ms=0` means poll-only
+- if an infinite-wait sentinel is supported, it must be explicit in the ABI and capability probe rather than implied
 
 This keeps manual tick and timeout semantics compatible instead of letting `next()` accidentally become a second execution loop.
+
+### 7. Add capability discovery as a first-class contract
+
+The node-centric API will serve `std` hosts, `alloc` firmware builds, mobile FFI bridges, and compatibility clients. Those consumers need stable introspection before they can safely call optional features.
+
+Recommended capability surface:
+
+- profile kind (`std_managed`, `alloc_manual`, or equivalent)
+- supports blocking `next(timeout_ms)`
+- supports managed driver thread
+- supports explicit broadcast destination lists
+- supports connected-peer fanout
+- supports event-gap signaling
+- maximum event payload bytes projected through the ABI
+- maximum subscriptions
+- whether compatibility/raw wire entrypoints are present
+
+The capability probe should distinguish:
+
+- compile-time capabilities
+  - features compiled into the build/profile
+- effective runtime limits
+  - payload/event/subscription limits exposed by the active runtime mode
+
+Capability discovery should exist at:
+
+- compile time: header macros for SDK authors that compile against the C ABI
+- runtime: a probe function returning feature bits and limits for dynamic consumers
+
+Capability evolution rules:
+
+- add `capability_schema_version` to the probe result
+- unknown bits must be ignored by clients unless explicitly required
+- published feature bits must never be repurposed
+- additive fields/limits must preserve prior semantics when absent
+
+### 8. Define ownership and lifetime semantics explicitly
+
+The plan must be explicit about copy-vs-borrow and handle invalidation rules. Recommended contract:
+
+- `send` and `broadcast` copy payload bytes during the call; callers may release input buffers immediately after return
+- `subscription_next` writes into caller-provided storage only; event payload bytes are never borrowed from internal runtime memory across the ABI boundary
+- if payload projection is truncated, the result must expose both the truncation flag and required/full length
+- node owns the event log; subscriptions reference node-owned state through synchronized ownership
+- `close()`, `stop()`, `restart()`, and node destruction must invalidate or wake blocked subscriptions in a documented way
+- freeing the node before closing subscriptions must not permit use-after-free; the exact ref-counting or invalidation strategy should be documented in the runtime and FFI design
+
+### 9. Separate stable API from compatibility API
+
+To keep the SDK broadly usable, the plan should formally distinguish:
+
+- stable node-centric API: lifecycle, status, capability discovery, send/broadcast, subscriptions, structured errors
+- compatibility API: manual tick, raw inbound/outbound wire helpers, legacy queueing helpers
+- extension API/events: optional namespaced features used by particular clients such as announce or hub-directory notifications
+
+That separation keeps the stable contract small while still supporting current clients.
+
+### 10. Make the permanent abstraction dual-surface explicitly
+
+To avoid drifting between packet-oriented and message-oriented usage, the public contract should explicitly commit to a dual-surface model:
+
+- stable core surface:
+  - lifecycle and status
+  - capability discovery
+  - send and broadcast/fanout
+  - subscriptions and structured events
+  - machine-readable errors and operation correlation
+- compatibility transport surface:
+  - raw packet/wire helpers
+  - manual tick
+  - legacy queueing
+  - packet-oriented events needed by older bridges
+- extension surface:
+  - optional namespaced events and controls for client-specific behaviors
+
+Design rule:
+
+- new clients should default to the stable core surface
+- existing packet-oriented clients may continue using the compatibility surface during migration
+- compatibility transport features should not expand the stable core surface unless they become broadly required across client types
+- extension capabilities and event kinds must use namespaced identifiers and versioning rules so unknown extensions are safely ignorable by wrappers
+
+Promotion policy:
+
+- compatibility-surface behavior moves into stable core only when:
+  - at least two distinct maintained client types need it
+  - the behavior has wrapper conformance coverage
+  - maintainers explicitly approve the promotion and migration note
+- until then, compatibility APIs remain non-normative for new SDKs
+
+Recommended extension identifier format:
+
+- reuse the extension registry scheme from [docs/contracts/extension-registry.md](../contracts/extension-registry.md)
+- canonical form: `<scope>.<domain>.<name>.v<major>`
+- lowercase ASCII only
+- wrappers must ignore unknown extension identifiers unless explicitly required by a capability contract
 
 ## Public API Shape
 
@@ -197,7 +362,8 @@ pub struct NodeConfig { ... }
 pub struct NodeStatus { ... }
 pub struct NodeOperationReceipt {
     pub operation: NodeOperationKind,
-    pub sequence: u32,
+    pub operation_id: u64,
+    pub epoch: u64,
     pub accepted_bytes: usize,
     pub queued: bool,
     pub target_count: u32,
@@ -237,23 +403,79 @@ impl EmbeddedNode {
 
 `EmbeddedNodeRuntime` can remain as the protocol engine beneath this facade if that keeps refactoring smaller. The low-level/manual-tick layer can continue to use `&mut self`; the managed `std` facade should present the synchronized `&self` API above it.
 
+Recommended stable metadata carried by all events:
+
+- `event_id: u64`
+- `epoch: u64`
+- `occurred_at_ms: u64`
+- `kind`
+- optional `operation_id: u64`
+
+Recommended stable poll result model:
+
+```rust
+pub enum PollResult {
+    Event(NodeEvent),
+    Timeout,
+    Closed,
+    Gap { next_event_id: u64 },
+    NodeStopped,
+    NodeRestarted { epoch: u64 },
+}
+```
+
+Recommended stable machine-readable error contract:
+
+- keep `NodeError` as the coarse semantic category
+- add a stable machine-readable numeric `error_code: u32` on all runtime/FFI error projections
+- reserve numeric ranges for future additive growth and extension-specific codes
+- never reuse retired numeric codes for different meanings
+- require `error_code` stability across additive enum growth so wrappers and telemetry pipelines can match on it safely
+
+Recommended baseline registry:
+
+- `0` = `UNKNOWN`
+- `1` = `INVALID_CONFIG`
+- `2` = `IO_ERROR`
+- `3` = `NETWORK_ERROR`
+- `4` = `RETICULUM_ERROR`
+- `5` = `ALREADY_RUNNING`
+- `6` = `NOT_RUNNING`
+- `7` = `TIMEOUT`
+- `8` = `INTERNAL_ERROR`
+- `9` = `INVALID_HANDLE`
+- `10` = `INVALID_POINTER`
+- `11` = `MODE_CONFLICT`
+- `12` = `SUBSCRIPTION_CLOSED`
+- `13` = `NODE_RESTARTED`
+- `14` = `EVENT_GAP`
+- `15` = `QUEUE_PRESSURE`
+
+Policy:
+
+- `1..=1023` reserved for stable core node-centric errors
+- `1024..=8191` reserved for compatibility-surface errors
+- `8192+` reserved for extension-defined namespaced errors
+- wrappers must tolerate unknown numeric codes and map them to `UNKNOWN`
+
 ## C ABI Surface
 
 Recommended FFI additions in [crates/libs/rns-embedded-ffi/src/lib.rs](../../crates/libs/rns-embedded-ffi/src/lib.rs) and [crates/libs/rns-embedded-ffi/include/rns_embedded_ffi.h](../../crates/libs/rns-embedded-ffi/include/rns_embedded_ffi.h):
 
-- `rns_embedded_node_new_v2(void)`
-- `rns_embedded_abi_version(void)`
+- `rns_embedded_v1_node_new(void)`
+- `rns_embedded_v1_abi_version(void)`
+- `rns_embedded_v1_get_capabilities(...)`
 - opaque `RnsEmbeddedEventSubscription`
-- `rns_embedded_node_start`
-- `rns_embedded_node_stop`
-- `rns_embedded_node_restart`
-- `rns_embedded_node_get_status`
-- `rns_embedded_node_send`
-- `rns_embedded_node_broadcast`
-- `rns_embedded_node_set_log_level`
-- `rns_embedded_node_subscribe_events`
-- `rns_embedded_subscription_next`
-- `rns_embedded_subscription_close`
+- `rns_embedded_v1_node_start`
+- `rns_embedded_v1_node_stop`
+- `rns_embedded_v1_node_restart`
+- `rns_embedded_v1_node_get_status`
+- `rns_embedded_v1_node_send`
+- `rns_embedded_v1_node_broadcast`
+- `rns_embedded_v1_node_set_log_level`
+- `rns_embedded_v1_node_subscribe_events`
+- `rns_embedded_v1_subscription_next`
+- `rns_embedded_v1_subscription_close`
 
 Compatibility shims to keep for the first rollout:
 
@@ -270,6 +492,8 @@ Where possible:
 - document `rns_embedded_node_new(const RnsEmbeddedNodeConfig *config)` as a compatibility constructor distinct from the new node-centric constructor
 - expose an ABI version macro in the header and a runtime probe function so consumers can reject mismatched headers/libraries cleanly
 - when the managed `std` node-centric mode is running, legacy `rns_embedded_node_tick` on that handle must return `InvalidState` rather than racing the driver thread
+- every new ABI struct must be self-describing via `struct_size`, `struct_version`, and reserved fields
+- all node-centric errors projected through the ABI should include both semantic category and machine-readable stable code
 
 Receipt semantics for `broadcast` must be explicit:
 
@@ -312,20 +536,102 @@ The current `RnsEmbeddedStatus` enum is too low-level to represent the issue cle
 
 This removes ambiguity about where authoritative error detail lives while avoiding a breaking rewrite of the existing low-level API.
 
+Precedence rule:
+
+- `RnsEmbeddedStatus` reports ABI-level call status such as success, invalid pointer, invalid handle, buffer-too-small, or internal FFI failure
+- `out_node_error` reports semantic node/runtime failure only when the ABI-level call itself succeeded enough to evaluate the requested operation
+- pointer/handle validation failures must be represented by `RnsEmbeddedStatus` first and may leave `out_node_error` unset or set to `INVALID_POINTER` / `INVALID_HANDLE` deterministically according to the documented ABI convention
+
 ### Event ABI Ownership
 
 Node events must not require cross-boundary heap ownership. Recommended approach:
 
 - define a fixed-size `RnsEmbeddedNodeEvent` struct with:
+  - `struct_size`
+  - `struct_version`
   - `kind`
+  - `event_id`
+  - `epoch`
+  - `occurred_at_ms`
+  - optional `operation_id`
   - scalar metadata fields
   - bounded inline payload buffers for optional bytes/text
   - `payload_len`
+  - `required_payload_len`
   - `truncated` flag
 - `rns_embedded_subscription_next` writes into caller-owned storage
 - no extra free function is required for event payloads in the first slice
 
 This keeps the event ABI simple and avoids leaks or use-after-free risk.
+
+`rns_embedded_subscription_next` should also expose a poll-result enum rather than overloading null/timeout/error cases implicitly.
+
+### State and Call Matrix
+
+The plan should define a normative call matrix for both the runtime and FFI layers.
+
+Recommended minimum matrix:
+
+- Stopped:
+  - allowed: `get_status`, capability probe, `start`, `subscribe_events`
+  - rejected: `send`, `broadcast` with `NOT_RUNNING`
+  - `subscribe_events` returns a valid subscription; `next(0)` returns `Timeout` until lifecycle events are produced
+- Running managed (`std`):
+  - allowed: `get_status`, `send`, `broadcast`, `subscribe_events`, blocking `next`
+  - rejected: legacy `tick` on the same handle with deterministic `MODE_CONFLICT`
+- Running manual (`alloc`/compatibility):
+  - allowed: `tick`, `get_status`, non-blocking `next(0)` if subscriptions exist
+  - blocking `next(timeout_ms>0)` only if capability probe says supported
+- Restarting/stopping:
+  - blocked waiters must wake with deterministic poll result / error
+  - in-flight subscriptions must observe generation change explicitly
+
+The plan should also define the linearization point for:
+
+- `start`
+- `stop`
+- `restart`
+- `send`
+- `broadcast`
+- `close`
+
+so wrapper authors know when state transitions become externally visible.
+
+Required normative results:
+
+- `start` from `Stopped` -> success or `INVALID_CONFIG`
+- `start` from running state -> `ALREADY_RUNNING`
+- `stop` from running state -> success
+- `stop` from `Stopped` -> success or a documented idempotent no-op; for this plan choose success/idempotent no-op
+- `restart` from `Stopped` -> equivalent to `start(config)` and increments `epoch` on success
+- `subscribe_events` is always allowed on a valid node handle
+- `close` on an already-closed subscription -> success/idempotent no-op
+
+### Backpressure and Performance Contract
+
+The plan should define minimal normative behavior for queue pressure and slow consumers.
+
+Recommended rules:
+
+- `send` under queue pressure:
+  - deterministic reject by default with stable error code `QUEUE_PRESSURE`
+  - alternate behavior must be capability-declared
+- `broadcast` under queue pressure:
+  - resolved destination set is snapshotted once
+  - partial fanout is allowed only when receipt/event semantics report accepted target count and failures deterministically
+  - if no targets are accepted because of pressure, return `QUEUE_PRESSURE`
+  - if some targets are accepted and some rejected because of pressure, the receipt/event model must report partial acceptance plus per-target failure signaling
+- event-log overflow:
+  - bounded retention is required
+  - slow consumers observe `Gap`/overflow signaling rather than silent loss
+- compatibility events may be deprioritized before core events only if documented and capability-exposed
+
+Recommended observable signals:
+
+- queue depth and queue-capacity limit
+- rejected send/broadcast count due to pressure
+- event-gap count
+- dropped compatibility-event count
 
 ## Thread Safety and FFI Safety Requirements
 
@@ -338,6 +644,10 @@ Issue `#20` explicitly requires thread safety and no panics across the FFI bound
 3. The managed `std` facade owns the driver thread responsible for advancing the runtime and signaling event waiters.
 4. In `alloc`/firmware builds, preserve the existing single-threaded/manual-tick model and do not market the higher-level blocking subscription API as available until a time/synchronization contract exists.
 5. Do not claim cross-thread safety in the header or docs unless the implementation actually enforces it.
+6. Document linearization and mode exclusivity explicitly:
+   - which calls are legal in stopped/running/managed/legacy modes
+   - what happens if legacy `tick` is called while managed mode is active
+   - what blocked `next()` calls observe during `stop`, `restart`, and `close`
 
 Recommended implementation:
 
@@ -352,7 +662,7 @@ Recommended implementation:
 2. Every new opaque handle must have strict ownership rules and one free/close path.
 3. `SAFETY:` comments must be adjacent to every unsafe site.
 4. The unsafe inventory in [docs/architecture/unsafe-inventory.md](../architecture/unsafe-inventory.md) must be updated in the same PR.
-5. In `std` builds, new entrypoints should use panic containment wrappers if any code path could unwind unexpectedly.
+5. In `std` builds, every new extern must use panic containment wrappers; no unwind may cross the ABI boundary.
 
 ## Work Plan
 
@@ -365,6 +675,7 @@ Recommended implementation:
 - additive entrypoints first
 - no removal of current low-level FFI calls in the first release
 - add header/runtime ABI version probes in the same slice
+ - add capability discovery in the same slice
 3. Confirm constructor semantics:
 - `new()` is no-arg and stopped
 - `start(config)` is the only config application path in the node-centric API
@@ -376,6 +687,10 @@ Recommended implementation:
 - `stop()` joins/shuts down the driver thread cleanly
 - `next(timeout_ms)` depends on that managed producer loop rather than caller-discovered concurrent ticking
 - legacy `tick` on a managed-mode handle returns `InvalidState`
+6. Confirm epoch and poll-result semantics:
+- `epoch` increments on successful `start`/`restart`
+- `next(timeout_ms)` returns explicit poll outcomes (`Event`, `Timeout`, `Closed`, `Gap`, `NodeStopped`, `NodeRestarted`)
+- blocked waiters are woken on `close`, `stop`, `restart`, and node destruction
 
 ### Phase 1: Runtime API Foundation
 
@@ -391,9 +706,15 @@ Tasks:
 - explicit destination list
 - connected peers
 - named group handle if the caller resolves membership externally
+  Define target-resolution semantics precisely:
+ - when the destination set is snapshotted
+ - whether duplicates are removed
+ - ordering guarantees
+ - behavior when some targets fail resolution
 3. Introduce explicit started/stopped state on top of the current lifecycle state machine.
 4. Add runtime entrypoints for `start`, `stop`, `restart`, `get_status`, `send`, `broadcast`, and `set_log_level`.
 5. Add managed driver-thread ownership for the `std` facade while preserving manual `tick` underneath.
+6. Add capability discovery and `epoch` to runtime-visible state.
 
 Exit criteria:
 
@@ -416,6 +737,8 @@ Tasks:
 4. Add deterministic gap handling when a subscriber falls behind retention.
 5. Define fixed-size event payload bounds for the C ABI projection.
 6. Add tests proving that `next(timeout_ms)` receives events under the managed `std` producer loop.
+7. Add explicit event envelope metadata (`event_id`, `epoch`, `occurred_at_ms`, optional `operation_id`).
+8. Add tests for blocked waiter wakeups on `close`, `stop`, and `restart`.
 
 Exit criteria:
 
@@ -437,6 +760,11 @@ Tasks:
 4. Add ABI version macro/function and require consumer-side version check in docs/examples.
 5. Translate runtime `NodeError` and `NodeEvent` into ABI-safe fixed-size forms.
 6. Keep existing low-level functions as compatibility shims.
+7. Add self-describing ABI structs and freeze enum discriminants explicitly.
+8. Add runtime capability probe for feature bits and limits.
+9. Define payload ownership/copying semantics in header comments and tests.
+10. Add a frozen machine-readable error-code table to the header/docs.
+11. Add capability probe schema versioning and unknown-bit handling rules to the header/docs.
 
 Exit criteria:
 
@@ -459,6 +787,33 @@ Tasks:
 1. Update documentation for the new node lifecycle and event flow.
 2. Document which functions are stable and which remain low-level compatibility entrypoints.
 3. Verify whether `rnx` tooling or firmware bridge code should adopt the higher-level API immediately or later.
+4. Add an old-to-new mapping table for SDK maintainers and wrapper authors.
+5. Document compatibility guarantees and deprecation timelines.
+6. Add “golden path” integration flows for:
+ - `std` host app
+ - `alloc` firmware/manual tick
+ - mobile/FFI wrapper
+
+Each flow should show:
+
+- create node
+- probe capabilities
+- start
+- send
+- receive/poll
+- stop
+
+The plan should also include canonical expected outcomes for those flows rather than leaving them to future prose docs.
+
+Compatibility-surface migration posture:
+
+- after Release 1, the compatibility surface is bugfix-only by default
+- new features should target the stable core surface or extension surface first
+- compatibility-surface additions require explicit justification
+- compatibility-surface removal requires:
+  - maintained wrapper/reference conformance passing
+  - published migration guidance
+  - usage/migration criteria agreed by maintainers
 
 Exit criteria:
 
@@ -485,8 +840,94 @@ Tasks:
 - concurrent host access for `std` builds
 - ABI version match/mismatch behavior for new consumers
 - managed driver-thread start/stop/restart behavior for `std` builds
+- capability discovery behavior across `std` and `alloc`
+- blocked waiter wakeups on `close`/`stop`/`restart`
+- epoch changes and stale-generation signaling
+- payload truncation and required-length reporting
+- state/call matrix behavior across stopped, managed, and manual modes
+- machine-readable error-code stability checks
 2. Update unsafe inventory rows for every new unsafe site.
 3. Run the relevant repository checks.
+
+### Wrapper Conformance Fixtures
+
+To make the API easy to adopt across languages, add a small wrapper-facing conformance suite and fixtures that non-Rust bindings can execute against a reference build.
+
+Recommended cases:
+
+- capability probe returns expected feature bits and limits
+- `next(0)` poll behavior
+- blocking `next(timeout_ms)` timeout behavior when supported
+- `restart` increments `epoch`
+- stale subscription or restarted node signaling
+- payload truncation reporting includes required/full length
+- machine-readable error codes for `NotRunning`, `AlreadyRunning`, and invalid-handle paths
+
+Recommended artifact shape:
+
+- documented fixture inputs
+- expected result JSON or C-struct snapshots
+- a small reference harness that wrapper authors can reuse
+- deterministic transport/runtime stub so event order and payloads are reproducible
+- normalized time/event-id expectations or fixture-controlled seeds
+- fixture schema versioning so wrappers can pin expected outputs safely
+
+Release posture recommendation:
+
+- wrapper conformance should be part of Release 1 gating for the reference harness and maintained first-party wrappers
+
+Canonical source-of-truth recommendation:
+
+- maintain the stable numeric error-code registry in one checked-in contract artifact
+- generate header/docs/tests from that artifact where practical to prevent drift
+
+Recommended artifact:
+
+- path: `docs/contracts/node-error-codes-v1.json`
+- contents:
+  - numeric code
+  - symbolic name
+  - semantic category
+  - stability class
+  - notes/mapping guidance
+- generation direction:
+  - contract artifact -> header constants / docs tables / test fixtures
+
+### Golden-Path Reference Flows
+
+The following flows should be part of the plan as authoritative reference sequences.
+
+#### `std` managed host flow
+
+1. Call ABI/version probe and capability probe.
+2. Create node via `rns_embedded_v1_node_new`.
+3. Subscribe before start.
+4. Call `start(config)`.
+5. Expect a lifecycle/status event carrying `epoch=1`.
+6. Call `send`.
+7. Poll subscription until either:
+- delivery/packet outcome event carrying the same `operation_id`
+- or terminal error event carrying the same `operation_id`
+8. Call `stop`.
+9. Expect blocked or future waits to observe `NodeStopped`/lifecycle result deterministically.
+
+#### `alloc` manual-tick flow
+
+1. Probe capabilities and confirm blocking wait is unsupported.
+2. Create node.
+3. Subscribe.
+4. Start node.
+5. Drive progress explicitly via `tick`.
+6. Use `next(0)` polling only.
+7. On restart, expect `epoch` increment and explicit restarted/generation-change signaling.
+
+#### Mobile/FFI wrapper flow
+
+1. Probe version and capabilities on load.
+2. Create node and subscription eagerly.
+3. Start node from UI/runtime settings.
+4. Map `operation_id`, `epoch`, `event_id`, `error_code`, and poll results into wrapper-native types.
+5. Treat unknown extension events and unknown error codes as forward-compatible values rather than fatal parser failures.
 
 Required commands:
 
@@ -504,6 +945,7 @@ This issue should be delivered as an additive migration, not a flag day.
 
 - add new runtime and FFI APIs
 - add ABI version probe and header macro
+- add capability discovery
 - preserve existing low-level entrypoints
 - update header and docs
 - mark old entrypoints as low-level compatibility surface
@@ -516,6 +958,12 @@ This issue should be delivered as an additive migration, not a flag day.
 ### Release 3
 
 - consider deprecating low-level entrypoints only after consumers have migrated
+
+Deprecation policy:
+
+- prefer time-based guarantees over a single release-cycle promise
+- target at least `2` minor releases and `6` months before removing low-level compatibility entrypoints
+- emit documentation and tooling warnings before removal
 
 ## Risks and Mitigations
 
