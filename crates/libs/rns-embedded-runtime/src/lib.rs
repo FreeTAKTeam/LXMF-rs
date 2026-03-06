@@ -20,10 +20,10 @@ use rns_embedded_core::{
 };
 pub use constants::*;
 pub use node::{
-    BleNodeBackendConfig, BroadcastOptions, CaptureDefaults, EmbeddedNode, NodeBackendConfig,
-    NodeConfig, NodeError, NodeLifecycleState, NodeLogLevel, NodeOperationKind,
-    NodeOperationReceipt, NodeRunState, NodeStatus, NodeTransportMode, SendOptions,
-    TcpClientConfig, TcpServerConfig,
+    BleNodeBackendConfig, BroadcastOptions, CaptureDefaults, EmbeddedNode, EventSubscription,
+    NodeBackendConfig, NodeConfig, NodeError, NodeEvent, NodeEventKind, NodeLifecycleState,
+    NodeLogLevel, NodeOperationKind, NodeOperationReceipt, NodeRunState, NodeStatus,
+    NodeTransportMode, PollResult, SendOptions, TcpClientConfig, TcpServerConfig,
 };
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]

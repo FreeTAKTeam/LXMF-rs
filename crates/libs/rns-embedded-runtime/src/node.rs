@@ -1,20 +1,37 @@
 use crate::{
-    RuntimeConfig, RuntimeStats,
+    RuntimeConfig, RuntimeEvent, RuntimeStats,
     ble::{BleShimConfig, BleShimTransport},
     constants::DEFAULT_CAPTURE_MAX_BYTES,
 };
-use alloc::{string::String, vec::Vec};
+use alloc::{
+    collections::{BTreeMap, VecDeque},
+    string::String,
+    vec::Vec,
+};
 use rns_embedded_core::{
     EmbeddedError,
     store::JournaledEmbeddedStore,
     transport::LinkState,
 };
 
+#[cfg(feature = "std")]
+use alloc::sync::Arc;
+
+#[cfg(not(feature = "std"))]
+use alloc::rc::Rc;
+
 #[cfg(not(feature = "std"))]
 use core::cell::RefCell;
 
 #[cfg(feature = "std")]
-use std::sync::Mutex;
+use std::{
+    sync::{Condvar, Mutex},
+    thread::{self, JoinHandle},
+    time::{Duration, Instant},
+};
+
+const DRIVER_TICK_MS: u64 = 25;
+const DRIVER_TICK_SLEEP: Duration = Duration::from_millis(DRIVER_TICK_MS);
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum NodeTransportMode {
@@ -194,6 +211,57 @@ impl From<EmbeddedError> for NodeError {
     }
 }
 
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum NodeEventKind {
+    StatusChanged {
+        run_state: NodeRunState,
+        lifecycle_state: Option<NodeLifecycleState>,
+    },
+    Log {
+        level: NodeLogLevel,
+        code: u32,
+    },
+    Error {
+        error: NodeError,
+        frame_kind: u8,
+        sequence: u32,
+    },
+    PacketReceived {
+        frame_kind: u8,
+        sequence: u32,
+        bytes: usize,
+    },
+    PacketSent {
+        frame_kind: u8,
+        sequence: u32,
+        bytes: usize,
+    },
+    Extension {
+        extension_id: u32,
+        value0: u64,
+        value1: u64,
+    },
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct NodeEvent {
+    pub event_id: u64,
+    pub epoch: u64,
+    pub occurred_at_ms: u64,
+    pub operation_id: Option<u64>,
+    pub kind: NodeEventKind,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum PollResult {
+    Event(NodeEvent),
+    Timeout,
+    Closed,
+    Gap { next_event_id: u64 },
+    NodeStopped,
+    NodeRestarted { epoch: u64 },
+}
+
 enum NodeBackend {
     Ble(BleShimTransport),
 }
@@ -255,13 +323,14 @@ impl RuntimeSession {
         })
     }
 
-    fn tick(&mut self, now_ms: u64) -> Result<(), NodeError> {
+    fn tick(&mut self, now_ms: u64) -> Result<Vec<RuntimeEvent>, NodeError> {
         match &mut self.backend {
             NodeBackend::Ble(transport) => self
                 .runtime
                 .tick(now_ms, transport, &mut self.store)
-                .map_err(NodeError::from),
+                .map_err(NodeError::from)?,
         }
+        Ok(self.runtime.drain_events())
     }
 
     fn queue_message(&mut self, destination: [u8; 16], data: &[u8]) -> Result<u32, NodeError> {
@@ -282,10 +351,37 @@ impl RuntimeSession {
     }
 }
 
+#[derive(Debug, Clone)]
+enum PendingSignal {
+    NodeStopped,
+    NodeRestarted { epoch: u64 },
+}
+
+struct SubscriptionState {
+    next_event_id: u64,
+    pending_signals: VecDeque<PendingSignal>,
+}
+
+#[cfg(feature = "std")]
+struct DriverState {
+    epoch: u64,
+    stop_requested: bool,
+    start_instant: Instant,
+    handle: Option<JoinHandle<()>>,
+}
+
 struct NodeState {
     epoch: u64,
     session: Option<RuntimeSession>,
     log_level: NodeLogLevel,
+    next_event_id: u64,
+    next_subscription_id: u64,
+    last_now_ms: u64,
+    event_capacity: usize,
+    event_log: VecDeque<NodeEvent>,
+    subscriptions: BTreeMap<u64, SubscriptionState>,
+    #[cfg(feature = "std")]
+    driver: Option<DriverState>,
 }
 
 impl Default for NodeState {
@@ -294,18 +390,40 @@ impl Default for NodeState {
             epoch: 0,
             session: None,
             log_level: NodeLogLevel::Info,
+            next_event_id: 1,
+            next_subscription_id: 1,
+            last_now_ms: 0,
+            event_capacity: RuntimeConfig::default().max_events,
+            event_log: VecDeque::new(),
+            subscriptions: BTreeMap::new(),
+            #[cfg(feature = "std")]
+            driver: None,
         }
     }
 }
 
 #[cfg(feature = "std")]
-type NodeStateCell = Mutex<NodeState>;
+struct StdNodeInner {
+    state: Mutex<NodeState>,
+    condvar: Condvar,
+}
+
+#[cfg(feature = "std")]
+type SharedNode = Arc<StdNodeInner>;
 
 #[cfg(not(feature = "std"))]
-type NodeStateCell = RefCell<NodeState>;
+type SharedNode = Rc<RefCell<NodeState>>;
 
 pub struct EmbeddedNode {
-    state: NodeStateCell,
+    inner: SharedNode,
+}
+
+impl Clone for EmbeddedNode {
+    fn clone(&self) -> Self {
+        Self {
+            inner: clone_inner(&self.inner),
+        }
+    }
 }
 
 impl Default for EmbeddedNode {
@@ -314,15 +432,36 @@ impl Default for EmbeddedNode {
     }
 }
 
+pub struct EventSubscription {
+    inner: SharedNode,
+    subscription_id: u64,
+}
+
+impl Clone for EventSubscription {
+    fn clone(&self) -> Self {
+        Self {
+            inner: clone_inner(&self.inner),
+            subscription_id: self.subscription_id,
+        }
+    }
+}
+
 impl EmbeddedNode {
     pub fn new() -> Self {
-        Self {
-            state: NodeStateCell::new(NodeState::default()),
-        }
+        #[cfg(feature = "std")]
+        let inner = Arc::new(StdNodeInner {
+            state: Mutex::new(NodeState::default()),
+            condvar: Condvar::new(),
+        });
+
+        #[cfg(not(feature = "std"))]
+        let inner = Rc::new(RefCell::new(NodeState::default()));
+
+        Self { inner }
     }
 
     pub fn start(&self, config: NodeConfig) -> Result<(), NodeError> {
-        self.with_state(|state| {
+        let epoch = self.with_state(|state| {
             if state.session.is_some() {
                 return Err(NodeError::AlreadyRunning);
             }
@@ -330,25 +469,75 @@ impl EmbeddedNode {
             let session = RuntimeSession::new(epoch, &config)?;
             state.epoch = epoch;
             state.session = Some(session);
-            Ok(())
-        })
+            state.event_capacity = config.runtime.max_events;
+            state.last_now_ms = 0;
+            signal_generation_change(state, epoch);
+            push_event_locked(
+                state,
+                NodeEventKind::StatusChanged {
+                    run_state: NodeRunState::Running,
+                    lifecycle_state: Some(NodeLifecycleState::Boot),
+                },
+                None,
+                0,
+            );
+            Ok(epoch)
+        })?;
+        self.notify_waiters();
+        #[cfg(feature = "std")]
+        self.start_driver(epoch);
+        Ok(())
     }
 
     pub fn stop(&self) -> Result<(), NodeError> {
+        #[cfg(feature = "std")]
+        let handle = self.with_state(|state| {
+            let handle = stop_driver_locked(state);
+            if state.session.is_some() {
+                state.session = None;
+                signal_stopped(state);
+                push_event_locked(
+                    state,
+                    NodeEventKind::StatusChanged {
+                        run_state: NodeRunState::Stopped,
+                        lifecycle_state: None,
+                    },
+                    None,
+                    state.last_now_ms,
+                );
+            }
+            Ok(handle)
+        })?;
+
+        #[cfg(not(feature = "std"))]
         self.with_state(|state| {
-            state.session = None;
+            if state.session.is_some() {
+                state.session = None;
+                signal_stopped(state);
+                push_event_locked(
+                    state,
+                    NodeEventKind::StatusChanged {
+                        run_state: NodeRunState::Stopped,
+                        lifecycle_state: None,
+                    },
+                    None,
+                    state.last_now_ms,
+                );
+            }
             Ok(())
-        })
+        })?;
+
+        self.notify_waiters();
+
+        #[cfg(feature = "std")]
+        join_driver(handle);
+
+        Ok(())
     }
 
     pub fn restart(&self, config: NodeConfig) -> Result<(), NodeError> {
-        self.with_state(|state| {
-            let epoch = state.epoch.saturating_add(1);
-            let session = RuntimeSession::new(epoch, &config)?;
-            state.epoch = epoch;
-            state.session = Some(session);
-            Ok(())
-        })
+        self.stop()?;
+        self.start(config)
     }
 
     pub fn get_status(&self) -> NodeStatus {
@@ -373,7 +562,7 @@ impl EmbeddedNode {
         data: &[u8],
         _options: SendOptions,
     ) -> Result<NodeOperationReceipt, NodeError> {
-        self.with_state(|state| {
+        let receipt = self.with_state(|state| {
             let session = state.session.as_mut().ok_or(NodeError::NotRunning)?;
             let sequence = session.queue_message(destination, data)?;
             Ok(NodeOperationReceipt {
@@ -384,7 +573,9 @@ impl EmbeddedNode {
                 queued: true,
                 target_count: 1,
             })
-        })
+        })?;
+        self.notify_waiters();
+        Ok(receipt)
     }
 
     pub fn broadcast(
@@ -395,7 +586,7 @@ impl EmbeddedNode {
         if options.destinations.is_empty() {
             return Err(NodeError::InvalidConfig);
         }
-        self.with_state(|state| {
+        let receipt = self.with_state(|state| {
             let session = state.session.as_mut().ok_or(NodeError::NotRunning)?;
             let mut last_sequence = 0_u64;
             for destination in &options.destinations {
@@ -409,27 +600,67 @@ impl EmbeddedNode {
                 queued: true,
                 target_count: u32::try_from(options.destinations.len()).unwrap_or(u32::MAX),
             })
-        })
+        })?;
+        self.notify_waiters();
+        Ok(receipt)
     }
 
     pub fn set_log_level(&self, level: NodeLogLevel) -> Result<(), NodeError> {
         self.with_state(|state| {
             state.log_level = level;
+            push_event_locked(
+                state,
+                NodeEventKind::Log {
+                    level,
+                    code: 0,
+                },
+                None,
+                state.last_now_ms,
+            );
             Ok(())
+        })?;
+        self.notify_waiters();
+        Ok(())
+    }
+
+    pub fn subscribe_events(&self) -> Result<EventSubscription, NodeError> {
+        let subscription_id = self.with_state(|state| {
+            let id = state.next_subscription_id;
+            state.next_subscription_id = state.next_subscription_id.saturating_add(1);
+            state.subscriptions.insert(
+                id,
+                SubscriptionState {
+                    next_event_id: state.next_event_id,
+                    pending_signals: VecDeque::new(),
+                },
+            );
+            Ok(id)
+        })?;
+
+        Ok(EventSubscription {
+            inner: clone_inner(&self.inner),
+            subscription_id,
         })
     }
 
     pub fn tick(&self, now_ms: u64) -> Result<(), NodeError> {
         self.with_state(|state| {
-            let session = state.session.as_mut().ok_or(NodeError::NotRunning)?;
-            session.tick(now_ms)
-        })
+            let events = {
+                let session = state.session.as_mut().ok_or(NodeError::NotRunning)?;
+                session.tick(now_ms)?
+            };
+            state.last_now_ms = now_ms;
+            append_runtime_events_locked(state, events);
+            Ok(())
+        })?;
+        self.notify_waiters();
+        Ok(())
     }
 
-    pub fn set_link_state(&self, state: LinkState) -> Result<(), NodeError> {
-        self.with_state(|node| {
-            let session = node.session.as_mut().ok_or(NodeError::NotRunning)?;
-            session.backend.set_link_state(state);
+    pub fn set_link_state(&self, state_value: LinkState) -> Result<(), NodeError> {
+        self.with_state(|state| {
+            let session = state.session.as_mut().ok_or(NodeError::NotRunning)?;
+            session.backend.set_link_state(state_value);
             Ok(())
         })
     }
@@ -471,12 +702,65 @@ impl EmbeddedNode {
         })
     }
 
+    pub fn capability_supports_blocking_next(&self) -> bool {
+        cfg!(feature = "std")
+    }
+
+    pub fn capability_supports_managed_runtime(&self) -> bool {
+        cfg!(feature = "std")
+    }
+
+    pub fn capability_supports_event_gap_signaling(&self) -> bool {
+        true
+    }
+
+    #[cfg(feature = "std")]
+    fn start_driver(&self, epoch: u64) {
+        let start_instant = Instant::now();
+        if let Ok(mut state) = self.inner.state.lock() {
+            state.driver = Some(DriverState {
+                epoch,
+                stop_requested: false,
+                start_instant,
+                handle: None,
+            });
+        }
+
+        let inner = Arc::clone(&self.inner);
+        let handle = thread::spawn(move || loop {
+            let continue_running = driver_tick(&inner, epoch);
+            if !continue_running {
+                break;
+            }
+            thread::sleep(DRIVER_TICK_SLEEP);
+        });
+
+        if let Ok(mut state) = self.inner.state.lock() {
+            if let Some(driver) = state.driver.as_mut() {
+                if driver.epoch == epoch {
+                    driver.handle = Some(handle);
+                    return;
+                }
+            }
+        }
+
+        let _ = handle.join();
+    }
+
+    #[cfg(feature = "std")]
+    fn notify_waiters(&self) {
+        self.inner.condvar.notify_all();
+    }
+
+    #[cfg(not(feature = "std"))]
+    fn notify_waiters(&self) {}
+
     #[cfg(feature = "std")]
     fn with_state<R>(
         &self,
         f: impl FnOnce(&mut NodeState) -> Result<R, NodeError>,
     ) -> Result<R, NodeError> {
-        let mut state = self.state.lock().map_err(|_| NodeError::InternalError)?;
+        let mut state = self.inner.state.lock().map_err(|_| NodeError::InternalError)?;
         f(&mut state)
     }
 
@@ -485,19 +769,19 @@ impl EmbeddedNode {
         &self,
         f: impl FnOnce(&mut NodeState) -> Result<R, NodeError>,
     ) -> Result<R, NodeError> {
-        let mut state = self.state.try_borrow_mut().map_err(|_| NodeError::InternalError)?;
+        let mut state = self.inner.try_borrow_mut().map_err(|_| NodeError::InternalError)?;
         f(&mut state)
     }
 
     #[cfg(feature = "std")]
     fn with_state_read<R>(&self, f: impl FnOnce(&NodeState) -> R) -> R {
-        let state = self.state.lock().expect("node state poisoned");
+        let state = self.inner.state.lock().expect("node state poisoned");
         f(&state)
     }
 
     #[cfg(not(feature = "std"))]
     fn with_state_read<R>(&self, f: impl FnOnce(&NodeState) -> R) -> R {
-        let state = self.state.borrow();
+        let state = self.inner.borrow();
         f(&state)
     }
 
@@ -506,7 +790,7 @@ impl EmbeddedNode {
         &self,
         f: impl FnOnce(&NodeState) -> Result<R, NodeError>,
     ) -> Result<R, NodeError> {
-        let state = self.state.lock().map_err(|_| NodeError::InternalError)?;
+        let state = self.inner.state.lock().map_err(|_| NodeError::InternalError)?;
         f(&state)
     }
 
@@ -515,20 +799,331 @@ impl EmbeddedNode {
         &self,
         f: impl FnOnce(&NodeState) -> Result<R, NodeError>,
     ) -> Result<R, NodeError> {
-        let state = self.state.try_borrow().map_err(|_| NodeError::InternalError)?;
+        let state = self.inner.try_borrow().map_err(|_| NodeError::InternalError)?;
         f(&state)
     }
+}
+
+impl EventSubscription {
+    pub fn next(&self, timeout_ms: u64) -> Result<PollResult, NodeError> {
+        #[cfg(feature = "std")]
+        {
+            let deadline = Instant::now() + Duration::from_millis(timeout_ms);
+            let mut state = self.inner.state.lock().map_err(|_| NodeError::InternalError)?;
+            loop {
+                let result = next_poll_result_locked(&mut state, self.subscription_id);
+                if !matches!(result, PollResult::Timeout) || timeout_ms == 0 {
+                    return Ok(result);
+                }
+                let now = Instant::now();
+                if now >= deadline {
+                    return Ok(PollResult::Timeout);
+                }
+                let wait = deadline.saturating_duration_since(now);
+                let (next_state, _) = self
+                    .inner
+                    .condvar
+                    .wait_timeout(state, wait)
+                    .map_err(|_| NodeError::InternalError)?;
+                state = next_state;
+            }
+        }
+
+        #[cfg(not(feature = "std"))]
+        {
+            let mut state = self.inner.try_borrow_mut().map_err(|_| NodeError::InternalError)?;
+            let _ = timeout_ms;
+            Ok(next_poll_result_locked(&mut state, self.subscription_id))
+        }
+    }
+
+    pub fn close(&self) -> Result<(), NodeError> {
+        #[cfg(feature = "std")]
+        {
+            let mut state = self.inner.state.lock().map_err(|_| NodeError::InternalError)?;
+            state.subscriptions.remove(&self.subscription_id);
+            self.inner.condvar.notify_all();
+            Ok(())
+        }
+
+        #[cfg(not(feature = "std"))]
+        {
+            let mut state = self.inner.try_borrow_mut().map_err(|_| NodeError::InternalError)?;
+            state.subscriptions.remove(&self.subscription_id);
+            Ok(())
+        }
+    }
+}
+
+fn next_poll_result_locked(state: &mut NodeState, subscription_id: u64) -> PollResult {
+    let Some(subscription) = state.subscriptions.get_mut(&subscription_id) else {
+        return PollResult::Closed;
+    };
+
+    if let Some(signal) = subscription.pending_signals.pop_front() {
+        return match signal {
+            PendingSignal::NodeStopped => PollResult::NodeStopped,
+            PendingSignal::NodeRestarted { epoch } => PollResult::NodeRestarted { epoch },
+        };
+    }
+
+    let Some(first_event) = state.event_log.front() else {
+        return PollResult::Timeout;
+    };
+
+    if subscription.next_event_id < first_event.event_id {
+        subscription.next_event_id = first_event.event_id;
+        return PollResult::Gap {
+            next_event_id: first_event.event_id,
+        };
+    }
+
+    let Some(event) = state
+        .event_log
+        .iter()
+        .find(|event| event.event_id >= subscription.next_event_id)
+        .cloned()
+    else {
+        return PollResult::Timeout;
+    };
+
+    if subscription.next_event_id < event.event_id {
+        subscription.next_event_id = event.event_id;
+        return PollResult::Gap {
+            next_event_id: event.event_id,
+        };
+    }
+
+    subscription.next_event_id = event.event_id.saturating_add(1);
+    PollResult::Event(event)
+}
+
+fn append_runtime_events_locked(state: &mut NodeState, events: Vec<RuntimeEvent>) {
+    let now_ms = state.last_now_ms;
+    for event in events {
+        match event {
+            RuntimeEvent::LifecycleChanged { to, .. } => push_event_locked(
+                state,
+                NodeEventKind::StatusChanged {
+                    run_state: NodeRunState::Running,
+                    lifecycle_state: Some(to),
+                },
+                None,
+                now_ms,
+            ),
+            RuntimeEvent::FrameSent {
+                kind,
+                sequence,
+                bytes,
+            } => push_event_locked(
+                state,
+                NodeEventKind::PacketSent {
+                    frame_kind: kind,
+                    sequence,
+                    bytes,
+                },
+                Some(u64::from(sequence)),
+                now_ms,
+            ),
+            RuntimeEvent::FrameReceived {
+                kind,
+                sequence,
+                bytes,
+            } => push_event_locked(
+                state,
+                NodeEventKind::PacketReceived {
+                    frame_kind: kind,
+                    sequence,
+                    bytes,
+                },
+                Some(u64::from(sequence)),
+                now_ms,
+            ),
+            RuntimeEvent::FrameDeferred {
+                kind,
+                sequence,
+                error,
+            }
+            | RuntimeEvent::FrameRejected {
+                kind,
+                sequence,
+                error,
+            } => push_event_locked(
+                state,
+                NodeEventKind::Error {
+                    error: NodeError::from(error),
+                    frame_kind: kind,
+                    sequence,
+                },
+                Some(u64::from(sequence)),
+                now_ms,
+            ),
+            RuntimeEvent::Bootstrapped { replay_floor } => push_event_locked(
+                state,
+                NodeEventKind::Extension {
+                    extension_id: 1,
+                    value0: replay_floor,
+                    value1: 0,
+                },
+                None,
+                now_ms,
+            ),
+            RuntimeEvent::AnnounceQueued { sequence } | RuntimeEvent::MessageQueued { sequence, .. } => {
+                push_event_locked(
+                    state,
+                    NodeEventKind::Extension {
+                        extension_id: 2,
+                        value0: u64::from(sequence),
+                        value1: 0,
+                    },
+                    Some(u64::from(sequence)),
+                    now_ms,
+                );
+            }
+            RuntimeEvent::AnnounceReceived { sequence, bytes }
+            | RuntimeEvent::LxmfMessageReceived {
+                sequence,
+                body_bytes: bytes,
+                ..
+            } => {
+                push_event_locked(
+                    state,
+                    NodeEventKind::Extension {
+                        extension_id: 3,
+                        value0: u64::from(sequence),
+                        value1: bytes as u64,
+                    },
+                    Some(u64::from(sequence)),
+                    now_ms,
+                );
+            }
+        }
+    }
+}
+
+fn push_event_locked(
+    state: &mut NodeState,
+    kind: NodeEventKind,
+    operation_id: Option<u64>,
+    occurred_at_ms: u64,
+) {
+    if state.event_log.len() >= state.event_capacity {
+        state.event_log.pop_front();
+    }
+    state.event_log.push_back(NodeEvent {
+        event_id: state.next_event_id,
+        epoch: state.epoch,
+        occurred_at_ms,
+        operation_id,
+        kind,
+    });
+    state.next_event_id = state.next_event_id.saturating_add(1);
+}
+
+fn signal_generation_change(state: &mut NodeState, epoch: u64) {
+    let next_event_id = state.next_event_id;
+    for subscription in state.subscriptions.values_mut() {
+        subscription.next_event_id = next_event_id;
+        subscription
+            .pending_signals
+            .push_back(PendingSignal::NodeRestarted { epoch });
+    }
+}
+
+fn signal_stopped(state: &mut NodeState) {
+    let next_event_id = state.next_event_id;
+    for subscription in state.subscriptions.values_mut() {
+        subscription.next_event_id = next_event_id;
+        subscription.pending_signals.push_back(PendingSignal::NodeStopped);
+    }
+}
+
+#[cfg(feature = "std")]
+fn driver_tick(inner: &Arc<StdNodeInner>, epoch: u64) -> bool {
+    let keep_running = {
+        let mut state = match inner.state.lock() {
+            Ok(state) => state,
+            Err(_) => return false,
+        };
+
+        let Some(driver) = state.driver.as_ref() else {
+            return false;
+        };
+        if driver.stop_requested || driver.epoch != epoch {
+            return false;
+        }
+        let now_ms = driver.start_instant.elapsed().as_millis() as u64;
+
+        let events = match state.session.as_mut() {
+            Some(session) if session.epoch == epoch => match session.tick(now_ms) {
+                Ok(events) => events,
+                Err(err) => {
+                    state.last_now_ms = now_ms;
+                    push_event_locked(
+                        &mut state,
+                        NodeEventKind::Error {
+                            error: err,
+                            frame_kind: 0,
+                            sequence: 0,
+                        },
+                        None,
+                        now_ms,
+                    );
+                    Vec::new()
+                }
+            },
+            _ => return false,
+        };
+
+        state.last_now_ms = now_ms;
+        append_runtime_events_locked(&mut state, events);
+        true
+    };
+
+    inner.condvar.notify_all();
+
+    keep_running
+}
+
+#[cfg(feature = "std")]
+fn stop_driver_locked(state: &mut NodeState) -> Option<JoinHandle<()>> {
+    let Some(driver) = state.driver.as_mut() else {
+        return None;
+    };
+    driver.stop_requested = true;
+    driver.handle.take()
+}
+
+#[cfg(feature = "std")]
+fn join_driver(handle: Option<JoinHandle<()>>) {
+    if let Some(handle) = handle {
+        let _ = handle.join();
+    }
+}
+
+#[cfg(feature = "std")]
+fn clone_inner(inner: &Arc<StdNodeInner>) -> Arc<StdNodeInner> {
+    Arc::clone(inner)
+}
+
+#[cfg(not(feature = "std"))]
+fn clone_inner(inner: &Rc<RefCell<NodeState>>) -> Rc<RefCell<NodeState>> {
+    Rc::clone(inner)
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
         BleNodeBackendConfig, BroadcastOptions, EmbeddedNode, NodeBackendConfig, NodeConfig,
-        NodeError, NodeLogLevel, NodeRunState, NodeTransportMode, SendOptions,
+        NodeError, NodeEventKind, NodeLogLevel, NodeRunState, NodeTransportMode, PollResult,
+        SendOptions,
     };
     use crate::{CaptureDefaults, RuntimeConfig};
     use rns_embedded_core::packet::decode_frame;
     use rns_embedded_core::transport::LinkState;
+
+    #[cfg(feature = "std")]
+    use std::{thread, time::Duration};
 
     fn config() -> NodeConfig {
         NodeConfig {
@@ -548,6 +1143,7 @@ mod tests {
     #[test]
     fn node_starts_sends_and_exposes_ble_wire() {
         let node = EmbeddedNode::new();
+        let sub = node.subscribe_events().expect("subscribe");
         assert_eq!(node.get_status().run_state, NodeRunState::Stopped);
 
         node.start(config()).expect("start");
@@ -558,6 +1154,9 @@ mod tests {
         assert_eq!(receipt.epoch, 1);
         assert_eq!(receipt.target_count, 1);
 
+        #[cfg(feature = "std")]
+        thread::sleep(Duration::from_millis(60));
+        #[cfg(not(feature = "std"))]
         node.tick(0).expect("tick");
 
         let first = node
@@ -576,17 +1175,22 @@ mod tests {
         let status = node.get_status();
         assert_eq!(status.run_state, NodeRunState::Running);
         assert_eq!(status.epoch, 1);
-        assert_eq!(status.pending_outbound, 0);
+
+        assert_eq!(sub.next(0).expect("poll"), PollResult::NodeRestarted { epoch: 1 });
     }
 
     #[test]
     fn restart_increments_epoch_and_stop_is_idempotent() {
         let node = EmbeddedNode::new();
+        let sub = node.subscribe_events().expect("subscribe");
         node.start(config()).expect("start");
         assert_eq!(node.get_status().epoch, 1);
 
         node.restart(config()).expect("restart");
         assert_eq!(node.get_status().epoch, 2);
+        assert_eq!(sub.next(0).expect("signal"), PollResult::NodeRestarted { epoch: 1 });
+        assert_eq!(sub.next(0).expect("signal"), PollResult::NodeStopped);
+        assert_eq!(sub.next(0).expect("signal"), PollResult::NodeRestarted { epoch: 2 });
 
         node.stop().expect("stop");
         node.stop().expect("stop twice");
@@ -617,5 +1221,30 @@ mod tests {
         assert_eq!(receipt.target_count, 2);
         assert_eq!(node.get_status().log_level, NodeLogLevel::Debug);
         assert_eq!(node.get_status().pending_outbound, 2);
+    }
+
+    #[test]
+    fn subscriptions_observe_runtime_events_and_close() {
+        let node = EmbeddedNode::new();
+        let sub = node.subscribe_events().expect("subscribe");
+        node.start(config()).expect("start");
+        node.set_link_state(LinkState::Up).expect("link up");
+
+        #[cfg(feature = "std")]
+        thread::sleep(Duration::from_millis(60));
+        #[cfg(not(feature = "std"))]
+        node.tick(0).expect("tick");
+
+        assert!(matches!(sub.next(0).expect("restart"), PollResult::NodeRestarted { epoch: 1 }));
+        assert!(matches!(
+            sub.next(0).expect("event"),
+            PollResult::Event(crate::node::NodeEvent {
+                kind: NodeEventKind::StatusChanged { .. },
+                ..
+            })
+        ));
+
+        sub.close().expect("close");
+        assert_eq!(sub.next(0).expect("closed"), PollResult::Closed);
     }
 }

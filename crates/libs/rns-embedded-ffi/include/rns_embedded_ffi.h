@@ -11,6 +11,7 @@ extern "C" {
 
 typedef struct RnsEmbeddedNode RnsEmbeddedNode;
 typedef struct RnsEmbeddedV1Node RnsEmbeddedV1Node;
+typedef struct RnsEmbeddedEventSubscription RnsEmbeddedEventSubscription;
 
 typedef struct {
   uint8_t store_identity[32];
@@ -77,6 +78,24 @@ typedef enum {
   RNS_EMBEDDED_V1_LOG_LEVEL_DEBUG = 3,
   RNS_EMBEDDED_V1_LOG_LEVEL_TRACE = 4,
 } RnsEmbeddedV1LogLevel;
+
+typedef enum {
+  RNS_EMBEDDED_V1_EVENT_STATUS_CHANGED = 0,
+  RNS_EMBEDDED_V1_EVENT_LOG = 1,
+  RNS_EMBEDDED_V1_EVENT_ERROR = 2,
+  RNS_EMBEDDED_V1_EVENT_PACKET_RECEIVED = 3,
+  RNS_EMBEDDED_V1_EVENT_PACKET_SENT = 4,
+  RNS_EMBEDDED_V1_EVENT_EXTENSION = 5,
+} RnsEmbeddedV1EventKind;
+
+typedef enum {
+  RNS_EMBEDDED_V1_POLL_EVENT = 0,
+  RNS_EMBEDDED_V1_POLL_TIMEOUT = 1,
+  RNS_EMBEDDED_V1_POLL_CLOSED = 2,
+  RNS_EMBEDDED_V1_POLL_GAP = 3,
+  RNS_EMBEDDED_V1_POLL_NODE_STOPPED = 4,
+  RNS_EMBEDDED_V1_POLL_NODE_RESTARTED = 5,
+} RnsEmbeddedV1PollResultKind;
 
 typedef enum {
   RNS_EMBEDDED_V1_NODE_ERROR_UNKNOWN = 0,
@@ -155,6 +174,37 @@ typedef struct {
   uint8_t reserved[32];
 } RnsEmbeddedV1Capabilities;
 
+typedef struct {
+  size_t struct_size;
+  uint32_t struct_version;
+  RnsEmbeddedV1EventKind kind;
+  uint64_t event_id;
+  uint64_t epoch;
+  uint64_t occurred_at_ms;
+  uint64_t operation_id;
+  bool has_operation_id;
+  RnsEmbeddedV1RunState run_state;
+  RnsEmbeddedLifecycleState lifecycle_state;
+  RnsEmbeddedV1LogLevel log_level;
+  RnsEmbeddedV1NodeErrorCode error_code;
+  uint8_t frame_kind;
+  uint32_t sequence;
+  size_t bytes;
+  uint32_t extension_id;
+  uint64_t value0;
+  uint64_t value1;
+  uint8_t reserved[24];
+} RnsEmbeddedV1NodeEvent;
+
+typedef struct {
+  size_t struct_size;
+  uint32_t struct_version;
+  RnsEmbeddedV1PollResultKind kind;
+  uint64_t next_event_id;
+  uint64_t epoch;
+  uint8_t reserved[24];
+} RnsEmbeddedV1PollResult;
+
 RnsEmbeddedNodeConfig rns_embedded_node_config_default(void);
 RnsEmbeddedV1NodeConfig rns_embedded_v1_node_config_default(void);
 uint32_t rns_embedded_v1_abi_version(void);
@@ -194,6 +244,19 @@ RnsEmbeddedStatus rns_embedded_v1_node_broadcast(
 RnsEmbeddedStatus rns_embedded_v1_node_set_log_level(
     RnsEmbeddedV1Node *node,
     RnsEmbeddedV1LogLevel level,
+    RnsEmbeddedV1NodeError *out_node_error);
+RnsEmbeddedStatus rns_embedded_v1_node_subscribe_events(
+    RnsEmbeddedV1Node *node,
+    RnsEmbeddedEventSubscription **out_subscription,
+    RnsEmbeddedV1NodeError *out_node_error);
+RnsEmbeddedStatus rns_embedded_v1_subscription_next(
+    RnsEmbeddedEventSubscription *subscription,
+    uint64_t timeout_ms,
+    RnsEmbeddedV1PollResult *out_poll_result,
+    RnsEmbeddedV1NodeEvent *out_event,
+    RnsEmbeddedV1NodeError *out_node_error);
+RnsEmbeddedStatus rns_embedded_v1_subscription_close(
+    RnsEmbeddedEventSubscription *subscription,
     RnsEmbeddedV1NodeError *out_node_error);
 RnsEmbeddedNode *rns_embedded_node_new(const RnsEmbeddedNodeConfig *config);
 void rns_embedded_node_free(RnsEmbeddedNode *node);

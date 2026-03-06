@@ -6,9 +6,9 @@ extern crate alloc;
 use alloc::boxed::Box;
 use rns_embedded_core::{EmbeddedError, store::JournaledEmbeddedStore, transport::LinkState};
 use rns_embedded_runtime::{
-    BleNodeBackendConfig, BroadcastOptions, EmbeddedNode, EmbeddedNodeRuntime, NodeBackendConfig,
-    NodeConfig, NodeError, NodeLogLevel, NodeRunState, NodeStatus, RuntimeConfig, SendOptions,
-    ble::{BleShimConfig, BleShimTransport},
+    BleNodeBackendConfig, BroadcastOptions, EmbeddedNode, EmbeddedNodeRuntime, EventSubscription,
+    NodeBackendConfig, NodeConfig, NodeError, NodeEvent, NodeEventKind, NodeLogLevel, NodeRunState,
+    NodeStatus, PollResult, RuntimeConfig, SendOptions, ble::{BleShimConfig, BleShimTransport},
     node::{CaptureDefaults, NodeLifecycleState, NodeTransportMode},
 };
 
@@ -136,8 +136,11 @@ pub enum RnsEmbeddedStatus {
 
 const RNS_EMBEDDED_V1_ABI_VERSION: u32 = 1;
 const RNS_EMBEDDED_V1_STRUCT_VERSION: u32 = 1;
+const RNS_EMBEDDED_V1_CAP_MANAGED_RUNTIME: u64 = 1 << 0;
+const RNS_EMBEDDED_V1_CAP_BLOCKING_NEXT: u64 = 1 << 1;
 const RNS_EMBEDDED_V1_CAP_BROADCAST_EXPLICIT_LIST: u64 = 1 << 2;
 const RNS_EMBEDDED_V1_CAP_COMPAT_LEGACY_FFI: u64 = 1 << 3;
+const RNS_EMBEDDED_V1_CAP_EVENT_GAP_SIGNALING: u64 = 1 << 4;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -154,6 +157,28 @@ pub enum RnsEmbeddedV1LogLevel {
     Info = 2,
     Debug = 3,
     Trace = 4,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum RnsEmbeddedV1EventKind {
+    StatusChanged = 0,
+    Log = 1,
+    Error = 2,
+    PacketReceived = 3,
+    PacketSent = 4,
+    Extension = 5,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum RnsEmbeddedV1PollResultKind {
+    Event = 0,
+    Timeout = 1,
+    Closed = 2,
+    Gap = 3,
+    NodeStopped = 4,
+    NodeRestarted = 5,
 }
 
 #[repr(C)]
@@ -320,11 +345,88 @@ impl Default for RnsEmbeddedV1Capabilities {
             struct_size: core::mem::size_of::<Self>(),
             struct_version: RNS_EMBEDDED_V1_STRUCT_VERSION,
             abi_version: RNS_EMBEDDED_V1_ABI_VERSION,
-            capability_bits: RNS_EMBEDDED_V1_CAP_BROADCAST_EXPLICIT_LIST
-                | RNS_EMBEDDED_V1_CAP_COMPAT_LEGACY_FFI,
+            capability_bits: RNS_EMBEDDED_V1_CAP_MANAGED_RUNTIME
+                | RNS_EMBEDDED_V1_CAP_BLOCKING_NEXT
+                | RNS_EMBEDDED_V1_CAP_BROADCAST_EXPLICIT_LIST
+                | RNS_EMBEDDED_V1_CAP_COMPAT_LEGACY_FFI
+                | RNS_EMBEDDED_V1_CAP_EVENT_GAP_SIGNALING,
             max_event_payload_bytes: 0,
-            max_subscriptions: 0,
+            max_subscriptions: 1024,
             reserved: [0; 32],
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct RnsEmbeddedV1NodeEvent {
+    pub struct_size: usize,
+    pub struct_version: u32,
+    pub kind: RnsEmbeddedV1EventKind,
+    pub event_id: u64,
+    pub epoch: u64,
+    pub occurred_at_ms: u64,
+    pub operation_id: u64,
+    pub has_operation_id: bool,
+    pub run_state: RnsEmbeddedV1RunState,
+    pub lifecycle_state: RnsEmbeddedLifecycleState,
+    pub log_level: RnsEmbeddedV1LogLevel,
+    pub error_code: RnsEmbeddedV1NodeErrorCode,
+    pub frame_kind: u8,
+    pub sequence: u32,
+    pub bytes: usize,
+    pub extension_id: u32,
+    pub value0: u64,
+    pub value1: u64,
+    pub reserved: [u8; 24],
+}
+
+impl Default for RnsEmbeddedV1NodeEvent {
+    fn default() -> Self {
+        Self {
+            struct_size: core::mem::size_of::<Self>(),
+            struct_version: RNS_EMBEDDED_V1_STRUCT_VERSION,
+            kind: RnsEmbeddedV1EventKind::StatusChanged,
+            event_id: 0,
+            epoch: 0,
+            occurred_at_ms: 0,
+            operation_id: 0,
+            has_operation_id: false,
+            run_state: RnsEmbeddedV1RunState::Stopped,
+            lifecycle_state: RnsEmbeddedLifecycleState::Boot,
+            log_level: RnsEmbeddedV1LogLevel::Info,
+            error_code: RnsEmbeddedV1NodeErrorCode::Unknown,
+            frame_kind: 0,
+            sequence: 0,
+            bytes: 0,
+            extension_id: 0,
+            value0: 0,
+            value1: 0,
+            reserved: [0; 24],
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct RnsEmbeddedV1PollResult {
+    pub struct_size: usize,
+    pub struct_version: u32,
+    pub kind: RnsEmbeddedV1PollResultKind,
+    pub next_event_id: u64,
+    pub epoch: u64,
+    pub reserved: [u8; 24],
+}
+
+impl Default for RnsEmbeddedV1PollResult {
+    fn default() -> Self {
+        Self {
+            struct_size: core::mem::size_of::<Self>(),
+            struct_version: RNS_EMBEDDED_V1_STRUCT_VERSION,
+            kind: RnsEmbeddedV1PollResultKind::Timeout,
+            next_event_id: 0,
+            epoch: 0,
+            reserved: [0; 24],
         }
     }
 }
@@ -337,6 +439,10 @@ pub struct RnsEmbeddedNode {
 
 pub struct RnsEmbeddedV1Node {
     node: EmbeddedNode,
+}
+
+pub struct RnsEmbeddedEventSubscription {
+    subscription: EventSubscription,
 }
 
 #[cfg(not(feature = "std"))]
@@ -772,6 +878,73 @@ pub extern "C" fn rns_embedded_v1_node_set_log_level(
     }
 }
 
+#[no_mangle]
+pub extern "C" fn rns_embedded_v1_node_subscribe_events(
+    node: *mut RnsEmbeddedV1Node,
+    out_subscription: *mut *mut RnsEmbeddedEventSubscription,
+    out_node_error: *mut RnsEmbeddedV1NodeError,
+) -> RnsEmbeddedStatus {
+    let Some(node) = v1_node_mut(node) else {
+        return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidHandle);
+    };
+    if out_subscription.is_null() {
+        return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidPointer);
+    }
+    match node.node.subscribe_events() {
+        Ok(subscription) => {
+            unsafe {
+                *out_subscription = Box::into_raw(Box::new(RnsEmbeddedEventSubscription { subscription }));
+            }
+            clear_v1_node_error(out_node_error)
+        }
+        Err(err) => set_v1_node_error(out_node_error, err),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn rns_embedded_v1_subscription_next(
+    subscription: *mut RnsEmbeddedEventSubscription,
+    timeout_ms: u64,
+    out_poll_result: *mut RnsEmbeddedV1PollResult,
+    out_event: *mut RnsEmbeddedV1NodeEvent,
+    out_node_error: *mut RnsEmbeddedV1NodeError,
+) -> RnsEmbeddedStatus {
+    let Some(subscription) = v1_subscription_mut(subscription) else {
+        return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidHandle);
+    };
+    if out_poll_result.is_null() || out_event.is_null() {
+        return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidPointer);
+    }
+    match subscription.subscription.next(timeout_ms) {
+        Ok(result) => {
+            unsafe {
+                *out_poll_result = map_v1_poll_result(&result);
+                *out_event = match result {
+                    PollResult::Event(event) => map_v1_event(&event),
+                    _ => RnsEmbeddedV1NodeEvent::default(),
+                };
+            }
+            clear_v1_node_error(out_node_error)
+        }
+        Err(err) => set_v1_node_error(out_node_error, err),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn rns_embedded_v1_subscription_close(
+    subscription: *mut RnsEmbeddedEventSubscription,
+    out_node_error: *mut RnsEmbeddedV1NodeError,
+) -> RnsEmbeddedStatus {
+    if subscription.is_null() {
+        return clear_v1_node_error(out_node_error);
+    }
+    let boxed = unsafe { Box::from_raw(subscription) };
+    match boxed.subscription.close() {
+        Ok(()) => clear_v1_node_error(out_node_error),
+        Err(err) => set_v1_node_error(out_node_error, err),
+    }
+}
+
 fn node_mut<'a>(node: *mut RnsEmbeddedNode) -> Option<&'a mut RnsEmbeddedNode> {
     if node.is_null() {
         return None;
@@ -786,6 +959,15 @@ fn v1_node_mut<'a>(node: *mut RnsEmbeddedV1Node) -> Option<&'a mut RnsEmbeddedV1
         return None;
     }
     Some(unsafe { &mut *node })
+}
+
+fn v1_subscription_mut<'a>(
+    subscription: *mut RnsEmbeddedEventSubscription,
+) -> Option<&'a mut RnsEmbeddedEventSubscription> {
+    if subscription.is_null() {
+        return None;
+    }
+    Some(unsafe { &mut *subscription })
 }
 
 fn byte_slice<'a>(ptr: *const u8, len: usize) -> Option<&'a [u8]> {
@@ -870,6 +1052,102 @@ fn map_v1_status(status: NodeStatus) -> RnsEmbeddedV1NodeStatus {
         log_level: map_log_level(status.log_level),
         reserved: [0; 24],
     }
+}
+
+fn map_v1_event(event: &NodeEvent) -> RnsEmbeddedV1NodeEvent {
+    let mut out = RnsEmbeddedV1NodeEvent {
+        struct_size: core::mem::size_of::<RnsEmbeddedV1NodeEvent>(),
+        struct_version: RNS_EMBEDDED_V1_STRUCT_VERSION,
+        event_id: event.event_id,
+        epoch: event.epoch,
+        occurred_at_ms: event.occurred_at_ms,
+        operation_id: event.operation_id.unwrap_or_default(),
+        has_operation_id: event.operation_id.is_some(),
+        ..RnsEmbeddedV1NodeEvent::default()
+    };
+    match &event.kind {
+        NodeEventKind::StatusChanged {
+            run_state,
+            lifecycle_state,
+        } => {
+            out.kind = RnsEmbeddedV1EventKind::StatusChanged;
+            out.run_state = match run_state {
+                NodeRunState::Stopped => RnsEmbeddedV1RunState::Stopped,
+                NodeRunState::Running => RnsEmbeddedV1RunState::Running,
+            };
+            out.lifecycle_state = (*lifecycle_state)
+                .map(map_lifecycle_state)
+                .unwrap_or(RnsEmbeddedLifecycleState::Boot);
+        }
+        NodeEventKind::Log { level, code } => {
+            out.kind = RnsEmbeddedV1EventKind::Log;
+            out.log_level = map_log_level(*level);
+            out.value0 = u64::from(*code);
+        }
+        NodeEventKind::Error {
+            error,
+            frame_kind,
+            sequence,
+        } => {
+            out.kind = RnsEmbeddedV1EventKind::Error;
+            out.error_code = map_v1_node_error_code(error);
+            out.frame_kind = *frame_kind;
+            out.sequence = *sequence;
+        }
+        NodeEventKind::PacketReceived {
+            frame_kind,
+            sequence,
+            bytes,
+        } => {
+            out.kind = RnsEmbeddedV1EventKind::PacketReceived;
+            out.frame_kind = *frame_kind;
+            out.sequence = *sequence;
+            out.bytes = *bytes;
+        }
+        NodeEventKind::PacketSent {
+            frame_kind,
+            sequence,
+            bytes,
+        } => {
+            out.kind = RnsEmbeddedV1EventKind::PacketSent;
+            out.frame_kind = *frame_kind;
+            out.sequence = *sequence;
+            out.bytes = *bytes;
+        }
+        NodeEventKind::Extension {
+            extension_id,
+            value0,
+            value1,
+        } => {
+            out.kind = RnsEmbeddedV1EventKind::Extension;
+            out.extension_id = *extension_id;
+            out.value0 = *value0;
+            out.value1 = *value1;
+        }
+    }
+    out
+}
+
+fn map_v1_poll_result(result: &PollResult) -> RnsEmbeddedV1PollResult {
+    let mut out = RnsEmbeddedV1PollResult::default();
+    match result {
+        PollResult::Event(event) => {
+            out.kind = RnsEmbeddedV1PollResultKind::Event;
+            out.epoch = event.epoch;
+        }
+        PollResult::Timeout => out.kind = RnsEmbeddedV1PollResultKind::Timeout,
+        PollResult::Closed => out.kind = RnsEmbeddedV1PollResultKind::Closed,
+        PollResult::Gap { next_event_id } => {
+            out.kind = RnsEmbeddedV1PollResultKind::Gap;
+            out.next_event_id = *next_event_id;
+        }
+        PollResult::NodeStopped => out.kind = RnsEmbeddedV1PollResultKind::NodeStopped,
+        PollResult::NodeRestarted { epoch } => {
+            out.kind = RnsEmbeddedV1PollResultKind::NodeRestarted;
+            out.epoch = *epoch;
+        }
+    }
+    out
 }
 
 fn map_v1_receipt(receipt: rns_embedded_runtime::NodeOperationReceipt) -> RnsEmbeddedV1SendReceipt {
@@ -1011,8 +1289,10 @@ fn map_embedded_error(error: EmbeddedError) -> RnsEmbeddedStatus {
 mod tests {
     use super::{
         RnsEmbeddedLinkState, RnsEmbeddedNodeConfig, RnsEmbeddedStatus, RnsEmbeddedV1Capabilities,
+        RnsEmbeddedV1EventKind, RnsEmbeddedV1NodeEvent,
         RnsEmbeddedV1LogLevel, RnsEmbeddedV1NodeError, RnsEmbeddedV1NodeErrorCode,
-        RnsEmbeddedV1NodeStatus, RnsEmbeddedV1RunState, RnsEmbeddedV1SendReceipt,
+        RnsEmbeddedV1NodeStatus, RnsEmbeddedV1PollResult, RnsEmbeddedV1PollResultKind,
+        RnsEmbeddedV1RunState, RnsEmbeddedV1SendReceipt,
         rns_embedded_node_free, rns_embedded_node_new, rns_embedded_node_push_inbound_wire,
         rns_embedded_node_queue_message, rns_embedded_node_set_link_state,
         rns_embedded_node_take_outbound_wire, rns_embedded_node_tick, rns_embedded_v1_abi_version,
@@ -1020,6 +1300,8 @@ mod tests {
         rns_embedded_v1_node_config_default, rns_embedded_v1_node_free, rns_embedded_v1_node_get_status,
         rns_embedded_v1_node_new, rns_embedded_v1_node_restart, rns_embedded_v1_node_send,
         rns_embedded_v1_node_set_log_level, rns_embedded_v1_node_start, rns_embedded_v1_node_stop,
+        rns_embedded_v1_node_subscribe_events, rns_embedded_v1_subscription_close,
+        rns_embedded_v1_subscription_next,
     };
     use rns_embedded_core::packet::{PacketFrame, decode_frame, encode_frame};
 
@@ -1199,6 +1481,60 @@ mod tests {
             RnsEmbeddedStatus::InvalidInput
         );
         assert_eq!(error.code, RnsEmbeddedV1NodeErrorCode::InvalidConfig);
+
+        rns_embedded_v1_node_free(node);
+    }
+
+    #[test]
+    fn ffi_v1_subscriptions_surface_restart_and_status_events() {
+        let node = rns_embedded_v1_node_new();
+        assert!(!node.is_null());
+
+        let config = rns_embedded_v1_node_config_default();
+        let mut error = RnsEmbeddedV1NodeError::default();
+        let mut subscription = core::ptr::null_mut();
+        assert_eq!(
+            rns_embedded_v1_node_subscribe_events(node, &mut subscription, &mut error),
+            RnsEmbeddedStatus::Ok
+        );
+        assert!(!subscription.is_null());
+
+        assert_eq!(
+            rns_embedded_v1_node_start(node, &config, &mut error),
+            RnsEmbeddedStatus::Ok
+        );
+
+        let mut poll = RnsEmbeddedV1PollResult::default();
+        let mut event = RnsEmbeddedV1NodeEvent::default();
+        assert_eq!(
+            rns_embedded_v1_subscription_next(subscription, 100, &mut poll, &mut event, &mut error),
+            RnsEmbeddedStatus::Ok
+        );
+        assert_eq!(poll.kind, RnsEmbeddedV1PollResultKind::NodeRestarted);
+        assert_eq!(poll.epoch, 1);
+
+        assert_eq!(
+            rns_embedded_v1_subscription_next(subscription, 100, &mut poll, &mut event, &mut error),
+            RnsEmbeddedStatus::Ok
+        );
+        assert_eq!(poll.kind, RnsEmbeddedV1PollResultKind::Event);
+        assert_eq!(event.kind, RnsEmbeddedV1EventKind::StatusChanged);
+        assert_eq!(event.epoch, 1);
+
+        assert_eq!(
+            rns_embedded_v1_node_stop(node, &mut error),
+            RnsEmbeddedStatus::Ok
+        );
+        assert_eq!(
+            rns_embedded_v1_subscription_next(subscription, 100, &mut poll, &mut event, &mut error),
+            RnsEmbeddedStatus::Ok
+        );
+        assert_eq!(poll.kind, RnsEmbeddedV1PollResultKind::NodeStopped);
+
+        assert_eq!(
+            rns_embedded_v1_subscription_close(subscription, &mut error),
+            RnsEmbeddedStatus::Ok
+        );
 
         rns_embedded_v1_node_free(node);
     }
