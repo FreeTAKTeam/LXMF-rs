@@ -10,6 +10,7 @@ extern "C" {
 #endif
 
 typedef struct RnsEmbeddedNode RnsEmbeddedNode;
+typedef struct RnsEmbeddedV1Node RnsEmbeddedV1Node;
 
 typedef struct {
   uint8_t store_identity[32];
@@ -64,7 +65,136 @@ typedef enum {
   RNS_EMBEDDED_STATUS_UNSUPPORTED = 14,
 } RnsEmbeddedStatus;
 
+typedef enum {
+  RNS_EMBEDDED_V1_RUN_STATE_STOPPED = 0,
+  RNS_EMBEDDED_V1_RUN_STATE_RUNNING = 1,
+} RnsEmbeddedV1RunState;
+
+typedef enum {
+  RNS_EMBEDDED_V1_LOG_LEVEL_ERROR = 0,
+  RNS_EMBEDDED_V1_LOG_LEVEL_WARN = 1,
+  RNS_EMBEDDED_V1_LOG_LEVEL_INFO = 2,
+  RNS_EMBEDDED_V1_LOG_LEVEL_DEBUG = 3,
+  RNS_EMBEDDED_V1_LOG_LEVEL_TRACE = 4,
+} RnsEmbeddedV1LogLevel;
+
+typedef enum {
+  RNS_EMBEDDED_V1_NODE_ERROR_UNKNOWN = 0,
+  RNS_EMBEDDED_V1_NODE_ERROR_INVALID_CONFIG = 1,
+  RNS_EMBEDDED_V1_NODE_ERROR_IO_ERROR = 2,
+  RNS_EMBEDDED_V1_NODE_ERROR_NETWORK_ERROR = 3,
+  RNS_EMBEDDED_V1_NODE_ERROR_RETICULUM_ERROR = 4,
+  RNS_EMBEDDED_V1_NODE_ERROR_ALREADY_RUNNING = 5,
+  RNS_EMBEDDED_V1_NODE_ERROR_NOT_RUNNING = 6,
+  RNS_EMBEDDED_V1_NODE_ERROR_TIMEOUT = 7,
+  RNS_EMBEDDED_V1_NODE_ERROR_INTERNAL_ERROR = 8,
+  RNS_EMBEDDED_V1_NODE_ERROR_INVALID_HANDLE = 9,
+  RNS_EMBEDDED_V1_NODE_ERROR_INVALID_POINTER = 10,
+} RnsEmbeddedV1NodeErrorCode;
+
+typedef struct {
+  size_t struct_size;
+  uint32_t struct_version;
+  RnsEmbeddedV1NodeErrorCode code;
+  uint8_t reserved[16];
+} RnsEmbeddedV1NodeError;
+
+typedef struct {
+  size_t struct_size;
+  uint32_t struct_version;
+  uint8_t store_identity[32];
+  uint8_t lxmf_address[16];
+  uint32_t node_mode;
+  uint64_t announce_interval_ms;
+  size_t max_outbound_queue;
+  size_t max_events;
+  uint32_t capture_default_max_bytes;
+  uint16_t ble_mtu_hint;
+  size_t ble_max_inbound_frames;
+  size_t ble_max_outbound_frames;
+  bool ble_ordered_delivery;
+  uint8_t reserved[32];
+} RnsEmbeddedV1NodeConfig;
+
+typedef struct {
+  size_t struct_size;
+  uint32_t struct_version;
+  RnsEmbeddedV1RunState run_state;
+  uint64_t epoch;
+  RnsEmbeddedLifecycleState lifecycle_state;
+  size_t pending_outbound;
+  uint32_t announces_queued;
+  uint32_t outbound_sent;
+  uint32_t outbound_deferred;
+  uint32_t inbound_accepted;
+  uint32_t inbound_rejected;
+  uint32_t announces_received;
+  uint32_t lxmf_messages_received;
+  RnsEmbeddedV1LogLevel log_level;
+  uint8_t reserved[24];
+} RnsEmbeddedV1NodeStatus;
+
+typedef struct {
+  size_t struct_size;
+  uint32_t struct_version;
+  uint64_t operation_id;
+  uint64_t epoch;
+  size_t accepted_bytes;
+  bool queued;
+  uint32_t target_count;
+  uint8_t reserved[24];
+} RnsEmbeddedV1SendReceipt;
+
+typedef struct {
+  size_t struct_size;
+  uint32_t struct_version;
+  uint32_t abi_version;
+  uint64_t capability_bits;
+  uint32_t max_event_payload_bytes;
+  uint32_t max_subscriptions;
+  uint8_t reserved[32];
+} RnsEmbeddedV1Capabilities;
+
 RnsEmbeddedNodeConfig rns_embedded_node_config_default(void);
+RnsEmbeddedV1NodeConfig rns_embedded_v1_node_config_default(void);
+uint32_t rns_embedded_v1_abi_version(void);
+RnsEmbeddedStatus rns_embedded_v1_get_capabilities(
+    RnsEmbeddedV1Capabilities *out_capabilities);
+RnsEmbeddedV1Node *rns_embedded_v1_node_new(void);
+void rns_embedded_v1_node_free(RnsEmbeddedV1Node *node);
+RnsEmbeddedStatus rns_embedded_v1_node_start(
+    RnsEmbeddedV1Node *node,
+    const RnsEmbeddedV1NodeConfig *config,
+    RnsEmbeddedV1NodeError *out_node_error);
+RnsEmbeddedStatus rns_embedded_v1_node_stop(
+    RnsEmbeddedV1Node *node,
+    RnsEmbeddedV1NodeError *out_node_error);
+RnsEmbeddedStatus rns_embedded_v1_node_restart(
+    RnsEmbeddedV1Node *node,
+    const RnsEmbeddedV1NodeConfig *config,
+    RnsEmbeddedV1NodeError *out_node_error);
+RnsEmbeddedStatus rns_embedded_v1_node_get_status(
+    RnsEmbeddedV1Node *node,
+    RnsEmbeddedV1NodeStatus *out_status);
+RnsEmbeddedStatus rns_embedded_v1_node_send(
+    RnsEmbeddedV1Node *node,
+    const uint8_t *destination_ptr,
+    const uint8_t *body_ptr,
+    size_t body_len,
+    RnsEmbeddedV1SendReceipt *out_receipt,
+    RnsEmbeddedV1NodeError *out_node_error);
+RnsEmbeddedStatus rns_embedded_v1_node_broadcast(
+    RnsEmbeddedV1Node *node,
+    const uint8_t *destinations_ptr,
+    size_t destination_count,
+    const uint8_t *body_ptr,
+    size_t body_len,
+    RnsEmbeddedV1SendReceipt *out_receipt,
+    RnsEmbeddedV1NodeError *out_node_error);
+RnsEmbeddedStatus rns_embedded_v1_node_set_log_level(
+    RnsEmbeddedV1Node *node,
+    RnsEmbeddedV1LogLevel level,
+    RnsEmbeddedV1NodeError *out_node_error);
 RnsEmbeddedNode *rns_embedded_node_new(const RnsEmbeddedNodeConfig *config);
 void rns_embedded_node_free(RnsEmbeddedNode *node);
 RnsEmbeddedStatus rns_embedded_node_set_link_state(
