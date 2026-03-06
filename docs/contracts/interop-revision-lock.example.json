@@ -1,6 +1,6 @@
 {
   "reticulum": {
-    "repo": "markqvist/Reticulum",
+    "repo": "reticulum-network/reference-implementation",
     "commit": "<pin-commit-sha>"
   },
   "lxmf": {
