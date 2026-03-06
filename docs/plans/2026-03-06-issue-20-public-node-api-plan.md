@@ -41,7 +41,7 @@ Current gaps against issue `#20`:
 ## Non-Goals
 
 - Full parity with `lxmf-sdk` desktop semantics.
-- Topic/group fanout or remote-control APIs that belong at the SDK/RPC layer.
+- Full group-membership discovery, persistence, and policy management in this issue; the node/SDK may expose fanout, but group resolution policy should stay explicit.
 - Replacing the existing low-level FFI entrypoints in the first slice.
 - Removing manual tick semantics from embedded integrations.
 - Delivering blocking `next(timeout_ms)` semantics for `alloc` firmware builds before a monotonic time/synchronization contract exists.
@@ -49,10 +49,17 @@ Current gaps against issue `#20`:
 ## Locked Decisions Required Before Coding
 
 1. `broadcast(...)` semantics must be fixed before implementation.
-   Recommended decision: define `broadcast` as enqueueing a native announce-style broadcast frame for the embedded transport domain.
+   Prototype input from `FreeTAKTeam/reticulum_mobile_emergency_management` is useful here:
+   - its `broadcast_bytes` command fans out bytes to connected peers
+   - its send outcomes distinguish `SentDirect` vs `SentBroadcast`
+   Recommended decision: do not define `broadcast` as an announce-style transport primitive.
+   Instead, define `broadcast` as higher-level fanout over a destination set resolved by `BroadcastOptions`, for example:
+   - explicit destination list
+   - connected-peer set
+   - named group/chat membership resolved by the caller or SDK layer
    Rejected alternatives:
-   - topic/group fanout, because that belongs closer to `lxmf-sdk`
-   - peer-list fanout, because peer tracking does not exist in the embedded runtime today
+   - announce-style transport broadcast, because that is a different primitive with different receipt/event semantics
+   - implicit network-wide broadcast with no target set, because it is too ambiguous for delivery status and error reporting
 
 2. `next(timeout_ms)` semantics must remain non-panicking and deterministic.
    Recommended decision:
@@ -193,6 +200,7 @@ pub struct NodeOperationReceipt {
     pub sequence: u32,
     pub accepted_bytes: usize,
     pub queued: bool,
+    pub target_count: u32,
 }
 
 pub enum NodeError {
@@ -257,7 +265,7 @@ Compatibility shims to keep for the first rollout:
 Where possible:
 
 - implement `send` on top of `queue_message`
-- implement `broadcast` on top of a new runtime queue helper
+- implement `broadcast` on top of a fanout queue helper that iterates a resolved destination set
 - keep `queue_message` documented as low-level/legacy rather than removing it immediately
 - document `rns_embedded_node_new(const RnsEmbeddedNodeConfig *config)` as a compatibility constructor distinct from the new node-centric constructor
 - expose an ABI version macro in the header and a runtime probe function so consumers can reject mismatched headers/libraries cleanly
@@ -266,8 +274,9 @@ Where possible:
 Receipt semantics for `broadcast` must be explicit:
 
 - `NodeOperationReceipt` means queue acceptance, not network-wide delivery confirmation
-- for `broadcast`, `sequence` identifies the queued announce-style frame and later `PacketSent` events confirm transmission attempts
-- no peer-ack semantics are implied
+- for `broadcast`, `target_count` is the number of resolved destinations accepted into the fanout operation
+- later `PacketSent` or per-destination error events confirm transmission attempts for each destination
+- no group-wide delivery ACK semantics are implied
 
 ## Error Model
 
@@ -350,7 +359,7 @@ Recommended implementation:
 ### Phase 0: Design Lock
 
 1. Publish this plan and resolve the two open semantics questions:
-- `broadcast` means announce-style runtime broadcast
+- `broadcast` means explicit fanout over a resolved destination set, not announce-style transport broadcast
 - `next(timeout_ms)` in `std` mode depends on the managed driver thread and returns timeout deterministically if that producer loop emits nothing during the wait window
 2. Confirm ABI migration policy:
 - additive entrypoints first
@@ -378,9 +387,13 @@ Files:
 Tasks:
 
 1. Add `NodeConfig`, `NodeStatus`, `NodeRunState`, `NodeError`, `NodeOperationReceipt`, and any options structs.
-2. Introduce explicit started/stopped state on top of the current lifecycle state machine.
-3. Add runtime entrypoints for `start`, `stop`, `restart`, `get_status`, `send`, `broadcast`, and `set_log_level`.
-4. Add managed driver-thread ownership for the `std` facade while preserving manual `tick` underneath.
+2. Define `BroadcastOptions` so the target-set source is explicit:
+- explicit destination list
+- connected peers
+- named group handle if the caller resolves membership externally
+3. Introduce explicit started/stopped state on top of the current lifecycle state machine.
+4. Add runtime entrypoints for `start`, `stop`, `restart`, `get_status`, `send`, `broadcast`, and `set_log_level`.
+5. Add managed driver-thread ownership for the `std` facade while preserving manual `tick` underneath.
 
 Exit criteria:
 
@@ -507,7 +520,7 @@ This issue should be delivered as an additive migration, not a flag day.
 ## Risks and Mitigations
 
 1. `broadcast` is underspecified.
-   Mitigation: lock it to announce-style transport broadcast in the design phase.
+   Mitigation: lock it to explicit fanout semantics in the design phase and require `BroadcastOptions` to declare how the destination set is resolved.
 
 2. Thread-safety language in the issue is broader than the current embedded execution model.
    Mitigation: make the managed `std` node-centric API truly concurrency-safe and explicitly limit the first release scope for alloc/manual-tick firmware builds.
