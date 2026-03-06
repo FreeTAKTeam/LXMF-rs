@@ -10,6 +10,9 @@ pub(crate) fn build_adapter(iface: &InterfaceConfig) -> Result<SerialInterface, 
         .filter(|value| !value.is_empty())
         .ok_or_else(|| "serial.device is required".to_string())?;
     let baud_rate = iface.baud_rate.ok_or_else(|| "serial.baud_rate is required".to_string())?;
+    if baud_rate == 0 {
+        return Err("serial.baud_rate must be > 0".to_string());
+    }
 
     let reconnect_backoff_ms = iface.reconnect_backoff_ms.unwrap_or(500).max(50);
     let max_reconnect_backoff_ms = iface

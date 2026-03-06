@@ -94,6 +94,7 @@ Failure log:
 Runtime status visibility:
 
 - `list_interfaces` includes `_runtime.startup_status`.
+- Successful startup-only validation is reported as `_runtime.startup_status = "validated_startup_only"`.
 - Failed interfaces include `_runtime.startup_error`.
 
 ## Verification Commands

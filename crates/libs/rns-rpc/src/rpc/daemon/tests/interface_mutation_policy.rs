@@ -9,6 +9,37 @@
         }
     }
 
+    fn runtime_managed_transport_listener() -> InterfaceRecord {
+        InterfaceRecord {
+            kind: "tcp_server".to_string(),
+            enabled: true,
+            host: Some("127.0.0.1".to_string()),
+            port: Some(4242),
+            name: Some("daemon-transport".to_string()),
+            settings: Some(json!({
+                "_runtime": {
+                    "startup_status": "active",
+                    "iface": "deadbeef",
+                    "managed_by": "daemon_transport"
+                }
+            })),
+        }
+    }
+
+    fn lora_interface(name: &str) -> InterfaceRecord {
+        InterfaceRecord {
+            kind: "lora".to_string(),
+            enabled: true,
+            host: None,
+            port: None,
+            name: Some(name.to_string()),
+            settings: Some(json!({
+                "region": "US915",
+                "state_path": "var/lora-state.json"
+            })),
+        }
+    }
+
     #[test]
     fn set_interfaces_rejects_startup_only_interface_kinds() {
         let daemon = RpcDaemon::test_instance();
@@ -54,6 +85,7 @@
     #[test]
     fn set_interfaces_updates_legacy_tcp_entries() {
         let daemon = RpcDaemon::test_instance();
+        daemon.replace_interfaces(vec![runtime_managed_transport_listener()]);
 
         let response = daemon
             .handle_rpc(rpc_request(
@@ -77,10 +109,11 @@
         assert_eq!(response.result.expect("result")["updated"], json!(true));
 
         let interfaces = daemon.interfaces.lock().expect("interfaces mutex poisoned").clone();
-        assert_eq!(interfaces.len(), 1);
+        assert_eq!(interfaces.len(), 2);
         assert_eq!(interfaces[0].kind, "tcp_client");
         assert_eq!(interfaces[0].host.as_deref(), Some("rmap.world"));
         assert_eq!(interfaces[0].port, Some(4242));
+        assert_eq!(interfaces[1], runtime_managed_transport_listener());
     }
 
     #[test]
@@ -124,7 +157,10 @@
     #[test]
     fn reload_config_hot_applies_legacy_tcp_only_diff() {
         let daemon = RpcDaemon::test_instance();
-        daemon.replace_interfaces(vec![tcp_interface("primary", "127.0.0.1", 4242)]);
+        daemon.replace_interfaces(vec![
+            tcp_interface("primary", "127.0.0.1", 4242),
+            runtime_managed_transport_listener(),
+        ]);
 
         let response = daemon
             .handle_rpc(rpc_request(
@@ -151,6 +187,7 @@
 
         let interfaces = daemon.interfaces.lock().expect("interfaces mutex poisoned").clone();
         assert_eq!(interfaces[0].port, Some(4248));
+        assert_eq!(interfaces[1], runtime_managed_transport_listener());
     }
 
     #[test]
@@ -183,4 +220,48 @@
 
         let interfaces = daemon.interfaces.lock().expect("interfaces mutex poisoned").clone();
         assert_eq!(interfaces, vec![tcp_interface("primary", "127.0.0.1", 4242)]);
+    }
+
+    #[test]
+    fn reload_config_reports_removed_startup_only_interface_names() {
+        let daemon = RpcDaemon::test_instance();
+        daemon.replace_interfaces(vec![
+            tcp_interface("primary", "127.0.0.1", 4242),
+            lora_interface("lora-main"),
+        ]);
+
+        let response = daemon
+            .handle_rpc(rpc_request(
+                6,
+                "reload_config",
+                json!({
+                    "interfaces": [
+                        {
+                            "type": "tcp_client",
+                            "enabled": true,
+                            "host": "127.0.0.1",
+                            "port": 4248,
+                            "name": "primary"
+                        }
+                    ]
+                }),
+            ))
+            .expect("reload_config response");
+
+        let error = response.error.expect("expected restart-required error");
+        let details = error.details.expect("details must be present");
+        let affected = details
+            .get("affected_interfaces")
+            .and_then(|value| value.as_array())
+            .expect("affected interfaces array");
+        assert!(
+            affected.iter().any(|item| item.as_str() == Some("lora-main")),
+            "removed startup-only interface should be named in affected_interfaces"
+        );
+
+        let interfaces = daemon.interfaces.lock().expect("interfaces mutex poisoned").clone();
+        assert_eq!(
+            interfaces,
+            vec![tcp_interface("primary", "127.0.0.1", 4242), lora_interface("lora-main")]
+        );
     }

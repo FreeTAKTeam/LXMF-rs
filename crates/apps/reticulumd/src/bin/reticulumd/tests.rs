@@ -1,6 +1,6 @@
 use crate::bootstrap::{
-    enforce_startup_policy, mark_interface_runtime_fields, mark_interface_startup_status,
-    InterfaceStartupFailure,
+    enforce_startup_policy, mark_interface_runtime_fields, mark_interface_runtime_managed,
+    mark_interface_startup_status, InterfaceStartupFailure,
 };
 use crate::bridge_helpers::opportunistic_payload;
 use crate::interfaces::{lora, serial};
@@ -68,6 +68,19 @@ fn serial_builder_rejects_missing_required_fields() {
     assert!(result.is_err(), "missing device/baud should fail");
     let err = result.err().unwrap_or_default();
     assert!(err.contains("serial.device"));
+}
+
+#[test]
+fn serial_builder_rejects_zero_baud_rate() {
+    let iface = InterfaceConfig {
+        kind: "serial".to_string(),
+        enabled: Some(true),
+        device: Some("/dev/ttyUSB0".to_string()),
+        baud_rate: Some(0),
+        ..InterfaceConfig::default()
+    };
+    let err = serial::build_adapter(&iface).err().expect("zero baud rate should fail");
+    assert!(err.contains("serial.baud_rate must be > 0"));
 }
 
 #[test]
@@ -148,6 +161,32 @@ fn runtime_status_metadata_is_embedded_in_interface_settings() {
     assert_eq!(runtime.get("runtime_status").and_then(|value| value.as_str()), Some("running"));
     assert_eq!(runtime.get("reconnect_attempts").and_then(|value| value.as_u64()), Some(0));
     assert_eq!(runtime.get("iface").and_then(|value| value.as_str()), Some("beefcafe"));
+}
+
+#[test]
+fn runtime_managed_metadata_survives_startup_status_updates() {
+    let mut record = InterfaceRecord {
+        kind: "tcp_server".to_string(),
+        enabled: true,
+        host: Some("127.0.0.1".to_string()),
+        port: Some(4242),
+        name: Some("daemon-transport".to_string()),
+        settings: None,
+    };
+
+    mark_interface_runtime_managed(&mut record, "daemon_transport");
+    mark_interface_startup_status(&mut record, "active", None, Some("feedbeef"));
+
+    let settings = record.settings.expect("settings should be present");
+    let runtime = settings
+        .get("_runtime")
+        .and_then(|value| value.as_object())
+        .expect("runtime metadata should be present");
+    assert_eq!(
+        runtime.get("managed_by").and_then(|value| value.as_str()),
+        Some("daemon_transport")
+    );
+    assert_eq!(runtime.get("iface").and_then(|value| value.as_str()), Some("feedbeef"));
 }
 
 #[test]

@@ -81,8 +81,10 @@ impl RpcDaemon {
                 })?;
                 let parsed: SetInterfacesParams = serde_json::from_value(params)
                     .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
+                let mut requested_interfaces = parsed.interfaces;
+                Self::strip_runtime_metadata_from_interfaces(&mut requested_interfaces);
 
-                for iface in &parsed.interfaces {
+                for iface in &requested_interfaces {
                     if iface.kind.trim().is_empty() {
                         return Err(std::io::Error::new(
                             std::io::ErrorKind::InvalidInput,
@@ -102,8 +104,7 @@ impl RpcDaemon {
                         ));
                     }
                 }
-                let blocked = parsed
-                    .interfaces
+                let blocked = requested_interfaces
                     .iter()
                     .enumerate()
                     .filter(|(_, iface)| !Self::is_legacy_hot_apply_kind(iface.kind.as_str()))
@@ -117,12 +118,15 @@ impl RpcDaemon {
                     ));
                 }
 
+                let current_interfaces =
+                    self.interfaces.lock().expect("interfaces mutex poisoned").clone();
+                let merged_interfaces =
+                    Self::merge_with_runtime_managed_interfaces(&current_interfaces, &requested_interfaces);
                 {
                     let mut guard = self.interfaces.lock().expect("interfaces mutex poisoned");
-                    *guard = parsed.interfaces.clone();
+                    *guard = merged_interfaces.clone();
                 }
-                let applied_interfaces = parsed
-                    .interfaces
+                let applied_interfaces = requested_interfaces
                     .iter()
                     .enumerate()
                     .map(|(index, iface)| Self::interface_identifier(iface, index))
@@ -130,7 +134,7 @@ impl RpcDaemon {
 
                 let event = RpcEvent {
                     event_type: "interfaces_updated".into(),
-                    payload: json!({ "interfaces": parsed.interfaces }),
+                    payload: json!({ "interfaces": merged_interfaces }),
                 };
                 self.publish_event(event);
 
@@ -149,7 +153,9 @@ impl RpcDaemon {
                     let parsed: ReloadConfigParams = serde_json::from_value(params).map_err(|err| {
                         std::io::Error::new(std::io::ErrorKind::InvalidInput, err)
                     })?;
-                    for iface in &parsed.interfaces {
+                    let mut requested_interfaces = parsed.interfaces;
+                    Self::strip_runtime_metadata_from_interfaces(&mut requested_interfaces);
+                    for iface in &requested_interfaces {
                         if iface.kind.trim().is_empty() {
                             return Err(std::io::Error::new(
                                 std::io::ErrorKind::InvalidInput,
@@ -172,35 +178,15 @@ impl RpcDaemon {
                         }
                     }
 
-                    let current = self.interfaces.lock().expect("interfaces mutex poisoned").clone();
-                    if !Self::is_reload_hot_apply_compatible(&current, &parsed.interfaces) {
-                        let mut affected = parsed
-                            .interfaces
-                            .iter()
-                            .enumerate()
-                            .filter(|(_, iface)| {
-                                !Self::is_legacy_hot_apply_kind(iface.kind.as_str())
-                            })
-                            .map(|(index, iface)| Self::interface_identifier(iface, index))
-                            .collect::<Vec<_>>();
-                        if affected.is_empty() {
-                            affected = parsed
-                                .interfaces
-                                .iter()
-                                .enumerate()
-                                .map(|(index, iface)| Self::interface_identifier(iface, index))
-                                .collect::<Vec<_>>();
-                        }
-                        if affected.is_empty() {
-                            affected = current
-                                .iter()
-                                .enumerate()
-                                .map(|(index, iface)| Self::interface_identifier(iface, index))
-                                .collect::<Vec<_>>();
-                        }
-                        if affected.is_empty() {
-                            affected.push("interfaces".to_string());
-                        }
+                    let current_snapshot =
+                        self.interfaces.lock().expect("interfaces mutex poisoned").clone();
+                    let current_interfaces =
+                        Self::config_managed_interfaces(&current_snapshot);
+                    if !Self::is_reload_hot_apply_compatible(&current_interfaces, &requested_interfaces) {
+                        let affected = Self::restart_required_affected_interfaces(
+                            &current_interfaces,
+                            &requested_interfaces,
+                        );
                         return Ok(Self::restart_required_response(
                             request.id,
                             "reload_config",
@@ -208,13 +194,17 @@ impl RpcDaemon {
                         ));
                     }
 
+                    let merged_interfaces = Self::merge_with_runtime_managed_interfaces(
+                        &current_snapshot,
+                        &requested_interfaces,
+                    );
                     {
                         let mut guard = self.interfaces.lock().expect("interfaces mutex poisoned");
-                        *guard = parsed.interfaces.clone();
+                        *guard = merged_interfaces.clone();
                     }
                     let update_event = RpcEvent {
                         event_type: "interfaces_updated".into(),
-                        payload: json!({ "interfaces": parsed.interfaces }),
+                        payload: json!({ "interfaces": merged_interfaces }),
                     };
                     self.publish_event(update_event);
                 }
@@ -463,6 +453,105 @@ impl RpcDaemon {
             .filter(|value| !value.is_empty())
             .map(ToOwned::to_owned)
             .unwrap_or_else(|| format!("{}[{index}]", iface.kind))
+    }
+
+    fn strip_runtime_metadata_from_interfaces(interfaces: &mut [InterfaceRecord]) {
+        for iface in interfaces {
+            Self::strip_runtime_metadata(iface);
+        }
+    }
+
+    fn strip_runtime_metadata(iface: &mut InterfaceRecord) {
+        let Some(JsonValue::Object(settings)) = iface.settings.as_mut() else {
+            return;
+        };
+        settings.remove("_runtime");
+        if settings.is_empty() {
+            iface.settings = None;
+        }
+    }
+
+    fn is_runtime_managed_interface(iface: &InterfaceRecord) -> bool {
+        iface
+            .settings
+            .as_ref()
+            .and_then(JsonValue::as_object)
+            .and_then(|settings| settings.get("_runtime"))
+            .and_then(JsonValue::as_object)
+            .and_then(|runtime| runtime.get("managed_by"))
+            .and_then(JsonValue::as_str)
+            .is_some_and(|managed_by| managed_by == "daemon_transport")
+    }
+
+    fn config_managed_interfaces(interfaces: &[InterfaceRecord]) -> Vec<InterfaceRecord> {
+        interfaces
+            .iter()
+            .filter(|iface| !Self::is_runtime_managed_interface(iface))
+            .cloned()
+            .collect()
+    }
+
+    fn merge_with_runtime_managed_interfaces(
+        current: &[InterfaceRecord],
+        next: &[InterfaceRecord],
+    ) -> Vec<InterfaceRecord> {
+        let mut merged = next.to_vec();
+        merged.extend(current.iter().filter(|iface| Self::is_runtime_managed_interface(iface)).cloned());
+        merged
+    }
+
+    fn restart_required_affected_interfaces(
+        current: &[InterfaceRecord],
+        next: &[InterfaceRecord],
+    ) -> Vec<String> {
+        let mut affected = Vec::new();
+        Self::push_unique_interface_identifiers(
+            &mut affected,
+            next.iter()
+                .enumerate()
+                .filter(|(_, iface)| !Self::is_legacy_hot_apply_kind(iface.kind.as_str()))
+                .map(|(index, iface)| Self::interface_identifier(iface, index)),
+        );
+        Self::push_unique_interface_identifiers(
+            &mut affected,
+            current
+                .iter()
+                .enumerate()
+                .filter(|(_, iface)| !Self::is_legacy_hot_apply_kind(iface.kind.as_str()))
+                .map(|(index, iface)| Self::interface_identifier(iface, index)),
+        );
+        if affected.is_empty() {
+            Self::push_unique_interface_identifiers(
+                &mut affected,
+                next.iter()
+                    .enumerate()
+                    .map(|(index, iface)| Self::interface_identifier(iface, index)),
+            );
+        }
+        if affected.is_empty() {
+            Self::push_unique_interface_identifiers(
+                &mut affected,
+                current
+                    .iter()
+                    .enumerate()
+                    .map(|(index, iface)| Self::interface_identifier(iface, index)),
+            );
+        }
+        if affected.is_empty() {
+            affected.push("interfaces".to_string());
+        }
+        affected
+    }
+
+    fn push_unique_interface_identifiers<I>(target: &mut Vec<String>, identifiers: I)
+    where
+        I: IntoIterator<Item = String>,
+    {
+        for identifier in identifiers {
+            if !target.iter().any(|existing| existing == &identifier) {
+                target.push(identifier);
+            }
+        }
     }
 
     fn is_reload_hot_apply_compatible(current: &[InterfaceRecord], next: &[InterfaceRecord]) -> bool {

@@ -71,9 +71,10 @@ All methods below are required for full CLI feature coverage.
 `list_interfaces` response notes:
 
 - `interfaces[*].settings` may include a runtime metadata envelope at `_runtime` with fields:
-  `startup_status`, optional `startup_error`, and optional `iface` (runtime interface id).
+  `startup_status`, optional `startup_error`, optional `iface` (runtime interface id), and
+  optional `managed_by` for daemon-owned synthetic records.
 - Known `startup_status` values include: `disabled`, `inactive_transport_disabled`, `failed`,
-  `spawned`, and `active`.
+  `spawned`, `active`, and `validated_startup_only`.
 - This metadata is additive and intended for startup/degraded-mode observability.
 
 Startup policy notes:
