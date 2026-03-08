@@ -117,11 +117,22 @@ fn sdk_conformance_easy_mode_manifest_covers_required_scenarios() {
 
     let scenarios = manifest["scenarios"].as_array().expect("manifest scenarios");
     let mut seen = BTreeSet::new();
+    let mut paths = BTreeSet::new();
     for scenario in scenarios {
         let id = scenario["id"].as_str().expect("scenario id");
+        let kind = scenario["kind"].as_str().expect("scenario kind");
         let path = scenario["path"].as_str().expect("scenario path");
         assert!(seen.insert(id.to_owned()), "duplicate scenario id {id}");
+        assert!(paths.insert(path.to_owned()), "duplicate scenario path {path}");
         assert!(fixture_dir().join(path).is_file(), "missing fixture file for {id}: {path}");
+
+        let body = fixture(path);
+        assert_eq!(
+            body["scenario_id"].as_str(),
+            Some(id),
+            "fixture scenario_id mismatch for {path}"
+        );
+        assert_eq!(body["kind"].as_str(), Some(kind), "fixture kind mismatch for {path}");
     }
 
     assert_eq!(seen.len(), REQUIRED_SCENARIOS.len());
