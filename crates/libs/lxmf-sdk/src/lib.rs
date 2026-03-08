@@ -5,6 +5,7 @@ mod backend;
 pub mod capability;
 mod client;
 pub mod domain;
+pub mod easy;
 mod error;
 pub mod event;
 mod lifecycle;
@@ -38,6 +39,12 @@ pub use capability::{
     effective_capabilities_for_profile, negotiate_contract_version, negotiate_plugins,
     CapabilityDescriptor, CapabilityState, EffectiveLimits, NegotiationRequest,
     NegotiationResponse, PluginDescriptor, PluginState,
+};
+pub use easy::{
+    EasyCapabilitySummary, EasyClient, EasyConfig, EasyDeliveryState, EasyDeliveryStatus,
+    EasyError, EasyErrorCategory, EasyErrorCode, EasyEvent, EasyEventBatch, EasyEventKind,
+    EasyEventMetadata, EasyHandle, EasyProfile, EasyRunState, EasyRuntimeStatus, EasySendReceipt,
+    EasySendRequest, EasySeverity, EasyStreamGapDetails, EasySubscriptionStart,
 };
 // Stability class: internal
 pub use client::Client;
