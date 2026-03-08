@@ -465,7 +465,7 @@ impl<B: SdkBackend> EasyClient<B> {
     pub fn subscribe_events(
         &self,
         start: EasySubscriptionStart,
-    ) -> Result<EasyEventStream<B>, EasyError>
+    ) -> Result<EventStream<B>, EasyError>
     where
         B: SdkBackendAsyncEvents,
     {
@@ -487,7 +487,7 @@ impl<B: SdkBackend> EasyClient<B> {
             .max(1);
         let profile = session_guard.config.profile.clone();
         drop(session_guard);
-        Ok(EasyEventStream {
+        Ok(EventStream {
             client: Arc::clone(client),
             session: Arc::clone(session),
             cursor: subscription_cursor(&subscription),
@@ -505,7 +505,7 @@ impl EasyClient<crate::RpcBackendClient> {
 }
 
 #[cfg(feature = "sdk-async")]
-pub struct EasyEventStream<B: SdkBackendAsyncEvents> {
+pub struct EventStream<B: SdkBackendAsyncEvents> {
     client: Arc<Client<SharedBackend<B>>>,
     session: Arc<Mutex<EasySessionState>>,
     cursor: Option<EventCursor>,
@@ -514,7 +514,7 @@ pub struct EasyEventStream<B: SdkBackendAsyncEvents> {
 }
 
 #[cfg(feature = "sdk-async")]
-impl<B: SdkBackendAsyncEvents> EasyEventStream<B> {
+impl<B: SdkBackendAsyncEvents> EventStream<B> {
     pub fn next_batch(&mut self) -> Result<EasyEventBatch, EasyError> {
         let batch = self
             .client

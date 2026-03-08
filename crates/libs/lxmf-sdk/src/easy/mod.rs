@@ -18,3 +18,5 @@ pub use node::{
     EasyRunState as RunState, EasyRuntimeStatus as RuntimeStatus, EasySendReceipt as SendReceipt,
     EasySendRequest as SendRequest,
 };
+#[cfg(feature = "sdk-async")]
+pub use node::EventStream;
