@@ -2,6 +2,7 @@ import 'dart:ffi';
 
 import 'package:ffi/ffi.dart';
 import 'package:lxmf_sdk_app/lxmf_sdk_app.dart';
+import 'package:lxmf_sdk_app/src/ffi/embedded_node_bridge.dart';
 import 'package:lxmf_sdk_app/src/ffi/bindings.dart';
 import 'package:test/test.dart';
 

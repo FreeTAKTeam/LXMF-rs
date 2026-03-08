@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:lxmf_sdk_app/experimental_embedded.dart';
 import 'package:lxmf_sdk_app/lxmf_sdk_app.dart';
 
 Future<void> main() async {

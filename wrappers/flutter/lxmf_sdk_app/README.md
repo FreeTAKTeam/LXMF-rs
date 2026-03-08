@@ -2,39 +2,49 @@
 
 `lxmf_sdk_app` is the first-party Flutter/Dart package for the `sdk-app` contract in this repo.
 
-This package currently does four things:
+This package currently does three things:
 
 - mirrors the app-facing typed model from `lxmf_sdk::app`
 - defines the client/binding seam the package exposes
-- implements a first native Dart FFI bridge for the `rns-embedded-ffi` v1 node-centric API
 - validates the wrapper vocabulary against `docs/fixtures/sdk-app-v1`
 
-Current scope:
+Current supported direction:
+
+- Flutter/Dart clients are being scoped around the Reticulum/LXMF host path
+  backed by `reticulumd` RPC.
+- The embedded FFI bridge from earlier work is no longer the intended public
+  backend for this package.
+- ESP32 and other constrained-device flows stay in the separate
+  `rns-embedded-*` track for now.
+
+Current package scope:
 
 - typed `Config`, `Profile`, `SendRequest`, `SendReceipt`, `RuntimeStatus`, `Event`, `AppError`
 - typed delivery-plan and delivery-helper models
 - `AppClient` facade over an abstract `AppBinding`
-- `EmbeddedNodeBridge` for start/stop/status/send/subscribe over `rns-embedded-ffi`
 - fixture-backed contract tests for shared `sdk-app` scenarios
-- a minimal host-side smoke example in `example/embedded_node_smoke.dart`
-- typed transport selection on `Config` via `TransportMode`
 
 Planned next steps:
 
-1. add richer wrapper-facing tests for real event/error/capability translation
-2. add platform packaging/loading guidance for Android/iOS/macOS host builds
-3. add an example Flutter app as a smoke harness
-4. expand the bridge beyond the initial embedded-node lifecycle/send path
+1. add the `reticulumd` RPC backend for `AppBinding`
+2. add a small Flutter example against the RPC backend
+3. validate wrapper behavior against external-client proof runs
+4. keep embedded-specific bridge code internal until the ESP32 track is ready to
+   become a supported app backend
 
-Quick smoke run from this package directory:
+What is intentionally not supported right now:
+
+- public Flutter support for the embedded FFI backend
+- BLE/mobile device packaging for the embedded runtime
+- claiming that the embedded bridge is the same thing as external-client
+  interoperability
+
+Quick package checks from this directory:
 
 ```sh
-export RNS_EMBEDDED_FFI_LIB=/absolute/path/to/librns_embedded_ffi.dylib
 dart analyze
 dart test
-dart run example/embedded_node_smoke.dart
 ```
 
-The example loads the native `rns-embedded-ffi` library from `RNS_EMBEDDED_FFI_LIB` when set, then falls back to the platform loader search path.
-
-This package is intentionally contract-first. It now has a real FFI bridge, but it does not yet claim end-to-end mobile BLE support.
+This package is intentionally contract-first. The public package surface is now
+backend-neutral while the implementation direction shifts to `reticulumd` RPC.
