@@ -21,10 +21,14 @@ use core::cell::RefCell;
 
 #[cfg(feature = "std")]
 use std::{
+    net::{SocketAddr, TcpListener, ToSocketAddrs},
     sync::{Condvar, Mutex},
     thread::{self, JoinHandle},
     time::{Duration, Instant},
 };
+
+#[cfg(feature = "std")]
+use crate::tcp::TcpEmbeddedTransport;
 
 #[cfg(feature = "std")]
 const DRIVER_TICK_MS: u64 = 25;
@@ -37,6 +41,8 @@ const MAX_BLOCKING_TIMEOUT_MS: u64 = u32::MAX as u64;
 pub const NODE_EXTENSION_ID_BOOTSTRAPPED: u32 = 1;
 pub const NODE_EXTENSION_ID_MESSAGE_QUEUED: u32 = 2;
 pub const NODE_EXTENSION_ID_RECEIVED_SUMMARY: u32 = 3;
+#[cfg(feature = "std")]
+const DEFAULT_TCP_MTU_HINT: u16 = 1024;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum NodeTransportMode {
@@ -251,24 +257,35 @@ pub enum PollResult {
 
 enum NodeBackend {
     Ble(BleShimTransport),
+    #[cfg(feature = "std")]
+    Tcp(TcpEmbeddedTransport),
 }
 
 impl NodeBackend {
     fn set_link_state(&mut self, state: LinkState) {
         match self {
             Self::Ble(transport) => transport.set_link_state(state),
+            #[cfg(feature = "std")]
+            Self::Tcp(_) => {}
         }
     }
 
     fn push_inbound_wire(&mut self, bytes: &[u8]) -> Result<(), NodeError> {
         match self {
             Self::Ble(transport) => transport.push_inbound_wire(bytes).map_err(NodeError::from),
+            #[cfg(feature = "std")]
+            Self::Tcp(_) => {
+                let _ = bytes;
+                Err(NodeError::ModeConflict)
+            }
         }
     }
 
     fn take_outbound_wire(&mut self) -> Option<Vec<u8>> {
         match self {
             Self::Ble(transport) => transport.take_outbound_wire(),
+            #[cfg(feature = "std")]
+            Self::Tcp(_) => None,
         }
     }
 
@@ -277,8 +294,29 @@ impl NodeBackend {
             Self::Ble(transport) => {
                 rns_embedded_core::transport::EmbeddedTransport::link_state(transport)
             }
+            #[cfg(feature = "std")]
+            Self::Tcp(transport) => {
+                rns_embedded_core::transport::EmbeddedTransport::link_state(transport)
+            }
         }
     }
+}
+
+#[cfg(feature = "std")]
+fn resolve_tcp_addr(config: &TcpClientConfig) -> Result<SocketAddr, NodeError> {
+    (config.host.as_str(), config.port)
+        .to_socket_addrs()
+        .map_err(|_| NodeError::InvalidConfig)?
+        .next()
+        .ok_or(NodeError::InvalidConfig)
+}
+
+#[cfg(feature = "std")]
+fn tcp_server_transport(config: &TcpServerConfig) -> Result<TcpEmbeddedTransport, NodeError> {
+    let listener = TcpListener::bind(SocketAddr::from(([0, 0, 0, 0], config.listen_port)))
+        .map_err(|_| NodeError::IoError)?;
+    let (stream, _) = listener.accept().map_err(|_| NodeError::IoError)?;
+    TcpEmbeddedTransport::from_stream(stream, DEFAULT_TCP_MTU_HINT).map_err(NodeError::from)
 }
 
 struct RuntimeSession {
@@ -301,8 +339,22 @@ impl RuntimeSession {
                 )
             }
             #[cfg(feature = "std")]
-            NodeBackendConfig::TcpClient(_) | NodeBackendConfig::TcpServer(_) => {
-                return Err(NodeError::InvalidConfig);
+            NodeBackendConfig::TcpClient(tcp) => {
+                if config.runtime.node_mode != NodeTransportMode::TcpClient {
+                    return Err(NodeError::InvalidConfig);
+                }
+                let addr = resolve_tcp_addr(tcp)?;
+                NodeBackend::Tcp(
+                    TcpEmbeddedTransport::connect(addr, DEFAULT_TCP_MTU_HINT)
+                        .map_err(NodeError::from)?,
+                )
+            }
+            #[cfg(feature = "std")]
+            NodeBackendConfig::TcpServer(tcp) => {
+                if config.runtime.node_mode != NodeTransportMode::TcpServer {
+                    return Err(NodeError::InvalidConfig);
+                }
+                NodeBackend::Tcp(tcp_server_transport(tcp)?)
             }
         };
 
@@ -312,6 +364,10 @@ impl RuntimeSession {
     fn tick(&mut self, now_ms: u64) -> Result<Vec<RuntimeEvent>, NodeError> {
         match &mut self.backend {
             NodeBackend::Ble(transport) => {
+                self.runtime.tick(now_ms, transport, &mut self.store).map_err(NodeError::from)?
+            }
+            #[cfg(feature = "std")]
+            NodeBackend::Tcp(transport) => {
                 self.runtime.tick(now_ms, transport, &mut self.store).map_err(NodeError::from)?
             }
         }

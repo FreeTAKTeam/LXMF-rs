@@ -106,8 +106,13 @@ class EmbeddedNodeTranslation {
       message: mapped.$3,
       retryable: mapped.$4,
       terminal: mapped.$5,
-      causeCode: nodeErrorCode == null ? null : 'RNS_EMBEDDED_V1_NODE_ERROR_$nodeErrorCode',
-      details: <String, Object?>{'ffiStatus': status, 'nodeErrorCode': nodeErrorCode},
+      causeCode: nodeErrorCode == null
+          ? null
+          : 'RNS_EMBEDDED_V1_NODE_ERROR_$nodeErrorCode',
+      details: <String, Object?>{
+        'ffiStatus': status,
+        'nodeErrorCode': nodeErrorCode
+      },
     );
   }
 
@@ -243,7 +248,8 @@ class EmbeddedNodeBridge implements AppBinding {
       final runtimeStatus = await this.status();
       final capabilities = _readCapabilities();
       return Handle(
-        runtimeId: runtimeStatus.runtimeId ?? 'embedded-node-${runtimeStatus.state.name}',
+        runtimeId: runtimeStatus.runtimeId ??
+            'embedded-node-${runtimeStatus.state.name}',
         profile: config.profile,
         capabilities: capabilities,
       );
@@ -311,7 +317,9 @@ class EmbeddedNodeBridge implements AppBinding {
     final destinationPtr = calloc<Uint8>(destinationBytes.length);
     final bodyPtr = calloc<Uint8>(bodyBytes.length);
     try {
-      destinationPtr.asTypedList(destinationBytes.length).setAll(0, destinationBytes);
+      destinationPtr
+          .asTypedList(destinationBytes.length)
+          .setAll(0, destinationBytes);
       bodyPtr.asTypedList(bodyBytes.length).setAll(0, bodyBytes);
       final status = _api.nodeSend(
         _node,
@@ -375,8 +383,8 @@ class EmbeddedNodeBridge implements AppBinding {
         );
       } on AppError catch (error) {
         final isQueuePressure = error.code == ErrorCode.deliveryQueuePressure;
-        final canRetry =
-            (isQueuePressure && queuePressureStrategy == QueuePressureStrategy.retry) ||
+        final canRetry = (isQueuePressure &&
+                queuePressureStrategy == QueuePressureStrategy.retry) ||
             (!isQueuePressure && error.retryable);
         if (!canRetry || attempt >= maxAttempts) {
           if (error.retryable && !isQueuePressure) {
@@ -536,7 +544,8 @@ class EmbeddedNodeBridge implements AppBinding {
     eventPtr.ref.structSize = sizeOf<RnsEmbeddedV1NodeEvent>();
     eventPtr.ref.structVersion = 1;
     try {
-      final status = _api.subscriptionNext(subscription, 100, pollPtr, eventPtr, errorPtr);
+      final status =
+          _api.subscriptionNext(subscription, 100, pollPtr, eventPtr, errorPtr);
       _throwIfNeeded(status, errorPtr);
       final poll = pollPtr.ref;
       switch (poll.kind) {
@@ -593,7 +602,11 @@ class EmbeddedNodeBridge implements AppBinding {
     out.structVersion = native.structVersion == 0 ? 1 : native.structVersion;
     _copyArray(native.storeIdentity, out.storeIdentity, 32);
     _copyArray(native.lxmfAddress, out.lxmfAddress, 16);
-    out.nodeMode = native.nodeMode;
+    out.nodeMode = switch (config.transportMode) {
+      TransportMode.bleOnly => rnsEmbeddedNodeModeBleOnly,
+      TransportMode.tcpClient => rnsEmbeddedNodeModeTcpClient,
+      TransportMode.tcpServer => rnsEmbeddedNodeModeTcpServer,
+    };
     out.announceIntervalMs = native.announceIntervalMs;
     out.maxOutboundQueue = native.maxOutboundQueue;
     out.maxEvents = config.eventBatchSize ?? native.maxEvents;
@@ -602,6 +615,10 @@ class EmbeddedNodeBridge implements AppBinding {
     out.bleMaxInboundFrames = native.bleMaxInboundFrames;
     out.bleMaxOutboundFrames = native.bleMaxOutboundFrames;
     out.bleOrderedDelivery = native.bleOrderedDelivery;
+    _copyArray(native.tcpHost, out.tcpHost, 256);
+    out.tcpPort = native.tcpPort;
+    out.tcpListenPort = native.tcpListenPort;
+    _writeTcpConfig(out, config);
   }
 
   Pointer<RnsEmbeddedV1NodeError> _newNodeError() {
@@ -650,6 +667,10 @@ class EmbeddedNodeBridge implements AppBinding {
   }
 
   static String _defaultLibraryPath() {
+    final override = Platform.environment['RNS_EMBEDDED_FFI_LIB'];
+    if (override != null && override.isNotEmpty) {
+      return override;
+    }
     if (Platform.isMacOS || Platform.isIOS) {
       return 'librns_embedded_ffi.dylib';
     }
@@ -667,7 +688,8 @@ class EmbeddedNodeBridge implements AppBinding {
     if (_isHex32(compact)) {
       return List<int>.generate(
         16,
-        (index) => int.parse(compact.substring(index * 2, index * 2 + 2), radix: 16),
+        (index) =>
+            int.parse(compact.substring(index * 2, index * 2 + 2), radix: 16),
       );
     }
 
@@ -694,9 +716,64 @@ class EmbeddedNodeBridge implements AppBinding {
     return utf8.encode(jsonEncode(payload));
   }
 
-  static void _copyArray(Array<Uint8> source, Array<Uint8> destination, int length) {
+  static void _copyArray(
+      Array<Uint8> source, Array<Uint8> destination, int length) {
     for (var index = 0; index < length; index++) {
       destination[index] = source[index];
+    }
+  }
+
+  static void _writeTcpConfig(RnsEmbeddedV1NodeConfig out, Config config) {
+    switch (config.transportMode) {
+      case TransportMode.bleOnly:
+        break;
+      case TransportMode.tcpClient:
+        final host = config.tcpHost;
+        final port = config.tcpPort;
+        if (host == null ||
+            host.isEmpty ||
+            port == null ||
+            port <= 0 ||
+            port > 65535) {
+          throw const AppError(
+            code: ErrorCode.configInvalid,
+            category: ErrorCategory.config,
+            message: 'tcp client mode requires a host and valid port',
+            userActionRequired: true,
+          );
+        }
+        _writeCString(host, out.tcpHost, 256);
+        out.tcpPort = port;
+      case TransportMode.tcpServer:
+        final listenPort = config.tcpListenPort;
+        if (listenPort == null || listenPort <= 0 || listenPort > 65535) {
+          throw const AppError(
+            code: ErrorCode.configInvalid,
+            category: ErrorCategory.config,
+            message: 'tcp server mode requires a valid listen port',
+            userActionRequired: true,
+          );
+        }
+        out.tcpListenPort = listenPort;
+    }
+  }
+
+  static void _writeCString(
+      String value, Array<Uint8> destination, int maxBytes) {
+    final bytes = utf8.encode(value);
+    if (bytes.length >= maxBytes) {
+      throw const AppError(
+        code: ErrorCode.validationInvalidArgument,
+        category: ErrorCategory.validation,
+        message: 'string exceeds native buffer limit',
+        userActionRequired: true,
+      );
+    }
+    for (var index = 0; index < maxBytes; index++) {
+      destination[index] = 0;
+    }
+    for (var index = 0; index < bytes.length; index++) {
+      destination[index] = bytes[index];
     }
   }
 
@@ -710,7 +787,6 @@ class EmbeddedNodeBridge implements AppBinding {
     }
     return delay > backoff.maxDelayMs ? backoff.maxDelayMs : delay;
   }
-
 }
 
 class _BridgeClosed implements Exception {

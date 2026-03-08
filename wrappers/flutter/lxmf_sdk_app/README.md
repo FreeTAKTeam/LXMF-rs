@@ -17,6 +17,7 @@ Current scope:
 - `EmbeddedNodeBridge` for start/stop/status/send/subscribe over `rns-embedded-ffi`
 - fixture-backed contract tests for shared `sdk-app` scenarios
 - a minimal host-side smoke example in `example/embedded_node_smoke.dart`
+- typed transport selection on `Config` via `TransportMode`
 
 Planned next steps:
 
@@ -28,11 +29,12 @@ Planned next steps:
 Quick smoke run from this package directory:
 
 ```sh
+export RNS_EMBEDDED_FFI_LIB=/absolute/path/to/librns_embedded_ffi.dylib
 dart analyze
 dart test
 dart run example/embedded_node_smoke.dart
 ```
 
-The example expects the native `rns-embedded-ffi` library to be discoverable by the platform loader.
+The example loads the native `rns-embedded-ffi` library from `RNS_EMBEDDED_FFI_LIB` when set, then falls back to the platform loader search path.
 
 This package is intentionally contract-first. It now has a real FFI bridge, but it does not yet claim end-to-end mobile BLE support.

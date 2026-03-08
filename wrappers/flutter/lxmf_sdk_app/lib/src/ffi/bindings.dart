@@ -37,6 +37,10 @@ const int rnsEmbeddedV1PollGap = 3;
 const int rnsEmbeddedV1PollNodeStopped = 4;
 const int rnsEmbeddedV1PollNodeRestarted = 5;
 
+const int rnsEmbeddedNodeModeBleOnly = 0;
+const int rnsEmbeddedNodeModeTcpClient = 1;
+const int rnsEmbeddedNodeModeTcpServer = 2;
+
 base class RnsEmbeddedV1NodeError extends Struct {
   @IntPtr()
   external int structSize;
@@ -91,7 +95,16 @@ base class RnsEmbeddedV1NodeConfig extends Struct {
   @Bool()
   external bool bleOrderedDelivery;
 
-  @Array(32)
+  @Array(256)
+  external Array<Uint8> tcpHost;
+
+  @Uint16()
+  external int tcpPort;
+
+  @Uint16()
+  external int tcpListenPort;
+
+  @Array(28)
   external Array<Uint8> reserved;
 }
 
@@ -288,136 +301,113 @@ base class RnsEmbeddedV1PollResult extends Struct {
   external Array<Uint8> reserved;
 }
 
-typedef _NodeConfigDefaultNative =
-    RnsEmbeddedV1NodeConfig Function();
-typedef _NodeConfigDefaultDart =
-    RnsEmbeddedV1NodeConfig Function();
-typedef _GetCapabilitiesNative =
-    Int32 Function(Pointer<RnsEmbeddedV1Capabilities>);
-typedef _GetCapabilitiesDart =
-    int Function(Pointer<RnsEmbeddedV1Capabilities>);
+typedef _NodeConfigDefaultNative = RnsEmbeddedV1NodeConfig Function();
+typedef _NodeConfigDefaultDart = RnsEmbeddedV1NodeConfig Function();
+typedef _GetCapabilitiesNative = Int32 Function(
+    Pointer<RnsEmbeddedV1Capabilities>);
+typedef _GetCapabilitiesDart = int Function(Pointer<RnsEmbeddedV1Capabilities>);
 typedef _NodeNewNative = Pointer<RnsEmbeddedV1Node> Function();
 typedef _NodeNewDart = Pointer<RnsEmbeddedV1Node> Function();
 typedef _NodeFreeNative = Void Function(Pointer<RnsEmbeddedV1Node>);
 typedef _NodeFreeDart = void Function(Pointer<RnsEmbeddedV1Node>);
-typedef _NodeStartNative =
-    Int32 Function(
-      Pointer<RnsEmbeddedV1Node>,
-      Pointer<RnsEmbeddedV1NodeConfig>,
-      Pointer<RnsEmbeddedV1NodeError>,
-    );
-typedef _NodeStartDart =
-    int Function(
-      Pointer<RnsEmbeddedV1Node>,
-      Pointer<RnsEmbeddedV1NodeConfig>,
-      Pointer<RnsEmbeddedV1NodeError>,
-    );
-typedef _NodeStopNative =
-    Int32 Function(Pointer<RnsEmbeddedV1Node>, Pointer<RnsEmbeddedV1NodeError>);
-typedef _NodeStopDart =
-    int Function(Pointer<RnsEmbeddedV1Node>, Pointer<RnsEmbeddedV1NodeError>);
-typedef _NodeGetStatusNative =
-    Int32 Function(Pointer<RnsEmbeddedV1Node>, Pointer<RnsEmbeddedV1NodeStatus>);
-typedef _NodeGetStatusDart =
-    int Function(Pointer<RnsEmbeddedV1Node>, Pointer<RnsEmbeddedV1NodeStatus>);
-typedef _NodeSendNative =
-    Int32 Function(
-      Pointer<RnsEmbeddedV1Node>,
-      Pointer<Uint8>,
-      Pointer<Uint8>,
-      IntPtr,
-      Pointer<RnsEmbeddedV1SendReceipt>,
-      Pointer<RnsEmbeddedV1NodeError>,
-    );
-typedef _NodeSendDart =
-    int Function(
-      Pointer<RnsEmbeddedV1Node>,
-      Pointer<Uint8>,
-      Pointer<Uint8>,
-      int,
-      Pointer<RnsEmbeddedV1SendReceipt>,
-      Pointer<RnsEmbeddedV1NodeError>,
-    );
-typedef _NodeSubscribeNative =
-    Int32 Function(
-      Pointer<RnsEmbeddedV1Node>,
-      Pointer<Pointer<RnsEmbeddedEventSubscription>>,
-      Pointer<RnsEmbeddedV1NodeError>,
-    );
-typedef _NodeSubscribeDart =
-    int Function(
-      Pointer<RnsEmbeddedV1Node>,
-      Pointer<Pointer<RnsEmbeddedEventSubscription>>,
-      Pointer<RnsEmbeddedV1NodeError>,
-    );
-typedef _SubscriptionNextNative =
-    Int32 Function(
-      Pointer<RnsEmbeddedEventSubscription>,
-      Uint64,
-      Pointer<RnsEmbeddedV1PollResult>,
-      Pointer<RnsEmbeddedV1NodeEvent>,
-      Pointer<RnsEmbeddedV1NodeError>,
-    );
-typedef _SubscriptionNextDart =
-    int Function(
-      Pointer<RnsEmbeddedEventSubscription>,
-      int,
-      Pointer<RnsEmbeddedV1PollResult>,
-      Pointer<RnsEmbeddedV1NodeEvent>,
-      Pointer<RnsEmbeddedV1NodeError>,
-    );
-typedef _SubscriptionCloseNative =
-    Int32 Function(
-      Pointer<RnsEmbeddedEventSubscription>,
-      Pointer<RnsEmbeddedV1NodeError>,
-    );
-typedef _SubscriptionCloseDart =
-    int Function(
-      Pointer<RnsEmbeddedEventSubscription>,
-      Pointer<RnsEmbeddedV1NodeError>,
-    );
+typedef _NodeStartNative = Int32 Function(
+  Pointer<RnsEmbeddedV1Node>,
+  Pointer<RnsEmbeddedV1NodeConfig>,
+  Pointer<RnsEmbeddedV1NodeError>,
+);
+typedef _NodeStartDart = int Function(
+  Pointer<RnsEmbeddedV1Node>,
+  Pointer<RnsEmbeddedV1NodeConfig>,
+  Pointer<RnsEmbeddedV1NodeError>,
+);
+typedef _NodeStopNative = Int32 Function(
+    Pointer<RnsEmbeddedV1Node>, Pointer<RnsEmbeddedV1NodeError>);
+typedef _NodeStopDart = int Function(
+    Pointer<RnsEmbeddedV1Node>, Pointer<RnsEmbeddedV1NodeError>);
+typedef _NodeGetStatusNative = Int32 Function(
+    Pointer<RnsEmbeddedV1Node>, Pointer<RnsEmbeddedV1NodeStatus>);
+typedef _NodeGetStatusDart = int Function(
+    Pointer<RnsEmbeddedV1Node>, Pointer<RnsEmbeddedV1NodeStatus>);
+typedef _NodeSendNative = Int32 Function(
+  Pointer<RnsEmbeddedV1Node>,
+  Pointer<Uint8>,
+  Pointer<Uint8>,
+  IntPtr,
+  Pointer<RnsEmbeddedV1SendReceipt>,
+  Pointer<RnsEmbeddedV1NodeError>,
+);
+typedef _NodeSendDart = int Function(
+  Pointer<RnsEmbeddedV1Node>,
+  Pointer<Uint8>,
+  Pointer<Uint8>,
+  int,
+  Pointer<RnsEmbeddedV1SendReceipt>,
+  Pointer<RnsEmbeddedV1NodeError>,
+);
+typedef _NodeSubscribeNative = Int32 Function(
+  Pointer<RnsEmbeddedV1Node>,
+  Pointer<Pointer<RnsEmbeddedEventSubscription>>,
+  Pointer<RnsEmbeddedV1NodeError>,
+);
+typedef _NodeSubscribeDart = int Function(
+  Pointer<RnsEmbeddedV1Node>,
+  Pointer<Pointer<RnsEmbeddedEventSubscription>>,
+  Pointer<RnsEmbeddedV1NodeError>,
+);
+typedef _SubscriptionNextNative = Int32 Function(
+  Pointer<RnsEmbeddedEventSubscription>,
+  Uint64,
+  Pointer<RnsEmbeddedV1PollResult>,
+  Pointer<RnsEmbeddedV1NodeEvent>,
+  Pointer<RnsEmbeddedV1NodeError>,
+);
+typedef _SubscriptionNextDart = int Function(
+  Pointer<RnsEmbeddedEventSubscription>,
+  int,
+  Pointer<RnsEmbeddedV1PollResult>,
+  Pointer<RnsEmbeddedV1NodeEvent>,
+  Pointer<RnsEmbeddedV1NodeError>,
+);
+typedef _SubscriptionCloseNative = Int32 Function(
+  Pointer<RnsEmbeddedEventSubscription>,
+  Pointer<RnsEmbeddedV1NodeError>,
+);
+typedef _SubscriptionCloseDart = int Function(
+  Pointer<RnsEmbeddedEventSubscription>,
+  Pointer<RnsEmbeddedV1NodeError>,
+);
 
 class EmbeddedFfiApi {
   EmbeddedFfiApi(this.library)
-    : _nodeConfigDefault = library.lookupFunction<
-          _NodeConfigDefaultNative,
-          _NodeConfigDefaultDart
-        >('rns_embedded_v1_node_config_default'),
-      _getCapabilities = library.lookupFunction<
-          _GetCapabilitiesNative,
-          _GetCapabilitiesDart
-        >('rns_embedded_v1_get_capabilities'),
-      _nodeNew = library.lookupFunction<_NodeNewNative, _NodeNewDart>(
-        'rns_embedded_v1_node_new',
-      ),
-      _nodeFree = library.lookupFunction<_NodeFreeNative, _NodeFreeDart>(
-        'rns_embedded_v1_node_free',
-      ),
-      _nodeStart = library.lookupFunction<_NodeStartNative, _NodeStartDart>(
-        'rns_embedded_v1_node_start',
-      ),
-      _nodeStop = library.lookupFunction<_NodeStopNative, _NodeStopDart>(
-        'rns_embedded_v1_node_stop',
-      ),
-      _nodeGetStatus = library.lookupFunction<
-          _NodeGetStatusNative,
-          _NodeGetStatusDart
-        >('rns_embedded_v1_node_get_status'),
-      _nodeSend = library.lookupFunction<_NodeSendNative, _NodeSendDart>(
-        'rns_embedded_v1_node_send',
-      ),
-      _nodeSubscribe = library.lookupFunction<
-          _NodeSubscribeNative,
-          _NodeSubscribeDart
-        >('rns_embedded_v1_node_subscribe_events'),
-      _subscriptionNext = library.lookupFunction<
-          _SubscriptionNextNative,
-          _SubscriptionNextDart
-        >('rns_embedded_v1_subscription_next'),
-      _subscriptionClose = library.lookupFunction<
-          _SubscriptionCloseNative,
-          _SubscriptionCloseDart
-        >('rns_embedded_v1_subscription_close');
+      : _nodeConfigDefault = library.lookupFunction<_NodeConfigDefaultNative,
+            _NodeConfigDefaultDart>('rns_embedded_v1_node_config_default'),
+        _getCapabilities = library.lookupFunction<_GetCapabilitiesNative,
+            _GetCapabilitiesDart>('rns_embedded_v1_get_capabilities'),
+        _nodeNew = library.lookupFunction<_NodeNewNative, _NodeNewDart>(
+          'rns_embedded_v1_node_new',
+        ),
+        _nodeFree = library.lookupFunction<_NodeFreeNative, _NodeFreeDart>(
+          'rns_embedded_v1_node_free',
+        ),
+        _nodeStart = library.lookupFunction<_NodeStartNative, _NodeStartDart>(
+          'rns_embedded_v1_node_start',
+        ),
+        _nodeStop = library.lookupFunction<_NodeStopNative, _NodeStopDart>(
+          'rns_embedded_v1_node_stop',
+        ),
+        _nodeGetStatus =
+            library.lookupFunction<_NodeGetStatusNative, _NodeGetStatusDart>(
+                'rns_embedded_v1_node_get_status'),
+        _nodeSend = library.lookupFunction<_NodeSendNative, _NodeSendDart>(
+          'rns_embedded_v1_node_send',
+        ),
+        _nodeSubscribe =
+            library.lookupFunction<_NodeSubscribeNative, _NodeSubscribeDart>(
+                'rns_embedded_v1_node_subscribe_events'),
+        _subscriptionNext = library.lookupFunction<_SubscriptionNextNative,
+            _SubscriptionNextDart>('rns_embedded_v1_subscription_next'),
+        _subscriptionClose = library.lookupFunction<_SubscriptionCloseNative,
+            _SubscriptionCloseDart>('rns_embedded_v1_subscription_close');
 
   final DynamicLibrary library;
   final _NodeConfigDefaultDart _nodeConfigDefault;
@@ -445,17 +435,20 @@ class EmbeddedFfiApi {
     Pointer<RnsEmbeddedV1Node> node,
     Pointer<RnsEmbeddedV1NodeConfig> config,
     Pointer<RnsEmbeddedV1NodeError> outNodeError,
-  ) => _nodeStart(node, config, outNodeError);
+  ) =>
+      _nodeStart(node, config, outNodeError);
 
   int nodeStop(
     Pointer<RnsEmbeddedV1Node> node,
     Pointer<RnsEmbeddedV1NodeError> outNodeError,
-  ) => _nodeStop(node, outNodeError);
+  ) =>
+      _nodeStop(node, outNodeError);
 
   int nodeGetStatus(
     Pointer<RnsEmbeddedV1Node> node,
     Pointer<RnsEmbeddedV1NodeStatus> outStatus,
-  ) => _nodeGetStatus(node, outStatus);
+  ) =>
+      _nodeGetStatus(node, outStatus);
 
   int nodeSend(
     Pointer<RnsEmbeddedV1Node> node,
@@ -464,13 +457,15 @@ class EmbeddedFfiApi {
     int bodyLength,
     Pointer<RnsEmbeddedV1SendReceipt> outReceipt,
     Pointer<RnsEmbeddedV1NodeError> outNodeError,
-  ) => _nodeSend(node, destination, body, bodyLength, outReceipt, outNodeError);
+  ) =>
+      _nodeSend(node, destination, body, bodyLength, outReceipt, outNodeError);
 
   int nodeSubscribeEvents(
     Pointer<RnsEmbeddedV1Node> node,
     Pointer<Pointer<RnsEmbeddedEventSubscription>> outSubscription,
     Pointer<RnsEmbeddedV1NodeError> outNodeError,
-  ) => _nodeSubscribe(node, outSubscription, outNodeError);
+  ) =>
+      _nodeSubscribe(node, outSubscription, outNodeError);
 
   int subscriptionNext(
     Pointer<RnsEmbeddedEventSubscription> subscription,
@@ -478,16 +473,18 @@ class EmbeddedFfiApi {
     Pointer<RnsEmbeddedV1PollResult> outPollResult,
     Pointer<RnsEmbeddedV1NodeEvent> outEvent,
     Pointer<RnsEmbeddedV1NodeError> outNodeError,
-  ) => _subscriptionNext(
-    subscription,
-    timeoutMs,
-    outPollResult,
-    outEvent,
-    outNodeError,
-  );
+  ) =>
+      _subscriptionNext(
+        subscription,
+        timeoutMs,
+        outPollResult,
+        outEvent,
+        outNodeError,
+      );
 
   int subscriptionClose(
     Pointer<RnsEmbeddedEventSubscription> subscription,
     Pointer<RnsEmbeddedV1NodeError> outNodeError,
-  ) => _subscriptionClose(subscription, outNodeError);
+  ) =>
+      _subscriptionClose(subscription, outNodeError);
 }

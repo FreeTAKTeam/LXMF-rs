@@ -12,161 +12,171 @@ enum Profile {
   DeliveryPlan defaults({int? eventBatchSize}) {
     return switch (this) {
       Profile.mobileDefault => DeliveryPlan(
-        profile: Profile.mobileDefault,
-        retry: const RetryPolicy(
-          maxAttempts: 3,
-          backoff: BackoffSchedule(
-            initialDelayMs: 250,
-            multiplier: 2,
-            maxDelayMs: 2000,
+          profile: Profile.mobileDefault,
+          retry: const RetryPolicy(
+            maxAttempts: 3,
+            backoff: BackoffSchedule(
+              initialDelayMs: 250,
+              multiplier: 2,
+              maxDelayMs: 2000,
+            ),
           ),
-        ),
-        reconnect: const ReconnectPolicy(
-          enabled: true,
-          maxAttempts: 5,
-          backoff: BackoffSchedule(
-            initialDelayMs: 500,
-            multiplier: 2,
-            maxDelayMs: 10000,
+          reconnect: const ReconnectPolicy(
+            enabled: true,
+            maxAttempts: 5,
+            backoff: BackoffSchedule(
+              initialDelayMs: 500,
+              multiplier: 2,
+              maxDelayMs: 10000,
+            ),
           ),
-        ),
-        queuePressure: const QueuePressurePolicy(
-          strategy: QueuePressureStrategy.retry,
-          maxAttempts: 3,
-          backoff: BackoffSchedule(
-            initialDelayMs: 100,
-            multiplier: 2,
-            maxDelayMs: 750,
+          queuePressure: const QueuePressurePolicy(
+            strategy: QueuePressureStrategy.retry,
+            maxAttempts: 3,
+            backoff: BackoffSchedule(
+              initialDelayMs: 100,
+              multiplier: 2,
+              maxDelayMs: 750,
+            ),
           ),
+          timeout: const TimeoutPolicy(
+            sendTimeoutMs: 5000,
+            eventNextTimeoutMs: 1000,
+            reconnectGraceMs: 15000,
+          ),
+          durableQueueing: false,
+          restartRecovery: false,
+          defaultEventBatchSize: eventBatchSize ?? 32,
+          redactionEnabled: true,
         ),
-        timeout: const TimeoutPolicy(
-          sendTimeoutMs: 5000,
-          eventNextTimeoutMs: 1000,
-          reconnectGraceMs: 15000,
-        ),
-        durableQueueing: false,
-        restartRecovery: false,
-        defaultEventBatchSize: eventBatchSize ?? 32,
-        redactionEnabled: true,
-      ),
       Profile.desktopDefault => DeliveryPlan(
-        profile: Profile.desktopDefault,
-        retry: const RetryPolicy(
-          maxAttempts: 5,
-          backoff: BackoffSchedule(
-            initialDelayMs: 200,
-            multiplier: 2,
-            maxDelayMs: 5000,
+          profile: Profile.desktopDefault,
+          retry: const RetryPolicy(
+            maxAttempts: 5,
+            backoff: BackoffSchedule(
+              initialDelayMs: 200,
+              multiplier: 2,
+              maxDelayMs: 5000,
+            ),
           ),
-        ),
-        reconnect: const ReconnectPolicy(
-          enabled: true,
-          maxAttempts: 10,
-          backoff: BackoffSchedule(
-            initialDelayMs: 500,
-            multiplier: 2,
-            maxDelayMs: 15000,
+          reconnect: const ReconnectPolicy(
+            enabled: true,
+            maxAttempts: 10,
+            backoff: BackoffSchedule(
+              initialDelayMs: 500,
+              multiplier: 2,
+              maxDelayMs: 15000,
+            ),
           ),
-        ),
-        queuePressure: const QueuePressurePolicy(
-          strategy: QueuePressureStrategy.retry,
-          maxAttempts: 4,
-          backoff: BackoffSchedule(
-            initialDelayMs: 100,
-            multiplier: 2,
-            maxDelayMs: 1000,
+          queuePressure: const QueuePressurePolicy(
+            strategy: QueuePressureStrategy.retry,
+            maxAttempts: 4,
+            backoff: BackoffSchedule(
+              initialDelayMs: 100,
+              multiplier: 2,
+              maxDelayMs: 1000,
+            ),
           ),
+          timeout: const TimeoutPolicy(
+            sendTimeoutMs: 10000,
+            eventNextTimeoutMs: 2000,
+            reconnectGraceMs: 30000,
+          ),
+          durableQueueing: false,
+          restartRecovery: false,
+          defaultEventBatchSize: eventBatchSize ?? 64,
+          redactionEnabled: true,
         ),
-        timeout: const TimeoutPolicy(
-          sendTimeoutMs: 10000,
-          eventNextTimeoutMs: 2000,
-          reconnectGraceMs: 30000,
-        ),
-        durableQueueing: false,
-        restartRecovery: false,
-        defaultEventBatchSize: eventBatchSize ?? 64,
-        redactionEnabled: true,
-      ),
       Profile.embeddedDefault => DeliveryPlan(
-        profile: Profile.embeddedDefault,
-        retry: const RetryPolicy(
-          maxAttempts: 2,
-          backoff: BackoffSchedule(
-            initialDelayMs: 500,
-            multiplier: 2,
-            maxDelayMs: 2000,
+          profile: Profile.embeddedDefault,
+          retry: const RetryPolicy(
+            maxAttempts: 2,
+            backoff: BackoffSchedule(
+              initialDelayMs: 500,
+              multiplier: 2,
+              maxDelayMs: 2000,
+            ),
           ),
-        ),
-        reconnect: const ReconnectPolicy(
-          enabled: false,
-          maxAttempts: 1,
-          backoff: BackoffSchedule(
-            initialDelayMs: 1000,
-            multiplier: 1,
-            maxDelayMs: 1000,
+          reconnect: const ReconnectPolicy(
+            enabled: false,
+            maxAttempts: 1,
+            backoff: BackoffSchedule(
+              initialDelayMs: 1000,
+              multiplier: 1,
+              maxDelayMs: 1000,
+            ),
           ),
-        ),
-        queuePressure: const QueuePressurePolicy(
-          strategy: QueuePressureStrategy.failFast,
-          maxAttempts: 1,
-          backoff: BackoffSchedule(
-            initialDelayMs: 0,
-            multiplier: 1,
-            maxDelayMs: 0,
+          queuePressure: const QueuePressurePolicy(
+            strategy: QueuePressureStrategy.failFast,
+            maxAttempts: 1,
+            backoff: BackoffSchedule(
+              initialDelayMs: 0,
+              multiplier: 1,
+              maxDelayMs: 0,
+            ),
           ),
+          timeout: const TimeoutPolicy(
+            sendTimeoutMs: 3000,
+            eventNextTimeoutMs: 500,
+          ),
+          durableQueueing: false,
+          restartRecovery: false,
+          defaultEventBatchSize: eventBatchSize ?? 16,
+          redactionEnabled: true,
         ),
-        timeout: const TimeoutPolicy(
-          sendTimeoutMs: 3000,
-          eventNextTimeoutMs: 500,
-        ),
-        durableQueueing: false,
-        restartRecovery: false,
-        defaultEventBatchSize: eventBatchSize ?? 16,
-        redactionEnabled: true,
-      ),
       Profile.testingDefault => DeliveryPlan(
-        profile: Profile.testingDefault,
-        retry: const RetryPolicy(
-          maxAttempts: 2,
-          backoff: BackoffSchedule(
-            initialDelayMs: 10,
-            multiplier: 1,
-            maxDelayMs: 10,
+          profile: Profile.testingDefault,
+          retry: const RetryPolicy(
+            maxAttempts: 2,
+            backoff: BackoffSchedule(
+              initialDelayMs: 10,
+              multiplier: 1,
+              maxDelayMs: 10,
+            ),
           ),
-        ),
-        reconnect: const ReconnectPolicy(
-          enabled: true,
-          maxAttempts: 2,
-          backoff: BackoffSchedule(
-            initialDelayMs: 25,
-            multiplier: 1,
-            maxDelayMs: 25,
+          reconnect: const ReconnectPolicy(
+            enabled: true,
+            maxAttempts: 2,
+            backoff: BackoffSchedule(
+              initialDelayMs: 25,
+              multiplier: 1,
+              maxDelayMs: 25,
+            ),
           ),
-        ),
-        queuePressure: const QueuePressurePolicy(
-          strategy: QueuePressureStrategy.failFast,
-          maxAttempts: 1,
-          backoff: BackoffSchedule(
-            initialDelayMs: 0,
-            multiplier: 1,
-            maxDelayMs: 0,
+          queuePressure: const QueuePressurePolicy(
+            strategy: QueuePressureStrategy.failFast,
+            maxAttempts: 1,
+            backoff: BackoffSchedule(
+              initialDelayMs: 0,
+              multiplier: 1,
+              maxDelayMs: 0,
+            ),
           ),
+          timeout: const TimeoutPolicy(
+            sendTimeoutMs: 500,
+            eventNextTimeoutMs: 100,
+            reconnectGraceMs: 250,
+          ),
+          durableQueueing: false,
+          restartRecovery: false,
+          defaultEventBatchSize: eventBatchSize ?? 16,
+          redactionEnabled: true,
         ),
-        timeout: const TimeoutPolicy(
-          sendTimeoutMs: 500,
-          eventNextTimeoutMs: 100,
-          reconnectGraceMs: 250,
-        ),
-        durableQueueing: false,
-        restartRecovery: false,
-        defaultEventBatchSize: eventBatchSize ?? 16,
-        redactionEnabled: true,
-      ),
     };
   }
 }
 
-enum RunState { newState, starting, running, degraded, stopping, stopped, failed }
+enum TransportMode { bleOnly, tcpClient, tcpServer }
+
+enum RunState {
+  newState,
+  starting,
+  running,
+  degraded,
+  stopping,
+  stopped,
+  failed
+}
 
 enum ErrorCategory {
   validation,
@@ -186,7 +196,8 @@ enum ErrorCode {
   validationInvalidArgument('SDK_APP_VALIDATION_INVALID_ARGUMENT'),
   validationUnknownField('SDK_APP_VALIDATION_UNKNOWN_FIELD'),
   capabilityUnsupportedProfile('SDK_APP_CAPABILITY_UNSUPPORTED_PROFILE'),
-  capabilityRequiredFeatureMissing('SDK_APP_CAPABILITY_REQUIRED_FEATURE_MISSING'),
+  capabilityRequiredFeatureMissing(
+      'SDK_APP_CAPABILITY_REQUIRED_FEATURE_MISSING'),
   configInvalid('SDK_APP_CONFIG_INVALID'),
   runtimeInvalidState('SDK_APP_RUNTIME_INVALID_STATE'),
   runtimeAlreadyRunningDifferentConfig(
@@ -295,6 +306,10 @@ class Config {
     this.supportedContractVersions = const [2],
     this.requestedCapabilities = const [],
     this.eventBatchSize,
+    this.transportMode = TransportMode.bleOnly,
+    this.tcpHost,
+    this.tcpPort,
+    this.tcpListenPort,
     this.sdkConfig = const {},
   });
 
@@ -302,30 +317,35 @@ class Config {
   final List<int> supportedContractVersions;
   final List<String> requestedCapabilities;
   final int? eventBatchSize;
+  final TransportMode transportMode;
+  final String? tcpHost;
+  final int? tcpPort;
+  final int? tcpListenPort;
   final Map<String, Object?> sdkConfig;
 
   factory Config.fromProfile(Profile profile) {
     return switch (profile) {
       Profile.mobileDefault => const Config(
-        profile: Profile.mobileDefault,
-        eventBatchSize: 32,
-      ),
+          profile: Profile.mobileDefault,
+          eventBatchSize: 32,
+        ),
       Profile.desktopDefault => const Config(
-        profile: Profile.desktopDefault,
-        eventBatchSize: 64,
-      ),
+          profile: Profile.desktopDefault,
+          eventBatchSize: 64,
+        ),
       Profile.embeddedDefault => const Config(
-        profile: Profile.embeddedDefault,
-        eventBatchSize: 16,
-      ),
+          profile: Profile.embeddedDefault,
+          eventBatchSize: 16,
+        ),
       Profile.testingDefault => const Config(
-        profile: Profile.testingDefault,
-        eventBatchSize: 16,
-      ),
+          profile: Profile.testingDefault,
+          eventBatchSize: 16,
+        ),
     };
   }
 
-  DeliveryPlan deliveryPlan() => profile.defaults(eventBatchSize: eventBatchSize);
+  DeliveryPlan deliveryPlan() =>
+      profile.defaults(eventBatchSize: eventBatchSize);
 }
 
 @immutable

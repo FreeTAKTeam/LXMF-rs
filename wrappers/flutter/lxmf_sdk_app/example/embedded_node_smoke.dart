@@ -1,7 +1,12 @@
+import 'dart:io';
+
 import 'package:lxmf_sdk_app/lxmf_sdk_app.dart';
 
 Future<void> main() async {
-  final client = AppClient(EmbeddedNodeBridge.open());
+  final client = AppClient(
+    EmbeddedNodeBridge.open(
+        libraryPath: Platform.environment['RNS_EMBEDDED_FFI_LIB']),
+  );
   final config = Config.fromProfile(Profile.testingDefault);
 
   final handle = await client.start(config);

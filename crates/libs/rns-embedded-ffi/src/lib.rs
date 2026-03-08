@@ -3,14 +3,14 @@
 
 extern crate alloc;
 
-use alloc::boxed::Box;
+use alloc::{boxed::Box, string::String};
 use rns_embedded_core::{store::JournaledEmbeddedStore, transport::LinkState, EmbeddedError};
 use rns_embedded_runtime::{
     ble::{BleShimConfig, BleShimTransport},
     node::{CaptureDefaults, NodeLifecycleState, NodeTransportMode},
     BleNodeBackendConfig, BroadcastOptions, EmbeddedNode, EmbeddedNodeRuntime, EventSubscription,
     NodeBackendConfig, NodeConfig, NodeError, NodeEvent, NodeEventKind, NodeLogLevel, NodeRunState,
-    NodeStatus, PollResult, RuntimeConfig, SendOptions,
+    NodeStatus, PollResult, RuntimeConfig, SendOptions, TcpClientConfig, TcpServerConfig,
 };
 
 #[cfg(not(feature = "std"))]
@@ -66,6 +66,9 @@ pub struct RnsEmbeddedNodeConfig {
     pub ble_max_inbound_frames: usize,
     pub ble_max_outbound_frames: usize,
     pub ble_ordered_delivery: bool,
+    pub tcp_host: [u8; 256],
+    pub tcp_port: u16,
+    pub tcp_listen_port: u16,
 }
 
 #[repr(C)]
@@ -92,6 +95,9 @@ impl Default for RnsEmbeddedNodeConfig {
             ble_max_inbound_frames: ble.max_inbound_frames,
             ble_max_outbound_frames: ble.max_outbound_frames,
             ble_ordered_delivery: ble.ordered_delivery,
+            tcp_host: [0; 256],
+            tcp_port: 0,
+            tcp_listen_port: 0,
         }
     }
 }
@@ -228,7 +234,10 @@ pub struct RnsEmbeddedV1NodeConfig {
     pub ble_max_inbound_frames: usize,
     pub ble_max_outbound_frames: usize,
     pub ble_ordered_delivery: bool,
-    pub reserved: [u8; 32],
+    pub tcp_host: [u8; 256],
+    pub tcp_port: u16,
+    pub tcp_listen_port: u16,
+    pub reserved: [u8; 28],
 }
 
 impl Default for RnsEmbeddedV1NodeConfig {
@@ -248,7 +257,10 @@ impl Default for RnsEmbeddedV1NodeConfig {
             ble_max_inbound_frames: legacy.ble_max_inbound_frames,
             ble_max_outbound_frames: legacy.ble_max_outbound_frames,
             ble_ordered_delivery: legacy.ble_ordered_delivery,
-            reserved: [0; 32],
+            tcp_host: legacy.tcp_host,
+            tcp_port: legacy.tcp_port,
+            tcp_listen_port: legacy.tcp_listen_port,
+            reserved: [0; 28],
         }
     }
 }
@@ -1024,6 +1036,22 @@ fn v1_node_config(config: &RnsEmbeddedV1NodeConfig) -> Result<NodeConfig, NodeEr
     if config.struct_size < core::mem::size_of::<RnsEmbeddedV1NodeConfig>() / 2 {
         return Err(NodeError::InvalidConfig);
     }
+    let backend = match config.node_mode {
+        RnsEmbeddedNodeMode::BleOnly => NodeBackendConfig::Ble(BleNodeBackendConfig {
+            mtu_hint: config.ble_mtu_hint,
+            max_inbound_frames: config.ble_max_inbound_frames,
+            max_outbound_frames: config.ble_max_outbound_frames,
+            ordered_delivery: config.ble_ordered_delivery,
+        }),
+        RnsEmbeddedNodeMode::TcpClient => NodeBackendConfig::TcpClient(TcpClientConfig {
+            host: parse_c_string_bytes(&config.tcp_host)?,
+            port: config.tcp_port,
+            reconnect_backoff_ms: alloc::vec![250, 500, 1_000, 2_000],
+        }),
+        RnsEmbeddedNodeMode::TcpServer => {
+            NodeBackendConfig::TcpServer(TcpServerConfig { listen_port: config.tcp_listen_port })
+        }
+    };
     Ok(NodeConfig {
         runtime: RuntimeConfig {
             store_identity: config.store_identity,
@@ -1038,13 +1066,18 @@ fn v1_node_config(config: &RnsEmbeddedV1NodeConfig) -> Result<NodeConfig, NodeEr
             max_events: config.max_events,
             capture_defaults: CaptureDefaults { max_bytes: config.capture_default_max_bytes },
         },
-        backend: NodeBackendConfig::Ble(BleNodeBackendConfig {
-            mtu_hint: config.ble_mtu_hint,
-            max_inbound_frames: config.ble_max_inbound_frames,
-            max_outbound_frames: config.ble_max_outbound_frames,
-            ordered_delivery: config.ble_ordered_delivery,
-        }),
+        backend,
     })
+}
+
+fn parse_c_string_bytes(bytes: &[u8]) -> Result<String, NodeError> {
+    let end = bytes.iter().position(|byte| *byte == 0).unwrap_or(bytes.len());
+    if end == 0 {
+        return Err(NodeError::InvalidConfig);
+    }
+    core::str::from_utf8(&bytes[..end])
+        .map(|value| value.to_string())
+        .map_err(|_| NodeError::InvalidConfig)
 }
 
 fn map_v1_status(status: NodeStatus) -> RnsEmbeddedV1NodeStatus {

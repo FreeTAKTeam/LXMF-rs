@@ -36,6 +36,9 @@ typedef struct {
   size_t ble_max_inbound_frames;
   size_t ble_max_outbound_frames;
   bool ble_ordered_delivery;
+  uint8_t tcp_host[256];
+  uint16_t tcp_port;
+  uint16_t tcp_listen_port;
 } RnsEmbeddedNodeConfig;
 
 typedef enum {
@@ -133,7 +136,10 @@ typedef struct {
   size_t ble_max_inbound_frames;
   size_t ble_max_outbound_frames;
   bool ble_ordered_delivery;
-  uint8_t reserved[32];
+  uint8_t tcp_host[256];
+  uint16_t tcp_port;
+  uint16_t tcp_listen_port;
+  uint8_t reserved[28];
 } RnsEmbeddedV1NodeConfig;
 
 typedef struct {
