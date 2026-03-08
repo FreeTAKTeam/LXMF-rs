@@ -22,7 +22,7 @@ proof between `reticulumd` and MeshChatX.
 Default MeshChatX path:
 
 ```bash
-/Users/tommy/Documents/TAK/MeshChatX
+../MeshChatX
 ```
 
 Override it with `MESHCHATX_ROOT` if needed.
