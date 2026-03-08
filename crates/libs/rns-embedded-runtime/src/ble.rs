@@ -117,6 +117,8 @@ impl EmbeddedTransport for BleShimTransport {
 
 #[cfg(test)]
 mod tests {
+    use alloc::{vec, vec::Vec};
+
     use super::{BleShimConfig, BleShimTransport};
     use crate::{
         CaptureDefaults, EmbeddedNodeRuntime, FRAME_KIND_ANNOUNCE, NodeTransportMode,

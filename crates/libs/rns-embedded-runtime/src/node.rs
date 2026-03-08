@@ -30,8 +30,14 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[cfg(feature = "std")]
 const DRIVER_TICK_MS: u64 = 25;
+#[cfg(feature = "std")]
 const DRIVER_TICK_SLEEP: Duration = Duration::from_millis(DRIVER_TICK_MS);
+// FFI callers can pass arbitrarily large timeouts; clamp the blocking surface to a
+// practical upper bound so impossible waits degrade into a safe timeout result.
+#[cfg(feature = "std")]
+const MAX_BLOCKING_TIMEOUT_MS: u64 = u32::MAX as u64;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum NodeTransportMode {
@@ -461,7 +467,7 @@ impl EmbeddedNode {
     }
 
     pub fn start(&self, config: NodeConfig) -> Result<(), NodeError> {
-        let epoch = self.with_state(|state| {
+        let next_epoch = self.with_state(|state| {
             if state.session.is_some() {
                 return Err(NodeError::AlreadyRunning);
             }
@@ -485,7 +491,9 @@ impl EmbeddedNode {
         })?;
         self.notify_waiters();
         #[cfg(feature = "std")]
-        self.start_driver(epoch);
+        self.start_driver(next_epoch);
+        #[cfg(not(feature = "std"))]
+        let _ = next_epoch;
         Ok(())
     }
 
@@ -808,7 +816,14 @@ impl EventSubscription {
     pub fn next(&self, timeout_ms: u64) -> Result<PollResult, NodeError> {
         #[cfg(feature = "std")]
         {
-            let deadline = Instant::now() + Duration::from_millis(timeout_ms);
+            if timeout_ms > MAX_BLOCKING_TIMEOUT_MS {
+                return Ok(PollResult::Timeout);
+            }
+
+            let Some(deadline) = Instant::now().checked_add(Duration::from_millis(timeout_ms))
+            else {
+                return Ok(PollResult::Timeout);
+            };
             let mut state = self.inner.state.lock().map_err(|_| NodeError::InternalError)?;
             loop {
                 let result = next_poll_result_locked(&mut state, self.subscription_id);
@@ -1113,6 +1128,8 @@ fn clone_inner(inner: &Rc<RefCell<NodeState>>) -> Rc<RefCell<NodeState>> {
 
 #[cfg(test)]
 mod tests {
+    use alloc::vec;
+
     use super::{
         BleNodeBackendConfig, BroadcastOptions, EmbeddedNode, NodeBackendConfig, NodeConfig,
         NodeError, NodeEventKind, NodeLogLevel, NodeRunState, NodeTransportMode, PollResult,
@@ -1246,5 +1263,14 @@ mod tests {
 
         sub.close().expect("close");
         assert_eq!(sub.next(0).expect("closed"), PollResult::Closed);
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn subscription_timeout_overflow_returns_timeout() {
+        let node = EmbeddedNode::new();
+        let sub = node.subscribe_events().expect("subscribe");
+
+        assert_eq!(sub.next(u64::MAX).expect("overflow timeout"), PollResult::Timeout);
     }
 }

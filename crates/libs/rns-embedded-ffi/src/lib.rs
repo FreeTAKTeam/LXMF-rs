@@ -341,15 +341,20 @@ pub struct RnsEmbeddedV1Capabilities {
 
 impl Default for RnsEmbeddedV1Capabilities {
     fn default() -> Self {
+        let mut capability_bits =
+            RNS_EMBEDDED_V1_CAP_BROADCAST_EXPLICIT_LIST | RNS_EMBEDDED_V1_CAP_COMPAT_LEGACY_FFI;
+        if cfg!(feature = "std") {
+            capability_bits |=
+                RNS_EMBEDDED_V1_CAP_MANAGED_RUNTIME | RNS_EMBEDDED_V1_CAP_BLOCKING_NEXT;
+        }
+        if cfg!(feature = "std") || cfg!(feature = "alloc") {
+            capability_bits |= RNS_EMBEDDED_V1_CAP_EVENT_GAP_SIGNALING;
+        }
         Self {
             struct_size: core::mem::size_of::<Self>(),
             struct_version: RNS_EMBEDDED_V1_STRUCT_VERSION,
             abi_version: RNS_EMBEDDED_V1_ABI_VERSION,
-            capability_bits: RNS_EMBEDDED_V1_CAP_MANAGED_RUNTIME
-                | RNS_EMBEDDED_V1_CAP_BLOCKING_NEXT
-                | RNS_EMBEDDED_V1_CAP_BROADCAST_EXPLICIT_LIST
-                | RNS_EMBEDDED_V1_CAP_COMPAT_LEGACY_FFI
-                | RNS_EMBEDDED_V1_CAP_EVENT_GAP_SIGNALING,
+            capability_bits,
             max_event_payload_bytes: 0,
             max_subscriptions: 1024,
             reserved: [0; 32],
@@ -1288,6 +1293,9 @@ fn map_embedded_error(error: EmbeddedError) -> RnsEmbeddedStatus {
 #[cfg(test)]
 mod tests {
     use super::{
+        RNS_EMBEDDED_V1_CAP_BLOCKING_NEXT, RNS_EMBEDDED_V1_CAP_BROADCAST_EXPLICIT_LIST,
+        RNS_EMBEDDED_V1_CAP_COMPAT_LEGACY_FFI, RNS_EMBEDDED_V1_CAP_EVENT_GAP_SIGNALING,
+        RNS_EMBEDDED_V1_CAP_MANAGED_RUNTIME,
         RnsEmbeddedLinkState, RnsEmbeddedNodeConfig, RnsEmbeddedStatus, RnsEmbeddedV1Capabilities,
         RnsEmbeddedV1EventKind, RnsEmbeddedV1NodeEvent,
         RnsEmbeddedV1LogLevel, RnsEmbeddedV1NodeError, RnsEmbeddedV1NodeErrorCode,
@@ -1376,6 +1384,42 @@ mod tests {
         );
         assert_eq!(capabilities.abi_version, 1);
         assert_ne!(capabilities.capability_bits, 0);
+        assert_ne!(
+            capabilities.capability_bits & RNS_EMBEDDED_V1_CAP_BROADCAST_EXPLICIT_LIST,
+            0
+        );
+        assert_ne!(
+            capabilities.capability_bits & RNS_EMBEDDED_V1_CAP_COMPAT_LEGACY_FFI,
+            0
+        );
+        assert_ne!(
+            capabilities.capability_bits & RNS_EMBEDDED_V1_CAP_EVENT_GAP_SIGNALING,
+            0
+        );
+
+        #[cfg(feature = "std")]
+        {
+            assert_ne!(
+                capabilities.capability_bits & RNS_EMBEDDED_V1_CAP_MANAGED_RUNTIME,
+                0
+            );
+            assert_ne!(
+                capabilities.capability_bits & RNS_EMBEDDED_V1_CAP_BLOCKING_NEXT,
+                0
+            );
+        }
+
+        #[cfg(not(feature = "std"))]
+        {
+            assert_eq!(
+                capabilities.capability_bits & RNS_EMBEDDED_V1_CAP_MANAGED_RUNTIME,
+                0
+            );
+            assert_eq!(
+                capabilities.capability_bits & RNS_EMBEDDED_V1_CAP_BLOCKING_NEXT,
+                0
+            );
+        }
 
         let node = rns_embedded_v1_node_new();
         assert!(!node.is_null());

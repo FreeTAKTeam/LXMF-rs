@@ -406,6 +406,8 @@ impl EmbeddedNodeRuntime {
 
 #[cfg(test)]
 mod tests {
+    use alloc::vec;
+
     use super::{
         CaptureDefaults, EmbeddedNodeRuntime, FRAME_KIND_ANNOUNCE, FRAME_KIND_LXMF_MESSAGE,
         FRAME_KIND_TEST_PING, FRAME_KIND_TEST_PONG, NodeLifecycleState, NodeTransportMode,
