@@ -21,6 +21,14 @@ Required presets:
 - `embedded_default`
 - `testing_default`
 
+Current Rust reference surface:
+
+- `app::Profile::defaults() -> DeliveryPlan`
+- `Config::from_profile(profile)`
+- `Config::delivery_plan()`
+- `Client::send_with_profile_defaults(request)`
+- `Client::send_with_options(request, options)`
+
 Rules:
 
 1. Profiles are immutable for a running app-api session unless the contract explicitly allows a mutable subset.
@@ -102,6 +110,33 @@ Required defaults:
 - reduced jitter in retry/backoff policy
 - explicit failure visibility over silent auto-healing
 - diagnostics suitable for contract assertions
+
+## Reference Defaults
+
+The current Rust reference implementation freezes these defaults:
+
+- `mobile_default`
+  - retry attempts: `3`
+  - retry backoff: `250ms`, `x2`, capped at `2000ms`
+  - queue pressure: bounded retry, `3` attempts
+  - reconnect: enabled, bounded
+
+- `desktop_default`
+  - retry attempts: `5`
+  - retry backoff: `200ms`, `x2`, capped at `5000ms`
+  - queue pressure: bounded retry, `4` attempts
+  - reconnect: enabled, bounded
+
+- `embedded_default`
+  - retry attempts: `2`
+  - queue pressure: fail fast
+  - reconnect: disabled by default
+
+- `testing_default`
+  - retry attempts: `2`
+  - fixed `10ms` retry backoff
+  - queue pressure: fail fast
+  - reconnect: enabled with fixed `25ms` backoff
 
 ## Policy Defaults
 

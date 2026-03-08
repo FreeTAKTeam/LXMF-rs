@@ -68,7 +68,8 @@ Optional additive helpers:
 - `restart(config)`
 - `flush(timeout)`
 - `reconnect()`
-- `send_with_policy(request, policy_override)`
+- `send_with_profile_defaults(request)`
+- `send_with_options(request, options)`
 
 ## Lifecycle State Machine
 
@@ -138,6 +139,7 @@ Rules:
 2. Wrappers may expose override hooks, but overrides must start from a known contract-defined default.
 3. Timeout behavior must be stable across languages.
 4. “Retryable” vs “terminal” failure classification must be part of the typed error model.
+5. The default Rust app surface may expose profile-derived delivery helpers that apply bounded retry and queue-pressure policy without requiring caller-owned retry loops.
 
 ## Persistence and Offline Recovery
 

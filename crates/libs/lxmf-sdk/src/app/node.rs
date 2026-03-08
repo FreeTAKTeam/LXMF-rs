@@ -1,4 +1,8 @@
 use super::capabilities::CapabilitySummary;
+use super::delivery::{
+    AttemptDecision, AttemptDisposition, DeliveryAttempt, DeliveryOptions, DeliveryPlan,
+    SendReport,
+};
 use super::errors::Error;
 #[cfg(feature = "sdk-async")]
 use super::events::{
@@ -15,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -58,45 +63,19 @@ pub struct Config {
 
 impl Config {
     pub fn mobile_default() -> Self {
-        Self {
-            profile: Profile::MobileDefault,
-            sdk_config: SdkConfig::desktop_local_default(),
-            supported_contract_versions: vec![2],
-            requested_capabilities: Vec::new(),
-            event_batch_size: Some(32),
-        }
+        Self::from_profile(Profile::MobileDefault)
     }
 
     pub fn desktop_default() -> Self {
-        Self {
-            profile: Profile::DesktopDefault,
-            sdk_config: SdkConfig::desktop_full_default(),
-            supported_contract_versions: vec![2],
-            requested_capabilities: Vec::new(),
-            event_batch_size: Some(64),
-        }
+        Self::from_profile(Profile::DesktopDefault)
     }
 
     pub fn embedded_default() -> Self {
-        Self {
-            profile: Profile::EmbeddedDefault,
-            sdk_config: SdkConfig::embedded_alloc_default(),
-            supported_contract_versions: vec![2],
-            requested_capabilities: Vec::new(),
-            event_batch_size: Some(16),
-        }
+        Self::from_profile(Profile::EmbeddedDefault)
     }
 
     pub fn testing_default() -> Self {
-        let mut sdk_config = SdkConfig::desktop_local_default();
-        sdk_config.event_stream.max_poll_events = 32;
-        Self {
-            profile: Profile::TestingDefault,
-            sdk_config,
-            supported_contract_versions: vec![2],
-            requested_capabilities: Vec::new(),
-            event_batch_size: Some(16),
-        }
+        Self::from_profile(Profile::TestingDefault)
     }
 
     pub fn with_requested_capability(mut self, capability: impl Into<String>) -> Self {
@@ -187,6 +166,11 @@ impl SendRequest {
 
     pub fn with_correlation_id(mut self, correlation_id: impl Into<String>) -> Self {
         self.correlation_id = Some(correlation_id.into());
+        self
+    }
+
+    pub fn with_extension(mut self, key: impl Into<String>, value: JsonValue) -> Self {
+        self.extensions.insert(key.into(), value);
         self
     }
 
@@ -332,6 +316,19 @@ impl<B: SdkBackend> Client<B> {
         Self { backend, state: Mutex::new(State::default()) }
     }
 
+    fn active_config(&self) -> Result<Config, Error> {
+        let state = self.state.lock().expect("app client mutex poisoned");
+        let Some(session) = state.session.as_ref() else {
+            return Err(Error::not_started());
+        };
+        let session = session.lock().expect("app session mutex poisoned");
+        Ok(session.config.clone())
+    }
+
+    pub fn delivery_plan(&self) -> Result<DeliveryPlan, Error> {
+        Ok(self.active_config()?.delivery_plan())
+    }
+
     pub fn start(&self, config: Config) -> Result<Handle, Error> {
         let mut state = self.state.lock().expect("app client mutex poisoned");
         if state.client.is_none() && state.session.is_some() {
@@ -398,6 +395,73 @@ impl<B: SdkBackend> Client<B> {
             profile: session.config.profile.clone(),
             correlation_id,
         })
+    }
+
+    pub fn send_with_profile_defaults(&self, request: SendRequest) -> Result<SendReport, Error> {
+        self.send_with_options(request, DeliveryOptions::default())
+    }
+
+    pub fn send_with_options(
+        &self,
+        request: SendRequest,
+        options: DeliveryOptions,
+    ) -> Result<SendReport, Error> {
+        let plan = self.delivery_plan()?;
+        let resolved = plan.resolve(&options);
+        let started = Instant::now();
+        let mut attempts: Vec<DeliveryAttempt> = Vec::new();
+        let mut request = request;
+
+        loop {
+            let attempt_no = attempts.len() as u32 + 1;
+            match self.send(request.clone()) {
+                Ok(receipt) => {
+                    let total_delay_ms =
+                        attempts
+                            .iter()
+                            .filter_map(|attempt: &DeliveryAttempt| attempt.scheduled_delay_ms)
+                            .sum::<u64>();
+                    return Ok(SendReport { receipt, attempts, total_delay_ms, plan });
+                }
+                Err(err) => match resolved.classify_failure(
+                    attempt_no,
+                    &err,
+                    started.elapsed().as_millis() as u64,
+                ) {
+                    AttemptDecision::Retry(delay_ms) => {
+                        attempts.push(DeliveryAttempt {
+                            attempt: attempt_no,
+                            disposition: AttemptDisposition::Retried,
+                            error_code: err.code.as_str().to_owned(),
+                            retryable: err.retryable,
+                            queue_pressure: matches!(
+                                err.code,
+                                super::errors::ErrorCode::DeliveryQueuePressure
+                            ),
+                            scheduled_delay_ms: Some(delay_ms),
+                        });
+                        if delay_ms > 0 {
+                            std::thread::sleep(Duration::from_millis(delay_ms));
+                        }
+                        request = request.clone();
+                    }
+                    AttemptDecision::Stop(stop_err) | AttemptDecision::Timeout(stop_err) => {
+                        attempts.push(DeliveryAttempt {
+                            attempt: attempt_no,
+                            disposition: AttemptDisposition::Failed,
+                            error_code: err.code.as_str().to_owned(),
+                            retryable: err.retryable,
+                            queue_pressure: matches!(
+                                err.code,
+                                super::errors::ErrorCode::DeliveryQueuePressure
+                            ),
+                            scheduled_delay_ms: None,
+                        });
+                        return Err(stop_err);
+                    }
+                },
+            }
+        }
     }
 
     pub fn delivery_status(
@@ -583,6 +647,7 @@ mod tests {
     use super::{
         Client, Config, DeliveryState, Profile, RunState, SendRequest, SubscriptionStart,
     };
+    use crate::app::DeliveryOptions;
     use crate::error::{code, ErrorCategory as SdkErrorCategory, SdkError};
     use crate::event::{
         EventBatch as RawEventBatch, EventCursor, EventSubscription, SdkEvent,
@@ -603,6 +668,7 @@ mod tests {
         runtime_seq: AtomicUsize,
         send_seq: AtomicUsize,
         poll_batches: Mutex<VecDeque<RawEventBatch>>,
+        send_results: Mutex<VecDeque<Result<crate::MessageId, SdkError>>>,
         shutdown_calls: AtomicUsize,
         shutdown_results: Mutex<VecDeque<Result<Ack, SdkError>>>,
     }
@@ -613,6 +679,7 @@ mod tests {
                 runtime_seq: AtomicUsize::new(1),
                 send_seq: AtomicUsize::new(1),
                 poll_batches: Mutex::new(VecDeque::new()),
+                send_results: Mutex::new(VecDeque::new()),
                 shutdown_calls: AtomicUsize::new(0),
                 shutdown_results: Mutex::new(VecDeque::new()),
             }
@@ -624,6 +691,10 @@ mod tests {
 
         fn queue_shutdown_result(&self, result: Result<Ack, SdkError>) {
             self.shutdown_results.lock().expect("shutdown results").push_back(result);
+        }
+
+        fn queue_send_result(&self, result: Result<crate::MessageId, SdkError>) {
+            self.send_results.lock().expect("send results").push_back(result);
         }
     }
 
@@ -657,7 +728,16 @@ mod tests {
         }
 
         fn send(&self, _req: RawSendRequest) -> Result<crate::MessageId, SdkError> {
-            Ok(crate::MessageId(format!("msg-{}", self.send_seq.fetch_add(1, Ordering::Relaxed))))
+            self.send_results
+                .lock()
+                .expect("send results")
+                .pop_front()
+                .unwrap_or_else(|| {
+                    Ok(crate::MessageId(format!(
+                        "msg-{}",
+                        self.send_seq.fetch_add(1, Ordering::Relaxed)
+                    )))
+                })
         }
 
         fn cancel(&self, _id: crate::MessageId) -> Result<CancelResult, SdkError> {
@@ -888,5 +968,89 @@ mod tests {
             .restart(Config::desktop_default())
             .expect_err("restart should fail when stop fails");
         assert_eq!(err.code.as_str(), "SDK_APP_INTERNAL_UNEXPECTED_FAILURE");
+    }
+
+    #[test]
+    fn delivery_plan_tracks_profile_defaults() {
+        let config = Config::desktop_default();
+        let plan = config.delivery_plan();
+
+        assert_eq!(plan.profile, Profile::DesktopDefault);
+        assert_eq!(plan.retry.max_attempts, 5);
+        assert!(plan.reconnect.enabled);
+        assert_eq!(plan.default_event_batch_size, 64);
+        assert!(plan.redaction_enabled);
+    }
+
+    #[test]
+    fn send_with_profile_defaults_retries_queue_pressure() {
+        let backend = MockBackend::new();
+        backend.queue_send_result(Err(SdkError::new(
+            "SDK_RUNTIME_STORE_FORWARD_CAPACITY_REACHED",
+            SdkErrorCategory::Runtime,
+            "full",
+        )
+        .with_retryable(true)));
+        let app = Client::new(backend);
+        app.start(Config::desktop_default()).expect("start");
+
+        let report = app
+            .send_with_profile_defaults(SendRequest::new("src", "dst", json!({ "body": "hello" })))
+            .expect("report");
+
+        assert_eq!(report.attempts.len(), 1);
+        assert_eq!(report.attempts[0].disposition, super::super::delivery::AttemptDisposition::Retried);
+        assert!(report.attempts[0].queue_pressure);
+        assert_eq!(report.receipt.profile, Profile::DesktopDefault);
+    }
+
+    #[test]
+    fn send_with_options_can_fail_fast_on_queue_pressure() {
+        let backend = MockBackend::new();
+        backend.queue_send_result(Err(SdkError::new(
+            "SDK_RUNTIME_STORE_FORWARD_CAPACITY_REACHED",
+            SdkErrorCategory::Runtime,
+            "full",
+        )
+        .with_retryable(true)));
+        let app = Client::new(backend);
+        app.start(Config::desktop_default()).expect("start");
+
+        let err = app
+            .send_with_options(
+                SendRequest::new("src", "dst", json!({ "body": "hello" })),
+                super::super::delivery::DeliveryOptions {
+                    queue_pressure_strategy: Some(super::super::delivery::QueuePressureStrategy::FailFast),
+                    ..Default::default()
+                },
+            )
+            .expect_err("queue pressure should fail fast");
+
+        assert_eq!(err.code.as_str(), "SDK_APP_DELIVERY_QUEUE_PRESSURE");
+    }
+
+    #[test]
+    fn send_with_options_maps_retry_exhaustion() {
+        let backend = MockBackend::new();
+        backend.queue_send_result(Err(
+            SdkError::new(code::INTERNAL, SdkErrorCategory::Internal, "temporary")
+                .with_retryable(true),
+        ));
+        backend.queue_send_result(Err(
+            SdkError::new(code::INTERNAL, SdkErrorCategory::Internal, "temporary")
+                .with_retryable(true),
+        ));
+        let app = Client::new(backend);
+        app.start(Config::testing_default()).expect("start");
+
+        let err = app
+            .send_with_options(
+                SendRequest::new("src", "dst", json!({ "body": "hello" })),
+                DeliveryOptions { max_attempts: Some(2), ..Default::default() },
+            )
+            .expect_err("retry exhaustion");
+
+        assert_eq!(err.code.as_str(), "SDK_APP_DELIVERY_RETRY_EXHAUSTED");
+        assert_eq!(err.cause_code.as_deref(), Some("SDK_INTERNAL_ERROR"));
     }
 }

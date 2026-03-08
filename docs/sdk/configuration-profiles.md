@@ -1,6 +1,24 @@
 # SDK Configuration and Profiles
 
 `SdkConfig` combines runtime policy, event buffering, redaction, and RPC transport controls.
+The app-facing layer in `lxmf_sdk::app` adds profile-derived policy helpers on top of that lower-level config surface.
+
+## App Profiles
+
+For most apps, start from the app-facing presets instead of constructing `SdkConfig` manually:
+
+- `app::Config::from_profile(app::Profile::MobileDefault)`
+- `app::Config::from_profile(app::Profile::DesktopDefault)`
+- `app::Config::from_profile(app::Profile::EmbeddedDefault)`
+- `app::Config::from_profile(app::Profile::TestingDefault)`
+
+The app layer also exposes:
+
+- `Config::delivery_plan()`
+- `Client::send_with_profile_defaults(request)`
+- `Client::send_with_options(request, options)`
+
+These helpers apply the profile’s bounded retry and queue-pressure policy so callers do not need their own default retry loops.
 
 ## Profile Selection
 
