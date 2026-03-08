@@ -40,12 +40,6 @@ pub use capability::{
     CapabilityDescriptor, CapabilityState, EffectiveLimits, NegotiationRequest,
     NegotiationResponse, PluginDescriptor, PluginState,
 };
-pub use easy::{
-    EasyCapabilitySummary, EasyClient, EasyConfig, EasyDeliveryState, EasyDeliveryStatus,
-    EasyError, EasyErrorCategory, EasyErrorCode, EasyEvent, EasyEventBatch, EasyEventKind,
-    EasyEventMetadata, EasyHandle, EasyProfile, EasyRunState, EasyRuntimeStatus, EasySendReceipt,
-    EasySendRequest, EasySeverity, EasyStreamGapDetails, EasySubscriptionStart,
-};
 // Stability class: internal
 pub use client::Client;
 // Stability class: stable

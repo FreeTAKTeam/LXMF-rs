@@ -1,13 +1,15 @@
 use crate::easy::capabilities::EasyCapabilitySummary;
 use crate::easy::errors::EasyError;
+#[cfg(feature = "sdk-async")]
 use crate::easy::events::{
     map_event_batch, subscription_cursor, EasyEventBatch, EasySubscriptionStart,
 };
 use crate::{
-    Client, ClientHandle, DeliverySnapshot, DeliveryState, EventCursor, LxmfSdk, LxmfSdkAsync,
-    Profile, RpcBackendClient, RuntimeSnapshot, RuntimeState, SdkBackend, SdkBackendAsyncEvents,
-    SdkConfig, SendRequest, ShutdownMode, StartRequest,
+    Client, ClientHandle, DeliverySnapshot, DeliveryState, EventCursor, LxmfSdk, Profile,
+    RuntimeSnapshot, RuntimeState, SdkBackend, SdkConfig, SendRequest, ShutdownMode, StartRequest,
 };
+#[cfg(feature = "sdk-async")]
+use crate::{LxmfSdkAsync, SdkBackendAsyncEvents};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use std::collections::BTreeMap;
@@ -331,6 +333,10 @@ impl<B: SdkBackend> EasyClient<B> {
 
     pub fn start(&self, config: EasyConfig) -> Result<EasyHandle, EasyError> {
         let mut state = self.state.lock().expect("easy client mutex poisoned");
+        if state.client.is_none() && state.session.is_some() {
+            state.session = None;
+            state.lifecycle = EasyRunState::Stopped;
+        }
         if let Some(session) = state.session.as_ref() {
             let session = session.lock().expect("easy session mutex poisoned");
             return if session.config == config {
@@ -370,7 +376,7 @@ impl<B: SdkBackend> EasyClient<B> {
     }
 
     pub fn restart(&self, config: EasyConfig) -> Result<EasyHandle, EasyError> {
-        let _ = self.stop(ShutdownMode::Immediate);
+        self.stop(ShutdownMode::Immediate)?;
         self.start(config)
     }
 
@@ -438,12 +444,18 @@ impl<B: SdkBackend> EasyClient<B> {
 
     pub fn stop(&self, mode: ShutdownMode) -> Result<(), EasyError> {
         let mut state = self.state.lock().expect("easy client mutex poisoned");
-        let Some(client) = state.client.take() else {
+        let Some(client) = state.client.as_ref().cloned() else {
+            state.session = None;
             state.lifecycle = EasyRunState::Stopped;
             return Ok(());
         };
+        let previous_lifecycle = state.lifecycle.clone();
         state.lifecycle = EasyRunState::Stopping;
-        client.shutdown(mode).map_err(EasyError::from)?;
+        if let Err(err) = client.shutdown(mode) {
+            state.lifecycle = previous_lifecycle;
+            return Err(EasyError::from(err));
+        }
+        state.client = None;
         state.session = None;
         state.lifecycle = EasyRunState::Stopped;
         Ok(())
@@ -486,9 +498,9 @@ impl<B: SdkBackend> EasyClient<B> {
 }
 
 #[cfg(feature = "rpc-backend")]
-impl EasyClient<RpcBackendClient> {
+impl EasyClient<crate::RpcBackendClient> {
     pub fn rpc(endpoint: impl Into<String>) -> Self {
-        Self::new(RpcBackendClient::new(endpoint.into()))
+        Self::new(crate::RpcBackendClient::new(endpoint.into()))
     }
 }
 
@@ -588,6 +600,7 @@ mod tests {
         send_seq: AtomicUsize,
         poll_batches: Mutex<VecDeque<EventBatch>>,
         shutdown_calls: AtomicUsize,
+        shutdown_results: Mutex<VecDeque<Result<Ack, SdkError>>>,
     }
 
     impl MockBackend {
@@ -597,11 +610,16 @@ mod tests {
                 send_seq: AtomicUsize::new(1),
                 poll_batches: Mutex::new(VecDeque::new()),
                 shutdown_calls: AtomicUsize::new(0),
+                shutdown_results: Mutex::new(VecDeque::new()),
             }
         }
 
         fn queue_batch(&self, batch: EventBatch) {
             self.poll_batches.lock().expect("poll batches").push_back(batch);
+        }
+
+        fn queue_shutdown_result(&self, result: Result<Ack, SdkError>) {
+            self.shutdown_results.lock().expect("shutdown results").push_back(result);
         }
     }
 
@@ -695,7 +713,11 @@ mod tests {
 
         fn shutdown(&self, _mode: ShutdownMode) -> Result<Ack, SdkError> {
             self.shutdown_calls.fetch_add(1, Ordering::Relaxed);
-            Ok(Ack { accepted: true, revision: None })
+            self.shutdown_results
+                .lock()
+                .expect("shutdown results")
+                .pop_front()
+                .unwrap_or(Ok(Ack { accepted: true, revision: None }))
         }
     }
 
@@ -820,5 +842,43 @@ mod tests {
             .send(EasySendRequest::new("src", "dst", json!({ "body": "hello" })))
             .expect_err("send should fail");
         assert_eq!(err.code.as_str(), "EASY_RUNTIME_NOT_STARTED");
+        assert!(!err.user_action_required);
+    }
+
+    #[test]
+    fn failed_stop_preserves_live_session_state() {
+        let backend = MockBackend::new();
+        backend.queue_shutdown_result(Err(SdkError::new(
+            code::INTERNAL,
+            ErrorCategory::Internal,
+            "shutdown failed",
+        )));
+        let easy = EasyClient::new(backend);
+        easy.start(EasyConfig::desktop_default()).expect("start");
+
+        let err = easy.stop(ShutdownMode::Immediate).expect_err("stop should fail");
+        assert_eq!(err.code.as_str(), "EASY_INTERNAL_UNEXPECTED_FAILURE");
+
+        let receipt = easy
+            .send(EasySendRequest::new("src", "dst", json!({ "body": "still-live" })))
+            .expect("send after failed stop");
+        assert_eq!(receipt.profile, EasyProfile::DesktopDefault);
+    }
+
+    #[test]
+    fn restart_propagates_stop_failures() {
+        let backend = MockBackend::new();
+        backend.queue_shutdown_result(Err(SdkError::new(
+            code::INTERNAL,
+            ErrorCategory::Internal,
+            "shutdown failed",
+        )));
+        let easy = EasyClient::new(backend);
+        easy.start(EasyConfig::desktop_default()).expect("start");
+
+        let err = easy
+            .restart(EasyConfig::desktop_default())
+            .expect_err("restart should fail when stop fails");
+        assert_eq!(err.code.as_str(), "EASY_INTERNAL_UNEXPECTED_FAILURE");
     }
 }

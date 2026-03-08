@@ -48,20 +48,20 @@ Out of scope:
 The default client model consists of:
 
 - `Node` or `Client`
-- `EasyConfig`
+- `Config`
 - `SendRequest`
 - `SendReceipt`
 - `EventStream`
-- `SdkEasyError`
+- `Error`
 - `RuntimeStatus`
 
 Default lifecycle methods:
 
-- `start(config) -> Result<Handle, SdkEasyError>`
-- `stop(mode) -> Result<(), SdkEasyError>`
-- `send(request) -> Result<SendReceipt, SdkEasyError>`
-- `subscribe_events(options) -> Result<EventStream, SdkEasyError>`
-- `status() -> Result<RuntimeStatus, SdkEasyError>`
+- `start(config) -> Result<Handle, Error>`
+- `stop(mode) -> Result<(), Error>`
+- `send(request) -> Result<SendReceipt, Error>`
+- `subscribe_events(options) -> Result<EventStream, Error>`
+- `status() -> Result<RuntimeStatus, Error>`
 
 Optional additive helpers:
 

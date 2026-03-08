@@ -1,4 +1,6 @@
-use crate::event::{EventBatch, EventSubscription, SdkEvent, Severity, SubscriptionStart};
+#[cfg(feature = "sdk-async")]
+use crate::event::{EventBatch, EventSubscription, SdkEvent};
+use crate::event::{Severity, SubscriptionStart};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use std::collections::BTreeMap;
@@ -121,10 +123,12 @@ pub struct EasyEventBatch {
     pub dropped_count: u64,
 }
 
+#[cfg(feature = "sdk-async")]
 fn payload_state(payload: &JsonValue, key: &str) -> Option<String> {
     payload.get(key).and_then(JsonValue::as_str).map(|value| value.trim().to_ascii_lowercase())
 }
 
+#[cfg(feature = "sdk-async")]
 fn receipt_state(payload: &JsonValue) -> Option<String> {
     let status = payload
         .get("message")
@@ -133,6 +137,7 @@ fn receipt_state(payload: &JsonValue) -> Option<String> {
     Some(status.split(':').next().unwrap_or(status).trim().to_ascii_lowercase())
 }
 
+#[cfg(feature = "sdk-async")]
 fn map_delivery_state(state: &str) -> EasyEventKind {
     match state {
         "queued" => EasyEventKind::MessageQueued,
@@ -145,6 +150,7 @@ fn map_delivery_state(state: &str) -> EasyEventKind {
     }
 }
 
+#[cfg(feature = "sdk-async")]
 pub fn map_sdk_event(event: SdkEvent, profile_id: &str) -> EasyEvent {
     let kind = match event.event_type.as_str() {
         "RuntimeStateChanged" => {
@@ -168,6 +174,9 @@ pub fn map_sdk_event(event: SdkEvent, profile_id: &str) -> EasyEvent {
             map_delivery_state(state.as_str())
         }
         "DeliveryRetryScheduled" => EasyEventKind::RetryScheduled,
+        "RuntimeDegraded" | "runtime_degraded" => EasyEventKind::RuntimeDegraded,
+        "RuntimeRecovered" | "runtime_recovered" => EasyEventKind::RuntimeRecovered,
+        "ReconnectScheduled" | "reconnect_scheduled" => EasyEventKind::ReconnectScheduled,
         "InboundMessageReceived" | "inbound" => EasyEventKind::InboundMessageReceived,
         "StreamGap" => EasyEventKind::StreamGapDetected(EasyStreamGapDetails {
             expected_seq_no: event.payload.get("expected_seq_no").and_then(JsonValue::as_u64),
@@ -217,6 +226,7 @@ pub fn map_sdk_event(event: SdkEvent, profile_id: &str) -> EasyEvent {
     }
 }
 
+#[cfg(feature = "sdk-async")]
 pub fn map_event_batch(batch: EventBatch, profile_id: &str) -> EasyEventBatch {
     EasyEventBatch {
         events: batch.events.into_iter().map(|event| map_sdk_event(event, profile_id)).collect(),
@@ -224,6 +234,7 @@ pub fn map_event_batch(batch: EventBatch, profile_id: &str) -> EasyEventBatch {
     }
 }
 
+#[cfg(feature = "sdk-async")]
 pub fn subscription_cursor(subscription: &EventSubscription) -> Option<crate::EventCursor> {
     subscription.cursor.clone()
 }
@@ -289,5 +300,19 @@ mod tests {
     fn easy_subscription_start_round_trips() {
         let raw: SubscriptionStart = EasySubscriptionStart::Tail.into();
         assert_eq!(EasySubscriptionStart::from(raw), EasySubscriptionStart::Tail);
+    }
+
+    #[test]
+    fn maps_runtime_degraded_and_reconnect_events() {
+        let degraded = map_sdk_event(base_event("RuntimeDegraded", json!({})), "desktop_default");
+        let reconnect = map_sdk_event(
+            base_event("ReconnectScheduled", json!({ "delay_ms": 500 })),
+            "desktop_default",
+        );
+        let recovered = map_sdk_event(base_event("RuntimeRecovered", json!({})), "desktop_default");
+
+        assert!(matches!(degraded.kind, EasyEventKind::RuntimeDegraded));
+        assert!(matches!(reconnect.kind, EasyEventKind::ReconnectScheduled));
+        assert!(matches!(recovered.kind, EasyEventKind::RuntimeRecovered));
     }
 }

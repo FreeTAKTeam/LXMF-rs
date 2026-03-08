@@ -101,7 +101,7 @@ impl EasyError {
             category: EasyErrorCategory::Runtime,
             retryable: false,
             terminal: true,
-            user_action_required: true,
+            user_action_required: false,
             message: "easy runtime has not been started".to_owned(),
             details: BTreeMap::new(),
             cause_code: None,
@@ -165,6 +165,7 @@ impl From<SdkError> for EasyError {
             code::RUNTIME_STREAM_DEGRADED | code::RUNTIME_CURSOR_EXPIRED => {
                 EasyErrorCode::RuntimeStreamDegraded
             }
+            "SDK_RUNTIME_STORE_FORWARD_CAPACITY_REACHED" => EasyErrorCode::DeliveryQueuePressure,
             code::RUNTIME_INVALID_STATE => EasyErrorCode::RuntimeInvalidState,
             code::SECURITY_AUTH_REQUIRED
             | code::SECURITY_TOKEN_INVALID
@@ -186,6 +187,9 @@ impl From<SdkError> for EasyError {
             ErrorCategory::Storage => EasyErrorCategory::Persistence,
             ErrorCategory::Crypto => EasyErrorCategory::Security,
             ErrorCategory::Timeout => EasyErrorCategory::Timeout,
+            ErrorCategory::Runtime if matches!(code, EasyErrorCode::DeliveryQueuePressure) => {
+                EasyErrorCategory::Delivery
+            }
             ErrorCategory::Runtime => EasyErrorCategory::Runtime,
             ErrorCategory::Security => EasyErrorCategory::Security,
             ErrorCategory::Internal => EasyErrorCategory::Internal,
@@ -196,6 +200,7 @@ impl From<SdkError> for EasyError {
             EasyErrorCode::RuntimeInvalidState
                 | EasyErrorCode::RuntimeAlreadyRunningDifferentConfig
                 | EasyErrorCode::RuntimeNotStarted
+                | EasyErrorCode::RuntimeStreamDegraded
                 | EasyErrorCode::DeliveryRetryExhausted
                 | EasyErrorCode::DeliveryCancelled
                 | EasyErrorCode::TimeoutOperationExpired
@@ -212,6 +217,8 @@ impl From<SdkError> for EasyError {
         } else {
             Some(machine_code)
         };
+
+        let retryable = retryable || matches!(code, EasyErrorCode::DeliveryQueuePressure);
 
         Self {
             code,
@@ -252,5 +259,36 @@ mod tests {
         ));
         assert_eq!(easy.code, EasyErrorCode::CapabilityRequiredFeatureMissing);
         assert_eq!(easy.cause_code.as_deref(), Some(code::CAPABILITY_DISABLED));
+    }
+
+    #[test]
+    fn maps_queue_pressure_into_typed_delivery_error() {
+        let easy = EasyError::from(SdkError::new(
+            "SDK_RUNTIME_STORE_FORWARD_CAPACITY_REACHED",
+            ErrorCategory::Runtime,
+            "queue pressure",
+        ));
+        assert_eq!(easy.code, EasyErrorCode::DeliveryQueuePressure);
+        assert_eq!(easy.category, EasyErrorCategory::Delivery);
+        assert!(easy.retryable);
+        assert!(!easy.terminal);
+    }
+
+    #[test]
+    fn not_started_is_not_user_action_required() {
+        let easy = EasyError::not_started();
+        assert!(!easy.user_action_required);
+        assert!(easy.terminal);
+    }
+
+    #[test]
+    fn degraded_stream_is_terminal_for_the_subscription() {
+        let easy = EasyError::from(SdkError::new(
+            code::RUNTIME_STREAM_DEGRADED,
+            ErrorCategory::Runtime,
+            "degraded",
+        ));
+        assert_eq!(easy.code, EasyErrorCode::RuntimeStreamDegraded);
+        assert!(easy.terminal);
     }
 }
