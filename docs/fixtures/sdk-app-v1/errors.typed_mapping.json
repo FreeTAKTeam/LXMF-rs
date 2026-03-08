@@ -4,28 +4,28 @@
   "kind": "error_mapping",
   "mappings": [
     {
-      "code": "EASY_RUNTIME_NOT_STARTED",
+      "code": "SDK_APP_RUNTIME_NOT_STARTED",
       "category": "Runtime",
       "retryable": false,
       "terminal": true,
       "user_action_required": false
     },
     {
-      "code": "EASY_DELIVERY_QUEUE_PRESSURE",
+      "code": "SDK_APP_DELIVERY_QUEUE_PRESSURE",
       "category": "Delivery",
       "retryable": true,
       "terminal": false,
       "user_action_required": false
     },
     {
-      "code": "EASY_PERSISTENCE_RECOVERY_REQUIRED",
+      "code": "SDK_APP_PERSISTENCE_RECOVERY_REQUIRED",
       "category": "Persistence",
       "retryable": false,
       "terminal": true,
       "user_action_required": true
     },
     {
-      "code": "EASY_TIMEOUT_OPERATION_EXPIRED",
+      "code": "SDK_APP_TIMEOUT_OPERATION_EXPIRED",
       "category": "Timeout",
       "retryable": false,
       "terminal": true,

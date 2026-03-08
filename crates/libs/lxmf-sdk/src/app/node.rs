@@ -1,12 +1,13 @@
-use crate::easy::capabilities::EasyCapabilitySummary;
-use crate::easy::errors::EasyError;
+use super::capabilities::CapabilitySummary;
+use super::errors::Error;
 #[cfg(feature = "sdk-async")]
-use crate::easy::events::{
-    map_event_batch, subscription_cursor, EasyEventBatch, EasySubscriptionStart,
+use super::events::{
+    map_event_batch, subscription_cursor, EventBatch, SubscriptionStart,
 };
 use crate::{
-    Client, ClientHandle, DeliverySnapshot, DeliveryState, EventCursor, LxmfSdk, Profile,
-    RuntimeSnapshot, RuntimeState, SdkBackend, SdkConfig, SendRequest, ShutdownMode, StartRequest,
+    Client as CoreClient, ClientHandle, DeliverySnapshot, DeliveryState as RawDeliveryState,
+    EventCursor, LxmfSdk, Profile as CoreProfile, RuntimeSnapshot, RuntimeState, SdkBackend,
+    SdkConfig, SendRequest as RawSendRequest, ShutdownMode, StartRequest,
 };
 #[cfg(feature = "sdk-async")]
 use crate::{LxmfSdkAsync, SdkBackendAsyncEvents};
@@ -18,14 +19,14 @@ use std::sync::{Arc, Mutex};
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
-pub enum EasyProfile {
+pub enum Profile {
     MobileDefault,
     DesktopDefault,
     EmbeddedDefault,
     TestingDefault,
 }
 
-impl EasyProfile {
+impl Profile {
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::MobileDefault => "mobile_default",
@@ -35,30 +36,30 @@ impl EasyProfile {
         }
     }
 
-    pub fn to_sdk_profile(&self) -> Profile {
+    pub fn to_sdk_profile(&self) -> CoreProfile {
         match self {
-            Self::MobileDefault => Profile::DesktopLocalRuntime,
-            Self::DesktopDefault => Profile::DesktopFull,
-            Self::EmbeddedDefault => Profile::EmbeddedAlloc,
-            Self::TestingDefault => Profile::DesktopLocalRuntime,
+            Self::MobileDefault => CoreProfile::DesktopLocalRuntime,
+            Self::DesktopDefault => CoreProfile::DesktopFull,
+            Self::EmbeddedDefault => CoreProfile::EmbeddedAlloc,
+            Self::TestingDefault => CoreProfile::DesktopLocalRuntime,
         }
     }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[non_exhaustive]
-pub struct EasyConfig {
-    pub profile: EasyProfile,
+pub struct Config {
+    pub profile: Profile,
     pub sdk_config: SdkConfig,
     pub supported_contract_versions: Vec<u16>,
     pub requested_capabilities: Vec<String>,
     pub event_batch_size: Option<usize>,
 }
 
-impl EasyConfig {
+impl Config {
     pub fn mobile_default() -> Self {
         Self {
-            profile: EasyProfile::MobileDefault,
+            profile: Profile::MobileDefault,
             sdk_config: SdkConfig::desktop_local_default(),
             supported_contract_versions: vec![2],
             requested_capabilities: Vec::new(),
@@ -68,7 +69,7 @@ impl EasyConfig {
 
     pub fn desktop_default() -> Self {
         Self {
-            profile: EasyProfile::DesktopDefault,
+            profile: Profile::DesktopDefault,
             sdk_config: SdkConfig::desktop_full_default(),
             supported_contract_versions: vec![2],
             requested_capabilities: Vec::new(),
@@ -78,7 +79,7 @@ impl EasyConfig {
 
     pub fn embedded_default() -> Self {
         Self {
-            profile: EasyProfile::EmbeddedDefault,
+            profile: Profile::EmbeddedDefault,
             sdk_config: SdkConfig::embedded_alloc_default(),
             supported_contract_versions: vec![2],
             requested_capabilities: Vec::new(),
@@ -90,7 +91,7 @@ impl EasyConfig {
         let mut sdk_config = SdkConfig::desktop_local_default();
         sdk_config.event_stream.max_poll_events = 32;
         Self {
-            profile: EasyProfile::TestingDefault,
+            profile: Profile::TestingDefault,
             sdk_config,
             supported_contract_versions: vec![2],
             requested_capabilities: Vec::new(),
@@ -113,7 +114,7 @@ impl EasyConfig {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
-pub enum EasyRunState {
+pub enum RunState {
     New,
     Starting,
     Running,
@@ -125,19 +126,19 @@ pub enum EasyRunState {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[non_exhaustive]
-pub struct EasyHandle {
+pub struct Handle {
     pub runtime_id: String,
-    pub profile: EasyProfile,
-    pub capabilities: EasyCapabilitySummary,
+    pub profile: Profile,
+    pub capabilities: CapabilitySummary,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[non_exhaustive]
-pub struct EasyRuntimeStatus {
+pub struct RuntimeStatus {
     pub runtime_id: Option<String>,
-    pub state: EasyRunState,
-    pub profile: Option<EasyProfile>,
-    pub capabilities: Option<EasyCapabilitySummary>,
+    pub state: RunState,
+    pub profile: Option<Profile>,
+    pub capabilities: Option<CapabilitySummary>,
     pub queued_messages: u64,
     pub in_flight_messages: u64,
     pub event_stream_position: u64,
@@ -146,7 +147,7 @@ pub struct EasyRuntimeStatus {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[non_exhaustive]
-pub struct EasySendRequest {
+pub struct SendRequest {
     pub source: String,
     pub destination: String,
     pub payload: JsonValue,
@@ -157,7 +158,7 @@ pub struct EasySendRequest {
     pub extensions: BTreeMap<String, JsonValue>,
 }
 
-impl EasySendRequest {
+impl SendRequest {
     pub fn new(
         source: impl Into<String>,
         destination: impl Into<String>,
@@ -189,8 +190,8 @@ impl EasySendRequest {
         self
     }
 
-    fn into_raw(self) -> SendRequest {
-        SendRequest {
+    fn into_raw(self) -> RawSendRequest {
+        RawSendRequest {
             source: self.source,
             destination: self.destination,
             payload: self.payload,
@@ -204,17 +205,17 @@ impl EasySendRequest {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[non_exhaustive]
-pub struct EasySendReceipt {
+pub struct SendReceipt {
     pub runtime_id: String,
     pub message_id: String,
-    pub profile: EasyProfile,
+    pub profile: Profile,
     pub correlation_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
-pub enum EasyDeliveryState {
+pub enum DeliveryState {
     Queued,
     Dispatching,
     Sent,
@@ -228,9 +229,9 @@ pub enum EasyDeliveryState {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[non_exhaustive]
-pub struct EasyDeliveryStatus {
+pub struct DeliveryStatus {
     pub message_id: String,
-    pub state: EasyDeliveryState,
+    pub state: DeliveryState,
     pub terminal: bool,
     pub last_updated_ms: u64,
     pub attempts: u32,
@@ -248,7 +249,7 @@ impl<B: SdkBackend> SdkBackend for SharedBackend<B> {
         self.0.negotiate(req)
     }
 
-    fn send(&self, req: SendRequest) -> Result<crate::MessageId, crate::SdkError> {
+    fn send(&self, req: RawSendRequest) -> Result<crate::MessageId, crate::SdkError> {
         self.0.send(req)
     }
 
@@ -299,99 +300,99 @@ impl<B: SdkBackendAsyncEvents> SdkBackendAsyncEvents for SharedBackend<B> {
     }
 }
 
-struct EasySessionState {
+struct SessionState {
     handle: ClientHandle,
-    config: EasyConfig,
+    config: Config,
     degraded: bool,
 }
 
-struct EasyState<B: SdkBackend> {
-    client: Option<Arc<Client<SharedBackend<B>>>>,
-    session: Option<Arc<Mutex<EasySessionState>>>,
-    lifecycle: EasyRunState,
+struct State<B: SdkBackend> {
+    client: Option<Arc<CoreClient<SharedBackend<B>>>>,
+    session: Option<Arc<Mutex<SessionState>>>,
+    lifecycle: RunState,
 }
 
-impl<B: SdkBackend> Default for EasyState<B> {
+impl<B: SdkBackend> Default for State<B> {
     fn default() -> Self {
-        Self { client: None, session: None, lifecycle: EasyRunState::New }
+        Self { client: None, session: None, lifecycle: RunState::New }
     }
 }
 
-pub struct EasyClient<B: SdkBackend> {
+pub struct Client<B: SdkBackend> {
     backend: Arc<B>,
-    state: Mutex<EasyState<B>>,
+    state: Mutex<State<B>>,
 }
 
-impl<B: SdkBackend> EasyClient<B> {
+impl<B: SdkBackend> Client<B> {
     pub fn new(backend: B) -> Self {
         Self::from_arc(Arc::new(backend))
     }
 
     pub fn from_arc(backend: Arc<B>) -> Self {
-        Self { backend, state: Mutex::new(EasyState::default()) }
+        Self { backend, state: Mutex::new(State::default()) }
     }
 
-    pub fn start(&self, config: EasyConfig) -> Result<EasyHandle, EasyError> {
-        let mut state = self.state.lock().expect("easy client mutex poisoned");
+    pub fn start(&self, config: Config) -> Result<Handle, Error> {
+        let mut state = self.state.lock().expect("app client mutex poisoned");
         if state.client.is_none() && state.session.is_some() {
             state.session = None;
-            state.lifecycle = EasyRunState::Stopped;
+            state.lifecycle = RunState::Stopped;
         }
         if let Some(session) = state.session.as_ref() {
-            let session = session.lock().expect("easy session mutex poisoned");
+            let session = session.lock().expect("app session mutex poisoned");
             return if session.config == config {
-                Ok(EasyHandle {
+                Ok(Handle {
                     runtime_id: session.handle.runtime_id.clone(),
                     profile: session.config.profile.clone(),
-                    capabilities: EasyCapabilitySummary::from(&session.handle),
+                    capabilities: CapabilitySummary::from(&session.handle),
                 })
             } else {
-                Err(EasyError::already_running_different_config())
+                Err(Error::already_running_different_config())
             };
         }
 
-        state.lifecycle = EasyRunState::Starting;
-        let client = Arc::new(Client::new(SharedBackend(Arc::clone(&self.backend))));
+        state.lifecycle = RunState::Starting;
+        let client = Arc::new(CoreClient::new(SharedBackend(Arc::clone(&self.backend))));
         let handle = match client.start(config.start_request()) {
             Ok(handle) => handle,
             Err(err) => {
-                state.lifecycle = EasyRunState::New;
-                return Err(EasyError::from(err));
+                state.lifecycle = RunState::New;
+                return Err(Error::from(err));
             }
         };
-        let session = Arc::new(Mutex::new(EasySessionState {
+        let session = Arc::new(Mutex::new(SessionState {
             handle: handle.clone(),
             config: config.clone(),
             degraded: false,
         }));
         state.client = Some(Arc::clone(&client));
         state.session = Some(session);
-        state.lifecycle = EasyRunState::Running;
+        state.lifecycle = RunState::Running;
 
-        Ok(EasyHandle {
+        Ok(Handle {
             runtime_id: handle.runtime_id.clone(),
             profile: config.profile,
-            capabilities: EasyCapabilitySummary::from(&handle),
+            capabilities: CapabilitySummary::from(&handle),
         })
     }
 
-    pub fn restart(&self, config: EasyConfig) -> Result<EasyHandle, EasyError> {
+    pub fn restart(&self, config: Config) -> Result<Handle, Error> {
         self.stop(ShutdownMode::Immediate)?;
         self.start(config)
     }
 
-    pub fn send(&self, request: EasySendRequest) -> Result<EasySendReceipt, EasyError> {
-        let state = self.state.lock().expect("easy client mutex poisoned");
+    pub fn send(&self, request: SendRequest) -> Result<SendReceipt, Error> {
+        let state = self.state.lock().expect("app client mutex poisoned");
         let Some(client) = state.client.as_ref() else {
-            return Err(EasyError::not_started());
+            return Err(Error::not_started());
         };
         let Some(session) = state.session.as_ref() else {
-            return Err(EasyError::not_started());
+            return Err(Error::not_started());
         };
-        let session = session.lock().expect("easy session mutex poisoned");
+        let session = session.lock().expect("app session mutex poisoned");
         let correlation_id = request.correlation_id.clone();
-        let message_id = client.send(request.into_raw()).map_err(EasyError::from)?;
-        Ok(EasySendReceipt {
+        let message_id = client.send(request.into_raw()).map_err(Error::from)?;
+        Ok(SendReceipt {
             runtime_id: session.handle.runtime_id.clone(),
             message_id: message_id.0,
             profile: session.config.profile.clone(),
@@ -402,19 +403,19 @@ impl<B: SdkBackend> EasyClient<B> {
     pub fn delivery_status(
         &self,
         message_id: impl Into<crate::MessageId>,
-    ) -> Result<Option<EasyDeliveryStatus>, EasyError> {
-        let state = self.state.lock().expect("easy client mutex poisoned");
+    ) -> Result<Option<DeliveryStatus>, Error> {
+        let state = self.state.lock().expect("app client mutex poisoned");
         let Some(client) = state.client.as_ref() else {
-            return Err(EasyError::not_started());
+            return Err(Error::not_started());
         };
-        let snapshot = client.status(message_id.into()).map_err(EasyError::from)?;
+        let snapshot = client.status(message_id.into()).map_err(Error::from)?;
         Ok(snapshot.map(map_delivery_snapshot))
     }
 
-    pub fn status(&self) -> Result<EasyRuntimeStatus, EasyError> {
-        let state = self.state.lock().expect("easy client mutex poisoned");
+    pub fn status(&self) -> Result<RuntimeStatus, Error> {
+        let state = self.state.lock().expect("app client mutex poisoned");
         let Some(client) = state.client.as_ref() else {
-            return Ok(EasyRuntimeStatus {
+            return Ok(RuntimeStatus {
                 runtime_id: None,
                 state: state.lifecycle.clone(),
                 profile: None,
@@ -426,15 +427,15 @@ impl<B: SdkBackend> EasyClient<B> {
             });
         };
         let Some(session) = state.session.as_ref() else {
-            return Err(EasyError::not_started());
+            return Err(Error::not_started());
         };
-        let snapshot = client.snapshot().map_err(EasyError::from)?;
-        let session = session.lock().expect("easy session mutex poisoned");
-        Ok(EasyRuntimeStatus {
+        let snapshot = client.snapshot().map_err(Error::from)?;
+        let session = session.lock().expect("app session mutex poisoned");
+        Ok(RuntimeStatus {
             runtime_id: Some(snapshot.runtime_id.clone()),
             state: map_runtime_state(snapshot.state, session.degraded),
             profile: Some(session.config.profile.clone()),
-            capabilities: Some(EasyCapabilitySummary::from(&session.handle)),
+            capabilities: Some(CapabilitySummary::from(&session.handle)),
             queued_messages: snapshot.queued_messages,
             in_flight_messages: snapshot.in_flight_messages,
             event_stream_position: snapshot.event_stream_position,
@@ -442,43 +443,43 @@ impl<B: SdkBackend> EasyClient<B> {
         })
     }
 
-    pub fn stop(&self, mode: ShutdownMode) -> Result<(), EasyError> {
-        let mut state = self.state.lock().expect("easy client mutex poisoned");
+    pub fn stop(&self, mode: ShutdownMode) -> Result<(), Error> {
+        let mut state = self.state.lock().expect("app client mutex poisoned");
         let Some(client) = state.client.as_ref().cloned() else {
             state.session = None;
-            state.lifecycle = EasyRunState::Stopped;
+            state.lifecycle = RunState::Stopped;
             return Ok(());
         };
         let previous_lifecycle = state.lifecycle.clone();
-        state.lifecycle = EasyRunState::Stopping;
+        state.lifecycle = RunState::Stopping;
         if let Err(err) = client.shutdown(mode) {
             state.lifecycle = previous_lifecycle;
-            return Err(EasyError::from(err));
+            return Err(Error::from(err));
         }
         state.client = None;
         state.session = None;
-        state.lifecycle = EasyRunState::Stopped;
+        state.lifecycle = RunState::Stopped;
         Ok(())
     }
 
     #[cfg(feature = "sdk-async")]
     pub fn subscribe_events(
         &self,
-        start: EasySubscriptionStart,
-    ) -> Result<EventStream<B>, EasyError>
+        start: SubscriptionStart,
+    ) -> Result<EventStream<B>, Error>
     where
         B: SdkBackendAsyncEvents,
     {
-        let state = self.state.lock().expect("easy client mutex poisoned");
+        let state = self.state.lock().expect("app client mutex poisoned");
         let Some(client) = state.client.as_ref() else {
-            return Err(EasyError::not_started());
+            return Err(Error::not_started());
         };
         let Some(session) = state.session.as_ref() else {
-            return Err(EasyError::not_started());
+            return Err(Error::not_started());
         };
         let subscription =
-            client.subscribe_events(start.clone().into()).map_err(EasyError::from)?;
-        let session_guard = session.lock().expect("easy session mutex poisoned");
+            client.subscribe_events(start.clone().into()).map_err(Error::from)?;
+        let session_guard = session.lock().expect("app session mutex poisoned");
         let max_batch_size = session_guard
             .config
             .event_batch_size
@@ -498,7 +499,7 @@ impl<B: SdkBackend> EasyClient<B> {
 }
 
 #[cfg(feature = "rpc-backend")]
-impl EasyClient<crate::RpcBackendClient> {
+impl Client<crate::RpcBackendClient> {
     pub fn rpc(endpoint: impl Into<String>) -> Self {
         Self::new(crate::RpcBackendClient::new(endpoint.into()))
     }
@@ -506,68 +507,68 @@ impl EasyClient<crate::RpcBackendClient> {
 
 #[cfg(feature = "sdk-async")]
 pub struct EventStream<B: SdkBackendAsyncEvents> {
-    client: Arc<Client<SharedBackend<B>>>,
-    session: Arc<Mutex<EasySessionState>>,
+    client: Arc<CoreClient<SharedBackend<B>>>,
+    session: Arc<Mutex<SessionState>>,
     cursor: Option<EventCursor>,
     max_batch_size: usize,
-    profile: EasyProfile,
+    profile: Profile,
 }
 
 #[cfg(feature = "sdk-async")]
 impl<B: SdkBackendAsyncEvents> EventStream<B> {
-    pub fn next_batch(&mut self) -> Result<EasyEventBatch, EasyError> {
+    pub fn next_batch(&mut self) -> Result<EventBatch, Error> {
         let batch = self
             .client
             .poll_events(self.cursor.clone(), self.max_batch_size)
-            .map_err(EasyError::from)?;
+            .map_err(Error::from)?;
         self.cursor = Some(batch.next_cursor.clone());
 
-        let easy_batch = map_event_batch(batch, self.profile.as_str());
-        if easy_batch.dropped_count > 0
-            || easy_batch.events.iter().any(|event| {
-                matches!(event.kind, crate::easy::events::EasyEventKind::StreamGapDetected(_))
+        let batch = map_event_batch(batch, self.profile.as_str());
+        if batch.dropped_count > 0
+            || batch.events.iter().any(|event| {
+                matches!(event.kind, super::events::EventKind::StreamGapDetected(_))
             })
         {
-            let mut session = self.session.lock().expect("easy session mutex poisoned");
+            let mut session = self.session.lock().expect("app session mutex poisoned");
             session.degraded = true;
         }
-        Ok(easy_batch)
+        Ok(batch)
     }
 
     pub fn reset(&mut self) {
         self.cursor = None;
-        let mut session = self.session.lock().expect("easy session mutex poisoned");
+        let mut session = self.session.lock().expect("app session mutex poisoned");
         session.degraded = false;
     }
 }
 
-fn map_runtime_state(state: RuntimeState, degraded: bool) -> EasyRunState {
+fn map_runtime_state(state: RuntimeState, degraded: bool) -> RunState {
     if degraded && state == RuntimeState::Running {
-        return EasyRunState::Degraded;
+        return RunState::Degraded;
     }
     match state {
-        RuntimeState::New => EasyRunState::New,
-        RuntimeState::Starting => EasyRunState::Starting,
-        RuntimeState::Running => EasyRunState::Running,
-        RuntimeState::Draining => EasyRunState::Stopping,
-        RuntimeState::Stopped => EasyRunState::Stopped,
-        RuntimeState::Failed | RuntimeState::Unknown => EasyRunState::Failed,
+        RuntimeState::New => RunState::New,
+        RuntimeState::Starting => RunState::Starting,
+        RuntimeState::Running => RunState::Running,
+        RuntimeState::Draining => RunState::Stopping,
+        RuntimeState::Stopped => RunState::Stopped,
+        RuntimeState::Failed | RuntimeState::Unknown => RunState::Failed,
     }
 }
 
-fn map_delivery_snapshot(snapshot: DeliverySnapshot) -> EasyDeliveryStatus {
+fn map_delivery_snapshot(snapshot: DeliverySnapshot) -> DeliveryStatus {
     let state = match snapshot.state {
-        DeliveryState::Queued => EasyDeliveryState::Queued,
-        DeliveryState::Dispatching | DeliveryState::InFlight => EasyDeliveryState::Dispatching,
-        DeliveryState::Sent => EasyDeliveryState::Sent,
-        DeliveryState::Delivered => EasyDeliveryState::Delivered,
-        DeliveryState::Failed => EasyDeliveryState::Failed,
-        DeliveryState::Cancelled => EasyDeliveryState::Cancelled,
-        DeliveryState::Expired => EasyDeliveryState::Expired,
-        DeliveryState::Rejected => EasyDeliveryState::Rejected,
-        DeliveryState::Unknown => EasyDeliveryState::Unknown,
+        RawDeliveryState::Queued => DeliveryState::Queued,
+        RawDeliveryState::Dispatching | RawDeliveryState::InFlight => DeliveryState::Dispatching,
+        RawDeliveryState::Sent => DeliveryState::Sent,
+        RawDeliveryState::Delivered => DeliveryState::Delivered,
+        RawDeliveryState::Failed => DeliveryState::Failed,
+        RawDeliveryState::Cancelled => DeliveryState::Cancelled,
+        RawDeliveryState::Expired => DeliveryState::Expired,
+        RawDeliveryState::Rejected => DeliveryState::Rejected,
+        RawDeliveryState::Unknown => DeliveryState::Unknown,
     };
-    EasyDeliveryStatus {
+    DeliveryStatus {
         message_id: snapshot.message_id.0,
         state,
         terminal: snapshot.terminal,
@@ -580,15 +581,18 @@ fn map_delivery_snapshot(snapshot: DeliverySnapshot) -> EasyDeliveryStatus {
 #[cfg(test)]
 mod tests {
     use super::{
-        EasyClient, EasyConfig, EasyDeliveryState, EasyProfile, EasyRunState, EasySendRequest,
-        EasySubscriptionStart,
+        Client, Config, DeliveryState, Profile, RunState, SendRequest, SubscriptionStart,
     };
-    use crate::error::{code, ErrorCategory, SdkError};
-    use crate::event::{EventBatch, EventCursor, EventSubscription, SdkEvent, Severity};
+    use crate::error::{code, ErrorCategory as SdkErrorCategory, SdkError};
+    use crate::event::{
+        EventBatch as RawEventBatch, EventCursor, EventSubscription, SdkEvent,
+        Severity as RawSeverity,
+    };
     use crate::{
-        Ack, CancelResult, DeliverySnapshot, DeliveryState, EffectiveLimits, NegotiationRequest,
-        NegotiationResponse, Profile, RuntimeSnapshot, RuntimeState, SdkBackend,
-        SdkBackendAsyncEvents, SendRequest, ShutdownMode,
+        Ack, CancelResult, DeliverySnapshot, DeliveryState as RawDeliveryState, EffectiveLimits,
+        NegotiationRequest, NegotiationResponse, Profile as CoreProfile, RuntimeSnapshot,
+        RuntimeState, SdkBackend, SdkBackendAsyncEvents, SendRequest as RawSendRequest,
+        ShutdownMode,
     };
     use serde_json::json;
     use std::collections::{BTreeMap, VecDeque};
@@ -598,7 +602,7 @@ mod tests {
     struct MockBackend {
         runtime_seq: AtomicUsize,
         send_seq: AtomicUsize,
-        poll_batches: Mutex<VecDeque<EventBatch>>,
+        poll_batches: Mutex<VecDeque<RawEventBatch>>,
         shutdown_calls: AtomicUsize,
         shutdown_results: Mutex<VecDeque<Result<Ack, SdkError>>>,
     }
@@ -614,7 +618,7 @@ mod tests {
             }
         }
 
-        fn queue_batch(&self, batch: EventBatch) {
+        fn queue_batch(&self, batch: RawEventBatch) {
             self.poll_batches.lock().expect("poll batches").push_back(batch);
         }
 
@@ -652,7 +656,7 @@ mod tests {
             })
         }
 
-        fn send(&self, _req: SendRequest) -> Result<crate::MessageId, SdkError> {
+        fn send(&self, _req: RawSendRequest) -> Result<crate::MessageId, SdkError> {
             Ok(crate::MessageId(format!("msg-{}", self.send_seq.fetch_add(1, Ordering::Relaxed))))
         }
 
@@ -663,7 +667,7 @@ mod tests {
         fn status(&self, id: crate::MessageId) -> Result<Option<DeliverySnapshot>, SdkError> {
             Ok(Some(DeliverySnapshot {
                 message_id: id,
-                state: DeliveryState::Sent,
+                state: RawDeliveryState::Sent,
                 terminal: false,
                 last_updated_ms: 10,
                 attempts: 1,
@@ -683,17 +687,21 @@ mod tests {
             &self,
             cursor: Option<EventCursor>,
             _max: usize,
-        ) -> Result<EventBatch, SdkError> {
+        ) -> Result<RawEventBatch, SdkError> {
             self.poll_batches
                 .lock()
                 .expect("poll batches")
                 .pop_front()
                 .ok_or_else(|| {
-                    SdkError::new(code::RUNTIME_STREAM_DEGRADED, ErrorCategory::Runtime, "empty")
+                    SdkError::new(
+                        code::RUNTIME_STREAM_DEGRADED,
+                        SdkErrorCategory::Runtime,
+                        "empty",
+                    )
                         .with_retryable(false)
                 })
                 .or_else(|_| {
-                    Ok(EventBatch::empty(
+                    Ok(RawEventBatch::empty(
                         cursor.unwrap_or_else(|| EventCursor("cursor-0".to_owned())),
                     ))
                 })
@@ -742,7 +750,7 @@ mod tests {
             contract_version: 2,
             ts_ms: 10,
             event_type: "RuntimeStateChanged".to_owned(),
-            severity: Severity::Info,
+            severity: RawSeverity::Info,
             source_component: "test".to_owned(),
             operation_id: None,
             message_id: None,
@@ -763,7 +771,7 @@ mod tests {
             contract_version: 2,
             ts_ms: 20,
             event_type: "StreamGap".to_owned(),
-            severity: Severity::Warn,
+            severity: RawSeverity::Warn,
             source_component: "test".to_owned(),
             operation_id: None,
             message_id: None,
@@ -776,48 +784,48 @@ mod tests {
     }
 
     #[test]
-    fn easy_config_presets_map_to_expected_profiles() {
-        assert_eq!(EasyConfig::mobile_default().profile, EasyProfile::MobileDefault);
-        assert_eq!(EasyConfig::mobile_default().sdk_config.profile, Profile::DesktopLocalRuntime);
-        assert_eq!(EasyConfig::desktop_default().sdk_config.profile, Profile::DesktopFull);
-        assert_eq!(EasyConfig::embedded_default().sdk_config.profile, Profile::EmbeddedAlloc);
+    fn config_presets_map_to_expected_profiles() {
+        assert_eq!(Config::mobile_default().profile, Profile::MobileDefault);
+        assert_eq!(Config::mobile_default().sdk_config.profile, CoreProfile::DesktopLocalRuntime);
+        assert_eq!(Config::desktop_default().sdk_config.profile, CoreProfile::DesktopFull);
+        assert_eq!(Config::embedded_default().sdk_config.profile, CoreProfile::EmbeddedAlloc);
     }
 
     #[test]
-    fn easy_client_restarts_by_recreating_inner_client() {
+    fn client_restarts_by_recreating_inner_client() {
         let backend = MockBackend::new();
-        let easy = EasyClient::new(backend);
-        let first = easy.start(EasyConfig::desktop_default()).expect("first start");
-        easy.stop(ShutdownMode::Immediate).expect("stop");
-        let second = easy.start(EasyConfig::desktop_default()).expect("second start");
+        let app = Client::new(backend);
+        let first = app.start(Config::desktop_default()).expect("first start");
+        app.stop(ShutdownMode::Immediate).expect("stop");
+        let second = app.start(Config::desktop_default()).expect("second start");
         assert_ne!(first.runtime_id, second.runtime_id);
     }
 
     #[test]
-    fn easy_client_send_and_status_hide_raw_sdk_types() {
+    fn client_send_and_status_hide_raw_sdk_types() {
         let backend = MockBackend::new();
-        let easy = EasyClient::new(backend);
-        easy.start(EasyConfig::desktop_default()).expect("start");
-        let receipt = easy
+        let app = Client::new(backend);
+        app.start(Config::desktop_default()).expect("start");
+        let receipt = app
             .send(
-                EasySendRequest::new("src", "dst", json!({ "body": "hello" }))
+                SendRequest::new("src", "dst", json!({ "body": "hello" }))
                     .with_correlation_id("corr-1"),
             )
             .expect("send");
-        assert_eq!(receipt.profile, EasyProfile::DesktopDefault);
+        assert_eq!(receipt.profile, Profile::DesktopDefault);
         assert_eq!(receipt.correlation_id.as_deref(), Some("corr-1"));
 
-        let status = easy
+        let status = app
             .delivery_status(receipt.message_id.as_str())
             .expect("delivery status")
             .expect("snapshot");
-        assert_eq!(status.state, EasyDeliveryState::Sent);
+        assert_eq!(status.state, DeliveryState::Sent);
     }
 
     #[test]
-    fn easy_client_status_reports_degraded_after_gap_event() {
+    fn client_status_reports_degraded_after_gap_event() {
         let backend = MockBackend::new();
-        backend.queue_batch(EventBatch {
+        backend.queue_batch(RawEventBatch {
             events: vec![runtime_started_event(), stream_gap_event()],
             next_cursor: EventCursor("cursor-2".to_owned()),
             dropped_count: 3,
@@ -825,23 +833,23 @@ mod tests {
             extensions: BTreeMap::new(),
         });
 
-        let easy = EasyClient::new(backend);
-        easy.start(EasyConfig::desktop_default()).expect("start");
-        let mut stream = easy.subscribe_events(EasySubscriptionStart::Head).expect("subscribe");
+        let app = Client::new(backend);
+        app.start(Config::desktop_default()).expect("start");
+        let mut stream = app.subscribe_events(SubscriptionStart::Head).expect("subscribe");
         let batch = stream.next_batch().expect("next batch");
         assert_eq!(batch.events.len(), 2);
 
-        let status = easy.status().expect("status");
-        assert_eq!(status.state, EasyRunState::Degraded);
+        let status = app.status().expect("status");
+        assert_eq!(status.state, RunState::Degraded);
     }
 
     #[test]
-    fn easy_client_returns_not_started_before_start() {
-        let easy = EasyClient::new(MockBackend::new());
-        let err = easy
-            .send(EasySendRequest::new("src", "dst", json!({ "body": "hello" })))
+    fn client_returns_not_started_before_start() {
+        let app = Client::new(MockBackend::new());
+        let err = app
+            .send(SendRequest::new("src", "dst", json!({ "body": "hello" })))
             .expect_err("send should fail");
-        assert_eq!(err.code.as_str(), "EASY_RUNTIME_NOT_STARTED");
+        assert_eq!(err.code.as_str(), "SDK_APP_RUNTIME_NOT_STARTED");
         assert!(!err.user_action_required);
     }
 
@@ -850,19 +858,19 @@ mod tests {
         let backend = MockBackend::new();
         backend.queue_shutdown_result(Err(SdkError::new(
             code::INTERNAL,
-            ErrorCategory::Internal,
+            SdkErrorCategory::Internal,
             "shutdown failed",
         )));
-        let easy = EasyClient::new(backend);
-        easy.start(EasyConfig::desktop_default()).expect("start");
+        let app = Client::new(backend);
+        app.start(Config::desktop_default()).expect("start");
 
-        let err = easy.stop(ShutdownMode::Immediate).expect_err("stop should fail");
-        assert_eq!(err.code.as_str(), "EASY_INTERNAL_UNEXPECTED_FAILURE");
+        let err = app.stop(ShutdownMode::Immediate).expect_err("stop should fail");
+        assert_eq!(err.code.as_str(), "SDK_APP_INTERNAL_UNEXPECTED_FAILURE");
 
-        let receipt = easy
-            .send(EasySendRequest::new("src", "dst", json!({ "body": "still-live" })))
+        let receipt = app
+            .send(SendRequest::new("src", "dst", json!({ "body": "still-live" })))
             .expect("send after failed stop");
-        assert_eq!(receipt.profile, EasyProfile::DesktopDefault);
+        assert_eq!(receipt.profile, Profile::DesktopDefault);
     }
 
     #[test]
@@ -870,15 +878,15 @@ mod tests {
         let backend = MockBackend::new();
         backend.queue_shutdown_result(Err(SdkError::new(
             code::INTERNAL,
-            ErrorCategory::Internal,
+            SdkErrorCategory::Internal,
             "shutdown failed",
         )));
-        let easy = EasyClient::new(backend);
-        easy.start(EasyConfig::desktop_default()).expect("start");
+        let app = Client::new(backend);
+        app.start(Config::desktop_default()).expect("start");
 
-        let err = easy
-            .restart(EasyConfig::desktop_default())
+        let err = app
+            .restart(Config::desktop_default())
             .expect_err("restart should fail when stop fails");
-        assert_eq!(err.code.as_str(), "EASY_INTERNAL_UNEXPECTED_FAILURE");
+        assert_eq!(err.code.as_str(), "SDK_APP_INTERNAL_UNEXPECTED_FAILURE");
     }
 }

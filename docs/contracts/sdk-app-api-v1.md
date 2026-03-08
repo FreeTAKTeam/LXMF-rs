@@ -1,7 +1,7 @@
-# SDK Easy-Mode API v1
+# SDK App API v1
 
 Status: Draft, implementation target  
-Contract family: `sdk-easy`  
+Contract family: `sdk-app`  
 Contract release: `v1`  
 Underlying core contract: `sdk-v2.5`
 
@@ -9,7 +9,7 @@ Underlying core contract: `sdk-v2.5`
 
 This document defines the default, app-facing SDK surface for clients that want the easiest possible integration path.
 
-The easy-mode API is:
+The app-api API is:
 
 - event-first
 - profile-aware
@@ -37,7 +37,7 @@ Out of scope:
 
 ## Design Rules
 
-1. Easy mode is the default API surface for normal app consumers.
+1. App API is the default API surface for normal app consumers.
 2. Low-level polling, transport, wire, and manual-tick behavior are advanced-only.
 3. All first-party wrappers must implement semantically identical behavior by default.
 4. Policy belongs in SDK orchestration, not in each wrapper.
@@ -72,7 +72,7 @@ Optional additive helpers:
 
 ## Lifecycle State Machine
 
-Easy-mode runtime states:
+App API runtime states:
 
 - `New`
 - `Starting`
@@ -86,7 +86,7 @@ Rules:
 
 1. `start()` is legal in `New` and `Stopped`.
 2. `start()` in `Running` returns the existing active handle if the effective config is equivalent.
-3. `start()` in `Running` with a non-equivalent effective config fails with `EASY_RUNTIME_ALREADY_RUNNING_DIFFERENT_CONFIG`.
+3. `start()` in `Running` with a non-equivalent effective config fails with `SDK_APP_RUNTIME_ALREADY_RUNNING_DIFFERENT_CONFIG`.
 4. `send()` is legal in `Running` and may be legal in `Degraded` only if the active profile explicitly permits queued offline delivery.
 5. `subscribe_events()` is legal in `Starting`, `Running`, `Degraded`, and `Stopping`.
 6. `stop()` is idempotent.
@@ -104,7 +104,7 @@ Bindings must document the execution context for callbacks/async streams, but se
 
 ## Delivery Semantics
 
-Easy mode owns the default delivery policy.
+App API owns the default delivery policy.
 
 Required default behaviors:
 
@@ -120,7 +120,7 @@ Default consumers must not implement queue-pressure logic themselves.
 
 Rules:
 
-1. Queue pressure is surfaced as a typed easy-mode error.
+1. Queue pressure is surfaced as a typed app-api error.
 2. The default policy for queue pressure is profile-defined and may be:
    - fail fast
    - bounded retry with backoff
@@ -134,14 +134,14 @@ Default timeout and retry behavior must be centrally defined.
 
 Rules:
 
-1. Retry policy belongs to the SDK easy-mode layer.
+1. Retry policy belongs to the SDK app-api layer.
 2. Wrappers may expose override hooks, but overrides must start from a known contract-defined default.
 3. Timeout behavior must be stable across languages.
 4. “Retryable” vs “terminal” failure classification must be part of the typed error model.
 
 ## Persistence and Offline Recovery
 
-Easy mode must define whether caller-visible delivery survives restart and offline periods.
+App API must define whether caller-visible delivery survives restart and offline periods.
 
 Required contract fields:
 
@@ -154,22 +154,22 @@ Rules:
 
 1. If durable queueing is unsupported for a profile, that must be explicit.
 2. If restart recovery is supported, queue, receipt, and event resumption semantics must be documented.
-3. Easy-mode defaults must not imply durability unless the profile guarantees it.
+3. App API defaults must not imply durability unless the profile guarantees it.
 
 ## Capability and Version Negotiation
 
-Easy mode is layered on top of the broader SDK contract and may negotiate capabilities internally.
+App API is layered on top of the broader SDK contract and may negotiate capabilities internally.
 
 Rules:
 
 1. Bindings must not require apps to reason about raw capability bits for the default path.
-2. Easy-mode startup fails fast if required semantics are unavailable.
+2. App API startup fails fast if required semantics are unavailable.
 3. Unknown additive fields and unknown future capability flags must be ignored safely unless they are marked required-by-profile.
-4. The effective easy-mode profile and policy set are frozen for the active session after successful start.
+4. The effective app-api profile and policy set are frozen for the active session after successful start.
 
 ## Security and Identity Ownership
 
-Easy-mode integrations must not guess security behavior.
+App API integrations must not guess security behavior.
 
 Rules:
 
@@ -190,7 +190,7 @@ The following are advanced-only:
 Rules:
 
 1. Advanced escape hatches must be clearly labeled non-default.
-2. Using advanced mode may void some easy-mode guarantees and must be documented as such.
+2. Using advanced mode may void some app-api guarantees and must be documented as such.
 3. Wrappers should expose advanced surfaces separately from the default API.
 
 ## Acceptance Standard

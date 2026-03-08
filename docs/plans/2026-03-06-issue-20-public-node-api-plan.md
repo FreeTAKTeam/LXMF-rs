@@ -928,7 +928,7 @@ Tasks:
 
 ### Wrapper Conformance Fixtures
 
-To make the API easy to adopt across languages, add a small wrapper-facing conformance suite and fixtures that non-Rust bindings can execute against a reference build.
+To make the API straightforward to adopt across languages, add a small wrapper-facing conformance suite and fixtures that non-Rust bindings can execute against a reference build.
 
 Recommended cases:
 

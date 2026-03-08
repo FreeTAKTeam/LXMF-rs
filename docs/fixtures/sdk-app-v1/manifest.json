@@ -1,6 +1,6 @@
 {
   "fixture_schema_version": 1,
-  "contract_family": "sdk-easy",
+  "contract_family": "sdk-app",
   "contract_release": "v1",
   "scenarios": [
     {

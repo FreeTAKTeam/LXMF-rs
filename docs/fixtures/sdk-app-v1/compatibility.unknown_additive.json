@@ -4,7 +4,7 @@
   "profile": "testing_default",
   "kind": "compatibility",
   "unknown_capability_flags": [
-    "sdk.easy.future_capability.alpha"
+    "sdk.app.future_capability.alpha"
   ],
   "unknown_event_fields": [
     "future_metadata",

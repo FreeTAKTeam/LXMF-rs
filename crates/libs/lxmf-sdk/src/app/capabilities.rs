@@ -3,13 +3,13 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct EasyCapabilitySummary {
+pub struct CapabilitySummary {
     pub active_contract_version: u16,
     pub effective_capabilities: Vec<String>,
     pub effective_limits: EffectiveLimits,
 }
 
-impl From<&ClientHandle> for EasyCapabilitySummary {
+impl From<&ClientHandle> for CapabilitySummary {
     fn from(handle: &ClientHandle) -> Self {
         Self {
             active_contract_version: handle.active_contract_version,

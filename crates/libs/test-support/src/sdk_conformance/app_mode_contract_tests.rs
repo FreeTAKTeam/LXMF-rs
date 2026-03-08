@@ -34,28 +34,28 @@ const ALLOWED_EVENTS: &[&str] = &[
 ];
 
 const ALLOWED_ERROR_CODES: &[&str] = &[
-    "EASY_VALIDATION_INVALID_ARGUMENT",
-    "EASY_VALIDATION_UNKNOWN_FIELD",
-    "EASY_CAPABILITY_UNSUPPORTED_PROFILE",
-    "EASY_CAPABILITY_REQUIRED_FEATURE_MISSING",
-    "EASY_CONFIG_INVALID",
-    "EASY_RUNTIME_INVALID_STATE",
-    "EASY_RUNTIME_ALREADY_RUNNING_DIFFERENT_CONFIG",
-    "EASY_RUNTIME_STREAM_DEGRADED",
-    "EASY_RUNTIME_NOT_STARTED",
-    "EASY_DELIVERY_QUEUE_PRESSURE",
-    "EASY_DELIVERY_PARTIAL_ACCEPTANCE",
-    "EASY_DELIVERY_RETRY_EXHAUSTED",
-    "EASY_DELIVERY_CANCELLED",
-    "EASY_CONNECTIVITY_DISCONNECTED",
-    "EASY_CONNECTIVITY_RECONNECT_FAILED",
-    "EASY_PERSISTENCE_UNAVAILABLE",
-    "EASY_PERSISTENCE_RECOVERY_REQUIRED",
-    "EASY_TIMEOUT_OPERATION_EXPIRED",
-    "EASY_SECURITY_AUTH_REQUIRED",
-    "EASY_SECURITY_AUTHZ_DENIED",
-    "EASY_SECURITY_REDACTION_REQUIRED",
-    "EASY_INTERNAL_UNEXPECTED_FAILURE",
+    "SDK_APP_VALIDATION_INVALID_ARGUMENT",
+    "SDK_APP_VALIDATION_UNKNOWN_FIELD",
+    "SDK_APP_CAPABILITY_UNSUPPORTED_PROFILE",
+    "SDK_APP_CAPABILITY_REQUIRED_FEATURE_MISSING",
+    "SDK_APP_CONFIG_INVALID",
+    "SDK_APP_RUNTIME_INVALID_STATE",
+    "SDK_APP_RUNTIME_ALREADY_RUNNING_DIFFERENT_CONFIG",
+    "SDK_APP_RUNTIME_STREAM_DEGRADED",
+    "SDK_APP_RUNTIME_NOT_STARTED",
+    "SDK_APP_DELIVERY_QUEUE_PRESSURE",
+    "SDK_APP_DELIVERY_PARTIAL_ACCEPTANCE",
+    "SDK_APP_DELIVERY_RETRY_EXHAUSTED",
+    "SDK_APP_DELIVERY_CANCELLED",
+    "SDK_APP_CONNECTIVITY_DISCONNECTED",
+    "SDK_APP_CONNECTIVITY_RECONNECT_FAILED",
+    "SDK_APP_PERSISTENCE_UNAVAILABLE",
+    "SDK_APP_PERSISTENCE_RECOVERY_REQUIRED",
+    "SDK_APP_TIMEOUT_OPERATION_EXPIRED",
+    "SDK_APP_SECURITY_AUTH_REQUIRED",
+    "SDK_APP_SECURITY_AUTHZ_DENIED",
+    "SDK_APP_SECURITY_REDACTION_REQUIRED",
+    "SDK_APP_INTERNAL_UNEXPECTED_FAILURE",
 ];
 
 const ALLOWED_CATEGORIES: &[&str] = &[
@@ -84,7 +84,7 @@ fn workspace_root() -> PathBuf {
 }
 
 fn fixture_dir() -> PathBuf {
-    workspace_root().join("docs/fixtures/sdk-easy-v1")
+    workspace_root().join("docs/fixtures/sdk-app-v1")
 }
 
 fn contract_doc(name: &str) -> String {
@@ -105,14 +105,14 @@ fn fixture(name: &str) -> JsonValue {
 }
 
 #[test]
-fn sdk_conformance_easy_mode_manifest_covers_required_scenarios() {
+fn sdk_conformance_app_mode_manifest_covers_required_scenarios() {
     let manifest = fixture("manifest.json");
     assert_eq!(
         manifest["fixture_schema_version"].as_u64(),
         Some(1),
         "fixture schema version must be frozen"
     );
-    assert_eq!(manifest["contract_family"].as_str(), Some("sdk-easy"));
+    assert_eq!(manifest["contract_family"].as_str(), Some("sdk-app"));
     assert_eq!(manifest["contract_release"].as_str(), Some("v1"));
 
     let scenarios = manifest["scenarios"].as_array().expect("manifest scenarios");
@@ -137,15 +137,15 @@ fn sdk_conformance_easy_mode_manifest_covers_required_scenarios() {
 
     assert_eq!(seen.len(), REQUIRED_SCENARIOS.len());
     for required in REQUIRED_SCENARIOS {
-        assert!(seen.contains(*required), "missing required easy-mode scenario {required}");
+        assert!(seen.contains(*required), "missing required app-api scenario {required}");
     }
 }
 
 #[test]
-fn sdk_conformance_easy_mode_fixtures_match_contract_vocabularies() {
-    let event_contract = contract_doc("sdk-easy-events-v1.md");
-    let error_contract = contract_doc("sdk-easy-errors-v1.md");
-    let profile_contract = contract_doc("sdk-easy-profiles-v1.md");
+fn sdk_conformance_app_mode_fixtures_match_contract_vocabularies() {
+    let event_contract = contract_doc("sdk-app-events-v1.md");
+    let error_contract = contract_doc("sdk-app-errors-v1.md");
+    let profile_contract = contract_doc("sdk-app-profiles-v1.md");
     let manifest = fixture("manifest.json");
 
     for scenario in manifest["scenarios"].as_array().expect("manifest scenarios") {
@@ -191,7 +191,7 @@ fn sdk_conformance_easy_mode_fixtures_match_contract_vocabularies() {
 }
 
 #[test]
-fn sdk_conformance_easy_mode_lifecycle_fixture_freezes_restart_and_waiter_wakeup() {
+fn sdk_conformance_app_mode_lifecycle_fixture_freezes_restart_and_waiter_wakeup() {
     let fixture = fixture("lifecycle.start_stop_restart.json");
     assert_eq!(fixture["scenario_id"].as_str(), Some("lifecycle.start_stop_restart"));
     assert_eq!(fixture["kind"].as_str(), Some("lifecycle"));
@@ -225,7 +225,7 @@ fn sdk_conformance_easy_mode_lifecycle_fixture_freezes_restart_and_waiter_wakeup
 }
 
 #[test]
-fn sdk_conformance_easy_mode_event_ordering_fixture_is_monotonic() {
+fn sdk_conformance_app_mode_event_ordering_fixture_is_monotonic() {
     let fixture = fixture("events.delivery_ordering.json");
     let events = fixture["expected_events"]
         .as_array()
@@ -251,7 +251,7 @@ fn sdk_conformance_easy_mode_event_ordering_fixture_is_monotonic() {
 }
 
 #[test]
-fn sdk_conformance_easy_mode_timeout_fixture_treats_timeout_as_non_error_outcome() {
+fn sdk_conformance_app_mode_timeout_fixture_treats_timeout_as_non_error_outcome() {
     let fixture = fixture("timeout.poll_timeout.json");
     assert_eq!(fixture["kind"].as_str(), Some("timeout"));
     assert_eq!(fixture["operation"].as_str(), Some("next_event"));
@@ -261,10 +261,10 @@ fn sdk_conformance_easy_mode_timeout_fixture_treats_timeout_as_non_error_outcome
 }
 
 #[test]
-fn sdk_conformance_easy_mode_queue_pressure_fixture_requires_typed_visibility() {
+fn sdk_conformance_app_mode_queue_pressure_fixture_requires_typed_visibility() {
     let fixture = fixture("delivery.queue_pressure.json");
     assert_eq!(fixture["kind"].as_str(), Some("queue_pressure"));
-    assert_eq!(fixture["expected_error"].as_str(), Some("EASY_DELIVERY_QUEUE_PRESSURE"));
+    assert_eq!(fixture["expected_error"].as_str(), Some("SDK_APP_DELIVERY_QUEUE_PRESSURE"));
 
     let events = fixture["expected_events"]
         .as_array()
@@ -286,7 +286,7 @@ fn sdk_conformance_easy_mode_queue_pressure_fixture_requires_typed_visibility() 
 }
 
 #[test]
-fn sdk_conformance_easy_mode_reconnect_fixture_orders_recovery_explicitly() {
+fn sdk_conformance_app_mode_reconnect_fixture_orders_recovery_explicitly() {
     let fixture = fixture("connectivity.reconnect_recovery.json");
     let events = fixture["expected_events"]
         .as_array()
@@ -308,7 +308,7 @@ fn sdk_conformance_easy_mode_reconnect_fixture_orders_recovery_explicitly() {
 }
 
 #[test]
-fn sdk_conformance_easy_mode_typed_error_mapping_fixture_freezes_core_fields() {
+fn sdk_conformance_app_mode_typed_error_mapping_fixture_freezes_core_fields() {
     let fixture = fixture("errors.typed_mapping.json");
     let mappings = fixture["mappings"].as_array().expect("typed error mappings");
     assert!(mappings.len() >= 4, "expected a core typed error set");
@@ -324,7 +324,7 @@ fn sdk_conformance_easy_mode_typed_error_mapping_fixture_freezes_core_fields() {
 
     let queue_pressure = mappings
         .iter()
-        .find(|mapping| mapping["code"].as_str() == Some("EASY_DELIVERY_QUEUE_PRESSURE"))
+        .find(|mapping| mapping["code"].as_str() == Some("SDK_APP_DELIVERY_QUEUE_PRESSURE"))
         .expect("queue pressure mapping");
     assert_eq!(queue_pressure["category"].as_str(), Some("Delivery"));
     assert_eq!(queue_pressure["retryable"].as_bool(), Some(true));
@@ -332,7 +332,7 @@ fn sdk_conformance_easy_mode_typed_error_mapping_fixture_freezes_core_fields() {
 }
 
 #[test]
-fn sdk_conformance_easy_mode_unknown_additive_fixture_requires_safe_ignore_policy() {
+fn sdk_conformance_app_mode_unknown_additive_fixture_requires_safe_ignore_policy() {
     let fixture = fixture("compatibility.unknown_additive.json");
     let policy = fixture["expected_policy"].as_object().expect("unknown additive policy");
     assert_eq!(policy.get("ignore_unknown_capabilities").and_then(JsonValue::as_bool), Some(true));

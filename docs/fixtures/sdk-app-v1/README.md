@@ -1,6 +1,6 @@
-# SDK Easy-Mode v1 Fixtures
+# SDK App v1 Fixtures
 
-These fixtures are release-gated conformance artifacts for the app-facing `sdk-easy` contract.
+These fixtures are release-gated conformance artifacts for the app-facing `sdk-app` contract.
 
 They are consumed first by Rust contract tests in `crates/libs/test-support` and are intended to be
 mirrored by the future first-party wrappers.

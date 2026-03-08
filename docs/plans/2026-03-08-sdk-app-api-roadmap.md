@@ -1,8 +1,8 @@
-# SDK Easy-Mode Roadmap
+# SDK App API Roadmap
 
 ## Goal
 
-Make the SDK easy enough that most clients and apps can integrate with minimal custom logic.
+Make the SDK straightforward enough that most clients and apps can integrate with minimal custom logic.
 
 The intended default experience is:
 
@@ -20,7 +20,7 @@ The repository already has strong low-level and contract-heavy surfaces:
 - `rns-embedded-runtime` and `rns-embedded-ffi` for embedded/native node control
 - contract and capability documents across `docs/contracts`
 
-But “easy adoption” still fails if every app must write custom logic for:
+But "simple adoption" still fails if every app must write custom logic for:
 
 - retry and reconnect policy
 - queue pressure and backpressure handling
@@ -33,16 +33,16 @@ If these semantics are not frozen centrally, wrappers will drift and every clien
 
 ## Key Decisions
 
-1. Easy-client policy belongs in `lxmf-sdk`, not per-wrapper.
+1. App-client policy belongs in `lxmf-sdk`, not per-wrapper.
    Wrappers should be thin adapters over a single orchestration model wherever possible.
 
 2. Contract and conformance must come before wrapper proliferation.
    The first wrapper should validate the contract, not define it.
 
-3. Typed app-level events are part of the core easy-mode contract.
+3. Typed app-level events are part of the core app-api contract.
    Default consumers should not need raw poll loops, transport internals, or low-level event decoding.
 
-4. Profile presets and delivery helpers are part of the easy-mode core.
+4. Profile presets and delivery helpers are part of the app-api core.
    They should not be deferred until after wrappers ship.
 
 5. Behavior should be semantically identical across languages by default.
@@ -57,7 +57,7 @@ If these semantics are not frozen centrally, wrappers will drift and every clien
 
 ## Required Contract Coverage
 
-The easy-mode contract must define:
+The app-api contract must define:
 
 - lifecycle state machine
 - threading and callback delivery guarantees
@@ -73,16 +73,16 @@ The easy-mode contract must define:
 
 ## Recommended PR Sequence
 
-### PR-1: Freeze the Easy-Mode Contract
+### PR-1: Freeze the App API Contract
 
-Branch: `codex/sdk-easy-contract-v1`
+Branch: `codex/sdk-app-contract-v1`
 
 Create:
 
-- `docs/contracts/sdk-easy-api-v1.md`
-- `docs/contracts/sdk-easy-events-v1.md`
-- `docs/contracts/sdk-easy-errors-v1.md`
-- `docs/contracts/sdk-easy-profiles-v1.md`
+- `docs/contracts/sdk-app-api-v1.md`
+- `docs/contracts/sdk-app-events-v1.md`
+- `docs/contracts/sdk-app-errors-v1.md`
+- `docs/contracts/sdk-app-profiles-v1.md`
 
 Acceptance criteria:
 
@@ -97,18 +97,18 @@ Acceptance criteria:
 
 Suggested commits:
 
-- `docs: define sdk easy api v1 surface`
-- `docs: define sdk easy event and error contracts`
-- `docs: define sdk easy profiles and policy defaults`
+- `docs: define sdk app api v1 surface`
+- `docs: define sdk app event and error contracts`
+- `docs: define sdk app profiles and policy defaults`
 
 ### PR-2: Add Conformance Foundation
 
-Branch: `codex/sdk-easy-conformance-foundation`
+Branch: `codex/sdk-app-conformance-foundation`
 
 Create:
 
-- `docs/fixtures/sdk-easy-v1/*`
-- `crates/libs/test-support/tests/sdk_easy_conformance.rs`
+- `docs/fixtures/sdk-app-v1/*`
+- `crates/libs/test-support/tests/sdk_app_conformance.rs`
 - CI gate for fixture/contract drift
 
 Acceptance criteria:
@@ -129,21 +129,21 @@ Minimum fixture scope:
 
 Suggested commits:
 
-- `test: add sdk easy conformance fixtures`
-- `test: add sdk easy conformance runner`
-- `ci: gate sdk easy contract and fixture drift`
+- `test: add sdk app conformance fixtures`
+- `test: add sdk app conformance runner`
+- `ci: gate sdk app contract and fixture drift`
 
-### PR-3: Implement Rust Easy-Mode Facade
+### PR-3: Implement Rust App API Facade
 
-Branch: `codex/sdk-easy-rust-facade`
+Branch: `codex/sdk-app-rust-facade`
 
 Create:
 
-- `crates/libs/lxmf-sdk/src/easy/mod.rs`
-- `crates/libs/lxmf-sdk/src/easy/node.rs`
-- `crates/libs/lxmf-sdk/src/easy/events.rs`
-- `crates/libs/lxmf-sdk/src/easy/errors.rs`
-- `crates/libs/lxmf-sdk/src/easy/capabilities.rs`
+- `crates/libs/lxmf-sdk/src/app/mod.rs`
+- `crates/libs/lxmf-sdk/src/app/node.rs`
+- `crates/libs/lxmf-sdk/src/app/events.rs`
+- `crates/libs/lxmf-sdk/src/app/errors.rs`
+- `crates/libs/lxmf-sdk/src/app/capabilities.rs`
 
 Acceptance criteria:
 
@@ -154,20 +154,20 @@ Acceptance criteria:
 
 Suggested commits:
 
-- `feat(sdk): add easy node facade and lifecycle api`
+- `feat(sdk): add app node facade and lifecycle api`
 - `feat(sdk): add typed event adapters`
 - `feat(sdk): add capability negotiation and fallback behavior`
-- `test(sdk): add easy facade integration tests`
+- `test(sdk): add app facade integration tests`
 
 ### PR-4: Add Profile Presets and Delivery Helpers
 
-Branch: `codex/sdk-easy-profiles-delivery`
+Branch: `codex/sdk-app-profiles-delivery`
 
 Create/update:
 
-- `crates/libs/lxmf-sdk/src/easy/profiles.rs`
-- `crates/libs/lxmf-sdk/src/easy/delivery.rs`
-- `crates/libs/lxmf-sdk/src/easy/config.rs`
+- `crates/libs/lxmf-sdk/src/app/profiles.rs`
+- `crates/libs/lxmf-sdk/src/app/delivery.rs`
+- `crates/libs/lxmf-sdk/src/app/config.rs`
 - `docs/sdk/configuration-profiles.md`
 
 Acceptance criteria:
@@ -186,7 +186,7 @@ Acceptance criteria:
 
 Suggested commits:
 
-- `feat(sdk): add easy mode profile presets`
+- `feat(sdk): add app API profile presets`
 - `feat(sdk): add delivery helpers for retry timeout and pressure`
 - `test(sdk): add delivery helper behavior matrix`
 
@@ -194,9 +194,9 @@ Suggested commits:
 
 Branch:
 
-- `codex/sdk-easy-first-wrapper-kotlin`
+- `codex/sdk-app-first-wrapper-kotlin`
   or
-- `codex/sdk-easy-first-wrapper-swift`
+- `codex/sdk-app-first-wrapper-swift`
 
 Recommendation:
 
@@ -205,61 +205,61 @@ Recommendation:
 
 Acceptance criteria:
 
-- wrapper matches the frozen easy-mode semantics
+- wrapper matches the frozen app-api semantics
 - wrapper exposes async event stream/callbacks and typed errors
 - wrapper default API does not require manual polling or custom retry logic
 - integration tests run against the reference implementation and conformance fixtures
 
 Suggested commits:
 
-- `feat(wrapper): scaffold easy node wrapper api`
+- `feat(wrapper): scaffold app node wrapper api`
 - `feat(wrapper): add lifecycle send and typed event surface`
 - `test(wrapper): add integration and conformance coverage`
 
 ### PR-6: Add Wrapper Parity CI
 
-Branch: `codex/sdk-easy-wrapper-parity-ci`
+Branch: `codex/sdk-app-wrapper-parity-ci`
 
 Acceptance criteria:
 
 - wrapper conformance is release-gated
-- Rust easy-mode and the reference wrapper are checked against shared fixtures
+- Rust app-api and the reference wrapper are checked against shared fixtures
 - contract/codegen drift is also release-gated
 
 Suggested commits:
 
 - `test: add wrapper parity harness`
-- `ci: gate releases on sdk easy conformance`
+- `ci: gate releases on sdk app conformance`
 
 ### PR-7: Add Golden Paths and Migration Docs
 
-Branch: `codex/sdk-easy-golden-paths`
+Branch: `codex/sdk-app-golden-paths`
 
 Create/update:
 
-- `examples/sdk-easy/rust-managed/`
-- `examples/sdk-easy/kotlin-mobile/` or `examples/sdk-easy/swift-mobile/`
+- `examples/sdk-app/rust-managed/`
+- `examples/sdk-app/kotlin-mobile/` or `examples/sdk-app/swift-mobile/`
 - `docs/sdk/quickstart.md`
-- `docs/sdk/migration-to-easy.md`
+- `docs/sdk/migration-to-app-api.md`
 
 Acceptance criteria:
 
 - examples are copy-pasteable
 - examples follow the same contract tested by conformance fixtures
-- low-level users have a migration guide to the easy-mode surface
+- low-level users have a migration guide to the app-api surface
 
 Suggested commits:
 
-- `docs/examples: add rust easy-mode golden path`
+- `docs/examples: add rust app-api golden path`
 - `docs/examples: add wrapper golden path`
-- `docs: add migration guide to sdk easy mode`
+- `docs: add migration guide to sdk app API`
 
 ## Why This Order
 
 This sequence is intentionally contract-first:
 
 - wrappers should not guess semantics
-- delivery helpers and presets must exist before claiming “easy mode”
+- delivery helpers and presets must exist before claiming “app API”
 - conformance must exist before multiple bindings
 - examples should document a proven surface, not a moving target
 
@@ -267,7 +267,7 @@ This sequence is intentionally contract-first:
 
 The initiative is successful when:
 
-- a new app can adopt the SDK through the easy-mode surface without custom retry/reconnect/queue logic
+- a new app can adopt the SDK through the app-api surface without custom retry/reconnect/queue logic
 - the reference wrapper matches Rust semantics through shared fixtures
 - defaults are sufficient for common mobile, desktop, and embedded-host scenarios
 - low-level escape hatches remain available but are not required for normal adoption

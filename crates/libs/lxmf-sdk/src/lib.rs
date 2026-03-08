@@ -5,7 +5,7 @@ mod backend;
 pub mod capability;
 mod client;
 pub mod domain;
-pub mod easy;
+pub mod app;
 mod error;
 pub mod event;
 mod lifecycle;

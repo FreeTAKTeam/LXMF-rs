@@ -1,12 +1,12 @@
-# SDK Easy-Mode Events v1
+# SDK App Events v1
 
 Status: Draft, implementation target  
-Contract family: `sdk-easy`  
+Contract family: `sdk-app`  
 Contract release: `v1`
 
 ## Purpose
 
-This document defines the typed app-level event model for easy-mode consumers.
+This document defines the typed app-level event model for app-api consumers.
 
 The default event surface must hide raw transport and polling details. Advanced consumers may opt into lower-level streams separately.
 
@@ -32,7 +32,7 @@ Rules:
 2. Duplicate delivery may occur only if the broader SDK contract allows at-least-once replay; duplicates must preserve `event_id`.
 3. Unknown future additive fields must be safely ignored.
 
-## Typed Easy-Mode Event Set
+## Typed App Event Set
 
 Required app-level event types:
 
@@ -85,7 +85,7 @@ Rules:
 
 ## Queue Pressure and Retry Events
 
-Easy-mode policy must be visible to the app in typed form.
+App API policy must be visible to the app in typed form.
 
 Required semantics:
 
@@ -104,7 +104,7 @@ Rules:
 
 ## Stream Gap and Recovery Events
 
-Easy mode must not hide data-loss indicators.
+App API must not hide data-loss indicators.
 
 Required event:
 
@@ -134,10 +134,10 @@ Bindings may use callbacks, async streams, observers, or channels, but semantics
 
 ## Extension Behavior
 
-Easy-mode default consumers should rarely need extension events.
+App API default consumers should rarely need extension events.
 
 Rules:
 
 1. Unknown extension events must not break parsing.
-2. Extension events are advanced-only unless promoted into the typed easy-mode set.
+2. Extension events are advanced-only unless promoted into the typed app-api set.
 3. Bindings should expose raw extension details separately from the default app event surface.

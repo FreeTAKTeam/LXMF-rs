@@ -1,18 +1,18 @@
-# SDK Easy-Mode Profiles v1
+# SDK App Profiles v1
 
 Status: Draft, implementation target  
-Contract family: `sdk-easy`  
+Contract family: `sdk-app`  
 Contract release: `v1`
 
 ## Purpose
 
-This document defines the profile presets and policy defaults for easy-mode consumers.
+This document defines the profile presets and policy defaults for app-api consumers.
 
 Profiles exist so most apps can adopt the SDK with minimal configuration and without encoding custom policy logic.
 
 ## Profile Model
 
-Easy-mode profiles are named policy bundles.
+App API profiles are named policy bundles.
 
 Required presets:
 
@@ -23,7 +23,7 @@ Required presets:
 
 Rules:
 
-1. Profiles are immutable for a running easy-mode session unless the contract explicitly allows a mutable subset.
+1. Profiles are immutable for a running app-api session unless the contract explicitly allows a mutable subset.
 2. Effective profile semantics are frozen at successful start.
 3. All wrappers must implement the same semantic meaning for a given profile name.
 

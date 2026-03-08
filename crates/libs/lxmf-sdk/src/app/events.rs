@@ -1,6 +1,6 @@
 #[cfg(feature = "sdk-async")]
-use crate::event::{EventBatch, EventSubscription, SdkEvent};
-use crate::event::{Severity, SubscriptionStart};
+use crate::event::{EventBatch as RawEventBatch, EventSubscription, SdkEvent};
+use crate::event::{Severity as RawSeverity, SubscriptionStart as RawSubscriptionStart};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use std::collections::BTreeMap;
@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
-pub enum EasySeverity {
+pub enum Severity {
     Debug,
     Info,
     Warn,
@@ -17,15 +17,15 @@ pub enum EasySeverity {
     Unknown,
 }
 
-impl From<Severity> for EasySeverity {
-    fn from(value: Severity) -> Self {
+impl From<RawSeverity> for Severity {
+    fn from(value: RawSeverity) -> Self {
         match value {
-            Severity::Debug => Self::Debug,
-            Severity::Info => Self::Info,
-            Severity::Warn => Self::Warn,
-            Severity::Error => Self::Error,
-            Severity::Critical => Self::Critical,
-            Severity::Unknown => Self::Unknown,
+            RawSeverity::Debug => Self::Debug,
+            RawSeverity::Info => Self::Info,
+            RawSeverity::Warn => Self::Warn,
+            RawSeverity::Error => Self::Error,
+            RawSeverity::Critical => Self::Critical,
+            RawSeverity::Unknown => Self::Unknown,
         }
     }
 }
@@ -33,35 +33,35 @@ impl From<Severity> for EasySeverity {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
-pub enum EasySubscriptionStart {
+pub enum SubscriptionStart {
     Head,
     Tail,
     Snapshot,
 }
 
-impl From<EasySubscriptionStart> for SubscriptionStart {
-    fn from(value: EasySubscriptionStart) -> Self {
+impl From<SubscriptionStart> for RawSubscriptionStart {
+    fn from(value: SubscriptionStart) -> Self {
         match value {
-            EasySubscriptionStart::Head => SubscriptionStart::Head,
-            EasySubscriptionStart::Tail => SubscriptionStart::Tail,
-            EasySubscriptionStart::Snapshot => SubscriptionStart::Snapshot,
+            SubscriptionStart::Head => RawSubscriptionStart::Head,
+            SubscriptionStart::Tail => RawSubscriptionStart::Tail,
+            SubscriptionStart::Snapshot => RawSubscriptionStart::Snapshot,
         }
     }
 }
 
-impl From<SubscriptionStart> for EasySubscriptionStart {
-    fn from(value: SubscriptionStart) -> Self {
+impl From<RawSubscriptionStart> for SubscriptionStart {
+    fn from(value: RawSubscriptionStart) -> Self {
         match value {
-            SubscriptionStart::Head => Self::Head,
-            SubscriptionStart::Tail => Self::Tail,
-            SubscriptionStart::Snapshot => Self::Snapshot,
+            RawSubscriptionStart::Head => Self::Head,
+            RawSubscriptionStart::Tail => Self::Tail,
+            RawSubscriptionStart::Snapshot => Self::Snapshot,
         }
     }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct EasyStreamGapDetails {
+pub struct StreamGapDetails {
     pub expected_seq_no: Option<u64>,
     pub observed_seq_no: Option<u64>,
     pub dropped_count: u64,
@@ -70,12 +70,12 @@ pub struct EasyStreamGapDetails {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct EasyEventMetadata {
+pub struct EventMetadata {
     pub event_id: String,
     pub runtime_id: String,
     pub seq_no: u64,
     pub occurred_at_ms: u64,
-    pub severity: EasySeverity,
+    pub severity: Severity,
     pub operation_id: Option<String>,
     pub message_id: Option<String>,
     pub correlation_id: Option<String>,
@@ -84,7 +84,7 @@ pub struct EasyEventMetadata {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[non_exhaustive]
-pub enum EasyEventKind {
+pub enum EventKind {
     RuntimeStarted,
     RuntimeStopped,
     RuntimeDegraded,
@@ -99,7 +99,7 @@ pub enum EasyEventKind {
     QueuePressureRaised,
     RetryScheduled,
     ReconnectScheduled,
-    StreamGapDetected(EasyStreamGapDetails),
+    StreamGapDetected(StreamGapDetails),
     SecurityActionRequired,
     FatalErrorRaised,
     Unknown(String),
@@ -107,9 +107,9 @@ pub enum EasyEventKind {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[non_exhaustive]
-pub struct EasyEvent {
-    pub metadata: EasyEventMetadata,
-    pub kind: EasyEventKind,
+pub struct Event {
+    pub metadata: EventMetadata,
+    pub kind: EventKind,
     pub raw_event_type: String,
     pub details: JsonValue,
     #[serde(default)]
@@ -118,8 +118,8 @@ pub struct EasyEvent {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[non_exhaustive]
-pub struct EasyEventBatch {
-    pub events: Vec<EasyEvent>,
+pub struct EventBatch {
+    pub events: Vec<Event>,
     pub dropped_count: u64,
 }
 
@@ -138,33 +138,33 @@ fn receipt_state(payload: &JsonValue) -> Option<String> {
 }
 
 #[cfg(feature = "sdk-async")]
-fn map_delivery_state(state: &str) -> EasyEventKind {
+fn map_delivery_state(state: &str) -> EventKind {
     match state {
-        "queued" => EasyEventKind::MessageQueued,
-        "dispatching" | "sending" | "in_flight" => EasyEventKind::MessageDispatching,
-        "sent" => EasyEventKind::MessageSent,
-        "delivered" => EasyEventKind::MessageDelivered,
-        "failed" | "rejected" | "expired" => EasyEventKind::MessageFailed,
-        "cancelled" => EasyEventKind::MessageCancelled,
-        other => EasyEventKind::Unknown(other.to_owned()),
+        "queued" => EventKind::MessageQueued,
+        "dispatching" | "sending" | "in_flight" => EventKind::MessageDispatching,
+        "sent" => EventKind::MessageSent,
+        "delivered" => EventKind::MessageDelivered,
+        "failed" | "rejected" | "expired" => EventKind::MessageFailed,
+        "cancelled" => EventKind::MessageCancelled,
+        other => EventKind::Unknown(other.to_owned()),
     }
 }
 
 #[cfg(feature = "sdk-async")]
-pub fn map_sdk_event(event: SdkEvent, profile_id: &str) -> EasyEvent {
+pub fn map_sdk_event(event: SdkEvent, profile_id: &str) -> Event {
     let kind = match event.event_type.as_str() {
         "RuntimeStateChanged" => {
             let from = payload_state(&event.payload, "from");
             let to = payload_state(&event.payload, "to");
             match to.as_deref() {
                 Some("running") if matches!(from.as_deref(), Some("failed")) => {
-                    EasyEventKind::RuntimeRecovered
+                    EventKind::RuntimeRecovered
                 }
-                Some("running") => EasyEventKind::RuntimeStarted,
-                Some("stopped") => EasyEventKind::RuntimeStopped,
-                Some("failed") => EasyEventKind::FatalErrorRaised,
-                Some("draining") => EasyEventKind::RuntimeStopped,
-                _ => EasyEventKind::Unknown(event.event_type.clone()),
+                Some("running") => EventKind::RuntimeStarted,
+                Some("stopped") => EventKind::RuntimeStopped,
+                Some("failed") => EventKind::FatalErrorRaised,
+                Some("draining") => EventKind::RuntimeStopped,
+                _ => EventKind::Unknown(event.event_type.clone()),
             }
         }
         "DeliveryStateTransition" => {
@@ -173,12 +173,12 @@ pub fn map_sdk_event(event: SdkEvent, profile_id: &str) -> EasyEvent {
                 .unwrap_or_else(|| "unknown".to_owned());
             map_delivery_state(state.as_str())
         }
-        "DeliveryRetryScheduled" => EasyEventKind::RetryScheduled,
-        "RuntimeDegraded" | "runtime_degraded" => EasyEventKind::RuntimeDegraded,
-        "RuntimeRecovered" | "runtime_recovered" => EasyEventKind::RuntimeRecovered,
-        "ReconnectScheduled" | "reconnect_scheduled" => EasyEventKind::ReconnectScheduled,
-        "InboundMessageReceived" | "inbound" => EasyEventKind::InboundMessageReceived,
-        "StreamGap" => EasyEventKind::StreamGapDetected(EasyStreamGapDetails {
+        "DeliveryRetryScheduled" => EventKind::RetryScheduled,
+        "RuntimeDegraded" | "runtime_degraded" => EventKind::RuntimeDegraded,
+        "RuntimeRecovered" | "runtime_recovered" => EventKind::RuntimeRecovered,
+        "ReconnectScheduled" | "reconnect_scheduled" => EventKind::ReconnectScheduled,
+        "InboundMessageReceived" | "inbound" => EventKind::InboundMessageReceived,
+        "StreamGap" => EventKind::StreamGapDetected(StreamGapDetails {
             expected_seq_no: event.payload.get("expected_seq_no").and_then(JsonValue::as_u64),
             observed_seq_no: event.payload.get("observed_seq_no").and_then(JsonValue::as_u64),
             dropped_count: event
@@ -189,26 +189,26 @@ pub fn map_sdk_event(event: SdkEvent, profile_id: &str) -> EasyEvent {
             recovery_required: true,
         }),
         "queue_pressure" | "store_forward_capacity_reached" | "store_forward_pruned" => {
-            EasyEventKind::QueuePressureRaised
+            EventKind::QueuePressureRaised
         }
-        "delivery_cancelled" => EasyEventKind::MessageCancelled,
-        "sdk_security_rate_limited" => EasyEventKind::SecurityActionRequired,
-        "runtime_shutdown_requested" => EasyEventKind::RuntimeStopped,
+        "delivery_cancelled" => EventKind::MessageCancelled,
+        "sdk_security_rate_limited" => EventKind::SecurityActionRequired,
+        "runtime_shutdown_requested" => EventKind::RuntimeStopped,
         "outbound" => map_delivery_state(
             receipt_state(&event.payload).unwrap_or_else(|| "unknown".to_owned()).as_str(),
         ),
         "ErrorRaised" => {
-            if matches!(event.severity, Severity::Critical | Severity::Error) {
-                EasyEventKind::FatalErrorRaised
+            if matches!(event.severity, RawSeverity::Critical | RawSeverity::Error) {
+                EventKind::FatalErrorRaised
             } else {
-                EasyEventKind::Unknown(event.event_type.clone())
+                EventKind::Unknown(event.event_type.clone())
             }
         }
-        other => EasyEventKind::Unknown(other.to_owned()),
+        other => EventKind::Unknown(other.to_owned()),
     };
 
-    EasyEvent {
-        metadata: EasyEventMetadata {
+    Event {
+        metadata: EventMetadata {
             event_id: event.event_id,
             runtime_id: event.runtime_id,
             seq_no: event.seq_no,
@@ -227,8 +227,8 @@ pub fn map_sdk_event(event: SdkEvent, profile_id: &str) -> EasyEvent {
 }
 
 #[cfg(feature = "sdk-async")]
-pub fn map_event_batch(batch: EventBatch, profile_id: &str) -> EasyEventBatch {
-    EasyEventBatch {
+pub fn map_event_batch(batch: RawEventBatch, profile_id: &str) -> EventBatch {
+    EventBatch {
         events: batch.events.into_iter().map(|event| map_sdk_event(event, profile_id)).collect(),
         dropped_count: batch.dropped_count,
     }
@@ -241,8 +241,8 @@ pub fn subscription_cursor(subscription: &EventSubscription) -> Option<crate::Ev
 
 #[cfg(test)]
 mod tests {
-    use super::{map_sdk_event, EasyEventKind, EasySubscriptionStart};
-    use crate::{SdkEvent, Severity, SubscriptionStart};
+    use super::{map_sdk_event, EventKind, SubscriptionStart};
+    use crate::{SdkEvent, Severity as RawSeverity, SubscriptionStart as RawSubscriptionStart};
     use serde_json::json;
     use std::collections::BTreeMap;
 
@@ -255,7 +255,7 @@ mod tests {
             contract_version: 2,
             ts_ms: 10,
             event_type: event_type.to_owned(),
-            severity: Severity::Info,
+            severity: RawSeverity::Info,
             source_component: "test".to_owned(),
             operation_id: None,
             message_id: None,
@@ -273,7 +273,7 @@ mod tests {
             base_event("RuntimeStateChanged", json!({ "from": "starting", "to": "running" })),
             "desktop_default",
         );
-        assert!(matches!(mapped.kind, EasyEventKind::RuntimeStarted));
+        assert!(matches!(mapped.kind, EventKind::RuntimeStarted));
     }
 
     #[test]
@@ -286,7 +286,7 @@ mod tests {
             "desktop_default",
         );
         match mapped.kind {
-            EasyEventKind::StreamGapDetected(details) => {
+            EventKind::StreamGapDetected(details) => {
                 assert_eq!(details.expected_seq_no, Some(2));
                 assert_eq!(details.observed_seq_no, Some(7));
                 assert_eq!(details.dropped_count, 5);
@@ -297,9 +297,9 @@ mod tests {
     }
 
     #[test]
-    fn easy_subscription_start_round_trips() {
-        let raw: SubscriptionStart = EasySubscriptionStart::Tail.into();
-        assert_eq!(EasySubscriptionStart::from(raw), EasySubscriptionStart::Tail);
+    fn subscription_start_round_trips() {
+        let raw: RawSubscriptionStart = SubscriptionStart::Tail.into();
+        assert_eq!(SubscriptionStart::from(raw), SubscriptionStart::Tail);
     }
 
     #[test]
@@ -311,8 +311,8 @@ mod tests {
         );
         let recovered = map_sdk_event(base_event("RuntimeRecovered", json!({})), "desktop_default");
 
-        assert!(matches!(degraded.kind, EasyEventKind::RuntimeDegraded));
-        assert!(matches!(reconnect.kind, EasyEventKind::ReconnectScheduled));
-        assert!(matches!(recovered.kind, EasyEventKind::RuntimeRecovered));
+        assert!(matches!(degraded.kind, EventKind::RuntimeDegraded));
+        assert!(matches!(reconnect.kind, EventKind::ReconnectScheduled));
+        assert!(matches!(recovered.kind, EventKind::RuntimeRecovered));
     }
 }
