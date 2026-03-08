@@ -9,6 +9,200 @@ import '../client.dart';
 import '../models.dart';
 import 'bindings.dart';
 
+class EmbeddedNodeTranslation {
+  const EmbeddedNodeTranslation._();
+
+  static RunState mapRunState(int runState) {
+    return switch (runState) {
+      rnsEmbeddedV1RunStateRunning => RunState.running,
+      rnsEmbeddedV1RunStateStopped => RunState.stopped,
+      _ => RunState.failed,
+    };
+  }
+
+  static Severity severityFromLogLevel(int logLevel) {
+    return switch (logLevel) {
+      0 => Severity.error,
+      1 => Severity.warn,
+      2 => Severity.info,
+      3 => Severity.debug,
+      4 => Severity.debug,
+      _ => Severity.unknown,
+    };
+  }
+
+  static AppEvent mapEvent(
+    RnsEmbeddedV1NodeEvent event, {
+    required Profile profile,
+  }) {
+    final kind = switch (event.kind) {
+      rnsEmbeddedV1EventStatusChanged => EventKind.runtimeStarted,
+      rnsEmbeddedV1EventLog => EventKind.unknown,
+      rnsEmbeddedV1EventError => EventKind.fatalErrorRaised,
+      rnsEmbeddedV1EventPacketReceived => EventKind.inboundMessageReceived,
+      rnsEmbeddedV1EventPacketSent => EventKind.messageSent,
+      rnsEmbeddedV1EventExtension => EventKind.unknown,
+      _ => EventKind.unknown,
+    };
+
+    return AppEvent(
+      metadata: EventMetadata(
+        eventId: '${event.eventId}',
+        runtimeId: 'embedded-node-${event.epoch}',
+        seqNo: event.eventId,
+        occurredAtMs: event.occurredAtMs,
+        severity: severityFromLogLevel(event.logLevel),
+        profileId: profile.id,
+        operationId: event.hasOperationId ? '${event.operationId}' : null,
+      ),
+      kind: kind,
+      rawEventType: 'native_v1_${event.kind}',
+      details: <String, Object?>{
+        'epoch': event.epoch,
+        'lifecycleState': event.lifecycleState,
+        'runState': event.runState,
+        'errorCode': event.errorCode,
+        'frameKind': event.frameKind,
+        'sequence': event.sequence,
+        'bytes': event.bytes,
+        'extensionId': event.extensionId,
+        'value0': event.value0,
+        'value1': event.value1,
+      },
+    );
+  }
+
+  static AppEvent syntheticEvent({
+    required EventKind kind,
+    required String rawEventType,
+    required int epoch,
+    required int eventId,
+    required Profile profile,
+    StreamGapDetails? streamGap,
+  }) {
+    return AppEvent(
+      metadata: EventMetadata(
+        eventId: '$eventId',
+        runtimeId: 'embedded-node-$epoch',
+        seqNo: eventId,
+        occurredAtMs: DateTime.now().millisecondsSinceEpoch,
+        severity: Severity.info,
+        profileId: profile.id,
+      ),
+      kind: kind,
+      rawEventType: rawEventType,
+      streamGap: streamGap,
+    );
+  }
+
+  static AppError statusError(
+    int status, {
+    int? nodeErrorCode,
+  }) {
+    final mapped = mapNodeError(nodeErrorCode, status);
+    return AppError(
+      code: mapped.$1,
+      category: mapped.$2,
+      message: mapped.$3,
+      retryable: mapped.$4,
+      terminal: mapped.$5,
+      causeCode: nodeErrorCode == null ? null : 'RNS_EMBEDDED_V1_NODE_ERROR_$nodeErrorCode',
+      details: <String, Object?>{'ffiStatus': status, 'nodeErrorCode': nodeErrorCode},
+    );
+  }
+
+  static (ErrorCode, ErrorCategory, String, bool, bool) mapNodeError(
+    int? nodeErrorCode,
+    int ffiStatus,
+  ) {
+    switch (nodeErrorCode) {
+      case 1:
+        return (
+          ErrorCode.configInvalid,
+          ErrorCategory.config,
+          'invalid embedded node configuration',
+          false,
+          true,
+        );
+      case 3:
+        return (
+          ErrorCode.connectivityDisconnected,
+          ErrorCategory.connectivity,
+          'embedded node backend is disconnected',
+          true,
+          false,
+        );
+      case 6:
+        return (
+          ErrorCode.runtimeNotStarted,
+          ErrorCategory.runtime,
+          'embedded node is not running',
+          false,
+          true,
+        );
+      case 7:
+        return (
+          ErrorCode.timeoutOperationExpired,
+          ErrorCategory.timeout,
+          'embedded node wait timed out',
+          false,
+          true,
+        );
+      case 11:
+        return (
+          ErrorCode.runtimeInvalidState,
+          ErrorCategory.runtime,
+          'embedded node mode conflict',
+          false,
+          true,
+        );
+      case 15:
+        return (
+          ErrorCode.deliveryQueuePressure,
+          ErrorCategory.delivery,
+          'embedded node queue pressure',
+          true,
+          false,
+        );
+    }
+
+    switch (ffiStatus) {
+      case rnsEmbeddedStatusTimeout:
+        return (
+          ErrorCode.timeoutOperationExpired,
+          ErrorCategory.timeout,
+          'embedded node operation timed out',
+          false,
+          true,
+        );
+      case rnsEmbeddedStatusBackpressure:
+        return (
+          ErrorCode.deliveryQueuePressure,
+          ErrorCategory.delivery,
+          'embedded node reported backpressure',
+          true,
+          false,
+        );
+      case rnsEmbeddedStatusDisconnected:
+        return (
+          ErrorCode.connectivityDisconnected,
+          ErrorCategory.connectivity,
+          'embedded node reported disconnection',
+          true,
+          false,
+        );
+      default:
+        return (
+          ErrorCode.internalUnexpectedFailure,
+          ErrorCategory.internal,
+          'embedded node ffi operation failed',
+          false,
+          true,
+        );
+    }
+  }
+}
+
 class EmbeddedNodeBridge implements AppBinding {
   EmbeddedNodeBridge(this._api) : _node = _api.nodeNew() {
     if (_node == nullptr) {
@@ -91,7 +285,7 @@ class EmbeddedNodeBridge implements AppBinding {
       final native = statusPtr.ref;
       return RuntimeStatus(
         runtimeId: 'embedded-node-${native.epoch}',
-        state: _mapRunState(native.runState),
+        state: EmbeddedNodeTranslation.mapRunState(native.runState),
         profile: _activeConfig?.profile,
         capabilities: _activeConfig == null ? null : _readCapabilities(),
         queuedMessages: native.pendingOutbound,
@@ -351,26 +545,29 @@ class EmbeddedNodeBridge implements AppBinding {
         case rnsEmbeddedV1PollClosed:
           throw const _BridgeClosed();
         case rnsEmbeddedV1PollGap:
-          return _syntheticEvent(
+          return EmbeddedNodeTranslation.syntheticEvent(
             kind: EventKind.streamGapDetected,
             rawEventType: 'poll_gap',
             epoch: poll.epoch,
             eventId: poll.nextEventId,
+            profile: _activeConfig?.profile ?? Profile.testingDefault,
             streamGap: const StreamGapDetails(droppedCount: 1),
           );
         case rnsEmbeddedV1PollNodeStopped:
-          return _syntheticEvent(
+          return EmbeddedNodeTranslation.syntheticEvent(
             kind: EventKind.runtimeStopped,
             rawEventType: 'poll_node_stopped',
             epoch: poll.epoch,
             eventId: poll.nextEventId,
+            profile: _activeConfig?.profile ?? Profile.testingDefault,
           );
         case rnsEmbeddedV1PollNodeRestarted:
-          return _syntheticEvent(
+          return EmbeddedNodeTranslation.syntheticEvent(
             kind: EventKind.runtimeRecovered,
             rawEventType: 'poll_node_restarted',
             epoch: poll.epoch,
             eventId: poll.nextEventId,
+            profile: _activeConfig?.profile ?? Profile.testingDefault,
           );
         case rnsEmbeddedV1PollEvent:
           return _mapEvent(eventPtr.ref);
@@ -384,62 +581,9 @@ class EmbeddedNodeBridge implements AppBinding {
   }
 
   AppEvent _mapEvent(RnsEmbeddedV1NodeEvent event) {
-    final kind = switch (event.kind) {
-      rnsEmbeddedV1EventStatusChanged => EventKind.runtimeStarted,
-      rnsEmbeddedV1EventLog => EventKind.unknown,
-      rnsEmbeddedV1EventError => EventKind.fatalErrorRaised,
-      rnsEmbeddedV1EventPacketReceived => EventKind.inboundMessageReceived,
-      rnsEmbeddedV1EventPacketSent => EventKind.messageSent,
-      rnsEmbeddedV1EventExtension => EventKind.unknown,
-      _ => EventKind.unknown,
-    };
-
-    return AppEvent(
-      metadata: EventMetadata(
-        eventId: '${event.eventId}',
-        runtimeId: 'embedded-node-${event.epoch}',
-        seqNo: event.eventId,
-        occurredAtMs: event.occurredAtMs,
-        severity: _severityFromLogLevel(event.logLevel),
-        profileId: _activeConfig?.profile.id ?? Profile.testingDefault.id,
-        operationId: event.hasOperationId ? '${event.operationId}' : null,
-      ),
-      kind: kind,
-      rawEventType: 'native_v1_${event.kind}',
-      details: <String, Object?>{
-        'epoch': event.epoch,
-        'lifecycleState': event.lifecycleState,
-        'runState': event.runState,
-        'errorCode': event.errorCode,
-        'frameKind': event.frameKind,
-        'sequence': event.sequence,
-        'bytes': event.bytes,
-        'extensionId': event.extensionId,
-        'value0': event.value0,
-        'value1': event.value1,
-      },
-    );
-  }
-
-  AppEvent _syntheticEvent({
-    required EventKind kind,
-    required String rawEventType,
-    required int epoch,
-    required int eventId,
-    StreamGapDetails? streamGap,
-  }) {
-    return AppEvent(
-      metadata: EventMetadata(
-        eventId: '$eventId',
-        runtimeId: 'embedded-node-$epoch',
-        seqNo: eventId,
-        occurredAtMs: DateTime.now().millisecondsSinceEpoch,
-        severity: Severity.info,
-        profileId: _activeConfig?.profile.id ?? Profile.testingDefault.id,
-      ),
-      kind: kind,
-      rawEventType: rawEventType,
-      streamGap: streamGap,
+    return EmbeddedNodeTranslation.mapEvent(
+      event,
+      profile: _activeConfig?.profile ?? Profile.testingDefault,
     );
   }
 
@@ -478,108 +622,10 @@ class EmbeddedNodeBridge implements AppBinding {
   }
 
   AppError _statusError(int status, Pointer<RnsEmbeddedV1NodeError>? errorPtr) {
-    final nodeErrorCode = errorPtr?.ref.code;
-    final mapped = _mapNodeError(nodeErrorCode, status);
-    return AppError(
-      code: mapped.$1,
-      category: mapped.$2,
-      message: mapped.$3,
-      retryable: mapped.$4,
-      terminal: mapped.$5,
-      causeCode: nodeErrorCode == null ? null : 'RNS_EMBEDDED_V1_NODE_ERROR_$nodeErrorCode',
-      details: <String, Object?>{'ffiStatus': status, 'nodeErrorCode': nodeErrorCode},
+    return EmbeddedNodeTranslation.statusError(
+      status,
+      nodeErrorCode: errorPtr?.ref.code,
     );
-  }
-
-  (ErrorCode, ErrorCategory, String, bool, bool) _mapNodeError(
-    int? nodeErrorCode,
-    int ffiStatus,
-  ) {
-    switch (nodeErrorCode) {
-      case 1:
-        return (
-          ErrorCode.configInvalid,
-          ErrorCategory.config,
-          'invalid embedded node configuration',
-          false,
-          true,
-        );
-      case 3:
-        return (
-          ErrorCode.connectivityDisconnected,
-          ErrorCategory.connectivity,
-          'embedded node backend is disconnected',
-          true,
-          false,
-        );
-      case 6:
-        return (
-          ErrorCode.runtimeNotStarted,
-          ErrorCategory.runtime,
-          'embedded node is not running',
-          false,
-          true,
-        );
-      case 7:
-        return (
-          ErrorCode.timeoutOperationExpired,
-          ErrorCategory.timeout,
-          'embedded node wait timed out',
-          false,
-          true,
-        );
-      case 11:
-        return (
-          ErrorCode.runtimeInvalidState,
-          ErrorCategory.runtime,
-          'embedded node mode conflict',
-          false,
-          true,
-        );
-      case 15:
-        return (
-          ErrorCode.deliveryQueuePressure,
-          ErrorCategory.delivery,
-          'embedded node queue pressure',
-          true,
-          false,
-        );
-    }
-
-    switch (ffiStatus) {
-      case rnsEmbeddedStatusTimeout:
-        return (
-          ErrorCode.timeoutOperationExpired,
-          ErrorCategory.timeout,
-          'embedded node operation timed out',
-          false,
-          true,
-        );
-      case rnsEmbeddedStatusBackpressure:
-        return (
-          ErrorCode.deliveryQueuePressure,
-          ErrorCategory.delivery,
-          'embedded node reported backpressure',
-          true,
-          false,
-        );
-      case rnsEmbeddedStatusDisconnected:
-        return (
-          ErrorCode.connectivityDisconnected,
-          ErrorCategory.connectivity,
-          'embedded node reported disconnection',
-          true,
-          false,
-        );
-      default:
-        return (
-          ErrorCode.internalUnexpectedFailure,
-          ErrorCategory.internal,
-          'embedded node ffi operation failed',
-          false,
-          true,
-        );
-    }
   }
 
   void _ensureNotDisposed() {
@@ -601,14 +647,6 @@ class EmbeddedNodeBridge implements AppBinding {
         message: 'embedded node is not started',
       );
     }
-  }
-
-  static RunState _mapRunState(int runState) {
-    return switch (runState) {
-      rnsEmbeddedV1RunStateRunning => RunState.running,
-      rnsEmbeddedV1RunStateStopped => RunState.stopped,
-      _ => RunState.failed,
-    };
   }
 
   static String _defaultLibraryPath() {
@@ -660,17 +698,6 @@ class EmbeddedNodeBridge implements AppBinding {
     for (var index = 0; index < length; index++) {
       destination[index] = source[index];
     }
-  }
-
-  static Severity _severityFromLogLevel(int logLevel) {
-    return switch (logLevel) {
-      0 => Severity.error,
-      1 => Severity.warn,
-      2 => Severity.info,
-      3 => Severity.debug,
-      4 => Severity.debug,
-      _ => Severity.unknown,
-    };
   }
 
   static int _delayForAttempt(BackoffSchedule backoff, int attempt) {
