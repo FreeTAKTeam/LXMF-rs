@@ -24,3 +24,10 @@ It complements the formal contracts under `docs/contracts/` with integration-foc
 - `docs/contracts/sdk-v2-events.md`
 - `docs/contracts/sdk-v2-errors.md`
 - `docs/contracts/sdk-v2-feature-matrix.md`
+
+Easy-mode roadmap contracts:
+
+- `docs/contracts/sdk-easy-api-v1.md`
+- `docs/contracts/sdk-easy-events-v1.md`
+- `docs/contracts/sdk-easy-errors-v1.md`
+- `docs/contracts/sdk-easy-profiles-v1.md`
