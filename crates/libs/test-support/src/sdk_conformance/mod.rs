@@ -18,6 +18,7 @@ use std::time::Duration;
 mod auth_mode_tests;
 mod certification_tests;
 mod crypto_agility_tests;
+mod easy_mode_contract_tests;
 mod key_management_tests;
 mod model_tests;
 mod release_bc_tests;

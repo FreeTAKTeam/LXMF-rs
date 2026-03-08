@@ -1,0 +1,42 @@
+{
+  "fixture_schema_version": 1,
+  "contract_family": "sdk-easy",
+  "contract_release": "v1",
+  "scenarios": [
+    {
+      "id": "lifecycle.start_stop_restart",
+      "kind": "lifecycle",
+      "path": "lifecycle.start_stop_restart.json"
+    },
+    {
+      "id": "events.delivery_ordering",
+      "kind": "event_ordering",
+      "path": "events.delivery_ordering.json"
+    },
+    {
+      "id": "timeout.poll_timeout",
+      "kind": "timeout",
+      "path": "timeout.poll_timeout.json"
+    },
+    {
+      "id": "delivery.queue_pressure",
+      "kind": "queue_pressure",
+      "path": "delivery.queue_pressure.json"
+    },
+    {
+      "id": "connectivity.reconnect_recovery",
+      "kind": "reconnect",
+      "path": "connectivity.reconnect_recovery.json"
+    },
+    {
+      "id": "errors.typed_mapping",
+      "kind": "error_mapping",
+      "path": "errors.typed_mapping.json"
+    },
+    {
+      "id": "compatibility.unknown_additive",
+      "kind": "compatibility",
+      "path": "compatibility.unknown_additive.json"
+    }
+  ]
+}

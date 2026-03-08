@@ -1,0 +1,11 @@
+{
+  "scenario_id": "timeout.poll_timeout",
+  "contract_release": "v1",
+  "profile": "testing_default",
+  "kind": "timeout",
+  "operation": "next_event",
+  "timeout_ms": 250,
+  "expected_outcome": "timeout",
+  "returns_error": false,
+  "expected_events": []
+}

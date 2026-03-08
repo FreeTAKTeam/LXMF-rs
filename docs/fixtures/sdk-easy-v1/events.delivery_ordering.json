@@ -1,0 +1,18 @@
+{
+  "scenario_id": "events.delivery_ordering",
+  "contract_release": "v1",
+  "profile": "testing_default",
+  "kind": "event_ordering",
+  "message_id": "msg-001",
+  "expected_events": [
+    "MessageQueued",
+    "MessageDispatching",
+    "MessageSent",
+    "MessageDelivered"
+  ],
+  "assertions": {
+    "seq_no_strictly_monotonic": true,
+    "delivery_progression_monotonic": true,
+    "terminal_event_final": true
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "scenario_id": "delivery.queue_pressure",
+  "contract_release": "v1",
+  "profile": "testing_default",
+  "kind": "queue_pressure",
+  "expected_error": "EASY_DELIVERY_QUEUE_PRESSURE",
+  "expected_events": [
+    "QueuePressureRaised",
+    "RetryScheduled"
+  ],
+  "assertions": {
+    "partial_acceptance_visible": true,
+    "queue_pressure_hidden_in_ok": false
+  }
+}

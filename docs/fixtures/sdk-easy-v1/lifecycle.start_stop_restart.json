@@ -1,0 +1,22 @@
+{
+  "scenario_id": "lifecycle.start_stop_restart",
+  "contract_release": "v1",
+  "profile": "testing_default",
+  "kind": "lifecycle",
+  "actions": [
+    "start",
+    "stop",
+    "restart"
+  ],
+  "expected_events": [
+    "RuntimeStarted",
+    "RuntimeStopped",
+    "RuntimeStarted"
+  ],
+  "assertions": {
+    "restart_increments_runtime_id": true,
+    "stop_is_idempotent": true,
+    "blocked_waits_resolve_on_stop": true,
+    "blocked_waits_resolve_on_restart": true
+  }
+}

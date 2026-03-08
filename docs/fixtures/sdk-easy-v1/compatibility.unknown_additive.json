@@ -1,0 +1,19 @@
+{
+  "scenario_id": "compatibility.unknown_additive",
+  "contract_release": "v1",
+  "profile": "testing_default",
+  "kind": "compatibility",
+  "unknown_capability_flags": [
+    "sdk.easy.future_capability.alpha"
+  ],
+  "unknown_event_fields": [
+    "future_metadata",
+    "future_counter"
+  ],
+  "expected_policy": {
+    "ignore_unknown_capabilities": true,
+    "ignore_unknown_fields": true,
+    "preserve_known_fields": true,
+    "fail_only_on_required_by_profile": true
+  }
+}

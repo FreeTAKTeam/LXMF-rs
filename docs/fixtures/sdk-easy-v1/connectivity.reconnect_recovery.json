@@ -1,0 +1,15 @@
+{
+  "scenario_id": "connectivity.reconnect_recovery",
+  "contract_release": "v1",
+  "profile": "mobile_default",
+  "kind": "reconnect",
+  "expected_events": [
+    "RuntimeDegraded",
+    "ReconnectScheduled",
+    "RuntimeRecovered"
+  ],
+  "assertions": {
+    "schedule_precedes_recovery": true,
+    "silent_recovery_forbidden": true
+  }
+}
