@@ -25,15 +25,28 @@ The repo must choose one of these as the normative answer:
 
 Until that choice is explicit, wrapper work will keep producing false confidence.
 
-## Recommendation
+## Decision
 
-Treat the current stack as `embedded-native` today, but keep a deliberate path toward external interoperability.
+The embedded track is intended to become a true Reticulum/LXMF peer.
 
-That means:
+The repository should therefore choose:
 
-- short term: do not claim MeshChatX/Sideband/Columba interoperability from `rns-embedded-*`
-- medium term: add a compatibility architecture decision
-- long term: either implement a real compatibility layer or promote a separate Reticulum-compatible embedded stack
+- `Option C: Build a Reticulum-Compatible Embedded Stack`
+
+Implications:
+
+- `rns-embedded-*` is not a separate long-term public protocol family
+- the current `RNE1` and `ELX1` formats are temporary/internal scaffolding, not the target external interoperability contract
+- wrapper work on top of `rns-embedded-*` must not claim MeshChatX, Sideband, or Columba interoperability until the embedded stack speaks the required Reticulum/LXMF semantics
+- external-client interoperability is a real success criterion for the embedded track, not a nice-to-have add-on
+
+## Immediate Repo Guidance
+
+Until the compatibility work lands:
+
+- local embedded-peer smoke tests are valid only as embedded-native proofs
+- wrapper docs must avoid wording that implies external-client interoperability
+- embedded-native transport/message artifacts should be documented as temporary or internal where they are still required
 
 ## Non-Goals
 
@@ -151,6 +164,12 @@ Choose the path based on these questions:
 3. Is compatibility with Python Reticulum/LXMF considered a release gate for the embedded track?
 4. Are we willing to carry two separate node stacks in the repo?
 
+For the current product direction, the answer is:
+
+- yes, Flutter/mobile clients built on this repo are expected to interoperate with MeshChatX, Sideband, and Columba
+
+That answer resolves the choice in favor of the Reticulum-compatible path.
+
 ## Recommended Repo Contract Changes
 
 Regardless of the option selected, the repo should make these changes first:
@@ -214,10 +233,39 @@ Deliverables:
 - transcript artifact
 - explicit pass/fail ownership
 
+## Immediate Implementation Sequence
+
+With the decision made, the next engineering order should be:
+
+1. Document the boundary clearly
+   - close wording gaps in embedded and wrapper docs
+
+2. Freeze external interop acceptance tests
+   - define exactly what counts as MeshChatX/Sideband/Columba proof
+
+3. Replace or bypass embedded-native wire assumptions
+   - remove the implicit assumption that `RNE1`/`ELX1` is the eventual external wire
+   - decide whether the migration path is direct replacement or temporary adapter-backed transition
+
+4. Build the first compatibility spike against MeshChatX
+   - because it has the cleanest headless/API surface for repeatable proof
+
+5. Add release-gated proof before making wrapper claims
+   - no public README/API claim should outrun the proof harness
+
+## What This Plan Does Not Decide
+
+This plan does not yet decide whether the Reticulum-compatible path is implemented by:
+
+- directly replacing the current embedded-native wire/message scaffolding, or
+- introducing a short-lived transitional adapter while the true implementation is built
+
+That is the next architecture question, but it is now subordinate to the main decision rather than blocking it.
+
 ## Definition of Done
 
 This decision slice is done when:
 
 1. The repo no longer blurs embedded-native proof with external-client proof.
-2. One interoperability strategy is explicitly chosen.
+2. The Reticulum-compatible embedded path is explicitly chosen.
 3. The next implementation work can be sequenced without ambiguity.
