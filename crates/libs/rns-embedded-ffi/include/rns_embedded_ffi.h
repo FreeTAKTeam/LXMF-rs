@@ -13,6 +13,17 @@ typedef struct RnsEmbeddedNode RnsEmbeddedNode;
 typedef struct RnsEmbeddedV1Node RnsEmbeddedV1Node;
 typedef struct RnsEmbeddedEventSubscription RnsEmbeddedEventSubscription;
 
+#define RNS_EMBEDDED_V1_CAPABILITY_SCHEMA_VERSION 1u
+#define RNS_EMBEDDED_V1_CAP_MANAGED_RUNTIME (1ull << 0)
+#define RNS_EMBEDDED_V1_CAP_BLOCKING_NEXT (1ull << 1)
+#define RNS_EMBEDDED_V1_CAP_BROADCAST_EXPLICIT_LIST (1ull << 2)
+#define RNS_EMBEDDED_V1_CAP_COMPAT_LEGACY_FFI (1ull << 3)
+#define RNS_EMBEDDED_V1_CAP_EVENT_GAP_SIGNALING (1ull << 4)
+#define RNS_EMBEDDED_V1_KNOWN_CAPABILITY_BITS \
+  (RNS_EMBEDDED_V1_CAP_MANAGED_RUNTIME | RNS_EMBEDDED_V1_CAP_BLOCKING_NEXT | \
+   RNS_EMBEDDED_V1_CAP_BROADCAST_EXPLICIT_LIST | RNS_EMBEDDED_V1_CAP_COMPAT_LEGACY_FFI | \
+   RNS_EMBEDDED_V1_CAP_EVENT_GAP_SIGNALING)
+
 typedef struct {
   uint8_t store_identity[32];
   uint8_t lxmf_address[16];
@@ -98,17 +109,7 @@ typedef enum {
 } RnsEmbeddedV1PollResultKind;
 
 typedef enum {
-  RNS_EMBEDDED_V1_NODE_ERROR_UNKNOWN = 0,
-  RNS_EMBEDDED_V1_NODE_ERROR_INVALID_CONFIG = 1,
-  RNS_EMBEDDED_V1_NODE_ERROR_IO_ERROR = 2,
-  RNS_EMBEDDED_V1_NODE_ERROR_NETWORK_ERROR = 3,
-  RNS_EMBEDDED_V1_NODE_ERROR_RETICULUM_ERROR = 4,
-  RNS_EMBEDDED_V1_NODE_ERROR_ALREADY_RUNNING = 5,
-  RNS_EMBEDDED_V1_NODE_ERROR_NOT_RUNNING = 6,
-  RNS_EMBEDDED_V1_NODE_ERROR_TIMEOUT = 7,
-  RNS_EMBEDDED_V1_NODE_ERROR_INTERNAL_ERROR = 8,
-  RNS_EMBEDDED_V1_NODE_ERROR_INVALID_HANDLE = 9,
-  RNS_EMBEDDED_V1_NODE_ERROR_INVALID_POINTER = 10,
+#include "generated/rns_embedded_v1_node_error_codes.inc"
 } RnsEmbeddedV1NodeErrorCode;
 
 typedef struct {
@@ -168,10 +169,16 @@ typedef struct {
   size_t struct_size;
   uint32_t struct_version;
   uint32_t abi_version;
+  uint32_t capability_schema_version;
+  uint64_t known_capability_bits;
+  uint64_t compile_time_capability_bits;
   uint64_t capability_bits;
   uint32_t max_event_payload_bytes;
   uint32_t max_subscriptions;
-  uint8_t reserved[32];
+  uint64_t max_blocking_timeout_ms;
+  uint32_t driver_tick_target_ms;
+  uint32_t driver_tick_max_ms;
+  uint8_t reserved[24];
 } RnsEmbeddedV1Capabilities;
 
 typedef struct {

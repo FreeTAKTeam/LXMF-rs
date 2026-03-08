@@ -1972,6 +1972,7 @@ dependencies = [
  "embedded-alloc",
  "rns-embedded-core",
  "rns-embedded-runtime",
+ "serde_json",
 ]
 
 [[package]]

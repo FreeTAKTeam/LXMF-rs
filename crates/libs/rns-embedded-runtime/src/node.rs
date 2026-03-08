@@ -1,18 +1,14 @@
 use crate::{
-    RuntimeConfig, RuntimeEvent, RuntimeStats,
     ble::{BleShimConfig, BleShimTransport},
     constants::DEFAULT_CAPTURE_MAX_BYTES,
+    RuntimeConfig, RuntimeEvent, RuntimeStats,
 };
 use alloc::{
     collections::{BTreeMap, VecDeque},
     string::String,
     vec::Vec,
 };
-use rns_embedded_core::{
-    EmbeddedError,
-    store::JournaledEmbeddedStore,
-    transport::LinkState,
-};
+use rns_embedded_core::{store::JournaledEmbeddedStore, transport::LinkState, EmbeddedError};
 
 #[cfg(feature = "std")]
 use alloc::sync::Arc;
@@ -38,6 +34,9 @@ const DRIVER_TICK_SLEEP: Duration = Duration::from_millis(DRIVER_TICK_MS);
 // practical upper bound so impossible waits degrade into a safe timeout result.
 #[cfg(feature = "std")]
 const MAX_BLOCKING_TIMEOUT_MS: u64 = u32::MAX as u64;
+pub const NODE_EXTENSION_ID_BOOTSTRAPPED: u32 = 1;
+pub const NODE_EXTENSION_ID_MESSAGE_QUEUED: u32 = 2;
+pub const NODE_EXTENSION_ID_RECEIVED_SUMMARY: u32 = 3;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum NodeTransportMode {
@@ -63,9 +62,7 @@ pub struct CaptureDefaults {
 
 impl Default for CaptureDefaults {
     fn default() -> Self {
-        Self {
-            max_bytes: DEFAULT_CAPTURE_MAX_BYTES,
-        }
+        Self { max_bytes: DEFAULT_CAPTURE_MAX_BYTES }
     }
 }
 
@@ -195,16 +192,22 @@ pub enum NodeError {
     NotRunning,
     Timeout,
     InternalError,
+    ModeConflict,
+    SubscriptionClosed,
+    NodeRestarted,
+    EventGap,
+    QueuePressure,
 }
 
 impl From<EmbeddedError> for NodeError {
     fn from(value: EmbeddedError) -> Self {
         match value {
-            EmbeddedError::InvalidInput | EmbeddedError::InvalidArgument | EmbeddedError::Unsupported => {
-                Self::InvalidConfig
-            }
+            EmbeddedError::InvalidInput
+            | EmbeddedError::InvalidArgument
+            | EmbeddedError::Unsupported => Self::InvalidConfig,
             EmbeddedError::Timeout => Self::Timeout,
-            EmbeddedError::Backpressure | EmbeddedError::Disconnected => Self::NetworkError,
+            EmbeddedError::Backpressure => Self::QueuePressure,
+            EmbeddedError::Disconnected => Self::NetworkError,
             EmbeddedError::IntegrityFailure
             | EmbeddedError::ChecksumMismatch
             | EmbeddedError::IdempotencyConflict
@@ -219,34 +222,12 @@ impl From<EmbeddedError> for NodeError {
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum NodeEventKind {
-    StatusChanged {
-        run_state: NodeRunState,
-        lifecycle_state: Option<NodeLifecycleState>,
-    },
-    Log {
-        level: NodeLogLevel,
-        code: u32,
-    },
-    Error {
-        error: NodeError,
-        frame_kind: u8,
-        sequence: u32,
-    },
-    PacketReceived {
-        frame_kind: u8,
-        sequence: u32,
-        bytes: usize,
-    },
-    PacketSent {
-        frame_kind: u8,
-        sequence: u32,
-        bytes: usize,
-    },
-    Extension {
-        extension_id: u32,
-        value0: u64,
-        value1: u64,
-    },
+    StatusChanged { run_state: NodeRunState, lifecycle_state: Option<NodeLifecycleState> },
+    Log { level: NodeLogLevel, code: u32 },
+    Error { error: NodeError, frame_kind: u8, sequence: u32 },
+    PacketReceived { frame_kind: u8, sequence: u32, bytes: usize },
+    PacketSent { frame_kind: u8, sequence: u32, bytes: usize },
+    Extension { extension_id: u32, value0: u64, value1: u64 },
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -293,7 +274,9 @@ impl NodeBackend {
 
     fn link_state(&self) -> LinkState {
         match self {
-            Self::Ble(transport) => rns_embedded_core::transport::EmbeddedTransport::link_state(transport),
+            Self::Ble(transport) => {
+                rns_embedded_core::transport::EmbeddedTransport::link_state(transport)
+            }
         }
     }
 }
@@ -313,7 +296,9 @@ impl RuntimeSession {
                 if config.runtime.node_mode != NodeTransportMode::BleOnly {
                     return Err(NodeError::InvalidConfig);
                 }
-                NodeBackend::Ble(BleShimTransport::new(BleShimConfig::from(ble)).map_err(NodeError::from)?)
+                NodeBackend::Ble(
+                    BleShimTransport::new(BleShimConfig::from(ble)).map_err(NodeError::from)?,
+                )
             }
             #[cfg(feature = "std")]
             NodeBackendConfig::TcpClient(_) | NodeBackendConfig::TcpServer(_) => {
@@ -321,28 +306,26 @@ impl RuntimeSession {
             }
         };
 
-        Ok(Self {
-            epoch,
-            runtime,
-            store: JournaledEmbeddedStore::new(),
-            backend,
-        })
+        Ok(Self { epoch, runtime, store: JournaledEmbeddedStore::new(), backend })
     }
 
     fn tick(&mut self, now_ms: u64) -> Result<Vec<RuntimeEvent>, NodeError> {
         match &mut self.backend {
-            NodeBackend::Ble(transport) => self
-                .runtime
-                .tick(now_ms, transport, &mut self.store)
-                .map_err(NodeError::from)?,
+            NodeBackend::Ble(transport) => {
+                self.runtime.tick(now_ms, transport, &mut self.store).map_err(NodeError::from)?
+            }
         }
         Ok(self.runtime.drain_events())
     }
 
     fn queue_message(&mut self, destination: [u8; 16], data: &[u8]) -> Result<u32, NodeError> {
-        self.runtime
-            .queue_message(destination, data)
-            .map_err(NodeError::from)
+        self.runtime.queue_message(destination, data).map_err(NodeError::from)
+    }
+
+    fn has_outbound_capacity(&self, needed_slots: usize) -> bool {
+        let capacity = self.runtime.config().max_outbound_queue;
+        let used = self.runtime.pending_outbound_len();
+        capacity.saturating_sub(used) >= needed_slots
     }
 
     fn status(&self, log_level: NodeLogLevel) -> NodeStatus {
@@ -426,9 +409,7 @@ pub struct EmbeddedNode {
 
 impl Clone for EmbeddedNode {
     fn clone(&self) -> Self {
-        Self {
-            inner: clone_inner(&self.inner),
-        }
+        Self { inner: clone_inner(&self.inner) }
     }
 }
 
@@ -445,10 +426,7 @@ pub struct EventSubscription {
 
 impl Clone for EventSubscription {
     fn clone(&self) -> Self {
-        Self {
-            inner: clone_inner(&self.inner),
-            subscription_id: self.subscription_id,
-        }
+        Self { inner: clone_inner(&self.inner), subscription_id: self.subscription_id }
     }
 }
 
@@ -572,6 +550,9 @@ impl EmbeddedNode {
     ) -> Result<NodeOperationReceipt, NodeError> {
         let receipt = self.with_state(|state| {
             let session = state.session.as_mut().ok_or(NodeError::NotRunning)?;
+            if !session.has_outbound_capacity(1) {
+                return Err(NodeError::QueuePressure);
+            }
             let sequence = session.queue_message(destination, data)?;
             Ok(NodeOperationReceipt {
                 operation: NodeOperationKind::Send,
@@ -596,6 +577,9 @@ impl EmbeddedNode {
         }
         let receipt = self.with_state(|state| {
             let session = state.session.as_mut().ok_or(NodeError::NotRunning)?;
+            if !session.has_outbound_capacity(options.destinations.len()) {
+                return Err(NodeError::QueuePressure);
+            }
             let mut last_sequence = 0_u64;
             for destination in &options.destinations {
                 last_sequence = u64::from(session.queue_message(*destination, data)?);
@@ -618,10 +602,7 @@ impl EmbeddedNode {
             state.log_level = level;
             push_event_locked(
                 state,
-                NodeEventKind::Log {
-                    level,
-                    code: 0,
-                },
+                NodeEventKind::Log { level, code: 0 },
                 None,
                 state.last_now_ms,
             );
@@ -645,14 +626,12 @@ impl EmbeddedNode {
             Ok(id)
         })?;
 
-        Ok(EventSubscription {
-            inner: clone_inner(&self.inner),
-            subscription_id,
-        })
+        Ok(EventSubscription { inner: clone_inner(&self.inner), subscription_id })
     }
 
     pub fn tick(&self, now_ms: u64) -> Result<(), NodeError> {
         self.with_state(|state| {
+            ensure_manual_progression_allowed(state)?;
             let events = {
                 let session = state.session.as_mut().ok_or(NodeError::NotRunning)?;
                 session.tick(now_ms)?
@@ -726,12 +705,8 @@ impl EmbeddedNode {
     fn start_driver(&self, epoch: u64) {
         let start_instant = Instant::now();
         if let Ok(mut state) = self.inner.state.lock() {
-            state.driver = Some(DriverState {
-                epoch,
-                stop_requested: false,
-                start_instant,
-                handle: None,
-            });
+            state.driver =
+                Some(DriverState { epoch, stop_requested: false, start_instant, handle: None });
         }
 
         let inner = Arc::clone(&self.inner);
@@ -888,25 +863,18 @@ fn next_poll_result_locked(state: &mut NodeState, subscription_id: u64) -> PollR
 
     if subscription.next_event_id < first_event.event_id {
         subscription.next_event_id = first_event.event_id;
-        return PollResult::Gap {
-            next_event_id: first_event.event_id,
-        };
+        return PollResult::Gap { next_event_id: first_event.event_id };
     }
 
-    let Some(event) = state
-        .event_log
-        .iter()
-        .find(|event| event.event_id >= subscription.next_event_id)
-        .cloned()
+    let Some(event) =
+        state.event_log.iter().find(|event| event.event_id >= subscription.next_event_id).cloned()
     else {
         return PollResult::Timeout;
     };
 
     if subscription.next_event_id < event.event_id {
         subscription.next_event_id = event.event_id;
-        return PollResult::Gap {
-            next_event_id: event.event_id,
-        };
+        return PollResult::Gap { next_event_id: event.event_id };
     }
 
     subscription.next_event_id = event.event_id.saturating_add(1);
@@ -926,68 +894,41 @@ fn append_runtime_events_locked(state: &mut NodeState, events: Vec<RuntimeEvent>
                 None,
                 now_ms,
             ),
-            RuntimeEvent::FrameSent {
-                kind,
-                sequence,
-                bytes,
-            } => push_event_locked(
+            RuntimeEvent::FrameSent { kind, sequence, bytes } => push_event_locked(
                 state,
-                NodeEventKind::PacketSent {
-                    frame_kind: kind,
-                    sequence,
-                    bytes,
-                },
+                NodeEventKind::PacketSent { frame_kind: kind, sequence, bytes },
                 Some(u64::from(sequence)),
                 now_ms,
             ),
-            RuntimeEvent::FrameReceived {
-                kind,
-                sequence,
-                bytes,
-            } => push_event_locked(
+            RuntimeEvent::FrameReceived { kind, sequence, bytes } => push_event_locked(
                 state,
-                NodeEventKind::PacketReceived {
-                    frame_kind: kind,
-                    sequence,
-                    bytes,
-                },
+                NodeEventKind::PacketReceived { frame_kind: kind, sequence, bytes },
                 Some(u64::from(sequence)),
                 now_ms,
             ),
-            RuntimeEvent::FrameDeferred {
-                kind,
-                sequence,
-                error,
-            }
-            | RuntimeEvent::FrameRejected {
-                kind,
-                sequence,
-                error,
-            } => push_event_locked(
+            RuntimeEvent::FrameDeferred { kind, sequence, error }
+            | RuntimeEvent::FrameRejected { kind, sequence, error } => push_event_locked(
                 state,
-                NodeEventKind::Error {
-                    error: NodeError::from(error),
-                    frame_kind: kind,
-                    sequence,
-                },
+                NodeEventKind::Error { error: NodeError::from(error), frame_kind: kind, sequence },
                 Some(u64::from(sequence)),
                 now_ms,
             ),
             RuntimeEvent::Bootstrapped { replay_floor } => push_event_locked(
                 state,
                 NodeEventKind::Extension {
-                    extension_id: 1,
+                    extension_id: NODE_EXTENSION_ID_BOOTSTRAPPED,
                     value0: replay_floor,
                     value1: 0,
                 },
                 None,
                 now_ms,
             ),
-            RuntimeEvent::AnnounceQueued { sequence } | RuntimeEvent::MessageQueued { sequence, .. } => {
+            RuntimeEvent::AnnounceQueued { sequence }
+            | RuntimeEvent::MessageQueued { sequence, .. } => {
                 push_event_locked(
                     state,
                     NodeEventKind::Extension {
-                        extension_id: 2,
+                        extension_id: NODE_EXTENSION_ID_MESSAGE_QUEUED,
                         value0: u64::from(sequence),
                         value1: 0,
                     },
@@ -996,15 +937,11 @@ fn append_runtime_events_locked(state: &mut NodeState, events: Vec<RuntimeEvent>
                 );
             }
             RuntimeEvent::AnnounceReceived { sequence, bytes }
-            | RuntimeEvent::LxmfMessageReceived {
-                sequence,
-                body_bytes: bytes,
-                ..
-            } => {
+            | RuntimeEvent::LxmfMessageReceived { sequence, body_bytes: bytes, .. } => {
                 push_event_locked(
                     state,
                     NodeEventKind::Extension {
-                        extension_id: 3,
+                        extension_id: NODE_EXTENSION_ID_RECEIVED_SUMMARY,
                         value0: u64::from(sequence),
                         value1: bytes as u64,
                     },
@@ -1022,6 +959,9 @@ fn push_event_locked(
     operation_id: Option<u64>,
     occurred_at_ms: u64,
 ) {
+    if let NodeEventKind::Extension { extension_id, .. } = &kind {
+        debug_assert!(is_valid_extension_id(*extension_id));
+    }
     if state.event_log.len() >= state.event_capacity {
         state.event_log.pop_front();
     }
@@ -1035,13 +975,33 @@ fn push_event_locked(
     state.next_event_id = state.next_event_id.saturating_add(1);
 }
 
+#[cfg(feature = "std")]
+fn ensure_manual_progression_allowed(state: &NodeState) -> Result<(), NodeError> {
+    if state.driver.as_ref().is_some_and(|driver| !driver.stop_requested) {
+        return Err(NodeError::ModeConflict);
+    }
+    Ok(())
+}
+
+#[cfg(not(feature = "std"))]
+fn ensure_manual_progression_allowed(_state: &NodeState) -> Result<(), NodeError> {
+    Ok(())
+}
+
+pub fn is_valid_extension_id(extension_id: u32) -> bool {
+    matches!(
+        extension_id,
+        NODE_EXTENSION_ID_BOOTSTRAPPED
+            | NODE_EXTENSION_ID_MESSAGE_QUEUED
+            | NODE_EXTENSION_ID_RECEIVED_SUMMARY
+    )
+}
+
 fn signal_generation_change(state: &mut NodeState, epoch: u64) {
     let next_event_id = state.next_event_id;
     for subscription in state.subscriptions.values_mut() {
         subscription.next_event_id = next_event_id;
-        subscription
-            .pending_signals
-            .push_back(PendingSignal::NodeRestarted { epoch });
+        subscription.pending_signals.push_back(PendingSignal::NodeRestarted { epoch });
     }
 }
 
@@ -1076,11 +1036,7 @@ fn driver_tick(inner: &Arc<StdNodeInner>, epoch: u64) -> bool {
                     state.last_now_ms = now_ms;
                     push_event_locked(
                         &mut state,
-                        NodeEventKind::Error {
-                            error: err,
-                            frame_kind: 0,
-                            sequence: 0,
-                        },
+                        NodeEventKind::Error { error: err, frame_kind: 0, sequence: 0 },
                         None,
                         now_ms,
                     );
@@ -1165,9 +1121,7 @@ mod tests {
 
         node.start(config()).expect("start");
         node.set_link_state(LinkState::Up).expect("link up");
-        let receipt = node
-            .send([0x99; 16], b"hello", SendOptions)
-            .expect("send");
+        let receipt = node.send([0x99; 16], b"hello", SendOptions).expect("send");
         assert_eq!(receipt.epoch, 1);
         assert_eq!(receipt.target_count, 1);
 
@@ -1176,14 +1130,8 @@ mod tests {
         #[cfg(not(feature = "std"))]
         node.tick(0).expect("tick");
 
-        let first = node
-            .take_outbound_wire()
-            .expect("take outbound")
-            .expect("frame");
-        let second = node
-            .take_outbound_wire()
-            .expect("take outbound")
-            .expect("frame");
+        let first = node.take_outbound_wire().expect("take outbound").expect("frame");
+        let second = node.take_outbound_wire().expect("take outbound").expect("frame");
         let decoded_first = decode_frame(&first).expect("decode first");
         let decoded_second = decode_frame(&second).expect("decode second");
         assert_eq!(decoded_first.kind, crate::FRAME_KIND_LXMF_MESSAGE);
@@ -1222,22 +1170,43 @@ mod tests {
         node.start(config()).expect("start");
         node.set_log_level(NodeLogLevel::Debug).expect("log level");
 
-        let err = node
-            .broadcast(b"hello", BroadcastOptions::default())
-            .expect_err("empty broadcast");
+        let err =
+            node.broadcast(b"hello", BroadcastOptions::default()).expect_err("empty broadcast");
         assert_eq!(err, NodeError::InvalidConfig);
 
         let receipt = node
-            .broadcast(
-                b"hello",
-                BroadcastOptions {
-                    destinations: vec![[0x11; 16], [0x22; 16]],
-                },
-            )
+            .broadcast(b"hello", BroadcastOptions { destinations: vec![[0x11; 16], [0x22; 16]] })
             .expect("broadcast");
         assert_eq!(receipt.target_count, 2);
         assert_eq!(node.get_status().log_level, NodeLogLevel::Debug);
         assert_eq!(node.get_status().pending_outbound, 2);
+    }
+
+    #[test]
+    fn queue_pressure_is_stable_and_broadcast_is_all_or_nothing() {
+        let mut small = config();
+        small.runtime.max_outbound_queue = 1;
+
+        let node = EmbeddedNode::new();
+        node.start(small).expect("start");
+
+        let receipt = node.send([0xAA; 16], b"one", SendOptions).expect("first send");
+        assert_eq!(receipt.target_count, 1);
+        assert_eq!(node.get_status().pending_outbound, 1);
+
+        let err = node.send([0xBB; 16], b"two", SendOptions).expect_err("queue pressure");
+        assert_eq!(err, NodeError::QueuePressure);
+        assert_eq!(node.get_status().pending_outbound, 1);
+
+        node.stop().expect("stop");
+
+        let node = EmbeddedNode::new();
+        node.start(config()).expect("start");
+        let err = node
+            .broadcast(b"hello", BroadcastOptions { destinations: vec![[0x11; 16]; 9] })
+            .expect_err("broadcast queue pressure");
+        assert_eq!(err, NodeError::QueuePressure);
+        assert_eq!(node.get_status().pending_outbound, 0);
     }
 
     #[test]
@@ -1272,5 +1241,72 @@ mod tests {
         let sub = node.subscribe_events().expect("subscribe");
 
         assert_eq!(sub.next(u64::MAX).expect("overflow timeout"), PollResult::Timeout);
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn managed_mode_rejects_manual_tick() {
+        let node = EmbeddedNode::new();
+        node.start(config()).expect("start");
+
+        assert_eq!(node.tick(0).expect_err("mode conflict"), NodeError::ModeConflict);
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn blocked_next_wakes_on_stop() {
+        let node = EmbeddedNode::new();
+        let sub = node.subscribe_events().expect("subscribe");
+        node.start(config()).expect("start");
+        thread::sleep(Duration::from_millis(60));
+        assert!(matches!(sub.next(0).expect("restart"), PollResult::NodeRestarted { .. }));
+        while !matches!(sub.next(0).expect("drain"), PollResult::Timeout) {}
+
+        let waiter = sub.clone();
+        let handle = thread::spawn(move || waiter.next(5_000).expect("waiter"));
+        thread::sleep(Duration::from_millis(50));
+        node.stop().expect("stop");
+
+        assert_eq!(handle.join().expect("join"), PollResult::NodeStopped);
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn blocked_next_wakes_on_restart() {
+        let node = EmbeddedNode::new();
+        let sub = node.subscribe_events().expect("subscribe");
+        node.start(config()).expect("start");
+        thread::sleep(Duration::from_millis(60));
+        assert!(matches!(sub.next(0).expect("restart"), PollResult::NodeRestarted { .. }));
+        while !matches!(sub.next(0).expect("drain"), PollResult::Timeout) {}
+
+        let waiter = sub.clone();
+        let handle = thread::spawn(move || waiter.next(5_000).expect("waiter"));
+        thread::sleep(Duration::from_millis(50));
+        node.restart(config()).expect("restart");
+
+        assert_eq!(handle.join().expect("join"), PollResult::NodeStopped);
+        assert!(matches!(
+            sub.next(0).expect("restart signal"),
+            PollResult::NodeRestarted { epoch: 2 }
+        ));
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn closing_subscription_wakes_blocked_waiter() {
+        let node = EmbeddedNode::new();
+        let sub = node.subscribe_events().expect("subscribe");
+        node.start(config()).expect("start");
+        thread::sleep(Duration::from_millis(60));
+        assert!(matches!(sub.next(0).expect("restart"), PollResult::NodeRestarted { .. }));
+        while !matches!(sub.next(0).expect("drain"), PollResult::Timeout) {}
+
+        let waiter = sub.clone();
+        let handle = thread::spawn(move || waiter.next(5_000).expect("waiter"));
+        thread::sleep(Duration::from_millis(50));
+        sub.close().expect("close");
+
+        assert_eq!(handle.join().expect("join"), PollResult::Closed);
     }
 }

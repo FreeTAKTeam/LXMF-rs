@@ -120,6 +120,9 @@ cargo run -p rns-tools --bin rnx -- e2e --timeout-secs 20
 
 - Header: `crates/libs/rns-embedded-ffi/include/rns_embedded_ffi.h`
 - Guide and example: `crates/libs/rns-embedded-ffi/README.md`
+- Stable core contract: lifecycle, status, capability probe, send/broadcast, subscriptions, structured errors
+- Compatibility surface: legacy manual tick, raw wire ingress/egress, low-level queueing
+- Extension surface: numeric extension IDs validated by `docs/fixtures/embedded/public-node-api-v1/extension-ids.json`
 - `v1` node-centric API: `rns_embedded_v1_node_new/start/stop/restart/get_status/send/broadcast/set_log_level/subscribe_events`
 - legacy compatibility API remains available for manual tick, raw wire ingress/egress, and low-level queueing
 

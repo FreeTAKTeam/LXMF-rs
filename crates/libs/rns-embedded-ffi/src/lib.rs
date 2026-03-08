@@ -4,12 +4,13 @@
 extern crate alloc;
 
 use alloc::boxed::Box;
-use rns_embedded_core::{EmbeddedError, store::JournaledEmbeddedStore, transport::LinkState};
+use rns_embedded_core::{store::JournaledEmbeddedStore, transport::LinkState, EmbeddedError};
 use rns_embedded_runtime::{
+    ble::{BleShimConfig, BleShimTransport},
+    node::{CaptureDefaults, NodeLifecycleState, NodeTransportMode},
     BleNodeBackendConfig, BroadcastOptions, EmbeddedNode, EmbeddedNodeRuntime, EventSubscription,
     NodeBackendConfig, NodeConfig, NodeError, NodeEvent, NodeEventKind, NodeLogLevel, NodeRunState,
-    NodeStatus, PollResult, RuntimeConfig, SendOptions, ble::{BleShimConfig, BleShimTransport},
-    node::{CaptureDefaults, NodeLifecycleState, NodeTransportMode},
+    NodeStatus, PollResult, RuntimeConfig, SendOptions,
 };
 
 #[cfg(not(feature = "std"))]
@@ -136,11 +137,20 @@ pub enum RnsEmbeddedStatus {
 
 const RNS_EMBEDDED_V1_ABI_VERSION: u32 = 1;
 const RNS_EMBEDDED_V1_STRUCT_VERSION: u32 = 1;
+const RNS_EMBEDDED_V1_CAPABILITY_SCHEMA_VERSION: u32 = 1;
 const RNS_EMBEDDED_V1_CAP_MANAGED_RUNTIME: u64 = 1 << 0;
 const RNS_EMBEDDED_V1_CAP_BLOCKING_NEXT: u64 = 1 << 1;
 const RNS_EMBEDDED_V1_CAP_BROADCAST_EXPLICIT_LIST: u64 = 1 << 2;
 const RNS_EMBEDDED_V1_CAP_COMPAT_LEGACY_FFI: u64 = 1 << 3;
 const RNS_EMBEDDED_V1_CAP_EVENT_GAP_SIGNALING: u64 = 1 << 4;
+const RNS_EMBEDDED_V1_KNOWN_CAPABILITY_BITS: u64 = RNS_EMBEDDED_V1_CAP_MANAGED_RUNTIME
+    | RNS_EMBEDDED_V1_CAP_BLOCKING_NEXT
+    | RNS_EMBEDDED_V1_CAP_BROADCAST_EXPLICIT_LIST
+    | RNS_EMBEDDED_V1_CAP_COMPAT_LEGACY_FFI
+    | RNS_EMBEDDED_V1_CAP_EVENT_GAP_SIGNALING;
+const RNS_EMBEDDED_V1_DRIVER_TICK_TARGET_MS: u32 = 25;
+const RNS_EMBEDDED_V1_DRIVER_TICK_MAX_MS: u32 = 50;
+const RNS_EMBEDDED_V1_MAX_BLOCKING_TIMEOUT_MS: u64 = u32::MAX as u64;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -181,21 +191,7 @@ pub enum RnsEmbeddedV1PollResultKind {
     NodeRestarted = 5,
 }
 
-#[repr(C)]
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub enum RnsEmbeddedV1NodeErrorCode {
-    Unknown = 0,
-    InvalidConfig = 1,
-    IoError = 2,
-    NetworkError = 3,
-    ReticulumError = 4,
-    AlreadyRunning = 5,
-    NotRunning = 6,
-    Timeout = 7,
-    InternalError = 8,
-    InvalidHandle = 9,
-    InvalidPointer = 10,
-}
+include!("generated/node_error_codes.rs");
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -333,31 +329,55 @@ pub struct RnsEmbeddedV1Capabilities {
     pub struct_size: usize,
     pub struct_version: u32,
     pub abi_version: u32,
+    pub capability_schema_version: u32,
+    pub known_capability_bits: u64,
+    pub compile_time_capability_bits: u64,
     pub capability_bits: u64,
     pub max_event_payload_bytes: u32,
     pub max_subscriptions: u32,
-    pub reserved: [u8; 32],
+    pub max_blocking_timeout_ms: u64,
+    pub driver_tick_target_ms: u32,
+    pub driver_tick_max_ms: u32,
+    pub reserved: [u8; 24],
 }
 
 impl Default for RnsEmbeddedV1Capabilities {
     fn default() -> Self {
-        let mut capability_bits =
+        let mut compile_time_capability_bits =
             RNS_EMBEDDED_V1_CAP_BROADCAST_EXPLICIT_LIST | RNS_EMBEDDED_V1_CAP_COMPAT_LEGACY_FFI;
         if cfg!(feature = "std") {
-            capability_bits |=
+            compile_time_capability_bits |=
                 RNS_EMBEDDED_V1_CAP_MANAGED_RUNTIME | RNS_EMBEDDED_V1_CAP_BLOCKING_NEXT;
         }
         if cfg!(feature = "std") || cfg!(feature = "alloc") {
-            capability_bits |= RNS_EMBEDDED_V1_CAP_EVENT_GAP_SIGNALING;
+            compile_time_capability_bits |= RNS_EMBEDDED_V1_CAP_EVENT_GAP_SIGNALING;
         }
         Self {
             struct_size: core::mem::size_of::<Self>(),
             struct_version: RNS_EMBEDDED_V1_STRUCT_VERSION,
             abi_version: RNS_EMBEDDED_V1_ABI_VERSION,
-            capability_bits,
+            capability_schema_version: RNS_EMBEDDED_V1_CAPABILITY_SCHEMA_VERSION,
+            known_capability_bits: RNS_EMBEDDED_V1_KNOWN_CAPABILITY_BITS,
+            compile_time_capability_bits,
+            capability_bits: compile_time_capability_bits,
             max_event_payload_bytes: 0,
             max_subscriptions: 1024,
-            reserved: [0; 32],
+            max_blocking_timeout_ms: if cfg!(feature = "std") {
+                RNS_EMBEDDED_V1_MAX_BLOCKING_TIMEOUT_MS
+            } else {
+                0
+            },
+            driver_tick_target_ms: if cfg!(feature = "std") {
+                RNS_EMBEDDED_V1_DRIVER_TICK_TARGET_MS
+            } else {
+                0
+            },
+            driver_tick_max_ms: if cfg!(feature = "std") {
+                RNS_EMBEDDED_V1_DRIVER_TICK_MAX_MS
+            } else {
+                0
+            },
+            reserved: [0; 24],
         }
     }
 }
@@ -496,9 +516,7 @@ pub extern "C" fn rns_embedded_v1_get_capabilities(
 #[no_mangle]
 pub extern "C" fn rns_embedded_v1_node_new() -> *mut RnsEmbeddedV1Node {
     ensure_allocator_ready();
-    Box::into_raw(Box::new(RnsEmbeddedV1Node {
-        node: EmbeddedNode::new(),
-    }))
+    Box::into_raw(Box::new(RnsEmbeddedV1Node { node: EmbeddedNode::new() }))
 }
 
 #[no_mangle]
@@ -533,9 +551,7 @@ pub extern "C" fn rns_embedded_node_new(
         announce_interval_ms: config.announce_interval_ms,
         max_outbound_queue: config.max_outbound_queue,
         max_events: config.max_events,
-        capture_defaults: CaptureDefaults {
-            max_bytes: config.capture_default_max_bytes,
-        },
+        capture_defaults: CaptureDefaults { max_bytes: config.capture_default_max_bytes },
     }) {
         Ok(runtime) => runtime,
         Err(_) => return core::ptr::null_mut(),
@@ -550,11 +566,7 @@ pub extern "C" fn rns_embedded_node_new(
         Err(_) => return core::ptr::null_mut(),
     };
 
-    let node = RnsEmbeddedNode {
-        runtime,
-        store: JournaledEmbeddedStore::new(),
-        transport,
-    };
+    let node = RnsEmbeddedNode { runtime, store: JournaledEmbeddedStore::new(), transport };
     Box::into_raw(Box::new(node))
 }
 
@@ -675,6 +687,10 @@ pub extern "C" fn rns_embedded_node_take_outbound_wire(
         return RnsEmbeddedStatus::NotFound;
     };
     if frame.len() > out_capacity {
+        // SAFETY: `out_len` is validated non-null above and points to writable caller memory.
+        unsafe {
+            *out_len = frame.len();
+        }
         return RnsEmbeddedStatus::Backpressure;
     }
     // SAFETY: `out_ptr` and `out_len` are validated non-null above; caller
@@ -852,12 +868,11 @@ pub extern "C" fn rns_embedded_v1_node_broadcast(
     };
     let destinations = match destination_list(destinations_ptr, destination_count) {
         Some(destinations) => destinations,
-        None => return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidPointer),
+        None => {
+            return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidPointer)
+        }
     };
-    match node
-        .node
-        .broadcast(body, BroadcastOptions { destinations })
-    {
+    match node.node.broadcast(body, BroadcastOptions { destinations }) {
         Ok(receipt) => {
             unsafe {
                 *out_receipt = map_v1_receipt(receipt);
@@ -898,7 +913,8 @@ pub extern "C" fn rns_embedded_v1_node_subscribe_events(
     match node.node.subscribe_events() {
         Ok(subscription) => {
             unsafe {
-                *out_subscription = Box::into_raw(Box::new(RnsEmbeddedEventSubscription { subscription }));
+                *out_subscription =
+                    Box::into_raw(Box::new(RnsEmbeddedEventSubscription { subscription }));
             }
             clear_v1_node_error(out_node_error)
         }
@@ -925,11 +941,11 @@ pub extern "C" fn rns_embedded_v1_subscription_next(
             unsafe {
                 *out_poll_result = map_v1_poll_result(&result);
                 *out_event = match result {
-                    PollResult::Event(event) => map_v1_event(&event),
+                    PollResult::Event(ref event) => map_v1_event(event),
                     _ => RnsEmbeddedV1NodeEvent::default(),
                 };
             }
-            clear_v1_node_error(out_node_error)
+            set_v1_poll_sideband_error(out_node_error, &result)
         }
         Err(err) => set_v1_node_error(out_node_error, err),
     }
@@ -1020,9 +1036,7 @@ fn v1_node_config(config: &RnsEmbeddedV1NodeConfig) -> Result<NodeConfig, NodeEr
             announce_interval_ms: config.announce_interval_ms,
             max_outbound_queue: config.max_outbound_queue,
             max_events: config.max_events,
-            capture_defaults: CaptureDefaults {
-                max_bytes: config.capture_default_max_bytes,
-            },
+            capture_defaults: CaptureDefaults { max_bytes: config.capture_default_max_bytes },
         },
         backend: NodeBackendConfig::Ble(BleNodeBackendConfig {
             mtu_hint: config.ble_mtu_hint,
@@ -1071,10 +1085,7 @@ fn map_v1_event(event: &NodeEvent) -> RnsEmbeddedV1NodeEvent {
         ..RnsEmbeddedV1NodeEvent::default()
     };
     match &event.kind {
-        NodeEventKind::StatusChanged {
-            run_state,
-            lifecycle_state,
-        } => {
+        NodeEventKind::StatusChanged { run_state, lifecycle_state } => {
             out.kind = RnsEmbeddedV1EventKind::StatusChanged;
             out.run_state = match run_state {
                 NodeRunState::Stopped => RnsEmbeddedV1RunState::Stopped,
@@ -1089,45 +1100,34 @@ fn map_v1_event(event: &NodeEvent) -> RnsEmbeddedV1NodeEvent {
             out.log_level = map_log_level(*level);
             out.value0 = u64::from(*code);
         }
-        NodeEventKind::Error {
-            error,
-            frame_kind,
-            sequence,
-        } => {
+        NodeEventKind::Error { error, frame_kind, sequence } => {
             out.kind = RnsEmbeddedV1EventKind::Error;
             out.error_code = map_v1_node_error_code(error);
             out.frame_kind = *frame_kind;
             out.sequence = *sequence;
         }
-        NodeEventKind::PacketReceived {
-            frame_kind,
-            sequence,
-            bytes,
-        } => {
+        NodeEventKind::PacketReceived { frame_kind, sequence, bytes } => {
             out.kind = RnsEmbeddedV1EventKind::PacketReceived;
             out.frame_kind = *frame_kind;
             out.sequence = *sequence;
             out.bytes = *bytes;
         }
-        NodeEventKind::PacketSent {
-            frame_kind,
-            sequence,
-            bytes,
-        } => {
+        NodeEventKind::PacketSent { frame_kind, sequence, bytes } => {
             out.kind = RnsEmbeddedV1EventKind::PacketSent;
             out.frame_kind = *frame_kind;
             out.sequence = *sequence;
             out.bytes = *bytes;
         }
-        NodeEventKind::Extension {
-            extension_id,
-            value0,
-            value1,
-        } => {
-            out.kind = RnsEmbeddedV1EventKind::Extension;
-            out.extension_id = *extension_id;
-            out.value0 = *value0;
-            out.value1 = *value1;
+        NodeEventKind::Extension { extension_id, value0, value1 } => {
+            if rns_embedded_runtime::node::is_valid_extension_id(*extension_id) {
+                out.kind = RnsEmbeddedV1EventKind::Extension;
+                out.extension_id = *extension_id;
+                out.value0 = *value0;
+                out.value1 = *value1;
+            } else {
+                out.kind = RnsEmbeddedV1EventKind::Error;
+                out.error_code = RnsEmbeddedV1NodeErrorCode::InternalError;
+            }
         }
     }
     out
@@ -1208,16 +1208,33 @@ fn clear_v1_node_error(out_node_error: *mut RnsEmbeddedV1NodeError) -> RnsEmbedd
     RnsEmbeddedStatus::Ok
 }
 
+fn set_v1_poll_sideband_error(
+    out_node_error: *mut RnsEmbeddedV1NodeError,
+    result: &PollResult,
+) -> RnsEmbeddedStatus {
+    if !out_node_error.is_null() {
+        let code = match result {
+            PollResult::Closed => RnsEmbeddedV1NodeErrorCode::SubscriptionClosed,
+            PollResult::Gap { .. } => RnsEmbeddedV1NodeErrorCode::EventGap,
+            PollResult::NodeRestarted { .. } => RnsEmbeddedV1NodeErrorCode::NodeRestarted,
+            PollResult::Timeout => RnsEmbeddedV1NodeErrorCode::Timeout,
+            PollResult::NodeStopped => RnsEmbeddedV1NodeErrorCode::NotRunning,
+            PollResult::Event(_) => RnsEmbeddedV1NodeErrorCode::Unknown,
+        };
+        unsafe {
+            *out_node_error = RnsEmbeddedV1NodeError { code, ..RnsEmbeddedV1NodeError::default() };
+        }
+    }
+    RnsEmbeddedStatus::Ok
+}
+
 fn set_v1_pointer_error(
     out_node_error: *mut RnsEmbeddedV1NodeError,
     code: RnsEmbeddedV1NodeErrorCode,
 ) -> RnsEmbeddedStatus {
     if !out_node_error.is_null() {
         unsafe {
-            *out_node_error = RnsEmbeddedV1NodeError {
-                code,
-                ..RnsEmbeddedV1NodeError::default()
-            };
+            *out_node_error = RnsEmbeddedV1NodeError { code, ..RnsEmbeddedV1NodeError::default() };
         }
     }
     RnsEmbeddedStatus::InvalidArgument
@@ -1248,6 +1265,11 @@ fn map_v1_node_error_code(error: &NodeError) -> RnsEmbeddedV1NodeErrorCode {
         NodeError::NotRunning => RnsEmbeddedV1NodeErrorCode::NotRunning,
         NodeError::Timeout => RnsEmbeddedV1NodeErrorCode::Timeout,
         NodeError::InternalError => RnsEmbeddedV1NodeErrorCode::InternalError,
+        NodeError::ModeConflict => RnsEmbeddedV1NodeErrorCode::ModeConflict,
+        NodeError::SubscriptionClosed => RnsEmbeddedV1NodeErrorCode::SubscriptionClosed,
+        NodeError::NodeRestarted => RnsEmbeddedV1NodeErrorCode::NodeRestarted,
+        NodeError::EventGap => RnsEmbeddedV1NodeErrorCode::EventGap,
+        NodeError::QueuePressure => RnsEmbeddedV1NodeErrorCode::QueuePressure,
     }
 }
 
@@ -1257,10 +1279,15 @@ fn map_node_error_status(error: NodeError) -> RnsEmbeddedStatus {
         NodeError::IoError => RnsEmbeddedStatus::InvalidState,
         NodeError::NetworkError => RnsEmbeddedStatus::Disconnected,
         NodeError::ReticulumError => RnsEmbeddedStatus::InvalidState,
-        NodeError::AlreadyRunning | NodeError::NotRunning | NodeError::InternalError => {
-            RnsEmbeddedStatus::InvalidState
-        }
+        NodeError::AlreadyRunning
+        | NodeError::NotRunning
+        | NodeError::InternalError
+        | NodeError::ModeConflict => RnsEmbeddedStatus::InvalidState,
         NodeError::Timeout => RnsEmbeddedStatus::Timeout,
+        NodeError::SubscriptionClosed | NodeError::NodeRestarted | NodeError::EventGap => {
+            RnsEmbeddedStatus::Ok
+        }
+        NodeError::QueuePressure => RnsEmbeddedStatus::Backpressure,
     }
 }
 
@@ -1275,7 +1302,9 @@ fn map_embedded_error(error: EmbeddedError) -> RnsEmbeddedStatus {
     match error {
         EmbeddedError::InvalidInput => RnsEmbeddedStatus::InvalidInput,
         EmbeddedError::InvalidArgument => RnsEmbeddedStatus::InvalidArgument,
-        EmbeddedError::InvalidCursor | EmbeddedError::InvalidState => RnsEmbeddedStatus::InvalidState,
+        EmbeddedError::InvalidCursor | EmbeddedError::InvalidState => {
+            RnsEmbeddedStatus::InvalidState
+        }
         EmbeddedError::NotFound => RnsEmbeddedStatus::NotFound,
         EmbeddedError::SeqGap => RnsEmbeddedStatus::SeqGap,
         EmbeddedError::IntegrityFailure => RnsEmbeddedStatus::IntegrityFailure,
@@ -1292,26 +1321,111 @@ fn map_embedded_error(error: EmbeddedError) -> RnsEmbeddedStatus {
 
 #[cfg(test)]
 mod tests {
+    use std::{fs, path::PathBuf};
+
+    use serde_json::Value;
+
     use super::{
-        RNS_EMBEDDED_V1_CAP_BLOCKING_NEXT, RNS_EMBEDDED_V1_CAP_BROADCAST_EXPLICIT_LIST,
-        RNS_EMBEDDED_V1_CAP_COMPAT_LEGACY_FFI, RNS_EMBEDDED_V1_CAP_EVENT_GAP_SIGNALING,
-        RNS_EMBEDDED_V1_CAP_MANAGED_RUNTIME,
-        RnsEmbeddedLinkState, RnsEmbeddedNodeConfig, RnsEmbeddedStatus, RnsEmbeddedV1Capabilities,
-        RnsEmbeddedV1EventKind, RnsEmbeddedV1NodeEvent,
-        RnsEmbeddedV1LogLevel, RnsEmbeddedV1NodeError, RnsEmbeddedV1NodeErrorCode,
-        RnsEmbeddedV1NodeStatus, RnsEmbeddedV1PollResult, RnsEmbeddedV1PollResultKind,
-        RnsEmbeddedV1RunState, RnsEmbeddedV1SendReceipt,
         rns_embedded_node_free, rns_embedded_node_new, rns_embedded_node_push_inbound_wire,
         rns_embedded_node_queue_message, rns_embedded_node_set_link_state,
         rns_embedded_node_take_outbound_wire, rns_embedded_node_tick, rns_embedded_v1_abi_version,
         rns_embedded_v1_get_capabilities, rns_embedded_v1_node_broadcast,
-        rns_embedded_v1_node_config_default, rns_embedded_v1_node_free, rns_embedded_v1_node_get_status,
-        rns_embedded_v1_node_new, rns_embedded_v1_node_restart, rns_embedded_v1_node_send,
-        rns_embedded_v1_node_set_log_level, rns_embedded_v1_node_start, rns_embedded_v1_node_stop,
-        rns_embedded_v1_node_subscribe_events, rns_embedded_v1_subscription_close,
-        rns_embedded_v1_subscription_next,
+        rns_embedded_v1_node_config_default, rns_embedded_v1_node_free,
+        rns_embedded_v1_node_get_status, rns_embedded_v1_node_new, rns_embedded_v1_node_restart,
+        rns_embedded_v1_node_send, rns_embedded_v1_node_set_log_level, rns_embedded_v1_node_start,
+        rns_embedded_v1_node_stop, rns_embedded_v1_node_subscribe_events,
+        rns_embedded_v1_subscription_close, rns_embedded_v1_subscription_next,
+        RnsEmbeddedLinkState, RnsEmbeddedNodeConfig, RnsEmbeddedStatus, RnsEmbeddedV1Capabilities,
+        RnsEmbeddedV1EventKind, RnsEmbeddedV1LogLevel, RnsEmbeddedV1NodeError,
+        RnsEmbeddedV1NodeErrorCode, RnsEmbeddedV1NodeEvent, RnsEmbeddedV1NodeStatus,
+        RnsEmbeddedV1PollResult, RnsEmbeddedV1PollResultKind, RnsEmbeddedV1RunState,
+        RnsEmbeddedV1SendReceipt, RNS_EMBEDDED_V1_CAPABILITY_SCHEMA_VERSION,
+        RNS_EMBEDDED_V1_CAP_BLOCKING_NEXT, RNS_EMBEDDED_V1_CAP_BROADCAST_EXPLICIT_LIST,
+        RNS_EMBEDDED_V1_CAP_COMPAT_LEGACY_FFI, RNS_EMBEDDED_V1_CAP_EVENT_GAP_SIGNALING,
+        RNS_EMBEDDED_V1_CAP_MANAGED_RUNTIME, RNS_EMBEDDED_V1_DRIVER_TICK_MAX_MS,
+        RNS_EMBEDDED_V1_DRIVER_TICK_TARGET_MS, RNS_EMBEDDED_V1_KNOWN_CAPABILITY_BITS,
+        RNS_EMBEDDED_V1_MAX_BLOCKING_TIMEOUT_MS,
     };
-    use rns_embedded_core::packet::{PacketFrame, decode_frame, encode_frame};
+    use rns_embedded_core::packet::{decode_frame, encode_frame, PacketFrame};
+    use rns_embedded_runtime::node::{
+        is_valid_extension_id, NODE_EXTENSION_ID_BOOTSTRAPPED, NODE_EXTENSION_ID_MESSAGE_QUEUED,
+        NODE_EXTENSION_ID_RECEIVED_SUMMARY,
+    };
+
+    fn fixture_path(name: &str) -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../docs/fixtures/embedded/public-node-api-v1")
+            .join(name)
+    }
+
+    fn contract_path(name: &str) -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../docs/contracts").join(name)
+    }
+
+    fn json_fixture(name: &str) -> Value {
+        serde_json::from_str(&fs::read_to_string(fixture_path(name)).expect("read fixture"))
+            .expect("parse fixture")
+    }
+
+    fn contract_json(name: &str) -> Value {
+        serde_json::from_str(&fs::read_to_string(contract_path(name)).expect("read contract"))
+            .expect("parse contract")
+    }
+
+    fn capability_bit(name: &str) -> u64 {
+        match name {
+            "RNS_EMBEDDED_V1_CAP_MANAGED_RUNTIME" => RNS_EMBEDDED_V1_CAP_MANAGED_RUNTIME,
+            "RNS_EMBEDDED_V1_CAP_BLOCKING_NEXT" => RNS_EMBEDDED_V1_CAP_BLOCKING_NEXT,
+            "RNS_EMBEDDED_V1_CAP_BROADCAST_EXPLICIT_LIST" => {
+                RNS_EMBEDDED_V1_CAP_BROADCAST_EXPLICIT_LIST
+            }
+            "RNS_EMBEDDED_V1_CAP_COMPAT_LEGACY_FFI" => RNS_EMBEDDED_V1_CAP_COMPAT_LEGACY_FFI,
+            "RNS_EMBEDDED_V1_CAP_EVENT_GAP_SIGNALING" => RNS_EMBEDDED_V1_CAP_EVENT_GAP_SIGNALING,
+            other => panic!("unknown capability bit {other}"),
+        }
+    }
+
+    fn node_error_code(name: &str) -> RnsEmbeddedV1NodeErrorCode {
+        match name {
+            "Unknown" => RnsEmbeddedV1NodeErrorCode::Unknown,
+            "InvalidConfig" => RnsEmbeddedV1NodeErrorCode::InvalidConfig,
+            "IoError" => RnsEmbeddedV1NodeErrorCode::IoError,
+            "NetworkError" => RnsEmbeddedV1NodeErrorCode::NetworkError,
+            "ReticulumError" => RnsEmbeddedV1NodeErrorCode::ReticulumError,
+            "AlreadyRunning" => RnsEmbeddedV1NodeErrorCode::AlreadyRunning,
+            "NotRunning" => RnsEmbeddedV1NodeErrorCode::NotRunning,
+            "Timeout" => RnsEmbeddedV1NodeErrorCode::Timeout,
+            "InternalError" => RnsEmbeddedV1NodeErrorCode::InternalError,
+            "InvalidHandle" => RnsEmbeddedV1NodeErrorCode::InvalidHandle,
+            "InvalidPointer" => RnsEmbeddedV1NodeErrorCode::InvalidPointer,
+            "ModeConflict" => RnsEmbeddedV1NodeErrorCode::ModeConflict,
+            "SubscriptionClosed" => RnsEmbeddedV1NodeErrorCode::SubscriptionClosed,
+            "NodeRestarted" => RnsEmbeddedV1NodeErrorCode::NodeRestarted,
+            "EventGap" => RnsEmbeddedV1NodeErrorCode::EventGap,
+            "QueuePressure" => RnsEmbeddedV1NodeErrorCode::QueuePressure,
+            other => panic!("unknown node error code {other}"),
+        }
+    }
+
+    fn poll_kind(name: &str) -> RnsEmbeddedV1PollResultKind {
+        match name {
+            "Event" => RnsEmbeddedV1PollResultKind::Event,
+            "Timeout" => RnsEmbeddedV1PollResultKind::Timeout,
+            "Closed" => RnsEmbeddedV1PollResultKind::Closed,
+            "Gap" => RnsEmbeddedV1PollResultKind::Gap,
+            "NodeStopped" => RnsEmbeddedV1PollResultKind::NodeStopped,
+            "NodeRestarted" => RnsEmbeddedV1PollResultKind::NodeRestarted,
+            other => panic!("unknown poll kind {other}"),
+        }
+    }
+
+    fn status_code(name: &str) -> RnsEmbeddedStatus {
+        match name {
+            "Ok" => RnsEmbeddedStatus::Ok,
+            "Backpressure" => RnsEmbeddedStatus::Backpressure,
+            other => panic!("unknown status {other}"),
+        }
+    }
 
     #[test]
     fn ffi_node_ticks_and_drains_outbound_wire() {
@@ -1376,49 +1490,69 @@ mod tests {
     #[test]
     fn ffi_v1_reports_capabilities_and_status() {
         assert_eq!(rns_embedded_v1_abi_version(), 1);
+        let fixture = json_fixture("capability-probe.json");
 
         let mut capabilities = RnsEmbeddedV1Capabilities::default();
-        assert_eq!(
-            rns_embedded_v1_get_capabilities(&mut capabilities),
-            RnsEmbeddedStatus::Ok
-        );
+        assert_eq!(rns_embedded_v1_get_capabilities(&mut capabilities), RnsEmbeddedStatus::Ok);
         assert_eq!(capabilities.abi_version, 1);
+        assert_eq!(
+            capabilities.capability_schema_version,
+            fixture["capability_schema_version"].as_u64().expect("schema version") as u32
+        );
+        assert_eq!(
+            capabilities.capability_schema_version,
+            RNS_EMBEDDED_V1_CAPABILITY_SCHEMA_VERSION
+        );
+        assert_eq!(capabilities.known_capability_bits, RNS_EMBEDDED_V1_KNOWN_CAPABILITY_BITS);
+        assert_eq!(
+            capabilities.known_capability_bits,
+            fixture["known_capability_bits"].as_u64().expect("known bits")
+        );
+        assert_eq!(capabilities.capability_bits, capabilities.compile_time_capability_bits);
         assert_ne!(capabilities.capability_bits, 0);
-        assert_ne!(
-            capabilities.capability_bits & RNS_EMBEDDED_V1_CAP_BROADCAST_EXPLICIT_LIST,
-            0
+        assert_eq!(fixture["unknown_bit_policy"].as_str().expect("policy"), "ignore");
+        assert_eq!(
+            (capabilities.capability_bits | (1_u64 << 63)) & capabilities.known_capability_bits,
+            capabilities.capability_bits
         );
-        assert_ne!(
-            capabilities.capability_bits & RNS_EMBEDDED_V1_CAP_COMPAT_LEGACY_FFI,
-            0
-        );
-        assert_ne!(
-            capabilities.capability_bits & RNS_EMBEDDED_V1_CAP_EVENT_GAP_SIGNALING,
-            0
+        assert_ne!(capabilities.capability_bits & RNS_EMBEDDED_V1_CAP_BROADCAST_EXPLICIT_LIST, 0);
+        assert_ne!(capabilities.capability_bits & RNS_EMBEDDED_V1_CAP_COMPAT_LEGACY_FFI, 0);
+        assert_ne!(capabilities.capability_bits & RNS_EMBEDDED_V1_CAP_EVENT_GAP_SIGNALING, 0);
+        for name in
+            fixture["compile_time_required_bits"].as_array().expect("compile time required bits")
+        {
+            let bit = capability_bit(name.as_str().expect("bit name"));
+            assert_ne!(capabilities.compile_time_capability_bits & bit, 0);
+            assert_ne!(capabilities.capability_bits & bit, 0);
+        }
+        assert_eq!(
+            capabilities.max_subscriptions,
+            fixture["max_subscriptions"].as_u64().expect("max subscriptions") as u32
         );
 
         #[cfg(feature = "std")]
         {
-            assert_ne!(
-                capabilities.capability_bits & RNS_EMBEDDED_V1_CAP_MANAGED_RUNTIME,
-                0
+            for name in fixture["std_required_bits"].as_array().expect("std bits") {
+                let bit = capability_bit(name.as_str().expect("bit"));
+                assert_ne!(capabilities.capability_bits & bit, 0);
+            }
+            assert_eq!(
+                capabilities.max_blocking_timeout_ms,
+                RNS_EMBEDDED_V1_MAX_BLOCKING_TIMEOUT_MS
             );
-            assert_ne!(
-                capabilities.capability_bits & RNS_EMBEDDED_V1_CAP_BLOCKING_NEXT,
-                0
-            );
+            assert_eq!(capabilities.driver_tick_target_ms, RNS_EMBEDDED_V1_DRIVER_TICK_TARGET_MS);
+            assert_eq!(capabilities.driver_tick_max_ms, RNS_EMBEDDED_V1_DRIVER_TICK_MAX_MS);
         }
 
         #[cfg(not(feature = "std"))]
         {
-            assert_eq!(
-                capabilities.capability_bits & RNS_EMBEDDED_V1_CAP_MANAGED_RUNTIME,
-                0
-            );
-            assert_eq!(
-                capabilities.capability_bits & RNS_EMBEDDED_V1_CAP_BLOCKING_NEXT,
-                0
-            );
+            for name in fixture["alloc_forbidden_bits"].as_array().expect("alloc forbidden bits") {
+                let bit = capability_bit(name.as_str().expect("bit"));
+                assert_eq!(capabilities.capability_bits & bit, 0);
+            }
+            assert_eq!(capabilities.max_blocking_timeout_ms, 0);
+            assert_eq!(capabilities.driver_tick_target_ms, 0);
+            assert_eq!(capabilities.driver_tick_max_ms, 0);
         }
 
         let node = rns_embedded_v1_node_new();
@@ -1426,39 +1560,21 @@ mod tests {
 
         let mut config = rns_embedded_v1_node_config_default();
         let mut error = RnsEmbeddedV1NodeError::default();
-        assert_eq!(
-            rns_embedded_v1_node_start(node, &config, &mut error),
-            RnsEmbeddedStatus::Ok
-        );
+        assert_eq!(rns_embedded_v1_node_start(node, &config, &mut error), RnsEmbeddedStatus::Ok);
         assert_eq!(error.code, RnsEmbeddedV1NodeErrorCode::Unknown);
 
         let mut status = RnsEmbeddedV1NodeStatus::default();
-        assert_eq!(
-            rns_embedded_v1_node_get_status(node, &mut status),
-            RnsEmbeddedStatus::Ok
-        );
+        assert_eq!(rns_embedded_v1_node_get_status(node, &mut status), RnsEmbeddedStatus::Ok);
         assert_eq!(status.run_state, RnsEmbeddedV1RunState::Running);
         assert_eq!(status.epoch, 1);
 
         config.announce_interval_ms = 2_000;
-        assert_eq!(
-            rns_embedded_v1_node_restart(node, &config, &mut error),
-            RnsEmbeddedStatus::Ok
-        );
-        assert_eq!(
-            rns_embedded_v1_node_get_status(node, &mut status),
-            RnsEmbeddedStatus::Ok
-        );
+        assert_eq!(rns_embedded_v1_node_restart(node, &config, &mut error), RnsEmbeddedStatus::Ok);
+        assert_eq!(rns_embedded_v1_node_get_status(node, &mut status), RnsEmbeddedStatus::Ok);
         assert_eq!(status.epoch, 2);
 
-        assert_eq!(
-            rns_embedded_v1_node_stop(node, &mut error),
-            RnsEmbeddedStatus::Ok
-        );
-        assert_eq!(
-            rns_embedded_v1_node_get_status(node, &mut status),
-            RnsEmbeddedStatus::Ok
-        );
+        assert_eq!(rns_embedded_v1_node_stop(node, &mut error), RnsEmbeddedStatus::Ok);
+        assert_eq!(rns_embedded_v1_node_get_status(node, &mut status), RnsEmbeddedStatus::Ok);
         assert_eq!(status.run_state, RnsEmbeddedV1RunState::Stopped);
 
         rns_embedded_v1_node_free(node);
@@ -1471,10 +1587,7 @@ mod tests {
 
         let config = rns_embedded_v1_node_config_default();
         let mut error = RnsEmbeddedV1NodeError::default();
-        assert_eq!(
-            rns_embedded_v1_node_start(node, &config, &mut error),
-            RnsEmbeddedStatus::Ok
-        );
+        assert_eq!(rns_embedded_v1_node_start(node, &config, &mut error), RnsEmbeddedStatus::Ok);
 
         assert_eq!(
             rns_embedded_v1_node_set_log_level(node, RnsEmbeddedV1LogLevel::Debug, &mut error),
@@ -1530,6 +1643,74 @@ mod tests {
     }
 
     #[test]
+    fn ffi_legacy_truncation_reports_required_length() {
+        let fixture = json_fixture("truncation-reporting.json");
+        let config = RnsEmbeddedNodeConfig::default();
+        let node = rns_embedded_node_new(&config);
+        assert!(!node.is_null());
+
+        assert_eq!(
+            rns_embedded_node_set_link_state(node, RnsEmbeddedLinkState::Up),
+            RnsEmbeddedStatus::Ok
+        );
+        assert_eq!(rns_embedded_node_tick(node, 0), RnsEmbeddedStatus::Ok);
+
+        let mut out = [0_u8; 1];
+        let mut out_len = 0usize;
+        assert_eq!(
+            rns_embedded_node_take_outbound_wire(
+                node,
+                out.as_mut_ptr(),
+                fixture["small_buffer_len"].as_u64().expect("small buffer len") as usize,
+                &mut out_len,
+            ),
+            status_code(fixture["expected_status"].as_str().expect("status"))
+        );
+        assert!(out_len >= fixture["required_len_min"].as_u64().expect("required len") as usize);
+
+        rns_embedded_node_free(node);
+    }
+
+    #[test]
+    fn ffi_v1_queue_pressure_maps_to_stable_error_code() {
+        let node = rns_embedded_v1_node_new();
+        assert!(!node.is_null());
+
+        let mut config = rns_embedded_v1_node_config_default();
+        config.max_outbound_queue = 1;
+        let mut error = RnsEmbeddedV1NodeError::default();
+        let mut receipt = RnsEmbeddedV1SendReceipt::default();
+        assert_eq!(rns_embedded_v1_node_start(node, &config, &mut error), RnsEmbeddedStatus::Ok);
+
+        let destination = [0x42_u8; 16];
+        assert_eq!(
+            rns_embedded_v1_node_send(
+                node,
+                destination.as_ptr(),
+                b"one".as_ptr(),
+                3,
+                &mut receipt,
+                &mut error,
+            ),
+            RnsEmbeddedStatus::Ok
+        );
+        assert_eq!(
+            rns_embedded_v1_node_send(
+                node,
+                destination.as_ptr(),
+                b"two".as_ptr(),
+                3,
+                &mut receipt,
+                &mut error,
+            ),
+            RnsEmbeddedStatus::Backpressure
+        );
+        assert_eq!(error.code, RnsEmbeddedV1NodeErrorCode::QueuePressure);
+
+        rns_embedded_v1_node_free(node);
+    }
+
+    #[test]
     fn ffi_v1_subscriptions_surface_restart_and_status_events() {
         let node = rns_embedded_v1_node_new();
         assert!(!node.is_null());
@@ -1543,10 +1724,7 @@ mod tests {
         );
         assert!(!subscription.is_null());
 
-        assert_eq!(
-            rns_embedded_v1_node_start(node, &config, &mut error),
-            RnsEmbeddedStatus::Ok
-        );
+        assert_eq!(rns_embedded_v1_node_start(node, &config, &mut error), RnsEmbeddedStatus::Ok);
 
         let mut poll = RnsEmbeddedV1PollResult::default();
         let mut event = RnsEmbeddedV1NodeEvent::default();
@@ -1556,6 +1734,7 @@ mod tests {
         );
         assert_eq!(poll.kind, RnsEmbeddedV1PollResultKind::NodeRestarted);
         assert_eq!(poll.epoch, 1);
+        assert_eq!(error.code, RnsEmbeddedV1NodeErrorCode::NodeRestarted);
 
         assert_eq!(
             rns_embedded_v1_subscription_next(subscription, 100, &mut poll, &mut event, &mut error),
@@ -1564,16 +1743,15 @@ mod tests {
         assert_eq!(poll.kind, RnsEmbeddedV1PollResultKind::Event);
         assert_eq!(event.kind, RnsEmbeddedV1EventKind::StatusChanged);
         assert_eq!(event.epoch, 1);
+        assert_eq!(error.code, RnsEmbeddedV1NodeErrorCode::Unknown);
 
-        assert_eq!(
-            rns_embedded_v1_node_stop(node, &mut error),
-            RnsEmbeddedStatus::Ok
-        );
+        assert_eq!(rns_embedded_v1_node_stop(node, &mut error), RnsEmbeddedStatus::Ok);
         assert_eq!(
             rns_embedded_v1_subscription_next(subscription, 100, &mut poll, &mut event, &mut error),
             RnsEmbeddedStatus::Ok
         );
         assert_eq!(poll.kind, RnsEmbeddedV1PollResultKind::NodeStopped);
+        assert_eq!(error.code, RnsEmbeddedV1NodeErrorCode::NotRunning);
 
         assert_eq!(
             rns_embedded_v1_subscription_close(subscription, &mut error),
@@ -1581,5 +1759,138 @@ mod tests {
         );
 
         rns_embedded_v1_node_free(node);
+    }
+
+    #[test]
+    fn ffi_v1_timeout_and_gap_signaling_match_fixtures() {
+        let timeout_fixture = json_fixture("poll-timeout.json");
+        let gap_fixture = json_fixture("gap-restart-signaling.json");
+
+        let node = rns_embedded_v1_node_new();
+        assert!(!node.is_null());
+        let mut error = RnsEmbeddedV1NodeError::default();
+        let mut subscription = core::ptr::null_mut();
+        assert_eq!(
+            rns_embedded_v1_node_subscribe_events(node, &mut subscription, &mut error),
+            RnsEmbeddedStatus::Ok
+        );
+
+        let mut poll = RnsEmbeddedV1PollResult::default();
+        let mut event = RnsEmbeddedV1NodeEvent::default();
+        assert_eq!(
+            rns_embedded_v1_subscription_next(
+                subscription,
+                timeout_fixture["timeout_ms"].as_u64().expect("timeout"),
+                &mut poll,
+                &mut event,
+                &mut error,
+            ),
+            RnsEmbeddedStatus::Ok
+        );
+        assert_eq!(
+            poll.kind,
+            poll_kind(timeout_fixture["expected_poll_kind"].as_str().expect("timeout poll kind"))
+        );
+        assert_eq!(
+            error.code,
+            node_error_code(timeout_fixture["expected_error_code"].as_str().expect("timeout code"))
+        );
+
+        let mut config = rns_embedded_v1_node_config_default();
+        config.max_events = 1;
+        assert_eq!(rns_embedded_v1_node_start(node, &config, &mut error), RnsEmbeddedStatus::Ok);
+        assert_eq!(
+            rns_embedded_v1_subscription_next(subscription, 100, &mut poll, &mut event, &mut error),
+            RnsEmbeddedStatus::Ok
+        );
+        assert_eq!(
+            poll.kind,
+            poll_kind(gap_fixture["expected_restart_poll_kind"].as_str().expect("restart kind"))
+        );
+        assert_eq!(
+            error.code,
+            node_error_code(
+                gap_fixture["expected_restart_error_code"].as_str().expect("restart code")
+            )
+        );
+
+        assert_eq!(
+            rns_embedded_v1_node_set_log_level(node, RnsEmbeddedV1LogLevel::Debug, &mut error),
+            RnsEmbeddedStatus::Ok
+        );
+        assert_eq!(
+            rns_embedded_v1_node_set_log_level(node, RnsEmbeddedV1LogLevel::Trace, &mut error),
+            RnsEmbeddedStatus::Ok
+        );
+        assert_eq!(
+            rns_embedded_v1_subscription_next(subscription, 0, &mut poll, &mut event, &mut error),
+            RnsEmbeddedStatus::Ok
+        );
+        assert_eq!(
+            poll.kind,
+            poll_kind(gap_fixture["expected_gap_poll_kind"].as_str().expect("gap kind"))
+        );
+        assert_eq!(
+            error.code,
+            node_error_code(gap_fixture["expected_gap_error_code"].as_str().expect("gap code"))
+        );
+
+        assert_eq!(
+            rns_embedded_v1_subscription_close(subscription, &mut error),
+            RnsEmbeddedStatus::Ok
+        );
+        rns_embedded_v1_node_free(node);
+    }
+
+    #[test]
+    fn ffi_v1_restart_epoch_matches_fixture() {
+        let fixture = json_fixture("restart-epoch.json");
+        let node = rns_embedded_v1_node_new();
+        let mut error = RnsEmbeddedV1NodeError::default();
+        let mut status = RnsEmbeddedV1NodeStatus::default();
+        let config = rns_embedded_v1_node_config_default();
+
+        assert_eq!(rns_embedded_v1_node_start(node, &config, &mut error), RnsEmbeddedStatus::Ok);
+        assert_eq!(rns_embedded_v1_node_get_status(node, &mut status), RnsEmbeddedStatus::Ok);
+        assert_eq!(status.epoch, fixture["initial_epoch"].as_u64().expect("initial epoch"));
+
+        assert_eq!(rns_embedded_v1_node_restart(node, &config, &mut error), RnsEmbeddedStatus::Ok);
+        assert_eq!(rns_embedded_v1_node_get_status(node, &mut status), RnsEmbeddedStatus::Ok);
+        assert_eq!(status.epoch, fixture["restarted_epoch"].as_u64().expect("restarted epoch"));
+
+        rns_embedded_v1_node_free(node);
+    }
+
+    #[test]
+    fn error_code_registry_matches_contract_artifact() {
+        let artifact = contract_json("node-error-codes-v1.json");
+        assert_eq!(artifact["schema_version"].as_u64().expect("schema version"), 1);
+
+        for code in artifact["codes"].as_array().expect("error codes") {
+            let variant = code["rust_variant"].as_str().expect("variant");
+            let value = code["value"].as_u64().expect("value") as u32;
+            assert_eq!(node_error_code(variant) as u32, value, "{variant}");
+        }
+    }
+
+    #[test]
+    fn extension_ids_follow_registry_fixture() {
+        let fixture = json_fixture("extension-ids.json");
+        let expected = [
+            NODE_EXTENSION_ID_BOOTSTRAPPED,
+            NODE_EXTENSION_ID_MESSAGE_QUEUED,
+            NODE_EXTENSION_ID_RECEIVED_SUMMARY,
+        ];
+
+        for (index, entry) in fixture.as_array().expect("extension ids").iter().enumerate() {
+            let numeric_id = entry["numeric_id"].as_u64().expect("numeric id") as u32;
+            let registry_id = entry["registry_id"].as_str().expect("registry id");
+            assert_eq!(numeric_id, expected[index]);
+            assert!(is_valid_extension_id(numeric_id));
+            assert!(registry_id.starts_with("event."));
+            assert!(registry_id.ends_with(".v1"));
+            assert!(registry_id.split('.').count() >= 4);
+        }
+        assert!(!is_valid_extension_id(99));
     }
 }

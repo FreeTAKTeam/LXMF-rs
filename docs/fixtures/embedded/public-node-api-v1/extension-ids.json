@@ -1,0 +1,14 @@
+[
+  {
+    "numeric_id": 1,
+    "registry_id": "event.embedded.bootstrapped.v1"
+  },
+  {
+    "numeric_id": 2,
+    "registry_id": "event.embedded.message_queued.v1"
+  },
+  {
+    "numeric_id": 3,
+    "registry_id": "event.embedded.received_summary.v1"
+  }
+]

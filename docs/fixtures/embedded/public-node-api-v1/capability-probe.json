@@ -1,0 +1,19 @@
+{
+  "capability_schema_version": 1,
+  "known_capability_bits": 31,
+  "compile_time_required_bits": [
+    "RNS_EMBEDDED_V1_CAP_BROADCAST_EXPLICIT_LIST",
+    "RNS_EMBEDDED_V1_CAP_COMPAT_LEGACY_FFI",
+    "RNS_EMBEDDED_V1_CAP_EVENT_GAP_SIGNALING"
+  ],
+  "std_required_bits": [
+    "RNS_EMBEDDED_V1_CAP_MANAGED_RUNTIME",
+    "RNS_EMBEDDED_V1_CAP_BLOCKING_NEXT"
+  ],
+  "alloc_forbidden_bits": [
+    "RNS_EMBEDDED_V1_CAP_MANAGED_RUNTIME",
+    "RNS_EMBEDDED_V1_CAP_BLOCKING_NEXT"
+  ],
+  "unknown_bit_policy": "ignore",
+  "max_subscriptions": 1024
+}

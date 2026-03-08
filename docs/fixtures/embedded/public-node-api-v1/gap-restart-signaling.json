@@ -1,0 +1,6 @@
+{
+  "expected_restart_poll_kind": "NodeRestarted",
+  "expected_restart_error_code": "NodeRestarted",
+  "expected_gap_poll_kind": "Gap",
+  "expected_gap_error_code": "EventGap"
+}

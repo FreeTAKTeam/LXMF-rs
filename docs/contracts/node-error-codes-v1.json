@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "artifact": "rns_embedded_v1_node_error_codes",
+  "abi_version": 1,
+  "codes": [
+    {
+      "rust_variant": "Unknown",
+      "c_name": "RNS_EMBEDDED_V1_NODE_ERROR_UNKNOWN",
+      "value": 0,
+      "status": "RNS_EMBEDDED_STATUS_INVALID_ARGUMENT",
+      "description": "Unspecified node-centric failure."
+    },
+    {
+      "rust_variant": "InvalidConfig",
+      "c_name": "RNS_EMBEDDED_V1_NODE_ERROR_INVALID_CONFIG",
+      "value": 1,
+      "status": "RNS_EMBEDDED_STATUS_INVALID_INPUT",
+      "description": "Caller supplied an invalid or unsupported node configuration."
+    },
+    {
+      "rust_variant": "IoError",
+      "c_name": "RNS_EMBEDDED_V1_NODE_ERROR_IO_ERROR",
+      "value": 2,
+      "status": "RNS_EMBEDDED_STATUS_INVALID_STATE",
+      "description": "The node hit an IO or backend state failure."
+    },
+    {
+      "rust_variant": "NetworkError",
+      "c_name": "RNS_EMBEDDED_V1_NODE_ERROR_NETWORK_ERROR",
+      "value": 3,
+      "status": "RNS_EMBEDDED_STATUS_DISCONNECTED",
+      "description": "The active backend or link is disconnected or unavailable."
+    },
+    {
+      "rust_variant": "ReticulumError",
+      "c_name": "RNS_EMBEDDED_V1_NODE_ERROR_RETICULUM_ERROR",
+      "value": 4,
+      "status": "RNS_EMBEDDED_STATUS_INVALID_STATE",
+      "description": "The underlying embedded protocol/runtime rejected the operation."
+    },
+    {
+      "rust_variant": "AlreadyRunning",
+      "c_name": "RNS_EMBEDDED_V1_NODE_ERROR_ALREADY_RUNNING",
+      "value": 5,
+      "status": "RNS_EMBEDDED_STATUS_INVALID_STATE",
+      "description": "The node is already running for the requested lifecycle transition."
+    },
+    {
+      "rust_variant": "NotRunning",
+      "c_name": "RNS_EMBEDDED_V1_NODE_ERROR_NOT_RUNNING",
+      "value": 6,
+      "status": "RNS_EMBEDDED_STATUS_INVALID_STATE",
+      "description": "The operation requires a running node."
+    },
+    {
+      "rust_variant": "Timeout",
+      "c_name": "RNS_EMBEDDED_V1_NODE_ERROR_TIMEOUT",
+      "value": 7,
+      "status": "RNS_EMBEDDED_STATUS_TIMEOUT",
+      "description": "The requested wait budget elapsed."
+    },
+    {
+      "rust_variant": "InternalError",
+      "c_name": "RNS_EMBEDDED_V1_NODE_ERROR_INTERNAL_ERROR",
+      "value": 8,
+      "status": "RNS_EMBEDDED_STATUS_INVALID_STATE",
+      "description": "The runtime or FFI bridge reached an internal invariant failure."
+    },
+    {
+      "rust_variant": "InvalidHandle",
+      "c_name": "RNS_EMBEDDED_V1_NODE_ERROR_INVALID_HANDLE",
+      "value": 9,
+      "status": "RNS_EMBEDDED_STATUS_INVALID_ARGUMENT",
+      "description": "The caller passed a null, stale, or mismatched opaque handle."
+    },
+    {
+      "rust_variant": "InvalidPointer",
+      "c_name": "RNS_EMBEDDED_V1_NODE_ERROR_INVALID_POINTER",
+      "value": 10,
+      "status": "RNS_EMBEDDED_STATUS_INVALID_ARGUMENT",
+      "description": "The caller passed an invalid pointer for an input or output buffer."
+    },
+    {
+      "rust_variant": "ModeConflict",
+      "c_name": "RNS_EMBEDDED_V1_NODE_ERROR_MODE_CONFLICT",
+      "value": 11,
+      "status": "RNS_EMBEDDED_STATUS_INVALID_STATE",
+      "description": "The caller mixed manual and managed node progression modes."
+    },
+    {
+      "rust_variant": "SubscriptionClosed",
+      "c_name": "RNS_EMBEDDED_V1_NODE_ERROR_SUBSCRIPTION_CLOSED",
+      "value": 12,
+      "status": "RNS_EMBEDDED_STATUS_OK",
+      "description": "A poll observed that the subscription handle was closed."
+    },
+    {
+      "rust_variant": "NodeRestarted",
+      "c_name": "RNS_EMBEDDED_V1_NODE_ERROR_NODE_RESTARTED",
+      "value": 13,
+      "status": "RNS_EMBEDDED_STATUS_OK",
+      "description": "A poll observed a generation change and the node restarted."
+    },
+    {
+      "rust_variant": "EventGap",
+      "c_name": "RNS_EMBEDDED_V1_NODE_ERROR_EVENT_GAP",
+      "value": 14,
+      "status": "RNS_EMBEDDED_STATUS_OK",
+      "description": "A poll observed an event-log gap and advanced to the next retained event."
+    },
+    {
+      "rust_variant": "QueuePressure",
+      "c_name": "RNS_EMBEDDED_V1_NODE_ERROR_QUEUE_PRESSURE",
+      "value": 15,
+      "status": "RNS_EMBEDDED_STATUS_BACKPRESSURE",
+      "description": "The node rejected the operation because queue capacity would be exceeded."
+    }
+  ]
+}

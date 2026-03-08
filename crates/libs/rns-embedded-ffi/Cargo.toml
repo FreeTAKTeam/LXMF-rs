@@ -20,6 +20,9 @@ default = ["std"]
 std = ["rns-embedded-core/std", "rns-embedded-runtime/std"]
 alloc = ["dep:critical-section", "dep:embedded-alloc", "rns-embedded-core/alloc", "rns-embedded-runtime/alloc"]
 
+[dev-dependencies]
+serde_json.workspace = true
+
 [lints.rust]
 unsafe_code = "allow"
 unused_imports = "warn"

@@ -1,0 +1,5 @@
+{
+  "timeout_ms": 0,
+  "expected_poll_kind": "Timeout",
+  "expected_error_code": "Timeout"
+}
