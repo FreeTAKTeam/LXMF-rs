@@ -24,14 +24,14 @@ void main() {
     );
   });
 
-  test('rpc codec does not coerce arbitrary three-item nested lists into tuples', () {
+  test('rpc codec does not coerce arbitrary three-item lists into tuples', () {
     final encoded = encodeRpcFrame(<String, Object?>{
       'id': 9,
       'result': <String, Object?>{
-        'events': <Object?>[
-          <String, Object?>{'id': 'e1'},
-          <String, Object?>{'id': 'e2'},
-          <String, Object?>{'id': 'e3'},
+        'messages': <Object?>[
+          <String, Object?>{'id': 'm1', 'content': 'one'},
+          <String, Object?>{'id': 'm2', 'content': 'two'},
+          <String, Object?>{'id': 'm3', 'content': 'three'},
         ],
       },
       'error': null,
@@ -39,7 +39,31 @@ void main() {
 
     final decoded = decodeRpcFrame(encoded);
     final result = decoded['result']! as Map<String, Object?>;
-    expect(result['events'], isA<List<Object?>>());
-    expect((result['events']! as List<Object?>), hasLength(3));
+    expect(result['messages'], isA<List<Object?>>());
+    expect((result['messages']! as List<Object?>), hasLength(3));
+  });
+
+  test('rpc codec normalizes nested rpc error tuples', () {
+    final encoded = encodeRpcFrame(<String, Object?>{
+      'id': 11,
+      'result': null,
+      'error': <Object?>[
+        'SDK_CAPABILITY_DISABLED',
+        'feature disabled',
+        'SDK_CAPABILITY_DISABLED',
+        'Capability',
+        false,
+        true,
+        <String, Object?>{},
+        null,
+        <String, Object?>{},
+      ],
+    });
+
+    final decoded = decodeRpcFrame(encoded);
+    expect(decoded['error'], isA<Map<String, Object?>>());
+    final error = decoded['error']! as Map<String, Object?>;
+    expect(error['machine_code'], 'SDK_CAPABILITY_DISABLED');
+    expect(error['category'], 'Capability');
   });
 }

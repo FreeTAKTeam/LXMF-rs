@@ -264,13 +264,15 @@ final class RpcBinding implements AppBinding {
               await Future<void>.delayed(idleDelay);
               continue;
             }
+            if (error.code == ErrorCode.connectivityDisconnected ||
+                error.code == ErrorCode.connectivityReconnectFailed) {
+              await Future<void>.delayed(idleDelay);
+              continue;
+            }
             controller.addError(error);
             active = false;
             await controller.close();
           }
-        }
-        if (!controller.isClosed) {
-          await controller.close();
         }
       });
 
@@ -280,11 +282,163 @@ final class RpcBinding implements AppBinding {
     });
   }
 
+  Future<String> deliveryDestinationHash() async {
+    final result = await _callLegacy('status', const <String, Object?>{});
+    final hash = _stringAt(result, 'delivery_destination_hash');
+    if (hash == null || hash.isEmpty) {
+      throw const AppError(
+        code: ErrorCode.internalUnexpectedFailure,
+        category: ErrorCategory.internal,
+        message: 'rpc status did not expose delivery_destination_hash',
+      );
+    }
+    return hash;
+  }
+
+  Future<List<MessageRecord>> messageHistory() async {
+    final result = await _callLegacy('list_messages', const <String, Object?>{});
+    final messages = result['messages'];
+    if (messages is! List) {
+      throw const AppError(
+        code: ErrorCode.internalUnexpectedFailure,
+        category: ErrorCategory.internal,
+        message: 'list_messages response did not contain a messages array',
+      );
+    }
+    return messages
+        .whereType<Map>()
+        .map(
+          (entry) => _messageRecordFromMap(
+            entry.map((key, value) => MapEntry(key.toString(), value)),
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  Future<List<IdentityBundle>> identityList() async {
+    final result = await _call('sdk_identity_list_v2', const <String, Object?>{});
+    final identities = result['identities'] ??
+        (_mapAt(result, 'identity_list')['identities']);
+    if (identities is! List) {
+      throw const AppError(
+        code: ErrorCode.internalUnexpectedFailure,
+        category: ErrorCategory.internal,
+        message: 'sdk_identity_list_v2 did not return an identities array',
+      );
+    }
+    return identities
+        .whereType<Map>()
+        .map(
+          (entry) => _identityBundleFromMap(
+            entry.map((key, value) => MapEntry(key.toString(), value)),
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  Future<ContactListPage> contactList({
+    String? cursor,
+    int? limit,
+  }) async {
+    final result = await _call('sdk_identity_contact_list_v2', <String, Object?>{
+      if (cursor != null) 'cursor': cursor,
+      if (limit != null) 'limit': limit,
+    });
+    final payload = _mapAt(result, 'contact_list');
+    final contactsValue = payload['contacts'];
+    if (contactsValue is! List) {
+      throw const AppError(
+        code: ErrorCode.internalUnexpectedFailure,
+        category: ErrorCategory.internal,
+        message: 'sdk_identity_contact_list_v2 did not return a contacts array',
+      );
+    }
+    final contacts = contactsValue
+        .whereType<Map>()
+        .map(
+          (entry) => _contactRecordFromMap(
+            entry.map((key, value) => MapEntry(key.toString(), value)),
+          ),
+        )
+        .toList(growable: false);
+    return ContactListPage(
+      contacts: contacts,
+      nextCursor: payload['next_cursor']?.toString(),
+    );
+  }
+
+  Future<DeliveryStatus?> deliveryStatus(String messageId) async {
+    final result = await _call('sdk_status_v2', <String, Object?>{
+      'message_id': messageId,
+    });
+    final message = result['message'];
+    if (message == null) {
+      return null;
+    }
+    if (message is! Map) {
+      throw const AppError(
+        code: ErrorCode.internalUnexpectedFailure,
+        category: ErrorCategory.internal,
+        message: 'sdk_status_v2 returned an invalid message payload',
+      );
+    }
+    return _deliveryStatusFromMap(
+      message.map((key, value) => MapEntry(key.toString(), value)),
+    );
+  }
+
+  Stream<DeliveryStatus> watchMessageStatus(String messageId) {
+    return Stream<DeliveryStatus>.multi((controller) {
+      StreamSubscription<AppEvent>? subscription;
+      var cancelled = false;
+
+      Future<void>(() async {
+        final initial = await deliveryStatus(messageId);
+        if (cancelled) {
+          return;
+        }
+        if (initial != null) {
+          controller.add(initial);
+          if (initial.isTerminal) {
+            await controller.close();
+            return;
+          }
+        }
+
+        subscription = subscribeEvents().listen(
+          (event) {
+            final status = _deliveryStatusFromEvent(event);
+            if (status == null || status.messageId != messageId) {
+              return;
+            }
+            controller.add(status);
+            if (status.isTerminal) {
+              controller.close();
+            }
+          },
+          onError: controller.addError,
+        );
+      });
+
+      controller.onCancel = () async {
+        cancelled = true;
+        await subscription?.cancel();
+      };
+    });
+  }
+
   Future<Map<String, Object?>> _snapshot({required bool includeCounts}) async {
     return _call(
       'sdk_snapshot_v2',
       <String, Object?>{'include_counts': includeCounts},
     );
+  }
+
+  Future<Map<String, Object?>> _callLegacy(
+    String method,
+    Map<String, Object?> params,
+  ) {
+    return _call(method, params);
   }
 
   Future<Map<String, Object?>> _call(
@@ -318,31 +472,49 @@ final class RpcBinding implements AppBinding {
   }
 
   Future<List<int>> _post(List<int> payload) async {
-    final request = await _httpClient
-        .postUrl(_options.endpoint)
-        .timeout(_options.requestTimeout);
-    request.headers.contentType = ContentType('application', 'msgpack');
-    request.contentLength = payload.length;
-    if (_options.authToken case final token? when token.isNotEmpty) {
-      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
-    }
-    request.add(payload);
-    final response = await request.close().timeout(_options.requestTimeout);
-    final bytes = await response.fold<BytesBuilder>(
-      BytesBuilder(copy: false),
-      (builder, chunk) => builder..add(chunk),
-    );
-    final body = bytes.takeBytes();
-    if (response.statusCode < 200 || response.statusCode >= 300) {
+    try {
+      final request = await _httpClient
+          .postUrl(_options.endpoint)
+          .timeout(_options.requestTimeout);
+      request.headers.contentType = ContentType('application', 'msgpack');
+      request.contentLength = payload.length;
+      if (_options.authToken case final token? when token.isNotEmpty) {
+        request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
+      }
+      request.add(payload);
+      final response = await request.close().timeout(_options.requestTimeout);
+      final bytes = await response.fold<BytesBuilder>(
+        BytesBuilder(copy: false),
+        (builder, chunk) => builder..add(chunk),
+      );
+      final body = bytes.takeBytes();
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw AppError(
+          code: ErrorCode.connectivityDisconnected,
+          category: ErrorCategory.connectivity,
+          message: 'rpc endpoint returned HTTP ${response.statusCode}',
+          retryable: true,
+          terminal: false,
+        );
+      }
+      return body;
+    } on SocketException catch (error) {
       throw AppError(
         code: ErrorCode.connectivityDisconnected,
         category: ErrorCategory.connectivity,
-        message: 'rpc endpoint returned HTTP ${response.statusCode}',
+        message: error.message,
+        retryable: true,
+        terminal: false,
+      );
+    } on HttpException catch (error) {
+      throw AppError(
+        code: ErrorCode.connectivityDisconnected,
+        category: ErrorCategory.connectivity,
+        message: error.message,
         retryable: true,
         terminal: false,
       );
     }
-    return body;
   }
 
   AppEvent _mapEvent(Object? raw, Handle handle, Profile profile) {
@@ -605,6 +777,13 @@ final class RpcBinding implements AppBinding {
           true,
           true,
         ),
+      'SDK_CAPABILITY_DISABLED' => (
+          ErrorCode.capabilityRequiredFeatureMissing,
+          ErrorCategory.capability,
+          false,
+          true,
+          true,
+        ),
       'SDK_SECURITY_AUTH_REQUIRED' || 'SDK_SECURITY_REMOTE_BIND_DISALLOWED' => (
           ErrorCode.securityAuthRequired,
           ErrorCategory.security,
@@ -659,6 +838,103 @@ final class RpcBinding implements AppBinding {
       causeCode: code,
       details: details,
     );
+  }
+
+  static IdentityBundle _identityBundleFromMap(Map<String, Object?> map) {
+    return IdentityBundle(
+      identity: map['identity']?.toString() ?? '',
+      publicKey: map['public_key']?.toString() ?? '',
+      displayName: map['display_name']?.toString(),
+      capabilities: _stringListAt(map, 'capabilities'),
+      extensions: _mapAt(map, 'extensions'),
+    );
+  }
+
+  static ContactRecord _contactRecordFromMap(Map<String, Object?> map) {
+    return ContactRecord(
+      identity: map['identity']?.toString() ?? '',
+      displayName: map['display_name']?.toString(),
+      trustLevel: _mapTrustLevel(map['trust_level']?.toString()),
+      bootstrap: map['bootstrap'] == true,
+      updatedTsMs: (map['updated_ts_ms'] as num?)?.toInt() ?? 0,
+      metadata: _mapAt(map, 'metadata'),
+      extensions: _mapAt(map, 'extensions'),
+    );
+  }
+
+  static DeliveryStatus _deliveryStatusFromMap(Map<String, Object?> map) {
+    return DeliveryStatus(
+      messageId: map['id']?.toString() ?? '',
+      receiptStatus: map['receipt_status']?.toString(),
+      source: map['source']?.toString(),
+      destination: map['destination']?.toString(),
+      content: map['content']?.toString(),
+      timestampMs: _timestampMs(map['timestamp']),
+      direction: map['direction']?.toString(),
+      fields: _mapAt(map, 'fields'),
+    );
+  }
+
+  static MessageRecord _messageRecordFromMap(Map<String, Object?> map) {
+    return MessageRecord(
+      id: map['id']?.toString() ?? '',
+      source: map['source']?.toString(),
+      destination: map['destination']?.toString(),
+      title: map['title']?.toString(),
+      content: map['content']?.toString(),
+      timestampMs: _timestampMs(map['timestamp']),
+      direction: map['direction']?.toString(),
+      fields: _mapAt(map, 'fields'),
+      receiptStatus: map['receipt_status']?.toString(),
+      raw: map,
+    );
+  }
+
+  static DeliveryStatus? _deliveryStatusFromEvent(AppEvent event) {
+    if (event.rawEventType == 'delivery_cancelled') {
+      final payload = event.details is Map<String, Object?>
+          ? event.details! as Map<String, Object?>
+          : const <String, Object?>{};
+      final messageId = payload['message_id']?.toString();
+      if (messageId == null || messageId.isEmpty) {
+        return null;
+      }
+      return DeliveryStatus(
+        messageId: messageId,
+        receiptStatus: 'cancelled',
+      );
+    }
+    if (event.rawEventType != 'outbound' || event.details is! Map<String, Object?>) {
+      return null;
+    }
+    final payload = event.details! as Map<String, Object?>;
+    final message = payload['message'];
+    if (message is! Map) {
+      return null;
+    }
+    return _deliveryStatusFromMap(
+      message.map((key, value) => MapEntry(key.toString(), value)),
+    );
+  }
+
+  static TrustLevel _mapTrustLevel(String? value) {
+    return switch (value) {
+      'trusted' => TrustLevel.trusted,
+      'untrusted' => TrustLevel.untrusted,
+      'blocked' => TrustLevel.blocked,
+      _ => TrustLevel.unknown,
+    };
+  }
+
+  static int? _timestampMs(Object? raw) {
+    if (raw is int) {
+      return raw < 1000000000000 ? raw * 1000 : raw;
+    }
+    if (raw is num) {
+      final value = raw.toInt();
+      return value < 1000000000000 ? value * 1000 : value;
+    }
+    return null;
   }
 
   static ErrorCategory _mapCategory(String category) {

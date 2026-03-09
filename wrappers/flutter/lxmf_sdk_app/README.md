@@ -2,11 +2,12 @@
 
 `lxmf_sdk_app` is the first-party Flutter/Dart package for the `sdk-app` contract in this repo.
 
-This package currently does three things:
+This package currently does four things:
 
 - mirrors the app-facing typed model from `lxmf_sdk::app`
 - defines the client/binding seam the package exposes
 - provides a first real `reticulumd` RPC binding for that seam
+- adds a conversation-focused helper on top of that RPC binding
 - validates the wrapper vocabulary against `docs/fixtures/sdk-app-v1`
 
 Current supported direction:
@@ -24,6 +25,8 @@ Current package scope:
 - typed delivery-plan and delivery-helper models
 - `AppClient` facade over an abstract `AppBinding`
 - `RpcBinding` for `reticulumd` over framed MessagePack HTTP RPC
+- `RpcConversationClient` for message history + live conversation updates
+- identity, contact, message-history, and delivery-status helpers for RPC-backed clients
 - fixture-backed contract tests for shared `sdk-app` scenarios
 
 Important current constraint:
@@ -58,6 +61,45 @@ final receipt = await client.send(
 print('${handle.runtimeId} accepted ${receipt.messageId}');
 ```
 
+Conversation-oriented flow:
+
+```dart
+final binding = RpcBinding(
+  RpcConnectionOptions(
+    endpoint: Uri.parse('http://127.0.0.1:4543/rpc'),
+    pollIdleDelay: const Duration(milliseconds: 100),
+  ),
+);
+
+final app = AppClient(binding);
+final chat = RpcConversationClient(binding);
+
+await app.start(const Config(profile: Profile.desktopDefault));
+final self = await chat.selfAddress();
+final contacts = await app.contactList(limit: 10);
+final history = await app.messageHistory();
+final receipt = await chat.sendText('<peer-destination-hash>', 'hello');
+final status = await app.deliveryStatus(receipt.messageId);
+
+print('self: $self contacts=${contacts.contacts.length} history=${history.length}');
+print('queued ${receipt.messageId} status=${status?.receiptStatus}');
+```
+
+If you plan to call identity or contact methods, request those capabilities at
+startup:
+
+```dart
+await app.start(
+  const Config(
+    profile: Profile.desktopDefault,
+    requestedCapabilities: <String>[
+      'sdk.capability.identity_multi',
+      'sdk.capability.contact_management',
+    ],
+  ),
+);
+```
+
 Current next steps:
 
 1. validate the RPC binding against local `reticulumd` smoke runs
@@ -79,6 +121,21 @@ dart pub get
 dart analyze
 dart test
 dart run example/rpc_smoke.dart http://127.0.0.1:4243/rpc
+dart run example/rpc_chat_smoke.dart http://127.0.0.1:4243/rpc <peer-destination-hash>
+```
+
+Repo-level smoke from the project root:
+
+```sh
+./tools/scripts/flutter-rpc-chat-smoke.sh <peer-destination-hash>
+```
+
+Minimal Flutter UI harness:
+
+```sh
+cd wrappers/flutter/lxmf_rpc_chat_app
+flutter pub get
+flutter run -d macos
 ```
 
 This package is intentionally contract-first. The public package surface is now

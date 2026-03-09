@@ -50,6 +50,10 @@ Object? _normalize(Object? value) {
     return value;
   }
   if (value is List) {
+    final errorTuple = value.length == 9 ? _normalizeRpcTuple(value) : null;
+    if (errorTuple != null) {
+      return errorTuple;
+    }
     return value.map(_normalize).toList(growable: false);
   }
   if (value is Map) {

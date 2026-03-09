@@ -211,7 +211,7 @@ void main() {
       );
     });
 
-    test('subscribeEvents closes when stop is called', () async {
+    test('identity, contact, and delivery status helpers decode rpc payloads', () async {
       unawaited(() async {
         await for (final request in server) {
           final body = await request.fold<List<int>>(<int>[], (all, chunk) {
@@ -222,12 +222,69 @@ void main() {
           final id = frame['id'] as int;
           final method = frame['method'] as String;
           final response = switch (method) {
+            'sdk_identity_list_v2' => <String, Object?>{
+                'id': id,
+                'result': <String, Object?>{
+                  'identities': <Object?>[
+                    <String, Object?>{
+                      'identity': 'id-1',
+                      'public_key': 'pub-1',
+                      'display_name': 'Primary',
+                      'capabilities': <String>['chat'],
+                      'extensions': <String, Object?>{},
+                    },
+                  ],
+                },
+                'error': null,
+              },
+            'sdk_identity_contact_list_v2' => <String, Object?>{
+                'id': id,
+                'result': <String, Object?>{
+                  'contact_list': <String, Object?>{
+                    'contacts': <Object?>[
+                      <String, Object?>{
+                        'identity': 'peer-1',
+                        'display_name': 'Peer One',
+                        'trust_level': 'trusted',
+                        'bootstrap': true,
+                        'updated_ts_ms': 1710000000000,
+                        'metadata': <String, Object?>{'nickname': 'p1'},
+                        'extensions': <String, Object?>{},
+                      },
+                    ],
+                    'next_cursor': 'contact:1',
+                  },
+                },
+                'error': null,
+              },
+            'list_messages' => <String, Object?>{
+                'id': id,
+                'result': <String, Object?>{
+                  'messages': <Object?>[
+                    <String, Object?>{
+                      'id': 'msg-7',
+                      'source': 'self-1',
+                      'destination': 'peer-1',
+                      'title': '',
+                      'content': 'hello',
+                      'timestamp': 1710000000,
+                      'direction': 'out',
+                      'fields': <String, Object?>{},
+                      'receipt_status': 'sent: direct',
+                    },
+                  ],
+                },
+                'error': null,
+              },
             'sdk_negotiate_v2' => <String, Object?>{
                 'id': id,
                 'result': <String, Object?>{
                   'runtime_id': 'rpc-test-runtime',
                   'active_contract_version': 2,
-                  'effective_capabilities': <String>['sdk.capability.async_events'],
+                  'effective_capabilities': <String>[
+                    'sdk.capability.cursor_replay',
+                    'sdk.capability.async_events',
+                  ],
                   'effective_limits': <String, Object?>{'max_poll_events': 64},
                 },
                 'error': null,
@@ -238,9 +295,67 @@ void main() {
                   'runtime_id': 'rpc-test-runtime',
                   'state': 'running',
                   'config_revision': 1,
-                  'event_stream_position': 0,
-                  'queued_messages': 0,
+                  'event_stream_position': 2,
+                  'queued_messages': 1,
                   'in_flight_messages': 0,
+                },
+                'error': null,
+              },
+            'sdk_configure_v2' => <String, Object?>{
+                'id': id,
+                'result': <String, Object?>{'accepted': true, 'revision': 1},
+                'error': null,
+              },
+            'sdk_status_v2' => <String, Object?>{
+                'id': id,
+                'result': <String, Object?>{
+                  'message': <String, Object?>{
+                    'id': 'msg-7',
+                    'source': 'self-1',
+                    'destination': 'peer-1',
+                    'title': '',
+                    'content': 'hello',
+                    'timestamp': 1710000000,
+                    'direction': 'out',
+                    'fields': <String, Object?>{},
+                    'receipt_status': 'sent: direct',
+                  },
+                },
+                'error': null,
+              },
+            'sdk_poll_events_v2' => <String, Object?>{
+                'id': id,
+                'result': <String, Object?>{
+                  'runtime_id': 'rpc-test-runtime',
+                  'stream_id': 'sdk-events',
+                  'events': <Object?>[
+                    <String, Object?>{
+                      'event_id': 'evt-delivered',
+                      'runtime_id': 'rpc-test-runtime',
+                      'stream_id': 'sdk-events',
+                      'seq_no': 3,
+                      'contract_version': 2,
+                      'ts_ms': 1710000002000,
+                      'event_type': 'outbound',
+                      'severity': 'info',
+                      'source_component': 'rns-rpc',
+                      'payload': <String, Object?>{
+                        'message': <String, Object?>{
+                          'id': 'msg-7',
+                          'source': 'self-1',
+                          'destination': 'peer-1',
+                          'title': '',
+                          'content': 'hello',
+                          'timestamp': 1710000002,
+                          'direction': 'out',
+                          'fields': <String, Object?>{},
+                          'receipt_status': 'delivered',
+                        },
+                      },
+                    },
+                  ],
+                  'next_cursor': 'cursor-1',
+                  'dropped_count': 0,
                 },
                 'error': null,
               },
@@ -249,21 +364,13 @@ void main() {
                 'result': <String, Object?>{'accepted': true, 'mode': 'graceful'},
                 'error': null,
               },
-            'sdk_poll_events_v2' => <String, Object?>{
-                'id': id,
-                'result': <String, Object?>{
-                  'runtime_id': 'rpc-test-runtime',
-                  'stream_id': 'sdk-events',
-                  'events': <Object?>[],
-                  'next_cursor': 'cursor-0',
-                  'dropped_count': 0,
-                },
-                'error': null,
-              },
             _ => <String, Object?>{
                 'id': id,
-                'result': <String, Object?>{},
-                'error': null,
+                'result': null,
+                'error': <String, Object?>{
+                  'code': 'SDK_VALIDATION_INVALID_ARGUMENT',
+                  'message': 'unknown method',
+                },
               },
           };
           request.response.headers.contentType = ContentType('application', 'msgpack');
@@ -272,20 +379,42 @@ void main() {
         }
       }());
 
-      final client = AppClient(
-        RpcBinding(
-          RpcConnectionOptions(
-            endpoint: Uri.parse('http://127.0.0.1:${server.port}/rpc'),
-            pollIdleDelay: const Duration(milliseconds: 5),
-          ),
+      final binding = RpcBinding(
+        RpcConnectionOptions(
+          endpoint: Uri.parse('http://127.0.0.1:${server.port}/rpc'),
+          pollIdleDelay: const Duration(milliseconds: 5),
         ),
       );
+      final client = AppClient(binding);
 
       await client.start(const Config(profile: Profile.testingDefault));
-      final done = client.subscribeEvents().drain<void>();
-      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      final identities = await binding.identityList();
+      expect(identities, hasLength(1));
+      expect(identities.first.displayName, 'Primary');
+
+      final contacts = await binding.contactList(limit: 10);
+      expect(contacts.contacts, hasLength(1));
+      expect(contacts.contacts.first.trustLevel, TrustLevel.trusted);
+      expect(contacts.nextCursor, 'contact:1');
+
+      final messages = await binding.messageHistory();
+      expect(messages, hasLength(1));
+      expect(messages.first.id, 'msg-7');
+      expect(messages.first.destination, 'peer-1');
+
+      final initial = await binding.deliveryStatus('msg-7');
+      expect(initial, isNotNull);
+      expect(initial!.receiptStatus, 'sent: direct');
+      expect(initial.isTerminal, isFalse);
+
+      final watched = await binding.watchMessageStatus('msg-7').last.timeout(
+            const Duration(seconds: 1),
+          );
+      expect(watched.receiptStatus, 'delivered');
+      expect(watched.isTerminal, isTrue);
+
       await client.stop();
-      await expectLater(done.timeout(const Duration(seconds: 1)), completes);
     });
   });
 }

@@ -522,6 +522,119 @@ class SendReport {
 
 enum Severity { debug, info, warn, error, critical, unknown }
 
+enum TrustLevel { unknown, untrusted, trusted, blocked }
+
+@immutable
+class IdentityBundle {
+  const IdentityBundle({
+    required this.identity,
+    required this.publicKey,
+    this.displayName,
+    this.capabilities = const <String>[],
+    this.extensions = const <String, Object?>{},
+  });
+
+  final String identity;
+  final String publicKey;
+  final String? displayName;
+  final List<String> capabilities;
+  final Map<String, Object?> extensions;
+}
+
+@immutable
+class ContactRecord {
+  const ContactRecord({
+    required this.identity,
+    required this.trustLevel,
+    required this.bootstrap,
+    required this.updatedTsMs,
+    this.displayName,
+    this.metadata = const <String, Object?>{},
+    this.extensions = const <String, Object?>{},
+  });
+
+  final String identity;
+  final String? displayName;
+  final TrustLevel trustLevel;
+  final bool bootstrap;
+  final int updatedTsMs;
+  final Map<String, Object?> metadata;
+  final Map<String, Object?> extensions;
+}
+
+@immutable
+class ContactListPage {
+  const ContactListPage({
+    required this.contacts,
+    this.nextCursor,
+  });
+
+  final List<ContactRecord> contacts;
+  final String? nextCursor;
+}
+
+@immutable
+class MessageRecord {
+  const MessageRecord({
+    required this.id,
+    this.source,
+    this.destination,
+    this.title,
+    this.content,
+    this.timestampMs,
+    this.direction,
+    this.fields = const <String, Object?>{},
+    this.receiptStatus,
+    this.raw = const <String, Object?>{},
+  });
+
+  final String id;
+  final String? source;
+  final String? destination;
+  final String? title;
+  final String? content;
+  final int? timestampMs;
+  final String? direction;
+  final Map<String, Object?> fields;
+  final String? receiptStatus;
+  final Map<String, Object?> raw;
+}
+
+@immutable
+class DeliveryStatus {
+  const DeliveryStatus({
+    required this.messageId,
+    this.receiptStatus,
+    this.source,
+    this.destination,
+    this.content,
+    this.timestampMs,
+    this.direction,
+    this.fields = const <String, Object?>{},
+  });
+
+  final String messageId;
+  final String? receiptStatus;
+  final String? source;
+  final String? destination;
+  final String? content;
+  final int? timestampMs;
+  final String? direction;
+  final Map<String, Object?> fields;
+
+  bool get isTerminal {
+    final normalized = receiptStatus?.toLowerCase().trim();
+    if (normalized == null || normalized.isEmpty) {
+      return false;
+    }
+    return normalized == 'cancelled' ||
+        normalized == 'delivered' ||
+        normalized == 'failed' ||
+        normalized == 'expired' ||
+        normalized == 'rejected';
+  }
+}
+
 enum EventKind {
   runtimeStarted,
   runtimeStopped,
