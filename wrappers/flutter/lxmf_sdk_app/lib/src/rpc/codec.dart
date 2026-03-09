@@ -21,11 +21,21 @@ Map<String, Object?> decodeRpcFrame(List<int> bytes) {
     throw const FormatException('incomplete frame payload');
   }
   final payload = bytes.sublist(4, 4 + payloadLength);
-  final decoded = _normalize(msgpack.deserialize(Uint8List.fromList(payload)));
+  final decoded = _normalizeRpcFrame(msgpack.deserialize(Uint8List.fromList(payload)));
   if (decoded is! Map<String, Object?>) {
     throw const FormatException('rpc frame payload must decode to an object');
   }
   return decoded;
+}
+
+Object? _normalizeRpcFrame(Object? value) {
+  if (value is List) {
+    final tuple = _normalizeRpcTuple(value);
+    if (tuple != null) {
+      return tuple;
+    }
+  }
+  return _normalize(value);
 }
 
 Object? _normalize(Object? value) {
@@ -40,10 +50,6 @@ Object? _normalize(Object? value) {
     return value;
   }
   if (value is List) {
-    final tupleNormalized = _normalizeRpcTuple(value);
-    if (tupleNormalized != null) {
-      return tupleNormalized;
-    }
     return value.map(_normalize).toList(growable: false);
   }
   if (value is Map) {
@@ -61,18 +67,20 @@ Map<String, Object?>? _normalizeRpcTuple(List<Object?> values) {
     final first = _normalize(values[0]);
     final second = _normalize(values[1]);
     final third = _normalize(values[2]);
-    if (second is String) {
+    if ((first is int || first is String) && second is String) {
       return <String, Object?>{
         'id': first,
         'method': second,
         'params': third,
       };
     }
-    return <String, Object?>{
-      'id': first,
-      'result': second,
-      'error': third,
-    };
+    if (first is int || first is String) {
+      return <String, Object?>{
+        'id': first,
+        'result': second,
+        'error': third,
+      };
+    }
   }
   if (values.length == 9) {
     return <String, Object?>{

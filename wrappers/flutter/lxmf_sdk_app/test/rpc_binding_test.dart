@@ -144,6 +144,7 @@ void main() {
           );
       expect(event.kind, EventKind.messageSent);
       expect(event.metadata.messageId, 'msg-1');
+      expect(event.metadata.occurredAtMs, 1710000000000);
 
       await client.stop();
 
@@ -208,6 +209,83 @@ void main() {
           ),
         ),
       );
+    });
+
+    test('subscribeEvents closes when stop is called', () async {
+      unawaited(() async {
+        await for (final request in server) {
+          final body = await request.fold<List<int>>(<int>[], (all, chunk) {
+            all.addAll(chunk);
+            return all;
+          });
+          final frame = decodeRpcFrame(body);
+          final id = frame['id'] as int;
+          final method = frame['method'] as String;
+          final response = switch (method) {
+            'sdk_negotiate_v2' => <String, Object?>{
+                'id': id,
+                'result': <String, Object?>{
+                  'runtime_id': 'rpc-test-runtime',
+                  'active_contract_version': 2,
+                  'effective_capabilities': <String>['sdk.capability.async_events'],
+                  'effective_limits': <String, Object?>{'max_poll_events': 64},
+                },
+                'error': null,
+              },
+            'sdk_snapshot_v2' => <String, Object?>{
+                'id': id,
+                'result': <String, Object?>{
+                  'runtime_id': 'rpc-test-runtime',
+                  'state': 'running',
+                  'config_revision': 1,
+                  'event_stream_position': 0,
+                  'queued_messages': 0,
+                  'in_flight_messages': 0,
+                },
+                'error': null,
+              },
+            'sdk_shutdown_v2' => <String, Object?>{
+                'id': id,
+                'result': <String, Object?>{'accepted': true, 'mode': 'graceful'},
+                'error': null,
+              },
+            'sdk_poll_events_v2' => <String, Object?>{
+                'id': id,
+                'result': <String, Object?>{
+                  'runtime_id': 'rpc-test-runtime',
+                  'stream_id': 'sdk-events',
+                  'events': <Object?>[],
+                  'next_cursor': 'cursor-0',
+                  'dropped_count': 0,
+                },
+                'error': null,
+              },
+            _ => <String, Object?>{
+                'id': id,
+                'result': <String, Object?>{},
+                'error': null,
+              },
+          };
+          request.response.headers.contentType = ContentType('application', 'msgpack');
+          request.response.add(encodeRpcFrame(response));
+          await request.response.close();
+        }
+      }());
+
+      final client = AppClient(
+        RpcBinding(
+          RpcConnectionOptions(
+            endpoint: Uri.parse('http://127.0.0.1:${server.port}/rpc'),
+            pollIdleDelay: const Duration(milliseconds: 5),
+          ),
+        ),
+      );
+
+      await client.start(const Config(profile: Profile.testingDefault));
+      final done = client.subscribeEvents().drain<void>();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await client.stop();
+      await expectLater(done.timeout(const Duration(seconds: 1)), completes);
     });
   });
 }

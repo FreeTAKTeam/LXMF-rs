@@ -269,6 +269,9 @@ final class RpcBinding implements AppBinding {
             await controller.close();
           }
         }
+        if (!controller.isClosed) {
+          await controller.close();
+        }
       });
 
       controller.onCancel = () async {
@@ -367,7 +370,7 @@ final class RpcBinding implements AppBinding {
     };
 
     final seqNo = (map['seq_no'] as num?)?.toInt() ?? 0;
-    final occurredAtMs = ((map['ts_ms'] as num?)?.toInt() ?? 0) ~/ 1000;
+    final occurredAtMs = (map['ts_ms'] as num?)?.toInt() ?? 0;
     final severity = _mapSeverity((map['severity'] ?? 'unknown').toString());
     final gap = eventType == 'StreamGap'
         ? StreamGapDetails(

@@ -23,4 +23,23 @@ void main() {
       throwsFormatException,
     );
   });
+
+  test('rpc codec does not coerce arbitrary three-item nested lists into tuples', () {
+    final encoded = encodeRpcFrame(<String, Object?>{
+      'id': 9,
+      'result': <String, Object?>{
+        'events': <Object?>[
+          <String, Object?>{'id': 'e1'},
+          <String, Object?>{'id': 'e2'},
+          <String, Object?>{'id': 'e3'},
+        ],
+      },
+      'error': null,
+    });
+
+    final decoded = decodeRpcFrame(encoded);
+    final result = decoded['result']! as Map<String, Object?>;
+    expect(result['events'], isA<List<Object?>>());
+    expect((result['events']! as List<Object?>), hasLength(3));
+  });
 }
