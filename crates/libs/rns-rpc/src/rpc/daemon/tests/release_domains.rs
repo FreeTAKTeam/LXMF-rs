@@ -384,6 +384,20 @@
             .expect("registry entries")
             .iter()
             .any(|entry| entry["id"] == json!("app.identity.list")));
+        let registry_entries = daemon
+            .handle_rpc(rpc_request(1191, "sdk_operation_registry_v2", json!({})))
+            .expect("operation registry")
+            .result
+            .expect("registry result")["registry"]["entries"]
+            .as_array()
+            .expect("registry entries")
+            .clone();
+        assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.identity.announce")));
+        assert!(registry_entries
+            .iter()
+            .any(|entry| entry["id"] == json!("app.identity.presence.list")));
+        assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.contact.update")));
+        assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.identity.bootstrap")));
 
         let list_before =
             daemon.handle_rpc(rpc_request(120, "sdk_identity_list_v2", json!({}))).expect("list");
@@ -409,6 +423,28 @@
             .as_array()
             .expect("identity payload")
             .is_empty());
+
+        let announce_envelope = daemon
+            .handle_rpc(rpc_request(
+                1202,
+                "sdk_envelope_execute_v2",
+                json!({
+                    "operation_id": "sdk_identity_announce_now_v2",
+                    "kind": "command",
+                    "payload": {},
+                }),
+            ))
+            .expect("announce envelope");
+        assert!(announce_envelope.error.is_none());
+        let announce_response = announce_envelope.result.expect("announce result");
+        assert_eq!(
+            announce_response["response"]["operation_id"],
+            json!("app.identity.announce")
+        );
+        assert_eq!(
+            announce_response["response"]["payload"]["accepted"],
+            json!(true)
+        );
 
         let identity_bundle = json!({
             "identity": "node-b",

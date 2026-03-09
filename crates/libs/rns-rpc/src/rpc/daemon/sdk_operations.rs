@@ -52,6 +52,26 @@ const SDK_OPERATION_SPECS: &[SdkOperationSpec] = &[
         rpc_method: "sdk_identity_list_v2",
     },
     SdkOperationSpec {
+        id: "app.identity.announce",
+        group: "identity",
+        kind: "command",
+        transport_variant: "rpc",
+        description: "Trigger an announce for the active identity.",
+        aliases: &["sdk_identity_announce_now_v2"],
+        required_capabilities: &["sdk.capability.identity_discovery"],
+        rpc_method: "sdk_identity_announce_now_v2",
+    },
+    SdkOperationSpec {
+        id: "app.identity.presence.list",
+        group: "identity",
+        kind: "query",
+        transport_variant: "rpc",
+        description: "List recently seen peers and announce-derived presence state.",
+        aliases: &["sdk_identity_presence_list_v2"],
+        required_capabilities: &["sdk.capability.identity_discovery"],
+        rpc_method: "sdk_identity_presence_list_v2",
+    },
+    SdkOperationSpec {
         id: "app.contact.list",
         group: "identity",
         kind: "query",
@@ -60,6 +80,26 @@ const SDK_OPERATION_SPECS: &[SdkOperationSpec] = &[
         aliases: &["sdk_identity_contact_list_v2"],
         required_capabilities: &["sdk.capability.contact_management"],
         rpc_method: "sdk_identity_contact_list_v2",
+    },
+    SdkOperationSpec {
+        id: "app.contact.update",
+        group: "identity",
+        kind: "command",
+        transport_variant: "rpc",
+        description: "Create or update a contact record for an identity.",
+        aliases: &["sdk_identity_contact_update_v2"],
+        required_capabilities: &["sdk.capability.contact_management"],
+        rpc_method: "sdk_identity_contact_update_v2",
+    },
+    SdkOperationSpec {
+        id: "app.identity.bootstrap",
+        group: "identity",
+        kind: "command",
+        transport_variant: "rpc",
+        description: "Bootstrap trust and optional sync state for an identity.",
+        aliases: &["sdk_identity_bootstrap_v2"],
+        required_capabilities: &["sdk.capability.contact_management"],
+        rpc_method: "sdk_identity_bootstrap_v2",
     },
     SdkOperationSpec {
         id: "app.message.history.list",
@@ -163,7 +203,31 @@ impl RpcDaemon {
                 method: method.to_owned(),
                 params: Some(params),
             })?,
+            "sdk_identity_announce_now_v2" => self.handle_sdk_identity_announce_now_v2(RpcRequest {
+                id: request_id,
+                method: method.to_owned(),
+                params: Some(params),
+            })?,
+            "sdk_identity_presence_list_v2" => self.handle_sdk_identity_presence_list_v2(
+                RpcRequest {
+                    id: request_id,
+                    method: method.to_owned(),
+                    params: Some(params),
+                },
+            )?,
             "sdk_identity_contact_list_v2" => self.handle_sdk_identity_contact_list_v2(RpcRequest {
+                id: request_id,
+                method: method.to_owned(),
+                params: Some(params),
+            })?,
+            "sdk_identity_contact_update_v2" => {
+                self.handle_sdk_identity_contact_update_v2(RpcRequest {
+                    id: request_id,
+                    method: method.to_owned(),
+                    params: Some(params),
+                })?
+            }
+            "sdk_identity_bootstrap_v2" => self.handle_sdk_identity_bootstrap_v2(RpcRequest {
                 id: request_id,
                 method: method.to_owned(),
                 params: Some(params),
@@ -202,8 +266,14 @@ impl RpcDaemon {
         let raw = delegated.result.unwrap_or(JsonValue::Null);
         let payload = match method {
             "sdk_identity_list_v2" => raw.get("identities").cloned().unwrap_or(JsonValue::Null),
+            "sdk_identity_presence_list_v2" => {
+                raw.get("presence_list").cloned().unwrap_or(JsonValue::Null)
+            }
             "sdk_identity_contact_list_v2" => {
                 raw.get("contact_list").cloned().unwrap_or(JsonValue::Null)
+            }
+            "sdk_identity_contact_update_v2" | "sdk_identity_bootstrap_v2" => {
+                raw.get("contact").cloned().unwrap_or(JsonValue::Null)
             }
             "sdk_command_invoke_v2" => raw.get("response").cloned().unwrap_or(raw),
             _ => raw,
@@ -263,7 +333,11 @@ impl RpcDaemon {
                 "max": parsed.payload.get("max").cloned().unwrap_or(JsonValue::from(32_u64)),
             }),
             "sdk_identity_list_v2" => json!({}),
+            "sdk_identity_announce_now_v2" => json!({}),
+            "sdk_identity_presence_list_v2" => parsed.payload,
             "sdk_identity_contact_list_v2" => parsed.payload,
+            "sdk_identity_contact_update_v2" => parsed.payload,
+            "sdk_identity_bootstrap_v2" => parsed.payload,
             "list_messages" => json!({
                 "limit": parsed.payload.get("limit").cloned().unwrap_or(JsonValue::from(100_u64)),
                 "offset": parsed.payload.get("offset").cloned().unwrap_or(JsonValue::from(0_u64)),

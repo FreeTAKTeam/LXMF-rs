@@ -384,7 +384,25 @@ fn built_in_entries() -> Vec<OperationEntry> {
             "List identities visible to the runtime.",
         )
         .with_alias("sdk_identity_list_v2")
-        .with_required_capability("sdk.capability.identity"),
+        .with_required_capability("sdk.capability.identity_multi"),
+        OperationEntry::new(
+            "app.identity.announce",
+            "identity",
+            OperationKind::Command,
+            TransportVariant::Rpc,
+            "Trigger an announce for the active identity.",
+        )
+        .with_alias("sdk_identity_announce_now_v2")
+        .with_required_capability("sdk.capability.identity_discovery"),
+        OperationEntry::new(
+            "app.identity.presence.list",
+            "identity",
+            OperationKind::Query,
+            TransportVariant::Rpc,
+            "List recently seen peers and announce-derived presence state.",
+        )
+        .with_alias("sdk_identity_presence_list_v2")
+        .with_required_capability("sdk.capability.identity_discovery"),
         OperationEntry::new(
             "app.contact.list",
             "identity",
@@ -393,7 +411,25 @@ fn built_in_entries() -> Vec<OperationEntry> {
             "List contacts for a selected identity.",
         )
         .with_alias("sdk_identity_contact_list_v2")
-        .with_required_capability("sdk.capability.identity"),
+        .with_required_capability("sdk.capability.contact_management"),
+        OperationEntry::new(
+            "app.contact.update",
+            "identity",
+            OperationKind::Command,
+            TransportVariant::Rpc,
+            "Create or update a contact record for an identity.",
+        )
+        .with_alias("sdk_identity_contact_update_v2")
+        .with_required_capability("sdk.capability.contact_management"),
+        OperationEntry::new(
+            "app.identity.bootstrap",
+            "identity",
+            OperationKind::Command,
+            TransportVariant::Rpc,
+            "Bootstrap trust and optional sync state for an identity.",
+        )
+        .with_alias("sdk_identity_bootstrap_v2")
+        .with_required_capability("sdk.capability.contact_management"),
         OperationEntry::new(
             "app.message.history.list",
             "messaging",

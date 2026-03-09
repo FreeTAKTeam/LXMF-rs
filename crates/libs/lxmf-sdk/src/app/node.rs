@@ -16,7 +16,10 @@ use crate::{
     EventCursor, LxmfSdk, Profile as CoreProfile, RuntimeSnapshot, RuntimeState, SdkBackend,
     SdkConfig, SendRequest as RawSendRequest, ShutdownMode, StartRequest,
 };
-use crate::domain::{ContactListRequest, PresenceListRequest, RemoteCommandRequest};
+use crate::domain::{
+    ContactListRequest, ContactUpdateRequest, IdentityBootstrapRequest, PresenceListRequest,
+    RemoteCommandRequest,
+};
 #[cfg(feature = "sdk-async")]
 use crate::{LxmfSdkAsync, SdkBackendAsyncEvents};
 use serde::{Deserialize, Serialize};
@@ -516,6 +519,29 @@ impl<B: SdkBackend> Client<B> {
                 serde_json::to_value(self.backend.identity_list().map_err(Error::from)?)
                     .expect("identity list should serialize"),
             )),
+            "app.identity.announce" => {
+                self.backend.identity_announce_now().map_err(Error::from)?;
+                Ok(envelope_result(
+                    canonical_id,
+                    correlation_id,
+                    serde_json::json!({ "accepted": true }),
+                ))
+            }
+            "app.identity.presence.list" => {
+                let req: PresenceListRequest =
+                    serde_json::from_value(payload).map_err(|err| {
+                        invalid_envelope(
+                            format!("invalid presence list payload: {err}"),
+                            canonical_id.as_str(),
+                        )
+                    })?;
+                let result = self.backend.identity_presence_list(req).map_err(Error::from)?;
+                Ok(envelope_result(
+                    canonical_id,
+                    correlation_id,
+                    serde_json::to_value(result).expect("presence list should serialize"),
+                ))
+            }
             "app.contact.list" => {
                 let req: ContactListRequest =
                     serde_json::from_value(payload).map_err(|err| {
@@ -529,6 +555,36 @@ impl<B: SdkBackend> Client<B> {
                     canonical_id,
                     correlation_id,
                     serde_json::to_value(result).expect("contact list should serialize"),
+                ))
+            }
+            "app.contact.update" => {
+                let req: ContactUpdateRequest =
+                    serde_json::from_value(payload).map_err(|err| {
+                        invalid_envelope(
+                            format!("invalid contact update payload: {err}"),
+                            canonical_id.as_str(),
+                        )
+                    })?;
+                let result = self.backend.identity_contact_update(req).map_err(Error::from)?;
+                Ok(envelope_result(
+                    canonical_id,
+                    correlation_id,
+                    serde_json::to_value(result).expect("contact update should serialize"),
+                ))
+            }
+            "app.identity.bootstrap" => {
+                let req: IdentityBootstrapRequest =
+                    serde_json::from_value(payload).map_err(|err| {
+                        invalid_envelope(
+                            format!("invalid bootstrap payload: {err}"),
+                            canonical_id.as_str(),
+                        )
+                    })?;
+                let result = self.backend.identity_bootstrap(req).map_err(Error::from)?;
+                Ok(envelope_result(
+                    canonical_id,
+                    correlation_id,
+                    serde_json::to_value(result).expect("bootstrap should serialize"),
                 ))
             }
             _ if matches!(entry.kind, super::operations::OperationKind::Query) => self
@@ -1080,7 +1136,9 @@ mod tests {
     };
     use crate::app::DeliveryOptions;
     use crate::app::{OperationEntry, OperationKind, TransportVariant};
-    use crate::domain::TrustLevel;
+    use crate::domain::{
+        ContactUpdateRequest, IdentityBootstrapRequest, PresenceListRequest, TrustLevel,
+    };
     use crate::error::{code, ErrorCategory as SdkErrorCategory, SdkError};
     use crate::event::{
         EventBatch as RawEventBatch, EventCursor, EventSubscription, SdkEvent,
@@ -1172,6 +1230,15 @@ mod tests {
                 .any(|capability| capability == "sdk.capability.async_events")
             {
                 effective_capabilities.push("sdk.capability.async_events".to_owned());
+            }
+            for capability in [
+                "sdk.capability.identity_multi",
+                "sdk.capability.identity_discovery",
+                "sdk.capability.contact_management",
+            ] {
+                if !effective_capabilities.iter().any(|current| current == capability) {
+                    effective_capabilities.push(capability.to_owned());
+                }
             }
             Ok(NegotiationResponse {
                 runtime_id,
@@ -1410,6 +1477,76 @@ mod tests {
             })
         }
 
+        fn identity_announce_now(&self) -> Result<Ack, SdkError> {
+            Ok(Ack { accepted: true, revision: None })
+        }
+
+        fn identity_presence_list(
+            &self,
+            _req: PresenceListRequest,
+        ) -> Result<crate::domain::PresenceListResult, SdkError> {
+            Ok(crate::domain::PresenceListResult {
+                peers: vec![
+                    crate::domain::PresenceRecord {
+                        peer_id: "bob".to_owned(),
+                        last_seen_ts_ms: 200,
+                        first_seen_ts_ms: 120,
+                        seen_count: 3,
+                        name: Some("Bob Relay".to_owned()),
+                        name_source: Some("announce".to_owned()),
+                        trust_level: Some(crate::domain::TrustLevel::Trusted),
+                        bootstrap: Some(true),
+                        extensions: BTreeMap::from([(
+                            "source".to_owned(),
+                            serde_json::json!("presence"),
+                        )]),
+                    },
+                    crate::domain::PresenceRecord {
+                        peer_id: "eve".to_owned(),
+                        last_seen_ts_ms: 99,
+                        first_seen_ts_ms: 90,
+                        seen_count: 1,
+                        name: Some("Eve".to_owned()),
+                        name_source: Some("announce".to_owned()),
+                        trust_level: Some(crate::domain::TrustLevel::Unknown),
+                        bootstrap: Some(false),
+                        extensions: BTreeMap::new(),
+                    },
+                ],
+                next_cursor: None,
+            })
+        }
+
+        fn identity_contact_update(
+            &self,
+            req: ContactUpdateRequest,
+        ) -> Result<crate::domain::ContactRecord, SdkError> {
+            Ok(crate::domain::ContactRecord {
+                identity: req.identity,
+                display_name: req.display_name,
+                trust_level: req.trust_level.unwrap_or(crate::domain::TrustLevel::Unknown),
+                bootstrap: req.bootstrap.unwrap_or(false),
+                updated_ts_ms: 500,
+                metadata: req.metadata,
+                extensions: req.extensions,
+            })
+        }
+
+        fn identity_bootstrap(
+            &self,
+            req: IdentityBootstrapRequest,
+        ) -> Result<crate::domain::ContactRecord, SdkError> {
+            Ok(crate::domain::ContactRecord {
+                identity: req.identity,
+                display_name: None,
+                trust_level: crate::domain::TrustLevel::Trusted,
+                bootstrap: true,
+                updated_ts_ms: 600,
+                metadata: BTreeMap::new(),
+                extensions: req.extensions,
+            })
+        }
+
         fn command_invoke(
             &self,
             req: crate::domain::RemoteCommandRequest,
@@ -1577,6 +1714,46 @@ mod tests {
         assert_eq!(response.operation_id.as_str(), "app.identity.list");
         let identities = response.payload.as_array().expect("identity array");
         assert_eq!(identities[0]["identity"], json!("alice"));
+    }
+
+    #[test]
+    fn execute_envelope_routes_discovery_operations_locally() {
+        let app = Client::new(MockBackend::new());
+
+        let announce = app
+            .command("sdk_identity_announce_now_v2", serde_json::json!({}))
+            .expect("announce");
+        assert_eq!(announce.operation_id.as_str(), "app.identity.announce");
+        assert_eq!(announce.payload["accepted"], json!(true));
+
+        let presence = app
+            .query("sdk_identity_presence_list_v2", serde_json::json!({ "limit": 10 }))
+            .expect("presence");
+        assert_eq!(presence.operation_id.as_str(), "app.identity.presence.list");
+        assert_eq!(presence.payload["peers"].as_array().expect("peer rows").len(), 2);
+
+        let contact = app
+            .command(
+                "sdk_identity_contact_update_v2",
+                serde_json::json!({
+                    "identity": "charlie",
+                    "display_name": "Charlie",
+                    "trust_level": "trusted",
+                    "bootstrap": true
+                }),
+            )
+            .expect("contact update");
+        assert_eq!(contact.operation_id.as_str(), "app.contact.update");
+        assert_eq!(contact.payload["identity"], json!("charlie"));
+
+        let bootstrap = app
+            .command(
+                "sdk_identity_bootstrap_v2",
+                serde_json::json!({ "identity": "delta", "auto_sync": true }),
+            )
+            .expect("bootstrap");
+        assert_eq!(bootstrap.operation_id.as_str(), "app.identity.bootstrap");
+        assert_eq!(bootstrap.payload["identity"], json!("delta"));
     }
 
     #[test]
