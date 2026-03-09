@@ -2,8 +2,8 @@
 use crate::api::LxmfSdkAsync;
 use crate::api::{
     LxmfSdk, LxmfSdkAttachments, LxmfSdkGroupDelivery, LxmfSdkIdentity, LxmfSdkManualTick,
-    LxmfSdkMarkers, LxmfSdkPaper, LxmfSdkRemoteCommands, LxmfSdkTelemetry, LxmfSdkTopics,
-    LxmfSdkVoiceSignaling,
+    LxmfSdkMarkers, LxmfSdkOperations, LxmfSdkPaper, LxmfSdkRemoteCommands, LxmfSdkTelemetry,
+    LxmfSdkTopics, LxmfSdkVoiceSignaling,
 };
 use crate::backend::SdkBackend;
 #[cfg(feature = "sdk-async")]

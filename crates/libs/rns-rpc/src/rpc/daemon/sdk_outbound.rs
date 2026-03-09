@@ -189,6 +189,8 @@ impl RpcDaemon {
             "sdk_identity_bootstrap_v2",
             "sdk_paper_encode_v2",
             "sdk_paper_decode_v2",
+            "sdk_operation_registry_v2",
+            "sdk_envelope_execute_v2",
             "sdk_command_invoke_v2",
             "sdk_command_reply_v2",
             "sdk_voice_session_open_v2",

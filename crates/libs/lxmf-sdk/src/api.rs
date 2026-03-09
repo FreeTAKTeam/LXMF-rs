@@ -1,3 +1,4 @@
+use crate::app::{Envelope, EnvelopeResponse, OperationRegistry};
 use crate::domain::{
     AttachmentDownloadChunk, AttachmentDownloadChunkRequest, AttachmentId, AttachmentListRequest,
     AttachmentListResult, AttachmentMeta, AttachmentStoreRequest, AttachmentUploadChunkAck,
@@ -272,5 +273,15 @@ pub trait LxmfSdkVoiceSignaling {
 pub trait LxmfSdkGroupDelivery {
     fn send_group(&self, _req: GroupSendRequest) -> Result<GroupSendResult, SdkError> {
         Err(SdkError::capability_disabled("sdk.capability.group_delivery"))
+    }
+}
+
+pub trait LxmfSdkOperations {
+    fn operation_registry(&self) -> Result<OperationRegistry, SdkError> {
+        Err(SdkError::capability_disabled("sdk.capability.operation_registry"))
+    }
+
+    fn envelope_execute(&self, _envelope: Envelope) -> Result<EnvelopeResponse, SdkError> {
+        Err(SdkError::capability_disabled("sdk.capability.operation_registry"))
     }
 }

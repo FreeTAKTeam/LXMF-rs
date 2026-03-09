@@ -12,6 +12,7 @@ include!("daemon/sdk_attachments.rs");
 include!("daemon/sdk_markers.rs");
 include!("daemon/sdk_identity.rs");
 include!("daemon/sdk_paper_command.rs");
+include!("daemon/sdk_operations.rs");
 include!("daemon/sdk_voice.rs");
 include!("daemon/dispatch_legacy_router.rs");
 include!("daemon/dispatch_legacy_messages.rs");

@@ -266,3 +266,16 @@ impl<B: SdkBackend> LxmfSdkVoiceSignaling for Client<B> {
         self.backend.voice_session_close(session_id)
     }
 }
+
+impl<B: SdkBackend> LxmfSdkOperations for Client<B> {
+    fn operation_registry(&self) -> Result<crate::app::OperationRegistry, SdkError> {
+        self.backend.operation_registry()
+    }
+
+    fn envelope_execute(
+        &self,
+        envelope: crate::app::Envelope,
+    ) -> Result<crate::app::EnvelopeResponse, SdkError> {
+        self.backend.envelope_execute(envelope)
+    }
+}

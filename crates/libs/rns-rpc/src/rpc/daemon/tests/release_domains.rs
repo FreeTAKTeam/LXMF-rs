@@ -375,12 +375,39 @@
     #[test]
     fn sdk_release_c_domain_methods_roundtrip() {
         let daemon = RpcDaemon::test_instance();
+        let registry = daemon
+            .handle_rpc(rpc_request(119, "sdk_operation_registry_v2", json!({})))
+            .expect("operation registry");
+        assert!(registry.error.is_none());
+        assert!(registry.result.expect("registry result")["registry"]["entries"]
+            .as_array()
+            .expect("registry entries")
+            .iter()
+            .any(|entry| entry["id"] == json!("app.identity.list")));
+
         let list_before =
             daemon.handle_rpc(rpc_request(120, "sdk_identity_list_v2", json!({}))).expect("list");
         assert!(list_before.error.is_none());
         assert!(!list_before.result.expect("result")["identities"]
             .as_array()
             .expect("identity array")
+            .is_empty());
+
+        let identity_envelope = daemon
+            .handle_rpc(rpc_request(
+                1201,
+                "sdk_envelope_execute_v2",
+                json!({
+                    "operation_id": "app.identity.list",
+                    "kind": "query",
+                    "payload": {},
+                }),
+            ))
+            .expect("identity envelope");
+        assert!(identity_envelope.error.is_none());
+        assert!(!identity_envelope.result.expect("identity envelope result")["response"]["payload"]
+            .as_array()
+            .expect("identity payload")
             .is_empty());
 
         let identity_bundle = json!({
@@ -557,6 +584,25 @@
             .expect("command reply");
         assert!(command_reply.error.is_none());
         assert_eq!(command_reply.result.expect("result")["accepted"], json!(true));
+
+        let envelope_command = daemon
+            .handle_rpc(rpc_request(
+                1281,
+                "sdk_envelope_execute_v2",
+                json!({
+                    "operation_id": "vendor.example.custom",
+                    "kind": "command",
+                    "target": "node-b",
+                    "payload": { "body": "hello" },
+                    "timeout_ms": 500,
+                }),
+            ))
+            .expect("custom envelope command");
+        assert!(envelope_command.error.is_none());
+        let envelope_payload =
+            &envelope_command.result.expect("envelope command result")["response"]["payload"];
+        assert_eq!(envelope_payload["payload"]["command"], json!("vendor.example.custom"));
+        assert_eq!(envelope_payload["payload"]["target"], json!("node-b"));
 
         let voice_open = daemon
             .handle_rpc(rpc_request(

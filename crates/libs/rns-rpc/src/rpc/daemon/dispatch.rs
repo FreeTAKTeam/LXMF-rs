@@ -104,6 +104,8 @@ impl RpcDaemon {
             "sdk_identity_bootstrap_v2" => self.handle_sdk_identity_bootstrap_v2(request),
             "sdk_paper_encode_v2" => self.handle_sdk_paper_encode_v2(request),
             "sdk_paper_decode_v2" => self.handle_sdk_paper_decode_v2(request),
+            "sdk_operation_registry_v2" => self.handle_sdk_operation_registry_v2(request),
+            "sdk_envelope_execute_v2" => self.handle_sdk_envelope_execute_v2(request),
             "sdk_command_invoke_v2" => self.handle_sdk_command_invoke_v2(request),
             "sdk_command_reply_v2" => self.handle_sdk_command_reply_v2(request),
             "sdk_voice_session_open_v2" => self.handle_sdk_voice_session_open_v2(request),

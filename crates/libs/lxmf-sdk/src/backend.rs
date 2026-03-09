@@ -1,3 +1,4 @@
+use crate::app::{Envelope, EnvelopeResponse, OperationRegistry};
 use crate::capability::{NegotiationRequest, NegotiationResponse};
 use crate::domain::{
     AttachmentDownloadChunk, AttachmentDownloadChunkRequest, AttachmentId, AttachmentListRequest,
@@ -282,6 +283,14 @@ pub trait SdkBackend: Send + Sync {
 
     fn voice_session_close(&self, _session_id: VoiceSessionId) -> Result<Ack, SdkError> {
         Err(SdkError::capability_disabled("sdk.capability.voice_signaling"))
+    }
+
+    fn operation_registry(&self) -> Result<OperationRegistry, SdkError> {
+        Err(SdkError::capability_disabled("sdk.capability.operation_registry"))
+    }
+
+    fn envelope_execute(&self, _envelope: Envelope) -> Result<EnvelopeResponse, SdkError> {
+        Err(SdkError::capability_disabled("sdk.capability.operation_registry"))
     }
 }
 

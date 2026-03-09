@@ -2,6 +2,22 @@ use super::*;
 use serde_json::json;
 
 impl RpcBackendClient {
+    pub(super) fn operation_registry_impl(&self) -> Result<OperationRegistry, SdkError> {
+        let result = self.call_rpc("sdk_operation_registry_v2", Some(json!({})))?;
+        Self::decode_field_or_root(&result, "registry", "operation_registry response")
+    }
+
+    pub(super) fn envelope_execute_impl(
+        &self,
+        envelope: Envelope,
+    ) -> Result<EnvelopeResponse, SdkError> {
+        let params = serde_json::to_value(envelope).map_err(|err| {
+            SdkError::new(code::INTERNAL, ErrorCategory::Internal, err.to_string())
+        })?;
+        let result = self.call_rpc("sdk_envelope_execute_v2", Some(params))?;
+        Self::decode_field_or_root(&result, "response", "envelope_execute response")
+    }
+
     pub(super) fn topic_create_impl(
         &self,
         req: TopicCreateRequest,

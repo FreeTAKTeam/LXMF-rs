@@ -1,3 +1,4 @@
+use crate::app::{Envelope, EnvelopeResponse, OperationRegistry};
 use crate::backend::SdkBackend;
 #[cfg(feature = "sdk-async")]
 use crate::backend::SdkBackendAsyncEvents;
@@ -340,6 +341,14 @@ impl SdkBackend for RpcBackendClient {
 
     fn voice_session_close(&self, session_id: VoiceSessionId) -> Result<Ack, SdkError> {
         self.voice_session_close_impl(session_id)
+    }
+
+    fn operation_registry(&self) -> Result<OperationRegistry, SdkError> {
+        self.operation_registry_impl()
+    }
+
+    fn envelope_execute(&self, envelope: Envelope) -> Result<EnvelopeResponse, SdkError> {
+        self.envelope_execute_impl(envelope)
     }
 
     fn tick(&self, budget: TickBudget) -> Result<TickResult, SdkError> {

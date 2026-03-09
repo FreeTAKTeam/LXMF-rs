@@ -520,6 +520,30 @@ struct SdkCommandReplyV2Params {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+struct SdkOperationRegistryV2Params {
+    #[serde(default)]
+    extensions: JsonMap<String, JsonValue>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SdkEnvelopeExecuteV2Params {
+    operation_id: String,
+    kind: String,
+    #[serde(default)]
+    target: Option<String>,
+    #[serde(default)]
+    correlation_id: Option<String>,
+    #[serde(default)]
+    timeout_ms: Option<u64>,
+    #[serde(default)]
+    payload: JsonValue,
+    #[serde(default)]
+    extensions: JsonMap<String, JsonValue>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SdkVoiceSessionOpenV2Params {
     peer_id: String,
     #[serde(default)]

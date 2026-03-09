@@ -17,7 +17,8 @@ pub use api::{LxmfSdk, LxmfSdkAsync, LxmfSdkManualTick};
 // Stability class: experimental (capability-gated extension traits)
 pub use api::{
     LxmfSdkAttachments, LxmfSdkGroupDelivery, LxmfSdkIdentity, LxmfSdkMarkers, LxmfSdkPaper,
-    LxmfSdkRemoteCommands, LxmfSdkTelemetry, LxmfSdkTopics, LxmfSdkVoiceSignaling,
+    LxmfSdkOperations, LxmfSdkRemoteCommands, LxmfSdkTelemetry, LxmfSdkTopics,
+    LxmfSdkVoiceSignaling,
 };
 // Stability class: internal (backend composition surface)
 pub use backend::mobile_ble::{
