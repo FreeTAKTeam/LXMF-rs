@@ -1,3 +1,4 @@
+use super::envelope::EnvelopeKind;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::borrow::Borrow;
 use std::collections::BTreeMap;
@@ -61,6 +62,16 @@ pub enum TransportVariant {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum TransportFamily {
+    Local,
+    Rpc,
+    Legacy,
+    Extension,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct OperationEntry {
     pub id: OperationId,
@@ -102,6 +113,37 @@ impl OperationEntry {
         self.required_capabilities.push(capability.into());
         self
     }
+
+    pub fn expected_envelope_kind(&self) -> EnvelopeKind {
+        match self.kind {
+            OperationKind::Query => EnvelopeKind::Query,
+            OperationKind::Command => EnvelopeKind::Command,
+        }
+    }
+
+    pub fn accepts_envelope_kind(&self, kind: &EnvelopeKind) -> bool {
+        matches!(
+            (kind, &self.kind),
+            (EnvelopeKind::Query, OperationKind::Query)
+                | (EnvelopeKind::Command, OperationKind::Command)
+        )
+    }
+
+    pub fn transport_family(&self) -> TransportFamily {
+        match self.transport_variant {
+            TransportVariant::App => TransportFamily::Local,
+            TransportVariant::Rpc => TransportFamily::Rpc,
+            TransportVariant::LegacyRpc => TransportFamily::Legacy,
+            TransportVariant::Extension => TransportFamily::Extension,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ResolvedOperation<'a> {
+    pub entry: &'a OperationEntry,
+    pub canonical_id: &'a OperationId,
+    pub alias: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -168,8 +210,7 @@ impl OperationRegistry {
     }
 
     pub fn get(&self, id_or_alias: impl AsRef<str>) -> Option<&OperationEntry> {
-        let canonical = self.canonicalize(id_or_alias)?;
-        self.by_id.get(&canonical).map(|index| &self.entries[*index])
+        self.resolve(id_or_alias).map(|resolved| resolved.entry)
     }
 
     pub fn canonicalize(&self, id_or_alias: impl AsRef<str>) -> Option<OperationId> {
@@ -178,6 +219,25 @@ impl OperationRegistry {
             return Some(self.entries[index].id.clone());
         }
         self.aliases.get(value).cloned()
+    }
+
+    pub fn resolve(&self, id_or_alias: impl AsRef<str>) -> Option<ResolvedOperation<'_>> {
+        let value = id_or_alias.as_ref();
+        let canonical = self.canonicalize(value)?;
+        let index = *self.by_id.get(&canonical)?;
+        Some(ResolvedOperation {
+            entry: &self.entries[index],
+            canonical_id: &self.entries[index].id,
+            alias: (value != canonical.as_str()).then(|| value.to_owned()),
+        })
+    }
+
+    pub fn entries_by_group(&self) -> BTreeMap<&str, Vec<&OperationEntry>> {
+        let mut grouped = BTreeMap::<&str, Vec<&OperationEntry>>::new();
+        for entry in &self.entries {
+            grouped.entry(entry.group.as_str()).or_default().push(entry);
+        }
+        grouped
     }
 
     pub fn supports(&self, id_or_alias: impl AsRef<str>) -> bool {
@@ -356,8 +416,10 @@ fn built_in_entries() -> Vec<OperationEntry> {
 #[cfg(test)]
 mod tests {
     use super::{
-        OperationEntry, OperationKind, OperationRegistry, RegistryError, TransportVariant,
+        OperationEntry, OperationKind, OperationRegistry, RegistryError, TransportFamily,
+        TransportVariant,
     };
+    use crate::app::EnvelopeKind;
 
     #[test]
     fn built_in_registry_canonicalizes_aliases() {
@@ -430,5 +492,63 @@ mod tests {
             "app.delivery.status"
         );
         assert!(registry.supports("sdk_snapshot_v2"));
+    }
+
+    #[test]
+    fn resolve_reports_alias_and_transport_family() {
+        let registry = OperationRegistry::built_in();
+        let resolved = registry.resolve("sdk_poll_events_v2").expect("resolved alias");
+
+        assert_eq!(resolved.canonical_id.as_str(), "app.event.poll");
+        assert_eq!(resolved.alias.as_deref(), Some("sdk_poll_events_v2"));
+        assert_eq!(resolved.entry.transport_family(), TransportFamily::Rpc);
+        assert_eq!(resolved.entry.expected_envelope_kind(), EnvelopeKind::Query);
+        assert!(resolved.entry.accepts_envelope_kind(&EnvelopeKind::Query));
+        assert!(!resolved.entry.accepts_envelope_kind(&EnvelopeKind::Command));
+    }
+
+    #[test]
+    fn registry_groups_entries_for_catalog_views() {
+        let registry = OperationRegistry::built_in();
+        let grouped = registry.entries_by_group();
+
+        assert!(grouped.get("runtime").is_some());
+        assert!(grouped
+            .get("identity")
+            .expect("identity group")
+            .iter()
+            .any(|entry| entry.id.as_str() == "app.identity.list"));
+    }
+
+    #[test]
+    fn r3akt_style_catalog_aliases_roundtrip_through_registry_json() {
+        let registry = OperationRegistry::new([
+            OperationEntry::new(
+                "mission.join",
+                "Core Discovery and Session",
+                OperationKind::Command,
+                TransportVariant::Extension,
+                "Register the sender LXMF destination with the hub connection list.",
+            )
+            .with_alias("POST /RCH")
+            .with_alias("POST /RTH"),
+            OperationEntry::new(
+                "mission.marker.list",
+                "Map, Markers, and Zones",
+                OperationKind::Query,
+                TransportVariant::Extension,
+                "List mission markers.",
+            )
+            .with_alias("GET /api/markers"),
+        ])
+        .expect("registry");
+
+        let json = serde_json::to_string(&registry).expect("registry json");
+        let roundtrip: OperationRegistry = serde_json::from_str(&json).expect("roundtrip");
+        let resolved = roundtrip.resolve("POST /RCH").expect("alias resolution");
+
+        assert_eq!(resolved.canonical_id.as_str(), "mission.join");
+        assert_eq!(resolved.alias.as_deref(), Some("POST /RCH"));
+        assert_eq!(resolved.entry.group, "Core Discovery and Session");
     }
 }

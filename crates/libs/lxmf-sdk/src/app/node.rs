@@ -380,22 +380,22 @@ impl<B: SdkBackend> Client<B> {
 
     pub fn execute_envelope(&self, envelope: Envelope) -> Result<EnvelopeResponse, Error> {
         let registry = self.operation_registry()?;
+        let envelope = envelope.normalized(&registry).map_err(|err| match err {
+            super::envelope::EnvelopeValidationError::UnknownOperation { operation_id } => {
+                invalid_envelope("unknown operation id", operation_id.as_str())
+            }
+            super::envelope::EnvelopeValidationError::KindMismatch { operation_id, .. } => {
+                invalid_envelope(
+                    "envelope kind does not match registered operation kind",
+                    operation_id.as_str(),
+                )
+            }
+        })?;
         let entry = registry
             .get(envelope.operation_id.as_str())
             .cloned()
-            .ok_or_else(|| invalid_envelope("unknown operation id", envelope.operation_id.as_str()))?;
+            .expect("normalized envelope should resolve to a registered operation");
         let canonical_id = entry.id.clone();
-        let kind_matches = matches!(
-            (&envelope.kind, &entry.kind),
-            (EnvelopeKind::Query, super::operations::OperationKind::Query)
-                | (EnvelopeKind::Command, super::operations::OperationKind::Command)
-        );
-        if !kind_matches {
-            return Err(invalid_envelope(
-                "envelope kind does not match registered operation kind",
-                canonical_id.as_str(),
-            ));
-        }
 
         let Envelope {
             operation_id: _,
@@ -1566,6 +1566,17 @@ mod tests {
                 .and_then(|value| value.as_str()),
             Some("Alice")
         );
+    }
+
+    #[test]
+    fn execute_envelope_accepts_registered_aliases() {
+        let app = Client::new(MockBackend::new());
+        let response = app
+            .query("sdk_identity_list_v2", serde_json::json!({}))
+            .expect("identity list via alias");
+        assert_eq!(response.operation_id.as_str(), "app.identity.list");
+        let identities = response.payload.as_array().expect("identity array");
+        assert_eq!(identities[0]["identity"], json!("alice"));
     }
 
     #[test]

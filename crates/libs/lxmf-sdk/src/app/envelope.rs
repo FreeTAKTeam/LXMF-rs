@@ -1,7 +1,8 @@
-use super::operations::OperationId;
+use super::operations::{OperationId, OperationRegistry};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use std::collections::BTreeMap;
+use std::fmt;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -24,6 +25,39 @@ pub struct Envelope {
     pub payload: JsonValue,
     #[serde(default)]
     pub extensions: BTreeMap<String, JsonValue>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum EnvelopeValidationError {
+    UnknownOperation { operation_id: OperationId },
+    KindMismatch {
+        operation_id: OperationId,
+        expected: EnvelopeKind,
+        actual: EnvelopeKind,
+    },
+}
+
+impl fmt::Display for EnvelopeValidationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::UnknownOperation { operation_id } => {
+                write!(f, "unknown operation id '{}'", operation_id.as_str())
+            }
+            Self::KindMismatch {
+                operation_id,
+                expected,
+                actual,
+            } => write!(
+                f,
+                "operation '{}' requires {:?} envelope, got {:?}",
+                operation_id.as_str(),
+                expected,
+                actual
+            ),
+        }
+    }
 }
 
 impl Envelope {
@@ -70,6 +104,25 @@ impl Envelope {
         self.extensions.insert(key.into(), value);
         self
     }
+
+    pub fn normalized(
+        mut self,
+        registry: &OperationRegistry,
+    ) -> Result<Self, EnvelopeValidationError> {
+        let resolved = registry.resolve(self.operation_id.as_str()).ok_or_else(|| {
+            EnvelopeValidationError::UnknownOperation { operation_id: self.operation_id.clone() }
+        })?;
+        let expected = resolved.entry.expected_envelope_kind();
+        if !resolved.entry.accepts_envelope_kind(&self.kind) {
+            return Err(EnvelopeValidationError::KindMismatch {
+                operation_id: resolved.canonical_id.clone(),
+                expected,
+                actual: self.kind,
+            });
+        }
+        self.operation_id = resolved.canonical_id.clone();
+        Ok(self)
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -82,4 +135,31 @@ pub struct EnvelopeResponse {
     pub payload: JsonValue,
     #[serde(default)]
     pub extensions: BTreeMap<String, JsonValue>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Envelope, EnvelopeKind, EnvelopeValidationError};
+    use crate::app::OperationRegistry;
+    use serde_json::json;
+
+    #[test]
+    fn normalize_canonicalizes_aliases() {
+        let normalized = Envelope::query("sdk_identity_list_v2", json!({}))
+            .normalized(OperationRegistry::built_in())
+            .expect("normalized envelope");
+        assert_eq!(normalized.operation_id.as_str(), "app.identity.list");
+    }
+
+    #[test]
+    fn normalize_rejects_kind_mismatch() {
+        let err = Envelope::command("sdk_identity_list_v2", json!({}))
+            .normalized(OperationRegistry::built_in())
+            .expect_err("kind mismatch");
+        assert!(matches!(
+            err,
+            EnvelopeValidationError::KindMismatch { operation_id, expected: EnvelopeKind::Query, actual: EnvelopeKind::Command }
+            if operation_id.as_str() == "app.identity.list"
+        ));
+    }
 }

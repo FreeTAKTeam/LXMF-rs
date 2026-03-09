@@ -19,7 +19,7 @@ pub use discovery::{
     BootstrapRequest, Contact, ContactPage, ContactUpdate, Identity, PeerDirectoryEntry, Presence,
     PresencePage,
 };
-pub use envelope::{Envelope, EnvelopeKind, EnvelopeResponse};
+pub use envelope::{Envelope, EnvelopeKind, EnvelopeResponse, EnvelopeValidationError};
 pub use errors::{Error, ErrorCategory, ErrorCode};
 pub use events::{
     Event, EventBatch, EventKind, EventMetadata, Severity, StreamGapDetails, SubscriptionStart,
@@ -31,5 +31,6 @@ pub use node::{
     SendReceipt, SendRequest,
 };
 pub use operations::{
-    OperationEntry, OperationId, OperationKind, OperationRegistry, RegistryError, TransportVariant,
+    OperationEntry, OperationId, OperationKind, OperationRegistry, RegistryError,
+    ResolvedOperation, TransportFamily, TransportVariant,
 };
