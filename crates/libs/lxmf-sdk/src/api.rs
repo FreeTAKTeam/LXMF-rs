@@ -8,7 +8,8 @@ use crate::domain::{
     IdentityRef, IdentityResolveRequest, MarkerCreateRequest, MarkerDeleteRequest,
     MarkerListRequest, MarkerListResult, MarkerRecord, MarkerUpdatePositionRequest,
     PaperMessageEnvelope, PresenceListRequest, PresenceListResult, RemoteCommandRequest,
-    RemoteCommandResponse, TelemetryPoint, TelemetryQuery, TopicCreateRequest, TopicId,
+    RemoteCommandResponse, RemoteCommandSession, RemoteCommandSessionListRequest,
+    RemoteCommandSessionListResult, TelemetryPoint, TelemetryQuery, TopicCreateRequest, TopicId,
     TopicListRequest, TopicListResult, TopicPublishRequest, TopicRecord, TopicSubscriptionRequest,
     VoiceSessionId, VoiceSessionOpenRequest, VoiceSessionState, VoiceSessionUpdateRequest,
 };
@@ -246,6 +247,20 @@ pub trait LxmfSdkRemoteCommands {
         _correlation_id: String,
         _reply: RemoteCommandResponse,
     ) -> Result<Ack, SdkError> {
+        Err(SdkError::capability_disabled("sdk.capability.remote_commands"))
+    }
+
+    fn command_session_get(
+        &self,
+        _correlation_id: String,
+    ) -> Result<Option<RemoteCommandSession>, SdkError> {
+        Err(SdkError::capability_disabled("sdk.capability.remote_commands"))
+    }
+
+    fn command_session_list(
+        &self,
+        _req: RemoteCommandSessionListRequest,
+    ) -> Result<RemoteCommandSessionListResult, SdkError> {
         Err(SdkError::capability_disabled("sdk.capability.remote_commands"))
     }
 }

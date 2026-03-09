@@ -402,6 +402,50 @@ pub struct RemoteCommandResponse {
     pub extensions: BTreeMap<String, JsonValue>,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RemoteCommandState {
+    Dispatched,
+    ReceiptAcknowledged,
+    Processing,
+    Completed,
+    Failed,
+    #[serde(other)]
+    Unknown,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct RemoteCommandSession {
+    pub command_id: String,
+    pub correlation_id: String,
+    pub command: String,
+    pub target: Option<String>,
+    pub timeout_ms: Option<u64>,
+    pub delivery_state: Option<String>,
+    pub command_state: RemoteCommandState,
+    pub created_at_ms: u64,
+    pub updated_at_ms: u64,
+    pub request_payload: JsonValue,
+    pub response_payload: Option<JsonValue>,
+    pub accepted: Option<bool>,
+    #[serde(default)]
+    pub extensions: BTreeMap<String, JsonValue>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct RemoteCommandSessionListRequest {
+    pub cursor: Option<String>,
+    pub limit: Option<usize>,
+    #[serde(default)]
+    pub extensions: BTreeMap<String, JsonValue>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct RemoteCommandSessionListResult {
+    pub sessions: Vec<RemoteCommandSession>,
+    pub next_cursor: Option<String>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct VoiceSessionId(pub String);
 

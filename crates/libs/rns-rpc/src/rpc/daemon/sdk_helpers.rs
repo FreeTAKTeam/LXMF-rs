@@ -816,7 +816,7 @@ impl RpcDaemon {
         for id in snapshot.markers.keys() {
             max_seq = max_seq.max(Self::parse_domain_sequence(id).unwrap_or(0));
         }
-        for id in snapshot.remote_commands.iter() {
+        for id in snapshot.remote_commands.keys() {
             max_seq = max_seq.max(Self::parse_domain_sequence(id).unwrap_or(0));
         }
         for id in snapshot.voice_sessions.keys() {
@@ -933,6 +933,7 @@ impl RpcDaemon {
         snapshot
             .contact_order
             .retain(|identity| snapshot.contacts.contains_key(identity));
+        snapshot.remote_commands.retain(|correlation_id, _| !correlation_id.is_empty());
         snapshot.attachment_payloads.retain(|attachment_id, _| {
             snapshot.attachments.contains_key(attachment_id)
         });

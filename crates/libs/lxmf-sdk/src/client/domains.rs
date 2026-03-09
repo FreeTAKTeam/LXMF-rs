@@ -242,6 +242,20 @@ impl<B: SdkBackend> LxmfSdkRemoteCommands for Client<B> {
     ) -> Result<Ack, SdkError> {
         self.backend.command_reply(correlation_id, reply)
     }
+
+    fn command_session_get(
+        &self,
+        correlation_id: String,
+    ) -> Result<Option<crate::domain::RemoteCommandSession>, SdkError> {
+        self.backend.command_session_get(correlation_id)
+    }
+
+    fn command_session_list(
+        &self,
+        req: crate::domain::RemoteCommandSessionListRequest,
+    ) -> Result<crate::domain::RemoteCommandSessionListResult, SdkError> {
+        self.backend.command_session_list(req)
+    }
 }
 
 impl<B: SdkBackend> LxmfSdkVoiceSignaling for Client<B> {

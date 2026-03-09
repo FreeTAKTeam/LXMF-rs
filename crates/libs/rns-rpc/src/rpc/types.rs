@@ -298,7 +298,7 @@ pub struct RpcDaemon {
     sdk_contacts: Mutex<HashMap<String, SdkContactRecord>>,
     sdk_contact_order: Mutex<Vec<String>>,
     sdk_active_identity: Mutex<Option<String>>,
-    sdk_remote_commands: Mutex<HashSet<String>>,
+    sdk_remote_commands: Mutex<HashMap<String, SdkRemoteCommandRecord>>,
     sdk_voice_sessions: Mutex<HashMap<String, SdkVoiceSessionRecord>>,
     peers: Mutex<HashMap<String, PeerRecord>>,
     interfaces: Mutex<Vec<InterfaceRecord>>,

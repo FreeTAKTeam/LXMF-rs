@@ -53,10 +53,11 @@ pub use domain::{
     IdentityImportRequest, IdentityRef, IdentityResolveRequest, MarkerCreateRequest,
     MarkerDeleteRequest, MarkerId, MarkerListRequest, MarkerListResult, MarkerRecord,
     MarkerUpdatePositionRequest, PaperMessageEnvelope, PresenceListRequest, PresenceListResult,
-    PresenceRecord, RemoteCommandRequest, RemoteCommandResponse, TelemetryPoint, TelemetryQuery,
-    TopicCreateRequest, TopicId, TopicListRequest, TopicListResult, TopicPath, TopicPublishRequest,
-    TopicRecord, TopicSubscriptionRequest, TrustLevel, VoiceSessionId, VoiceSessionOpenRequest,
-    VoiceSessionState, VoiceSessionUpdateRequest,
+    PresenceRecord, RemoteCommandRequest, RemoteCommandResponse, RemoteCommandSession,
+    RemoteCommandSessionListRequest, RemoteCommandSessionListResult, TelemetryPoint,
+    TelemetryQuery, TopicCreateRequest, TopicId, TopicListRequest, TopicListResult, TopicPath,
+    TopicPublishRequest, TopicRecord, TopicSubscriptionRequest, TrustLevel, VoiceSessionId,
+    VoiceSessionOpenRequest, VoiceSessionState, VoiceSessionUpdateRequest,
 };
 pub use error::{code as error_code, ErrorCategory, ErrorDetails, SdkError};
 // Stability class: stable

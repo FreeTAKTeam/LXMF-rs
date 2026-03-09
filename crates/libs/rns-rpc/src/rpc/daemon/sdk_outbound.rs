@@ -228,6 +228,8 @@ impl RpcDaemon {
             "sdk_paper_decode_v2",
             "sdk_command_invoke_v2",
             "sdk_command_reply_v2",
+            "sdk_command_session_get_v2",
+            "sdk_command_session_list_v2",
             "sdk_voice_session_open_v2",
             "sdk_voice_session_update_v2",
             "sdk_voice_session_close_v2",

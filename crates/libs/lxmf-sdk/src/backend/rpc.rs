@@ -12,7 +12,8 @@ use crate::domain::{
     IdentityRef, IdentityResolveRequest, MarkerCreateRequest, MarkerDeleteRequest,
     MarkerListRequest, MarkerListResult, MarkerRecord, MarkerUpdatePositionRequest,
     PaperMessageEnvelope, PresenceListRequest, PresenceListResult, RemoteCommandRequest,
-    RemoteCommandResponse, TelemetryPoint, TelemetryQuery, TopicCreateRequest, TopicId,
+    RemoteCommandResponse, RemoteCommandSession, RemoteCommandSessionListRequest,
+    RemoteCommandSessionListResult, TelemetryPoint, TelemetryQuery, TopicCreateRequest, TopicId,
     TopicListRequest, TopicListResult, TopicPublishRequest, TopicRecord, TopicSubscriptionRequest,
     VoiceSessionId, VoiceSessionOpenRequest, VoiceSessionState, VoiceSessionUpdateRequest,
 };
@@ -326,6 +327,20 @@ impl SdkBackend for RpcBackendClient {
         reply: RemoteCommandResponse,
     ) -> Result<Ack, SdkError> {
         self.command_reply_impl(correlation_id, reply)
+    }
+
+    fn command_session_get(
+        &self,
+        correlation_id: String,
+    ) -> Result<Option<RemoteCommandSession>, SdkError> {
+        self.command_session_get_impl(correlation_id)
+    }
+
+    fn command_session_list(
+        &self,
+        req: RemoteCommandSessionListRequest,
+    ) -> Result<RemoteCommandSessionListResult, SdkError> {
+        self.command_session_list_impl(req)
     }
 
     fn voice_session_open(&self, req: VoiceSessionOpenRequest) -> Result<VoiceSessionId, SdkError> {

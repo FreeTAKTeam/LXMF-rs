@@ -575,6 +575,31 @@ fn sdk_release_c_domain_methods_roundtrip() {
         .as_str()
         .expect("correlation id")
         .to_string();
+    let command_session = daemon
+        .handle_rpc(rpc_request(
+            1271,
+            "sdk_command_session_get_v2",
+            json!({ "correlation_id": correlation_id.clone() }),
+        ))
+        .expect("command session get");
+    assert!(command_session.error.is_none());
+    let command_session_result = command_session.result.expect("command session result");
+    assert_eq!(command_session_result["session"]["correlation_id"], json!(correlation_id.clone()));
+    assert_eq!(command_session_result["session"]["command_state"], json!("dispatched"));
+
+    let command_sessions = daemon
+        .handle_rpc(rpc_request(
+            1272,
+            "sdk_command_session_list_v2",
+            json!({ "limit": 10 }),
+        ))
+        .expect("command session list");
+    assert!(command_sessions.error.is_none());
+    assert!(command_sessions.result.expect("command session list result")["session_list"]["sessions"]
+        .as_array()
+        .expect("command session rows")
+        .iter()
+        .any(|row| row["correlation_id"] == json!(correlation_id.clone())));
 
     let command_reply = daemon
         .handle_rpc(rpc_request(
@@ -589,6 +614,21 @@ fn sdk_release_c_domain_methods_roundtrip() {
         .expect("command reply");
     assert!(command_reply.error.is_none());
     assert_eq!(command_reply.result.expect("result")["accepted"], json!(true));
+    let command_session_after_reply = daemon
+        .handle_rpc(rpc_request(
+            1282,
+            "sdk_command_session_get_v2",
+            json!({ "correlation_id": correlation_id.clone() }),
+        ))
+        .expect("command session after reply");
+    assert!(command_session_after_reply.error.is_none());
+    let command_session_after_reply_result =
+        command_session_after_reply.result.expect("command session after reply result");
+    assert_eq!(command_session_after_reply_result["session"]["command_state"], json!("completed"));
+    assert_eq!(
+        command_session_after_reply_result["session"]["response_payload"]["reply"],
+        json!("pong")
+    );
 
     let envelope_command = daemon
         .handle_rpc(rpc_request(
@@ -1393,6 +1433,19 @@ fn sdk_domain_state_survives_restart() {
             ))
             .expect("command reply after restart");
         assert!(command_reply.error.is_none());
+        let command_session = daemon
+            .handle_rpc(rpc_request(
+                2151,
+                "sdk_command_session_get_v2",
+                json!({ "correlation_id": correlation_id.clone() }),
+            ))
+            .expect("command session after restart");
+        assert!(command_session.error.is_none());
+        assert_eq!(
+            command_session.result.expect("command session after restart result")["session"]
+                ["command_state"],
+            json!("completed")
+        );
 
         let voice_close = daemon
             .handle_rpc(rpc_request(

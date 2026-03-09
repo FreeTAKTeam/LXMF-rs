@@ -80,7 +80,7 @@ impl RpcDaemon {
             sdk_contacts: Mutex::new(HashMap::new()),
             sdk_contact_order: Mutex::new(Vec::new()),
             sdk_active_identity: Mutex::new(Some(active_identity)),
-            sdk_remote_commands: Mutex::new(HashSet::new()),
+            sdk_remote_commands: Mutex::new(HashMap::new()),
             sdk_voice_sessions: Mutex::new(HashMap::new()),
             peers: Mutex::new(HashMap::new()),
             interfaces: Mutex::new(Vec::new()),
