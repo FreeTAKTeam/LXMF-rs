@@ -820,6 +820,7 @@ fn sdk_release_c_domain_methods_roundtrip() {
     );
 }
 
+#[test]
 fn sdk_operation_registry_roundtrips_workflow_family() {
     let daemon = RpcDaemon::test_instance();
 
