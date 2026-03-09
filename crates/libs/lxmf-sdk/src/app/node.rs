@@ -404,11 +404,72 @@ impl<B: SdkBackend> Client<B> {
         } = envelope;
 
         match canonical_id.as_str() {
+            "app.runtime.start" => {
+                let config: Config = serde_json::from_value(payload).map_err(|err| {
+                    invalid_envelope(
+                        format!("invalid runtime start payload: {err}"),
+                        canonical_id.as_str(),
+                    )
+                })?;
+                let handle = self.start(config)?;
+                Ok(envelope_result(
+                    canonical_id,
+                    correlation_id,
+                    serde_json::to_value(handle).expect("runtime handle should serialize"),
+                ))
+            }
+            "app.runtime.restart" => {
+                let config: Config = serde_json::from_value(payload).map_err(|err| {
+                    invalid_envelope(
+                        format!("invalid runtime restart payload: {err}"),
+                        canonical_id.as_str(),
+                    )
+                })?;
+                let handle = self.restart(config)?;
+                Ok(envelope_result(
+                    canonical_id,
+                    correlation_id,
+                    serde_json::to_value(handle).expect("runtime handle should serialize"),
+                ))
+            }
+            "app.runtime.stop" => {
+                let mode = payload
+                    .get("mode")
+                    .cloned()
+                    .map(serde_json::from_value::<ShutdownMode>)
+                    .transpose()
+                    .map_err(|err| {
+                        invalid_envelope(
+                            format!("invalid runtime stop payload: {err}"),
+                            canonical_id.as_str(),
+                        )
+                    })?
+                    .unwrap_or(ShutdownMode::Graceful);
+                self.stop(mode.clone())?;
+                Ok(envelope_result(canonical_id, correlation_id, serde_json::json!({
+                    "accepted": true,
+                    "mode": mode,
+                })))
+            }
             "app.runtime.status" => Ok(envelope_result(
                 canonical_id,
                 correlation_id,
                 serde_json::to_value(self.status()?).expect("runtime status should serialize"),
             )),
+            "app.delivery.send" => {
+                let request: SendRequest = serde_json::from_value(payload).map_err(|err| {
+                    invalid_envelope(
+                        format!("invalid delivery send payload: {err}"),
+                        canonical_id.as_str(),
+                    )
+                })?;
+                let receipt = self.send(request)?;
+                Ok(envelope_result(
+                    canonical_id,
+                    correlation_id,
+                    serde_json::to_value(receipt).expect("send receipt should serialize"),
+                ))
+            }
             "app.delivery.status" => {
                 let message_id =
                     payload
@@ -425,6 +486,24 @@ impl<B: SdkBackend> Client<B> {
                     canonical_id,
                     correlation_id,
                     serde_json::to_value(status).expect("delivery status should serialize"),
+                ))
+            }
+            "app.event.poll" => {
+                let cursor = payload
+                    .get("cursor")
+                    .and_then(|value| value.as_str())
+                    .map(|value| EventCursor(value.to_owned()));
+                let max = payload
+                    .get("max")
+                    .and_then(|value| value.as_u64())
+                    .and_then(|value| usize::try_from(value).ok())
+                    .unwrap_or(32)
+                    .max(1);
+                let batch = self.backend.poll_events(cursor, max).map_err(Error::from)?;
+                Ok(envelope_result(
+                    canonical_id,
+                    correlation_id,
+                    serde_json::to_value(batch).expect("event batch should serialize"),
                 ))
             }
             "app.identity.list" => Ok(envelope_result(
@@ -446,6 +525,12 @@ impl<B: SdkBackend> Client<B> {
                     canonical_id,
                     correlation_id,
                     serde_json::to_value(result).expect("contact list should serialize"),
+                ))
+            }
+            _ if matches!(entry.kind, super::operations::OperationKind::Query) => {
+                Err(invalid_envelope(
+                    "query operation is not supported by the local app runtime",
+                    canonical_id.as_str(),
                 ))
             }
             _ => {
@@ -1154,6 +1239,56 @@ mod tests {
     }
 
     #[test]
+    fn execute_envelope_routes_runtime_start_and_stop_locally() {
+        let app = Client::new(MockBackend::new());
+        let start = app
+            .command(
+                "app.runtime.start",
+                serde_json::to_value(Config::testing_default()).expect("config value"),
+            )
+            .expect("runtime start");
+        assert_eq!(start.operation_id.as_str(), "app.runtime.start");
+        assert_eq!(
+            start.payload.get("profile").and_then(|value| value.as_str()),
+            Some("testing_default")
+        );
+
+        let stop = app
+            .command("app.runtime.stop", serde_json::json!({ "mode": "graceful" }))
+            .expect("runtime stop");
+        assert_eq!(stop.operation_id.as_str(), "app.runtime.stop");
+        assert_eq!(
+            stop.payload.get("accepted").and_then(|value| value.as_bool()),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn execute_envelope_routes_delivery_send_locally() {
+        let backend = MockBackend::new();
+        backend.queue_send_result(Ok(crate::MessageId("msg-1".to_owned())));
+        let app = Client::new(backend);
+        app.start(Config::testing_default()).expect("start");
+
+        let response = app
+            .command(
+                "app.delivery.send",
+                serde_json::json!({
+                    "source": "src",
+                    "destination": "dst",
+                    "payload": { "content": "hello" },
+                    "correlation_id": "corr-1"
+                }),
+            )
+            .expect("delivery send");
+        assert_eq!(response.operation_id.as_str(), "app.delivery.send");
+        assert_eq!(
+            response.payload.get("message_id").and_then(|value| value.as_str()),
+            Some("msg-1")
+        );
+    }
+
+    #[test]
     fn execute_envelope_routes_custom_commands_via_remote_command_backend() {
         let backend = MockBackend::new();
         backend.queue_remote_command_result(Ok(crate::domain::RemoteCommandResponse {
@@ -1192,6 +1327,15 @@ mod tests {
         let err = app
             .execute_envelope(Envelope::command("app.identity.list", serde_json::json!({})))
             .expect_err("kind mismatch should fail");
+        assert_eq!(err.code.as_str(), "SDK_APP_VALIDATION_INVALID_ARGUMENT");
+    }
+
+    #[test]
+    fn execute_envelope_rejects_unhandled_query_fallbacks() {
+        let app = Client::new(MockBackend::new());
+        let err = app
+            .query("app.message.history.list", serde_json::json!({ "limit": 10 }))
+            .expect_err("history query should not fall through to remote command");
         assert_eq!(err.code.as_str(), "SDK_APP_VALIDATION_INVALID_ARGUMENT");
     }
 
