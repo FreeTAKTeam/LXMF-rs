@@ -470,6 +470,145 @@ void main() {
       expect(
           binding.commandEnvelopes[0].operationId, 'app.telemetry.subscribe');
     });
+
+    test('marker helper maps typed create list update and delete flows',
+        () async {
+      final binding = _FakeBinding(
+        registry: OperationRegistry(
+          entries: const <OperationEntry>[
+            OperationEntry(
+              id: 'app.marker.create',
+              group: 'markers',
+              kind: OperationKind.command,
+              transportVariant: TransportVariant.rpc,
+              description: 'Create marker.',
+              aliases: <String>['sdk_marker_create_v2'],
+            ),
+            OperationEntry(
+              id: 'app.marker.list',
+              group: 'markers',
+              kind: OperationKind.query,
+              transportVariant: TransportVariant.rpc,
+              description: 'List markers.',
+              aliases: <String>['sdk_marker_list_v2'],
+            ),
+            OperationEntry(
+              id: 'app.marker.update_position',
+              group: 'markers',
+              kind: OperationKind.command,
+              transportVariant: TransportVariant.rpc,
+              description: 'Update marker position.',
+              aliases: <String>['sdk_marker_update_position_v2'],
+            ),
+            OperationEntry(
+              id: 'app.marker.delete',
+              group: 'markers',
+              kind: OperationKind.command,
+              transportVariant: TransportVariant.rpc,
+              description: 'Delete marker.',
+              aliases: <String>['sdk_marker_delete_v2'],
+            ),
+          ],
+        ),
+      );
+      binding.commandResponses = <EnvelopeResponse>[
+        const EnvelopeResponse(
+          operationId: 'app.marker.create',
+          kind: EnvelopeKind.result,
+          accepted: true,
+          payload: <String, Object?>{
+            'marker_id': 'marker-1',
+            'label': 'Alpha',
+            'position': <String, Object?>{
+              'lat': 35.0,
+              'lon': -115.0,
+              'alt_m': 1200.0,
+            },
+            'topic_id': 'topic-1',
+            'revision': 1,
+            'updated_ts_ms': 950,
+            'extensions': <String, Object?>{},
+          },
+        ),
+        const EnvelopeResponse(
+          operationId: 'app.marker.update_position',
+          kind: EnvelopeKind.result,
+          accepted: true,
+          payload: <String, Object?>{
+            'marker_id': 'marker-1',
+            'label': 'Alpha',
+            'position': <String, Object?>{
+              'lat': 36.0,
+              'lon': -116.0,
+              'alt_m': null,
+            },
+            'topic_id': 'topic-1',
+            'revision': 2,
+            'updated_ts_ms': 970,
+            'extensions': <String, Object?>{},
+          },
+        ),
+        const EnvelopeResponse(
+          operationId: 'app.marker.delete',
+          kind: EnvelopeKind.result,
+          accepted: true,
+          payload: <String, Object?>{'accepted': true, 'marker_id': 'marker-1'},
+        ),
+      ];
+      binding.queryResponses = <EnvelopeResponse>[
+        const EnvelopeResponse(
+          operationId: 'app.marker.list',
+          kind: EnvelopeKind.result,
+          accepted: true,
+          payload: <String, Object?>{
+            'markers': <Object?>[
+              <String, Object?>{
+                'marker_id': 'marker-1',
+                'label': 'Alpha',
+                'position': <String, Object?>{
+                  'lat': 35.0,
+                  'lon': -115.0,
+                  'alt_m': 1200.0,
+                },
+                'topic_id': 'topic-1',
+                'revision': 1,
+                'updated_ts_ms': 950,
+                'extensions': <String, Object?>{},
+              },
+            ],
+            'next_cursor': null,
+          },
+        ),
+      ];
+
+      final markers = MarkerClient(OperationClient(AppClient(binding)));
+      final created = await markers.create(
+        label: 'Alpha',
+        position: const GeoPoint(lat: 35.0, lon: -115.0, altM: 1200.0),
+        topicId: 'topic-1',
+      );
+      final listed = await markers.list(topicId: 'topic-1', limit: 10);
+      final updated = await markers.updatePosition(
+        markerId: 'marker-1',
+        expectedRevision: 1,
+        position: const GeoPoint(lat: 36.0, lon: -116.0),
+      );
+      final deleted = await markers.delete(
+        markerId: 'marker-1',
+        expectedRevision: 2,
+      );
+
+      expect(created.markerId, 'marker-1');
+      expect(listed.markers, hasLength(1));
+      expect(updated.position.lat, 36.0);
+      expect(updated.revision, 2);
+      expect(deleted, isTrue);
+      expect(binding.commandEnvelopes[0].operationId, 'app.marker.create');
+      expect(binding.queryEnvelopes[0].operationId, 'app.marker.list');
+      expect(binding.commandEnvelopes[1].operationId,
+          'app.marker.update_position');
+      expect(binding.commandEnvelopes[2].operationId, 'app.marker.delete');
+    });
   });
 }
 

@@ -1179,5 +1179,219 @@ void main() {
             'app.telemetry.subscribe',
           ]);
     });
+
+    test('marker helper roundtrips canonical marker operations', () async {
+      unawaited(() async {
+        await for (final request in server) {
+          final body = await request.fold<List<int>>(<int>[], (all, chunk) {
+            all.addAll(chunk);
+            return all;
+          });
+          final frame = decodeRpcFrame(body);
+          calls.add(frame);
+          final id = frame['id'] as int;
+          final method = frame['method'] as String;
+          final params = frame['params'] is Map<String, Object?>
+              ? frame['params'] as Map<String, Object?>
+              : const <String, Object?>{};
+          final response = switch (method) {
+            'sdk_operation_registry_v2' => <String, Object?>{
+                'id': id,
+                'result': <String, Object?>{
+                  'registry': <String, Object?>{
+                    'entries': <Object?>[
+                      <String, Object?>{
+                        'id': 'app.marker.create',
+                        'group': 'markers',
+                        'kind': 'command',
+                        'transport_variant': 'rpc',
+                        'description': 'Create marker.',
+                        'aliases': <String>['sdk_marker_create_v2'],
+                        'required_capabilities': <String>[
+                          'sdk.capability.markers'
+                        ],
+                      },
+                      <String, Object?>{
+                        'id': 'app.marker.list',
+                        'group': 'markers',
+                        'kind': 'query',
+                        'transport_variant': 'rpc',
+                        'description': 'List markers.',
+                        'aliases': <String>['sdk_marker_list_v2'],
+                        'required_capabilities': <String>[
+                          'sdk.capability.markers'
+                        ],
+                      },
+                      <String, Object?>{
+                        'id': 'app.marker.update_position',
+                        'group': 'markers',
+                        'kind': 'command',
+                        'transport_variant': 'rpc',
+                        'description': 'Update marker position.',
+                        'aliases': <String>['sdk_marker_update_position_v2'],
+                        'required_capabilities': <String>[
+                          'sdk.capability.markers'
+                        ],
+                      },
+                      <String, Object?>{
+                        'id': 'app.marker.delete',
+                        'group': 'markers',
+                        'kind': 'command',
+                        'transport_variant': 'rpc',
+                        'description': 'Delete marker.',
+                        'aliases': <String>['sdk_marker_delete_v2'],
+                        'required_capabilities': <String>[
+                          'sdk.capability.markers'
+                        ],
+                      },
+                    ],
+                  },
+                },
+                'error': null,
+              },
+            'sdk_envelope_execute_v2' => <String, Object?>{
+                'id': id,
+                'result': <String, Object?>{
+                  'response': switch (params['operation_id']) {
+                    'app.marker.create' => <String, Object?>{
+                        'operation_id': 'app.marker.create',
+                        'kind': 'result',
+                        'accepted': true,
+                        'payload': <String, Object?>{
+                          'marker_id': 'marker-1',
+                          'label': 'Alpha',
+                          'position': <String, Object?>{
+                            'lat': 35.0,
+                            'lon': -115.0,
+                            'alt_m': 1200.0,
+                          },
+                          'topic_id': 'topic-1',
+                          'revision': 1,
+                          'updated_ts_ms': 950,
+                          'extensions': <String, Object?>{},
+                        },
+                        'extensions': <String, Object?>{},
+                      },
+                    'app.marker.list' => <String, Object?>{
+                        'operation_id': 'app.marker.list',
+                        'kind': 'result',
+                        'accepted': true,
+                        'payload': <String, Object?>{
+                          'markers': <Object?>[
+                            <String, Object?>{
+                              'marker_id': 'marker-1',
+                              'label': 'Alpha',
+                              'position': <String, Object?>{
+                                'lat': 35.0,
+                                'lon': -115.0,
+                                'alt_m': 1200.0,
+                              },
+                              'topic_id': 'topic-1',
+                              'revision': 1,
+                              'updated_ts_ms': 950,
+                              'extensions': <String, Object?>{},
+                            },
+                          ],
+                          'next_cursor': null,
+                        },
+                        'extensions': <String, Object?>{},
+                      },
+                    'app.marker.update_position' => <String, Object?>{
+                        'operation_id': 'app.marker.update_position',
+                        'kind': 'result',
+                        'accepted': true,
+                        'payload': <String, Object?>{
+                          'marker_id': 'marker-1',
+                          'label': 'Alpha',
+                          'position': <String, Object?>{
+                            'lat': 36.0,
+                            'lon': -116.0,
+                            'alt_m': null,
+                          },
+                          'topic_id': 'topic-1',
+                          'revision': 2,
+                          'updated_ts_ms': 970,
+                          'extensions': <String, Object?>{},
+                        },
+                        'extensions': <String, Object?>{},
+                      },
+                    'app.marker.delete' => <String, Object?>{
+                        'operation_id': 'app.marker.delete',
+                        'kind': 'result',
+                        'accepted': true,
+                        'payload': <String, Object?>{
+                          'accepted': true,
+                          'marker_id': 'marker-1'
+                        },
+                        'extensions': <String, Object?>{},
+                      },
+                    _ => <String, Object?>{},
+                  },
+                },
+                'error': null,
+              },
+            _ => <String, Object?>{
+                'id': id,
+                'result': null,
+                'error': <String, Object?>{
+                  'code': 'SDK_VALIDATION_INVALID_ARGUMENT',
+                  'message': 'unknown method',
+                },
+              },
+          };
+          request.response.headers.contentType =
+              ContentType('application', 'msgpack');
+          request.response.add(encodeRpcFrame(response));
+          await request.response.close();
+        }
+      }());
+
+      final markers = MarkerClient(
+        OperationClient(
+          AppClient(
+            RpcBinding(
+              RpcConnectionOptions(
+                endpoint: Uri.parse('http://127.0.0.1:${server.port}/rpc'),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final created = await markers.create(
+        label: 'Alpha',
+        position: const GeoPoint(lat: 35.0, lon: -115.0, altM: 1200.0),
+        topicId: 'topic-1',
+      );
+      final listed = await markers.list(topicId: 'topic-1', limit: 10);
+      final updated = await markers.updatePosition(
+        markerId: 'marker-1',
+        expectedRevision: 1,
+        position: const GeoPoint(lat: 36.0, lon: -116.0),
+      );
+      final deleted = await markers.delete(
+        markerId: 'marker-1',
+        expectedRevision: 2,
+      );
+
+      expect(created.markerId, 'marker-1');
+      expect(listed.markers, hasLength(1));
+      expect(updated.position.lat, 36.0);
+      expect(updated.revision, 2);
+      expect(deleted, isTrue);
+
+      final envelopeCalls = calls
+          .where((call) => call['method'] == 'sdk_envelope_execute_v2')
+          .toList(growable: false);
+      expect(
+          envelopeCalls.map((call) =>
+              (call['params'] as Map<String, Object?>)['operation_id']),
+          [
+            'app.marker.create',
+            'app.marker.list',
+            'app.marker.update_position',
+            'app.marker.delete',
+          ]);
+    });
   });
 }

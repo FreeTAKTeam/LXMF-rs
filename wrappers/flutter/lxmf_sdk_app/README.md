@@ -170,6 +170,26 @@ final subscribed = await telemetry.subscribe(
 print('telemetry=${points.length} subscribed=$subscribed');
 ```
 
+Typed marker flow:
+
+```dart
+final markers = MarkerClient(OperationClient(client));
+
+final created = await markers.create(
+  label: 'Alpha',
+  position: const GeoPoint(lat: 35.0, lon: -115.0, altM: 1200.0),
+  topicId: 'topic-1',
+);
+final listed = await markers.list(topicId: 'topic-1', limit: 10);
+final updated = await markers.updatePosition(
+  markerId: created.markerId,
+  expectedRevision: created.revision,
+  position: const GeoPoint(lat: 36.0, lon: -116.0),
+);
+
+print('marker=${created.markerId} listed=${listed.markers.length} revision=${updated.revision}');
+```
+
 Conversation-oriented flow:
 
 ```dart
@@ -237,6 +257,7 @@ dart run example/custom_vendor_command_smoke.dart http://127.0.0.1:4243/rpc
 dart run example/voice_session_smoke.dart http://127.0.0.1:4243/rpc
 dart run example/topic_operations_smoke.dart http://127.0.0.1:4243/rpc
 dart run example/telemetry_operations_smoke.dart http://127.0.0.1:4243/rpc [topic-id]
+dart run example/marker_operations_smoke.dart http://127.0.0.1:4243/rpc [topic-id]
 ```
 
 Repo-level smoke from the project root:

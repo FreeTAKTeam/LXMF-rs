@@ -12,7 +12,8 @@ use super::errors::Error;
 use super::events::{map_event_batch, subscription_cursor, EventBatch, SubscriptionStart};
 use super::operations::{OperationEntry, OperationRegistry, RegistryError};
 use crate::domain::{
-    ContactListRequest, ContactUpdateRequest, IdentityBootstrapRequest, PresenceListRequest,
+    ContactListRequest, ContactUpdateRequest, IdentityBootstrapRequest, MarkerCreateRequest,
+    MarkerDeleteRequest, MarkerListRequest, MarkerUpdatePositionRequest, PresenceListRequest,
     RemoteCommandRequest, TelemetryQuery, TopicCreateRequest, TopicId, TopicListRequest,
     TopicPublishRequest, TopicSubscriptionRequest, VoiceSessionId, VoiceSessionOpenRequest,
     VoiceSessionUpdateRequest,
@@ -700,6 +701,63 @@ impl<B: SdkBackend> Client<B> {
                     canonical_id,
                     correlation_id,
                     serde_json::to_value(result).expect("telemetry subscribe should serialize"),
+                ))
+            }
+            "app.marker.create" => {
+                let req: MarkerCreateRequest = serde_json::from_value(payload).map_err(|err| {
+                    invalid_envelope(
+                        format!("invalid marker create payload: {err}"),
+                        canonical_id.as_str(),
+                    )
+                })?;
+                let result = self.backend.marker_create(req).map_err(Error::from)?;
+                Ok(envelope_result(
+                    canonical_id,
+                    correlation_id,
+                    serde_json::to_value(result).expect("marker create should serialize"),
+                ))
+            }
+            "app.marker.list" => {
+                let req: MarkerListRequest = serde_json::from_value(payload).map_err(|err| {
+                    invalid_envelope(
+                        format!("invalid marker list payload: {err}"),
+                        canonical_id.as_str(),
+                    )
+                })?;
+                let result = self.backend.marker_list(req).map_err(Error::from)?;
+                Ok(envelope_result(
+                    canonical_id,
+                    correlation_id,
+                    serde_json::to_value(result).expect("marker list should serialize"),
+                ))
+            }
+            "app.marker.update_position" => {
+                let req: MarkerUpdatePositionRequest =
+                    serde_json::from_value(payload).map_err(|err| {
+                        invalid_envelope(
+                            format!("invalid marker update payload: {err}"),
+                            canonical_id.as_str(),
+                        )
+                    })?;
+                let result = self.backend.marker_update_position(req).map_err(Error::from)?;
+                Ok(envelope_result(
+                    canonical_id,
+                    correlation_id,
+                    serde_json::to_value(result).expect("marker update should serialize"),
+                ))
+            }
+            "app.marker.delete" => {
+                let req: MarkerDeleteRequest = serde_json::from_value(payload).map_err(|err| {
+                    invalid_envelope(
+                        format!("invalid marker delete payload: {err}"),
+                        canonical_id.as_str(),
+                    )
+                })?;
+                let result = self.backend.marker_delete(req).map_err(Error::from)?;
+                Ok(envelope_result(
+                    canonical_id,
+                    correlation_id,
+                    serde_json::to_value(result).expect("marker delete should serialize"),
                 ))
             }
             "app.voice.session.open" => {
@@ -1740,6 +1798,63 @@ mod tests {
             Ok(Ack { accepted: true, revision: None })
         }
 
+        fn marker_create(
+            &self,
+            req: crate::domain::MarkerCreateRequest,
+        ) -> Result<crate::domain::MarkerRecord, SdkError> {
+            Ok(crate::domain::MarkerRecord {
+                marker_id: crate::domain::MarkerId("marker-1".to_owned()),
+                label: req.label,
+                position: req.position,
+                topic_id: req.topic_id,
+                revision: 1,
+                updated_ts_ms: 950,
+                extensions: req.extensions,
+            })
+        }
+
+        fn marker_list(
+            &self,
+            req: crate::domain::MarkerListRequest,
+        ) -> Result<crate::domain::MarkerListResult, SdkError> {
+            Ok(crate::domain::MarkerListResult {
+                markers: vec![crate::domain::MarkerRecord {
+                    marker_id: crate::domain::MarkerId("marker-1".to_owned()),
+                    label: "Alpha".to_owned(),
+                    position: crate::domain::GeoPoint {
+                        lat: 35.0,
+                        lon: -115.0,
+                        alt_m: Some(1200.0),
+                    },
+                    topic_id: req.topic_id.or(Some(crate::domain::TopicId("topic-1".to_owned()))),
+                    revision: 2,
+                    updated_ts_ms: 960,
+                    extensions: BTreeMap::new(),
+                }],
+                next_cursor: None,
+            })
+        }
+
+        fn marker_update_position(
+            &self,
+            req: crate::domain::MarkerUpdatePositionRequest,
+        ) -> Result<crate::domain::MarkerRecord, SdkError> {
+            Ok(crate::domain::MarkerRecord {
+                marker_id: req.marker_id,
+                label: "Alpha".to_owned(),
+                position: req.position,
+                topic_id: Some(crate::domain::TopicId("topic-1".to_owned())),
+                revision: req.expected_revision.saturating_add(1),
+                updated_ts_ms: 970,
+                extensions: req.extensions,
+            })
+        }
+
+        fn marker_delete(&self, req: crate::domain::MarkerDeleteRequest) -> Result<Ack, SdkError> {
+            let _ = req;
+            Ok(Ack { accepted: true, revision: None })
+        }
+
         fn command_invoke(
             &self,
             req: crate::domain::RemoteCommandRequest,
@@ -2052,6 +2167,60 @@ mod tests {
             .expect("telemetry subscribe");
         assert_eq!(subscribed.operation_id.as_str(), "app.telemetry.subscribe");
         assert_eq!(subscribed.payload["accepted"], json!(true));
+    }
+
+    #[test]
+    fn execute_envelope_routes_marker_operations_locally() {
+        let app = Client::new(MockBackend::new());
+
+        let created = app
+            .command(
+                "sdk_marker_create_v2",
+                serde_json::json!({
+                    "label": "Alpha",
+                    "position": { "lat": 35.0, "lon": -115.0, "alt_m": 1200.0 },
+                    "topic_id": "topic-1",
+                }),
+            )
+            .expect("marker create");
+        assert_eq!(created.operation_id.as_str(), "app.marker.create");
+        assert_eq!(created.payload["marker_id"], json!("marker-1"));
+
+        let listed = app
+            .query(
+                "app.marker.list",
+                serde_json::json!({
+                    "topic_id": "topic-1",
+                    "limit": 10,
+                }),
+            )
+            .expect("marker list");
+        assert_eq!(listed.payload["markers"].as_array().expect("marker rows").len(), 1);
+
+        let updated = app
+            .command(
+                "sdk_marker_update_position_v2",
+                serde_json::json!({
+                    "marker_id": "marker-1",
+                    "expected_revision": 2,
+                    "position": { "lat": 36.0, "lon": -116.0, "alt_m": null },
+                }),
+            )
+            .expect("marker update");
+        assert_eq!(updated.operation_id.as_str(), "app.marker.update_position");
+        assert_eq!(updated.payload["revision"], json!(3));
+
+        let deleted = app
+            .command(
+                "app.marker.delete",
+                serde_json::json!({
+                    "marker_id": "marker-1",
+                    "expected_revision": 3,
+                }),
+            )
+            .expect("marker delete");
+        assert_eq!(deleted.operation_id.as_str(), "app.marker.delete");
+        assert_eq!(deleted.payload["accepted"], json!(true));
     }
 
     #[test]

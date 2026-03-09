@@ -458,6 +458,92 @@ class TelemetryClient {
   }
 }
 
+class MarkerClient {
+  MarkerClient(this._operations);
+
+  final OperationClient _operations;
+
+  Future<MarkerRecord> create({
+    required String label,
+    required GeoPoint position,
+    String? topicId,
+    Map<String, Object?> extensions = const <String, Object?>{},
+  }) async {
+    final result = await _operations.command<MarkerRecord>(
+      OperationCall<MarkerRecord>(
+        operationId: 'app.marker.create',
+        payload: <String, Object?>{
+          'label': label,
+          'position': _encodeGeoPoint(position),
+          if (topicId != null) 'topic_id': topicId,
+          'extensions': extensions,
+        },
+        decode: _decodeMarkerRecord,
+      ),
+    );
+    return result.payload;
+  }
+
+  Future<MarkerListPage> list({
+    String? topicId,
+    String? cursor,
+    int? limit,
+  }) async {
+    final result = await _operations.query<MarkerListPage>(
+      OperationCall<MarkerListPage>(
+        operationId: 'app.marker.list',
+        payload: <String, Object?>{
+          if (topicId != null) 'topic_id': topicId,
+          if (cursor != null) 'cursor': cursor,
+          if (limit != null) 'limit': limit,
+        },
+        decode: _decodeMarkerListPage,
+      ),
+    );
+    return result.payload;
+  }
+
+  Future<MarkerRecord> updatePosition({
+    required String markerId,
+    required int expectedRevision,
+    required GeoPoint position,
+    Map<String, Object?> extensions = const <String, Object?>{},
+  }) async {
+    final result = await _operations.command<MarkerRecord>(
+      OperationCall<MarkerRecord>(
+        operationId: 'app.marker.update_position',
+        payload: <String, Object?>{
+          'marker_id': markerId,
+          'expected_revision': expectedRevision,
+          'position': _encodeGeoPoint(position),
+          'extensions': extensions,
+        },
+        decode: _decodeMarkerRecord,
+      ),
+    );
+    return result.payload;
+  }
+
+  Future<bool> delete({
+    required String markerId,
+    required int expectedRevision,
+    Map<String, Object?> extensions = const <String, Object?>{},
+  }) async {
+    final result = await _operations.command<bool>(
+      OperationCall<bool>(
+        operationId: 'app.marker.delete',
+        payload: <String, Object?>{
+          'marker_id': markerId,
+          'expected_revision': expectedRevision,
+          'extensions': extensions,
+        },
+        decode: _decodeAccepted,
+      ),
+    );
+    return result.payload;
+  }
+}
+
 TopicRecord _decodeTopicRecord(Object? payload) {
   final map = _payloadMap(payload);
   return TopicRecord(
@@ -495,6 +581,47 @@ TelemetryPointRecord _decodeTelemetryPoint(Object? payload) {
     tags: tags,
     extensions: _payloadMap(map['extensions']),
   );
+}
+
+MarkerRecord _decodeMarkerRecord(Object? payload) {
+  final map = _payloadMap(payload);
+  return MarkerRecord(
+    markerId: map['marker_id']?.toString() ?? '',
+    label: map['label']?.toString() ?? '',
+    position: _decodeGeoPoint(map['position']),
+    topicId: map['topic_id']?.toString(),
+    revision: (map['revision'] as num?)?.toInt() ?? 0,
+    updatedTsMs: (map['updated_ts_ms'] as num?)?.toInt() ?? 0,
+    extensions: _payloadMap(map['extensions']),
+  );
+}
+
+MarkerListPage _decodeMarkerListPage(Object? payload) {
+  final map = _payloadMap(payload);
+  final markers = (map['markers'] as List<Object?>? ?? const <Object?>[])
+      .map(_decodeMarkerRecord)
+      .toList(growable: false);
+  return MarkerListPage(
+    markers: markers,
+    nextCursor: map['next_cursor']?.toString(),
+  );
+}
+
+GeoPoint _decodeGeoPoint(Object? payload) {
+  final map = _payloadMap(payload);
+  return GeoPoint(
+    lat: (map['lat'] as num?)?.toDouble() ?? 0,
+    lon: (map['lon'] as num?)?.toDouble() ?? 0,
+    altM: (map['alt_m'] as num?)?.toDouble(),
+  );
+}
+
+Map<String, Object?> _encodeGeoPoint(GeoPoint position) {
+  return <String, Object?>{
+    'lat': position.lat,
+    'lon': position.lon,
+    'alt_m': position.altM,
+  };
 }
 
 bool _decodeAccepted(Object? payload) {

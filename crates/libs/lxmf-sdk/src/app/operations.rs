@@ -495,6 +495,42 @@ fn built_in_entries() -> Vec<OperationEntry> {
         .with_alias("sdk_telemetry_subscribe_v2")
         .with_required_capability("sdk.capability.telemetry_stream"),
         OperationEntry::new(
+            "app.marker.create",
+            "markers",
+            OperationKind::Command,
+            TransportVariant::Rpc,
+            "Create a shared marker anchored to an optional topic.",
+        )
+        .with_alias("sdk_marker_create_v2")
+        .with_required_capability("sdk.capability.markers"),
+        OperationEntry::new(
+            "app.marker.list",
+            "markers",
+            OperationKind::Query,
+            TransportVariant::Rpc,
+            "List markers with topic filtering and cursor pagination.",
+        )
+        .with_alias("sdk_marker_list_v2")
+        .with_required_capability("sdk.capability.markers"),
+        OperationEntry::new(
+            "app.marker.update_position",
+            "markers",
+            OperationKind::Command,
+            TransportVariant::Rpc,
+            "Move an existing marker while enforcing revision checks.",
+        )
+        .with_alias("sdk_marker_update_position_v2")
+        .with_required_capability("sdk.capability.markers"),
+        OperationEntry::new(
+            "app.marker.delete",
+            "markers",
+            OperationKind::Command,
+            TransportVariant::Rpc,
+            "Delete an existing marker while enforcing revision checks.",
+        )
+        .with_alias("sdk_marker_delete_v2")
+        .with_required_capability("sdk.capability.markers"),
+        OperationEntry::new(
             "app.voice.session.open",
             "voice",
             OperationKind::Command,
@@ -637,6 +673,7 @@ mod tests {
         let grouped = registry.entries_by_group();
 
         assert!(grouped.get("runtime").is_some());
+        assert!(grouped.get("markers").is_some());
         assert!(grouped.get("telemetry").is_some());
         assert!(grouped.get("topics").is_some());
         assert!(grouped.get("voice").is_some());
@@ -655,6 +692,11 @@ mod tests {
             .expect("telemetry group")
             .iter()
             .any(|entry| entry.id.as_str() == "app.telemetry.query"));
+        assert!(grouped
+            .get("markers")
+            .expect("markers group")
+            .iter()
+            .any(|entry| entry.id.as_str() == "app.marker.create"));
         assert!(grouped
             .get("voice")
             .expect("voice group")

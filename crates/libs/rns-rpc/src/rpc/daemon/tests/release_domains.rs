@@ -876,6 +876,121 @@
     }
 
     #[test]
+    fn sdk_operation_registry_roundtrips_marker_family() {
+        let daemon = RpcDaemon::test_instance();
+
+        let topic = daemon
+            .handle_rpc(rpc_request(
+                1340,
+                "sdk_topic_create_v2",
+                json!({ "topic_path": "ops/markers" }),
+            ))
+            .expect("topic create");
+        let topic_id = topic.result.expect("topic result")["topic"]["topic_id"]
+            .as_str()
+            .expect("topic id")
+            .to_string();
+
+        let registry = daemon
+            .handle_rpc(rpc_request(1341, "sdk_operation_registry_v2", json!({})))
+            .expect("operation registry");
+        assert!(registry.error.is_none());
+        let registry_result = registry.result.expect("registry result");
+        let entries = registry_result["registry"]["entries"]
+            .as_array()
+            .expect("entries");
+        assert!(entries.iter().any(|entry| entry["id"] == json!("app.marker.create")));
+        assert!(entries.iter().any(|entry| entry["id"] == json!("app.marker.delete")));
+
+        let marker_create = daemon
+            .handle_rpc(rpc_request(
+                1342,
+                "sdk_envelope_execute_v2",
+                json!({
+                    "operation_id": "sdk_marker_create_v2",
+                    "kind": "command",
+                    "payload": {
+                        "label": "Alpha",
+                        "position": { "lat": 35.0, "lon": -115.0, "alt_m": 1200.0 },
+                        "topic_id": topic_id.clone(),
+                    },
+                }),
+            ))
+            .expect("marker create envelope");
+        assert!(marker_create.error.is_none());
+        let marker_payload =
+            &marker_create.result.expect("marker create result")["response"]["payload"];
+        let marker_id = marker_payload["marker_id"]
+            .as_str()
+            .expect("marker id")
+            .to_string();
+        let revision = marker_payload["revision"]
+            .as_u64()
+            .expect("marker revision");
+
+        let marker_list = daemon
+            .handle_rpc(rpc_request(
+                1343,
+                "sdk_envelope_execute_v2",
+                json!({
+                    "operation_id": "app.marker.list",
+                    "kind": "query",
+                    "payload": {
+                        "topic_id": topic_id,
+                        "limit": 10,
+                    },
+                }),
+            ))
+            .expect("marker list envelope");
+        assert!(marker_list.error.is_none());
+        assert!(!marker_list.result.expect("marker list result")["response"]["payload"]["markers"]
+            .as_array()
+            .expect("markers")
+            .is_empty());
+
+        let marker_update = daemon
+            .handle_rpc(rpc_request(
+                1344,
+                "sdk_envelope_execute_v2",
+                json!({
+                    "operation_id": "app.marker.update_position",
+                    "kind": "command",
+                    "payload": {
+                        "marker_id": marker_id.clone(),
+                        "expected_revision": revision,
+                        "position": { "lat": 36.0, "lon": -116.0, "alt_m": null },
+                    },
+                }),
+            ))
+            .expect("marker update envelope");
+        assert!(marker_update.error.is_none());
+        let updated_revision = marker_update.result.expect("marker update result")["response"]
+            ["payload"]["revision"]
+            .as_u64()
+            .expect("updated revision");
+
+        let marker_delete = daemon
+            .handle_rpc(rpc_request(
+                1345,
+                "sdk_envelope_execute_v2",
+                json!({
+                    "operation_id": "sdk_marker_delete_v2",
+                    "kind": "command",
+                    "payload": {
+                        "marker_id": marker_id,
+                        "expected_revision": updated_revision,
+                    },
+                }),
+            ))
+            .expect("marker delete envelope");
+        assert!(marker_delete.error.is_none());
+        assert_eq!(
+            marker_delete.result.expect("marker delete result")["response"]["payload"]["accepted"],
+            json!(true)
+        );
+    }
+
+    #[test]
     fn sdk_domain_state_survives_restart() {
         use std::time::{SystemTime, UNIX_EPOCH};
 

@@ -631,6 +631,51 @@ class TelemetryPointRecord {
 }
 
 @immutable
+class GeoPoint {
+  const GeoPoint({
+    required this.lat,
+    required this.lon,
+    this.altM,
+  });
+
+  final double lat;
+  final double lon;
+  final double? altM;
+}
+
+@immutable
+class MarkerRecord {
+  const MarkerRecord({
+    required this.markerId,
+    required this.label,
+    required this.position,
+    required this.revision,
+    required this.updatedTsMs,
+    this.topicId,
+    this.extensions = const <String, Object?>{},
+  });
+
+  final String markerId;
+  final String label;
+  final GeoPoint position;
+  final String? topicId;
+  final int revision;
+  final int updatedTsMs;
+  final Map<String, Object?> extensions;
+}
+
+@immutable
+class MarkerListPage {
+  const MarkerListPage({
+    required this.markers,
+    this.nextCursor,
+  });
+
+  final List<MarkerRecord> markers;
+  final String? nextCursor;
+}
+
+@immutable
 class MessageRecord {
   const MessageRecord({
     required this.id,

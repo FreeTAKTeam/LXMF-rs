@@ -182,6 +182,46 @@ const SDK_OPERATION_SPECS: &[SdkOperationSpec] = &[
         rpc_method: "sdk_telemetry_subscribe_v2",
     },
     SdkOperationSpec {
+        id: "app.marker.create",
+        group: "markers",
+        kind: "command",
+        transport_variant: "rpc",
+        description: "Create a shared marker anchored to an optional topic.",
+        aliases: &["sdk_marker_create_v2"],
+        required_capabilities: &["sdk.capability.markers"],
+        rpc_method: "sdk_marker_create_v2",
+    },
+    SdkOperationSpec {
+        id: "app.marker.list",
+        group: "markers",
+        kind: "query",
+        transport_variant: "rpc",
+        description: "List markers with topic filtering and cursor pagination.",
+        aliases: &["sdk_marker_list_v2"],
+        required_capabilities: &["sdk.capability.markers"],
+        rpc_method: "sdk_marker_list_v2",
+    },
+    SdkOperationSpec {
+        id: "app.marker.update_position",
+        group: "markers",
+        kind: "command",
+        transport_variant: "rpc",
+        description: "Move an existing marker while enforcing revision checks.",
+        aliases: &["sdk_marker_update_position_v2"],
+        required_capabilities: &["sdk.capability.markers"],
+        rpc_method: "sdk_marker_update_position_v2",
+    },
+    SdkOperationSpec {
+        id: "app.marker.delete",
+        group: "markers",
+        kind: "command",
+        transport_variant: "rpc",
+        description: "Delete an existing marker while enforcing revision checks.",
+        aliases: &["sdk_marker_delete_v2"],
+        required_capabilities: &["sdk.capability.markers"],
+        rpc_method: "sdk_marker_delete_v2",
+    },
+    SdkOperationSpec {
         id: "app.voice.session.open",
         group: "voice",
         kind: "command",
@@ -382,6 +422,28 @@ impl RpcDaemon {
                 method: method.to_owned(),
                 params: Some(params),
             })?,
+            "sdk_marker_create_v2" => self.handle_sdk_marker_create_v2(RpcRequest {
+                id: request_id,
+                method: method.to_owned(),
+                params: Some(params),
+            })?,
+            "sdk_marker_list_v2" => self.handle_sdk_marker_list_v2(RpcRequest {
+                id: request_id,
+                method: method.to_owned(),
+                params: Some(params),
+            })?,
+            "sdk_marker_update_position_v2" => {
+                self.handle_sdk_marker_update_position_v2(RpcRequest {
+                    id: request_id,
+                    method: method.to_owned(),
+                    params: Some(params),
+                })?
+            }
+            "sdk_marker_delete_v2" => self.handle_sdk_marker_delete_v2(RpcRequest {
+                id: request_id,
+                method: method.to_owned(),
+                params: Some(params),
+            })?,
             "sdk_voice_session_open_v2" => self.handle_sdk_voice_session_open_v2(RpcRequest {
                 id: request_id,
                 method: method.to_owned(),
@@ -450,6 +512,12 @@ impl RpcDaemon {
             "sdk_topic_publish_v2" => raw,
             "sdk_telemetry_query_v2" => raw.get("points").cloned().unwrap_or(JsonValue::Null),
             "sdk_telemetry_subscribe_v2" => raw,
+            "sdk_marker_create_v2" => raw.get("marker").cloned().unwrap_or(JsonValue::Null),
+            "sdk_marker_list_v2" => raw,
+            "sdk_marker_update_position_v2" => {
+                raw.get("marker").cloned().unwrap_or(JsonValue::Null)
+            }
+            "sdk_marker_delete_v2" => raw,
             "sdk_voice_session_open_v2" => {
                 raw.get("session_id").cloned().unwrap_or(JsonValue::Null)
             }
@@ -527,6 +595,10 @@ impl RpcDaemon {
             "sdk_topic_publish_v2" => parsed.payload,
             "sdk_telemetry_query_v2" => parsed.payload,
             "sdk_telemetry_subscribe_v2" => parsed.payload,
+            "sdk_marker_create_v2" => parsed.payload,
+            "sdk_marker_list_v2" => parsed.payload,
+            "sdk_marker_update_position_v2" => parsed.payload,
+            "sdk_marker_delete_v2" => parsed.payload,
             "sdk_voice_session_open_v2" => parsed.payload,
             "sdk_voice_session_update_v2" => parsed.payload,
             "sdk_voice_session_close_v2" => parsed.payload,
