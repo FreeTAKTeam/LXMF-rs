@@ -546,5 +546,114 @@ void main() {
       expect(params['kind'], 'query');
       expect(params['correlation_id'], 'corr-1');
     });
+
+    test('custom command helper roundtrips daemon envelope payload shape',
+        () async {
+      unawaited(() async {
+        await for (final request in server) {
+          final body = await request.fold<List<int>>(<int>[], (all, chunk) {
+            all.addAll(chunk);
+            return all;
+          });
+          final frame = decodeRpcFrame(body);
+          calls.add(frame);
+          final id = frame['id'] as int;
+          final method = frame['method'] as String;
+          final params = frame['params'] is Map<String, Object?>
+              ? frame['params'] as Map<String, Object?>
+              : const <String, Object?>{};
+          final response = switch (method) {
+            'sdk_operation_registry_v2' => <String, Object?>{
+                'id': id,
+                'result': <String, Object?>{
+                  'registry': <String, Object?>{
+                    'entries': <Object?>[
+                      <String, Object?>{
+                        'id': 'vendor.example.custom',
+                        'group': 'vendor',
+                        'kind': 'command',
+                        'transport_variant': 'extension',
+                        'description': 'Custom extension operation.',
+                        'aliases': <String>['vendor.alias'],
+                        'required_capabilities': <String>[],
+                      },
+                    ],
+                  },
+                },
+                'error': null,
+              },
+            'sdk_envelope_execute_v2' => <String, Object?>{
+                'id': id,
+                'result': <String, Object?>{
+                  'response': <String, Object?>{
+                    'operation_id': 'vendor.example.custom',
+                    'kind': 'result',
+                    'accepted': true,
+                    'payload': <String, Object?>{
+                      'correlation_id': 'cmd-9',
+                      'command': 'vendor.example.custom',
+                      'target': 'node-b',
+                      'echo': params['payload'],
+                      'timeout_ms': params['timeout_ms'],
+                    },
+                    'extensions': <String, Object?>{'via': 'rpc-test'},
+                  },
+                },
+                'error': null,
+              },
+            _ => <String, Object?>{
+                'id': id,
+                'result': null,
+                'error': <String, Object?>{
+                  'code': 'SDK_VALIDATION_INVALID_ARGUMENT',
+                  'message': 'unknown method',
+                },
+              },
+          };
+          request.response.headers.contentType =
+              ContentType('application', 'msgpack');
+          request.response.add(encodeRpcFrame(response));
+          await request.response.close();
+        }
+      }());
+
+      final app = AppClient(
+        RpcBinding(
+          RpcConnectionOptions(
+            endpoint: Uri.parse('http://127.0.0.1:${server.port}/rpc'),
+          ),
+        ),
+      );
+      final commands = CustomCommandClient(OperationClient(app));
+
+      final result = await commands.invoke<Map<String, Object?>>(
+        CustomCommandCall<Map<String, Object?>>(
+          operationId: 'vendor.alias',
+          target: 'node-b',
+          timeoutMs: 500,
+          payload: const <String, Object?>{'body': 'hello'},
+          decodeEcho: (payload) => (payload as Map<Object?, Object?>).map(
+            (key, value) => MapEntry(key.toString(), value),
+          ),
+        ),
+      );
+
+      expect(result.operationId, 'vendor.example.custom');
+      expect(result.alias, 'vendor.alias');
+      expect(result.command, 'vendor.example.custom');
+      expect(result.target, 'node-b');
+      expect(result.correlationId, 'cmd-9');
+      expect(result.timeoutMs, 500);
+      expect(result.echo['body'], 'hello');
+      expect(result.extensions['via'], 'rpc-test');
+
+      final envelopeCall = calls.singleWhere(
+        (call) => call['method'] == 'sdk_envelope_execute_v2',
+      );
+      final callParams = envelopeCall['params'] as Map<String, Object?>;
+      expect(callParams['operation_id'], 'vendor.example.custom');
+      expect(callParams['target'], 'node-b');
+      expect(callParams['timeout_ms'], 500);
+    });
   });
 }

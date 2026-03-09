@@ -124,6 +124,58 @@ void main() {
       expect(binding.lastCommandEnvelope?.operationId, 'vendor.example.custom');
       expect(binding.lastCommandEnvelope?.correlationId, 'cmd-1');
     });
+
+    test('custom command helper decodes daemon echo payloads', () async {
+      final binding = _FakeBinding(
+        registry: OperationRegistry(
+          entries: const <OperationEntry>[
+            OperationEntry(
+              id: 'vendor.example.custom',
+              group: 'vendor',
+              kind: OperationKind.command,
+              transportVariant: TransportVariant.extension,
+              description: 'Custom command.',
+              aliases: <String>['vendor.alias'],
+            ),
+          ],
+        ),
+        commandResponse: const EnvelopeResponse(
+          operationId: 'vendor.example.custom',
+          kind: EnvelopeKind.result,
+          accepted: true,
+          payload: <String, Object?>{
+            'correlation_id': 'cmd-42',
+            'command': 'vendor.example.custom',
+            'target': 'node-b',
+            'echo': <String, Object?>{'body': 'hello'},
+            'timeout_ms': 500,
+          },
+          extensions: <String, Object?>{'via': 'rpc'},
+        ),
+      );
+
+      final commands = CustomCommandClient(OperationClient(AppClient(binding)));
+      final result = await commands.invoke<Map<String, Object?>>(
+        CustomCommandCall<Map<String, Object?>>(
+          operationId: 'vendor.alias',
+          target: 'node-b',
+          timeoutMs: 500,
+          payload: const <String, Object?>{'body': 'hello'},
+          decodeEcho: (payload) => (payload as Map<Object?, Object?>).map(
+            (key, value) => MapEntry(key.toString(), value),
+          ),
+        ),
+      );
+
+      expect(result.operationId, 'vendor.example.custom');
+      expect(result.alias, 'vendor.alias');
+      expect(result.command, 'vendor.example.custom');
+      expect(result.target, 'node-b');
+      expect(result.correlationId, 'cmd-42');
+      expect(result.timeoutMs, 500);
+      expect(result.echo['body'], 'hello');
+      expect(result.extensions['via'], 'rpc');
+    });
   });
 }
 

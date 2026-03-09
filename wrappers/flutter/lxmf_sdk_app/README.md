@@ -97,6 +97,26 @@ final status = await operations.query<Map<String, Object?>>(
 print('query ${status.operationId} accepted=${status.accepted}');
 ```
 
+Typed vendor/custom-command flow:
+
+```dart
+final commands = CustomCommandClient(OperationClient(client));
+
+final result = await commands.invoke<Map<String, Object?>>(
+  CustomCommandCall<Map<String, Object?>>(
+    operationId: 'vendor.example.custom',
+    target: 'node-b',
+    timeoutMs: 500,
+    payload: const <String, Object?>{'body': 'hello'},
+    decodeEcho: (payload) => (payload as Map<Object?, Object?>).map(
+      (key, value) => MapEntry(key.toString(), value),
+    ),
+  ),
+);
+
+print('cmd=${result.command} correlation=${result.correlationId}');
+```
+
 Conversation-oriented flow:
 
 ```dart
@@ -160,6 +180,7 @@ dart run example/rpc_smoke.dart http://127.0.0.1:4243/rpc
 dart run example/rpc_chat_smoke.dart http://127.0.0.1:4243/rpc <peer-destination-hash>
 dart run example/rpc_operations_smoke.dart http://127.0.0.1:4243/rpc
 dart run example/custom_operation_smoke.dart http://127.0.0.1:4243/rpc
+dart run example/custom_vendor_command_smoke.dart http://127.0.0.1:4243/rpc
 ```
 
 Repo-level smoke from the project root:

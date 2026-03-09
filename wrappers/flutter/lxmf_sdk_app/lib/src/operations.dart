@@ -122,3 +122,93 @@ class OperationClient {
     );
   }
 }
+
+class CustomCommandCall<T> {
+  const CustomCommandCall({
+    required this.operationId,
+    required this.payload,
+    required this.decodeEcho,
+    this.target,
+    this.correlationId,
+    this.timeoutMs,
+    this.extensions = const <String, Object?>{},
+  });
+
+  final String operationId;
+  final Object? payload;
+  final OperationPayloadDecoder<T> decodeEcho;
+  final String? target;
+  final String? correlationId;
+  final int? timeoutMs;
+  final Map<String, Object?> extensions;
+}
+
+class CustomCommandResult<T> {
+  const CustomCommandResult({
+    required this.operationId,
+    required this.accepted,
+    required this.echo,
+    this.alias,
+    this.command,
+    this.target,
+    this.correlationId,
+    this.timeoutMs,
+    this.extensions = const <String, Object?>{},
+  });
+
+  final String operationId;
+  final bool accepted;
+  final T echo;
+  final String? alias;
+  final String? command;
+  final String? target;
+  final String? correlationId;
+  final int? timeoutMs;
+  final Map<String, Object?> extensions;
+}
+
+class CustomCommandClient {
+  CustomCommandClient(this._operations);
+
+  final OperationClient _operations;
+
+  Future<CustomCommandResult<T>> invoke<T>(CustomCommandCall<T> call) async {
+    final result = await _operations.command<Map<String, Object?>>(
+      OperationCall<Map<String, Object?>>(
+        operationId: call.operationId,
+        payload: call.payload,
+        target: call.target,
+        correlationId: call.correlationId,
+        timeoutMs: call.timeoutMs,
+        extensions: call.extensions,
+        decode: (payload) => _payloadMap(payload),
+      ),
+    );
+
+    return CustomCommandResult<T>(
+      operationId: result.operationId,
+      accepted: result.accepted,
+      echo: call.decodeEcho(result.payload['echo']),
+      alias: result.alias,
+      command: result.payload['command']?.toString(),
+      target: result.payload['target']?.toString(),
+      correlationId: result.payload['correlation_id']?.toString(),
+      timeoutMs: (result.payload['timeout_ms'] as num?)?.toInt(),
+      extensions: result.extensions,
+    );
+  }
+
+  static Map<String, Object?> _payloadMap(Object? payload) {
+    if (payload is Map<String, Object?>) {
+      return payload;
+    }
+    if (payload is Map) {
+      return payload.map((key, value) => MapEntry(key.toString(), value));
+    }
+    throw const AppError(
+      code: ErrorCode.internalUnexpectedFailure,
+      category: ErrorCategory.internal,
+      message: 'custom command payload was not an object',
+    );
+  }
+}
