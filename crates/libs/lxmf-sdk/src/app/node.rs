@@ -11,14 +11,18 @@ use super::errors::Error;
 #[cfg(feature = "sdk-async")]
 use super::events::{map_event_batch, subscription_cursor, EventBatch, SubscriptionStart};
 use super::operations::{OperationEntry, OperationRegistry, RegistryError};
+use crate::error::{code, ErrorCategory as SdkErrorCategory, SdkError};
 use crate::domain::{
     AttachmentDownloadChunkRequest, AttachmentId, AttachmentListRequest, AttachmentStoreRequest,
     AttachmentUploadChunkRequest, AttachmentUploadCommitRequest, AttachmentUploadStartRequest,
     ContactListRequest, ContactUpdateRequest, IdentityBootstrapRequest, MarkerCreateRequest,
     MarkerDeleteRequest, MarkerListRequest, MarkerUpdatePositionRequest, PresenceListRequest,
     RemoteCommandRequest, TelemetryQuery, TopicCreateRequest, TopicId, TopicListRequest,
-    TopicPublishRequest, TopicSubscriptionRequest, VoiceSessionId, VoiceSessionOpenRequest,
-    VoiceSessionUpdateRequest,
+    TopicPublishRequest, TopicSubscriptionRequest, VoiceSessionId,
+    VoiceSessionOpenRequest, VoiceSessionUpdateRequest,
+    WorkflowAttachmentReportRequest, WorkflowAttachmentReportResult, WorkflowMissionUpdateRequest,
+    WorkflowMissionUpdateResult, WorkflowPeerReadyRequest, WorkflowPeerReadyResult,
+    WorkflowTopicSyncRequest, WorkflowTopicSyncResult,
 };
 use crate::{
     Client as CoreClient, ClientHandle, DeliverySnapshot, DeliveryState as RawDeliveryState,
@@ -28,7 +32,7 @@ use crate::{
 #[cfg(feature = "sdk-async")]
 use crate::{LxmfSdkAsync, SdkBackendAsyncEvents};
 use serde::{Deserialize, Serialize};
-use serde_json::Value as JsonValue;
+use serde_json::{Map as JsonMap, Value as JsonValue};
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -596,6 +600,70 @@ impl<B: SdkBackend> Client<B> {
                     canonical_id,
                     correlation_id,
                     serde_json::to_value(result).expect("bootstrap should serialize"),
+                ))
+            }
+            "app.workflow.peer_ready" => {
+                let req: WorkflowPeerReadyRequest =
+                    serde_json::from_value(payload).map_err(|err| {
+                        invalid_envelope(
+                            format!("invalid workflow peer ready payload: {err}"),
+                            canonical_id.as_str(),
+                        )
+                    })?;
+                let result = self.workflow_peer_ready(req)?;
+                Ok(envelope_result(
+                    canonical_id,
+                    correlation_id,
+                    serde_json::to_value(result)
+                        .expect("workflow peer ready should serialize"),
+                ))
+            }
+            "app.workflow.topic_sync" => {
+                let req: WorkflowTopicSyncRequest =
+                    serde_json::from_value(payload).map_err(|err| {
+                        invalid_envelope(
+                            format!("invalid workflow topic sync payload: {err}"),
+                            canonical_id.as_str(),
+                        )
+                    })?;
+                let result = self.workflow_topic_sync(req)?;
+                Ok(envelope_result(
+                    canonical_id,
+                    correlation_id,
+                    serde_json::to_value(result)
+                        .expect("workflow topic sync should serialize"),
+                ))
+            }
+            "app.workflow.attachment_report_publish" => {
+                let req: WorkflowAttachmentReportRequest =
+                    serde_json::from_value(payload).map_err(|err| {
+                        invalid_envelope(
+                            format!("invalid workflow attachment report payload: {err}"),
+                            canonical_id.as_str(),
+                        )
+                    })?;
+                let result = self.workflow_attachment_report_publish(req)?;
+                Ok(envelope_result(
+                    canonical_id,
+                    correlation_id,
+                    serde_json::to_value(result)
+                        .expect("workflow attachment report should serialize"),
+                ))
+            }
+            "app.workflow.mission_update_send" => {
+                let req: WorkflowMissionUpdateRequest =
+                    serde_json::from_value(payload).map_err(|err| {
+                        invalid_envelope(
+                            format!("invalid workflow mission update payload: {err}"),
+                            canonical_id.as_str(),
+                        )
+                    })?;
+                let result = self.workflow_mission_update_send(req)?;
+                Ok(envelope_result(
+                    canonical_id,
+                    correlation_id,
+                    serde_json::to_value(result)
+                        .expect("workflow mission update should serialize"),
                 ))
             }
             "app.attachment.store" => {
@@ -1254,6 +1322,323 @@ impl<B: SdkBackend> Client<B> {
             values.truncate(limit);
         }
         Ok(values)
+    }
+
+    pub fn workflow_peer_ready(
+        &self,
+        request: WorkflowPeerReadyRequest,
+    ) -> Result<WorkflowPeerReadyResult, Error> {
+        let existing = self.find_contact(request.identity.0.as_str())?;
+        let announce = request.announce.unwrap_or(true);
+        let announced = if announce {
+            self.announce_now()?;
+            true
+        } else {
+            false
+        };
+
+        if let Some(contact) = existing {
+            return Ok(WorkflowPeerReadyResult {
+                identity: request.identity,
+                contact: crate::domain::ContactRecord {
+                    identity: crate::domain::IdentityRef(contact.identity.clone()),
+                    display_name: contact.display_name,
+                    trust_level: contact.trust_level,
+                    bootstrap: contact.bootstrap,
+                    updated_ts_ms: contact.updated_ts_ms,
+                    metadata: contact.metadata,
+                    extensions: contact.extensions,
+                },
+                was_created: false,
+                announced,
+            });
+        }
+
+        let bootstrap = request.bootstrap.unwrap_or(true);
+        let contact = if bootstrap {
+            self.bootstrap_identity(BootstrapRequest {
+                identity: request.identity.0.clone(),
+                auto_sync: true,
+                extensions: request.extensions.clone(),
+            })?
+        } else {
+            self.update_contact(ContactUpdate {
+                identity: request.identity.0.clone(),
+                display_name: request.display_name.clone(),
+                trust_level: request.trust_level.clone(),
+                bootstrap: Some(false),
+                metadata: request.metadata.clone().into_iter().collect(),
+                extensions: request.extensions.clone().into_iter().collect(),
+            })?
+        };
+
+        Ok(WorkflowPeerReadyResult {
+            identity: request.identity,
+            contact: crate::domain::ContactRecord {
+                identity: crate::domain::IdentityRef(contact.identity.clone()),
+                display_name: contact.display_name,
+                trust_level: contact.trust_level,
+                bootstrap: contact.bootstrap,
+                updated_ts_ms: contact.updated_ts_ms,
+                metadata: contact.metadata,
+                extensions: contact.extensions,
+            },
+            was_created: true,
+            announced,
+        })
+    }
+
+    pub fn workflow_topic_sync(
+        &self,
+        request: WorkflowTopicSyncRequest,
+    ) -> Result<WorkflowTopicSyncResult, Error> {
+        let existing = self.find_topic_by_path(request.topic_path.0.as_str(), 100)?;
+        let (topic, was_created) = if let Some(topic) = existing {
+            (topic, false)
+        } else {
+            let topic = self
+                .backend
+                .topic_create(TopicCreateRequest {
+                    topic_path: Some(request.topic_path.clone()),
+                    metadata: request.metadata.clone(),
+                    extensions: request.extensions.clone(),
+                })
+                .map_err(Error::from)?;
+            (topic, true)
+        };
+        let subscribed = self
+            .backend
+            .topic_subscribe(TopicSubscriptionRequest {
+                topic_id: topic.topic_id.clone(),
+                cursor: None,
+                extensions: request.extensions.clone(),
+            })
+            .map_err(Error::from)?
+            .accepted;
+        let telemetry = self
+            .backend
+            .telemetry_query(TelemetryQuery {
+                peer_id: None,
+                topic_id: Some(topic.topic_id.clone()),
+                from_ts_ms: None,
+                to_ts_ms: None,
+                limit: request.telemetry_limit,
+                extensions: request.extensions,
+            })
+            .map_err(Error::from)?;
+        Ok(WorkflowTopicSyncResult { topic, was_created, subscribed, telemetry })
+    }
+
+    pub fn workflow_attachment_report_publish(
+        &self,
+        request: WorkflowAttachmentReportRequest,
+    ) -> Result<WorkflowAttachmentReportResult, Error> {
+        let topic_sync = self.workflow_topic_sync(WorkflowTopicSyncRequest {
+            topic_path: request.topic_path,
+            metadata: request.topic_metadata,
+            telemetry_limit: Some(0),
+            extensions: request.extensions.clone(),
+        })?;
+        let attachment = self
+            .backend
+            .attachment_store(AttachmentStoreRequest {
+                name: request.attachment.name,
+                content_type: request.attachment.content_type,
+                bytes_base64: request.attachment.bytes_base64,
+                expires_ts_ms: None,
+                topic_ids: vec![topic_sync.topic.topic_id.clone()],
+                extensions: request.extensions.clone(),
+            })
+            .map_err(Error::from)?;
+        let mut payload = JsonMap::new();
+        if let Some(summary) = request.summary_payload {
+            payload.insert("summary".to_owned(), summary);
+        }
+        payload.insert("attachment_id".to_owned(), JsonValue::String(attachment.attachment_id.0.clone()));
+        payload.insert("attachment_name".to_owned(), JsonValue::String(attachment.name.clone()));
+        payload.insert("content_type".to_owned(), JsonValue::String(attachment.content_type.clone()));
+        let published = self
+            .backend
+            .topic_publish(TopicPublishRequest {
+                topic_id: topic_sync.topic.topic_id.clone(),
+                payload: JsonValue::Object(payload.into_iter().collect()),
+                correlation_id: request.correlation_id,
+                extensions: request.extensions,
+            })
+            .map_err(Error::from)?;
+        Ok(WorkflowAttachmentReportResult { topic: topic_sync.topic, attachment, published })
+    }
+
+    pub fn workflow_mission_update_send(
+        &self,
+        request: WorkflowMissionUpdateRequest,
+    ) -> Result<WorkflowMissionUpdateResult, Error> {
+        const RESERVED_KEYS: &[&str] = &["content", "topic_id", "group_id", "file_attachments"];
+        let conflicting = request
+            .metadata
+            .keys()
+            .filter(|key| RESERVED_KEYS.contains(&key.as_str()))
+            .cloned()
+            .collect::<Vec<_>>();
+        if !conflicting.is_empty() {
+            return Err(Error::from(
+                SdkError::new(
+                    code::VALIDATION_INVALID_ARGUMENT,
+                    SdkErrorCategory::Validation,
+                    format!(
+                        "mission metadata cannot override reserved fields: {}",
+                        conflicting.join(", ")
+                    ),
+                )
+                .with_user_actionable(true),
+            ));
+        }
+
+        let peer = self.workflow_peer_ready(WorkflowPeerReadyRequest {
+            identity: request.peer_identity.clone(),
+            display_name: request.display_name,
+            trust_level: request.trust_level,
+            bootstrap: request.bootstrap,
+            announce: request.announce,
+            metadata: request.metadata.clone(),
+            extensions: request.extensions.clone(),
+        })?;
+
+        let topic = if let Some(topic_path) = request.topic_path.clone() {
+            Some(
+                self.workflow_topic_sync(WorkflowTopicSyncRequest {
+                    topic_path,
+                    metadata: BTreeMap::new(),
+                    telemetry_limit: Some(0),
+                    extensions: request.extensions.clone(),
+                })?
+                .topic,
+            )
+        } else {
+            None
+        };
+
+        let mut attachments = Vec::new();
+        for attachment in request.attachments {
+            let attachment = self
+                .backend
+                .attachment_store(AttachmentStoreRequest {
+                    name: attachment.name,
+                    content_type: attachment.content_type,
+                    bytes_base64: attachment.bytes_base64,
+                    expires_ts_ms: None,
+                    topic_ids: topic
+                        .as_ref()
+                        .map(|topic| vec![topic.topic_id.clone()])
+                        .unwrap_or_default(),
+                    extensions: request.extensions.clone(),
+                })
+                .map_err(Error::from)?;
+            attachments.push(attachment);
+        }
+
+        let mut payload: JsonMap<String, JsonValue> = request.metadata.into_iter().collect();
+        payload.insert("content".to_owned(), JsonValue::String(request.content));
+        if let Some(topic) = topic.as_ref() {
+            payload.insert("topic_id".to_owned(), JsonValue::String(topic.topic_id.0.clone()));
+            payload.insert("group_id".to_owned(), JsonValue::String(topic.topic_id.0.clone()));
+        }
+        if !attachments.is_empty() {
+            payload.insert(
+                "file_attachments".to_owned(),
+                JsonValue::Array(
+                    attachments
+                        .iter()
+                        .map(|attachment| {
+                            JsonValue::Object(
+                                JsonMap::from_iter([
+                                    (
+                                        "attachment_id".to_owned(),
+                                        JsonValue::String(attachment.attachment_id.0.clone()),
+                                    ),
+                                    ("name".to_owned(), JsonValue::String(attachment.name.clone())),
+                                    (
+                                        "content_type".to_owned(),
+                                        JsonValue::String(attachment.content_type.clone()),
+                                    ),
+                                    (
+                                        "byte_len".to_owned(),
+                                        JsonValue::Number(serde_json::Number::from(
+                                            attachment.byte_len,
+                                        )),
+                                    ),
+                                ])
+                            )
+                        })
+                        .collect(),
+                ),
+            );
+        }
+        let source = self.identities()?.into_iter().next().map(|identity| identity.identity).ok_or_else(
+            || {
+                Error::from(
+                    SdkError::new(
+                        code::RUNTIME_INVALID_STATE,
+                        SdkErrorCategory::Runtime,
+                        "mission update requires an active identity",
+                    )
+                    .with_user_actionable(true),
+                )
+            },
+        )?;
+        let mut send_request =
+            SendRequest::new(source, request.peer_identity.0, JsonValue::Object(payload));
+        if let Some(correlation_id) = request.correlation_id {
+            send_request = send_request.with_correlation_id(correlation_id);
+        }
+        if let Some(idempotency_key) = request.idempotency_key {
+            send_request = send_request.with_idempotency_key(idempotency_key);
+        }
+        let receipt = self.send(send_request)?;
+        Ok(WorkflowMissionUpdateResult {
+            peer,
+            message_id: receipt.message_id.into(),
+            topic,
+            attachments,
+        })
+    }
+
+    fn find_contact(&self, identity: &str) -> Result<Option<Contact>, Error> {
+        Ok(self
+            .collect_contacts(None)?
+            .into_iter()
+            .find(|contact| contact.identity == identity))
+    }
+
+    fn find_topic_by_path(
+        &self,
+        topic_path: &str,
+        page_size: usize,
+    ) -> Result<Option<crate::domain::TopicRecord>, Error> {
+        let mut cursor = None;
+        loop {
+            let page = self
+                .backend
+                .topic_list(TopicListRequest {
+                    cursor: cursor.clone(),
+                    limit: Some(page_size),
+                    extensions: BTreeMap::new(),
+                })
+                .map_err(Error::from)?;
+            if let Some(found) = page
+                .topics
+                .into_iter()
+                .find(|topic| topic.topic_path.as_ref().map(|path| path.0.as_str()) == Some(topic_path))
+            {
+                return Ok(Some(found));
+            }
+            match page.next_cursor {
+                Some(next_cursor) if cursor.as_deref() != Some(next_cursor.as_str()) => {
+                    cursor = Some(next_cursor);
+                }
+                _ => return Ok(None),
+            }
+        }
     }
 
     fn collect_contacts(&self, limit: Option<usize>) -> Result<Vec<Contact>, Error> {
@@ -2418,6 +2803,74 @@ mod tests {
             .expect("topic publish");
         assert_eq!(published.operation_id.as_str(), "app.topic.publish");
         assert_eq!(published.payload["accepted"], json!(true));
+    }
+
+    #[test]
+    fn execute_envelope_routes_workflow_operations_locally() {
+        let app = Client::new(MockBackend::new());
+        app.start(Config::testing_default()).expect("start");
+
+        let peer_ready = app
+            .command(
+                "sdk_workflow_peer_ready_v2",
+                serde_json::json!({
+                    "identity": "delta",
+                    "announce": true,
+                    "bootstrap": true,
+                }),
+            )
+            .expect("workflow peer ready");
+        assert_eq!(peer_ready.operation_id.as_str(), "app.workflow.peer_ready");
+        assert_eq!(peer_ready.payload["contact"]["identity"], json!("delta"));
+
+        let topic_sync = app
+            .command(
+                "sdk_workflow_topic_sync_v2",
+                serde_json::json!({
+                    "topic_path": "ops/alerts",
+                    "telemetry_limit": 5,
+                }),
+            )
+            .expect("workflow topic sync");
+        assert_eq!(topic_sync.operation_id.as_str(), "app.workflow.topic_sync");
+        assert_eq!(topic_sync.payload["topic"]["topic_id"], json!("topic-1"));
+        assert_eq!(topic_sync.payload["subscribed"], json!(true));
+
+        let mission = app
+            .command(
+                "sdk_workflow_mission_update_send_v2",
+                serde_json::json!({
+                    "peer_identity": "delta",
+                    "content": "mission update",
+                    "topic_path": "ops/alerts",
+                    "attachments": [{
+                        "name": "sitrep.txt",
+                        "content_type": "text/plain",
+                        "bytes_base64": "c2l0cmVw",
+                    }],
+                }),
+            )
+            .expect("workflow mission update");
+        assert_eq!(mission.operation_id.as_str(), "app.workflow.mission_update_send");
+        assert_eq!(mission.payload["message_id"], json!("msg-1"));
+        assert_eq!(mission.payload["attachments"].as_array().expect("attachments").len(), 1);
+    }
+
+    #[test]
+    fn execute_envelope_rejects_reserved_mission_metadata() {
+        let app = Client::new(MockBackend::new());
+
+        let err = app.command(
+            "sdk_workflow_mission_update_send_v2",
+            serde_json::json!({
+                "peer_identity": "delta",
+                "content": "mission update",
+                "metadata": {
+                    "topic_id": "override",
+                },
+            }),
+        );
+        assert!(err.is_err());
     }
 
     #[test]

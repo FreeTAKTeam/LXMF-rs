@@ -386,6 +386,14 @@ fn sdk_release_c_domain_methods_roundtrip() {
     assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.voice.session.open")));
     assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.voice.session.update")));
     assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.voice.session.close")));
+    assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.workflow.peer_ready")));
+    assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.workflow.topic_sync")));
+    assert!(registry_entries
+        .iter()
+        .any(|entry| entry["id"] == json!("app.workflow.attachment_report_publish")));
+    assert!(registry_entries
+        .iter()
+        .any(|entry| entry["id"] == json!("app.workflow.mission_update_send")));
 
     let list_before =
         daemon.handle_rpc(rpc_request(120, "sdk_identity_list_v2", json!({}))).expect("list");
@@ -677,6 +685,103 @@ fn sdk_release_c_domain_methods_roundtrip() {
         voice_update_envelope.result.expect("voice update envelope result")["response"]["payload"],
         json!("active")
     );
+}
+
+#[test]
+fn sdk_operation_registry_roundtrips_workflow_family() {
+    let daemon = RpcDaemon::test_instance();
+
+    let peer_ready = daemon
+        .handle_rpc(rpc_request(
+            1360,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "sdk_workflow_peer_ready_v2",
+                "kind": "command",
+                "payload": {
+                    "identity": "node-b",
+                    "display_name": "Node Bravo",
+                    "trust_level": "trusted",
+                    "bootstrap": true,
+                    "announce": true,
+                },
+            }),
+        ))
+        .expect("workflow peer ready");
+    assert!(peer_ready.error.is_none());
+    let peer_payload = &peer_ready.result.expect("peer ready result")["response"]["payload"];
+    assert_eq!(peer_payload["contact"]["identity"], json!("node-b"));
+    assert_eq!(peer_payload["announced"], json!(true));
+
+    let topic_sync = daemon
+        .handle_rpc(rpc_request(
+            1361,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "sdk_workflow_topic_sync_v2",
+                "kind": "command",
+                "payload": {
+                    "topic_path": "ops/workflow",
+                    "telemetry_limit": 0,
+                },
+            }),
+        ))
+        .expect("workflow topic sync");
+    assert!(topic_sync.error.is_none());
+    let topic_payload = &topic_sync.result.expect("topic sync result")["response"]["payload"];
+    assert_eq!(topic_payload["topic"]["topic_path"], json!("ops/workflow"));
+    assert_eq!(topic_payload["subscribed"], json!(true));
+
+    let attachment_report = daemon
+        .handle_rpc(rpc_request(
+            1362,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "sdk_workflow_attachment_report_publish_v2",
+                "kind": "command",
+                "payload": {
+                    "topic_path": "ops/workflow",
+                    "summary_payload": { "summary": "workflow report" },
+                    "attachment": {
+                        "name": "report.txt",
+                        "content_type": "text/plain",
+                        "bytes_base64": "cmVwb3J0",
+                    },
+                },
+            }),
+        ))
+        .expect("workflow attachment report");
+    assert!(attachment_report.error.is_none());
+    let attachment_payload =
+        &attachment_report.result.expect("attachment report result")["response"]["payload"];
+    assert_eq!(attachment_payload["attachment"]["name"], json!("report.txt"));
+    assert_eq!(attachment_payload["published"]["accepted"], json!(true));
+
+    let mission = daemon
+        .handle_rpc(rpc_request(
+            1363,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "sdk_workflow_mission_update_send_v2",
+                "kind": "command",
+                "payload": {
+                    "peer_identity": "node-b",
+                    "content": "mission update",
+                    "topic_path": "ops/workflow",
+                    "attachments": [{
+                        "name": "sitrep.txt",
+                        "content_type": "text/plain",
+                        "bytes_base64": "c2l0cmVw",
+                    }],
+                },
+            }),
+        ))
+        .expect("workflow mission update");
+    assert!(mission.error.is_none());
+    let mission_payload = &mission.result.expect("mission update result")["response"]["payload"];
+    assert_eq!(mission_payload["topic"]["topic_path"], json!("ops/workflow"));
+    assert_eq!(mission_payload["attachments"].as_array().expect("attachments").len(), 1);
+    assert!(mission_payload["message_id"].as_str().is_some());
 }
 
 #[test]

@@ -22,6 +22,16 @@ const SDK_OPERATION_SPECS: &[SdkOperationSpec] = &[
         rpc_method: "sdk_snapshot_v2",
     },
     SdkOperationSpec {
+        id: "app.delivery.send",
+        group: "delivery",
+        kind: "command",
+        transport_variant: "rpc",
+        description: "Queue one outbound message for delivery.",
+        aliases: &["sdk_send_v2"],
+        required_capabilities: &[],
+        rpc_method: "sdk_send_v2",
+    },
+    SdkOperationSpec {
         id: "app.delivery.status",
         group: "delivery",
         kind: "query",
@@ -100,6 +110,61 @@ const SDK_OPERATION_SPECS: &[SdkOperationSpec] = &[
         aliases: &["sdk_identity_bootstrap_v2"],
         required_capabilities: &["sdk.capability.contact_management"],
         rpc_method: "sdk_identity_bootstrap_v2",
+    },
+    SdkOperationSpec {
+        id: "app.workflow.peer_ready",
+        group: "workflow",
+        kind: "command",
+        transport_variant: "rpc",
+        description: "Ensure a peer contact exists and optionally announce before use.",
+        aliases: &["sdk_workflow_peer_ready_v2"],
+        required_capabilities: &[
+            "sdk.capability.contact_management",
+            "sdk.capability.identity_discovery",
+        ],
+        rpc_method: "sdk_workflow_peer_ready_v2",
+    },
+    SdkOperationSpec {
+        id: "app.workflow.topic_sync",
+        group: "workflow",
+        kind: "command",
+        transport_variant: "rpc",
+        description: "Ensure a topic exists, subscribe to it, and fetch a telemetry snapshot.",
+        aliases: &["sdk_workflow_topic_sync_v2"],
+        required_capabilities: &[
+            "sdk.capability.topics",
+            "sdk.capability.topic_subscriptions",
+            "sdk.capability.telemetry_query",
+        ],
+        rpc_method: "sdk_workflow_topic_sync_v2",
+    },
+    SdkOperationSpec {
+        id: "app.workflow.attachment_report_publish",
+        group: "workflow",
+        kind: "command",
+        transport_variant: "rpc",
+        description: "Ensure a topic, store an attachment, and publish a summary report.",
+        aliases: &["sdk_workflow_attachment_report_publish_v2"],
+        required_capabilities: &[
+            "sdk.capability.topics",
+            "sdk.capability.attachments",
+            "sdk.capability.topic_fanout",
+        ],
+        rpc_method: "sdk_workflow_attachment_report_publish_v2",
+    },
+    SdkOperationSpec {
+        id: "app.workflow.mission_update_send",
+        group: "workflow",
+        kind: "command",
+        transport_variant: "rpc",
+        description: "Ensure peer and optional topic state, store attachments, and send a mission update.",
+        aliases: &["sdk_workflow_mission_update_send_v2"],
+        required_capabilities: &[
+            "sdk.capability.contact_management",
+            "sdk.capability.topics",
+            "sdk.capability.attachments",
+        ],
+        rpc_method: "sdk_workflow_mission_update_send_v2",
     },
     SdkOperationSpec {
         id: "app.topic.create",
@@ -419,6 +484,11 @@ impl RpcDaemon {
         params: JsonValue,
     ) -> Result<RpcResponse, std::io::Error> {
         let delegated = match method {
+            "sdk_send_v2" => self.handle_rpc_legacy_messages(RpcRequest {
+                id: request_id,
+                method: method.to_owned(),
+                params: Some(params),
+            })?,
             "sdk_snapshot_v2" => self.handle_sdk_snapshot_v2(RpcRequest {
                 id: request_id,
                 method: method.to_owned(),
@@ -472,6 +542,30 @@ impl RpcDaemon {
                 method: method.to_owned(),
                 params: Some(params),
             })?,
+            "sdk_workflow_peer_ready_v2" => self.handle_sdk_workflow_peer_ready_v2(RpcRequest {
+                id: request_id,
+                method: method.to_owned(),
+                params: Some(params),
+            })?,
+            "sdk_workflow_topic_sync_v2" => self.handle_sdk_workflow_topic_sync_v2(RpcRequest {
+                id: request_id,
+                method: method.to_owned(),
+                params: Some(params),
+            })?,
+            "sdk_workflow_attachment_report_publish_v2" => {
+                self.handle_sdk_workflow_attachment_report_publish_v2(RpcRequest {
+                    id: request_id,
+                    method: method.to_owned(),
+                    params: Some(params),
+                })?
+            }
+            "sdk_workflow_mission_update_send_v2" => {
+                self.handle_sdk_workflow_mission_update_send_v2(RpcRequest {
+                    id: request_id,
+                    method: method.to_owned(),
+                    params: Some(params),
+                })?
+            }
             "sdk_topic_create_v2" => self.handle_sdk_topic_create_v2(RpcRequest {
                 id: request_id,
                 method: method.to_owned(),
@@ -639,6 +733,7 @@ impl RpcDaemon {
         }
         let raw = delegated.result.unwrap_or(JsonValue::Null);
         let payload = match method {
+            "sdk_send_v2" => raw,
             "sdk_identity_list_v2" => raw.get("identities").cloned().unwrap_or(JsonValue::Null),
             "sdk_identity_presence_list_v2" => {
                 raw.get("presence_list").cloned().unwrap_or(JsonValue::Null)
@@ -648,6 +743,12 @@ impl RpcDaemon {
             }
             "sdk_identity_contact_update_v2" | "sdk_identity_bootstrap_v2" => {
                 raw.get("contact").cloned().unwrap_or(JsonValue::Null)
+            }
+            "sdk_workflow_peer_ready_v2"
+            | "sdk_workflow_topic_sync_v2"
+            | "sdk_workflow_attachment_report_publish_v2"
+            | "sdk_workflow_mission_update_send_v2" => {
+                raw.get("workflow").cloned().unwrap_or(JsonValue::Null)
             }
             "sdk_topic_create_v2" => raw.get("topic").cloned().unwrap_or(JsonValue::Null),
             "sdk_topic_get_v2" => raw.get("topic").cloned().unwrap_or(JsonValue::Null),
@@ -731,6 +832,7 @@ impl RpcDaemon {
         };
 
         let delegated_params = match rpc_method {
+            "sdk_send_v2" => parsed.payload,
             "sdk_snapshot_v2" => json!({}),
             "sdk_status_v2" => json!({
                 "message_id": parsed.payload.get("message_id").and_then(JsonValue::as_str),
@@ -745,6 +847,10 @@ impl RpcDaemon {
             "sdk_identity_contact_list_v2" => parsed.payload,
             "sdk_identity_contact_update_v2" => parsed.payload,
             "sdk_identity_bootstrap_v2" => parsed.payload,
+            "sdk_workflow_peer_ready_v2" => parsed.payload,
+            "sdk_workflow_topic_sync_v2" => parsed.payload,
+            "sdk_workflow_attachment_report_publish_v2" => parsed.payload,
+            "sdk_workflow_mission_update_send_v2" => parsed.payload,
             "sdk_topic_create_v2" => parsed.payload,
             "sdk_topic_get_v2" => json!({
                 "topic_id": parsed.payload,
@@ -819,6 +925,490 @@ impl RpcDaemon {
                     "correlation_id": parsed.correlation_id,
                     "payload": payload,
                     "extensions": extensions,
+                }
+            })),
+            error: None,
+        })
+    }
+
+    fn handle_sdk_workflow_peer_ready_v2(
+        &self,
+        request: RpcRequest,
+    ) -> Result<RpcResponse, std::io::Error> {
+        let params = request.params.unwrap_or_else(|| json!({}));
+        let Some(identity) = params.get("identity").and_then(JsonValue::as_str) else {
+            return Ok(self.sdk_error_response(
+                request.id,
+                "SDK_VALIDATION_INVALID_ARGUMENT",
+                "workflow peer ready requires identity",
+            ));
+        };
+        let announce = params.get("announce").and_then(JsonValue::as_bool).unwrap_or(true);
+        let bootstrap = params.get("bootstrap").and_then(JsonValue::as_bool).unwrap_or(true);
+
+        let mut existing_contact = None;
+        let mut cursor = None;
+        loop {
+            let listed = self.handle_sdk_identity_contact_list_v2(RpcRequest {
+                id: request.id,
+                method: "sdk_identity_contact_list_v2".to_owned(),
+                params: Some(json!({
+                    "cursor": cursor,
+                    "limit": 100,
+                })),
+            })?;
+            if listed.error.is_some() {
+                return Ok(listed);
+            }
+            let result = listed.result.unwrap_or(JsonValue::Null);
+            let contact_list = result.get("contact_list").cloned().unwrap_or(JsonValue::Null);
+            if let Some(found) = contact_list
+                .get("contacts")
+                .and_then(JsonValue::as_array)
+                .and_then(|contacts| {
+                    contacts.iter().find(|contact| {
+                        contact.get("identity").and_then(JsonValue::as_str) == Some(identity)
+                    })
+                })
+                .cloned()
+            {
+                existing_contact = Some(found);
+                break;
+            }
+            match contact_list.get("next_cursor").and_then(JsonValue::as_str) {
+                Some(next) if cursor.as_deref() != Some(next) => cursor = Some(next.to_owned()),
+                _ => break,
+            }
+        }
+
+        let announced = if announce {
+            let announce_response = self.handle_sdk_identity_announce_now_v2(RpcRequest {
+                id: request.id,
+                method: "sdk_identity_announce_now_v2".to_owned(),
+                params: Some(json!({})),
+            })?;
+            if announce_response.error.is_some() {
+                return Ok(announce_response);
+            }
+            true
+        } else {
+            false
+        };
+
+        let contact = if let Some(contact) = existing_contact {
+            (contact, false)
+        } else {
+            let created = if bootstrap {
+                self.handle_sdk_identity_bootstrap_v2(RpcRequest {
+                    id: request.id,
+                    method: "sdk_identity_bootstrap_v2".to_owned(),
+                    params: Some(json!({
+                        "identity": identity,
+                        "auto_sync": true,
+                        "extensions": params.get("extensions").cloned().unwrap_or_else(|| json!({})),
+                    })),
+                })?
+            } else {
+                self.handle_sdk_identity_contact_update_v2(RpcRequest {
+                    id: request.id,
+                    method: "sdk_identity_contact_update_v2".to_owned(),
+                    params: Some(json!({
+                        "identity": identity,
+                        "display_name": params.get("display_name").cloned().unwrap_or(JsonValue::Null),
+                        "trust_level": params.get("trust_level").cloned().unwrap_or(JsonValue::Null),
+                        "bootstrap": false,
+                        "metadata": params.get("metadata").cloned().unwrap_or_else(|| json!({})),
+                        "extensions": params.get("extensions").cloned().unwrap_or_else(|| json!({})),
+                    })),
+                })?
+            };
+            if created.error.is_some() {
+                return Ok(created);
+            }
+            (
+                created
+                    .result
+                    .unwrap_or(JsonValue::Null)
+                    .get("contact")
+                    .cloned()
+                    .unwrap_or(JsonValue::Null),
+                true,
+            )
+        };
+
+        Ok(RpcResponse {
+            id: request.id,
+            result: Some(json!({
+                "workflow": {
+                    "identity": identity,
+                    "contact": contact.0,
+                    "was_created": contact.1,
+                    "announced": announced,
+                }
+            })),
+            error: None,
+        })
+    }
+
+    fn handle_sdk_workflow_topic_sync_v2(
+        &self,
+        request: RpcRequest,
+    ) -> Result<RpcResponse, std::io::Error> {
+        let params = request.params.unwrap_or_else(|| json!({}));
+        let Some(topic_path) = params.get("topic_path").and_then(JsonValue::as_str) else {
+            return Ok(self.sdk_error_response(
+                request.id,
+                "SDK_VALIDATION_INVALID_ARGUMENT",
+                "workflow topic sync requires topic_path",
+            ));
+        };
+
+        let mut topic = None;
+        let mut cursor = None;
+        loop {
+            let listed = self.handle_sdk_topic_list_v2(RpcRequest {
+                id: request.id,
+                method: "sdk_topic_list_v2".to_owned(),
+                params: Some(json!({
+                    "cursor": cursor,
+                    "limit": 100,
+                })),
+            })?;
+            if listed.error.is_some() {
+                return Ok(listed);
+            }
+            let result = listed.result.unwrap_or(JsonValue::Null);
+            if let Some(found) = result
+                .get("topics")
+                .and_then(JsonValue::as_array)
+                .and_then(|topics| {
+                    topics.iter().find(|topic| {
+                        topic.get("topic_path").and_then(JsonValue::as_str) == Some(topic_path)
+                    })
+                })
+                .cloned()
+            {
+                topic = Some((found, false));
+                break;
+            }
+            match result.get("next_cursor").and_then(JsonValue::as_str) {
+                Some(next) if cursor.as_deref() != Some(next) => cursor = Some(next.to_owned()),
+                _ => break,
+            }
+        }
+
+        let (topic, was_created) = if let Some(topic) = topic {
+            topic
+        } else {
+            let created = self.handle_sdk_topic_create_v2(RpcRequest {
+                id: request.id,
+                method: "sdk_topic_create_v2".to_owned(),
+                params: Some(json!({
+                    "topic_path": topic_path,
+                    "metadata": params.get("metadata").cloned().unwrap_or_else(|| json!({})),
+                    "extensions": params.get("extensions").cloned().unwrap_or_else(|| json!({})),
+                })),
+            })?;
+            if created.error.is_some() {
+                return Ok(created);
+            }
+            (
+                created
+                    .result
+                    .unwrap_or(JsonValue::Null)
+                    .get("topic")
+                    .cloned()
+                    .unwrap_or(JsonValue::Null),
+                true,
+            )
+        };
+
+        let topic_id = topic
+            .get("topic_id")
+            .and_then(JsonValue::as_str)
+            .unwrap_or_default()
+            .to_owned();
+
+        let subscribed = self.handle_sdk_topic_subscribe_v2(RpcRequest {
+            id: request.id,
+            method: "sdk_topic_subscribe_v2".to_owned(),
+            params: Some(json!({
+                "topic_id": topic_id,
+            })),
+        })?;
+        if subscribed.error.is_some() {
+            return Ok(subscribed);
+        }
+
+        let telemetry = self.handle_sdk_telemetry_query_v2(RpcRequest {
+            id: request.id,
+            method: "sdk_telemetry_query_v2".to_owned(),
+            params: Some(json!({
+                "topic_id": topic_id,
+                "limit": params.get("telemetry_limit").cloned().unwrap_or(JsonValue::from(100_u64)),
+            })),
+        })?;
+        if telemetry.error.is_some() {
+            return Ok(telemetry);
+        }
+
+        Ok(RpcResponse {
+            id: request.id,
+            result: Some(json!({
+                "workflow": {
+                    "topic": topic,
+                    "was_created": was_created,
+                    "subscribed": subscribed.result.unwrap_or(JsonValue::Null).get("accepted").and_then(JsonValue::as_bool).unwrap_or(false),
+                    "telemetry": telemetry.result.unwrap_or(JsonValue::Null).get("points").cloned().unwrap_or_else(|| json!([])),
+                }
+            })),
+            error: None,
+        })
+    }
+
+    fn handle_sdk_workflow_attachment_report_publish_v2(
+        &self,
+        request: RpcRequest,
+    ) -> Result<RpcResponse, std::io::Error> {
+        let params = request.params.unwrap_or_else(|| json!({}));
+        let topic_sync = self.handle_sdk_workflow_topic_sync_v2(RpcRequest {
+            id: request.id,
+            method: "sdk_workflow_topic_sync_v2".to_owned(),
+            params: Some(json!({
+                "topic_path": params.get("topic_path").cloned().unwrap_or(JsonValue::Null),
+                "metadata": params.get("topic_metadata").cloned().unwrap_or_else(|| json!({})),
+                "telemetry_limit": 0,
+                "extensions": params.get("extensions").cloned().unwrap_or_else(|| json!({})),
+            })),
+        })?;
+        if topic_sync.error.is_some() {
+            return Ok(topic_sync);
+        }
+        let topic = topic_sync
+            .result
+            .unwrap_or(JsonValue::Null)
+            .get("workflow")
+            .and_then(|workflow| workflow.get("topic"))
+            .cloned()
+            .unwrap_or(JsonValue::Null);
+        let topic_id = topic
+            .get("topic_id")
+            .and_then(JsonValue::as_str)
+            .unwrap_or_default()
+            .to_owned();
+
+        let Some(attachment) = params.get("attachment") else {
+            return Ok(self.sdk_error_response(
+                request.id,
+                "SDK_VALIDATION_INVALID_ARGUMENT",
+                "workflow attachment report requires attachment",
+            ));
+        };
+        let stored = self.handle_sdk_attachment_store_v2(RpcRequest {
+            id: request.id,
+            method: "sdk_attachment_store_v2".to_owned(),
+            params: Some(json!({
+                "name": attachment.get("name").cloned().unwrap_or(JsonValue::Null),
+                "content_type": attachment.get("content_type").cloned().unwrap_or(JsonValue::Null),
+                "bytes_base64": attachment.get("bytes_base64").cloned().unwrap_or(JsonValue::Null),
+                "topic_ids": [topic_id],
+                "extensions": params.get("extensions").cloned().unwrap_or_else(|| json!({})),
+            })),
+        })?;
+        if stored.error.is_some() {
+            return Ok(stored);
+        }
+        let attachment_meta = stored
+            .result
+            .unwrap_or(JsonValue::Null)
+            .get("attachment")
+            .cloned()
+            .unwrap_or(JsonValue::Null);
+
+        let published = self.handle_sdk_topic_publish_v2(RpcRequest {
+            id: request.id,
+            method: "sdk_topic_publish_v2".to_owned(),
+            params: Some(json!({
+                "topic_id": topic.get("topic_id").cloned().unwrap_or(JsonValue::Null),
+                "correlation_id": params.get("correlation_id").cloned().unwrap_or(JsonValue::Null),
+                "payload": {
+                    "summary": params.get("summary_payload").cloned().unwrap_or(JsonValue::Null),
+                    "attachment_id": attachment_meta.get("attachment_id").cloned().unwrap_or(JsonValue::Null),
+                    "attachment_name": attachment_meta.get("name").cloned().unwrap_or(JsonValue::Null),
+                    "content_type": attachment_meta.get("content_type").cloned().unwrap_or(JsonValue::Null),
+                },
+                "extensions": params.get("extensions").cloned().unwrap_or_else(|| json!({})),
+            })),
+        })?;
+        if published.error.is_some() {
+            return Ok(published);
+        }
+
+        Ok(RpcResponse {
+            id: request.id,
+            result: Some(json!({
+                "workflow": {
+                    "topic": topic,
+                    "attachment": attachment_meta,
+                    "published": published.result.unwrap_or(JsonValue::Null),
+                }
+            })),
+            error: None,
+        })
+    }
+
+    fn handle_sdk_workflow_mission_update_send_v2(
+        &self,
+        request: RpcRequest,
+    ) -> Result<RpcResponse, std::io::Error> {
+        let params = request.params.unwrap_or_else(|| json!({}));
+        let metadata = params
+            .get("metadata")
+            .and_then(JsonValue::as_object)
+            .cloned()
+            .unwrap_or_default();
+        for key in ["content", "topic_id", "group_id", "file_attachments"] {
+            if metadata.contains_key(key) {
+                return Ok(self.sdk_error_response(
+                    request.id,
+                    "SDK_VALIDATION_INVALID_ARGUMENT",
+                    "mission metadata cannot override reserved fields",
+                ));
+            }
+        }
+
+        let peer = self.handle_sdk_workflow_peer_ready_v2(RpcRequest {
+            id: request.id,
+            method: "sdk_workflow_peer_ready_v2".to_owned(),
+            params: Some(json!({
+                "identity": params.get("peer_identity").cloned().unwrap_or(JsonValue::Null),
+                "display_name": params.get("display_name").cloned().unwrap_or(JsonValue::Null),
+                "trust_level": params.get("trust_level").cloned().unwrap_or(JsonValue::Null),
+                "bootstrap": params.get("bootstrap").cloned().unwrap_or(JsonValue::Bool(true)),
+                "announce": params.get("announce").cloned().unwrap_or(JsonValue::Bool(true)),
+                "metadata": JsonValue::Object(metadata.clone()),
+                "extensions": params.get("extensions").cloned().unwrap_or_else(|| json!({})),
+            })),
+        })?;
+        if peer.error.is_some() {
+            return Ok(peer);
+        }
+        let peer_payload = peer
+            .result
+            .unwrap_or(JsonValue::Null)
+            .get("workflow")
+            .cloned()
+            .unwrap_or(JsonValue::Null);
+
+        let topic = if params.get("topic_path").and_then(JsonValue::as_str).is_some() {
+            let ensured = self.handle_sdk_workflow_topic_sync_v2(RpcRequest {
+                id: request.id,
+                method: "sdk_workflow_topic_sync_v2".to_owned(),
+                params: Some(json!({
+                    "topic_path": params.get("topic_path").cloned().unwrap_or(JsonValue::Null),
+                    "telemetry_limit": 0,
+                    "metadata": {},
+                    "extensions": params.get("extensions").cloned().unwrap_or_else(|| json!({})),
+                })),
+            })?;
+            if ensured.error.is_some() {
+                return Ok(ensured);
+            }
+            ensured
+                .result
+                .unwrap_or(JsonValue::Null)
+                .get("workflow")
+                .and_then(|workflow| workflow.get("topic"))
+                .cloned()
+        } else {
+            None
+        };
+
+        let mut attachment_rows = Vec::new();
+        if let Some(attachments) = params.get("attachments").and_then(JsonValue::as_array) {
+            for attachment in attachments {
+                let stored = self.handle_sdk_attachment_store_v2(RpcRequest {
+                    id: request.id,
+                    method: "sdk_attachment_store_v2".to_owned(),
+                    params: Some(json!({
+                        "name": attachment.get("name").cloned().unwrap_or(JsonValue::Null),
+                        "content_type": attachment.get("content_type").cloned().unwrap_or(JsonValue::Null),
+                        "bytes_base64": attachment.get("bytes_base64").cloned().unwrap_or(JsonValue::Null),
+                        "topic_ids": topic
+                            .as_ref()
+                            .and_then(|topic| topic.get("topic_id").cloned())
+                            .map(|topic_id| json!([topic_id]))
+                            .unwrap_or_else(|| json!([])),
+                        "extensions": params.get("extensions").cloned().unwrap_or_else(|| json!({})),
+                    })),
+                })?;
+                if stored.error.is_some() {
+                    return Ok(stored);
+                }
+                let attachment_meta = stored
+                    .result
+                    .unwrap_or(JsonValue::Null)
+                    .get("attachment")
+                    .cloned()
+                    .unwrap_or(JsonValue::Null);
+                attachment_rows.push(attachment_meta);
+            }
+        }
+
+        let mut fields = metadata;
+        if let Some(topic) = topic.as_ref() {
+            if let Some(topic_id) = topic.get("topic_id").cloned() {
+                fields.insert("topic_id".to_owned(), topic_id.clone());
+                fields.insert("group_id".to_owned(), topic_id);
+            }
+        }
+        if !attachment_rows.is_empty() {
+            fields.insert(
+                "file_attachments".to_owned(),
+                JsonValue::Array(
+                    attachment_rows
+                        .iter()
+                        .map(|attachment| {
+                            json!({
+                                "attachment_id": attachment.get("attachment_id").cloned().unwrap_or(JsonValue::Null),
+                                "name": attachment.get("name").cloned().unwrap_or(JsonValue::Null),
+                                "content_type": attachment.get("content_type").cloned().unwrap_or(JsonValue::Null),
+                                "byte_len": attachment.get("byte_len").cloned().unwrap_or(JsonValue::Null),
+                            })
+                        })
+                        .collect(),
+                ),
+            );
+        }
+
+        let sent = self.handle_rpc_legacy_messages(RpcRequest {
+            id: request.id,
+            method: "sdk_send_v2".to_owned(),
+            params: Some(json!({
+                "id": params
+                    .get("idempotency_key")
+                    .and_then(JsonValue::as_str)
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| format!("workflow-mission-{}", request.id)),
+                "source": self.local_delivery_hash(),
+                "destination": params.get("peer_identity").cloned().unwrap_or(JsonValue::Null),
+                "title": "",
+                "content": params.get("content").cloned().unwrap_or(JsonValue::Null),
+                "fields": JsonValue::Object(fields),
+            })),
+        })?;
+        if sent.error.is_some() {
+            return Ok(sent);
+        }
+
+        Ok(RpcResponse {
+            id: request.id,
+            result: Some(json!({
+                "workflow": {
+                    "peer": peer_payload,
+                    "message_id": sent.result.unwrap_or(JsonValue::Null).get("message_id").cloned().unwrap_or(JsonValue::Null),
+                    "topic": topic,
+                    "attachments": attachment_rows,
                 }
             })),
             error: None,
