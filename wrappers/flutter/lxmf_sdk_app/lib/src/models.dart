@@ -524,6 +524,16 @@ enum Severity { debug, info, warn, error, critical, unknown }
 
 enum TrustLevel { unknown, untrusted, trusted, blocked }
 
+enum VoiceSessionState {
+  newState,
+  ringing,
+  active,
+  holding,
+  closed,
+  failed,
+  unknown,
+}
+
 @immutable
 class IdentityBundle {
   const IdentityBundle({

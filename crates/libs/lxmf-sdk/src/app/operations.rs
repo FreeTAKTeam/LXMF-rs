@@ -431,6 +431,33 @@ fn built_in_entries() -> Vec<OperationEntry> {
         .with_alias("sdk_identity_bootstrap_v2")
         .with_required_capability("sdk.capability.contact_management"),
         OperationEntry::new(
+            "app.voice.session.open",
+            "voice",
+            OperationKind::Command,
+            TransportVariant::Rpc,
+            "Open a voice signaling session for a peer.",
+        )
+        .with_alias("sdk_voice_session_open_v2")
+        .with_required_capability("sdk.capability.voice_signaling"),
+        OperationEntry::new(
+            "app.voice.session.update",
+            "voice",
+            OperationKind::Command,
+            TransportVariant::Rpc,
+            "Advance the state of a voice signaling session.",
+        )
+        .with_alias("sdk_voice_session_update_v2")
+        .with_required_capability("sdk.capability.voice_signaling"),
+        OperationEntry::new(
+            "app.voice.session.close",
+            "voice",
+            OperationKind::Command,
+            TransportVariant::Rpc,
+            "Close a voice signaling session.",
+        )
+        .with_alias("sdk_voice_session_close_v2")
+        .with_required_capability("sdk.capability.voice_signaling"),
+        OperationEntry::new(
             "app.message.history.list",
             "messaging",
             OperationKind::Query,
@@ -549,11 +576,17 @@ mod tests {
         let grouped = registry.entries_by_group();
 
         assert!(grouped.get("runtime").is_some());
+        assert!(grouped.get("voice").is_some());
         assert!(grouped
             .get("identity")
             .expect("identity group")
             .iter()
             .any(|entry| entry.id.as_str() == "app.identity.list"));
+        assert!(grouped
+            .get("voice")
+            .expect("voice group")
+            .iter()
+            .any(|entry| entry.id.as_str() == "app.voice.session.open"));
     }
 
     #[test]

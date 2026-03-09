@@ -176,6 +176,74 @@ void main() {
       expect(result.echo['body'], 'hello');
       expect(result.extensions['via'], 'rpc');
     });
+
+    test('voice session helper maps typed open update and close flows', () async {
+      final binding = _FakeBinding(
+        registry: OperationRegistry(
+          entries: const <OperationEntry>[
+            OperationEntry(
+              id: 'app.voice.session.open',
+              group: 'voice',
+              kind: OperationKind.command,
+              transportVariant: TransportVariant.rpc,
+              description: 'Open voice session.',
+              aliases: <String>['sdk_voice_session_open_v2'],
+            ),
+            OperationEntry(
+              id: 'app.voice.session.update',
+              group: 'voice',
+              kind: OperationKind.command,
+              transportVariant: TransportVariant.rpc,
+              description: 'Update voice session.',
+              aliases: <String>['sdk_voice_session_update_v2'],
+            ),
+            OperationEntry(
+              id: 'app.voice.session.close',
+              group: 'voice',
+              kind: OperationKind.command,
+              transportVariant: TransportVariant.rpc,
+              description: 'Close voice session.',
+              aliases: <String>['sdk_voice_session_close_v2'],
+            ),
+          ],
+        ),
+      );
+      binding.commandResponses = <EnvelopeResponse>[
+        const EnvelopeResponse(
+          operationId: 'app.voice.session.open',
+          kind: EnvelopeKind.result,
+          accepted: true,
+          payload: 'voice-1',
+        ),
+        const EnvelopeResponse(
+          operationId: 'app.voice.session.update',
+          kind: EnvelopeKind.result,
+          accepted: true,
+          payload: 'active',
+        ),
+        const EnvelopeResponse(
+          operationId: 'app.voice.session.close',
+          kind: EnvelopeKind.result,
+          accepted: true,
+          payload: <String, Object?>{'accepted': true, 'session_id': 'voice-1'},
+        ),
+      ];
+
+      final voice = VoiceSessionClient(OperationClient(AppClient(binding)));
+      final sessionId = await voice.open(peerId: 'node-b', codecHint: 'opus');
+      final nextState = await voice.update(
+        sessionId: sessionId,
+        state: VoiceSessionState.active,
+      );
+      final closed = await voice.close(sessionId);
+
+      expect(sessionId, 'voice-1');
+      expect(nextState, VoiceSessionState.active);
+      expect(closed, isTrue);
+      expect(binding.commandEnvelopes[0].operationId, 'app.voice.session.open');
+      expect(binding.commandEnvelopes[1].operationId, 'app.voice.session.update');
+      expect(binding.commandEnvelopes[2].operationId, 'app.voice.session.close');
+    });
   });
 }
 
@@ -199,9 +267,11 @@ final class _FakeBinding implements AppBinding {
   final OperationRegistry registry;
   final EnvelopeResponse queryResponse;
   final EnvelopeResponse commandResponse;
+  List<EnvelopeResponse> commandResponses = <EnvelopeResponse>[];
 
   Envelope? lastQueryEnvelope;
   Envelope? lastCommandEnvelope;
+  final List<Envelope> commandEnvelopes = <Envelope>[];
 
   @override
   Future<EnvelopeResponse> executeEnvelope(Envelope envelope) async {
@@ -211,6 +281,10 @@ final class _FakeBinding implements AppBinding {
         return queryResponse;
       case EnvelopeKind.command:
         lastCommandEnvelope = envelope;
+        commandEnvelopes.add(envelope);
+        if (commandResponses.isNotEmpty) {
+          return commandResponses.removeAt(0);
+        }
         return commandResponse;
       case EnvelopeKind.result:
       case EnvelopeKind.error:

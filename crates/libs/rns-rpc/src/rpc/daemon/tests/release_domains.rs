@@ -398,6 +398,9 @@
             .any(|entry| entry["id"] == json!("app.identity.presence.list")));
         assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.contact.update")));
         assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.identity.bootstrap")));
+        assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.voice.session.open")));
+        assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.voice.session.update")));
+        assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.voice.session.close")));
 
         let list_before =
             daemon.handle_rpc(rpc_request(120, "sdk_identity_list_v2", json!({}))).expect("list");
@@ -675,6 +678,42 @@
             .expect("voice close");
         assert!(voice_close.error.is_none());
         assert_eq!(voice_close.result.expect("result")["accepted"], json!(true));
+
+        let voice_open_envelope = daemon
+            .handle_rpc(rpc_request(
+                1311,
+                "sdk_envelope_execute_v2",
+                json!({
+                    "operation_id": "sdk_voice_session_open_v2",
+                    "kind": "command",
+                    "payload": { "peer_id": "node-b", "codec_hint": "opus" },
+                }),
+            ))
+            .expect("voice open envelope");
+        assert!(voice_open_envelope.error.is_none());
+        let voice_session_id = voice_open_envelope.result.expect("voice open envelope result")
+            ["response"]["payload"]
+            .as_str()
+            .expect("voice session id")
+            .to_string();
+
+        let voice_update_envelope = daemon
+            .handle_rpc(rpc_request(
+                1312,
+                "sdk_envelope_execute_v2",
+                json!({
+                    "operation_id": "app.voice.session.update",
+                    "kind": "command",
+                    "payload": { "session_id": voice_session_id, "state": "active" },
+                }),
+            ))
+            .expect("voice update envelope");
+        assert!(voice_update_envelope.error.is_none());
+        assert_eq!(
+            voice_update_envelope.result.expect("voice update envelope result")["response"]
+                ["payload"],
+            json!("active")
+        );
     }
 
     #[test]

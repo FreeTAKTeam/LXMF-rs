@@ -117,6 +117,21 @@ final result = await commands.invoke<Map<String, Object?>>(
 print('cmd=${result.command} correlation=${result.correlationId}');
 ```
 
+Typed voice-signaling flow:
+
+```dart
+final voice = VoiceSessionClient(OperationClient(client));
+
+final sessionId = await voice.open(peerId: 'node-b', codecHint: 'opus');
+final state = await voice.update(
+  sessionId: sessionId,
+  state: VoiceSessionState.active,
+);
+final closed = await voice.close(sessionId);
+
+print('voice=$sessionId state=${state.name} closed=$closed');
+```
+
 Conversation-oriented flow:
 
 ```dart
@@ -181,6 +196,7 @@ dart run example/rpc_chat_smoke.dart http://127.0.0.1:4243/rpc <peer-destination
 dart run example/rpc_operations_smoke.dart http://127.0.0.1:4243/rpc
 dart run example/custom_operation_smoke.dart http://127.0.0.1:4243/rpc
 dart run example/custom_vendor_command_smoke.dart http://127.0.0.1:4243/rpc
+dart run example/voice_session_smoke.dart http://127.0.0.1:4243/rpc
 ```
 
 Repo-level smoke from the project root:

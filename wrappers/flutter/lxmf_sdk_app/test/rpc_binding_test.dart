@@ -655,5 +655,145 @@ void main() {
       expect(callParams['target'], 'node-b');
       expect(callParams['timeout_ms'], 500);
     });
+
+    test('voice session helper roundtrips canonical voice operations', () async {
+      unawaited(() async {
+        await for (final request in server) {
+          final body = await request.fold<List<int>>(<int>[], (all, chunk) {
+            all.addAll(chunk);
+            return all;
+          });
+          final frame = decodeRpcFrame(body);
+          calls.add(frame);
+          final id = frame['id'] as int;
+          final method = frame['method'] as String;
+          final params = frame['params'] is Map<String, Object?>
+              ? frame['params'] as Map<String, Object?>
+              : const <String, Object?>{};
+          final response = switch (method) {
+            'sdk_operation_registry_v2' => <String, Object?>{
+                'id': id,
+                'result': <String, Object?>{
+                  'registry': <String, Object?>{
+                    'entries': <Object?>[
+                      <String, Object?>{
+                        'id': 'app.voice.session.open',
+                        'group': 'voice',
+                        'kind': 'command',
+                        'transport_variant': 'rpc',
+                        'description': 'Open a voice signaling session for a peer.',
+                        'aliases': <String>['sdk_voice_session_open_v2'],
+                        'required_capabilities': <String>[
+                          'sdk.capability.voice_signaling',
+                        ],
+                      },
+                      <String, Object?>{
+                        'id': 'app.voice.session.update',
+                        'group': 'voice',
+                        'kind': 'command',
+                        'transport_variant': 'rpc',
+                        'description': 'Advance the state of a voice signaling session.',
+                        'aliases': <String>['sdk_voice_session_update_v2'],
+                        'required_capabilities': <String>[
+                          'sdk.capability.voice_signaling',
+                        ],
+                      },
+                      <String, Object?>{
+                        'id': 'app.voice.session.close',
+                        'group': 'voice',
+                        'kind': 'command',
+                        'transport_variant': 'rpc',
+                        'description': 'Close a voice signaling session.',
+                        'aliases': <String>['sdk_voice_session_close_v2'],
+                        'required_capabilities': <String>[
+                          'sdk.capability.voice_signaling',
+                        ],
+                      },
+                    ],
+                  },
+                },
+                'error': null,
+              },
+            'sdk_envelope_execute_v2' => <String, Object?>{
+                'id': id,
+                'result': <String, Object?>{
+                  'response': switch (params['operation_id']) {
+                    'app.voice.session.open' => <String, Object?>{
+                        'operation_id': 'app.voice.session.open',
+                        'kind': 'result',
+                        'accepted': true,
+                        'payload': 'voice-1',
+                        'extensions': <String, Object?>{},
+                      },
+                    'app.voice.session.update' => <String, Object?>{
+                        'operation_id': 'app.voice.session.update',
+                        'kind': 'result',
+                        'accepted': true,
+                        'payload': 'active',
+                        'extensions': <String, Object?>{},
+                      },
+                    'app.voice.session.close' => <String, Object?>{
+                        'operation_id': 'app.voice.session.close',
+                        'kind': 'result',
+                        'accepted': true,
+                        'payload': <String, Object?>{
+                          'accepted': true,
+                          'session_id': 'voice-1',
+                        },
+                        'extensions': <String, Object?>{},
+                      },
+                    _ => <String, Object?>{},
+                  },
+                },
+                'error': null,
+              },
+            _ => <String, Object?>{
+                'id': id,
+                'result': null,
+                'error': <String, Object?>{
+                  'code': 'SDK_VALIDATION_INVALID_ARGUMENT',
+                  'message': 'unknown method',
+                },
+              },
+          };
+          request.response.headers.contentType =
+              ContentType('application', 'msgpack');
+          request.response.add(encodeRpcFrame(response));
+          await request.response.close();
+        }
+      }());
+
+      final voice = VoiceSessionClient(
+        OperationClient(
+          AppClient(
+            RpcBinding(
+              RpcConnectionOptions(
+                endpoint: Uri.parse('http://127.0.0.1:${server.port}/rpc'),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final sessionId = await voice.open(peerId: 'node-b', codecHint: 'opus');
+      final nextState = await voice.update(
+        sessionId: sessionId,
+        state: VoiceSessionState.active,
+      );
+      final closed = await voice.close(sessionId);
+
+      expect(sessionId, 'voice-1');
+      expect(nextState, VoiceSessionState.active);
+      expect(closed, isTrue);
+
+      final envelopeCalls = calls
+          .where((call) => call['method'] == 'sdk_envelope_execute_v2')
+          .toList(growable: false);
+      expect(envelopeCalls.map((call) => (call['params'] as Map<String, Object?>)['operation_id']), [
+        'app.voice.session.open',
+        'app.voice.session.update',
+        'app.voice.session.close',
+      ]);
+    });
   });
 }

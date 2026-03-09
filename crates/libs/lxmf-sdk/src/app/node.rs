@@ -18,7 +18,7 @@ use crate::{
 };
 use crate::domain::{
     ContactListRequest, ContactUpdateRequest, IdentityBootstrapRequest, PresenceListRequest,
-    RemoteCommandRequest,
+    RemoteCommandRequest, VoiceSessionId, VoiceSessionOpenRequest, VoiceSessionUpdateRequest,
 };
 #[cfg(feature = "sdk-async")]
 use crate::{LxmfSdkAsync, SdkBackendAsyncEvents};
@@ -586,6 +586,53 @@ impl<B: SdkBackend> Client<B> {
                     correlation_id,
                     serde_json::to_value(result).expect("bootstrap should serialize"),
                 ))
+            }
+            "app.voice.session.open" => {
+                let req: VoiceSessionOpenRequest =
+                    serde_json::from_value(payload).map_err(|err| {
+                        invalid_envelope(
+                            format!("invalid voice session open payload: {err}"),
+                            canonical_id.as_str(),
+                        )
+                    })?;
+                let session_id = self.backend.voice_session_open(req).map_err(Error::from)?;
+                Ok(envelope_result(
+                    canonical_id,
+                    correlation_id,
+                    serde_json::to_value(session_id)
+                        .expect("voice session id should serialize"),
+                ))
+            }
+            "app.voice.session.update" => {
+                let req: VoiceSessionUpdateRequest =
+                    serde_json::from_value(payload).map_err(|err| {
+                        invalid_envelope(
+                            format!("invalid voice session update payload: {err}"),
+                            canonical_id.as_str(),
+                        )
+                    })?;
+                let state = self.backend.voice_session_update(req).map_err(Error::from)?;
+                Ok(envelope_result(
+                    canonical_id,
+                    correlation_id,
+                    serde_json::to_value(state).expect("voice state should serialize"),
+                ))
+            }
+            "app.voice.session.close" => {
+                let session_id: VoiceSessionId =
+                    serde_json::from_value(payload).map_err(|err| {
+                        invalid_envelope(
+                            format!("invalid voice session close payload: {err}"),
+                            canonical_id.as_str(),
+                        )
+                    })?;
+                self.backend
+                    .voice_session_close(session_id.clone())
+                    .map_err(Error::from)?;
+                Ok(envelope_result(canonical_id, correlation_id, serde_json::json!({
+                    "accepted": true,
+                    "session_id": session_id.0,
+                })))
             }
             _ if matches!(entry.kind, super::operations::OperationKind::Query) => self
                 .backend
@@ -1165,6 +1212,10 @@ mod tests {
             Mutex<VecDeque<Result<crate::domain::RemoteCommandResponse, SdkError>>>,
         envelope_results:
             Mutex<VecDeque<Result<crate::app::EnvelopeResponse, SdkError>>>,
+        voice_open_results: Mutex<VecDeque<Result<crate::domain::VoiceSessionId, SdkError>>>,
+        voice_update_results:
+            Mutex<VecDeque<Result<crate::domain::VoiceSessionState, SdkError>>>,
+        voice_close_results: Mutex<VecDeque<Result<Ack, SdkError>>>,
     }
 
     impl MockBackend {
@@ -1179,6 +1230,9 @@ mod tests {
                 shutdown_results: Mutex::new(VecDeque::new()),
                 remote_command_results: Mutex::new(VecDeque::new()),
                 envelope_results: Mutex::new(VecDeque::new()),
+                voice_open_results: Mutex::new(VecDeque::new()),
+                voice_update_results: Mutex::new(VecDeque::new()),
+                voice_close_results: Mutex::new(VecDeque::new()),
             }
         }
 
@@ -1213,6 +1267,27 @@ mod tests {
             result: Result<crate::app::EnvelopeResponse, SdkError>,
         ) {
             self.envelope_results.lock().expect("envelope results").push_back(result);
+        }
+
+        fn queue_voice_open_result(
+            &self,
+            result: Result<crate::domain::VoiceSessionId, SdkError>,
+        ) {
+            self.voice_open_results.lock().expect("voice open results").push_back(result);
+        }
+
+        fn queue_voice_update_result(
+            &self,
+            result: Result<crate::domain::VoiceSessionState, SdkError>,
+        ) {
+            self.voice_update_results
+                .lock()
+                .expect("voice update results")
+                .push_back(result);
+        }
+
+        fn queue_voice_close_result(&self, result: Result<Ack, SdkError>) {
+            self.voice_close_results.lock().expect("voice close results").push_back(result);
         }
     }
 
@@ -1518,6 +1593,39 @@ mod tests {
                     })
                 })
         }
+
+        fn voice_session_open(
+            &self,
+            _req: crate::domain::VoiceSessionOpenRequest,
+        ) -> Result<crate::domain::VoiceSessionId, SdkError> {
+            self.voice_open_results
+                .lock()
+                .expect("voice open results")
+                .pop_front()
+                .unwrap_or_else(|| Ok(crate::domain::VoiceSessionId("voice-1".to_owned())))
+        }
+
+        fn voice_session_update(
+            &self,
+            _req: crate::domain::VoiceSessionUpdateRequest,
+        ) -> Result<crate::domain::VoiceSessionState, SdkError> {
+            self.voice_update_results
+                .lock()
+                .expect("voice update results")
+                .pop_front()
+                .unwrap_or_else(|| Ok(crate::domain::VoiceSessionState::Active))
+        }
+
+        fn voice_session_close(
+            &self,
+            _session_id: crate::domain::VoiceSessionId,
+        ) -> Result<Ack, SdkError> {
+            self.voice_close_results
+                .lock()
+                .expect("voice close results")
+                .pop_front()
+                .unwrap_or(Ok(Ack { accepted: true, revision: None }))
+        }
     }
 
     impl SdkBackendAsyncEvents for MockBackend {
@@ -1795,6 +1903,54 @@ mod tests {
         assert_eq!(
             response.extensions.get("via").and_then(|value| value.as_str()),
             Some("envelope")
+        );
+    }
+
+    #[test]
+    fn execute_envelope_routes_voice_operations_locally() {
+        let backend = MockBackend::new();
+        backend.queue_voice_open_result(Ok(crate::domain::VoiceSessionId("voice-9".to_owned())));
+        backend.queue_voice_update_result(Ok(crate::domain::VoiceSessionState::Active));
+        backend.queue_voice_close_result(Ok(Ack { accepted: true, revision: None }));
+        let app = Client::new(backend);
+
+        let opened = app
+            .command(
+                "app.voice.session.open",
+                serde_json::json!({ "peer_id": "node-b", "codec_hint": "opus" }),
+            )
+            .expect("voice open");
+        assert_eq!(opened.operation_id.as_str(), "app.voice.session.open");
+        assert_eq!(
+            serde_json::from_value::<crate::domain::VoiceSessionId>(opened.payload)
+                .expect("voice id"),
+            crate::domain::VoiceSessionId("voice-9".to_owned())
+        );
+
+        let updated = app
+            .command(
+                "app.voice.session.update",
+                serde_json::json!({ "session_id": "voice-9", "state": "active" }),
+            )
+            .expect("voice update");
+        assert_eq!(updated.operation_id.as_str(), "app.voice.session.update");
+        assert_eq!(
+            serde_json::from_value::<crate::domain::VoiceSessionState>(updated.payload)
+                .expect("voice state"),
+            crate::domain::VoiceSessionState::Active
+        );
+
+        let closed = app
+            .command("app.voice.session.close", serde_json::json!("voice-9"))
+            .expect("voice close");
+        assert_eq!(closed.operation_id.as_str(), "app.voice.session.close");
+        assert_eq!(
+            closed.payload.get("accepted").and_then(|value| value.as_bool()),
+            Some(true)
+        );
+        assert_eq!(
+            closed.payload.get("session_id").and_then(|value| value.as_str()),
+            Some("voice-9")
         );
     }
 

@@ -102,6 +102,36 @@ const SDK_OPERATION_SPECS: &[SdkOperationSpec] = &[
         rpc_method: "sdk_identity_bootstrap_v2",
     },
     SdkOperationSpec {
+        id: "app.voice.session.open",
+        group: "voice",
+        kind: "command",
+        transport_variant: "rpc",
+        description: "Open a voice signaling session for a peer.",
+        aliases: &["sdk_voice_session_open_v2"],
+        required_capabilities: &["sdk.capability.voice_signaling"],
+        rpc_method: "sdk_voice_session_open_v2",
+    },
+    SdkOperationSpec {
+        id: "app.voice.session.update",
+        group: "voice",
+        kind: "command",
+        transport_variant: "rpc",
+        description: "Advance the state of a voice signaling session.",
+        aliases: &["sdk_voice_session_update_v2"],
+        required_capabilities: &["sdk.capability.voice_signaling"],
+        rpc_method: "sdk_voice_session_update_v2",
+    },
+    SdkOperationSpec {
+        id: "app.voice.session.close",
+        group: "voice",
+        kind: "command",
+        transport_variant: "rpc",
+        description: "Close a voice signaling session.",
+        aliases: &["sdk_voice_session_close_v2"],
+        required_capabilities: &["sdk.capability.voice_signaling"],
+        rpc_method: "sdk_voice_session_close_v2",
+    },
+    SdkOperationSpec {
         id: "app.message.history.list",
         group: "messaging",
         kind: "query",
@@ -232,6 +262,21 @@ impl RpcDaemon {
                 method: method.to_owned(),
                 params: Some(params),
             })?,
+            "sdk_voice_session_open_v2" => self.handle_sdk_voice_session_open_v2(RpcRequest {
+                id: request_id,
+                method: method.to_owned(),
+                params: Some(params),
+            })?,
+            "sdk_voice_session_update_v2" => self.handle_sdk_voice_session_update_v2(RpcRequest {
+                id: request_id,
+                method: method.to_owned(),
+                params: Some(params),
+            })?,
+            "sdk_voice_session_close_v2" => self.handle_sdk_voice_session_close_v2(RpcRequest {
+                id: request_id,
+                method: method.to_owned(),
+                params: Some(params),
+            })?,
             "list_messages" => self.handle_rpc_legacy_messages(RpcRequest {
                 id: request_id,
                 method: method.to_owned(),
@@ -275,6 +320,12 @@ impl RpcDaemon {
             "sdk_identity_contact_update_v2" | "sdk_identity_bootstrap_v2" => {
                 raw.get("contact").cloned().unwrap_or(JsonValue::Null)
             }
+            "sdk_voice_session_open_v2" => raw
+                .get("session_id")
+                .cloned()
+                .unwrap_or(JsonValue::Null),
+            "sdk_voice_session_update_v2" => raw.get("state").cloned().unwrap_or(JsonValue::Null),
+            "sdk_voice_session_close_v2" => raw,
             "sdk_command_invoke_v2" => raw.get("response").cloned().unwrap_or(raw),
             _ => raw,
         };
@@ -338,6 +389,9 @@ impl RpcDaemon {
             "sdk_identity_contact_list_v2" => parsed.payload,
             "sdk_identity_contact_update_v2" => parsed.payload,
             "sdk_identity_bootstrap_v2" => parsed.payload,
+            "sdk_voice_session_open_v2" => parsed.payload,
+            "sdk_voice_session_update_v2" => parsed.payload,
+            "sdk_voice_session_close_v2" => parsed.payload,
             "list_messages" => json!({
                 "limit": parsed.payload.get("limit").cloned().unwrap_or(JsonValue::from(100_u64)),
                 "offset": parsed.payload.get("offset").cloned().unwrap_or(JsonValue::from(0_u64)),

@@ -212,3 +212,86 @@ class CustomCommandClient {
     );
   }
 }
+
+class VoiceSessionClient {
+  VoiceSessionClient(this._operations);
+
+  final OperationClient _operations;
+
+  Future<String> open({
+    required String peerId,
+    String? codecHint,
+  }) async {
+    final result = await _operations.command<String>(
+      OperationCall<String>(
+        operationId: 'app.voice.session.open',
+        payload: <String, Object?>{
+          'peer_id': peerId,
+          if (codecHint != null) 'codec_hint': codecHint,
+        },
+        decode: (payload) => payload.toString(),
+      ),
+    );
+    return result.payload;
+  }
+
+  Future<VoiceSessionState> update({
+    required String sessionId,
+    required VoiceSessionState state,
+  }) async {
+    final result = await _operations.command<VoiceSessionState>(
+      OperationCall<VoiceSessionState>(
+        operationId: 'app.voice.session.update',
+        payload: <String, Object?>{
+          'session_id': sessionId,
+          'state': _voiceStateToWire(state),
+        },
+        decode: (payload) => _voiceStateFromWire(payload?.toString()),
+      ),
+    );
+    return result.payload;
+  }
+
+  Future<bool> close(String sessionId) async {
+    final result = await _operations.command<bool>(
+      OperationCall<bool>(
+        operationId: 'app.voice.session.close',
+        payload: sessionId,
+        decode: (payload) {
+          if (payload is Map<Object?, Object?>) {
+            return payload['accepted'] == true;
+          }
+          if (payload is Map<String, Object?>) {
+            return payload['accepted'] == true;
+          }
+          return false;
+        },
+      ),
+    );
+    return result.payload;
+  }
+
+  static VoiceSessionState _voiceStateFromWire(String? value) {
+    return switch (value) {
+      'new' => VoiceSessionState.newState,
+      'ringing' => VoiceSessionState.ringing,
+      'active' => VoiceSessionState.active,
+      'holding' => VoiceSessionState.holding,
+      'closed' => VoiceSessionState.closed,
+      'failed' => VoiceSessionState.failed,
+      _ => VoiceSessionState.unknown,
+    };
+  }
+
+  static String _voiceStateToWire(VoiceSessionState state) {
+    return switch (state) {
+      VoiceSessionState.newState => 'new',
+      VoiceSessionState.ringing => 'ringing',
+      VoiceSessionState.active => 'active',
+      VoiceSessionState.holding => 'holding',
+      VoiceSessionState.closed => 'closed',
+      VoiceSessionState.failed => 'failed',
+      VoiceSessionState.unknown => 'unknown',
+    };
+  }
+}
