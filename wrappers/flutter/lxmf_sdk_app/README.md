@@ -25,6 +25,7 @@ Current package scope:
 - typed delivery-plan and delivery-helper models
 - typed operation registry and envelope execution models
 - typed custom-operation helper layer with alias-aware query/command dispatch
+- typed remote-command session and watcher helpers
 - `AppClient` facade over an abstract `AppBinding`
 - `WorkspaceClient` that groups the common app families behind one entrypoint
 - `RpcBinding` for `reticulumd` over framed MessagePack HTTP RPC
@@ -199,6 +200,31 @@ final result = await commands.invoke<Map<String, Object?>>(
 );
 
 print('cmd=${result.command} correlation=${result.correlationId}');
+```
+
+Remote command watcher flow:
+
+```dart
+final commands = CustomCommandClient(OperationClient(client));
+final remote = RemoteCommandClient(client);
+
+final dispatched = await commands.invoke<Map<String, Object?>>(
+  CustomCommandCall<Map<String, Object?>>(
+    operationId: 'vendor.example.custom',
+    target: 'node-b',
+    payload: const <String, Object?>{'body': 'hello'},
+    decodeEcho: (payload) => (payload as Map<Object?, Object?>).map(
+      (key, value) => MapEntry(key.toString(), value),
+    ),
+  ),
+);
+
+await for (final session in remote.watch(dispatched.correlationId!)) {
+  print('state=${session.commandState.name}');
+  if (session.isTerminal) {
+    break;
+  }
+}
 ```
 
 Typed voice-signaling flow:

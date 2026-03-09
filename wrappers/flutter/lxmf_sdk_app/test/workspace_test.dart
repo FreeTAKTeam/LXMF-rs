@@ -29,6 +29,7 @@ void main() {
     expect(identities.single.identity, 'self-1');
     expect(selfAddress, 'self-1');
     expect(workspace.commands, isA<CustomCommandClient>());
+    expect(workspace.remoteCommands, isA<RemoteCommandClient>());
     expect(workspace.topics, isA<TopicClient>());
     expect(workspace.telemetry, isA<TelemetryClient>());
     expect(workspace.markers, isA<MarkerClient>());
@@ -676,7 +677,8 @@ class _FilteredPeerWorkspaceBinding extends _FakeWorkspaceBinding {
           operationId: 'app.contact.list',
           kind: EnvelopeKind.result,
           accepted: true,
-          payload: switch ((envelope.payload as Map<Object?, Object?>)['cursor']) {
+          payload: switch (
+              (envelope.payload as Map<Object?, Object?>)['cursor']) {
             'after-page-1' => const <String, Object?>{
                 'contacts': <Object?>[
                   <String, Object?>{

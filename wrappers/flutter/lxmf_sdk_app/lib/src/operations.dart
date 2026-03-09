@@ -213,6 +213,27 @@ class CustomCommandClient {
   }
 }
 
+class RemoteCommandClient {
+  RemoteCommandClient(this._appClient);
+
+  final AppClient _appClient;
+
+  Future<RemoteCommandSession?> session(String correlationId) {
+    return _appClient.commandSession(correlationId);
+  }
+
+  Future<RemoteCommandSessionPage> list({
+    String? cursor,
+    int? limit,
+  }) {
+    return _appClient.commandSessions(cursor: cursor, limit: limit);
+  }
+
+  Stream<RemoteCommandSession> watch(String correlationId) {
+    return _appClient.watchCommand(correlationId);
+  }
+}
+
 class DiscoveryClient {
   DiscoveryClient(this._operations);
 

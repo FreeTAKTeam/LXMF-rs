@@ -448,6 +448,58 @@ final class RpcBinding implements AppBinding {
     );
   }
 
+  Future<RemoteCommandSession?> commandSession(String correlationId) async {
+    final result = await _call('sdk_command_session_get_v2', <String, Object?>{
+      'correlation_id': correlationId,
+    });
+    final session = result['session'];
+    if (session == null) {
+      return null;
+    }
+    if (session is! Map) {
+      throw const AppError(
+        code: ErrorCode.internalUnexpectedFailure,
+        category: ErrorCategory.internal,
+        message:
+            'sdk_command_session_get_v2 returned an invalid session payload',
+      );
+    }
+    return _remoteCommandSessionFromMap(
+      session.map((key, value) => MapEntry(key.toString(), value)),
+    );
+  }
+
+  Future<RemoteCommandSessionPage> commandSessions({
+    String? cursor,
+    int? limit,
+  }) async {
+    final result = await _call('sdk_command_session_list_v2', <String, Object?>{
+      if (cursor != null) 'cursor': cursor,
+      if (limit != null) 'limit': limit,
+    });
+    final payload = _mapAt(result, 'session_list');
+    final sessionsValue = payload['sessions'];
+    if (sessionsValue is! List) {
+      throw const AppError(
+        code: ErrorCode.internalUnexpectedFailure,
+        category: ErrorCategory.internal,
+        message: 'sdk_command_session_list_v2 did not return a sessions array',
+      );
+    }
+    final sessions = sessionsValue
+        .whereType<Map>()
+        .map(
+          (entry) => _remoteCommandSessionFromMap(
+            entry.map((key, value) => MapEntry(key.toString(), value)),
+          ),
+        )
+        .toList(growable: false);
+    return RemoteCommandSessionPage(
+      sessions: sessions,
+      nextCursor: payload['next_cursor']?.toString(),
+    );
+  }
+
   Stream<DeliveryStatus> watchMessageStatus(String messageId) {
     return Stream<DeliveryStatus>.multi((controller) {
       StreamSubscription<AppEvent>? subscription;
@@ -478,6 +530,84 @@ final class RpcBinding implements AppBinding {
             }
           },
           onError: controller.addError,
+        );
+      });
+
+      controller.onCancel = () async {
+        cancelled = true;
+        await subscription?.cancel();
+      };
+    });
+  }
+
+  Stream<RemoteCommandSession> watchCommand(String correlationId) {
+    return Stream<RemoteCommandSession>.multi((controller) {
+      StreamSubscription<AppEvent>? subscription;
+      RemoteCommandSession? lastSession;
+      var cancelled = false;
+      var refreshInFlight = false;
+
+      bool sameSession(
+        RemoteCommandSession? a,
+        RemoteCommandSession? b,
+      ) {
+        if (a == null || b == null) {
+          return a == b;
+        }
+        return a.commandId == b.commandId &&
+            a.correlationId == b.correlationId &&
+            a.commandState == b.commandState &&
+            a.updatedAtMs == b.updatedAtMs &&
+            a.accepted == b.accepted;
+      }
+
+      Future<void> refresh() async {
+        if (cancelled || refreshInFlight) {
+          return;
+        }
+        refreshInFlight = true;
+        try {
+          final session = await commandSession(correlationId);
+          if (cancelled || session == null) {
+            return;
+          }
+          if (!sameSession(lastSession, session)) {
+            lastSession = session;
+            controller.add(session);
+          }
+          if (session.isTerminal) {
+            await controller.close();
+          }
+        } catch (error, stackTrace) {
+          if (!cancelled) {
+            controller.addError(error, stackTrace);
+          }
+        } finally {
+          refreshInFlight = false;
+        }
+      }
+
+      Future<void>(() async {
+        await refresh();
+        if (cancelled || lastSession?.isTerminal == true) {
+          return;
+        }
+        subscription = subscribeEvents().listen(
+          (event) {
+            final eventCorrelationId = event.metadata.correlationId ??
+                _eventCorrelationId(event.details);
+            if (eventCorrelationId != correlationId ||
+                !_isRemoteCommandEvent(event.kind)) {
+              return;
+            }
+            unawaited(refresh());
+          },
+          onError: controller.addError,
+          onDone: () async {
+            if (!cancelled) {
+              await controller.close();
+            }
+          },
         );
       });
 
@@ -593,6 +723,12 @@ final class RpcBinding implements AppBinding {
     final receiptStatus = (messageMap['receipt_status'] ?? '').toString();
     final kind = switch (eventType) {
       'StreamGap' => EventKind.streamGapDetected,
+      'command.dispatched' => EventKind.commandDispatched,
+      'command.receipt_acknowledged' => EventKind.commandReceiptAcknowledged,
+      'command.processing_started' => EventKind.commandProcessingStarted,
+      'command.progress' => EventKind.commandProgress,
+      'command.completed' => EventKind.commandCompleted,
+      'command.failed' => EventKind.commandFailed,
       'inbound' => EventKind.inboundMessageReceived,
       'delivery_cancelled' => EventKind.messageCancelled,
       'runtime_shutdown_requested' => EventKind.runtimeStopped,
@@ -626,6 +762,9 @@ final class RpcBinding implements AppBinding {
         occurredAtMs: occurredAtMs,
         severity: severity,
         profileId: profile.id,
+        correlationId: map['correlation_id']?.toString() ??
+            payload['correlation_id']?.toString(),
+        operationId: payload['operation_id']?.toString(),
         messageId:
             messageMap['id']?.toString() ?? payload['message_id']?.toString(),
       ),
@@ -807,6 +946,55 @@ final class RpcBinding implements AppBinding {
       'failed' => RunState.failed,
       _ => RunState.failed,
     };
+  }
+
+  static bool _isRemoteCommandEvent(EventKind kind) {
+    return kind == EventKind.commandDispatched ||
+        kind == EventKind.commandReceiptAcknowledged ||
+        kind == EventKind.commandProcessingStarted ||
+        kind == EventKind.commandProgress ||
+        kind == EventKind.commandCompleted ||
+        kind == EventKind.commandFailed;
+  }
+
+  static String? _eventCorrelationId(Object? details) {
+    if (details is Map) {
+      return details['correlation_id']?.toString();
+    }
+    return null;
+  }
+
+  static RemoteCommandState _remoteCommandStateFromWire(String? value) {
+    return switch (value) {
+      'dispatched' => RemoteCommandState.dispatched,
+      'receipt_acknowledged' => RemoteCommandState.receiptAcknowledged,
+      'processing' => RemoteCommandState.processing,
+      'completed' => RemoteCommandState.completed,
+      'failed' => RemoteCommandState.failed,
+      _ => RemoteCommandState.unknown,
+    };
+  }
+
+  static RemoteCommandSession _remoteCommandSessionFromMap(
+    Map<String, Object?> map,
+  ) {
+    return RemoteCommandSession(
+      commandId: map['command_id']?.toString() ?? '',
+      correlationId: map['correlation_id']?.toString() ?? '',
+      command: map['command']?.toString() ?? '',
+      target: map['target']?.toString(),
+      timeoutMs: (map['timeout_ms'] as num?)?.toInt(),
+      deliveryState: map['delivery_state']?.toString(),
+      commandState: _remoteCommandStateFromWire(
+        map['command_state']?.toString(),
+      ),
+      createdAtMs: (map['created_at_ms'] as num?)?.toInt() ?? 0,
+      updatedAtMs: (map['updated_at_ms'] as num?)?.toInt() ?? 0,
+      requestPayload: map['request_payload'],
+      responsePayload: map['response_payload'],
+      accepted: map['accepted'] as bool?,
+      extensions: _mapAt(map, 'extensions'),
+    );
   }
 
   static Severity _mapSeverity(String value) {

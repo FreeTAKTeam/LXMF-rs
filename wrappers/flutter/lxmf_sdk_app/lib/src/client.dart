@@ -161,4 +161,51 @@ class AppClient {
       );
     }
   }
+
+  Future<RemoteCommandSession?> commandSession(String correlationId) async {
+    try {
+      return await (_binding as dynamic).commandSession(correlationId)
+          as RemoteCommandSession?;
+    } on NoSuchMethodError {
+      throw const AppError(
+        code: ErrorCode.capabilityRequiredFeatureMissing,
+        category: ErrorCategory.capability,
+        message:
+            'commandSession is only available on bindings that expose remote command helpers',
+      );
+    }
+  }
+
+  Future<RemoteCommandSessionPage> commandSessions({
+    String? cursor,
+    int? limit,
+  }) async {
+    try {
+      return await (_binding as dynamic).commandSessions(
+          cursor: cursor, limit: limit) as RemoteCommandSessionPage;
+    } on NoSuchMethodError {
+      throw const AppError(
+        code: ErrorCode.capabilityRequiredFeatureMissing,
+        category: ErrorCategory.capability,
+        message:
+            'commandSessions is only available on bindings that expose remote command helpers',
+      );
+    }
+  }
+
+  Stream<RemoteCommandSession> watchCommand(String correlationId) {
+    try {
+      return (_binding as dynamic).watchCommand(correlationId)
+          as Stream<RemoteCommandSession>;
+    } on NoSuchMethodError {
+      return Stream<RemoteCommandSession>.error(
+        const AppError(
+          code: ErrorCode.capabilityRequiredFeatureMissing,
+          category: ErrorCategory.capability,
+          message:
+              'watchCommand is only available on bindings that expose remote command helpers',
+        ),
+      );
+    }
+  }
 }

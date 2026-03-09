@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:lxmf_sdk_app/lxmf_sdk_app.dart';
 import 'package:test/test.dart';
 
@@ -175,6 +177,76 @@ void main() {
       expect(result.timeoutMs, 500);
       expect(result.echo['body'], 'hello');
       expect(result.extensions['via'], 'rpc');
+    });
+
+    test('remote command helper exposes session get list and watch', () async {
+      final binding = _FakeBinding(
+        registry: OperationRegistry(entries: const <OperationEntry>[]),
+      );
+      binding.commandSessionByCorrelation['cmd-42'] =
+          const RemoteCommandSession(
+        commandId: 'cmdreq-42',
+        correlationId: 'cmd-42',
+        command: 'vendor.example.custom',
+        target: 'node-b',
+        timeoutMs: 500,
+        deliveryState: 'acknowledged',
+        commandState: RemoteCommandState.processing,
+        createdAtMs: 10,
+        updatedAtMs: 20,
+        requestPayload: <String, Object?>{'body': 'hello'},
+        accepted: true,
+      );
+
+      final commands = RemoteCommandClient(AppClient(binding));
+      final initial = await commands.session('cmd-42');
+      final page = await commands.list(limit: 10);
+
+      expect(initial, isNotNull);
+      expect(initial!.commandState, RemoteCommandState.processing);
+      expect(page.sessions, hasLength(1));
+
+      final updateFuture = commands
+          .watch('cmd-42')
+          .skip(1)
+          .first
+          .timeout(const Duration(seconds: 1));
+      await Future<void>.delayed(Duration.zero);
+      binding.commandSessionByCorrelation['cmd-42'] =
+          const RemoteCommandSession(
+        commandId: 'cmdreq-42',
+        correlationId: 'cmd-42',
+        command: 'vendor.example.custom',
+        target: 'node-b',
+        timeoutMs: 500,
+        deliveryState: 'acknowledged',
+        commandState: RemoteCommandState.completed,
+        createdAtMs: 10,
+        updatedAtMs: 30,
+        requestPayload: <String, Object?>{'body': 'hello'},
+        responsePayload: <String, Object?>{'reply': 'pong'},
+        accepted: true,
+      );
+      binding.eventController.add(
+        AppEvent(
+          metadata: const EventMetadata(
+            eventId: 'evt-cmd-1',
+            runtimeId: 'rpc-test-runtime',
+            seqNo: 1,
+            occurredAtMs: 30,
+            severity: Severity.info,
+            profileId: 'desktop_default',
+            correlationId: 'cmd-42',
+          ),
+          kind: EventKind.commandCompleted,
+          rawEventType: 'command.completed',
+          details: const <String, Object?>{'correlation_id': 'cmd-42'},
+        ),
+      );
+
+      final completed = await updateFuture;
+      expect(completed.commandState, RemoteCommandState.completed);
+      expect(completed.responsePayload, isA<Map<String, Object?>>());
     });
 
     test('voice session helper maps typed open update and close flows',
@@ -1292,6 +1364,10 @@ final class _FakeBinding implements AppBinding {
   final EnvelopeResponse commandResponse;
   List<EnvelopeResponse> queryResponses = <EnvelopeResponse>[];
   List<EnvelopeResponse> commandResponses = <EnvelopeResponse>[];
+  final Map<String, RemoteCommandSession> commandSessionByCorrelation =
+      <String, RemoteCommandSession>{};
+  final StreamController<AppEvent> eventController =
+      StreamController<AppEvent>.broadcast();
 
   Envelope? lastQueryEnvelope;
   Envelope? lastCommandEnvelope;
@@ -1338,7 +1414,32 @@ final class _FakeBinding implements AppBinding {
   Future<void> stop() async {}
 
   @override
-  Stream<AppEvent> subscribeEvents() => const Stream<AppEvent>.empty();
+  Stream<AppEvent> subscribeEvents() => eventController.stream;
+
+  Future<RemoteCommandSession?> commandSession(String correlationId) async =>
+      commandSessionByCorrelation[correlationId];
+
+  Future<RemoteCommandSessionPage> commandSessions({
+    String? cursor,
+    int? limit,
+  }) async {
+    final sessions = commandSessionByCorrelation.values.toList(growable: false);
+    return RemoteCommandSessionPage(
+      sessions: limit == null ? sessions : sessions.take(limit).toList(),
+    );
+  }
+
+  Stream<RemoteCommandSession> watchCommand(String correlationId) async* {
+    final session = commandSessionByCorrelation[correlationId];
+    if (session != null) {
+      yield session;
+    }
+    yield* eventController.stream
+        .where((event) => event.metadata.correlationId == correlationId)
+        .asyncMap((_) async => commandSessionByCorrelation[correlationId])
+        .where((session) => session != null)
+        .cast<RemoteCommandSession>();
+  }
 
   @override
   Future<SendReceipt> send(SendRequest request) {

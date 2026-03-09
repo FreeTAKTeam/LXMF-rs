@@ -427,6 +427,185 @@ void main() {
       await client.stop();
     });
 
+    test('remote command session helpers roundtrip and watch completion',
+        () async {
+      var pollCount = 0;
+      var sessionGetCount = 0;
+
+      unawaited(() async {
+        await for (final request in server) {
+          final body = await request.fold<List<int>>(<int>[], (all, chunk) {
+            all.addAll(chunk);
+            return all;
+          });
+          final frame = decodeRpcFrame(body);
+          calls.add(frame);
+          final id = frame['id'] as int;
+          final method = frame['method'] as String;
+          final response = switch (method) {
+            'sdk_negotiate_v2' => <String, Object?>{
+                'id': id,
+                'result': <String, Object?>{
+                  'runtime_id': 'rpc-test-runtime',
+                  'active_contract_version': 2,
+                  'effective_capabilities': <String>[
+                    'sdk.capability.remote_commands',
+                    'sdk.capability.async_events',
+                  ],
+                  'effective_limits': <String, Object?>{'max_poll_events': 64},
+                },
+                'error': null,
+              },
+            'sdk_snapshot_v2' => <String, Object?>{
+                'id': id,
+                'result': <String, Object?>{
+                  'runtime_id': 'rpc-test-runtime',
+                  'state': 'running',
+                  'config_revision': 1,
+                  'event_stream_position': 0,
+                  'queued_messages': 0,
+                  'in_flight_messages': 0,
+                },
+                'error': null,
+              },
+            'sdk_configure_v2' => <String, Object?>{
+                'id': id,
+                'result': <String, Object?>{'accepted': true, 'revision': 1},
+                'error': null,
+              },
+            'sdk_command_session_list_v2' => <String, Object?>{
+                'id': id,
+                'result': <String, Object?>{
+                  'session_list': <String, Object?>{
+                    'sessions': <Object?>[
+                      <String, Object?>{
+                        'command_id': 'cmdreq-1',
+                        'correlation_id': 'cmd-1',
+                        'command': 'vendor.example.custom',
+                        'target': 'node-b',
+                        'timeout_ms': 500,
+                        'delivery_state': 'acknowledged',
+                        'command_state': 'processing',
+                        'created_at_ms': 10,
+                        'updated_at_ms': 20,
+                        'request_payload': <String, Object?>{'body': 'hello'},
+                        'response_payload': null,
+                        'accepted': true,
+                        'extensions': <String, Object?>{},
+                      },
+                    ],
+                    'next_cursor': null,
+                  },
+                },
+                'error': null,
+              },
+            'sdk_command_session_get_v2' => <String, Object?>{
+                'id': id,
+                'result': <String, Object?>{
+                  'session': <String, Object?>{
+                    'command_id': 'cmdreq-1',
+                    'correlation_id': 'cmd-1',
+                    'command': 'vendor.example.custom',
+                    'target': 'node-b',
+                    'timeout_ms': 500,
+                    'delivery_state': 'acknowledged',
+                    'command_state':
+                        sessionGetCount++ == 0 ? 'processing' : 'completed',
+                    'created_at_ms': 10,
+                    'updated_at_ms': sessionGetCount == 1 ? 20 : 30,
+                    'request_payload': <String, Object?>{'body': 'hello'},
+                    'response_payload': sessionGetCount == 1
+                        ? null
+                        : <String, Object?>{'reply': 'pong'},
+                    'accepted': true,
+                    'extensions': <String, Object?>{},
+                  },
+                },
+                'error': null,
+              },
+            'sdk_poll_events_v2' => <String, Object?>{
+                'id': id,
+                'result': <String, Object?>{
+                  'runtime_id': 'rpc-test-runtime',
+                  'stream_id': 'sdk-events',
+                  'events': pollCount++ == 0
+                      ? <Object?>[
+                          <String, Object?>{
+                            'event_id': 'evt-cmd-1',
+                            'runtime_id': 'rpc-test-runtime',
+                            'stream_id': 'sdk-events',
+                            'seq_no': 1,
+                            'contract_version': 2,
+                            'ts_ms': 1710000000000,
+                            'event_type': 'command.completed',
+                            'severity': 'info',
+                            'source_component': 'rns-rpc',
+                            'payload': <String, Object?>{
+                              'command_id': 'cmdreq-1',
+                              'correlation_id': 'cmd-1',
+                              'command_state': 'completed',
+                              'response_payload': <String, Object?>{
+                                'kind': 'object',
+                              },
+                            },
+                          },
+                        ]
+                      : <Object?>[],
+                  'next_cursor': 'cursor-$pollCount',
+                  'dropped_count': 0,
+                },
+                'error': null,
+              },
+            'sdk_shutdown_v2' => <String, Object?>{
+                'id': id,
+                'result': <String, Object?>{
+                  'accepted': true,
+                  'mode': 'graceful'
+                },
+                'error': null,
+              },
+            _ => <String, Object?>{
+                'id': id,
+                'result': null,
+                'error': <String, Object?>{
+                  'code': 'SDK_VALIDATION_INVALID_ARGUMENT',
+                  'message': 'unknown method',
+                },
+              },
+          };
+          request.response.headers.contentType =
+              ContentType('application', 'msgpack');
+          request.response.add(encodeRpcFrame(response));
+          await request.response.close();
+        }
+      }());
+
+      final binding = RpcBinding(
+        RpcConnectionOptions(
+          endpoint: Uri.parse('http://127.0.0.1:${server.port}/rpc'),
+          pollIdleDelay: const Duration(milliseconds: 5),
+        ),
+      );
+      final client = AppClient(binding);
+      await client.start(const Config(profile: Profile.testingDefault));
+
+      final page = await client.commandSessions(limit: 10);
+      expect(page.sessions, hasLength(1));
+      expect(page.sessions.single.commandState, RemoteCommandState.processing);
+
+      final initial = await client.commandSession('cmd-1');
+      expect(initial, isNotNull);
+      expect(initial!.correlationId, 'cmd-1');
+
+      final completed = await client.watchCommand('cmd-1').last.timeout(
+            const Duration(seconds: 1),
+          );
+      expect(completed.commandState, RemoteCommandState.completed);
+      expect(completed.responsePayload, isA<Map<String, Object?>>());
+
+      await client.stop();
+    });
+
     test(
         'operation registry and envelope execution roundtrip through rpc helpers',
         () async {

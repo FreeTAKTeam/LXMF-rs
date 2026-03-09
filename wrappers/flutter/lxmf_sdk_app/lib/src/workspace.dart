@@ -138,6 +138,7 @@ class WorkspaceClient {
   late final OperationClient operations = OperationClient(app);
   late final DiscoveryClient discovery = DiscoveryClient(operations);
   late final CustomCommandClient commands = CustomCommandClient(operations);
+  late final RemoteCommandClient remoteCommands = RemoteCommandClient(app);
   late final ConversationClient conversations = ConversationClient(app);
   late final VoiceSessionClient voice = VoiceSessionClient(operations);
   late final TopicClient topics = TopicClient(operations);

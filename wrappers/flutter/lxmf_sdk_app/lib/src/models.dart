@@ -892,6 +892,12 @@ enum EventKind {
   runtimeStopped,
   runtimeDegraded,
   runtimeRecovered,
+  commandDispatched,
+  commandReceiptAcknowledged,
+  commandProcessingStarted,
+  commandProgress,
+  commandCompleted,
+  commandFailed,
   messageQueued,
   messageDispatching,
   messageSent,
@@ -965,6 +971,63 @@ class AppEvent {
   final Object? details;
   final Map<String, Object?> extensions;
   final StreamGapDetails? streamGap;
+}
+
+enum RemoteCommandState {
+  dispatched,
+  receiptAcknowledged,
+  processing,
+  completed,
+  failed,
+  unknown,
+}
+
+@immutable
+class RemoteCommandSession {
+  const RemoteCommandSession({
+    required this.commandId,
+    required this.correlationId,
+    required this.command,
+    required this.commandState,
+    required this.createdAtMs,
+    required this.updatedAtMs,
+    required this.requestPayload,
+    this.target,
+    this.timeoutMs,
+    this.deliveryState,
+    this.responsePayload,
+    this.accepted,
+    this.extensions = const <String, Object?>{},
+  });
+
+  final String commandId;
+  final String correlationId;
+  final String command;
+  final String? target;
+  final int? timeoutMs;
+  final String? deliveryState;
+  final RemoteCommandState commandState;
+  final int createdAtMs;
+  final int updatedAtMs;
+  final Object? requestPayload;
+  final Object? responsePayload;
+  final bool? accepted;
+  final Map<String, Object?> extensions;
+
+  bool get isTerminal =>
+      commandState == RemoteCommandState.completed ||
+      commandState == RemoteCommandState.failed;
+}
+
+@immutable
+class RemoteCommandSessionPage {
+  const RemoteCommandSessionPage({
+    required this.sessions,
+    this.nextCursor,
+  });
+
+  final List<RemoteCommandSession> sessions;
+  final String? nextCursor;
 }
 
 enum OperationKind { query, command }
