@@ -1136,9 +1136,7 @@ mod tests {
     };
     use crate::app::DeliveryOptions;
     use crate::app::{OperationEntry, OperationKind, TransportVariant};
-    use crate::domain::{
-        ContactUpdateRequest, IdentityBootstrapRequest, PresenceListRequest, TrustLevel,
-    };
+    use crate::domain::TrustLevel;
     use crate::error::{code, ErrorCategory as SdkErrorCategory, SdkError};
     use crate::event::{
         EventBatch as RawEventBatch, EventCursor, EventSubscription, SdkEvent,
@@ -1465,76 +1463,6 @@ mod tests {
         fn identity_bootstrap(
             &self,
             req: crate::domain::IdentityBootstrapRequest,
-        ) -> Result<crate::domain::ContactRecord, SdkError> {
-            Ok(crate::domain::ContactRecord {
-                identity: req.identity,
-                display_name: None,
-                trust_level: crate::domain::TrustLevel::Trusted,
-                bootstrap: true,
-                updated_ts_ms: 600,
-                metadata: BTreeMap::new(),
-                extensions: req.extensions,
-            })
-        }
-
-        fn identity_announce_now(&self) -> Result<Ack, SdkError> {
-            Ok(Ack { accepted: true, revision: None })
-        }
-
-        fn identity_presence_list(
-            &self,
-            _req: PresenceListRequest,
-        ) -> Result<crate::domain::PresenceListResult, SdkError> {
-            Ok(crate::domain::PresenceListResult {
-                peers: vec![
-                    crate::domain::PresenceRecord {
-                        peer_id: "bob".to_owned(),
-                        last_seen_ts_ms: 200,
-                        first_seen_ts_ms: 120,
-                        seen_count: 3,
-                        name: Some("Bob Relay".to_owned()),
-                        name_source: Some("announce".to_owned()),
-                        trust_level: Some(crate::domain::TrustLevel::Trusted),
-                        bootstrap: Some(true),
-                        extensions: BTreeMap::from([(
-                            "source".to_owned(),
-                            serde_json::json!("presence"),
-                        )]),
-                    },
-                    crate::domain::PresenceRecord {
-                        peer_id: "eve".to_owned(),
-                        last_seen_ts_ms: 99,
-                        first_seen_ts_ms: 90,
-                        seen_count: 1,
-                        name: Some("Eve".to_owned()),
-                        name_source: Some("announce".to_owned()),
-                        trust_level: Some(crate::domain::TrustLevel::Unknown),
-                        bootstrap: Some(false),
-                        extensions: BTreeMap::new(),
-                    },
-                ],
-                next_cursor: None,
-            })
-        }
-
-        fn identity_contact_update(
-            &self,
-            req: ContactUpdateRequest,
-        ) -> Result<crate::domain::ContactRecord, SdkError> {
-            Ok(crate::domain::ContactRecord {
-                identity: req.identity,
-                display_name: req.display_name,
-                trust_level: req.trust_level.unwrap_or(crate::domain::TrustLevel::Unknown),
-                bootstrap: req.bootstrap.unwrap_or(false),
-                updated_ts_ms: 500,
-                metadata: req.metadata,
-                extensions: req.extensions,
-            })
-        }
-
-        fn identity_bootstrap(
-            &self,
-            req: IdentityBootstrapRequest,
         ) -> Result<crate::domain::ContactRecord, SdkError> {
             Ok(crate::domain::ContactRecord {
                 identity: req.identity,
