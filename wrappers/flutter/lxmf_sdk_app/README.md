@@ -24,6 +24,7 @@ Current package scope:
 - typed `Config`, `Profile`, `SendRequest`, `SendReceipt`, `RuntimeStatus`, `Event`, `AppError`
 - typed delivery-plan and delivery-helper models
 - typed operation registry and envelope execution models
+- typed custom-operation helper layer with alias-aware query/command dispatch
 - `AppClient` facade over an abstract `AppBinding`
 - `RpcBinding` for `reticulumd` over framed MessagePack HTTP RPC
 - `RpcConversationClient` for message history + live conversation updates
@@ -76,6 +77,24 @@ final response = await client.queryOperation(
   correlationId: 'flutter-op-demo',
 );
 print('accepted=${response.accepted} op=${response.operationId}');
+```
+
+Typed custom-operation flow:
+
+```dart
+final operations = OperationClient(client);
+
+final status = await operations.query<Map<String, Object?>>(
+  OperationCall<Map<String, Object?>>(
+    operationId: 'sdk_snapshot_v2',
+    payload: const <String, Object?>{},
+    decode: (payload) => (payload as Map<Object?, Object?>).map(
+      (key, value) => MapEntry(key.toString(), value),
+    ),
+  ),
+);
+
+print('query ${status.operationId} accepted=${status.accepted}');
 ```
 
 Conversation-oriented flow:
@@ -140,6 +159,7 @@ dart test
 dart run example/rpc_smoke.dart http://127.0.0.1:4243/rpc
 dart run example/rpc_chat_smoke.dart http://127.0.0.1:4243/rpc <peer-destination-hash>
 dart run example/rpc_operations_smoke.dart http://127.0.0.1:4243/rpc
+dart run example/custom_operation_smoke.dart http://127.0.0.1:4243/rpc
 ```
 
 Repo-level smoke from the project root:
