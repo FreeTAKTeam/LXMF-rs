@@ -6,7 +6,11 @@ This contract defines the minimum proof required before the repository can claim
 that a Rust-side runtime path interoperates with an external Reticulum/LXMF
 client.
 
-The first required peer for this contract is MeshChatX.
+The release-gated acceptance target for `v1` is:
+
+- MeshChatX
+- Sideband
+- Columba
 
 ## Normative Success Criteria
 
@@ -36,6 +40,29 @@ checks:
 4. MeshChatX to Rust-side delivery is verified through the `reticulumd` SQLite
    message store.
 
+## Sideband v1 Acceptance
+
+Sideband compatibility requires:
+
+1. Sideband starts headless through a scripted `SidebandCore` control shim.
+2. Sideband exposes its local LXMF destination through the shim state artifact.
+3. Rust-side to Sideband delivery is verified through Sideband's own SQLite
+   message store or decoded message view.
+4. Sideband to Rust-side delivery is verified through the `reticulumd` SQLite
+   message store.
+
+## Columba v1 Acceptance
+
+Columba compatibility requires:
+
+1. Columba starts headless through its real Python `ReticulumWrapper`.
+2. Columba exposes its local LXMF destination and source identity through the
+   control shim state artifact.
+3. Rust-side to Columba delivery is verified through Columba's own
+   `poll_received_messages()` path.
+4. Columba to Rust-side delivery is verified through the `reticulumd` SQLite
+   message store.
+
 ## Artifact Requirements
 
 A passing run must retain:
@@ -51,9 +78,7 @@ A passing run must retain:
 
 This contract does not yet require:
 
-- Columba proof
-- Sideband proof
 - CI gating
 
-Those belong to the later release-gated interop track once the first external
-client proof is stable.
+That belongs to the later release-gated interop track once the local harnesses
+are stable on repeated runs.
