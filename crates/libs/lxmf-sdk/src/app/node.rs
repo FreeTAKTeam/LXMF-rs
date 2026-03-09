@@ -2,6 +2,7 @@ use super::capabilities::CapabilitySummary;
 use super::delivery::{
     AttemptDecision, AttemptDisposition, DeliveryAttempt, DeliveryOptions, DeliveryPlan, SendReport,
 };
+use super::envelope::{Envelope, EnvelopeKind, EnvelopeResponse};
 use super::errors::Error;
 #[cfg(feature = "sdk-async")]
 use super::events::{map_event_batch, subscription_cursor, EventBatch, SubscriptionStart};
@@ -11,6 +12,7 @@ use crate::{
     EventCursor, LxmfSdk, Profile as CoreProfile, RuntimeSnapshot, RuntimeState, SdkBackend,
     SdkConfig, SendRequest as RawSendRequest, ShutdownMode, StartRequest,
 };
+use crate::domain::{ContactListRequest, RemoteCommandRequest};
 #[cfg(feature = "sdk-async")]
 use crate::{LxmfSdkAsync, SdkBackendAsyncEvents};
 use serde::{Deserialize, Serialize};
@@ -356,6 +358,119 @@ impl<B: SdkBackend> Client<B> {
         }
     }
 
+    pub fn query(
+        &self,
+        operation_id: impl Into<super::operations::OperationId>,
+        payload: JsonValue,
+    ) -> Result<EnvelopeResponse, Error> {
+        self.execute_envelope(Envelope::query(operation_id, payload))
+    }
+
+    pub fn command(
+        &self,
+        operation_id: impl Into<super::operations::OperationId>,
+        payload: JsonValue,
+    ) -> Result<EnvelopeResponse, Error> {
+        self.execute_envelope(Envelope::command(operation_id, payload))
+    }
+
+    pub fn execute_envelope(&self, envelope: Envelope) -> Result<EnvelopeResponse, Error> {
+        let registry = self.operation_registry()?;
+        let entry = registry
+            .get(envelope.operation_id.as_str())
+            .cloned()
+            .ok_or_else(|| invalid_envelope("unknown operation id", envelope.operation_id.as_str()))?;
+        let canonical_id = entry.id.clone();
+        let kind_matches = matches!(
+            (&envelope.kind, &entry.kind),
+            (EnvelopeKind::Query, super::operations::OperationKind::Query)
+                | (EnvelopeKind::Command, super::operations::OperationKind::Command)
+        );
+        if !kind_matches {
+            return Err(invalid_envelope(
+                "envelope kind does not match registered operation kind",
+                canonical_id.as_str(),
+            ));
+        }
+
+        let Envelope {
+            operation_id: _,
+            kind: _,
+            target,
+            correlation_id,
+            timeout_ms,
+            payload,
+            extensions,
+        } = envelope;
+
+        match canonical_id.as_str() {
+            "app.runtime.status" => Ok(envelope_result(
+                canonical_id,
+                correlation_id,
+                serde_json::to_value(self.status()?).expect("runtime status should serialize"),
+            )),
+            "app.delivery.status" => {
+                let message_id =
+                    payload
+                        .get("message_id")
+                        .and_then(|value| value.as_str())
+                        .ok_or_else(|| {
+                            invalid_envelope(
+                                "delivery status envelope requires payload.message_id",
+                                canonical_id.as_str(),
+                            )
+                        })?;
+                let status = self.delivery_status(message_id.to_owned())?;
+                Ok(envelope_result(
+                    canonical_id,
+                    correlation_id,
+                    serde_json::to_value(status).expect("delivery status should serialize"),
+                ))
+            }
+            "app.identity.list" => Ok(envelope_result(
+                canonical_id,
+                correlation_id,
+                serde_json::to_value(self.backend.identity_list().map_err(Error::from)?)
+                    .expect("identity list should serialize"),
+            )),
+            "app.contact.list" => {
+                let req: ContactListRequest =
+                    serde_json::from_value(payload).map_err(|err| {
+                        invalid_envelope(
+                            format!("invalid contact list payload: {err}"),
+                            canonical_id.as_str(),
+                        )
+                    })?;
+                let result = self.backend.identity_contact_list(req).map_err(Error::from)?;
+                Ok(envelope_result(
+                    canonical_id,
+                    correlation_id,
+                    serde_json::to_value(result).expect("contact list should serialize"),
+                ))
+            }
+            _ => {
+                let response = self
+                    .backend
+                    .command_invoke(RemoteCommandRequest {
+                        command: canonical_id.as_str().to_owned(),
+                        target,
+                        payload,
+                        timeout_ms,
+                        extensions,
+                    })
+                    .map_err(Error::from)?;
+                Ok(EnvelopeResponse {
+                    operation_id: canonical_id,
+                    kind: EnvelopeKind::Result,
+                    accepted: response.accepted,
+                    correlation_id,
+                    payload: response.payload,
+                    extensions: response.extensions,
+                })
+            }
+        }
+    }
+
     pub fn start(&self, config: Config) -> Result<Handle, Error> {
         let mut state = self.state.lock().expect("app client mutex poisoned");
         if state.client.is_none() && state.session.is_some() {
@@ -665,9 +780,45 @@ fn map_delivery_snapshot(snapshot: DeliverySnapshot) -> DeliveryStatus {
     }
 }
 
+fn invalid_envelope(message: impl Into<String>, operation_id: impl Into<String>) -> Error {
+    let mut details = BTreeMap::new();
+    details.insert(
+        "operation_id".to_owned(),
+        JsonValue::String(operation_id.into()),
+    );
+    Error {
+        code: super::errors::ErrorCode::ValidationInvalidArgument,
+        category: super::errors::ErrorCategory::Validation,
+        retryable: false,
+        terminal: true,
+        user_action_required: true,
+        message: message.into(),
+        details,
+        cause_code: None,
+    }
+}
+
+fn envelope_result(
+    operation_id: super::operations::OperationId,
+    correlation_id: Option<String>,
+    payload: JsonValue,
+) -> EnvelopeResponse {
+    EnvelopeResponse {
+        operation_id,
+        kind: EnvelopeKind::Result,
+        accepted: true,
+        correlation_id,
+        payload,
+        extensions: BTreeMap::new(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{Client, Config, DeliveryState, Profile, RunState, SendRequest, SubscriptionStart};
+    use super::{
+        Client, Config, DeliveryState, Envelope, EnvelopeKind, Profile, RunState, SendRequest,
+        SubscriptionStart,
+    };
     use crate::app::DeliveryOptions;
     use crate::app::{OperationEntry, OperationKind, TransportVariant};
     use crate::error::{code, ErrorCategory as SdkErrorCategory, SdkError};
@@ -693,6 +844,8 @@ mod tests {
         send_results: Mutex<VecDeque<Result<crate::MessageId, SdkError>>>,
         shutdown_calls: AtomicUsize,
         shutdown_results: Mutex<VecDeque<Result<Ack, SdkError>>>,
+        remote_command_results:
+            Mutex<VecDeque<Result<crate::domain::RemoteCommandResponse, SdkError>>>,
     }
 
     impl MockBackend {
@@ -704,6 +857,7 @@ mod tests {
                 send_results: Mutex::new(VecDeque::new()),
                 shutdown_calls: AtomicUsize::new(0),
                 shutdown_results: Mutex::new(VecDeque::new()),
+                remote_command_results: Mutex::new(VecDeque::new()),
             }
         }
 
@@ -717,6 +871,16 @@ mod tests {
 
         fn queue_send_result(&self, result: Result<crate::MessageId, SdkError>) {
             self.send_results.lock().expect("send results").push_back(result);
+        }
+
+        fn queue_remote_command_result(
+            &self,
+            result: Result<crate::domain::RemoteCommandResponse, SdkError>,
+        ) {
+            self.remote_command_results
+                .lock()
+                .expect("remote command results")
+                .push_back(result);
         }
     }
 
@@ -821,6 +985,59 @@ mod tests {
                 .pop_front()
                 .unwrap_or(Ok(Ack { accepted: true, revision: None }))
         }
+
+        fn identity_list(&self) -> Result<Vec<crate::domain::IdentityBundle>, SdkError> {
+            Ok(vec![crate::domain::IdentityBundle {
+                identity: crate::domain::IdentityRef("alice".to_owned()),
+                public_key: "pubkey".to_owned(),
+                display_name: Some("Alice".to_owned()),
+                capabilities: vec!["chat".to_owned()],
+                extensions: BTreeMap::new(),
+            }])
+        }
+
+        fn identity_contact_list(
+            &self,
+            req: crate::domain::ContactListRequest,
+        ) -> Result<crate::domain::ContactListResult, SdkError> {
+            let contact = crate::domain::ContactRecord {
+                identity: crate::domain::IdentityRef("bob".to_owned()),
+                display_name: Some("Bob".to_owned()),
+                trust_level: crate::domain::TrustLevel::Trusted,
+                bootstrap: true,
+                updated_ts_ms: 100,
+                metadata: BTreeMap::new(),
+                extensions: BTreeMap::from([(
+                    "cursor".to_owned(),
+                    serde_json::json!(req.cursor),
+                )]),
+            };
+            Ok(crate::domain::ContactListResult {
+                contacts: vec![contact],
+                next_cursor: None,
+            })
+        }
+
+        fn command_invoke(
+            &self,
+            req: crate::domain::RemoteCommandRequest,
+        ) -> Result<crate::domain::RemoteCommandResponse, SdkError> {
+            self.remote_command_results
+                .lock()
+                .expect("remote command results")
+                .pop_front()
+                .unwrap_or_else(|| {
+                    Ok(crate::domain::RemoteCommandResponse {
+                        accepted: true,
+                        payload: serde_json::json!({
+                            "command": req.command,
+                            "target": req.target,
+                            "payload": req.payload,
+                        }),
+                        extensions: req.extensions,
+                    })
+                })
+        }
     }
 
     impl SdkBackendAsyncEvents for MockBackend {
@@ -907,6 +1124,75 @@ mod tests {
             registry.canonicalize("sdk_identity_contact_list_v2").expect("canonical id").as_str(),
             "app.contact.list"
         );
+    }
+
+    #[test]
+    fn execute_envelope_routes_runtime_status_locally() {
+        let app = Client::new(MockBackend::new());
+        let response = app
+            .query("app.runtime.status", serde_json::json!({}))
+            .expect("runtime status");
+        assert_eq!(response.kind, EnvelopeKind::Result);
+        assert_eq!(response.operation_id.as_str(), "app.runtime.status");
+        assert_eq!(response.payload.get("state").and_then(|value| value.as_str()), Some("new"));
+    }
+
+    #[test]
+    fn execute_envelope_routes_identity_queries_to_backend() {
+        let app = Client::new(MockBackend::new());
+        let response = app
+            .query("app.identity.list", serde_json::json!({}))
+            .expect("identity list");
+        let identities = response.payload.as_array().expect("identity array");
+        assert_eq!(identities.len(), 1);
+        assert_eq!(
+            identities[0]
+                .get("display_name")
+                .and_then(|value| value.as_str()),
+            Some("Alice")
+        );
+    }
+
+    #[test]
+    fn execute_envelope_routes_custom_commands_via_remote_command_backend() {
+        let backend = MockBackend::new();
+        backend.queue_remote_command_result(Ok(crate::domain::RemoteCommandResponse {
+            accepted: true,
+            payload: serde_json::json!({ "ok": true }),
+            extensions: BTreeMap::from([("transport".to_owned(), serde_json::json!("remote"))]),
+        }));
+        let app = Client::new(backend);
+        app.start(
+            Config::desktop_default().with_custom_operation(OperationEntry::new(
+                "vendor.example.custom",
+                "custom",
+                OperationKind::Command,
+                TransportVariant::Extension,
+                "Custom vendor command.",
+            )),
+        )
+        .expect("start");
+        let response = app
+            .command("vendor.example.custom", serde_json::json!({ "value": 1 }))
+            .expect("custom command");
+        assert_eq!(response.operation_id.as_str(), "vendor.example.custom");
+        assert_eq!(response.payload.get("ok").and_then(|value| value.as_bool()), Some(true));
+        assert_eq!(
+            response
+                .extensions
+                .get("transport")
+                .and_then(|value| value.as_str()),
+            Some("remote")
+        );
+    }
+
+    #[test]
+    fn execute_envelope_rejects_kind_mismatches() {
+        let app = Client::new(MockBackend::new());
+        let err = app
+            .execute_envelope(Envelope::command("app.identity.list", serde_json::json!({})))
+            .expect_err("kind mismatch should fail");
+        assert_eq!(err.code.as_str(), "SDK_APP_VALIDATION_INVALID_ARGUMENT");
     }
 
     #[test]

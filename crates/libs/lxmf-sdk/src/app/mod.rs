@@ -1,6 +1,7 @@
 mod capabilities;
 mod config;
 mod delivery;
+mod envelope;
 mod errors;
 mod events;
 mod node;
@@ -13,6 +14,7 @@ pub use delivery::{
     QueuePressurePolicy, QueuePressureStrategy, ReconnectPolicy, RetryPolicy, SendReport,
     TimeoutPolicy,
 };
+pub use envelope::{Envelope, EnvelopeKind, EnvelopeResponse};
 pub use errors::{Error, ErrorCategory, ErrorCode};
 pub use events::{
     Event, EventBatch, EventKind, EventMetadata, Severity, StreamGapDetails, SubscriptionStart,
