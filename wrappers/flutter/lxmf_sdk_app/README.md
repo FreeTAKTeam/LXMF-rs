@@ -121,6 +121,33 @@ print(
 );
 ```
 
+R3AKT-shaped mission update flow:
+
+```dart
+final mission = await workspace.flows.sendMissionUpdate(
+  const MissionUpdateDraft(
+    peerIdentity: 'peer-demo',
+    content: 'mission update',
+    topicPath: 'ops/demo',
+    attachments: <AttachmentDraft>[
+      AttachmentDraft(
+        name: 'sitrep.txt',
+        contentType: 'text/plain',
+        bytesBase64: 'c2l0cmVw',
+      ),
+    ],
+    metadata: <String, Object?>{'priority': 'high'},
+    correlationId: 'mission-1',
+  ),
+);
+
+print(
+  'message=${mission.receipt.messageId} '
+  'topic=${mission.topic?.topicId} '
+  'attachments=${mission.attachments.length}',
+);
+```
+
 Operation-catalog flow:
 
 ```dart

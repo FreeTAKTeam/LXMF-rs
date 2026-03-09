@@ -42,12 +42,28 @@ Future<void> main(List<String> args) async {
     ),
     summaryPayload: const <String, Object?>{'title': 'demo report'},
   );
+  final mission = await workspace.flows.sendMissionUpdate(
+    const MissionUpdateDraft(
+      peerIdentity: 'peer-demo',
+      content: 'mission update',
+      topicPath: 'ops/demo',
+      attachments: <AttachmentDraft>[
+        AttachmentDraft(
+          name: 'sitrep.txt',
+          contentType: 'text/plain',
+          bytesBase64: 'c2l0cmVw',
+        ),
+      ],
+      metadata: <String, Object?>{'priority': 'high'},
+    ),
+  );
 
   print(
     'peer=${peer.identity} created=${peer.wasCreated} '
     'topic=${topic.topic.topicId} note=${note.published} '
     'sync=${sync.subscribed}/${sync.telemetry.length} '
-    'report=${report.attachment.attachmentId}',
+    'report=${report.attachment.attachmentId} '
+    'mission=${mission.receipt.messageId}/${mission.attachments.length}',
   );
 
   await workspace.stop();
