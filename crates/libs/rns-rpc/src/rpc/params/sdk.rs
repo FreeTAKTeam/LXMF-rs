@@ -165,10 +165,28 @@ struct SdkDomainSnapshotV1 {
     contact_order: Vec<String>,
     #[serde(default)]
     active_identity: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_remote_commands")]
     remote_commands: HashMap<String, SdkRemoteCommandRecord>,
     #[serde(default)]
     voice_sessions: HashMap<String, SdkVoiceSessionRecord>,
+}
+
+fn deserialize_remote_commands<'de, D>(
+    deserializer: D,
+) -> Result<HashMap<String, SdkRemoteCommandRecord>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = JsonValue::deserialize(deserializer)?;
+    match value {
+        JsonValue::Null => Ok(HashMap::new()),
+        JsonValue::Object(map) => serde_json::from_value(JsonValue::Object(map))
+            .map_err(serde::de::Error::custom),
+        JsonValue::Array(_) => Ok(HashMap::new()),
+        other => Err(serde::de::Error::custom(format!(
+            "remote_commands must be object or array, got {other}"
+        ))),
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]

@@ -147,6 +147,49 @@ fn sdk_release_b_domain_methods_roundtrip() {
 }
 
 #[test]
+fn sdk_domain_snapshot_restore_accepts_legacy_remote_command_arrays() {
+    let store = MessagesStore::in_memory().expect("in-memory store");
+    store
+        .put_sdk_domain_snapshot(&json!({
+            "next_domain_seq": 7,
+            "topics": {},
+            "topic_order": [],
+            "topic_subscriptions": [],
+            "telemetry_points": [],
+            "attachments": {},
+            "attachment_payloads": {},
+            "attachment_order": [],
+            "markers": {},
+            "marker_order": [],
+            "identities": {},
+            "contacts": {},
+            "contact_order": [],
+            "active_identity": null,
+            "remote_commands": ["cmd-legacy-1", "cmd-legacy-2"],
+            "voice_sessions": {},
+        }))
+        .expect("persist legacy snapshot");
+
+    let daemon = RpcDaemon::with_store(store, "legacy-restore-node".to_string());
+
+    let command_sessions = daemon
+        .handle_rpc(rpc_request(
+            499,
+            "sdk_command_session_list_v2",
+            json!({ "limit": 10 }),
+        ))
+        .expect("command session list");
+    assert!(command_sessions.error.is_none());
+    assert_eq!(
+        command_sessions.result.expect("command session list result")["session_list"]["sessions"]
+            .as_array()
+            .expect("session rows")
+            .len(),
+        0
+    );
+}
+
+#[test]
 fn sdk_release_b_filtered_list_cursor_does_not_stall_on_no_matches() {
     let daemon = RpcDaemon::test_instance();
     let topic_a = daemon
