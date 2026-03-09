@@ -23,8 +23,14 @@ cd "${ROOT_DIR}"
 echo "building reticulumd"
 cargo build -p reticulumd --bin reticulumd --quiet
 
+TARGET_DIR="${CARGO_TARGET_DIR:-$(
+  cargo metadata --format-version=1 --no-deps \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])'
+)}"
+RETICULUMD_BIN="${TARGET_DIR}/debug/reticulumd"
+
 echo "starting reticulumd on http://${RPC_ADDR}"
-"${ROOT_DIR}/target/debug/reticulumd" \
+"${RETICULUMD_BIN}" \
   --rpc "${RPC_ADDR}" \
   --db "${DB_DIR}/reticulum.db" \
   --announce-interval-secs 0 \
@@ -58,18 +64,25 @@ done
 
 echo "running flutter workspace flows smoke"
 SMOKE_OUTPUT=""
+SMOKE_OK=0
 for _ in $(seq 1 5); do
   if SMOKE_OUTPUT="$(
     cd wrappers/flutter/lxmf_sdk_app
     dart pub get >/dev/null
     dart run example/workspace_flows_smoke.dart "http://${RPC_ADDR}/rpc" 2>&1
   )"; then
+    SMOKE_OK=1
     break
   fi
   sleep 0.5
 done
 
 echo "${SMOKE_OUTPUT}"
+
+if [[ "${SMOKE_OK}" != "1" ]]; then
+  echo "workspace smoke did not complete successfully" >&2
+  exit 1
+fi
 
 grep -q 'peer=' <<<"${SMOKE_OUTPUT}"
 grep -q 'topic=' <<<"${SMOKE_OUTPUT}"
