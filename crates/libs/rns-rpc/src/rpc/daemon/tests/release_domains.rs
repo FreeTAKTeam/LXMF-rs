@@ -820,7 +820,6 @@ fn sdk_release_c_domain_methods_roundtrip() {
     );
 }
 
-#[test]
 fn sdk_operation_registry_roundtrips_workflow_family() {
     let daemon = RpcDaemon::test_instance();
 
@@ -915,6 +914,54 @@ fn sdk_operation_registry_roundtrips_workflow_family() {
     assert_eq!(mission_payload["topic"]["topic_path"], json!("ops/workflow"));
     assert_eq!(mission_payload["attachments"].as_array().expect("attachments").len(), 1);
     assert!(mission_payload["message_id"].as_str().is_some());
+}
+
+#[test]
+fn sdk_command_events_summarize_large_payloads() {
+    let daemon = RpcDaemon::test_instance();
+
+    let pre_poll = daemon
+        .handle_rpc(rpc_request(
+            490,
+            "sdk_poll_events_v2",
+            json!({ "cursor": null, "max": 50 }),
+        ))
+        .expect("pre poll");
+    assert!(pre_poll.error.is_none());
+    let pre_cursor = pre_poll.result.expect("pre poll result")["next_cursor"]
+        .as_str()
+        .expect("pre cursor")
+        .to_string();
+
+    let large_body = "x".repeat(64 * 1024);
+    let command = daemon
+        .handle_rpc(rpc_request(
+            491,
+            "sdk_command_invoke_v2",
+            json!({
+                "command": "large",
+                "target": "node-b",
+                "payload": { "body": large_body },
+            }),
+        ))
+        .expect("command invoke");
+    assert!(command.error.is_none());
+
+    let poll = daemon
+        .handle_rpc(rpc_request(
+            492,
+            "sdk_poll_events_v2",
+            json!({ "cursor": pre_cursor, "max": 50 }),
+        ))
+        .expect("poll");
+    assert!(poll.error.is_none());
+    let events = poll.result.expect("poll result")["events"].as_array().expect("events").clone();
+    let dispatched = events
+        .iter()
+        .find(|event| event["event_type"] == json!("command.dispatched"))
+        .expect("command.dispatched event");
+    assert_eq!(dispatched["payload"]["request_payload"]["kind"], json!("object"));
+    assert_eq!(dispatched["payload"]["request_payload"]["truncated"], json!(true));
 }
 
 #[test]
