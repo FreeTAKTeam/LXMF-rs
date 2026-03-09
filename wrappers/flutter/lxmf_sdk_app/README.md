@@ -333,6 +333,26 @@ await app.start(
 );
 ```
 
+Workspace flow helpers need the broader domain capabilities they compose, for
+example:
+
+```dart
+await workspace.start(
+  const Config(
+    profile: Profile.desktopDefault,
+    requestedCapabilities: <String>[
+      'sdk.capability.identity_multi',
+      'sdk.capability.identity_discovery',
+      'sdk.capability.contact_management',
+      'sdk.capability.topics',
+      'sdk.capability.topic_fanout',
+      'sdk.capability.markers',
+      'sdk.capability.attachments',
+    ],
+  ),
+);
+```
+
 Current next steps:
 
 1. validate the RPC binding against local `reticulumd` smoke runs

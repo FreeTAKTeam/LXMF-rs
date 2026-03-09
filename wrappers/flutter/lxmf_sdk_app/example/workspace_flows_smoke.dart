@@ -16,7 +16,12 @@ Future<void> main(List<String> args) async {
       profile: Profile.desktopDefault,
       requestedCapabilities: <String>[
         'sdk.capability.identity_multi',
+        'sdk.capability.identity_discovery',
         'sdk.capability.contact_management',
+        'sdk.capability.topics',
+        'sdk.capability.topic_fanout',
+        'sdk.capability.markers',
+        'sdk.capability.attachments',
       ],
     ),
   );
