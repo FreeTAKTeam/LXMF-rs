@@ -19,7 +19,8 @@ void main() {
       await server.close(force: true);
     });
 
-    test('loads history, resolves self address, and streams inbound updates', () async {
+    test('loads history, resolves self address, and streams inbound updates',
+        () async {
       final outboundEvent = <String, Object?>{
         'event_id': 'evt-3',
         'runtime_id': 'rpc-chat-runtime',
@@ -56,13 +57,49 @@ void main() {
           calls.add(frame);
           final id = frame['id'] as int;
           final method = frame['method'] as String;
+          final params = frame['params'] is Map<String, Object?>
+              ? frame['params'] as Map<String, Object?>
+              : const <String, Object?>{};
+          final operationId = params['operation_id']?.toString();
           final response = switch (method) {
+            'sdk_operation_registry_v2' => <String, Object?>{
+                'id': id,
+                'result': <String, Object?>{
+                  'registry': <String, Object?>{
+                    'entries': <Object?>[
+                      <String, Object?>{
+                        'id': 'app.message.history.list',
+                        'group': 'messaging',
+                        'kind': 'query',
+                        'transport_variant': 'legacy_rpc',
+                        'description':
+                            'List message history records for app chat flows.',
+                        'aliases': <String>['list_messages'],
+                        'required_capabilities': <String>[],
+                      },
+                      <String, Object?>{
+                        'id': 'app.delivery.destination_hash',
+                        'group': 'identity',
+                        'kind': 'query',
+                        'transport_variant': 'legacy_rpc',
+                        'description':
+                            'Resolve the runtime delivery destination hash.',
+                        'aliases': <String>['status'],
+                        'required_capabilities': <String>[],
+                      },
+                    ],
+                  },
+                },
+                'error': null,
+              },
             'sdk_negotiate_v2' => <String, Object?>{
                 'id': id,
                 'result': <String, Object?>{
                   'runtime_id': 'rpc-chat-runtime',
                   'active_contract_version': 2,
-                  'effective_capabilities': <String>['sdk.capability.async_events'],
+                  'effective_capabilities': <String>[
+                    'sdk.capability.async_events'
+                  ],
                   'effective_limits': <String, Object?>{'max_poll_events': 64},
                 },
                 'error': null,
@@ -79,31 +116,46 @@ void main() {
                 },
                 'error': null,
               },
-            'status' => <String, Object?>{
+            'sdk_envelope_execute_v2' => <String, Object?>{
                 'id': id,
-                'result': <String, Object?>{
-                  'identity_hash': 'identity-1',
-                  'delivery_destination_hash': 'self-1',
-                  'running': true,
-                },
-                'error': null,
-              },
-            'list_messages' => <String, Object?>{
-                'id': id,
-                'result': <String, Object?>{
-                  'messages': <Object?>[
-                    <String, Object?>{
-                      'id': 'msg-0',
-                      'source': 'self-1',
-                      'destination': 'peer-1',
-                      'title': '',
-                      'content': 'hello',
-                      'timestamp': 1710000000,
-                      'direction': 'out',
-                      'fields': null,
-                      'receipt_status': 'sent: direct',
+                'result': switch (operationId) {
+                  'app.delivery.destination_hash' => <String, Object?>{
+                      'response': <String, Object?>{
+                        'operation_id': 'app.delivery.destination_hash',
+                        'kind': 'result',
+                        'accepted': true,
+                        'payload': <String, Object?>{
+                          'identity_hash': 'identity-1',
+                          'delivery_destination_hash': 'self-1',
+                          'running': true,
+                        },
+                        'extensions': <String, Object?>{},
+                      },
                     },
-                  ],
+                  'app.message.history.list' => <String, Object?>{
+                      'response': <String, Object?>{
+                        'operation_id': 'app.message.history.list',
+                        'kind': 'result',
+                        'accepted': true,
+                        'payload': <String, Object?>{
+                          'messages': <Object?>[
+                            <String, Object?>{
+                              'id': 'msg-0',
+                              'source': 'self-1',
+                              'destination': 'peer-1',
+                              'title': '',
+                              'content': 'hello',
+                              'timestamp': 1710000000,
+                              'direction': 'out',
+                              'fields': null,
+                              'receipt_status': 'sent: direct',
+                            },
+                          ],
+                        },
+                        'extensions': <String, Object?>{},
+                      },
+                    },
+                  _ => <String, Object?>{},
                 },
                 'error': null,
               },
@@ -112,7 +164,8 @@ void main() {
                 'result': <String, Object?>{
                   'runtime_id': 'rpc-chat-runtime',
                   'stream_id': 'sdk-events',
-                  'events': pollCount++ == 0 ? <Object?>[outboundEvent] : <Object?>[],
+                  'events':
+                      pollCount++ == 0 ? <Object?>[outboundEvent] : <Object?>[],
                   'next_cursor': 'cursor-$pollCount',
                   'dropped_count': 0,
                 },
@@ -125,7 +178,10 @@ void main() {
               },
             'sdk_shutdown_v2' => <String, Object?>{
                 'id': id,
-                'result': <String, Object?>{'accepted': true, 'mode': 'graceful'},
+                'result': <String, Object?>{
+                  'accepted': true,
+                  'mode': 'graceful'
+                },
                 'error': null,
               },
             _ => <String, Object?>{
@@ -137,7 +193,8 @@ void main() {
                 },
               },
           };
-          request.response.headers.contentType = ContentType('application', 'msgpack');
+          request.response.headers.contentType =
+              ContentType('application', 'msgpack');
           request.response.add(encodeRpcFrame(response));
           await request.response.close();
         }
@@ -160,9 +217,10 @@ void main() {
       expect(snapshot.messages.first.content, 'hello');
       expect(snapshot.messages.first.direction, ChatDirection.outbound);
 
-      final update = await chat.watchConversation('peer-1').skip(1).first.timeout(
-            const Duration(seconds: 1),
-          );
+      final update =
+          await chat.watchConversation('peer-1').skip(1).first.timeout(
+                const Duration(seconds: 1),
+              );
       expect(update.appendedMessage, isNotNull);
       expect(update.appendedMessage!.content, 'reply');
       expect(update.appendedMessage!.direction, ChatDirection.inbound);
@@ -173,7 +231,14 @@ void main() {
       await app.stop();
 
       final methods = calls.map((call) => call['method']).toList();
-      expect(methods, containsAll(<Object?>['status', 'list_messages', 'sdk_send_v2']));
+      expect(
+        methods,
+        containsAll(<Object?>[
+          'sdk_operation_registry_v2',
+          'sdk_envelope_execute_v2',
+          'sdk_send_v2',
+        ]),
+      );
     });
 
     test('surfaces initial load failures as stream errors', () async {
@@ -186,23 +251,64 @@ void main() {
           final frame = decodeRpcFrame(body);
           final id = frame['id'] as int;
           final method = frame['method'] as String;
+          final params = frame['params'] is Map<String, Object?>
+              ? frame['params'] as Map<String, Object?>
+              : const <String, Object?>{};
+          final operationId = params['operation_id']?.toString();
           final response = switch (method) {
-            'status' => <String, Object?>{
+            'sdk_operation_registry_v2' => <String, Object?>{
                 'id': id,
                 'result': <String, Object?>{
-                  'identity_hash': 'identity-1',
-                  'delivery_destination_hash': 'self-1',
-                  'running': true,
+                  'registry': <String, Object?>{
+                    'entries': <Object?>[
+                      <String, Object?>{
+                        'id': 'app.message.history.list',
+                        'group': 'messaging',
+                        'kind': 'query',
+                        'transport_variant': 'legacy_rpc',
+                        'description':
+                            'List message history records for app chat flows.',
+                        'aliases': <String>['list_messages'],
+                        'required_capabilities': <String>[],
+                      },
+                      <String, Object?>{
+                        'id': 'app.delivery.destination_hash',
+                        'group': 'identity',
+                        'kind': 'query',
+                        'transport_variant': 'legacy_rpc',
+                        'description':
+                            'Resolve the runtime delivery destination hash.',
+                        'aliases': <String>['status'],
+                        'required_capabilities': <String>[],
+                      },
+                    ],
+                  },
                 },
                 'error': null,
               },
-            'list_messages' => <String, Object?>{
+            'sdk_envelope_execute_v2' => <String, Object?>{
                 'id': id,
-                'result': null,
-                'error': <String, Object?>{
-                  'code': 'SDK_VALIDATION_INVALID_ARGUMENT',
-                  'message': 'history unavailable',
-                },
+                'result': operationId == 'app.delivery.destination_hash'
+                    ? <String, Object?>{
+                        'response': <String, Object?>{
+                          'operation_id': 'app.delivery.destination_hash',
+                          'kind': 'result',
+                          'accepted': true,
+                          'payload': <String, Object?>{
+                            'identity_hash': 'identity-1',
+                            'delivery_destination_hash': 'self-1',
+                            'running': true,
+                          },
+                          'extensions': <String, Object?>{},
+                        },
+                      }
+                    : null,
+                'error': operationId == 'app.message.history.list'
+                    ? <String, Object?>{
+                        'code': 'SDK_VALIDATION_INVALID_ARGUMENT',
+                        'message': 'history unavailable',
+                      }
+                    : null,
               },
             _ => <String, Object?>{
                 'id': id,
@@ -210,7 +316,8 @@ void main() {
                 'error': null,
               },
           };
-          request.response.headers.contentType = ContentType('application', 'msgpack');
+          request.response.headers.contentType =
+              ContentType('application', 'msgpack');
           request.response.add(encodeRpcFrame(response));
           await request.response.close();
         }

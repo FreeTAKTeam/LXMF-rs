@@ -367,7 +367,7 @@ final class RpcBinding implements AppBinding {
     return messages
         .whereType<Map>()
         .map(
-          (entry) => _messageRecordFromMap(
+          (entry) => messageRecordFromMap(
             entry.map((key, value) => MapEntry(key.toString(), value)),
           ),
         )
@@ -948,7 +948,7 @@ final class RpcBinding implements AppBinding {
     );
   }
 
-  static MessageRecord _messageRecordFromMap(Map<String, Object?> map) {
+  static MessageRecord messageRecordFromMap(Map<String, Object?> map) {
     return MessageRecord(
       id: map['id']?.toString() ?? '',
       source: map['source']?.toString(),

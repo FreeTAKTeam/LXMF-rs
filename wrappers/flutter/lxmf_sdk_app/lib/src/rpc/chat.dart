@@ -55,13 +55,30 @@ class RpcConversationClient {
   RpcConversationClient(this._binding);
 
   final RpcBinding _binding;
-  final Map<String, List<ChatMessage>> _messageCache = <String, List<ChatMessage>>{};
+  final Map<String, List<ChatMessage>> _messageCache =
+      <String, List<ChatMessage>>{};
+  Future<OperationRegistry>? _registryFuture;
 
-  Future<String> selfAddress() => _binding.deliveryDestinationHash();
+  Future<String> selfAddress() async {
+    final response =
+        await _executeCatalogQuery('app.delivery.destination_hash');
+    final payload = _payloadMap(response.payload);
+    final hash = payload['delivery_destination_hash']?.toString();
+    if (hash == null || hash.isEmpty) {
+      throw const AppError(
+        code: ErrorCode.internalUnexpectedFailure,
+        category: ErrorCategory.internal,
+        message:
+            'app.delivery.destination_hash did not return delivery_destination_hash',
+      );
+    }
+    return hash;
+  }
 
   Future<ConversationSnapshot> loadConversation(String peerAddress) async {
     final self = await selfAddress();
-    final history = await _binding.messageHistory();
+    final response = await _executeCatalogQuery('app.message.history.list');
+    final history = _messageHistoryFromPayload(response.payload);
     final messages = history
         .map(ChatMessageMapper.fromMessageRecord)
         .where((message) => _matchesConversation(message, self, peerAddress))
@@ -112,18 +129,21 @@ class RpcConversationClient {
               if (message == null) {
                 return;
               }
-              if (!_matchesConversation(message, initial.selfAddress, peerAddress)) {
+              if (!_matchesConversation(
+                  message, initial.selfAddress, peerAddress)) {
                 return;
               }
               final existing =
                   _messageCache.putIfAbsent(peerAddress, () => <ChatMessage>[]);
-              final index = existing.indexWhere((entry) => entry.id == message.id);
+              final index =
+                  existing.indexWhere((entry) => entry.id == message.id);
               if (index >= 0) {
                 existing[index] = message;
               } else {
                 existing.add(message);
                 existing.sort(
-                  (left, right) => left.timestampMs.compareTo(right.timestampMs),
+                  (left, right) =>
+                      left.timestampMs.compareTo(right.timestampMs),
                 );
               }
               controller.add(
@@ -166,6 +186,53 @@ class RpcConversationClient {
       return false;
     }
     return self.isNotEmpty;
+  }
+
+  Future<EnvelopeResponse> _executeCatalogQuery(
+    String operationId, {
+    Object? payload = const <String, Object?>{},
+  }) async {
+    final registry = await (_registryFuture ??= _binding.operationRegistry());
+    final canonicalId = registry.canonicalize(operationId);
+    if (canonicalId == null) {
+      throw AppError(
+        code: ErrorCode.capabilityRequiredFeatureMissing,
+        category: ErrorCategory.capability,
+        message: 'operation registry does not expose $operationId',
+        userActionRequired: true,
+      );
+    }
+    return _binding.executeEnvelope(Envelope.query(canonicalId, payload));
+  }
+
+  static Map<String, Object?> _payloadMap(Object? payload) {
+    if (payload is Map<String, Object?>) {
+      return payload;
+    }
+    if (payload is Map) {
+      return payload.map((key, value) => MapEntry(key.toString(), value));
+    }
+    return const <String, Object?>{};
+  }
+
+  static List<MessageRecord> _messageHistoryFromPayload(Object? payload) {
+    final payloadMap = _payloadMap(payload);
+    final messages = payloadMap['messages'];
+    if (messages is! List) {
+      throw const AppError(
+        code: ErrorCode.internalUnexpectedFailure,
+        category: ErrorCategory.internal,
+        message: 'app.message.history.list did not return a messages array',
+      );
+    }
+    return messages
+        .whereType<Map>()
+        .map(
+          (entry) => RpcBinding.messageRecordFromMap(
+            entry.map((key, value) => MapEntry(key.toString(), value)),
+          ),
+        )
+        .toList(growable: false);
   }
 }
 
