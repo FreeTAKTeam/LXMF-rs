@@ -1,6 +1,7 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::borrow::Borrow;
 use std::collections::BTreeMap;
+use std::fmt;
 use std::sync::OnceLock;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -112,7 +113,34 @@ pub enum RegistryError {
     AliasConflictsWithOperationId { alias: String, operation_id: OperationId },
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
+impl fmt::Display for RegistryError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::DuplicateOperationId { id } => {
+                write!(f, "duplicate operation id '{}'", id.as_str())
+            }
+            Self::DuplicateAlias {
+                alias,
+                existing_id,
+                conflicting_id,
+            } => write!(
+                f,
+                "duplicate alias '{}' for '{}' and '{}'",
+                alias,
+                existing_id.as_str(),
+                conflicting_id.as_str()
+            ),
+            Self::AliasConflictsWithOperationId { alias, operation_id } => write!(
+                f,
+                "alias '{}' conflicts with canonical operation id '{}'",
+                alias,
+                operation_id.as_str()
+            ),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq, Default)]
 pub struct OperationRegistry {
     entries: Vec<OperationEntry>,
     #[serde(skip)]
@@ -124,33 +152,7 @@ pub struct OperationRegistry {
 impl OperationRegistry {
     pub fn new(entries: impl IntoIterator<Item = OperationEntry>) -> Result<Self, RegistryError> {
         let entries = entries.into_iter().collect::<Vec<_>>();
-        let mut by_id = BTreeMap::<OperationId, usize>::new();
-        let mut aliases = BTreeMap::<String, OperationId>::new();
-
-        for (index, entry) in entries.iter().enumerate() {
-            if by_id.insert(entry.id.clone(), index).is_some() {
-                return Err(RegistryError::DuplicateOperationId { id: entry.id.clone() });
-            }
-        }
-
-        for entry in &entries {
-            for alias in &entry.aliases {
-                if by_id.contains_key(&OperationId::from(alias.clone())) {
-                    return Err(RegistryError::AliasConflictsWithOperationId {
-                        alias: alias.clone(),
-                        operation_id: OperationId::from(alias.clone()),
-                    });
-                }
-                if let Some(existing_id) = aliases.insert(alias.clone(), entry.id.clone()) {
-                    return Err(RegistryError::DuplicateAlias {
-                        alias: alias.clone(),
-                        existing_id,
-                        conflicting_id: entry.id.clone(),
-                    });
-                }
-            }
-        }
-
+        let (by_id, aliases) = Self::build_indexes(&entries)?;
         Ok(Self { entries, by_id, aliases })
     }
 
@@ -190,6 +192,60 @@ impl OperationRegistry {
         merged.extend(entries);
         Self::new(merged)
     }
+
+    fn build_indexes(
+        entries: &[OperationEntry],
+    ) -> Result<(BTreeMap<OperationId, usize>, BTreeMap<String, OperationId>), RegistryError> {
+        let mut by_id = BTreeMap::<OperationId, usize>::new();
+        let mut aliases = BTreeMap::<String, OperationId>::new();
+
+        for (index, entry) in entries.iter().enumerate() {
+            if by_id.insert(entry.id.clone(), index).is_some() {
+                return Err(RegistryError::DuplicateOperationId { id: entry.id.clone() });
+            }
+        }
+
+        for entry in entries {
+            for alias in &entry.aliases {
+                if by_id.contains_key(alias.as_str()) {
+                    return Err(RegistryError::AliasConflictsWithOperationId {
+                        alias: alias.clone(),
+                        operation_id: OperationId::from(alias.clone()),
+                    });
+                }
+                if let Some(existing_id) = aliases.insert(alias.clone(), entry.id.clone()) {
+                    return Err(RegistryError::DuplicateAlias {
+                        alias: alias.clone(),
+                        existing_id,
+                        conflicting_id: entry.id.clone(),
+                    });
+                }
+            }
+        }
+
+        Ok((by_id, aliases))
+    }
+}
+
+impl<'de> Deserialize<'de> for OperationRegistry {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct WireRegistry {
+            entries: Vec<OperationEntry>,
+        }
+
+        let wire = WireRegistry::deserialize(deserializer)?;
+        let (by_id, aliases) =
+            OperationRegistry::build_indexes(&wire.entries).map_err(serde::de::Error::custom)?;
+        Ok(Self {
+            entries: wire.entries,
+            by_id,
+            aliases,
+        })
+    }
 }
 
 fn built_in_entries() -> Vec<OperationEntry> {
@@ -226,8 +282,7 @@ fn built_in_entries() -> Vec<OperationEntry> {
             TransportVariant::Rpc,
             "Return runtime status and queue counters.",
         )
-        .with_alias("sdk_snapshot_v2")
-        .with_alias("sdk_status_v2"),
+        .with_alias("sdk_snapshot_v2"),
         OperationEntry::new(
             "app.delivery.send",
             "delivery",
@@ -242,7 +297,8 @@ fn built_in_entries() -> Vec<OperationEntry> {
             OperationKind::Query,
             TransportVariant::Rpc,
             "Return delivery state for a specific message id.",
-        ),
+        )
+        .with_alias("sdk_status_v2"),
         OperationEntry::new(
             "app.event.poll",
             "events",
@@ -359,5 +415,20 @@ mod tests {
         .expect_err("duplicate alias should fail");
 
         assert!(matches!(err, RegistryError::DuplicateAlias { alias, .. } if alias == "dup"));
+    }
+
+    #[test]
+    fn deserialized_registry_rebuilds_lookup_indexes() {
+        let json = serde_json::to_string(OperationRegistry::built_in()).expect("registry json");
+        let registry: OperationRegistry = serde_json::from_str(&json).expect("deserialize");
+
+        assert_eq!(
+            registry
+                .canonicalize("sdk_status_v2")
+                .expect("canonical delivery status id")
+                .as_str(),
+            "app.delivery.status"
+        );
+        assert!(registry.supports("sdk_snapshot_v2"));
     }
 }
