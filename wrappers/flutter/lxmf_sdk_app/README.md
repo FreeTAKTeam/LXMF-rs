@@ -440,6 +440,7 @@ Repo-level smoke from the project root:
 
 ```sh
 ./tools/scripts/flutter-rpc-chat-smoke.sh <peer-destination-hash>
+./tools/scripts/flutter-workspace-flows-smoke.sh
 ```
 
 Minimal Flutter UI harness:
