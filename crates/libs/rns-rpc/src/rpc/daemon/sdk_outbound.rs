@@ -37,6 +37,21 @@ impl RpcDaemon {
 
         self.store.insert_message(&record).map_err(std::io::Error::other)?;
         self.append_delivery_trace(&id, "sending".to_string());
+        if self.outbound_bridge.is_some() {
+            let _status_guard =
+                self.delivery_status_lock.lock().expect("delivery_status_lock mutex poisoned");
+            let existing_status = self
+                .store
+                .get_message(&id)
+                .map_err(std::io::Error::other)?
+                .and_then(|message| message.receipt_status);
+            if !existing_status.as_deref().is_some_and(Self::is_terminal_receipt_status) {
+                self.store.update_receipt_status(&id, "sending").map_err(std::io::Error::other)?;
+                record.receipt_status = Some("sending".to_string());
+            } else {
+                record.receipt_status = existing_status;
+            }
+        }
         let deliver_result = if let Some(bridge) = &self.outbound_bridge {
             bridge.deliver(&record, &options)
         } else {
@@ -87,6 +102,28 @@ impl RpcDaemon {
                 id: request_id,
                 result: None,
                 error: Some(RpcError::new("DELIVERY_FAILED", err.to_string())),
+            });
+        }
+        if self.outbound_bridge.is_some() {
+            record.receipt_status = self
+                .store
+                .get_message(&id)
+                .map_err(std::io::Error::other)?
+                .and_then(|message| message.receipt_status);
+            let reason_code = record.receipt_status.as_deref().and_then(delivery_reason_code);
+            let event = RpcEvent {
+                event_type: "outbound".into(),
+                payload: json!({
+                    "message": record,
+                    "method": method,
+                    "reason_code": reason_code,
+                }),
+            };
+            self.publish_event(event);
+            return Ok(RpcResponse {
+                id: request_id,
+                result: Some(json!({ "message_id": id })),
+                error: None,
             });
         }
         let sent_status = format!("sent: {}", method.as_deref().unwrap_or("direct"));
@@ -189,8 +226,6 @@ impl RpcDaemon {
             "sdk_identity_bootstrap_v2",
             "sdk_paper_encode_v2",
             "sdk_paper_decode_v2",
-            "sdk_operation_registry_v2",
-            "sdk_envelope_execute_v2",
             "sdk_command_invoke_v2",
             "sdk_command_reply_v2",
             "sdk_voice_session_open_v2",
@@ -218,5 +253,4 @@ impl RpcDaemon {
             "message_delivery_trace",
         ]
     }
-
 }

@@ -29,6 +29,7 @@ pub(super) struct TransportBridge {
     announce_app_data: Option<Vec<u8>>,
     peer_crypto: Arc<Mutex<HashMap<String, PeerCrypto>>>,
     receipt_map: Arc<Mutex<HashMap<String, String>>>,
+    outbound_resource_map: Arc<Mutex<HashMap<String, String>>>,
     receipt_tx: tokio::sync::mpsc::UnboundedSender<ReceiptEvent>,
 }
 
@@ -47,6 +48,7 @@ impl TransportBridge {
         announce_app_data: Option<Vec<u8>>,
         peer_crypto: Arc<Mutex<HashMap<String, PeerCrypto>>>,
         receipt_map: Arc<Mutex<HashMap<String, String>>>,
+        outbound_resource_map: Arc<Mutex<HashMap<String, String>>>,
         receipt_tx: tokio::sync::mpsc::UnboundedSender<ReceiptEvent>,
     ) -> Self {
         Self {
@@ -57,6 +59,7 @@ impl TransportBridge {
             announce_app_data,
             peer_crypto,
             receipt_map,
+            outbound_resource_map,
             receipt_tx,
         }
     }
@@ -66,6 +69,7 @@ struct DeliveryTask {
     transport: Arc<Transport>,
     peer_crypto: Arc<Mutex<HashMap<String, PeerCrypto>>>,
     receipt_map: Arc<Mutex<HashMap<String, String>>>,
+    outbound_resource_map: Arc<Mutex<HashMap<String, String>>>,
     receipt_tx: tokio::sync::mpsc::UnboundedSender<ReceiptEvent>,
     message_id: String,
     destination: [u8; 16],
@@ -81,6 +85,7 @@ impl DeliveryTask {
             transport,
             peer_crypto,
             receipt_map,
+            outbound_resource_map,
             receipt_tx,
             message_id,
             destination,
@@ -165,7 +170,9 @@ impl DeliveryTask {
             }
             Ok(LinkSendResult::Resource(resource_hash)) => {
                 let resource_hash_hex = hex::encode(resource_hash.as_slice());
-                track_receipt_mapping(&receipt_map, &resource_hash_hex, &message_id);
+                if let Ok(mut guard) = outbound_resource_map.lock() {
+                    guard.insert(resource_hash_hex.clone(), message_id.clone());
+                }
                 let detail = format!("resource_hash={resource_hash_hex}");
                 log_delivery_trace(&message_id, &destination_hex, "link", &detail);
                 let _ = receipt_tx.send(ReceiptEvent {
@@ -274,6 +281,7 @@ impl OutboundBridge for TransportBridge {
             transport: self.transport.clone(),
             peer_crypto: self.peer_crypto.clone(),
             receipt_map: self.receipt_map.clone(),
+            outbound_resource_map: self.outbound_resource_map.clone(),
             receipt_tx: self.receipt_tx.clone(),
             message_id: record.id.clone(),
             destination,

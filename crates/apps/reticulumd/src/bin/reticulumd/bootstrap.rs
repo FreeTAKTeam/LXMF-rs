@@ -105,6 +105,8 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     let mut delivery_destination_hash_hex: Option<String> = None;
     let mut delivery_source_hash = [0u8; 16];
     let receipt_map: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
+    let outbound_resource_map: Arc<Mutex<HashMap<String, String>>> =
+        Arc::new(Mutex::new(HashMap::new()));
     let (receipt_tx, receipt_rx) = unbounded_channel();
 
     if let Some(addr) = args.transport.clone() {
@@ -302,7 +304,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
                         Ok(()) => {
                             mark_interface_startup_status(
                                 &mut configured_interfaces[index],
-                                "active",
+                                "validated_startup_only",
                                 None,
                                 None,
                             );
@@ -358,6 +360,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
                 None,
                 Some(runtime_iface.as_str()),
             );
+            mark_interface_runtime_managed(&mut server_record, "daemon_transport");
             configured_interfaces.push(server_record);
         }
 
@@ -431,6 +434,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
                     .and_then(|display_name| encode_delivery_display_name_app_data(display_name)),
                 peer_crypto.clone(),
                 receipt_map.clone(),
+                outbound_resource_map.clone(),
                 receipt_tx.clone(),
             ))
         });
@@ -464,7 +468,12 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     }
 
     if let Some(transport) = transport {
-        spawn_inbound_worker(daemon.clone(), transport.clone());
+        spawn_inbound_worker(
+            daemon.clone(),
+            transport.clone(),
+            receipt_tx.clone(),
+            outbound_resource_map,
+        );
         spawn_announce_worker(daemon.clone(), transport, peer_crypto);
     }
 
@@ -488,6 +497,32 @@ pub(super) fn mark_interface_startup_status(
     startup_error: Option<&str>,
     runtime_iface: Option<&str>,
 ) {
+    with_interface_runtime_metadata(record, |runtime| {
+        runtime.insert("startup_status".to_string(), JsonValue::String(status.to_string()));
+        if let Some(startup_error) = startup_error {
+            runtime
+                .insert("startup_error".to_string(), JsonValue::String(startup_error.to_string()));
+        } else {
+            runtime.remove("startup_error");
+        }
+        if let Some(runtime_iface) = runtime_iface {
+            runtime.insert("iface".to_string(), JsonValue::String(runtime_iface.to_string()));
+        } else {
+            runtime.remove("iface");
+        }
+    });
+}
+
+pub(super) fn mark_interface_runtime_managed(record: &mut InterfaceRecord, managed_by: &str) {
+    with_interface_runtime_metadata(record, |runtime| {
+        runtime.insert("managed_by".to_string(), JsonValue::String(managed_by.to_string()));
+    });
+}
+
+fn with_interface_runtime_metadata(
+    record: &mut InterfaceRecord,
+    update: impl FnOnce(&mut JsonMap<String, JsonValue>),
+) {
     let mut settings = match record.settings.take() {
         Some(JsonValue::Object(existing)) => existing,
         Some(other) => {
@@ -498,16 +533,19 @@ pub(super) fn mark_interface_startup_status(
         None => JsonMap::new(),
     };
 
-    let mut runtime = JsonMap::new();
-    runtime.insert("startup_status".to_string(), JsonValue::String(status.to_string()));
-    if let Some(startup_error) = startup_error {
-        runtime.insert("startup_error".to_string(), JsonValue::String(startup_error.to_string()));
-    }
-    if let Some(runtime_iface) = runtime_iface {
-        runtime.insert("iface".to_string(), JsonValue::String(runtime_iface.to_string()));
-    }
-
-    settings.insert("_runtime".to_string(), JsonValue::Object(runtime));
+    let runtime_value =
+        settings.entry("_runtime".to_string()).or_insert_with(|| JsonValue::Object(JsonMap::new()));
+    let runtime = match runtime_value {
+        JsonValue::Object(existing) => existing,
+        other => {
+            *other = JsonValue::Object(JsonMap::new());
+            match other {
+                JsonValue::Object(existing) => existing,
+                _ => unreachable!("runtime metadata must be an object"),
+            }
+        }
+    };
+    update(runtime);
     record.settings = Some(JsonValue::Object(settings));
 }
 

@@ -35,6 +35,26 @@ impl RpcDaemon {
                 "message not found",
             ));
         };
+        {
+            let paper_status = "sent: paper".to_string();
+            let _status_guard =
+                self.delivery_status_lock.lock().expect("delivery_status_lock mutex poisoned");
+            let existing_status = self
+                .store
+                .get_message(message_id.as_str())
+                .map_err(std::io::Error::other)?
+                .and_then(|stored| stored.receipt_status);
+            let should_mark_generated = existing_status.as_deref().is_none_or(|status| {
+                let normalized = status.trim().to_ascii_lowercase();
+                !normalized.starts_with("sent") && !Self::is_terminal_receipt_status(status)
+            });
+            if should_mark_generated {
+                self.store
+                    .update_receipt_status(message_id.as_str(), paper_status.as_str())
+                    .map_err(std::io::Error::other)?;
+                self.append_delivery_trace(message_id.as_str(), paper_status);
+            }
+        }
         let envelope = json!({
             "uri": format!("lxm://{}/{}", message.destination, message.id),
             "transient_id": format!("paper-{}", message.id),
@@ -203,5 +223,4 @@ impl RpcDaemon {
             error: None,
         })
     }
-
 }

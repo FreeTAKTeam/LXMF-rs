@@ -3,10 +3,14 @@ use lxmf::inbound_decode::InboundPayloadMode;
 use reticulum_daemon::inbound_delivery::{
     decode_inbound_payload, decode_inbound_payload_with_diagnostics,
 };
+use reticulum_daemon::receipt_bridge::ReceiptEvent;
 use rns_rpc::RpcDaemon;
+use rns_transport::hash::AddressHash;
+use rns_transport::resource::ResourceEventKind;
 use rns_transport::transport::{ReceivedPayloadMode, Transport};
+use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 fn inbound_payload_mode(mode: ReceivedPayloadMode) -> InboundPayloadMode {
     match mode {
@@ -15,7 +19,49 @@ fn inbound_payload_mode(mode: ReceivedPayloadMode) -> InboundPayloadMode {
     }
 }
 
-pub(super) fn spawn_inbound_worker(daemon: Rc<RpcDaemon>, transport: Arc<Transport>) {
+pub(super) fn spawn_inbound_worker(
+    daemon: Rc<RpcDaemon>,
+    transport: Arc<Transport>,
+    receipt_tx: tokio::sync::mpsc::UnboundedSender<ReceiptEvent>,
+    outbound_resource_map: Arc<Mutex<HashMap<String, String>>>,
+) {
+    spawn_packet_inbound_worker(daemon.clone(), transport.clone());
+    tokio::task::spawn_local(async move {
+        let mut rx = transport.resource_events();
+        loop {
+            if let Ok(event) = rx.recv().await {
+                match event.kind {
+                    ResourceEventKind::Complete(complete) => {
+                        if let Some(destination) =
+                            resolve_link_destination(transport.as_ref(), &event.link_id).await
+                        {
+                            if let Some(record) = decode_inbound_payload(
+                                destination,
+                                &complete.data,
+                                InboundPayloadMode::FullWire,
+                            ) {
+                                let _ = daemon.accept_inbound(record);
+                            }
+                        }
+                    }
+                    ResourceEventKind::OutboundComplete => {
+                        let resource_hash_hex = hex::encode(event.hash.as_slice());
+                        if let Some(message_id) = take_outbound_resource_message_id(
+                            &outbound_resource_map,
+                            resource_hash_hex.as_str(),
+                        ) {
+                            let _ = receipt_tx
+                                .send(ReceiptEvent { message_id, status: "delivered".to_string() });
+                        }
+                    }
+                    ResourceEventKind::Progress(_) => {}
+                }
+            }
+        }
+    });
+}
+
+fn spawn_packet_inbound_worker(daemon: Rc<RpcDaemon>, transport: Arc<Transport>) {
     let daemon_inbound = daemon;
     let inbound_transport = transport;
     tokio::task::spawn_local(async move {
@@ -67,4 +113,30 @@ pub(super) fn spawn_inbound_worker(daemon: Rc<RpcDaemon>, transport: Arc<Transpo
             }
         }
     });
+}
+
+pub(super) fn take_outbound_resource_message_id(
+    outbound_resource_map: &Arc<Mutex<HashMap<String, String>>>,
+    resource_hash_hex: &str,
+) -> Option<String> {
+    outbound_resource_map.lock().ok().and_then(|mut guard| guard.remove(resource_hash_hex))
+}
+
+async fn resolve_link_destination(
+    transport: &Transport,
+    link_id: &AddressHash,
+) -> Option<[u8; 16]> {
+    if let Some(link) = transport.find_in_link(link_id).await {
+        let guard = link.lock().await;
+        let mut destination = [0u8; 16];
+        destination.copy_from_slice(guard.destination().address_hash.as_slice());
+        return Some(destination);
+    }
+    if let Some(link) = transport.find_out_link(link_id).await {
+        let guard = link.lock().await;
+        let mut destination = [0u8; 16];
+        destination.copy_from_slice(guard.destination().address_hash.as_slice());
+        return Some(destination);
+    }
+    None
 }

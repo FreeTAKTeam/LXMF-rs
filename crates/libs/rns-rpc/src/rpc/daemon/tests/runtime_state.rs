@@ -1,3 +1,15 @@
+    struct PendingOutboundBridge;
+
+    impl OutboundBridge for PendingOutboundBridge {
+        fn deliver(
+            &self,
+            _record: &MessageRecord,
+            _options: &OutboundDeliveryOptions,
+        ) -> Result<(), std::io::Error> {
+            Ok(())
+        }
+    }
+
     #[test]
     fn sdk_cancel_message_v2_distinguishes_not_found_and_too_late() {
         let daemon = RpcDaemon::test_instance();
@@ -30,6 +42,93 @@
             ))
             .expect("cancel");
         assert_eq!(too_late.result.expect("result")["result"], json!("TooLateToCancel"));
+    }
+
+    #[test]
+    fn send_with_bridge_stays_in_sending_until_acknowledged() {
+        let store = MessagesStore::in_memory().expect("in-memory store");
+        let daemon = RpcDaemon::with_store_and_bridges(
+            store,
+            "bridge-node".to_string(),
+            Some(Arc::new(PendingOutboundBridge)),
+            None,
+        );
+
+        let send = daemon
+            .handle_rpc(rpc_request(
+                9,
+                "send_message_v2",
+                json!({
+                    "id": "pending-1",
+                    "source": "src",
+                    "destination": "dst",
+                    "title": "",
+                    "content": "hello"
+                }),
+            ))
+            .expect("send");
+        assert!(send.error.is_none());
+
+        let status = daemon
+            .handle_rpc(rpc_request(10, "sdk_status_v2", json!({ "message_id": "pending-1" })))
+            .expect("status");
+        assert_eq!(status.result.expect("result")["message"]["receipt_status"], json!("sending"));
+
+        let trace = daemon
+            .handle_rpc(rpc_request(11, "message_delivery_trace", json!({ "message_id": "pending-1" })))
+            .expect("trace");
+        let trace_result = trace.result.expect("result");
+        let transitions = trace_result["transitions"].as_array().expect("transitions");
+        assert!(
+            transitions.iter().any(|entry| entry["status"] == json!("sending")),
+            "bridge-backed sends should expose a non-terminal sending transition"
+        );
+        assert!(
+            transitions.iter().all(|entry| {
+                entry["status"].as_str().is_none_or(|status| !status.starts_with("sent:"))
+            }),
+            "bridge-backed sends must not be marked sent before transport acknowledgements arrive"
+        );
+    }
+
+    #[test]
+    fn paper_encode_marks_message_as_sent_paper() {
+        let store = MessagesStore::in_memory().expect("in-memory store");
+        let daemon = RpcDaemon::with_store_and_bridges(
+            store,
+            "paper-node".to_string(),
+            Some(Arc::new(PendingOutboundBridge)),
+            None,
+        );
+
+        let send = daemon
+            .handle_rpc(rpc_request(
+                12,
+                "send_message_v2",
+                json!({
+                    "id": "paper-pending-1",
+                    "source": "src",
+                    "destination": "dst",
+                    "title": "",
+                    "content": "hello"
+                }),
+            ))
+            .expect("send");
+        assert!(send.error.is_none());
+
+        let encode = daemon
+            .handle_rpc(rpc_request(
+                13,
+                "sdk_paper_encode_v2",
+                json!({ "message_id": "paper-pending-1" }),
+            ))
+            .expect("paper encode");
+        assert!(encode.error.is_none());
+
+        let status = daemon
+            .handle_rpc(rpc_request(14, "sdk_status_v2", json!({ "message_id": "paper-pending-1" })))
+            .expect("status");
+        assert_eq!(status.result.expect("result")["message"]["receipt_status"], json!("sent: paper"));
     }
 
     #[test]
