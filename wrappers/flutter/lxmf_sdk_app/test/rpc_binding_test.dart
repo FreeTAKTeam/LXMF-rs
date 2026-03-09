@@ -1830,5 +1830,269 @@ void main() {
             'app.attachment.download_chunk',
           ]);
     });
+
+    test('discovery helper roundtrips canonical discovery operations',
+        () async {
+      unawaited(() async {
+        await for (final request in server) {
+          final body = await request.fold<List<int>>(<int>[], (all, chunk) {
+            all.addAll(chunk);
+            return all;
+          });
+          final frame = decodeRpcFrame(body);
+          calls.add(frame);
+          final id = frame['id'] as int;
+          final method = frame['method'] as String;
+          final params = frame['params'] is Map<String, Object?>
+              ? frame['params'] as Map<String, Object?>
+              : const <String, Object?>{};
+          final response = switch (method) {
+            'sdk_operation_registry_v2' => <String, Object?>{
+                'id': id,
+                'result': <String, Object?>{
+                  'registry': <String, Object?>{
+                    'entries': <Object?>[
+                      <String, Object?>{
+                        'id': 'app.identity.list',
+                        'group': 'identity',
+                        'kind': 'query',
+                        'transport_variant': 'rpc',
+                        'description': 'List identities.',
+                        'aliases': <String>['sdk_identity_list_v2'],
+                        'required_capabilities': <String>[
+                          'sdk.capability.identity_multi'
+                        ],
+                      },
+                      <String, Object?>{
+                        'id': 'app.identity.announce',
+                        'group': 'identity',
+                        'kind': 'command',
+                        'transport_variant': 'rpc',
+                        'description': 'Announce identity.',
+                        'aliases': <String>['sdk_identity_announce_now_v2'],
+                        'required_capabilities': <String>[
+                          'sdk.capability.identity_discovery'
+                        ],
+                      },
+                      <String, Object?>{
+                        'id': 'app.identity.presence.list',
+                        'group': 'identity',
+                        'kind': 'query',
+                        'transport_variant': 'rpc',
+                        'description': 'List presence.',
+                        'aliases': <String>['sdk_identity_presence_list_v2'],
+                        'required_capabilities': <String>[
+                          'sdk.capability.identity_discovery'
+                        ],
+                      },
+                      <String, Object?>{
+                        'id': 'app.contact.list',
+                        'group': 'identity',
+                        'kind': 'query',
+                        'transport_variant': 'rpc',
+                        'description': 'List contacts.',
+                        'aliases': <String>['sdk_identity_contact_list_v2'],
+                        'required_capabilities': <String>[
+                          'sdk.capability.contact_management'
+                        ],
+                      },
+                      <String, Object?>{
+                        'id': 'app.contact.update',
+                        'group': 'identity',
+                        'kind': 'command',
+                        'transport_variant': 'rpc',
+                        'description': 'Update contact.',
+                        'aliases': <String>['sdk_identity_contact_update_v2'],
+                        'required_capabilities': <String>[
+                          'sdk.capability.contact_management'
+                        ],
+                      },
+                      <String, Object?>{
+                        'id': 'app.identity.bootstrap',
+                        'group': 'identity',
+                        'kind': 'command',
+                        'transport_variant': 'rpc',
+                        'description': 'Bootstrap identity.',
+                        'aliases': <String>['sdk_identity_bootstrap_v2'],
+                        'required_capabilities': <String>[
+                          'sdk.capability.contact_management'
+                        ],
+                      },
+                    ],
+                  },
+                },
+                'error': null,
+              },
+            'sdk_envelope_execute_v2' => <String, Object?>{
+                'id': id,
+                'result': <String, Object?>{
+                  'response': switch (params['operation_id']) {
+                    'app.identity.list' => <String, Object?>{
+                        'operation_id': 'app.identity.list',
+                        'kind': 'result',
+                        'accepted': true,
+                        'payload': <Object?>[
+                          <String, Object?>{
+                            'identity': 'alice',
+                            'public_key': 'pubkey',
+                            'display_name': 'Alice',
+                            'capabilities': <String>['chat'],
+                            'extensions': <String, Object?>{},
+                          },
+                        ],
+                        'extensions': <String, Object?>{},
+                      },
+                    'app.identity.announce' => <String, Object?>{
+                        'operation_id': 'app.identity.announce',
+                        'kind': 'result',
+                        'accepted': true,
+                        'payload': <String, Object?>{
+                          'accepted': true,
+                          'announce_id': 42,
+                        },
+                        'extensions': <String, Object?>{},
+                      },
+                    'app.identity.presence.list' => <String, Object?>{
+                        'operation_id': 'app.identity.presence.list',
+                        'kind': 'result',
+                        'accepted': true,
+                        'payload': <String, Object?>{
+                          'peers': <Object?>[
+                            <String, Object?>{
+                              'peer_id': 'bob',
+                              'last_seen_ts_ms': 200,
+                              'first_seen_ts_ms': 120,
+                              'seen_count': 3,
+                              'name': 'Bob Relay',
+                              'name_source': 'announce',
+                              'trust_level': 'trusted',
+                              'bootstrap': true,
+                              'extensions': <String, Object?>{},
+                            },
+                          ],
+                          'next_cursor': null,
+                        },
+                        'extensions': <String, Object?>{},
+                      },
+                    'app.contact.list' => <String, Object?>{
+                        'operation_id': 'app.contact.list',
+                        'kind': 'result',
+                        'accepted': true,
+                        'payload': <String, Object?>{
+                          'contacts': <Object?>[
+                            <String, Object?>{
+                              'identity': 'bob',
+                              'display_name': 'Bob',
+                              'trust_level': 'trusted',
+                              'bootstrap': true,
+                              'updated_ts_ms': 500,
+                              'metadata': <String, Object?>{
+                                'nickname': 'relay'
+                              },
+                              'extensions': <String, Object?>{},
+                            },
+                          ],
+                          'next_cursor': null,
+                        },
+                        'extensions': <String, Object?>{},
+                      },
+                    'app.contact.update' => <String, Object?>{
+                        'operation_id': 'app.contact.update',
+                        'kind': 'result',
+                        'accepted': true,
+                        'payload': <String, Object?>{
+                          'identity': 'charlie',
+                          'display_name': 'Charlie',
+                          'trust_level': 'trusted',
+                          'bootstrap': true,
+                          'updated_ts_ms': 501,
+                          'metadata': <String, Object?>{'team': 'ops'},
+                          'extensions': <String, Object?>{},
+                        },
+                        'extensions': <String, Object?>{},
+                      },
+                    'app.identity.bootstrap' => <String, Object?>{
+                        'operation_id': 'app.identity.bootstrap',
+                        'kind': 'result',
+                        'accepted': true,
+                        'payload': <String, Object?>{
+                          'identity': 'delta',
+                          'display_name': null,
+                          'trust_level': 'trusted',
+                          'bootstrap': true,
+                          'updated_ts_ms': 600,
+                          'metadata': <String, Object?>{},
+                          'extensions': <String, Object?>{},
+                        },
+                        'extensions': <String, Object?>{},
+                      },
+                    _ => <String, Object?>{},
+                  },
+                },
+                'error': null,
+              },
+            _ => <String, Object?>{
+                'id': id,
+                'result': null,
+                'error': <String, Object?>{
+                  'code': 'SDK_VALIDATION_INVALID_ARGUMENT',
+                  'message': 'unknown method',
+                },
+              },
+          };
+          request.response.headers.contentType =
+              ContentType('application', 'msgpack');
+          request.response.add(encodeRpcFrame(response));
+          await request.response.close();
+        }
+      }());
+
+      final discovery = DiscoveryClient(
+        OperationClient(
+          AppClient(
+            RpcBinding(
+              RpcConnectionOptions(
+                endpoint: Uri.parse('http://127.0.0.1:${server.port}/rpc'),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final identities = await discovery.identityList();
+      final announced = await discovery.announceNow();
+      final presence = await discovery.presenceList(limit: 10);
+      final contacts = await discovery.contactList(limit: 10);
+      final updated = await discovery.updateContact(
+        identity: 'charlie',
+        displayName: 'Charlie',
+        trustLevel: TrustLevel.trusted,
+        bootstrap: true,
+        metadata: const <String, Object?>{'team': 'ops'},
+      );
+      final bootstrapped = await discovery.bootstrapIdentity(identity: 'delta');
+
+      expect(identities.single.identity, 'alice');
+      expect(announced, isTrue);
+      expect(presence.peers.single.peerId, 'bob');
+      expect(contacts.contacts.single.identity, 'bob');
+      expect(updated.identity, 'charlie');
+      expect(bootstrapped.identity, 'delta');
+
+      final envelopeCalls = calls
+          .where((call) => call['method'] == 'sdk_envelope_execute_v2')
+          .toList(growable: false);
+      expect(
+          envelopeCalls.map((call) =>
+              (call['params'] as Map<String, Object?>)['operation_id']),
+          [
+            'app.identity.list',
+            'app.identity.announce',
+            'app.identity.presence.list',
+            'app.contact.list',
+            'app.contact.update',
+            'app.identity.bootstrap',
+          ]);
+    });
   });
 }

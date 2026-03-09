@@ -213,6 +213,156 @@ class CustomCommandClient {
   }
 }
 
+class DiscoveryClient {
+  DiscoveryClient(this._operations);
+
+  final OperationClient _operations;
+
+  Future<List<IdentityBundle>> identityList() async {
+    final result = await _operations.query<List<IdentityBundle>>(
+      OperationCall<List<IdentityBundle>>(
+        operationId: 'app.identity.list',
+        payload: const <String, Object?>{},
+        decode: (payload) => (payload as List<Object?>? ?? const <Object?>[])
+            .map(_decodeIdentityBundle)
+            .toList(growable: false),
+      ),
+    );
+    return result.payload;
+  }
+
+  Future<bool> announceNow() async {
+    final result = await _operations.command<bool>(
+      OperationCall<bool>(
+        operationId: 'app.identity.announce',
+        payload: const <String, Object?>{},
+        decode: _decodeAccepted,
+      ),
+    );
+    return result.payload;
+  }
+
+  Future<PresencePage> presenceList({
+    String? cursor,
+    int? limit,
+  }) async {
+    final result = await _operations.query<PresencePage>(
+      OperationCall<PresencePage>(
+        operationId: 'app.identity.presence.list',
+        payload: <String, Object?>{
+          if (cursor != null) 'cursor': cursor,
+          if (limit != null) 'limit': limit,
+        },
+        decode: _decodePresencePage,
+      ),
+    );
+    return result.payload;
+  }
+
+  Future<ContactListPage> contactList({
+    String? cursor,
+    int? limit,
+  }) async {
+    final result = await _operations.query<ContactListPage>(
+      OperationCall<ContactListPage>(
+        operationId: 'app.contact.list',
+        payload: <String, Object?>{
+          if (cursor != null) 'cursor': cursor,
+          if (limit != null) 'limit': limit,
+        },
+        decode: _decodeContactListPage,
+      ),
+    );
+    return result.payload;
+  }
+
+  Future<ContactRecord> updateContact({
+    required String identity,
+    String? displayName,
+    TrustLevel? trustLevel,
+    bool? bootstrap,
+    Map<String, Object?> metadata = const <String, Object?>{},
+    Map<String, Object?> extensions = const <String, Object?>{},
+  }) async {
+    final result = await _operations.command<ContactRecord>(
+      OperationCall<ContactRecord>(
+        operationId: 'app.contact.update',
+        payload: <String, Object?>{
+          'identity': identity,
+          if (displayName != null) 'display_name': displayName,
+          if (trustLevel != null) 'trust_level': _trustLevelToWire(trustLevel),
+          if (bootstrap != null) 'bootstrap': bootstrap,
+          'metadata': metadata,
+          'extensions': extensions,
+        },
+        decode: _decodeContactRecord,
+      ),
+    );
+    return result.payload;
+  }
+
+  Future<ContactRecord> bootstrapIdentity({
+    required String identity,
+    bool autoSync = true,
+    Map<String, Object?> extensions = const <String, Object?>{},
+  }) async {
+    final result = await _operations.command<ContactRecord>(
+      OperationCall<ContactRecord>(
+        operationId: 'app.identity.bootstrap',
+        payload: <String, Object?>{
+          'identity': identity,
+          'auto_sync': autoSync,
+          'extensions': extensions,
+        },
+        decode: _decodeContactRecord,
+      ),
+    );
+    return result.payload;
+  }
+
+  Future<List<PeerDirectoryEntry>> peerDirectory({int? limit}) async {
+    final contacts = await _drainContactPages(limit: limit);
+    final presence = await _drainPresencePages(limit: limit);
+    return _mergePeerDirectory(contacts, presence, limit: limit);
+  }
+
+  Future<List<ContactRecord>> _drainContactPages({int? limit}) async {
+    final contacts = <ContactRecord>[];
+    String? cursor;
+    do {
+      final previousCursor = cursor;
+      final page = await contactList(cursor: cursor, limit: limit);
+      contacts.addAll(page.contacts);
+      if (limit != null && contacts.length >= limit) {
+        return contacts.take(limit).toList(growable: false);
+      }
+      cursor = page.nextCursor;
+      if (cursor != null && cursor == previousCursor) {
+        break;
+      }
+    } while (cursor != null);
+    return contacts;
+  }
+
+  Future<List<PresenceRecord>> _drainPresencePages({int? limit}) async {
+    final peers = <PresenceRecord>[];
+    String? cursor;
+    do {
+      final previousCursor = cursor;
+      final page = await presenceList(cursor: cursor, limit: limit);
+      peers.addAll(page.peers);
+      if (limit != null && peers.length >= limit) {
+        return peers.take(limit).toList(growable: false);
+      }
+      cursor = page.nextCursor;
+      if (cursor != null && cursor == previousCursor) {
+        break;
+      }
+    } while (cursor != null);
+    return peers;
+  }
+}
+
 class VoiceSessionClient {
   VoiceSessionClient(this._operations);
 
@@ -748,6 +898,73 @@ TopicListPage _decodeTopicListPage(Object? payload) {
   );
 }
 
+IdentityBundle _decodeIdentityBundle(Object? payload) {
+  final map = _payloadMap(payload);
+  final capabilities =
+      (map['capabilities'] as List<Object?>? ?? const <Object?>[])
+          .map((value) => value.toString())
+          .toList(growable: false);
+  return IdentityBundle(
+    identity: map['identity']?.toString() ?? '',
+    publicKey: map['public_key']?.toString() ?? '',
+    displayName: map['display_name']?.toString(),
+    capabilities: capabilities,
+    extensions: _payloadMap(map['extensions']),
+  );
+}
+
+ContactRecord _decodeContactRecord(Object? payload) {
+  final map = _payloadMap(payload);
+  return ContactRecord(
+    identity: map['identity']?.toString() ?? '',
+    displayName: map['display_name']?.toString(),
+    trustLevel: _trustLevelFromWire(map['trust_level']?.toString()),
+    bootstrap: map['bootstrap'] == true,
+    updatedTsMs: (map['updated_ts_ms'] as num?)?.toInt() ?? 0,
+    metadata: _payloadMap(map['metadata']),
+    extensions: _payloadMap(map['extensions']),
+  );
+}
+
+ContactListPage _decodeContactListPage(Object? payload) {
+  final map = _payloadMap(payload);
+  final contacts = (map['contacts'] as List<Object?>? ?? const <Object?>[])
+      .map(_decodeContactRecord)
+      .toList(growable: false);
+  return ContactListPage(
+    contacts: contacts,
+    nextCursor: map['next_cursor']?.toString(),
+  );
+}
+
+PresenceRecord _decodePresenceRecord(Object? payload) {
+  final map = _payloadMap(payload);
+  return PresenceRecord(
+    peerId: map['peer_id']?.toString() ?? '',
+    lastSeenTsMs: (map['last_seen_ts_ms'] as num?)?.toInt() ?? 0,
+    firstSeenTsMs: (map['first_seen_ts_ms'] as num?)?.toInt() ?? 0,
+    seenCount: (map['seen_count'] as num?)?.toInt() ?? 0,
+    displayName: map['name']?.toString(),
+    nameSource: map['name_source']?.toString(),
+    trustLevel: map['trust_level'] == null
+        ? null
+        : _trustLevelFromWire(map['trust_level']?.toString()),
+    bootstrap: map['bootstrap'] as bool?,
+    extensions: _payloadMap(map['extensions']),
+  );
+}
+
+PresencePage _decodePresencePage(Object? payload) {
+  final map = _payloadMap(payload);
+  final peers = (map['peers'] as List<Object?>? ?? const <Object?>[])
+      .map(_decodePresenceRecord)
+      .toList(growable: false);
+  return PresencePage(
+    peers: peers,
+    nextCursor: map['next_cursor']?.toString(),
+  );
+}
+
 TelemetryPointRecord _decodeTelemetryPoint(Object? payload) {
   final map = _payloadMap(payload);
   final tags = map['tags'] is Map
@@ -871,6 +1088,83 @@ Map<String, Object?> _encodeGeoPoint(GeoPoint position) {
 bool _decodeAccepted(Object? payload) {
   final map = _payloadMap(payload);
   return map['accepted'] == true;
+}
+
+TrustLevel _trustLevelFromWire(String? value) {
+  return switch (value) {
+    'trusted' => TrustLevel.trusted,
+    'untrusted' => TrustLevel.untrusted,
+    'blocked' => TrustLevel.blocked,
+    _ => TrustLevel.unknown,
+  };
+}
+
+String _trustLevelToWire(TrustLevel value) {
+  return switch (value) {
+    TrustLevel.trusted => 'trusted',
+    TrustLevel.untrusted => 'untrusted',
+    TrustLevel.blocked => 'blocked',
+    TrustLevel.unknown => 'unknown',
+  };
+}
+
+List<PeerDirectoryEntry> _mergePeerDirectory(
+  List<ContactRecord> contacts,
+  List<PresenceRecord> presence, {
+  int? limit,
+}) {
+  final byPeer = <String, PeerDirectoryEntry>{};
+
+  for (final contact in contacts) {
+    byPeer[contact.identity] = PeerDirectoryEntry(
+      peerId: contact.identity,
+      displayName: contact.displayName,
+      nameSource: null,
+      trustLevel: contact.trustLevel,
+      bootstrap: contact.bootstrap,
+      online: false,
+      lastSeenTsMs: null,
+      firstSeenTsMs: null,
+      seenCount: 0,
+      metadata: contact.metadata,
+      extensions: contact.extensions,
+    );
+  }
+
+  for (final peer in presence) {
+    final existing = byPeer[peer.peerId];
+    byPeer[peer.peerId] = PeerDirectoryEntry(
+      peerId: peer.peerId,
+      displayName: existing?.displayName ?? peer.displayName,
+      nameSource: existing?.nameSource ?? peer.nameSource,
+      trustLevel: existing?.trustLevel ?? peer.trustLevel,
+      bootstrap: existing?.bootstrap ?? peer.bootstrap ?? false,
+      online: true,
+      lastSeenTsMs: peer.lastSeenTsMs,
+      firstSeenTsMs: peer.firstSeenTsMs,
+      seenCount: peer.seenCount,
+      metadata: existing?.metadata ?? const <String, Object?>{},
+      extensions: {
+        ...(existing?.extensions ?? const <String, Object?>{}),
+        ...peer.extensions,
+      },
+    );
+  }
+
+  final entries = byPeer.values.toList(growable: false)
+    ..sort((left, right) {
+      final leftSeen = left.lastSeenTsMs ?? -1;
+      final rightSeen = right.lastSeenTsMs ?? -1;
+      final seenCmp = rightSeen.compareTo(leftSeen);
+      if (seenCmp != 0) {
+        return seenCmp;
+      }
+      return left.peerId.compareTo(right.peerId);
+    });
+  if (limit == null || entries.length <= limit) {
+    return entries;
+  }
+  return entries.take(limit).toList(growable: false);
 }
 
 Map<String, Object?> _payloadMap(Object? payload) {
