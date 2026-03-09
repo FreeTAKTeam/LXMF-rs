@@ -42,6 +42,32 @@ class FieldNoteResult {
   final AttachmentRecord? attachment;
 }
 
+class TopicSyncResult {
+  const TopicSyncResult({
+    required this.topic,
+    required this.wasCreated,
+    required this.subscribed,
+    required this.telemetry,
+  });
+
+  final TopicRecord topic;
+  final bool wasCreated;
+  final bool subscribed;
+  final List<TelemetryPointRecord> telemetry;
+}
+
+class AttachmentReportResult {
+  const AttachmentReportResult({
+    required this.topic,
+    required this.attachment,
+    required this.published,
+  });
+
+  final TopicRecord topic;
+  final AttachmentRecord attachment;
+  final bool published;
+}
+
 class ConversationReadyResult {
   const ConversationReadyResult({
     required this.peer,
@@ -278,6 +304,57 @@ class WorkspaceFlows {
       idempotencyKey: idempotencyKey,
     );
     return ConversationSendResult(peer: peer, receipt: receipt);
+  }
+
+  Future<TopicSyncResult> ensureTopicSync(
+    String topicPath, {
+    Map<String, Object?> metadata = const <String, Object?>{},
+    int telemetryLimit = 100,
+  }) async {
+    final topicResult = await ensureTopic(topicPath, metadata: metadata);
+    final subscribed =
+        await _workspace.topics.subscribe(topicResult.topic.topicId);
+    final telemetry = await _workspace.telemetry.query(
+      topicId: topicResult.topic.topicId,
+      limit: telemetryLimit,
+    );
+    return TopicSyncResult(
+      topic: topicResult.topic,
+      wasCreated: topicResult.wasCreated,
+      subscribed: subscribed,
+      telemetry: telemetry,
+    );
+  }
+
+  Future<AttachmentReportResult> publishAttachmentReport({
+    required String topicPath,
+    required AttachmentDraft attachment,
+    Object? summaryPayload,
+    String? correlationId,
+    Map<String, Object?> topicMetadata = const <String, Object?>{},
+  }) async {
+    final topicResult = await ensureTopic(topicPath, metadata: topicMetadata);
+    final stored = await _workspace.attachments.store(
+      name: attachment.name,
+      contentType: attachment.contentType,
+      bytesBase64: attachment.bytesBase64,
+      topicIds: <String>[topicResult.topic.topicId],
+    );
+    final published = await _workspace.topics.publish(
+      topicId: topicResult.topic.topicId,
+      correlationId: correlationId,
+      payload: <String, Object?>{
+        if (summaryPayload != null) 'summary': summaryPayload,
+        'attachment_id': stored.attachmentId,
+        'attachment_name': stored.name,
+        'content_type': stored.contentType,
+      },
+    );
+    return AttachmentReportResult(
+      topic: topicResult.topic,
+      attachment: stored,
+      published: published,
+    );
   }
 
   Future<ContactRecord?> _findContact(String identity) async {

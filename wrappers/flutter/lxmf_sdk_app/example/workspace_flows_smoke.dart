@@ -32,10 +32,22 @@ Future<void> main(List<String> args) async {
     topicPath: 'ops/demo',
     payload: const <String, Object?>{'body': 'field note'},
   );
+  final sync = await workspace.flows.ensureTopicSync('ops/demo');
+  final report = await workspace.flows.publishAttachmentReport(
+    topicPath: 'ops/reports',
+    attachment: const AttachmentDraft(
+      name: 'report.txt',
+      contentType: 'text/plain',
+      bytesBase64: 'cmVwb3J0',
+    ),
+    summaryPayload: const <String, Object?>{'title': 'demo report'},
+  );
 
   print(
     'peer=${peer.identity} created=${peer.wasCreated} '
-    'topic=${topic.topic.topicId} note=${note.published}',
+    'topic=${topic.topic.topicId} note=${note.published} '
+    'sync=${sync.subscribed}/${sync.telemetry.length} '
+    'report=${report.attachment.attachmentId}',
   );
 
   await workspace.stop();

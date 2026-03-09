@@ -101,6 +101,26 @@ final note = await workspace.flows.publishFieldNote(
 print('peer=${peer.identity} topic=${topic.topic.topicId} note=${note.published}');
 ```
 
+Workspace sync/report flow:
+
+```dart
+final sync = await workspace.flows.ensureTopicSync('ops/demo');
+final report = await workspace.flows.publishAttachmentReport(
+  topicPath: 'ops/reports',
+  attachment: const AttachmentDraft(
+    name: 'report.txt',
+    contentType: 'text/plain',
+    bytesBase64: 'cmVwb3J0',
+  ),
+  summaryPayload: const <String, Object?>{'title': 'demo report'},
+);
+
+print(
+  'sync=${sync.subscribed}/${sync.telemetry.length} '
+  'attachment=${report.attachment.attachmentId}',
+);
+```
+
 Operation-catalog flow:
 
 ```dart

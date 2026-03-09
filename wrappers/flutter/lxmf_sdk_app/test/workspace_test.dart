@@ -116,6 +116,35 @@ void main() {
     expect(peers, hasLength(1));
     expect(peers.single.peerId, 'peer-bootstrap');
   });
+
+  test('WorkspaceFlows sync topics and publish attachment reports', () async {
+    final binding = _FakeWorkspaceBinding();
+    final workspace = WorkspaceClient.fromBinding(binding);
+
+    final sync = await workspace.flows.ensureTopicSync(
+      'ops/alerts',
+      telemetryLimit: 10,
+    );
+    final report = await workspace.flows.publishAttachmentReport(
+      topicPath: 'ops/reports',
+      attachment: const AttachmentDraft(
+        name: 'report.txt',
+        contentType: 'text/plain',
+        bytesBase64: 'cmVwb3J0',
+      ),
+      summaryPayload: const <String, Object?>{'title': 'daily report'},
+      correlationId: 'report-1',
+    );
+
+    expect(sync.topic.topicId, 'topic-existing');
+    expect(sync.wasCreated, isFalse);
+    expect(sync.subscribed, isTrue);
+    expect(sync.telemetry.single.key, 'battery');
+
+    expect(report.topic.topicId, 'topic-created');
+    expect(report.attachment.attachmentId, 'attachment-1');
+    expect(report.published, isTrue);
+  });
 }
 
 class _FakeWorkspaceBinding implements AppBinding {
@@ -256,6 +285,20 @@ class _FakeWorkspaceBinding implements AppBinding {
           kind: OperationKind.command,
           transportVariant: TransportVariant.rpc,
           description: 'Publish topic payload.',
+        ),
+        OperationEntry(
+          id: 'app.topic.subscribe',
+          group: 'topics',
+          kind: OperationKind.command,
+          transportVariant: TransportVariant.rpc,
+          description: 'Subscribe to topic.',
+        ),
+        OperationEntry(
+          id: 'app.telemetry.query',
+          group: 'telemetry',
+          kind: OperationKind.query,
+          transportVariant: TransportVariant.rpc,
+          description: 'Query telemetry.',
         ),
         OperationEntry(
           id: 'app.marker.create',
@@ -463,6 +506,27 @@ class _FakeWorkspaceBinding implements AppBinding {
           kind: EnvelopeKind.result,
           accepted: true,
           payload: <String, Object?>{'accepted': true},
+        ),
+      'app.topic.subscribe' => const EnvelopeResponse(
+          operationId: 'app.topic.subscribe',
+          kind: EnvelopeKind.result,
+          accepted: true,
+          payload: <String, Object?>{'accepted': true},
+        ),
+      'app.telemetry.query' => const EnvelopeResponse(
+          operationId: 'app.telemetry.query',
+          kind: EnvelopeKind.result,
+          accepted: true,
+          payload: <Object?>[
+            <String, Object?>{
+              'ts_ms': 1000,
+              'key': 'battery',
+              'value': 87,
+              'unit': 'percent',
+              'tags': <String, Object?>{'peer': 'self-1'},
+              'extensions': <String, Object?>{},
+            },
+          ],
         ),
       'app.marker.create' => EnvelopeResponse(
           operationId: 'app.marker.create',
