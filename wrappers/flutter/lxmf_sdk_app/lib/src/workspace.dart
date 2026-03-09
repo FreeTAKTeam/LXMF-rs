@@ -42,6 +42,26 @@ class FieldNoteResult {
   final AttachmentRecord? attachment;
 }
 
+class ConversationReadyResult {
+  const ConversationReadyResult({
+    required this.peer,
+    required this.snapshot,
+  });
+
+  final PeerReadyResult peer;
+  final ConversationSnapshot snapshot;
+}
+
+class ConversationSendResult {
+  const ConversationSendResult({
+    required this.peer,
+    required this.receipt,
+  });
+
+  final PeerReadyResult peer;
+  final SendReceipt receipt;
+}
+
 class WorkspaceClient {
   WorkspaceClient(this.app);
 
@@ -189,6 +209,71 @@ class WorkspaceFlows {
       marker: marker,
       attachment: storedAttachment,
     );
+  }
+
+  Future<List<PeerDirectoryEntry>> discoverPeers({
+    int limit = 50,
+    bool onlineOnly = false,
+    bool bootstrapOnly = false,
+  }) async {
+    final peers = await _workspace.discovery.peerDirectory(limit: limit);
+    return peers.where((peer) {
+      if (onlineOnly && !peer.online) {
+        return false;
+      }
+      if (bootstrapOnly && !peer.bootstrap) {
+        return false;
+      }
+      return true;
+    }).toList(growable: false);
+  }
+
+  Future<ConversationReadyResult> ensureConversation(
+    String identity, {
+    String? displayName,
+    TrustLevel trustLevel = TrustLevel.trusted,
+    bool bootstrap = true,
+    bool announce = true,
+    Map<String, Object?> metadata = const <String, Object?>{},
+  }) async {
+    final peer = await ensurePeerReady(
+      identity,
+      displayName: displayName,
+      trustLevel: trustLevel,
+      bootstrap: bootstrap,
+      announce: announce,
+      metadata: metadata,
+    );
+    final snapshot = await _workspace.conversations.loadConversation(identity);
+    return ConversationReadyResult(peer: peer, snapshot: snapshot);
+  }
+
+  Future<ConversationSendResult> sendConversationText(
+    String identity,
+    String content, {
+    String? correlationId,
+    String? idempotencyKey,
+    String? displayName,
+    TrustLevel trustLevel = TrustLevel.trusted,
+    bool bootstrap = true,
+    bool announce = true,
+    Map<String, Object?> metadata = const <String, Object?>{},
+  }) async {
+    final peer = await ensurePeerReady(
+      identity,
+      displayName: displayName,
+      trustLevel: trustLevel,
+      bootstrap: bootstrap,
+      announce: announce,
+      metadata: metadata,
+    );
+    final receipt = await _workspace.conversations.sendText(
+      identity,
+      content,
+      correlationId: correlationId,
+      idempotencyKey: idempotencyKey,
+    );
+    return ConversationSendResult(peer: peer, receipt: receipt);
   }
 
   Future<ContactRecord?> _findContact(String identity) async {
