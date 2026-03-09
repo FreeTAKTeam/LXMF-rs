@@ -216,8 +216,8 @@ class WorkspaceFlows {
     bool onlineOnly = false,
     bool bootstrapOnly = false,
   }) async {
-    final peers = await _workspace.discovery.peerDirectory(limit: limit);
-    return peers.where((peer) {
+    final peers = await _workspace.discovery.peerDirectory();
+    final filtered = peers.where((peer) {
       if (onlineOnly && !peer.online) {
         return false;
       }
@@ -226,6 +226,10 @@ class WorkspaceFlows {
       }
       return true;
     }).toList(growable: false);
+    if (filtered.length <= limit) {
+      return filtered;
+    }
+    return filtered.take(limit).toList(growable: false);
   }
 
   Future<ConversationReadyResult> ensureConversation(

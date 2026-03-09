@@ -104,6 +104,18 @@ void main() {
     expect(sent.peer.identity, 'peer-new');
     expect(sent.receipt.messageId, 'msg-1');
   });
+
+  test('WorkspaceFlows discoverPeers filters before applying the limit',
+      () async {
+    final binding = _FilteredPeerWorkspaceBinding();
+    final workspace = WorkspaceClient.fromBinding(binding);
+
+    final peers =
+        await workspace.flows.discoverPeers(limit: 1, bootstrapOnly: true);
+
+    expect(peers, hasLength(1));
+    expect(peers.single.peerId, 'peer-bootstrap');
+  });
 }
 
 class _FakeWorkspaceBinding implements AppBinding {
@@ -494,4 +506,60 @@ class _FakeWorkspaceBinding implements AppBinding {
 
   @override
   Stream<AppEvent> subscribeEvents() => const Stream<AppEvent>.empty();
+}
+
+class _FilteredPeerWorkspaceBinding extends _FakeWorkspaceBinding {
+  @override
+  Future<EnvelopeResponse> executeEnvelope(Envelope envelope) async {
+    switch (envelope.operationId) {
+      case 'app.contact.list':
+        return EnvelopeResponse(
+          operationId: 'app.contact.list',
+          kind: EnvelopeKind.result,
+          accepted: true,
+          payload: switch ((envelope.payload as Map<Object?, Object?>)['cursor']) {
+            'after-page-1' => const <String, Object?>{
+                'contacts': <Object?>[
+                  <String, Object?>{
+                    'identity': 'peer-bootstrap',
+                    'display_name': 'Bootstrap Peer',
+                    'trust_level': 'trusted',
+                    'bootstrap': true,
+                    'updated_ts_ms': 20,
+                    'metadata': <String, Object?>{},
+                    'extensions': <String, Object?>{},
+                  },
+                ],
+                'next_cursor': null,
+              },
+            _ => const <String, Object?>{
+                'contacts': <Object?>[
+                  <String, Object?>{
+                    'identity': 'peer-non-bootstrap',
+                    'display_name': 'Non Bootstrap Peer',
+                    'trust_level': 'unknown',
+                    'bootstrap': false,
+                    'updated_ts_ms': 10,
+                    'metadata': <String, Object?>{},
+                    'extensions': <String, Object?>{},
+                  },
+                ],
+                'next_cursor': 'after-page-1',
+              },
+          },
+        );
+      case 'app.identity.presence.list':
+        return const EnvelopeResponse(
+          operationId: 'app.identity.presence.list',
+          kind: EnvelopeKind.result,
+          accepted: true,
+          payload: <String, Object?>{
+            'peers': <Object?>[],
+            'next_cursor': null,
+          },
+        );
+      default:
+        return super.executeEnvelope(envelope);
+    }
+  }
 }
