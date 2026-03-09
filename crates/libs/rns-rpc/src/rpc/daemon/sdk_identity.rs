@@ -477,6 +477,16 @@ impl RpcDaemon {
             }
         }
         self.persist_sdk_domain_snapshot()?;
+        self.publish_event(RpcEvent {
+            event_type: "contact_updated".into(),
+            payload: json!({
+                "identity": contact.identity,
+                "display_name": contact.display_name,
+                "trust_level": contact.trust_level,
+                "bootstrap": contact.bootstrap,
+                "updated_ts_ms": contact.updated_ts_ms,
+            }),
+        });
         Ok(RpcResponse {
             id: request.id,
             result: Some(json!({ "contact": contact })),
@@ -618,6 +628,17 @@ impl RpcDaemon {
             let _ = self.upsert_peer(identity, timestamp, contact.display_name.clone(), Some("bootstrap".to_string()));
         }
         self.persist_sdk_domain_snapshot()?;
+        self.publish_event(RpcEvent {
+            event_type: "contact_bootstrapped".into(),
+            payload: json!({
+                "identity": contact.identity,
+                "display_name": contact.display_name,
+                "trust_level": contact.trust_level,
+                "bootstrap": contact.bootstrap,
+                "updated_ts_ms": contact.updated_ts_ms,
+                "synced": parsed.auto_sync,
+            }),
+        });
         Ok(RpcResponse {
             id: request.id,
             result: Some(json!({

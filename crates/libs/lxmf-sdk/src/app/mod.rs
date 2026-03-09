@@ -1,6 +1,7 @@
 mod capabilities;
 mod config;
 mod delivery;
+mod discovery;
 mod envelope;
 mod errors;
 mod events;
@@ -13,6 +14,10 @@ pub use delivery::{
     AttemptDisposition, BackoffSchedule, DeliveryAttempt, DeliveryOptions, DeliveryPlan,
     QueuePressurePolicy, QueuePressureStrategy, ReconnectPolicy, RetryPolicy, SendReport,
     TimeoutPolicy,
+};
+pub use discovery::{
+    BootstrapRequest, Contact, ContactPage, ContactUpdate, Identity, PeerDirectoryEntry, Presence,
+    PresencePage,
 };
 pub use envelope::{Envelope, EnvelopeKind, EnvelopeResponse};
 pub use errors::{Error, ErrorCategory, ErrorCode};

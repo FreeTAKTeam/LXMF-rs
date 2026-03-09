@@ -78,6 +78,7 @@ pub struct EventMetadata {
     pub severity: Severity,
     pub operation_id: Option<String>,
     pub message_id: Option<String>,
+    pub peer_id: Option<String>,
     pub correlation_id: Option<String>,
     pub profile_id: String,
 }
@@ -89,6 +90,12 @@ pub enum EventKind {
     RuntimeStopped,
     RuntimeDegraded,
     RuntimeRecovered,
+    AnnounceSent,
+    AnnounceReceived,
+    PeerDiscovered,
+    PeerRemoved,
+    ContactUpdated,
+    ContactBootstrapped,
     MessageQueued,
     MessageDispatching,
     MessageSent,
@@ -151,6 +158,14 @@ fn map_delivery_state(state: &str) -> EventKind {
 }
 
 #[cfg(feature = "sdk-async")]
+fn payload_peer_id(payload: &JsonValue) -> Option<String> {
+    ["peer", "peer_id", "identity"]
+        .into_iter()
+        .find_map(|key| payload.get(key).and_then(JsonValue::as_str))
+        .map(ToOwned::to_owned)
+}
+
+#[cfg(feature = "sdk-async")]
 pub fn map_sdk_event(event: SdkEvent, profile_id: &str) -> Event {
     let kind = match event.event_type.as_str() {
         "RuntimeStateChanged" => {
@@ -177,6 +192,12 @@ pub fn map_sdk_event(event: SdkEvent, profile_id: &str) -> Event {
         "RuntimeDegraded" | "runtime_degraded" => EventKind::RuntimeDegraded,
         "RuntimeRecovered" | "runtime_recovered" => EventKind::RuntimeRecovered,
         "ReconnectScheduled" | "reconnect_scheduled" => EventKind::ReconnectScheduled,
+        "announce_sent" => EventKind::AnnounceSent,
+        "announce_received" => EventKind::AnnounceReceived,
+        "peer_sync" => EventKind::PeerDiscovered,
+        "peer_unpeer" => EventKind::PeerRemoved,
+        "contact_updated" => EventKind::ContactUpdated,
+        "contact_bootstrapped" => EventKind::ContactBootstrapped,
         "InboundMessageReceived" | "inbound" => EventKind::InboundMessageReceived,
         "StreamGap" => EventKind::StreamGapDetected(StreamGapDetails {
             expected_seq_no: event.payload.get("expected_seq_no").and_then(JsonValue::as_u64),
@@ -216,6 +237,7 @@ pub fn map_sdk_event(event: SdkEvent, profile_id: &str) -> Event {
             severity: event.severity.into(),
             operation_id: event.operation_id,
             message_id: event.message_id,
+            peer_id: event.peer_id.or_else(|| payload_peer_id(&event.payload)),
             correlation_id: event.correlation_id,
             profile_id: profile_id.to_owned(),
         },
@@ -314,5 +336,28 @@ mod tests {
         assert!(matches!(degraded.kind, EventKind::RuntimeDegraded));
         assert!(matches!(reconnect.kind, EventKind::ReconnectScheduled));
         assert!(matches!(recovered.kind, EventKind::RuntimeRecovered));
+    }
+
+    #[test]
+    fn maps_discovery_events() {
+        let announced = map_sdk_event(
+            base_event("announce_received", json!({ "peer": "peer-a" })),
+            "desktop_default",
+        );
+        let peer_sync = map_sdk_event(
+            base_event("peer_sync", json!({ "peer": "peer-a" })),
+            "desktop_default",
+        );
+        let contact_update = map_sdk_event(
+            base_event("contact_updated", json!({ "identity": "peer-a" })),
+            "desktop_default",
+        );
+
+        assert!(matches!(announced.kind, EventKind::AnnounceReceived));
+        assert!(matches!(peer_sync.kind, EventKind::PeerDiscovered));
+        assert!(matches!(contact_update.kind, EventKind::ContactUpdated));
+        assert_eq!(announced.metadata.peer_id.as_deref(), Some("peer-a"));
+        assert_eq!(peer_sync.metadata.peer_id.as_deref(), Some("peer-a"));
+        assert_eq!(contact_update.metadata.peer_id.as_deref(), Some("peer-a"));
     }
 }
