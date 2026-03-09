@@ -738,6 +738,7 @@ fn sdk_release_c_domain_methods_roundtrip() {
             json!({
                 "operation_id": "vendor.example.custom",
                 "kind": "command",
+                "correlation_id": "env-corr-1",
                 "target": "node-b",
                 "payload": { "body": "hello" },
                 "timeout_ms": 500,
@@ -749,10 +750,11 @@ fn sdk_release_c_domain_methods_roundtrip() {
     let envelope_response = &envelope_command.result.expect("envelope command result")["response"];
     assert_eq!(envelope_response["accepted"], json!(true));
     assert_eq!(envelope_response["extensions"]["via"], json!("test"));
-    assert!(envelope_response["correlation_id"].as_str().is_some());
+    assert_eq!(envelope_response["correlation_id"], json!("env-corr-1"));
     let envelope_payload = &envelope_response["payload"];
     assert_eq!(envelope_payload["command"], json!("vendor.example.custom"));
     assert_eq!(envelope_payload["command_state"], json!("dispatched"));
+    assert!(envelope_payload["correlation_id"].as_str().is_some());
     assert_eq!(envelope_payload["target"], json!("node-b"));
 
     let voice_open = daemon

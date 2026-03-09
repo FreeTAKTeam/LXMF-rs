@@ -910,16 +910,7 @@ impl RpcDaemon {
             .unwrap_or(JsonValue::Null);
         let accepted =
             delegated_payload.get("accepted").and_then(JsonValue::as_bool).unwrap_or(true);
-        let response_correlation_id = if rpc_method == "sdk_command_invoke_v2" {
-            delegated_payload
-                .get("payload")
-                .and_then(|payload| payload.get("correlation_id"))
-                .and_then(JsonValue::as_str)
-                .map(ToOwned::to_owned)
-                .or(parsed.correlation_id)
-        } else {
-            parsed.correlation_id
-        };
+        let response_correlation_id = parsed.correlation_id;
         let extensions = delegated_payload
             .get("extensions")
             .and_then(JsonValue::as_object)
