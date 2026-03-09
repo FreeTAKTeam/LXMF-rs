@@ -1,3 +1,4 @@
+use super::operations::RegistryError;
 use crate::error::{code, ErrorCategory as SdkErrorCategory, SdkError};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
@@ -131,6 +132,52 @@ impl Error {
             terminal: true,
             user_action_required: true,
             message: format!("profile '{profile_id}' is not supported by the current runtime"),
+            details,
+            cause_code: None,
+        }
+    }
+}
+
+impl From<RegistryError> for Error {
+    fn from(err: RegistryError) -> Self {
+        let (message, mut details) = match err {
+            RegistryError::DuplicateOperationId { id } => (
+                format!("duplicate operation id '{}'", id.as_str()),
+                BTreeMap::from([(
+                    "operation_id".to_owned(),
+                    JsonValue::String(id.as_str().to_owned()),
+                )]),
+            ),
+            RegistryError::DuplicateAlias { alias, existing_id, conflicting_id } => (
+                format!("duplicate operation alias '{alias}'"),
+                BTreeMap::from([
+                    ("alias".to_owned(), JsonValue::String(alias)),
+                    ("existing_id".to_owned(), JsonValue::String(existing_id.as_str().to_owned())),
+                    (
+                        "conflicting_id".to_owned(),
+                        JsonValue::String(conflicting_id.as_str().to_owned()),
+                    ),
+                ]),
+            ),
+            RegistryError::AliasConflictsWithOperationId { alias, operation_id } => (
+                format!("operation alias '{alias}' conflicts with canonical operation id"),
+                BTreeMap::from([
+                    ("alias".to_owned(), JsonValue::String(alias)),
+                    (
+                        "operation_id".to_owned(),
+                        JsonValue::String(operation_id.as_str().to_owned()),
+                    ),
+                ]),
+            ),
+        };
+        details.insert("registry_scope".to_owned(), JsonValue::String("app".to_owned()));
+        Self {
+            code: ErrorCode::ConfigInvalid,
+            category: ErrorCategory::Config,
+            retryable: false,
+            terminal: true,
+            user_action_required: true,
+            message,
             details,
             cause_code: None,
         }

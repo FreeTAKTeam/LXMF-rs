@@ -1,13 +1,11 @@
 use super::capabilities::CapabilitySummary;
 use super::delivery::{
-    AttemptDecision, AttemptDisposition, DeliveryAttempt, DeliveryOptions, DeliveryPlan,
-    SendReport,
+    AttemptDecision, AttemptDisposition, DeliveryAttempt, DeliveryOptions, DeliveryPlan, SendReport,
 };
 use super::errors::Error;
 #[cfg(feature = "sdk-async")]
-use super::events::{
-    map_event_batch, subscription_cursor, EventBatch, SubscriptionStart,
-};
+use super::events::{map_event_batch, subscription_cursor, EventBatch, SubscriptionStart};
+use super::operations::{OperationEntry, OperationRegistry, RegistryError};
 use crate::{
     Client as CoreClient, ClientHandle, DeliverySnapshot, DeliveryState as RawDeliveryState,
     EventCursor, LxmfSdk, Profile as CoreProfile, RuntimeSnapshot, RuntimeState, SdkBackend,
@@ -59,6 +57,8 @@ pub struct Config {
     pub supported_contract_versions: Vec<u16>,
     pub requested_capabilities: Vec<String>,
     pub event_batch_size: Option<usize>,
+    #[serde(default)]
+    pub custom_operations: Vec<OperationEntry>,
 }
 
 impl Config {
@@ -87,6 +87,23 @@ impl Config {
         StartRequest::new(self.sdk_config.clone())
             .with_supported_contract_versions(self.supported_contract_versions.clone())
             .with_requested_capabilities(self.requested_capabilities.clone())
+    }
+
+    pub fn operation_registry(&self) -> Result<OperationRegistry, RegistryError> {
+        OperationRegistry::built_in().merged(self.custom_operations.clone())
+    }
+
+    pub fn with_custom_operation(mut self, operation: OperationEntry) -> Self {
+        self.custom_operations.push(operation);
+        self
+    }
+
+    pub fn with_custom_operations(
+        mut self,
+        operations: impl IntoIterator<Item = OperationEntry>,
+    ) -> Self {
+        self.custom_operations.extend(operations);
+        self
     }
 }
 
@@ -329,6 +346,16 @@ impl<B: SdkBackend> Client<B> {
         Ok(self.active_config()?.delivery_plan())
     }
 
+    pub fn operation_registry(&self) -> Result<OperationRegistry, Error> {
+        match self.active_config() {
+            Ok(config) => config.operation_registry().map_err(Error::from),
+            Err(err) if matches!(err.code, super::errors::ErrorCode::RuntimeNotStarted) => {
+                Ok(OperationRegistry::built_in().clone())
+            }
+            Err(err) => Err(err),
+        }
+    }
+
     pub fn start(&self, config: Config) -> Result<Handle, Error> {
         let mut state = self.state.lock().expect("app client mutex poisoned");
         if state.client.is_none() && state.session.is_some() {
@@ -416,11 +443,10 @@ impl<B: SdkBackend> Client<B> {
             let attempt_no = attempts.len() as u32 + 1;
             match self.send(request.clone()) {
                 Ok(receipt) => {
-                    let total_delay_ms =
-                        attempts
-                            .iter()
-                            .filter_map(|attempt: &DeliveryAttempt| attempt.scheduled_delay_ms)
-                            .sum::<u64>();
+                    let total_delay_ms = attempts
+                        .iter()
+                        .filter_map(|attempt: &DeliveryAttempt| attempt.scheduled_delay_ms)
+                        .sum::<u64>();
                     return Ok(SendReport { receipt, attempts, total_delay_ms, plan });
                 }
                 Err(err) => match resolved.classify_failure(
@@ -527,10 +553,7 @@ impl<B: SdkBackend> Client<B> {
     }
 
     #[cfg(feature = "sdk-async")]
-    pub fn subscribe_events(
-        &self,
-        start: SubscriptionStart,
-    ) -> Result<EventStream<B>, Error>
+    pub fn subscribe_events(&self, start: SubscriptionStart) -> Result<EventStream<B>, Error>
     where
         B: SdkBackendAsyncEvents,
     {
@@ -541,8 +564,7 @@ impl<B: SdkBackend> Client<B> {
         let Some(session) = state.session.as_ref() else {
             return Err(Error::not_started());
         };
-        let subscription =
-            client.subscribe_events(start.clone().into()).map_err(Error::from)?;
+        let subscription = client.subscribe_events(start.clone().into()).map_err(Error::from)?;
         let session_guard = session.lock().expect("app session mutex poisoned");
         let max_batch_size = session_guard
             .config
@@ -589,9 +611,10 @@ impl<B: SdkBackendAsyncEvents> EventStream<B> {
 
         let batch = map_event_batch(batch, self.profile.as_str());
         if batch.dropped_count > 0
-            || batch.events.iter().any(|event| {
-                matches!(event.kind, super::events::EventKind::StreamGapDetected(_))
-            })
+            || batch
+                .events
+                .iter()
+                .any(|event| matches!(event.kind, super::events::EventKind::StreamGapDetected(_)))
         {
             let mut session = self.session.lock().expect("app session mutex poisoned");
             session.degraded = true;
@@ -644,10 +667,9 @@ fn map_delivery_snapshot(snapshot: DeliverySnapshot) -> DeliveryStatus {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        Client, Config, DeliveryState, Profile, RunState, SendRequest, SubscriptionStart,
-    };
+    use super::{Client, Config, DeliveryState, Profile, RunState, SendRequest, SubscriptionStart};
     use crate::app::DeliveryOptions;
+    use crate::app::{OperationEntry, OperationKind, TransportVariant};
     use crate::error::{code, ErrorCategory as SdkErrorCategory, SdkError};
     use crate::event::{
         EventBatch as RawEventBatch, EventCursor, EventSubscription, SdkEvent,
@@ -728,16 +750,12 @@ mod tests {
         }
 
         fn send(&self, _req: RawSendRequest) -> Result<crate::MessageId, SdkError> {
-            self.send_results
-                .lock()
-                .expect("send results")
-                .pop_front()
-                .unwrap_or_else(|| {
-                    Ok(crate::MessageId(format!(
-                        "msg-{}",
-                        self.send_seq.fetch_add(1, Ordering::Relaxed)
-                    )))
-                })
+            self.send_results.lock().expect("send results").pop_front().unwrap_or_else(|| {
+                Ok(crate::MessageId(format!(
+                    "msg-{}",
+                    self.send_seq.fetch_add(1, Ordering::Relaxed)
+                )))
+            })
         }
 
         fn cancel(&self, _id: crate::MessageId) -> Result<CancelResult, SdkError> {
@@ -773,11 +791,7 @@ mod tests {
                 .expect("poll batches")
                 .pop_front()
                 .ok_or_else(|| {
-                    SdkError::new(
-                        code::RUNTIME_STREAM_DEGRADED,
-                        SdkErrorCategory::Runtime,
-                        "empty",
-                    )
+                    SdkError::new(code::RUNTIME_STREAM_DEGRADED, SdkErrorCategory::Runtime, "empty")
                         .with_retryable(false)
                 })
                 .or_else(|_| {
@@ -869,6 +883,30 @@ mod tests {
         assert_eq!(Config::mobile_default().sdk_config.profile, CoreProfile::DesktopLocalRuntime);
         assert_eq!(Config::desktop_default().sdk_config.profile, CoreProfile::DesktopFull);
         assert_eq!(Config::embedded_default().sdk_config.profile, CoreProfile::EmbeddedAlloc);
+    }
+
+    #[test]
+    fn config_operation_registry_merges_custom_entries() {
+        let config = Config::testing_default().with_custom_operation(OperationEntry::new(
+            "vendor.example.custom",
+            "custom",
+            OperationKind::Command,
+            TransportVariant::Extension,
+            "Custom vendor command.",
+        ));
+        let registry = config.operation_registry().expect("registry");
+        assert!(registry.supports("vendor.example.custom"));
+        assert!(registry.supports("sdk_poll_events_v2"));
+    }
+
+    #[test]
+    fn client_exposes_built_in_registry_before_start() {
+        let app = Client::new(MockBackend::new());
+        let registry = app.operation_registry().expect("registry");
+        assert_eq!(
+            registry.canonicalize("sdk_identity_contact_list_v2").expect("canonical id").as_str(),
+            "app.contact.list"
+        );
     }
 
     #[test]
@@ -999,7 +1037,10 @@ mod tests {
             .expect("report");
 
         assert_eq!(report.attempts.len(), 1);
-        assert_eq!(report.attempts[0].disposition, super::super::delivery::AttemptDisposition::Retried);
+        assert_eq!(
+            report.attempts[0].disposition,
+            super::super::delivery::AttemptDisposition::Retried
+        );
         assert!(report.attempts[0].queue_pressure);
         assert_eq!(report.receipt.profile, Profile::DesktopDefault);
     }
@@ -1020,7 +1061,9 @@ mod tests {
             .send_with_options(
                 SendRequest::new("src", "dst", json!({ "body": "hello" })),
                 super::super::delivery::DeliveryOptions {
-                    queue_pressure_strategy: Some(super::super::delivery::QueuePressureStrategy::FailFast),
+                    queue_pressure_strategy: Some(
+                        super::super::delivery::QueuePressureStrategy::FailFast,
+                    ),
                     ..Default::default()
                 },
             )
@@ -1032,14 +1075,18 @@ mod tests {
     #[test]
     fn send_with_options_maps_retry_exhaustion() {
         let backend = MockBackend::new();
-        backend.queue_send_result(Err(
-            SdkError::new(code::INTERNAL, SdkErrorCategory::Internal, "temporary")
-                .with_retryable(true),
-        ));
-        backend.queue_send_result(Err(
-            SdkError::new(code::INTERNAL, SdkErrorCategory::Internal, "temporary")
-                .with_retryable(true),
-        ));
+        backend.queue_send_result(Err(SdkError::new(
+            code::INTERNAL,
+            SdkErrorCategory::Internal,
+            "temporary",
+        )
+        .with_retryable(true)));
+        backend.queue_send_result(Err(SdkError::new(
+            code::INTERNAL,
+            SdkErrorCategory::Internal,
+            "temporary",
+        )
+        .with_retryable(true)));
         let app = Client::new(backend);
         app.start(Config::testing_default()).expect("start");
 

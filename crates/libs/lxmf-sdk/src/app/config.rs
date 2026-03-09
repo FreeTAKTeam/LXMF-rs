@@ -11,6 +11,7 @@ impl Config {
                 supported_contract_versions: vec![2],
                 requested_capabilities: Vec::new(),
                 event_batch_size: Some(32),
+                custom_operations: Vec::new(),
             },
             Profile::DesktopDefault => Self {
                 profile,
@@ -18,6 +19,7 @@ impl Config {
                 supported_contract_versions: vec![2],
                 requested_capabilities: Vec::new(),
                 event_batch_size: Some(64),
+                custom_operations: Vec::new(),
             },
             Profile::EmbeddedDefault => Self {
                 profile,
@@ -25,6 +27,7 @@ impl Config {
                 supported_contract_versions: vec![2],
                 requested_capabilities: Vec::new(),
                 event_batch_size: Some(16),
+                custom_operations: Vec::new(),
             },
             Profile::TestingDefault => {
                 let mut sdk_config = SdkConfig::desktop_local_default();
@@ -35,6 +38,7 @@ impl Config {
                     supported_contract_versions: vec![2],
                     requested_capabilities: Vec::new(),
                     event_batch_size: Some(16),
+                    custom_operations: Vec::new(),
                 }
             }
         }
