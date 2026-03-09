@@ -172,6 +172,12 @@ class WorkspaceFlows {
   WorkspaceFlows(this._workspace);
 
   final WorkspaceClient _workspace;
+  static const Set<String> _missionReservedMetadataKeys = <String>{
+    'content',
+    'topic_id',
+    'group_id',
+    'file_attachments',
+  };
 
   Future<PeerReadyResult> ensurePeerReady(
     String identity, {
@@ -398,6 +404,17 @@ class WorkspaceFlows {
     bool bootstrap = true,
     bool announce = true,
   }) async {
+    final conflictingMetadataKeys = draft.metadata.keys
+        .where(_missionReservedMetadataKeys.contains)
+        .toList(growable: false);
+    if (conflictingMetadataKeys.isNotEmpty) {
+      throw ArgumentError.value(
+        conflictingMetadataKeys,
+        'draft.metadata',
+        'mission metadata cannot override reserved fields',
+      );
+    }
+
     final peer = await ensurePeerReady(
       draft.peerIdentity,
       displayName: displayName,
@@ -413,17 +430,15 @@ class WorkspaceFlows {
     }
 
     final storedAttachments = <AttachmentRecord>[];
-    if (topic != null) {
-      for (final attachment in draft.attachments) {
-        storedAttachments.add(
-          await _workspace.attachments.store(
-            name: attachment.name,
-            contentType: attachment.contentType,
-            bytesBase64: attachment.bytesBase64,
-            topicIds: <String>[topic.topicId],
-          ),
-        );
-      }
+    for (final attachment in draft.attachments) {
+      storedAttachments.add(
+        await _workspace.attachments.store(
+          name: attachment.name,
+          contentType: attachment.contentType,
+          bytesBase64: attachment.bytesBase64,
+          topicIds: topic == null ? const <String>[] : <String>[topic.topicId],
+        ),
+      );
     }
 
     final receipt = await _workspace.app.send(
@@ -445,7 +460,7 @@ class WorkspaceFlows {
                   },
                 )
                 .toList(growable: false),
-          ...draft.metadata,
+          ...Map<String, Object?>.from(draft.metadata),
         },
         correlationId: draft.correlationId,
         idempotencyKey: draft.idempotencyKey,
