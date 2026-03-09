@@ -27,6 +27,155 @@ impl RpcDaemon {
         }
     }
 
+    fn apply_sdk_command_update(
+        &self,
+        correlation_id: &str,
+        event_type: &str,
+        accepted: Option<bool>,
+        payload: Option<JsonValue>,
+        extensions: JsonMap<String, JsonValue>,
+        delivery_state: Option<String>,
+        command_state: Option<&str>,
+    ) -> Result<Option<SdkRemoteCommandRecord>, std::io::Error> {
+        let now_ms = u64::try_from(now_i64()).unwrap_or(0);
+        let updated_session = {
+            let mut sessions =
+                self.sdk_remote_commands.lock().expect("sdk_remote_commands mutex poisoned");
+            let Some(session) = sessions.get_mut(correlation_id) else {
+                return Ok(None);
+            };
+            session.updated_at_ms = now_ms;
+            if let Some(accepted) = accepted {
+                session.accepted = Some(accepted);
+            }
+            if let Some(payload) = payload.clone() {
+                session.response_payload = Some(payload);
+            }
+            if let Some(delivery_state) = delivery_state {
+                session.delivery_state = Some(delivery_state);
+            }
+            if let Some(command_state) = command_state {
+                session.command_state = command_state.to_owned();
+            }
+            session.extensions.extend(extensions);
+            session.clone()
+        };
+        self.persist_sdk_domain_snapshot()?;
+        self.publish_event(RpcEvent {
+            event_type: event_type.into(),
+            payload: json!({
+                "command_id": updated_session.command_id,
+                "correlation_id": updated_session.correlation_id,
+                "command": updated_session.command,
+                "target": updated_session.target,
+                "delivery_state": updated_session.delivery_state,
+                "command_state": updated_session.command_state,
+                "accepted": updated_session.accepted,
+                "response_payload": updated_session
+                    .response_payload
+                    .as_ref()
+                    .map(Self::sdk_command_event_payload_summary)
+                    .unwrap_or(JsonValue::Null),
+            }),
+        });
+        Ok(Some(updated_session))
+    }
+
+    fn inbound_sdk_command_update(
+        record: &MessageRecord,
+    ) -> Option<(
+        String,
+        &'static str,
+        Option<bool>,
+        Option<JsonValue>,
+        JsonMap<String, JsonValue>,
+        Option<String>,
+        Option<&'static str>,
+    )> {
+        let fields = record.fields.as_ref()?.as_object()?;
+        let command = fields.get("sdk_command")?.as_object()?;
+        let correlation_id =
+            Self::normalize_non_empty(command.get("correlation_id")?.as_str()?)?.to_owned();
+        let event = Self::normalize_non_empty(command.get("event")?.as_str()?)?;
+        let accepted = command.get("accepted").and_then(JsonValue::as_bool);
+        let payload = command.get("payload").cloned();
+        let extensions = command
+            .get("extensions")
+            .and_then(JsonValue::as_object)
+            .cloned()
+            .unwrap_or_default();
+        match event.as_str() {
+            "receipt_acknowledged" => Some((
+                correlation_id,
+                "command.receipt_acknowledged",
+                accepted,
+                payload,
+                extensions,
+                Some("acknowledged".to_owned()),
+                None,
+            )),
+            "processing_started" => Some((
+                correlation_id,
+                "command.processing_started",
+                accepted,
+                payload,
+                extensions,
+                None,
+                Some("processing"),
+            )),
+            "progress" => Some((
+                correlation_id,
+                "command.progress",
+                accepted,
+                payload,
+                extensions,
+                None,
+                Some("processing"),
+            )),
+            "completed" => Some((
+                correlation_id,
+                "command.completed",
+                Some(accepted.unwrap_or(true)),
+                payload,
+                extensions,
+                None,
+                Some("completed"),
+            )),
+            "failed" => Some((
+                correlation_id,
+                "command.failed",
+                Some(accepted.unwrap_or(false)),
+                payload,
+                extensions,
+                None,
+                Some("failed"),
+            )),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn correlate_inbound_sdk_command(
+        &self,
+        record: &MessageRecord,
+    ) -> Result<bool, std::io::Error> {
+        let Some((correlation_id, event_type, accepted, payload, extensions, delivery_state, command_state)) =
+            Self::inbound_sdk_command_update(record)
+        else {
+            return Ok(false);
+        };
+        let _domain_state_guard = self.lock_and_restore_sdk_domain_snapshot()?;
+        Ok(self
+            .apply_sdk_command_update(
+                correlation_id.as_str(),
+                event_type,
+                accepted,
+                payload,
+                extensions,
+                delivery_state,
+                command_state,
+            )?
+            .is_some())
+    }
     fn sdk_remote_command_record_to_value(record: &SdkRemoteCommandRecord) -> JsonValue {
         json!({
             "command_id": record.command_id,
@@ -276,46 +425,22 @@ impl RpcDaemon {
                 ))
             }
         };
-        let now_ms = u64::try_from(now_i64()).unwrap_or(0);
-        let updated_session = {
-            let mut sessions =
-                self.sdk_remote_commands.lock().expect("sdk_remote_commands mutex poisoned");
-            let Some(session) = sessions.get_mut(correlation_id.as_str()) else {
-                return Ok(self.sdk_error_response(
-                    request.id,
-                    "SDK_RUNTIME_NOT_FOUND",
-                    "correlation_id not found",
-                ));
-            };
-            session.updated_at_ms = now_ms;
-            session.accepted = Some(parsed.accepted);
-            session.response_payload = Some(parsed.payload.clone());
-            session.extensions.extend(parsed.extensions.clone());
-            session.command_state =
-                if parsed.accepted { "completed" } else { "failed" }.to_owned();
-            session.clone()
+        let Some(updated_session) = self.apply_sdk_command_update(
+            correlation_id.as_str(),
+            if parsed.accepted { "command.completed" } else { "command.failed" },
+            Some(parsed.accepted),
+            Some(parsed.payload.clone()),
+            parsed.extensions.clone(),
+            None,
+            Some(if parsed.accepted { "completed" } else { "failed" }),
+        )?
+        else {
+            return Ok(self.sdk_error_response(
+                request.id,
+                "SDK_RUNTIME_NOT_FOUND",
+                "correlation_id not found",
+            ));
         };
-        self.persist_sdk_domain_snapshot()?;
-        self.publish_event(RpcEvent {
-            event_type: if parsed.accepted {
-                "command.completed".into()
-            } else {
-                "command.failed".into()
-            },
-            payload: json!({
-                "command_id": updated_session.command_id,
-                "correlation_id": updated_session.correlation_id,
-                "command": updated_session.command,
-                "target": updated_session.target,
-                "command_state": updated_session.command_state,
-                "accepted": updated_session.accepted,
-                "response_payload": updated_session
-                    .response_payload
-                    .as_ref()
-                    .map(Self::sdk_command_event_payload_summary)
-                    .unwrap_or(JsonValue::Null),
-            }),
-        });
         Ok(RpcResponse {
             id: request.id,
             result: Some(json!({

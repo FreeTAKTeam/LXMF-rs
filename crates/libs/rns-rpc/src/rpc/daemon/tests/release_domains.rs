@@ -190,6 +190,117 @@ fn sdk_domain_snapshot_restore_accepts_legacy_remote_command_arrays() {
 }
 
 #[test]
+fn sdk_remote_command_sessions_correlate_inbound_messages() {
+    let daemon = RpcDaemon::test_instance();
+
+    let command = daemon
+        .handle_rpc(rpc_request(
+            500,
+            "sdk_command_invoke_v2",
+            json!({
+                "command": "ping",
+                "target": "node-b",
+                "payload": { "body": "hello" },
+            }),
+        ))
+        .expect("command invoke");
+    assert!(command.error.is_none());
+    let correlation_id = command.result.expect("command result")["response"]["payload"]
+        ["correlation_id"]
+        .as_str()
+        .expect("correlation_id")
+        .to_string();
+
+    let pre_poll = daemon
+        .handle_rpc(rpc_request(
+            501,
+            "sdk_poll_events_v2",
+            json!({ "cursor": null, "max": 100 }),
+        ))
+        .expect("pre poll");
+    assert!(pre_poll.error.is_none());
+    let pre_cursor = pre_poll.result.expect("pre poll result")["next_cursor"]
+        .as_str()
+        .expect("pre cursor")
+        .to_string();
+
+    daemon
+        .accept_inbound_for_test(MessageRecord {
+            id: "cmd-progress-1".to_owned(),
+            source: "node-b".to_owned(),
+            destination: "test-identity".to_owned(),
+            title: "command progress".to_owned(),
+            content: "processing".to_owned(),
+            timestamp: now_i64(),
+            direction: "in".to_owned(),
+            fields: Some(json!({
+                "sdk_command": {
+                    "correlation_id": correlation_id,
+                    "event": "processing_started",
+                    "payload": { "stage": "decode" }
+                }
+            })),
+            receipt_status: None,
+        })
+        .expect("accept inbound progress");
+
+    daemon
+        .accept_inbound_for_test(MessageRecord {
+            id: "cmd-complete-1".to_owned(),
+            source: "node-b".to_owned(),
+            destination: "test-identity".to_owned(),
+            title: "command complete".to_owned(),
+            content: "done".to_owned(),
+            timestamp: now_i64(),
+            direction: "in".to_owned(),
+            fields: Some(json!({
+                "sdk_command": {
+                    "correlation_id": correlation_id,
+                    "event": "completed",
+                    "accepted": true,
+                    "payload": { "reply": "pong" }
+                }
+            })),
+            receipt_status: None,
+        })
+        .expect("accept inbound completion");
+
+    let session = daemon
+        .handle_rpc(rpc_request(
+            502,
+            "sdk_command_session_get_v2",
+            json!({ "correlation_id": correlation_id.clone() }),
+        ))
+        .expect("command session get");
+    assert!(session.error.is_none());
+    let session_result = session.result.expect("session result");
+    let command_id = session_result["session"]["command_id"].clone();
+    assert_eq!(session_result["session"]["command_state"], json!("completed"));
+    assert_eq!(session_result["session"]["accepted"], json!(true));
+    assert_eq!(session_result["session"]["response_payload"]["reply"], json!("pong"));
+
+    let poll = daemon
+        .handle_rpc(rpc_request(
+            503,
+            "sdk_poll_events_v2",
+            json!({ "cursor": pre_cursor, "max": 100 }),
+        ))
+        .expect("poll events");
+    assert!(poll.error.is_none());
+    let poll_result = poll.result.expect("poll result");
+    let events = poll_result["events"].as_array().expect("events");
+    assert!(events.iter().any(|event| {
+        event["event_type"] == json!("command.processing_started")
+            && event["payload"]["command_id"] == command_id
+    }));
+    assert!(events.iter().any(|event| {
+        event["event_type"] == json!("command.completed")
+            && event["payload"]["command_id"] == command_id
+            && event["payload"]["response_payload"]["kind"] == json!("object")
+    }));
+}
+
+#[test]
 fn sdk_release_b_filtered_list_cursor_does_not_stall_on_no_matches() {
     let daemon = RpcDaemon::test_instance();
     let topic_a = daemon
@@ -1810,6 +1921,55 @@ fn sdk_domain_state_is_storage_authoritative_across_live_daemons() {
         ))
         .expect("command reply on daemon B");
     assert!(command_reply_from_b.error.is_none());
+
+    let command_session_from_b = daemon_b
+        .handle_rpc(rpc_request(
+            306,
+            "sdk_command_session_get_v2",
+            json!({ "correlation_id": correlation_id.clone() }),
+        ))
+        .expect("command session get on daemon B");
+    assert!(command_session_from_b.error.is_none());
+    assert_eq!(
+        command_session_from_b.result.expect("command session result")["session"]["response_payload"]
+            ["reply"],
+        json!("ok")
+    );
+
+    daemon_b
+        .accept_inbound_for_test(MessageRecord {
+            id: "cmd-live-daemon-complete".to_owned(),
+            source: "peer-a".to_owned(),
+            destination: "authority-node".to_owned(),
+            title: "command complete".to_owned(),
+            content: "ok".to_owned(),
+            timestamp: now_i64(),
+            direction: "in".to_owned(),
+            fields: Some(json!({
+                "sdk_command": {
+                    "correlation_id": correlation_id,
+                    "event": "completed",
+                    "accepted": true,
+                    "payload": { "reply": "from-inbound" }
+                }
+            })),
+            receipt_status: None,
+        })
+        .expect("accept inbound correlation on daemon B");
+
+    let command_session_after_inbound = daemon_b
+        .handle_rpc(rpc_request(
+            307,
+            "sdk_command_session_get_v2",
+            json!({ "correlation_id": correlation_id.clone() }),
+        ))
+        .expect("command session get after inbound");
+    assert!(command_session_after_inbound.error.is_none());
+    assert_eq!(
+        command_session_after_inbound.result.expect("command session after inbound result")["session"]
+            ["response_payload"]["reply"],
+        json!("from-inbound")
+    );
 
     let _ = std::fs::remove_file(&db_path);
 }

@@ -162,7 +162,9 @@ impl RpcDaemon {
     }
 
     pub fn accept_inbound(&self, record: MessageRecord) -> Result<(), std::io::Error> {
-        self.store_inbound_record(record)
+        self.store_inbound_record(record.clone())?;
+        let _ = self.correlate_inbound_sdk_command(&record)?;
+        Ok(())
     }
 
     pub fn accept_announce(&self, peer: String, timestamp: i64) -> Result<(), std::io::Error> {
@@ -318,7 +320,7 @@ impl RpcDaemon {
         &self,
         record: MessageRecord,
     ) -> Result<(), std::io::Error> {
-        self.store_inbound_record(record)
+        self.accept_inbound(record)
     }
 
 }
