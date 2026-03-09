@@ -81,6 +81,26 @@ final status = await workspace.status();
 print('runtime=${status.runtimeId} identities=${identities.length}');
 ```
 
+Workspace workflow flow:
+
+```dart
+final workspace = WorkspaceClient.rpc(
+  RpcConnectionOptions(
+    endpoint: Uri.parse('http://127.0.0.1:4243/rpc'),
+  ),
+);
+
+await workspace.start(const Config(profile: Profile.desktopDefault));
+final peer = await workspace.flows.ensurePeerReady('peer-demo');
+final topic = await workspace.flows.ensureTopic('ops/demo');
+final note = await workspace.flows.publishFieldNote(
+  topicPath: 'ops/demo',
+  payload: const <String, Object?>{'body': 'field note'},
+);
+
+print('peer=${peer.identity} topic=${topic.topic.topicId} note=${note.published}');
+```
+
 Operation-catalog flow:
 
 ```dart
@@ -346,6 +366,7 @@ dart run example/attachment_operations_smoke.dart http://127.0.0.1:4243/rpc [top
 dart run example/attachment_streaming_smoke.dart http://127.0.0.1:4243/rpc
 dart run example/discovery_operations_smoke.dart http://127.0.0.1:4243/rpc
 dart run example/workspace_smoke.dart http://127.0.0.1:4243/rpc
+dart run example/workspace_flows_smoke.dart http://127.0.0.1:4243/rpc
 ```
 
 Repo-level smoke from the project root:
