@@ -122,6 +122,15 @@ pub(super) fn take_outbound_resource_message_id(
     outbound_resource_map.lock().ok().and_then(|mut guard| guard.remove(resource_hash_hex))
 }
 
+pub(super) fn prune_outbound_resource_mappings_for_message(
+    outbound_resource_map: &Arc<Mutex<HashMap<String, String>>>,
+    message_id: &str,
+) {
+    if let Ok(mut guard) = outbound_resource_map.lock() {
+        guard.retain(|_, mapped_message_id| mapped_message_id != message_id);
+    }
+}
+
 async fn resolve_link_destination(
     transport: &Transport,
     link_id: &AddressHash,

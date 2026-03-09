@@ -460,7 +460,12 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     }
 
     if transport.is_some() {
-        spawn_receipt_worker(daemon.clone(), receipt_rx);
+        spawn_receipt_worker(
+            daemon.clone(),
+            receipt_rx,
+            receipt_map.clone(),
+            outbound_resource_map.clone(),
+        );
     }
 
     if args.announce_interval_secs > 0 {

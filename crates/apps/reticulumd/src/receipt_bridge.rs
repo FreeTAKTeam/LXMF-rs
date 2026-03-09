@@ -1,6 +1,6 @@
 use rns_rpc::RpcDaemon;
 use rns_transport::receipt::{
-    record_receipt_status, resolve_receipt_message_id,
+    lookup_receipt_message_id, record_receipt_status,
     track_receipt_mapping as shared_track_receipt_mapping,
 };
 use rns_transport::transport::{DeliveryReceipt, ReceiptHandler};
@@ -31,7 +31,7 @@ impl ReceiptBridge {
 
 impl ReceiptHandler for ReceiptBridge {
     fn on_receipt(&self, receipt: &DeliveryReceipt) {
-        let message_id = resolve_receipt_message_id(&self.map, receipt);
+        let message_id = lookup_receipt_message_id(&self.map, receipt);
         if let Some(message_id) = message_id {
             let _ = self.tx.send(ReceiptEvent { message_id, status: "delivered".into() });
         }

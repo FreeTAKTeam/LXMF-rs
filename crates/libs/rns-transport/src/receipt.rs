@@ -10,6 +10,14 @@ pub fn resolve_receipt_message_id(
     map.lock().ok().and_then(|mut guard| guard.remove(&key))
 }
 
+pub fn lookup_receipt_message_id(
+    map: &Arc<Mutex<HashMap<String, String>>>,
+    receipt: &DeliveryReceipt,
+) -> Option<String> {
+    let key = hex::encode(receipt.message_id);
+    map.lock().ok().and_then(|guard| guard.get(&key).cloned())
+}
+
 pub fn track_receipt_mapping(
     map: &Arc<Mutex<HashMap<String, String>>>,
     packet_hash: &str,

@@ -10,7 +10,7 @@ async fn receipt_bridge_emits_event_for_known_packet() {
     let map = Arc::new(Mutex::new(HashMap::new()));
     let packet_id = [7u8; 32];
     let packet_hex = hex::encode(packet_id);
-    map.lock().unwrap().insert(packet_hex, "msg-1".to_string());
+    map.lock().unwrap().insert(packet_hex.clone(), "msg-1".to_string());
 
     let bridge = ReceiptBridge::new(map.clone(), tx);
     bridge.on_receipt(&DeliveryReceipt::new(packet_id));
@@ -18,4 +18,9 @@ async fn receipt_bridge_emits_event_for_known_packet() {
     let event = rx.recv().await.expect("receipt event");
     assert_eq!(event.message_id, "msg-1");
     assert_eq!(event.status, "delivered");
+    assert_eq!(
+        map.lock().unwrap().get(&packet_hex).map(String::as_str),
+        Some("msg-1"),
+        "transport receipts should not consume the correlation mapping before terminal receipt persistence",
+    );
 }
