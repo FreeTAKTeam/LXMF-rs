@@ -426,6 +426,29 @@ class EmbeddedNodeBridge implements AppBinding {
   }
 
   @override
+  Future<OperationRegistry> operationRegistry() async {
+    throw const AppError(
+      code: ErrorCode.capabilityRequiredFeatureMissing,
+      category: ErrorCategory.capability,
+      message:
+          'operationRegistry is not supported by the experimental embedded binding',
+      userActionRequired: true,
+    );
+  }
+
+  @override
+  Future<EnvelopeResponse> executeEnvelope(Envelope envelope) async {
+    throw AppError(
+      code: ErrorCode.capabilityRequiredFeatureMissing,
+      category: ErrorCategory.capability,
+      message:
+          'executeEnvelope is not supported by the experimental embedded binding',
+      userActionRequired: true,
+      details: <String, Object?>{'operationId': envelope.operationId},
+    );
+  }
+
+  @override
   Stream<AppEvent> subscribeEvents() {
     _ensureStarted();
 

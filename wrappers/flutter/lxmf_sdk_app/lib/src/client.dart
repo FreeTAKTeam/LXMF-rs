@@ -16,6 +16,10 @@ abstract interface class AppBinding {
     DeliveryOptions options,
   );
 
+  Future<OperationRegistry> operationRegistry();
+
+  Future<EnvelopeResponse> executeEnvelope(Envelope envelope);
+
   Stream<AppEvent> subscribeEvents();
 }
 
@@ -43,6 +47,48 @@ class AppClient {
     return _binding.sendWithOptions(request, options);
   }
 
+  Future<OperationRegistry> operationRegistry() => _binding.operationRegistry();
+
+  Future<EnvelopeResponse> executeEnvelope(Envelope envelope) {
+    return _binding.executeEnvelope(envelope);
+  }
+
+  Future<EnvelopeResponse> queryOperation(
+    String operationId,
+    Object? payload, {
+    String? target,
+    String? correlationId,
+    int? timeoutMs,
+    Map<String, Object?> extensions = const <String, Object?>{},
+  }) {
+    return executeEnvelope(
+      Envelope.query(operationId, payload).copyWith(
+        target: target,
+        correlationId: correlationId,
+        timeoutMs: timeoutMs,
+        extensions: extensions,
+      ),
+    );
+  }
+
+  Future<EnvelopeResponse> commandOperation(
+    String operationId,
+    Object? payload, {
+    String? target,
+    String? correlationId,
+    int? timeoutMs,
+    Map<String, Object?> extensions = const <String, Object?>{},
+  }) {
+    return executeEnvelope(
+      Envelope.command(operationId, payload).copyWith(
+        target: target,
+        correlationId: correlationId,
+        timeoutMs: timeoutMs,
+        extensions: extensions,
+      ),
+    );
+  }
+
   Stream<AppEvent> subscribeEvents() => _binding.subscribeEvents();
 
   Future<List<IdentityBundle>> identityList() async {
@@ -52,7 +98,8 @@ class AppClient {
       throw const AppError(
         code: ErrorCode.capabilityRequiredFeatureMissing,
         category: ErrorCategory.capability,
-        message: 'identityList is only available on bindings that expose identity helpers',
+        message:
+            'identityList is only available on bindings that expose identity helpers',
       );
     }
   }
@@ -65,44 +112,51 @@ class AppClient {
       throw const AppError(
         code: ErrorCode.capabilityRequiredFeatureMissing,
         category: ErrorCategory.capability,
-        message: 'contactList is only available on bindings that expose contact helpers',
+        message:
+            'contactList is only available on bindings that expose contact helpers',
       );
     }
   }
 
   Future<List<MessageRecord>> messageHistory() async {
     try {
-      return await (_binding as dynamic).messageHistory() as List<MessageRecord>;
+      return await (_binding as dynamic).messageHistory()
+          as List<MessageRecord>;
     } on NoSuchMethodError {
       throw const AppError(
         code: ErrorCode.capabilityRequiredFeatureMissing,
         category: ErrorCategory.capability,
-        message: 'messageHistory is only available on bindings that expose message helpers',
+        message:
+            'messageHistory is only available on bindings that expose message helpers',
       );
     }
   }
 
   Future<DeliveryStatus?> deliveryStatus(String messageId) async {
     try {
-      return await (_binding as dynamic).deliveryStatus(messageId) as DeliveryStatus?;
+      return await (_binding as dynamic).deliveryStatus(messageId)
+          as DeliveryStatus?;
     } on NoSuchMethodError {
       throw const AppError(
         code: ErrorCode.capabilityRequiredFeatureMissing,
         category: ErrorCategory.capability,
-        message: 'deliveryStatus is only available on bindings that expose runtime status helpers',
+        message:
+            'deliveryStatus is only available on bindings that expose runtime status helpers',
       );
     }
   }
 
   Stream<DeliveryStatus> watchMessageStatus(String messageId) {
     try {
-      return (_binding as dynamic).watchMessageStatus(messageId) as Stream<DeliveryStatus>;
+      return (_binding as dynamic).watchMessageStatus(messageId)
+          as Stream<DeliveryStatus>;
     } on NoSuchMethodError {
       return Stream<DeliveryStatus>.error(
         const AppError(
           code: ErrorCode.capabilityRequiredFeatureMissing,
           category: ErrorCategory.capability,
-          message: 'watchMessageStatus is only available on bindings that expose runtime status helpers',
+          message:
+              'watchMessageStatus is only available on bindings that expose runtime status helpers',
         ),
       );
     }

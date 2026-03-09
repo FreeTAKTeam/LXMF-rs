@@ -23,10 +23,12 @@ Current package scope:
 
 - typed `Config`, `Profile`, `SendRequest`, `SendReceipt`, `RuntimeStatus`, `Event`, `AppError`
 - typed delivery-plan and delivery-helper models
+- typed operation registry and envelope execution models
 - `AppClient` facade over an abstract `AppBinding`
 - `RpcBinding` for `reticulumd` over framed MessagePack HTTP RPC
 - `RpcConversationClient` for message history + live conversation updates
 - identity, contact, message-history, and delivery-status helpers for RPC-backed clients
+- operation catalog fetch + alias-aware envelope execution helpers for RPC-backed clients
 - fixture-backed contract tests for shared `sdk-app` scenarios
 
 Important current constraint:
@@ -59,6 +61,21 @@ final receipt = await client.send(
   ),
 );
 print('${handle.runtimeId} accepted ${receipt.messageId}');
+```
+
+Operation-catalog flow:
+
+```dart
+final registry = await client.operationRegistry();
+final resolved = registry.resolve('sdk_identity_list_v2');
+print('canonical op: ${resolved?.canonicalId}');
+
+final response = await client.queryOperation(
+  'sdk_identity_list_v2',
+  const <String, Object?>{},
+  correlationId: 'flutter-op-demo',
+);
+print('accepted=${response.accepted} op=${response.operationId}');
 ```
 
 Conversation-oriented flow:
@@ -122,6 +139,7 @@ dart analyze
 dart test
 dart run example/rpc_smoke.dart http://127.0.0.1:4243/rpc
 dart run example/rpc_chat_smoke.dart http://127.0.0.1:4243/rpc <peer-destination-hash>
+dart run example/rpc_operations_smoke.dart http://127.0.0.1:4243/rpc
 ```
 
 Repo-level smoke from the project root:

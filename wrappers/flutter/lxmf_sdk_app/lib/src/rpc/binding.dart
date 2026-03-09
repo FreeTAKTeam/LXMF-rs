@@ -79,19 +79,23 @@ final class RpcBinding implements AppBinding {
     final patch = _runtimePatchFor(config);
     if (patch.isNotEmpty) {
       await _call('sdk_configure_v2', <String, Object?>{
-        'expected_revision': (snapshot['config_revision'] as num?)?.toInt() ?? 0,
+        'expected_revision':
+            (snapshot['config_revision'] as num?)?.toInt() ?? 0,
         'patch': patch,
       });
     }
 
     final runtime = await _snapshot(includeCounts: true);
     final handle = Handle(
-      runtimeId: _stringAt(runtime, 'runtime_id') ?? _stringAt(negotiate, 'runtime_id') ?? 'rpc-runtime',
+      runtimeId: _stringAt(runtime, 'runtime_id') ??
+          _stringAt(negotiate, 'runtime_id') ??
+          'rpc-runtime',
       profile: config.profile,
       capabilities: CapabilitySummary(
         activeContractVersion:
             (_numberAt(negotiate, 'active_contract_version') ?? 2).toInt(),
-        effectiveCapabilities: _stringListAt(negotiate, 'effective_capabilities'),
+        effectiveCapabilities:
+            _stringListAt(negotiate, 'effective_capabilities'),
         effectiveLimits: _mapAt(negotiate, 'effective_limits'),
       ),
     );
@@ -130,7 +134,8 @@ final class RpcBinding implements AppBinding {
       profile: _activeConfig?.profile,
       capabilities: _activeHandle?.capabilities,
       queuedMessages: (_numberAt(snapshot, 'queued_messages') ?? 0).toInt(),
-      inFlightMessages: (_numberAt(snapshot, 'in_flight_messages') ?? 0).toInt(),
+      inFlightMessages:
+          (_numberAt(snapshot, 'in_flight_messages') ?? 0).toInt(),
       eventStreamPosition:
           (_numberAt(snapshot, 'event_stream_position') ?? 0).toInt(),
       configRevision: (_numberAt(snapshot, 'config_revision') ?? 0).toInt(),
@@ -228,10 +233,62 @@ final class RpcBinding implements AppBinding {
   }
 
   @override
+  Future<OperationRegistry> operationRegistry() async {
+    final result =
+        await _call('sdk_operation_registry_v2', const <String, Object?>{});
+    final registryMap = result['registry'];
+    if (registryMap is! Map) {
+      throw const AppError(
+        code: ErrorCode.internalUnexpectedFailure,
+        category: ErrorCategory.internal,
+        message: 'sdk_operation_registry_v2 did not return a registry object',
+      );
+    }
+    final entries = registryMap['entries'];
+    if (entries is! List) {
+      throw const AppError(
+        code: ErrorCode.internalUnexpectedFailure,
+        category: ErrorCategory.internal,
+        message: 'sdk_operation_registry_v2 did not return an entries array',
+      );
+    }
+    return OperationRegistry(
+      entries: entries
+          .whereType<Map>()
+          .map(
+            (entry) => _operationEntryFromMap(
+              entry.map((key, value) => MapEntry(key.toString(), value)),
+            ),
+          )
+          .toList(growable: false),
+    );
+  }
+
+  @override
+  Future<EnvelopeResponse> executeEnvelope(Envelope envelope) async {
+    final result = await _call(
+      'sdk_envelope_execute_v2',
+      _envelopeParams(envelope),
+    );
+    final response = result['response'];
+    if (response is! Map) {
+      throw const AppError(
+        code: ErrorCode.internalUnexpectedFailure,
+        category: ErrorCategory.internal,
+        message: 'sdk_envelope_execute_v2 did not return a response object',
+      );
+    }
+    return _envelopeResponseFromMap(
+      response.map((key, value) => MapEntry(key.toString(), value)),
+    );
+  }
+
+  @override
   Stream<AppEvent> subscribeEvents() {
     final handle = _requireHandle();
     final config = _requireConfig();
-    final pollMax = config.eventBatchSize ?? config.deliveryPlan().defaultEventBatchSize;
+    final pollMax =
+        config.eventBatchSize ?? config.deliveryPlan().defaultEventBatchSize;
     final idleDelay = _options.pollIdleDelay;
 
     return Stream<AppEvent>.multi((controller) {
@@ -244,7 +301,8 @@ final class RpcBinding implements AppBinding {
               'cursor': cursor,
               'max': pollMax,
             });
-            final events = (_mapAt(result, 'events')['events'] ?? result['events']) as List?;
+            final events = (_mapAt(result, 'events')['events'] ??
+                result['events']) as List?;
             cursor = _stringAt(result, 'next_cursor');
             if (events == null || events.isEmpty) {
               await Future<void>.delayed(idleDelay);
@@ -296,7 +354,8 @@ final class RpcBinding implements AppBinding {
   }
 
   Future<List<MessageRecord>> messageHistory() async {
-    final result = await _callLegacy('list_messages', const <String, Object?>{});
+    final result =
+        await _callLegacy('list_messages', const <String, Object?>{});
     final messages = result['messages'];
     if (messages is! List) {
       throw const AppError(
@@ -316,9 +375,10 @@ final class RpcBinding implements AppBinding {
   }
 
   Future<List<IdentityBundle>> identityList() async {
-    final result = await _call('sdk_identity_list_v2', const <String, Object?>{});
-    final identities = result['identities'] ??
-        (_mapAt(result, 'identity_list')['identities']);
+    final result =
+        await _call('sdk_identity_list_v2', const <String, Object?>{});
+    final identities =
+        result['identities'] ?? (_mapAt(result, 'identity_list')['identities']);
     if (identities is! List) {
       throw const AppError(
         code: ErrorCode.internalUnexpectedFailure,
@@ -340,7 +400,8 @@ final class RpcBinding implements AppBinding {
     String? cursor,
     int? limit,
   }) async {
-    final result = await _call('sdk_identity_contact_list_v2', <String, Object?>{
+    final result =
+        await _call('sdk_identity_contact_list_v2', <String, Object?>{
       if (cursor != null) 'cursor': cursor,
       if (limit != null) 'limit': limit,
     });
@@ -518,10 +579,12 @@ final class RpcBinding implements AppBinding {
   }
 
   AppEvent _mapEvent(Object? raw, Handle handle, Profile profile) {
-    final map = (raw as Map).map((key, value) => MapEntry(key.toString(), value));
+    final map =
+        (raw as Map).map((key, value) => MapEntry(key.toString(), value));
     final eventType = (map['event_type'] ?? 'unknown').toString();
     final payload = map['payload'] is Map
-        ? (map['payload'] as Map).map((key, value) => MapEntry(key.toString(), value))
+        ? (map['payload'] as Map)
+            .map((key, value) => MapEntry(key.toString(), value))
         : const <String, Object?>{};
     final message = payload['message'];
     final messageMap = message is Map
@@ -535,9 +598,12 @@ final class RpcBinding implements AppBinding {
       'runtime_shutdown_requested' => EventKind.runtimeStopped,
       'config_updated' => EventKind.runtimeRecovered,
       'outbound' when receiptStatus.startsWith('sent') => EventKind.messageSent,
-      'outbound' when receiptStatus == 'delivered' => EventKind.messageDelivered,
-      'outbound' when receiptStatus == 'cancelled' => EventKind.messageCancelled,
-      'outbound' when receiptStatus.startsWith('failed') => EventKind.messageFailed,
+      'outbound' when receiptStatus == 'delivered' =>
+        EventKind.messageDelivered,
+      'outbound' when receiptStatus == 'cancelled' =>
+        EventKind.messageCancelled,
+      'outbound' when receiptStatus.startsWith('failed') =>
+        EventKind.messageFailed,
       _ => EventKind.unknown,
     };
 
@@ -560,7 +626,8 @@ final class RpcBinding implements AppBinding {
         occurredAtMs: occurredAtMs,
         severity: severity,
         profileId: profile.id,
-        messageId: messageMap['id']?.toString() ?? payload['message_id']?.toString(),
+        messageId:
+            messageMap['id']?.toString() ?? payload['message_id']?.toString(),
       ),
       kind: kind,
       rawEventType: eventType,
@@ -672,8 +739,10 @@ final class RpcBinding implements AppBinding {
         'block_timeout_ms': sdkConfig['block_timeout_ms'],
       if (sdkConfig['store_forward'] case final storeForward?)
         'store_forward': storeForward,
-      if (sdkConfig['event_sink'] case final eventSink?) 'event_sink': eventSink,
-      if (sdkConfig['rpc_backend'] case final rpcBackend?) 'rpc_backend': rpcBackend,
+      if (sdkConfig['event_sink'] case final eventSink?)
+        'event_sink': eventSink,
+      if (sdkConfig['rpc_backend'] case final rpcBackend?)
+        'rpc_backend': rpcBackend,
     };
   }
 
@@ -752,7 +821,8 @@ final class RpcBinding implements AppBinding {
   }
 
   static AppError _mapRpcError(Map<String, Object?> error) {
-    final code = (error['machine_code'] ?? error['code'] ?? 'unknown').toString();
+    final code =
+        (error['machine_code'] ?? error['code'] ?? 'unknown').toString();
     final message = (error['message'] ?? 'rpc call failed').toString();
     final details = _mapAt(error, 'details');
     final mapped = switch (code) {
@@ -798,7 +868,10 @@ final class RpcBinding implements AppBinding {
           true,
           true,
         ),
-      'SDK_RUNTIME_STREAM_DEGRADED' || 'SDK_RUNTIME_CURSOR_EXPIRED' || 'SDK_RUNTIME_INVALID_CURSOR' => (
+      'SDK_RUNTIME_STREAM_DEGRADED' ||
+      'SDK_RUNTIME_CURSOR_EXPIRED' ||
+      'SDK_RUNTIME_INVALID_CURSOR' =>
+        (
           ErrorCode.runtimeStreamDegraded,
           ErrorCategory.runtime,
           true,
@@ -904,7 +977,8 @@ final class RpcBinding implements AppBinding {
         receiptStatus: 'cancelled',
       );
     }
-    if (event.rawEventType != 'outbound' || event.details is! Map<String, Object?>) {
+    if (event.rawEventType != 'outbound' ||
+        event.details is! Map<String, Object?>) {
       return null;
     }
     final payload = event.details! as Map<String, Object?>;
@@ -976,6 +1050,79 @@ final class RpcBinding implements AppBinding {
   static String? _stringAt(Map<String, Object?> value, String key) {
     final nested = value[key];
     return nested?.toString();
+  }
+
+  static Map<String, Object?> _envelopeParams(Envelope envelope) {
+    return <String, Object?>{
+      'operation_id': envelope.operationId,
+      'kind': _envelopeKindToWire(envelope.kind),
+      if (envelope.target case final target?) 'target': target,
+      if (envelope.correlationId case final correlationId?)
+        'correlation_id': correlationId,
+      if (envelope.timeoutMs case final timeoutMs?) 'timeout_ms': timeoutMs,
+      'payload': envelope.payload,
+      if (envelope.extensions.isNotEmpty) 'extensions': envelope.extensions,
+    };
+  }
+
+  static OperationEntry _operationEntryFromMap(Map<String, Object?> map) {
+    return OperationEntry(
+      id: map['id']?.toString() ?? '',
+      group: map['group']?.toString() ?? '',
+      kind: _operationKind(map['kind']?.toString()),
+      transportVariant: _transportVariant(map['transport_variant']?.toString()),
+      description: map['description']?.toString() ?? '',
+      aliases: _stringListAt(map, 'aliases'),
+      requiredCapabilities: _stringListAt(map, 'required_capabilities'),
+    );
+  }
+
+  static EnvelopeResponse _envelopeResponseFromMap(Map<String, Object?> map) {
+    return EnvelopeResponse(
+      operationId: map['operation_id']?.toString() ?? '',
+      kind: _envelopeKind(map['kind']?.toString()),
+      accepted: map['accepted'] == true,
+      correlationId: map['correlation_id']?.toString(),
+      payload: map['payload'],
+      extensions: _mapAt(map, 'extensions'),
+    );
+  }
+
+  static EnvelopeKind _envelopeKind(String? value) {
+    return switch (value) {
+      'query' => EnvelopeKind.query,
+      'command' => EnvelopeKind.command,
+      'result' => EnvelopeKind.result,
+      'error' => EnvelopeKind.error,
+      _ => EnvelopeKind.error,
+    };
+  }
+
+  static String _envelopeKindToWire(EnvelopeKind kind) {
+    return switch (kind) {
+      EnvelopeKind.query => 'query',
+      EnvelopeKind.command => 'command',
+      EnvelopeKind.result => 'result',
+      EnvelopeKind.error => 'error',
+    };
+  }
+
+  static OperationKind _operationKind(String? value) {
+    return switch (value) {
+      'query' => OperationKind.query,
+      'command' => OperationKind.command,
+      _ => OperationKind.command,
+    };
+  }
+
+  static TransportVariant _transportVariant(String? value) {
+    return switch (value) {
+      'app' => TransportVariant.app,
+      'rpc' => TransportVariant.rpc,
+      'legacy_rpc' => TransportVariant.legacyRpc,
+      'extension' => TransportVariant.extension,
+      _ => TransportVariant.extension,
+    };
   }
 
   static num? _numberAt(Map<String, Object?> value, String key) {

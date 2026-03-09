@@ -19,7 +19,8 @@ void main() {
       await server.close(force: true);
     });
 
-    test('start, status, send, subscribe, and stop map onto rpc methods', () async {
+    test('start, status, send, subscribe, and stop map onto rpc methods',
+        () async {
       final outboundEvent = <String, Object?>{
         'event_id': 'evt-2',
         'runtime_id': 'rpc-test-runtime',
@@ -97,7 +98,10 @@ void main() {
               },
             'sdk_shutdown_v2' => <String, Object?>{
                 'id': id,
-                'result': <String, Object?>{'accepted': true, 'mode': 'graceful'},
+                'result': <String, Object?>{
+                  'accepted': true,
+                  'mode': 'graceful'
+                },
                 'error': null,
               },
             _ => <String, Object?>{
@@ -109,7 +113,8 @@ void main() {
                 },
               },
           };
-          request.response.headers.contentType = ContentType('application', 'msgpack');
+          request.response.headers.contentType =
+              ContentType('application', 'msgpack');
           request.response.add(encodeRpcFrame(response));
           await request.response.close();
         }
@@ -211,7 +216,8 @@ void main() {
       );
     });
 
-    test('identity, contact, and delivery status helpers decode rpc payloads', () async {
+    test('identity, contact, and delivery status helpers decode rpc payloads',
+        () async {
       unawaited(() async {
         await for (final request in server) {
           final body = await request.fold<List<int>>(<int>[], (all, chunk) {
@@ -361,7 +367,10 @@ void main() {
               },
             'sdk_shutdown_v2' => <String, Object?>{
                 'id': id,
-                'result': <String, Object?>{'accepted': true, 'mode': 'graceful'},
+                'result': <String, Object?>{
+                  'accepted': true,
+                  'mode': 'graceful'
+                },
                 'error': null,
               },
             _ => <String, Object?>{
@@ -373,7 +382,8 @@ void main() {
                 },
               },
           };
-          request.response.headers.contentType = ContentType('application', 'msgpack');
+          request.response.headers.contentType =
+              ContentType('application', 'msgpack');
           request.response.add(encodeRpcFrame(response));
           await request.response.close();
         }
@@ -415,6 +425,126 @@ void main() {
       expect(watched.isTerminal, isTrue);
 
       await client.stop();
+    });
+
+    test(
+        'operation registry and envelope execution roundtrip through rpc helpers',
+        () async {
+      unawaited(() async {
+        await for (final request in server) {
+          final body = await request.fold<List<int>>(<int>[], (all, chunk) {
+            all.addAll(chunk);
+            return all;
+          });
+          final frame = decodeRpcFrame(body);
+          calls.add(frame);
+          final id = frame['id'] as int;
+          final method = frame['method'] as String;
+          final response = switch (method) {
+            'sdk_operation_registry_v2' => <String, Object?>{
+                'id': id,
+                'result': <String, Object?>{
+                  'registry': <String, Object?>{
+                    'entries': <Object?>[
+                      <String, Object?>{
+                        'id': 'app.identity.list',
+                        'group': 'identity',
+                        'kind': 'query',
+                        'transport_variant': 'rpc',
+                        'description':
+                            'List identities visible to the runtime.',
+                        'aliases': <String>['sdk_identity_list_v2'],
+                        'required_capabilities': <String>[
+                          'sdk.capability.identity_multi',
+                        ],
+                      },
+                      <String, Object?>{
+                        'id': 'vendor.example.custom',
+                        'group': 'vendor',
+                        'kind': 'command',
+                        'transport_variant': 'extension',
+                        'description': 'Custom extension operation.',
+                        'aliases': <String>['vendor.alias'],
+                        'required_capabilities': <String>[],
+                      },
+                    ],
+                  },
+                },
+                'error': null,
+              },
+            'sdk_envelope_execute_v2' => <String, Object?>{
+                'id': id,
+                'result': <String, Object?>{
+                  'response': <String, Object?>{
+                    'operation_id': 'app.identity.list',
+                    'kind': 'result',
+                    'accepted': true,
+                    'correlation_id': 'corr-1',
+                    'payload': <Object?>[
+                      <String, Object?>{
+                        'identity': 'id-1',
+                        'public_key': 'pub-1',
+                      },
+                    ],
+                    'extensions': <String, Object?>{'source': 'rpc-test'},
+                  },
+                },
+                'error': null,
+              },
+            _ => <String, Object?>{
+                'id': id,
+                'result': null,
+                'error': <String, Object?>{
+                  'code': 'SDK_VALIDATION_INVALID_ARGUMENT',
+                  'message': 'unknown method',
+                },
+              },
+          };
+          request.response.headers.contentType =
+              ContentType('application', 'msgpack');
+          request.response.add(encodeRpcFrame(response));
+          await request.response.close();
+        }
+      }());
+
+      final client = AppClient(
+        RpcBinding(
+          RpcConnectionOptions(
+            endpoint: Uri.parse('http://127.0.0.1:${server.port}/rpc'),
+          ),
+        ),
+      );
+
+      final registry = await client.operationRegistry();
+      expect(registry.entries, hasLength(2));
+      expect(registry.supports('sdk_identity_list_v2'), isTrue);
+      expect(
+          registry.canonicalize('sdk_identity_list_v2'), 'app.identity.list');
+      expect(
+        registry.resolve('vendor.alias')!.entry.transportFamily,
+        TransportFamily.extension,
+      );
+      expect(registry.entriesByGroup()['identity'], hasLength(1));
+
+      final response = await client.queryOperation(
+        'sdk_identity_list_v2',
+        const <String, Object?>{},
+        correlationId: 'corr-1',
+      );
+      expect(response.operationId, 'app.identity.list');
+      expect(response.kind, EnvelopeKind.result);
+      expect(response.accepted, isTrue);
+      expect(response.correlationId, 'corr-1');
+      expect(response.payload, isA<List<Object?>>());
+      expect(response.extensions['source'], 'rpc-test');
+
+      final envelopeCall = calls.singleWhere(
+        (call) => call['method'] == 'sdk_envelope_execute_v2',
+      );
+      final params = envelopeCall['params'] as Map<String, Object?>;
+      expect(params['operation_id'], 'sdk_identity_list_v2');
+      expect(params['kind'], 'query');
+      expect(params['correlation_id'], 'corr-1');
     });
   });
 }

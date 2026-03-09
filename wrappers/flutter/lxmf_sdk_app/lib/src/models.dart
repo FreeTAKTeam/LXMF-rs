@@ -714,3 +714,209 @@ class AppEvent {
   final Map<String, Object?> extensions;
   final StreamGapDetails? streamGap;
 }
+
+enum OperationKind { query, command }
+
+enum TransportVariant { app, rpc, legacyRpc, extension }
+
+enum TransportFamily { local, rpc, legacy, extension }
+
+@immutable
+class OperationEntry {
+  const OperationEntry({
+    required this.id,
+    required this.group,
+    required this.kind,
+    required this.transportVariant,
+    required this.description,
+    this.aliases = const <String>[],
+    this.requiredCapabilities = const <String>[],
+  });
+
+  final String id;
+  final String group;
+  final OperationKind kind;
+  final TransportVariant transportVariant;
+  final String description;
+  final List<String> aliases;
+  final List<String> requiredCapabilities;
+
+  EnvelopeKind get expectedEnvelopeKind {
+    return switch (kind) {
+      OperationKind.query => EnvelopeKind.query,
+      OperationKind.command => EnvelopeKind.command,
+    };
+  }
+
+  bool acceptsEnvelopeKind(EnvelopeKind kind) {
+    return switch ((this.kind, kind)) {
+      (OperationKind.query, EnvelopeKind.query) => true,
+      (OperationKind.command, EnvelopeKind.command) => true,
+      _ => false,
+    };
+  }
+
+  TransportFamily get transportFamily {
+    return switch (transportVariant) {
+      TransportVariant.app => TransportFamily.local,
+      TransportVariant.rpc => TransportFamily.rpc,
+      TransportVariant.legacyRpc => TransportFamily.legacy,
+      TransportVariant.extension => TransportFamily.extension,
+    };
+  }
+}
+
+@immutable
+class ResolvedOperation {
+  const ResolvedOperation({
+    required this.entry,
+    required this.canonicalId,
+    this.alias,
+  });
+
+  final OperationEntry entry;
+  final String canonicalId;
+  final String? alias;
+}
+
+@immutable
+class OperationRegistry {
+  OperationRegistry({
+    required List<OperationEntry> entries,
+  })  : entries = List<OperationEntry>.unmodifiable(entries),
+        _byId = Map<String, OperationEntry>.unmodifiable({
+          for (final entry in entries) entry.id: entry,
+        }),
+        _aliases = Map<String, String>.unmodifiable({
+          for (final entry in entries)
+            for (final alias in entry.aliases) alias: entry.id,
+        });
+
+  final List<OperationEntry> entries;
+  final Map<String, OperationEntry> _byId;
+  final Map<String, String> _aliases;
+
+  String? canonicalize(String idOrAlias) {
+    if (_byId.containsKey(idOrAlias)) {
+      return idOrAlias;
+    }
+    return _aliases[idOrAlias];
+  }
+
+  OperationEntry? get(String idOrAlias) {
+    final canonical = canonicalize(idOrAlias);
+    if (canonical == null) {
+      return null;
+    }
+    return _byId[canonical];
+  }
+
+  ResolvedOperation? resolve(String idOrAlias) {
+    final canonical = canonicalize(idOrAlias);
+    if (canonical == null) {
+      return null;
+    }
+    final entry = _byId[canonical];
+    if (entry == null) {
+      return null;
+    }
+    return ResolvedOperation(
+      entry: entry,
+      canonicalId: canonical,
+      alias: idOrAlias == canonical ? null : idOrAlias,
+    );
+  }
+
+  Map<String, List<OperationEntry>> entriesByGroup() {
+    final grouped = <String, List<OperationEntry>>{};
+    for (final entry in entries) {
+      grouped.putIfAbsent(entry.group, () => <OperationEntry>[]).add(entry);
+    }
+    return grouped.map(
+      (group, items) =>
+          MapEntry(group, List<OperationEntry>.unmodifiable(items)),
+    );
+  }
+
+  bool supports(String idOrAlias) => canonicalize(idOrAlias) != null;
+}
+
+enum EnvelopeKind { query, command, result, error }
+
+@immutable
+class Envelope {
+  const Envelope({
+    required this.operationId,
+    required this.kind,
+    required this.payload,
+    this.target,
+    this.correlationId,
+    this.timeoutMs,
+    this.extensions = const <String, Object?>{},
+  });
+
+  const Envelope.query(this.operationId, this.payload)
+      : kind = EnvelopeKind.query,
+        target = null,
+        correlationId = null,
+        timeoutMs = null,
+        extensions = const <String, Object?>{};
+
+  const Envelope.command(this.operationId, this.payload)
+      : kind = EnvelopeKind.command,
+        target = null,
+        correlationId = null,
+        timeoutMs = null,
+        extensions = const <String, Object?>{};
+
+  final String operationId;
+  final EnvelopeKind kind;
+  final String? target;
+  final String? correlationId;
+  final int? timeoutMs;
+  final Object? payload;
+  final Map<String, Object?> extensions;
+
+  Envelope copyWith({
+    String? operationId,
+    EnvelopeKind? kind,
+    Object? payload,
+    String? target,
+    bool clearTarget = false,
+    String? correlationId,
+    bool clearCorrelationId = false,
+    int? timeoutMs,
+    bool clearTimeoutMs = false,
+    Map<String, Object?>? extensions,
+  }) {
+    return Envelope(
+      operationId: operationId ?? this.operationId,
+      kind: kind ?? this.kind,
+      payload: payload ?? this.payload,
+      target: clearTarget ? null : (target ?? this.target),
+      correlationId:
+          clearCorrelationId ? null : (correlationId ?? this.correlationId),
+      timeoutMs: clearTimeoutMs ? null : (timeoutMs ?? this.timeoutMs),
+      extensions: extensions ?? this.extensions,
+    );
+  }
+}
+
+@immutable
+class EnvelopeResponse {
+  const EnvelopeResponse({
+    required this.operationId,
+    required this.kind,
+    required this.accepted,
+    required this.payload,
+    this.correlationId,
+    this.extensions = const <String, Object?>{},
+  });
+
+  final String operationId;
+  final EnvelopeKind kind;
+  final bool accepted;
+  final Object? payload;
+  final String? correlationId;
+  final Map<String, Object?> extensions;
+}
