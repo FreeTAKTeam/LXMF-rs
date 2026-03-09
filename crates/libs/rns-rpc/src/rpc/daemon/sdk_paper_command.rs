@@ -188,6 +188,18 @@ impl RpcDaemon {
             .expect("sdk_remote_commands mutex poisoned")
             .insert(correlation_id.clone(), session.clone());
         self.persist_sdk_domain_snapshot()?;
+        self.publish_event(RpcEvent {
+            event_type: "command.dispatched".into(),
+            payload: json!({
+                "command_id": session.command_id,
+                "correlation_id": session.correlation_id,
+                "command": session.command,
+                "target": session.target,
+                "timeout_ms": session.timeout_ms,
+                "command_state": session.command_state,
+                "request_payload": session.request_payload,
+            }),
+        });
         let response = json!({
             "accepted": true,
             "payload": {
@@ -256,6 +268,22 @@ impl RpcDaemon {
             session.clone()
         };
         self.persist_sdk_domain_snapshot()?;
+        self.publish_event(RpcEvent {
+            event_type: if parsed.accepted {
+                "command.completed".into()
+            } else {
+                "command.failed".into()
+            },
+            payload: json!({
+                "command_id": updated_session.command_id,
+                "correlation_id": updated_session.correlation_id,
+                "command": updated_session.command,
+                "target": updated_session.target,
+                "command_state": updated_session.command_state,
+                "accepted": updated_session.accepted,
+                "response_payload": updated_session.response_payload,
+            }),
+        });
         Ok(RpcResponse {
             id: request.id,
             result: Some(json!({

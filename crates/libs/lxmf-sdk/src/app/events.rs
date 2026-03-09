@@ -96,6 +96,12 @@ pub enum EventKind {
     PeerRemoved,
     ContactUpdated,
     ContactBootstrapped,
+    CommandDispatched,
+    CommandReceiptAcknowledged,
+    CommandProcessingStarted,
+    CommandProgress,
+    CommandCompleted,
+    CommandFailed,
     MessageQueued,
     MessageDispatching,
     MessageSent,
@@ -159,7 +165,7 @@ fn map_delivery_state(state: &str) -> EventKind {
 
 #[cfg(feature = "sdk-async")]
 fn payload_peer_id(payload: &JsonValue) -> Option<String> {
-    ["peer", "peer_id", "identity"]
+    ["peer", "peer_id", "identity", "target"]
         .into_iter()
         .find_map(|key| payload.get(key).and_then(JsonValue::as_str))
         .map(ToOwned::to_owned)
@@ -198,6 +204,12 @@ pub fn map_sdk_event(event: SdkEvent, profile_id: &str) -> Event {
         "peer_unpeer" => EventKind::PeerRemoved,
         "contact_updated" => EventKind::ContactUpdated,
         "contact_bootstrapped" => EventKind::ContactBootstrapped,
+        "command.dispatched" => EventKind::CommandDispatched,
+        "command.receipt_acknowledged" => EventKind::CommandReceiptAcknowledged,
+        "command.processing_started" => EventKind::CommandProcessingStarted,
+        "command.progress" => EventKind::CommandProgress,
+        "command.completed" => EventKind::CommandCompleted,
+        "command.failed" => EventKind::CommandFailed,
         "InboundMessageReceived" | "inbound" => EventKind::InboundMessageReceived,
         "StreamGap" => EventKind::StreamGapDetected(StreamGapDetails {
             expected_seq_no: event.payload.get("expected_seq_no").and_then(JsonValue::as_u64),
@@ -359,5 +371,35 @@ mod tests {
         assert_eq!(announced.metadata.peer_id.as_deref(), Some("peer-a"));
         assert_eq!(peer_sync.metadata.peer_id.as_deref(), Some("peer-a"));
         assert_eq!(contact_update.metadata.peer_id.as_deref(), Some("peer-a"));
+    }
+
+    #[test]
+    fn maps_command_domain_events() {
+        let dispatched = map_sdk_event(
+            base_event(
+                "command.dispatched",
+                json!({ "correlation_id": "cmd-1", "target": "peer-a" }),
+            ),
+            "desktop_default",
+        );
+        let completed = map_sdk_event(
+            base_event(
+                "command.completed",
+                json!({ "correlation_id": "cmd-1", "target": "peer-a" }),
+            ),
+            "desktop_default",
+        );
+        let failed = map_sdk_event(
+            base_event(
+                "command.failed",
+                json!({ "correlation_id": "cmd-1", "target": "peer-a" }),
+            ),
+            "desktop_default",
+        );
+
+        assert!(matches!(dispatched.kind, EventKind::CommandDispatched));
+        assert!(matches!(completed.kind, EventKind::CommandCompleted));
+        assert!(matches!(failed.kind, EventKind::CommandFailed));
+        assert_eq!(dispatched.metadata.peer_id.as_deref(), Some("peer-a"));
     }
 }

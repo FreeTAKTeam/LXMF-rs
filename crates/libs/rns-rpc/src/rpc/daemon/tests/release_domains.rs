@@ -609,6 +609,19 @@ fn sdk_release_c_domain_methods_roundtrip() {
     assert!(paper_decode.error.is_none());
     assert_eq!(paper_decode.result.expect("result")["accepted"], json!(true));
 
+    let pre_command_poll = daemon
+        .handle_rpc(rpc_request(
+            1269,
+            "sdk_poll_events_v2",
+            json!({ "cursor": null, "max": 200 }),
+        ))
+        .expect("pre-command poll");
+    assert!(pre_command_poll.error.is_none());
+    let pre_command_cursor = pre_command_poll.result.expect("pre-command poll result")["next_cursor"]
+        .as_str()
+        .expect("pre-command cursor")
+        .to_string();
+
     let command = daemon
         .handle_rpc(rpc_request(
             127,
@@ -651,6 +664,27 @@ fn sdk_release_c_domain_methods_roundtrip() {
         .expect("command session rows")
         .iter()
         .any(|row| row["correlation_id"] == json!(correlation_id.clone())));
+    let dispatched_events = daemon
+        .handle_rpc(rpc_request(
+            1273,
+            "sdk_poll_events_v2",
+            json!({ "cursor": pre_command_cursor, "max": 50 }),
+        ))
+        .expect("poll dispatched events");
+    assert!(dispatched_events.error.is_none());
+    let dispatched_events_result = dispatched_events.result.expect("dispatched events result");
+    let post_dispatch_cursor = dispatched_events_result["next_cursor"]
+        .as_str()
+        .expect("post-dispatch cursor")
+        .to_string();
+    assert!(dispatched_events_result["events"]
+        .as_array()
+        .expect("events")
+        .iter()
+        .any(|event| {
+            event["event_type"] == json!("command.dispatched")
+                && event["payload"]["command"] == json!("ping")
+        }));
 
     let command_reply = daemon
         .handle_rpc(rpc_request(
@@ -680,6 +714,22 @@ fn sdk_release_c_domain_methods_roundtrip() {
         command_session_after_reply_result["session"]["response_payload"]["reply"],
         json!("pong")
     );
+    let completion_events = daemon
+        .handle_rpc(rpc_request(
+            1283,
+            "sdk_poll_events_v2",
+            json!({ "cursor": post_dispatch_cursor, "max": 50 }),
+        ))
+        .expect("poll completion events");
+    assert!(completion_events.error.is_none());
+    assert!(completion_events.result.expect("completion events result")["events"]
+        .as_array()
+        .expect("events")
+        .iter()
+        .any(|event| {
+            event["event_type"] == json!("command.completed")
+                && event["payload"]["accepted"] == json!(true)
+        }));
 
     let envelope_command = daemon
         .handle_rpc(rpc_request(
