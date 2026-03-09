@@ -330,12 +330,16 @@ class DiscoveryClient {
     final contacts = <ContactRecord>[];
     String? cursor;
     do {
+      final previousCursor = cursor;
       final page = await contactList(cursor: cursor, limit: limit);
       contacts.addAll(page.contacts);
       if (limit != null && contacts.length >= limit) {
         return contacts.take(limit).toList(growable: false);
       }
       cursor = page.nextCursor;
+      if (cursor != null && cursor == previousCursor) {
+        break;
+      }
     } while (cursor != null);
     return contacts;
   }
@@ -344,12 +348,16 @@ class DiscoveryClient {
     final peers = <PresenceRecord>[];
     String? cursor;
     do {
+      final previousCursor = cursor;
       final page = await presenceList(cursor: cursor, limit: limit);
       peers.addAll(page.peers);
       if (limit != null && peers.length >= limit) {
         return peers.take(limit).toList(growable: false);
       }
       cursor = page.nextCursor;
+      if (cursor != null && cursor == previousCursor) {
+        break;
+      }
     } while (cursor != null);
     return peers;
   }
@@ -1127,10 +1135,10 @@ List<PeerDirectoryEntry> _mergePeerDirectory(
     final existing = byPeer[peer.peerId];
     byPeer[peer.peerId] = PeerDirectoryEntry(
       peerId: peer.peerId,
-      displayName: peer.displayName ?? existing?.displayName,
-      nameSource: peer.nameSource ?? existing?.nameSource,
-      trustLevel: peer.trustLevel ?? existing?.trustLevel,
-      bootstrap: peer.bootstrap ?? existing?.bootstrap ?? false,
+      displayName: existing?.displayName ?? peer.displayName,
+      nameSource: existing?.nameSource ?? peer.nameSource,
+      trustLevel: existing?.trustLevel ?? peer.trustLevel,
+      bootstrap: existing?.bootstrap ?? peer.bootstrap ?? false,
       online: true,
       lastSeenTsMs: peer.lastSeenTsMs,
       firstSeenTsMs: peer.firstSeenTsMs,

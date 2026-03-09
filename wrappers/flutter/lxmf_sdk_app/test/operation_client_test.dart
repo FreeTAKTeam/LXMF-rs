@@ -1117,6 +1117,156 @@ void main() {
       expect(binding.commandEnvelopes[1].operationId, 'app.contact.update');
       expect(binding.commandEnvelopes[2].operationId, 'app.identity.bootstrap');
     });
+
+    test('discovery helper stops when pagination cursor repeats', () async {
+      final binding = _FakeBinding(
+        registry: OperationRegistry(
+          entries: const <OperationEntry>[
+            OperationEntry(
+              id: 'app.identity.presence.list',
+              group: 'identity',
+              kind: OperationKind.query,
+              transportVariant: TransportVariant.rpc,
+              description: 'List presence.',
+            ),
+            OperationEntry(
+              id: 'app.contact.list',
+              group: 'contacts',
+              kind: OperationKind.query,
+              transportVariant: TransportVariant.rpc,
+              description: 'List contacts.',
+            ),
+          ],
+        ),
+      );
+      binding.queryResponses = <EnvelopeResponse>[
+        const EnvelopeResponse(
+          operationId: 'app.contact.list',
+          kind: EnvelopeKind.result,
+          accepted: true,
+          payload: <String, Object?>{
+            'contacts': <Object?>[
+              <String, Object?>{
+                'identity': 'alpha',
+                'display_name': 'Alpha',
+                'trust_level': 'trusted',
+                'bootstrap': true,
+                'updated_ts_ms': 1,
+                'metadata': <String, Object?>{},
+                'extensions': <String, Object?>{},
+              },
+            ],
+            'next_cursor': 'contact:1',
+          },
+        ),
+        const EnvelopeResponse(
+          operationId: 'app.contact.list',
+          kind: EnvelopeKind.result,
+          accepted: true,
+          payload: <String, Object?>{
+            'contacts': <Object?>[],
+            'next_cursor': 'contact:1',
+          },
+        ),
+        const EnvelopeResponse(
+          operationId: 'app.identity.presence.list',
+          kind: EnvelopeKind.result,
+          accepted: true,
+          payload: <String, Object?>{
+            'peers': <Object?>[],
+            'next_cursor': null,
+          },
+        ),
+      ];
+
+      final discovery = DiscoveryClient(OperationClient(AppClient(binding)));
+      final directory = await discovery.peerDirectory();
+
+      expect(directory, hasLength(1));
+      expect(
+        binding.queryEnvelopes.where(
+          (envelope) => envelope.operationId == 'app.contact.list',
+        ),
+        hasLength(2),
+      );
+    });
+
+    test('peer directory preserves contact authority over presence data',
+        () async {
+      final binding = _FakeBinding(
+        registry: OperationRegistry(
+          entries: const <OperationEntry>[
+            OperationEntry(
+              id: 'app.identity.presence.list',
+              group: 'identity',
+              kind: OperationKind.query,
+              transportVariant: TransportVariant.rpc,
+              description: 'List presence.',
+            ),
+            OperationEntry(
+              id: 'app.contact.list',
+              group: 'contacts',
+              kind: OperationKind.query,
+              transportVariant: TransportVariant.rpc,
+              description: 'List contacts.',
+            ),
+          ],
+        ),
+      );
+      binding.queryResponses = <EnvelopeResponse>[
+        const EnvelopeResponse(
+          operationId: 'app.contact.list',
+          kind: EnvelopeKind.result,
+          accepted: true,
+          payload: <String, Object?>{
+            'contacts': <Object?>[
+              <String, Object?>{
+                'identity': 'bravo',
+                'display_name': 'Trusted Bravo',
+                'trust_level': 'trusted',
+                'bootstrap': true,
+                'updated_ts_ms': 2,
+                'metadata': <String, Object?>{'source': 'contacts'},
+                'extensions': <String, Object?>{'tier': 'gold'},
+              },
+            ],
+            'next_cursor': null,
+          },
+        ),
+        const EnvelopeResponse(
+          operationId: 'app.identity.presence.list',
+          kind: EnvelopeKind.result,
+          accepted: true,
+          payload: <String, Object?>{
+            'peers': <Object?>[
+              <String, Object?>{
+                'peer_id': 'bravo',
+                'name': 'Transient Bravo',
+                'name_source': 'announce',
+                'trust_level': 'blocked',
+                'bootstrap': false,
+                'last_seen_ts_ms': 999,
+                'first_seen_ts_ms': 100,
+                'seen_count': 3,
+                'extensions': <String, Object?>{'signal': 'strong'},
+              },
+            ],
+            'next_cursor': null,
+          },
+        ),
+      ];
+
+      final discovery = DiscoveryClient(OperationClient(AppClient(binding)));
+      final directory = await discovery.peerDirectory();
+
+      expect(directory, hasLength(1));
+      expect(directory.single.displayName, 'Trusted Bravo');
+      expect(directory.single.trustLevel, TrustLevel.trusted);
+      expect(directory.single.bootstrap, isTrue);
+      expect(directory.single.metadata['source'], 'contacts');
+      expect(directory.single.extensions['tier'], 'gold');
+      expect(directory.single.extensions['signal'], 'strong');
+    });
   });
 }
 
