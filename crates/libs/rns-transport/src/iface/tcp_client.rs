@@ -62,7 +62,7 @@ impl TcpClient {
 
         let mut running = true;
         loop {
-            if !running || context.cancel.is_cancelled() {
+            if !running || context.cancel.is_cancelled() || iface_stop.is_cancelled() {
                 break;
             }
 
@@ -80,12 +80,18 @@ impl TcpClient {
 
             if stream.is_err() {
                 log::info!("tcp_client: couldn't connect to <{}>", addr);
-                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                tokio::select! {
+                    _ = context.cancel.cancelled() => break,
+                    _ = iface_stop.cancelled() => break,
+                    _ = tokio::time::sleep(std::time::Duration::from_secs(5)) => {}
+                }
                 continue;
             }
 
             let cancel = context.cancel.clone();
             let stop = CancellationToken::new();
+            let iface_stop_rx = iface_stop.clone();
+            let iface_stop_tx = iface_stop.clone();
 
             let stream = stream.unwrap();
             let (read_stream, write_stream) = stream.into_split();
@@ -112,6 +118,10 @@ impl TcpClient {
                     loop {
                         tokio::select! {
                             _ = cancel.cancelled() => {
+                                    break;
+                            }
+                            _ = iface_stop_rx.cancelled() => {
+                                    stop.cancel();
                                     break;
                             }
                             _ = stop.cancelled() => {
@@ -202,6 +212,10 @@ impl TcpClient {
 
                         tokio::select! {
                             _ = cancel.cancelled() => {
+                                    break;
+                            }
+                            _ = iface_stop_tx.cancelled() => {
+                                    stop.cancel();
                                     break;
                             }
                             _ = stop.cancelled() => {

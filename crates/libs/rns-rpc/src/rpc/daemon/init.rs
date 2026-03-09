@@ -97,6 +97,7 @@ impl RpcDaemon {
             outbound_bridge,
             announce_bridge,
             event_sink_bridges,
+            interface_mutation_bridge: Mutex::new(None),
         };
         let _ = daemon.restore_sdk_domain_snapshot();
         daemon
@@ -131,6 +132,14 @@ impl RpcDaemon {
     pub fn replace_interfaces(&self, interfaces: Vec<InterfaceRecord>) {
         let mut guard = self.interfaces.lock().expect("interfaces mutex poisoned");
         *guard = interfaces;
+    }
+
+    pub fn set_interface_mutation_bridge(&self, bridge: Arc<dyn InterfaceMutationBridge>) {
+        let mut guard = self
+            .interface_mutation_bridge
+            .lock()
+            .expect("interface mutation bridge mutex poisoned");
+        *guard = Some(bridge);
     }
 
     pub fn set_propagation_state(

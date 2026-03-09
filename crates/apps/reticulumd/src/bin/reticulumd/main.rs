@@ -5,6 +5,7 @@ mod bootstrap;
 mod bridge;
 mod bridge_helpers;
 mod inbound_worker;
+mod interface_hot_apply;
 mod interfaces;
 mod receipt_worker;
 mod rpc_loop;

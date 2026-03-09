@@ -121,6 +121,14 @@ impl RpcDaemon {
                     let mut guard = self.interfaces.lock().expect("interfaces mutex poisoned");
                     *guard = parsed.interfaces.clone();
                 }
+                if let Some(bridge) = self
+                    .interface_mutation_bridge
+                    .lock()
+                    .expect("interface mutation bridge mutex poisoned")
+                    .clone()
+                {
+                    bridge.apply_interfaces(parsed.interfaces.clone())?;
+                }
                 let applied_interfaces = parsed
                     .interfaces
                     .iter()
@@ -211,6 +219,14 @@ impl RpcDaemon {
                     {
                         let mut guard = self.interfaces.lock().expect("interfaces mutex poisoned");
                         *guard = parsed.interfaces.clone();
+                    }
+                    if let Some(bridge) = self
+                        .interface_mutation_bridge
+                        .lock()
+                        .expect("interface mutation bridge mutex poisoned")
+                        .clone()
+                    {
+                        bridge.apply_interfaces(parsed.interfaces.clone())?;
                     }
                     let update_event = RpcEvent {
                         event_type: "interfaces_updated".into(),

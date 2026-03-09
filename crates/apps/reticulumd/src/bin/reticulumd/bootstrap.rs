@@ -1,5 +1,6 @@
 use super::announce_worker::spawn_announce_worker;
 use super::bridge::{PeerCrypto, TransportBridge};
+use super::interface_hot_apply::{legacy_tcp_interface_key, LegacyTcpInterfaceMutationBridge};
 use super::inbound_worker::spawn_inbound_worker;
 use super::interfaces::{ble, common::interface_label, lora, serial};
 use super::receipt_worker::spawn_receipt_worker;
@@ -108,6 +109,8 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     let outbound_resource_map: Arc<Mutex<HashMap<String, String>>> =
         Arc::new(Mutex::new(HashMap::new()));
     let (receipt_tx, receipt_rx) = unbounded_channel();
+    let mut hot_apply_seeded_tcp: Vec<(String, InterfaceRecord, rns_transport::hash::AddressHash)> =
+        Vec::new();
 
     if let Some(addr) = args.transport.clone() {
         let transport_identity =
@@ -174,6 +177,14 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
                                 None,
                                 Some(runtime_iface.as_str()),
                             );
+                            if let Some(key) = legacy_tcp_interface_key(&configured_interfaces[index])
+                            {
+                                hot_apply_seeded_tcp.push((
+                                    key,
+                                    configured_interfaces[index].clone(),
+                                    client_iface,
+                                ));
+                            }
                             startup_successes += 1;
                         } else {
                             let err = "tcp_client requires host and port for startup".to_string();
@@ -450,6 +461,12 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         outbound_bridge,
         announce_bridge,
     ));
+    if let Some(transport) = transport.as_ref() {
+        daemon.set_interface_mutation_bridge(Arc::new(LegacyTcpInterfaceMutationBridge::spawn(
+            transport.iface_manager(),
+            hot_apply_seeded_tcp,
+        )));
+    }
     daemon.set_delivery_destination_hash(delivery_destination_hash_hex);
     daemon.replace_interfaces(configured_interfaces);
     daemon.set_propagation_state(transport.is_some(), None, 0);

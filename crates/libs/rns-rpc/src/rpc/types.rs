@@ -315,6 +315,7 @@ pub struct RpcDaemon {
     outbound_bridge: Option<Arc<dyn OutboundBridge>>,
     announce_bridge: Option<Arc<dyn AnnounceBridge>>,
     event_sink_bridges: Vec<Arc<dyn EventSinkBridge>>,
+    interface_mutation_bridge: Mutex<Option<Arc<dyn InterfaceMutationBridge>>>,
 }
 
 pub trait OutboundBridge: Send + Sync {
@@ -327,6 +328,10 @@ pub trait OutboundBridge: Send + Sync {
 
 pub trait AnnounceBridge: Send + Sync {
     fn announce_now(&self) -> Result<(), std::io::Error>;
+}
+
+pub trait InterfaceMutationBridge: Send + Sync {
+    fn apply_interfaces(&self, interfaces: Vec<InterfaceRecord>) -> Result<(), std::io::Error>;
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]

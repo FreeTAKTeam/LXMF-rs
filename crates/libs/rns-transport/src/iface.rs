@@ -183,6 +183,18 @@ impl InterfaceManager {
         self.ifaces.retain(|iface| !iface.stop.is_cancelled());
     }
 
+    pub fn stop_interface(&mut self, address: AddressHash) -> bool {
+        let mut stopped = false;
+        for iface in &self.ifaces {
+            if iface.address == address {
+                iface.stop.cancel();
+                stopped = true;
+            }
+        }
+        self.cleanup();
+        stopped
+    }
+
     pub async fn send(&self, message: TxMessage) -> TxDispatchTrace {
         let mut trace = TxDispatchTrace::default();
         for iface in &self.ifaces {

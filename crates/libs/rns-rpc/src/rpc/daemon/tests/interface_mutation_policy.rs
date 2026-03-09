@@ -9,6 +9,27 @@
         }
     }
 
+    struct RecordingInterfaceMutationBridge {
+        applied: std::sync::Mutex<Vec<Vec<InterfaceRecord>>>,
+    }
+
+    impl RecordingInterfaceMutationBridge {
+        fn new() -> Self {
+            Self { applied: std::sync::Mutex::new(Vec::new()) }
+        }
+
+        fn applied(&self) -> Vec<Vec<InterfaceRecord>> {
+            self.applied.lock().expect("applied mutex poisoned").clone()
+        }
+    }
+
+    impl InterfaceMutationBridge for RecordingInterfaceMutationBridge {
+        fn apply_interfaces(&self, interfaces: Vec<InterfaceRecord>) -> Result<(), std::io::Error> {
+            self.applied.lock().expect("applied mutex poisoned").push(interfaces);
+            Ok(())
+        }
+    }
+
     #[test]
     fn set_interfaces_rejects_startup_only_interface_kinds() {
         let daemon = RpcDaemon::test_instance();
@@ -84,6 +105,36 @@
     }
 
     #[test]
+    fn set_interfaces_invokes_interface_mutation_bridge_for_legacy_tcp() {
+        let daemon = RpcDaemon::test_instance();
+        let bridge = std::sync::Arc::new(RecordingInterfaceMutationBridge::new());
+        daemon.set_interface_mutation_bridge(bridge.clone());
+
+        let response = daemon
+            .handle_rpc(rpc_request(
+                22,
+                "set_interfaces",
+                json!({
+                    "interfaces": [
+                        {
+                            "type": "tcp_client",
+                            "enabled": true,
+                            "host": "rmap.world",
+                            "port": 4242,
+                            "name": "rmap"
+                        }
+                    ]
+                }),
+            ))
+            .expect("set_interfaces response");
+
+        assert!(response.error.is_none(), "unexpected error: {response:?}");
+        let applied = bridge.applied();
+        assert_eq!(applied.len(), 1);
+        assert_eq!(applied[0], vec![tcp_interface("rmap", "rmap.world", 4242)]);
+    }
+
+    #[test]
     fn reload_config_rejects_mixed_startup_kind_diff_without_partial_apply() {
         let daemon = RpcDaemon::test_instance();
         daemon.replace_interfaces(vec![tcp_interface("primary", "127.0.0.1", 4242)]);
@@ -151,6 +202,37 @@
 
         let interfaces = daemon.interfaces.lock().expect("interfaces mutex poisoned").clone();
         assert_eq!(interfaces[0].port, Some(4248));
+    }
+
+    #[test]
+    fn reload_config_invokes_interface_mutation_bridge_for_hot_apply() {
+        let daemon = RpcDaemon::test_instance();
+        daemon.replace_interfaces(vec![tcp_interface("primary", "127.0.0.1", 4242)]);
+        let bridge = std::sync::Arc::new(RecordingInterfaceMutationBridge::new());
+        daemon.set_interface_mutation_bridge(bridge.clone());
+
+        let response = daemon
+            .handle_rpc(rpc_request(
+                23,
+                "reload_config",
+                json!({
+                    "interfaces": [
+                        {
+                            "type": "tcp_client",
+                            "enabled": true,
+                            "host": "127.0.0.1",
+                            "port": 4248,
+                            "name": "primary"
+                        }
+                    ]
+                }),
+            ))
+            .expect("reload_config response");
+
+        assert!(response.error.is_none(), "unexpected reload error: {response:?}");
+        let applied = bridge.applied();
+        assert_eq!(applied.len(), 1);
+        assert_eq!(applied[0], vec![tcp_interface("primary", "127.0.0.1", 4248)]);
     }
 
     #[test]
