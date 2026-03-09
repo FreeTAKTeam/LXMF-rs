@@ -102,6 +102,66 @@ const SDK_OPERATION_SPECS: &[SdkOperationSpec] = &[
         rpc_method: "sdk_identity_bootstrap_v2",
     },
     SdkOperationSpec {
+        id: "app.topic.create",
+        group: "topics",
+        kind: "command",
+        transport_variant: "rpc",
+        description: "Create a topic record for collaborative app flows.",
+        aliases: &["sdk_topic_create_v2"],
+        required_capabilities: &["sdk.capability.topics"],
+        rpc_method: "sdk_topic_create_v2",
+    },
+    SdkOperationSpec {
+        id: "app.topic.get",
+        group: "topics",
+        kind: "query",
+        transport_variant: "rpc",
+        description: "Fetch one topic record by id.",
+        aliases: &["sdk_topic_get_v2"],
+        required_capabilities: &["sdk.capability.topics"],
+        rpc_method: "sdk_topic_get_v2",
+    },
+    SdkOperationSpec {
+        id: "app.topic.list",
+        group: "topics",
+        kind: "query",
+        transport_variant: "rpc",
+        description: "List known topics with cursor pagination.",
+        aliases: &["sdk_topic_list_v2"],
+        required_capabilities: &["sdk.capability.topics"],
+        rpc_method: "sdk_topic_list_v2",
+    },
+    SdkOperationSpec {
+        id: "app.topic.subscribe",
+        group: "topics",
+        kind: "command",
+        transport_variant: "rpc",
+        description: "Subscribe the runtime to topic updates.",
+        aliases: &["sdk_topic_subscribe_v2"],
+        required_capabilities: &["sdk.capability.topic_subscriptions"],
+        rpc_method: "sdk_topic_subscribe_v2",
+    },
+    SdkOperationSpec {
+        id: "app.topic.unsubscribe",
+        group: "topics",
+        kind: "command",
+        transport_variant: "rpc",
+        description: "Remove a topic subscription from the runtime.",
+        aliases: &["sdk_topic_unsubscribe_v2"],
+        required_capabilities: &["sdk.capability.topic_subscriptions"],
+        rpc_method: "sdk_topic_unsubscribe_v2",
+    },
+    SdkOperationSpec {
+        id: "app.topic.publish",
+        group: "topics",
+        kind: "command",
+        transport_variant: "rpc",
+        description: "Publish one payload fanout to a topic.",
+        aliases: &["sdk_topic_publish_v2"],
+        required_capabilities: &["sdk.capability.topic_fanout"],
+        rpc_method: "sdk_topic_publish_v2",
+    },
+    SdkOperationSpec {
         id: "app.voice.session.open",
         group: "voice",
         kind: "command",
@@ -262,6 +322,36 @@ impl RpcDaemon {
                 method: method.to_owned(),
                 params: Some(params),
             })?,
+            "sdk_topic_create_v2" => self.handle_sdk_topic_create_v2(RpcRequest {
+                id: request_id,
+                method: method.to_owned(),
+                params: Some(params),
+            })?,
+            "sdk_topic_get_v2" => self.handle_sdk_topic_get_v2(RpcRequest {
+                id: request_id,
+                method: method.to_owned(),
+                params: Some(params),
+            })?,
+            "sdk_topic_list_v2" => self.handle_sdk_topic_list_v2(RpcRequest {
+                id: request_id,
+                method: method.to_owned(),
+                params: Some(params),
+            })?,
+            "sdk_topic_subscribe_v2" => self.handle_sdk_topic_subscribe_v2(RpcRequest {
+                id: request_id,
+                method: method.to_owned(),
+                params: Some(params),
+            })?,
+            "sdk_topic_unsubscribe_v2" => self.handle_sdk_topic_unsubscribe_v2(RpcRequest {
+                id: request_id,
+                method: method.to_owned(),
+                params: Some(params),
+            })?,
+            "sdk_topic_publish_v2" => self.handle_sdk_topic_publish_v2(RpcRequest {
+                id: request_id,
+                method: method.to_owned(),
+                params: Some(params),
+            })?,
             "sdk_voice_session_open_v2" => self.handle_sdk_voice_session_open_v2(RpcRequest {
                 id: request_id,
                 method: method.to_owned(),
@@ -320,6 +410,12 @@ impl RpcDaemon {
             "sdk_identity_contact_update_v2" | "sdk_identity_bootstrap_v2" => {
                 raw.get("contact").cloned().unwrap_or(JsonValue::Null)
             }
+            "sdk_topic_create_v2" => raw.get("topic").cloned().unwrap_or(JsonValue::Null),
+            "sdk_topic_get_v2" => raw.get("topic").cloned().unwrap_or(JsonValue::Null),
+            "sdk_topic_list_v2" => raw,
+            "sdk_topic_subscribe_v2" => raw,
+            "sdk_topic_unsubscribe_v2" => raw,
+            "sdk_topic_publish_v2" => raw,
             "sdk_voice_session_open_v2" => raw
                 .get("session_id")
                 .cloned()
@@ -389,6 +485,16 @@ impl RpcDaemon {
             "sdk_identity_contact_list_v2" => parsed.payload,
             "sdk_identity_contact_update_v2" => parsed.payload,
             "sdk_identity_bootstrap_v2" => parsed.payload,
+            "sdk_topic_create_v2" => parsed.payload,
+            "sdk_topic_get_v2" => json!({
+                "topic_id": parsed.payload,
+            }),
+            "sdk_topic_list_v2" => parsed.payload,
+            "sdk_topic_subscribe_v2" => parsed.payload,
+            "sdk_topic_unsubscribe_v2" => json!({
+                "topic_id": parsed.payload,
+            }),
+            "sdk_topic_publish_v2" => parsed.payload,
             "sdk_voice_session_open_v2" => parsed.payload,
             "sdk_voice_session_update_v2" => parsed.payload,
             "sdk_voice_session_close_v2" => parsed.payload,

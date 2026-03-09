@@ -584,6 +584,34 @@ class ContactListPage {
 }
 
 @immutable
+class TopicRecord {
+  const TopicRecord({
+    required this.topicId,
+    required this.createdTsMs,
+    this.topicPath,
+    this.metadata = const <String, Object?>{},
+    this.extensions = const <String, Object?>{},
+  });
+
+  final String topicId;
+  final int createdTsMs;
+  final String? topicPath;
+  final Map<String, Object?> metadata;
+  final Map<String, Object?> extensions;
+}
+
+@immutable
+class TopicListPage {
+  const TopicListPage({
+    required this.topics,
+    this.nextCursor,
+  });
+
+  final List<TopicRecord> topics;
+  final String? nextCursor;
+}
+
+@immutable
 class MessageRecord {
   const MessageRecord({
     required this.id,

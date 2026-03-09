@@ -161,11 +161,7 @@ impl fmt::Display for RegistryError {
             Self::DuplicateOperationId { id } => {
                 write!(f, "duplicate operation id '{}'", id.as_str())
             }
-            Self::DuplicateAlias {
-                alias,
-                existing_id,
-                conflicting_id,
-            } => write!(
+            Self::DuplicateAlias { alias, existing_id, conflicting_id } => write!(
                 f,
                 "duplicate alias '{}' for '{}' and '{}'",
                 alias,
@@ -300,11 +296,7 @@ impl<'de> Deserialize<'de> for OperationRegistry {
         let wire = WireRegistry::deserialize(deserializer)?;
         let (by_id, aliases) =
             OperationRegistry::build_indexes(&wire.entries).map_err(serde::de::Error::custom)?;
-        Ok(Self {
-            entries: wire.entries,
-            by_id,
-            aliases,
-        })
+        Ok(Self { entries: wire.entries, by_id, aliases })
     }
 }
 
@@ -431,6 +423,60 @@ fn built_in_entries() -> Vec<OperationEntry> {
         .with_alias("sdk_identity_bootstrap_v2")
         .with_required_capability("sdk.capability.contact_management"),
         OperationEntry::new(
+            "app.topic.create",
+            "topics",
+            OperationKind::Command,
+            TransportVariant::Rpc,
+            "Create a topic record for collaborative app flows.",
+        )
+        .with_alias("sdk_topic_create_v2")
+        .with_required_capability("sdk.capability.topics"),
+        OperationEntry::new(
+            "app.topic.get",
+            "topics",
+            OperationKind::Query,
+            TransportVariant::Rpc,
+            "Fetch one topic record by id.",
+        )
+        .with_alias("sdk_topic_get_v2")
+        .with_required_capability("sdk.capability.topics"),
+        OperationEntry::new(
+            "app.topic.list",
+            "topics",
+            OperationKind::Query,
+            TransportVariant::Rpc,
+            "List known topics with cursor pagination.",
+        )
+        .with_alias("sdk_topic_list_v2")
+        .with_required_capability("sdk.capability.topics"),
+        OperationEntry::new(
+            "app.topic.subscribe",
+            "topics",
+            OperationKind::Command,
+            TransportVariant::Rpc,
+            "Subscribe the runtime to topic updates.",
+        )
+        .with_alias("sdk_topic_subscribe_v2")
+        .with_required_capability("sdk.capability.topic_subscriptions"),
+        OperationEntry::new(
+            "app.topic.unsubscribe",
+            "topics",
+            OperationKind::Command,
+            TransportVariant::Rpc,
+            "Remove a topic subscription from the runtime.",
+        )
+        .with_alias("sdk_topic_unsubscribe_v2")
+        .with_required_capability("sdk.capability.topic_subscriptions"),
+        OperationEntry::new(
+            "app.topic.publish",
+            "topics",
+            OperationKind::Command,
+            TransportVariant::Rpc,
+            "Publish one payload fanout to a topic.",
+        )
+        .with_alias("sdk_topic_publish_v2")
+        .with_required_capability("sdk.capability.topic_fanout"),
+        OperationEntry::new(
             "app.voice.session.open",
             "voice",
             OperationKind::Command,
@@ -548,10 +594,7 @@ mod tests {
         let registry: OperationRegistry = serde_json::from_str(&json).expect("deserialize");
 
         assert_eq!(
-            registry
-                .canonicalize("sdk_status_v2")
-                .expect("canonical delivery status id")
-                .as_str(),
+            registry.canonicalize("sdk_status_v2").expect("canonical delivery status id").as_str(),
             "app.delivery.status"
         );
         assert!(registry.supports("sdk_snapshot_v2"));
@@ -576,12 +619,18 @@ mod tests {
         let grouped = registry.entries_by_group();
 
         assert!(grouped.get("runtime").is_some());
+        assert!(grouped.get("topics").is_some());
         assert!(grouped.get("voice").is_some());
         assert!(grouped
             .get("identity")
             .expect("identity group")
             .iter()
             .any(|entry| entry.id.as_str() == "app.identity.list"));
+        assert!(grouped
+            .get("topics")
+            .expect("topics group")
+            .iter()
+            .any(|entry| entry.id.as_str() == "app.topic.create"));
         assert!(grouped
             .get("voice")
             .expect("voice group")

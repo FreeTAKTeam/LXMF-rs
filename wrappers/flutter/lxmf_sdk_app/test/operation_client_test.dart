@@ -177,7 +177,8 @@ void main() {
       expect(result.extensions['via'], 'rpc');
     });
 
-    test('voice session helper maps typed open update and close flows', () async {
+    test('voice session helper maps typed open update and close flows',
+        () async {
       final binding = _FakeBinding(
         registry: OperationRegistry(
           entries: const <OperationEntry>[
@@ -241,8 +242,159 @@ void main() {
       expect(nextState, VoiceSessionState.active);
       expect(closed, isTrue);
       expect(binding.commandEnvelopes[0].operationId, 'app.voice.session.open');
-      expect(binding.commandEnvelopes[1].operationId, 'app.voice.session.update');
-      expect(binding.commandEnvelopes[2].operationId, 'app.voice.session.close');
+      expect(
+          binding.commandEnvelopes[1].operationId, 'app.voice.session.update');
+      expect(
+          binding.commandEnvelopes[2].operationId, 'app.voice.session.close');
+    });
+
+    test('topic helper maps typed create list and publish flows', () async {
+      final binding = _FakeBinding(
+        registry: OperationRegistry(
+          entries: const <OperationEntry>[
+            OperationEntry(
+              id: 'app.topic.create',
+              group: 'topics',
+              kind: OperationKind.command,
+              transportVariant: TransportVariant.rpc,
+              description: 'Create topic.',
+              aliases: <String>['sdk_topic_create_v2'],
+            ),
+            OperationEntry(
+              id: 'app.topic.get',
+              group: 'topics',
+              kind: OperationKind.query,
+              transportVariant: TransportVariant.rpc,
+              description: 'Get topic.',
+              aliases: <String>['sdk_topic_get_v2'],
+            ),
+            OperationEntry(
+              id: 'app.topic.list',
+              group: 'topics',
+              kind: OperationKind.query,
+              transportVariant: TransportVariant.rpc,
+              description: 'List topics.',
+              aliases: <String>['sdk_topic_list_v2'],
+            ),
+            OperationEntry(
+              id: 'app.topic.subscribe',
+              group: 'topics',
+              kind: OperationKind.command,
+              transportVariant: TransportVariant.rpc,
+              description: 'Subscribe topic.',
+              aliases: <String>['sdk_topic_subscribe_v2'],
+            ),
+            OperationEntry(
+              id: 'app.topic.unsubscribe',
+              group: 'topics',
+              kind: OperationKind.command,
+              transportVariant: TransportVariant.rpc,
+              description: 'Unsubscribe topic.',
+              aliases: <String>['sdk_topic_unsubscribe_v2'],
+            ),
+            OperationEntry(
+              id: 'app.topic.publish',
+              group: 'topics',
+              kind: OperationKind.command,
+              transportVariant: TransportVariant.rpc,
+              description: 'Publish topic.',
+              aliases: <String>['sdk_topic_publish_v2'],
+            ),
+          ],
+        ),
+      );
+      binding.commandResponses = <EnvelopeResponse>[
+        const EnvelopeResponse(
+          operationId: 'app.topic.create',
+          kind: EnvelopeKind.result,
+          accepted: true,
+          payload: <String, Object?>{
+            'topic_id': 'topic-1',
+            'topic_path': 'ops/alerts',
+            'created_ts_ms': 700,
+            'metadata': <String, Object?>{'kind': 'ops'},
+            'extensions': <String, Object?>{},
+          },
+        ),
+        const EnvelopeResponse(
+          operationId: 'app.topic.subscribe',
+          kind: EnvelopeKind.result,
+          accepted: true,
+          payload: <String, Object?>{'accepted': true, 'topic_id': 'topic-1'},
+        ),
+        const EnvelopeResponse(
+          operationId: 'app.topic.publish',
+          kind: EnvelopeKind.result,
+          accepted: true,
+          payload: <String, Object?>{'accepted': true},
+        ),
+        const EnvelopeResponse(
+          operationId: 'app.topic.unsubscribe',
+          kind: EnvelopeKind.result,
+          accepted: true,
+          payload: <String, Object?>{'accepted': true, 'topic_id': 'topic-1'},
+        ),
+      ];
+      binding.queryResponses = <EnvelopeResponse>[
+        const EnvelopeResponse(
+          operationId: 'app.topic.get',
+          kind: EnvelopeKind.result,
+          accepted: true,
+          payload: <String, Object?>{
+            'topic_id': 'topic-1',
+            'topic_path': 'ops/alerts',
+            'created_ts_ms': 700,
+            'metadata': <String, Object?>{'kind': 'ops'},
+            'extensions': <String, Object?>{},
+          },
+        ),
+        const EnvelopeResponse(
+          operationId: 'app.topic.list',
+          kind: EnvelopeKind.result,
+          accepted: true,
+          payload: <String, Object?>{
+            'topics': <Object?>[
+              <String, Object?>{
+                'topic_id': 'topic-1',
+                'topic_path': 'ops/alerts',
+                'created_ts_ms': 700,
+                'metadata': <String, Object?>{'kind': 'ops'},
+                'extensions': <String, Object?>{},
+              },
+            ],
+            'next_cursor': 'topic:1',
+          },
+        ),
+      ];
+
+      final topics = TopicClient(OperationClient(AppClient(binding)));
+      final created = await topics.create(
+        topicPath: 'ops/alerts',
+        metadata: const <String, Object?>{'kind': 'ops'},
+      );
+      final fetched = await topics.get('topic-1');
+      final listed = await topics.list(limit: 10);
+      final subscribed = await topics.subscribe('topic-1');
+      final published = await topics.publish(
+        topicId: 'topic-1',
+        payload: const <String, Object?>{'message': 'hello topic'},
+        correlationId: 'topic-corr-1',
+      );
+      final unsubscribed = await topics.unsubscribe('topic-1');
+
+      expect(created.topicId, 'topic-1');
+      expect(fetched?.topicPath, 'ops/alerts');
+      expect(listed.topics, hasLength(1));
+      expect(listed.nextCursor, 'topic:1');
+      expect(subscribed, isTrue);
+      expect(published, isTrue);
+      expect(unsubscribed, isTrue);
+      expect(binding.commandEnvelopes[0].operationId, 'app.topic.create');
+      expect(binding.queryEnvelopes[0].operationId, 'app.topic.get');
+      expect(binding.queryEnvelopes[1].operationId, 'app.topic.list');
+      expect(binding.commandEnvelopes[1].operationId, 'app.topic.subscribe');
+      expect(binding.commandEnvelopes[2].operationId, 'app.topic.publish');
+      expect(binding.commandEnvelopes[3].operationId, 'app.topic.unsubscribe');
     });
   });
 }
@@ -267,10 +419,12 @@ final class _FakeBinding implements AppBinding {
   final OperationRegistry registry;
   final EnvelopeResponse queryResponse;
   final EnvelopeResponse commandResponse;
+  List<EnvelopeResponse> queryResponses = <EnvelopeResponse>[];
   List<EnvelopeResponse> commandResponses = <EnvelopeResponse>[];
 
   Envelope? lastQueryEnvelope;
   Envelope? lastCommandEnvelope;
+  final List<Envelope> queryEnvelopes = <Envelope>[];
   final List<Envelope> commandEnvelopes = <Envelope>[];
 
   @override
@@ -278,6 +432,10 @@ final class _FakeBinding implements AppBinding {
     switch (envelope.kind) {
       case EnvelopeKind.query:
         lastQueryEnvelope = envelope;
+        queryEnvelopes.add(envelope);
+        if (queryResponses.isNotEmpty) {
+          return queryResponses.removeAt(0);
+        }
         return queryResponse;
       case EnvelopeKind.command:
         lastCommandEnvelope = envelope;

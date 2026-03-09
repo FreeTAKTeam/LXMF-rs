@@ -132,6 +132,25 @@ final closed = await voice.close(sessionId);
 print('voice=$sessionId state=${state.name} closed=$closed');
 ```
 
+Typed topic flow:
+
+```dart
+final topics = TopicClient(OperationClient(client));
+
+final created = await topics.create(
+  topicPath: 'ops/alerts',
+  metadata: const <String, Object?>{'kind': 'ops'},
+);
+final listed = await topics.list(limit: 10);
+final published = await topics.publish(
+  topicId: created.topicId,
+  payload: const <String, Object?>{'message': 'hello topic'},
+  correlationId: 'topic-corr-1',
+);
+
+print('topic=${created.topicId} listed=${listed.topics.length} published=$published');
+```
+
 Conversation-oriented flow:
 
 ```dart
@@ -197,6 +216,7 @@ dart run example/rpc_operations_smoke.dart http://127.0.0.1:4243/rpc
 dart run example/custom_operation_smoke.dart http://127.0.0.1:4243/rpc
 dart run example/custom_vendor_command_smoke.dart http://127.0.0.1:4243/rpc
 dart run example/voice_session_smoke.dart http://127.0.0.1:4243/rpc
+dart run example/topic_operations_smoke.dart http://127.0.0.1:4243/rpc
 ```
 
 Repo-level smoke from the project root:

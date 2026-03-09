@@ -717,6 +717,79 @@
     }
 
     #[test]
+    fn sdk_operation_registry_roundtrips_topic_family() {
+        let daemon = RpcDaemon::test_instance();
+
+        let registry = daemon
+            .handle_rpc(rpc_request(1320, "sdk_operation_registry_v2", json!({})))
+            .expect("operation registry");
+        assert!(registry.error.is_none());
+        let registry_result = registry.result.expect("registry result");
+        let entries = registry_result["registry"]["entries"]
+            .as_array()
+            .expect("entries");
+        assert!(entries.iter().any(|entry| entry["id"] == json!("app.topic.create")));
+        assert!(entries.iter().any(|entry| entry["id"] == json!("app.topic.publish")));
+
+        let topic_create = daemon
+            .handle_rpc(rpc_request(
+                1321,
+                "sdk_envelope_execute_v2",
+                json!({
+                    "operation_id": "sdk_topic_create_v2",
+                    "kind": "command",
+                    "payload": {
+                        "topic_path": "ops/envelope",
+                        "metadata": { "kind": "ops" },
+                    },
+                }),
+            ))
+            .expect("topic create envelope");
+        assert!(topic_create.error.is_none());
+        let topic_payload = &topic_create.result.expect("topic create result")["response"]["payload"];
+        let topic_id = topic_payload["topic_id"].as_str().expect("topic id").to_string();
+        assert_eq!(topic_payload["topic_path"], json!("ops/envelope"));
+
+        let topic_list = daemon
+            .handle_rpc(rpc_request(
+                1322,
+                "sdk_envelope_execute_v2",
+                json!({
+                    "operation_id": "app.topic.list",
+                    "kind": "query",
+                    "payload": { "limit": 10 },
+                }),
+            ))
+            .expect("topic list envelope");
+        assert!(topic_list.error.is_none());
+        assert!(!topic_list.result.expect("topic list result")["response"]["payload"]["topics"]
+            .as_array()
+            .expect("topics")
+            .is_empty());
+
+        let topic_publish = daemon
+            .handle_rpc(rpc_request(
+                1323,
+                "sdk_envelope_execute_v2",
+                json!({
+                    "operation_id": "app.topic.publish",
+                    "kind": "command",
+                    "payload": {
+                        "topic_id": topic_id,
+                        "payload": { "message": "hello topic" },
+                        "correlation_id": "topic-env-1",
+                    },
+                }),
+            ))
+            .expect("topic publish envelope");
+        assert!(topic_publish.error.is_none());
+        assert_eq!(
+            topic_publish.result.expect("topic publish result")["response"]["payload"]["accepted"],
+            json!(true)
+        );
+    }
+
+    #[test]
     fn sdk_domain_state_survives_restart() {
         use std::time::{SystemTime, UNIX_EPOCH};
 

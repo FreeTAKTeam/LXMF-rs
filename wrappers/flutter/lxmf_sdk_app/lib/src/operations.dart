@@ -295,3 +295,151 @@ class VoiceSessionClient {
     };
   }
 }
+
+class TopicClient {
+  TopicClient(this._operations);
+
+  final OperationClient _operations;
+
+  Future<TopicRecord> create({
+    String? topicPath,
+    Map<String, Object?> metadata = const <String, Object?>{},
+    Map<String, Object?> extensions = const <String, Object?>{},
+  }) async {
+    final result = await _operations.command<TopicRecord>(
+      OperationCall<TopicRecord>(
+        operationId: 'app.topic.create',
+        payload: <String, Object?>{
+          if (topicPath != null) 'topic_path': topicPath,
+          'metadata': metadata,
+          'extensions': extensions,
+        },
+        decode: _decodeTopicRecord,
+      ),
+    );
+    return result.payload;
+  }
+
+  Future<TopicRecord?> get(String topicId) async {
+    final result = await _operations.query<TopicRecord?>(
+      OperationCall<TopicRecord?>(
+        operationId: 'app.topic.get',
+        payload: topicId,
+        decode: (payload) {
+          if (payload == null) {
+            return null;
+          }
+          return _decodeTopicRecord(payload);
+        },
+      ),
+    );
+    return result.payload;
+  }
+
+  Future<TopicListPage> list({
+    String? cursor,
+    int? limit,
+  }) async {
+    final result = await _operations.query<TopicListPage>(
+      OperationCall<TopicListPage>(
+        operationId: 'app.topic.list',
+        payload: <String, Object?>{
+          if (cursor != null) 'cursor': cursor,
+          if (limit != null) 'limit': limit,
+        },
+        decode: _decodeTopicListPage,
+      ),
+    );
+    return result.payload;
+  }
+
+  Future<bool> subscribe(String topicId, {String? cursor}) async {
+    final result = await _operations.command<bool>(
+      OperationCall<bool>(
+        operationId: 'app.topic.subscribe',
+        payload: <String, Object?>{
+          'topic_id': topicId,
+          if (cursor != null) 'cursor': cursor,
+        },
+        decode: _decodeAccepted,
+      ),
+    );
+    return result.payload;
+  }
+
+  Future<bool> unsubscribe(String topicId) async {
+    final result = await _operations.command<bool>(
+      OperationCall<bool>(
+        operationId: 'app.topic.unsubscribe',
+        payload: topicId,
+        decode: _decodeAccepted,
+      ),
+    );
+    return result.payload;
+  }
+
+  Future<bool> publish({
+    required String topicId,
+    required Object? payload,
+    String? correlationId,
+    Map<String, Object?> extensions = const <String, Object?>{},
+  }) async {
+    final result = await _operations.command<bool>(
+      OperationCall<bool>(
+        operationId: 'app.topic.publish',
+        payload: <String, Object?>{
+          'topic_id': topicId,
+          'payload': payload,
+          if (correlationId != null) 'correlation_id': correlationId,
+          'extensions': extensions,
+        },
+        decode: _decodeAccepted,
+      ),
+    );
+    return result.payload;
+  }
+}
+
+TopicRecord _decodeTopicRecord(Object? payload) {
+  final map = _payloadMap(payload);
+  return TopicRecord(
+    topicId: map['topic_id']?.toString() ?? '',
+    topicPath: map['topic_path']?.toString(),
+    createdTsMs: (map['created_ts_ms'] as num?)?.toInt() ?? 0,
+    metadata: _payloadMap(map['metadata']),
+    extensions: _payloadMap(map['extensions']),
+  );
+}
+
+TopicListPage _decodeTopicListPage(Object? payload) {
+  final map = _payloadMap(payload);
+  final topics = (map['topics'] as List<Object?>? ?? const <Object?>[])
+      .map(_decodeTopicRecord)
+      .toList(growable: false);
+  return TopicListPage(
+    topics: topics,
+    nextCursor: map['next_cursor']?.toString(),
+  );
+}
+
+bool _decodeAccepted(Object? payload) {
+  final map = _payloadMap(payload);
+  return map['accepted'] == true;
+}
+
+Map<String, Object?> _payloadMap(Object? payload) {
+  if (payload == null) {
+    return const <String, Object?>{};
+  }
+  if (payload is Map<String, Object?>) {
+    return payload;
+  }
+  if (payload is Map) {
+    return payload.map((key, value) => MapEntry(key.toString(), value));
+  }
+  throw const AppError(
+    code: ErrorCode.internalUnexpectedFailure,
+    category: ErrorCategory.internal,
+    message: 'operation payload was not an object',
+  );
+}

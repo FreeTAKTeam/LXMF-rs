@@ -1,24 +1,25 @@
-use super::discovery::{
-    BootstrapRequest, Contact, ContactPage, ContactUpdate, Identity, PeerDirectoryEntry, Presence,
-    PresencePage,
-};
 use super::capabilities::CapabilitySummary;
 use super::delivery::{
     AttemptDecision, AttemptDisposition, DeliveryAttempt, DeliveryOptions, DeliveryPlan, SendReport,
+};
+use super::discovery::{
+    BootstrapRequest, Contact, ContactPage, ContactUpdate, Identity, PeerDirectoryEntry, Presence,
+    PresencePage,
 };
 use super::envelope::{Envelope, EnvelopeKind, EnvelopeResponse};
 use super::errors::Error;
 #[cfg(feature = "sdk-async")]
 use super::events::{map_event_batch, subscription_cursor, EventBatch, SubscriptionStart};
 use super::operations::{OperationEntry, OperationRegistry, RegistryError};
+use crate::domain::{
+    ContactListRequest, ContactUpdateRequest, IdentityBootstrapRequest, PresenceListRequest,
+    RemoteCommandRequest, TopicCreateRequest, TopicId, TopicListRequest, TopicPublishRequest,
+    TopicSubscriptionRequest, VoiceSessionId, VoiceSessionOpenRequest, VoiceSessionUpdateRequest,
+};
 use crate::{
     Client as CoreClient, ClientHandle, DeliverySnapshot, DeliveryState as RawDeliveryState,
     EventCursor, LxmfSdk, Profile as CoreProfile, RuntimeSnapshot, RuntimeState, SdkBackend,
     SdkConfig, SendRequest as RawSendRequest, ShutdownMode, StartRequest,
-};
-use crate::domain::{
-    ContactListRequest, ContactUpdateRequest, IdentityBootstrapRequest, PresenceListRequest,
-    RemoteCommandRequest, VoiceSessionId, VoiceSessionOpenRequest, VoiceSessionUpdateRequest,
 };
 #[cfg(feature = "sdk-async")]
 use crate::{LxmfSdkAsync, SdkBackendAsyncEvents};
@@ -453,10 +454,14 @@ impl<B: SdkBackend> Client<B> {
                     })?
                     .unwrap_or(ShutdownMode::Graceful);
                 self.stop(mode.clone())?;
-                Ok(envelope_result(canonical_id, correlation_id, serde_json::json!({
-                    "accepted": true,
-                    "mode": mode,
-                })))
+                Ok(envelope_result(
+                    canonical_id,
+                    correlation_id,
+                    serde_json::json!({
+                        "accepted": true,
+                        "mode": mode,
+                    }),
+                ))
             }
             "app.runtime.status" => Ok(envelope_result(
                 canonical_id,
@@ -478,16 +483,15 @@ impl<B: SdkBackend> Client<B> {
                 ))
             }
             "app.delivery.status" => {
-                let message_id =
-                    payload
-                        .get("message_id")
-                        .and_then(|value| value.as_str())
-                        .ok_or_else(|| {
-                            invalid_envelope(
-                                "delivery status envelope requires payload.message_id",
-                                canonical_id.as_str(),
-                            )
-                        })?;
+                let message_id = payload
+                    .get("message_id")
+                    .and_then(|value| value.as_str())
+                    .ok_or_else(|| {
+                        invalid_envelope(
+                            "delivery status envelope requires payload.message_id",
+                            canonical_id.as_str(),
+                        )
+                    })?;
                 let status = self.delivery_status(message_id.to_owned())?;
                 Ok(envelope_result(
                     canonical_id,
@@ -528,13 +532,12 @@ impl<B: SdkBackend> Client<B> {
                 ))
             }
             "app.identity.presence.list" => {
-                let req: PresenceListRequest =
-                    serde_json::from_value(payload).map_err(|err| {
-                        invalid_envelope(
-                            format!("invalid presence list payload: {err}"),
-                            canonical_id.as_str(),
-                        )
-                    })?;
+                let req: PresenceListRequest = serde_json::from_value(payload).map_err(|err| {
+                    invalid_envelope(
+                        format!("invalid presence list payload: {err}"),
+                        canonical_id.as_str(),
+                    )
+                })?;
                 let result = self.backend.identity_presence_list(req).map_err(Error::from)?;
                 Ok(envelope_result(
                     canonical_id,
@@ -543,13 +546,12 @@ impl<B: SdkBackend> Client<B> {
                 ))
             }
             "app.contact.list" => {
-                let req: ContactListRequest =
-                    serde_json::from_value(payload).map_err(|err| {
-                        invalid_envelope(
-                            format!("invalid contact list payload: {err}"),
-                            canonical_id.as_str(),
-                        )
-                    })?;
+                let req: ContactListRequest = serde_json::from_value(payload).map_err(|err| {
+                    invalid_envelope(
+                        format!("invalid contact list payload: {err}"),
+                        canonical_id.as_str(),
+                    )
+                })?;
                 let result = self.backend.identity_contact_list(req).map_err(Error::from)?;
                 Ok(envelope_result(
                     canonical_id,
@@ -558,13 +560,12 @@ impl<B: SdkBackend> Client<B> {
                 ))
             }
             "app.contact.update" => {
-                let req: ContactUpdateRequest =
-                    serde_json::from_value(payload).map_err(|err| {
-                        invalid_envelope(
-                            format!("invalid contact update payload: {err}"),
-                            canonical_id.as_str(),
-                        )
-                    })?;
+                let req: ContactUpdateRequest = serde_json::from_value(payload).map_err(|err| {
+                    invalid_envelope(
+                        format!("invalid contact update payload: {err}"),
+                        canonical_id.as_str(),
+                    )
+                })?;
                 let result = self.backend.identity_contact_update(req).map_err(Error::from)?;
                 Ok(envelope_result(
                     canonical_id,
@@ -587,6 +588,91 @@ impl<B: SdkBackend> Client<B> {
                     serde_json::to_value(result).expect("bootstrap should serialize"),
                 ))
             }
+            "app.topic.create" => {
+                let req: TopicCreateRequest = serde_json::from_value(payload).map_err(|err| {
+                    invalid_envelope(
+                        format!("invalid topic create payload: {err}"),
+                        canonical_id.as_str(),
+                    )
+                })?;
+                let result = self.backend.topic_create(req).map_err(Error::from)?;
+                Ok(envelope_result(
+                    canonical_id,
+                    correlation_id,
+                    serde_json::to_value(result).expect("topic create should serialize"),
+                ))
+            }
+            "app.topic.get" => {
+                let topic_id: TopicId = serde_json::from_value(payload).map_err(|err| {
+                    invalid_envelope(
+                        format!("invalid topic get payload: {err}"),
+                        canonical_id.as_str(),
+                    )
+                })?;
+                let result = self.backend.topic_get(topic_id).map_err(Error::from)?;
+                Ok(envelope_result(
+                    canonical_id,
+                    correlation_id,
+                    serde_json::to_value(result).expect("topic get should serialize"),
+                ))
+            }
+            "app.topic.list" => {
+                let req: TopicListRequest = serde_json::from_value(payload).map_err(|err| {
+                    invalid_envelope(
+                        format!("invalid topic list payload: {err}"),
+                        canonical_id.as_str(),
+                    )
+                })?;
+                let result = self.backend.topic_list(req).map_err(Error::from)?;
+                Ok(envelope_result(
+                    canonical_id,
+                    correlation_id,
+                    serde_json::to_value(result).expect("topic list should serialize"),
+                ))
+            }
+            "app.topic.subscribe" => {
+                let req: TopicSubscriptionRequest =
+                    serde_json::from_value(payload).map_err(|err| {
+                        invalid_envelope(
+                            format!("invalid topic subscribe payload: {err}"),
+                            canonical_id.as_str(),
+                        )
+                    })?;
+                let result = self.backend.topic_subscribe(req).map_err(Error::from)?;
+                Ok(envelope_result(
+                    canonical_id,
+                    correlation_id,
+                    serde_json::to_value(result).expect("topic subscribe should serialize"),
+                ))
+            }
+            "app.topic.unsubscribe" => {
+                let topic_id: TopicId = serde_json::from_value(payload).map_err(|err| {
+                    invalid_envelope(
+                        format!("invalid topic unsubscribe payload: {err}"),
+                        canonical_id.as_str(),
+                    )
+                })?;
+                let result = self.backend.topic_unsubscribe(topic_id).map_err(Error::from)?;
+                Ok(envelope_result(
+                    canonical_id,
+                    correlation_id,
+                    serde_json::to_value(result).expect("topic unsubscribe should serialize"),
+                ))
+            }
+            "app.topic.publish" => {
+                let req: TopicPublishRequest = serde_json::from_value(payload).map_err(|err| {
+                    invalid_envelope(
+                        format!("invalid topic publish payload: {err}"),
+                        canonical_id.as_str(),
+                    )
+                })?;
+                let result = self.backend.topic_publish(req).map_err(Error::from)?;
+                Ok(envelope_result(
+                    canonical_id,
+                    correlation_id,
+                    serde_json::to_value(result).expect("topic publish should serialize"),
+                ))
+            }
             "app.voice.session.open" => {
                 let req: VoiceSessionOpenRequest =
                     serde_json::from_value(payload).map_err(|err| {
@@ -599,8 +685,7 @@ impl<B: SdkBackend> Client<B> {
                 Ok(envelope_result(
                     canonical_id,
                     correlation_id,
-                    serde_json::to_value(session_id)
-                        .expect("voice session id should serialize"),
+                    serde_json::to_value(session_id).expect("voice session id should serialize"),
                 ))
             }
             "app.voice.session.update" => {
@@ -626,13 +711,15 @@ impl<B: SdkBackend> Client<B> {
                             canonical_id.as_str(),
                         )
                     })?;
-                self.backend
-                    .voice_session_close(session_id.clone())
-                    .map_err(Error::from)?;
-                Ok(envelope_result(canonical_id, correlation_id, serde_json::json!({
-                    "accepted": true,
-                    "session_id": session_id.0,
-                })))
+                self.backend.voice_session_close(session_id.clone()).map_err(Error::from)?;
+                Ok(envelope_result(
+                    canonical_id,
+                    correlation_id,
+                    serde_json::json!({
+                        "accepted": true,
+                        "session_id": session_id.0,
+                    }),
+                ))
             }
             _ if matches!(entry.kind, super::operations::OperationKind::Query) => self
                 .backend
@@ -890,19 +977,20 @@ impl<B: SdkBackend> Client<B> {
         }
 
         for presence in self.collect_presence(limit)? {
-            let entry = entries.entry(presence.peer_id.clone()).or_insert_with(|| PeerDirectoryEntry {
-                peer_id: presence.peer_id.clone(),
-                display_name: presence.display_name.clone(),
-                name_source: presence.name_source.clone(),
-                trust_level: presence.trust_level.clone(),
-                bootstrap: presence.bootstrap.unwrap_or(false),
-                online: true,
-                last_seen_ts_ms: Some(presence.last_seen_ts_ms),
-                first_seen_ts_ms: Some(presence.first_seen_ts_ms),
-                seen_count: presence.seen_count,
-                metadata: BTreeMap::new(),
-                extensions: presence.extensions.clone(),
-            });
+            let entry =
+                entries.entry(presence.peer_id.clone()).or_insert_with(|| PeerDirectoryEntry {
+                    peer_id: presence.peer_id.clone(),
+                    display_name: presence.display_name.clone(),
+                    name_source: presence.name_source.clone(),
+                    trust_level: presence.trust_level.clone(),
+                    bootstrap: presence.bootstrap.unwrap_or(false),
+                    online: true,
+                    last_seen_ts_ms: Some(presence.last_seen_ts_ms),
+                    first_seen_ts_ms: Some(presence.first_seen_ts_ms),
+                    seen_count: presence.seen_count,
+                    metadata: BTreeMap::new(),
+                    extensions: presence.extensions.clone(),
+                });
             entry.online = true;
             entry.last_seen_ts_ms = Some(presence.last_seen_ts_ms);
             entry.first_seen_ts_ms = Some(presence.first_seen_ts_ms);
@@ -1144,10 +1232,7 @@ fn map_delivery_snapshot(snapshot: DeliverySnapshot) -> DeliveryStatus {
 
 fn invalid_envelope(message: impl Into<String>, operation_id: impl Into<String>) -> Error {
     let mut details = BTreeMap::new();
-    details.insert(
-        "operation_id".to_owned(),
-        JsonValue::String(operation_id.into()),
-    );
+    details.insert("operation_id".to_owned(), JsonValue::String(operation_id.into()));
     Error {
         code: super::errors::ErrorCode::ValidationInvalidArgument,
         category: super::errors::ErrorCategory::Validation,
@@ -1210,11 +1295,9 @@ mod tests {
         shutdown_results: Mutex<VecDeque<Result<Ack, SdkError>>>,
         remote_command_results:
             Mutex<VecDeque<Result<crate::domain::RemoteCommandResponse, SdkError>>>,
-        envelope_results:
-            Mutex<VecDeque<Result<crate::app::EnvelopeResponse, SdkError>>>,
+        envelope_results: Mutex<VecDeque<Result<crate::app::EnvelopeResponse, SdkError>>>,
         voice_open_results: Mutex<VecDeque<Result<crate::domain::VoiceSessionId, SdkError>>>,
-        voice_update_results:
-            Mutex<VecDeque<Result<crate::domain::VoiceSessionState, SdkError>>>,
+        voice_update_results: Mutex<VecDeque<Result<crate::domain::VoiceSessionState, SdkError>>>,
         voice_close_results: Mutex<VecDeque<Result<Ack, SdkError>>>,
     }
 
@@ -1256,23 +1339,14 @@ mod tests {
             &self,
             result: Result<crate::domain::RemoteCommandResponse, SdkError>,
         ) {
-            self.remote_command_results
-                .lock()
-                .expect("remote command results")
-                .push_back(result);
+            self.remote_command_results.lock().expect("remote command results").push_back(result);
         }
 
-        fn queue_envelope_result(
-            &self,
-            result: Result<crate::app::EnvelopeResponse, SdkError>,
-        ) {
+        fn queue_envelope_result(&self, result: Result<crate::app::EnvelopeResponse, SdkError>) {
             self.envelope_results.lock().expect("envelope results").push_back(result);
         }
 
-        fn queue_voice_open_result(
-            &self,
-            result: Result<crate::domain::VoiceSessionId, SdkError>,
-        ) {
+        fn queue_voice_open_result(&self, result: Result<crate::domain::VoiceSessionId, SdkError>) {
             self.voice_open_results.lock().expect("voice open results").push_back(result);
         }
 
@@ -1280,10 +1354,7 @@ mod tests {
             &self,
             result: Result<crate::domain::VoiceSessionState, SdkError>,
         ) {
-            self.voice_update_results
-                .lock()
-                .expect("voice update results")
-                .push_back(result);
+            self.voice_update_results.lock().expect("voice update results").push_back(result);
         }
 
         fn queue_voice_close_result(&self, result: Result<Ack, SdkError>) {
@@ -1450,10 +1521,9 @@ mod tests {
                         )],
                         next_cursor: None,
                     },
-                    _ => crate::domain::ContactListResult {
-                        contacts: Vec::new(),
-                        next_cursor: None,
-                    },
+                    _ => {
+                        crate::domain::ContactListResult { contacts: Vec::new(), next_cursor: None }
+                    }
                 });
             }
             Ok(crate::domain::ContactListResult {
@@ -1504,20 +1574,13 @@ mod tests {
                         peers: vec![bob],
                         next_cursor: Some("presence:1".to_owned()),
                     },
-                    Some("presence:1") => crate::domain::PresenceListResult {
-                        peers: vec![eve],
-                        next_cursor: None,
-                    },
-                    _ => crate::domain::PresenceListResult {
-                        peers: Vec::new(),
-                        next_cursor: None,
-                    },
+                    Some("presence:1") => {
+                        crate::domain::PresenceListResult { peers: vec![eve], next_cursor: None }
+                    }
+                    _ => crate::domain::PresenceListResult { peers: Vec::new(), next_cursor: None },
                 });
             }
-            Ok(crate::domain::PresenceListResult {
-                peers: vec![bob, eve],
-                next_cursor: None,
-            })
+            Ok(crate::domain::PresenceListResult { peers: vec![bob, eve], next_cursor: None })
         }
 
         fn identity_contact_update(
@@ -1550,6 +1613,77 @@ mod tests {
             })
         }
 
+        fn topic_create(
+            &self,
+            req: crate::domain::TopicCreateRequest,
+        ) -> Result<crate::domain::TopicRecord, SdkError> {
+            Ok(crate::domain::TopicRecord {
+                topic_id: crate::domain::TopicId("topic-1".to_owned()),
+                topic_path: req.topic_path,
+                created_ts_ms: 700,
+                metadata: req.metadata,
+                extensions: req.extensions,
+            })
+        }
+
+        fn topic_get(
+            &self,
+            topic_id: crate::domain::TopicId,
+        ) -> Result<Option<crate::domain::TopicRecord>, SdkError> {
+            Ok(Some(crate::domain::TopicRecord {
+                topic_id,
+                topic_path: Some(crate::domain::TopicPath("ops/alerts".to_owned())),
+                created_ts_ms: 700,
+                metadata: BTreeMap::from([("kind".to_owned(), serde_json::json!("ops"))]),
+                extensions: BTreeMap::new(),
+            }))
+        }
+
+        fn topic_list(
+            &self,
+            req: crate::domain::TopicListRequest,
+        ) -> Result<crate::domain::TopicListResult, SdkError> {
+            Ok(match req.cursor.as_deref() {
+                Some("topic:1") => crate::domain::TopicListResult {
+                    topics: vec![crate::domain::TopicRecord {
+                        topic_id: crate::domain::TopicId("topic-2".to_owned()),
+                        topic_path: Some(crate::domain::TopicPath("ops/secondary".to_owned())),
+                        created_ts_ms: 701,
+                        metadata: BTreeMap::new(),
+                        extensions: BTreeMap::new(),
+                    }],
+                    next_cursor: None,
+                },
+                _ => crate::domain::TopicListResult {
+                    topics: vec![crate::domain::TopicRecord {
+                        topic_id: crate::domain::TopicId("topic-1".to_owned()),
+                        topic_path: Some(crate::domain::TopicPath("ops/alerts".to_owned())),
+                        created_ts_ms: 700,
+                        metadata: BTreeMap::from([("kind".to_owned(), serde_json::json!("ops"))]),
+                        extensions: BTreeMap::new(),
+                    }],
+                    next_cursor: Some("topic:1".to_owned()),
+                },
+            })
+        }
+
+        fn topic_subscribe(
+            &self,
+            req: crate::domain::TopicSubscriptionRequest,
+        ) -> Result<Ack, SdkError> {
+            let _ = req;
+            Ok(Ack { accepted: true, revision: None })
+        }
+
+        fn topic_unsubscribe(&self, _topic_id: crate::domain::TopicId) -> Result<Ack, SdkError> {
+            Ok(Ack { accepted: true, revision: None })
+        }
+
+        fn topic_publish(&self, req: crate::domain::TopicPublishRequest) -> Result<Ack, SdkError> {
+            let _ = req;
+            Ok(Ack { accepted: true, revision: None })
+        }
+
         fn command_invoke(
             &self,
             req: crate::domain::RemoteCommandRequest,
@@ -1575,11 +1709,8 @@ mod tests {
             &self,
             envelope: crate::app::Envelope,
         ) -> Result<crate::app::EnvelopeResponse, SdkError> {
-            self.envelope_results
-                .lock()
-                .expect("envelope results")
-                .pop_front()
-                .unwrap_or_else(|| {
+            self.envelope_results.lock().expect("envelope results").pop_front().unwrap_or_else(
+                || {
                     Ok(crate::app::EnvelopeResponse {
                         operation_id: envelope.operation_id,
                         kind: crate::app::EnvelopeKind::Result,
@@ -1591,7 +1722,8 @@ mod tests {
                         }),
                         extensions: envelope.extensions,
                     })
-                })
+                },
+            )
         }
 
         fn voice_session_open(
@@ -1717,9 +1849,8 @@ mod tests {
     #[test]
     fn execute_envelope_routes_runtime_status_locally() {
         let app = Client::new(MockBackend::new());
-        let response = app
-            .query("app.runtime.status", serde_json::json!({}))
-            .expect("runtime status");
+        let response =
+            app.query("app.runtime.status", serde_json::json!({})).expect("runtime status");
         assert_eq!(response.kind, EnvelopeKind::Result);
         assert_eq!(response.operation_id.as_str(), "app.runtime.status");
         assert_eq!(response.payload.get("state").and_then(|value| value.as_str()), Some("new"));
@@ -1728,15 +1859,12 @@ mod tests {
     #[test]
     fn execute_envelope_routes_identity_queries_to_backend() {
         let app = Client::new(MockBackend::new());
-        let response = app
-            .query("app.identity.list", serde_json::json!({}))
-            .expect("identity list");
+        let response =
+            app.query("app.identity.list", serde_json::json!({})).expect("identity list");
         let identities = response.payload.as_array().expect("identity array");
         assert_eq!(identities.len(), 1);
         assert_eq!(
-            identities[0]
-                .get("display_name")
-                .and_then(|value| value.as_str()),
+            identities[0].get("display_name").and_then(|value| value.as_str()),
             Some("Alice")
         );
     }
@@ -1756,9 +1884,8 @@ mod tests {
     fn execute_envelope_routes_discovery_operations_locally() {
         let app = Client::new(MockBackend::new());
 
-        let announce = app
-            .command("sdk_identity_announce_now_v2", serde_json::json!({}))
-            .expect("announce");
+        let announce =
+            app.command("sdk_identity_announce_now_v2", serde_json::json!({})).expect("announce");
         assert_eq!(announce.operation_id.as_str(), "app.identity.announce");
         assert_eq!(announce.payload["accepted"], json!(true));
 
@@ -1793,6 +1920,52 @@ mod tests {
     }
 
     #[test]
+    fn execute_envelope_routes_topic_operations_locally() {
+        let app = Client::new(MockBackend::new());
+
+        let topic = app
+            .command(
+                "sdk_topic_create_v2",
+                serde_json::json!({
+                    "topic_path": "ops/alerts",
+                    "metadata": { "kind": "ops" }
+                }),
+            )
+            .expect("topic create");
+        assert_eq!(topic.operation_id.as_str(), "app.topic.create");
+        assert_eq!(topic.payload["topic_id"], json!("topic-1"));
+
+        let fetched =
+            app.query("sdk_topic_get_v2", serde_json::json!("topic-1")).expect("topic get");
+        assert_eq!(fetched.operation_id.as_str(), "app.topic.get");
+        assert_eq!(fetched.payload["topic_path"], json!("ops/alerts"));
+
+        let listed =
+            app.query("app.topic.list", serde_json::json!({ "limit": 10 })).expect("topic list");
+        assert_eq!(listed.payload["topics"].as_array().expect("topic list").len(), 1);
+        assert_eq!(listed.payload["next_cursor"], json!("topic:1"));
+
+        let subscribed = app
+            .command("sdk_topic_subscribe_v2", serde_json::json!({ "topic_id": "topic-1" }))
+            .expect("topic subscribe");
+        assert_eq!(subscribed.operation_id.as_str(), "app.topic.subscribe");
+        assert_eq!(subscribed.payload["accepted"], json!(true));
+
+        let published = app
+            .command(
+                "app.topic.publish",
+                serde_json::json!({
+                    "topic_id": "topic-1",
+                    "payload": { "message": "hello topic" },
+                    "correlation_id": "topic-corr-1"
+                }),
+            )
+            .expect("topic publish");
+        assert_eq!(published.operation_id.as_str(), "app.topic.publish");
+        assert_eq!(published.payload["accepted"], json!(true));
+    }
+
+    #[test]
     fn execute_envelope_routes_runtime_start_and_stop_locally() {
         let app = Client::new(MockBackend::new());
         let start = app
@@ -1811,10 +1984,7 @@ mod tests {
             .command("app.runtime.stop", serde_json::json!({ "mode": "graceful" }))
             .expect("runtime stop");
         assert_eq!(stop.operation_id.as_str(), "app.runtime.stop");
-        assert_eq!(
-            stop.payload.get("accepted").and_then(|value| value.as_bool()),
-            Some(true)
-        );
+        assert_eq!(stop.payload.get("accepted").and_then(|value| value.as_bool()), Some(true));
     }
 
     #[test]
@@ -1851,15 +2021,13 @@ mod tests {
             extensions: BTreeMap::from([("transport".to_owned(), serde_json::json!("remote"))]),
         }));
         let app = Client::new(backend);
-        app.start(
-            Config::desktop_default().with_custom_operation(OperationEntry::new(
-                "vendor.example.custom",
-                "custom",
-                OperationKind::Command,
-                TransportVariant::Extension,
-                "Custom vendor command.",
-            )),
-        )
+        app.start(Config::desktop_default().with_custom_operation(OperationEntry::new(
+            "vendor.example.custom",
+            "custom",
+            OperationKind::Command,
+            TransportVariant::Extension,
+            "Custom vendor command.",
+        )))
         .expect("start");
         let response = app
             .command("vendor.example.custom", serde_json::json!({ "value": 1 }))
@@ -1867,10 +2035,7 @@ mod tests {
         assert_eq!(response.operation_id.as_str(), "vendor.example.custom");
         assert_eq!(response.payload.get("ok").and_then(|value| value.as_bool()), Some(true));
         assert_eq!(
-            response
-                .extensions
-                .get("transport")
-                .and_then(|value| value.as_str()),
+            response.extensions.get("transport").and_then(|value| value.as_str()),
             Some("remote")
         );
     }
@@ -1944,10 +2109,7 @@ mod tests {
             .command("app.voice.session.close", serde_json::json!("voice-9"))
             .expect("voice close");
         assert_eq!(closed.operation_id.as_str(), "app.voice.session.close");
-        assert_eq!(
-            closed.payload.get("accepted").and_then(|value| value.as_bool()),
-            Some(true)
-        );
+        assert_eq!(closed.payload.get("accepted").and_then(|value| value.as_bool()), Some(true));
         assert_eq!(
             closed.payload.get("session_id").and_then(|value| value.as_str()),
             Some("voice-9")
@@ -1968,10 +2130,7 @@ mod tests {
         assert_eq!(contacts.contacts[0].identity, "bob");
         assert_eq!(contacts.contacts[0].trust_level, TrustLevel::Trusted);
         assert_eq!(
-            contacts.contacts[0]
-                .extensions
-                .get("cursor")
-                .and_then(|value| value.as_str()),
+            contacts.contacts[0].extensions.get("cursor").and_then(|value| value.as_str()),
             Some("cursor-1")
         );
 

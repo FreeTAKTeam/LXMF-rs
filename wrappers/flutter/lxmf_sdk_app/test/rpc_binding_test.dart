@@ -656,7 +656,8 @@ void main() {
       expect(callParams['timeout_ms'], 500);
     });
 
-    test('voice session helper roundtrips canonical voice operations', () async {
+    test('voice session helper roundtrips canonical voice operations',
+        () async {
       unawaited(() async {
         await for (final request in server) {
           final body = await request.fold<List<int>>(<int>[], (all, chunk) {
@@ -681,7 +682,8 @@ void main() {
                         'group': 'voice',
                         'kind': 'command',
                         'transport_variant': 'rpc',
-                        'description': 'Open a voice signaling session for a peer.',
+                        'description':
+                            'Open a voice signaling session for a peer.',
                         'aliases': <String>['sdk_voice_session_open_v2'],
                         'required_capabilities': <String>[
                           'sdk.capability.voice_signaling',
@@ -692,7 +694,8 @@ void main() {
                         'group': 'voice',
                         'kind': 'command',
                         'transport_variant': 'rpc',
-                        'description': 'Advance the state of a voice signaling session.',
+                        'description':
+                            'Advance the state of a voice signaling session.',
                         'aliases': <String>['sdk_voice_session_update_v2'],
                         'required_capabilities': <String>[
                           'sdk.capability.voice_signaling',
@@ -789,11 +792,250 @@ void main() {
       final envelopeCalls = calls
           .where((call) => call['method'] == 'sdk_envelope_execute_v2')
           .toList(growable: false);
-      expect(envelopeCalls.map((call) => (call['params'] as Map<String, Object?>)['operation_id']), [
-        'app.voice.session.open',
-        'app.voice.session.update',
-        'app.voice.session.close',
-      ]);
+      expect(
+          envelopeCalls.map((call) =>
+              (call['params'] as Map<String, Object?>)['operation_id']),
+          [
+            'app.voice.session.open',
+            'app.voice.session.update',
+            'app.voice.session.close',
+          ]);
+    });
+
+    test('topic helper roundtrips canonical topic operations', () async {
+      unawaited(() async {
+        await for (final request in server) {
+          final body = await request.fold<List<int>>(<int>[], (all, chunk) {
+            all.addAll(chunk);
+            return all;
+          });
+          final frame = decodeRpcFrame(body);
+          calls.add(frame);
+          final id = frame['id'] as int;
+          final method = frame['method'] as String;
+          final params = frame['params'] is Map<String, Object?>
+              ? frame['params'] as Map<String, Object?>
+              : const <String, Object?>{};
+          final response = switch (method) {
+            'sdk_operation_registry_v2' => <String, Object?>{
+                'id': id,
+                'result': <String, Object?>{
+                  'registry': <String, Object?>{
+                    'entries': <Object?>[
+                      <String, Object?>{
+                        'id': 'app.topic.create',
+                        'group': 'topics',
+                        'kind': 'command',
+                        'transport_variant': 'rpc',
+                        'description': 'Create topic.',
+                        'aliases': <String>['sdk_topic_create_v2'],
+                        'required_capabilities': <String>[
+                          'sdk.capability.topics'
+                        ],
+                      },
+                      <String, Object?>{
+                        'id': 'app.topic.get',
+                        'group': 'topics',
+                        'kind': 'query',
+                        'transport_variant': 'rpc',
+                        'description': 'Get topic.',
+                        'aliases': <String>['sdk_topic_get_v2'],
+                        'required_capabilities': <String>[
+                          'sdk.capability.topics'
+                        ],
+                      },
+                      <String, Object?>{
+                        'id': 'app.topic.list',
+                        'group': 'topics',
+                        'kind': 'query',
+                        'transport_variant': 'rpc',
+                        'description': 'List topics.',
+                        'aliases': <String>['sdk_topic_list_v2'],
+                        'required_capabilities': <String>[
+                          'sdk.capability.topics'
+                        ],
+                      },
+                      <String, Object?>{
+                        'id': 'app.topic.subscribe',
+                        'group': 'topics',
+                        'kind': 'command',
+                        'transport_variant': 'rpc',
+                        'description': 'Subscribe topic.',
+                        'aliases': <String>['sdk_topic_subscribe_v2'],
+                        'required_capabilities': <String>[
+                          'sdk.capability.topic_subscriptions',
+                        ],
+                      },
+                      <String, Object?>{
+                        'id': 'app.topic.unsubscribe',
+                        'group': 'topics',
+                        'kind': 'command',
+                        'transport_variant': 'rpc',
+                        'description': 'Unsubscribe topic.',
+                        'aliases': <String>['sdk_topic_unsubscribe_v2'],
+                        'required_capabilities': <String>[
+                          'sdk.capability.topic_subscriptions',
+                        ],
+                      },
+                      <String, Object?>{
+                        'id': 'app.topic.publish',
+                        'group': 'topics',
+                        'kind': 'command',
+                        'transport_variant': 'rpc',
+                        'description': 'Publish topic.',
+                        'aliases': <String>['sdk_topic_publish_v2'],
+                        'required_capabilities': <String>[
+                          'sdk.capability.topic_fanout'
+                        ],
+                      },
+                    ],
+                  },
+                },
+                'error': null,
+              },
+            'sdk_envelope_execute_v2' => <String, Object?>{
+                'id': id,
+                'result': <String, Object?>{
+                  'response': switch (params['operation_id']) {
+                    'app.topic.create' => <String, Object?>{
+                        'operation_id': 'app.topic.create',
+                        'kind': 'result',
+                        'accepted': true,
+                        'payload': <String, Object?>{
+                          'topic_id': 'topic-1',
+                          'topic_path': 'ops/alerts',
+                          'created_ts_ms': 700,
+                          'metadata': <String, Object?>{'kind': 'ops'},
+                          'extensions': <String, Object?>{},
+                        },
+                        'extensions': <String, Object?>{},
+                      },
+                    'app.topic.get' => <String, Object?>{
+                        'operation_id': 'app.topic.get',
+                        'kind': 'result',
+                        'accepted': true,
+                        'payload': <String, Object?>{
+                          'topic_id': 'topic-1',
+                          'topic_path': 'ops/alerts',
+                          'created_ts_ms': 700,
+                          'metadata': <String, Object?>{'kind': 'ops'},
+                          'extensions': <String, Object?>{},
+                        },
+                        'extensions': <String, Object?>{},
+                      },
+                    'app.topic.list' => <String, Object?>{
+                        'operation_id': 'app.topic.list',
+                        'kind': 'result',
+                        'accepted': true,
+                        'payload': <String, Object?>{
+                          'topics': <Object?>[
+                            <String, Object?>{
+                              'topic_id': 'topic-1',
+                              'topic_path': 'ops/alerts',
+                              'created_ts_ms': 700,
+                              'metadata': <String, Object?>{'kind': 'ops'},
+                              'extensions': <String, Object?>{},
+                            },
+                          ],
+                          'next_cursor': 'topic:1',
+                        },
+                        'extensions': <String, Object?>{},
+                      },
+                    'app.topic.subscribe' => <String, Object?>{
+                        'operation_id': 'app.topic.subscribe',
+                        'kind': 'result',
+                        'accepted': true,
+                        'payload': <String, Object?>{
+                          'accepted': true,
+                          'topic_id': 'topic-1'
+                        },
+                        'extensions': <String, Object?>{},
+                      },
+                    'app.topic.unsubscribe' => <String, Object?>{
+                        'operation_id': 'app.topic.unsubscribe',
+                        'kind': 'result',
+                        'accepted': true,
+                        'payload': <String, Object?>{
+                          'accepted': true,
+                          'topic_id': 'topic-1'
+                        },
+                        'extensions': <String, Object?>{},
+                      },
+                    'app.topic.publish' => <String, Object?>{
+                        'operation_id': 'app.topic.publish',
+                        'kind': 'result',
+                        'accepted': true,
+                        'payload': <String, Object?>{'accepted': true},
+                        'extensions': <String, Object?>{},
+                      },
+                    _ => <String, Object?>{},
+                  },
+                },
+                'error': null,
+              },
+            _ => <String, Object?>{
+                'id': id,
+                'result': null,
+                'error': <String, Object?>{
+                  'code': 'SDK_VALIDATION_INVALID_ARGUMENT',
+                  'message': 'unknown method',
+                },
+              },
+          };
+          request.response.headers.contentType =
+              ContentType('application', 'msgpack');
+          request.response.add(encodeRpcFrame(response));
+          await request.response.close();
+        }
+      }());
+
+      final topics = TopicClient(
+        OperationClient(
+          AppClient(
+            RpcBinding(
+              RpcConnectionOptions(
+                endpoint: Uri.parse('http://127.0.0.1:${server.port}/rpc'),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final created = await topics.create(
+        topicPath: 'ops/alerts',
+        metadata: const <String, Object?>{'kind': 'ops'},
+      );
+      final fetched = await topics.get('topic-1');
+      final listed = await topics.list(limit: 10);
+      final subscribed = await topics.subscribe('topic-1');
+      final published = await topics.publish(
+        topicId: 'topic-1',
+        payload: const <String, Object?>{'message': 'hello topic'},
+        correlationId: 'topic-corr-1',
+      );
+      final unsubscribed = await topics.unsubscribe('topic-1');
+
+      expect(created.topicId, 'topic-1');
+      expect(fetched?.topicPath, 'ops/alerts');
+      expect(listed.topics, hasLength(1));
+      expect(subscribed, isTrue);
+      expect(published, isTrue);
+      expect(unsubscribed, isTrue);
+
+      final envelopeCalls = calls
+          .where((call) => call['method'] == 'sdk_envelope_execute_v2')
+          .toList(growable: false);
+      expect(
+          envelopeCalls.map((call) =>
+              (call['params'] as Map<String, Object?>)['operation_id']),
+          [
+            'app.topic.create',
+            'app.topic.get',
+            'app.topic.list',
+            'app.topic.subscribe',
+            'app.topic.publish',
+            'app.topic.unsubscribe',
+          ]);
     });
   });
 }
