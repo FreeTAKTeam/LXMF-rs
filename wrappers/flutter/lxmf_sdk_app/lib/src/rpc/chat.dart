@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import '../client.dart';
 import '../models.dart';
 import 'binding.dart';
 
@@ -51,10 +52,10 @@ class ConversationUpdate {
   final ChatMessage? appendedMessage;
 }
 
-class RpcConversationClient {
-  RpcConversationClient(this._binding);
+class ConversationClient {
+  ConversationClient(this._appClient);
 
-  final RpcBinding _binding;
+  final AppClient _appClient;
   final Map<String, List<ChatMessage>> _messageCache =
       <String, List<ChatMessage>>{};
   Future<OperationRegistry>? _registryFuture;
@@ -99,7 +100,7 @@ class RpcConversationClient {
     String? idempotencyKey,
   }) async {
     final self = await selfAddress();
-    return _binding.send(
+    return _appClient.send(
       SendRequest(
         source: self,
         destination: peerAddress,
@@ -123,7 +124,7 @@ class RpcConversationClient {
           }
           controller.add(ConversationUpdate(snapshot: initial));
 
-          eventsSubscription = _binding.subscribeEvents().listen(
+          eventsSubscription = _appClient.subscribeEvents().listen(
             (event) {
               final message = ChatMessageMapper.fromEvent(event);
               if (message == null) {
@@ -192,7 +193,7 @@ class RpcConversationClient {
     String operationId, {
     Object? payload = const <String, Object?>{},
   }) async {
-    final registry = await (_registryFuture ??= _binding.operationRegistry());
+    final registry = await (_registryFuture ??= _appClient.operationRegistry());
     final canonicalId = registry.canonicalize(operationId);
     if (canonicalId == null) {
       throw AppError(
@@ -202,7 +203,7 @@ class RpcConversationClient {
         userActionRequired: true,
       );
     }
-    return _binding.executeEnvelope(Envelope.query(canonicalId, payload));
+    return _appClient.executeEnvelope(Envelope.query(canonicalId, payload));
   }
 
   static Map<String, Object?> _payloadMap(Object? payload) {
@@ -234,6 +235,10 @@ class RpcConversationClient {
         )
         .toList(growable: false);
   }
+}
+
+class RpcConversationClient extends ConversationClient {
+  RpcConversationClient(RpcBinding binding) : super(AppClient(binding));
 }
 
 class ChatMessageMapper {

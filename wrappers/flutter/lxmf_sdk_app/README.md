@@ -26,8 +26,9 @@ Current package scope:
 - typed operation registry and envelope execution models
 - typed custom-operation helper layer with alias-aware query/command dispatch
 - `AppClient` facade over an abstract `AppBinding`
+- `WorkspaceClient` that groups the common app families behind one entrypoint
 - `RpcBinding` for `reticulumd` over framed MessagePack HTTP RPC
-- `RpcConversationClient` for message history + live conversation updates
+- `ConversationClient` / `RpcConversationClient` for message history + live conversation updates
 - identity, contact, message-history, and delivery-status helpers for RPC-backed clients
 - operation catalog fetch + alias-aware envelope execution helpers for RPC-backed clients
 - fixture-backed contract tests for shared `sdk-app` scenarios
@@ -62,6 +63,22 @@ final receipt = await client.send(
   ),
 );
 print('${handle.runtimeId} accepted ${receipt.messageId}');
+```
+
+Workspace-oriented flow:
+
+```dart
+final workspace = WorkspaceClient.rpc(
+  RpcConnectionOptions(
+    endpoint: Uri.parse('http://127.0.0.1:4243/rpc'),
+  ),
+);
+
+await workspace.start(const Config(profile: Profile.desktopDefault));
+final identities = await workspace.discovery.identityList();
+final status = await workspace.status();
+
+print('runtime=${status.runtimeId} identities=${identities.length}');
 ```
 
 Operation-catalog flow:
@@ -268,7 +285,7 @@ final binding = RpcBinding(
 );
 
 final app = AppClient(binding);
-final chat = RpcConversationClient(binding);
+final chat = ConversationClient(app);
 
 await app.start(const Config(profile: Profile.desktopDefault));
 final self = await chat.selfAddress();
@@ -328,6 +345,7 @@ dart run example/marker_operations_smoke.dart http://127.0.0.1:4243/rpc [topic-i
 dart run example/attachment_operations_smoke.dart http://127.0.0.1:4243/rpc [topic-id]
 dart run example/attachment_streaming_smoke.dart http://127.0.0.1:4243/rpc
 dart run example/discovery_operations_smoke.dart http://127.0.0.1:4243/rpc
+dart run example/workspace_smoke.dart http://127.0.0.1:4243/rpc
 ```
 
 Repo-level smoke from the project root:
