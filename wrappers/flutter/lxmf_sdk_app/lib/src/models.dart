@@ -584,6 +584,71 @@ class ContactListPage {
 }
 
 @immutable
+class PresenceRecord {
+  const PresenceRecord({
+    required this.peerId,
+    required this.lastSeenTsMs,
+    required this.firstSeenTsMs,
+    required this.seenCount,
+    this.displayName,
+    this.nameSource,
+    this.trustLevel,
+    this.bootstrap,
+    this.extensions = const <String, Object?>{},
+  });
+
+  final String peerId;
+  final int lastSeenTsMs;
+  final int firstSeenTsMs;
+  final int seenCount;
+  final String? displayName;
+  final String? nameSource;
+  final TrustLevel? trustLevel;
+  final bool? bootstrap;
+  final Map<String, Object?> extensions;
+}
+
+@immutable
+class PresencePage {
+  const PresencePage({
+    required this.peers,
+    this.nextCursor,
+  });
+
+  final List<PresenceRecord> peers;
+  final String? nextCursor;
+}
+
+@immutable
+class PeerDirectoryEntry {
+  const PeerDirectoryEntry({
+    required this.peerId,
+    required this.bootstrap,
+    required this.online,
+    required this.seenCount,
+    this.displayName,
+    this.nameSource,
+    this.trustLevel,
+    this.lastSeenTsMs,
+    this.firstSeenTsMs,
+    this.metadata = const <String, Object?>{},
+    this.extensions = const <String, Object?>{},
+  });
+
+  final String peerId;
+  final String? displayName;
+  final String? nameSource;
+  final TrustLevel? trustLevel;
+  final bool bootstrap;
+  final bool online;
+  final int? lastSeenTsMs;
+  final int? firstSeenTsMs;
+  final int seenCount;
+  final Map<String, Object?> metadata;
+  final Map<String, Object?> extensions;
+}
+
+@immutable
 class AttachmentRecord {
   const AttachmentRecord({
     required this.attachmentId,

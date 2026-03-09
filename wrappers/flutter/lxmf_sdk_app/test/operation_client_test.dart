@@ -894,6 +894,229 @@ void main() {
       expect(binding.queryEnvelopes[0].operationId,
           'app.attachment.download_chunk');
     });
+
+    test('discovery helper maps typed identity presence and contact flows',
+        () async {
+      final binding = _FakeBinding(
+        registry: OperationRegistry(
+          entries: const <OperationEntry>[
+            OperationEntry(
+              id: 'app.identity.list',
+              group: 'identity',
+              kind: OperationKind.query,
+              transportVariant: TransportVariant.rpc,
+              description: 'List identities.',
+              aliases: <String>['sdk_identity_list_v2'],
+            ),
+            OperationEntry(
+              id: 'app.identity.announce',
+              group: 'identity',
+              kind: OperationKind.command,
+              transportVariant: TransportVariant.rpc,
+              description: 'Announce identity.',
+              aliases: <String>['sdk_identity_announce_now_v2'],
+            ),
+            OperationEntry(
+              id: 'app.identity.presence.list',
+              group: 'identity',
+              kind: OperationKind.query,
+              transportVariant: TransportVariant.rpc,
+              description: 'List presence.',
+              aliases: <String>['sdk_identity_presence_list_v2'],
+            ),
+            OperationEntry(
+              id: 'app.contact.list',
+              group: 'identity',
+              kind: OperationKind.query,
+              transportVariant: TransportVariant.rpc,
+              description: 'List contacts.',
+              aliases: <String>['sdk_identity_contact_list_v2'],
+            ),
+            OperationEntry(
+              id: 'app.contact.update',
+              group: 'identity',
+              kind: OperationKind.command,
+              transportVariant: TransportVariant.rpc,
+              description: 'Update contact.',
+              aliases: <String>['sdk_identity_contact_update_v2'],
+            ),
+            OperationEntry(
+              id: 'app.identity.bootstrap',
+              group: 'identity',
+              kind: OperationKind.command,
+              transportVariant: TransportVariant.rpc,
+              description: 'Bootstrap identity.',
+              aliases: <String>['sdk_identity_bootstrap_v2'],
+            ),
+          ],
+        ),
+      );
+      binding.queryResponses = <EnvelopeResponse>[
+        const EnvelopeResponse(
+          operationId: 'app.identity.list',
+          kind: EnvelopeKind.result,
+          accepted: true,
+          payload: <Object?>[
+            <String, Object?>{
+              'identity': 'alice',
+              'public_key': 'pubkey',
+              'display_name': 'Alice',
+              'capabilities': <String>['chat'],
+              'extensions': <String, Object?>{},
+            },
+          ],
+        ),
+        const EnvelopeResponse(
+          operationId: 'app.identity.presence.list',
+          kind: EnvelopeKind.result,
+          accepted: true,
+          payload: <String, Object?>{
+            'peers': <Object?>[
+              <String, Object?>{
+                'peer_id': 'bob',
+                'last_seen_ts_ms': 200,
+                'first_seen_ts_ms': 120,
+                'seen_count': 3,
+                'name': 'Bob Relay',
+                'name_source': 'announce',
+                'trust_level': 'trusted',
+                'bootstrap': true,
+                'extensions': <String, Object?>{},
+              },
+            ],
+            'next_cursor': null,
+          },
+        ),
+        const EnvelopeResponse(
+          operationId: 'app.contact.list',
+          kind: EnvelopeKind.result,
+          accepted: true,
+          payload: <String, Object?>{
+            'contacts': <Object?>[
+              <String, Object?>{
+                'identity': 'bob',
+                'display_name': 'Bob',
+                'trust_level': 'trusted',
+                'bootstrap': true,
+                'updated_ts_ms': 500,
+                'metadata': <String, Object?>{'nickname': 'relay'},
+                'extensions': <String, Object?>{},
+              },
+            ],
+            'next_cursor': null,
+          },
+        ),
+        const EnvelopeResponse(
+          operationId: 'app.contact.list',
+          kind: EnvelopeKind.result,
+          accepted: true,
+          payload: <String, Object?>{
+            'contacts': <Object?>[
+              <String, Object?>{
+                'identity': 'bob',
+                'display_name': 'Bob',
+                'trust_level': 'trusted',
+                'bootstrap': true,
+                'updated_ts_ms': 500,
+                'metadata': <String, Object?>{'nickname': 'relay'},
+                'extensions': <String, Object?>{},
+              },
+            ],
+            'next_cursor': null,
+          },
+        ),
+        const EnvelopeResponse(
+          operationId: 'app.identity.presence.list',
+          kind: EnvelopeKind.result,
+          accepted: true,
+          payload: <String, Object?>{
+            'peers': <Object?>[
+              <String, Object?>{
+                'peer_id': 'bob',
+                'last_seen_ts_ms': 200,
+                'first_seen_ts_ms': 120,
+                'seen_count': 3,
+                'name': 'Bob Relay',
+                'name_source': 'announce',
+                'trust_level': 'trusted',
+                'bootstrap': true,
+                'extensions': <String, Object?>{},
+              },
+            ],
+            'next_cursor': null,
+          },
+        ),
+      ];
+      binding.commandResponses = <EnvelopeResponse>[
+        const EnvelopeResponse(
+          operationId: 'app.identity.announce',
+          kind: EnvelopeKind.result,
+          accepted: true,
+          payload: <String, Object?>{'accepted': true, 'announce_id': 42},
+        ),
+        const EnvelopeResponse(
+          operationId: 'app.contact.update',
+          kind: EnvelopeKind.result,
+          accepted: true,
+          payload: <String, Object?>{
+            'identity': 'charlie',
+            'display_name': 'Charlie',
+            'trust_level': 'trusted',
+            'bootstrap': true,
+            'updated_ts_ms': 501,
+            'metadata': <String, Object?>{'team': 'ops'},
+            'extensions': <String, Object?>{},
+          },
+        ),
+        const EnvelopeResponse(
+          operationId: 'app.identity.bootstrap',
+          kind: EnvelopeKind.result,
+          accepted: true,
+          payload: <String, Object?>{
+            'identity': 'delta',
+            'display_name': null,
+            'trust_level': 'trusted',
+            'bootstrap': true,
+            'updated_ts_ms': 600,
+            'metadata': <String, Object?>{},
+            'extensions': <String, Object?>{},
+          },
+        ),
+      ];
+
+      final discovery = DiscoveryClient(OperationClient(AppClient(binding)));
+      final identities = await discovery.identityList();
+      final announced = await discovery.announceNow();
+      final presence = await discovery.presenceList(limit: 10);
+      final contacts = await discovery.contactList(limit: 10);
+      final updated = await discovery.updateContact(
+        identity: 'charlie',
+        displayName: 'Charlie',
+        trustLevel: TrustLevel.trusted,
+        bootstrap: true,
+        metadata: const <String, Object?>{'team': 'ops'},
+      );
+      final bootstrapped = await discovery.bootstrapIdentity(identity: 'delta');
+      final directory = await discovery.peerDirectory(limit: 10);
+
+      expect(identities, hasLength(1));
+      expect(identities.first.identity, 'alice');
+      expect(announced, isTrue);
+      expect(presence.peers.single.peerId, 'bob');
+      expect(contacts.contacts.single.identity, 'bob');
+      expect(updated.identity, 'charlie');
+      expect(bootstrapped.identity, 'delta');
+      expect(directory.single.peerId, 'bob');
+      expect(directory.single.online, isTrue);
+      expect(directory.single.metadata['nickname'], 'relay');
+      expect(binding.queryEnvelopes[0].operationId, 'app.identity.list');
+      expect(binding.commandEnvelopes[0].operationId, 'app.identity.announce');
+      expect(
+          binding.queryEnvelopes[1].operationId, 'app.identity.presence.list');
+      expect(binding.queryEnvelopes[2].operationId, 'app.contact.list');
+      expect(binding.commandEnvelopes[1].operationId, 'app.contact.update');
+      expect(binding.commandEnvelopes[2].operationId, 'app.identity.bootstrap');
+    });
   });
 }
 

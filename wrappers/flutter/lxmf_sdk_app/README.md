@@ -239,6 +239,24 @@ final chunk = await attachments.downloadChunk(
 print('upload=${session.uploadId} next=${ack.nextOffset} chunk=${chunk.bytesBase64}');
 ```
 
+Typed discovery flow:
+
+```dart
+final discovery = DiscoveryClient(OperationClient(client));
+
+final identities = await discovery.identityList();
+final announced = await discovery.announceNow();
+final presence = await discovery.presenceList(limit: 10);
+final contacts = await discovery.contactList(limit: 10);
+final directory = await discovery.peerDirectory(limit: 10);
+
+print(
+  'identities=${identities.length} announce=$announced '
+  'presence=${presence.peers.length} contacts=${contacts.contacts.length} '
+  'directory=${directory.length}',
+);
+```
+
 Conversation-oriented flow:
 
 ```dart
@@ -309,6 +327,7 @@ dart run example/telemetry_operations_smoke.dart http://127.0.0.1:4243/rpc [topi
 dart run example/marker_operations_smoke.dart http://127.0.0.1:4243/rpc [topic-id]
 dart run example/attachment_operations_smoke.dart http://127.0.0.1:4243/rpc [topic-id]
 dart run example/attachment_streaming_smoke.dart http://127.0.0.1:4243/rpc
+dart run example/discovery_operations_smoke.dart http://127.0.0.1:4243/rpc
 ```
 
 Repo-level smoke from the project root:
