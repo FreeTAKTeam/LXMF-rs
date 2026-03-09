@@ -595,14 +595,17 @@
                     "target": "node-b",
                     "payload": { "body": "hello" },
                     "timeout_ms": 500,
+                    "extensions": { "via": "test" }
                 }),
             ))
             .expect("custom envelope command");
         assert!(envelope_command.error.is_none());
-        let envelope_payload =
-            &envelope_command.result.expect("envelope command result")["response"]["payload"];
-        assert_eq!(envelope_payload["payload"]["command"], json!("vendor.example.custom"));
-        assert_eq!(envelope_payload["payload"]["target"], json!("node-b"));
+        let envelope_response = &envelope_command.result.expect("envelope command result")["response"];
+        assert_eq!(envelope_response["accepted"], json!(true));
+        assert_eq!(envelope_response["extensions"]["via"], json!("test"));
+        let envelope_payload = &envelope_response["payload"];
+        assert_eq!(envelope_payload["command"], json!("vendor.example.custom"));
+        assert_eq!(envelope_payload["target"], json!("node-b"));
 
         let voice_open = daemon
             .handle_rpc(rpc_request(

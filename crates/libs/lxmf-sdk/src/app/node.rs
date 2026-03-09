@@ -527,12 +527,18 @@ impl<B: SdkBackend> Client<B> {
                     serde_json::to_value(result).expect("contact list should serialize"),
                 ))
             }
-            _ if matches!(entry.kind, super::operations::OperationKind::Query) => {
-                Err(invalid_envelope(
-                    "query operation is not supported by the local app runtime",
-                    canonical_id.as_str(),
-                ))
-            }
+            _ if matches!(entry.kind, super::operations::OperationKind::Query) => self
+                .backend
+                .envelope_execute(Envelope {
+                    operation_id: canonical_id,
+                    kind: EnvelopeKind::Query,
+                    target,
+                    correlation_id,
+                    timeout_ms,
+                    payload,
+                    extensions,
+                })
+                .map_err(Error::from),
             _ => {
                 let response = self
                     .backend
@@ -931,6 +937,8 @@ mod tests {
         shutdown_results: Mutex<VecDeque<Result<Ack, SdkError>>>,
         remote_command_results:
             Mutex<VecDeque<Result<crate::domain::RemoteCommandResponse, SdkError>>>,
+        envelope_results:
+            Mutex<VecDeque<Result<crate::app::EnvelopeResponse, SdkError>>>,
     }
 
     impl MockBackend {
@@ -943,6 +951,7 @@ mod tests {
                 shutdown_calls: AtomicUsize::new(0),
                 shutdown_results: Mutex::new(VecDeque::new()),
                 remote_command_results: Mutex::new(VecDeque::new()),
+                envelope_results: Mutex::new(VecDeque::new()),
             }
         }
 
@@ -966,6 +975,13 @@ mod tests {
                 .lock()
                 .expect("remote command results")
                 .push_back(result);
+        }
+
+        fn queue_envelope_result(
+            &self,
+            result: Result<crate::app::EnvelopeResponse, SdkError>,
+        ) {
+            self.envelope_results.lock().expect("envelope results").push_back(result);
         }
     }
 
@@ -1120,6 +1136,29 @@ mod tests {
                             "payload": req.payload,
                         }),
                         extensions: req.extensions,
+                    })
+                })
+        }
+
+        fn envelope_execute(
+            &self,
+            envelope: crate::app::Envelope,
+        ) -> Result<crate::app::EnvelopeResponse, SdkError> {
+            self.envelope_results
+                .lock()
+                .expect("envelope results")
+                .pop_front()
+                .unwrap_or_else(|| {
+                    Ok(crate::app::EnvelopeResponse {
+                        operation_id: envelope.operation_id,
+                        kind: crate::app::EnvelopeKind::Result,
+                        accepted: true,
+                        correlation_id: envelope.correlation_id,
+                        payload: serde_json::json!({
+                            "query": true,
+                            "payload": envelope.payload,
+                        }),
+                        extensions: envelope.extensions,
                     })
                 })
         }
@@ -1331,12 +1370,25 @@ mod tests {
     }
 
     #[test]
-    fn execute_envelope_rejects_unhandled_query_fallbacks() {
-        let app = Client::new(MockBackend::new());
-        let err = app
+    fn execute_envelope_routes_unhandled_queries_to_backend_envelope_path() {
+        let backend = MockBackend::new();
+        backend.queue_envelope_result(Ok(crate::app::EnvelopeResponse {
+            operation_id: crate::app::OperationId::from("app.message.history.list"),
+            kind: crate::app::EnvelopeKind::Result,
+            accepted: true,
+            correlation_id: Some("corr-1".to_owned()),
+            payload: serde_json::json!({ "messages": [] }),
+            extensions: BTreeMap::from([("via".to_owned(), serde_json::json!("envelope"))]),
+        }));
+        let app = Client::new(backend);
+        let response = app
             .query("app.message.history.list", serde_json::json!({ "limit": 10 }))
-            .expect_err("history query should not fall through to remote command");
-        assert_eq!(err.code.as_str(), "SDK_APP_VALIDATION_INVALID_ARGUMENT");
+            .expect("history query");
+        assert_eq!(response.operation_id.as_str(), "app.message.history.list");
+        assert_eq!(
+            response.extensions.get("via").and_then(|value| value.as_str()),
+            Some("envelope")
+        );
     }
 
     #[test]

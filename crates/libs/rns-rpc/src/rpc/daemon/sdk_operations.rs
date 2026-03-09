@@ -283,20 +283,33 @@ impl RpcDaemon {
         if let Some(error) = delegated.error {
             return Ok(RpcResponse { id: request.id, result: None, error: Some(error) });
         }
-        let payload = delegated
+        let delegated_payload = delegated
             .result
             .and_then(|value| value.get("response").cloned())
             .unwrap_or(JsonValue::Null);
+        let accepted = delegated_payload
+            .get("accepted")
+            .and_then(JsonValue::as_bool)
+            .unwrap_or(true);
+        let extensions = delegated_payload
+            .get("extensions")
+            .and_then(JsonValue::as_object)
+            .cloned()
+            .unwrap_or_default();
+        let payload = delegated_payload
+            .get("payload")
+            .cloned()
+            .unwrap_or(delegated_payload);
         Ok(RpcResponse {
             id: request.id,
             result: Some(json!({
                 "response": {
                     "operation_id": canonical_id,
                     "kind": "result",
-                    "accepted": true,
+                    "accepted": accepted,
                     "correlation_id": parsed.correlation_id,
                     "payload": payload,
-                    "extensions": JsonMap::<String, JsonValue>::new(),
+                    "extensions": extensions,
                 }
             })),
             error: None,
