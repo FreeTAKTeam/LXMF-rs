@@ -400,6 +400,64 @@ class TopicClient {
   }
 }
 
+class TelemetryClient {
+  TelemetryClient(this._operations);
+
+  final OperationClient _operations;
+
+  Future<List<TelemetryPointRecord>> query({
+    String? peerId,
+    String? topicId,
+    int? fromTsMs,
+    int? toTsMs,
+    int? limit,
+    Map<String, Object?> extensions = const <String, Object?>{},
+  }) async {
+    final result = await _operations.query<List<TelemetryPointRecord>>(
+      OperationCall<List<TelemetryPointRecord>>(
+        operationId: 'app.telemetry.query',
+        payload: <String, Object?>{
+          if (peerId != null) 'peer_id': peerId,
+          if (topicId != null) 'topic_id': topicId,
+          if (fromTsMs != null) 'from_ts_ms': fromTsMs,
+          if (toTsMs != null) 'to_ts_ms': toTsMs,
+          if (limit != null) 'limit': limit,
+          'extensions': extensions,
+        },
+        decode: (payload) => (payload as List<Object?>? ?? const <Object?>[])
+            .map(_decodeTelemetryPoint)
+            .toList(growable: false),
+      ),
+    );
+    return result.payload;
+  }
+
+  Future<bool> subscribe({
+    String? peerId,
+    String? topicId,
+    int? fromTsMs,
+    int? toTsMs,
+    int? limit,
+    Map<String, Object?> extensions = const <String, Object?>{},
+  }) async {
+    final result = await _operations.command<bool>(
+      OperationCall<bool>(
+        operationId: 'app.telemetry.subscribe',
+        payload: <String, Object?>{
+          if (peerId != null) 'peer_id': peerId,
+          if (topicId != null) 'topic_id': topicId,
+          if (fromTsMs != null) 'from_ts_ms': fromTsMs,
+          if (toTsMs != null) 'to_ts_ms': toTsMs,
+          if (limit != null) 'limit': limit,
+          'extensions': extensions,
+        },
+        decode: _decodeAccepted,
+      ),
+    );
+    return result.payload;
+  }
+}
+
 TopicRecord _decodeTopicRecord(Object? payload) {
   final map = _payloadMap(payload);
   return TopicRecord(
@@ -419,6 +477,23 @@ TopicListPage _decodeTopicListPage(Object? payload) {
   return TopicListPage(
     topics: topics,
     nextCursor: map['next_cursor']?.toString(),
+  );
+}
+
+TelemetryPointRecord _decodeTelemetryPoint(Object? payload) {
+  final map = _payloadMap(payload);
+  final tags = map['tags'] is Map
+      ? (map['tags'] as Map).map(
+          (key, value) => MapEntry(key.toString(), value.toString()),
+        )
+      : const <String, String>{};
+  return TelemetryPointRecord(
+    tsMs: (map['ts_ms'] as num?)?.toInt() ?? 0,
+    key: map['key']?.toString() ?? '',
+    value: map['value'],
+    unit: map['unit']?.toString(),
+    tags: tags,
+    extensions: _payloadMap(map['extensions']),
   );
 }
 

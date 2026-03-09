@@ -477,6 +477,24 @@ fn built_in_entries() -> Vec<OperationEntry> {
         .with_alias("sdk_topic_publish_v2")
         .with_required_capability("sdk.capability.topic_fanout"),
         OperationEntry::new(
+            "app.telemetry.query",
+            "telemetry",
+            OperationKind::Query,
+            TransportVariant::Rpc,
+            "Query telemetry points filtered by peer, topic, and time bounds.",
+        )
+        .with_alias("sdk_telemetry_query_v2")
+        .with_required_capability("sdk.capability.telemetry_query"),
+        OperationEntry::new(
+            "app.telemetry.subscribe",
+            "telemetry",
+            OperationKind::Command,
+            TransportVariant::Rpc,
+            "Subscribe the runtime to telemetry stream updates.",
+        )
+        .with_alias("sdk_telemetry_subscribe_v2")
+        .with_required_capability("sdk.capability.telemetry_stream"),
+        OperationEntry::new(
             "app.voice.session.open",
             "voice",
             OperationKind::Command,
@@ -619,6 +637,7 @@ mod tests {
         let grouped = registry.entries_by_group();
 
         assert!(grouped.get("runtime").is_some());
+        assert!(grouped.get("telemetry").is_some());
         assert!(grouped.get("topics").is_some());
         assert!(grouped.get("voice").is_some());
         assert!(grouped
@@ -631,6 +650,11 @@ mod tests {
             .expect("topics group")
             .iter()
             .any(|entry| entry.id.as_str() == "app.topic.create"));
+        assert!(grouped
+            .get("telemetry")
+            .expect("telemetry group")
+            .iter()
+            .any(|entry| entry.id.as_str() == "app.telemetry.query"));
         assert!(grouped
             .get("voice")
             .expect("voice group")

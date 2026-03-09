@@ -151,6 +151,25 @@ final published = await topics.publish(
 print('topic=${created.topicId} listed=${listed.topics.length} published=$published');
 ```
 
+Typed telemetry flow:
+
+```dart
+final telemetry = TelemetryClient(OperationClient(client));
+
+final points = await telemetry.query(
+  topicId: 'topic-1',
+  fromTsMs: 0,
+  limit: 10,
+);
+final subscribed = await telemetry.subscribe(
+  topicId: 'topic-1',
+  fromTsMs: 0,
+  limit: 10,
+);
+
+print('telemetry=${points.length} subscribed=$subscribed');
+```
+
 Conversation-oriented flow:
 
 ```dart
@@ -217,6 +236,7 @@ dart run example/custom_operation_smoke.dart http://127.0.0.1:4243/rpc
 dart run example/custom_vendor_command_smoke.dart http://127.0.0.1:4243/rpc
 dart run example/voice_session_smoke.dart http://127.0.0.1:4243/rpc
 dart run example/topic_operations_smoke.dart http://127.0.0.1:4243/rpc
+dart run example/telemetry_operations_smoke.dart http://127.0.0.1:4243/rpc [topic-id]
 ```
 
 Repo-level smoke from the project root:

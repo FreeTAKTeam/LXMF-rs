@@ -612,6 +612,25 @@ class TopicListPage {
 }
 
 @immutable
+class TelemetryPointRecord {
+  const TelemetryPointRecord({
+    required this.tsMs,
+    required this.key,
+    required this.value,
+    this.unit,
+    this.tags = const <String, String>{},
+    this.extensions = const <String, Object?>{},
+  });
+
+  final int tsMs;
+  final String key;
+  final Object? value;
+  final String? unit;
+  final Map<String, String> tags;
+  final Map<String, Object?> extensions;
+}
+
+@immutable
 class MessageRecord {
   const MessageRecord({
     required this.id,

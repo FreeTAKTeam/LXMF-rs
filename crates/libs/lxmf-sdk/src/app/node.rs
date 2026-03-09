@@ -13,8 +13,9 @@ use super::events::{map_event_batch, subscription_cursor, EventBatch, Subscripti
 use super::operations::{OperationEntry, OperationRegistry, RegistryError};
 use crate::domain::{
     ContactListRequest, ContactUpdateRequest, IdentityBootstrapRequest, PresenceListRequest,
-    RemoteCommandRequest, TopicCreateRequest, TopicId, TopicListRequest, TopicPublishRequest,
-    TopicSubscriptionRequest, VoiceSessionId, VoiceSessionOpenRequest, VoiceSessionUpdateRequest,
+    RemoteCommandRequest, TelemetryQuery, TopicCreateRequest, TopicId, TopicListRequest,
+    TopicPublishRequest, TopicSubscriptionRequest, VoiceSessionId, VoiceSessionOpenRequest,
+    VoiceSessionUpdateRequest,
 };
 use crate::{
     Client as CoreClient, ClientHandle, DeliverySnapshot, DeliveryState as RawDeliveryState,
@@ -671,6 +672,34 @@ impl<B: SdkBackend> Client<B> {
                     canonical_id,
                     correlation_id,
                     serde_json::to_value(result).expect("topic publish should serialize"),
+                ))
+            }
+            "app.telemetry.query" => {
+                let req: TelemetryQuery = serde_json::from_value(payload).map_err(|err| {
+                    invalid_envelope(
+                        format!("invalid telemetry query payload: {err}"),
+                        canonical_id.as_str(),
+                    )
+                })?;
+                let result = self.backend.telemetry_query(req).map_err(Error::from)?;
+                Ok(envelope_result(
+                    canonical_id,
+                    correlation_id,
+                    serde_json::to_value(result).expect("telemetry query should serialize"),
+                ))
+            }
+            "app.telemetry.subscribe" => {
+                let req: TelemetryQuery = serde_json::from_value(payload).map_err(|err| {
+                    invalid_envelope(
+                        format!("invalid telemetry subscribe payload: {err}"),
+                        canonical_id.as_str(),
+                    )
+                })?;
+                let result = self.backend.telemetry_subscribe(req).map_err(Error::from)?;
+                Ok(envelope_result(
+                    canonical_id,
+                    correlation_id,
+                    serde_json::to_value(result).expect("telemetry subscribe should serialize"),
                 ))
             }
             "app.voice.session.open" => {
@@ -1684,6 +1713,33 @@ mod tests {
             Ok(Ack { accepted: true, revision: None })
         }
 
+        fn telemetry_query(
+            &self,
+            query: crate::domain::TelemetryQuery,
+        ) -> Result<Vec<crate::domain::TelemetryPoint>, SdkError> {
+            Ok(vec![crate::domain::TelemetryPoint {
+                ts_ms: query.from_ts_ms.unwrap_or(900),
+                key: "topic_publish".to_owned(),
+                value: serde_json::json!({ "message": "hello topic" }),
+                unit: None,
+                tags: BTreeMap::from([
+                    (
+                        "topic_id".to_owned(),
+                        query.topic_id.map(|value| value.0).unwrap_or_else(|| "topic-1".to_owned()),
+                    ),
+                    ("peer_id".to_owned(), query.peer_id.unwrap_or_else(|| "node-b".to_owned())),
+                ]),
+                extensions: query.extensions,
+            }])
+        }
+
+        fn telemetry_subscribe(
+            &self,
+            _query: crate::domain::TelemetryQuery,
+        ) -> Result<Ack, SdkError> {
+            Ok(Ack { accepted: true, revision: None })
+        }
+
         fn command_invoke(
             &self,
             req: crate::domain::RemoteCommandRequest,
@@ -1963,6 +2019,39 @@ mod tests {
             .expect("topic publish");
         assert_eq!(published.operation_id.as_str(), "app.topic.publish");
         assert_eq!(published.payload["accepted"], json!(true));
+    }
+
+    #[test]
+    fn execute_envelope_routes_telemetry_operations_locally() {
+        let app = Client::new(MockBackend::new());
+
+        let telemetry = app
+            .query(
+                "sdk_telemetry_query_v2",
+                serde_json::json!({
+                    "topic_id": "topic-1",
+                    "peer_id": "node-b",
+                    "from_ts_ms": 100,
+                    "limit": 10,
+                }),
+            )
+            .expect("telemetry query");
+        assert_eq!(telemetry.operation_id.as_str(), "app.telemetry.query");
+        assert_eq!(telemetry.payload.as_array().expect("telemetry rows").len(), 1);
+        assert_eq!(telemetry.payload[0]["tags"]["topic_id"], json!("topic-1"));
+
+        let subscribed = app
+            .command(
+                "app.telemetry.subscribe",
+                serde_json::json!({
+                    "topic_id": "topic-1",
+                    "from_ts_ms": 100,
+                    "limit": 20,
+                }),
+            )
+            .expect("telemetry subscribe");
+        assert_eq!(subscribed.operation_id.as_str(), "app.telemetry.subscribe");
+        assert_eq!(subscribed.payload["accepted"], json!(true));
     }
 
     #[test]

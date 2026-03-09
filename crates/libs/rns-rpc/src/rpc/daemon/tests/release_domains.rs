@@ -790,6 +790,92 @@
     }
 
     #[test]
+    fn sdk_operation_registry_roundtrips_telemetry_family() {
+        let daemon = RpcDaemon::test_instance();
+
+        let topic = daemon
+            .handle_rpc(rpc_request(
+                1330,
+                "sdk_topic_create_v2",
+                json!({ "topic_path": "ops/telemetry" }),
+            ))
+            .expect("topic create");
+        let topic_id = topic.result.expect("topic result")["topic"]["topic_id"]
+            .as_str()
+            .expect("topic id")
+            .to_string();
+        let _publish = daemon
+            .handle_rpc(rpc_request(
+                1331,
+                "sdk_topic_publish_v2",
+                json!({
+                    "topic_id": topic_id.clone(),
+                    "payload": { "message": "hello telemetry" },
+                    "correlation_id": "telemetry-corr-1",
+                }),
+            ))
+            .expect("topic publish");
+
+        let registry = daemon
+            .handle_rpc(rpc_request(1332, "sdk_operation_registry_v2", json!({})))
+            .expect("operation registry");
+        assert!(registry.error.is_none());
+        let registry_result = registry.result.expect("registry result");
+        let entries = registry_result["registry"]["entries"]
+            .as_array()
+            .expect("entries");
+        assert!(entries.iter().any(|entry| entry["id"] == json!("app.telemetry.query")));
+        assert!(entries
+            .iter()
+            .any(|entry| entry["id"] == json!("app.telemetry.subscribe")));
+
+        let telemetry_query = daemon
+            .handle_rpc(rpc_request(
+                1333,
+                "sdk_envelope_execute_v2",
+                json!({
+                    "operation_id": "sdk_telemetry_query_v2",
+                    "kind": "query",
+                    "payload": {
+                        "topic_id": topic_id,
+                        "from_ts_ms": 0,
+                        "limit": 10,
+                    },
+                }),
+            ))
+            .expect("telemetry query envelope");
+        assert!(telemetry_query.error.is_none());
+        let telemetry_payload =
+            &telemetry_query.result.expect("telemetry query result")["response"]["payload"];
+        assert!(!telemetry_payload
+            .as_array()
+            .expect("telemetry points")
+            .is_empty());
+
+        let telemetry_subscribe = daemon
+            .handle_rpc(rpc_request(
+                1334,
+                "sdk_envelope_execute_v2",
+                json!({
+                    "operation_id": "app.telemetry.subscribe",
+                    "kind": "command",
+                    "payload": {
+                        "peer_id": "node-b",
+                        "from_ts_ms": 0,
+                        "limit": 10,
+                    },
+                }),
+            ))
+            .expect("telemetry subscribe envelope");
+        assert!(telemetry_subscribe.error.is_none());
+        assert_eq!(
+            telemetry_subscribe.result.expect("telemetry subscribe result")["response"]["payload"]
+                ["accepted"],
+            json!(true)
+        );
+    }
+
+    #[test]
     fn sdk_domain_state_survives_restart() {
         use std::time::{SystemTime, UNIX_EPOCH};
 

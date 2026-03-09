@@ -162,6 +162,26 @@ const SDK_OPERATION_SPECS: &[SdkOperationSpec] = &[
         rpc_method: "sdk_topic_publish_v2",
     },
     SdkOperationSpec {
+        id: "app.telemetry.query",
+        group: "telemetry",
+        kind: "query",
+        transport_variant: "rpc",
+        description: "Query telemetry points filtered by peer, topic, and time bounds.",
+        aliases: &["sdk_telemetry_query_v2"],
+        required_capabilities: &["sdk.capability.telemetry_query"],
+        rpc_method: "sdk_telemetry_query_v2",
+    },
+    SdkOperationSpec {
+        id: "app.telemetry.subscribe",
+        group: "telemetry",
+        kind: "command",
+        transport_variant: "rpc",
+        description: "Subscribe the runtime to telemetry stream updates.",
+        aliases: &["sdk_telemetry_subscribe_v2"],
+        required_capabilities: &["sdk.capability.telemetry_stream"],
+        rpc_method: "sdk_telemetry_subscribe_v2",
+    },
+    SdkOperationSpec {
         id: "app.voice.session.open",
         group: "voice",
         kind: "command",
@@ -244,11 +264,7 @@ impl RpcDaemon {
     }
 
     fn envelope_invalid(&self, request_id: u64, message: impl AsRef<str>) -> RpcResponse {
-        self.sdk_error_response(
-            request_id,
-            "SDK_VALIDATION_INVALID_ARGUMENT",
-            message.as_ref(),
-        )
+        self.sdk_error_response(request_id, "SDK_VALIDATION_INVALID_ARGUMENT", message.as_ref())
     }
 
     fn handle_sdk_operation_registry_v2(
@@ -293,23 +309,27 @@ impl RpcDaemon {
                 method: method.to_owned(),
                 params: Some(params),
             })?,
-            "sdk_identity_announce_now_v2" => self.handle_sdk_identity_announce_now_v2(RpcRequest {
-                id: request_id,
-                method: method.to_owned(),
-                params: Some(params),
-            })?,
-            "sdk_identity_presence_list_v2" => self.handle_sdk_identity_presence_list_v2(
-                RpcRequest {
+            "sdk_identity_announce_now_v2" => {
+                self.handle_sdk_identity_announce_now_v2(RpcRequest {
                     id: request_id,
                     method: method.to_owned(),
                     params: Some(params),
-                },
-            )?,
-            "sdk_identity_contact_list_v2" => self.handle_sdk_identity_contact_list_v2(RpcRequest {
-                id: request_id,
-                method: method.to_owned(),
-                params: Some(params),
-            })?,
+                })?
+            }
+            "sdk_identity_presence_list_v2" => {
+                self.handle_sdk_identity_presence_list_v2(RpcRequest {
+                    id: request_id,
+                    method: method.to_owned(),
+                    params: Some(params),
+                })?
+            }
+            "sdk_identity_contact_list_v2" => {
+                self.handle_sdk_identity_contact_list_v2(RpcRequest {
+                    id: request_id,
+                    method: method.to_owned(),
+                    params: Some(params),
+                })?
+            }
             "sdk_identity_contact_update_v2" => {
                 self.handle_sdk_identity_contact_update_v2(RpcRequest {
                     id: request_id,
@@ -352,16 +372,28 @@ impl RpcDaemon {
                 method: method.to_owned(),
                 params: Some(params),
             })?,
+            "sdk_telemetry_query_v2" => self.handle_sdk_telemetry_query_v2(RpcRequest {
+                id: request_id,
+                method: method.to_owned(),
+                params: Some(params),
+            })?,
+            "sdk_telemetry_subscribe_v2" => self.handle_sdk_telemetry_subscribe_v2(RpcRequest {
+                id: request_id,
+                method: method.to_owned(),
+                params: Some(params),
+            })?,
             "sdk_voice_session_open_v2" => self.handle_sdk_voice_session_open_v2(RpcRequest {
                 id: request_id,
                 method: method.to_owned(),
                 params: Some(params),
             })?,
-            "sdk_voice_session_update_v2" => self.handle_sdk_voice_session_update_v2(RpcRequest {
-                id: request_id,
-                method: method.to_owned(),
-                params: Some(params),
-            })?,
+            "sdk_voice_session_update_v2" => {
+                self.handle_sdk_voice_session_update_v2(RpcRequest {
+                    id: request_id,
+                    method: method.to_owned(),
+                    params: Some(params),
+                })?
+            }
             "sdk_voice_session_close_v2" => self.handle_sdk_voice_session_close_v2(RpcRequest {
                 id: request_id,
                 method: method.to_owned(),
@@ -416,10 +448,11 @@ impl RpcDaemon {
             "sdk_topic_subscribe_v2" => raw,
             "sdk_topic_unsubscribe_v2" => raw,
             "sdk_topic_publish_v2" => raw,
-            "sdk_voice_session_open_v2" => raw
-                .get("session_id")
-                .cloned()
-                .unwrap_or(JsonValue::Null),
+            "sdk_telemetry_query_v2" => raw.get("points").cloned().unwrap_or(JsonValue::Null),
+            "sdk_telemetry_subscribe_v2" => raw,
+            "sdk_voice_session_open_v2" => {
+                raw.get("session_id").cloned().unwrap_or(JsonValue::Null)
+            }
             "sdk_voice_session_update_v2" => raw.get("state").cloned().unwrap_or(JsonValue::Null),
             "sdk_voice_session_close_v2" => raw,
             "sdk_command_invoke_v2" => raw.get("response").cloned().unwrap_or(raw),
@@ -449,10 +482,7 @@ impl RpcDaemon {
         };
         let kind = parsed.kind.trim().to_ascii_lowercase();
         if !matches!(kind.as_str(), "query" | "command") {
-            return Ok(self.envelope_invalid(
-                request.id,
-                "kind must be query or command",
-            ));
+            return Ok(self.envelope_invalid(request.id, "kind must be query or command"));
         }
 
         let spec = Self::operation_spec(operation_id.as_str());
@@ -495,6 +525,8 @@ impl RpcDaemon {
                 "topic_id": parsed.payload,
             }),
             "sdk_topic_publish_v2" => parsed.payload,
+            "sdk_telemetry_query_v2" => parsed.payload,
+            "sdk_telemetry_subscribe_v2" => parsed.payload,
             "sdk_voice_session_open_v2" => parsed.payload,
             "sdk_voice_session_update_v2" => parsed.payload,
             "sdk_voice_session_close_v2" => parsed.payload,
@@ -513,7 +545,8 @@ impl RpcDaemon {
             _ => JsonValue::Null,
         };
 
-        let delegated = self.envelope_execute_delegated(request.id, rpc_method, delegated_params)?;
+        let delegated =
+            self.envelope_execute_delegated(request.id, rpc_method, delegated_params)?;
         if let Some(error) = delegated.error {
             return Ok(RpcResponse { id: request.id, result: None, error: Some(error) });
         }
@@ -521,19 +554,14 @@ impl RpcDaemon {
             .result
             .and_then(|value| value.get("response").cloned())
             .unwrap_or(JsonValue::Null);
-        let accepted = delegated_payload
-            .get("accepted")
-            .and_then(JsonValue::as_bool)
-            .unwrap_or(true);
+        let accepted =
+            delegated_payload.get("accepted").and_then(JsonValue::as_bool).unwrap_or(true);
         let extensions = delegated_payload
             .get("extensions")
             .and_then(JsonValue::as_object)
             .cloned()
             .unwrap_or_default();
-        let payload = delegated_payload
-            .get("payload")
-            .cloned()
-            .unwrap_or(delegated_payload);
+        let payload = delegated_payload.get("payload").cloned().unwrap_or(delegated_payload);
         Ok(RpcResponse {
             id: request.id,
             result: Some(json!({

@@ -1037,5 +1037,147 @@ void main() {
             'app.topic.unsubscribe',
           ]);
     });
+
+    test('telemetry helper roundtrips canonical telemetry operations',
+        () async {
+      unawaited(() async {
+        await for (final request in server) {
+          final body = await request.fold<List<int>>(<int>[], (all, chunk) {
+            all.addAll(chunk);
+            return all;
+          });
+          final frame = decodeRpcFrame(body);
+          calls.add(frame);
+          final id = frame['id'] as int;
+          final method = frame['method'] as String;
+          final params = frame['params'] is Map<String, Object?>
+              ? frame['params'] as Map<String, Object?>
+              : const <String, Object?>{};
+          final response = switch (method) {
+            'sdk_operation_registry_v2' => <String, Object?>{
+                'id': id,
+                'result': <String, Object?>{
+                  'registry': <String, Object?>{
+                    'entries': <Object?>[
+                      <String, Object?>{
+                        'id': 'app.telemetry.query',
+                        'group': 'telemetry',
+                        'kind': 'query',
+                        'transport_variant': 'rpc',
+                        'description': 'Query telemetry.',
+                        'aliases': <String>['sdk_telemetry_query_v2'],
+                        'required_capabilities': <String>[
+                          'sdk.capability.telemetry_query',
+                        ],
+                      },
+                      <String, Object?>{
+                        'id': 'app.telemetry.subscribe',
+                        'group': 'telemetry',
+                        'kind': 'command',
+                        'transport_variant': 'rpc',
+                        'description': 'Subscribe telemetry.',
+                        'aliases': <String>['sdk_telemetry_subscribe_v2'],
+                        'required_capabilities': <String>[
+                          'sdk.capability.telemetry_stream',
+                        ],
+                      },
+                    ],
+                  },
+                },
+                'error': null,
+              },
+            'sdk_envelope_execute_v2' => <String, Object?>{
+                'id': id,
+                'result': <String, Object?>{
+                  'response': switch (params['operation_id']) {
+                    'app.telemetry.query' => <String, Object?>{
+                        'operation_id': 'app.telemetry.query',
+                        'kind': 'result',
+                        'accepted': true,
+                        'payload': <Object?>[
+                          <String, Object?>{
+                            'ts_ms': 900,
+                            'key': 'topic_publish',
+                            'value': <String, Object?>{
+                              'message': 'hello topic'
+                            },
+                            'unit': null,
+                            'tags': <String, Object?>{
+                              'topic_id': 'topic-1',
+                              'peer_id': 'node-b',
+                            },
+                            'extensions': <String, Object?>{},
+                          },
+                        ],
+                        'extensions': <String, Object?>{},
+                      },
+                    'app.telemetry.subscribe' => <String, Object?>{
+                        'operation_id': 'app.telemetry.subscribe',
+                        'kind': 'result',
+                        'accepted': true,
+                        'payload': <String, Object?>{'accepted': true},
+                        'extensions': <String, Object?>{},
+                      },
+                    _ => <String, Object?>{},
+                  },
+                },
+                'error': null,
+              },
+            _ => <String, Object?>{
+                'id': id,
+                'result': null,
+                'error': <String, Object?>{
+                  'code': 'SDK_VALIDATION_INVALID_ARGUMENT',
+                  'message': 'unknown method',
+                },
+              },
+          };
+          request.response.headers.contentType =
+              ContentType('application', 'msgpack');
+          request.response.add(encodeRpcFrame(response));
+          await request.response.close();
+        }
+      }());
+
+      final telemetry = TelemetryClient(
+        OperationClient(
+          AppClient(
+            RpcBinding(
+              RpcConnectionOptions(
+                endpoint: Uri.parse('http://127.0.0.1:${server.port}/rpc'),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final points = await telemetry.query(
+        topicId: 'topic-1',
+        peerId: 'node-b',
+        fromTsMs: 100,
+        limit: 10,
+      );
+      final subscribed = await telemetry.subscribe(
+        topicId: 'topic-1',
+        fromTsMs: 100,
+        limit: 20,
+      );
+
+      expect(points, hasLength(1));
+      expect(points.first.key, 'topic_publish');
+      expect(points.first.tags['peer_id'], 'node-b');
+      expect(subscribed, isTrue);
+
+      final envelopeCalls = calls
+          .where((call) => call['method'] == 'sdk_envelope_execute_v2')
+          .toList(growable: false);
+      expect(
+          envelopeCalls.map((call) =>
+              (call['params'] as Map<String, Object?>)['operation_id']),
+          [
+            'app.telemetry.query',
+            'app.telemetry.subscribe',
+          ]);
+    });
   });
 }

@@ -396,6 +396,80 @@ void main() {
       expect(binding.commandEnvelopes[2].operationId, 'app.topic.publish');
       expect(binding.commandEnvelopes[3].operationId, 'app.topic.unsubscribe');
     });
+
+    test('telemetry helper maps typed query and subscribe flows', () async {
+      final binding = _FakeBinding(
+        registry: OperationRegistry(
+          entries: const <OperationEntry>[
+            OperationEntry(
+              id: 'app.telemetry.query',
+              group: 'telemetry',
+              kind: OperationKind.query,
+              transportVariant: TransportVariant.rpc,
+              description: 'Query telemetry.',
+              aliases: <String>['sdk_telemetry_query_v2'],
+            ),
+            OperationEntry(
+              id: 'app.telemetry.subscribe',
+              group: 'telemetry',
+              kind: OperationKind.command,
+              transportVariant: TransportVariant.rpc,
+              description: 'Subscribe telemetry.',
+              aliases: <String>['sdk_telemetry_subscribe_v2'],
+            ),
+          ],
+        ),
+      );
+      binding.queryResponses = <EnvelopeResponse>[
+        const EnvelopeResponse(
+          operationId: 'app.telemetry.query',
+          kind: EnvelopeKind.result,
+          accepted: true,
+          payload: <Object?>[
+            <String, Object?>{
+              'ts_ms': 900,
+              'key': 'topic_publish',
+              'value': <String, Object?>{'message': 'hello topic'},
+              'unit': null,
+              'tags': <String, Object?>{
+                'topic_id': 'topic-1',
+                'peer_id': 'node-b',
+              },
+              'extensions': <String, Object?>{},
+            },
+          ],
+        ),
+      ];
+      binding.commandResponses = <EnvelopeResponse>[
+        const EnvelopeResponse(
+          operationId: 'app.telemetry.subscribe',
+          kind: EnvelopeKind.result,
+          accepted: true,
+          payload: <String, Object?>{'accepted': true},
+        ),
+      ];
+
+      final telemetry = TelemetryClient(OperationClient(AppClient(binding)));
+      final points = await telemetry.query(
+        topicId: 'topic-1',
+        peerId: 'node-b',
+        fromTsMs: 100,
+        limit: 10,
+      );
+      final subscribed = await telemetry.subscribe(
+        topicId: 'topic-1',
+        fromTsMs: 100,
+        limit: 20,
+      );
+
+      expect(points, hasLength(1));
+      expect(points.first.key, 'topic_publish');
+      expect(points.first.tags['topic_id'], 'topic-1');
+      expect(subscribed, isTrue);
+      expect(binding.queryEnvelopes[0].operationId, 'app.telemetry.query');
+      expect(
+          binding.commandEnvelopes[0].operationId, 'app.telemetry.subscribe');
+    });
   });
 }
 
