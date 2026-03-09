@@ -232,6 +232,46 @@ const SDK_OPERATION_SPECS: &[SdkOperationSpec] = &[
         rpc_method: "sdk_attachment_associate_topic_v2",
     },
     SdkOperationSpec {
+        id: "app.attachment.upload_start",
+        group: "attachments",
+        kind: "command",
+        transport_variant: "rpc",
+        description: "Open a chunked attachment upload session.",
+        aliases: &["sdk_attachment_upload_start_v2"],
+        required_capabilities: &["sdk.capability.attachment_streaming"],
+        rpc_method: "sdk_attachment_upload_start_v2",
+    },
+    SdkOperationSpec {
+        id: "app.attachment.upload_chunk",
+        group: "attachments",
+        kind: "command",
+        transport_variant: "rpc",
+        description: "Append one chunk to an attachment upload session.",
+        aliases: &["sdk_attachment_upload_chunk_v2"],
+        required_capabilities: &["sdk.capability.attachment_streaming"],
+        rpc_method: "sdk_attachment_upload_chunk_v2",
+    },
+    SdkOperationSpec {
+        id: "app.attachment.upload_commit",
+        group: "attachments",
+        kind: "command",
+        transport_variant: "rpc",
+        description: "Commit a completed attachment upload session.",
+        aliases: &["sdk_attachment_upload_commit_v2"],
+        required_capabilities: &["sdk.capability.attachment_streaming"],
+        rpc_method: "sdk_attachment_upload_commit_v2",
+    },
+    SdkOperationSpec {
+        id: "app.attachment.download_chunk",
+        group: "attachments",
+        kind: "query",
+        transport_variant: "rpc",
+        description: "Read one chunk from a stored attachment payload.",
+        aliases: &["sdk_attachment_download_chunk_v2"],
+        required_capabilities: &["sdk.capability.attachment_streaming"],
+        rpc_method: "sdk_attachment_download_chunk_v2",
+    },
+    SdkOperationSpec {
         id: "app.marker.create",
         group: "markers",
         kind: "command",
@@ -499,6 +539,34 @@ impl RpcDaemon {
                     params: Some(params),
                 })?
             }
+            "sdk_attachment_upload_start_v2" => {
+                self.handle_sdk_attachment_upload_start_v2(RpcRequest {
+                    id: request_id,
+                    method: method.to_owned(),
+                    params: Some(params),
+                })?
+            }
+            "sdk_attachment_upload_chunk_v2" => {
+                self.handle_sdk_attachment_upload_chunk_v2(RpcRequest {
+                    id: request_id,
+                    method: method.to_owned(),
+                    params: Some(params),
+                })?
+            }
+            "sdk_attachment_upload_commit_v2" => {
+                self.handle_sdk_attachment_upload_commit_v2(RpcRequest {
+                    id: request_id,
+                    method: method.to_owned(),
+                    params: Some(params),
+                })?
+            }
+            "sdk_attachment_download_chunk_v2" => {
+                self.handle_sdk_attachment_download_chunk_v2(RpcRequest {
+                    id: request_id,
+                    method: method.to_owned(),
+                    params: Some(params),
+                })?
+            }
             "sdk_marker_create_v2" => self.handle_sdk_marker_create_v2(RpcRequest {
                 id: request_id,
                 method: method.to_owned(),
@@ -594,6 +662,18 @@ impl RpcDaemon {
             "sdk_attachment_list_v2" => raw,
             "sdk_attachment_delete_v2" => raw,
             "sdk_attachment_associate_topic_v2" => raw,
+            "sdk_attachment_upload_start_v2" => {
+                raw.get("upload").cloned().unwrap_or(JsonValue::Null)
+            }
+            "sdk_attachment_upload_chunk_v2" => {
+                raw.get("upload_chunk").cloned().unwrap_or(JsonValue::Null)
+            }
+            "sdk_attachment_upload_commit_v2" => {
+                raw.get("attachment").cloned().unwrap_or(JsonValue::Null)
+            }
+            "sdk_attachment_download_chunk_v2" => {
+                raw.get("download_chunk").cloned().unwrap_or(JsonValue::Null)
+            }
             "sdk_marker_create_v2" => raw.get("marker").cloned().unwrap_or(JsonValue::Null),
             "sdk_marker_list_v2" => raw,
             "sdk_marker_update_position_v2" => {
@@ -686,6 +766,10 @@ impl RpcDaemon {
                 "attachment_id": parsed.payload,
             }),
             "sdk_attachment_associate_topic_v2" => parsed.payload,
+            "sdk_attachment_upload_start_v2" => parsed.payload,
+            "sdk_attachment_upload_chunk_v2" => parsed.payload,
+            "sdk_attachment_upload_commit_v2" => parsed.payload,
+            "sdk_attachment_download_chunk_v2" => parsed.payload,
             "sdk_marker_create_v2" => parsed.payload,
             "sdk_marker_list_v2" => parsed.payload,
             "sdk_marker_update_position_v2" => parsed.payload,

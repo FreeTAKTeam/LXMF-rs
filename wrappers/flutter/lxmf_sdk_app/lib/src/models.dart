@@ -620,6 +620,55 @@ class AttachmentListPage {
 }
 
 @immutable
+class AttachmentUploadSession {
+  const AttachmentUploadSession({
+    required this.uploadId,
+    required this.attachmentId,
+    required this.chunkSizeHint,
+    required this.nextOffset,
+  });
+
+  final String uploadId;
+  final String attachmentId;
+  final int chunkSizeHint;
+  final int nextOffset;
+}
+
+@immutable
+class AttachmentUploadChunkAck {
+  const AttachmentUploadChunkAck({
+    required this.accepted,
+    required this.nextOffset,
+    required this.complete,
+  });
+
+  final bool accepted;
+  final int nextOffset;
+  final bool complete;
+}
+
+@immutable
+class AttachmentDownloadChunk {
+  const AttachmentDownloadChunk({
+    required this.attachmentId,
+    required this.offset,
+    required this.nextOffset,
+    required this.totalSize,
+    required this.done,
+    required this.checksumSha256,
+    required this.bytesBase64,
+  });
+
+  final String attachmentId;
+  final int offset;
+  final int nextOffset;
+  final int totalSize;
+  final bool done;
+  final String checksumSha256;
+  final String bytesBase64;
+}
+
+@immutable
 class TopicRecord {
   const TopicRecord({
     required this.topicId,

@@ -211,6 +211,34 @@ final associated = await attachments.associateTopic(
 print('attachment=${fetched?.name} listed=${listed.attachments.length} associated=$associated');
 ```
 
+Typed attachment streaming flow:
+
+```dart
+final attachments = AttachmentClient(OperationClient(client));
+const checksum =
+    '64ec88ca00b268e5ba1a35678a1b5316d212f4f366b2477232534a8aeca37f3c';
+
+final session = await attachments.uploadStart(
+  name: 'chunked.bin',
+  contentType: 'application/octet-stream',
+  totalSize: 11,
+  checksumSha256: checksum,
+);
+final ack = await attachments.uploadChunk(
+  uploadId: session.uploadId,
+  offset: 0,
+  bytesBase64: 'aGVsbG8gd29ybGQ=',
+);
+final committed = await attachments.uploadCommit(uploadId: session.uploadId);
+final chunk = await attachments.downloadChunk(
+  attachmentId: committed.attachmentId,
+  offset: 0,
+  maxBytes: 5,
+);
+
+print('upload=${session.uploadId} next=${ack.nextOffset} chunk=${chunk.bytesBase64}');
+```
+
 Conversation-oriented flow:
 
 ```dart
@@ -280,6 +308,7 @@ dart run example/topic_operations_smoke.dart http://127.0.0.1:4243/rpc
 dart run example/telemetry_operations_smoke.dart http://127.0.0.1:4243/rpc [topic-id]
 dart run example/marker_operations_smoke.dart http://127.0.0.1:4243/rpc [topic-id]
 dart run example/attachment_operations_smoke.dart http://127.0.0.1:4243/rpc [topic-id]
+dart run example/attachment_streaming_smoke.dart http://127.0.0.1:4243/rpc
 ```
 
 Repo-level smoke from the project root:

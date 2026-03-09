@@ -540,6 +540,42 @@ fn built_in_entries() -> Vec<OperationEntry> {
         .with_alias("sdk_attachment_associate_topic_v2")
         .with_required_capability("sdk.capability.attachments"),
         OperationEntry::new(
+            "app.attachment.upload_start",
+            "attachments",
+            OperationKind::Command,
+            TransportVariant::Rpc,
+            "Open a chunked attachment upload session.",
+        )
+        .with_alias("sdk_attachment_upload_start_v2")
+        .with_required_capability("sdk.capability.attachment_streaming"),
+        OperationEntry::new(
+            "app.attachment.upload_chunk",
+            "attachments",
+            OperationKind::Command,
+            TransportVariant::Rpc,
+            "Append one chunk to an attachment upload session.",
+        )
+        .with_alias("sdk_attachment_upload_chunk_v2")
+        .with_required_capability("sdk.capability.attachment_streaming"),
+        OperationEntry::new(
+            "app.attachment.upload_commit",
+            "attachments",
+            OperationKind::Command,
+            TransportVariant::Rpc,
+            "Commit a completed attachment upload session.",
+        )
+        .with_alias("sdk_attachment_upload_commit_v2")
+        .with_required_capability("sdk.capability.attachment_streaming"),
+        OperationEntry::new(
+            "app.attachment.download_chunk",
+            "attachments",
+            OperationKind::Query,
+            TransportVariant::Rpc,
+            "Read one chunk from a stored attachment payload.",
+        )
+        .with_alias("sdk_attachment_download_chunk_v2")
+        .with_required_capability("sdk.capability.attachment_streaming"),
+        OperationEntry::new(
             "app.marker.create",
             "markers",
             OperationKind::Command,

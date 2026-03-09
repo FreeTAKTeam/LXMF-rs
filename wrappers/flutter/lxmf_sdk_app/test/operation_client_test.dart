@@ -760,6 +760,140 @@ void main() {
           'app.attachment.associate_topic');
       expect(binding.commandEnvelopes[2].operationId, 'app.attachment.delete');
     });
+
+    test('attachment helper maps typed streaming flows', () async {
+      final binding = _FakeBinding(
+        registry: OperationRegistry(
+          entries: const <OperationEntry>[
+            OperationEntry(
+              id: 'app.attachment.upload_start',
+              group: 'attachments',
+              kind: OperationKind.command,
+              transportVariant: TransportVariant.rpc,
+              description: 'Upload start.',
+              aliases: <String>['sdk_attachment_upload_start_v2'],
+            ),
+            OperationEntry(
+              id: 'app.attachment.upload_chunk',
+              group: 'attachments',
+              kind: OperationKind.command,
+              transportVariant: TransportVariant.rpc,
+              description: 'Upload chunk.',
+              aliases: <String>['sdk_attachment_upload_chunk_v2'],
+            ),
+            OperationEntry(
+              id: 'app.attachment.upload_commit',
+              group: 'attachments',
+              kind: OperationKind.command,
+              transportVariant: TransportVariant.rpc,
+              description: 'Upload commit.',
+              aliases: <String>['sdk_attachment_upload_commit_v2'],
+            ),
+            OperationEntry(
+              id: 'app.attachment.download_chunk',
+              group: 'attachments',
+              kind: OperationKind.query,
+              transportVariant: TransportVariant.rpc,
+              description: 'Download chunk.',
+              aliases: <String>['sdk_attachment_download_chunk_v2'],
+            ),
+          ],
+        ),
+      );
+      binding.commandResponses = <EnvelopeResponse>[
+        const EnvelopeResponse(
+          operationId: 'app.attachment.upload_start',
+          kind: EnvelopeKind.result,
+          accepted: true,
+          payload: <String, Object?>{
+            'upload_id': 'upload-1',
+            'attachment_id': 'attachment-2',
+            'chunk_size_hint': 65536,
+            'next_offset': 0,
+          },
+        ),
+        const EnvelopeResponse(
+          operationId: 'app.attachment.upload_chunk',
+          kind: EnvelopeKind.result,
+          accepted: true,
+          payload: <String, Object?>{
+            'accepted': true,
+            'next_offset': 5,
+            'complete': false,
+          },
+        ),
+        const EnvelopeResponse(
+          operationId: 'app.attachment.upload_commit',
+          kind: EnvelopeKind.result,
+          accepted: true,
+          payload: <String, Object?>{
+            'attachment_id': 'attachment-2',
+            'name': 'chunked.bin',
+            'content_type': 'application/octet-stream',
+            'byte_len': 11,
+            'checksum_sha256':
+                '64ec88ca00b268e5ba1a35678a1b5316d212f4f366b2477232534a8aeca37f3c',
+            'created_ts_ms': 653,
+            'topic_ids': <String>['topic-1'],
+            'extensions': <String, Object?>{},
+          },
+        ),
+      ];
+      binding.queryResponses = <EnvelopeResponse>[
+        const EnvelopeResponse(
+          operationId: 'app.attachment.download_chunk',
+          kind: EnvelopeKind.result,
+          accepted: true,
+          payload: <String, Object?>{
+            'attachment_id': 'attachment-2',
+            'offset': 0,
+            'next_offset': 5,
+            'total_size': 11,
+            'done': false,
+            'checksum_sha256':
+                '64ec88ca00b268e5ba1a35678a1b5316d212f4f366b2477232534a8aeca37f3c',
+            'bytes_base64': 'aGVsbG8=',
+          },
+        ),
+      ];
+
+      final attachments = AttachmentClient(OperationClient(AppClient(binding)));
+      final session = await attachments.uploadStart(
+        name: 'chunked.bin',
+        contentType: 'application/octet-stream',
+        totalSize: 11,
+        checksumSha256:
+            '64ec88ca00b268e5ba1a35678a1b5316d212f4f366b2477232534a8aeca37f3c',
+        topicIds: const <String>['topic-1'],
+      );
+      final ack = await attachments.uploadChunk(
+        uploadId: session.uploadId,
+        offset: 0,
+        bytesBase64: 'aGVsbG8=',
+      );
+      final committed =
+          await attachments.uploadCommit(uploadId: session.uploadId);
+      final downloaded = await attachments.downloadChunk(
+        attachmentId: committed.attachmentId,
+        offset: 0,
+        maxBytes: 5,
+      );
+
+      expect(session.uploadId, 'upload-1');
+      expect(ack.nextOffset, 5);
+      expect(ack.complete, isFalse);
+      expect(committed.attachmentId, 'attachment-2');
+      expect(downloaded.nextOffset, 5);
+      expect(downloaded.bytesBase64, 'aGVsbG8=');
+      expect(binding.commandEnvelopes[0].operationId,
+          'app.attachment.upload_start');
+      expect(binding.commandEnvelopes[1].operationId,
+          'app.attachment.upload_chunk');
+      expect(binding.commandEnvelopes[2].operationId,
+          'app.attachment.upload_commit');
+      expect(binding.queryEnvelopes[0].operationId,
+          'app.attachment.download_chunk');
+    });
   });
 }
 

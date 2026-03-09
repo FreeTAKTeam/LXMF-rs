@@ -845,14 +845,12 @@ fn sdk_operation_registry_roundtrips_attachment_family() {
         .expect("topic id")
         .to_string();
 
-        let registry = daemon
-            .handle_rpc(rpc_request(1340, "sdk_operation_registry_v2", json!({})))
-            .expect("operation registry");
-        assert!(registry.error.is_none());
-        let registry_result = registry.result.expect("registry result");
-        let entries = registry_result["registry"]["entries"]
-            .as_array()
-            .expect("entries");
+    let registry = daemon
+        .handle_rpc(rpc_request(1340, "sdk_operation_registry_v2", json!({})))
+        .expect("operation registry");
+    assert!(registry.error.is_none());
+    let registry_result = registry.result.expect("registry result");
+    let entries = registry_result["registry"]["entries"].as_array().expect("entries");
     assert!(entries.iter().any(|entry| entry["id"] == json!("app.attachment.store")));
     assert!(entries.iter().any(|entry| entry["id"] == json!("app.attachment.delete")));
 
@@ -957,6 +955,108 @@ fn sdk_operation_registry_roundtrips_attachment_family() {
             ["accepted"],
         json!(true)
     );
+}
+
+#[test]
+fn sdk_operation_registry_roundtrips_attachment_streaming_family() {
+    use sha2::{Digest, Sha256};
+
+    let daemon = RpcDaemon::test_instance();
+    let payload = b"hello world".to_vec();
+    let checksum = encode_hex(Sha256::digest(payload.as_slice()));
+
+    let registry = daemon
+        .handle_rpc(rpc_request(1346, "sdk_operation_registry_v2", json!({})))
+        .expect("operation registry");
+    assert!(registry.error.is_none());
+    let registry_result = registry.result.expect("registry result");
+    let entries = registry_result["registry"]["entries"].as_array().expect("entries");
+    assert!(entries.iter().any(|entry| entry["id"] == json!("app.attachment.upload_start")));
+    assert!(entries.iter().any(|entry| entry["id"] == json!("app.attachment.download_chunk")));
+
+    let upload_start = daemon
+        .handle_rpc(rpc_request(
+            1347,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "sdk_attachment_upload_start_v2",
+                "kind": "command",
+                "payload": {
+                    "name": "chunked.bin",
+                    "content_type": "application/octet-stream",
+                    "total_size": payload.len(),
+                    "checksum_sha256": checksum,
+                },
+            }),
+        ))
+        .expect("upload start envelope");
+    assert!(upload_start.error.is_none());
+    let upload_payload = &upload_start.result.expect("upload start result")["response"]["payload"];
+    let upload_id = upload_payload["upload_id"].as_str().expect("upload id").to_string();
+    let attachment_id =
+        upload_payload["attachment_id"].as_str().expect("attachment id").to_string();
+
+    let upload_chunk = daemon
+        .handle_rpc(rpc_request(
+            1348,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "app.attachment.upload_chunk",
+                "kind": "command",
+                "payload": {
+                    "upload_id": upload_id.clone(),
+                    "offset": 0,
+                    "bytes_base64": "aGVsbG8gd29ybGQ=",
+                },
+            }),
+        ))
+        .expect("upload chunk envelope");
+    assert!(upload_chunk.error.is_none());
+    assert_eq!(
+        upload_chunk.result.expect("upload chunk result")["response"]["payload"]["complete"],
+        json!(true)
+    );
+
+    let upload_commit = daemon
+        .handle_rpc(rpc_request(
+            1349,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "sdk_attachment_upload_commit_v2",
+                "kind": "command",
+                "payload": {
+                    "upload_id": upload_id,
+                },
+            }),
+        ))
+        .expect("upload commit envelope");
+    assert!(upload_commit.error.is_none());
+    assert_eq!(
+        upload_commit.result.expect("upload commit result")["response"]["payload"]["attachment_id"],
+        json!(attachment_id)
+    );
+
+    let download_chunk = daemon
+        .handle_rpc(rpc_request(
+            1350,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "sdk_attachment_download_chunk_v2",
+                "kind": "query",
+                "payload": {
+                    "attachment_id": attachment_id,
+                    "offset": 0,
+                    "max_bytes": 5,
+                },
+            }),
+        ))
+        .expect("download chunk envelope");
+    assert!(download_chunk.error.is_none());
+    let download_payload =
+        &download_chunk.result.expect("download chunk result")["response"]["payload"];
+    assert_eq!(download_payload["offset"], json!(0));
+    assert_eq!(download_payload["next_offset"], json!(5));
+    assert_eq!(download_payload["done"], json!(false));
 }
 
 #[test]

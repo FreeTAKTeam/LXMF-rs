@@ -1628,5 +1628,207 @@ void main() {
             'app.attachment.delete',
           ]);
     });
+
+    test('attachment helper roundtrips canonical streaming operations',
+        () async {
+      unawaited(() async {
+        await for (final request in server) {
+          final body = await request.fold<List<int>>(<int>[], (all, chunk) {
+            all.addAll(chunk);
+            return all;
+          });
+          final frame = decodeRpcFrame(body);
+          calls.add(frame);
+          final id = frame['id'] as int;
+          final method = frame['method'] as String;
+          final params = frame['params'] is Map<String, Object?>
+              ? frame['params'] as Map<String, Object?>
+              : const <String, Object?>{};
+          final response = switch (method) {
+            'sdk_operation_registry_v2' => <String, Object?>{
+                'id': id,
+                'result': <String, Object?>{
+                  'registry': <String, Object?>{
+                    'entries': <Object?>[
+                      <String, Object?>{
+                        'id': 'app.attachment.upload_start',
+                        'group': 'attachments',
+                        'kind': 'command',
+                        'transport_variant': 'rpc',
+                        'description': 'Upload start.',
+                        'aliases': <String>['sdk_attachment_upload_start_v2'],
+                        'required_capabilities': <String>[
+                          'sdk.capability.attachment_streaming'
+                        ],
+                      },
+                      <String, Object?>{
+                        'id': 'app.attachment.upload_chunk',
+                        'group': 'attachments',
+                        'kind': 'command',
+                        'transport_variant': 'rpc',
+                        'description': 'Upload chunk.',
+                        'aliases': <String>['sdk_attachment_upload_chunk_v2'],
+                        'required_capabilities': <String>[
+                          'sdk.capability.attachment_streaming'
+                        ],
+                      },
+                      <String, Object?>{
+                        'id': 'app.attachment.upload_commit',
+                        'group': 'attachments',
+                        'kind': 'command',
+                        'transport_variant': 'rpc',
+                        'description': 'Upload commit.',
+                        'aliases': <String>['sdk_attachment_upload_commit_v2'],
+                        'required_capabilities': <String>[
+                          'sdk.capability.attachment_streaming'
+                        ],
+                      },
+                      <String, Object?>{
+                        'id': 'app.attachment.download_chunk',
+                        'group': 'attachments',
+                        'kind': 'query',
+                        'transport_variant': 'rpc',
+                        'description': 'Download chunk.',
+                        'aliases': <String>['sdk_attachment_download_chunk_v2'],
+                        'required_capabilities': <String>[
+                          'sdk.capability.attachment_streaming'
+                        ],
+                      },
+                    ],
+                  },
+                },
+                'error': null,
+              },
+            'sdk_envelope_execute_v2' => <String, Object?>{
+                'id': id,
+                'result': <String, Object?>{
+                  'response': switch (params['operation_id']) {
+                    'app.attachment.upload_start' => <String, Object?>{
+                        'operation_id': 'app.attachment.upload_start',
+                        'kind': 'result',
+                        'accepted': true,
+                        'payload': <String, Object?>{
+                          'upload_id': 'upload-1',
+                          'attachment_id': 'attachment-2',
+                          'chunk_size_hint': 65536,
+                          'next_offset': 0,
+                        },
+                        'extensions': <String, Object?>{},
+                      },
+                    'app.attachment.upload_chunk' => <String, Object?>{
+                        'operation_id': 'app.attachment.upload_chunk',
+                        'kind': 'result',
+                        'accepted': true,
+                        'payload': <String, Object?>{
+                          'accepted': true,
+                          'next_offset': 5,
+                          'complete': false,
+                        },
+                        'extensions': <String, Object?>{},
+                      },
+                    'app.attachment.upload_commit' => <String, Object?>{
+                        'operation_id': 'app.attachment.upload_commit',
+                        'kind': 'result',
+                        'accepted': true,
+                        'payload': <String, Object?>{
+                          'attachment_id': 'attachment-2',
+                          'name': 'chunked.bin',
+                          'content_type': 'application/octet-stream',
+                          'byte_len': 11,
+                          'checksum_sha256':
+                              '64ec88ca00b268e5ba1a35678a1b5316d212f4f366b2477232534a8aeca37f3c',
+                          'created_ts_ms': 653,
+                          'topic_ids': <String>['topic-1'],
+                          'extensions': <String, Object?>{},
+                        },
+                        'extensions': <String, Object?>{},
+                      },
+                    'app.attachment.download_chunk' => <String, Object?>{
+                        'operation_id': 'app.attachment.download_chunk',
+                        'kind': 'result',
+                        'accepted': true,
+                        'payload': <String, Object?>{
+                          'attachment_id': 'attachment-2',
+                          'offset': 0,
+                          'next_offset': 5,
+                          'total_size': 11,
+                          'done': false,
+                          'checksum_sha256':
+                              '64ec88ca00b268e5ba1a35678a1b5316d212f4f366b2477232534a8aeca37f3c',
+                          'bytes_base64': 'aGVsbG8=',
+                        },
+                        'extensions': <String, Object?>{},
+                      },
+                    _ => <String, Object?>{},
+                  },
+                },
+                'error': null,
+              },
+            _ => <String, Object?>{
+                'id': id,
+                'result': null,
+                'error': <String, Object?>{
+                  'code': 'SDK_VALIDATION_INVALID_ARGUMENT',
+                  'message': 'unknown method',
+                },
+              },
+          };
+          request.response.headers.contentType =
+              ContentType('application', 'msgpack');
+          request.response.add(encodeRpcFrame(response));
+          await request.response.close();
+        }
+      }());
+
+      final attachments = AttachmentClient(
+        OperationClient(
+          AppClient(
+            RpcBinding(
+              RpcConnectionOptions(
+                endpoint: Uri.parse('http://127.0.0.1:${server.port}/rpc'),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final session = await attachments.uploadStart(
+        name: 'chunked.bin',
+        contentType: 'application/octet-stream',
+        totalSize: 11,
+        checksumSha256:
+            '64ec88ca00b268e5ba1a35678a1b5316d212f4f366b2477232534a8aeca37f3c',
+      );
+      final ack = await attachments.uploadChunk(
+        uploadId: session.uploadId,
+        offset: 0,
+        bytesBase64: 'aGVsbG8=',
+      );
+      final committed =
+          await attachments.uploadCommit(uploadId: session.uploadId);
+      final downloaded = await attachments.downloadChunk(
+        attachmentId: committed.attachmentId,
+        offset: 0,
+        maxBytes: 5,
+      );
+
+      expect(session.uploadId, 'upload-1');
+      expect(ack.nextOffset, 5);
+      expect(committed.attachmentId, 'attachment-2');
+      expect(downloaded.bytesBase64, 'aGVsbG8=');
+
+      final envelopeCalls = calls
+          .where((call) => call['method'] == 'sdk_envelope_execute_v2')
+          .toList(growable: false);
+      expect(
+          envelopeCalls.map((call) =>
+              (call['params'] as Map<String, Object?>)['operation_id']),
+          [
+            'app.attachment.upload_start',
+            'app.attachment.upload_chunk',
+            'app.attachment.upload_commit',
+            'app.attachment.download_chunk',
+          ]);
+    });
   });
 }

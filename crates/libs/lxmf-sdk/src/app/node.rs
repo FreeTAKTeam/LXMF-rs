@@ -12,11 +12,13 @@ use super::errors::Error;
 use super::events::{map_event_batch, subscription_cursor, EventBatch, SubscriptionStart};
 use super::operations::{OperationEntry, OperationRegistry, RegistryError};
 use crate::domain::{
-    AttachmentId, AttachmentListRequest, AttachmentStoreRequest, ContactListRequest,
-    ContactUpdateRequest, IdentityBootstrapRequest, MarkerCreateRequest, MarkerDeleteRequest,
-    MarkerListRequest, MarkerUpdatePositionRequest, PresenceListRequest, RemoteCommandRequest,
-    TelemetryQuery, TopicCreateRequest, TopicId, TopicListRequest, TopicPublishRequest,
-    TopicSubscriptionRequest, VoiceSessionId, VoiceSessionOpenRequest, VoiceSessionUpdateRequest,
+    AttachmentDownloadChunkRequest, AttachmentId, AttachmentListRequest, AttachmentStoreRequest,
+    AttachmentUploadChunkRequest, AttachmentUploadCommitRequest, AttachmentUploadStartRequest,
+    ContactListRequest, ContactUpdateRequest, IdentityBootstrapRequest, MarkerCreateRequest,
+    MarkerDeleteRequest, MarkerListRequest, MarkerUpdatePositionRequest, PresenceListRequest,
+    RemoteCommandRequest, TelemetryQuery, TopicCreateRequest, TopicId, TopicListRequest,
+    TopicPublishRequest, TopicSubscriptionRequest, VoiceSessionId, VoiceSessionOpenRequest,
+    VoiceSessionUpdateRequest,
 };
 use crate::{
     Client as CoreClient, ClientHandle, DeliverySnapshot, DeliveryState as RawDeliveryState,
@@ -672,6 +674,70 @@ impl<B: SdkBackend> Client<B> {
                     canonical_id,
                     correlation_id,
                     serde_json::to_value(result).expect("attachment associate should serialize"),
+                ))
+            }
+            "app.attachment.upload_start" => {
+                let req: AttachmentUploadStartRequest =
+                    serde_json::from_value(payload).map_err(|err| {
+                        invalid_envelope(
+                            format!("invalid attachment upload start payload: {err}"),
+                            canonical_id.as_str(),
+                        )
+                    })?;
+                let result = self.backend.attachment_upload_start(req).map_err(Error::from)?;
+                Ok(envelope_result(
+                    canonical_id,
+                    correlation_id,
+                    serde_json::to_value(result)
+                        .expect("attachment upload session should serialize"),
+                ))
+            }
+            "app.attachment.upload_chunk" => {
+                let req: AttachmentUploadChunkRequest =
+                    serde_json::from_value(payload).map_err(|err| {
+                        invalid_envelope(
+                            format!("invalid attachment upload chunk payload: {err}"),
+                            canonical_id.as_str(),
+                        )
+                    })?;
+                let result = self.backend.attachment_upload_chunk(req).map_err(Error::from)?;
+                Ok(envelope_result(
+                    canonical_id,
+                    correlation_id,
+                    serde_json::to_value(result)
+                        .expect("attachment upload chunk ack should serialize"),
+                ))
+            }
+            "app.attachment.upload_commit" => {
+                let req: AttachmentUploadCommitRequest =
+                    serde_json::from_value(payload).map_err(|err| {
+                        invalid_envelope(
+                            format!("invalid attachment upload commit payload: {err}"),
+                            canonical_id.as_str(),
+                        )
+                    })?;
+                let result = self.backend.attachment_upload_commit(req).map_err(Error::from)?;
+                Ok(envelope_result(
+                    canonical_id,
+                    correlation_id,
+                    serde_json::to_value(result)
+                        .expect("attachment upload commit should serialize"),
+                ))
+            }
+            "app.attachment.download_chunk" => {
+                let req: AttachmentDownloadChunkRequest =
+                    serde_json::from_value(payload).map_err(|err| {
+                        invalid_envelope(
+                            format!("invalid attachment download chunk payload: {err}"),
+                            canonical_id.as_str(),
+                        )
+                    })?;
+                let result = self.backend.attachment_download_chunk(req).map_err(Error::from)?;
+                Ok(envelope_result(
+                    canonical_id,
+                    correlation_id,
+                    serde_json::to_value(result)
+                        .expect("attachment download chunk should serialize"),
                 ))
             }
             "app.topic.create" => {
@@ -1849,6 +1915,67 @@ mod tests {
             Ok(Ack { accepted: true, revision: None })
         }
 
+        fn attachment_upload_start(
+            &self,
+            _req: crate::domain::AttachmentUploadStartRequest,
+        ) -> Result<crate::domain::AttachmentUploadSession, SdkError> {
+            Ok(crate::domain::AttachmentUploadSession {
+                upload_id: crate::domain::AttachmentUploadId("upload-1".to_owned()),
+                attachment_id: crate::domain::AttachmentId("attachment-2".to_owned()),
+                chunk_size_hint: 65_536,
+                next_offset: 0,
+            })
+        }
+
+        fn attachment_upload_chunk(
+            &self,
+            req: crate::domain::AttachmentUploadChunkRequest,
+        ) -> Result<crate::domain::AttachmentUploadChunkAck, SdkError> {
+            let complete = req.offset.saturating_add(5) >= 11;
+            Ok(crate::domain::AttachmentUploadChunkAck {
+                accepted: true,
+                next_offset: req.offset.saturating_add(5),
+                complete,
+            })
+        }
+
+        fn attachment_upload_commit(
+            &self,
+            req: crate::domain::AttachmentUploadCommitRequest,
+        ) -> Result<crate::domain::AttachmentMeta, SdkError> {
+            Ok(crate::domain::AttachmentMeta {
+                attachment_id: crate::domain::AttachmentId(
+                    req.upload_id.0.replace("upload", "attachment"),
+                ),
+                name: "chunked.bin".to_owned(),
+                content_type: "application/octet-stream".to_owned(),
+                byte_len: 11,
+                checksum_sha256: "64ec88ca00b268e5ba1a35678a1b5316d212f4f366b2477232534a8aeca37f3c"
+                    .to_owned(),
+                created_ts_ms: 653,
+                expires_ts_ms: None,
+                topic_ids: vec![crate::domain::TopicId("topic-1".to_owned())],
+                extensions: req.extensions,
+            })
+        }
+
+        fn attachment_download_chunk(
+            &self,
+            req: crate::domain::AttachmentDownloadChunkRequest,
+        ) -> Result<crate::domain::AttachmentDownloadChunk, SdkError> {
+            let done = req.offset > 0;
+            Ok(crate::domain::AttachmentDownloadChunk {
+                attachment_id: req.attachment_id,
+                offset: req.offset,
+                next_offset: if done { 11 } else { 5 },
+                total_size: 11,
+                done,
+                checksum_sha256: "64ec88ca00b268e5ba1a35678a1b5316d212f4f366b2477232534a8aeca37f3c"
+                    .to_owned(),
+                bytes_base64: if done { "IHdvcmxk".to_owned() } else { "aGVsbG8=".to_owned() },
+            })
+        }
+
         fn attachment_associate_topic(
             &self,
             _attachment_id: crate::domain::AttachmentId,
@@ -2378,6 +2505,64 @@ mod tests {
             .expect("attachment delete");
         assert_eq!(deleted.operation_id.as_str(), "app.attachment.delete");
         assert_eq!(deleted.payload["accepted"], json!(true));
+    }
+
+    #[test]
+    fn execute_envelope_routes_attachment_streaming_operations_locally() {
+        let app = Client::new(MockBackend::new());
+
+        let upload = app
+            .command(
+                "sdk_attachment_upload_start_v2",
+                serde_json::json!({
+                    "name": "chunked.bin",
+                    "content_type": "application/octet-stream",
+                    "total_size": 11,
+                    "checksum_sha256": "64ec88ca00b268e5ba1a35678a1b5316d212f4f366b2477232534a8aeca37f3c",
+                    "topic_ids": ["topic-1"],
+                }),
+            )
+            .expect("attachment upload start");
+        assert_eq!(upload.operation_id.as_str(), "app.attachment.upload_start");
+        assert_eq!(upload.payload["upload_id"], json!("upload-1"));
+
+        let chunk = app
+            .command(
+                "app.attachment.upload_chunk",
+                serde_json::json!({
+                    "upload_id": "upload-1",
+                    "offset": 0,
+                    "bytes_base64": "aGVsbG8=",
+                }),
+            )
+            .expect("attachment upload chunk");
+        assert_eq!(chunk.operation_id.as_str(), "app.attachment.upload_chunk");
+        assert_eq!(chunk.payload["accepted"], json!(true));
+
+        let committed = app
+            .command(
+                "sdk_attachment_upload_commit_v2",
+                serde_json::json!({
+                    "upload_id": "upload-1",
+                }),
+            )
+            .expect("attachment upload commit");
+        assert_eq!(committed.operation_id.as_str(), "app.attachment.upload_commit");
+        assert_eq!(committed.payload["attachment_id"], json!("attachment-1"));
+
+        let downloaded = app
+            .query(
+                "sdk_attachment_download_chunk_v2",
+                serde_json::json!({
+                    "attachment_id": "attachment-1",
+                    "offset": 0,
+                    "max_bytes": 5,
+                }),
+            )
+            .expect("attachment download chunk");
+        assert_eq!(downloaded.operation_id.as_str(), "app.attachment.download_chunk");
+        assert_eq!(downloaded.payload["next_offset"], json!(5));
+        assert_eq!(downloaded.payload["done"], json!(false));
     }
 
     #[test]

@@ -390,6 +390,92 @@ class AttachmentClient {
     );
     return result.payload;
   }
+
+  Future<AttachmentUploadSession> uploadStart({
+    required String name,
+    required String contentType,
+    required int totalSize,
+    required String checksumSha256,
+    int? expiresTsMs,
+    List<String> topicIds = const <String>[],
+    Map<String, Object?> extensions = const <String, Object?>{},
+  }) async {
+    final result = await _operations.command<AttachmentUploadSession>(
+      OperationCall<AttachmentUploadSession>(
+        operationId: 'app.attachment.upload_start',
+        payload: <String, Object?>{
+          'name': name,
+          'content_type': contentType,
+          'total_size': totalSize,
+          'checksum_sha256': checksumSha256,
+          if (expiresTsMs != null) 'expires_ts_ms': expiresTsMs,
+          'topic_ids': topicIds,
+          'extensions': extensions,
+        },
+        decode: _decodeAttachmentUploadSession,
+      ),
+    );
+    return result.payload;
+  }
+
+  Future<AttachmentUploadChunkAck> uploadChunk({
+    required String uploadId,
+    required int offset,
+    required String bytesBase64,
+    Map<String, Object?> extensions = const <String, Object?>{},
+  }) async {
+    final result = await _operations.command<AttachmentUploadChunkAck>(
+      OperationCall<AttachmentUploadChunkAck>(
+        operationId: 'app.attachment.upload_chunk',
+        payload: <String, Object?>{
+          'upload_id': uploadId,
+          'offset': offset,
+          'bytes_base64': bytesBase64,
+          'extensions': extensions,
+        },
+        decode: _decodeAttachmentUploadChunkAck,
+      ),
+    );
+    return result.payload;
+  }
+
+  Future<AttachmentRecord> uploadCommit({
+    required String uploadId,
+    Map<String, Object?> extensions = const <String, Object?>{},
+  }) async {
+    final result = await _operations.command<AttachmentRecord>(
+      OperationCall<AttachmentRecord>(
+        operationId: 'app.attachment.upload_commit',
+        payload: <String, Object?>{
+          'upload_id': uploadId,
+          'extensions': extensions,
+        },
+        decode: _decodeAttachmentRecord,
+      ),
+    );
+    return result.payload;
+  }
+
+  Future<AttachmentDownloadChunk> downloadChunk({
+    required String attachmentId,
+    required int offset,
+    required int maxBytes,
+    Map<String, Object?> extensions = const <String, Object?>{},
+  }) async {
+    final result = await _operations.query<AttachmentDownloadChunk>(
+      OperationCall<AttachmentDownloadChunk>(
+        operationId: 'app.attachment.download_chunk',
+        payload: <String, Object?>{
+          'attachment_id': attachmentId,
+          'offset': offset,
+          'max_bytes': maxBytes,
+          'extensions': extensions,
+        },
+        decode: _decodeAttachmentDownloadChunk,
+      ),
+    );
+    return result.payload;
+  }
 }
 
 class TopicClient {
@@ -707,6 +793,38 @@ AttachmentRecord _decodeAttachmentRecord(Object? payload) {
     expiresTsMs: (map['expires_ts_ms'] as num?)?.toInt(),
     topicIds: topicIds,
     extensions: _payloadMap(map['extensions']),
+  );
+}
+
+AttachmentUploadSession _decodeAttachmentUploadSession(Object? payload) {
+  final map = _payloadMap(payload);
+  return AttachmentUploadSession(
+    uploadId: map['upload_id']?.toString() ?? '',
+    attachmentId: map['attachment_id']?.toString() ?? '',
+    chunkSizeHint: (map['chunk_size_hint'] as num?)?.toInt() ?? 0,
+    nextOffset: (map['next_offset'] as num?)?.toInt() ?? 0,
+  );
+}
+
+AttachmentUploadChunkAck _decodeAttachmentUploadChunkAck(Object? payload) {
+  final map = _payloadMap(payload);
+  return AttachmentUploadChunkAck(
+    accepted: map['accepted'] == true,
+    nextOffset: (map['next_offset'] as num?)?.toInt() ?? 0,
+    complete: map['complete'] == true,
+  );
+}
+
+AttachmentDownloadChunk _decodeAttachmentDownloadChunk(Object? payload) {
+  final map = _payloadMap(payload);
+  return AttachmentDownloadChunk(
+    attachmentId: map['attachment_id']?.toString() ?? '',
+    offset: (map['offset'] as num?)?.toInt() ?? 0,
+    nextOffset: (map['next_offset'] as num?)?.toInt() ?? 0,
+    totalSize: (map['total_size'] as num?)?.toInt() ?? 0,
+    done: map['done'] == true,
+    checksumSha256: map['checksum_sha256']?.toString() ?? '',
+    bytesBase64: map['bytes_base64']?.toString() ?? '',
   );
 }
 
