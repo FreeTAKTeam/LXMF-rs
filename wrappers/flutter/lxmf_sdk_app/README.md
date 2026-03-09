@@ -190,6 +190,27 @@ final updated = await markers.updatePosition(
 print('marker=${created.markerId} listed=${listed.markers.length} revision=${updated.revision}');
 ```
 
+Typed attachment flow:
+
+```dart
+final attachments = AttachmentClient(OperationClient(client));
+
+final stored = await attachments.store(
+  name: 'sample.txt',
+  contentType: 'text/plain',
+  bytesBase64: 'aGVsbG8gd29ybGQ=',
+  topicIds: const <String>['topic-1'],
+);
+final fetched = await attachments.get(stored.attachmentId);
+final listed = await attachments.list(topicId: 'topic-1', limit: 10);
+final associated = await attachments.associateTopic(
+  attachmentId: stored.attachmentId,
+  topicId: 'topic-2',
+);
+
+print('attachment=${fetched?.name} listed=${listed.attachments.length} associated=$associated');
+```
+
 Conversation-oriented flow:
 
 ```dart
@@ -258,6 +279,7 @@ dart run example/voice_session_smoke.dart http://127.0.0.1:4243/rpc
 dart run example/topic_operations_smoke.dart http://127.0.0.1:4243/rpc
 dart run example/telemetry_operations_smoke.dart http://127.0.0.1:4243/rpc [topic-id]
 dart run example/marker_operations_smoke.dart http://127.0.0.1:4243/rpc [topic-id]
+dart run example/attachment_operations_smoke.dart http://127.0.0.1:4243/rpc [topic-id]
 ```
 
 Repo-level smoke from the project root:

@@ -12,11 +12,11 @@ use super::errors::Error;
 use super::events::{map_event_batch, subscription_cursor, EventBatch, SubscriptionStart};
 use super::operations::{OperationEntry, OperationRegistry, RegistryError};
 use crate::domain::{
-    ContactListRequest, ContactUpdateRequest, IdentityBootstrapRequest, MarkerCreateRequest,
-    MarkerDeleteRequest, MarkerListRequest, MarkerUpdatePositionRequest, PresenceListRequest,
-    RemoteCommandRequest, TelemetryQuery, TopicCreateRequest, TopicId, TopicListRequest,
-    TopicPublishRequest, TopicSubscriptionRequest, VoiceSessionId, VoiceSessionOpenRequest,
-    VoiceSessionUpdateRequest,
+    AttachmentId, AttachmentListRequest, AttachmentStoreRequest, ContactListRequest,
+    ContactUpdateRequest, IdentityBootstrapRequest, MarkerCreateRequest, MarkerDeleteRequest,
+    MarkerListRequest, MarkerUpdatePositionRequest, PresenceListRequest, RemoteCommandRequest,
+    TelemetryQuery, TopicCreateRequest, TopicId, TopicListRequest, TopicPublishRequest,
+    TopicSubscriptionRequest, VoiceSessionId, VoiceSessionOpenRequest, VoiceSessionUpdateRequest,
 };
 use crate::{
     Client as CoreClient, ClientHandle, DeliverySnapshot, DeliveryState as RawDeliveryState,
@@ -71,6 +71,12 @@ pub struct Config {
     pub event_batch_size: Option<usize>,
     #[serde(default)]
     pub custom_operations: Vec<OperationEntry>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct AttachmentAssociateTopicPayload {
+    attachment_id: AttachmentId,
+    topic_id: TopicId,
 }
 
 impl Config {
@@ -588,6 +594,84 @@ impl<B: SdkBackend> Client<B> {
                     canonical_id,
                     correlation_id,
                     serde_json::to_value(result).expect("bootstrap should serialize"),
+                ))
+            }
+            "app.attachment.store" => {
+                let req: AttachmentStoreRequest =
+                    serde_json::from_value(payload).map_err(|err| {
+                        invalid_envelope(
+                            format!("invalid attachment store payload: {err}"),
+                            canonical_id.as_str(),
+                        )
+                    })?;
+                let result = self.backend.attachment_store(req).map_err(Error::from)?;
+                Ok(envelope_result(
+                    canonical_id,
+                    correlation_id,
+                    serde_json::to_value(result).expect("attachment store should serialize"),
+                ))
+            }
+            "app.attachment.get" => {
+                let attachment_id: AttachmentId =
+                    serde_json::from_value(payload).map_err(|err| {
+                        invalid_envelope(
+                            format!("invalid attachment get payload: {err}"),
+                            canonical_id.as_str(),
+                        )
+                    })?;
+                let result = self.backend.attachment_get(attachment_id).map_err(Error::from)?;
+                Ok(envelope_result(
+                    canonical_id,
+                    correlation_id,
+                    serde_json::to_value(result).expect("attachment get should serialize"),
+                ))
+            }
+            "app.attachment.list" => {
+                let req: AttachmentListRequest =
+                    serde_json::from_value(payload).map_err(|err| {
+                        invalid_envelope(
+                            format!("invalid attachment list payload: {err}"),
+                            canonical_id.as_str(),
+                        )
+                    })?;
+                let result = self.backend.attachment_list(req).map_err(Error::from)?;
+                Ok(envelope_result(
+                    canonical_id,
+                    correlation_id,
+                    serde_json::to_value(result).expect("attachment list should serialize"),
+                ))
+            }
+            "app.attachment.delete" => {
+                let attachment_id: AttachmentId =
+                    serde_json::from_value(payload).map_err(|err| {
+                        invalid_envelope(
+                            format!("invalid attachment delete payload: {err}"),
+                            canonical_id.as_str(),
+                        )
+                    })?;
+                let result = self.backend.attachment_delete(attachment_id).map_err(Error::from)?;
+                Ok(envelope_result(
+                    canonical_id,
+                    correlation_id,
+                    serde_json::to_value(result).expect("attachment delete should serialize"),
+                ))
+            }
+            "app.attachment.associate_topic" => {
+                let req: AttachmentAssociateTopicPayload = serde_json::from_value(payload)
+                    .map_err(|err| {
+                        invalid_envelope(
+                            format!("invalid attachment associate payload: {err}"),
+                            canonical_id.as_str(),
+                        )
+                    })?;
+                let result = self
+                    .backend
+                    .attachment_associate_topic(req.attachment_id, req.topic_id)
+                    .map_err(Error::from)?;
+                Ok(envelope_result(
+                    canonical_id,
+                    correlation_id,
+                    serde_json::to_value(result).expect("attachment associate should serialize"),
                 ))
             }
             "app.topic.create" => {
@@ -1700,6 +1784,79 @@ mod tests {
             })
         }
 
+        fn attachment_store(
+            &self,
+            req: crate::domain::AttachmentStoreRequest,
+        ) -> Result<crate::domain::AttachmentMeta, SdkError> {
+            Ok(crate::domain::AttachmentMeta {
+                attachment_id: crate::domain::AttachmentId("attachment-1".to_owned()),
+                name: req.name,
+                content_type: req.content_type,
+                byte_len: 11,
+                checksum_sha256: "64ec88ca00b268e5ba1a35678a1b5316d212f4f366b2477232534a8aeca37f3c"
+                    .to_owned(),
+                created_ts_ms: 650,
+                expires_ts_ms: req.expires_ts_ms,
+                topic_ids: req.topic_ids,
+                extensions: req.extensions,
+            })
+        }
+
+        fn attachment_get(
+            &self,
+            attachment_id: crate::domain::AttachmentId,
+        ) -> Result<Option<crate::domain::AttachmentMeta>, SdkError> {
+            Ok(Some(crate::domain::AttachmentMeta {
+                attachment_id,
+                name: "sample.txt".to_owned(),
+                content_type: "text/plain".to_owned(),
+                byte_len: 11,
+                checksum_sha256: "64ec88ca00b268e5ba1a35678a1b5316d212f4f366b2477232534a8aeca37f3c"
+                    .to_owned(),
+                created_ts_ms: 651,
+                expires_ts_ms: None,
+                topic_ids: vec![crate::domain::TopicId("topic-1".to_owned())],
+                extensions: BTreeMap::new(),
+            }))
+        }
+
+        fn attachment_list(
+            &self,
+            req: crate::domain::AttachmentListRequest,
+        ) -> Result<crate::domain::AttachmentListResult, SdkError> {
+            Ok(crate::domain::AttachmentListResult {
+                attachments: vec![crate::domain::AttachmentMeta {
+                    attachment_id: crate::domain::AttachmentId("attachment-1".to_owned()),
+                    name: "sample.txt".to_owned(),
+                    content_type: "text/plain".to_owned(),
+                    byte_len: 11,
+                    checksum_sha256:
+                        "64ec88ca00b268e5ba1a35678a1b5316d212f4f366b2477232534a8aeca37f3c"
+                            .to_owned(),
+                    created_ts_ms: 652,
+                    expires_ts_ms: None,
+                    topic_ids: req.topic_id.into_iter().collect(),
+                    extensions: BTreeMap::new(),
+                }],
+                next_cursor: None,
+            })
+        }
+
+        fn attachment_delete(
+            &self,
+            _attachment_id: crate::domain::AttachmentId,
+        ) -> Result<Ack, SdkError> {
+            Ok(Ack { accepted: true, revision: None })
+        }
+
+        fn attachment_associate_topic(
+            &self,
+            _attachment_id: crate::domain::AttachmentId,
+            _topic_id: crate::domain::TopicId,
+        ) -> Result<Ack, SdkError> {
+            Ok(Ack { accepted: true, revision: None })
+        }
+
         fn topic_create(
             &self,
             req: crate::domain::TopicCreateRequest,
@@ -2167,6 +2324,60 @@ mod tests {
             .expect("telemetry subscribe");
         assert_eq!(subscribed.operation_id.as_str(), "app.telemetry.subscribe");
         assert_eq!(subscribed.payload["accepted"], json!(true));
+    }
+
+    #[test]
+    fn execute_envelope_routes_attachment_operations_locally() {
+        let app = Client::new(MockBackend::new());
+
+        let stored = app
+            .command(
+                "sdk_attachment_store_v2",
+                serde_json::json!({
+                    "name": "sample.txt",
+                    "content_type": "text/plain",
+                    "bytes_base64": "aGVsbG8gd29ybGQ=",
+                    "topic_ids": ["topic-1"],
+                }),
+            )
+            .expect("attachment store");
+        assert_eq!(stored.operation_id.as_str(), "app.attachment.store");
+        assert_eq!(stored.payload["attachment_id"], json!("attachment-1"));
+
+        let fetched = app
+            .query("sdk_attachment_get_v2", serde_json::json!("attachment-1"))
+            .expect("attachment get");
+        assert_eq!(fetched.operation_id.as_str(), "app.attachment.get");
+        assert_eq!(fetched.payload["name"], json!("sample.txt"));
+
+        let listed = app
+            .query(
+                "app.attachment.list",
+                serde_json::json!({
+                    "topic_id": "topic-1",
+                    "limit": 10,
+                }),
+            )
+            .expect("attachment list");
+        assert_eq!(listed.payload["attachments"].as_array().expect("attachment rows").len(), 1);
+
+        let associated = app
+            .command(
+                "sdk_attachment_associate_topic_v2",
+                serde_json::json!({
+                    "attachment_id": "attachment-1",
+                    "topic_id": "topic-2",
+                }),
+            )
+            .expect("attachment associate");
+        assert_eq!(associated.operation_id.as_str(), "app.attachment.associate_topic");
+        assert_eq!(associated.payload["accepted"], json!(true));
+
+        let deleted = app
+            .command("app.attachment.delete", serde_json::json!("attachment-1"))
+            .expect("attachment delete");
+        assert_eq!(deleted.operation_id.as_str(), "app.attachment.delete");
+        assert_eq!(deleted.payload["accepted"], json!(true));
     }
 
     #[test]

@@ -609,6 +609,157 @@ void main() {
           'app.marker.update_position');
       expect(binding.commandEnvelopes[2].operationId, 'app.marker.delete');
     });
+
+    test(
+        'attachment helper maps typed store get list associate and delete flows',
+        () async {
+      final binding = _FakeBinding(
+        registry: OperationRegistry(
+          entries: const <OperationEntry>[
+            OperationEntry(
+              id: 'app.attachment.store',
+              group: 'attachments',
+              kind: OperationKind.command,
+              transportVariant: TransportVariant.rpc,
+              description: 'Store attachment.',
+              aliases: <String>['sdk_attachment_store_v2'],
+            ),
+            OperationEntry(
+              id: 'app.attachment.get',
+              group: 'attachments',
+              kind: OperationKind.query,
+              transportVariant: TransportVariant.rpc,
+              description: 'Get attachment.',
+              aliases: <String>['sdk_attachment_get_v2'],
+            ),
+            OperationEntry(
+              id: 'app.attachment.list',
+              group: 'attachments',
+              kind: OperationKind.query,
+              transportVariant: TransportVariant.rpc,
+              description: 'List attachments.',
+              aliases: <String>['sdk_attachment_list_v2'],
+            ),
+            OperationEntry(
+              id: 'app.attachment.associate_topic',
+              group: 'attachments',
+              kind: OperationKind.command,
+              transportVariant: TransportVariant.rpc,
+              description: 'Associate attachment topic.',
+              aliases: <String>['sdk_attachment_associate_topic_v2'],
+            ),
+            OperationEntry(
+              id: 'app.attachment.delete',
+              group: 'attachments',
+              kind: OperationKind.command,
+              transportVariant: TransportVariant.rpc,
+              description: 'Delete attachment.',
+              aliases: <String>['sdk_attachment_delete_v2'],
+            ),
+          ],
+        ),
+      );
+      binding.commandResponses = <EnvelopeResponse>[
+        const EnvelopeResponse(
+          operationId: 'app.attachment.store',
+          kind: EnvelopeKind.result,
+          accepted: true,
+          payload: <String, Object?>{
+            'attachment_id': 'attachment-1',
+            'name': 'sample.txt',
+            'content_type': 'text/plain',
+            'byte_len': 11,
+            'checksum_sha256':
+                '64ec88ca00b268e5ba1a35678a1b5316d212f4f366b2477232534a8aeca37f3c',
+            'created_ts_ms': 650,
+            'expires_ts_ms': null,
+            'topic_ids': <String>['topic-1'],
+            'extensions': <String, Object?>{},
+          },
+        ),
+        const EnvelopeResponse(
+          operationId: 'app.attachment.associate_topic',
+          kind: EnvelopeKind.result,
+          accepted: true,
+          payload: <String, Object?>{'accepted': true},
+        ),
+        const EnvelopeResponse(
+          operationId: 'app.attachment.delete',
+          kind: EnvelopeKind.result,
+          accepted: true,
+          payload: <String, Object?>{'accepted': true},
+        ),
+      ];
+      binding.queryResponses = <EnvelopeResponse>[
+        const EnvelopeResponse(
+          operationId: 'app.attachment.get',
+          kind: EnvelopeKind.result,
+          accepted: true,
+          payload: <String, Object?>{
+            'attachment_id': 'attachment-1',
+            'name': 'sample.txt',
+            'content_type': 'text/plain',
+            'byte_len': 11,
+            'checksum_sha256':
+                '64ec88ca00b268e5ba1a35678a1b5316d212f4f366b2477232534a8aeca37f3c',
+            'created_ts_ms': 651,
+            'expires_ts_ms': null,
+            'topic_ids': <String>['topic-1'],
+            'extensions': <String, Object?>{},
+          },
+        ),
+        const EnvelopeResponse(
+          operationId: 'app.attachment.list',
+          kind: EnvelopeKind.result,
+          accepted: true,
+          payload: <String, Object?>{
+            'attachments': <Object?>[
+              <String, Object?>{
+                'attachment_id': 'attachment-1',
+                'name': 'sample.txt',
+                'content_type': 'text/plain',
+                'byte_len': 11,
+                'checksum_sha256':
+                    '64ec88ca00b268e5ba1a35678a1b5316d212f4f366b2477232534a8aeca37f3c',
+                'created_ts_ms': 652,
+                'expires_ts_ms': null,
+                'topic_ids': <String>['topic-1'],
+                'extensions': <String, Object?>{},
+              },
+            ],
+            'next_cursor': 'attachment:1',
+          },
+        ),
+      ];
+
+      final attachments = AttachmentClient(OperationClient(AppClient(binding)));
+      final stored = await attachments.store(
+        name: 'sample.txt',
+        contentType: 'text/plain',
+        bytesBase64: 'aGVsbG8gd29ybGQ=',
+        topicIds: const <String>['topic-1'],
+      );
+      final fetched = await attachments.get('attachment-1');
+      final listed = await attachments.list(topicId: 'topic-1', limit: 10);
+      final associated = await attachments.associateTopic(
+        attachmentId: 'attachment-1',
+        topicId: 'topic-2',
+      );
+      final deleted = await attachments.delete('attachment-1');
+
+      expect(stored.attachmentId, 'attachment-1');
+      expect(fetched?.name, 'sample.txt');
+      expect(listed.attachments, hasLength(1));
+      expect(listed.nextCursor, 'attachment:1');
+      expect(associated, isTrue);
+      expect(deleted, isTrue);
+      expect(binding.commandEnvelopes[0].operationId, 'app.attachment.store');
+      expect(binding.queryEnvelopes[0].operationId, 'app.attachment.get');
+      expect(binding.queryEnvelopes[1].operationId, 'app.attachment.list');
+      expect(binding.commandEnvelopes[1].operationId,
+          'app.attachment.associate_topic');
+      expect(binding.commandEnvelopes[2].operationId, 'app.attachment.delete');
+    });
   });
 }
 

@@ -1393,5 +1393,240 @@ void main() {
             'app.marker.delete',
           ]);
     });
+
+    test('attachment helper roundtrips canonical attachment operations',
+        () async {
+      unawaited(() async {
+        await for (final request in server) {
+          final body = await request.fold<List<int>>(<int>[], (all, chunk) {
+            all.addAll(chunk);
+            return all;
+          });
+          final frame = decodeRpcFrame(body);
+          calls.add(frame);
+          final id = frame['id'] as int;
+          final method = frame['method'] as String;
+          final params = frame['params'] is Map<String, Object?>
+              ? frame['params'] as Map<String, Object?>
+              : const <String, Object?>{};
+          final response = switch (method) {
+            'sdk_operation_registry_v2' => <String, Object?>{
+                'id': id,
+                'result': <String, Object?>{
+                  'registry': <String, Object?>{
+                    'entries': <Object?>[
+                      <String, Object?>{
+                        'id': 'app.attachment.store',
+                        'group': 'attachments',
+                        'kind': 'command',
+                        'transport_variant': 'rpc',
+                        'description': 'Store attachment.',
+                        'aliases': <String>['sdk_attachment_store_v2'],
+                        'required_capabilities': <String>[
+                          'sdk.capability.attachments'
+                        ],
+                      },
+                      <String, Object?>{
+                        'id': 'app.attachment.get',
+                        'group': 'attachments',
+                        'kind': 'query',
+                        'transport_variant': 'rpc',
+                        'description': 'Get attachment.',
+                        'aliases': <String>['sdk_attachment_get_v2'],
+                        'required_capabilities': <String>[
+                          'sdk.capability.attachments'
+                        ],
+                      },
+                      <String, Object?>{
+                        'id': 'app.attachment.list',
+                        'group': 'attachments',
+                        'kind': 'query',
+                        'transport_variant': 'rpc',
+                        'description': 'List attachments.',
+                        'aliases': <String>['sdk_attachment_list_v2'],
+                        'required_capabilities': <String>[
+                          'sdk.capability.attachments'
+                        ],
+                      },
+                      <String, Object?>{
+                        'id': 'app.attachment.associate_topic',
+                        'group': 'attachments',
+                        'kind': 'command',
+                        'transport_variant': 'rpc',
+                        'description': 'Associate attachment topic.',
+                        'aliases': <String>[
+                          'sdk_attachment_associate_topic_v2'
+                        ],
+                        'required_capabilities': <String>[
+                          'sdk.capability.attachments'
+                        ],
+                      },
+                      <String, Object?>{
+                        'id': 'app.attachment.delete',
+                        'group': 'attachments',
+                        'kind': 'command',
+                        'transport_variant': 'rpc',
+                        'description': 'Delete attachment.',
+                        'aliases': <String>['sdk_attachment_delete_v2'],
+                        'required_capabilities': <String>[
+                          'sdk.capability.attachment_delete'
+                        ],
+                      },
+                    ],
+                  },
+                },
+                'error': null,
+              },
+            'sdk_envelope_execute_v2' => <String, Object?>{
+                'id': id,
+                'result': <String, Object?>{
+                  'response': switch (params['operation_id']) {
+                    'app.attachment.store' => <String, Object?>{
+                        'operation_id': 'app.attachment.store',
+                        'kind': 'result',
+                        'accepted': true,
+                        'payload': <String, Object?>{
+                          'attachment_id': 'attachment-1',
+                          'name': 'sample.txt',
+                          'content_type': 'text/plain',
+                          'byte_len': 11,
+                          'checksum_sha256':
+                              '64ec88ca00b268e5ba1a35678a1b5316d212f4f366b2477232534a8aeca37f3c',
+                          'created_ts_ms': 650,
+                          'expires_ts_ms': null,
+                          'topic_ids': <String>['topic-1'],
+                          'extensions': <String, Object?>{},
+                        },
+                        'extensions': <String, Object?>{},
+                      },
+                    'app.attachment.get' => <String, Object?>{
+                        'operation_id': 'app.attachment.get',
+                        'kind': 'result',
+                        'accepted': true,
+                        'payload': <String, Object?>{
+                          'attachment_id': 'attachment-1',
+                          'name': 'sample.txt',
+                          'content_type': 'text/plain',
+                          'byte_len': 11,
+                          'checksum_sha256':
+                              '64ec88ca00b268e5ba1a35678a1b5316d212f4f366b2477232534a8aeca37f3c',
+                          'created_ts_ms': 651,
+                          'expires_ts_ms': null,
+                          'topic_ids': <String>['topic-1'],
+                          'extensions': <String, Object?>{},
+                        },
+                        'extensions': <String, Object?>{},
+                      },
+                    'app.attachment.list' => <String, Object?>{
+                        'operation_id': 'app.attachment.list',
+                        'kind': 'result',
+                        'accepted': true,
+                        'payload': <String, Object?>{
+                          'attachments': <Object?>[
+                            <String, Object?>{
+                              'attachment_id': 'attachment-1',
+                              'name': 'sample.txt',
+                              'content_type': 'text/plain',
+                              'byte_len': 11,
+                              'checksum_sha256':
+                                  '64ec88ca00b268e5ba1a35678a1b5316d212f4f366b2477232534a8aeca37f3c',
+                              'created_ts_ms': 652,
+                              'expires_ts_ms': null,
+                              'topic_ids': <String>['topic-1'],
+                              'extensions': <String, Object?>{},
+                            },
+                          ],
+                          'next_cursor': null,
+                        },
+                        'extensions': <String, Object?>{},
+                      },
+                    'app.attachment.associate_topic' => <String, Object?>{
+                        'operation_id': 'app.attachment.associate_topic',
+                        'kind': 'result',
+                        'accepted': true,
+                        'payload': <String, Object?>{
+                          'accepted': true,
+                          'attachment_id': 'attachment-1',
+                          'topic_id': 'topic-2',
+                        },
+                        'extensions': <String, Object?>{},
+                      },
+                    'app.attachment.delete' => <String, Object?>{
+                        'operation_id': 'app.attachment.delete',
+                        'kind': 'result',
+                        'accepted': true,
+                        'payload': <String, Object?>{
+                          'accepted': true,
+                          'attachment_id': 'attachment-1',
+                        },
+                        'extensions': <String, Object?>{},
+                      },
+                    _ => <String, Object?>{},
+                  },
+                },
+                'error': null,
+              },
+            _ => <String, Object?>{
+                'id': id,
+                'result': null,
+                'error': <String, Object?>{
+                  'code': 'SDK_VALIDATION_INVALID_ARGUMENT',
+                  'message': 'unknown method',
+                },
+              },
+          };
+          request.response.headers.contentType =
+              ContentType('application', 'msgpack');
+          request.response.add(encodeRpcFrame(response));
+          await request.response.close();
+        }
+      }());
+
+      final attachments = AttachmentClient(
+        OperationClient(
+          AppClient(
+            RpcBinding(
+              RpcConnectionOptions(
+                endpoint: Uri.parse('http://127.0.0.1:${server.port}/rpc'),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final stored = await attachments.store(
+        name: 'sample.txt',
+        contentType: 'text/plain',
+        bytesBase64: 'aGVsbG8gd29ybGQ=',
+        topicIds: const <String>['topic-1'],
+      );
+      final fetched = await attachments.get('attachment-1');
+      final listed = await attachments.list(topicId: 'topic-1', limit: 10);
+      final associated = await attachments.associateTopic(
+        attachmentId: 'attachment-1',
+        topicId: 'topic-2',
+      );
+      final deleted = await attachments.delete('attachment-1');
+
+      expect(stored.attachmentId, 'attachment-1');
+      expect(fetched?.name, 'sample.txt');
+      expect(listed.attachments, hasLength(1));
+      expect(associated, isTrue);
+      expect(deleted, isTrue);
+
+      final envelopeCalls = calls
+          .where((call) => call['method'] == 'sdk_envelope_execute_v2')
+          .toList(growable: false);
+      expect(
+          envelopeCalls.map((call) =>
+              (call['params'] as Map<String, Object?>)['operation_id']),
+          [
+            'app.attachment.store',
+            'app.attachment.get',
+            'app.attachment.list',
+            'app.attachment.associate_topic',
+            'app.attachment.delete',
+          ]);
+    });
   });
 }

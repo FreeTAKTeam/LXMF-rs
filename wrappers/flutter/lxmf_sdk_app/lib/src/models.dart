@@ -584,6 +584,42 @@ class ContactListPage {
 }
 
 @immutable
+class AttachmentRecord {
+  const AttachmentRecord({
+    required this.attachmentId,
+    required this.name,
+    required this.contentType,
+    required this.byteLen,
+    required this.checksumSha256,
+    required this.createdTsMs,
+    this.expiresTsMs,
+    this.topicIds = const <String>[],
+    this.extensions = const <String, Object?>{},
+  });
+
+  final String attachmentId;
+  final String name;
+  final String contentType;
+  final int byteLen;
+  final String checksumSha256;
+  final int createdTsMs;
+  final int? expiresTsMs;
+  final List<String> topicIds;
+  final Map<String, Object?> extensions;
+}
+
+@immutable
+class AttachmentListPage {
+  const AttachmentListPage({
+    required this.attachments,
+    this.nextCursor,
+  });
+
+  final List<AttachmentRecord> attachments;
+  final String? nextCursor;
+}
+
+@immutable
 class TopicRecord {
   const TopicRecord({
     required this.topicId,

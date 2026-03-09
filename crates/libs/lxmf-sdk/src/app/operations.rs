@@ -495,6 +495,51 @@ fn built_in_entries() -> Vec<OperationEntry> {
         .with_alias("sdk_telemetry_subscribe_v2")
         .with_required_capability("sdk.capability.telemetry_stream"),
         OperationEntry::new(
+            "app.attachment.store",
+            "attachments",
+            OperationKind::Command,
+            TransportVariant::Rpc,
+            "Store one attachment payload with optional topic associations.",
+        )
+        .with_alias("sdk_attachment_store_v2")
+        .with_required_capability("sdk.capability.attachments"),
+        OperationEntry::new(
+            "app.attachment.get",
+            "attachments",
+            OperationKind::Query,
+            TransportVariant::Rpc,
+            "Fetch one attachment metadata record by id.",
+        )
+        .with_alias("sdk_attachment_get_v2")
+        .with_required_capability("sdk.capability.attachments"),
+        OperationEntry::new(
+            "app.attachment.list",
+            "attachments",
+            OperationKind::Query,
+            TransportVariant::Rpc,
+            "List stored attachments with topic filtering and cursor pagination.",
+        )
+        .with_alias("sdk_attachment_list_v2")
+        .with_required_capability("sdk.capability.attachments"),
+        OperationEntry::new(
+            "app.attachment.delete",
+            "attachments",
+            OperationKind::Command,
+            TransportVariant::Rpc,
+            "Delete one stored attachment by id.",
+        )
+        .with_alias("sdk_attachment_delete_v2")
+        .with_required_capability("sdk.capability.attachment_delete"),
+        OperationEntry::new(
+            "app.attachment.associate_topic",
+            "attachments",
+            OperationKind::Command,
+            TransportVariant::Rpc,
+            "Associate an existing attachment with an additional topic.",
+        )
+        .with_alias("sdk_attachment_associate_topic_v2")
+        .with_required_capability("sdk.capability.attachments"),
+        OperationEntry::new(
             "app.marker.create",
             "markers",
             OperationKind::Command,
@@ -673,6 +718,7 @@ mod tests {
         let grouped = registry.entries_by_group();
 
         assert!(grouped.get("runtime").is_some());
+        assert!(grouped.get("attachments").is_some());
         assert!(grouped.get("markers").is_some());
         assert!(grouped.get("telemetry").is_some());
         assert!(grouped.get("topics").is_some());
@@ -682,6 +728,11 @@ mod tests {
             .expect("identity group")
             .iter()
             .any(|entry| entry.id.as_str() == "app.identity.list"));
+        assert!(grouped
+            .get("attachments")
+            .expect("attachments group")
+            .iter()
+            .any(|entry| entry.id.as_str() == "app.attachment.store"));
         assert!(grouped
             .get("topics")
             .expect("topics group")

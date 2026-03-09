@@ -1,336 +1,321 @@
-    #[test]
-    fn sdk_release_b_domain_methods_roundtrip() {
-        let daemon = RpcDaemon::test_instance();
+#[test]
+fn sdk_release_b_domain_methods_roundtrip() {
+    let daemon = RpcDaemon::test_instance();
 
-        let topic = daemon
-            .handle_rpc(rpc_request(
-                90,
-                "sdk_topic_create_v2",
-                json!({
-                    "topic_path": "ops/alerts",
-                    "metadata": { "kind": "ops" },
-                    "extensions": { "scope": "test" }
-                }),
-            ))
-            .expect("topic create");
-        assert!(topic.error.is_none());
-        let topic_id = topic.result.expect("topic result")["topic"]["topic_id"]
-            .as_str()
-            .expect("topic id")
-            .to_string();
+    let topic = daemon
+        .handle_rpc(rpc_request(
+            90,
+            "sdk_topic_create_v2",
+            json!({
+                "topic_path": "ops/alerts",
+                "metadata": { "kind": "ops" },
+                "extensions": { "scope": "test" }
+            }),
+        ))
+        .expect("topic create");
+    assert!(topic.error.is_none());
+    let topic_id = topic.result.expect("topic result")["topic"]["topic_id"]
+        .as_str()
+        .expect("topic id")
+        .to_string();
 
-        let topic_get = daemon
-            .handle_rpc(rpc_request(
-                91,
-                "sdk_topic_get_v2",
-                json!({ "topic_id": topic_id.clone() }),
-            ))
-            .expect("topic get");
-        assert!(topic_get.error.is_none());
-        assert_eq!(topic_get.result.expect("result")["topic"]["topic_path"], json!("ops/alerts"));
+    let topic_get = daemon
+        .handle_rpc(rpc_request(91, "sdk_topic_get_v2", json!({ "topic_id": topic_id.clone() })))
+        .expect("topic get");
+    assert!(topic_get.error.is_none());
+    assert_eq!(topic_get.result.expect("result")["topic"]["topic_path"], json!("ops/alerts"));
 
-        let topic_list = daemon
-            .handle_rpc(rpc_request(92, "sdk_topic_list_v2", json!({ "limit": 10 })))
-            .expect("topic list");
-        assert!(topic_list.error.is_none());
-        assert_eq!(
-            topic_list.result.expect("result")["topics"].as_array().expect("topic array").len(),
-            1
-        );
+    let topic_list = daemon
+        .handle_rpc(rpc_request(92, "sdk_topic_list_v2", json!({ "limit": 10 })))
+        .expect("topic list");
+    assert!(topic_list.error.is_none());
+    assert_eq!(
+        topic_list.result.expect("result")["topics"].as_array().expect("topic array").len(),
+        1
+    );
 
-        let topic_subscribe = daemon
-            .handle_rpc(rpc_request(
-                93,
-                "sdk_topic_subscribe_v2",
-                json!({ "topic_id": topic_id.clone() }),
-            ))
-            .expect("topic subscribe");
-        assert!(topic_subscribe.error.is_none());
-        assert_eq!(topic_subscribe.result.expect("result")["accepted"], json!(true));
+    let topic_subscribe = daemon
+        .handle_rpc(rpc_request(
+            93,
+            "sdk_topic_subscribe_v2",
+            json!({ "topic_id": topic_id.clone() }),
+        ))
+        .expect("topic subscribe");
+    assert!(topic_subscribe.error.is_none());
+    assert_eq!(topic_subscribe.result.expect("result")["accepted"], json!(true));
 
-        let publish = daemon
-            .handle_rpc(rpc_request(
-                94,
-                "sdk_topic_publish_v2",
-                json!({
-                    "topic_id": topic_id.clone(),
-                    "payload": { "message": "hello topic" },
-                    "correlation_id": "corr-1"
-                }),
-            ))
-            .expect("topic publish");
-        assert!(publish.error.is_none());
-        assert_eq!(publish.result.expect("result")["accepted"], json!(true));
+    let publish = daemon
+        .handle_rpc(rpc_request(
+            94,
+            "sdk_topic_publish_v2",
+            json!({
+                "topic_id": topic_id.clone(),
+                "payload": { "message": "hello topic" },
+                "correlation_id": "corr-1"
+            }),
+        ))
+        .expect("topic publish");
+    assert!(publish.error.is_none());
+    assert_eq!(publish.result.expect("result")["accepted"], json!(true));
 
-        let telemetry = daemon
-            .handle_rpc(rpc_request(
-                95,
-                "sdk_telemetry_query_v2",
-                json!({ "topic_id": topic_id.clone() }),
-            ))
-            .expect("telemetry query");
-        assert!(telemetry.error.is_none());
-        assert!(!telemetry.result.expect("result")["points"]
+    let telemetry = daemon
+        .handle_rpc(rpc_request(
+            95,
+            "sdk_telemetry_query_v2",
+            json!({ "topic_id": topic_id.clone() }),
+        ))
+        .expect("telemetry query");
+    assert!(telemetry.error.is_none());
+    assert!(!telemetry.result.expect("result")["points"]
+        .as_array()
+        .expect("points array")
+        .is_empty());
+
+    let attachment = daemon
+        .handle_rpc(rpc_request(
+            96,
+            "sdk_attachment_store_v2",
+            json!({
+                "name": "sample.txt",
+                "content_type": "text/plain",
+                "bytes_base64": "aGVsbG8gd29ybGQ=",
+                "topic_ids": [topic_id.clone()]
+            }),
+        ))
+        .expect("attachment store");
+    assert!(attachment.error.is_none());
+    let attachment_id = attachment.result.expect("result")["attachment"]["attachment_id"]
+        .as_str()
+        .expect("attachment id")
+        .to_string();
+
+    let attachment_get = daemon
+        .handle_rpc(rpc_request(
+            97,
+            "sdk_attachment_get_v2",
+            json!({ "attachment_id": attachment_id }),
+        ))
+        .expect("attachment get");
+    assert!(attachment_get.error.is_none());
+    assert_eq!(attachment_get.result.expect("result")["attachment"]["name"], json!("sample.txt"));
+
+    let attachment_list = daemon
+        .handle_rpc(rpc_request(
+            98,
+            "sdk_attachment_list_v2",
+            json!({ "topic_id": topic_id.clone() }),
+        ))
+        .expect("attachment list");
+    assert!(attachment_list.error.is_none());
+    assert_eq!(
+        attachment_list.result.expect("result")["attachments"]
             .as_array()
-            .expect("points array")
-            .is_empty());
+            .expect("attachments array")
+            .len(),
+        1
+    );
 
-        let attachment = daemon
-            .handle_rpc(rpc_request(
-                96,
-                "sdk_attachment_store_v2",
-                json!({
-                    "name": "sample.txt",
-                    "content_type": "text/plain",
-                    "bytes_base64": "aGVsbG8gd29ybGQ=",
-                    "topic_ids": [topic_id.clone()]
-                }),
-            ))
-            .expect("attachment store");
-        assert!(attachment.error.is_none());
-        let attachment_id = attachment.result.expect("result")["attachment"]["attachment_id"]
-            .as_str()
-            .expect("attachment id")
-            .to_string();
+    let marker = daemon
+        .handle_rpc(rpc_request(
+            99,
+            "sdk_marker_create_v2",
+            json!({
+                "label": "Alpha",
+                "position": { "lat": 35.0, "lon": -115.0, "alt_m": 1200.0 },
+                "topic_id": topic_id.clone()
+            }),
+        ))
+        .expect("marker create");
+    assert!(marker.error.is_none());
+    let marker_result = marker.result.expect("result");
+    let marker_id = marker_result["marker"]["marker_id"].as_str().expect("marker id").to_string();
+    let marker_revision = marker_result["marker"]["revision"].as_u64().expect("marker revision");
 
-        let attachment_get = daemon
-            .handle_rpc(rpc_request(
-                97,
-                "sdk_attachment_get_v2",
-                json!({ "attachment_id": attachment_id }),
-            ))
-            .expect("attachment get");
-        assert!(attachment_get.error.is_none());
-        assert_eq!(
-            attachment_get.result.expect("result")["attachment"]["name"],
-            json!("sample.txt")
-        );
+    let marker_update = daemon
+        .handle_rpc(rpc_request(
+            100,
+            "sdk_marker_update_position_v2",
+            json!({
+                "marker_id": marker_id,
+                "expected_revision": marker_revision,
+                "position": { "lat": 36.0, "lon": -116.0, "alt_m": null }
+            }),
+        ))
+        .expect("marker update");
+    assert!(marker_update.error.is_none());
+    assert_eq!(marker_update.result.expect("result")["marker"]["position"]["lat"], json!(36.0));
+}
 
-        let attachment_list = daemon
-            .handle_rpc(rpc_request(
-                98,
-                "sdk_attachment_list_v2",
-                json!({ "topic_id": topic_id.clone() }),
-            ))
-            .expect("attachment list");
-        assert!(attachment_list.error.is_none());
-        assert_eq!(
-            attachment_list.result.expect("result")["attachments"]
-                .as_array()
-                .expect("attachments array")
-                .len(),
-            1
-        );
+#[test]
+fn sdk_release_b_filtered_list_cursor_does_not_stall_on_no_matches() {
+    let daemon = RpcDaemon::test_instance();
+    let topic_a = daemon
+        .handle_rpc(rpc_request(110, "sdk_topic_create_v2", json!({ "topic_path": "ops/a" })))
+        .expect("topic a");
+    let topic_b = daemon
+        .handle_rpc(rpc_request(111, "sdk_topic_create_v2", json!({ "topic_path": "ops/b" })))
+        .expect("topic b");
+    let topic_a_id = topic_a.result.expect("result")["topic"]["topic_id"]
+        .as_str()
+        .expect("topic_a_id")
+        .to_string();
+    let topic_b_id = topic_b.result.expect("result")["topic"]["topic_id"]
+        .as_str()
+        .expect("topic_b_id")
+        .to_string();
 
-        let marker = daemon
-            .handle_rpc(rpc_request(
-                99,
-                "sdk_marker_create_v2",
-                json!({
-                    "label": "Alpha",
-                    "position": { "lat": 35.0, "lon": -115.0, "alt_m": 1200.0 },
-                    "topic_id": topic_id.clone()
-                }),
-            ))
-            .expect("marker create");
-        assert!(marker.error.is_none());
-        let marker_result = marker.result.expect("result");
-        let marker_id = marker_result["marker"]["marker_id"]
-            .as_str()
-            .expect("marker id")
-            .to_string();
-        let marker_revision = marker_result["marker"]["revision"]
-            .as_u64()
-            .expect("marker revision");
+    let _ = daemon
+        .handle_rpc(rpc_request(
+            112,
+            "sdk_attachment_store_v2",
+            json!({
+                "name": "a.bin",
+                "content_type": "application/octet-stream",
+                "bytes_base64": "AA==",
+                "topic_ids": [topic_a_id.clone()]
+            }),
+        ))
+        .expect("attachment store");
+    let _ = daemon
+        .handle_rpc(rpc_request(
+            113,
+            "sdk_marker_create_v2",
+            json!({
+                "label": "A",
+                "position": { "lat": 1.0, "lon": 1.0, "alt_m": null },
+                "topic_id": topic_a_id
+            }),
+        ))
+        .expect("marker create");
 
-        let marker_update = daemon
-            .handle_rpc(rpc_request(
-                100,
-                "sdk_marker_update_position_v2",
-                json!({
-                    "marker_id": marker_id,
-                    "expected_revision": marker_revision,
-                    "position": { "lat": 36.0, "lon": -116.0, "alt_m": null }
-                }),
-            ))
-            .expect("marker update");
-        assert!(marker_update.error.is_none());
-        assert_eq!(marker_update.result.expect("result")["marker"]["position"]["lat"], json!(36.0));
-    }
+    let attachment_list = daemon
+        .handle_rpc(rpc_request(
+            114,
+            "sdk_attachment_list_v2",
+            json!({ "topic_id": topic_b_id.clone(), "cursor": null, "limit": 10 }),
+        ))
+        .expect("attachment list");
+    assert!(attachment_list.error.is_none());
+    let attachment_result = attachment_list.result.expect("attachment list result");
+    assert_eq!(attachment_result["attachments"], json!([]));
+    assert_eq!(attachment_result["next_cursor"], JsonValue::Null);
 
-    #[test]
-    fn sdk_release_b_filtered_list_cursor_does_not_stall_on_no_matches() {
-        let daemon = RpcDaemon::test_instance();
-        let topic_a = daemon
-            .handle_rpc(rpc_request(110, "sdk_topic_create_v2", json!({ "topic_path": "ops/a" })))
-            .expect("topic a");
-        let topic_b = daemon
-            .handle_rpc(rpc_request(111, "sdk_topic_create_v2", json!({ "topic_path": "ops/b" })))
-            .expect("topic b");
-        let topic_a_id = topic_a.result.expect("result")["topic"]["topic_id"]
-            .as_str()
-            .expect("topic_a_id")
-            .to_string();
-        let topic_b_id = topic_b.result.expect("result")["topic"]["topic_id"]
-            .as_str()
-            .expect("topic_b_id")
-            .to_string();
+    let marker_list = daemon
+        .handle_rpc(rpc_request(
+            115,
+            "sdk_marker_list_v2",
+            json!({ "topic_id": topic_b_id, "cursor": null, "limit": 10 }),
+        ))
+        .expect("marker list");
+    assert!(marker_list.error.is_none());
+    let marker_result = marker_list.result.expect("marker list result");
+    assert_eq!(marker_result["markers"], json!([]));
+    assert_eq!(marker_result["next_cursor"], JsonValue::Null);
+}
 
-        let _ = daemon
-            .handle_rpc(rpc_request(
-                112,
-                "sdk_attachment_store_v2",
-                json!({
-                    "name": "a.bin",
-                    "content_type": "application/octet-stream",
-                    "bytes_base64": "AA==",
-                    "topic_ids": [topic_a_id.clone()]
-                }),
-            ))
-            .expect("attachment store");
-        let _ = daemon
-            .handle_rpc(rpc_request(
-                113,
-                "sdk_marker_create_v2",
-                json!({
-                    "label": "A",
-                    "position": { "lat": 1.0, "lon": 1.0, "alt_m": null },
-                    "topic_id": topic_a_id
-                }),
-            ))
-            .expect("marker create");
+#[test]
+fn sdk_release_b_attachment_streaming_upload_resume_and_integrity() {
+    let daemon = RpcDaemon::test_instance();
+    let topic = daemon
+        .handle_rpc(rpc_request(116, "sdk_topic_create_v2", json!({ "topic_path": "ops/chunks" })))
+        .expect("topic create");
+    let topic_id = topic.result.expect("topic result")["topic"]["topic_id"]
+        .as_str()
+        .expect("topic id")
+        .to_string();
+    let payload = b"chunked-attachment-payload".to_vec();
+    let checksum = encode_hex(Sha256::digest(payload.as_slice()));
 
-        let attachment_list = daemon
-            .handle_rpc(rpc_request(
-                114,
-                "sdk_attachment_list_v2",
-                json!({ "topic_id": topic_b_id.clone(), "cursor": null, "limit": 10 }),
-            ))
-            .expect("attachment list");
-        assert!(attachment_list.error.is_none());
-        let attachment_result = attachment_list.result.expect("attachment list result");
-        assert_eq!(attachment_result["attachments"], json!([]));
-        assert_eq!(attachment_result["next_cursor"], JsonValue::Null);
+    let upload_start = daemon
+        .handle_rpc(rpc_request(
+            117,
+            "sdk_attachment_upload_start_v2",
+            json!({
+                "name": "chunked.bin",
+                "content_type": "application/octet-stream",
+                "total_size": payload.len(),
+                "checksum_sha256": checksum,
+                "topic_ids": [topic_id],
+            }),
+        ))
+        .expect("upload start");
+    assert!(upload_start.error.is_none());
+    let upload = upload_start.result.expect("result")["upload"].clone();
+    let upload_id = upload["upload_id"].as_str().expect("upload_id").to_string();
+    let attachment_id = upload["attachment_id"].as_str().expect("attachment_id").to_string();
 
-        let marker_list = daemon
-            .handle_rpc(rpc_request(
-                115,
-                "sdk_marker_list_v2",
-                json!({ "topic_id": topic_b_id, "cursor": null, "limit": 10 }),
-            ))
-            .expect("marker list");
-        assert!(marker_list.error.is_none());
-        let marker_result = marker_list.result.expect("marker list result");
-        assert_eq!(marker_result["markers"], json!([]));
-        assert_eq!(marker_result["next_cursor"], JsonValue::Null);
-    }
+    let first_chunk = &payload[..8];
+    let second_chunk = &payload[8..];
+    let chunk_1 = daemon
+        .handle_rpc(rpc_request(
+            118,
+            "sdk_attachment_upload_chunk_v2",
+            json!({
+                "upload_id": upload_id,
+                "offset": 0,
+                "bytes_base64": BASE64_STANDARD.encode(first_chunk),
+            }),
+        ))
+        .expect("chunk 1");
+    assert!(chunk_1.error.is_none());
+    assert_eq!(chunk_1.result.expect("result")["upload_chunk"]["next_offset"], json!(8));
 
-    #[test]
-    fn sdk_release_b_attachment_streaming_upload_resume_and_integrity() {
-        let daemon = RpcDaemon::test_instance();
-        let topic = daemon
-            .handle_rpc(rpc_request(116, "sdk_topic_create_v2", json!({ "topic_path": "ops/chunks" })))
-            .expect("topic create");
-        let topic_id = topic.result.expect("topic result")["topic"]["topic_id"]
-            .as_str()
-            .expect("topic id")
-            .to_string();
-        let payload = b"chunked-attachment-payload".to_vec();
-        let checksum = encode_hex(Sha256::digest(payload.as_slice()));
+    let chunk_2 = daemon
+        .handle_rpc(rpc_request(
+            119,
+            "sdk_attachment_upload_chunk_v2",
+            json!({
+                "upload_id": upload["upload_id"].as_str().expect("upload_id"),
+                "offset": 8,
+                "bytes_base64": BASE64_STANDARD.encode(second_chunk),
+            }),
+        ))
+        .expect("chunk 2");
+    assert!(chunk_2.error.is_none());
+    assert_eq!(chunk_2.result.expect("result")["upload_chunk"]["complete"], json!(true));
 
-        let upload_start = daemon
-            .handle_rpc(rpc_request(
-                117,
-                "sdk_attachment_upload_start_v2",
-                json!({
-                    "name": "chunked.bin",
-                    "content_type": "application/octet-stream",
-                    "total_size": payload.len(),
-                    "checksum_sha256": checksum,
-                    "topic_ids": [topic_id],
-                }),
-            ))
-            .expect("upload start");
-        assert!(upload_start.error.is_none());
-        let upload = upload_start.result.expect("result")["upload"].clone();
-        let upload_id = upload["upload_id"].as_str().expect("upload_id").to_string();
-        let attachment_id = upload["attachment_id"].as_str().expect("attachment_id").to_string();
+    let commit = daemon
+        .handle_rpc(rpc_request(
+            120,
+            "sdk_attachment_upload_commit_v2",
+            json!({ "upload_id": upload["upload_id"].as_str().expect("upload_id") }),
+        ))
+        .expect("upload commit");
+    assert!(commit.error.is_none());
+    assert_eq!(
+        commit.result.expect("result")["attachment"]["attachment_id"],
+        json!(attachment_id.clone())
+    );
 
-        let first_chunk = &payload[..8];
-        let second_chunk = &payload[8..];
-        let chunk_1 = daemon
-            .handle_rpc(rpc_request(
-                118,
-                "sdk_attachment_upload_chunk_v2",
-                json!({
-                    "upload_id": upload_id,
-                    "offset": 0,
-                    "bytes_base64": BASE64_STANDARD.encode(first_chunk),
-                }),
-            ))
-            .expect("chunk 1");
-        assert!(chunk_1.error.is_none());
-        assert_eq!(chunk_1.result.expect("result")["upload_chunk"]["next_offset"], json!(8));
+    let download_chunk = daemon
+        .handle_rpc(rpc_request(
+            121,
+            "sdk_attachment_download_chunk_v2",
+            json!({
+                "attachment_id": attachment_id.clone(),
+                "offset": 0,
+                "max_bytes": 5,
+            }),
+        ))
+        .expect("download chunk");
+    assert!(download_chunk.error.is_none());
+    let chunk_result = download_chunk.result.expect("result")["download_chunk"].clone();
+    assert_eq!(chunk_result["attachment_id"], json!(attachment_id));
+    assert_eq!(chunk_result["offset"], json!(0));
+    assert_eq!(chunk_result["next_offset"], json!(5));
+    assert_eq!(chunk_result["done"], json!(false));
+    assert_eq!(
+        BASE64_STANDARD
+            .decode(chunk_result["bytes_base64"].as_str().expect("chunk base64").as_bytes())
+            .expect("decode chunk"),
+        payload[..5]
+    );
+}
 
-        let chunk_2 = daemon
-            .handle_rpc(rpc_request(
-                119,
-                "sdk_attachment_upload_chunk_v2",
-                json!({
-                    "upload_id": upload["upload_id"].as_str().expect("upload_id"),
-                    "offset": 8,
-                    "bytes_base64": BASE64_STANDARD.encode(second_chunk),
-                }),
-            ))
-            .expect("chunk 2");
-        assert!(chunk_2.error.is_none());
-        assert_eq!(
-            chunk_2.result.expect("result")["upload_chunk"]["complete"],
-            json!(true)
-        );
-
-        let commit = daemon
-            .handle_rpc(rpc_request(
-                120,
-                "sdk_attachment_upload_commit_v2",
-                json!({ "upload_id": upload["upload_id"].as_str().expect("upload_id") }),
-            ))
-            .expect("upload commit");
-        assert!(commit.error.is_none());
-        assert_eq!(
-            commit.result.expect("result")["attachment"]["attachment_id"],
-            json!(attachment_id.clone())
-        );
-
-        let download_chunk = daemon
-            .handle_rpc(rpc_request(
-                121,
-                "sdk_attachment_download_chunk_v2",
-                json!({
-                    "attachment_id": attachment_id.clone(),
-                    "offset": 0,
-                    "max_bytes": 5,
-                }),
-            ))
-            .expect("download chunk");
-        assert!(download_chunk.error.is_none());
-        let chunk_result = download_chunk.result.expect("result")["download_chunk"].clone();
-        assert_eq!(chunk_result["attachment_id"], json!(attachment_id));
-        assert_eq!(chunk_result["offset"], json!(0));
-        assert_eq!(chunk_result["next_offset"], json!(5));
-        assert_eq!(chunk_result["done"], json!(false));
-        assert_eq!(
-            BASE64_STANDARD
-                .decode(chunk_result["bytes_base64"].as_str().expect("chunk base64").as_bytes())
-                .expect("decode chunk"),
-            payload[..5]
-        );
-    }
-
-    #[test]
-    fn sdk_release_b_attachment_streaming_commit_rejects_checksum_mismatch() {
-        let daemon = RpcDaemon::test_instance();
-        let upload_start = daemon
+#[test]
+fn sdk_release_b_attachment_streaming_commit_rejects_checksum_mismatch() {
+    let daemon = RpcDaemon::test_instance();
+    let upload_start = daemon
             .handle_rpc(rpc_request(
                 122,
                 "sdk_attachment_upload_start_v2",
@@ -342,1403 +327,1452 @@
                 }),
             ))
             .expect("upload start");
-        assert!(upload_start.error.is_none());
-        let upload_id = upload_start.result.expect("result")["upload"]["upload_id"]
-            .as_str()
-            .expect("upload_id")
-            .to_string();
+    assert!(upload_start.error.is_none());
+    let upload_id = upload_start.result.expect("result")["upload"]["upload_id"]
+        .as_str()
+        .expect("upload_id")
+        .to_string();
 
-        let chunk = daemon
-            .handle_rpc(rpc_request(
-                123,
-                "sdk_attachment_upload_chunk_v2",
-                json!({
-                    "upload_id": upload_id.clone(),
-                    "offset": 0,
-                    "bytes_base64": BASE64_STANDARD.encode([1_u8, 2, 3, 4]),
-                }),
-            ))
-            .expect("upload chunk");
-        assert!(chunk.error.is_none());
+    let chunk = daemon
+        .handle_rpc(rpc_request(
+            123,
+            "sdk_attachment_upload_chunk_v2",
+            json!({
+                "upload_id": upload_id.clone(),
+                "offset": 0,
+                "bytes_base64": BASE64_STANDARD.encode([1_u8, 2, 3, 4]),
+            }),
+        ))
+        .expect("upload chunk");
+    assert!(chunk.error.is_none());
 
-        let commit = daemon
-            .handle_rpc(rpc_request(
-                124,
-                "sdk_attachment_upload_commit_v2",
-                json!({ "upload_id": upload_id }),
-            ))
-            .expect("upload commit");
-        let error = commit.error.expect("checksum mismatch error");
-        assert_eq!(error.code, "SDK_VALIDATION_CHECKSUM_MISMATCH");
-    }
+    let commit = daemon
+        .handle_rpc(rpc_request(
+            124,
+            "sdk_attachment_upload_commit_v2",
+            json!({ "upload_id": upload_id }),
+        ))
+        .expect("upload commit");
+    let error = commit.error.expect("checksum mismatch error");
+    assert_eq!(error.code, "SDK_VALIDATION_CHECKSUM_MISMATCH");
+}
 
-    #[test]
-    fn sdk_release_c_domain_methods_roundtrip() {
-        let daemon = RpcDaemon::test_instance();
+#[test]
+fn sdk_release_c_domain_methods_roundtrip() {
+    let daemon = RpcDaemon::test_instance();
+    let registry = daemon
+        .handle_rpc(rpc_request(119, "sdk_operation_registry_v2", json!({})))
+        .expect("operation registry");
+    assert!(registry.error.is_none());
+    assert!(registry.result.expect("registry result")["registry"]["entries"]
+        .as_array()
+        .expect("registry entries")
+        .iter()
+        .any(|entry| entry["id"] == json!("app.identity.list")));
+    let registry_entries = daemon
+        .handle_rpc(rpc_request(1191, "sdk_operation_registry_v2", json!({})))
+        .expect("operation registry")
+        .result
+        .expect("registry result")["registry"]["entries"]
+        .as_array()
+        .expect("registry entries")
+        .clone();
+    assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.identity.announce")));
+    assert!(registry_entries
+        .iter()
+        .any(|entry| entry["id"] == json!("app.identity.presence.list")));
+    assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.contact.update")));
+    assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.identity.bootstrap")));
+    assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.voice.session.open")));
+    assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.voice.session.update")));
+    assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.voice.session.close")));
+
+    let list_before =
+        daemon.handle_rpc(rpc_request(120, "sdk_identity_list_v2", json!({}))).expect("list");
+    assert!(list_before.error.is_none());
+    assert!(!list_before.result.expect("result")["identities"]
+        .as_array()
+        .expect("identity array")
+        .is_empty());
+
+    let identity_envelope = daemon
+        .handle_rpc(rpc_request(
+            1201,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "app.identity.list",
+                "kind": "query",
+                "payload": {},
+            }),
+        ))
+        .expect("identity envelope");
+    assert!(identity_envelope.error.is_none());
+    assert!(!identity_envelope.result.expect("identity envelope result")["response"]["payload"]
+        .as_array()
+        .expect("identity payload")
+        .is_empty());
+
+    let announce_envelope = daemon
+        .handle_rpc(rpc_request(
+            1202,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "sdk_identity_announce_now_v2",
+                "kind": "command",
+                "payload": {},
+            }),
+        ))
+        .expect("announce envelope");
+    assert!(announce_envelope.error.is_none());
+    let announce_response = announce_envelope.result.expect("announce result");
+    assert_eq!(announce_response["response"]["operation_id"], json!("app.identity.announce"));
+    assert_eq!(announce_response["response"]["payload"]["accepted"], json!(true));
+
+    let identity_bundle = json!({
+        "identity": "node-b",
+        "public_key": "node-b-pub",
+        "display_name": "Node B",
+        "capabilities": ["ops"],
+        "extensions": {}
+    });
+    let identity_import = daemon
+        .handle_rpc(rpc_request(
+            121,
+            "sdk_identity_import_v2",
+            json!({
+                "bundle_base64": BASE64_STANDARD.encode(identity_bundle.to_string().as_bytes()),
+                "passphrase": null
+            }),
+        ))
+        .expect("identity import");
+    assert!(identity_import.error.is_none());
+    assert_eq!(identity_import.result.expect("result")["identity"]["identity"], json!("node-b"));
+
+    let identity_resolve = daemon
+        .handle_rpc(rpc_request(122, "sdk_identity_resolve_v2", json!({ "hash": "node-b-pub" })))
+        .expect("identity resolve");
+    assert!(identity_resolve.error.is_none());
+    assert_eq!(identity_resolve.result.expect("result")["identity"], json!("node-b"));
+
+    let contact_update = daemon
+        .handle_rpc(rpc_request(
+            1221,
+            "sdk_identity_contact_update_v2",
+            json!({
+                "identity": "node-b",
+                "display_name": "Node Bravo",
+                "trust_level": "untrusted",
+                "bootstrap": false,
+                "metadata": { "source": "manual" }
+            }),
+        ))
+        .expect("contact update");
+    assert!(contact_update.error.is_none());
+    assert_eq!(
+        contact_update.result.expect("result")["contact"]["trust_level"],
+        json!("untrusted")
+    );
+
+    let contact_list = daemon
+        .handle_rpc(rpc_request(1222, "sdk_identity_contact_list_v2", json!({ "limit": 10 })))
+        .expect("contact list");
+    assert!(contact_list.error.is_none());
+    assert!(contact_list.result.expect("result")["contact_list"]["contacts"]
+        .as_array()
+        .expect("contact rows")
+        .iter()
+        .any(|row| row["identity"] == json!("node-b")));
+
+    let bootstrap = daemon
+        .handle_rpc(rpc_request(
+            1223,
+            "sdk_identity_bootstrap_v2",
+            json!({ "identity": "node-b", "auto_sync": true }),
+        ))
+        .expect("bootstrap");
+    assert!(bootstrap.error.is_none());
+    let bootstrap_result = bootstrap.result.expect("bootstrap result");
+    assert_eq!(bootstrap_result["synced"], json!(true));
+    assert_eq!(bootstrap_result["contact"]["trust_level"], json!("trusted"));
+    assert_eq!(bootstrap_result["contact"]["bootstrap"], json!(true));
+
+    let presence = daemon
+        .handle_rpc(rpc_request(
+            1224,
+            "sdk_identity_presence_list_v2",
+            json!({ "cursor": null, "limit": 10 }),
+        ))
+        .expect("presence list");
+    assert!(presence.error.is_none());
+    assert!(presence.result.expect("result")["presence_list"]["peers"]
+        .as_array()
+        .expect("presence rows")
+        .iter()
+        .any(|row| {
+            row["peer_id"] == json!("node-b")
+                && row["trust_level"] == json!("trusted")
+                && row["bootstrap"] == json!(true)
+        }));
+
+    let announce_now = daemon
+        .handle_rpc(rpc_request(1225, "sdk_identity_announce_now_v2", json!({})))
+        .expect("identity announce now");
+    assert!(announce_now.error.is_none());
+    assert_eq!(announce_now.result.expect("result")["accepted"], json!(true));
+
+    let identity_export = daemon
+        .handle_rpc(rpc_request(123, "sdk_identity_export_v2", json!({ "identity": "node-b" })))
+        .expect("identity export");
+    assert!(identity_export.error.is_none());
+    assert!(!identity_export.result.expect("result")["bundle"]["bundle_base64"]
+        .as_str()
+        .expect("export bundle")
+        .is_empty());
+
+    let _ = daemon
+        .handle_rpc(rpc_request(
+            124,
+            "send_message_v2",
+            json!({
+                "id": "paper-msg-1",
+                "source": "src",
+                "destination": "dst",
+                "title": "",
+                "content": "paper body"
+            }),
+        ))
+        .expect("send message for paper");
+    let paper_encode = daemon
+        .handle_rpc(rpc_request(125, "sdk_paper_encode_v2", json!({ "message_id": "paper-msg-1" })))
+        .expect("paper encode");
+    assert!(paper_encode.error.is_none());
+    let uri = paper_encode.result.expect("result")["envelope"]["uri"]
+        .as_str()
+        .expect("paper uri")
+        .to_string();
+    assert!(uri.starts_with("lxm://"));
+
+    let paper_decode = daemon
+        .handle_rpc(rpc_request(126, "sdk_paper_decode_v2", json!({ "uri": uri })))
+        .expect("paper decode");
+    assert!(paper_decode.error.is_none());
+    assert_eq!(paper_decode.result.expect("result")["accepted"], json!(true));
+
+    let command = daemon
+        .handle_rpc(rpc_request(
+            127,
+            "sdk_command_invoke_v2",
+            json!({
+                "command": "ping",
+                "target": "node-b",
+                "payload": { "body": "hello" },
+                "timeout_ms": 1000
+            }),
+        ))
+        .expect("command invoke");
+    assert!(command.error.is_none());
+    let correlation_id = command.result.expect("result")["response"]["payload"]["correlation_id"]
+        .as_str()
+        .expect("correlation id")
+        .to_string();
+
+    let command_reply = daemon
+        .handle_rpc(rpc_request(
+            128,
+            "sdk_command_reply_v2",
+            json!({
+                "correlation_id": correlation_id,
+                "accepted": true,
+                "payload": { "reply": "pong" }
+            }),
+        ))
+        .expect("command reply");
+    assert!(command_reply.error.is_none());
+    assert_eq!(command_reply.result.expect("result")["accepted"], json!(true));
+
+    let envelope_command = daemon
+        .handle_rpc(rpc_request(
+            1281,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "vendor.example.custom",
+                "kind": "command",
+                "target": "node-b",
+                "payload": { "body": "hello" },
+                "timeout_ms": 500,
+                "extensions": { "via": "test" }
+            }),
+        ))
+        .expect("custom envelope command");
+    assert!(envelope_command.error.is_none());
+    let envelope_response = &envelope_command.result.expect("envelope command result")["response"];
+    assert_eq!(envelope_response["accepted"], json!(true));
+    assert_eq!(envelope_response["extensions"]["via"], json!("test"));
+    let envelope_payload = &envelope_response["payload"];
+    assert_eq!(envelope_payload["command"], json!("vendor.example.custom"));
+    assert_eq!(envelope_payload["target"], json!("node-b"));
+
+    let voice_open = daemon
+        .handle_rpc(rpc_request(
+            129,
+            "sdk_voice_session_open_v2",
+            json!({ "peer_id": "node-b", "codec_hint": "opus" }),
+        ))
+        .expect("voice open");
+    assert!(voice_open.error.is_none());
+    let session_id =
+        voice_open.result.expect("result")["session_id"].as_str().expect("session id").to_string();
+
+    let voice_update = daemon
+        .handle_rpc(rpc_request(
+            130,
+            "sdk_voice_session_update_v2",
+            json!({ "session_id": session_id.clone(), "state": "active" }),
+        ))
+        .expect("voice update");
+    assert!(voice_update.error.is_none());
+    assert_eq!(voice_update.result.expect("result")["state"], json!("active"));
+
+    let voice_close = daemon
+        .handle_rpc(rpc_request(
+            131,
+            "sdk_voice_session_close_v2",
+            json!({ "session_id": session_id }),
+        ))
+        .expect("voice close");
+    assert!(voice_close.error.is_none());
+    assert_eq!(voice_close.result.expect("result")["accepted"], json!(true));
+
+    let voice_open_envelope = daemon
+        .handle_rpc(rpc_request(
+            1311,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "sdk_voice_session_open_v2",
+                "kind": "command",
+                "payload": { "peer_id": "node-b", "codec_hint": "opus" },
+            }),
+        ))
+        .expect("voice open envelope");
+    assert!(voice_open_envelope.error.is_none());
+    let voice_session_id = voice_open_envelope.result.expect("voice open envelope result")
+        ["response"]["payload"]
+        .as_str()
+        .expect("voice session id")
+        .to_string();
+
+    let voice_update_envelope = daemon
+        .handle_rpc(rpc_request(
+            1312,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "app.voice.session.update",
+                "kind": "command",
+                "payload": { "session_id": voice_session_id, "state": "active" },
+            }),
+        ))
+        .expect("voice update envelope");
+    assert!(voice_update_envelope.error.is_none());
+    assert_eq!(
+        voice_update_envelope.result.expect("voice update envelope result")["response"]["payload"],
+        json!("active")
+    );
+}
+
+#[test]
+fn sdk_operation_registry_roundtrips_topic_family() {
+    let daemon = RpcDaemon::test_instance();
+
+    let registry = daemon
+        .handle_rpc(rpc_request(1320, "sdk_operation_registry_v2", json!({})))
+        .expect("operation registry");
+    assert!(registry.error.is_none());
+    let registry_result = registry.result.expect("registry result");
+    let entries = registry_result["registry"]["entries"].as_array().expect("entries");
+    assert!(entries.iter().any(|entry| entry["id"] == json!("app.topic.create")));
+    assert!(entries.iter().any(|entry| entry["id"] == json!("app.topic.publish")));
+
+    let topic_create = daemon
+        .handle_rpc(rpc_request(
+            1321,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "sdk_topic_create_v2",
+                "kind": "command",
+                "payload": {
+                    "topic_path": "ops/envelope",
+                    "metadata": { "kind": "ops" },
+                },
+            }),
+        ))
+        .expect("topic create envelope");
+    assert!(topic_create.error.is_none());
+    let topic_payload = &topic_create.result.expect("topic create result")["response"]["payload"];
+    let topic_id = topic_payload["topic_id"].as_str().expect("topic id").to_string();
+    assert_eq!(topic_payload["topic_path"], json!("ops/envelope"));
+
+    let topic_list = daemon
+        .handle_rpc(rpc_request(
+            1322,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "app.topic.list",
+                "kind": "query",
+                "payload": { "limit": 10 },
+            }),
+        ))
+        .expect("topic list envelope");
+    assert!(topic_list.error.is_none());
+    assert!(!topic_list.result.expect("topic list result")["response"]["payload"]["topics"]
+        .as_array()
+        .expect("topics")
+        .is_empty());
+
+    let topic_publish = daemon
+        .handle_rpc(rpc_request(
+            1323,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "app.topic.publish",
+                "kind": "command",
+                "payload": {
+                    "topic_id": topic_id,
+                    "payload": { "message": "hello topic" },
+                    "correlation_id": "topic-env-1",
+                },
+            }),
+        ))
+        .expect("topic publish envelope");
+    assert!(topic_publish.error.is_none());
+    assert_eq!(
+        topic_publish.result.expect("topic publish result")["response"]["payload"]["accepted"],
+        json!(true)
+    );
+}
+
+#[test]
+fn sdk_operation_registry_roundtrips_telemetry_family() {
+    let daemon = RpcDaemon::test_instance();
+
+    let topic = daemon
+        .handle_rpc(rpc_request(
+            1330,
+            "sdk_topic_create_v2",
+            json!({ "topic_path": "ops/telemetry" }),
+        ))
+        .expect("topic create");
+    let topic_id = topic.result.expect("topic result")["topic"]["topic_id"]
+        .as_str()
+        .expect("topic id")
+        .to_string();
+    let _publish = daemon
+        .handle_rpc(rpc_request(
+            1331,
+            "sdk_topic_publish_v2",
+            json!({
+                "topic_id": topic_id.clone(),
+                "payload": { "message": "hello telemetry" },
+                "correlation_id": "telemetry-corr-1",
+            }),
+        ))
+        .expect("topic publish");
+
+    let registry = daemon
+        .handle_rpc(rpc_request(1332, "sdk_operation_registry_v2", json!({})))
+        .expect("operation registry");
+    assert!(registry.error.is_none());
+    let registry_result = registry.result.expect("registry result");
+    let entries = registry_result["registry"]["entries"].as_array().expect("entries");
+    assert!(entries.iter().any(|entry| entry["id"] == json!("app.telemetry.query")));
+    assert!(entries.iter().any(|entry| entry["id"] == json!("app.telemetry.subscribe")));
+
+    let telemetry_query = daemon
+        .handle_rpc(rpc_request(
+            1333,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "sdk_telemetry_query_v2",
+                "kind": "query",
+                "payload": {
+                    "topic_id": topic_id,
+                    "from_ts_ms": 0,
+                    "limit": 10,
+                },
+            }),
+        ))
+        .expect("telemetry query envelope");
+    assert!(telemetry_query.error.is_none());
+    let telemetry_payload =
+        &telemetry_query.result.expect("telemetry query result")["response"]["payload"];
+    assert!(!telemetry_payload.as_array().expect("telemetry points").is_empty());
+
+    let telemetry_subscribe = daemon
+        .handle_rpc(rpc_request(
+            1334,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "app.telemetry.subscribe",
+                "kind": "command",
+                "payload": {
+                    "peer_id": "node-b",
+                    "from_ts_ms": 0,
+                    "limit": 10,
+                },
+            }),
+        ))
+        .expect("telemetry subscribe envelope");
+    assert!(telemetry_subscribe.error.is_none());
+    assert_eq!(
+        telemetry_subscribe.result.expect("telemetry subscribe result")["response"]["payload"]
+            ["accepted"],
+        json!(true)
+    );
+}
+
+#[test]
+fn sdk_operation_registry_roundtrips_attachment_family() {
+    let daemon = RpcDaemon::test_instance();
+
+    let topic = daemon
+        .handle_rpc(rpc_request(
+            1339,
+            "sdk_topic_create_v2",
+            json!({ "topic_path": "ops/attachments" }),
+        ))
+        .expect("topic create");
+    let topic_id = topic.result.expect("topic result")["topic"]["topic_id"]
+        .as_str()
+        .expect("topic id")
+        .to_string();
+
         let registry = daemon
-            .handle_rpc(rpc_request(119, "sdk_operation_registry_v2", json!({})))
+            .handle_rpc(rpc_request(1340, "sdk_operation_registry_v2", json!({})))
             .expect("operation registry");
         assert!(registry.error.is_none());
-        assert!(registry.result.expect("registry result")["registry"]["entries"]
+        let registry_result = registry.result.expect("registry result");
+        let entries = registry_result["registry"]["entries"]
             .as_array()
-            .expect("registry entries")
-            .iter()
-            .any(|entry| entry["id"] == json!("app.identity.list")));
-        let registry_entries = daemon
-            .handle_rpc(rpc_request(1191, "sdk_operation_registry_v2", json!({})))
-            .expect("operation registry")
-            .result
-            .expect("registry result")["registry"]["entries"]
-            .as_array()
-            .expect("registry entries")
-            .clone();
-        assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.identity.announce")));
-        assert!(registry_entries
-            .iter()
-            .any(|entry| entry["id"] == json!("app.identity.presence.list")));
-        assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.contact.update")));
-        assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.identity.bootstrap")));
-        assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.voice.session.open")));
-        assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.voice.session.update")));
-        assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.voice.session.close")));
+            .expect("entries");
+    assert!(entries.iter().any(|entry| entry["id"] == json!("app.attachment.store")));
+    assert!(entries.iter().any(|entry| entry["id"] == json!("app.attachment.delete")));
 
-        let list_before =
-            daemon.handle_rpc(rpc_request(120, "sdk_identity_list_v2", json!({}))).expect("list");
-        assert!(list_before.error.is_none());
-        assert!(!list_before.result.expect("result")["identities"]
-            .as_array()
-            .expect("identity array")
-            .is_empty());
+    let attachment_store = daemon
+        .handle_rpc(rpc_request(
+            1341,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "sdk_attachment_store_v2",
+                "kind": "command",
+                "payload": {
+                    "name": "sample.txt",
+                    "content_type": "text/plain",
+                    "bytes_base64": "aGVsbG8gd29ybGQ=",
+                    "topic_ids": [topic_id.clone()],
+                },
+            }),
+        ))
+        .expect("attachment store envelope");
+    assert!(attachment_store.error.is_none());
+    let stored_payload =
+        &attachment_store.result.expect("attachment store result")["response"]["payload"];
+    let attachment_id =
+        stored_payload["attachment_id"].as_str().expect("attachment id").to_string();
 
-        let identity_envelope = daemon
+    let attachment_get = daemon
+        .handle_rpc(rpc_request(
+            1342,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "app.attachment.get",
+                "kind": "query",
+                "payload": attachment_id,
+            }),
+        ))
+        .expect("attachment get envelope");
+    assert!(attachment_get.error.is_none());
+    assert_eq!(
+        attachment_get.result.expect("attachment get result")["response"]["payload"]["name"],
+        json!("sample.txt")
+    );
+
+    let attachment_list = daemon
+        .handle_rpc(rpc_request(
+            1343,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "app.attachment.list",
+                "kind": "query",
+                "payload": {
+                    "topic_id": topic_id.clone(),
+                    "limit": 10,
+                },
+            }),
+        ))
+        .expect("attachment list envelope");
+    assert!(attachment_list.error.is_none());
+    assert_eq!(
+        attachment_list.result.expect("attachment list result")["response"]["payload"]
+            ["attachments"]
+            .as_array()
+            .expect("attachments")
+            .len(),
+        1
+    );
+
+    let attachment_associate = daemon
+        .handle_rpc(rpc_request(
+            1344,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "sdk_attachment_associate_topic_v2",
+                "kind": "command",
+                "payload": {
+                    "attachment_id": attachment_id.clone(),
+                    "topic_id": topic_id,
+                },
+            }),
+        ))
+        .expect("attachment associate envelope");
+    assert!(attachment_associate.error.is_none());
+    assert_eq!(
+        attachment_associate.result.expect("attachment associate result")["response"]["payload"]
+            ["accepted"],
+        json!(true)
+    );
+
+    let attachment_delete = daemon
+        .handle_rpc(rpc_request(
+            1345,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "sdk_attachment_delete_v2",
+                "kind": "command",
+                "payload": attachment_id,
+            }),
+        ))
+        .expect("attachment delete envelope");
+    assert!(attachment_delete.error.is_none());
+    assert_eq!(
+        attachment_delete.result.expect("attachment delete result")["response"]["payload"]
+            ["accepted"],
+        json!(true)
+    );
+}
+
+#[test]
+fn sdk_operation_registry_roundtrips_marker_family() {
+    let daemon = RpcDaemon::test_instance();
+
+    let topic = daemon
+        .handle_rpc(rpc_request(
+            1340,
+            "sdk_topic_create_v2",
+            json!({ "topic_path": "ops/markers" }),
+        ))
+        .expect("topic create");
+    let topic_id = topic.result.expect("topic result")["topic"]["topic_id"]
+        .as_str()
+        .expect("topic id")
+        .to_string();
+
+    let registry = daemon
+        .handle_rpc(rpc_request(1341, "sdk_operation_registry_v2", json!({})))
+        .expect("operation registry");
+    assert!(registry.error.is_none());
+    let registry_result = registry.result.expect("registry result");
+    let entries = registry_result["registry"]["entries"].as_array().expect("entries");
+    assert!(entries.iter().any(|entry| entry["id"] == json!("app.marker.create")));
+    assert!(entries.iter().any(|entry| entry["id"] == json!("app.marker.delete")));
+
+    let marker_create = daemon
+        .handle_rpc(rpc_request(
+            1342,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "sdk_marker_create_v2",
+                "kind": "command",
+                "payload": {
+                    "label": "Alpha",
+                    "position": { "lat": 35.0, "lon": -115.0, "alt_m": 1200.0 },
+                    "topic_id": topic_id.clone(),
+                },
+            }),
+        ))
+        .expect("marker create envelope");
+    assert!(marker_create.error.is_none());
+    let marker_payload =
+        &marker_create.result.expect("marker create result")["response"]["payload"];
+    let marker_id = marker_payload["marker_id"].as_str().expect("marker id").to_string();
+    let revision = marker_payload["revision"].as_u64().expect("marker revision");
+
+    let marker_list = daemon
+        .handle_rpc(rpc_request(
+            1343,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "app.marker.list",
+                "kind": "query",
+                "payload": {
+                    "topic_id": topic_id,
+                    "limit": 10,
+                },
+            }),
+        ))
+        .expect("marker list envelope");
+    assert!(marker_list.error.is_none());
+    assert!(!marker_list.result.expect("marker list result")["response"]["payload"]["markers"]
+        .as_array()
+        .expect("markers")
+        .is_empty());
+
+    let marker_update = daemon
+        .handle_rpc(rpc_request(
+            1344,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "app.marker.update_position",
+                "kind": "command",
+                "payload": {
+                    "marker_id": marker_id.clone(),
+                    "expected_revision": revision,
+                    "position": { "lat": 36.0, "lon": -116.0, "alt_m": null },
+                },
+            }),
+        ))
+        .expect("marker update envelope");
+    assert!(marker_update.error.is_none());
+    let updated_revision = marker_update.result.expect("marker update result")["response"]
+        ["payload"]["revision"]
+        .as_u64()
+        .expect("updated revision");
+
+    let marker_delete = daemon
+        .handle_rpc(rpc_request(
+            1345,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "sdk_marker_delete_v2",
+                "kind": "command",
+                "payload": {
+                    "marker_id": marker_id,
+                    "expected_revision": updated_revision,
+                },
+            }),
+        ))
+        .expect("marker delete envelope");
+    assert!(marker_delete.error.is_none());
+    assert_eq!(
+        marker_delete.result.expect("marker delete result")["response"]["payload"]["accepted"],
+        json!(true)
+    );
+}
+
+#[test]
+fn sdk_domain_state_survives_restart() {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let run_id = SystemTime::now().duration_since(UNIX_EPOCH).expect("unix epoch").as_nanos();
+    let db_path = std::env::temp_dir()
+        .join(format!("lxmf-rs-sdk-domain-{run_id}-{}.sqlite", std::process::id()));
+
+    let topic_id: String;
+    let attachment_id: String;
+    let marker_id: String;
+    let correlation_id: String;
+    let session_id: String;
+
+    {
+        let store = MessagesStore::open(db_path.as_path()).expect("open sqlite store");
+        let daemon = RpcDaemon::with_store(store, "persist-node".to_string());
+
+        let topic = daemon
             .handle_rpc(rpc_request(
-                1201,
-                "sdk_envelope_execute_v2",
+                200,
+                "sdk_topic_create_v2",
+                json!({ "topic_path": "ops/persist" }),
+            ))
+            .expect("topic create");
+        assert!(topic.error.is_none());
+        topic_id = topic.result.expect("topic result")["topic"]["topic_id"]
+            .as_str()
+            .expect("topic id")
+            .to_string();
+
+        let subscribe = daemon
+            .handle_rpc(rpc_request(
+                201,
+                "sdk_topic_subscribe_v2",
+                json!({ "topic_id": topic_id.clone() }),
+            ))
+            .expect("topic subscribe");
+        assert!(subscribe.error.is_none());
+
+        let publish = daemon
+            .handle_rpc(rpc_request(
+                202,
+                "sdk_topic_publish_v2",
                 json!({
-                    "operation_id": "app.identity.list",
-                    "kind": "query",
-                    "payload": {},
+                    "topic_id": topic_id.clone(),
+                    "payload": { "message": "persist me" },
                 }),
             ))
-            .expect("identity envelope");
-        assert!(identity_envelope.error.is_none());
-        assert!(!identity_envelope.result.expect("identity envelope result")["response"]["payload"]
-            .as_array()
-            .expect("identity payload")
-            .is_empty());
+            .expect("topic publish");
+        assert!(publish.error.is_none());
 
-        let announce_envelope = daemon
+        let attachment = daemon
             .handle_rpc(rpc_request(
-                1202,
-                "sdk_envelope_execute_v2",
+                203,
+                "sdk_attachment_store_v2",
                 json!({
-                    "operation_id": "sdk_identity_announce_now_v2",
-                    "kind": "command",
-                    "payload": {},
+                    "name": "persist.bin",
+                    "content_type": "application/octet-stream",
+                    "bytes_base64": "AQID",
+                    "topic_ids": [topic_id.clone()],
                 }),
             ))
-            .expect("announce envelope");
-        assert!(announce_envelope.error.is_none());
-        let announce_response = announce_envelope.result.expect("announce result");
-        assert_eq!(
-            announce_response["response"]["operation_id"],
-            json!("app.identity.announce")
-        );
-        assert_eq!(
-            announce_response["response"]["payload"]["accepted"],
-            json!(true)
-        );
+            .expect("attachment store");
+        assert!(attachment.error.is_none());
+        attachment_id = attachment.result.expect("attachment result")["attachment"]
+            ["attachment_id"]
+            .as_str()
+            .expect("attachment id")
+            .to_string();
+
+        let marker = daemon
+            .handle_rpc(rpc_request(
+                204,
+                "sdk_marker_create_v2",
+                json!({
+                    "label": "Persist Marker",
+                    "position": { "lat": 10.0, "lon": 10.0, "alt_m": null },
+                    "topic_id": topic_id.clone(),
+                }),
+            ))
+            .expect("marker create");
+        assert!(marker.error.is_none());
+        marker_id = marker.result.expect("marker result")["marker"]["marker_id"]
+            .as_str()
+            .expect("marker id")
+            .to_string();
 
         let identity_bundle = json!({
-            "identity": "node-b",
-            "public_key": "node-b-pub",
-            "display_name": "Node B",
+            "identity": "persist-imported",
+            "public_key": "persist-imported-pub",
+            "display_name": "Persist Imported",
             "capabilities": ["ops"],
-            "extensions": {}
+            "extensions": {},
         });
         let identity_import = daemon
             .handle_rpc(rpc_request(
-                121,
+                205,
                 "sdk_identity_import_v2",
                 json!({
                     "bundle_base64": BASE64_STANDARD.encode(identity_bundle.to_string().as_bytes()),
-                    "passphrase": null
                 }),
             ))
             .expect("identity import");
         assert!(identity_import.error.is_none());
-        assert_eq!(
-            identity_import.result.expect("result")["identity"]["identity"],
-            json!("node-b")
-        );
 
-        let identity_resolve = daemon
+        let identity_activate = daemon
             .handle_rpc(rpc_request(
-                122,
-                "sdk_identity_resolve_v2",
-                json!({ "hash": "node-b-pub" }),
+                206,
+                "sdk_identity_activate_v2",
+                json!({ "identity": "persist-imported" }),
             ))
-            .expect("identity resolve");
-        assert!(identity_resolve.error.is_none());
-        assert_eq!(identity_resolve.result.expect("result")["identity"], json!("node-b"));
-
-        let contact_update = daemon
-            .handle_rpc(rpc_request(
-                1221,
-                "sdk_identity_contact_update_v2",
-                json!({
-                    "identity": "node-b",
-                    "display_name": "Node Bravo",
-                    "trust_level": "untrusted",
-                    "bootstrap": false,
-                    "metadata": { "source": "manual" }
-                }),
-            ))
-            .expect("contact update");
-        assert!(contact_update.error.is_none());
-        assert_eq!(
-            contact_update.result.expect("result")["contact"]["trust_level"],
-            json!("untrusted")
-        );
-
-        let contact_list = daemon
-            .handle_rpc(rpc_request(1222, "sdk_identity_contact_list_v2", json!({ "limit": 10 })))
-            .expect("contact list");
-        assert!(contact_list.error.is_none());
-        assert!(contact_list.result.expect("result")["contact_list"]["contacts"]
-            .as_array()
-            .expect("contact rows")
-            .iter()
-            .any(|row| row["identity"] == json!("node-b")));
-
-        let bootstrap = daemon
-            .handle_rpc(rpc_request(
-                1223,
-                "sdk_identity_bootstrap_v2",
-                json!({ "identity": "node-b", "auto_sync": true }),
-            ))
-            .expect("bootstrap");
-        assert!(bootstrap.error.is_none());
-        let bootstrap_result = bootstrap.result.expect("bootstrap result");
-        assert_eq!(bootstrap_result["synced"], json!(true));
-        assert_eq!(bootstrap_result["contact"]["trust_level"], json!("trusted"));
-        assert_eq!(bootstrap_result["contact"]["bootstrap"], json!(true));
-
-        let presence = daemon
-            .handle_rpc(rpc_request(
-                1224,
-                "sdk_identity_presence_list_v2",
-                json!({ "cursor": null, "limit": 10 }),
-            ))
-            .expect("presence list");
-        assert!(presence.error.is_none());
-        assert!(presence.result.expect("result")["presence_list"]["peers"]
-            .as_array()
-            .expect("presence rows")
-            .iter()
-            .any(|row| {
-                row["peer_id"] == json!("node-b")
-                    && row["trust_level"] == json!("trusted")
-                    && row["bootstrap"] == json!(true)
-            }));
-
-        let announce_now =
-            daemon.handle_rpc(rpc_request(1225, "sdk_identity_announce_now_v2", json!({}))).expect(
-                "identity announce now",
-            );
-        assert!(announce_now.error.is_none());
-        assert_eq!(announce_now.result.expect("result")["accepted"], json!(true));
-
-        let identity_export = daemon
-            .handle_rpc(rpc_request(123, "sdk_identity_export_v2", json!({ "identity": "node-b" })))
-            .expect("identity export");
-        assert!(identity_export.error.is_none());
-        assert!(!identity_export.result.expect("result")["bundle"]["bundle_base64"]
-            .as_str()
-            .expect("export bundle")
-            .is_empty());
-
-        let _ = daemon
-            .handle_rpc(rpc_request(
-                124,
-                "send_message_v2",
-                json!({
-                    "id": "paper-msg-1",
-                    "source": "src",
-                    "destination": "dst",
-                    "title": "",
-                    "content": "paper body"
-                }),
-            ))
-            .expect("send message for paper");
-        let paper_encode = daemon
-            .handle_rpc(rpc_request(
-                125,
-                "sdk_paper_encode_v2",
-                json!({ "message_id": "paper-msg-1" }),
-            ))
-            .expect("paper encode");
-        assert!(paper_encode.error.is_none());
-        let uri = paper_encode.result.expect("result")["envelope"]["uri"]
-            .as_str()
-            .expect("paper uri")
-            .to_string();
-        assert!(uri.starts_with("lxm://"));
-
-        let paper_decode = daemon
-            .handle_rpc(rpc_request(126, "sdk_paper_decode_v2", json!({ "uri": uri })))
-            .expect("paper decode");
-        assert!(paper_decode.error.is_none());
-        assert_eq!(paper_decode.result.expect("result")["accepted"], json!(true));
+            .expect("identity activate");
+        assert!(identity_activate.error.is_none());
 
         let command = daemon
             .handle_rpc(rpc_request(
-                127,
+                207,
                 "sdk_command_invoke_v2",
                 json!({
                     "command": "ping",
-                    "target": "node-b",
-                    "payload": { "body": "hello" },
-                    "timeout_ms": 1000
+                    "target": "persist-imported",
+                    "payload": { "hello": "world" },
                 }),
             ))
             .expect("command invoke");
         assert!(command.error.is_none());
-        let correlation_id = command.result.expect("result")["response"]["payload"]
-            ["correlation_id"]
-            .as_str()
-            .expect("correlation id")
-            .to_string();
-
-        let command_reply = daemon
-            .handle_rpc(rpc_request(
-                128,
-                "sdk_command_reply_v2",
-                json!({
-                    "correlation_id": correlation_id,
-                    "accepted": true,
-                    "payload": { "reply": "pong" }
-                }),
-            ))
-            .expect("command reply");
-        assert!(command_reply.error.is_none());
-        assert_eq!(command_reply.result.expect("result")["accepted"], json!(true));
-
-        let envelope_command = daemon
-            .handle_rpc(rpc_request(
-                1281,
-                "sdk_envelope_execute_v2",
-                json!({
-                    "operation_id": "vendor.example.custom",
-                    "kind": "command",
-                    "target": "node-b",
-                    "payload": { "body": "hello" },
-                    "timeout_ms": 500,
-                    "extensions": { "via": "test" }
-                }),
-            ))
-            .expect("custom envelope command");
-        assert!(envelope_command.error.is_none());
-        let envelope_response = &envelope_command.result.expect("envelope command result")["response"];
-        assert_eq!(envelope_response["accepted"], json!(true));
-        assert_eq!(envelope_response["extensions"]["via"], json!("test"));
-        let envelope_payload = &envelope_response["payload"];
-        assert_eq!(envelope_payload["command"], json!("vendor.example.custom"));
-        assert_eq!(envelope_payload["target"], json!("node-b"));
-
-        let voice_open = daemon
-            .handle_rpc(rpc_request(
-                129,
-                "sdk_voice_session_open_v2",
-                json!({ "peer_id": "node-b", "codec_hint": "opus" }),
-            ))
-            .expect("voice open");
-        assert!(voice_open.error.is_none());
-        let session_id = voice_open.result.expect("result")["session_id"]
-            .as_str()
-            .expect("session id")
-            .to_string();
-
-        let voice_update = daemon
-            .handle_rpc(rpc_request(
-                130,
-                "sdk_voice_session_update_v2",
-                json!({ "session_id": session_id.clone(), "state": "active" }),
-            ))
-            .expect("voice update");
-        assert!(voice_update.error.is_none());
-        assert_eq!(voice_update.result.expect("result")["state"], json!("active"));
-
-        let voice_close = daemon
-            .handle_rpc(rpc_request(
-                131,
-                "sdk_voice_session_close_v2",
-                json!({ "session_id": session_id }),
-            ))
-            .expect("voice close");
-        assert!(voice_close.error.is_none());
-        assert_eq!(voice_close.result.expect("result")["accepted"], json!(true));
-
-        let voice_open_envelope = daemon
-            .handle_rpc(rpc_request(
-                1311,
-                "sdk_envelope_execute_v2",
-                json!({
-                    "operation_id": "sdk_voice_session_open_v2",
-                    "kind": "command",
-                    "payload": { "peer_id": "node-b", "codec_hint": "opus" },
-                }),
-            ))
-            .expect("voice open envelope");
-        assert!(voice_open_envelope.error.is_none());
-        let voice_session_id = voice_open_envelope.result.expect("voice open envelope result")
-            ["response"]["payload"]
-            .as_str()
-            .expect("voice session id")
-            .to_string();
-
-        let voice_update_envelope = daemon
-            .handle_rpc(rpc_request(
-                1312,
-                "sdk_envelope_execute_v2",
-                json!({
-                    "operation_id": "app.voice.session.update",
-                    "kind": "command",
-                    "payload": { "session_id": voice_session_id, "state": "active" },
-                }),
-            ))
-            .expect("voice update envelope");
-        assert!(voice_update_envelope.error.is_none());
-        assert_eq!(
-            voice_update_envelope.result.expect("voice update envelope result")["response"]
-                ["payload"],
-            json!("active")
-        );
-    }
-
-    #[test]
-    fn sdk_operation_registry_roundtrips_topic_family() {
-        let daemon = RpcDaemon::test_instance();
-
-        let registry = daemon
-            .handle_rpc(rpc_request(1320, "sdk_operation_registry_v2", json!({})))
-            .expect("operation registry");
-        assert!(registry.error.is_none());
-        let registry_result = registry.result.expect("registry result");
-        let entries = registry_result["registry"]["entries"]
-            .as_array()
-            .expect("entries");
-        assert!(entries.iter().any(|entry| entry["id"] == json!("app.topic.create")));
-        assert!(entries.iter().any(|entry| entry["id"] == json!("app.topic.publish")));
-
-        let topic_create = daemon
-            .handle_rpc(rpc_request(
-                1321,
-                "sdk_envelope_execute_v2",
-                json!({
-                    "operation_id": "sdk_topic_create_v2",
-                    "kind": "command",
-                    "payload": {
-                        "topic_path": "ops/envelope",
-                        "metadata": { "kind": "ops" },
-                    },
-                }),
-            ))
-            .expect("topic create envelope");
-        assert!(topic_create.error.is_none());
-        let topic_payload = &topic_create.result.expect("topic create result")["response"]["payload"];
-        let topic_id = topic_payload["topic_id"].as_str().expect("topic id").to_string();
-        assert_eq!(topic_payload["topic_path"], json!("ops/envelope"));
-
-        let topic_list = daemon
-            .handle_rpc(rpc_request(
-                1322,
-                "sdk_envelope_execute_v2",
-                json!({
-                    "operation_id": "app.topic.list",
-                    "kind": "query",
-                    "payload": { "limit": 10 },
-                }),
-            ))
-            .expect("topic list envelope");
-        assert!(topic_list.error.is_none());
-        assert!(!topic_list.result.expect("topic list result")["response"]["payload"]["topics"]
-            .as_array()
-            .expect("topics")
-            .is_empty());
-
-        let topic_publish = daemon
-            .handle_rpc(rpc_request(
-                1323,
-                "sdk_envelope_execute_v2",
-                json!({
-                    "operation_id": "app.topic.publish",
-                    "kind": "command",
-                    "payload": {
-                        "topic_id": topic_id,
-                        "payload": { "message": "hello topic" },
-                        "correlation_id": "topic-env-1",
-                    },
-                }),
-            ))
-            .expect("topic publish envelope");
-        assert!(topic_publish.error.is_none());
-        assert_eq!(
-            topic_publish.result.expect("topic publish result")["response"]["payload"]["accepted"],
-            json!(true)
-        );
-    }
-
-    #[test]
-    fn sdk_operation_registry_roundtrips_telemetry_family() {
-        let daemon = RpcDaemon::test_instance();
-
-        let topic = daemon
-            .handle_rpc(rpc_request(
-                1330,
-                "sdk_topic_create_v2",
-                json!({ "topic_path": "ops/telemetry" }),
-            ))
-            .expect("topic create");
-        let topic_id = topic.result.expect("topic result")["topic"]["topic_id"]
-            .as_str()
-            .expect("topic id")
-            .to_string();
-        let _publish = daemon
-            .handle_rpc(rpc_request(
-                1331,
-                "sdk_topic_publish_v2",
-                json!({
-                    "topic_id": topic_id.clone(),
-                    "payload": { "message": "hello telemetry" },
-                    "correlation_id": "telemetry-corr-1",
-                }),
-            ))
-            .expect("topic publish");
-
-        let registry = daemon
-            .handle_rpc(rpc_request(1332, "sdk_operation_registry_v2", json!({})))
-            .expect("operation registry");
-        assert!(registry.error.is_none());
-        let registry_result = registry.result.expect("registry result");
-        let entries = registry_result["registry"]["entries"]
-            .as_array()
-            .expect("entries");
-        assert!(entries.iter().any(|entry| entry["id"] == json!("app.telemetry.query")));
-        assert!(entries
-            .iter()
-            .any(|entry| entry["id"] == json!("app.telemetry.subscribe")));
-
-        let telemetry_query = daemon
-            .handle_rpc(rpc_request(
-                1333,
-                "sdk_envelope_execute_v2",
-                json!({
-                    "operation_id": "sdk_telemetry_query_v2",
-                    "kind": "query",
-                    "payload": {
-                        "topic_id": topic_id,
-                        "from_ts_ms": 0,
-                        "limit": 10,
-                    },
-                }),
-            ))
-            .expect("telemetry query envelope");
-        assert!(telemetry_query.error.is_none());
-        let telemetry_payload =
-            &telemetry_query.result.expect("telemetry query result")["response"]["payload"];
-        assert!(!telemetry_payload
-            .as_array()
-            .expect("telemetry points")
-            .is_empty());
-
-        let telemetry_subscribe = daemon
-            .handle_rpc(rpc_request(
-                1334,
-                "sdk_envelope_execute_v2",
-                json!({
-                    "operation_id": "app.telemetry.subscribe",
-                    "kind": "command",
-                    "payload": {
-                        "peer_id": "node-b",
-                        "from_ts_ms": 0,
-                        "limit": 10,
-                    },
-                }),
-            ))
-            .expect("telemetry subscribe envelope");
-        assert!(telemetry_subscribe.error.is_none());
-        assert_eq!(
-            telemetry_subscribe.result.expect("telemetry subscribe result")["response"]["payload"]
-                ["accepted"],
-            json!(true)
-        );
-    }
-
-    #[test]
-    fn sdk_operation_registry_roundtrips_marker_family() {
-        let daemon = RpcDaemon::test_instance();
-
-        let topic = daemon
-            .handle_rpc(rpc_request(
-                1340,
-                "sdk_topic_create_v2",
-                json!({ "topic_path": "ops/markers" }),
-            ))
-            .expect("topic create");
-        let topic_id = topic.result.expect("topic result")["topic"]["topic_id"]
-            .as_str()
-            .expect("topic id")
-            .to_string();
-
-        let registry = daemon
-            .handle_rpc(rpc_request(1341, "sdk_operation_registry_v2", json!({})))
-            .expect("operation registry");
-        assert!(registry.error.is_none());
-        let registry_result = registry.result.expect("registry result");
-        let entries = registry_result["registry"]["entries"]
-            .as_array()
-            .expect("entries");
-        assert!(entries.iter().any(|entry| entry["id"] == json!("app.marker.create")));
-        assert!(entries.iter().any(|entry| entry["id"] == json!("app.marker.delete")));
-
-        let marker_create = daemon
-            .handle_rpc(rpc_request(
-                1342,
-                "sdk_envelope_execute_v2",
-                json!({
-                    "operation_id": "sdk_marker_create_v2",
-                    "kind": "command",
-                    "payload": {
-                        "label": "Alpha",
-                        "position": { "lat": 35.0, "lon": -115.0, "alt_m": 1200.0 },
-                        "topic_id": topic_id.clone(),
-                    },
-                }),
-            ))
-            .expect("marker create envelope");
-        assert!(marker_create.error.is_none());
-        let marker_payload =
-            &marker_create.result.expect("marker create result")["response"]["payload"];
-        let marker_id = marker_payload["marker_id"]
-            .as_str()
-            .expect("marker id")
-            .to_string();
-        let revision = marker_payload["revision"]
-            .as_u64()
-            .expect("marker revision");
-
-        let marker_list = daemon
-            .handle_rpc(rpc_request(
-                1343,
-                "sdk_envelope_execute_v2",
-                json!({
-                    "operation_id": "app.marker.list",
-                    "kind": "query",
-                    "payload": {
-                        "topic_id": topic_id,
-                        "limit": 10,
-                    },
-                }),
-            ))
-            .expect("marker list envelope");
-        assert!(marker_list.error.is_none());
-        assert!(!marker_list.result.expect("marker list result")["response"]["payload"]["markers"]
-            .as_array()
-            .expect("markers")
-            .is_empty());
-
-        let marker_update = daemon
-            .handle_rpc(rpc_request(
-                1344,
-                "sdk_envelope_execute_v2",
-                json!({
-                    "operation_id": "app.marker.update_position",
-                    "kind": "command",
-                    "payload": {
-                        "marker_id": marker_id.clone(),
-                        "expected_revision": revision,
-                        "position": { "lat": 36.0, "lon": -116.0, "alt_m": null },
-                    },
-                }),
-            ))
-            .expect("marker update envelope");
-        assert!(marker_update.error.is_none());
-        let updated_revision = marker_update.result.expect("marker update result")["response"]
-            ["payload"]["revision"]
-            .as_u64()
-            .expect("updated revision");
-
-        let marker_delete = daemon
-            .handle_rpc(rpc_request(
-                1345,
-                "sdk_envelope_execute_v2",
-                json!({
-                    "operation_id": "sdk_marker_delete_v2",
-                    "kind": "command",
-                    "payload": {
-                        "marker_id": marker_id,
-                        "expected_revision": updated_revision,
-                    },
-                }),
-            ))
-            .expect("marker delete envelope");
-        assert!(marker_delete.error.is_none());
-        assert_eq!(
-            marker_delete.result.expect("marker delete result")["response"]["payload"]["accepted"],
-            json!(true)
-        );
-    }
-
-    #[test]
-    fn sdk_domain_state_survives_restart() {
-        use std::time::{SystemTime, UNIX_EPOCH};
-
-        let run_id = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("unix epoch")
-            .as_nanos();
-        let db_path = std::env::temp_dir()
-            .join(format!("lxmf-rs-sdk-domain-{run_id}-{}.sqlite", std::process::id()));
-
-        let topic_id: String;
-        let attachment_id: String;
-        let marker_id: String;
-        let correlation_id: String;
-        let session_id: String;
-
-        {
-            let store = MessagesStore::open(db_path.as_path()).expect("open sqlite store");
-            let daemon = RpcDaemon::with_store(store, "persist-node".to_string());
-
-            let topic = daemon
-                .handle_rpc(rpc_request(200, "sdk_topic_create_v2", json!({ "topic_path": "ops/persist" })))
-                .expect("topic create");
-            assert!(topic.error.is_none());
-            topic_id = topic.result.expect("topic result")["topic"]["topic_id"]
-                .as_str()
-                .expect("topic id")
-                .to_string();
-
-            let subscribe = daemon
-                .handle_rpc(rpc_request(
-                    201,
-                    "sdk_topic_subscribe_v2",
-                    json!({ "topic_id": topic_id.clone() }),
-                ))
-                .expect("topic subscribe");
-            assert!(subscribe.error.is_none());
-
-            let publish = daemon
-                .handle_rpc(rpc_request(
-                    202,
-                    "sdk_topic_publish_v2",
-                    json!({
-                        "topic_id": topic_id.clone(),
-                        "payload": { "message": "persist me" },
-                    }),
-                ))
-                .expect("topic publish");
-            assert!(publish.error.is_none());
-
-            let attachment = daemon
-                .handle_rpc(rpc_request(
-                    203,
-                    "sdk_attachment_store_v2",
-                    json!({
-                        "name": "persist.bin",
-                        "content_type": "application/octet-stream",
-                        "bytes_base64": "AQID",
-                        "topic_ids": [topic_id.clone()],
-                    }),
-                ))
-                .expect("attachment store");
-            assert!(attachment.error.is_none());
-            attachment_id = attachment.result.expect("attachment result")["attachment"]["attachment_id"]
-                .as_str()
-                .expect("attachment id")
-                .to_string();
-
-            let marker = daemon
-                .handle_rpc(rpc_request(
-                    204,
-                    "sdk_marker_create_v2",
-                    json!({
-                        "label": "Persist Marker",
-                        "position": { "lat": 10.0, "lon": 10.0, "alt_m": null },
-                        "topic_id": topic_id.clone(),
-                    }),
-                ))
-                .expect("marker create");
-            assert!(marker.error.is_none());
-            marker_id = marker.result.expect("marker result")["marker"]["marker_id"]
-                .as_str()
-                .expect("marker id")
-                .to_string();
-
-            let identity_bundle = json!({
-                "identity": "persist-imported",
-                "public_key": "persist-imported-pub",
-                "display_name": "Persist Imported",
-                "capabilities": ["ops"],
-                "extensions": {},
-            });
-            let identity_import = daemon
-                .handle_rpc(rpc_request(
-                    205,
-                    "sdk_identity_import_v2",
-                    json!({
-                        "bundle_base64": BASE64_STANDARD.encode(identity_bundle.to_string().as_bytes()),
-                    }),
-                ))
-                .expect("identity import");
-            assert!(identity_import.error.is_none());
-
-            let identity_activate = daemon
-                .handle_rpc(rpc_request(
-                    206,
-                    "sdk_identity_activate_v2",
-                    json!({ "identity": "persist-imported" }),
-                ))
-                .expect("identity activate");
-            assert!(identity_activate.error.is_none());
-
-            let command = daemon
-                .handle_rpc(rpc_request(
-                    207,
-                    "sdk_command_invoke_v2",
-                    json!({
-                        "command": "ping",
-                        "target": "persist-imported",
-                        "payload": { "hello": "world" },
-                    }),
-                ))
-                .expect("command invoke");
-            assert!(command.error.is_none());
-            correlation_id = command.result.expect("command result")["response"]["payload"]
-                ["correlation_id"]
-                .as_str()
-                .expect("correlation_id")
-                .to_string();
-
-            let voice_open = daemon
-                .handle_rpc(rpc_request(
-                    208,
-                    "sdk_voice_session_open_v2",
-                    json!({ "peer_id": "persist-imported", "codec_hint": "opus" }),
-                ))
-                .expect("voice open");
-            assert!(voice_open.error.is_none());
-            session_id = voice_open.result.expect("voice open result")["session_id"]
-                .as_str()
-                .expect("session_id")
-                .to_string();
-
-            let voice_update = daemon
-                .handle_rpc(rpc_request(
-                    209,
-                    "sdk_voice_session_update_v2",
-                    json!({ "session_id": session_id.clone(), "state": "active" }),
-                ))
-                .expect("voice update");
-            assert!(voice_update.error.is_none());
-        }
-
-        {
-            let store = MessagesStore::open(db_path.as_path()).expect("reopen sqlite store");
-            let daemon = RpcDaemon::with_store(store, "persist-node".to_string());
-
-            let topic_get = daemon
-                .handle_rpc(rpc_request(
-                    210,
-                    "sdk_topic_get_v2",
-                    json!({ "topic_id": topic_id.clone() }),
-                ))
-                .expect("topic get after restart");
-            assert!(topic_get.error.is_none());
-            assert_eq!(topic_get.result.expect("result")["topic"]["topic_id"], json!(topic_id.clone()));
-
-            let telemetry = daemon
-                .handle_rpc(rpc_request(
-                    211,
-                    "sdk_telemetry_query_v2",
-                    json!({ "topic_id": topic_id.clone() }),
-                ))
-                .expect("telemetry after restart");
-            assert!(telemetry.error.is_none());
-            assert!(!telemetry.result.expect("result")["points"]
-                .as_array()
-                .expect("points array")
-                .is_empty());
-
-            let attachment_download = daemon
-                .handle_rpc(rpc_request(
-                    212,
-                    "sdk_attachment_download_v2",
-                    json!({ "attachment_id": attachment_id.clone() }),
-                ))
-                .expect("attachment download after restart");
-            assert!(attachment_download.error.is_none());
-            assert_eq!(
-                attachment_download.result.expect("result")["bytes_base64"],
-                json!("AQID")
-            );
-
-            let marker_list = daemon
-                .handle_rpc(rpc_request(
-                    213,
-                    "sdk_marker_list_v2",
-                    json!({ "topic_id": topic_id.clone() }),
-                ))
-                .expect("marker list after restart");
-            assert!(marker_list.error.is_none());
-            let marker_result = marker_list.result.expect("result");
-            let marker_rows = marker_result["markers"].as_array().expect("marker rows");
-            assert!(marker_rows.iter().any(|row| row["marker_id"] == json!(marker_id.clone())));
-
-            let identity_export = daemon
-                .handle_rpc(rpc_request(
-                    214,
-                    "sdk_identity_export_v2",
-                    json!({ "identity": "persist-imported" }),
-                ))
-                .expect("identity export after restart");
-            assert!(identity_export.error.is_none());
-
-            let command_reply = daemon
-                .handle_rpc(rpc_request(
-                    215,
-                    "sdk_command_reply_v2",
-                    json!({
-                        "correlation_id": correlation_id.clone(),
-                        "accepted": true,
-                        "payload": { "reply": "pong" },
-                    }),
-                ))
-                .expect("command reply after restart");
-            assert!(command_reply.error.is_none());
-
-            let voice_close = daemon
-                .handle_rpc(rpc_request(
-                    216,
-                    "sdk_voice_session_close_v2",
-                    json!({ "session_id": session_id.clone() }),
-                ))
-                .expect("voice close after restart");
-            assert!(voice_close.error.is_none());
-
-            let topic_2 = daemon
-                .handle_rpc(rpc_request(217, "sdk_topic_create_v2", json!({ "topic_path": "ops/persist-2" })))
-                .expect("second topic create");
-            assert!(topic_2.error.is_none());
-            let topic_2_id = topic_2.result.expect("topic2 result")["topic"]["topic_id"]
-                .as_str()
-                .expect("topic2 id")
-                .to_string();
-            assert_ne!(topic_2_id, topic_id);
-        }
-
-        let _ = std::fs::remove_file(&db_path);
-    }
-
-    #[test]
-    fn sdk_domain_state_is_storage_authoritative_across_live_daemons() {
-        use std::time::{SystemTime, UNIX_EPOCH};
-
-        let run_id = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("unix epoch")
-            .as_nanos();
-        let db_path = std::env::temp_dir()
-            .join(format!("lxmf-rs-sdk-authority-{run_id}-{}.sqlite", std::process::id()));
-
-        let store_a = MessagesStore::open(db_path.as_path()).expect("open sqlite store A");
-        let daemon_a = RpcDaemon::with_store(store_a, "authority-node".to_string());
-        let store_b = MessagesStore::open(db_path.as_path()).expect("open sqlite store B");
-        let daemon_b = RpcDaemon::with_store(store_b, "authority-node".to_string());
-
-        let topic = daemon_a
-            .handle_rpc(rpc_request(
-                300,
-                "sdk_topic_create_v2",
-                json!({ "topic_path": "ops/shared" }),
-            ))
-            .expect("topic create");
-        assert!(topic.error.is_none());
-        let topic_id = topic.result.expect("topic result")["topic"]["topic_id"]
-            .as_str()
-            .expect("topic id")
-            .to_string();
-
-        let topic_get_from_b = daemon_b
-            .handle_rpc(rpc_request(
-                301,
-                "sdk_topic_get_v2",
-                json!({ "topic_id": topic_id.clone() }),
-            ))
-            .expect("topic get from daemon B");
-        assert!(topic_get_from_b.error.is_none());
-        assert_eq!(
-            topic_get_from_b.result.expect("result")["topic"]["topic_id"],
-            json!(topic_id.clone())
-        );
-
-        let marker = daemon_b
-            .handle_rpc(rpc_request(
-                302,
-                "sdk_marker_create_v2",
-                json!({
-                    "label": "Shared Marker",
-                    "position": { "lat": 12.0, "lon": 12.0, "alt_m": null },
-                    "topic_id": topic_id.clone(),
-                }),
-            ))
-            .expect("marker create on daemon B");
-        assert!(marker.error.is_none());
-        let marker_id = marker.result.expect("marker result")["marker"]["marker_id"]
-            .as_str()
-            .expect("marker id")
-            .to_string();
-
-        let marker_list_from_a = daemon_a
-            .handle_rpc(rpc_request(
-                303,
-                "sdk_marker_list_v2",
-                json!({ "topic_id": topic_id.clone() }),
-            ))
-            .expect("marker list from daemon A");
-        assert!(marker_list_from_a.error.is_none());
-        let marker_result = marker_list_from_a.result.expect("result");
-        let marker_rows = marker_result["markers"].as_array().expect("marker rows");
-        assert!(marker_rows.iter().any(|row| row["marker_id"] == json!(marker_id)));
-
-        let command = daemon_a
-            .handle_rpc(rpc_request(
-                304,
-                "sdk_command_invoke_v2",
-                json!({
-                    "command": "sync",
-                    "target": "peer-a",
-                    "payload": { "mode": "live" },
-                }),
-            ))
-            .expect("command invoke on daemon A");
-        assert!(command.error.is_none());
-        let correlation_id = command.result.expect("command result")["response"]["payload"]
+        correlation_id = command.result.expect("command result")["response"]["payload"]
             ["correlation_id"]
             .as_str()
             .expect("correlation_id")
             .to_string();
 
-        let command_reply_from_b = daemon_b
+        let voice_open = daemon
             .handle_rpc(rpc_request(
-                305,
+                208,
+                "sdk_voice_session_open_v2",
+                json!({ "peer_id": "persist-imported", "codec_hint": "opus" }),
+            ))
+            .expect("voice open");
+        assert!(voice_open.error.is_none());
+        session_id = voice_open.result.expect("voice open result")["session_id"]
+            .as_str()
+            .expect("session_id")
+            .to_string();
+
+        let voice_update = daemon
+            .handle_rpc(rpc_request(
+                209,
+                "sdk_voice_session_update_v2",
+                json!({ "session_id": session_id.clone(), "state": "active" }),
+            ))
+            .expect("voice update");
+        assert!(voice_update.error.is_none());
+    }
+
+    {
+        let store = MessagesStore::open(db_path.as_path()).expect("reopen sqlite store");
+        let daemon = RpcDaemon::with_store(store, "persist-node".to_string());
+
+        let topic_get = daemon
+            .handle_rpc(rpc_request(
+                210,
+                "sdk_topic_get_v2",
+                json!({ "topic_id": topic_id.clone() }),
+            ))
+            .expect("topic get after restart");
+        assert!(topic_get.error.is_none());
+        assert_eq!(topic_get.result.expect("result")["topic"]["topic_id"], json!(topic_id.clone()));
+
+        let telemetry = daemon
+            .handle_rpc(rpc_request(
+                211,
+                "sdk_telemetry_query_v2",
+                json!({ "topic_id": topic_id.clone() }),
+            ))
+            .expect("telemetry after restart");
+        assert!(telemetry.error.is_none());
+        assert!(!telemetry.result.expect("result")["points"]
+            .as_array()
+            .expect("points array")
+            .is_empty());
+
+        let attachment_download = daemon
+            .handle_rpc(rpc_request(
+                212,
+                "sdk_attachment_download_v2",
+                json!({ "attachment_id": attachment_id.clone() }),
+            ))
+            .expect("attachment download after restart");
+        assert!(attachment_download.error.is_none());
+        assert_eq!(attachment_download.result.expect("result")["bytes_base64"], json!("AQID"));
+
+        let marker_list = daemon
+            .handle_rpc(rpc_request(
+                213,
+                "sdk_marker_list_v2",
+                json!({ "topic_id": topic_id.clone() }),
+            ))
+            .expect("marker list after restart");
+        assert!(marker_list.error.is_none());
+        let marker_result = marker_list.result.expect("result");
+        let marker_rows = marker_result["markers"].as_array().expect("marker rows");
+        assert!(marker_rows.iter().any(|row| row["marker_id"] == json!(marker_id.clone())));
+
+        let identity_export = daemon
+            .handle_rpc(rpc_request(
+                214,
+                "sdk_identity_export_v2",
+                json!({ "identity": "persist-imported" }),
+            ))
+            .expect("identity export after restart");
+        assert!(identity_export.error.is_none());
+
+        let command_reply = daemon
+            .handle_rpc(rpc_request(
+                215,
                 "sdk_command_reply_v2",
                 json!({
-                    "correlation_id": correlation_id,
+                    "correlation_id": correlation_id.clone(),
                     "accepted": true,
-                    "payload": { "reply": "ok" },
+                    "payload": { "reply": "pong" },
                 }),
             ))
-            .expect("command reply on daemon B");
-        assert!(command_reply_from_b.error.is_none());
+            .expect("command reply after restart");
+        assert!(command_reply.error.is_none());
 
-        let _ = std::fs::remove_file(&db_path);
-    }
-
-    #[test]
-    fn sdk_release_b_marker_revision_conflicts_are_rejected_across_live_daemons() {
-        use std::time::{SystemTime, UNIX_EPOCH};
-
-        let run_id = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("unix epoch")
-            .as_nanos();
-        let db_path = std::env::temp_dir().join(format!(
-            "lxmf-rs-sdk-marker-conflict-{run_id}-{}.sqlite",
-            std::process::id()
-        ));
-
-        let store_a = MessagesStore::open(db_path.as_path()).expect("open sqlite store A");
-        let daemon_a = RpcDaemon::with_store(store_a, "marker-conflict-node".to_string());
-        let store_b = MessagesStore::open(db_path.as_path()).expect("open sqlite store B");
-        let daemon_b = RpcDaemon::with_store(store_b, "marker-conflict-node".to_string());
-
-        let marker = daemon_a
+        let voice_close = daemon
             .handle_rpc(rpc_request(
-                350,
-                "sdk_marker_create_v2",
-                json!({
-                    "label": "CAS marker",
-                    "position": { "lat": 45.0, "lon": -122.0, "alt_m": null }
-                }),
+                216,
+                "sdk_voice_session_close_v2",
+                json!({ "session_id": session_id.clone() }),
             ))
-            .expect("marker create");
-        assert!(marker.error.is_none());
-        let marker_result = marker.result.expect("marker result");
-        let marker_id = marker_result["marker"]["marker_id"]
+            .expect("voice close after restart");
+        assert!(voice_close.error.is_none());
+
+        let topic_2 = daemon
+            .handle_rpc(rpc_request(
+                217,
+                "sdk_topic_create_v2",
+                json!({ "topic_path": "ops/persist-2" }),
+            ))
+            .expect("second topic create");
+        assert!(topic_2.error.is_none());
+        let topic_2_id = topic_2.result.expect("topic2 result")["topic"]["topic_id"]
             .as_str()
-            .expect("marker_id")
+            .expect("topic2 id")
             .to_string();
-        let revision_1 = marker_result["marker"]["revision"]
-            .as_u64()
-            .expect("revision_1");
-        assert_eq!(revision_1, 1);
-
-        let update_success = daemon_b
-            .handle_rpc(rpc_request(
-                351,
-                "sdk_marker_update_position_v2",
-                json!({
-                    "marker_id": marker_id.clone(),
-                    "expected_revision": revision_1,
-                    "position": { "lat": 46.0, "lon": -123.0, "alt_m": null }
-                }),
-            ))
-            .expect("marker update success");
-        assert!(update_success.error.is_none());
-        let revision_2 = update_success.result.expect("update result")["marker"]["revision"]
-            .as_u64()
-            .expect("revision_2");
-        assert_eq!(revision_2, 2);
-
-        let stale_update = daemon_a
-            .handle_rpc(rpc_request(
-                352,
-                "sdk_marker_update_position_v2",
-                json!({
-                    "marker_id": marker_id.clone(),
-                    "expected_revision": revision_1,
-                    "position": { "lat": 47.0, "lon": -124.0, "alt_m": null }
-                }),
-            ))
-            .expect("stale marker update");
-        let stale_update_error = stale_update.error.expect("stale update error");
-        assert_eq!(stale_update_error.code, "SDK_RUNTIME_CONFLICT");
-        let stale_update_details = stale_update_error.details.expect("stale update details");
-        assert_eq!(stale_update_details["expected_revision"], json!(revision_1));
-        assert_eq!(stale_update_details["observed_revision"], json!(revision_2));
-
-        let stale_delete = daemon_a
-            .handle_rpc(rpc_request(
-                353,
-                "sdk_marker_delete_v2",
-                json!({
-                    "marker_id": marker_id.clone(),
-                    "expected_revision": revision_1
-                }),
-            ))
-            .expect("stale marker delete");
-        let stale_delete_error = stale_delete.error.expect("stale delete error");
-        assert_eq!(stale_delete_error.code, "SDK_RUNTIME_CONFLICT");
-        let stale_delete_details = stale_delete_error.details.expect("stale delete details");
-        assert_eq!(stale_delete_details["expected_revision"], json!(revision_1));
-        assert_eq!(stale_delete_details["observed_revision"], json!(revision_2));
-
-        let delete_success = daemon_a
-            .handle_rpc(rpc_request(
-                354,
-                "sdk_marker_delete_v2",
-                json!({
-                    "marker_id": marker_id.clone(),
-                    "expected_revision": revision_2
-                }),
-            ))
-            .expect("marker delete success");
-        assert!(delete_success.error.is_none());
-        assert_eq!(delete_success.result.expect("delete result")["accepted"], json!(true));
-
-        let delete_missing = daemon_b
-            .handle_rpc(rpc_request(
-                355,
-                "sdk_marker_delete_v2",
-                json!({
-                    "marker_id": marker_id,
-                    "expected_revision": revision_2
-                }),
-            ))
-            .expect("delete missing marker");
-        assert!(delete_missing.error.is_none());
-        assert_eq!(delete_missing.result.expect("delete missing result")["accepted"], json!(false));
-
-        let _ = std::fs::remove_file(&db_path);
+        assert_ne!(topic_2_id, topic_id);
     }
 
-    #[test]
-    fn sdk_config_and_terminal_state_survive_restart_without_orphan_transitions() {
-        use std::time::{SystemTime, UNIX_EPOCH};
+    let _ = std::fs::remove_file(&db_path);
+}
 
-        let run_id = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("unix epoch")
-            .as_nanos();
-        let db_path = std::env::temp_dir()
-            .join(format!("lxmf-rs-sdk-recovery-{run_id}-{}.sqlite", std::process::id()));
+#[test]
+fn sdk_domain_state_is_storage_authoritative_across_live_daemons() {
+    use std::time::{SystemTime, UNIX_EPOCH};
 
-        let topic_id: String;
-        let message_id = "recovery-pending-1";
+    let run_id = SystemTime::now().duration_since(UNIX_EPOCH).expect("unix epoch").as_nanos();
+    let db_path = std::env::temp_dir()
+        .join(format!("lxmf-rs-sdk-authority-{run_id}-{}.sqlite", std::process::id()));
 
-        {
-            let store = MessagesStore::open(db_path.as_path()).expect("open sqlite store");
-            let daemon = RpcDaemon::with_store(store, "recovery-node".to_string());
+    let store_a = MessagesStore::open(db_path.as_path()).expect("open sqlite store A");
+    let daemon_a = RpcDaemon::with_store(store_a, "authority-node".to_string());
+    let store_b = MessagesStore::open(db_path.as_path()).expect("open sqlite store B");
+    let daemon_b = RpcDaemon::with_store(store_b, "authority-node".to_string());
 
-            let configure = daemon
-                .handle_rpc(rpc_request(
-                    400,
-                    "sdk_configure_v2",
-                    json!({
-                        "expected_revision": 0,
-                        "patch": {
-                            "event_stream": { "max_poll_events": 64 },
-                            "overflow_policy": "reject"
-                        }
-                    }),
-                ))
-                .expect("configure");
-            assert!(configure.error.is_none());
-            assert_eq!(configure.result.expect("result")["revision"], json!(1));
+    let topic = daemon_a
+        .handle_rpc(rpc_request(300, "sdk_topic_create_v2", json!({ "topic_path": "ops/shared" })))
+        .expect("topic create");
+    assert!(topic.error.is_none());
+    let topic_id = topic.result.expect("topic result")["topic"]["topic_id"]
+        .as_str()
+        .expect("topic id")
+        .to_string();
 
-            let topic = daemon
-                .handle_rpc(rpc_request(
-                    401,
-                    "sdk_topic_create_v2",
-                    json!({ "topic_path": "ops/recovery" }),
-                ))
-                .expect("topic create");
-            assert!(topic.error.is_none());
-            topic_id = topic.result.expect("topic result")["topic"]["topic_id"]
-                .as_str()
-                .expect("topic id")
-                .to_string();
+    let topic_get_from_b = daemon_b
+        .handle_rpc(rpc_request(301, "sdk_topic_get_v2", json!({ "topic_id": topic_id.clone() })))
+        .expect("topic get from daemon B");
+    assert!(topic_get_from_b.error.is_none());
+    assert_eq!(
+        topic_get_from_b.result.expect("result")["topic"]["topic_id"],
+        json!(topic_id.clone())
+    );
 
-            let receive = daemon
-                .handle_rpc(rpc_request(
-                    402,
-                    "receive_message",
-                    json!({
-                        "id": message_id,
-                        "source": "source.recovery",
-                        "destination": "destination.recovery",
-                        "title": "",
-                        "content": "pending message",
-                        "fields": null
-                    }),
-                ))
-                .expect("receive_message");
-            assert!(receive.error.is_none());
+    let marker = daemon_b
+        .handle_rpc(rpc_request(
+            302,
+            "sdk_marker_create_v2",
+            json!({
+                "label": "Shared Marker",
+                "position": { "lat": 12.0, "lon": 12.0, "alt_m": null },
+                "topic_id": topic_id.clone(),
+            }),
+        ))
+        .expect("marker create on daemon B");
+    assert!(marker.error.is_none());
+    let marker_id = marker.result.expect("marker result")["marker"]["marker_id"]
+        .as_str()
+        .expect("marker id")
+        .to_string();
 
-            let cancel = daemon
-                .handle_rpc(rpc_request(
-                    403,
-                    "sdk_cancel_message_v2",
-                    json!({ "message_id": message_id }),
-                ))
-                .expect("cancel");
-            assert!(cancel.error.is_none());
-            assert_eq!(cancel.result.expect("result")["result"], json!("Accepted"));
-        }
+    let marker_list_from_a = daemon_a
+        .handle_rpc(rpc_request(303, "sdk_marker_list_v2", json!({ "topic_id": topic_id.clone() })))
+        .expect("marker list from daemon A");
+    assert!(marker_list_from_a.error.is_none());
+    let marker_result = marker_list_from_a.result.expect("result");
+    let marker_rows = marker_result["markers"].as_array().expect("marker rows");
+    assert!(marker_rows.iter().any(|row| row["marker_id"] == json!(marker_id)));
 
-        {
-            let store = MessagesStore::open(db_path.as_path()).expect("reopen sqlite store");
-            let daemon = RpcDaemon::with_store(store, "recovery-node".to_string());
+    let command = daemon_a
+        .handle_rpc(rpc_request(
+            304,
+            "sdk_command_invoke_v2",
+            json!({
+                "command": "sync",
+                "target": "peer-a",
+                "payload": { "mode": "live" },
+            }),
+        ))
+        .expect("command invoke on daemon A");
+    assert!(command.error.is_none());
+    let correlation_id = command.result.expect("command result")["response"]["payload"]
+        ["correlation_id"]
+        .as_str()
+        .expect("correlation_id")
+        .to_string();
 
-            let snapshot = daemon
-                .handle_rpc(rpc_request(
-                    404,
-                    "sdk_snapshot_v2",
-                    json!({ "include_counts": true }),
-                ))
-                .expect("snapshot");
-            assert!(snapshot.error.is_none());
-            assert_eq!(snapshot.result.expect("result")["config_revision"], json!(1));
+    let command_reply_from_b = daemon_b
+        .handle_rpc(rpc_request(
+            305,
+            "sdk_command_reply_v2",
+            json!({
+                "correlation_id": correlation_id,
+                "accepted": true,
+                "payload": { "reply": "ok" },
+            }),
+        ))
+        .expect("command reply on daemon B");
+    assert!(command_reply_from_b.error.is_none());
 
-            let poll_over_limit = daemon
-                .handle_rpc(rpc_request(
-                    405,
-                    "sdk_poll_events_v2",
-                    json!({
-                        "cursor": null,
-                        "max": 65
-                    }),
-                ))
-                .expect("poll over limit");
-            assert_eq!(
-                poll_over_limit.error.expect("error").code,
-                "SDK_VALIDATION_MAX_POLL_EVENTS_EXCEEDED"
-            );
+    let _ = std::fs::remove_file(&db_path);
+}
 
-            let topic_get = daemon
-                .handle_rpc(rpc_request(
-                    406,
-                    "sdk_topic_get_v2",
-                    json!({ "topic_id": topic_id }),
-                ))
-                .expect("topic get");
-            assert!(topic_get.error.is_none());
+#[test]
+fn sdk_release_b_marker_revision_conflicts_are_rejected_across_live_daemons() {
+    use std::time::{SystemTime, UNIX_EPOCH};
 
-            let status = daemon
-                .handle_rpc(rpc_request(
-                    407,
-                    "sdk_status_v2",
-                    json!({ "message_id": message_id }),
-                ))
-                .expect("status");
-            assert!(status.error.is_none());
-            assert_eq!(
-                status.result.expect("result")["message"]["receipt_status"],
-                json!("cancelled")
-            );
+    let run_id = SystemTime::now().duration_since(UNIX_EPOCH).expect("unix epoch").as_nanos();
+    let db_path = std::env::temp_dir()
+        .join(format!("lxmf-rs-sdk-marker-conflict-{run_id}-{}.sqlite", std::process::id()));
 
-            let second_cancel = daemon
-                .handle_rpc(rpc_request(
-                    408,
-                    "sdk_cancel_message_v2",
-                    json!({ "message_id": message_id }),
-                ))
-                .expect("second cancel");
-            assert_eq!(second_cancel.result.expect("result")["result"], json!("AlreadyTerminal"));
-        }
+    let store_a = MessagesStore::open(db_path.as_path()).expect("open sqlite store A");
+    let daemon_a = RpcDaemon::with_store(store_a, "marker-conflict-node".to_string());
+    let store_b = MessagesStore::open(db_path.as_path()).expect("open sqlite store B");
+    let daemon_b = RpcDaemon::with_store(store_b, "marker-conflict-node".to_string());
 
-        let _ = std::fs::remove_file(&db_path);
+    let marker = daemon_a
+        .handle_rpc(rpc_request(
+            350,
+            "sdk_marker_create_v2",
+            json!({
+                "label": "CAS marker",
+                "position": { "lat": 45.0, "lon": -122.0, "alt_m": null }
+            }),
+        ))
+        .expect("marker create");
+    assert!(marker.error.is_none());
+    let marker_result = marker.result.expect("marker result");
+    let marker_id = marker_result["marker"]["marker_id"].as_str().expect("marker_id").to_string();
+    let revision_1 = marker_result["marker"]["revision"].as_u64().expect("revision_1");
+    assert_eq!(revision_1, 1);
+
+    let update_success = daemon_b
+        .handle_rpc(rpc_request(
+            351,
+            "sdk_marker_update_position_v2",
+            json!({
+                "marker_id": marker_id.clone(),
+                "expected_revision": revision_1,
+                "position": { "lat": 46.0, "lon": -123.0, "alt_m": null }
+            }),
+        ))
+        .expect("marker update success");
+    assert!(update_success.error.is_none());
+    let revision_2 = update_success.result.expect("update result")["marker"]["revision"]
+        .as_u64()
+        .expect("revision_2");
+    assert_eq!(revision_2, 2);
+
+    let stale_update = daemon_a
+        .handle_rpc(rpc_request(
+            352,
+            "sdk_marker_update_position_v2",
+            json!({
+                "marker_id": marker_id.clone(),
+                "expected_revision": revision_1,
+                "position": { "lat": 47.0, "lon": -124.0, "alt_m": null }
+            }),
+        ))
+        .expect("stale marker update");
+    let stale_update_error = stale_update.error.expect("stale update error");
+    assert_eq!(stale_update_error.code, "SDK_RUNTIME_CONFLICT");
+    let stale_update_details = stale_update_error.details.expect("stale update details");
+    assert_eq!(stale_update_details["expected_revision"], json!(revision_1));
+    assert_eq!(stale_update_details["observed_revision"], json!(revision_2));
+
+    let stale_delete = daemon_a
+        .handle_rpc(rpc_request(
+            353,
+            "sdk_marker_delete_v2",
+            json!({
+                "marker_id": marker_id.clone(),
+                "expected_revision": revision_1
+            }),
+        ))
+        .expect("stale marker delete");
+    let stale_delete_error = stale_delete.error.expect("stale delete error");
+    assert_eq!(stale_delete_error.code, "SDK_RUNTIME_CONFLICT");
+    let stale_delete_details = stale_delete_error.details.expect("stale delete details");
+    assert_eq!(stale_delete_details["expected_revision"], json!(revision_1));
+    assert_eq!(stale_delete_details["observed_revision"], json!(revision_2));
+
+    let delete_success = daemon_a
+        .handle_rpc(rpc_request(
+            354,
+            "sdk_marker_delete_v2",
+            json!({
+                "marker_id": marker_id.clone(),
+                "expected_revision": revision_2
+            }),
+        ))
+        .expect("marker delete success");
+    assert!(delete_success.error.is_none());
+    assert_eq!(delete_success.result.expect("delete result")["accepted"], json!(true));
+
+    let delete_missing = daemon_b
+        .handle_rpc(rpc_request(
+            355,
+            "sdk_marker_delete_v2",
+            json!({
+                "marker_id": marker_id,
+                "expected_revision": revision_2
+            }),
+        ))
+        .expect("delete missing marker");
+    assert!(delete_missing.error.is_none());
+    assert_eq!(delete_missing.result.expect("delete missing result")["accepted"], json!(false));
+
+    let _ = std::fs::remove_file(&db_path);
+}
+
+#[test]
+fn sdk_config_and_terminal_state_survive_restart_without_orphan_transitions() {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let run_id = SystemTime::now().duration_since(UNIX_EPOCH).expect("unix epoch").as_nanos();
+    let db_path = std::env::temp_dir()
+        .join(format!("lxmf-rs-sdk-recovery-{run_id}-{}.sqlite", std::process::id()));
+
+    let topic_id: String;
+    let message_id = "recovery-pending-1";
+
+    {
+        let store = MessagesStore::open(db_path.as_path()).expect("open sqlite store");
+        let daemon = RpcDaemon::with_store(store, "recovery-node".to_string());
+
+        let configure = daemon
+            .handle_rpc(rpc_request(
+                400,
+                "sdk_configure_v2",
+                json!({
+                    "expected_revision": 0,
+                    "patch": {
+                        "event_stream": { "max_poll_events": 64 },
+                        "overflow_policy": "reject"
+                    }
+                }),
+            ))
+            .expect("configure");
+        assert!(configure.error.is_none());
+        assert_eq!(configure.result.expect("result")["revision"], json!(1));
+
+        let topic = daemon
+            .handle_rpc(rpc_request(
+                401,
+                "sdk_topic_create_v2",
+                json!({ "topic_path": "ops/recovery" }),
+            ))
+            .expect("topic create");
+        assert!(topic.error.is_none());
+        topic_id = topic.result.expect("topic result")["topic"]["topic_id"]
+            .as_str()
+            .expect("topic id")
+            .to_string();
+
+        let receive = daemon
+            .handle_rpc(rpc_request(
+                402,
+                "receive_message",
+                json!({
+                    "id": message_id,
+                    "source": "source.recovery",
+                    "destination": "destination.recovery",
+                    "title": "",
+                    "content": "pending message",
+                    "fields": null
+                }),
+            ))
+            .expect("receive_message");
+        assert!(receive.error.is_none());
+
+        let cancel = daemon
+            .handle_rpc(rpc_request(
+                403,
+                "sdk_cancel_message_v2",
+                json!({ "message_id": message_id }),
+            ))
+            .expect("cancel");
+        assert!(cancel.error.is_none());
+        assert_eq!(cancel.result.expect("result")["result"], json!("Accepted"));
     }
 
-    #[test]
-    fn sdk_backup_restore_drill_recovers_snapshot_and_messages() {
-        use std::time::{SystemTime, UNIX_EPOCH};
+    {
+        let store = MessagesStore::open(db_path.as_path()).expect("reopen sqlite store");
+        let daemon = RpcDaemon::with_store(store, "recovery-node".to_string());
 
-        let run_id = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("unix epoch")
-            .as_nanos();
-        let db_path = std::env::temp_dir()
-            .join(format!("lxmf-rs-sdk-drill-{run_id}-{}.sqlite", std::process::id()));
-        let backup_path = std::env::temp_dir()
-            .join(format!("lxmf-rs-sdk-drill-{run_id}-{}.sqlite.backup", std::process::id()));
+        let snapshot = daemon
+            .handle_rpc(rpc_request(404, "sdk_snapshot_v2", json!({ "include_counts": true })))
+            .expect("snapshot");
+        assert!(snapshot.error.is_none());
+        assert_eq!(snapshot.result.expect("result")["config_revision"], json!(1));
 
-        let baseline_topic_id: String;
-        let baseline_message_id = "drill-baseline-msg-1";
-        let drift_topic_id: String;
-        let drift_message_id = "drill-drift-msg-1";
+        let poll_over_limit = daemon
+            .handle_rpc(rpc_request(
+                405,
+                "sdk_poll_events_v2",
+                json!({
+                    "cursor": null,
+                    "max": 65
+                }),
+            ))
+            .expect("poll over limit");
+        assert_eq!(
+            poll_over_limit.error.expect("error").code,
+            "SDK_VALIDATION_MAX_POLL_EVENTS_EXCEEDED"
+        );
 
-        {
-            let store = MessagesStore::open(db_path.as_path()).expect("open sqlite store");
-            let daemon = RpcDaemon::with_store(store, "drill-node".to_string());
-            let topic = daemon
-                .handle_rpc(rpc_request(
-                    500,
-                    "sdk_topic_create_v2",
-                    json!({ "topic_path": "ops/drill-baseline" }),
-                ))
-                .expect("create baseline topic");
-            assert!(topic.error.is_none());
-            baseline_topic_id = topic.result.expect("topic result")["topic"]["topic_id"]
-                .as_str()
-                .expect("topic id")
-                .to_string();
+        let topic_get = daemon
+            .handle_rpc(rpc_request(406, "sdk_topic_get_v2", json!({ "topic_id": topic_id })))
+            .expect("topic get");
+        assert!(topic_get.error.is_none());
 
-            let inbound = daemon
-                .handle_rpc(rpc_request(
-                    501,
-                    "receive_message",
-                    json!({
-                        "id": baseline_message_id,
-                        "source": "source.baseline",
-                        "destination": "destination.baseline",
-                        "title": "",
-                        "content": "baseline payload",
-                        "fields": null
-                    }),
-                ))
-                .expect("baseline receive");
-            assert!(inbound.error.is_none());
-        }
+        let status = daemon
+            .handle_rpc(rpc_request(407, "sdk_status_v2", json!({ "message_id": message_id })))
+            .expect("status");
+        assert!(status.error.is_none());
+        assert_eq!(status.result.expect("result")["message"]["receipt_status"], json!("cancelled"));
 
-        std::fs::copy(db_path.as_path(), backup_path.as_path()).expect("copy backup");
-
-        {
-            let store = MessagesStore::open(db_path.as_path()).expect("reopen sqlite store");
-            let daemon = RpcDaemon::with_store(store, "drill-node".to_string());
-            let drift_topic = daemon
-                .handle_rpc(rpc_request(
-                    502,
-                    "sdk_topic_create_v2",
-                    json!({ "topic_path": "ops/drill-drift" }),
-                ))
-                .expect("create drift topic");
-            assert!(drift_topic.error.is_none());
-            drift_topic_id = drift_topic.result.expect("topic result")["topic"]["topic_id"]
-                .as_str()
-                .expect("drift topic id")
-                .to_string();
-
-            let drift_inbound = daemon
-                .handle_rpc(rpc_request(
-                    503,
-                    "receive_message",
-                    json!({
-                        "id": drift_message_id,
-                        "source": "source.drift",
-                        "destination": "destination.drift",
-                        "title": "",
-                        "content": "drift payload",
-                        "fields": null
-                    }),
-                ))
-                .expect("drift receive");
-            assert!(drift_inbound.error.is_none());
-        }
-
-        std::fs::copy(backup_path.as_path(), db_path.as_path()).expect("restore backup");
-
-        {
-            let store = MessagesStore::open(db_path.as_path()).expect("open restored sqlite store");
-            let daemon = RpcDaemon::with_store(store, "drill-node".to_string());
-
-            let baseline_topic = daemon
-                .handle_rpc(rpc_request(
-                    504,
-                    "sdk_topic_get_v2",
-                    json!({ "topic_id": baseline_topic_id.clone() }),
-                ))
-                .expect("baseline topic after restore");
-            assert!(baseline_topic.error.is_none());
-
-            let topic_list = daemon
-                .handle_rpc(rpc_request(505, "sdk_topic_list_v2", json!({ "limit": 64 })))
-                .expect("topic list after restore");
-            let topic_list_result = topic_list.result.expect("topic list result");
-            let topic_rows = topic_list_result["topics"].as_array().expect("topic rows");
-            assert!(topic_rows.iter().any(|row| row["topic_id"] == json!(baseline_topic_id)));
-            assert!(
-                !topic_rows.iter().any(|row| row["topic_id"] == json!(drift_topic_id)),
-                "restored snapshot should not include post-backup drift topic"
-            );
-
-            let baseline_status = daemon
-                .handle_rpc(rpc_request(
-                    506,
-                    "sdk_status_v2",
-                    json!({ "message_id": baseline_message_id }),
-                ))
-                .expect("baseline status after restore");
-            assert!(
-                baseline_status.result.expect("status result")["message"].is_object(),
-                "baseline message should survive restore"
-            );
-
-            let drift_status = daemon
-                .handle_rpc(rpc_request(
-                    507,
-                    "sdk_status_v2",
-                    json!({ "message_id": drift_message_id }),
-                ))
-                .expect("drift status after restore");
-            assert!(
-                drift_status.result.expect("status result")["message"].is_null(),
-                "restored snapshot should not include post-backup drift message"
-            );
-        }
-
-        let _ = std::fs::remove_file(&db_path);
-        let _ = std::fs::remove_file(&backup_path);
+        let second_cancel = daemon
+            .handle_rpc(rpc_request(
+                408,
+                "sdk_cancel_message_v2",
+                json!({ "message_id": message_id }),
+            ))
+            .expect("second cancel");
+        assert_eq!(second_cancel.result.expect("result")["result"], json!("AlreadyTerminal"));
     }
+
+    let _ = std::fs::remove_file(&db_path);
+}
+
+#[test]
+fn sdk_backup_restore_drill_recovers_snapshot_and_messages() {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let run_id = SystemTime::now().duration_since(UNIX_EPOCH).expect("unix epoch").as_nanos();
+    let db_path = std::env::temp_dir()
+        .join(format!("lxmf-rs-sdk-drill-{run_id}-{}.sqlite", std::process::id()));
+    let backup_path = std::env::temp_dir()
+        .join(format!("lxmf-rs-sdk-drill-{run_id}-{}.sqlite.backup", std::process::id()));
+
+    let baseline_topic_id: String;
+    let baseline_message_id = "drill-baseline-msg-1";
+    let drift_topic_id: String;
+    let drift_message_id = "drill-drift-msg-1";
+
+    {
+        let store = MessagesStore::open(db_path.as_path()).expect("open sqlite store");
+        let daemon = RpcDaemon::with_store(store, "drill-node".to_string());
+        let topic = daemon
+            .handle_rpc(rpc_request(
+                500,
+                "sdk_topic_create_v2",
+                json!({ "topic_path": "ops/drill-baseline" }),
+            ))
+            .expect("create baseline topic");
+        assert!(topic.error.is_none());
+        baseline_topic_id = topic.result.expect("topic result")["topic"]["topic_id"]
+            .as_str()
+            .expect("topic id")
+            .to_string();
+
+        let inbound = daemon
+            .handle_rpc(rpc_request(
+                501,
+                "receive_message",
+                json!({
+                    "id": baseline_message_id,
+                    "source": "source.baseline",
+                    "destination": "destination.baseline",
+                    "title": "",
+                    "content": "baseline payload",
+                    "fields": null
+                }),
+            ))
+            .expect("baseline receive");
+        assert!(inbound.error.is_none());
+    }
+
+    std::fs::copy(db_path.as_path(), backup_path.as_path()).expect("copy backup");
+
+    {
+        let store = MessagesStore::open(db_path.as_path()).expect("reopen sqlite store");
+        let daemon = RpcDaemon::with_store(store, "drill-node".to_string());
+        let drift_topic = daemon
+            .handle_rpc(rpc_request(
+                502,
+                "sdk_topic_create_v2",
+                json!({ "topic_path": "ops/drill-drift" }),
+            ))
+            .expect("create drift topic");
+        assert!(drift_topic.error.is_none());
+        drift_topic_id = drift_topic.result.expect("topic result")["topic"]["topic_id"]
+            .as_str()
+            .expect("drift topic id")
+            .to_string();
+
+        let drift_inbound = daemon
+            .handle_rpc(rpc_request(
+                503,
+                "receive_message",
+                json!({
+                    "id": drift_message_id,
+                    "source": "source.drift",
+                    "destination": "destination.drift",
+                    "title": "",
+                    "content": "drift payload",
+                    "fields": null
+                }),
+            ))
+            .expect("drift receive");
+        assert!(drift_inbound.error.is_none());
+    }
+
+    std::fs::copy(backup_path.as_path(), db_path.as_path()).expect("restore backup");
+
+    {
+        let store = MessagesStore::open(db_path.as_path()).expect("open restored sqlite store");
+        let daemon = RpcDaemon::with_store(store, "drill-node".to_string());
+
+        let baseline_topic = daemon
+            .handle_rpc(rpc_request(
+                504,
+                "sdk_topic_get_v2",
+                json!({ "topic_id": baseline_topic_id.clone() }),
+            ))
+            .expect("baseline topic after restore");
+        assert!(baseline_topic.error.is_none());
+
+        let topic_list = daemon
+            .handle_rpc(rpc_request(505, "sdk_topic_list_v2", json!({ "limit": 64 })))
+            .expect("topic list after restore");
+        let topic_list_result = topic_list.result.expect("topic list result");
+        let topic_rows = topic_list_result["topics"].as_array().expect("topic rows");
+        assert!(topic_rows.iter().any(|row| row["topic_id"] == json!(baseline_topic_id)));
+        assert!(
+            !topic_rows.iter().any(|row| row["topic_id"] == json!(drift_topic_id)),
+            "restored snapshot should not include post-backup drift topic"
+        );
+
+        let baseline_status = daemon
+            .handle_rpc(rpc_request(
+                506,
+                "sdk_status_v2",
+                json!({ "message_id": baseline_message_id }),
+            ))
+            .expect("baseline status after restore");
+        assert!(
+            baseline_status.result.expect("status result")["message"].is_object(),
+            "baseline message should survive restore"
+        );
+
+        let drift_status = daemon
+            .handle_rpc(rpc_request(
+                507,
+                "sdk_status_v2",
+                json!({ "message_id": drift_message_id }),
+            ))
+            .expect("drift status after restore");
+        assert!(
+            drift_status.result.expect("status result")["message"].is_null(),
+            "restored snapshot should not include post-backup drift message"
+        );
+    }
+
+    let _ = std::fs::remove_file(&db_path);
+    let _ = std::fs::remove_file(&backup_path);
+}

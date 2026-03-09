@@ -296,6 +296,102 @@ class VoiceSessionClient {
   }
 }
 
+class AttachmentClient {
+  AttachmentClient(this._operations);
+
+  final OperationClient _operations;
+
+  Future<AttachmentRecord> store({
+    required String name,
+    required String contentType,
+    required String bytesBase64,
+    int? expiresTsMs,
+    List<String> topicIds = const <String>[],
+    Map<String, Object?> extensions = const <String, Object?>{},
+  }) async {
+    final result = await _operations.command<AttachmentRecord>(
+      OperationCall<AttachmentRecord>(
+        operationId: 'app.attachment.store',
+        payload: <String, Object?>{
+          'name': name,
+          'content_type': contentType,
+          'bytes_base64': bytesBase64,
+          if (expiresTsMs != null) 'expires_ts_ms': expiresTsMs,
+          'topic_ids': topicIds,
+          'extensions': extensions,
+        },
+        decode: _decodeAttachmentRecord,
+      ),
+    );
+    return result.payload;
+  }
+
+  Future<AttachmentRecord?> get(String attachmentId) async {
+    final result = await _operations.query<AttachmentRecord?>(
+      OperationCall<AttachmentRecord?>(
+        operationId: 'app.attachment.get',
+        payload: attachmentId,
+        decode: (payload) =>
+            payload == null ? null : _decodeAttachmentRecord(payload),
+      ),
+    );
+    return result.payload;
+  }
+
+  Future<AttachmentListPage> list({
+    String? topicId,
+    String? cursor,
+    int? limit,
+  }) async {
+    final result = await _operations.query<AttachmentListPage>(
+      OperationCall<AttachmentListPage>(
+        operationId: 'app.attachment.list',
+        payload: <String, Object?>{
+          if (topicId != null) 'topic_id': topicId,
+          if (cursor != null) 'cursor': cursor,
+          if (limit != null) 'limit': limit,
+        },
+        decode: _decodeAttachmentListPage,
+      ),
+    );
+    return result.payload;
+  }
+
+  Future<bool> associateTopic({
+    required String attachmentId,
+    required String topicId,
+    Map<String, Object?> extensions = const <String, Object?>{},
+  }) async {
+    final result = await _operations.command<bool>(
+      OperationCall<bool>(
+        operationId: 'app.attachment.associate_topic',
+        payload: <String, Object?>{
+          'attachment_id': attachmentId,
+          'topic_id': topicId,
+          'extensions': extensions,
+        },
+        decode: _decodeAccepted,
+      ),
+    );
+    return result.payload;
+  }
+
+  Future<bool> delete(
+    String attachmentId, {
+    Map<String, Object?> extensions = const <String, Object?>{},
+  }) async {
+    final result = await _operations.command<bool>(
+      OperationCall<bool>(
+        operationId: 'app.attachment.delete',
+        payload: attachmentId,
+        extensions: extensions,
+        decode: _decodeAccepted,
+      ),
+    );
+    return result.payload;
+  }
+}
+
 class TopicClient {
   TopicClient(this._operations);
 
@@ -593,6 +689,36 @@ MarkerRecord _decodeMarkerRecord(Object? payload) {
     revision: (map['revision'] as num?)?.toInt() ?? 0,
     updatedTsMs: (map['updated_ts_ms'] as num?)?.toInt() ?? 0,
     extensions: _payloadMap(map['extensions']),
+  );
+}
+
+AttachmentRecord _decodeAttachmentRecord(Object? payload) {
+  final map = _payloadMap(payload);
+  final topicIds = (map['topic_ids'] as List<Object?>? ?? const <Object?>[])
+      .map((value) => value.toString())
+      .toList(growable: false);
+  return AttachmentRecord(
+    attachmentId: map['attachment_id']?.toString() ?? '',
+    name: map['name']?.toString() ?? '',
+    contentType: map['content_type']?.toString() ?? '',
+    byteLen: (map['byte_len'] as num?)?.toInt() ?? 0,
+    checksumSha256: map['checksum_sha256']?.toString() ?? '',
+    createdTsMs: (map['created_ts_ms'] as num?)?.toInt() ?? 0,
+    expiresTsMs: (map['expires_ts_ms'] as num?)?.toInt(),
+    topicIds: topicIds,
+    extensions: _payloadMap(map['extensions']),
+  );
+}
+
+AttachmentListPage _decodeAttachmentListPage(Object? payload) {
+  final map = _payloadMap(payload);
+  final attachments =
+      (map['attachments'] as List<Object?>? ?? const <Object?>[])
+          .map(_decodeAttachmentRecord)
+          .toList(growable: false);
+  return AttachmentListPage(
+    attachments: attachments,
+    nextCursor: map['next_cursor']?.toString(),
   );
 }
 
