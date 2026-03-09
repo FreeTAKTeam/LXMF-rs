@@ -161,6 +161,7 @@ const SDK_OPERATION_SPECS: &[SdkOperationSpec] = &[
         aliases: &["sdk_workflow_mission_update_send_v2"],
         required_capabilities: &[
             "sdk.capability.contact_management",
+            "sdk.capability.identity_discovery",
             "sdk.capability.topics",
             "sdk.capability.attachments",
         ],
@@ -1389,7 +1390,7 @@ impl RpcDaemon {
                     .get("idempotency_key")
                     .and_then(JsonValue::as_str)
                     .map(str::to_owned)
-                    .unwrap_or_else(|| format!("workflow-mission-{}", request.id)),
+                    .unwrap_or_else(|| self.next_sdk_domain_id("workflow-mission")),
                 "source": self.local_delivery_hash(),
                 "destination": params.get("peer_identity").cloned().unwrap_or(JsonValue::Null),
                 "title": "",
