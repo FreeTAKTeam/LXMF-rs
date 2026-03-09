@@ -1,5 +1,5 @@
 use super::discovery::{
-    BootstrapRequest, Contact, ContactPage, ContactUpdate, Identity, PeerDirectoryEntry,
+    BootstrapRequest, Contact, ContactPage, ContactUpdate, Identity, PeerDirectoryEntry, Presence,
     PresencePage,
 };
 use super::capabilities::CapabilitySummary;
@@ -767,8 +767,7 @@ impl<B: SdkBackend> Client<B> {
     pub fn peer_directory(&self, limit: Option<usize>) -> Result<Vec<PeerDirectoryEntry>, Error> {
         let mut entries = BTreeMap::<String, PeerDirectoryEntry>::new();
 
-        let contacts = self.contacts(None, limit)?;
-        for contact in contacts.contacts {
+        for contact in self.collect_contacts(limit)? {
             entries.insert(
                 contact.identity.clone(),
                 PeerDirectoryEntry {
@@ -787,8 +786,7 @@ impl<B: SdkBackend> Client<B> {
             );
         }
 
-        let peers = self.presence(None, limit)?;
-        for presence in peers.peers {
+        for presence in self.collect_presence(limit)? {
             let entry = entries.entry(presence.peer_id.clone()).or_insert_with(|| PeerDirectoryEntry {
                 peer_id: presence.peer_id.clone(),
                 display_name: presence.display_name.clone(),
@@ -823,7 +821,59 @@ impl<B: SdkBackend> Client<B> {
             }
         }
 
-        Ok(entries.into_values().collect())
+        let mut values = entries.into_values().collect::<Vec<_>>();
+        if let Some(limit) = limit {
+            values.truncate(limit);
+        }
+        Ok(values)
+    }
+
+    fn collect_contacts(&self, limit: Option<usize>) -> Result<Vec<Contact>, Error> {
+        let mut contacts = Vec::new();
+        let mut cursor = None;
+
+        loop {
+            let page = self.contacts(cursor.clone(), limit)?;
+            contacts.extend(page.contacts);
+            if let Some(limit) = limit {
+                if contacts.len() >= limit {
+                    contacts.truncate(limit);
+                    break;
+                }
+            }
+            match page.next_cursor {
+                Some(next_cursor) if cursor.as_deref() != Some(next_cursor.as_str()) => {
+                    cursor = Some(next_cursor);
+                }
+                _ => break,
+            }
+        }
+
+        Ok(contacts)
+    }
+
+    fn collect_presence(&self, limit: Option<usize>) -> Result<Vec<Presence>, Error> {
+        let mut peers = Vec::new();
+        let mut cursor = None;
+
+        loop {
+            let page = self.presence(cursor.clone(), limit)?;
+            peers.extend(page.peers);
+            if let Some(limit) = limit {
+                if peers.len() >= limit {
+                    peers.truncate(limit);
+                    break;
+                }
+            }
+            match page.next_cursor {
+                Some(next_cursor) if cursor.as_deref() != Some(next_cursor.as_str()) => {
+                    cursor = Some(next_cursor);
+                }
+                _ => break,
+            }
+        }
+
+        Ok(peers)
     }
 
     pub fn status(&self) -> Result<RuntimeStatus, Error> {
@@ -1050,6 +1100,7 @@ mod tests {
     struct MockBackend {
         runtime_seq: AtomicUsize,
         send_seq: AtomicUsize,
+        paginate_discovery: bool,
         poll_batches: Mutex<VecDeque<RawEventBatch>>,
         send_results: Mutex<VecDeque<Result<crate::MessageId, SdkError>>>,
         shutdown_calls: AtomicUsize,
@@ -1065,6 +1116,7 @@ mod tests {
             Self {
                 runtime_seq: AtomicUsize::new(1),
                 send_seq: AtomicUsize::new(1),
+                paginate_discovery: false,
                 poll_batches: Mutex::new(VecDeque::new()),
                 send_results: Mutex::new(VecDeque::new()),
                 shutdown_calls: AtomicUsize::new(0),
@@ -1072,6 +1124,10 @@ mod tests {
                 remote_command_results: Mutex::new(VecDeque::new()),
                 envelope_results: Mutex::new(VecDeque::new()),
             }
+        }
+
+        fn new_paginated() -> Self {
+            Self { paginate_discovery: true, ..Self::new() }
         }
 
         fn queue_batch(&self, batch: RawEventBatch) {
@@ -1220,20 +1276,53 @@ mod tests {
             &self,
             req: crate::domain::ContactListRequest,
         ) -> Result<crate::domain::ContactListResult, SdkError> {
-            let contact = crate::domain::ContactRecord {
-                identity: crate::domain::IdentityRef("bob".to_owned()),
-                display_name: Some("Bob".to_owned()),
-                trust_level: crate::domain::TrustLevel::Trusted,
-                bootstrap: true,
-                updated_ts_ms: 100,
-                metadata: BTreeMap::new(),
-                extensions: BTreeMap::from([(
-                    "cursor".to_owned(),
-                    serde_json::json!(req.cursor),
-                )]),
+            let make_contact = |identity: &str, display_name: &str, trust_level, bootstrap| {
+                crate::domain::ContactRecord {
+                    identity: crate::domain::IdentityRef(identity.to_owned()),
+                    display_name: Some(display_name.to_owned()),
+                    trust_level,
+                    bootstrap,
+                    updated_ts_ms: 100,
+                    metadata: BTreeMap::new(),
+                    extensions: BTreeMap::from([(
+                        "cursor".to_owned(),
+                        serde_json::json!(req.cursor),
+                    )]),
+                }
             };
+            if self.paginate_discovery {
+                return Ok(match req.cursor.as_deref() {
+                    None => crate::domain::ContactListResult {
+                        contacts: vec![make_contact(
+                            "bob",
+                            "Bob",
+                            crate::domain::TrustLevel::Trusted,
+                            true,
+                        )],
+                        next_cursor: Some("contact:1".to_owned()),
+                    },
+                    Some("contact:1") => crate::domain::ContactListResult {
+                        contacts: vec![make_contact(
+                            "charlie",
+                            "Charlie",
+                            crate::domain::TrustLevel::Untrusted,
+                            false,
+                        )],
+                        next_cursor: None,
+                    },
+                    _ => crate::domain::ContactListResult {
+                        contacts: Vec::new(),
+                        next_cursor: None,
+                    },
+                });
+            }
             Ok(crate::domain::ContactListResult {
-                contacts: vec![contact],
+                contacts: vec![make_contact(
+                    "bob",
+                    "Bob",
+                    crate::domain::TrustLevel::Trusted,
+                    true,
+                )],
                 next_cursor: None,
             })
         }
@@ -1246,34 +1335,47 @@ mod tests {
             &self,
             _req: crate::domain::PresenceListRequest,
         ) -> Result<crate::domain::PresenceListResult, SdkError> {
+            let req = _req;
+            let bob = crate::domain::PresenceRecord {
+                peer_id: "bob".to_owned(),
+                last_seen_ts_ms: 200,
+                first_seen_ts_ms: 120,
+                seen_count: 3,
+                name: Some("Bob Relay".to_owned()),
+                name_source: Some("announce".to_owned()),
+                trust_level: Some(crate::domain::TrustLevel::Trusted),
+                bootstrap: Some(true),
+                extensions: BTreeMap::from([("source".to_owned(), serde_json::json!("presence"))]),
+            };
+            let eve = crate::domain::PresenceRecord {
+                peer_id: "eve".to_owned(),
+                last_seen_ts_ms: 99,
+                first_seen_ts_ms: 90,
+                seen_count: 1,
+                name: Some("Eve".to_owned()),
+                name_source: Some("announce".to_owned()),
+                trust_level: Some(crate::domain::TrustLevel::Unknown),
+                bootstrap: Some(false),
+                extensions: BTreeMap::new(),
+            };
+            if self.paginate_discovery {
+                return Ok(match req.cursor.as_deref() {
+                    None => crate::domain::PresenceListResult {
+                        peers: vec![bob],
+                        next_cursor: Some("presence:1".to_owned()),
+                    },
+                    Some("presence:1") => crate::domain::PresenceListResult {
+                        peers: vec![eve],
+                        next_cursor: None,
+                    },
+                    _ => crate::domain::PresenceListResult {
+                        peers: Vec::new(),
+                        next_cursor: None,
+                    },
+                });
+            }
             Ok(crate::domain::PresenceListResult {
-                peers: vec![
-                    crate::domain::PresenceRecord {
-                        peer_id: "bob".to_owned(),
-                        last_seen_ts_ms: 200,
-                        first_seen_ts_ms: 120,
-                        seen_count: 3,
-                        name: Some("Bob Relay".to_owned()),
-                        name_source: Some("announce".to_owned()),
-                        trust_level: Some(crate::domain::TrustLevel::Trusted),
-                        bootstrap: Some(true),
-                        extensions: BTreeMap::from([(
-                            "source".to_owned(),
-                            serde_json::json!("presence"),
-                        )]),
-                    },
-                    crate::domain::PresenceRecord {
-                        peer_id: "eve".to_owned(),
-                        last_seen_ts_ms: 99,
-                        first_seen_ts_ms: 90,
-                        seen_count: 1,
-                        name: Some("Eve".to_owned()),
-                        name_source: Some("announce".to_owned()),
-                        trust_level: Some(crate::domain::TrustLevel::Unknown),
-                        bootstrap: Some(false),
-                        extensions: BTreeMap::new(),
-                    },
-                ],
+                peers: vec![bob, eve],
                 next_cursor: None,
             })
         }
@@ -1657,6 +1759,17 @@ mod tests {
         assert_eq!(eve.trust_level, Some(TrustLevel::Unknown));
         assert!(eve.online);
         assert!(!eve.bootstrap);
+    }
+
+    #[test]
+    fn peer_directory_consumes_all_contact_and_presence_pages() {
+        let app = Client::new(MockBackend::new_paginated());
+        let peers = app.peer_directory(None).expect("peer directory");
+
+        assert_eq!(peers.len(), 3);
+        assert!(peers.iter().any(|entry| entry.peer_id == "bob"));
+        assert!(peers.iter().any(|entry| entry.peer_id == "charlie"));
+        assert!(peers.iter().any(|entry| entry.peer_id == "eve"));
     }
 
     #[test]
