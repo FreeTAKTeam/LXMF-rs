@@ -3124,7 +3124,13 @@ mod tests {
         let backend = MockBackend::new();
         backend.queue_remote_command_result(Ok(crate::domain::RemoteCommandResponse {
             accepted: true,
-            payload: serde_json::json!({ "ok": true }),
+            payload: serde_json::json!({
+                "command_id": "cmdreq-1",
+                "correlation_id": "cmd-1",
+                "command": "vendor.example.custom",
+                "target": null,
+                "command_state": "dispatched",
+            }),
             extensions: BTreeMap::from([("transport".to_owned(), serde_json::json!("remote"))]),
         }));
         let app = Client::new(backend);
@@ -3140,7 +3146,10 @@ mod tests {
             .command("vendor.example.custom", serde_json::json!({ "value": 1 }))
             .expect("custom command");
         assert_eq!(response.operation_id.as_str(), "vendor.example.custom");
-        assert_eq!(response.payload.get("ok").and_then(|value| value.as_bool()), Some(true));
+        assert_eq!(
+            response.payload.get("command_state").and_then(|value| value.as_str()),
+            Some("dispatched")
+        );
         assert_eq!(
             response.extensions.get("transport").and_then(|value| value.as_str()),
             Some("remote")

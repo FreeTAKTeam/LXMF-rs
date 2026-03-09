@@ -235,7 +235,7 @@ impl RpcDaemon {
                 "correlation_id": correlation_id,
                 "command": command,
                 "target": parsed.target,
-                "echo": parsed.payload,
+                "command_state": "dispatched",
                 "timeout_ms": parsed.timeout_ms,
             },
             "extensions": parsed.extensions,
