@@ -229,6 +229,9 @@ impl InterfaceConfig {
         if self.baud_rate.is_none() {
             return Err(format!("interfaces[{index}].baud_rate is required for serial"));
         }
+        if self.baud_rate == Some(0) {
+            return Err(format!("interfaces[{index}].baud_rate must be > 0 for serial"));
+        }
         if let Some(data_bits) = self.data_bits {
             if !(5..=8).contains(&data_bits) {
                 return Err(format!(

@@ -71,6 +71,19 @@ fn serial_builder_rejects_missing_required_fields() {
 }
 
 #[test]
+fn serial_builder_rejects_zero_baud_rate() {
+    let iface = InterfaceConfig {
+        kind: "serial".to_string(),
+        enabled: Some(true),
+        device: Some("/dev/ttyUSB0".to_string()),
+        baud_rate: Some(0),
+        ..InterfaceConfig::default()
+    };
+    let err = serial::build_adapter(&iface).err().expect("zero baud rate should fail");
+    assert!(err.contains("serial.baud_rate must be > 0"));
+}
+
+#[test]
 fn lora_startup_persists_state_file() {
     let temp = TempDir::new().expect("temp dir");
     let state_path = temp.path().join("lora-state.json");

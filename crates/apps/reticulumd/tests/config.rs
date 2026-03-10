@@ -76,6 +76,21 @@ interfaces = [
 }
 
 #[test]
+fn rejects_zero_serial_baud_rate() {
+    let input = r#"
+interfaces = [
+  { type = "serial", enabled = true, device = "/dev/ttyUSB0", baud_rate = 0 }
+]
+"#;
+    let err = DaemonConfig::from_toml(input).expect_err("zero baud rate should fail");
+    let message = err.to_string();
+    assert!(
+        message.contains("baud_rate must be > 0 for serial"),
+        "unexpected parse error: {message}"
+    );
+}
+
+#[test]
 fn rejects_enabled_ble_interface_missing_required_fields() {
     let input = r#"
 interfaces = [
