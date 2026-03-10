@@ -20,7 +20,6 @@ use serde_json::{Map as JsonMap, Value as JsonValue};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::unbounded_channel;
@@ -35,7 +34,7 @@ pub(super) struct RpcTlsConfig {
 
 pub(super) struct BootstrapContext {
     pub(super) rpc_addr: SocketAddr,
-    pub(super) daemon: Rc<RpcDaemon>,
+    pub(super) daemon: Arc<RpcDaemon>,
     pub(super) rpc_tls: Option<RpcTlsConfig>,
 }
 
@@ -455,7 +454,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     let announce_bridge: Option<Arc<dyn AnnounceBridge>> =
         bridge.as_ref().map(|bridge| bridge.clone() as Arc<dyn AnnounceBridge>);
 
-    let daemon = Rc::new(RpcDaemon::with_store_and_bridges(
+    let daemon = Arc::new(RpcDaemon::with_store_and_bridges(
         store,
         identity_hash,
         outbound_bridge,
@@ -486,7 +485,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     }
 
     if args.announce_interval_secs > 0 {
-        let _handle = daemon.clone().start_announce_scheduler(args.announce_interval_secs);
+        let _handle = daemon.clone().start_announce_scheduler_shared(args.announce_interval_secs);
     }
 
     if let Some(transport) = transport {

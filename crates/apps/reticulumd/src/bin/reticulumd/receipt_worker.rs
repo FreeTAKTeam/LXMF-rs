@@ -4,18 +4,17 @@ use reticulum_daemon::receipt_bridge::{handle_receipt_event, ReceiptEvent};
 use rns_rpc::RpcDaemon;
 use rns_transport::receipt::prune_receipt_mappings_for_message;
 use std::collections::HashMap;
-use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc::UnboundedReceiver;
 
 pub(super) fn spawn_receipt_worker(
-    daemon: Rc<RpcDaemon>,
+    daemon: Arc<RpcDaemon>,
     mut receipt_rx: UnboundedReceiver<ReceiptEvent>,
     receipt_map: Arc<Mutex<HashMap<String, String>>>,
     outbound_resource_map: Arc<Mutex<HashMap<String, String>>>,
 ) {
     let daemon_receipts = daemon;
-    tokio::task::spawn_local(async move {
+    tokio::spawn(async move {
         while let Some(event) = receipt_rx.recv().await {
             let message_id = event.message_id.clone();
             let status = event.status.clone();

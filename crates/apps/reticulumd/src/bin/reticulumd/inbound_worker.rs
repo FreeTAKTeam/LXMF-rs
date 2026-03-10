@@ -9,7 +9,6 @@ use rns_transport::hash::AddressHash;
 use rns_transport::resource::ResourceEventKind;
 use rns_transport::transport::{ReceivedPayloadMode, Transport};
 use std::collections::HashMap;
-use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 fn inbound_payload_mode(mode: ReceivedPayloadMode) -> InboundPayloadMode {
@@ -20,13 +19,13 @@ fn inbound_payload_mode(mode: ReceivedPayloadMode) -> InboundPayloadMode {
 }
 
 pub(super) fn spawn_inbound_worker(
-    daemon: Rc<RpcDaemon>,
+    daemon: Arc<RpcDaemon>,
     transport: Arc<Transport>,
     receipt_tx: tokio::sync::mpsc::UnboundedSender<ReceiptEvent>,
     outbound_resource_map: Arc<Mutex<HashMap<String, String>>>,
 ) {
     spawn_packet_inbound_worker(daemon.clone(), transport.clone());
-    tokio::task::spawn_local(async move {
+    tokio::spawn(async move {
         let mut rx = transport.resource_events();
         loop {
             if let Ok(event) = rx.recv().await {
@@ -61,10 +60,10 @@ pub(super) fn spawn_inbound_worker(
     });
 }
 
-fn spawn_packet_inbound_worker(daemon: Rc<RpcDaemon>, transport: Arc<Transport>) {
+fn spawn_packet_inbound_worker(daemon: Arc<RpcDaemon>, transport: Arc<Transport>) {
     let daemon_inbound = daemon;
     let inbound_transport = transport;
-    tokio::task::spawn_local(async move {
+    tokio::spawn(async move {
         let mut rx = inbound_transport.received_data_events();
         loop {
             if let Ok(event) = rx.recv().await {
@@ -78,8 +77,6 @@ fn spawn_packet_inbound_worker(daemon: Rc<RpcDaemon>, transport: Arc<Transport>)
                         event.ratchet_used,
                         payload_preview(data, 16)
                     );
-                } else {
-                    eprintln!("[daemon] rx data len={} dst={}", data.len(), destination_hex);
                 }
                 let mut destination = [0u8; 16];
                 destination.copy_from_slice(event.destination.as_slice());

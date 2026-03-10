@@ -35,6 +35,9 @@ impl RpcDaemon {
                     }
                     guard.clone()
                 };
+                self.update_daemon_status_snapshot(|snapshot| {
+                    snapshot.delivery_policy = policy.clone();
+                });
 
                 Ok(RpcResponse {
                     id: request.id,
@@ -70,6 +73,9 @@ impl RpcDaemon {
                     }
                     guard.clone()
                 };
+                self.update_daemon_status_snapshot(|snapshot| {
+                    snapshot.propagation = state.clone();
+                });
                 Ok(RpcResponse {
                     id: request.id,
                     result: Some(json!({ "propagation": state })),
@@ -105,6 +111,9 @@ impl RpcDaemon {
                     guard.total_ingested += ingested_count;
                     guard.clone()
                 };
+                self.update_daemon_status_snapshot(|snapshot| {
+                    snapshot.propagation = state.clone();
+                });
 
                 Ok(RpcResponse {
                     id: request.id,

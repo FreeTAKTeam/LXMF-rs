@@ -145,6 +145,60 @@
     }
 
     #[test]
+    fn sdk_send_v2_exposes_stage_metrics() {
+        let daemon = RpcDaemon::test_instance();
+        let baseline = daemon.metrics_snapshot();
+
+        let response = daemon
+            .handle_rpc(rpc_request(
+                6,
+                "sdk_send_v2",
+                json!({
+                    "id": "sdk-send-metrics-1",
+                    "source": "src",
+                    "destination": "dst",
+                    "title": "",
+                    "content": "hello"
+                }),
+            ))
+            .expect("sdk_send_v2");
+        assert!(response.error.is_none());
+
+        let snapshot = daemon.metrics_snapshot();
+        let before = &baseline["counters"];
+        let after = &snapshot["counters"];
+        assert_eq!(
+            after["sdk_send_store_write_ops_total"].as_u64(),
+            Some(before["sdk_send_store_write_ops_total"].as_u64().unwrap_or(0).saturating_add(1))
+        );
+        assert_eq!(
+            after["sdk_send_delivery_schedule_ops_total"].as_u64(),
+            Some(
+                before["sdk_send_delivery_schedule_ops_total"]
+                    .as_u64()
+                    .unwrap_or(0)
+                    .saturating_add(1)
+            )
+        );
+        assert_eq!(
+            after["sdk_send_event_publish_ops_total"].as_u64(),
+            Some(before["sdk_send_event_publish_ops_total"].as_u64().unwrap_or(0).saturating_add(1))
+        );
+        assert!(
+            after["sdk_send_store_write_ns_total"].as_u64().unwrap_or(0)
+                >= before["sdk_send_store_write_ns_total"].as_u64().unwrap_or(0)
+        );
+        assert!(
+            after["sdk_send_delivery_schedule_ns_total"].as_u64().unwrap_or(0)
+                >= before["sdk_send_delivery_schedule_ns_total"].as_u64().unwrap_or(0)
+        );
+        assert!(
+            after["sdk_send_event_publish_ns_total"].as_u64().unwrap_or(0)
+                >= before["sdk_send_event_publish_ns_total"].as_u64().unwrap_or(0)
+        );
+    }
+
+    #[test]
     fn sdk_poll_events_v2_rejects_oversized_event_payload() {
         let daemon = RpcDaemon::test_instance();
         let configure = daemon

@@ -9,13 +9,18 @@ use std::fs::File;
 use std::io::{self, BufReader};
 use std::net::{IpAddr, SocketAddr};
 use std::path::Path;
-use std::rc::Rc;
+use std::sync::Arc;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::time::{timeout, Duration};
 use tokio_rustls::server::TlsStream;
 use tokio_rustls::TlsAcceptor;
 use x509_parser::extensions::ParsedExtension;
 use x509_parser::prelude::{FromDer, GeneralName, X509Certificate};
+
+const RPC_READ_TIMEOUT: Duration = Duration::from_secs(5);
+const RPC_MAX_HEADER_BYTES: usize = 16 * 1024;
+const RPC_MAX_BODY_BYTES: usize = 1024 * 1024;
 
 #[derive(Debug, Default, Clone)]
 struct RpcRequestLogMeta {
@@ -28,7 +33,7 @@ struct RpcRequestLogMeta {
 
 pub(super) async fn run_rpc_loop(
     addr: SocketAddr,
-    daemon: Rc<RpcDaemon>,
+    daemon: Arc<RpcDaemon>,
     tls: Option<RpcTlsConfig>,
 ) {
     match tls {
@@ -37,17 +42,20 @@ pub(super) async fn run_rpc_loop(
     }
 }
 
-async fn run_plain_rpc_loop(addr: SocketAddr, daemon: Rc<RpcDaemon>) {
+async fn run_plain_rpc_loop(addr: SocketAddr, daemon: Arc<RpcDaemon>) {
     let listener = TcpListener::bind(addr).await.expect("bind rpc listener");
     println!("reticulumd listening on http://{}", addr);
 
     loop {
         let (stream, peer_addr) = listener.accept().await.expect("accept rpc socket");
-        handle_connection(stream, peer_addr, daemon.as_ref(), None).await;
+        let daemon = daemon.clone();
+        tokio::spawn(async move {
+            handle_connection(stream, peer_addr, daemon.as_ref(), None).await;
+        });
     }
 }
 
-async fn run_tls_rpc_loop(addr: SocketAddr, daemon: Rc<RpcDaemon>, config: RpcTlsConfig) {
+async fn run_tls_rpc_loop(addr: SocketAddr, daemon: Arc<RpcDaemon>, config: RpcTlsConfig) {
     let tls_server = build_tls_server_config(&config).expect("build rpc tls server config");
     let acceptor = TlsAcceptor::from(tls_server);
     let listener = TcpListener::bind(addr).await.expect("bind tls rpc listener");
@@ -55,16 +63,20 @@ async fn run_tls_rpc_loop(addr: SocketAddr, daemon: Rc<RpcDaemon>, config: RpcTl
 
     loop {
         let (stream, peer_addr) = listener.accept().await.expect("accept tls rpc socket");
-        match acceptor.accept(stream).await {
-            Ok(tls_stream) => {
-                let transport_auth = extract_transport_auth(&tls_stream);
-                handle_connection(tls_stream, peer_addr, daemon.as_ref(), Some(transport_auth))
-                    .await;
+        let daemon = daemon.clone();
+        let acceptor = acceptor.clone();
+        tokio::spawn(async move {
+            match acceptor.accept(stream).await {
+                Ok(tls_stream) => {
+                    let transport_auth = extract_transport_auth(&tls_stream);
+                    handle_connection(tls_stream, peer_addr, daemon.as_ref(), Some(transport_auth))
+                        .await;
+                }
+                Err(err) => {
+                    eprintln!("[daemon] rpc tls handshake failed peer={} err={}", peer_addr, err);
+                }
             }
-            Err(err) => {
-                eprintln!("[daemon] rpc tls handshake failed peer={} err={}", peer_addr, err);
-            }
-        }
+        });
     }
 }
 
@@ -76,34 +88,18 @@ async fn handle_connection<S>(
 ) where
     S: AsyncRead + AsyncWrite + Unpin,
 {
-    let mut buffer = Vec::new();
-    loop {
-        let mut chunk = [0_u8; 4096];
-        let read = match stream.read(&mut chunk).await {
-            Ok(read) => read,
-            Err(err) => {
-                eprintln!("[daemon] rpc read error peer={} err={}", peer_addr, err);
-                return;
-            }
-        };
-        if read == 0 {
-            break;
+    let buffer = match read_http_request(&mut stream).await {
+        Ok(buffer) => buffer,
+        Err(err) => {
+            eprintln!("[daemon] rpc read error peer={} err={}", peer_addr, err);
+            let _ = stream.write_all(request_read_error_response(&err)).await;
+            let _ = stream.shutdown().await;
+            return;
         }
-        buffer.extend_from_slice(&chunk[..read]);
-        if let Some(header_end) = http::find_header_end(&buffer) {
-            let headers = &buffer[..header_end];
-            if let Some(length) = http::parse_content_length(headers) {
-                let body_start = header_end + 4;
-                if buffer.len() >= body_start + length {
-                    break;
-                }
-            } else {
-                break;
-            }
-        }
-    }
+    };
 
     if buffer.is_empty() {
+        let _ = stream.shutdown().await;
         return;
     }
 
@@ -126,6 +122,72 @@ async fn handle_connection<S>(
     emit_rpc_access_log(peer_addr, &request_meta, &response, elapsed_ms, error_text.as_deref());
     let _ = stream.write_all(&response).await;
     let _ = stream.shutdown().await;
+}
+
+async fn read_http_request<S>(stream: &mut S) -> io::Result<Vec<u8>>
+where
+    S: AsyncRead + Unpin,
+{
+    let mut buffer = Vec::new();
+    let mut expected_len: Option<usize> = None;
+
+    loop {
+        let mut chunk = [0_u8; 4096];
+        let read = timeout(RPC_READ_TIMEOUT, stream.read(&mut chunk))
+            .await
+            .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "rpc read timed out"))??;
+        if read == 0 {
+            break;
+        }
+        buffer.extend_from_slice(&chunk[..read]);
+
+        if let Some(header_end) = http::find_header_end(&buffer) {
+            if header_end > RPC_MAX_HEADER_BYTES {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "rpc headers exceed maximum size",
+                ));
+            }
+            let headers = &buffer[..header_end];
+            let content_length = http::parse_content_length(headers).unwrap_or(0);
+            if content_length > RPC_MAX_BODY_BYTES {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "rpc body exceeds maximum size",
+                ));
+            }
+            let total_len = header_end
+                .checked_add(4)
+                .and_then(|body_start| body_start.checked_add(content_length))
+                .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "rpc request too large"))?;
+            expected_len = Some(total_len);
+            if buffer.len() >= total_len {
+                break;
+            }
+        } else if buffer.len() > RPC_MAX_HEADER_BYTES {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "rpc headers exceed maximum size",
+            ));
+        }
+
+        if let Some(total_len) = expected_len {
+            if buffer.len() > total_len {
+                break;
+            }
+        }
+    }
+
+    Ok(buffer)
+}
+
+fn request_read_error_response(error: &io::Error) -> &'static [u8] {
+    match error.kind() {
+        io::ErrorKind::TimedOut => {
+            b"HTTP/1.1 408 Request Timeout\r\nContent-Length: 18\r\n\r\nrpc read timed out"
+        }
+        _ => b"HTTP/1.1 400 Bad Request\r\nContent-Length: 19\r\n\r\ninvalid rpc request",
+    }
 }
 
 fn parse_request_log_meta(request: &[u8]) -> RpcRequestLogMeta {
@@ -359,6 +421,7 @@ fn parse_subject_alt_names(cert: &X509Certificate<'_>) -> Vec<String> {
 #[cfg(test)]
 mod rpc_loop_tests {
     use super::*;
+    use tokio::io::{duplex, AsyncWriteExt};
 
     #[test]
     fn parse_request_log_meta_extracts_rpc_fields() {
@@ -401,5 +464,45 @@ mod rpc_loop_tests {
     fn parse_status_code_extracts_numeric_status() {
         let response = b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n";
         assert_eq!(parse_status_code(response), Some(200));
+    }
+
+    #[test]
+    fn read_http_request_collects_complete_post_body() {
+        let runtime =
+            tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+        runtime.block_on(async {
+            let (mut client, mut server) = duplex(4096);
+            let body = b"hello";
+            let request = format!(
+                "POST /rpc HTTP/1.1\r\nHost: localhost\r\nContent-Length: {}\r\n\r\n",
+                body.len()
+            );
+            let writer = tokio::spawn(async move {
+                client.write_all(request.as_bytes()).await.expect("write headers");
+                client.write_all(body).await.expect("write body");
+            });
+
+            let raw = read_http_request(&mut server).await.expect("read request");
+            writer.await.expect("join writer");
+            assert!(raw.ends_with(body));
+        });
+    }
+
+    #[test]
+    fn read_http_request_rejects_oversized_body() {
+        let runtime =
+            tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+        runtime.block_on(async {
+            let (mut client, mut server) = duplex(4096);
+            let request = format!(
+                "POST /rpc HTTP/1.1\r\nHost: localhost\r\nContent-Length: {}\r\n\r\n",
+                RPC_MAX_BODY_BYTES + 1
+            );
+            client.write_all(request.as_bytes()).await.expect("write headers");
+
+            let err = read_http_request(&mut server).await.expect_err("oversized request");
+            assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+            assert!(err.to_string().contains("maximum size"));
+        });
     }
 }

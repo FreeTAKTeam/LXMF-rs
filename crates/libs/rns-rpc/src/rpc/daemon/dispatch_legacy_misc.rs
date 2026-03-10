@@ -71,6 +71,9 @@ impl RpcDaemon {
                     }
                     guard.clone()
                 };
+                self.update_daemon_status_snapshot(|snapshot| {
+                    snapshot.stamp_policy = policy.clone();
+                });
 
                 Ok(RpcResponse {
                     id: request.id,

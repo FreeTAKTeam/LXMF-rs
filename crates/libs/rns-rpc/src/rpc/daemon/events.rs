@@ -1,4 +1,60 @@
 impl RpcDaemon {
+    fn run_announce_scheduler(&self, interval_secs: u64) -> tokio::task::JoinHandle<()>
+    where
+        Self: Sized,
+    {
+        let bridge = self.announce_bridge.clone();
+        let events = self.events.clone();
+        tokio::spawn(async move {
+            if interval_secs == 0 {
+                return;
+            }
+
+            let mut interval = tokio::time::interval(Duration::from_secs(interval_secs));
+            loop {
+                interval.tick().await;
+                let id = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|value| value.as_secs())
+                    .unwrap_or(0);
+
+                if let Some(bridge) = &bridge {
+                    let _ = bridge.announce_now();
+                }
+
+                let timestamp = now_i64();
+                let event = RpcEvent {
+                    event_type: "announce_sent".into(),
+                    payload: json!({ "timestamp": timestamp, "announce_id": id }),
+                };
+                let _ = events.send(event);
+            }
+        })
+    }
+
+    fn try_until_capacity<F>(&self, block_timeout_ms: u64, mut attempt: F) -> bool
+    where
+        F: FnMut() -> bool,
+    {
+        let timeout = block_timeout_ms.max(1);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout);
+        let mut spins = 0u32;
+        loop {
+            if attempt() {
+                return true;
+            }
+            if std::time::Instant::now() >= deadline {
+                return false;
+            }
+            if spins < 32 {
+                std::hint::spin_loop();
+                spins += 1;
+            } else {
+                std::thread::yield_now();
+            }
+        }
+    }
+
     fn sdk_overflow_policy(&self) -> String {
         let configured = self
             .sdk_runtime_config
@@ -41,23 +97,15 @@ impl RpcDaemon {
                 true
             }
             "block" => {
-                let timeout = block_timeout_ms.max(1);
-                let deadline =
-                    std::time::Instant::now() + std::time::Duration::from_millis(timeout);
-                loop {
-                    {
-                        let mut guard =
-                            self.event_queue.lock().expect("event_queue mutex poisoned");
-                        if guard.len() < LEGACY_EVENT_QUEUE_CAPACITY {
-                            guard.push_back(event.clone());
-                            return true;
-                        }
+                self.try_until_capacity(block_timeout_ms, || {
+                    let mut guard = self.event_queue.lock().expect("event_queue mutex poisoned");
+                    if guard.len() < LEGACY_EVENT_QUEUE_CAPACITY {
+                        guard.push_back(event.clone());
+                        true
+                    } else {
+                        false
                     }
-                    if std::time::Instant::now() >= deadline {
-                        return false;
-                    }
-                    std::thread::sleep(std::time::Duration::from_millis(1));
-                }
+                })
             }
             _ => {
                 let mut guard = self.event_queue.lock().expect("event_queue mutex poisoned");
@@ -86,23 +134,16 @@ impl RpcDaemon {
                 true
             }
             "block" => {
-                let timeout = block_timeout_ms.max(1);
-                let deadline =
-                    std::time::Instant::now() + std::time::Duration::from_millis(timeout);
-                loop {
-                    {
-                        let mut log_guard =
-                            self.sdk_event_log.lock().expect("sdk_event_log mutex poisoned");
-                        if log_guard.len() < SDK_EVENT_LOG_CAPACITY {
-                            log_guard.push_back(sequenced_event);
-                            return true;
-                        }
+                self.try_until_capacity(block_timeout_ms, move || {
+                    let mut log_guard =
+                        self.sdk_event_log.lock().expect("sdk_event_log mutex poisoned");
+                    if log_guard.len() < SDK_EVENT_LOG_CAPACITY {
+                        log_guard.push_back(sequenced_event.clone());
+                        true
+                    } else {
+                        false
                     }
-                    if std::time::Instant::now() >= deadline {
-                        return false;
-                    }
-                    std::thread::sleep(std::time::Duration::from_millis(1));
-                }
+                })
             }
             _ => {
                 let mut log_guard = self.sdk_event_log.lock().expect("sdk_event_log mutex poisoned");
@@ -380,7 +421,6 @@ impl RpcDaemon {
 
             let mut interval = tokio::time::interval(Duration::from_secs(interval_secs));
             loop {
-                // First tick is immediate, so we announce once at scheduler start.
                 interval.tick().await;
                 let id = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
@@ -399,6 +439,13 @@ impl RpcDaemon {
                 self.publish_event(event);
             }
         })
+    }
+
+    pub fn start_announce_scheduler_shared(
+        self: std::sync::Arc<Self>,
+        interval_secs: u64,
+    ) -> tokio::task::JoinHandle<()> {
+        self.run_announce_scheduler(interval_secs)
     }
 
     pub fn inject_inbound_test_message(&self, content: &str) {

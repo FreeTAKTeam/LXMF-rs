@@ -50,6 +50,9 @@ impl RpcDaemon {
                     let mut guard = self.peers.lock().expect("peers mutex poisoned");
                     guard.clear();
                 }
+                self.update_daemon_status_snapshot(|snapshot| {
+                    snapshot.peer_count = 0;
+                });
                 self.store.clear_announces().map_err(std::io::Error::other)?;
                 Ok(RpcResponse {
                     id: request.id,
@@ -65,6 +68,9 @@ impl RpcDaemon {
                     let mut guard = self.peers.lock().expect("peers mutex poisoned");
                     guard.clear();
                 }
+                self.update_daemon_status_snapshot(|snapshot| {
+                    snapshot.peer_count = 0;
+                });
                 {
                     let mut guard =
                         self.delivery_traces.lock().expect("delivery traces mutex poisoned");

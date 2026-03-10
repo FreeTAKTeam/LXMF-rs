@@ -130,6 +130,9 @@ impl RpcDaemon {
                     let mut guard = self.interfaces.lock().expect("interfaces mutex poisoned");
                     *guard = parsed.interfaces.clone();
                 }
+                self.update_daemon_status_snapshot(|snapshot| {
+                    snapshot.interfaces = parsed.interfaces.clone();
+                });
                 let applied_interfaces = parsed
                     .interfaces
                     .iter()
@@ -230,6 +233,9 @@ impl RpcDaemon {
                         let mut guard = self.interfaces.lock().expect("interfaces mutex poisoned");
                         *guard = parsed.interfaces.clone();
                     }
+                    self.update_daemon_status_snapshot(|snapshot| {
+                        snapshot.interfaces = parsed.interfaces.clone();
+                    });
                     let update_event = RpcEvent {
                         event_type: "interfaces_updated".into(),
                         payload: json!({ "interfaces": parsed.interfaces }),
@@ -289,7 +295,13 @@ impl RpcDaemon {
 
                 let removed = {
                     let mut guard = self.peers.lock().expect("peers mutex poisoned");
-                    guard.remove(&parsed.peer).is_some()
+                    let removed = guard.remove(&parsed.peer).is_some();
+                    let peer_count = guard.len();
+                    drop(guard);
+                    self.update_daemon_status_snapshot(|snapshot| {
+                        snapshot.peer_count = peer_count;
+                    });
+                    removed
                 };
                 let event = RpcEvent {
                     event_type: "peer_unpeer".into(),

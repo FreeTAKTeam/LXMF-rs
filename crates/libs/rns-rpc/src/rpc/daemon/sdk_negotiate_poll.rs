@@ -443,7 +443,11 @@ impl RpcDaemon {
             }
         };
 
+        let log_lock_started = std::time::Instant::now();
         let log_guard = self.sdk_event_log.lock().expect("sdk_event_log mutex poisoned");
+        let log_lock_wait_ns =
+            log_lock_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
+        self.metrics_record_sdk_poll_event_log_lock_wait(log_lock_wait_ns);
         let dropped_count =
             *self.sdk_dropped_event_count.lock().expect("sdk_dropped_event_count mutex poisoned");
         let oldest_seq = log_guard.front().map(|entry| entry.seq_no);

@@ -32,15 +32,16 @@ impl RpcDaemon {
             }),
             "sdk_negotiate_v2" => self.handle_sdk_negotiate_v2(request),
             "daemon_status_ex" => {
-                let peer_count = self.peers.lock().expect("peers mutex poisoned").len();
-                let interfaces = self.interfaces.lock().expect("interfaces mutex poisoned").clone();
+                let snapshot_started = std::time::Instant::now();
+                let snapshot = self.daemon_status_snapshot();
+                let snapshot_wait_ns =
+                    snapshot_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
+                let message_count_started = std::time::Instant::now();
                 let message_count =
-                    self.store.list_messages(10_000, None).map_err(std::io::Error::other)?.len();
-                let delivery_policy =
-                    self.delivery_policy.lock().expect("policy mutex poisoned").clone();
-                let propagation =
-                    self.propagation_state.lock().expect("propagation mutex poisoned").clone();
-                let stamp_policy = self.stamp_policy.lock().expect("stamp mutex poisoned").clone();
+                    self.store.message_count().map_err(std::io::Error::other)? as usize;
+                let message_count_wait_ns =
+                    message_count_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
+                self.metrics_record_daemon_status_wait(snapshot_wait_ns, message_count_wait_ns);
 
                 Ok(RpcResponse {
                     id: request.id,
@@ -48,13 +49,13 @@ impl RpcDaemon {
                         "identity_hash": self.identity_hash,
                         "delivery_destination_hash": self.local_delivery_hash(),
                         "running": true,
-                        "peer_count": peer_count,
+                        "peer_count": snapshot.peer_count,
                         "message_count": message_count,
-                        "interface_count": interfaces.len(),
-                        "interfaces": interfaces,
-                        "delivery_policy": delivery_policy,
-                        "propagation": propagation,
-                        "stamp_policy": stamp_policy,
+                        "interface_count": snapshot.interfaces.len(),
+                        "interfaces": snapshot.interfaces,
+                        "delivery_policy": snapshot.delivery_policy,
+                        "propagation": snapshot.propagation,
+                        "stamp_policy": snapshot.stamp_policy,
                         "capabilities": Self::capabilities(),
                     })),
                     error: None,

@@ -1,19 +1,19 @@
 use super::bridge::PeerCrypto;
+use super::bridge_helpers::diagnostics_enabled;
 use reticulum_daemon::announce_names::parse_peer_name_from_app_data;
 use rns_rpc::RpcDaemon;
 use rns_transport::time::now_epoch_secs_i64;
 use rns_transport::transport::Transport;
 use std::collections::HashMap;
-use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 pub(super) fn spawn_announce_worker(
-    daemon: Rc<RpcDaemon>,
+    daemon: Arc<RpcDaemon>,
     transport: Arc<Transport>,
     peer_crypto: Arc<Mutex<HashMap<String, PeerCrypto>>>,
 ) {
     let daemon_announce = daemon;
-    tokio::task::spawn_local(async move {
+    tokio::spawn(async move {
         let mut rx = transport.recv_announces().await;
         loop {
             if let Ok(event) = rx.recv().await {
@@ -26,10 +26,12 @@ pub(super) fn spawn_announce_worker(
                         .unwrap_or((None, None));
                 let _ratchet = event.ratchet;
                 peer_crypto.lock().expect("peer map").insert(peer.clone(), PeerCrypto { identity });
-                if let Some(name) = peer_name.as_ref() {
-                    eprintln!("[daemon] rx announce peer={} name={}", peer, name);
-                } else {
-                    eprintln!("[daemon] rx announce peer={}", peer);
+                if diagnostics_enabled() {
+                    if let Some(name) = peer_name.as_ref() {
+                        eprintln!("[daemon] rx announce peer={} name={}", peer, name);
+                    } else {
+                        eprintln!("[daemon] rx announce peer={}", peer);
+                    }
                 }
                 let timestamp = now_epoch_secs_i64();
                 let _ = daemon_announce.accept_announce_with_details(

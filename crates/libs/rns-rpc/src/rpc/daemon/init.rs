@@ -92,6 +92,7 @@ impl RpcDaemon {
             stamp_policy: Mutex::new(StampPolicy::default()),
             ticket_cache: Mutex::new(HashMap::new()),
             delivery_traces: Mutex::new(HashMap::new()),
+            daemon_status_snapshot: std::sync::RwLock::new(DaemonStatusSnapshot::default()),
             delivery_status_lock: Mutex::new(()),
             sdk_metrics: Mutex::new(RpcMetrics::default()),
             outbound_bridge,
@@ -131,7 +132,11 @@ impl RpcDaemon {
 
     pub fn replace_interfaces(&self, interfaces: Vec<InterfaceRecord>) {
         let mut guard = self.interfaces.lock().expect("interfaces mutex poisoned");
-        *guard = interfaces;
+        *guard = interfaces.clone();
+        drop(guard);
+        self.update_daemon_status_snapshot(|snapshot| {
+            snapshot.interfaces = interfaces;
+        });
     }
 
     pub fn set_interface_mutation_bridge(&self, bridge: Arc<dyn InterfaceMutationBridge>) {
@@ -152,6 +157,11 @@ impl RpcDaemon {
         guard.enabled = enabled;
         guard.store_root = store_root;
         guard.target_cost = target_cost;
+        let state = guard.clone();
+        drop(guard);
+        self.update_daemon_status_snapshot(|snapshot| {
+            snapshot.propagation = state;
+        });
     }
 
     pub fn update_propagation_sync_state<F>(&self, update: F)
@@ -160,6 +170,27 @@ impl RpcDaemon {
     {
         let mut guard = self.propagation_state.lock().expect("propagation mutex poisoned");
         update(&mut guard);
+        let state = guard.clone();
+        drop(guard);
+        self.update_daemon_status_snapshot(|snapshot| {
+            snapshot.propagation = state;
+        });
+    }
+
+    fn update_daemon_status_snapshot<F>(&self, update: F)
+    where
+        F: FnOnce(&mut DaemonStatusSnapshot),
+    {
+        let mut guard =
+            self.daemon_status_snapshot.write().expect("daemon_status_snapshot rwlock poisoned");
+        update(&mut guard);
+    }
+
+    fn daemon_status_snapshot(&self) -> DaemonStatusSnapshot {
+        self.daemon_status_snapshot
+            .read()
+            .expect("daemon_status_snapshot rwlock poisoned")
+            .clone()
     }
 
     fn store_inbound_record(&self, record: MessageRecord) -> Result<(), std::io::Error> {
@@ -309,7 +340,13 @@ impl RpcDaemon {
                 existing.name = Some(name);
                 existing.name_source = cleaned_name_source;
             }
-            return existing.clone();
+            let record = existing.clone();
+            let peer_count = guard.len();
+            drop(guard);
+            self.update_daemon_status_snapshot(|snapshot| {
+                snapshot.peer_count = peer_count;
+            });
+            return record;
         }
 
         let record = PeerRecord {
@@ -321,6 +358,11 @@ impl RpcDaemon {
             seen_count: 1,
         };
         guard.insert(peer, record.clone());
+        let peer_count = guard.len();
+        drop(guard);
+        self.update_daemon_status_snapshot(|snapshot| {
+            snapshot.peer_count = peer_count;
+        });
         record
     }
 

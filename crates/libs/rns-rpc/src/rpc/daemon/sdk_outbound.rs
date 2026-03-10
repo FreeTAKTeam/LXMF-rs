@@ -35,56 +35,50 @@ impl RpcDaemon {
             receipt_status: None,
         };
 
+        let store_started = std::time::Instant::now();
         self.store.insert_message(&record).map_err(std::io::Error::other)?;
+        let store_elapsed_ns =
+            store_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
+        self.metrics_record_sdk_send_store_write(store_elapsed_ns);
         self.append_delivery_trace(&id, "sending".to_string());
         if self.outbound_bridge.is_some() {
             let _status_guard =
                 self.delivery_status_lock.lock().expect("delivery_status_lock mutex poisoned");
-            let existing_status = self
+            let sending_status = "sending".to_string();
+            let resolved_status = self
                 .store
-                .get_message(&id)
+                .resolve_receipt_status(&id, &sending_status)
                 .map_err(std::io::Error::other)?
-                .and_then(|message| message.receipt_status);
-            if !existing_status.as_deref().is_some_and(Self::is_terminal_receipt_status) {
-                self.store.update_receipt_status(&id, "sending").map_err(std::io::Error::other)?;
-                record.receipt_status = Some("sending".to_string());
-            } else {
-                record.receipt_status = existing_status;
+                .unwrap_or(sending_status);
+            if resolved_status == "sending" {
+                self.append_delivery_trace(&id, "sending".to_string());
             }
+            record.receipt_status = Some(resolved_status);
         }
+        let delivery_started = std::time::Instant::now();
         let deliver_result = if let Some(bridge) = &self.outbound_bridge {
             bridge.deliver(&record, &options)
         } else {
             let _delivered = crate::transport::test_bridge::deliver_outbound(&record);
             Ok(())
         };
+        let delivery_elapsed_ns =
+            delivery_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
+        self.metrics_record_sdk_send_delivery_schedule(delivery_elapsed_ns);
         if let Err(err) = deliver_result {
             let status = format!("failed: {err}");
             let resolved_status = {
                 let _status_guard =
                     self.delivery_status_lock.lock().expect("delivery_status_lock mutex poisoned");
-                let existing_status = self
+                let resolved_status = self
                     .store
-                    .get_message(&id)
+                    .resolve_receipt_status(&id, &status)
                     .map_err(std::io::Error::other)?
-                    .and_then(|message| message.receipt_status);
-                if let Some(existing_status) = existing_status {
-                    if Self::is_terminal_receipt_status(&existing_status) {
-                        existing_status
-                    } else {
-                        self.store
-                            .update_receipt_status(&id, &status)
-                            .map_err(std::io::Error::other)?;
-                        self.append_delivery_trace(&id, status.clone());
-                        status
-                    }
-                } else {
-                    self.store
-                        .update_receipt_status(&id, &status)
-                        .map_err(std::io::Error::other)?;
+                    .unwrap_or_else(|| status.clone());
+                if resolved_status == status {
                     self.append_delivery_trace(&id, status.clone());
-                    status
                 }
+                resolved_status
             };
             record.receipt_status = Some(resolved_status.clone());
             let reason_code = delivery_reason_code(&resolved_status);
@@ -97,7 +91,11 @@ impl RpcDaemon {
                     "reason_code": reason_code,
                 }),
             };
+            let publish_started = std::time::Instant::now();
             self.publish_event(event);
+            let publish_elapsed_ns =
+                publish_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
+            self.metrics_record_sdk_send_event_publish(publish_elapsed_ns);
             return Ok(RpcResponse {
                 id: request_id,
                 result: None,
@@ -130,28 +128,15 @@ impl RpcDaemon {
         let resolved_status = {
             let _status_guard =
                 self.delivery_status_lock.lock().expect("delivery_status_lock mutex poisoned");
-            let existing_status = self
+            let resolved_status = self
                 .store
-                .get_message(&id)
+                .resolve_receipt_status(&id, &sent_status)
                 .map_err(std::io::Error::other)?
-                .and_then(|message| message.receipt_status);
-            if let Some(existing_status) = existing_status {
-                if Self::is_terminal_receipt_status(&existing_status) {
-                    existing_status
-                } else {
-                    self.store
-                        .update_receipt_status(&id, &sent_status)
-                        .map_err(std::io::Error::other)?;
-                    self.append_delivery_trace(&id, sent_status.clone());
-                    sent_status
-                }
-            } else {
-                self.store
-                    .update_receipt_status(&id, &sent_status)
-                    .map_err(std::io::Error::other)?;
+                .unwrap_or_else(|| sent_status.clone());
+            if resolved_status == sent_status {
                 self.append_delivery_trace(&id, sent_status.clone());
-                sent_status
             }
+            resolved_status
         };
         record.receipt_status = Some(resolved_status.clone());
         let event = RpcEvent {
@@ -162,7 +147,11 @@ impl RpcDaemon {
                 "reason_code": delivery_reason_code(&resolved_status),
             }),
         };
+        let publish_started = std::time::Instant::now();
         self.publish_event(event);
+        let publish_elapsed_ns =
+            publish_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
+        self.metrics_record_sdk_send_event_publish(publish_elapsed_ns);
 
         Ok(RpcResponse { id: request_id, result: Some(json!({ "message_id": id })), error: None })
     }

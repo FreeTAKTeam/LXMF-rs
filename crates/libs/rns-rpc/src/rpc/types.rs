@@ -140,6 +140,15 @@ pub struct StampPolicy {
     pub flexibility: u32,
 }
 
+#[derive(Debug, Clone, PartialEq, Default)]
+struct DaemonStatusSnapshot {
+    peer_count: usize,
+    interfaces: Vec<InterfaceRecord>,
+    delivery_policy: DeliveryPolicy,
+    propagation: PropagationState,
+    stamp_policy: StampPolicy,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct TicketRecord {
     pub destination: String,
@@ -260,6 +269,18 @@ struct RpcMetrics {
     sdk_send_latency_ms: RpcLatencyHistogram,
     sdk_poll_latency_ms: RpcLatencyHistogram,
     sdk_auth_latency_ms: RpcLatencyHistogram,
+    sdk_send_store_write_ns_total: u64,
+    sdk_send_store_write_ops_total: u64,
+    sdk_send_delivery_schedule_ns_total: u64,
+    sdk_send_delivery_schedule_ops_total: u64,
+    sdk_send_event_publish_ns_total: u64,
+    sdk_send_event_publish_ops_total: u64,
+    daemon_status_lock_wait_ns_total: u64,
+    daemon_status_snapshot_wait_ns_total: u64,
+    daemon_status_message_count_wait_ns_total: u64,
+    daemon_status_calls_total: u64,
+    sdk_poll_event_log_lock_wait_ns_total: u64,
+    sdk_poll_event_log_lock_ops_total: u64,
 }
 
 pub struct RpcDaemon {
@@ -310,6 +331,7 @@ pub struct RpcDaemon {
     stamp_policy: Mutex<StampPolicy>,
     ticket_cache: Mutex<HashMap<String, TicketRecord>>,
     delivery_traces: Mutex<HashMap<String, Vec<DeliveryTraceEntry>>>,
+    daemon_status_snapshot: std::sync::RwLock<DaemonStatusSnapshot>,
     delivery_status_lock: Mutex<()>,
     sdk_metrics: Mutex<RpcMetrics>,
     outbound_bridge: Option<Arc<dyn OutboundBridge>>,

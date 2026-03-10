@@ -14,7 +14,6 @@ mod tests;
 
 use clap::Parser;
 use std::path::PathBuf;
-use tokio::task::LocalSet;
 
 #[derive(Parser, Debug)]
 #[command(name = "reticulumd")]
@@ -41,14 +40,9 @@ struct Args {
     rpc_tls_client_ca: Option<PathBuf>,
 }
 
-#[tokio::main(flavor = "current_thread")]
+#[tokio::main(flavor = "multi_thread")]
 async fn main() {
-    let local = LocalSet::new();
-    local
-        .run_until(async {
-            let args = Args::parse();
-            let context = bootstrap::bootstrap(args).await;
-            rpc_loop::run_rpc_loop(context.rpc_addr, context.daemon, context.rpc_tls).await;
-        })
-        .await;
+    let args = Args::parse();
+    let context = bootstrap::bootstrap(args).await;
+    rpc_loop::run_rpc_loop(context.rpc_addr, context.daemon, context.rpc_tls).await;
 }
