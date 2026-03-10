@@ -3,9 +3,15 @@ use super::*;
 #[test]
 fn sdk_rpc_core_schema_valid_fixtures_pass_contract_checks() {
     let schemas = load_rpc_core_schemas();
+    let openrpc_schemas = load_openrpc_core_schemas();
 
     assert_schema_valid(
         &schemas.sdk_negotiate_v2,
+        "docs/fixtures/sdk-v2/rpc/sdk_negotiate_v2.request.valid.json",
+        &fixture("docs/fixtures/sdk-v2/rpc/sdk_negotiate_v2.request.valid.json"),
+    );
+    assert_schema_valid(
+        &openrpc_schemas.sdk_negotiate_v2,
         "docs/fixtures/sdk-v2/rpc/sdk_negotiate_v2.request.valid.json",
         &fixture("docs/fixtures/sdk-v2/rpc/sdk_negotiate_v2.request.valid.json"),
     );
@@ -15,7 +21,17 @@ fn sdk_rpc_core_schema_valid_fixtures_pass_contract_checks() {
         &fixture("docs/fixtures/sdk-v2/rpc/sdk_negotiate_v2.response.valid.json"),
     );
     assert_schema_valid(
+        &openrpc_schemas.sdk_negotiate_v2,
+        "docs/fixtures/sdk-v2/rpc/sdk_negotiate_v2.response.valid.json",
+        &fixture("docs/fixtures/sdk-v2/rpc/sdk_negotiate_v2.response.valid.json"),
+    );
+    assert_schema_valid(
         &schemas.sdk_send_v2,
+        "docs/fixtures/sdk-v2/rpc/sdk_send_v2.request.valid.json",
+        &fixture("docs/fixtures/sdk-v2/rpc/sdk_send_v2.request.valid.json"),
+    );
+    assert_schema_valid(
+        &openrpc_schemas.sdk_send_v2,
         "docs/fixtures/sdk-v2/rpc/sdk_send_v2.request.valid.json",
         &fixture("docs/fixtures/sdk-v2/rpc/sdk_send_v2.request.valid.json"),
     );
@@ -25,7 +41,17 @@ fn sdk_rpc_core_schema_valid_fixtures_pass_contract_checks() {
         &fixture("docs/fixtures/sdk-v2/rpc/sdk_send_v2.response.valid.json"),
     );
     assert_schema_valid(
+        &openrpc_schemas.sdk_send_v2,
+        "docs/fixtures/sdk-v2/rpc/sdk_send_v2.response.valid.json",
+        &fixture("docs/fixtures/sdk-v2/rpc/sdk_send_v2.response.valid.json"),
+    );
+    assert_schema_valid(
         &schemas.sdk_status_v2,
+        "docs/fixtures/sdk-v2/rpc/sdk_status_v2.request.valid.json",
+        &fixture("docs/fixtures/sdk-v2/rpc/sdk_status_v2.request.valid.json"),
+    );
+    assert_schema_valid(
+        &openrpc_schemas.sdk_status_v2,
         "docs/fixtures/sdk-v2/rpc/sdk_status_v2.request.valid.json",
         &fixture("docs/fixtures/sdk-v2/rpc/sdk_status_v2.request.valid.json"),
     );
@@ -35,7 +61,17 @@ fn sdk_rpc_core_schema_valid_fixtures_pass_contract_checks() {
         &fixture("docs/fixtures/sdk-v2/rpc/sdk_status_v2.response.valid.json"),
     );
     assert_schema_valid(
+        &openrpc_schemas.sdk_status_v2,
+        "docs/fixtures/sdk-v2/rpc/sdk_status_v2.response.valid.json",
+        &fixture("docs/fixtures/sdk-v2/rpc/sdk_status_v2.response.valid.json"),
+    );
+    assert_schema_valid(
         &schemas.sdk_configure_v2,
+        "docs/fixtures/sdk-v2/rpc/sdk_configure_v2.request.valid.json",
+        &fixture("docs/fixtures/sdk-v2/rpc/sdk_configure_v2.request.valid.json"),
+    );
+    assert_schema_valid(
+        &openrpc_schemas.sdk_configure_v2,
         "docs/fixtures/sdk-v2/rpc/sdk_configure_v2.request.valid.json",
         &fixture("docs/fixtures/sdk-v2/rpc/sdk_configure_v2.request.valid.json"),
     );
@@ -45,7 +81,17 @@ fn sdk_rpc_core_schema_valid_fixtures_pass_contract_checks() {
         &fixture("docs/fixtures/sdk-v2/rpc/sdk_configure_v2.response.valid.json"),
     );
     assert_schema_valid(
+        &openrpc_schemas.sdk_configure_v2,
+        "docs/fixtures/sdk-v2/rpc/sdk_configure_v2.response.valid.json",
+        &fixture("docs/fixtures/sdk-v2/rpc/sdk_configure_v2.response.valid.json"),
+    );
+    assert_schema_valid(
         &schemas.sdk_poll_events_v2,
+        "docs/fixtures/sdk-v2/rpc/sdk_poll_events_v2.request.valid.json",
+        &fixture("docs/fixtures/sdk-v2/rpc/sdk_poll_events_v2.request.valid.json"),
+    );
+    assert_schema_valid(
+        &openrpc_schemas.sdk_poll_events_v2,
         "docs/fixtures/sdk-v2/rpc/sdk_poll_events_v2.request.valid.json",
         &fixture("docs/fixtures/sdk-v2/rpc/sdk_poll_events_v2.request.valid.json"),
     );
@@ -55,7 +101,17 @@ fn sdk_rpc_core_schema_valid_fixtures_pass_contract_checks() {
         &fixture("docs/fixtures/sdk-v2/rpc/sdk_poll_events_v2.response.valid.json"),
     );
     assert_schema_valid(
+        &openrpc_schemas.sdk_poll_events_v2,
+        "docs/fixtures/sdk-v2/rpc/sdk_poll_events_v2.response.valid.json",
+        &fixture("docs/fixtures/sdk-v2/rpc/sdk_poll_events_v2.response.valid.json"),
+    );
+    assert_schema_valid(
         &schemas.sdk_cancel_message_v2,
+        "docs/fixtures/sdk-v2/rpc/sdk_cancel_message_v2.request.valid.json",
+        &fixture("docs/fixtures/sdk-v2/rpc/sdk_cancel_message_v2.request.valid.json"),
+    );
+    assert_schema_valid(
+        &openrpc_schemas.sdk_cancel_message_v2,
         "docs/fixtures/sdk-v2/rpc/sdk_cancel_message_v2.request.valid.json",
         &fixture("docs/fixtures/sdk-v2/rpc/sdk_cancel_message_v2.request.valid.json"),
     );
@@ -65,7 +121,17 @@ fn sdk_rpc_core_schema_valid_fixtures_pass_contract_checks() {
         &fixture("docs/fixtures/sdk-v2/rpc/sdk_cancel_message_v2.response.valid.json"),
     );
     assert_schema_valid(
+        &openrpc_schemas.sdk_cancel_message_v2,
+        "docs/fixtures/sdk-v2/rpc/sdk_cancel_message_v2.response.valid.json",
+        &fixture("docs/fixtures/sdk-v2/rpc/sdk_cancel_message_v2.response.valid.json"),
+    );
+    assert_schema_valid(
         &schemas.sdk_snapshot_v2,
+        "docs/fixtures/sdk-v2/rpc/sdk_snapshot_v2.request.valid.json",
+        &fixture("docs/fixtures/sdk-v2/rpc/sdk_snapshot_v2.request.valid.json"),
+    );
+    assert_schema_valid(
+        &openrpc_schemas.sdk_snapshot_v2,
         "docs/fixtures/sdk-v2/rpc/sdk_snapshot_v2.request.valid.json",
         &fixture("docs/fixtures/sdk-v2/rpc/sdk_snapshot_v2.request.valid.json"),
     );
@@ -75,7 +141,17 @@ fn sdk_rpc_core_schema_valid_fixtures_pass_contract_checks() {
         &fixture("docs/fixtures/sdk-v2/rpc/sdk_snapshot_v2.response.valid.json"),
     );
     assert_schema_valid(
+        &openrpc_schemas.sdk_snapshot_v2,
+        "docs/fixtures/sdk-v2/rpc/sdk_snapshot_v2.response.valid.json",
+        &fixture("docs/fixtures/sdk-v2/rpc/sdk_snapshot_v2.response.valid.json"),
+    );
+    assert_schema_valid(
         &schemas.sdk_shutdown_v2,
+        "docs/fixtures/sdk-v2/rpc/sdk_shutdown_v2.request.valid.json",
+        &fixture("docs/fixtures/sdk-v2/rpc/sdk_shutdown_v2.request.valid.json"),
+    );
+    assert_schema_valid(
+        &openrpc_schemas.sdk_shutdown_v2,
         "docs/fixtures/sdk-v2/rpc/sdk_shutdown_v2.request.valid.json",
         &fixture("docs/fixtures/sdk-v2/rpc/sdk_shutdown_v2.request.valid.json"),
     );
@@ -84,14 +160,25 @@ fn sdk_rpc_core_schema_valid_fixtures_pass_contract_checks() {
         "docs/fixtures/sdk-v2/rpc/sdk_shutdown_v2.response.valid.json",
         &fixture("docs/fixtures/sdk-v2/rpc/sdk_shutdown_v2.response.valid.json"),
     );
+    assert_schema_valid(
+        &openrpc_schemas.sdk_shutdown_v2,
+        "docs/fixtures/sdk-v2/rpc/sdk_shutdown_v2.response.valid.json",
+        &fixture("docs/fixtures/sdk-v2/rpc/sdk_shutdown_v2.response.valid.json"),
+    );
 }
 
 #[test]
 fn sdk_rpc_core_schema_invalid_fixtures_are_rejected() {
     let schemas = load_rpc_core_schemas();
+    let openrpc_schemas = load_openrpc_core_schemas();
 
     assert_schema_invalid(
         &schemas.sdk_negotiate_v2,
+        "docs/fixtures/sdk-v2/rpc/sdk_negotiate_v2.request.invalid.json",
+        &fixture("docs/fixtures/sdk-v2/rpc/sdk_negotiate_v2.request.invalid.json"),
+    );
+    assert_schema_invalid(
+        &openrpc_schemas.sdk_negotiate_v2,
         "docs/fixtures/sdk-v2/rpc/sdk_negotiate_v2.request.invalid.json",
         &fixture("docs/fixtures/sdk-v2/rpc/sdk_negotiate_v2.request.invalid.json"),
     );
@@ -101,7 +188,17 @@ fn sdk_rpc_core_schema_invalid_fixtures_are_rejected() {
         &fixture("docs/fixtures/sdk-v2/rpc/sdk_send_v2.request.invalid.json"),
     );
     assert_schema_invalid(
+        &openrpc_schemas.sdk_send_v2,
+        "docs/fixtures/sdk-v2/rpc/sdk_send_v2.request.invalid.json",
+        &fixture("docs/fixtures/sdk-v2/rpc/sdk_send_v2.request.invalid.json"),
+    );
+    assert_schema_invalid(
         &schemas.sdk_status_v2,
+        "docs/fixtures/sdk-v2/rpc/sdk_status_v2.request.invalid.json",
+        &fixture("docs/fixtures/sdk-v2/rpc/sdk_status_v2.request.invalid.json"),
+    );
+    assert_schema_invalid(
+        &openrpc_schemas.sdk_status_v2,
         "docs/fixtures/sdk-v2/rpc/sdk_status_v2.request.invalid.json",
         &fixture("docs/fixtures/sdk-v2/rpc/sdk_status_v2.request.invalid.json"),
     );
@@ -111,7 +208,17 @@ fn sdk_rpc_core_schema_invalid_fixtures_are_rejected() {
         &fixture("docs/fixtures/sdk-v2/rpc/sdk_configure_v2.request.invalid.json"),
     );
     assert_schema_invalid(
+        &openrpc_schemas.sdk_configure_v2,
+        "docs/fixtures/sdk-v2/rpc/sdk_configure_v2.request.invalid.json",
+        &fixture("docs/fixtures/sdk-v2/rpc/sdk_configure_v2.request.invalid.json"),
+    );
+    assert_schema_invalid(
         &schemas.sdk_poll_events_v2,
+        "docs/fixtures/sdk-v2/rpc/sdk_poll_events_v2.request.invalid.json",
+        &fixture("docs/fixtures/sdk-v2/rpc/sdk_poll_events_v2.request.invalid.json"),
+    );
+    assert_schema_invalid(
+        &openrpc_schemas.sdk_poll_events_v2,
         "docs/fixtures/sdk-v2/rpc/sdk_poll_events_v2.request.invalid.json",
         &fixture("docs/fixtures/sdk-v2/rpc/sdk_poll_events_v2.request.invalid.json"),
     );
@@ -121,12 +228,27 @@ fn sdk_rpc_core_schema_invalid_fixtures_are_rejected() {
         &fixture("docs/fixtures/sdk-v2/rpc/sdk_cancel_message_v2.request.invalid.json"),
     );
     assert_schema_invalid(
+        &openrpc_schemas.sdk_cancel_message_v2,
+        "docs/fixtures/sdk-v2/rpc/sdk_cancel_message_v2.request.invalid.json",
+        &fixture("docs/fixtures/sdk-v2/rpc/sdk_cancel_message_v2.request.invalid.json"),
+    );
+    assert_schema_invalid(
         &schemas.sdk_snapshot_v2,
         "docs/fixtures/sdk-v2/rpc/sdk_snapshot_v2.request.invalid.json",
         &fixture("docs/fixtures/sdk-v2/rpc/sdk_snapshot_v2.request.invalid.json"),
     );
     assert_schema_invalid(
+        &openrpc_schemas.sdk_snapshot_v2,
+        "docs/fixtures/sdk-v2/rpc/sdk_snapshot_v2.request.invalid.json",
+        &fixture("docs/fixtures/sdk-v2/rpc/sdk_snapshot_v2.request.invalid.json"),
+    );
+    assert_schema_invalid(
         &schemas.sdk_shutdown_v2,
+        "docs/fixtures/sdk-v2/rpc/sdk_shutdown_v2.request.invalid.json",
+        &fixture("docs/fixtures/sdk-v2/rpc/sdk_shutdown_v2.request.invalid.json"),
+    );
+    assert_schema_invalid(
+        &openrpc_schemas.sdk_shutdown_v2,
         "docs/fixtures/sdk-v2/rpc/sdk_shutdown_v2.request.invalid.json",
         &fixture("docs/fixtures/sdk-v2/rpc/sdk_shutdown_v2.request.invalid.json"),
     );

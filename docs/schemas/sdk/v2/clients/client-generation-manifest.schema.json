@@ -17,6 +17,7 @@
       },
       "additionalProperties": true
     },
+    "openrpc_contract_file": { "type": "string", "minLength": 1 },
     "openapi_spec_file": { "type": "string", "minLength": 1, "default": "generated/clients/spec/openapi.json" },
     "output_validation": {
       "type": "object",

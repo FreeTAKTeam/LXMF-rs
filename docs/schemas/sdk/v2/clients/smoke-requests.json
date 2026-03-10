@@ -47,6 +47,37 @@
         "cursor": null,
         "max": 64
       }
+    },
+    {
+      "language": "go",
+      "method": "sdk_status_v2",
+      "request": {
+        "message_id": "msg-id-1"
+      }
+    },
+    {
+      "language": "javascript",
+      "method": "sdk_configure_v2",
+      "request": {
+        "expected_revision": 7,
+        "patch": {
+          "profile": "desktop-full"
+        }
+      }
+    },
+    {
+      "language": "python",
+      "method": "sdk_cancel_message_v2",
+      "request": {
+        "message_id": "msg-id-1"
+      }
+    },
+    {
+      "language": "go",
+      "method": "sdk_shutdown_v2",
+      "request": {
+        "mode": "graceful"
+      }
     }
   ]
 }

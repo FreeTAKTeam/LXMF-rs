@@ -4,6 +4,7 @@ use std::collections::BTreeSet;
 #[test]
 fn sdk_rpc_domain_schema_release_b_fixtures_are_validated() {
     let schemas = load_rpc_domain_schemas();
+    let openrpc_schemas = load_openrpc_domain_schemas();
     let root = workspace_root();
     for path in fixture_paths("docs/fixtures/sdk-v2/rpc/release-b") {
         let relative = path
@@ -13,10 +14,12 @@ fn sdk_rpc_domain_schema_release_b_fixtures_are_validated() {
         let json = read_json(&path);
         if relative.contains(".valid.") {
             assert_schema_valid(&schemas.release_b_methods, relative.as_str(), &json);
+            assert_schema_valid(&openrpc_schemas.release_b_methods, relative.as_str(), &json);
             continue;
         }
         if relative.contains(".invalid.") {
             assert_schema_invalid(&schemas.release_b_methods, relative.as_str(), &json);
+            assert_schema_invalid(&openrpc_schemas.release_b_methods, relative.as_str(), &json);
             continue;
         }
         panic!("unexpected fixture naming, expected .valid. or .invalid. in {relative}");
@@ -26,6 +29,7 @@ fn sdk_rpc_domain_schema_release_b_fixtures_are_validated() {
 #[test]
 fn sdk_rpc_domain_schema_release_c_fixtures_are_validated() {
     let schemas = load_rpc_domain_schemas();
+    let openrpc_schemas = load_openrpc_domain_schemas();
     let root = workspace_root();
     for path in fixture_paths("docs/fixtures/sdk-v2/rpc/release-c") {
         let relative = path
@@ -35,10 +39,12 @@ fn sdk_rpc_domain_schema_release_c_fixtures_are_validated() {
         let json = read_json(&path);
         if relative.contains(".valid.") {
             assert_schema_valid(&schemas.release_c_methods, relative.as_str(), &json);
+            assert_schema_valid(&openrpc_schemas.release_c_methods, relative.as_str(), &json);
             continue;
         }
         if relative.contains(".invalid.") {
             assert_schema_invalid(&schemas.release_c_methods, relative.as_str(), &json);
+            assert_schema_invalid(&openrpc_schemas.release_c_methods, relative.as_str(), &json);
             continue;
         }
         panic!("unexpected fixture naming, expected .valid. or .invalid. in {relative}");

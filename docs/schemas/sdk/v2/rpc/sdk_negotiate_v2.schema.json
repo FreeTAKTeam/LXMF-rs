@@ -1,112 +1,234 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://weft.tak/contracts/sdk/v2/rpc/sdk_negotiate_v2.schema.json",
-  "title": "LXMF SDK RPC sdk_negotiate_v2 v2",
-  "oneOf": [
-    { "$ref": "#/$defs/request" },
-    { "$ref": "#/$defs/response_ok" },
-    { "$ref": "#/$defs/response_error" }
-  ],
   "$defs": {
-    "rpc_id": {
-      "oneOf": [
-        { "type": "string", "minLength": 1 },
-        { "type": "integer", "minimum": 0 }
-      ]
-    },
-    "rpc_error": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["code", "message"],
+    "params": {
+      "additionalProperties": true,
       "properties": {
-        "code": { "type": "string", "minLength": 1 },
-        "message": { "type": "string", "minLength": 1 },
-        "machine_code": { "type": "string", "pattern": "^SDK_[A-Z]+_[A-Z0-9_]+$" },
-        "category": { "type": "string", "minLength": 1 },
-        "retryable": { "type": "boolean" },
-        "is_user_actionable": { "type": "boolean" },
-        "details": { "type": "object", "additionalProperties": true },
-        "cause_code": { "type": "string", "pattern": "^SDK_[A-Z]+_[A-Z0-9_]+$" },
-        "extensions": { "type": "object", "additionalProperties": true }
-      }
+        "config": {
+          "additionalProperties": true,
+          "properties": {
+            "auth_mode": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "bind_mode": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "block_timeout_ms": {
+              "minimum": 1,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "overflow_policy": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "profile": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "rpc_backend": {
+              "type": [
+                "object",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "auth_mode",
+            "bind_mode",
+            "overflow_policy",
+            "profile"
+          ],
+          "type": "object"
+        },
+        "requested_capabilities": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "supported_contract_versions": {
+          "items": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "config",
+        "requested_capabilities",
+        "supported_contract_versions"
+      ],
+      "type": "object"
     },
     "request": {
-      "type": "object",
       "additionalProperties": false,
-      "required": ["id", "method", "params"],
       "properties": {
-        "id": { "$ref": "#/$defs/rpc_id" },
-        "method": { "const": "sdk_negotiate_v2" },
+        "id": {
+          "$ref": "#/$defs/rpc_id"
+        },
+        "method": {
+          "const": "sdk_negotiate_v2"
+        },
         "params": {
-          "type": "object",
-          "additionalProperties": true,
-          "required": ["supported_contract_versions", "requested_capabilities", "config"],
-          "properties": {
-            "supported_contract_versions": {
-              "type": "array",
-              "minItems": 1,
-              "items": { "type": "integer", "minimum": 1 }
-            },
-            "requested_capabilities": {
-              "type": "array",
-              "items": { "type": "string", "minLength": 1 }
-            },
-            "config": {
-              "type": "object",
-              "required": ["profile", "bind_mode", "auth_mode", "overflow_policy"],
-              "properties": {
-                "profile": { "type": "string", "minLength": 1 },
-                "bind_mode": { "type": "string", "minLength": 1 },
-                "auth_mode": { "type": "string", "minLength": 1 },
-                "overflow_policy": { "type": "string", "minLength": 1 },
-                "block_timeout_ms": { "type": ["integer", "null"], "minimum": 1 },
-                "rpc_backend": { "type": ["object", "null"] }
-              },
-              "additionalProperties": true
-            }
-          }
+          "$ref": "#/$defs/params"
         }
-      }
-    },
-    "response_ok": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "result"],
-      "properties": {
-        "id": { "$ref": "#/$defs/rpc_id" },
-        "result": {
-          "type": "object",
-          "additionalProperties": true,
-          "required": [
-            "runtime_id",
-            "active_contract_version",
-            "effective_capabilities",
-            "effective_limits",
-            "contract_release",
-            "schema_namespace"
-          ],
-          "properties": {
-            "runtime_id": { "type": "string", "minLength": 1 },
-            "active_contract_version": { "type": "integer", "minimum": 1 },
-            "effective_capabilities": {
-              "type": "array",
-              "items": { "type": "string", "minLength": 1 }
-            },
-            "effective_limits": { "type": "object", "additionalProperties": true },
-            "contract_release": { "type": "string", "minLength": 1 },
-            "schema_namespace": { "type": "string", "minLength": 1 }
-          }
-        }
-      }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "type": "object"
     },
     "response_error": {
-      "type": "object",
       "additionalProperties": false,
-      "required": ["id", "error"],
       "properties": {
-        "id": { "$ref": "#/$defs/rpc_id" },
-        "error": { "$ref": "#/$defs/rpc_error" }
-      }
+        "error": {
+          "$ref": "#/$defs/rpc_error"
+        },
+        "id": {
+          "$ref": "#/$defs/rpc_id"
+        }
+      },
+      "required": [
+        "error",
+        "id"
+      ],
+      "type": "object"
+    },
+    "response_ok": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/rpc_id"
+        },
+        "result": {
+          "$ref": "#/$defs/result"
+        }
+      },
+      "required": [
+        "id",
+        "result"
+      ],
+      "type": "object"
+    },
+    "result": {
+      "additionalProperties": true,
+      "properties": {
+        "active_contract_version": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "contract_release": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "effective_capabilities": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "effective_limits": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "runtime_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "schema_namespace": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "active_contract_version",
+        "contract_release",
+        "effective_capabilities",
+        "effective_limits",
+        "runtime_id",
+        "schema_namespace"
+      ],
+      "type": "object"
+    },
+    "rpc_error": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "cause_code": {
+          "pattern": "^SDK_[A-Z]+_[A-Z0-9_]+$",
+          "type": "string"
+        },
+        "code": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "details": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "extensions": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "is_user_actionable": {
+          "type": "boolean"
+        },
+        "machine_code": {
+          "pattern": "^SDK_[A-Z]+_[A-Z0-9_]+$",
+          "type": "string"
+        },
+        "message": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "retryable": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "type": "object"
+    },
+    "rpc_id": {
+      "oneOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "minimum": 0,
+          "type": "integer"
+        }
+      ]
     }
-  }
+  },
+  "$id": "https://weft.tak/contracts/sdk/v2/rpc/sdk_negotiate_v2.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/request"
+    },
+    {
+      "$ref": "#/$defs/response_ok"
+    },
+    {
+      "$ref": "#/$defs/response_error"
+    }
+  ],
+  "title": "LXMF SDK RPC sdk_negotiate_v2 v2"
 }

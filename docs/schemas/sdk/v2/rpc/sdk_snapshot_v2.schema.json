@@ -1,99 +1,198 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://weft.tak/contracts/sdk/v2/rpc/sdk_snapshot_v2.schema.json",
-  "title": "LXMF SDK RPC sdk_snapshot_v2 v2",
-  "oneOf": [
-    { "$ref": "#/$defs/request" },
-    { "$ref": "#/$defs/response_ok" },
-    { "$ref": "#/$defs/response_error" }
-  ],
   "$defs": {
-    "rpc_id": {
-      "oneOf": [
-        { "type": "string", "minLength": 1 },
-        { "type": "integer", "minimum": 0 }
-      ]
-    },
-    "rpc_error": {
-      "type": "object",
+    "params": {
       "additionalProperties": false,
-      "required": ["code", "message"],
       "properties": {
-        "code": { "type": "string", "minLength": 1 },
-        "message": { "type": "string", "minLength": 1 },
-        "machine_code": { "type": "string", "pattern": "^SDK_[A-Z]+_[A-Z0-9_]+$" },
-        "category": { "type": "string", "minLength": 1 },
-        "retryable": { "type": "boolean" },
-        "is_user_actionable": { "type": "boolean" },
-        "details": { "type": "object", "additionalProperties": true },
-        "cause_code": { "type": "string", "pattern": "^SDK_[A-Z]+_[A-Z0-9_]+$" },
-        "extensions": { "type": "object", "additionalProperties": true }
-      }
+        "include_counts": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "include_counts"
+      ],
+      "type": "object"
     },
     "request": {
-      "type": "object",
       "additionalProperties": false,
-      "required": ["id", "method", "params"],
       "properties": {
-        "id": { "$ref": "#/$defs/rpc_id" },
-        "method": { "const": "sdk_snapshot_v2" },
+        "id": {
+          "$ref": "#/$defs/rpc_id"
+        },
+        "method": {
+          "const": "sdk_snapshot_v2"
+        },
         "params": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["include_counts"],
-          "properties": {
-            "include_counts": { "type": "boolean" }
-          }
+          "$ref": "#/$defs/params"
         }
-      }
-    },
-    "response_ok": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "result"],
-      "properties": {
-        "id": { "$ref": "#/$defs/rpc_id" },
-        "result": {
-          "type": "object",
-          "additionalProperties": true,
-          "required": [
-            "runtime_id",
-            "state",
-            "active_contract_version",
-            "event_stream_position",
-            "config_revision",
-            "profile",
-            "effective_capabilities",
-            "queued_messages",
-            "in_flight_messages",
-            "counts_included"
-          ],
-          "properties": {
-            "runtime_id": { "type": "string", "minLength": 1 },
-            "state": { "type": "string", "minLength": 1 },
-            "active_contract_version": { "type": "integer", "minimum": 1 },
-            "event_stream_position": { "type": "integer", "minimum": 0 },
-            "config_revision": { "type": "integer", "minimum": 0 },
-            "profile": { "type": "string", "minLength": 1 },
-            "effective_capabilities": {
-              "type": "array",
-              "items": { "type": "string", "minLength": 1 }
-            },
-            "queued_messages": { "type": "integer", "minimum": 0 },
-            "in_flight_messages": { "type": "integer", "minimum": 0 },
-            "counts_included": { "type": "boolean" }
-          }
-        }
-      }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "type": "object"
     },
     "response_error": {
-      "type": "object",
       "additionalProperties": false,
-      "required": ["id", "error"],
       "properties": {
-        "id": { "$ref": "#/$defs/rpc_id" },
-        "error": { "$ref": "#/$defs/rpc_error" }
-      }
+        "error": {
+          "$ref": "#/$defs/rpc_error"
+        },
+        "id": {
+          "$ref": "#/$defs/rpc_id"
+        }
+      },
+      "required": [
+        "error",
+        "id"
+      ],
+      "type": "object"
+    },
+    "response_ok": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/rpc_id"
+        },
+        "result": {
+          "$ref": "#/$defs/result"
+        }
+      },
+      "required": [
+        "id",
+        "result"
+      ],
+      "type": "object"
+    },
+    "result": {
+      "additionalProperties": true,
+      "properties": {
+        "active_contract_version": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "config_revision": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "counts_included": {
+          "type": "boolean"
+        },
+        "effective_capabilities": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "event_stream_position": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "in_flight_messages": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "profile": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "queued_messages": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "runtime_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "state": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "active_contract_version",
+        "config_revision",
+        "counts_included",
+        "effective_capabilities",
+        "event_stream_position",
+        "in_flight_messages",
+        "profile",
+        "queued_messages",
+        "runtime_id",
+        "state"
+      ],
+      "type": "object"
+    },
+    "rpc_error": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "cause_code": {
+          "pattern": "^SDK_[A-Z]+_[A-Z0-9_]+$",
+          "type": "string"
+        },
+        "code": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "details": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "extensions": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "is_user_actionable": {
+          "type": "boolean"
+        },
+        "machine_code": {
+          "pattern": "^SDK_[A-Z]+_[A-Z0-9_]+$",
+          "type": "string"
+        },
+        "message": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "retryable": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "type": "object"
+    },
+    "rpc_id": {
+      "oneOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "minimum": 0,
+          "type": "integer"
+        }
+      ]
     }
-  }
+  },
+  "$id": "https://weft.tak/contracts/sdk/v2/rpc/sdk_snapshot_v2.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/request"
+    },
+    {
+      "$ref": "#/$defs/response_ok"
+    },
+    {
+      "$ref": "#/$defs/response_error"
+    }
+  ],
+  "title": "LXMF SDK RPC sdk_snapshot_v2 v2"
 }

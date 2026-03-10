@@ -16,6 +16,7 @@ const DEFAULT_SPEC_HASH_FILE: &str = "target/schema-client/spec.hash";
 const DEFAULT_OUTPUT_VALIDATION_MODE: &str = "target_hashes";
 const DEFAULT_TARGET_HASH_BASELINE_PATH: &str =
     "docs/contracts/baselines/schema-client-generation-baseline.json";
+const LEGACY_RPC_SCHEMA_DIR: &str = "docs/schemas/sdk/v2/rpc";
 const SCHEMA_CLIENT_GENERATION_BASELINE_VERSION: u32 = 1;
 const COMPILER_CHECK_PASS: &str = "PASS";
 const COMPILER_CHECK_SKIP_PREFIX: &str = "SKIP:";
@@ -140,6 +141,8 @@ struct ClientGenerationManifest {
     pub schema_namespace: String,
     #[serde(default)]
     pub generator_backend: Option<GeneratorBackendConfig>,
+    #[serde(default)]
+    pub openrpc_contract_file: Option<String>,
     #[serde(default = "default_openapi_spec")]
     pub openapi_spec_file: String,
     #[serde(default)]
@@ -178,6 +181,13 @@ struct SchemaSource {
     path: PathBuf,
     schema: Value,
     def_component_prefix: String,
+    kind: SchemaSourceKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SchemaSourceKind {
+    JsonSchemaDefs,
+    OpenRpc,
 }
 
 #[derive(Debug, Clone)]
@@ -247,6 +257,12 @@ struct OpenApiMediaType {
     schema: Value,
 }
 
+#[derive(Debug, Clone)]
+struct LegacyRpcSchemaArtifact {
+    path: PathBuf,
+    schema: Value,
+}
+
 pub fn run_schema_client_generate(
     workspace: &Path,
     manifest_path: &Path,
@@ -254,6 +270,7 @@ pub fn run_schema_client_generate(
 ) -> Result<SchemaClientReport> {
     let manifest = load_and_validate_manifest(manifest_path)?;
     let schema_sources = discover_schema_sources(workspace, &manifest)?;
+    sync_legacy_rpc_schemas(workspace, &schema_sources, mode)?;
     let methods = discover_methods(&schema_sources)?;
     let spec_path = workspace.join(&manifest.openapi_spec_file);
     let temp_dir = TempDir::new(workspace)?;
@@ -459,8 +476,27 @@ fn discover_schema_sources(
     workspace: &Path,
     manifest: &ClientGenerationManifest,
 ) -> Result<Vec<SchemaSource>> {
-    let schema_paths = resolve_schema_paths(workspace, manifest)?;
     let mut sources = Vec::new();
+
+    if let Some(contract_path) = manifest.openrpc_contract_file.as_deref() {
+        let path = workspace.join(contract_path);
+        if !path.is_file() {
+            bail!("manifest references missing OpenRPC contract {contract_path}");
+        }
+        let raw = fs::read_to_string(&path)
+            .with_context(|| format!("read OpenRPC contract {}", path.display()))?;
+        let schema = serde_json::from_str::<Value>(&raw)
+            .with_context(|| format!("parse OpenRPC contract {}", path.display()))?;
+        validate_openrpc_contract(&schema, &path)?;
+        sources.push(SchemaSource {
+            path,
+            schema,
+            def_component_prefix: String::new(),
+            kind: SchemaSourceKind::OpenRpc,
+        });
+    }
+
+    let schema_paths = resolve_schema_paths(workspace, manifest)?;
 
     for path in schema_paths {
         let raw =
@@ -471,6 +507,7 @@ fn discover_schema_sources(
             path: path.clone(),
             schema,
             def_component_prefix: schema_source_prefix(&path),
+            kind: SchemaSourceKind::JsonSchemaDefs,
         });
     }
 
@@ -506,6 +543,355 @@ fn discover_methods(schema_sources: &[SchemaSource]) -> Result<Vec<MethodDescrip
 
     methods.sort_by(|a, b| a.method.cmp(&b.method));
     Ok(methods)
+}
+
+fn sync_legacy_rpc_schemas(
+    workspace: &Path,
+    schema_sources: &[SchemaSource],
+    mode: SchemaClientMode,
+) -> Result<()> {
+    let Some(openrpc_source) =
+        schema_sources.iter().find(|source| source.kind == SchemaSourceKind::OpenRpc)
+    else {
+        return Ok(());
+    };
+
+    let artifacts = project_legacy_rpc_schemas(&openrpc_source.schema)?;
+    for artifact in artifacts {
+        let destination = workspace.join(&artifact.path);
+        let canonical = canonicalize_json(artifact.schema);
+        let mut encoded = serde_json::to_vec_pretty(&canonical)
+            .with_context(|| format!("serialize {}", artifact.path.display()))?;
+        encoded.push(b'\n');
+
+        match mode {
+            SchemaClientMode::Write => {
+                if let Some(parent) = destination.parent() {
+                    fs::create_dir_all(parent)
+                        .with_context(|| format!("create legacy rpc dir {}", parent.display()))?;
+                }
+                fs::write(&destination, &encoded)
+                    .with_context(|| format!("write {}", destination.display()))?;
+            }
+            SchemaClientMode::Check => {
+                if !destination.is_file() {
+                    bail!("missing generated legacy RPC schema {}", destination.display());
+                }
+                let existing = fs::read(&destination)
+                    .with_context(|| format!("read {}", destination.display()))?;
+                if existing != encoded {
+                    bail!(
+                        "generated legacy RPC schema {} is out of date; run `cargo xtask schema-client-generate`",
+                        destination.display()
+                    );
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn project_legacy_rpc_schemas(openrpc: &Value) -> Result<Vec<LegacyRpcSchemaArtifact>> {
+    let methods = openrpc
+        .get("methods")
+        .and_then(Value::as_array)
+        .context("OpenRPC contract missing methods")?;
+    let components = openrpc
+        .get("components")
+        .and_then(|item| item.get("schemas"))
+        .and_then(Value::as_object)
+        .context("OpenRPC contract missing components.schemas")?;
+
+    let release_b_methods =
+        grouped_method_set(components, "SdkReleaseBRequestEnvelope", "release B request")?;
+    let release_c_methods =
+        grouped_method_set(components, "SdkReleaseCRequestEnvelope", "release C request")?;
+
+    let discovered_methods = methods
+        .iter()
+        .map(|method| {
+            method
+                .get("name")
+                .and_then(Value::as_str)
+                .context("OpenRPC method missing name")
+                .map(str::to_string)
+        })
+        .collect::<Result<BTreeSet<_>>>()?;
+
+    let mut core_methods = BTreeSet::new();
+    for method in methods {
+        let method_name =
+            method.get("name").and_then(Value::as_str).context("OpenRPC method missing name")?;
+        if release_b_methods.contains(method_name) || release_c_methods.contains(method_name) {
+            continue;
+        }
+        if method
+            .get("x-client-generation")
+            .and_then(Value::as_bool)
+            .is_some_and(|enabled| !enabled)
+        {
+            bail!(
+                "OpenRPC method {method_name} is excluded from client generation but not mapped to a grouped legacy schema"
+            );
+        }
+        core_methods.insert(method_name.to_string());
+    }
+
+    let mut assigned_methods = BTreeSet::new();
+    assigned_methods.extend(core_methods.iter().cloned());
+    assigned_methods.extend(release_b_methods.iter().cloned());
+    assigned_methods.extend(release_c_methods.iter().cloned());
+
+    if assigned_methods != discovered_methods {
+        let missing = discovered_methods.difference(&assigned_methods).cloned().collect::<Vec<_>>();
+        let unexpected =
+            assigned_methods.difference(&discovered_methods).cloned().collect::<Vec<_>>();
+        bail!(
+            "OpenRPC legacy projection coverage mismatch: missing={missing:?}, unexpected={unexpected:?}"
+        );
+    }
+
+    if !release_b_methods.is_disjoint(&release_c_methods) {
+        let overlap =
+            release_b_methods.intersection(&release_c_methods).cloned().collect::<Vec<_>>();
+        bail!("OpenRPC release B/C method grouping overlaps: {overlap:?}");
+    }
+
+    let mut artifacts = Vec::new();
+    for method_name in core_methods {
+        artifacts.push(project_core_legacy_rpc_schema(&method_name, components)?);
+    }
+
+    artifacts.push(project_grouped_legacy_rpc_schema(
+        "sdk_release_b_methods.schema.json",
+        "LXMF SDK RPC Release B Domain Methods v2",
+        "SdkReleaseBRequestEnvelope",
+        Some("SdkReleaseBResponseOkEnvelope"),
+        "SdkReleaseBResponseErrorEnvelope",
+        Some("SdkReleaseBResult"),
+        Some("ReleaseBExtensionMap"),
+        components,
+    )?);
+    artifacts.push(project_grouped_legacy_rpc_schema(
+        "sdk_release_c_methods.schema.json",
+        "LXMF SDK RPC Release C Domain Methods v2",
+        "SdkReleaseCRequestEnvelope",
+        None,
+        "SdkReleaseCResponseErrorEnvelope",
+        None,
+        Some("ReleaseCExtensionMap"),
+        components,
+    )?);
+
+    artifacts.sort_by(|left, right| left.path.cmp(&right.path));
+    Ok(artifacts)
+}
+
+fn grouped_method_set(
+    components: &Map<String, Value>,
+    request_component: &str,
+    context_label: &str,
+) -> Result<BTreeSet<String>> {
+    let method_enum = components
+        .get(request_component)
+        .and_then(|schema| schema.get("properties"))
+        .and_then(Value::as_object)
+        .and_then(|props| props.get("method"))
+        .and_then(|schema| schema.get("enum"))
+        .and_then(Value::as_array)
+        .with_context(|| format!("OpenRPC contract missing {context_label} method enum"))?;
+
+    let mut methods = BTreeSet::new();
+    for method in method_enum {
+        methods.insert(
+            method
+                .as_str()
+                .with_context(|| format!("{context_label} method enum contains non-string"))?
+                .to_string(),
+        );
+    }
+    Ok(methods)
+}
+
+fn project_core_legacy_rpc_schema(
+    method_name: &str,
+    components: &Map<String, Value>,
+) -> Result<LegacyRpcSchemaArtifact> {
+    let method_id = to_pascal_case(method_name);
+    let ref_map = BTreeMap::from([
+        (format!("#/components/schemas/{method_id}Params"), "#/$defs/params".to_string()),
+        (format!("#/components/schemas/{method_id}Result"), "#/$defs/result".to_string()),
+        ("#/components/schemas/RpcId".to_string(), "#/$defs/rpc_id".to_string()),
+        ("#/components/schemas/RpcError".to_string(), "#/$defs/rpc_error".to_string()),
+    ]);
+
+    let request = rewrite_schema_refs(
+        component_schema(components, &format!("{method_id}RequestEnvelope"))?,
+        &ref_map,
+    )?;
+    let response_ok = rewrite_schema_refs(
+        component_schema(components, &format!("{method_id}ResponseOkEnvelope"))?,
+        &ref_map,
+    )?;
+    let response_error = rewrite_schema_refs(
+        component_schema(components, &format!("{method_id}ResponseErrorEnvelope"))?,
+        &ref_map,
+    )?;
+
+    Ok(LegacyRpcSchemaArtifact {
+        path: Path::new(LEGACY_RPC_SCHEMA_DIR).join(format!("{method_name}.schema.json")),
+        schema: json!({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$id": format!("https://weft.tak/contracts/sdk/v2/rpc/{method_name}.schema.json"),
+            "title": format!("LXMF SDK RPC {method_name} v2"),
+            "oneOf": [
+                { "$ref": "#/$defs/request" },
+                { "$ref": "#/$defs/response_ok" },
+                { "$ref": "#/$defs/response_error" }
+            ],
+            "$defs": {
+                "rpc_id": component_schema(components, "RpcId")?,
+                "rpc_error": component_schema(components, "RpcError")?,
+                "params": rewrite_schema_refs(component_schema(components, &format!("{method_id}Params"))?, &ref_map)?,
+                "result": rewrite_schema_refs(component_schema(components, &format!("{method_id}Result"))?, &ref_map)?,
+                "request": request,
+                "response_ok": response_ok,
+                "response_error": response_error
+            }
+        }),
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn project_grouped_legacy_rpc_schema(
+    file_name: &str,
+    title: &str,
+    request_component: &str,
+    response_ok_component: Option<&str>,
+    response_error_component: &str,
+    result_component: Option<&str>,
+    extension_map_component: Option<&str>,
+    components: &Map<String, Value>,
+) -> Result<LegacyRpcSchemaArtifact> {
+    let mut defs = Map::new();
+    defs.insert("rpc_id".to_string(), component_schema(components, "RpcId")?);
+    defs.insert("rpc_error".to_string(), component_schema(components, "RpcError")?);
+
+    let mut ref_map = BTreeMap::from([
+        ("#/components/schemas/RpcId".to_string(), "#/$defs/rpc_id".to_string()),
+        ("#/components/schemas/RpcError".to_string(), "#/$defs/rpc_error".to_string()),
+    ]);
+
+    if let Some(extension_map_component) = extension_map_component {
+        defs.insert(
+            "extension_map".to_string(),
+            component_schema(components, extension_map_component)?,
+        );
+        ref_map.insert(
+            format!("#/components/schemas/{extension_map_component}"),
+            "#/$defs/extension_map".to_string(),
+        );
+    }
+
+    if let Some(result_component) = result_component {
+        defs.insert(
+            "result".to_string(),
+            rewrite_schema_refs(component_schema(components, result_component)?, &ref_map)?,
+        );
+        ref_map.insert(
+            format!("#/components/schemas/{result_component}"),
+            "#/$defs/result".to_string(),
+        );
+    }
+
+    defs.insert(
+        "request".to_string(),
+        rewrite_schema_refs(component_schema(components, request_component)?, &ref_map)?,
+    );
+    if let Some(response_ok_component) = response_ok_component {
+        defs.insert(
+            "response_ok".to_string(),
+            rewrite_schema_refs(component_schema(components, response_ok_component)?, &ref_map)?,
+        );
+    }
+    defs.insert(
+        "response_error".to_string(),
+        rewrite_schema_refs(component_schema(components, response_error_component)?, &ref_map)?,
+    );
+
+    let mut one_of = vec![json!({ "$ref": "#/$defs/request" })];
+    if response_ok_component.is_some() {
+        one_of.push(json!({ "$ref": "#/$defs/response_ok" }));
+    }
+    one_of.push(json!({ "$ref": "#/$defs/response_error" }));
+
+    Ok(LegacyRpcSchemaArtifact {
+        path: Path::new(LEGACY_RPC_SCHEMA_DIR).join(file_name),
+        schema: json!({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$id": format!("https://weft.tak/contracts/sdk/v2/rpc/{file_name}"),
+            "title": title,
+            "oneOf": one_of,
+            "$defs": defs
+        }),
+    })
+}
+
+fn component_schema(components: &Map<String, Value>, name: &str) -> Result<Value> {
+    components
+        .get(name)
+        .cloned()
+        .with_context(|| format!("OpenRPC contract missing component schema {name}"))
+}
+
+fn rewrite_schema_refs(schema: Value, ref_map: &BTreeMap<String, String>) -> Result<Value> {
+    match schema {
+        Value::Object(map) => {
+            let mut rewritten = Map::new();
+            for (key, value) in map {
+                if key == "$ref" {
+                    let reference = value
+                        .as_str()
+                        .context("schema $ref value must be a string during rewrite")?;
+                    let rewritten_ref = ref_map.get(reference).with_context(|| {
+                        format!("no legacy compatibility ref mapping for {reference}")
+                    })?;
+                    rewritten.insert(key, Value::String(rewritten_ref.clone()));
+                } else {
+                    rewritten.insert(key, rewrite_schema_refs(value, ref_map)?);
+                }
+            }
+            Ok(normalize_schema(&Value::Object(rewritten)))
+        }
+        Value::Array(values) => Ok(Value::Array(
+            values
+                .into_iter()
+                .map(|value| rewrite_schema_refs(value, ref_map))
+                .collect::<Result<Vec<_>>>()?,
+        )),
+        other => Ok(other),
+    }
+}
+
+fn canonicalize_json(value: Value) -> Value {
+    match value {
+        Value::Object(map) => {
+            let mut entries = map
+                .into_iter()
+                .map(|(key, value)| (key, canonicalize_json(value)))
+                .collect::<Vec<_>>();
+            entries.sort_by(|(left, _), (right, _)| left.cmp(right));
+
+            let mut ordered = Map::new();
+            for (key, value) in entries {
+                ordered.insert(key, value);
+            }
+            Value::Object(ordered)
+        }
+        Value::Array(values) => Value::Array(values.into_iter().map(canonicalize_json).collect()),
+        other => other,
+    }
 }
 
 fn schema_source_prefix(path: &Path) -> String {
@@ -590,6 +976,92 @@ fn validate_openapi_references(spec_path: &Path) -> Result<()> {
 
     if !missing.is_empty() {
         bail!("openapi spec has unresolved refs: {}", missing.join(", "));
+    }
+
+    Ok(())
+}
+
+fn validate_openrpc_contract(contract: &Value, contract_path: &Path) -> Result<()> {
+    let object = contract.as_object().with_context(|| {
+        format!("OpenRPC contract {} root must be object", contract_path.display())
+    })?;
+
+    let version = object.get("openrpc").and_then(Value::as_str).with_context(|| {
+        format!("OpenRPC contract {} missing openrpc version", contract_path.display())
+    })?;
+    if version.trim().is_empty() {
+        bail!("OpenRPC contract {} has empty openrpc version", contract_path.display());
+    }
+
+    let methods = object.get("methods").and_then(Value::as_array).with_context(|| {
+        format!("OpenRPC contract {} missing methods array", contract_path.display())
+    })?;
+    if methods.is_empty() {
+        bail!("OpenRPC contract {} has no methods", contract_path.display());
+    }
+
+    let schemas = object
+        .get("components")
+        .and_then(|item| item.get("schemas"))
+        .and_then(Value::as_object)
+        .with_context(|| {
+            format!("OpenRPC contract {} missing components.schemas", contract_path.display())
+        })?;
+    if schemas.is_empty() {
+        bail!("OpenRPC contract {} has no component schemas", contract_path.display());
+    }
+
+    let mut seen_methods = BTreeSet::new();
+    for method in methods {
+        let name = method.get("name").and_then(Value::as_str).with_context(|| {
+            format!("OpenRPC contract {} method entry missing name", contract_path.display())
+        })?;
+        if !seen_methods.insert(name.to_string()) {
+            bail!(
+                "OpenRPC contract {} contains duplicate method {}",
+                contract_path.display(),
+                name
+            );
+        }
+        if method.get("result").is_none() {
+            bail!("OpenRPC contract {} method {} missing result", contract_path.display(), name);
+        }
+    }
+
+    let mut missing = Vec::new();
+    let mut stack: Vec<(&Value, String)> = vec![(contract, "/".to_string())];
+    while let Some((value, path)) = stack.pop() {
+        match value {
+            Value::Array(values) => {
+                for (index, item) in values.iter().enumerate() {
+                    stack.push((item, format!("{path}{index}/")));
+                }
+            }
+            Value::Object(map) => {
+                for (key, entry) in map {
+                    let entry_path = format!("{path}{key}/");
+                    if key == "$ref" {
+                        if let Some(reference) = entry.as_str() {
+                            if reference.starts_with("#/")
+                                && !json_pointer_resolves(contract, reference)
+                            {
+                                missing.push(format!("{} -> {}", path, reference));
+                            }
+                        }
+                    }
+                    stack.push((entry, entry_path));
+                }
+            }
+            Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
+        }
+    }
+
+    if !missing.is_empty() {
+        bail!(
+            "OpenRPC contract {} has unresolved refs: {}",
+            contract_path.display(),
+            missing.join(", ")
+        );
     }
 
     Ok(())
@@ -692,6 +1164,10 @@ fn extract_methods_from_schema(
     schema: &Value,
     source_name: &Path,
 ) -> Result<Vec<MethodDescriptor>> {
+    if schema.get("openrpc").is_some() {
+        return extract_methods_from_openrpc(schema, source_name);
+    }
+
     let source_path = source_name.to_path_buf();
     let defs = schema.get("$defs").and_then(Value::as_object).context("schema missing $defs")?;
     let request =
@@ -786,6 +1262,96 @@ fn extract_methods_from_schema(
     Ok(out)
 }
 
+fn extract_methods_from_openrpc(
+    schema: &Value,
+    source_name: &Path,
+) -> Result<Vec<MethodDescriptor>> {
+    let source_path = source_name.to_path_buf();
+    let methods = schema
+        .get("methods")
+        .and_then(Value::as_array)
+        .context("OpenRPC contract missing methods")?;
+    let components = schema
+        .get("components")
+        .and_then(|item| item.get("schemas"))
+        .and_then(Value::as_object)
+        .context("OpenRPC contract missing components.schemas")?;
+
+    let mut discovered = Vec::new();
+    for method in methods {
+        if method
+            .get("x-client-generation")
+            .and_then(Value::as_bool)
+            .is_some_and(|enabled| !enabled)
+        {
+            continue;
+        }
+        let method_name = method
+            .get("name")
+            .and_then(Value::as_str)
+            .with_context(|| format!("OpenRPC method in {} missing name", source_name.display()))?;
+        let params = method
+            .get("params")
+            .and_then(Value::as_array)
+            .with_context(|| format!("OpenRPC method {method_name} missing params"))?;
+        let param_schema = params
+            .first()
+            .and_then(|item| item.get("schema"))
+            .with_context(|| format!("OpenRPC method {method_name} missing params[0].schema"))?;
+        let result_schema = method
+            .get("result")
+            .and_then(|item| item.get("schema"))
+            .with_context(|| format!("OpenRPC method {method_name} missing result.schema"))?;
+
+        discovered.push(MethodDescriptor {
+            method: method_name.to_string(),
+            params_schema: normalize_schema(&resolve_openrpc_schema_ref(
+                param_schema,
+                components,
+                source_name,
+                method_name,
+                "params",
+            )?),
+            result_schema: normalize_schema(&resolve_openrpc_schema_ref(
+                result_schema,
+                components,
+                source_name,
+                method_name,
+                "result",
+            )?),
+            source_path: source_path.clone(),
+        });
+    }
+
+    Ok(discovered)
+}
+
+fn resolve_openrpc_schema_ref(
+    schema: &Value,
+    components: &Map<String, Value>,
+    source_name: &Path,
+    method_name: &str,
+    field_name: &str,
+) -> Result<Value> {
+    if let Some(reference) = schema.get("$ref").and_then(Value::as_str) {
+        let def_name = reference.strip_prefix("#/components/schemas/").with_context(|| {
+            format!(
+                "unsupported OpenRPC ref '{}' for method {} {} in {}",
+                reference,
+                method_name,
+                field_name,
+                source_name.display()
+            )
+        })?;
+        return components
+            .get(def_name)
+            .cloned()
+            .with_context(|| format!("missing OpenRPC component schema {}", def_name));
+    }
+
+    Ok(schema.clone())
+}
+
 fn extract_methods_from_if(if_schema: &Map<String, Value>) -> Result<Vec<String>> {
     let method = if_schema
         .get("properties")
@@ -876,6 +1442,9 @@ fn generate_openapi_spec(
     components.insert("rpcId".to_string(), rpc_id_schema.clone());
 
     for source in schema_sources {
+        if source.kind == SchemaSourceKind::OpenRpc {
+            continue;
+        }
         let defs = source
             .schema
             .get("$defs")
@@ -1109,6 +1678,17 @@ fn select_error_schema(source: &SchemaSource) -> Value {
 
 fn resolve_rpc_id_schema(sources: &[SchemaSource]) -> Value {
     for source in sources {
+        if source.kind == SchemaSourceKind::OpenRpc {
+            if let Some(rpc_id) = source
+                .schema
+                .get("components")
+                .and_then(|item| item.get("schemas"))
+                .and_then(|schemas| schemas.get("RpcId"))
+            {
+                return rpc_id.clone();
+            }
+            continue;
+        }
         if source.path.to_string_lossy().ends_with("error.schema.json") {
             continue;
         }
@@ -1128,6 +1708,9 @@ fn resolve_rpc_id_schema(sources: &[SchemaSource]) -> Value {
 }
 
 fn source_to_component_name(prefix: &str, def_name: &str) -> String {
+    if prefix.is_empty() {
+        return def_name.to_string();
+    }
     format!("{prefix}{}", to_pascal_case(def_name))
 }
 
@@ -1152,6 +1735,38 @@ fn normalize_schema_with_refs(
                         let def_schema = defs
                             .get(def_name)
                             .with_context(|| format!("missing $defs entry {def_name}"))?;
+
+                        if !in_progress.insert(component_name.clone()) {
+                            return Ok(
+                                json!({ "$ref": format!("#/components/schemas/{component_name}") }),
+                            );
+                        }
+                        let normalized = normalize_schema_with_refs(
+                            def_schema,
+                            source,
+                            components,
+                            in_progress,
+                        )?;
+                        in_progress.remove(&component_name);
+                        components.insert(component_name.clone(), normalized);
+                    }
+
+                    return Ok(json!({ "$ref": format!("#/components/schemas/{component_name}") }));
+                }
+
+                if let Some(def_name) = reference.strip_prefix("#/components/schemas/") {
+                    let component_name =
+                        source_to_component_name(&source.def_component_prefix, def_name);
+                    if !components.contains_key(&component_name) {
+                        let defs = source
+                            .schema
+                            .get("components")
+                            .and_then(|item| item.get("schemas"))
+                            .and_then(Value::as_object)
+                            .context("OpenRPC contract missing components.schemas")?;
+                        let def_schema = defs.get(def_name).with_context(|| {
+                            format!("missing OpenRPC component schema {def_name}")
+                        })?;
 
                         if !in_progress.insert(component_name.clone()) {
                             return Ok(
@@ -2245,6 +2860,14 @@ impl Drop for TempDir {
 mod tests {
     use super::*;
     use std::collections::BTreeSet;
+    use std::fs;
+
+    fn workspace_root() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("xtask crate should live under workspace root")
+            .to_path_buf()
+    }
 
     #[test]
     fn parse_direct_schema_methods() {
@@ -2344,12 +2967,14 @@ mod tests {
             path: Path::new("docs/schemas/sdk/v2/rpc/sdk_send_v2.schema.json").to_path_buf(),
             schema: schema.clone(),
             def_component_prefix: "SdkSendV2".to_string(),
+            kind: SchemaSourceKind::JsonSchemaDefs,
         };
         let source_b = SchemaSource {
             path: Path::new("docs/schemas/sdk/v2/rpc/sdk_send_v2_duplicate.schema.json")
                 .to_path_buf(),
             schema,
             def_component_prefix: "SdkSendV2".to_string(),
+            kind: SchemaSourceKind::JsonSchemaDefs,
         };
 
         let err = discover_methods(&[source_a, source_b]).unwrap_err();
@@ -2374,6 +2999,7 @@ mod tests {
                 },
             }),
             def_component_prefix: "Error".to_string(),
+            kind: SchemaSourceKind::JsonSchemaDefs,
         };
 
         let mut components = BTreeMap::new();
@@ -2503,6 +3129,143 @@ mod tests {
 
         assert!(paths.contains("sdk_release_a_methods.schema.json"));
         assert!(paths.contains("sdk_release_b_methods.schema.json"));
+        Ok(())
+    }
+
+    #[test]
+    fn projected_legacy_rpc_schemas_match_committed_files() -> Result<()> {
+        let workspace = workspace_root();
+        let openrpc_path = workspace.join("docs/openrpc/sdk-v2.openrpc.json");
+        let openrpc = serde_json::from_str::<Value>(&fs::read_to_string(openrpc_path)?)?;
+        let projected = project_legacy_rpc_schemas(&openrpc)?;
+
+        assert_eq!(projected.len(), 10, "expected 8 core + release B + release C projections");
+
+        for artifact in projected {
+            let committed_path = workspace.join(&artifact.path);
+            let committed = canonicalize_json(serde_json::from_str::<Value>(&fs::read_to_string(
+                &committed_path,
+            )?)?);
+            assert_eq!(
+                canonicalize_json(artifact.schema),
+                committed,
+                "projected legacy schema mismatch for {}",
+                committed_path.display()
+            );
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn projected_legacy_rpc_schemas_cover_each_method_once() -> Result<()> {
+        let workspace = workspace_root();
+        let openrpc = serde_json::from_str::<Value>(&fs::read_to_string(
+            workspace.join("docs/openrpc/sdk-v2.openrpc.json"),
+        )?)?;
+        let methods =
+            openrpc.get("methods").and_then(Value::as_array).context("OpenRPC methods missing")?;
+        let components = openrpc
+            .get("components")
+            .and_then(|item| item.get("schemas"))
+            .and_then(Value::as_object)
+            .context("OpenRPC components missing")?;
+
+        let release_b_methods =
+            grouped_method_set(components, "SdkReleaseBRequestEnvelope", "release B request")?;
+        let release_c_methods =
+            grouped_method_set(components, "SdkReleaseCRequestEnvelope", "release C request")?;
+        let core_methods = methods
+            .iter()
+            .filter_map(|method| {
+                let method_name = method.get("name").and_then(Value::as_str)?;
+                if release_b_methods.contains(method_name)
+                    || release_c_methods.contains(method_name)
+                {
+                    None
+                } else {
+                    Some(method_name.to_string())
+                }
+            })
+            .collect::<BTreeSet<_>>();
+
+        assert!(release_b_methods.is_disjoint(&release_c_methods));
+
+        let mut assigned = BTreeSet::new();
+        assigned.extend(core_methods);
+        assigned.extend(release_b_methods);
+        assigned.extend(release_c_methods);
+
+        let discovered = methods
+            .iter()
+            .filter_map(|method| method.get("name").and_then(Value::as_str).map(str::to_string))
+            .collect::<BTreeSet<_>>();
+
+        assert_eq!(assigned, discovered);
+        Ok(())
+    }
+
+    #[test]
+    fn release_c_projection_keeps_request_and_error_only() -> Result<()> {
+        let workspace = workspace_root();
+        let openrpc = serde_json::from_str::<Value>(&fs::read_to_string(
+            workspace.join("docs/openrpc/sdk-v2.openrpc.json"),
+        )?)?;
+        let projected = project_legacy_rpc_schemas(&openrpc)?;
+        let release_c = projected
+            .into_iter()
+            .find(|artifact| artifact.path.ends_with("sdk_release_c_methods.schema.json"))
+            .context("missing release C projection")?;
+
+        let one_of = release_c
+            .schema
+            .get("oneOf")
+            .and_then(Value::as_array)
+            .context("release C projection missing oneOf")?;
+        let refs = one_of
+            .iter()
+            .filter_map(|item| item.get("$ref").and_then(Value::as_str))
+            .collect::<Vec<_>>();
+
+        assert_eq!(refs, vec!["#/$defs/request", "#/$defs/response_error"]);
+        Ok(())
+    }
+
+    #[test]
+    fn sync_legacy_rpc_schemas_check_mode_detects_drift() -> Result<()> {
+        let temp = TempDir::new(Path::new("."))?;
+        let workspace = workspace_root();
+        let openrpc_path = temp.path.join("docs/openrpc/sdk-v2.openrpc.json");
+        let openrpc_parent = openrpc_path.parent().context("missing temp openrpc parent")?;
+        fs::create_dir_all(openrpc_parent)?;
+        fs::write(
+            &openrpc_path,
+            fs::read_to_string(workspace.join("docs/openrpc/sdk-v2.openrpc.json"))?,
+        )?;
+
+        let openrpc = serde_json::from_str::<Value>(&fs::read_to_string(&openrpc_path)?)?;
+        for artifact in project_legacy_rpc_schemas(&openrpc)? {
+            let destination = temp.path.join(&artifact.path);
+            if let Some(parent) = destination.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            let encoded = serde_json::to_string_pretty(&canonicalize_json(artifact.schema))?;
+            fs::write(destination, format!("{encoded}\n"))?;
+        }
+
+        let drift_path = temp.path.join("docs/schemas/sdk/v2/rpc/sdk_send_v2.schema.json");
+        fs::write(&drift_path, "{\n  \"drift\": true\n}\n")?;
+
+        let schema_sources = vec![SchemaSource {
+            path: openrpc_path,
+            schema: openrpc,
+            def_component_prefix: String::new(),
+            kind: SchemaSourceKind::OpenRpc,
+        }];
+
+        let err = sync_legacy_rpc_schemas(&temp.path, &schema_sources, SchemaClientMode::Check)
+            .unwrap_err();
+        assert!(err.to_string().contains("out of date"));
         Ok(())
     }
 }

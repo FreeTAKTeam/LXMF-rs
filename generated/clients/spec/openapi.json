@@ -1,0 +1,1059 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "LXMF v2 Client API",
+    "version": "v2.5+v1"
+  },
+  "paths": {
+    "/rpc": {
+      "post": {
+        "operationId": "rpc",
+        "x-jsonrpc-methods": [
+          "sdk_cancel_message_v2",
+          "sdk_configure_v2",
+          "sdk_negotiate_v2",
+          "sdk_poll_events_v2",
+          "sdk_send_v2",
+          "sdk_shutdown_v2",
+          "sdk_snapshot_v2",
+          "sdk_status_v2"
+        ],
+        "x-jsonrpc-method": [
+          "sdk_cancel_message_v2",
+          "sdk_configure_v2",
+          "sdk_negotiate_v2",
+          "sdk_poll_events_v2",
+          "sdk_send_v2",
+          "sdk_shutdown_v2",
+          "sdk_snapshot_v2",
+          "sdk_status_v2"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RPCRequestUnion"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "RPC response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RPCResponseUnion"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ErrorExtensionMap": {
+        "additionalProperties": true,
+        "maxProperties": 32,
+        "propertyNames": {
+          "pattern": "^[a-z0-9][a-z0-9_.-]{0,63}$"
+        },
+        "type": "object"
+      },
+      "ErrorJsonValue": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          },
+          {
+            "items": {
+              "$ref": "#/components/schemas/ErrorJsonValue"
+            },
+            "type": "array"
+          },
+          {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ErrorJsonValue"
+            },
+            "propertyNames": {
+              "pattern": "^[a-z][a-z0-9_]*$"
+            },
+            "type": "object"
+          }
+        ]
+      },
+      "RPCError": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/RPCErrorPayload"
+          },
+          "id": {
+            "$ref": "#/components/schemas/rpcId"
+          },
+          "jsonrpc": {
+            "const": "2.0",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "error"
+        ],
+        "type": "object"
+      },
+      "RPCErrorPayload": {
+        "$id": "https://weft.tak/contracts/sdk/v2/error.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "cause_code": {
+            "pattern": "^SDK_[A-Z]+_[A-Z0-9_]+$",
+            "type": "string"
+          },
+          "details": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ErrorJsonValue"
+            },
+            "propertyNames": {
+              "pattern": "^[a-z][a-z0-9_]*$"
+            },
+            "type": "object"
+          },
+          "extensions": {
+            "$ref": "#/components/schemas/ErrorExtensionMap"
+          },
+          "is_user_actionable": {
+            "type": "boolean"
+          },
+          "machine_code": {
+            "pattern": "^SDK_[A-Z]+_[A-Z0-9_]+$",
+            "type": "string"
+          },
+          "message": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          },
+          "retryable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "category",
+          "details",
+          "is_user_actionable",
+          "machine_code",
+          "message",
+          "retryable"
+        ],
+        "title": "LXMF SDK Error v2",
+        "type": "object"
+      },
+      "RPCRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/rpcId"
+          },
+          "jsonrpc": {
+            "const": "2.0",
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": true,
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "method",
+          "params"
+        ],
+        "type": "object"
+      },
+      "RPCRequestUnion": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/SdkCancelMessageV2Request"
+          },
+          {
+            "$ref": "#/components/schemas/SdkConfigureV2Request"
+          },
+          {
+            "$ref": "#/components/schemas/SdkNegotiateV2Request"
+          },
+          {
+            "$ref": "#/components/schemas/SdkPollEventsV2Request"
+          },
+          {
+            "$ref": "#/components/schemas/SdkSendV2Request"
+          },
+          {
+            "$ref": "#/components/schemas/SdkShutdownV2Request"
+          },
+          {
+            "$ref": "#/components/schemas/SdkSnapshotV2Request"
+          },
+          {
+            "$ref": "#/components/schemas/SdkStatusV2Request"
+          }
+        ]
+      },
+      "RPCResponseUnion": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/RPCError"
+          },
+          {
+            "$ref": "#/components/schemas/SdkCancelMessageV2Response"
+          },
+          {
+            "$ref": "#/components/schemas/SdkConfigureV2Response"
+          },
+          {
+            "$ref": "#/components/schemas/SdkNegotiateV2Response"
+          },
+          {
+            "$ref": "#/components/schemas/SdkPollEventsV2Response"
+          },
+          {
+            "$ref": "#/components/schemas/SdkSendV2Response"
+          },
+          {
+            "$ref": "#/components/schemas/SdkShutdownV2Response"
+          },
+          {
+            "$ref": "#/components/schemas/SdkSnapshotV2Response"
+          },
+          {
+            "$ref": "#/components/schemas/SdkStatusV2Response"
+          }
+        ]
+      },
+      "RPCSuccess": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/rpcId"
+          },
+          "jsonrpc": {
+            "const": "2.0",
+            "type": "string"
+          },
+          "result": {
+            "additionalProperties": true,
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "result"
+        ],
+        "type": "object"
+      },
+      "SdkCancelMessageV2Params": {
+        "additionalProperties": false,
+        "properties": {
+          "message_id": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "message_id"
+        ],
+        "type": "object"
+      },
+      "SdkCancelMessageV2Request": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RPCRequest"
+          },
+          {
+            "properties": {
+              "method": {
+                "enum": [
+                  "sdk_cancel_message_v2"
+                ],
+                "type": "string"
+              },
+              "params": {
+                "$ref": "#/components/schemas/SdkCancelMessageV2Params"
+              }
+            },
+            "required": [
+              "method",
+              "params"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "SdkCancelMessageV2Response": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RPCSuccess"
+          },
+          {
+            "properties": {
+              "result": {
+                "$ref": "#/components/schemas/SdkCancelMessageV2Result"
+              }
+            },
+            "required": [
+              "result"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "SdkCancelMessageV2Result": {
+        "additionalProperties": true,
+        "properties": {
+          "result": {
+            "enum": [
+              "Accepted",
+              "AlreadyTerminal",
+              "NotFound",
+              "TooLateToCancel"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "result"
+        ],
+        "type": "object"
+      },
+      "SdkConfigureV2Params": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "patch": {
+            "additionalProperties": true,
+            "type": "object"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "patch"
+        ],
+        "type": "object"
+      },
+      "SdkConfigureV2Request": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RPCRequest"
+          },
+          {
+            "properties": {
+              "method": {
+                "enum": [
+                  "sdk_configure_v2"
+                ],
+                "type": "string"
+              },
+              "params": {
+                "$ref": "#/components/schemas/SdkConfigureV2Params"
+              }
+            },
+            "required": [
+              "method",
+              "params"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "SdkConfigureV2Response": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RPCSuccess"
+          },
+          {
+            "properties": {
+              "result": {
+                "$ref": "#/components/schemas/SdkConfigureV2Result"
+              }
+            },
+            "required": [
+              "result"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "SdkConfigureV2Result": {
+        "additionalProperties": true,
+        "properties": {
+          "ack": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ack",
+          "revision"
+        ],
+        "type": "object"
+      },
+      "SdkNegotiateV2Params": {
+        "additionalProperties": true,
+        "properties": {
+          "config": {
+            "additionalProperties": true,
+            "properties": {
+              "auth_mode": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "bind_mode": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "block_timeout_ms": {
+                "minimum": 1,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "overflow_policy": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "profile": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "rpc_backend": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "auth_mode",
+              "bind_mode",
+              "overflow_policy",
+              "profile"
+            ],
+            "type": "object"
+          },
+          "requested_capabilities": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "supported_contract_versions": {
+            "items": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "config",
+          "requested_capabilities",
+          "supported_contract_versions"
+        ],
+        "type": "object"
+      },
+      "SdkNegotiateV2Request": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RPCRequest"
+          },
+          {
+            "properties": {
+              "method": {
+                "enum": [
+                  "sdk_negotiate_v2"
+                ],
+                "type": "string"
+              },
+              "params": {
+                "$ref": "#/components/schemas/SdkNegotiateV2Params"
+              }
+            },
+            "required": [
+              "method",
+              "params"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "SdkNegotiateV2Response": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RPCSuccess"
+          },
+          {
+            "properties": {
+              "result": {
+                "$ref": "#/components/schemas/SdkNegotiateV2Result"
+              }
+            },
+            "required": [
+              "result"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "SdkNegotiateV2Result": {
+        "additionalProperties": true,
+        "properties": {
+          "active_contract_version": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "contract_release": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "effective_capabilities": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "effective_limits": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "runtime_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "schema_namespace": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "active_contract_version",
+          "contract_release",
+          "effective_capabilities",
+          "effective_limits",
+          "runtime_id",
+          "schema_namespace"
+        ],
+        "type": "object"
+      },
+      "SdkPollEventsV2Params": {
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "max": {
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cursor",
+          "max"
+        ],
+        "type": "object"
+      },
+      "SdkPollEventsV2Request": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RPCRequest"
+          },
+          {
+            "properties": {
+              "method": {
+                "enum": [
+                  "sdk_poll_events_v2"
+                ],
+                "type": "string"
+              },
+              "params": {
+                "$ref": "#/components/schemas/SdkPollEventsV2Params"
+              }
+            },
+            "required": [
+              "method",
+              "params"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "SdkPollEventsV2Response": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RPCSuccess"
+          },
+          {
+            "properties": {
+              "result": {
+                "$ref": "#/components/schemas/SdkPollEventsV2Result"
+              }
+            },
+            "required": [
+              "result"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "SdkPollEventsV2Result": {
+        "additionalProperties": true,
+        "properties": {
+          "dropped_count": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "events": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "dropped_count",
+          "events",
+          "next_cursor"
+        ],
+        "type": "object"
+      },
+      "SdkSendV2Params": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "destination": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": true,
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "include_ticket": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "method": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "stamp_cost": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "try_propagation_on_fail": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "content",
+          "destination",
+          "id",
+          "source"
+        ],
+        "type": "object"
+      },
+      "SdkSendV2Request": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RPCRequest"
+          },
+          {
+            "properties": {
+              "method": {
+                "enum": [
+                  "sdk_send_v2"
+                ],
+                "type": "string"
+              },
+              "params": {
+                "$ref": "#/components/schemas/SdkSendV2Params"
+              }
+            },
+            "required": [
+              "method",
+              "params"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "SdkSendV2Response": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RPCSuccess"
+          },
+          {
+            "properties": {
+              "result": {
+                "$ref": "#/components/schemas/SdkSendV2Result"
+              }
+            },
+            "required": [
+              "result"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "SdkSendV2Result": {
+        "additionalProperties": true,
+        "properties": {
+          "message_id": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "message_id"
+        ],
+        "type": "object"
+      },
+      "SdkShutdownV2Params": {
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "enum": [
+              "graceful",
+              "immediate"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "type": "object"
+      },
+      "SdkShutdownV2Request": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RPCRequest"
+          },
+          {
+            "properties": {
+              "method": {
+                "enum": [
+                  "sdk_shutdown_v2"
+                ],
+                "type": "string"
+              },
+              "params": {
+                "$ref": "#/components/schemas/SdkShutdownV2Params"
+              }
+            },
+            "required": [
+              "method",
+              "params"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "SdkShutdownV2Response": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RPCSuccess"
+          },
+          {
+            "properties": {
+              "result": {
+                "$ref": "#/components/schemas/SdkShutdownV2Result"
+              }
+            },
+            "required": [
+              "result"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "SdkShutdownV2Result": {
+        "additionalProperties": true,
+        "properties": {
+          "ack": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "ack"
+        ],
+        "type": "object"
+      },
+      "SdkSnapshotV2Params": {
+        "additionalProperties": false,
+        "properties": {
+          "include_counts": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "include_counts"
+        ],
+        "type": "object"
+      },
+      "SdkSnapshotV2Request": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RPCRequest"
+          },
+          {
+            "properties": {
+              "method": {
+                "enum": [
+                  "sdk_snapshot_v2"
+                ],
+                "type": "string"
+              },
+              "params": {
+                "$ref": "#/components/schemas/SdkSnapshotV2Params"
+              }
+            },
+            "required": [
+              "method",
+              "params"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "SdkSnapshotV2Response": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RPCSuccess"
+          },
+          {
+            "properties": {
+              "result": {
+                "$ref": "#/components/schemas/SdkSnapshotV2Result"
+              }
+            },
+            "required": [
+              "result"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "SdkSnapshotV2Result": {
+        "additionalProperties": true,
+        "properties": {
+          "active_contract_version": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "config_revision": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "counts_included": {
+            "type": "boolean"
+          },
+          "effective_capabilities": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "event_stream_position": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "in_flight_messages": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "profile": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "queued_messages": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "runtime_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "state": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "active_contract_version",
+          "config_revision",
+          "counts_included",
+          "effective_capabilities",
+          "event_stream_position",
+          "in_flight_messages",
+          "profile",
+          "queued_messages",
+          "runtime_id",
+          "state"
+        ],
+        "type": "object"
+      },
+      "SdkStatusV2Params": {
+        "additionalProperties": false,
+        "properties": {
+          "message_id": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "message_id"
+        ],
+        "type": "object"
+      },
+      "SdkStatusV2Request": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RPCRequest"
+          },
+          {
+            "properties": {
+              "method": {
+                "enum": [
+                  "sdk_status_v2"
+                ],
+                "type": "string"
+              },
+              "params": {
+                "$ref": "#/components/schemas/SdkStatusV2Params"
+              }
+            },
+            "required": [
+              "method",
+              "params"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "SdkStatusV2Response": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RPCSuccess"
+          },
+          {
+            "properties": {
+              "result": {
+                "$ref": "#/components/schemas/SdkStatusV2Result"
+              }
+            },
+            "required": [
+              "result"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "SdkStatusV2Result": {
+        "additionalProperties": true,
+        "properties": {
+          "message": {
+            "additionalProperties": true,
+            "type": [
+              "object",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "rpcId": {
+        "oneOf": [
+          {
+            "minLength": 1,
+            "type": "string"
+          },
+          {
+            "minimum": 0,
+            "type": "integer"
+          }
+        ]
+      }
+    }
+  }
+}
