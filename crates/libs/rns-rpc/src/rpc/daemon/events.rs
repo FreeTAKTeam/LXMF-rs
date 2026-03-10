@@ -1,10 +1,12 @@
 impl RpcDaemon {
-    fn run_announce_scheduler(&self, interval_secs: u64) -> tokio::task::JoinHandle<()>
+    fn run_announce_scheduler(
+        self: std::sync::Arc<Self>,
+        interval_secs: u64,
+    ) -> tokio::task::JoinHandle<()>
     where
         Self: Sized,
     {
         let bridge = self.announce_bridge.clone();
-        let events = self.events.clone();
         tokio::spawn(async move {
             if interval_secs == 0 {
                 return;
@@ -27,7 +29,7 @@ impl RpcDaemon {
                     event_type: "announce_sent".into(),
                     payload: json!({ "timestamp": timestamp, "announce_id": id }),
                 };
-                let _ = events.send(event);
+                self.publish_event(event);
             }
         })
     }
