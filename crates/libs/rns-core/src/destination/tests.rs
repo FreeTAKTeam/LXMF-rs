@@ -6,7 +6,7 @@ use tempfile::TempDir;
 
 use crate::buffer::OutputBuffer;
 use crate::error::RnsError;
-use crate::hash::Hash;
+use crate::hash::{AddressHash, Hash};
 use crate::identity::PrivateIdentity;
 use crate::serde::Serialize;
 
@@ -132,6 +132,23 @@ fn check_announce() {
     let announce = destination.announce(OsRng, None).expect("valid announce packet");
 
     DestinationAnnounce::validate(&announce).expect("valid announce");
+}
+
+#[test]
+fn announce_rejects_destination_hash_mismatch() {
+    let priv_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut destination = SingleInputDestination::new(
+        priv_identity,
+        DestinationName::new("example_utilities", "announcesample.fruits"),
+    );
+
+    let mut announce = destination.announce(OsRng, None).expect("valid announce packet");
+    announce.destination = AddressHash::new_from_rand(OsRng);
+
+    match DestinationAnnounce::validate(&announce) {
+        Ok(_) => panic!("announce with mismatched destination hash should fail"),
+        Err(err) => assert!(matches!(err, RnsError::IncorrectHash)),
+    }
 }
 
 #[test]

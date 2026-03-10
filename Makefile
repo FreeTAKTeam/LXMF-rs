@@ -1,4 +1,4 @@
-.PHONY: bootstrap fmt clippy test test-all test-full-targets doc deny audit udeps boundaries ci release-check api-diff licenses migration-checks forbidden-deps
+.PHONY: bootstrap fmt clippy test test-all test-full-targets doc deny audit udeps boundaries ci release-check api-diff licenses migration-checks forbidden-deps python-impl-bench
 
 bootstrap:
 	./tools/scripts/bootstrap-dev.sh
@@ -58,3 +58,6 @@ licenses:
 
 migration-checks:
 	cargo xtask migration-checks
+
+python-impl-bench:
+	cargo xtask python-impl-bench-compare

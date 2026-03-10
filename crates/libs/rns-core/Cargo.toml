@@ -22,6 +22,7 @@ sha2.workspace = true
 x25519-dalek = { workspace = true, features = ["static_secrets"] }
 
 [dev-dependencies]
+criterion.workspace = true
 tempfile = { workspace = true }
 
 [features]
@@ -29,6 +30,10 @@ default = ["std"]
 std = []
 alloc = []
 fernet-aes128 = []
+
+[[bench]]
+name = "parity_hotpaths"
+harness = false
 
 [lints]
 workspace = true

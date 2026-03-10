@@ -47,7 +47,8 @@ const EMBEDDED_NATIVE_INTEROP_PROFILE_PATH: &str =
 const EMBEDDED_NATIVE_LAB_PROFILE_PATH: &str = "docs/contracts/native-embedded-lab-profile-v1.md";
 const EMBEDDED_NATIVE_NODE_CONFIG_PATH: &str = "docs/contracts/native-embedded-node-config-v1.md";
 const BLE_CAMERA_WIRE_CONTRACT_PATH: &str = "docs/contracts/ble-camera-wire-v1.md";
-const BLE_TRANSPORT_RUNTIME_CONTRACT_PATH: &str = "docs/contracts/ble-transport-runtime-contract.md";
+const BLE_TRANSPORT_RUNTIME_CONTRACT_PATH: &str =
+    "docs/contracts/ble-transport-runtime-contract.md";
 const EMBEDDED_NATIVE_WORKFLOW_PATH: &str = ".github/workflows/nightly-embedded-hil.yml";
 const BACKUP_RESTORE_DRILL_SCRIPT_PATH: &str = "tools/scripts/backup-restore-drill.sh";
 const REFERENCE_INTEGRATIONS_SMOKE_SCRIPT_PATH: &str =
@@ -56,6 +57,11 @@ const CERTIFICATION_REPORT_SCRIPT_PATH: &str = "tools/scripts/certification-repo
 const SOAK_REPORT_PATH: &str = "target/soak/soak-report.json";
 const BENCH_SUMMARY_PATH: &str = "target/criterion/bench-summary.txt";
 const PERF_BUDGET_REPORT_PATH: &str = "target/criterion/bench-budget-report.txt";
+const PYTHON_IMPL_BENCH_CONFIG_PATH: &str = "tools/benchmarks/python_impl.toml";
+const PYTHON_IMPL_BENCH_REPORT_PATH: &str = "target/criterion/python-impl-benchmarks.json";
+const PYTHON_IMPL_COMPARE_REPORT_PATH: &str = "target/criterion/python-impl-compare.txt";
+const PYTHON_IMPL_COMPARE_JSON_PATH: &str = "target/criterion/python-impl-compare.json";
+const PYTHON_IMPL_ENVIRONMENT_PATH: &str = "target/criterion/python-impl-environment.json";
 const SUPPLY_CHAIN_SBOM_PATH: &str = "target/supply-chain/sbom/cargo-metadata.sbom.json";
 const SUPPLY_CHAIN_PROVENANCE_PATH: &str =
     "target/supply-chain/provenance/artifact-provenance.json";
@@ -130,10 +136,7 @@ const EMBEDDED_NATIVE_REQUIRED_CI_JOBS: &[&str] = &[
 const EMBEDDED_NATIVE_REQUIRED_JOB_COMMAND_MARKERS: &[(&str, &str)] = &[
     ("embedded-node-build", "cargo xtask ci --stage embedded-node-build"),
     ("embedded-node-contract", "cargo xtask ci --stage embedded-node-contract"),
-    (
-        "embedded-node-failure-matrix",
-        "cargo xtask ci --stage embedded-node-failure-matrix",
-    ),
+    ("embedded-node-failure-matrix", "cargo xtask ci --stage embedded-node-failure-matrix"),
     ("embedded-node-hil", "cargo xtask ci --stage embedded-node-hil"),
 ];
 const LEADER_READINESS_REPORT_PATH: &str = "target/release-readiness/leader-grade-readiness.md";
@@ -411,6 +414,7 @@ enum XtaskCommand {
     SdkMetricsCheck,
     SdkBenchCheck,
     SdkPerfBudgetCheck,
+    PythonImplBenchCompare,
     SdkMemoryBudgetCheck,
     SdkQueuePressureCheck,
     SupplyChainCheck,
@@ -566,6 +570,7 @@ fn main() -> Result<()> {
         XtaskCommand::SdkMetricsCheck => run_sdk_metrics_check(),
         XtaskCommand::SdkBenchCheck => run_sdk_bench_check(),
         XtaskCommand::SdkPerfBudgetCheck => run_sdk_perf_budget_check(),
+        XtaskCommand::PythonImplBenchCompare => run_python_impl_bench_compare(),
         XtaskCommand::SdkMemoryBudgetCheck => run_sdk_memory_budget_check(),
         XtaskCommand::SdkQueuePressureCheck => run_sdk_queue_pressure_check(),
         XtaskCommand::SupplyChainCheck => run_supply_chain_check(),
@@ -2724,6 +2729,82 @@ struct CriterionSample {
     times: Vec<f64>,
 }
 
+#[derive(Debug, Deserialize)]
+struct PythonBenchReport {
+    benchmarks: Vec<PythonBenchmark>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PythonBenchmark {
+    name: String,
+    p50_ns: f64,
+    p95_ns: f64,
+    p99_ns: f64,
+    throughput_ops_per_sec: f64,
+}
+
+#[derive(Debug, Serialize)]
+struct BenchStats {
+    p50_ns: f64,
+    p95_ns: f64,
+    p99_ns: f64,
+    throughput_ops_per_sec: f64,
+}
+
+#[derive(Debug, Deserialize)]
+struct PythonImplBenchConfig {
+    criterion: PythonImplCriterionConfig,
+    python: PythonImplPythonConfig,
+    comparisons: Vec<PythonImplComparison>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PythonImplCriterionConfig {
+    sample_size: usize,
+    warm_up_time_seconds: f64,
+    measurement_time_seconds: f64,
+}
+
+#[derive(Debug, Deserialize)]
+struct PythonImplPythonConfig {
+    iterations: usize,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct PythonImplComparison {
+    label: String,
+    rust_benchmark: String,
+    python_benchmark: String,
+}
+
+#[derive(Debug, Serialize)]
+struct PythonImplEnvironment {
+    rustc_version: String,
+    cargo_version: String,
+    python_version: String,
+    python_rns_module: String,
+    python_lxmf_module: String,
+    uname: String,
+    git_commit: String,
+    benchmark_config_path: String,
+}
+
+#[derive(Debug, Serialize)]
+struct PythonImplComparisonRow {
+    label: String,
+    rust_benchmark: String,
+    python_benchmark: String,
+    rust: BenchStats,
+    python: BenchStats,
+    rust_speedup_vs_python: BenchStats,
+}
+
+#[derive(Debug, Serialize)]
+struct PythonImplComparisonReport {
+    environment: PythonImplEnvironment,
+    comparisons: Vec<PythonImplComparisonRow>,
+}
+
 fn run_sdk_perf_budget_check() -> Result<()> {
     run_sdk_bench_check()?;
     if let Err(first_err) = evaluate_perf_budgets() {
@@ -2736,6 +2817,60 @@ fn run_sdk_perf_budget_check() -> Result<()> {
         });
     }
     Ok(())
+}
+
+fn run_python_impl_bench_compare() -> Result<()> {
+    let config = load_python_impl_bench_config()?;
+    let sample_size = config.criterion.sample_size.to_string();
+    let warm_up_time = config.criterion.warm_up_time_seconds.to_string();
+    let measurement_time = config.criterion.measurement_time_seconds.to_string();
+    let python_iterations = config.python.iterations.to_string();
+
+    run(
+        "cargo",
+        &[
+            "bench",
+            "-p",
+            "lxmf-core",
+            "--bench",
+            "core_message_paths",
+            "--",
+            "--sample-size",
+            &sample_size,
+            "--warm-up-time",
+            &warm_up_time,
+            "--measurement-time",
+            &measurement_time,
+        ],
+    )?;
+    run(
+        "cargo",
+        &[
+            "bench",
+            "-p",
+            "rns-core",
+            "--bench",
+            "parity_hotpaths",
+            "--",
+            "--sample-size",
+            &sample_size,
+            "--warm-up-time",
+            &warm_up_time,
+            "--measurement-time",
+            &measurement_time,
+        ],
+    )?;
+    run(
+        "python3",
+        &[
+            "tools/scripts/python_impl_benchmarks.py",
+            "--iterations",
+            &python_iterations,
+            "--output",
+            PYTHON_IMPL_BENCH_REPORT_PATH,
+        ],
+    )?;
+    write_python_impl_compare_report(&config)
 }
 
 fn evaluate_perf_budgets() -> Result<()> {
@@ -2887,6 +3022,195 @@ fn write_bench_summary() -> Result<()> {
         .with_context(|| format!("write {BENCH_SUMMARY_PATH}"))?;
     println!("benchmark summary written to {BENCH_SUMMARY_PATH}");
     Ok(())
+}
+
+fn write_python_impl_compare_report(config: &PythonImplBenchConfig) -> Result<()> {
+    let python_raw = fs::read_to_string(PYTHON_IMPL_BENCH_REPORT_PATH)
+        .with_context(|| format!("read {PYTHON_IMPL_BENCH_REPORT_PATH}"))?;
+    let python_report: PythonBenchReport = serde_json::from_str(&python_raw)
+        .with_context(|| format!("parse {PYTHON_IMPL_BENCH_REPORT_PATH}"))?;
+    let environment = capture_python_impl_environment()?;
+    fs::write(
+        PYTHON_IMPL_ENVIRONMENT_PATH,
+        serde_json::to_string_pretty(&environment)
+            .context("serialize python benchmark environment")?,
+    )
+    .with_context(|| format!("write {PYTHON_IMPL_ENVIRONMENT_PATH}"))?;
+
+    let python_stats = python_report
+        .benchmarks
+        .into_iter()
+        .map(|entry| {
+            (
+                entry.name,
+                BenchStats {
+                    p50_ns: entry.p50_ns,
+                    p95_ns: entry.p95_ns,
+                    p99_ns: entry.p99_ns,
+                    throughput_ops_per_sec: entry.throughput_ops_per_sec,
+                },
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+
+    let mut comparisons = Vec::new();
+    let mut lines = Vec::new();
+    lines.push("# Python Implementation Benchmark Comparison".to_string());
+    lines.push(String::new());
+    lines.push(
+        "Workloads compare Rust core paths against canonical Python `RNS` and `LXMF` implementations."
+            .to_string(),
+    );
+    lines.push(String::new());
+    lines.push(format!("- Config: `{}`", PYTHON_IMPL_BENCH_CONFIG_PATH));
+    lines.push(format!("- Environment: `{}`", PYTHON_IMPL_ENVIRONMENT_PATH));
+    lines.push(String::new());
+
+    for comparison in &config.comparisons {
+        let rust = load_criterion_stats(&comparison.rust_benchmark)?;
+        let python = python_stats.get(&comparison.python_benchmark).with_context(|| {
+            format!(
+                "missing python benchmark `{}` in {}",
+                comparison.python_benchmark, PYTHON_IMPL_BENCH_REPORT_PATH
+            )
+        })?;
+        let speedup = BenchStats {
+            p50_ns: ratio(python.p50_ns, rust.p50_ns),
+            p95_ns: ratio(python.p95_ns, rust.p95_ns),
+            p99_ns: ratio(python.p99_ns, rust.p99_ns),
+            throughput_ops_per_sec: ratio(
+                rust.throughput_ops_per_sec,
+                python.throughput_ops_per_sec,
+            ),
+        };
+        comparisons.push(PythonImplComparisonRow {
+            label: comparison.label.clone(),
+            rust_benchmark: comparison.rust_benchmark.clone(),
+            python_benchmark: comparison.python_benchmark.clone(),
+            rust: BenchStats {
+                p50_ns: rust.p50_ns,
+                p95_ns: rust.p95_ns,
+                p99_ns: rust.p99_ns,
+                throughput_ops_per_sec: rust.throughput_ops_per_sec,
+            },
+            python: BenchStats {
+                p50_ns: python.p50_ns,
+                p95_ns: python.p95_ns,
+                p99_ns: python.p99_ns,
+                throughput_ops_per_sec: python.throughput_ops_per_sec,
+            },
+            rust_speedup_vs_python: BenchStats {
+                p50_ns: speedup.p50_ns,
+                p95_ns: speedup.p95_ns,
+                p99_ns: speedup.p99_ns,
+                throughput_ops_per_sec: speedup.throughput_ops_per_sec,
+            },
+        });
+        lines.push(format!("## {}", comparison.label));
+        lines.push(format!(
+            "- Rust `{}`: p50_ns={:.2} p95_ns={:.2} p99_ns={:.2} throughput_ops_per_sec={:.2}",
+            comparison.rust_benchmark,
+            rust.p50_ns,
+            rust.p95_ns,
+            rust.p99_ns,
+            rust.throughput_ops_per_sec
+        ));
+        lines.push(format!(
+            "- Python `{}`: p50_ns={:.2} p95_ns={:.2} p99_ns={:.2} throughput_ops_per_sec={:.2}",
+            comparison.python_benchmark,
+            python.p50_ns,
+            python.p95_ns,
+            python.p99_ns,
+            python.throughput_ops_per_sec
+        ));
+        lines.push(format!(
+            "- Rust speedup vs Python: p50={:.2}x p95={:.2}x p99={:.2}x throughput={:.2}x",
+            speedup.p50_ns, speedup.p95_ns, speedup.p99_ns, speedup.throughput_ops_per_sec
+        ));
+        lines.push(String::new());
+    }
+
+    lines.push(format!(
+        "Generated by `cargo run -p xtask -- python-impl-bench-compare`; raw python data lives at `{}`.",
+        PYTHON_IMPL_BENCH_REPORT_PATH
+    ));
+
+    fs::write(PYTHON_IMPL_COMPARE_REPORT_PATH, lines.join("\n"))
+        .with_context(|| format!("write {PYTHON_IMPL_COMPARE_REPORT_PATH}"))?;
+    fs::write(
+        PYTHON_IMPL_COMPARE_JSON_PATH,
+        serde_json::to_string_pretty(&PythonImplComparisonReport { environment, comparisons })
+            .context("serialize python implementation comparison report")?,
+    )
+    .with_context(|| format!("write {PYTHON_IMPL_COMPARE_JSON_PATH}"))?;
+    println!("python implementation comparison written to {PYTHON_IMPL_COMPARE_REPORT_PATH}");
+    Ok(())
+}
+
+fn load_criterion_stats(benchmark: &str) -> Result<BenchStats> {
+    let sample_path = Path::new("target/criterion").join(benchmark).join("new").join("sample.json");
+    let raw = fs::read_to_string(&sample_path)
+        .with_context(|| format!("read sample data {}", sample_path.display()))?;
+    let sample: CriterionSample =
+        serde_json::from_str(&raw).with_context(|| format!("parse {}", sample_path.display()))?;
+    if sample.iters.len() != sample.times.len() || sample.iters.is_empty() {
+        bail!("invalid sample data in {}", sample_path.display());
+    }
+
+    let mut latency_ns = sample
+        .times
+        .iter()
+        .zip(sample.iters.iter())
+        .filter_map(|(time, iters)| (*iters > 0.0).then_some(*time / *iters))
+        .collect::<Vec<_>>();
+    if latency_ns.is_empty() {
+        bail!("sample data contains zero iteration counts in {}", sample_path.display());
+    }
+    latency_ns.sort_by(f64::total_cmp);
+    let tail_latencies = trimmed_tail_sample(&latency_ns);
+    let p50_ns = percentile(&latency_ns, 0.50);
+    let p95_ns = percentile(&tail_latencies, 0.95);
+    let p99_ns = percentile(&tail_latencies, 0.99);
+    let throughput_ops_per_sec = 1_000_000_000.0 / p50_ns.max(1.0);
+
+    Ok(BenchStats { p50_ns, p95_ns, p99_ns, throughput_ops_per_sec })
+}
+
+fn ratio(lhs: f64, rhs: f64) -> f64 {
+    lhs / rhs.max(1.0)
+}
+
+fn load_python_impl_bench_config() -> Result<PythonImplBenchConfig> {
+    let raw = fs::read_to_string(PYTHON_IMPL_BENCH_CONFIG_PATH)
+        .with_context(|| format!("read {PYTHON_IMPL_BENCH_CONFIG_PATH}"))?;
+    toml::from_str(&raw).with_context(|| format!("parse {PYTHON_IMPL_BENCH_CONFIG_PATH}"))
+}
+
+fn capture_python_impl_environment() -> Result<PythonImplEnvironment> {
+    let git_commit = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+
+    Ok(PythonImplEnvironment {
+        rustc_version: capture_command_stdout("rustc", &["--version"])?,
+        cargo_version: capture_command_stdout("cargo", &["--version"])?,
+        python_version: capture_command_stdout("python3", &["--version"])?,
+        python_rns_module: capture_command_stdout(
+            "python3",
+            &["-c", "import RNS; print(getattr(RNS, '__file__', 'unknown'))"],
+        )?,
+        python_lxmf_module: capture_command_stdout(
+            "python3",
+            &["-c", "import LXMF; print(getattr(LXMF, '__file__', 'unknown'))"],
+        )?,
+        uname: capture_command_stdout("uname", &["-a"])?,
+        git_commit,
+        benchmark_config_path: PYTHON_IMPL_BENCH_CONFIG_PATH.to_string(),
+    })
 }
 
 fn collect_estimate_files(dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
@@ -3142,8 +3466,8 @@ fn run_embedded_native_lock_check() -> Result<()> {
         }
     }
 
-    let workflow = fs::read_to_string(CI_WORKFLOW_PATH)
-        .with_context(|| format!("read {CI_WORKFLOW_PATH}"))?;
+    let workflow =
+        fs::read_to_string(CI_WORKFLOW_PATH).with_context(|| format!("read {CI_WORKFLOW_PATH}"))?;
     for job in EMBEDDED_NATIVE_REQUIRED_CI_JOBS {
         if !workflow.contains(&format!("{job}:")) {
             bail!("CI workflow missing embedded native required job '{job}' in {CI_WORKFLOW_PATH}");
@@ -3187,32 +3511,15 @@ fn run_embedded_link_check() -> Result<()> {
 fn run_embedded_core_check() -> Result<()> {
     run(
         "cargo",
-        &[
-            "check",
-            "-p",
-            "rns-embedded-core",
-            "--no-default-features",
-            "--features",
-            "alloc",
-        ],
+        &["check", "-p", "rns-embedded-core", "--no-default-features", "--features", "alloc"],
     )?;
     run("cargo", &["check", "-p", "rns-embedded-core", "--features", "std"])?;
     run("cargo", &["check", "-p", "rns-embedded-ffi", "--features", "std"])?;
     run(
         "cargo",
-        &[
-            "check",
-            "-p",
-            "rns-embedded-runtime",
-            "--no-default-features",
-            "--features",
-            "alloc",
-        ],
+        &["check", "-p", "rns-embedded-runtime", "--no-default-features", "--features", "alloc"],
     )?;
-    run(
-        "cargo",
-        &["check", "-p", "rns-embedded-runtime", "--features", "std"],
-    )?;
+    run("cargo", &["check", "-p", "rns-embedded-runtime", "--features", "std"])?;
     run("cargo", &["check", "-p", "lxmf-core", "--no-default-features", "--features", "alloc"])?;
     run("cargo", &["check", "-p", "rns-core", "--no-default-features", "--features", "alloc"])?;
     run("cargo", &["test", "-p", "rns-embedded-core"])?;
@@ -3293,14 +3600,7 @@ fn run_embedded_hil_check() -> Result<()> {
 fn run_embedded_node_build() -> Result<()> {
     run(
         "cargo",
-        &[
-            "check",
-            "-p",
-            "rns-embedded-core",
-            "--no-default-features",
-            "--features",
-            "alloc",
-        ],
+        &["check", "-p", "rns-embedded-core", "--no-default-features", "--features", "alloc"],
     )?;
     run("cargo", &["check", "-p", "rns-embedded-core", "--features", "std"])?;
     run("cargo", &["check", "-p", "rns-tools", "--bin", "rnx"])?;
@@ -3332,8 +3632,8 @@ fn run_embedded_node_contract() -> Result<()> {
 fn run_embedded_node_failure_matrix() -> Result<()> {
     let failure_matrix = fs::read_to_string("docs/contracts/failure-injection-matrix.md")
         .context("missing docs/contracts/failure-injection-matrix.md")?;
-    let sdk_errors =
-        fs::read_to_string("docs/contracts/sdk-v2-errors.md").context("missing docs/contracts/sdk-v2-errors.md")?;
+    let sdk_errors = fs::read_to_string("docs/contracts/sdk-v2-errors.md")
+        .context("missing docs/contracts/sdk-v2-errors.md")?;
 
     let required_codes = [
         "SDK_RUNTIME_INVALID_CURSOR",
@@ -3367,11 +3667,7 @@ fn run_embedded_node_hil() -> Result<()> {
 
     let report = fs::read_to_string(EMBEDDED_NATIVE_INTEROP_REPORT_PATH)
         .with_context(|| format!("missing {EMBEDDED_NATIVE_INTEROP_REPORT_PATH}"))?;
-    for marker in [
-        "\"status\":\"pass\"",
-        "\"announce_ok\":true",
-        "\"tiny_message_ok\":true",
-    ] {
+    for marker in ["\"status\":\"pass\"", "\"announce_ok\":true", "\"tiny_message_ok\":true"] {
         if !report.contains(marker) {
             bail!(
                 "embedded native interop report missing marker '{marker}' in {EMBEDDED_NATIVE_INTEROP_REPORT_PATH}"

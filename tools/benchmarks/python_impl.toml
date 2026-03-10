@@ -1,0 +1,57 @@
+[criterion]
+sample_size = 10
+warm_up_time_seconds = 0.1
+measurement_time_seconds = 0.2
+
+[python]
+iterations = 2000
+
+[[comparisons]]
+label = "LXMF message decode"
+rust_benchmark = "lxmf_core_message_from_wire"
+python_benchmark = "python_lxmf/message_from_wire"
+
+[[comparisons]]
+label = "LXMF message encode"
+rust_benchmark = "lxmf_core_message_to_wire"
+python_benchmark = "python_lxmf/message_to_wire"
+
+[[comparisons]]
+label = "LXMF large message decode"
+rust_benchmark = "lxmf_core_large_message_from_wire"
+python_benchmark = "python_lxmf/large_message_from_wire"
+
+[[comparisons]]
+label = "LXMF large message encode"
+rust_benchmark = "lxmf_core_large_message_to_wire"
+python_benchmark = "python_lxmf/large_message_to_wire"
+
+[[comparisons]]
+label = "Reticulum announce create"
+rust_benchmark = "rns_core_announce_create"
+python_benchmark = "python_rns/announce_create"
+
+[[comparisons]]
+label = "Reticulum announce validate"
+rust_benchmark = "rns_core_announce_validate"
+python_benchmark = "python_rns/announce_validate"
+
+[[comparisons]]
+label = "Reticulum identity sign"
+rust_benchmark = "rns_core_identity_sign"
+python_benchmark = "python_rns/identity_sign"
+
+[[comparisons]]
+label = "Reticulum identity verify"
+rust_benchmark = "rns_core_identity_verify"
+python_benchmark = "python_rns/identity_verify"
+
+[[comparisons]]
+label = "Reticulum identity encrypt"
+rust_benchmark = "rns_core_identity_encrypt"
+python_benchmark = "python_rns/identity_encrypt"
+
+[[comparisons]]
+label = "Reticulum identity decrypt"
+rust_benchmark = "rns_core_identity_decrypt"
+python_benchmark = "python_rns/identity_decrypt"

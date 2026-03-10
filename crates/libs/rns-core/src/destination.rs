@@ -131,8 +131,7 @@ impl DestinationAnnounce {
         let expected_hash =
             create_address_hash(&identity, &DestinationName::new_from_hash_slice(name_hash));
         if expected_hash != *destination {
-            #[cfg(feature = "std")]
-            eprintln!("[announce] dest mismatch expected={} got={}", expected_hash, destination);
+            return Err(RnsError::IncorrectHash);
         }
 
         let verify_announce =

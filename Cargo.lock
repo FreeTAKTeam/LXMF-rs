@@ -1940,6 +1940,7 @@ version = "0.1.0"
 dependencies = [
  "aes",
  "cbc",
+ "criterion",
  "crypto-common",
  "ed25519-dalek",
  "hex",
@@ -3233,6 +3234,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "toml",
 ]
 
 [[package]]

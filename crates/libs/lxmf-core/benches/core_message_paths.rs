@@ -16,6 +16,20 @@ fn sample_wire_payload() -> (Vec<u8>, [u8; 16]) {
     (wire, destination)
 }
 
+fn sample_large_wire_payload() -> (Vec<u8>, [u8; 16]) {
+    let mut message = Message::new();
+    let destination = [0x77; 16];
+    let source = [0x88; 16];
+    message.destination_hash = Some(destination);
+    message.source_hash = Some(source);
+    message.signature = Some([0x99; 64]);
+    message.timestamp = Some(1_770_000_100.0);
+    message.set_title_from_string("bench-large-title");
+    message.set_content_from_string(&"x".repeat(2048));
+    let wire = message.to_wire(None).expect("large sample message must encode");
+    (wire, destination)
+}
+
 fn bench_message_from_wire(c: &mut Criterion) {
     let (wire, _) = sample_wire_payload();
     c.bench_function("lxmf_core/message_from_wire", |b| {
@@ -57,10 +71,39 @@ fn bench_message_to_wire(c: &mut Criterion) {
     });
 }
 
+fn bench_large_message_from_wire(c: &mut Criterion) {
+    let (wire, _) = sample_large_wire_payload();
+    c.bench_function("lxmf_core/large_message_from_wire", |b| {
+        b.iter(|| {
+            let decoded = Message::from_wire(black_box(&wire)).expect("decode should succeed");
+            black_box(decoded);
+        });
+    });
+}
+
+fn bench_large_message_to_wire(c: &mut Criterion) {
+    let content = "x".repeat(2048);
+    c.bench_function("lxmf_core/large_message_to_wire", |b| {
+        b.iter(|| {
+            let mut message = Message::new();
+            message.destination_hash = Some([0xa4; 16]);
+            message.source_hash = Some([0xb5; 16]);
+            message.signature = Some([0xc6; 64]);
+            message.timestamp = Some(1_770_000_101.0);
+            message.set_title_from_string("wire-large-title");
+            message.set_content_from_string(black_box(&content));
+            let wire = message.to_wire(None).expect("encode should succeed");
+            black_box(wire);
+        });
+    });
+}
+
 criterion_group!(
     benches,
     bench_message_from_wire,
     bench_decode_inbound_message,
-    bench_message_to_wire
+    bench_message_to_wire,
+    bench_large_message_from_wire,
+    bench_large_message_to_wire
 );
 criterion_main!(benches);
