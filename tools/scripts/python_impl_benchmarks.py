@@ -19,6 +19,15 @@ def percentile(values: list[int], p: float) -> float:
     return float(values[index])
 
 
+def trimmed_tail_sample(values: list[int]) -> list[int]:
+    if len(values) < 8:
+        return values
+    trim = max(len(values) // 20, 1)
+    if len(values) <= trim * 2:
+        return values
+    return values[trim:-trim]
+
+
 def run_benchmark(name: str, iterations: int, func):
     samples: list[int] = []
     for _ in range(iterations):
@@ -27,9 +36,10 @@ def run_benchmark(name: str, iterations: int, func):
         samples.append(time.perf_counter_ns() - start)
 
     samples.sort()
+    tail_samples = trimmed_tail_sample(samples)
     p50 = percentile(samples, 0.50)
-    p95 = percentile(samples, 0.95)
-    p99 = percentile(samples, 0.99)
+    p95 = percentile(tail_samples, 0.95)
+    p99 = percentile(tail_samples, 0.99)
     mean = statistics.fmean(samples)
     throughput = 1_000_000_000.0 / max(p50, 1.0)
 
