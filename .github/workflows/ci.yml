@@ -111,7 +111,7 @@ jobs:
           cache-targets: true
           cache-on-failure: false
       - name: Serial interface tests
-        run: cargo test -p rns-transport serial::tests
+        run: "cargo test -p rns-transport serial::tests"
 
   interfaces-test-ble-linux:
     runs-on: ubuntu-latest
@@ -124,7 +124,7 @@ jobs:
           cache-targets: true
           cache-on-failure: false
       - name: BLE interface tests (Linux)
-        run: cargo test -p reticulumd --bin reticulumd interfaces::ble::
+        run: "cargo test -p reticulumd --bin reticulumd interfaces::ble::"
 
   interfaces-test-ble-macos:
     runs-on: macos-latest
@@ -137,7 +137,7 @@ jobs:
           cache-targets: true
           cache-on-failure: false
       - name: BLE interface tests (macOS)
-        run: cargo test -p reticulumd --bin reticulumd interfaces::ble::
+        run: "cargo test -p reticulumd --bin reticulumd interfaces::ble::"
 
   interfaces-test-ble-windows:
     runs-on: windows-latest
@@ -150,7 +150,7 @@ jobs:
           cache-targets: true
           cache-on-failure: false
       - name: BLE interface tests (Windows)
-        run: cargo test -p reticulumd --bin reticulumd interfaces::ble::
+        run: "cargo test -p reticulumd --bin reticulumd interfaces::ble::"
 
   interfaces-test-lora:
     runs-on: ubuntu-latest
@@ -163,7 +163,7 @@ jobs:
           cache-targets: true
           cache-on-failure: false
       - name: LoRa interface tests
-        run: cargo test -p reticulumd --bin reticulumd lora_state::tests
+        run: "cargo test -p reticulumd --bin reticulumd lora_state::tests"
 
   interfaces-test-mobile-contract:
     runs-on: ubuntu-latest
