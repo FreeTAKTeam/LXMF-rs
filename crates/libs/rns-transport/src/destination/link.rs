@@ -10,6 +10,7 @@ use x25519_dalek::StaticSecret;
 
 use crate::{
     buffer::OutputBuffer,
+    crypt::fernet::{CachedFernet, PlainText, Token},
     error::RnsError,
     hash::{AddressHash, Hash, ADDRESS_HASH_SIZE},
     identity::{DecryptIdentity, DerivedKey, EncryptIdentity, Identity, PrivateIdentity},
@@ -70,6 +71,7 @@ pub struct Link {
     priv_identity: PrivateIdentity,
     peer_identity: Identity,
     derived_key: DerivedKey,
+    session_cipher: Option<CachedFernet>,
     signalling: Option<[u8; LINK_MTU_SIZE]>,
     status: LinkStatus,
     request_time: Instant,
@@ -88,6 +90,7 @@ impl Link {
             priv_identity: PrivateIdentity::new_from_rand(OsRng),
             peer_identity: Identity::default(),
             derived_key: DerivedKey::new_empty(),
+            session_cipher: None,
             signalling: None,
             status: LinkStatus::Pending,
             request_time: Instant::now(),
@@ -130,6 +133,7 @@ impl Link {
             priv_identity: PrivateIdentity::new(StaticSecret::random_from_rng(OsRng), signing_key),
             peer_identity,
             derived_key: DerivedKey::new_empty(),
+            session_cipher: None,
             signalling,
             status: LinkStatus::Pending,
             request_time: Instant::now(),
@@ -159,6 +163,8 @@ impl Link {
 
         self.status = LinkStatus::Pending;
         self.id = LinkId::from(&packet);
+        self.derived_key = DerivedKey::new_empty();
+        self.session_cipher = None;
         self.request_time = Instant::now();
 
         packet
@@ -326,13 +332,7 @@ impl Link {
         }
 
         let mut packet_data = PacketDataBuffer::new();
-
-        let cipher_text_len = {
-            let cipher_text = self.encrypt(data, packet_data.accuire_buf_max())?;
-            cipher_text.len()
-        };
-
-        packet_data.resize(cipher_text_len);
+        self.encrypt_packet_data_into(data, &mut packet_data)?;
 
         Ok(Packet {
             header: Header {
@@ -346,6 +346,23 @@ impl Link {
             context: PacketContext::None,
             data: packet_data,
         })
+    }
+
+    pub fn data_packet_into(&self, data: &[u8], packet: &mut Packet) -> Result<(), RnsError> {
+        if self.status != LinkStatus::Active {
+            log::warn!("link: can't create data packet for closed link");
+        }
+
+        packet.header = Header {
+            destination_type: DestinationType::Link,
+            packet_type: PacketType::Data,
+            ..Default::default()
+        };
+        packet.ifac = None;
+        packet.destination = self.id;
+        packet.transport = None;
+        packet.context = PacketContext::None;
+        self.encrypt_packet_data_into(data, &mut packet.data)
     }
 
     pub fn keep_alive_packet(&self, data: u8) -> Packet {
@@ -369,11 +386,22 @@ impl Link {
     }
 
     pub fn encrypt<'a>(&self, text: &[u8], out_buf: &'a mut [u8]) -> Result<&'a [u8], RnsError> {
-        self.priv_identity.encrypt(OsRng, text, &self.derived_key, out_buf)
+        if let Some(session_cipher) = &self.session_cipher {
+            let token = session_cipher.encrypt(OsRng, PlainText::from(text), out_buf)?;
+            Ok(token.as_bytes())
+        } else {
+            self.priv_identity.encrypt(OsRng, text, &self.derived_key, out_buf)
+        }
     }
 
     pub fn decrypt<'a>(&self, text: &[u8], out_buf: &'a mut [u8]) -> Result<&'a [u8], RnsError> {
-        self.priv_identity.decrypt(OsRng, text, &self.derived_key, out_buf)
+        if let Some(session_cipher) = &self.session_cipher {
+            let verified = session_cipher.verify(Token::from(text))?;
+            let plain_text = session_cipher.decrypt(verified, out_buf)?;
+            Ok(plain_text.as_bytes())
+        } else {
+            self.priv_identity.decrypt(OsRng, text, &self.derived_key, out_buf)
+        }
     }
 
     pub fn destination(&self) -> &DestinationDesc {
@@ -423,6 +451,24 @@ impl Link {
 
         self.derived_key =
             self.priv_identity.derive_key(&self.peer_identity.public_key, Some(self.id.as_slice()));
+        let key_bytes = self.derived_key.as_bytes();
+        let split = key_bytes.len() / 2;
+        self.session_cipher =
+            Some(CachedFernet::new_from_slices(&key_bytes[..split], &key_bytes[split..]));
+    }
+
+    fn encrypt_packet_data_into(
+        &self,
+        data: &[u8],
+        packet_data: &mut PacketDataBuffer,
+    ) -> Result<(), RnsError> {
+        packet_data.reset();
+        let cipher_text_len = {
+            let cipher_text = self.encrypt(data, packet_data.accuire_buf_max())?;
+            cipher_text.len()
+        };
+        packet_data.resize(cipher_text_len);
+        Ok(())
     }
 
     fn post_event(&self, event: LinkEvent) {
@@ -434,6 +480,7 @@ impl Link {
     }
     pub fn close(&mut self) {
         self.status = LinkStatus::Closed;
+        self.session_cipher = None;
 
         self.post_event(LinkEvent::Closed);
 
@@ -444,6 +491,7 @@ impl Link {
         log::warn!("link({}): restart after {}s", self.id, self.request_time.elapsed().as_secs());
 
         self.status = LinkStatus::Pending;
+        self.session_cipher = None;
     }
 
     pub fn elapsed(&self) -> Duration {
@@ -460,3 +508,38 @@ impl Link {
 }
 
 include!("link/proof.rs");
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::destination::{DestinationDesc, DestinationName};
+
+    #[test]
+    fn link_handshake_roundtrip_encrypts_and_decrypts() {
+        let signer = PrivateIdentity::new_from_rand(OsRng);
+        let identity = *signer.as_identity();
+        let destination = DestinationDesc {
+            identity,
+            address_hash: identity.address_hash,
+            name: DestinationName::new("lxmf", "delivery"),
+        };
+        let (tx, _) = tokio::sync::broadcast::channel(4);
+
+        let mut outbound = Link::new(destination, tx.clone());
+        let request = outbound.request();
+
+        let mut inbound =
+            Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
+                .expect("link request should parse");
+        let proof = inbound.prove();
+        assert!(matches!(outbound.handle_packet(&proof), LinkHandleResult::Activated));
+
+        let plaintext = b"session-cached-link-payload";
+        let mut cipher_buf = [0u8; PACKET_MDU];
+        let ciphertext = outbound.encrypt(plaintext, &mut cipher_buf).expect("encrypt");
+
+        let mut plain_buf = [0u8; PACKET_MDU];
+        let decrypted = inbound.decrypt(ciphertext, &mut plain_buf).expect("decrypt");
+        assert_eq!(decrypted, plaintext);
+    }
+}

@@ -50,6 +50,13 @@ pub struct Fernet<R: CryptoRngCore> {
     enc_key: AesKey,
 }
 
+#[derive(Clone)]
+#[doc(hidden)]
+pub struct CachedFernet {
+    sign_key: [u8; AES_KEY_SIZE],
+    enc_key: AesKey,
+}
+
 impl<'a> PlainText<'a> {
     pub fn as_slice(&self) -> &'a [u8] {
         self.0
@@ -164,6 +171,84 @@ impl<R: CryptoRngCore + Copy> Fernet<R> {
         out_len += tag.len();
 
         Ok(Token(&out_buf[..out_len]))
+    }
+
+    pub fn verify<'a>(&self, token: Token<'a>) -> Result<VerifiedToken<'a>, RnsError> {
+        let token_data = token.0;
+
+        if token_data.len() <= FERNET_OVERHEAD_SIZE {
+            return Err(RnsError::InvalidArgument);
+        }
+
+        let expected_tag = &token_data[token_data.len() - HMAC_OUT_SIZE..];
+
+        let mut hmac = <HmacSha256 as Mac>::new_from_slice(&self.sign_key)
+            .map_err(|_| RnsError::InvalidArgument)?;
+
+        hmac.update(&token_data[..token_data.len() - HMAC_OUT_SIZE]);
+
+        let actual_tag = hmac.finalize().into_bytes();
+
+        let valid = expected_tag
+            .iter()
+            .zip(actual_tag.as_slice())
+            .map(|(x, y)| x.cmp(y))
+            .find(|&ord| ord != cmp::Ordering::Equal)
+            .unwrap_or(actual_tag.len().cmp(&expected_tag.len()))
+            == cmp::Ordering::Equal;
+
+        if valid {
+            Ok(VerifiedToken(token_data))
+        } else {
+            Err(RnsError::IncorrectSignature)
+        }
+    }
+
+    pub fn decrypt<'a, 'b>(
+        &self,
+        token: VerifiedToken<'a>,
+        out_buf: &'b mut [u8],
+    ) -> Result<PlainText<'b>, RnsError> {
+        let token_data = token.0;
+
+        if token_data.len() <= FERNET_OVERHEAD_SIZE {
+            return Err(RnsError::InvalidArgument);
+        }
+
+        let tag_start_index = token_data.len() - HMAC_OUT_SIZE;
+
+        let iv: [u8; IV_KEY_SIZE] = token_data[..IV_KEY_SIZE].try_into().unwrap();
+
+        let ciphertext = &token_data[IV_KEY_SIZE..tag_start_index];
+
+        let msg = AesCbcDec::new(&self.enc_key, &iv.into())
+            .decrypt_padded_b2b_mut::<Pkcs7>(ciphertext, out_buf)
+            .map_err(|_| RnsError::CryptoError)?;
+
+        Ok(PlainText(msg))
+    }
+}
+
+impl CachedFernet {
+    pub fn new_from_slices(sign_key: &[u8], enc_key: &[u8]) -> Self {
+        let mut sign_key_bytes = [0u8; AES_KEY_SIZE];
+        let sign_len = cmp::min(AES_KEY_SIZE, sign_key.len());
+        sign_key_bytes[..sign_len].copy_from_slice(&sign_key[..sign_len]);
+
+        let mut enc_key_bytes = [0u8; AES_KEY_SIZE];
+        let enc_len = cmp::min(AES_KEY_SIZE, enc_key.len());
+        enc_key_bytes[..enc_len].copy_from_slice(&enc_key[..enc_len]);
+
+        Self { sign_key: sign_key_bytes, enc_key: enc_key_bytes.into() }
+    }
+
+    pub fn encrypt<'a, R: CryptoRngCore + Copy>(
+        &self,
+        rng: R,
+        text: PlainText,
+        out_buf: &'a mut [u8],
+    ) -> Result<Token<'a>, RnsError> {
+        Fernet::new(self.sign_key, self.enc_key.clone(), rng).encrypt(text, out_buf)
     }
 
     pub fn verify<'a>(&self, token: Token<'a>) -> Result<VerifiedToken<'a>, RnsError> {

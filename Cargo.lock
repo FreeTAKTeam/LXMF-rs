@@ -2028,6 +2028,7 @@ dependencies = [
  "aes",
  "bzip2",
  "cbc",
+ "criterion",
  "crypto-common",
  "ed25519-dalek",
  "hex",

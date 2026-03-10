@@ -209,6 +209,7 @@ pub(crate) struct TransportHandler {
     ratchet_store: Option<RatchetStore>,
 
     resource_manager: ResourceManager,
+    resource_response_packets: Vec<Packet>,
     resource_events_tx: broadcast::Sender<ResourceEvent>,
 
     fixed_dest_path_requests: AddressHash,

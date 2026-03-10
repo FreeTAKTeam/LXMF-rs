@@ -2861,6 +2861,23 @@ fn run_python_impl_bench_compare() -> Result<()> {
         ],
     )?;
     run(
+        "cargo",
+        &[
+            "bench",
+            "-p",
+            "rns-transport",
+            "--bench",
+            "link_hotpaths",
+            "--",
+            "--sample-size",
+            &sample_size,
+            "--warm-up-time",
+            &warm_up_time,
+            "--measurement-time",
+            &measurement_time,
+        ],
+    )?;
+    run(
         "python3",
         &[
             "tools/scripts/python_impl_benchmarks.py",

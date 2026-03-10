@@ -92,19 +92,30 @@ impl ResourceSender {
         }
     }
 
-    fn handle_request(&mut self, request: &ResourceRequest, link: &Link) -> Vec<Packet> {
+    fn handle_request_into(
+        &mut self,
+        request: &ResourceRequest,
+        link: &Link,
+        packets: &mut Vec<Packet>,
+    ) {
         if request.resource_hash != self.resource_hash {
-            return Vec::new();
+            return;
         }
 
-        let mut packets = Vec::new();
+        let mut scratch_packet = Packet::default();
         for hash in &request.requested_hashes {
             if let Some(index) = self.map_hashes.iter().position(|entry| entry == hash) {
                 if let Some(part) = self.parts.get(index) {
-                    if let Ok(packet) =
-                        build_link_packet(link, PacketType::Data, PacketContext::Resource, part)
+                    if build_link_packet_into(
+                        link,
+                        PacketType::Data,
+                        PacketContext::Resource,
+                        part,
+                        &mut scratch_packet,
+                    )
+                    .is_ok()
                     {
-                        packets.push(packet);
+                        packets.push(scratch_packet);
                     } else {
                         log::warn!("resource: failed to build resource packet");
                     }
@@ -145,8 +156,6 @@ impl ResourceSender {
         {
             self.status = ResourceStatus::Transferring;
         }
-
-        packets
     }
 
     fn handle_proof(&mut self, proof: &ResourceProof) -> bool {

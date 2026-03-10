@@ -70,6 +70,7 @@ impl Transport {
                 Duration::from_secs(resource_retry_interval_secs),
                 resource_retry_limit,
             ),
+            resource_response_packets: Vec::new(),
             resource_events_tx: resource_events_tx.clone(),
             fixed_dest_path_requests: path_request_dest,
             cancel: cancel.clone(),

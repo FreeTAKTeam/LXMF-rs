@@ -6,6 +6,8 @@ use rns_core::ratchets::{
     decrypt_with_identity_into, encrypt_for_public_key, encrypt_for_public_key_into,
 };
 
+const ANNOUNCE_BATCH_SIZE: usize = 64;
+
 fn sample_destination() -> SingleInputDestination {
     let identity = PrivateIdentity::new_from_rand(OsRng);
     SingleInputDestination::new(
@@ -36,6 +38,38 @@ fn bench_announce_validate(c: &mut Criterion) {
             let info = DestinationAnnounce::validate(black_box(&packet))
                 .expect("announce validation should succeed");
             black_box(info);
+        });
+    });
+}
+
+fn bench_announce_validate_batch_64(c: &mut Criterion) {
+    let mut packets = Vec::with_capacity(ANNOUNCE_BATCH_SIZE);
+    for index in 0..ANNOUNCE_BATCH_SIZE {
+        let mut destination = sample_destination();
+        let app_data = format!("rust-announce-app-data-{index}");
+        let packet = destination
+            .announce(OsRng, Some(app_data.as_bytes()))
+            .expect("announce should succeed");
+        packets.push(packet);
+    }
+
+    for packet in &packets {
+        DestinationAnnounce::validate(packet).expect("batch announce fixture must validate");
+    }
+
+    c.bench_function("rns_core/announce_validate_batch_64", |b| {
+        let mut signed_data = [0u8; rns_core::packet::PACKET_MDU];
+        b.iter(|| {
+            let mut validated = 0usize;
+            for packet in &packets {
+                let info = DestinationAnnounce::validate_with_buffer(
+                    black_box(packet),
+                    black_box(&mut signed_data),
+                )
+                .expect("announce validation should succeed");
+                validated += info.app_data.len();
+            }
+            black_box(validated);
         });
     });
 }
@@ -117,6 +151,7 @@ criterion_group!(
     benches,
     bench_announce_create,
     bench_announce_validate,
+    bench_announce_validate_batch_64,
     bench_identity_sign,
     bench_identity_verify,
     bench_identity_encrypt,

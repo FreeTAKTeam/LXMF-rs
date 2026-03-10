@@ -66,29 +66,50 @@ impl ResourceManager {
     }
 
     pub fn handle_packet(&mut self, packet: &Packet, link: &mut Link) -> Vec<Packet> {
+        let mut responses = Vec::new();
+        self.handle_packet_into(packet, link, &mut responses);
+        responses
+    }
+
+    pub fn handle_packet_into(
+        &mut self,
+        packet: &Packet,
+        link: &mut Link,
+        responses: &mut Vec<Packet>,
+    ) {
+        responses.clear();
         match packet.context {
-            PacketContext::ResourceAdvrtisement => self.handle_advertisement(packet, link),
-            PacketContext::ResourceRequest => self.handle_request(packet, link),
-            PacketContext::ResourceHashUpdate => self.handle_hash_update(packet, link),
-            PacketContext::Resource => self.handle_resource_part(packet, link),
-            PacketContext::ResourceProof => self.handle_proof(packet),
-            PacketContext::ResourceInitiatorCancel | PacketContext::ResourceReceiverCancel => {
-                self.cancel(packet)
+            PacketContext::ResourceAdvrtisement => {
+                self.handle_advertisement_into(packet, link, responses)
             }
-            _ => Vec::new(),
+            PacketContext::ResourceRequest => self.handle_request_into(packet, link, responses),
+            PacketContext::ResourceHashUpdate => {
+                self.handle_hash_update_into(packet, link, responses)
+            }
+            PacketContext::Resource => self.handle_resource_part_into(packet, link, responses),
+            PacketContext::ResourceProof => self.handle_proof_into(packet, responses),
+            PacketContext::ResourceInitiatorCancel | PacketContext::ResourceReceiverCancel => {
+                self.cancel_into(packet, responses)
+            }
+            _ => {}
         }
     }
 
-    fn handle_advertisement(&mut self, packet: &Packet, link: &mut Link) -> Vec<Packet> {
+    fn handle_advertisement_into(
+        &mut self,
+        packet: &Packet,
+        link: &mut Link,
+        responses: &mut Vec<Packet>,
+    ) {
         let Ok(advertisement) = ResourceAdvertisement::unpack(packet.data.as_slice()) else {
-            return Vec::new();
+            return;
         };
         if (advertisement.flags & FLAG_SPLIT) == FLAG_SPLIT {
             log::warn!(
                 "resource: rejecting unsupported advertisement flags (split={})",
                 (advertisement.flags & FLAG_SPLIT) == FLAG_SPLIT
             );
-            return Vec::new();
+            return;
         }
         let resource_hash = advertisement.hash;
         let mut receiver = ResourceReceiver::new(&advertisement, *link.id());
@@ -101,49 +122,59 @@ impl ResourceManager {
             PacketContext::ResourceRequest,
             &request.encode(),
         ) {
-            Ok(packet) => vec![packet],
+            Ok(packet) => responses.push(packet),
             Err(_) => {
                 log::warn!("resource: failed to build request packet");
-                Vec::new()
             }
-        }
+        };
     }
 
-    fn handle_request(&mut self, packet: &Packet, link: &mut Link) -> Vec<Packet> {
+    fn handle_request_into(
+        &mut self,
+        packet: &Packet,
+        link: &mut Link,
+        responses: &mut Vec<Packet>,
+    ) {
         let Ok(request) = ResourceRequest::decode(packet.data.as_slice()) else {
-            return Vec::new();
+            return;
         };
         if let Some(sender) = self.outgoing.get_mut(&request.resource_hash) {
-            sender.handle_request(&request, link)
-        } else {
-            Vec::new()
+            sender.handle_request_into(&request, link, responses);
         }
     }
 
-    fn handle_hash_update(&mut self, packet: &Packet, link: &mut Link) -> Vec<Packet> {
+    fn handle_hash_update_into(
+        &mut self,
+        packet: &Packet,
+        link: &mut Link,
+        responses: &mut Vec<Packet>,
+    ) {
         let Ok(update) = ResourceHashUpdate::decode(packet.data.as_slice()) else {
-            return Vec::new();
+            return;
         };
         if let Some(receiver) = self.incoming.get_mut(&update.resource_hash) {
             receiver.handle_hash_update(&update);
             let request = receiver.build_request();
-            return match build_link_packet(
+            match build_link_packet(
                 link,
                 PacketType::Data,
                 PacketContext::ResourceRequest,
                 &request.encode(),
             ) {
-                Ok(packet) => vec![packet],
+                Ok(packet) => responses.push(packet),
                 Err(_) => {
                     log::warn!("resource: failed to build request packet");
-                    Vec::new()
                 }
             };
         }
-        Vec::new()
     }
 
-    fn handle_resource_part(&mut self, packet: &Packet, link: &mut Link) -> Vec<Packet> {
+    fn handle_resource_part_into(
+        &mut self,
+        packet: &Packet,
+        link: &mut Link,
+        responses: &mut Vec<Packet>,
+    ) {
         let mut completed: Option<Hash> = None;
         let mut proof_packet: Option<Packet> = None;
         let mut request_packet: Option<Packet> = None;
@@ -198,17 +229,18 @@ impl ResourceManager {
             }
         }
         if let Some(packet) = proof_packet {
-            return vec![packet];
+            responses.push(packet);
+            return;
         }
         if let Some(packet) = request_packet {
-            return vec![packet];
+            responses.push(packet);
+            return;
         }
-        Vec::new()
     }
 
-    fn handle_proof(&mut self, packet: &Packet) -> Vec<Packet> {
+    fn handle_proof_into(&mut self, packet: &Packet, _responses: &mut Vec<Packet>) {
         let Ok(proof) = ResourceProof::decode(packet.data.as_slice()) else {
-            return Vec::new();
+            return;
         };
         if let Some(sender) = self.outgoing.get_mut(&proof.resource_hash) {
             if sender.handle_proof(&proof) {
@@ -220,16 +252,14 @@ impl ResourceManager {
                 });
             }
         }
-        Vec::new()
     }
 
-    fn cancel(&mut self, packet: &Packet) -> Vec<Packet> {
+    fn cancel_into(&mut self, packet: &Packet, _responses: &mut Vec<Packet>) {
         if let Ok(hash_bytes) = copy_hash(packet.data.as_slice()) {
             let hash = Hash::new(hash_bytes);
             self.incoming.remove(&hash);
             self.outgoing.remove(&hash);
         }
-        Vec::new()
     }
 }
 

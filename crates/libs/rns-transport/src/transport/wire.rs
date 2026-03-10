@@ -21,12 +21,14 @@ pub(super) async fn handle_proof(packet: Packet, handler: Arc<Mutex<TransportHan
         }
         if let Some(link) = link {
             let mut link = link.lock().await;
-            let responses = handler.resource_manager.handle_packet(&packet, &mut link);
+            let mut responses = std::mem::take(&mut handler.resource_response_packets);
+            handler.resource_manager.handle_packet_into(&packet, &mut link, &mut responses);
             let events = handler.resource_manager.drain_events();
             drop(link);
-            for response in responses {
+            for response in responses.drain(..) {
                 handler.send_packet(response).await;
             }
+            handler.resource_response_packets = responses;
             for event in events {
                 let _ = handler.resource_events_tx.send(event);
             }
@@ -194,13 +196,18 @@ pub(super) async fn handle_data<'a>(
                 } else {
                     *packet
                 };
-                let responses =
-                    handler.resource_manager.handle_packet(&packet_for_manager, &mut link);
+                let mut responses = std::mem::take(&mut handler.resource_response_packets);
+                handler.resource_manager.handle_packet_into(
+                    &packet_for_manager,
+                    &mut link,
+                    &mut responses,
+                );
                 let events = handler.resource_manager.drain_events();
                 drop(link);
-                for response in responses {
+                for response in responses.drain(..) {
                     handler.send_packet(response).await;
                 }
+                handler.resource_response_packets = responses;
                 for event in events {
                     let _ = handler.resource_events_tx.send(event);
                 }

@@ -94,6 +94,14 @@ pub struct AnnounceInfo<'a> {
 
 impl DestinationAnnounce {
     pub fn validate(packet: &Packet) -> Result<AnnounceInfo<'_>, RnsError> {
+        let mut signed_data = [0u8; packet::PACKET_MDU];
+        Self::validate_with_buffer(packet, &mut signed_data)
+    }
+
+    pub fn validate_with_buffer<'a>(
+        packet: &'a Packet,
+        signed_data: &mut [u8],
+    ) -> Result<AnnounceInfo<'a>, RnsError> {
         if packet.header.packet_type != PacketType::Announce {
             return Err(RnsError::PacketError);
         }
@@ -134,30 +142,6 @@ impl DestinationAnnounce {
             return Err(RnsError::IncorrectHash);
         }
 
-        let verify_announce =
-            |ratchet: Option<&[u8]>, signature: &[u8], app_data: &[u8]| -> Result<(), RnsError> {
-                // Keeping signed data on stack is only option for now.
-                // Verification function doesn't support prehashed message.
-                let mut signed_data = PacketDataBuffer::new();
-                signed_data
-                    .chain_write(destination.as_slice())?
-                    .chain_write(public_key.as_bytes())?
-                    .chain_write(verifying_key.as_bytes())?
-                    .chain_write(name_hash)?
-                    .chain_write(rand_hash)?;
-                if let Some(ratchet) = ratchet {
-                    signed_data.chain_write(ratchet)?;
-                }
-                if !app_data.is_empty() {
-                    signed_data.chain_write(app_data)?;
-                }
-                let signature =
-                    Signature::from_slice(signature).map_err(|_| RnsError::CryptoError)?;
-                identity
-                    .verify(signed_data.as_slice(), &signature)
-                    .map_err(|_| RnsError::IncorrectSignature)
-            };
-
         let remaining = announce_data.len().saturating_sub(offset);
         if remaining < SIGNATURE_LENGTH {
             return Err(RnsError::OutOfMemory);
@@ -165,7 +149,7 @@ impl DestinationAnnounce {
 
         let has_ratchet_flag = packet.header.context_flag == ContextFlag::Set;
 
-        let parse_with_ratchet = || -> Result<AnnounceInfo<'_>, RnsError> {
+        if has_ratchet_flag {
             if remaining < SIGNATURE_LENGTH + RATCHET_LENGTH {
                 return Err(RnsError::OutOfMemory);
             }
@@ -174,49 +158,88 @@ impl DestinationAnnounce {
             let sig_end = sig_start + SIGNATURE_LENGTH;
             let signature = &announce_data[sig_start..sig_end];
             let app_data = &announce_data[sig_end..];
-            verify_announce(Some(ratchet), signature, app_data)?;
+            verify_announce_with_buffer(
+                &identity,
+                destination.as_slice(),
+                public_key.as_bytes(),
+                verifying_key.as_bytes(),
+                name_hash,
+                rand_hash,
+                Some(ratchet),
+                signature,
+                app_data,
+                signed_data,
+            )?;
             let mut ratchet_bytes = [0u8; RATCHET_LENGTH];
             ratchet_bytes.copy_from_slice(ratchet);
-            Ok(AnnounceInfo {
+            return Ok(AnnounceInfo {
                 destination: SingleOutputDestination::new(
                     identity,
                     DestinationName::new_from_hash_slice(name_hash),
                 ),
                 app_data,
                 ratchet: Some(ratchet_bytes),
-            })
-        };
+            });
+        }
 
-        let parse_without_ratchet = || -> Result<AnnounceInfo<'_>, RnsError> {
-            let signature = &announce_data[offset..(offset + SIGNATURE_LENGTH)];
-            let app_data = &announce_data[(offset + SIGNATURE_LENGTH)..];
-            verify_announce(None, signature, app_data)?;
-
-            Ok(AnnounceInfo {
+        // Compatibility: some Python announces may include ratchet bytes even when
+        // this header flag is not set. Prefer no-ratchet parsing first, then fall
+        // back to ratchet parsing if signature verification fails.
+        let signature = &announce_data[offset..(offset + SIGNATURE_LENGTH)];
+        let app_data = &announce_data[(offset + SIGNATURE_LENGTH)..];
+        match verify_announce_with_buffer(
+            &identity,
+            destination.as_slice(),
+            public_key.as_bytes(),
+            verifying_key.as_bytes(),
+            name_hash,
+            rand_hash,
+            None,
+            signature,
+            app_data,
+            signed_data,
+        ) {
+            Ok(()) => Ok(AnnounceInfo {
                 destination: SingleOutputDestination::new(
                     identity,
                     DestinationName::new_from_hash_slice(name_hash),
                 ),
                 app_data,
                 ratchet: None,
-            })
-        };
-
-        if has_ratchet_flag {
-            return parse_with_ratchet();
-        }
-
-        // Compatibility: some Python announces may include ratchet bytes even when
-        // this header flag is not set. Prefer no-ratchet parsing first, then fall
-        // back to ratchet parsing if signature verification fails.
-        match parse_without_ratchet() {
-            Ok(info) => Ok(info),
+            }),
             Err(err_without_ratchet) => {
-                if remaining >= SIGNATURE_LENGTH + RATCHET_LENGTH {
-                    parse_with_ratchet().or(Err(err_without_ratchet))
-                } else {
-                    Err(err_without_ratchet)
+                if remaining < SIGNATURE_LENGTH + RATCHET_LENGTH {
+                    return Err(err_without_ratchet);
                 }
+
+                let ratchet = &announce_data[offset..offset + RATCHET_LENGTH];
+                let sig_start = offset + RATCHET_LENGTH;
+                let sig_end = sig_start + SIGNATURE_LENGTH;
+                let signature = &announce_data[sig_start..sig_end];
+                let app_data = &announce_data[sig_end..];
+                verify_announce_with_buffer(
+                    &identity,
+                    destination.as_slice(),
+                    public_key.as_bytes(),
+                    verifying_key.as_bytes(),
+                    name_hash,
+                    rand_hash,
+                    Some(ratchet),
+                    signature,
+                    app_data,
+                    signed_data,
+                )
+                .or(Err(err_without_ratchet))?;
+                let mut ratchet_bytes = [0u8; RATCHET_LENGTH];
+                ratchet_bytes.copy_from_slice(ratchet);
+                Ok(AnnounceInfo {
+                    destination: SingleOutputDestination::new(
+                        identity,
+                        DestinationName::new_from_hash_slice(name_hash),
+                    ),
+                    app_data,
+                    ratchet: Some(ratchet_bytes),
+                })
             }
         }
     }
@@ -487,6 +510,53 @@ fn create_address_hash<I: HashIdentity>(identity: &I, name: &DestinationName) ->
             .finalize()
             .into(),
     ))
+}
+
+fn verify_announce_with_buffer(
+    identity: &Identity,
+    destination: &[u8],
+    public_key: &[u8],
+    verifying_key: &[u8],
+    name_hash: &[u8],
+    rand_hash: &[u8],
+    ratchet: Option<&[u8]>,
+    signature: &[u8],
+    app_data: &[u8],
+    signed_data: &mut [u8],
+) -> Result<(), RnsError> {
+    let required_len = destination.len()
+        + public_key.len()
+        + verifying_key.len()
+        + name_hash.len()
+        + rand_hash.len()
+        + ratchet.map(|value| value.len()).unwrap_or(0)
+        + app_data.len();
+    if required_len > signed_data.len() {
+        return Err(RnsError::OutOfMemory);
+    }
+
+    let mut offset = 0usize;
+    signed_data[offset..offset + destination.len()].copy_from_slice(destination);
+    offset += destination.len();
+    signed_data[offset..offset + public_key.len()].copy_from_slice(public_key);
+    offset += public_key.len();
+    signed_data[offset..offset + verifying_key.len()].copy_from_slice(verifying_key);
+    offset += verifying_key.len();
+    signed_data[offset..offset + name_hash.len()].copy_from_slice(name_hash);
+    offset += name_hash.len();
+    signed_data[offset..offset + rand_hash.len()].copy_from_slice(rand_hash);
+    offset += rand_hash.len();
+    if let Some(ratchet) = ratchet {
+        signed_data[offset..offset + ratchet.len()].copy_from_slice(ratchet);
+        offset += ratchet.len();
+    }
+    if !app_data.is_empty() {
+        signed_data[offset..offset + app_data.len()].copy_from_slice(app_data);
+        offset += app_data.len();
+    }
+
+    let signature = Signature::from_slice(signature).map_err(|_| RnsError::CryptoError)?;
+    identity.verify(&signed_data[..offset], &signature).map_err(|_| RnsError::IncorrectSignature)
 }
 
 pub type SingleInputDestination = Destination<PrivateIdentity, Input, Single>;

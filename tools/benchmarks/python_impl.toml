@@ -37,6 +37,11 @@ rust_benchmark = "rns_core_announce_validate"
 python_benchmark = "python_rns/announce_validate"
 
 [[comparisons]]
+label = "Reticulum announce validate batch 64"
+rust_benchmark = "rns_core_announce_validate_batch_64"
+python_benchmark = "python_rns/announce_validate_batch_64"
+
+[[comparisons]]
 label = "Reticulum identity sign"
 rust_benchmark = "rns_core_identity_sign"
 python_benchmark = "python_rns/identity_sign"
@@ -55,3 +60,8 @@ python_benchmark = "python_rns/identity_encrypt"
 label = "Reticulum identity decrypt"
 rust_benchmark = "rns_core_identity_decrypt"
 python_benchmark = "python_rns/identity_decrypt"
+
+[[comparisons]]
+label = "Reticulum resource request window"
+rust_benchmark = "rns_transport_resource_manager_request_window_reuse"
+python_benchmark = "python_rns/resource_request_window"
