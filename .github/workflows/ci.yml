@@ -587,17 +587,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
           cache-targets: true
           cache-on-failure: false
+      - name: Cache OpenAPI generator runtime
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/lxmf-rs/openapi-generator
+          key: ${{ runner.os }}-openapi-generator-7.20.0
       - name: Schema-driven client generation smoke gate
         run: cargo xtask ci --stage schema-client-check
       - uses: actions/upload-artifact@v4
         with:
           name: schema-client-smoke-report
           path: target/interop/schema-client-smoke-report.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: schema-client-openapi-spec
+          path: generated/clients/spec/openapi.json
 
   compat-kit-check:
     runs-on: ubuntu-latest
