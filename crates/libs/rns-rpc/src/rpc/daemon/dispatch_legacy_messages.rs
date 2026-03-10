@@ -116,11 +116,8 @@ impl RpcDaemon {
                         blocked,
                     ));
                 }
+                Self::validate_legacy_hot_apply_uniqueness(&parsed.interfaces)?;
 
-                {
-                    let mut guard = self.interfaces.lock().expect("interfaces mutex poisoned");
-                    *guard = parsed.interfaces.clone();
-                }
                 if let Some(bridge) = self
                     .interface_mutation_bridge
                     .lock()
@@ -128,6 +125,10 @@ impl RpcDaemon {
                     .clone()
                 {
                     bridge.apply_interfaces(parsed.interfaces.clone())?;
+                }
+                {
+                    let mut guard = self.interfaces.lock().expect("interfaces mutex poisoned");
+                    *guard = parsed.interfaces.clone();
                 }
                 let applied_interfaces = parsed
                     .interfaces
@@ -215,11 +216,8 @@ impl RpcDaemon {
                             affected,
                         ));
                     }
+                    Self::validate_legacy_hot_apply_uniqueness(&parsed.interfaces)?;
 
-                    {
-                        let mut guard = self.interfaces.lock().expect("interfaces mutex poisoned");
-                        *guard = parsed.interfaces.clone();
-                    }
                     if let Some(bridge) = self
                         .interface_mutation_bridge
                         .lock()
@@ -227,6 +225,10 @@ impl RpcDaemon {
                         .clone()
                     {
                         bridge.apply_interfaces(parsed.interfaces.clone())?;
+                    }
+                    {
+                        let mut guard = self.interfaces.lock().expect("interfaces mutex poisoned");
+                        *guard = parsed.interfaces.clone();
                     }
                     let update_event = RpcEvent {
                         event_type: "interfaces_updated".into(),
@@ -488,5 +490,47 @@ impl RpcDaemon {
         current.iter().zip(next.iter()).all(|(before, after)| {
             before.kind == after.kind && Self::is_legacy_hot_apply_kind(before.kind.as_str())
         })
+    }
+
+    fn validate_legacy_hot_apply_uniqueness(
+        interfaces: &[InterfaceRecord],
+    ) -> Result<(), std::io::Error> {
+        let mut seen = std::collections::HashSet::new();
+        for (index, iface) in interfaces.iter().enumerate() {
+            if iface.kind != "tcp_client" {
+                continue;
+            }
+            let Some(key) = Self::legacy_tcp_interface_key(iface) else {
+                continue;
+            };
+            if !seen.insert(key.clone()) {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!(
+                        "duplicate legacy tcp interface key '{}' at {}",
+                        key,
+                        Self::interface_identifier(iface, index)
+                    ),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn legacy_tcp_interface_key(iface: &InterfaceRecord) -> Option<String> {
+        if iface.kind != "tcp_client" {
+            return None;
+        }
+        if let Some(name) = iface
+            .name
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            return Some(name.to_string());
+        }
+        let host = iface.host.as_deref()?.trim();
+        let port = iface.port?;
+        Some(format!("{host}:{port}"))
     }
 }

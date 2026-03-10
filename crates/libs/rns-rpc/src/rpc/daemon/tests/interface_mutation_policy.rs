@@ -30,6 +30,20 @@
         }
     }
 
+    struct FailingInterfaceMutationBridge;
+
+    impl InterfaceMutationBridge for FailingInterfaceMutationBridge {
+        fn apply_interfaces(
+            &self,
+            _interfaces: Vec<InterfaceRecord>,
+        ) -> Result<(), std::io::Error> {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::BrokenPipe,
+                "interface mutation worker is not running",
+            ))
+        }
+    }
+
     #[test]
     fn set_interfaces_rejects_startup_only_interface_kinds() {
         let daemon = RpcDaemon::test_instance();
@@ -135,6 +149,69 @@
     }
 
     #[test]
+    fn set_interfaces_keeps_stored_interfaces_unchanged_when_bridge_fails() {
+        let daemon = RpcDaemon::test_instance();
+        daemon.replace_interfaces(vec![tcp_interface("primary", "127.0.0.1", 4242)]);
+        daemon.set_interface_mutation_bridge(std::sync::Arc::new(FailingInterfaceMutationBridge));
+
+        let err = daemon
+            .handle_rpc(rpc_request(
+                24,
+                "set_interfaces",
+                json!({
+                    "interfaces": [
+                        {
+                            "type": "tcp_client",
+                            "enabled": true,
+                            "host": "127.0.0.1",
+                            "port": 4248,
+                            "name": "primary"
+                        }
+                    ]
+                }),
+            ))
+            .expect_err("bridge failure should bubble up");
+        assert_eq!(err.kind(), std::io::ErrorKind::BrokenPipe);
+
+        let interfaces = daemon.interfaces.lock().expect("interfaces mutex poisoned").clone();
+        assert_eq!(interfaces, vec![tcp_interface("primary", "127.0.0.1", 4242)]);
+    }
+
+    #[test]
+    fn set_interfaces_rejects_duplicate_legacy_tcp_keys() {
+        let daemon = RpcDaemon::test_instance();
+
+        let err = daemon
+            .handle_rpc(rpc_request(
+                25,
+                "set_interfaces",
+                json!({
+                    "interfaces": [
+                        {
+                            "type": "tcp_client",
+                            "enabled": true,
+                            "host": "127.0.0.1",
+                            "port": 4242,
+                            "name": "duplicate"
+                        },
+                        {
+                            "type": "tcp_client",
+                            "enabled": true,
+                            "host": "127.0.0.1",
+                            "port": 4243,
+                            "name": "duplicate"
+                        }
+                    ]
+                }),
+            ))
+            .expect_err("duplicate keys should be rejected");
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+
+        let interfaces = daemon.interfaces.lock().expect("interfaces mutex poisoned").clone();
+        assert!(interfaces.is_empty());
+    }
+
+    #[test]
     fn reload_config_rejects_mixed_startup_kind_diff_without_partial_apply() {
         let daemon = RpcDaemon::test_instance();
         daemon.replace_interfaces(vec![tcp_interface("primary", "127.0.0.1", 4242)]);
@@ -233,6 +310,35 @@
         let applied = bridge.applied();
         assert_eq!(applied.len(), 1);
         assert_eq!(applied[0], vec![tcp_interface("primary", "127.0.0.1", 4248)]);
+    }
+
+    #[test]
+    fn reload_config_keeps_stored_interfaces_unchanged_when_bridge_fails() {
+        let daemon = RpcDaemon::test_instance();
+        daemon.replace_interfaces(vec![tcp_interface("primary", "127.0.0.1", 4242)]);
+        daemon.set_interface_mutation_bridge(std::sync::Arc::new(FailingInterfaceMutationBridge));
+
+        let err = daemon
+            .handle_rpc(rpc_request(
+                26,
+                "reload_config",
+                json!({
+                    "interfaces": [
+                        {
+                            "type": "tcp_client",
+                            "enabled": true,
+                            "host": "127.0.0.1",
+                            "port": 4248,
+                            "name": "primary"
+                        }
+                    ]
+                }),
+            ))
+            .expect_err("bridge failure should bubble up");
+        assert_eq!(err.kind(), std::io::ErrorKind::BrokenPipe);
+
+        let interfaces = daemon.interfaces.lock().expect("interfaces mutex poisoned").clone();
+        assert_eq!(interfaces, vec![tcp_interface("primary", "127.0.0.1", 4242)]);
     }
 
     #[test]
