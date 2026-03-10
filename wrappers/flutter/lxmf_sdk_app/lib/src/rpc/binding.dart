@@ -546,6 +546,7 @@ final class RpcBinding implements AppBinding {
       RemoteCommandSession? lastSession;
       var cancelled = false;
       var refreshInFlight = false;
+      var refreshPending = false;
 
       bool sameSession(
         RemoteCommandSession? a,
@@ -562,21 +563,32 @@ final class RpcBinding implements AppBinding {
       }
 
       Future<void> refresh() async {
-        if (cancelled || refreshInFlight) {
+        if (cancelled) {
+          return;
+        }
+        if (refreshInFlight) {
+          refreshPending = true;
           return;
         }
         refreshInFlight = true;
         try {
-          final session = await commandSession(correlationId);
-          if (cancelled || session == null) {
-            return;
-          }
-          if (!sameSession(lastSession, session)) {
-            lastSession = session;
-            controller.add(session);
-          }
-          if (session.isTerminal) {
-            await controller.close();
+          while (!cancelled) {
+            refreshPending = false;
+            final session = await commandSession(correlationId);
+            if (cancelled || session == null) {
+              return;
+            }
+            if (!sameSession(lastSession, session)) {
+              lastSession = session;
+              controller.add(session);
+            }
+            if (session.isTerminal) {
+              await controller.close();
+              return;
+            }
+            if (!refreshPending) {
+              return;
+            }
           }
         } catch (error, stackTrace) {
           if (!cancelled) {

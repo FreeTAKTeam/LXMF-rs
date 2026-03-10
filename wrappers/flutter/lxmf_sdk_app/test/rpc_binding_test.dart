@@ -431,6 +431,7 @@ void main() {
         () async {
       var pollCount = 0;
       var sessionGetCount = 0;
+      var delayFirstSessionGet = true;
 
       unawaited(() async {
         await for (final request in server) {
@@ -442,6 +443,10 @@ void main() {
           calls.add(frame);
           final id = frame['id'] as int;
           final method = frame['method'] as String;
+          if (method == 'sdk_command_session_get_v2' && delayFirstSessionGet) {
+            delayFirstSessionGet = false;
+            await Future<void>.delayed(const Duration(milliseconds: 20));
+          }
           final response = switch (method) {
             'sdk_negotiate_v2' => <String, Object?>{
                 'id': id,
