@@ -37,9 +37,8 @@ impl RpcError {
         let code = code.into();
         let message = message.into();
         let category = Self::category_for_code(code.as_str());
-        let retryable = category
-            .as_deref()
-            .is_some_and(|value| value == "Transport" || value == "Timeout");
+        let retryable =
+            category.as_deref().is_some_and(|value| value == "Transport" || value == "Timeout");
         let is_user_actionable = category.as_deref().is_some_and(|value| {
             matches!(value, "Validation" | "Capability" | "Config" | "Policy" | "Security")
         });
@@ -116,7 +115,7 @@ pub struct DeliveryPolicy {
     pub prioritised_destinations: Vec<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct PropagationState {
     pub enabled: bool,
     pub store_root: Option<String>,
@@ -156,6 +155,39 @@ pub struct PropagationState {
     pub last_sync_started: Option<i64>,
     pub last_sync_completed: Option<i64>,
     pub last_sync_error: Option<String>,
+}
+
+impl Default for PropagationState {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            store_root: None,
+            target_cost: 0,
+            message_storage_limit_mb: None,
+            autopeer: default_true(),
+            autopeer_maxdepth: default_autopeer_maxdepth(),
+            static_peers: Vec::new(),
+            max_peers: None,
+            from_static_only: false,
+            peering_cost: None,
+            remote_peering_cost_max: None,
+            total_ingested: 0,
+            last_ingest_count: 0,
+            sync_state: 0,
+            state_name: String::new(),
+            sync_progress: 0.0,
+            messages_received: 0,
+            max_messages: 0,
+            client_propagation_messages_received: 0,
+            client_propagation_messages_served: 0,
+            unpeered_propagation_incoming: 0,
+            unpeered_propagation_rx_bytes: 0,
+            selected_node: None,
+            last_sync_started: None,
+            last_sync_completed: None,
+            last_sync_error: None,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
@@ -487,7 +519,7 @@ fn default_true() -> bool {
 }
 
 fn default_autopeer_maxdepth() -> u32 {
-    4
+    6
 }
 
 fn default_network_distance() -> u32 {

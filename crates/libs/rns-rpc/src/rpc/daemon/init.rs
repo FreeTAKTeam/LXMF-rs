@@ -1,4 +1,10 @@
 impl RpcDaemon {
+    fn active_peer_count_from_guard(
+        guard: &std::collections::HashMap<String, crate::rpc::PeerRecord>,
+    ) -> usize {
+        guard.values().filter(|record| record.peer_type.as_deref() != Some("unpeered")).count()
+    }
+
     pub fn with_store(store: MessagesStore, identity_hash: String) -> Self {
         Self::with_store_and_bridges_and_sinks(store, identity_hash, None, None, Vec::new())
     }
@@ -149,10 +155,8 @@ impl RpcDaemon {
     }
 
     pub fn set_remote_control_bridge(&self, bridge: Arc<dyn RemoteControlBridge>) {
-        let mut guard = self
-            .remote_control_bridge
-            .lock()
-            .expect("remote_control_bridge mutex poisoned");
+        let mut guard =
+            self.remote_control_bridge.lock().expect("remote_control_bridge mutex poisoned");
         *guard = Some(bridge);
     }
 
@@ -217,8 +221,7 @@ impl RpcDaemon {
 
     pub fn record_unpeered_propagation_attempt(&self, bytes: usize) {
         let mut guard = self.propagation_state.lock().expect("propagation mutex poisoned");
-        guard.unpeered_propagation_incoming =
-            guard.unpeered_propagation_incoming.saturating_add(1);
+        guard.unpeered_propagation_incoming = guard.unpeered_propagation_incoming.saturating_add(1);
         guard.unpeered_propagation_rx_bytes =
             guard.unpeered_propagation_rx_bytes.saturating_add(bytes as u64);
         let state = guard.clone();
@@ -251,10 +254,7 @@ impl RpcDaemon {
     }
 
     fn daemon_status_snapshot(&self) -> DaemonStatusSnapshot {
-        self.daemon_status_snapshot
-            .read()
-            .expect("daemon_status_snapshot rwlock poisoned")
-            .clone()
+        self.daemon_status_snapshot.read().expect("daemon_status_snapshot rwlock poisoned").clone()
     }
 
     fn store_inbound_record(
@@ -270,8 +270,10 @@ impl RpcDaemon {
             .message_storage_limit_mb
             .map(|value| value.saturating_mul(1024 * 1024));
         if let Some(limit_bytes) = storage_limit_bytes {
-            let pruned_ids =
-                self.store.prune_messages_to_limit_bytes(limit_bytes).map_err(std::io::Error::other)?;
+            let pruned_ids = self
+                .store
+                .prune_messages_to_limit_bytes(limit_bytes)
+                .map_err(std::io::Error::other)?;
             if !pruned_ids.is_empty() {
                 self.publish_event(RpcEvent {
                     event_type: "propagation_store_pruned".into(),
@@ -378,9 +380,21 @@ impl RpcDaemon {
             Some("discovered".to_string())
         };
         let record = if should_peer {
-            self.upsert_peer(peer.clone(), timestamp, name.clone(), name_source.clone(), peer_type.clone())?
+            self.upsert_peer(
+                peer.clone(),
+                timestamp,
+                name.clone(),
+                name_source.clone(),
+                peer_type.clone(),
+            )?
         } else {
-            self.transient_peer_record(peer.clone(), timestamp, name.clone(), name_source.clone(), peer_type)
+            self.transient_peer_record(
+                peer.clone(),
+                timestamp,
+                name.clone(),
+                name_source.clone(),
+                peer_type,
+            )
         };
         let capability_list = if let Some(caps) = capabilities {
             normalize_capabilities(caps)
@@ -458,14 +472,14 @@ impl RpcDaemon {
                 existing.peer_type = Some(peer_type);
             }
             let record = existing.clone();
-            let peer_count = guard.len();
+            let peer_count = Self::active_peer_count_from_guard(&guard);
             drop(guard);
             self.update_daemon_status_snapshot(|snapshot| {
                 snapshot.peer_count = peer_count;
             });
             return Ok(record);
         }
-        self.ensure_peer_admission_allowed(&peer, guard.len())?;
+        self.ensure_peer_admission_allowed(&peer, Self::active_peer_count_from_guard(&guard))?;
 
         let record = PeerRecord {
             peer: peer.clone(),
@@ -485,7 +499,7 @@ impl RpcDaemon {
             seen_count: 1,
         };
         guard.insert(peer, record.clone());
-        let peer_count = guard.len();
+        let peer_count = Self::active_peer_count_from_guard(&guard);
         drop(guard);
         self.update_daemon_status_snapshot(|snapshot| {
             snapshot.peer_count = peer_count;
@@ -498,7 +512,8 @@ impl RpcDaemon {
         peer: &str,
         current_peer_count: usize,
     ) -> Result<(), std::io::Error> {
-        let propagation = self.propagation_state.lock().expect("propagation mutex poisoned").clone();
+        let propagation =
+            self.propagation_state.lock().expect("propagation mutex poisoned").clone();
         let is_static_peer =
             propagation.static_peers.iter().any(|candidate| candidate.eq_ignore_ascii_case(peer));
         if propagation.from_static_only && !is_static_peer {
@@ -565,5 +580,4 @@ impl RpcDaemon {
     ) -> Result<(), std::io::Error> {
         self.accept_inbound(record)
     }
-
 }

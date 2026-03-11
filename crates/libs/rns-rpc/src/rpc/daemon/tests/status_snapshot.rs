@@ -101,7 +101,9 @@ fn propagation_policy_is_reported_and_enforced_for_new_peers() {
     assert_eq!(result["propagation"]["message_storage_limit_mb"].as_u64(), None);
 
     daemon.accept_announce("static-peer".to_string(), 1_700_000_000).expect("static peer accepted");
-    daemon.accept_announce("dynamic-peer".to_string(), 1_700_000_001).expect("dynamic announce accepted");
+    daemon
+        .accept_announce("dynamic-peer".to_string(), 1_700_000_001)
+        .expect("dynamic announce accepted");
     let peers = daemon
         .handle_rpc(RpcRequest { id: 22, method: "list_peers".to_string(), params: None })
         .expect("list peers")
@@ -229,10 +231,7 @@ fn peer_activity_updates_runtime_counters() {
         .expect("list peers")
         .result
         .expect("list peers result");
-    let row = peers["peers"]
-        .as_array()
-        .and_then(|rows| rows.first())
-        .expect("peer row");
+    let row = peers["peers"].as_array().and_then(|rows| rows.first()).expect("peer row");
     assert_eq!(row["peer"].as_str(), Some("peer-runtime"));
     assert_eq!(row["rx_bytes"].as_u64(), Some(120));
     assert_eq!(row["tx_bytes"].as_u64(), Some(120));
@@ -313,4 +312,44 @@ fn peer_types_drive_python_style_peer_counts() {
     assert_eq!(rows.len(), 2);
     assert!(rows.iter().any(|row| row["peer_type"].as_str() == Some("static")));
     assert!(rows.iter().any(|row| row["peer_type"].as_str() == Some("manual")));
+}
+
+#[test]
+fn unpeered_peers_do_not_consume_max_peer_capacity() {
+    let daemon = RpcDaemon::test_instance();
+    daemon
+        .handle_rpc(rpc_request(
+            80,
+            "propagation_enable",
+            json!({
+                "enabled": true,
+                "max_peers": 1,
+            }),
+        ))
+        .expect("enable propagation");
+
+    let first = daemon
+        .handle_rpc(rpc_request(81, "peer_sync", json!({ "peer": "peer-a" })))
+        .expect("sync peer-a");
+    assert!(first.error.is_none());
+
+    let blocked = daemon.handle_rpc(rpc_request(82, "peer_sync", json!({ "peer": "peer-b" })));
+    assert!(blocked.is_err(), "second peer should be rejected while capacity is full");
+
+    let unpeered = daemon
+        .handle_rpc(rpc_request(83, "peer_unpeer", json!({ "peer": "peer-a" })))
+        .expect("unpeer peer-a");
+    assert!(unpeered.error.is_none());
+
+    let replacement = daemon
+        .handle_rpc(rpc_request(84, "peer_sync", json!({ "peer": "peer-b" })))
+        .expect("sync replacement peer-b");
+    assert!(replacement.error.is_none(), "replacement peer should be admitted after unpeer");
+
+    let status = daemon
+        .handle_rpc(RpcRequest { id: 85, method: "daemon_status_ex".to_string(), params: None })
+        .expect("daemon status")
+        .result
+        .expect("daemon status result");
+    assert_eq!(status["peer_count"].as_u64(), Some(1));
 }

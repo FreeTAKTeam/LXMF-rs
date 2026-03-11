@@ -1,5 +1,5 @@
-use super::bridge_helpers::{diagnostics_enabled, payload_preview};
 use super::bootstrap::PropagationControlContext;
+use super::bridge_helpers::{diagnostics_enabled, payload_preview};
 use lxmf::inbound_decode::InboundPayloadMode;
 use reticulum_daemon::inbound_delivery::{
     decode_inbound_payload, decode_inbound_payload_with_diagnostics,
@@ -173,7 +173,9 @@ fn spawn_control_worker(
             }
             match payload.context() {
                 PacketContext::LinkIdentify => {
-                    if let Some(identity) = parse_link_identify_payload(payload.as_slice(), &event.id) {
+                    if let Some(identity) =
+                        parse_link_identify_payload(payload.as_slice(), &event.id)
+                    {
                         if let Ok(mut guard) = identified.lock() {
                             guard.insert(event.id, identity);
                         }
@@ -191,13 +193,9 @@ fn spawn_control_worker(
                         payload.as_slice(),
                         remote_identity.as_ref(),
                     );
-                    let _ = send_control_response(
-                        transport.as_ref(),
-                        &event.id,
-                        request_id,
-                        response,
-                    )
-                    .await;
+                    let _ =
+                        send_control_response(transport.as_ref(), &event.id, request_id, response)
+                            .await;
                 }
                 _ => {}
             }
@@ -247,12 +245,10 @@ fn handle_control_request(
         return ControlResponse::Value(compose_python_status(daemon, control));
     }
 
-    let Some(peer_hex) = data
-        .and_then(|value| match value {
-            rmpv::Value::Binary(bytes) if bytes.len() == 16 => Some(hex::encode(bytes)),
-            _ => None,
-        })
-    else {
+    let Some(peer_hex) = data.and_then(|value| match value {
+        rmpv::Value::Binary(bytes) if bytes.len() == 16 => Some(hex::encode(bytes)),
+        _ => None,
+    }) else {
         return ControlResponse::Code(ERROR_INVALID_DATA);
     };
     let peer_exists = daemon
@@ -262,7 +258,8 @@ fn handle_control_request(
         .and_then(|value| value.get("peers").cloned())
         .and_then(|value| value.as_array().cloned())
         .map(|rows| {
-            rows.iter().any(|row| row.get("peer").and_then(Value::as_str) == Some(peer_hex.as_str()))
+            rows.iter()
+                .any(|row| row.get("peer").and_then(Value::as_str) == Some(peer_hex.as_str()))
         })
         .unwrap_or(false);
     if !peer_exists {
@@ -403,7 +400,7 @@ fn compose_python_status(daemon: &RpcDaemon, control: &PropagationControlContext
         "stamp_cost_flexibility": stamp_policy.get("flexibility").and_then(Value::as_u64).unwrap_or(3),
         "peering_cost": propagation.get("peering_cost").and_then(Value::as_u64).unwrap_or(18),
         "max_peering_cost": propagation.get("remote_peering_cost_max").and_then(Value::as_u64).unwrap_or(26),
-        "autopeer_maxdepth": propagation.get("autopeer_maxdepth").and_then(Value::as_u64).unwrap_or(4),
+        "autopeer_maxdepth": propagation.get("autopeer_maxdepth").and_then(Value::as_u64).unwrap_or(6),
         "from_static_only": propagation.get("from_static_only").and_then(Value::as_bool).unwrap_or(false),
         "messagestore": {
             "count": message_count,
