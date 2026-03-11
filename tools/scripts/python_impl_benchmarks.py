@@ -274,77 +274,146 @@ def main() -> int:
     except Exception:
         pass
 
-    (
-        pack_message,
-        packed_message,
-        pack_large_message,
-        packed_large_message,
-    ) = build_lxmf_fixtures()
-    (
-        announce_create,
-        announce_packet,
-        announce_validate_batch,
-        resource_request_window,
-        identity_sign,
-        identity_verify,
-        identity_encrypt,
-        identity_decrypt,
-    ) = build_rns_fixtures()
-
-    benchmark_factories = {
-        "python_lxmf/message_to_wire": lambda: run_benchmark(
-            "python_lxmf/message_to_wire", args.iterations, pack_message
-        ),
-        "python_lxmf/message_from_wire": lambda: run_benchmark(
-            "python_lxmf/message_from_wire",
-            args.iterations,
-            lambda: LXMessage.unpack_from_bytes(packed_message),
-        ),
-        "python_lxmf/large_message_to_wire": lambda: run_benchmark(
-            "python_lxmf/large_message_to_wire", args.iterations, pack_large_message
-        ),
-        "python_lxmf/large_message_from_wire": lambda: run_benchmark(
-            "python_lxmf/large_message_from_wire",
-            args.iterations,
-            lambda: LXMessage.unpack_from_bytes(packed_large_message),
-        ),
-        "python_rns/announce_create": lambda: run_benchmark(
-            "python_rns/announce_create", args.iterations, announce_create
-        ),
-        "python_rns/announce_validate": lambda: run_benchmark(
-            "python_rns/announce_validate",
-            args.iterations,
-            lambda: RNS.Identity.validate_announce(announce_packet),
-        ),
-        "python_rns/announce_validate_batch_64": lambda: run_benchmark(
-            "python_rns/announce_validate_batch_64",
-            args.iterations,
-            announce_validate_batch,
-        ),
-        "python_rns/resource_request_window": lambda: run_benchmark(
-            "python_rns/resource_request_window",
-            args.iterations,
-            resource_request_window,
-        ),
-        "python_rns/identity_sign": lambda: run_benchmark(
-            "python_rns/identity_sign", args.iterations, identity_sign
-        ),
-        "python_rns/identity_verify": lambda: run_benchmark(
-            "python_rns/identity_verify", args.iterations, identity_verify
-        ),
-        "python_rns/identity_encrypt": lambda: run_benchmark(
-            "python_rns/identity_encrypt", args.iterations, identity_encrypt
-        ),
-        "python_rns/identity_decrypt": lambda: run_benchmark(
-            "python_rns/identity_decrypt", args.iterations, identity_decrypt
-        ),
-    }
     if args.benchmark:
+        if args.benchmark.startswith("python_lxmf/"):
+            (
+                pack_message,
+                packed_message,
+                pack_large_message,
+                packed_large_message,
+            ) = build_lxmf_fixtures()
+            benchmark_factories = {
+                "python_lxmf/message_to_wire": lambda: run_benchmark(
+                    "python_lxmf/message_to_wire", args.iterations, pack_message
+                ),
+                "python_lxmf/message_from_wire": lambda: run_benchmark(
+                    "python_lxmf/message_from_wire",
+                    args.iterations,
+                    lambda: LXMessage.unpack_from_bytes(packed_message),
+                ),
+                "python_lxmf/large_message_to_wire": lambda: run_benchmark(
+                    "python_lxmf/large_message_to_wire", args.iterations, pack_large_message
+                ),
+                "python_lxmf/large_message_from_wire": lambda: run_benchmark(
+                    "python_lxmf/large_message_from_wire",
+                    args.iterations,
+                    lambda: LXMessage.unpack_from_bytes(packed_large_message),
+                ),
+            }
+        elif args.benchmark.startswith("python_rns/"):
+            (
+                announce_create,
+                announce_packet,
+                announce_validate_batch,
+                resource_request_window,
+                identity_sign,
+                identity_verify,
+                identity_encrypt,
+                identity_decrypt,
+            ) = build_rns_fixtures()
+            benchmark_factories = {
+                "python_rns/announce_create": lambda: run_benchmark(
+                    "python_rns/announce_create", args.iterations, announce_create
+                ),
+                "python_rns/announce_validate": lambda: run_benchmark(
+                    "python_rns/announce_validate",
+                    args.iterations,
+                    lambda: RNS.Identity.validate_announce(announce_packet),
+                ),
+                "python_rns/announce_validate_batch_64": lambda: run_benchmark(
+                    "python_rns/announce_validate_batch_64",
+                    args.iterations,
+                    announce_validate_batch,
+                ),
+                "python_rns/resource_request_window": lambda: run_benchmark(
+                    "python_rns/resource_request_window",
+                    args.iterations,
+                    resource_request_window,
+                ),
+                "python_rns/identity_sign": lambda: run_benchmark(
+                    "python_rns/identity_sign", args.iterations, identity_sign
+                ),
+                "python_rns/identity_verify": lambda: run_benchmark(
+                    "python_rns/identity_verify", args.iterations, identity_verify
+                ),
+                "python_rns/identity_encrypt": lambda: run_benchmark(
+                    "python_rns/identity_encrypt", args.iterations, identity_encrypt
+                ),
+                "python_rns/identity_decrypt": lambda: run_benchmark(
+                    "python_rns/identity_decrypt", args.iterations, identity_decrypt
+                ),
+            }
+        else:
+            raise SystemExit(f"unsupported benchmark: {args.benchmark}")
         try:
             results = [benchmark_factories[args.benchmark]()]
         except KeyError as exc:
             raise SystemExit(f"unsupported benchmark: {args.benchmark}") from exc
     else:
+        (
+            pack_message,
+            packed_message,
+            pack_large_message,
+            packed_large_message,
+        ) = build_lxmf_fixtures()
+        (
+            announce_create,
+            announce_packet,
+            announce_validate_batch,
+            resource_request_window,
+            identity_sign,
+            identity_verify,
+            identity_encrypt,
+            identity_decrypt,
+        ) = build_rns_fixtures()
+        benchmark_factories = {
+            "python_lxmf/message_to_wire": lambda: run_benchmark(
+                "python_lxmf/message_to_wire", args.iterations, pack_message
+            ),
+            "python_lxmf/message_from_wire": lambda: run_benchmark(
+                "python_lxmf/message_from_wire",
+                args.iterations,
+                lambda: LXMessage.unpack_from_bytes(packed_message),
+            ),
+            "python_lxmf/large_message_to_wire": lambda: run_benchmark(
+                "python_lxmf/large_message_to_wire", args.iterations, pack_large_message
+            ),
+            "python_lxmf/large_message_from_wire": lambda: run_benchmark(
+                "python_lxmf/large_message_from_wire",
+                args.iterations,
+                lambda: LXMessage.unpack_from_bytes(packed_large_message),
+            ),
+            "python_rns/announce_create": lambda: run_benchmark(
+                "python_rns/announce_create", args.iterations, announce_create
+            ),
+            "python_rns/announce_validate": lambda: run_benchmark(
+                "python_rns/announce_validate",
+                args.iterations,
+                lambda: RNS.Identity.validate_announce(announce_packet),
+            ),
+            "python_rns/announce_validate_batch_64": lambda: run_benchmark(
+                "python_rns/announce_validate_batch_64",
+                args.iterations,
+                announce_validate_batch,
+            ),
+            "python_rns/resource_request_window": lambda: run_benchmark(
+                "python_rns/resource_request_window",
+                args.iterations,
+                resource_request_window,
+            ),
+            "python_rns/identity_sign": lambda: run_benchmark(
+                "python_rns/identity_sign", args.iterations, identity_sign
+            ),
+            "python_rns/identity_verify": lambda: run_benchmark(
+                "python_rns/identity_verify", args.iterations, identity_verify
+            ),
+            "python_rns/identity_encrypt": lambda: run_benchmark(
+                "python_rns/identity_encrypt", args.iterations, identity_encrypt
+            ),
+            "python_rns/identity_decrypt": lambda: run_benchmark(
+                "python_rns/identity_decrypt", args.iterations, identity_decrypt
+            ),
+        }
         results = [factory() for factory in benchmark_factories.values()]
     payload = {
         "generated_at_epoch_s": time.time(),

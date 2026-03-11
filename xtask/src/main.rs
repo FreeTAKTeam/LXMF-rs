@@ -3024,6 +3024,15 @@ fn run_python_impl_bench_report(
     let resource_runs = resource_runs_override.unwrap_or(profile_config.report.resource_runs);
     let resource_iterations =
         resource_iterations_override.unwrap_or(profile_config.report.resource_iterations);
+    if compare_runs == 0 {
+        bail!("python-impl-bench-report requires compare_runs > 0");
+    }
+    if resource_runs == 0 {
+        bail!("python-impl-bench-report requires resource_runs > 0");
+    }
+    if resource_iterations == 0 {
+        bail!("python-impl-bench-report requires resource_iterations > 0");
+    }
     let report_root = Path::new(PYTHON_IMPL_REPORT_DIR);
     if report_root.exists() {
         fs::remove_dir_all(report_root)
