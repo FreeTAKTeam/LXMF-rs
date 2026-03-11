@@ -1,11 +1,25 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
+use lxmf_core::Message;
+use rand_core::OsRng;
+use rns_core::destination::{DestinationAnnounce, DestinationName, SingleInputDestination};
+use rns_core::identity::{lxmf_sign, lxmf_verify, PrivateIdentity};
+use rns_core::ratchets::{
+    decrypt_with_identity_into, encrypt_for_public_key, encrypt_for_public_key_into,
+};
+use rns_transport::destination::link::{Link, LinkHandleResult};
+use rns_transport::destination::{DestinationDesc, DestinationName as TransportDestinationName};
+use rns_transport::identity_bridge::to_transport_private_identity;
+use rns_transport::packet::{Packet, PacketDataBuffer, PACKET_MDU};
+use rns_transport::resource::ResourceManager;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
+use std::hint::black_box;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::Instant;
 
 mod client_codegen;
 
@@ -62,6 +76,9 @@ const PYTHON_IMPL_BENCH_REPORT_PATH: &str = "target/criterion/python-impl-benchm
 const PYTHON_IMPL_COMPARE_REPORT_PATH: &str = "target/criterion/python-impl-compare.txt";
 const PYTHON_IMPL_COMPARE_JSON_PATH: &str = "target/criterion/python-impl-compare.json";
 const PYTHON_IMPL_ENVIRONMENT_PATH: &str = "target/criterion/python-impl-environment.json";
+const PYTHON_IMPL_REPORT_DIR: &str = "target/criterion/python-impl-report";
+const PYTHON_IMPL_REPORT_JSON_PATH: &str = "target/criterion/python-impl-report/report.json";
+const PYTHON_IMPL_REPORT_TEXT_PATH: &str = "target/criterion/python-impl-report/report.txt";
 const SUPPLY_CHAIN_SBOM_PATH: &str = "target/supply-chain/sbom/cargo-metadata.sbom.json";
 const SUPPLY_CHAIN_PROVENANCE_PATH: &str =
     "target/supply-chain/provenance/artifact-provenance.json";
@@ -414,7 +431,29 @@ enum XtaskCommand {
     SdkMetricsCheck,
     SdkBenchCheck,
     SdkPerfBudgetCheck,
-    PythonImplBenchCompare,
+    PythonImplBenchCompare {
+        #[arg(long, value_enum, default_value_t = PythonImplBenchProfile::Fast)]
+        profile: PythonImplBenchProfile,
+    },
+    PythonImplBenchReport {
+        #[arg(long)]
+        compare_runs: Option<usize>,
+        #[arg(long)]
+        resource_runs: Option<usize>,
+        #[arg(long)]
+        resource_iterations: Option<usize>,
+    },
+    #[command(hide = true)]
+    PythonImplBenchWorkload {
+        #[arg(long, value_enum)]
+        implementation: PythonImplImplementation,
+        #[arg(long)]
+        benchmark: String,
+        #[arg(long)]
+        iterations: usize,
+        #[arg(long)]
+        output: PathBuf,
+    },
     SdkMemoryBudgetCheck,
     SdkQueuePressureCheck,
     SupplyChainCheck,
@@ -509,6 +548,18 @@ enum CiStage {
     ForbiddenDeps,
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
+enum PythonImplBenchProfile {
+    Fast,
+    Report,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
+enum PythonImplImplementation {
+    Rust,
+    Python,
+}
+
 fn main() -> Result<()> {
     let xtask = Xtask::parse();
     match xtask.command {
@@ -570,7 +621,15 @@ fn main() -> Result<()> {
         XtaskCommand::SdkMetricsCheck => run_sdk_metrics_check(),
         XtaskCommand::SdkBenchCheck => run_sdk_bench_check(),
         XtaskCommand::SdkPerfBudgetCheck => run_sdk_perf_budget_check(),
-        XtaskCommand::PythonImplBenchCompare => run_python_impl_bench_compare(),
+        XtaskCommand::PythonImplBenchCompare { profile } => run_python_impl_bench_compare(profile),
+        XtaskCommand::PythonImplBenchReport {
+            compare_runs,
+            resource_runs,
+            resource_iterations,
+        } => run_python_impl_bench_report(compare_runs, resource_runs, resource_iterations),
+        XtaskCommand::PythonImplBenchWorkload { implementation, benchmark, iterations, output } => {
+            run_python_impl_bench_workload(implementation, &benchmark, iterations, &output)
+        }
         XtaskCommand::SdkMemoryBudgetCheck => run_sdk_memory_budget_check(),
         XtaskCommand::SdkQueuePressureCheck => run_sdk_queue_pressure_check(),
         XtaskCommand::SupplyChainCheck => run_supply_chain_check(),
@@ -2729,22 +2788,27 @@ struct CriterionSample {
     times: Vec<f64>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 struct PythonBenchReport {
     benchmarks: Vec<PythonBenchmark>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 struct PythonBenchmark {
     name: String,
+    iterations: usize,
+    mean_ns: f64,
     p50_ns: f64,
     p95_ns: f64,
     p99_ns: f64,
     throughput_ops_per_sec: f64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 struct BenchStats {
+    iterations: usize,
+    sample_count: usize,
+    mean_ns: f64,
     p50_ns: f64,
     p95_ns: f64,
     p99_ns: f64,
@@ -2753,9 +2817,30 @@ struct BenchStats {
 
 #[derive(Debug, Deserialize)]
 struct PythonImplBenchConfig {
+    profiles: PythonImplBenchProfiles,
+    comparisons: Vec<PythonImplComparison>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PythonImplBenchProfiles {
+    fast: PythonImplBenchProfileConfig,
+    report: PythonImplBenchProfileConfig,
+}
+
+impl PythonImplBenchProfiles {
+    fn get(&self, profile: PythonImplBenchProfile) -> &PythonImplBenchProfileConfig {
+        match profile {
+            PythonImplBenchProfile::Fast => &self.fast,
+            PythonImplBenchProfile::Report => &self.report,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct PythonImplBenchProfileConfig {
     criterion: PythonImplCriterionConfig,
     python: PythonImplPythonConfig,
-    comparisons: Vec<PythonImplComparison>,
+    report: PythonImplReportConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -2770,14 +2855,48 @@ struct PythonImplPythonConfig {
     iterations: usize,
 }
 
+#[derive(Debug, Deserialize)]
+struct PythonImplReportConfig {
+    compare_runs: usize,
+    resource_runs: usize,
+    resource_iterations: usize,
+    resource_min_duration_seconds: f64,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 struct PythonImplComparison {
     label: String,
     rust_benchmark: String,
     python_benchmark: String,
+    #[serde(default)]
+    workload_class: Option<String>,
+    #[serde(default)]
+    payload_size_bytes: Option<usize>,
+    #[serde(default)]
+    batch_size: Option<usize>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
+struct BenchContext {
+    workload_class: Option<String>,
+    payload_size_bytes: Option<usize>,
+    batch_size: Option<usize>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+struct BenchAdvantage {
+    mean_speedup: f64,
+    p50_speedup: f64,
+    p95_speedup: f64,
+    p99_speedup: f64,
+    throughput_gain: f64,
+    mean_latency_reduction: f64,
+    p50_latency_reduction: f64,
+    p95_latency_reduction: f64,
+    p99_latency_reduction: f64,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
 struct PythonImplEnvironment {
     rustc_version: String,
     cargo_version: String,
@@ -2789,20 +2908,87 @@ struct PythonImplEnvironment {
     benchmark_config_path: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 struct PythonImplComparisonRow {
     label: String,
     rust_benchmark: String,
     python_benchmark: String,
+    context: BenchContext,
     rust: BenchStats,
     python: BenchStats,
     rust_speedup_vs_python: BenchStats,
+    rust_advantage_vs_python: BenchAdvantage,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 struct PythonImplComparisonReport {
     environment: PythonImplEnvironment,
     comparisons: Vec<PythonImplComparisonRow>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct ResourceStats {
+    runs: usize,
+    iterations_per_run: usize,
+    mean_peak_rss_bytes: f64,
+    median_peak_rss_bytes: u64,
+    max_peak_rss_bytes: u64,
+    mean_user_cpu_seconds: f64,
+    median_user_cpu_seconds: f64,
+    mean_sys_cpu_seconds: f64,
+    median_sys_cpu_seconds: f64,
+    mean_cpu_seconds_per_1k_ops: f64,
+    median_cpu_seconds_per_1k_ops: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct ResourceAdvantage {
+    rss_reduction: f64,
+    cpu_time_reduction: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct ResourceMeasurement {
+    peak_rss_bytes: u64,
+    user_cpu_seconds: f64,
+    sys_cpu_seconds: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct ResourceMeasurementSet {
+    iterations_per_run: usize,
+    measurements: Vec<ResourceMeasurement>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct PythonImplReportComparison {
+    label: String,
+    rust_benchmark: String,
+    python_benchmark: String,
+    context: BenchContext,
+    rust: BenchStats,
+    python: BenchStats,
+    rust_advantage_vs_python: BenchAdvantage,
+    rust_resources: ResourceStats,
+    python_resources: ResourceStats,
+    rust_resource_advantage_vs_python: ResourceAdvantage,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct PythonImplReportSummary {
+    profile: String,
+    compare_runs: usize,
+    resource_runs: usize,
+    resource_iterations: usize,
+    environment: PythonImplEnvironment,
+    comparisons: Vec<PythonImplReportComparison>,
+}
+
+struct PythonImplOutputPaths<'a> {
+    python_report_path: &'a Path,
+    environment_path: &'a Path,
+    compare_report_path: &'a Path,
+    compare_json_path: &'a Path,
 }
 
 fn run_sdk_perf_budget_check() -> Result<()> {
@@ -2819,12 +3005,110 @@ fn run_sdk_perf_budget_check() -> Result<()> {
     Ok(())
 }
 
-fn run_python_impl_bench_compare() -> Result<()> {
+fn run_python_impl_bench_compare(profile: PythonImplBenchProfile) -> Result<()> {
     let config = load_python_impl_bench_config()?;
-    let sample_size = config.criterion.sample_size.to_string();
-    let warm_up_time = config.criterion.warm_up_time_seconds.to_string();
-    let measurement_time = config.criterion.measurement_time_seconds.to_string();
-    let python_iterations = config.python.iterations.to_string();
+    let profile_config = config.profiles.get(profile);
+    let paths = default_python_impl_output_paths();
+    run_python_impl_bench_compare_with_paths(&config, profile_config, &paths)
+}
+
+fn run_python_impl_bench_report(
+    compare_runs_override: Option<usize>,
+    resource_runs_override: Option<usize>,
+    resource_iterations_override: Option<usize>,
+) -> Result<()> {
+    let config = load_python_impl_bench_config()?;
+    let profile = PythonImplBenchProfile::Report;
+    let profile_config = config.profiles.get(profile);
+    let compare_runs = compare_runs_override.unwrap_or(profile_config.report.compare_runs);
+    let resource_runs = resource_runs_override.unwrap_or(profile_config.report.resource_runs);
+    let resource_iterations =
+        resource_iterations_override.unwrap_or(profile_config.report.resource_iterations);
+    let report_root = Path::new(PYTHON_IMPL_REPORT_DIR);
+    if report_root.exists() {
+        fs::remove_dir_all(report_root)
+            .with_context(|| format!("remove {}", report_root.display()))?;
+    }
+    fs::create_dir_all(report_root).with_context(|| format!("create {}", report_root.display()))?;
+
+    let runs_root = report_root.join("runs");
+    fs::create_dir_all(&runs_root).with_context(|| format!("create {}", runs_root.display()))?;
+    let mut per_run_reports = Vec::new();
+
+    for run_index in 0..compare_runs {
+        let run_dir = runs_root.join(format!("run-{run_index:02}"));
+        fs::create_dir_all(&run_dir).with_context(|| format!("create {}", run_dir.display()))?;
+        let python_report_path = run_dir.join("python-impl-benchmarks.json");
+        let environment_path = run_dir.join("python-impl-environment.json");
+        let compare_report_path = run_dir.join("python-impl-compare.txt");
+        let compare_json_path = run_dir.join("python-impl-compare.json");
+        let paths = PythonImplOutputPaths {
+            python_report_path: &python_report_path,
+            environment_path: &environment_path,
+            compare_report_path: &compare_report_path,
+            compare_json_path: &compare_json_path,
+        };
+        run_python_impl_bench_compare_with_paths(&config, profile_config, &paths)
+            .with_context(|| format!("benchmark report run {}", run_index + 1))?;
+        per_run_reports.push(load_python_impl_compare_report(paths.compare_json_path)?);
+    }
+
+    let resource_measurements = collect_python_impl_resource_measurements(
+        &config,
+        &per_run_reports,
+        resource_runs,
+        resource_iterations,
+        profile_config.report.resource_min_duration_seconds,
+        report_root,
+    )?;
+
+    let summary = aggregate_python_impl_report(
+        &per_run_reports,
+        &config.comparisons,
+        &resource_measurements,
+        profile,
+        compare_runs,
+        resource_runs,
+        resource_iterations,
+    )?;
+    write_python_impl_report_summary(&summary)?;
+    println!("python implementation benchmark report written to {}", PYTHON_IMPL_REPORT_TEXT_PATH);
+    Ok(())
+}
+
+fn run_python_impl_bench_workload(
+    implementation: PythonImplImplementation,
+    benchmark: &str,
+    iterations: usize,
+    output: &Path,
+) -> Result<()> {
+    let benchmark = match implementation {
+        PythonImplImplementation::Rust => run_rust_python_impl_benchmark(benchmark, iterations)?,
+        PythonImplImplementation::Python => {
+            bail!("python workloads must be run via tools/scripts/python_impl_benchmarks.py")
+        }
+    };
+    write_python_benchmark_report(output, &[benchmark])
+}
+
+fn default_python_impl_output_paths() -> PythonImplOutputPaths<'static> {
+    PythonImplOutputPaths {
+        python_report_path: Path::new(PYTHON_IMPL_BENCH_REPORT_PATH),
+        environment_path: Path::new(PYTHON_IMPL_ENVIRONMENT_PATH),
+        compare_report_path: Path::new(PYTHON_IMPL_COMPARE_REPORT_PATH),
+        compare_json_path: Path::new(PYTHON_IMPL_COMPARE_JSON_PATH),
+    }
+}
+
+fn run_python_impl_bench_compare_with_paths(
+    config: &PythonImplBenchConfig,
+    profile_config: &PythonImplBenchProfileConfig,
+    paths: &PythonImplOutputPaths<'_>,
+) -> Result<()> {
+    let sample_size = profile_config.criterion.sample_size.to_string();
+    let warm_up_time = profile_config.criterion.warm_up_time_seconds.to_string();
+    let measurement_time = profile_config.criterion.measurement_time_seconds.to_string();
+    let python_iterations = profile_config.python.iterations.to_string();
 
     run(
         "cargo",
@@ -2884,10 +3168,13 @@ fn run_python_impl_bench_compare() -> Result<()> {
             "--iterations",
             &python_iterations,
             "--output",
-            PYTHON_IMPL_BENCH_REPORT_PATH,
+            paths
+                .python_report_path
+                .to_str()
+                .context("python benchmark output path must be utf-8")?,
         ],
     )?;
-    write_python_impl_compare_report(&config)
+    write_python_impl_compare_report(config, paths)
 }
 
 fn evaluate_perf_budgets() -> Result<()> {
@@ -3041,18 +3328,21 @@ fn write_bench_summary() -> Result<()> {
     Ok(())
 }
 
-fn write_python_impl_compare_report(config: &PythonImplBenchConfig) -> Result<()> {
-    let python_raw = fs::read_to_string(PYTHON_IMPL_BENCH_REPORT_PATH)
-        .with_context(|| format!("read {PYTHON_IMPL_BENCH_REPORT_PATH}"))?;
+fn write_python_impl_compare_report(
+    config: &PythonImplBenchConfig,
+    paths: &PythonImplOutputPaths<'_>,
+) -> Result<()> {
+    let python_raw = fs::read_to_string(paths.python_report_path)
+        .with_context(|| format!("read {}", paths.python_report_path.display()))?;
     let python_report: PythonBenchReport = serde_json::from_str(&python_raw)
-        .with_context(|| format!("parse {PYTHON_IMPL_BENCH_REPORT_PATH}"))?;
+        .with_context(|| format!("parse {}", paths.python_report_path.display()))?;
     let environment = capture_python_impl_environment()?;
     fs::write(
-        PYTHON_IMPL_ENVIRONMENT_PATH,
+        paths.environment_path,
         serde_json::to_string_pretty(&environment)
             .context("serialize python benchmark environment")?,
     )
-    .with_context(|| format!("write {PYTHON_IMPL_ENVIRONMENT_PATH}"))?;
+    .with_context(|| format!("write {}", paths.environment_path.display()))?;
 
     let python_stats = python_report
         .benchmarks
@@ -3061,6 +3351,9 @@ fn write_python_impl_compare_report(config: &PythonImplBenchConfig) -> Result<()
             (
                 entry.name,
                 BenchStats {
+                    iterations: entry.iterations,
+                    sample_count: entry.iterations,
+                    mean_ns: entry.mean_ns,
                     p50_ns: entry.p50_ns,
                     p95_ns: entry.p95_ns,
                     p99_ns: entry.p99_ns,
@@ -3080,7 +3373,7 @@ fn write_python_impl_compare_report(config: &PythonImplBenchConfig) -> Result<()
     );
     lines.push(String::new());
     lines.push(format!("- Config: `{}`", PYTHON_IMPL_BENCH_CONFIG_PATH));
-    lines.push(format!("- Environment: `{}`", PYTHON_IMPL_ENVIRONMENT_PATH));
+    lines.push(format!("- Environment: `{}`", paths.environment_path.display()));
     lines.push(String::new());
 
     for comparison in &config.comparisons {
@@ -3092,6 +3385,9 @@ fn write_python_impl_compare_report(config: &PythonImplBenchConfig) -> Result<()
             )
         })?;
         let speedup = BenchStats {
+            iterations: python.iterations.min(rust.iterations),
+            sample_count: python.sample_count.min(rust.sample_count),
+            mean_ns: ratio(python.mean_ns, rust.mean_ns),
             p50_ns: ratio(python.p50_ns, rust.p50_ns),
             p95_ns: ratio(python.p95_ns, rust.p95_ns),
             p99_ns: ratio(python.p99_ns, rust.p99_ns),
@@ -3104,64 +3400,121 @@ fn write_python_impl_compare_report(config: &PythonImplBenchConfig) -> Result<()
             label: comparison.label.clone(),
             rust_benchmark: comparison.rust_benchmark.clone(),
             python_benchmark: comparison.python_benchmark.clone(),
+            context: BenchContext {
+                workload_class: comparison.workload_class.clone(),
+                payload_size_bytes: comparison.payload_size_bytes,
+                batch_size: comparison.batch_size,
+            },
             rust: BenchStats {
+                iterations: rust.iterations,
+                sample_count: rust.sample_count,
+                mean_ns: rust.mean_ns,
                 p50_ns: rust.p50_ns,
                 p95_ns: rust.p95_ns,
                 p99_ns: rust.p99_ns,
                 throughput_ops_per_sec: rust.throughput_ops_per_sec,
             },
             python: BenchStats {
+                iterations: python.iterations,
+                sample_count: python.sample_count,
+                mean_ns: python.mean_ns,
                 p50_ns: python.p50_ns,
                 p95_ns: python.p95_ns,
                 p99_ns: python.p99_ns,
                 throughput_ops_per_sec: python.throughput_ops_per_sec,
             },
             rust_speedup_vs_python: BenchStats {
+                iterations: speedup.iterations,
+                sample_count: speedup.sample_count,
+                mean_ns: speedup.mean_ns,
                 p50_ns: speedup.p50_ns,
                 p95_ns: speedup.p95_ns,
                 p99_ns: speedup.p99_ns,
                 throughput_ops_per_sec: speedup.throughput_ops_per_sec,
             },
+            rust_advantage_vs_python: BenchAdvantage {
+                mean_speedup: speedup.mean_ns,
+                p50_speedup: speedup.p50_ns,
+                p95_speedup: speedup.p95_ns,
+                p99_speedup: speedup.p99_ns,
+                throughput_gain: speedup.throughput_ops_per_sec,
+                mean_latency_reduction: reduction(python.mean_ns, rust.mean_ns),
+                p50_latency_reduction: reduction(python.p50_ns, rust.p50_ns),
+                p95_latency_reduction: reduction(python.p95_ns, rust.p95_ns),
+                p99_latency_reduction: reduction(python.p99_ns, rust.p99_ns),
+            },
         });
         lines.push(format!("## {}", comparison.label));
+        let mut context_parts = Vec::new();
+        if let Some(workload_class) = &comparison.workload_class {
+            context_parts.push(format!("workload_class={workload_class}"));
+        }
+        if let Some(payload_size_bytes) = comparison.payload_size_bytes {
+            context_parts.push(format!("payload_size_bytes={payload_size_bytes}"));
+        }
+        if let Some(batch_size) = comparison.batch_size {
+            context_parts.push(format!("batch_size={batch_size}"));
+        }
+        if !context_parts.is_empty() {
+            lines.push(format!("- Context: {}", context_parts.join(" ")));
+        }
         lines.push(format!(
-            "- Rust `{}`: p50_ns={:.2} p95_ns={:.2} p99_ns={:.2} throughput_ops_per_sec={:.2}",
+            "- Rust `{}`: iterations={} samples={} mean_ns={:.2} p50_ns={:.2} p95_ns={:.2} p99_ns={:.2} throughput_ops_per_sec={:.2}",
             comparison.rust_benchmark,
+            rust.iterations,
+            rust.sample_count,
+            rust.mean_ns,
             rust.p50_ns,
             rust.p95_ns,
             rust.p99_ns,
             rust.throughput_ops_per_sec
         ));
         lines.push(format!(
-            "- Python `{}`: p50_ns={:.2} p95_ns={:.2} p99_ns={:.2} throughput_ops_per_sec={:.2}",
+            "- Python `{}`: iterations={} samples={} mean_ns={:.2} p50_ns={:.2} p95_ns={:.2} p99_ns={:.2} throughput_ops_per_sec={:.2}",
             comparison.python_benchmark,
+            python.iterations,
+            python.sample_count,
+            python.mean_ns,
             python.p50_ns,
             python.p95_ns,
             python.p99_ns,
             python.throughput_ops_per_sec
         ));
         lines.push(format!(
-            "- Rust speedup vs Python: p50={:.2}x p95={:.2}x p99={:.2}x throughput={:.2}x",
-            speedup.p50_ns, speedup.p95_ns, speedup.p99_ns, speedup.throughput_ops_per_sec
+            "- Rust advantage vs Python: mean={:.2}x p50={:.2}x p95={:.2}x p99={:.2}x throughput={:.2}x mean_latency_reduction={:.2}% p50_latency_reduction={:.2}% p95_latency_reduction={:.2}% p99_latency_reduction={:.2}%",
+            speedup.mean_ns,
+            speedup.p50_ns,
+            speedup.p95_ns,
+            speedup.p99_ns,
+            speedup.throughput_ops_per_sec,
+            reduction(python.mean_ns, rust.mean_ns) * 100.0,
+            reduction(python.p50_ns, rust.p50_ns) * 100.0,
+            reduction(python.p95_ns, rust.p95_ns) * 100.0,
+            reduction(python.p99_ns, rust.p99_ns) * 100.0,
         ));
         lines.push(String::new());
     }
 
     lines.push(format!(
         "Generated by `cargo run -p xtask -- python-impl-bench-compare`; raw python data lives at `{}`.",
-        PYTHON_IMPL_BENCH_REPORT_PATH
+        paths.python_report_path.display()
     ));
 
-    fs::write(PYTHON_IMPL_COMPARE_REPORT_PATH, lines.join("\n"))
-        .with_context(|| format!("write {PYTHON_IMPL_COMPARE_REPORT_PATH}"))?;
+    fs::write(paths.compare_report_path, lines.join("\n"))
+        .with_context(|| format!("write {}", paths.compare_report_path.display()))?;
     fs::write(
-        PYTHON_IMPL_COMPARE_JSON_PATH,
+        paths.compare_json_path,
         serde_json::to_string_pretty(&PythonImplComparisonReport { environment, comparisons })
             .context("serialize python implementation comparison report")?,
     )
-    .with_context(|| format!("write {PYTHON_IMPL_COMPARE_JSON_PATH}"))?;
-    println!("python implementation comparison written to {PYTHON_IMPL_COMPARE_REPORT_PATH}");
+    .with_context(|| format!("write {}", paths.compare_json_path.display()))?;
+    println!("python implementation comparison written to {}", paths.compare_report_path.display());
     Ok(())
+}
+
+fn load_python_impl_compare_report(path: &Path) -> Result<PythonImplComparisonReport> {
+    let raw = fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
+    serde_json::from_str(&raw).with_context(|| format!("parse {}", path.display()))
 }
 
 fn load_criterion_stats(benchmark: &str) -> Result<BenchStats> {
@@ -3185,16 +3538,886 @@ fn load_criterion_stats(benchmark: &str) -> Result<BenchStats> {
     }
     latency_ns.sort_by(f64::total_cmp);
     let tail_latencies = trimmed_tail_sample(&latency_ns);
+    let mean_ns = latency_ns.iter().sum::<f64>() / latency_ns.len() as f64;
     let p50_ns = percentile(&latency_ns, 0.50);
     let p95_ns = percentile(&tail_latencies, 0.95);
     let p99_ns = percentile(&tail_latencies, 0.99);
     let throughput_ops_per_sec = 1_000_000_000.0 / p50_ns.max(1.0);
 
-    Ok(BenchStats { p50_ns, p95_ns, p99_ns, throughput_ops_per_sec })
+    Ok(BenchStats {
+        iterations: sample.iters.iter().map(|iters| *iters as usize).sum(),
+        sample_count: latency_ns.len(),
+        mean_ns,
+        p50_ns,
+        p95_ns,
+        p99_ns,
+        throughput_ops_per_sec,
+    })
 }
 
 fn ratio(lhs: f64, rhs: f64) -> f64 {
     lhs / rhs.max(1.0)
+}
+
+fn reduction(baseline: f64, improved: f64) -> f64 {
+    if baseline <= 0.0 {
+        return 0.0;
+    }
+    (1.0 - (improved / baseline)).clamp(-1.0, 1.0)
+}
+
+fn write_python_benchmark_report(output: &Path, benchmarks: &[PythonBenchmark]) -> Result<()> {
+    if let Some(parent) = output.parent() {
+        fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
+    }
+    let payload = PythonBenchReport { benchmarks: benchmarks.to_vec() };
+    fs::write(
+        output,
+        serde_json::to_string_pretty(&payload).context("serialize benchmark payload")? + "\n",
+    )
+    .with_context(|| format!("write {}", output.display()))
+}
+
+fn run_rust_python_impl_benchmark(name: &str, iterations: usize) -> Result<PythonBenchmark> {
+    let mut samples = Vec::with_capacity(iterations);
+    match name {
+        "lxmf_core_message_from_wire" => {
+            let (wire, _) = rust_sample_wire_payload();
+            for _ in 0..iterations {
+                let started = Instant::now();
+                let decoded =
+                    Message::from_wire(black_box(&wire)).context("decode should succeed")?;
+                black_box(decoded);
+                samples.push(started.elapsed().as_nanos() as f64);
+            }
+        }
+        "lxmf_core_message_to_wire" => {
+            for _ in 0..iterations {
+                let started = Instant::now();
+                let mut message = Message::new();
+                message.destination_hash = Some([0x44; 16]);
+                message.source_hash = Some([0x55; 16]);
+                message.signature = Some([0x66; 64]);
+                message.timestamp = Some(1_770_000_001.0);
+                message.set_title_from_string("wire-title");
+                message.set_content_from_string("wire-content");
+                let wire = message.to_wire(None).context("encode should succeed")?;
+                black_box(wire);
+                samples.push(started.elapsed().as_nanos() as f64);
+            }
+        }
+        "lxmf_core_large_message_from_wire" => {
+            let (wire, _) = rust_sample_large_wire_payload();
+            for _ in 0..iterations {
+                let started = Instant::now();
+                let decoded =
+                    Message::from_wire(black_box(&wire)).context("decode should succeed")?;
+                black_box(decoded);
+                samples.push(started.elapsed().as_nanos() as f64);
+            }
+        }
+        "lxmf_core_large_message_to_wire" => {
+            let content = "x".repeat(2048);
+            for _ in 0..iterations {
+                let started = Instant::now();
+                let mut message = Message::new();
+                message.destination_hash = Some([0xa4; 16]);
+                message.source_hash = Some([0xb5; 16]);
+                message.signature = Some([0xc6; 64]);
+                message.timestamp = Some(1_770_000_101.0);
+                message.set_title_from_string("wire-large-title");
+                message.set_content_from_string(black_box(&content));
+                let wire = message.to_wire(None).context("encode should succeed")?;
+                black_box(wire);
+                samples.push(started.elapsed().as_nanos() as f64);
+            }
+        }
+        "rns_core_announce_create" => {
+            let mut destination = rust_sample_destination();
+            for _ in 0..iterations {
+                let started = Instant::now();
+                let packet = destination
+                    .announce(OsRng, black_box(Some(b"rust-announce-app-data".as_slice())))
+                    .map_err(|err| anyhow!("announce should succeed: {err:?}"))?;
+                black_box(packet);
+                samples.push(started.elapsed().as_nanos() as f64);
+            }
+        }
+        "rns_core_announce_validate" => {
+            let mut destination = rust_sample_destination();
+            let packet = destination
+                .announce(OsRng, Some(b"rust-announce-app-data".as_slice()))
+                .map_err(|err| anyhow!("announce should succeed: {err:?}"))?;
+            for _ in 0..iterations {
+                let started = Instant::now();
+                let info = DestinationAnnounce::validate(black_box(&packet))
+                    .map_err(|err| anyhow!("announce validation should succeed: {err:?}"))?;
+                black_box(info);
+                samples.push(started.elapsed().as_nanos() as f64);
+            }
+        }
+        "rns_core_announce_validate_batch_64" => {
+            let packets = rust_announce_batch_packets()?;
+            let mut signed_data = [0u8; rns_core::packet::PACKET_MDU];
+            for _ in 0..iterations {
+                let started = Instant::now();
+                let mut validated = 0usize;
+                for packet in &packets {
+                    let info = DestinationAnnounce::validate_with_buffer(
+                        black_box(packet),
+                        black_box(&mut signed_data),
+                    )
+                    .map_err(|err| anyhow!("announce validation should succeed: {err:?}"))?;
+                    validated += info.app_data.len();
+                }
+                black_box(validated);
+                samples.push(started.elapsed().as_nanos() as f64);
+            }
+        }
+        "rns_core_identity_sign" => {
+            let identity = PrivateIdentity::new_from_rand(OsRng);
+            let message = vec![0x5a; 2048];
+            for _ in 0..iterations {
+                let started = Instant::now();
+                let signature = lxmf_sign(black_box(&identity), black_box(&message));
+                black_box(signature);
+                samples.push(started.elapsed().as_nanos() as f64);
+            }
+        }
+        "rns_core_identity_verify" => {
+            let identity = PrivateIdentity::new_from_rand(OsRng);
+            let public_identity = *identity.as_identity();
+            let message = vec![0x5a; 2048];
+            let signature = lxmf_sign(&identity, &message);
+            for _ in 0..iterations {
+                let started = Instant::now();
+                let valid = lxmf_verify(
+                    black_box(&public_identity),
+                    black_box(&message),
+                    black_box(&signature),
+                );
+                black_box(valid);
+                samples.push(started.elapsed().as_nanos() as f64);
+            }
+        }
+        "rns_core_identity_encrypt" => {
+            let recipient = PrivateIdentity::new_from_rand(OsRng);
+            let public_identity = *recipient.as_identity();
+            let plaintext = vec![0x42; 2048];
+            let salt = public_identity.address_hash.as_slice().to_vec();
+            let mut out = vec![0u8; 32 + plaintext.len() + 128];
+            for _ in 0..iterations {
+                let started = Instant::now();
+                let ciphertext = encrypt_for_public_key_into(
+                    black_box(&public_identity.public_key),
+                    black_box(salt.as_slice()),
+                    black_box(&plaintext),
+                    black_box(out.as_mut_slice()),
+                    OsRng,
+                )
+                .map_err(|err| anyhow!("encryption should succeed: {err:?}"))?;
+                black_box(ciphertext);
+                samples.push(started.elapsed().as_nanos() as f64);
+            }
+        }
+        "rns_core_identity_decrypt" => {
+            let recipient = PrivateIdentity::new_from_rand(OsRng);
+            let public_identity = *recipient.as_identity();
+            let plaintext = vec![0x42; 2048];
+            let salt = public_identity.address_hash.as_slice().to_vec();
+            let ciphertext = encrypt_for_public_key(
+                &public_identity.public_key,
+                salt.as_slice(),
+                &plaintext,
+                OsRng,
+            )
+            .map_err(|err| anyhow!("encryption should succeed: {err:?}"))?;
+            let mut out = vec![0u8; ciphertext.len()];
+            for _ in 0..iterations {
+                let started = Instant::now();
+                let decrypted = decrypt_with_identity_into(
+                    black_box(&recipient),
+                    black_box(salt.as_slice()),
+                    black_box(&ciphertext),
+                    black_box(out.as_mut_slice()),
+                )
+                .map_err(|err| anyhow!("decryption should succeed: {err:?}"))?;
+                black_box(decrypted);
+                samples.push(started.elapsed().as_nanos() as f64);
+            }
+        }
+        "rns_transport_resource_manager_request_window_reuse" => {
+            let (mut sender_link, mut manager, plain_request) =
+                rust_resource_manager_request_fixture()?;
+            let mut responses = Vec::new();
+            for _ in 0..iterations {
+                let started = Instant::now();
+                manager.handle_packet_into(
+                    black_box(&plain_request),
+                    black_box(&mut sender_link),
+                    black_box(&mut responses),
+                );
+                black_box(responses.len());
+                samples.push(started.elapsed().as_nanos() as f64);
+                responses.clear();
+            }
+        }
+        _ => bail!("unsupported rust benchmark workload `{name}`"),
+    }
+
+    Ok(python_benchmark_from_samples(name.to_string(), iterations, samples))
+}
+
+fn python_benchmark_from_samples(
+    name: String,
+    iterations: usize,
+    mut samples: Vec<f64>,
+) -> PythonBenchmark {
+    samples.sort_by(f64::total_cmp);
+    let tail_samples = trimmed_tail_sample(&samples);
+    let mean_ns = samples.iter().sum::<f64>() / samples.len() as f64;
+    let p50_ns = percentile(&samples, 0.50);
+    let p95_ns = percentile(&tail_samples, 0.95);
+    let p99_ns = percentile(&tail_samples, 0.99);
+    let throughput_ops_per_sec = 1_000_000_000.0 / p50_ns.max(1.0);
+    PythonBenchmark { name, iterations, mean_ns, p50_ns, p95_ns, p99_ns, throughput_ops_per_sec }
+}
+
+fn rust_sample_wire_payload() -> (Vec<u8>, [u8; 16]) {
+    let mut message = Message::new();
+    let destination = [0x11; 16];
+    let source = [0x22; 16];
+    message.destination_hash = Some(destination);
+    message.source_hash = Some(source);
+    message.signature = Some([0x33; 64]);
+    message.timestamp = Some(1_770_000_000.0);
+    message.set_title_from_string("bench-title");
+    message.set_content_from_string("bench-content-payload");
+    let wire = message.to_wire(None).expect("sample message must encode");
+    (wire, destination)
+}
+
+fn rust_sample_large_wire_payload() -> (Vec<u8>, [u8; 16]) {
+    let mut message = Message::new();
+    let destination = [0x77; 16];
+    let source = [0x88; 16];
+    message.destination_hash = Some(destination);
+    message.source_hash = Some(source);
+    message.signature = Some([0x99; 64]);
+    message.timestamp = Some(1_770_000_100.0);
+    message.set_title_from_string("bench-large-title");
+    message.set_content_from_string(&"x".repeat(2048));
+    let wire = message.to_wire(None).expect("large sample message must encode");
+    (wire, destination)
+}
+
+fn rust_sample_destination() -> SingleInputDestination {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    SingleInputDestination::new(
+        identity,
+        DestinationName::new("example_utilities", "announcesample.fruits"),
+    )
+}
+
+fn rust_announce_batch_packets() -> Result<Vec<rns_core::Packet>> {
+    const ANNOUNCE_BATCH_SIZE: usize = 64;
+    let mut packets = Vec::with_capacity(ANNOUNCE_BATCH_SIZE);
+    for index in 0..ANNOUNCE_BATCH_SIZE {
+        let mut destination = rust_sample_destination();
+        let app_data = format!("rust-announce-app-data-{index}");
+        let packet = destination
+            .announce(OsRng, Some(app_data.as_bytes()))
+            .map_err(|err| anyhow!("announce should succeed: {err:?}"))?;
+        packets.push(packet);
+    }
+    Ok(packets)
+}
+
+fn rust_active_link_pair() -> Result<(Link, Link, Vec<u8>)> {
+    let sender = PrivateIdentity::new_from_rand(OsRng);
+    let receiver = PrivateIdentity::new_from_rand(OsRng);
+
+    let _sender = to_transport_private_identity(&sender);
+    let receiver = to_transport_private_identity(&receiver);
+
+    let destination = DestinationDesc {
+        identity: *receiver.as_identity(),
+        address_hash: *receiver.address_hash(),
+        name: TransportDestinationName::new("lxmf", "delivery"),
+    };
+
+    let (tx, _) = tokio::sync::broadcast::channel(16);
+    let mut outbound = Link::new(destination, tx.clone());
+    let request = outbound.request();
+
+    let mut inbound =
+        Link::new_from_request(&request, receiver.sign_key().clone(), destination, tx)
+            .map_err(|err| anyhow!("input link: {err:?}"))?;
+    let proof = inbound.prove();
+    if !matches!(outbound.handle_packet(&proof), LinkHandleResult::Activated) {
+        bail!("link activation did not succeed");
+    }
+
+    let payload = vec![0x2a; 128];
+    Ok((outbound, inbound, payload))
+}
+
+fn rust_decrypt_resource_packet(link: &Link, packet: &Packet) -> Result<Packet> {
+    let mut plain_packet = *packet;
+    let mut buffer = PacketDataBuffer::new();
+    let plain_len = {
+        let plaintext = link
+            .decrypt(packet.data.as_slice(), buffer.accuire_buf_max())
+            .map_err(|err| anyhow!("decrypt should succeed: {err:?}"))?;
+        plaintext.len()
+    };
+    buffer.resize(plain_len);
+    plain_packet.data = buffer;
+    Ok(plain_packet)
+}
+
+fn rust_resource_manager_request_fixture() -> Result<(Link, ResourceManager, Packet)> {
+    let (sender_link, mut receiver_link, _) = rust_active_link_pair()?;
+    let mut sender_manager = ResourceManager::new();
+    let mut receiver_manager = ResourceManager::new();
+    let resource_data = vec![0x5a; PACKET_MDU * 6];
+
+    let (_, advertisement_packet) = sender_manager
+        .start_send(&sender_link, resource_data, None)
+        .map_err(|err| anyhow!("resource send should succeed: {err:?}"))?;
+    let plain_advertisement = rust_decrypt_resource_packet(&receiver_link, &advertisement_packet)?;
+
+    let mut responses = Vec::new();
+    receiver_manager.handle_packet_into(&plain_advertisement, &mut receiver_link, &mut responses);
+    let request_packet = responses.pop().context("resource request packet")?;
+    let plain_request = rust_decrypt_resource_packet(&sender_link, &request_packet)?;
+
+    Ok((sender_link, sender_manager, plain_request))
+}
+
+fn collect_python_impl_resource_measurements(
+    config: &PythonImplBenchConfig,
+    per_run_reports: &[PythonImplComparisonReport],
+    runs: usize,
+    baseline_iterations: usize,
+    min_duration_seconds: f64,
+    report_root: &Path,
+) -> Result<BTreeMap<String, ResourceMeasurementSet>> {
+    let release_xtask = ensure_release_xtask_binary()?;
+    let resources_root = report_root.join("resources");
+    fs::create_dir_all(&resources_root)
+        .with_context(|| format!("create {}", resources_root.display()))?;
+    let time_command = detect_time_command()?;
+    let mut measurements = BTreeMap::new();
+    let median_rows = aggregate_report_rows_by_label(per_run_reports)?;
+
+    for comparison in &config.comparisons {
+        let rust_key = format!("rust:{}", comparison.rust_benchmark);
+        let python_key = format!("python:{}", comparison.python_benchmark);
+        let median_row = median_rows
+            .get(&comparison.label)
+            .with_context(|| format!("missing median row for `{}`", comparison.label))?;
+        let rust_iterations = resource_iterations_for_duration(
+            baseline_iterations,
+            median_row.rust.p50_ns,
+            min_duration_seconds,
+        );
+        let python_iterations = resource_iterations_for_duration(
+            baseline_iterations,
+            median_row.python.p50_ns,
+            min_duration_seconds,
+        );
+        let rust_entries = collect_resource_measurements_for_workload(
+            &time_command,
+            &release_xtask,
+            PythonImplImplementation::Rust,
+            &comparison.rust_benchmark,
+            runs,
+            rust_iterations,
+            &resources_root,
+        )?;
+        measurements.insert(
+            rust_key,
+            ResourceMeasurementSet {
+                iterations_per_run: rust_iterations,
+                measurements: rust_entries,
+            },
+        );
+
+        let python_entries = collect_resource_measurements_for_workload(
+            &time_command,
+            &release_xtask,
+            PythonImplImplementation::Python,
+            &comparison.python_benchmark,
+            runs,
+            python_iterations,
+            &resources_root,
+        )?;
+        measurements.insert(
+            python_key,
+            ResourceMeasurementSet {
+                iterations_per_run: python_iterations,
+                measurements: python_entries,
+            },
+        );
+    }
+
+    Ok(measurements)
+}
+
+#[derive(Copy, Clone)]
+enum TimeCommandFlavor {
+    Bsd,
+    Gnu,
+}
+
+struct TimeCommand {
+    program: &'static str,
+    flavor: TimeCommandFlavor,
+}
+
+fn detect_time_command() -> Result<TimeCommand> {
+    let program = "/usr/bin/time";
+    if Command::new(program)
+        .args(["-l", "true"])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .is_some()
+    {
+        return Ok(TimeCommand { program, flavor: TimeCommandFlavor::Bsd });
+    }
+    if Command::new(program)
+        .args(["-v", "true"])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .is_some()
+    {
+        return Ok(TimeCommand { program, flavor: TimeCommandFlavor::Gnu });
+    }
+    bail!("unable to find a supported `/usr/bin/time` implementation")
+}
+
+fn ensure_release_xtask_binary() -> Result<PathBuf> {
+    run("cargo", &["build", "-p", "xtask", "--release"])?;
+    let path = Path::new("target").join("release").join(executable_name("xtask"));
+    if !path.exists() {
+        bail!("expected release xtask binary at {}", path.display());
+    }
+    Ok(path)
+}
+
+fn executable_name(base: &str) -> String {
+    if cfg!(windows) {
+        format!("{base}.exe")
+    } else {
+        base.to_string()
+    }
+}
+
+fn collect_resource_measurements_for_workload(
+    time_command: &TimeCommand,
+    current_exe: &Path,
+    implementation: PythonImplImplementation,
+    benchmark: &str,
+    runs: usize,
+    iterations: usize,
+    resources_root: &Path,
+) -> Result<Vec<ResourceMeasurement>> {
+    let mut measurements = Vec::with_capacity(runs);
+    for run_index in 0..runs {
+        let impl_name = match implementation {
+            PythonImplImplementation::Rust => "rust",
+            PythonImplImplementation::Python => "python",
+        };
+        let safe_name = benchmark.replace('/', "_");
+        let output_path =
+            resources_root.join(format!("{impl_name}-{safe_name}-run-{run_index:02}.json"));
+        let (program, args) = match implementation {
+            PythonImplImplementation::Rust => (
+                current_exe.to_string_lossy().to_string(),
+                vec![
+                    "python-impl-bench-workload".to_string(),
+                    "--implementation".to_string(),
+                    "rust".to_string(),
+                    "--benchmark".to_string(),
+                    benchmark.to_string(),
+                    "--iterations".to_string(),
+                    iterations.to_string(),
+                    "--output".to_string(),
+                    output_path.to_string_lossy().to_string(),
+                ],
+            ),
+            PythonImplImplementation::Python => (
+                "python3".to_string(),
+                vec![
+                    "tools/scripts/python_impl_benchmarks.py".to_string(),
+                    "--iterations".to_string(),
+                    iterations.to_string(),
+                    "--benchmark".to_string(),
+                    benchmark.to_string(),
+                    "--output".to_string(),
+                    output_path.to_string_lossy().to_string(),
+                ],
+            ),
+        };
+        let measurement = run_timed_command(time_command, &program, &args)
+            .with_context(|| format!("measure resources for `{benchmark}` ({impl_name})"))?;
+        measurements.push(measurement);
+    }
+    Ok(measurements)
+}
+
+fn run_timed_command(
+    time_command: &TimeCommand,
+    program: &str,
+    args: &[String],
+) -> Result<ResourceMeasurement> {
+    let mut command = Command::new(time_command.program);
+    match time_command.flavor {
+        TimeCommandFlavor::Bsd => {
+            command.arg("-l");
+        }
+        TimeCommandFlavor::Gnu => {
+            command.arg("-v");
+        }
+    }
+    let output = command
+        .arg(program)
+        .args(args)
+        .output()
+        .with_context(|| format!("spawn timed command `{program}`"))?;
+    if !output.status.success() {
+        bail!("timed command `{program}` failed: {}", String::from_utf8_lossy(&output.stderr));
+    }
+    parse_time_output(time_command.flavor, &String::from_utf8_lossy(&output.stderr))
+}
+
+fn parse_time_output(flavor: TimeCommandFlavor, stderr: &str) -> Result<ResourceMeasurement> {
+    match flavor {
+        TimeCommandFlavor::Bsd => parse_bsd_time_output(stderr),
+        TimeCommandFlavor::Gnu => parse_gnu_time_output(stderr),
+    }
+}
+
+fn parse_bsd_time_output(stderr: &str) -> Result<ResourceMeasurement> {
+    let mut user_cpu_seconds = None;
+    let mut sys_cpu_seconds = None;
+    let mut peak_rss_bytes = None;
+    for line in stderr.lines() {
+        let trimmed = line.trim();
+        if trimmed.contains(" real ") && trimmed.contains(" user ") && trimmed.contains(" sys") {
+            let parts = trimmed.split_whitespace().collect::<Vec<_>>();
+            if parts.len() >= 6 {
+                user_cpu_seconds = parts.get(2).and_then(|value| value.parse::<f64>().ok());
+                sys_cpu_seconds = parts.get(4).and_then(|value| value.parse::<f64>().ok());
+            }
+        } else if trimmed.ends_with("maximum resident set size") {
+            peak_rss_bytes =
+                trimmed.split_whitespace().next().and_then(|value| value.parse::<u64>().ok());
+        }
+    }
+    Ok(ResourceMeasurement {
+        peak_rss_bytes: peak_rss_bytes.context("bsd time output missing peak rss")?,
+        user_cpu_seconds: user_cpu_seconds.context("bsd time output missing user cpu")?,
+        sys_cpu_seconds: sys_cpu_seconds.context("bsd time output missing sys cpu")?,
+    })
+}
+
+fn parse_gnu_time_output(stderr: &str) -> Result<ResourceMeasurement> {
+    let mut user_cpu_seconds = None;
+    let mut sys_cpu_seconds = None;
+    let mut peak_rss_bytes = None;
+    for line in stderr.lines() {
+        if let Some(value) = line.strip_prefix("\tUser time (seconds): ") {
+            user_cpu_seconds = value.trim().parse::<f64>().ok();
+        } else if let Some(value) = line.strip_prefix("\tSystem time (seconds): ") {
+            sys_cpu_seconds = value.trim().parse::<f64>().ok();
+        } else if let Some(value) = line.strip_prefix("\tMaximum resident set size (kbytes): ") {
+            peak_rss_bytes = value.trim().parse::<u64>().ok().map(|kb| kb * 1024);
+        }
+    }
+    Ok(ResourceMeasurement {
+        peak_rss_bytes: peak_rss_bytes.context("gnu time output missing peak rss")?,
+        user_cpu_seconds: user_cpu_seconds.context("gnu time output missing user cpu")?,
+        sys_cpu_seconds: sys_cpu_seconds.context("gnu time output missing sys cpu")?,
+    })
+}
+
+fn aggregate_python_impl_report(
+    per_run_reports: &[PythonImplComparisonReport],
+    comparisons: &[PythonImplComparison],
+    resource_measurements: &BTreeMap<String, ResourceMeasurementSet>,
+    profile: PythonImplBenchProfile,
+    compare_runs: usize,
+    resource_runs: usize,
+    baseline_resource_iterations: usize,
+) -> Result<PythonImplReportSummary> {
+    let environment = per_run_reports
+        .first()
+        .context("at least one compare run is required")?
+        .environment
+        .clone();
+    let mut aggregated = Vec::new();
+
+    for comparison in comparisons {
+        let matching_rows = per_run_reports
+            .iter()
+            .map(|report| {
+                report
+                    .comparisons
+                    .iter()
+                    .find(|row| row.label == comparison.label)
+                    .cloned()
+                    .with_context(|| format!("missing comparison row `{}`", comparison.label))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let rust = median_bench_stats(
+            &matching_rows.iter().map(|row| row.rust.clone()).collect::<Vec<_>>(),
+        );
+        let python = median_bench_stats(
+            &matching_rows.iter().map(|row| row.python.clone()).collect::<Vec<_>>(),
+        );
+        let rust_resources = aggregate_resource_stats(
+            resource_measurements
+                .get(&format!("rust:{}", comparison.rust_benchmark))
+                .with_context(|| {
+                    format!(
+                        "missing rust resource measurements for `{}`",
+                        comparison.rust_benchmark
+                    )
+                })?,
+        );
+        let python_resources = aggregate_resource_stats(
+            resource_measurements
+                .get(&format!("python:{}", comparison.python_benchmark))
+                .with_context(|| {
+                    format!(
+                        "missing python resource measurements for `{}`",
+                        comparison.python_benchmark
+                    )
+                })?,
+        );
+        aggregated.push(PythonImplReportComparison {
+            label: comparison.label.clone(),
+            rust_benchmark: comparison.rust_benchmark.clone(),
+            python_benchmark: comparison.python_benchmark.clone(),
+            context: BenchContext {
+                workload_class: comparison.workload_class.clone(),
+                payload_size_bytes: comparison.payload_size_bytes,
+                batch_size: comparison.batch_size,
+            },
+            rust: rust.clone(),
+            python: python.clone(),
+            rust_advantage_vs_python: bench_advantage(&rust, &python),
+            rust_resources: rust_resources.clone(),
+            python_resources: python_resources.clone(),
+            rust_resource_advantage_vs_python: ResourceAdvantage {
+                rss_reduction: reduction(
+                    python_resources.median_peak_rss_bytes as f64,
+                    rust_resources.median_peak_rss_bytes as f64,
+                ),
+                cpu_time_reduction: reduction(
+                    python_resources.median_cpu_seconds_per_1k_ops,
+                    rust_resources.median_cpu_seconds_per_1k_ops,
+                ),
+            },
+        });
+    }
+
+    Ok(PythonImplReportSummary {
+        profile: match profile {
+            PythonImplBenchProfile::Fast => "fast".to_string(),
+            PythonImplBenchProfile::Report => "report".to_string(),
+        },
+        compare_runs,
+        resource_runs,
+        resource_iterations: baseline_resource_iterations,
+        environment,
+        comparisons: aggregated,
+    })
+}
+
+fn aggregate_report_rows_by_label(
+    per_run_reports: &[PythonImplComparisonReport],
+) -> Result<BTreeMap<String, PythonImplComparisonRow>> {
+    let mut rows = BTreeMap::new();
+    let comparisons =
+        &per_run_reports.first().context("at least one compare run is required")?.comparisons;
+    for comparison in comparisons {
+        let matching_rows = per_run_reports
+            .iter()
+            .map(|report| {
+                report
+                    .comparisons
+                    .iter()
+                    .find(|row| row.label == comparison.label)
+                    .cloned()
+                    .with_context(|| format!("missing comparison row `{}`", comparison.label))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        rows.insert(
+            comparison.label.clone(),
+            PythonImplComparisonRow {
+                label: comparison.label.clone(),
+                rust_benchmark: comparison.rust_benchmark.clone(),
+                python_benchmark: comparison.python_benchmark.clone(),
+                context: comparison.context.clone(),
+                rust: median_bench_stats(
+                    &matching_rows.iter().map(|row| row.rust.clone()).collect::<Vec<_>>(),
+                ),
+                python: median_bench_stats(
+                    &matching_rows.iter().map(|row| row.python.clone()).collect::<Vec<_>>(),
+                ),
+                rust_speedup_vs_python: median_bench_stats(
+                    &matching_rows
+                        .iter()
+                        .map(|row| row.rust_speedup_vs_python.clone())
+                        .collect::<Vec<_>>(),
+                ),
+                rust_advantage_vs_python: comparison.rust_advantage_vs_python.clone(),
+            },
+        );
+    }
+    Ok(rows)
+}
+
+fn resource_iterations_for_duration(
+    baseline_iterations: usize,
+    p50_ns: f64,
+    min_duration_seconds: f64,
+) -> usize {
+    let target_iterations = ((min_duration_seconds * 1_000_000_000.0) / p50_ns.max(1.0)).ceil();
+    baseline_iterations.max(target_iterations as usize)
+}
+
+fn median_bench_stats(values: &[BenchStats]) -> BenchStats {
+    BenchStats {
+        iterations: median_usize(values.iter().map(|entry| entry.iterations).collect()),
+        sample_count: median_usize(values.iter().map(|entry| entry.sample_count).collect()),
+        mean_ns: median_f64(values.iter().map(|entry| entry.mean_ns).collect()),
+        p50_ns: median_f64(values.iter().map(|entry| entry.p50_ns).collect()),
+        p95_ns: median_f64(values.iter().map(|entry| entry.p95_ns).collect()),
+        p99_ns: median_f64(values.iter().map(|entry| entry.p99_ns).collect()),
+        throughput_ops_per_sec: median_f64(
+            values.iter().map(|entry| entry.throughput_ops_per_sec).collect(),
+        ),
+    }
+}
+
+fn aggregate_resource_stats(resource_set: &ResourceMeasurementSet) -> ResourceStats {
+    let measurements = &resource_set.measurements;
+    let peak_rss_values = measurements.iter().map(|entry| entry.peak_rss_bytes).collect::<Vec<_>>();
+    let user_values = measurements.iter().map(|entry| entry.user_cpu_seconds).collect::<Vec<_>>();
+    let sys_values = measurements.iter().map(|entry| entry.sys_cpu_seconds).collect::<Vec<_>>();
+    let cpu_per_k_values = measurements
+        .iter()
+        .map(|entry| {
+            ((entry.user_cpu_seconds + entry.sys_cpu_seconds) * 1000.0)
+                / resource_set.iterations_per_run as f64
+        })
+        .collect::<Vec<_>>();
+    ResourceStats {
+        runs: measurements.len(),
+        iterations_per_run: resource_set.iterations_per_run,
+        mean_peak_rss_bytes: peak_rss_values.iter().map(|value| *value as f64).sum::<f64>()
+            / peak_rss_values.len() as f64,
+        median_peak_rss_bytes: median_u64(peak_rss_values.clone()),
+        max_peak_rss_bytes: peak_rss_values.into_iter().max().unwrap_or(0),
+        mean_user_cpu_seconds: user_values.iter().sum::<f64>() / user_values.len() as f64,
+        median_user_cpu_seconds: median_f64(user_values),
+        mean_sys_cpu_seconds: sys_values.iter().sum::<f64>() / sys_values.len() as f64,
+        median_sys_cpu_seconds: median_f64(sys_values),
+        mean_cpu_seconds_per_1k_ops: cpu_per_k_values.iter().sum::<f64>()
+            / cpu_per_k_values.len() as f64,
+        median_cpu_seconds_per_1k_ops: median_f64(cpu_per_k_values),
+    }
+}
+
+fn bench_advantage(rust: &BenchStats, python: &BenchStats) -> BenchAdvantage {
+    BenchAdvantage {
+        mean_speedup: ratio(python.mean_ns, rust.mean_ns),
+        p50_speedup: ratio(python.p50_ns, rust.p50_ns),
+        p95_speedup: ratio(python.p95_ns, rust.p95_ns),
+        p99_speedup: ratio(python.p99_ns, rust.p99_ns),
+        throughput_gain: ratio(rust.throughput_ops_per_sec, python.throughput_ops_per_sec),
+        mean_latency_reduction: reduction(python.mean_ns, rust.mean_ns),
+        p50_latency_reduction: reduction(python.p50_ns, rust.p50_ns),
+        p95_latency_reduction: reduction(python.p95_ns, rust.p95_ns),
+        p99_latency_reduction: reduction(python.p99_ns, rust.p99_ns),
+    }
+}
+
+fn write_python_impl_report_summary(summary: &PythonImplReportSummary) -> Result<()> {
+    fs::create_dir_all(PYTHON_IMPL_REPORT_DIR)
+        .with_context(|| format!("create {}", PYTHON_IMPL_REPORT_DIR))?;
+    fs::write(
+        PYTHON_IMPL_REPORT_JSON_PATH,
+        serde_json::to_string_pretty(summary).context("serialize benchmark report summary")?,
+    )
+    .with_context(|| format!("write {PYTHON_IMPL_REPORT_JSON_PATH}"))?;
+
+    let mut lines = Vec::new();
+    lines.push("# Python Implementation Benchmark Report".to_string());
+    lines.push(String::new());
+    lines.push(format!("- Profile: `{}`", summary.profile));
+    lines.push(format!("- Compare runs: {}", summary.compare_runs));
+    lines.push(format!("- Resource runs: {}", summary.resource_runs));
+    lines.push(format!("- Resource iterations per run: {}", summary.resource_iterations));
+    lines.push(format!("- Git commit: `{}`", summary.environment.git_commit));
+    lines.push(format!("- Host: `{}`", summary.environment.uname));
+    lines.push(String::new());
+    for comparison in &summary.comparisons {
+        lines.push(format!("## {}", comparison.label));
+        let mut context_parts = Vec::new();
+        if let Some(workload_class) = &comparison.context.workload_class {
+            context_parts.push(format!("workload_class={workload_class}"));
+        }
+        if let Some(payload_size_bytes) = comparison.context.payload_size_bytes {
+            context_parts.push(format!("payload_size_bytes={payload_size_bytes}"));
+        }
+        if let Some(batch_size) = comparison.context.batch_size {
+            context_parts.push(format!("batch_size={batch_size}"));
+        }
+        if !context_parts.is_empty() {
+            lines.push(format!("- Context: {}", context_parts.join(" ")));
+        }
+        lines.push(format!(
+            "- Timing: rust_p50_ns={:.2} python_p50_ns={:.2} rust_speedup={:.2}x throughput_gain={:.2}x",
+            comparison.rust.p50_ns,
+            comparison.python.p50_ns,
+            comparison.rust_advantage_vs_python.p50_speedup,
+            comparison.rust_advantage_vs_python.throughput_gain
+        ));
+        lines.push(format!(
+            "- Resources: rust_peak_rss_bytes={} python_peak_rss_bytes={} rss_reduction={:.2}% rust_cpu_seconds_per_1k_ops={:.6} python_cpu_seconds_per_1k_ops={:.6} cpu_reduction={:.2}%",
+            comparison.rust_resources.median_peak_rss_bytes,
+            comparison.python_resources.median_peak_rss_bytes,
+            comparison.rust_resource_advantage_vs_python.rss_reduction * 100.0,
+            comparison.rust_resources.median_cpu_seconds_per_1k_ops,
+            comparison.python_resources.median_cpu_seconds_per_1k_ops,
+            comparison.rust_resource_advantage_vs_python.cpu_time_reduction * 100.0
+        ));
+        lines.push(String::new());
+    }
+    fs::write(PYTHON_IMPL_REPORT_TEXT_PATH, lines.join("\n"))
+        .with_context(|| format!("write {PYTHON_IMPL_REPORT_TEXT_PATH}"))
+}
+
+fn median_f64(mut values: Vec<f64>) -> f64 {
+    values.sort_by(f64::total_cmp);
+    values[values.len() / 2]
+}
+
+fn median_u64(mut values: Vec<u64>) -> u64 {
+    values.sort_unstable();
+    values[values.len() / 2]
+}
+
+fn median_usize(mut values: Vec<usize>) -> usize {
+    values.sort_unstable();
+    values[values.len() / 2]
 }
 
 fn load_python_impl_bench_config() -> Result<PythonImplBenchConfig> {

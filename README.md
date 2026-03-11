@@ -60,13 +60,18 @@ cargo xtask ci
 cargo xtask release-check
 cargo xtask api-diff
 cargo xtask python-impl-bench-compare
+cargo xtask python-impl-bench-compare --profile report
+cargo xtask python-impl-bench-report
 ```
 
 Cross-language protocol benchmark reports are written to
 `target/criterion/python-impl-compare.txt` and compare Rust core paths to the
 installed Python `RNS` and `LXMF` implementations. Benchmark configuration
 lives in `tools/benchmarks/python_impl.toml`, and the operating runbook is
-`docs/runbooks/python-impl-benchmarking.md`.
+`docs/runbooks/python-impl-benchmarking.md`. For publishable claims, use
+`cargo xtask python-impl-bench-report`, which runs the stricter `report`
+profile repeatedly and writes aggregated timing/resource artifacts under
+`target/criterion/python-impl-report/`.
 
 ## Developer Bootstrap
 

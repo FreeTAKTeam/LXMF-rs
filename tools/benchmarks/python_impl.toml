@@ -1,67 +1,122 @@
-[criterion]
+[profiles.fast.criterion]
 sample_size = 10
 warm_up_time_seconds = 0.1
 measurement_time_seconds = 0.2
 
-[python]
+[profiles.fast.python]
 iterations = 2000
+
+[profiles.fast.report]
+compare_runs = 1
+resource_runs = 1
+resource_iterations = 2000
+resource_min_duration_seconds = 0.25
+
+[profiles.report.criterion]
+sample_size = 30
+warm_up_time_seconds = 1.0
+measurement_time_seconds = 3.0
+
+[profiles.report.python]
+iterations = 10000
+
+[profiles.report.report]
+compare_runs = 5
+resource_runs = 3
+resource_iterations = 10000
+resource_min_duration_seconds = 0.5
 
 [[comparisons]]
 label = "LXMF message decode"
 rust_benchmark = "lxmf_core_message_from_wire"
 python_benchmark = "python_lxmf/message_from_wire"
+workload_class = "protocol_core"
+payload_size_bytes = 21
+batch_size = 1
 
 [[comparisons]]
 label = "LXMF message encode"
 rust_benchmark = "lxmf_core_message_to_wire"
 python_benchmark = "python_lxmf/message_to_wire"
+workload_class = "protocol_core"
+payload_size_bytes = 12
+batch_size = 1
 
 [[comparisons]]
 label = "LXMF large message decode"
 rust_benchmark = "lxmf_core_large_message_from_wire"
 python_benchmark = "python_lxmf/large_message_from_wire"
+workload_class = "protocol_core"
+payload_size_bytes = 2048
+batch_size = 1
 
 [[comparisons]]
 label = "LXMF large message encode"
 rust_benchmark = "lxmf_core_large_message_to_wire"
 python_benchmark = "python_lxmf/large_message_to_wire"
+workload_class = "protocol_core"
+payload_size_bytes = 2048
+batch_size = 1
 
 [[comparisons]]
 label = "Reticulum announce create"
 rust_benchmark = "rns_core_announce_create"
 python_benchmark = "python_rns/announce_create"
+workload_class = "protocol_core"
+payload_size_bytes = 22
+batch_size = 1
 
 [[comparisons]]
 label = "Reticulum announce validate"
 rust_benchmark = "rns_core_announce_validate"
 python_benchmark = "python_rns/announce_validate"
+workload_class = "protocol_core"
+payload_size_bytes = 22
+batch_size = 1
 
 [[comparisons]]
 label = "Reticulum announce validate batch 64"
 rust_benchmark = "rns_core_announce_validate_batch_64"
 python_benchmark = "python_rns/announce_validate_batch_64"
+workload_class = "protocol_core"
+payload_size_bytes = 22
+batch_size = 64
 
 [[comparisons]]
 label = "Reticulum identity sign"
 rust_benchmark = "rns_core_identity_sign"
 python_benchmark = "python_rns/identity_sign"
+workload_class = "protocol_core"
+payload_size_bytes = 2048
+batch_size = 1
 
 [[comparisons]]
 label = "Reticulum identity verify"
 rust_benchmark = "rns_core_identity_verify"
 python_benchmark = "python_rns/identity_verify"
+workload_class = "protocol_core"
+payload_size_bytes = 2048
+batch_size = 1
 
 [[comparisons]]
 label = "Reticulum identity encrypt"
 rust_benchmark = "rns_core_identity_encrypt"
 python_benchmark = "python_rns/identity_encrypt"
+workload_class = "protocol_core"
+payload_size_bytes = 2048
+batch_size = 1
 
 [[comparisons]]
 label = "Reticulum identity decrypt"
 rust_benchmark = "rns_core_identity_decrypt"
 python_benchmark = "python_rns/identity_decrypt"
+workload_class = "protocol_core"
+payload_size_bytes = 2048
+batch_size = 1
 
 [[comparisons]]
 label = "Reticulum resource request window"
 rust_benchmark = "rns_transport_resource_manager_request_window_reuse"
 python_benchmark = "python_rns/resource_request_window"
+workload_class = "transport_hotpath"
+batch_size = 6

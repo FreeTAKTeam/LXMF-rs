@@ -3232,9 +3232,14 @@ dependencies = [
  "globset",
  "hex",
  "jsonschema",
+ "lxmf-core",
+ "rand_core",
+ "rns-core",
+ "rns-transport",
  "serde",
  "serde_json",
  "sha2",
+ "tokio",
  "toml",
 ]
 
