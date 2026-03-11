@@ -155,10 +155,8 @@ impl RpcDaemon {
     }
 
     pub fn set_remote_control_bridge(&self, bridge: Arc<dyn RemoteControlBridge>) {
-        let mut guard = self
-            .remote_control_bridge
-            .lock()
-            .expect("remote_control_bridge mutex poisoned");
+        let mut guard =
+            self.remote_control_bridge.lock().expect("remote_control_bridge mutex poisoned");
         *guard = Some(bridge);
     }
 
@@ -514,7 +512,8 @@ impl RpcDaemon {
         peer: &str,
         current_peer_count: usize,
     ) -> Result<(), std::io::Error> {
-        let propagation = self.propagation_state.lock().expect("propagation mutex poisoned").clone();
+        let propagation =
+            self.propagation_state.lock().expect("propagation mutex poisoned").clone();
         let is_static_peer =
             propagation.static_peers.iter().any(|candidate| candidate.eq_ignore_ascii_case(peer));
         if propagation.from_static_only && !is_static_peer {
