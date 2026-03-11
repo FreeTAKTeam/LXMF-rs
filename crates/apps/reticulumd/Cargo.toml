@@ -19,6 +19,7 @@ base64 = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 rand_core = { workspace = true, features = ["getrandom"] }
 x25519-dalek = { workspace = true }
+ed25519-dalek = { workspace = true }
 tokio = { workspace = true }
 serde_json = { workspace = true }
 rmpv = { workspace = true }

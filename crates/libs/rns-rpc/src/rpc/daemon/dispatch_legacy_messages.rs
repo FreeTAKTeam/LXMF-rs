@@ -266,18 +266,32 @@ impl RpcDaemon {
                     .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
 
                 let timestamp = now_i64();
-                let record = self.upsert_peer(parsed.peer, timestamp, None, None);
-                    let event = RpcEvent {
-                        event_type: "peer_sync".into(),
-                        payload: json!({
-                            "peer": &record.peer,
-                            "timestamp": timestamp,
-                            "name": &record.name,
-                            "name_source": &record.name_source,
-                            "first_seen": record.first_seen,
-                            "seen_count": record.seen_count,
-                        }),
-                    };
+                let peer_type = if self.is_static_peer(parsed.peer.as_str()) {
+                    Some("static".to_string())
+                } else {
+                    Some("manual".to_string())
+                };
+                let record = self.upsert_peer(parsed.peer, timestamp, None, None, peer_type)?;
+                {
+                    let mut guard = self.peers.lock().expect("peers mutex poisoned");
+                    if let Some(existing) = guard.get_mut(&record.peer) {
+                        existing.last_sync_attempt = timestamp;
+                        existing.alive = true;
+                        existing.sync_backoff = 0;
+                        existing.next_sync_attempt = 0;
+                    }
+                }
+                let event = RpcEvent {
+                    event_type: "peer_sync".into(),
+                    payload: json!({
+                        "peer": &record.peer,
+                        "timestamp": timestamp,
+                        "name": &record.name,
+                        "name_source": &record.name_source,
+                        "first_seen": record.first_seen,
+                        "seen_count": record.seen_count,
+                    }),
+                };
                 self.publish_event(event);
 
                 Ok(RpcResponse {
@@ -295,7 +309,14 @@ impl RpcDaemon {
 
                 let removed = {
                     let mut guard = self.peers.lock().expect("peers mutex poisoned");
-                    let removed = guard.remove(&parsed.peer).is_some();
+                    let removed = if let Some(existing) = guard.get_mut(&parsed.peer) {
+                        existing.alive = false;
+                        existing.peer_type = Some("unpeered".to_string());
+                        existing.next_sync_attempt = 0;
+                        true
+                    } else {
+                        false
+                    };
                     let peer_count = guard.len();
                     drop(guard);
                     self.update_daemon_status_snapshot(|snapshot| {
@@ -352,7 +373,7 @@ impl RpcDaemon {
                     fields: parsed.fields,
                     receipt_status: None,
                 };
-                self.store_inbound_record(record)?;
+                self.store_inbound_record(record, None)?;
                 Ok(RpcResponse {
                     id: request.id,
                     result: Some(json!({ "message_id": parsed.id })),

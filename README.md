@@ -64,6 +64,18 @@ cargo xtask python-impl-bench-compare --profile report
 cargo xtask python-impl-bench-report
 ```
 
+For fast local iteration on one binary, prefer narrow commands:
+
+```bash
+make check-bin PKG=lxmf-cli BIN=lxmd
+make run-bin PKG=rns-tools BIN=rnsd ARGS="--help"
+make python-lxmd-smoke
+```
+
+If `sccache` is installed, the workspace automatically uses it through
+[`/.cargo/config.toml`](/Users/tommy/Documents/TAK/LXMF-rs/.cargo/config.toml); otherwise builds
+fall back to plain `rustc` with no extra setup required.
+
 Cross-language protocol benchmark reports are written to
 `target/criterion/python-impl-compare.txt` and compare Rust core paths to the
 installed Python `RNS` and `LXMF` implementations. Benchmark configuration
@@ -72,6 +84,11 @@ lives in `tools/benchmarks/python_impl.toml`, and the operating runbook is
 `cargo xtask python-impl-bench-report`, which runs the stricter `report`
 profile repeatedly and writes aggregated timing/resource artifacts under
 `target/criterion/python-impl-report/`.
+
+For daemon-level mixed-runtime smoke coverage, `make python-lxmd-smoke` launches
+a Rust `lxmd` node and an installed Python `lxmd` node together, then verifies
+cross-runtime remote status control and Python-originated inbound delivery into
+the Rust node.
 
 ## Developer Bootstrap
 
@@ -96,6 +113,7 @@ Verification-only mode (used by CI):
 ## Binaries
 
 - `lxmf-cli`
+- `lxmd`
 - `reticulumd`
 - `rncp`, `rnid`, `rnir`, `rnodeconf`, `rnpath`, `rnpkg`, `rnprobe`, `rnsd`, `rnstatus`, `rnx`
 

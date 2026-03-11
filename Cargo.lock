@@ -1363,9 +1363,15 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "clap_complete",
+ "hex",
  "lxmf-sdk",
+ "rmp-serde",
+ "rmpv",
  "serde",
+ "serde_bytes",
  "serde_json",
+ "tempfile",
+ "toml",
 ]
 
 [[package]]
@@ -1863,6 +1869,7 @@ dependencies = [
  "base64 0.22.1",
  "btleplug",
  "clap",
+ "ed25519-dalek",
  "futures",
  "hex",
  "lxmf-core",

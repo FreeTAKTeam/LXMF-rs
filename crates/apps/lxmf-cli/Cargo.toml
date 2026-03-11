@@ -10,9 +10,17 @@ publish = false
 [dependencies]
 clap.workspace = true
 clap_complete.workspace = true
+hex.workspace = true
 lxmf-sdk.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+serde_bytes.workspace = true
+rmp-serde.workspace = true
+rmpv.workspace = true
+toml.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
 
 [lints]
 workspace = true

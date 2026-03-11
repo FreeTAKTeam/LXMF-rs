@@ -70,6 +70,20 @@ pub struct MessagesStoreContentionSnapshot {
     pub write_ops_total: u64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MessageStorageStats {
+    pub count: u64,
+    pub bytes: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PeerMessageStats {
+    pub outgoing: u64,
+    pub incoming: u64,
+    pub offered: u64,
+    pub unhandled: u64,
+}
+
 impl MessagesStore {
     const SDK_DOMAIN_SNAPSHOT_KEY: &'static str = "sdk_domains.v1";
 
@@ -396,6 +410,64 @@ impl MessagesStore {
         Ok(self.write_state.message_count_cache.load(Ordering::Relaxed))
     }
 
+    pub fn message_storage_stats(&self) -> rusqlite::Result<MessageStorageStats> {
+        self.with_read_conn(|conn| {
+            let count = self.write_state.message_count_cache.load(Ordering::Relaxed);
+            let bytes: Option<i64> = conn.query_row(
+                "SELECT COALESCE(SUM(
+                    LENGTH(id) +
+                    LENGTH(source) +
+                    LENGTH(destination) +
+                    LENGTH(title) +
+                    LENGTH(content) +
+                    LENGTH(direction) +
+                    COALESCE(LENGTH(fields), 0) +
+                    COALESCE(LENGTH(receipt_status), 0)
+                ), 0) FROM messages",
+                [],
+                |row| row.get(0),
+            )?;
+            Ok(MessageStorageStats {
+                count,
+                bytes: bytes.unwrap_or(0).max(0) as u64,
+            })
+        })
+    }
+
+    pub fn peer_message_stats(&self, peer: &str) -> rusqlite::Result<PeerMessageStats> {
+        self.with_read_conn(|conn| {
+            let (outgoing, incoming, offered, unhandled): (i64, i64, i64, i64) = conn.query_row(
+                "SELECT
+                    COALESCE(SUM(CASE WHEN destination = ?1 AND direction = 'out' THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN source = ?1 AND direction = 'in' THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE
+                        WHEN destination = ?1
+                         AND direction = 'out'
+                         AND (
+                            receipt_status IS NULL
+                            OR TRIM(receipt_status) = ''
+                            OR (
+                                LOWER(receipt_status) NOT LIKE 'sent%'
+                                AND LOWER(receipt_status) NOT IN ('cancelled', 'delivered', 'failed', 'expired', 'rejected')
+                            )
+                         )
+                        THEN 1
+                        ELSE 0
+                    END), 0),
+                    COALESCE(SUM(CASE WHEN source = ?1 AND direction = 'in' AND receipt_status IS NULL THEN 1 ELSE 0 END), 0)
+                 FROM messages",
+                params![peer],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )?;
+            Ok(PeerMessageStats {
+                outgoing: outgoing.max(0) as u64,
+                incoming: incoming.max(0) as u64,
+                offered: offered.max(0) as u64,
+                unhandled: unhandled.max(0) as u64,
+            })
+        })
+    }
+
     pub fn count_message_buckets(&self) -> rusqlite::Result<(u64, u64)> {
         let (queued, in_flight): (i64, i64) = self.with_read_conn(|conn| {
             let mut stmt = conn.prepare(
@@ -536,6 +608,66 @@ impl MessagesStore {
 
             ids.sort();
             ids.dedup();
+            for message_id in ids.iter() {
+                conn.execute("DELETE FROM messages WHERE id = ?1", params![message_id])?;
+            }
+            if !ids.is_empty() {
+                self.write_state
+                    .message_count_cache
+                    .fetch_sub(ids.len().min(u64::MAX as usize) as u64, Ordering::Relaxed);
+            }
+            Ok(ids)
+        })
+    }
+
+    pub fn prune_messages_to_limit_bytes(&self, limit_bytes: u64) -> rusqlite::Result<Vec<String>> {
+        self.with_write_conn(|conn| {
+            let current_bytes: i64 = conn.query_row(
+                "SELECT COALESCE(SUM(
+                    LENGTH(id) +
+                    LENGTH(source) +
+                    LENGTH(destination) +
+                    LENGTH(title) +
+                    LENGTH(content) +
+                    LENGTH(direction) +
+                    COALESCE(LENGTH(fields), 0) +
+                    COALESCE(LENGTH(receipt_status), 0)
+                ), 0) FROM messages",
+                [],
+                |row| row.get(0),
+            )?;
+            if current_bytes.max(0) as u64 <= limit_bytes {
+                return Ok(Vec::new());
+            }
+
+            let mut stmt = conn.prepare(
+                "SELECT id,
+                        LENGTH(id) +
+                        LENGTH(source) +
+                        LENGTH(destination) +
+                        LENGTH(title) +
+                        LENGTH(content) +
+                        LENGTH(direction) +
+                        COALESCE(LENGTH(fields), 0) +
+                        COALESCE(LENGTH(receipt_status), 0) AS approx_bytes
+                 FROM messages
+                 ORDER BY timestamp ASC, id ASC",
+            )?;
+            let mut rows = stmt.query([])?;
+            let mut bytes = current_bytes.max(0) as u64;
+            let mut ids = Vec::new();
+            while let Some(row) = rows.next()? {
+                if bytes <= limit_bytes {
+                    break;
+                }
+                let id: String = row.get(0)?;
+                let approx_bytes: i64 = row.get(1)?;
+                ids.push(id);
+                bytes = bytes.saturating_sub(approx_bytes.max(0) as u64);
+            }
+            drop(rows);
+            drop(stmt);
+
             for message_id in ids.iter() {
                 conn.execute("DELETE FROM messages WHERE id = ?1", params![message_id])?;
             }
@@ -939,6 +1071,53 @@ mod tests {
         store.clear_messages().expect("clear messages");
 
         assert_eq!(store.message_count().expect("count after clear"), 0);
+    }
+
+    #[test]
+    fn prune_messages_to_limit_bytes_removes_oldest_messages() {
+        let store = MessagesStore::in_memory().expect("in-memory store");
+        let mut first = outbound_message("msg-1", 1, None);
+        first.content = "a".repeat(128);
+        let mut second = outbound_message("msg-2", 2, None);
+        second.content = "b".repeat(128);
+        store.insert_message(&first).expect("insert first");
+        store.insert_message(&second).expect("insert second");
+
+        let before = store.message_storage_stats().expect("stats before");
+        let pruned = store
+            .prune_messages_to_limit_bytes(before.bytes.saturating_sub(64))
+            .expect("prune");
+
+        assert_eq!(pruned, vec!["msg-1".to_string()]);
+        let remaining = store.list_messages(10, None).expect("remaining");
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].id, "msg-2");
+    }
+
+    #[test]
+    fn peer_message_stats_reports_incoming_and_outgoing_counts() {
+        let store = MessagesStore::in_memory().expect("in-memory store");
+        let mut outbound = outbound_message("msg-out", 1, None);
+        outbound.destination = "peer-a".to_string();
+        let inbound = MessageRecord {
+            id: "msg-in".to_string(),
+            source: "peer-a".to_string(),
+            destination: "local".to_string(),
+            title: "title".to_string(),
+            content: "body".to_string(),
+            timestamp: 2,
+            direction: "in".to_string(),
+            fields: None,
+            receipt_status: None,
+        };
+        store.insert_message(&outbound).expect("insert outbound");
+        store.insert_message(&inbound).expect("insert inbound");
+
+        let stats = store.peer_message_stats("peer-a").expect("peer stats");
+        assert_eq!(stats.outgoing, 1);
+        assert_eq!(stats.incoming, 1);
+        assert_eq!(stats.offered, 1);
+        assert_eq!(stats.unhandled, 1);
     }
 
     #[test]

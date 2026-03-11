@@ -76,6 +76,19 @@ ensure_cargo_tool() {
   cargo install --locked "$@"
 }
 
+ensure_optional_cargo_tool() {
+  local binary="$1"
+  shift
+  if command -v "$binary" >/dev/null 2>&1; then
+    return
+  fi
+  if [[ "$CHECK_ONLY" -eq 1 ]]; then
+    echo "optional cargo tool not installed: $binary" >&2
+    return
+  fi
+  cargo install --locked "$@" || echo "optional cargo tool install failed: $binary" >&2
+}
+
 require_cmd rustup
 require_cmd cargo
 
@@ -90,6 +103,7 @@ if [[ "$SKIP_TOOLS" -eq 0 ]]; then
   ensure_cargo_tool cargo-audit cargo-audit
   ensure_cargo_tool cargo-udeps cargo-udeps
   ensure_cargo_tool cargo-public-api cargo-public-api --version 0.50.2
+  ensure_optional_cargo_tool sccache sccache
 fi
 
 if [[ "$CHECK_ONLY" -eq 0 ]]; then

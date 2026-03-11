@@ -71,6 +71,30 @@ impl RpcDaemon {
                     if let Some(cost) = parsed.target_cost {
                         guard.target_cost = cost;
                     }
+                    if let Some(limit) = parsed.message_storage_limit_mb {
+                        guard.message_storage_limit_mb = Some(limit);
+                    }
+                    if let Some(autopeer) = parsed.autopeer {
+                        guard.autopeer = autopeer;
+                    }
+                    if let Some(autopeer_maxdepth) = parsed.autopeer_maxdepth {
+                        guard.autopeer_maxdepth = autopeer_maxdepth;
+                    }
+                    if let Some(static_peers) = parsed.static_peers {
+                        guard.static_peers = static_peers;
+                    }
+                    if let Some(max_peers) = parsed.max_peers {
+                        guard.max_peers = Some(max_peers);
+                    }
+                    if let Some(from_static_only) = parsed.from_static_only {
+                        guard.from_static_only = from_static_only;
+                    }
+                    if let Some(peering_cost) = parsed.peering_cost {
+                        guard.peering_cost = Some(peering_cost);
+                    }
+                    if let Some(remote_peering_cost_max) = parsed.remote_peering_cost_max {
+                        guard.remote_peering_cost_max = Some(remote_peering_cost_max);
+                    }
                     guard.clone()
                 };
                 self.update_daemon_status_snapshot(|snapshot| {
@@ -109,6 +133,9 @@ impl RpcDaemon {
                     let ingested_count = usize::from(!transient_id.is_empty());
                     guard.last_ingest_count = ingested_count;
                     guard.total_ingested += ingested_count;
+                    guard.client_propagation_messages_received = guard
+                        .client_propagation_messages_received
+                        .saturating_add(ingested_count);
                     guard.clone()
                 };
                 self.update_daemon_status_snapshot(|snapshot| {
@@ -140,6 +167,17 @@ impl RpcDaemon {
                     .ok_or_else(|| {
                         std::io::Error::new(std::io::ErrorKind::NotFound, "transient_id not found")
                     })?;
+                {
+                    let mut guard =
+                        self.propagation_state.lock().expect("propagation mutex poisoned");
+                    guard.client_propagation_messages_served =
+                        guard.client_propagation_messages_served.saturating_add(1);
+                    let state = guard.clone();
+                    drop(guard);
+                    self.update_daemon_status_snapshot(|snapshot| {
+                        snapshot.propagation = state;
+                    });
+                }
 
                 Ok(RpcResponse {
                     id: request.id,
@@ -238,6 +276,91 @@ impl RpcDaemon {
                     result: Some(json!({
                         "nodes": nodes,
                         "meta": self.response_meta(),
+                    })),
+                    error: None,
+                })
+            }
+            "propagation_remote_status" => {
+                let params = request.params.ok_or_else(|| {
+                    std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing params")
+                })?;
+                let parsed: PropagationRemoteStatusParams = serde_json::from_value(params)
+                    .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
+                let bridge = self
+                    .remote_control_bridge
+                    .lock()
+                    .expect("remote control bridge mutex poisoned")
+                    .clone()
+                    .ok_or_else(|| std::io::Error::other("remote control bridge unavailable"))?;
+                let timeout_secs = parsed.timeout_secs.unwrap_or(5.0).max(0.1);
+                let result = bridge.propagation_remote_status(
+                    parsed.remote.as_str(),
+                    parsed.identity_private_key_hex.as_deref(),
+                    timeout_secs,
+                )?;
+                Ok(RpcResponse {
+                    id: request.id,
+                    result: Some(json!({
+                        "remote": parsed.remote,
+                        "status": result,
+                    })),
+                    error: None,
+                })
+            }
+            "propagation_remote_sync" => {
+                let params = request.params.ok_or_else(|| {
+                    std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing params")
+                })?;
+                let parsed: PropagationRemotePeerParams = serde_json::from_value(params)
+                    .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
+                let bridge = self
+                    .remote_control_bridge
+                    .lock()
+                    .expect("remote control bridge mutex poisoned")
+                    .clone()
+                    .ok_or_else(|| std::io::Error::other("remote control bridge unavailable"))?;
+                let timeout_secs = parsed.timeout_secs.unwrap_or(5.0).max(0.1);
+                let result = bridge.propagation_remote_sync(
+                    parsed.remote.as_str(),
+                    parsed.peer.as_str(),
+                    parsed.identity_private_key_hex.as_deref(),
+                    timeout_secs,
+                )?;
+                Ok(RpcResponse {
+                    id: request.id,
+                    result: Some(json!({
+                        "remote": parsed.remote,
+                        "peer": parsed.peer,
+                        "result": result,
+                    })),
+                    error: None,
+                })
+            }
+            "propagation_remote_unpeer" => {
+                let params = request.params.ok_or_else(|| {
+                    std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing params")
+                })?;
+                let parsed: PropagationRemotePeerParams = serde_json::from_value(params)
+                    .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
+                let bridge = self
+                    .remote_control_bridge
+                    .lock()
+                    .expect("remote control bridge mutex poisoned")
+                    .clone()
+                    .ok_or_else(|| std::io::Error::other("remote control bridge unavailable"))?;
+                let timeout_secs = parsed.timeout_secs.unwrap_or(5.0).max(0.1);
+                let result = bridge.propagation_remote_unpeer(
+                    parsed.remote.as_str(),
+                    parsed.peer.as_str(),
+                    parsed.identity_private_key_hex.as_deref(),
+                    timeout_secs,
+                )?;
+                Ok(RpcResponse {
+                    id: request.id,
+                    result: Some(json!({
+                        "remote": parsed.remote,
+                        "peer": parsed.peer,
+                        "result": result,
                     })),
                     error: None,
                 })

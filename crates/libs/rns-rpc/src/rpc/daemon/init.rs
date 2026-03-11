@@ -99,6 +99,7 @@ impl RpcDaemon {
             announce_bridge,
             event_sink_bridges,
             interface_mutation_bridge: Mutex::new(None),
+            remote_control_bridge: Mutex::new(None),
         };
         let _ = daemon.restore_sdk_domain_snapshot();
         daemon
@@ -147,6 +148,14 @@ impl RpcDaemon {
         *guard = Some(bridge);
     }
 
+    pub fn set_remote_control_bridge(&self, bridge: Arc<dyn RemoteControlBridge>) {
+        let mut guard = self
+            .remote_control_bridge
+            .lock()
+            .expect("remote_control_bridge mutex poisoned");
+        *guard = Some(bridge);
+    }
+
     pub fn set_propagation_state(
         &self,
         enabled: bool,
@@ -157,6 +166,61 @@ impl RpcDaemon {
         guard.enabled = enabled;
         guard.store_root = store_root;
         guard.target_cost = target_cost;
+        let state = guard.clone();
+        drop(guard);
+        self.update_daemon_status_snapshot(|snapshot| {
+            snapshot.propagation = state;
+        });
+    }
+
+    pub fn message_storage_stats(&self) -> Result<(u64, u64), std::io::Error> {
+        let stats = self.store.message_storage_stats().map_err(std::io::Error::other)?;
+        Ok((stats.count, stats.bytes))
+    }
+
+    pub fn peer_message_stats(&self, peer: &str) -> Result<(u64, u64, u64, u64), std::io::Error> {
+        let stats = self.store.peer_message_stats(peer).map_err(std::io::Error::other)?;
+        Ok((stats.outgoing, stats.incoming, stats.offered, stats.unhandled))
+    }
+
+    pub fn record_inbound_peer_activity(&self, peer: &str, bytes: usize) {
+        if let Ok(mut guard) = self.peers.lock() {
+            if let Some(existing) = guard.get_mut(peer) {
+                existing.alive = true;
+                existing.last_seen = now_i64();
+                existing.rx_bytes = existing.rx_bytes.saturating_add(bytes as u64);
+            }
+        }
+    }
+
+    pub fn record_outbound_peer_activity(&self, peer: &str, bytes: usize, delivered: bool) {
+        if let Ok(mut guard) = self.peers.lock() {
+            if let Some(existing) = guard.get_mut(peer) {
+                let now = now_i64();
+                existing.tx_bytes = existing.tx_bytes.saturating_add(bytes as u64);
+                existing.alive = true;
+                existing.last_sync_attempt = now;
+                if !delivered {
+                    existing.sync_backoff = existing.sync_backoff.saturating_add(1);
+                    existing.next_sync_attempt =
+                        now.saturating_add(i64::from(existing.sync_backoff) * 30);
+                    existing.acceptance_rate = (existing.acceptance_rate * 0.9).max(0.0);
+                } else {
+                    existing.sync_backoff = 0;
+                    existing.next_sync_attempt = 0;
+                    existing.acceptance_rate =
+                        ((existing.acceptance_rate * 0.8) + 0.2).clamp(0.0, 1.0);
+                }
+            }
+        }
+    }
+
+    pub fn record_unpeered_propagation_attempt(&self, bytes: usize) {
+        let mut guard = self.propagation_state.lock().expect("propagation mutex poisoned");
+        guard.unpeered_propagation_incoming =
+            guard.unpeered_propagation_incoming.saturating_add(1);
+        guard.unpeered_propagation_rx_bytes =
+            guard.unpeered_propagation_rx_bytes.saturating_add(bytes as u64);
         let state = guard.clone();
         drop(guard);
         self.update_daemon_status_snapshot(|snapshot| {
@@ -193,16 +257,52 @@ impl RpcDaemon {
             .clone()
     }
 
-    fn store_inbound_record(&self, record: MessageRecord) -> Result<(), std::io::Error> {
+    fn store_inbound_record(
+        &self,
+        record: MessageRecord,
+        raw_lxmf_bytes: Option<&[u8]>,
+    ) -> Result<(), std::io::Error> {
         self.store.insert_message(&record).map_err(std::io::Error::other)?;
-        let event =
-            RpcEvent { event_type: "inbound".into(), payload: json!({ "message": record }) };
+        let storage_limit_bytes = self
+            .propagation_state
+            .lock()
+            .expect("propagation mutex poisoned")
+            .message_storage_limit_mb
+            .map(|value| value.saturating_mul(1024 * 1024));
+        if let Some(limit_bytes) = storage_limit_bytes {
+            let pruned_ids =
+                self.store.prune_messages_to_limit_bytes(limit_bytes).map_err(std::io::Error::other)?;
+            if !pruned_ids.is_empty() {
+                self.publish_event(RpcEvent {
+                    event_type: "propagation_store_pruned".into(),
+                    payload: json!({
+                        "limit_bytes": limit_bytes,
+                        "pruned_ids": pruned_ids,
+                    }),
+                });
+            }
+        }
+        let mut payload = json!({ "message": record });
+        if let Some(raw_lxmf_bytes) = raw_lxmf_bytes {
+            payload["lxmf_bytes_hex"] = json!(hex::encode(raw_lxmf_bytes));
+        }
+        let event = RpcEvent { event_type: "inbound".into(), payload };
         self.publish_event(event);
         Ok(())
     }
 
     pub fn accept_inbound(&self, record: MessageRecord) -> Result<(), std::io::Error> {
-        self.store_inbound_record(record.clone())?;
+        self.store_inbound_record(record.clone(), None)?;
+        let _ = self.correlate_inbound_sdk_command(&record)?;
+        Ok(())
+    }
+
+    pub fn accept_inbound_with_raw(
+        &self,
+        record: MessageRecord,
+        raw_lxmf_bytes: &[u8],
+    ) -> Result<(), std::io::Error> {
+        self.store_inbound_record(record.clone(), Some(raw_lxmf_bytes))?;
         let _ = self.correlate_inbound_sdk_command(&record)?;
         Ok(())
     }
@@ -268,7 +368,20 @@ impl RpcDaemon {
         let _ = stamp_cost;
         let stamp_cost_flexibility = stamp_cost_flexibility.flatten();
         let peering_cost = peering_cost.flatten();
-        let record = self.upsert_peer(peer, timestamp, name, name_source);
+        let is_static = self.is_static_peer(peer.as_str());
+        let should_peer = is_static || self.should_autopeer_peer(hops);
+        let peer_type = if is_static {
+            Some("static".to_string())
+        } else if should_peer {
+            Some("auto".to_string())
+        } else {
+            Some("discovered".to_string())
+        };
+        let record = if should_peer {
+            self.upsert_peer(peer.clone(), timestamp, name.clone(), name_source.clone(), peer_type.clone())?
+        } else {
+            self.transient_peer_record(peer.clone(), timestamp, name.clone(), name_source.clone(), peer_type)
+        };
         let capability_list = if let Some(caps) = capabilities {
             normalize_capabilities(caps)
         } else {
@@ -328,7 +441,8 @@ impl RpcDaemon {
         timestamp: i64,
         name: Option<String>,
         name_source: Option<String>,
-    ) -> PeerRecord {
+        peer_type: Option<String>,
+    ) -> Result<PeerRecord, std::io::Error> {
         let cleaned_name = clean_optional_text(name);
         let cleaned_name_source = clean_optional_text(name_source);
 
@@ -340,20 +454,33 @@ impl RpcDaemon {
                 existing.name = Some(name);
                 existing.name_source = cleaned_name_source;
             }
+            if let Some(peer_type) = peer_type.clone() {
+                existing.peer_type = Some(peer_type);
+            }
             let record = existing.clone();
             let peer_count = guard.len();
             drop(guard);
             self.update_daemon_status_snapshot(|snapshot| {
                 snapshot.peer_count = peer_count;
             });
-            return record;
+            return Ok(record);
         }
+        self.ensure_peer_admission_allowed(&peer, guard.len())?;
 
         let record = PeerRecord {
             peer: peer.clone(),
             last_seen: timestamp,
             name: cleaned_name,
             name_source: cleaned_name_source,
+            peer_type,
+            alive: true,
+            last_sync_attempt: 0,
+            next_sync_attempt: 0,
+            sync_backoff: 0,
+            network_distance: 1,
+            rx_bytes: 0,
+            tx_bytes: 0,
+            acceptance_rate: 1.0,
             first_seen: timestamp,
             seen_count: 1,
         };
@@ -363,7 +490,72 @@ impl RpcDaemon {
         self.update_daemon_status_snapshot(|snapshot| {
             snapshot.peer_count = peer_count;
         });
-        record
+        Ok(record)
+    }
+
+    fn ensure_peer_admission_allowed(
+        &self,
+        peer: &str,
+        current_peer_count: usize,
+    ) -> Result<(), std::io::Error> {
+        let propagation = self.propagation_state.lock().expect("propagation mutex poisoned").clone();
+        let is_static_peer =
+            propagation.static_peers.iter().any(|candidate| candidate.eq_ignore_ascii_case(peer));
+        if propagation.from_static_only && !is_static_peer {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                format!("peer {peer} rejected by from_static_only policy"),
+            ));
+        }
+        if let Some(limit) = propagation.max_peers {
+            if current_peer_count >= limit as usize && !is_static_peer {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::WouldBlock,
+                    format!("peer {peer} rejected because max_peers={limit} is reached"),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn is_static_peer(&self, peer: &str) -> bool {
+        let propagation = self.propagation_state.lock().expect("propagation mutex poisoned");
+        propagation.static_peers.iter().any(|candidate| candidate.eq_ignore_ascii_case(peer))
+    }
+
+    fn should_autopeer_peer(&self, hops: Option<u32>) -> bool {
+        let propagation = self.propagation_state.lock().expect("propagation mutex poisoned");
+        if !propagation.autopeer {
+            return false;
+        }
+        hops.unwrap_or(1) <= propagation.autopeer_maxdepth.max(1)
+    }
+
+    fn transient_peer_record(
+        &self,
+        peer: String,
+        timestamp: i64,
+        name: Option<String>,
+        name_source: Option<String>,
+        peer_type: Option<String>,
+    ) -> PeerRecord {
+        PeerRecord {
+            peer,
+            last_seen: timestamp,
+            name: clean_optional_text(name),
+            name_source: clean_optional_text(name_source),
+            peer_type,
+            alive: true,
+            last_sync_attempt: 0,
+            next_sync_attempt: 0,
+            sync_backoff: 0,
+            network_distance: 1,
+            rx_bytes: 0,
+            tx_bytes: 0,
+            acceptance_rate: 1.0,
+            first_seen: timestamp,
+            seen_count: 1,
+        }
     }
 
     #[allow(dead_code)]

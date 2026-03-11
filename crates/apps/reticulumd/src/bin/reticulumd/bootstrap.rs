@@ -11,7 +11,10 @@ use reticulum_daemon::announce_names::{
 use reticulum_daemon::config::{DaemonConfig, InterfaceConfig};
 use reticulum_daemon::identity_store::load_or_create_identity;
 use reticulum_daemon::receipt_bridge::ReceiptBridge;
-use rns_rpc::{AnnounceBridge, InterfaceRecord, MessagesStore, OutboundBridge, RpcDaemon};
+use rns_rpc::{
+    AnnounceBridge, InterfaceRecord, MessagesStore, OutboundBridge, RemoteControlBridge,
+    RpcDaemon,
+};
 use rns_transport::destination::{DestinationName, SingleInputDestination};
 use rns_transport::iface::tcp_client::TcpClient;
 use rns_transport::iface::tcp_server::TcpServer;
@@ -36,6 +39,14 @@ pub(super) struct BootstrapContext {
     pub(super) rpc_addr: SocketAddr,
     pub(super) daemon: Arc<RpcDaemon>,
     pub(super) rpc_tls: Option<RpcTlsConfig>,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct PropagationControlContext {
+    pub(super) enabled: bool,
+    pub(super) propagation_destination_hash_hex: Option<String>,
+    pub(super) control_destination_hash_hex: Option<String>,
+    pub(super) allowed_control_identities: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -102,7 +113,11 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     let mut transport: Option<Arc<Transport>> = None;
     let peer_crypto: Arc<Mutex<HashMap<String, PeerCrypto>>> = Arc::new(Mutex::new(HashMap::new()));
     let mut announce_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>> = None;
+    let mut propagation_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>> = None;
+    let mut control_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>> = None;
     let mut delivery_destination_hash_hex: Option<String> = None;
+    let mut propagation_destination_hash_hex: Option<String> = None;
+    let mut control_destination_hash_hex: Option<String> = None;
     let mut delivery_source_hash = [0u8; 16];
     let receipt_map: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
     let outbound_resource_map: Arc<Mutex<HashMap<String, String>>> =
@@ -110,6 +125,12 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     let (receipt_tx, receipt_rx) = unbounded_channel();
     let mut hot_apply_seeded_tcp: Vec<(String, InterfaceRecord, rns_transport::hash::AddressHash)> =
         Vec::new();
+    let propagation_control_enabled = env_flag("LXMD_PROPAGATION_NODE");
+    let configured_control_identities = parse_hex_list_env("LXMD_CONTROL_ALLOWED");
+    let peer_announce_at_start = env_flag("LXMD_PEER_ANNOUNCE_AT_START");
+    let node_announce_at_start = env_flag("LXMD_NODE_ANNOUNCE_AT_START");
+    let peer_announce_interval_secs = env_u64("LXMD_PEER_ANNOUNCE_INTERVAL_SECS");
+    let node_announce_interval_secs = env_u64("LXMD_NODE_ANNOUNCE_INTERVAL_SECS");
 
     if let Some(addr) = args.transport.clone() {
         let transport_identity =
@@ -387,6 +408,40 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
             );
         }
         announce_destination = Some(destination);
+        if propagation_control_enabled {
+            let propagation = transport_instance
+                .add_destination(
+                    transport_identity.clone(),
+                    DestinationName::new("lxmf", "propagation"),
+                )
+                .await;
+            {
+                let dest = propagation.lock().await;
+                propagation_destination_hash_hex =
+                    Some(hex::encode(dest.desc.address_hash.as_slice()));
+                println!(
+                    "[daemon] propagation destination hash={}",
+                    hex::encode(dest.desc.address_hash.as_slice())
+                );
+            }
+            propagation_destination = Some(propagation);
+
+            let control = transport_instance
+                .add_destination(
+                    transport_identity.clone(),
+                    DestinationName::new("lxmf", "propagation.control"),
+                )
+                .await;
+            {
+                let dest = control.lock().await;
+                control_destination_hash_hex = Some(hex::encode(dest.desc.address_hash.as_slice()));
+                println!(
+                    "[daemon] control destination hash={}",
+                    hex::encode(dest.desc.address_hash.as_slice())
+                );
+            }
+            control_destination = Some(control);
+        }
         transport = Some(Arc::new(transport_instance));
     } else if let Some(config) = daemon_config.as_ref() {
         for (index, iface) in config.interfaces.iter().enumerate() {
@@ -434,6 +489,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
 
     let bridge: Option<Arc<TransportBridge>> =
         transport.as_ref().zip(announce_destination.as_ref()).map(|(transport, destination)| {
+            let propagation_app_data = encode_propagation_node_app_data(local_display_name.as_deref());
             Arc::new(TransportBridge::new(
                 transport.clone(),
                 identity.clone(),
@@ -442,6 +498,9 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
                 local_display_name
                     .as_ref()
                     .and_then(|display_name| encode_delivery_display_name_app_data(display_name)),
+                propagation_destination.clone(),
+                propagation_app_data,
+                control_destination.clone(),
                 peer_crypto.clone(),
                 receipt_map.clone(),
                 outbound_resource_map.clone(),
@@ -466,13 +525,51 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
             hot_apply_seeded_tcp,
         )));
     }
+    if let Some(bridge) = bridge.as_ref() {
+        bridge.set_daemon(daemon.clone());
+        daemon.set_remote_control_bridge(bridge.clone() as Arc<dyn RemoteControlBridge>);
+    }
     daemon.set_delivery_destination_hash(delivery_destination_hash_hex);
     daemon.replace_interfaces(configured_interfaces);
     daemon.set_propagation_state(transport.is_some(), None, 0);
 
-    // Make the local delivery destination visible on startup.
-    if let Some(bridge) = bridge.as_ref() {
-        let _ = bridge.announce_now();
+    // Make the local delivery destination visible on startup when configured.
+    if peer_announce_at_start {
+        if let Some(bridge) = bridge.as_ref() {
+            let _ = bridge.announce_now();
+        }
+    }
+    if let Some((transport, destination, interval_secs)) = transport
+        .as_ref()
+        .zip(announce_destination.as_ref())
+        .zip(peer_announce_interval_secs)
+        .map(|((transport, destination), interval_secs)| (transport, destination, interval_secs))
+    {
+        spawn_destination_announce_scheduler(transport.clone(), destination.clone(), None, interval_secs);
+    }
+
+    if propagation_control_enabled && node_announce_at_start {
+        if let Some((transport, destination)) = transport.as_ref().zip(propagation_destination.as_ref()) {
+            let propagation_app_data = encode_propagation_node_app_data(local_display_name.as_deref());
+            transport.send_announce(destination, propagation_app_data.as_deref()).await;
+        }
+        if let Some((transport, destination)) = transport.as_ref().zip(control_destination.as_ref()) {
+            transport.send_announce(destination, None).await;
+        }
+    }
+    if let Some(interval_secs) = node_announce_interval_secs {
+        if let Some((transport, destination)) = transport.as_ref().zip(propagation_destination.as_ref()) {
+            let propagation_app_data = encode_propagation_node_app_data(local_display_name.as_deref());
+            spawn_destination_announce_scheduler(
+                transport.clone(),
+                destination.clone(),
+                propagation_app_data,
+                interval_secs,
+            );
+        }
+        if let Some((transport, destination)) = transport.as_ref().zip(control_destination.as_ref()) {
+            spawn_destination_announce_scheduler(transport.clone(), destination.clone(), None, interval_secs);
+        }
     }
 
     if transport.is_some() {
@@ -492,6 +589,12 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         spawn_inbound_worker(
             daemon.clone(),
             transport.clone(),
+            PropagationControlContext {
+                enabled: propagation_control_enabled,
+                propagation_destination_hash_hex,
+                control_destination_hash_hex,
+                allowed_control_identities: configured_control_identities,
+            },
             receipt_tx.clone(),
             outbound_resource_map,
         );
@@ -532,6 +635,77 @@ pub(super) fn mark_interface_startup_status(
             runtime.remove("iface");
         }
     });
+}
+
+fn env_flag(key: &str) -> bool {
+    std::env::var(key)
+        .ok()
+        .map(|value| {
+            matches!(value.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on")
+        })
+        .unwrap_or(false)
+}
+
+fn parse_hex_list_env(key: &str) -> Vec<String> {
+    std::env::var(key)
+        .ok()
+        .map(|value| {
+            value
+                .split(',')
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToOwned::to_owned)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn env_u64(key: &str) -> Option<u64> {
+    std::env::var(key)
+        .ok()
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .filter(|value| *value > 0)
+}
+
+fn spawn_destination_announce_scheduler(
+    transport: Arc<Transport>,
+    destination: Arc<tokio::sync::Mutex<SingleInputDestination>>,
+    app_data: Option<Vec<u8>>,
+    interval_secs: u64,
+) {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(interval_secs));
+        loop {
+            interval.tick().await;
+            transport.send_announce(&destination, app_data.as_deref()).await;
+        }
+    });
+}
+
+fn encode_propagation_node_app_data(display_name: Option<&str>) -> Option<Vec<u8>> {
+    let mut metadata = Vec::new();
+    if let Some(name) = display_name {
+        metadata.push((rmpv::Value::from(1_i64), rmpv::Value::Binary(name.as_bytes().to_vec())));
+    }
+    let announce_data = rmpv::Value::Array(vec![
+        rmpv::Value::Boolean(false),
+        rmpv::Value::from(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs() as i64,
+        ),
+        rmpv::Value::Boolean(true),
+        rmpv::Value::from(256_i64),
+        rmpv::Value::from(10240_i64),
+        rmpv::Value::Array(vec![
+            rmpv::Value::from(16_i64),
+            rmpv::Value::from(3_i64),
+            rmpv::Value::from(18_i64),
+        ]),
+        rmpv::Value::Map(metadata),
+    ]);
+    rmp_serde::to_vec(&announce_data).ok()
 }
 
 pub(super) fn mark_interface_runtime_managed(record: &mut InterfaceRecord, managed_by: &str) {

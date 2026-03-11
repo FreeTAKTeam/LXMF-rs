@@ -75,6 +75,22 @@ struct PropagationEnableParams {
     store_root: Option<String>,
     #[serde(default)]
     target_cost: Option<u32>,
+    #[serde(default)]
+    message_storage_limit_mb: Option<u64>,
+    #[serde(default)]
+    autopeer: Option<bool>,
+    #[serde(default)]
+    autopeer_maxdepth: Option<u32>,
+    #[serde(default)]
+    static_peers: Option<Vec<String>>,
+    #[serde(default)]
+    max_peers: Option<u32>,
+    #[serde(default)]
+    from_static_only: Option<bool>,
+    #[serde(default)]
+    peering_cost: Option<u32>,
+    #[serde(default)]
+    remote_peering_cost_max: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -124,6 +140,25 @@ struct ListAnnouncesParams {
 struct SetOutboundPropagationNodeParams {
     #[serde(default)]
     peer: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PropagationRemoteStatusParams {
+    remote: String,
+    #[serde(default)]
+    identity_private_key_hex: Option<String>,
+    #[serde(default)]
+    timeout_secs: Option<f64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PropagationRemotePeerParams {
+    remote: String,
+    peer: String,
+    #[serde(default)]
+    identity_private_key_hex: Option<String>,
+    #[serde(default)]
+    timeout_secs: Option<f64>,
 }
 
 #[derive(Debug, Deserialize)]

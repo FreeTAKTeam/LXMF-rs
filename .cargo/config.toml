@@ -9,3 +9,4 @@ architecture-checks = "xtask architecture-checks"
 
 [build]
 target-dir = "target"
+rustc-wrapper = ".cargo/rustc-wrapper.sh"
