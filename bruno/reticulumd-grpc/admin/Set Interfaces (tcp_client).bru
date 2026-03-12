@@ -1,0 +1,30 @@
+meta {
+  name: Set Interfaces (tcp_client)
+  type: grpc
+  seq: 3
+}
+
+grpc {
+  url: 127.0.0.1:50051
+  method: /lxmf.admin.v1.InterfaceAdminService/SetInterfaces
+  body: grpc
+  auth: inherit
+  methodType: unary
+}
+
+body:grpc {
+  name: message 1
+  content: '''
+    {
+      "interfaces": [
+        {
+          "type": "tcp_client",
+          "enabled": true,
+          "host": "127.0.0.1",
+          "port": 4242,
+          "name": "primary"
+        }
+      ]
+    }
+  '''
+}

@@ -1,17 +1,11 @@
 meta {
-  name: Poll Events
+  name: Poll Events Continue
   type: http
-  seq: 1
+  seq: 2
 }
 
 docs {
-  Polls the event feed from the current head.
-
-  Expected results:
-  - events plus next_cursor when new events are available
-  - next_cursor only when the stream is currently empty
-
-  A next_cursor-only response is normal and should be reused in the continue request.
+  A next_cursor-only response is normal when there are no pending events. Reuse that next_cursor here to continue polling.
 }
 
 post {
@@ -28,9 +22,10 @@ headers {
 body:json {
   {
     "jsonrpc": "2.0",
-    "id": 40,
+    "id": 41,
     "method": "sdk_poll_events_v2",
     "params": {
+      "cursor": "replace-with-next_cursor",
       "max": 16
     }
   }

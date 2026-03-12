@@ -1,0 +1,25 @@
+meta {
+  name: List Attachments Continue
+  type: grpc
+  seq: 4
+}
+
+grpc {
+  url: 127.0.0.1:50051
+  method: /lxmf.attachments.v1.AttachmentService/ListAttachments
+  body: grpc
+  auth: inherit
+  methodType: unary
+}
+
+body:grpc {
+  name: message 1
+  content: '''
+    {
+      "page": {
+        "pageToken": "replace-with-nextPageToken",
+        "pageSize": 25
+      }
+    }
+  '''
+}

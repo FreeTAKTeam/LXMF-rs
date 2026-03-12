@@ -1,0 +1,43 @@
+meta {
+  name: Set Interfaces (tcp_client)
+  type: http
+  seq: 3
+}
+
+docs {
+  Replaces the interface set with a single tcp_client example. This is the safest mutation example to start from.
+}
+
+post {
+  url: http://127.0.0.1:4243/rpc/json
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Accept: application/json
+}
+
+body:json {
+  {
+    "jsonrpc": "2.0",
+    "id": 12,
+    "method": "set_interfaces",
+    "params": {
+      "interfaces": [
+        {
+          "type": "tcp_client",
+          "enabled": true,
+          "host": "127.0.0.1",
+          "port": 4242,
+          "name": "primary"
+        }
+      ]
+    }
+  }
+}
+
+assert {
+  res.status: eq 200
+}

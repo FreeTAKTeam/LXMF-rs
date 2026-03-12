@@ -1,0 +1,35 @@
+meta {
+  name: List Attachments First Page
+  type: http
+  seq: 2
+}
+
+docs {
+  Lists attachments without a cursor. For follow-up pages, reuse next_cursor from the previous result.
+}
+
+post {
+  url: http://127.0.0.1:4243/rpc/json
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Accept: application/json
+}
+
+body:json {
+  {
+    "jsonrpc": "2.0",
+    "id": 31,
+    "method": "sdk_attachment_list_v2",
+    "params": {
+      "limit": 25
+    }
+  }
+}
+
+assert {
+  res.status: eq 200
+}

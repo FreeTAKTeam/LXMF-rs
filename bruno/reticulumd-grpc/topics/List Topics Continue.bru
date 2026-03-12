@@ -1,0 +1,25 @@
+meta {
+  name: List Topics Continue
+  type: grpc
+  seq: 3
+}
+
+grpc {
+  url: 127.0.0.1:50051
+  method: /lxmf.topics.v1.TopicService/ListTopics
+  body: grpc
+  auth: inherit
+  methodType: unary
+}
+
+body:grpc {
+  name: message 1
+  content: '''
+    {
+      "page": {
+        "pageToken": "replace-with-nextPageToken",
+        "pageSize": 25
+      }
+    }
+  '''
+}

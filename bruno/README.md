@@ -8,6 +8,16 @@ Current contents:
   - local-ready JSON-RPC collection for the browser-safe `/rpc/json` endpoint
 - `reticulumd-grpc/`
   - gRPC collection shell with reflection/proto guidance for Bruno's gRPC UI
+  - plus saved unary requests organized by domain
+
+Common usage rules:
+
+- JSON-RPC requests use snake_case payload fields.
+- gRPC requests use camelCase payload fields.
+- Requests named `First Page` omit cursor/page tokens on purpose.
+- Requests named `Continue` require you to replace the placeholder token with
+  the `next_cursor` or `nextPageToken` from the previous response.
+- Event polling may validly return only a continuation token and no rows yet.
 
 ## Why JSON-RPC First
 

@@ -1,0 +1,36 @@
+meta {
+  name: List Topics Continue
+  type: http
+  seq: 3
+}
+
+docs {
+  Use next_cursor from the previous topic list response. Omit cursor on the first page.
+}
+
+post {
+  url: http://127.0.0.1:4243/rpc/json
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Accept: application/json
+}
+
+body:json {
+  {
+    "jsonrpc": "2.0",
+    "id": 22,
+    "method": "sdk_topic_list_v2",
+    "params": {
+      "cursor": "replace-with-next_cursor",
+      "limit": 25
+    }
+  }
+}
+
+assert {
+  res.status: eq 200
+}
