@@ -59,6 +59,7 @@ with `grpcurl` or generated clients.
   - `DeleteMarker`
 - `lxmf.peers.v1.PeerService`
   - `ListPeers`
+  - `SearchPeers`
   - `SyncPeer`
   - `Unpeer`
   - `ClearPeers`

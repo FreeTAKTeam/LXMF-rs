@@ -498,6 +498,8 @@ pub struct PeerRecord {
     pub peer: String,
     pub last_seen: i64,
     #[serde(default)]
+    pub capabilities: Vec<String>,
+    #[serde(default)]
     pub name: Option<String>,
     #[serde(default)]
     pub name_source: Option<String>,

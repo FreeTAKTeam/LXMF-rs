@@ -288,8 +288,14 @@ impl RpcDaemon {
                 } else {
                     Some("manual".to_string())
                 };
-                let record =
-                    self.upsert_peer(peer_id.to_string(), timestamp, None, None, peer_type)?;
+                let record = self.upsert_peer(
+                    peer_id.to_string(),
+                    timestamp,
+                    Vec::new(),
+                    None,
+                    None,
+                    peer_type,
+                )?;
                 {
                     let mut guard = self.peers.lock().expect("peers mutex poisoned");
                     if let Some(existing) = guard.get_mut(&record.peer) {

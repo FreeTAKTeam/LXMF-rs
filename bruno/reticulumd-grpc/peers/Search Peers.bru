@@ -1,0 +1,31 @@
+meta {
+  name: Search Peers
+  type: grpc
+  seq: 5
+}
+
+docs {
+  Search the current peer table by substring. Matches peer id, name, name source, and peer type.
+
+  Set `aliveOnly` to `true` to only return currently alive peers.
+  Use `requiredCapabilities` to require one or more peer capabilities.
+}
+
+grpc {
+  url: {{grpc_host}}
+  method: /lxmf.peers.v1.PeerService/SearchPeers
+  body: grpc
+  auth: inherit
+  methodType: unary
+}
+
+body:grpc {
+  name: message 1
+  content: '''
+    {
+      "query": "rmap",
+      "aliveOnly": true,
+      "requiredCapabilities": ["propagation"]
+    }
+  '''
+}

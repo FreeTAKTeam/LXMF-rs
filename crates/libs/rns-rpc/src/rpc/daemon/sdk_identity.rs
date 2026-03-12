@@ -628,6 +628,7 @@ impl RpcDaemon {
             let _ = self.upsert_peer(
                 identity,
                 timestamp,
+                Vec::new(),
                 contact.display_name.clone(),
                 Some("bootstrap".to_string()),
                 Some("bootstrap".to_string()),

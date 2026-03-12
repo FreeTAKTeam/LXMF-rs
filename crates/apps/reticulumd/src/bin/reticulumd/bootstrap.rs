@@ -20,6 +20,7 @@ use rns_transport::iface::tcp_server::TcpServer;
 use rns_transport::transport::{Transport, TransportConfig};
 use serde_json::{Map as JsonMap, Value as JsonValue};
 use std::collections::HashMap;
+use std::io::IsTerminal;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -140,7 +141,13 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     let node_announce_interval_secs = env_u64("LXMD_NODE_ANNOUNCE_INTERVAL_SECS");
 
     if let Some(addr) = args.transport.clone() {
-        println!("reticulumd transport listening on reticulum://{}", addr);
+        println!(
+            "{}",
+            pretty_boot_line(
+                "transport",
+                &format!("reticulumd transport listening on reticulum://{}", addr)
+            )
+        );
         let transport_identity =
             rns_transport::identity_bridge::to_transport_private_identity(&identity);
         let config = TransportConfig::new("daemon", &transport_identity, true);
@@ -383,7 +390,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
                 }
             }
         }
-        eprintln!("[daemon] transport enabled");
+        eprintln!("{}", pretty_daemon_line("transport enabled"));
         if let Some((host, port)) = addr.rsplit_once(':') {
             let mut server_record = InterfaceRecord {
                 kind: "tcp_server".into(),
@@ -412,8 +419,11 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
             delivery_source_hash.copy_from_slice(dest.desc.address_hash.as_slice());
             delivery_destination_hash_hex = Some(hex::encode(dest.desc.address_hash.as_slice()));
             println!(
-                "[daemon] delivery destination hash={}",
-                hex::encode(dest.desc.address_hash.as_slice())
+                "{}",
+                pretty_daemon_line(&format!(
+                    "delivery destination hash={}",
+                    hex::encode(dest.desc.address_hash.as_slice())
+                ))
             );
         }
         announce_destination = Some(destination);
@@ -429,8 +439,11 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
                 propagation_destination_hash_hex =
                     Some(hex::encode(dest.desc.address_hash.as_slice()));
                 println!(
-                    "[daemon] propagation destination hash={}",
-                    hex::encode(dest.desc.address_hash.as_slice())
+                    "{}",
+                    pretty_daemon_line(&format!(
+                        "propagation destination hash={}",
+                        hex::encode(dest.desc.address_hash.as_slice())
+                    ))
                 );
             }
             propagation_destination = Some(propagation);
@@ -445,8 +458,11 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
                 let dest = control.lock().await;
                 control_destination_hash_hex = Some(hex::encode(dest.desc.address_hash.as_slice()));
                 println!(
-                    "[daemon] control destination hash={}",
-                    hex::encode(dest.desc.address_hash.as_slice())
+                    "{}",
+                    pretty_daemon_line(&format!(
+                        "control destination hash={}",
+                        hex::encode(dest.desc.address_hash.as_slice())
+                    ))
                 );
             }
             control_destination = Some(control);
@@ -454,7 +470,10 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         transport = Some(Arc::new(transport_instance));
     } else if let Some(config) = daemon_config.as_ref() {
         eprintln!(
-            "[daemon] transport disabled; configured interfaces will remain inactive until you start reticulumd with --transport HOST:PORT"
+            "{}",
+            pretty_warn_line(
+                "transport disabled; configured interfaces will remain inactive until you start reticulumd with --transport HOST:PORT"
+            )
         );
         for (index, iface) in config.interfaces.iter().enumerate() {
             if !iface.enabled() {
@@ -503,12 +522,18 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         grpc_addr.map(|addr| addr.to_string()).unwrap_or_else(|| "disabled".to_string());
     let transport_summary = args.transport.clone().unwrap_or_else(|| "disabled".to_string());
     println!(
-        "reticulumd startup summary: rpc={} grpc={} transport={} interfaces={} identity={}",
-        rpc_addr,
-        grpc_summary,
-        transport_summary,
-        configured_interfaces.len(),
-        identity_hash
+        "{}",
+        pretty_boot_line(
+            "startup",
+            &format!(
+                "reticulumd startup summary: rpc={} grpc={} transport={} interfaces={} identity={}",
+                rpc_addr,
+                grpc_summary,
+                transport_summary,
+                configured_interfaces.len(),
+                identity_hash
+            )
+        )
     );
 
     let bridge: Option<Arc<TransportBridge>> =
@@ -644,6 +669,58 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     }
 
     BootstrapContext { rpc_addr, grpc_addr, daemon, rpc_tls, grpc_tls }
+}
+
+fn pretty_console_logs_enabled() -> bool {
+    matches!(
+        std::env::var("LXMF_LOG_PRETTY").ok().as_deref(),
+        Some("1" | "true" | "TRUE" | "yes" | "YES" | "on" | "ON")
+    )
+}
+
+fn pretty_color_enabled() -> bool {
+    if matches!(
+        std::env::var("LXMF_LOG_COLOR").ok().as_deref(),
+        Some("1" | "true" | "TRUE" | "yes" | "YES" | "on" | "ON" | "always" | "ALWAYS")
+    ) {
+        return true;
+    }
+    if matches!(
+        std::env::var("LXMF_LOG_COLOR").ok().as_deref(),
+        Some("0" | "false" | "FALSE" | "no" | "NO" | "off" | "OFF" | "never" | "NEVER")
+    ) {
+        return false;
+    }
+    pretty_console_logs_enabled() && std::io::stderr().is_terminal()
+}
+
+fn ansi(text: &str, code: &str) -> String {
+    if pretty_color_enabled() {
+        format!("\x1b[{code}m{text}\x1b[0m")
+    } else {
+        text.to_string()
+    }
+}
+
+fn pretty_boot_line(tag: &str, body: &str) -> String {
+    if !pretty_console_logs_enabled() {
+        return body.to_string();
+    }
+    format!("{} {}", ansi(&format!("[{tag}]"), "1;35"), body)
+}
+
+fn pretty_daemon_line(body: &str) -> String {
+    if !pretty_console_logs_enabled() {
+        return format!("[daemon] {body}");
+    }
+    format!("{} {}", ansi("[daemon]", "1;34"), body)
+}
+
+fn pretty_warn_line(body: &str) -> String {
+    if !pretty_console_logs_enabled() {
+        return format!("[warn] {body}");
+    }
+    format!("{} {}", ansi("[warn]", "1;33"), body)
 }
 
 fn parse_tls_args(

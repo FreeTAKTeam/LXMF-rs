@@ -19,6 +19,9 @@ message Peer {
   double acceptance_rate = 13;
   int64 first_seen_ts_ms = 14;
   uint64 seen_count = 15;
+  repeated string capabilities = 16;
+  bool has_capabilities = 17;
+  uint32 capability_count = 18;
 }
 
 // Empty request for listing peers.
@@ -26,6 +29,18 @@ message ListPeersRequest {}
 
 // Returns the current peer table.
 message ListPeersResponse {
+  repeated Peer peers = 1;
+}
+
+// Searches the peer table by peer id or descriptive fields.
+message SearchPeersRequest {
+  string query = 1;
+  bool alive_only = 2;
+  repeated string required_capabilities = 3;
+}
+
+// Returns peers matching the search criteria.
+message SearchPeersResponse {
   repeated Peer peers = 1;
 }
 
@@ -62,6 +77,8 @@ message ClearPeersResponse {
 service PeerService {
   // Lists the current peer table.
   rpc ListPeers(ListPeersRequest) returns (ListPeersResponse);
+  // Searches the current peer table by peer id or descriptive fields.
+  rpc SearchPeers(SearchPeersRequest) returns (SearchPeersResponse);
   // Starts or refreshes sync for one peer.
   rpc SyncPeer(SyncPeerRequest) returns (SyncPeerResponse);
   // Removes one peer.

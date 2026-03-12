@@ -4,6 +4,7 @@ use serde::Deserialize;
 use serde_json::{json, Value as JsonValue};
 use std::convert::TryFrom;
 use std::fs;
+use std::io::IsTerminal;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -138,7 +139,8 @@ use lxmf::markers::v1::{
 use lxmf::peers::v1::peer_service_server::{PeerService, PeerServiceServer};
 use lxmf::peers::v1::{
     ClearPeersRequest, ClearPeersResponse, ListPeersRequest, ListPeersResponse, Peer,
-    SyncPeerRequest, SyncPeerResponse, UnpeerRequest, UnpeerResponse,
+    SearchPeersRequest, SearchPeersResponse, SyncPeerRequest, SyncPeerResponse, UnpeerRequest,
+    UnpeerResponse,
 };
 use lxmf::runtime::v1::runtime_service_server::{RuntimeService, RuntimeServiceServer};
 use lxmf::runtime::v1::{
@@ -223,18 +225,20 @@ fn emit_grpc_access_log(
         Err(status) => (status.code().to_string(), Some(status.message().to_string())),
     };
     if pretty_console_logs_enabled() {
-        let rpc_fragment =
-            meta.rpc_method.map(|method| format!(" rpc={method}")).unwrap_or_default();
-        let error_fragment =
-            error_text.as_ref().map(|error| format!(" error={error}")).unwrap_or_default();
         eprintln!(
-            "[grpc] peer={} status={} elapsed={}ms method={}{}{}",
-            meta.peer.as_deref().unwrap_or("-"),
-            status_code,
-            elapsed_ms,
-            meta.grpc_method,
-            rpc_fragment,
-            error_fragment
+            "{} {} {} {} {}{}{}",
+            pretty_tag("grpc", 36),
+            pretty_status(&status_code, grpc_status_color(&status_code)),
+            pretty_elapsed(elapsed_ms),
+            pretty_method(short_grpc_method(meta.grpc_method)),
+            pretty_secondary(&format!("peer={}", meta.peer.as_deref().unwrap_or("-"))),
+            meta.rpc_method
+                .map(|method| format!(" {}", pretty_secondary(&format!("rpc={method}"))))
+                .unwrap_or_default(),
+            error_text
+                .as_ref()
+                .map(|error| format!(" {}", pretty_error(error)))
+                .unwrap_or_default()
         );
         return;
     }
@@ -255,21 +259,24 @@ fn emit_grpc_access_log(
 
 fn emit_grpc_status_log(meta: &GrpcRequestLogMeta, status: &Status, elapsed_ms: u64) {
     if pretty_console_logs_enabled() {
-        let rpc_fragment =
-            meta.rpc_method.map(|method| format!(" rpc={method}")).unwrap_or_default();
-        let error_fragment = if status.message().is_empty() {
-            String::new()
-        } else {
-            format!(" error={}", status.message())
-        };
         eprintln!(
-            "[grpc] peer={} status={} elapsed={}ms method={}{}{}",
-            meta.peer.as_deref().unwrap_or("-"),
-            status.code(),
-            elapsed_ms,
-            meta.grpc_method,
-            rpc_fragment,
-            error_fragment
+            "{} {} {} {} {}{}{}",
+            pretty_tag("grpc", 36),
+            pretty_status(
+                &status.code().to_string(),
+                grpc_status_color(&status.code().to_string())
+            ),
+            pretty_elapsed(elapsed_ms),
+            pretty_method(short_grpc_method(meta.grpc_method)),
+            pretty_secondary(&format!("peer={}", meta.peer.as_deref().unwrap_or("-"))),
+            meta.rpc_method
+                .map(|method| format!(" {}", pretty_secondary(&format!("rpc={method}"))))
+                .unwrap_or_default(),
+            if status.message().is_empty() {
+                String::new()
+            } else {
+                format!(" {}", pretty_error(status.message()))
+            }
         );
         return;
     }
@@ -290,14 +297,16 @@ fn emit_grpc_status_log(meta: &GrpcRequestLogMeta, status: &Status, elapsed_ms: 
 
 fn emit_grpc_ok_log(meta: &GrpcRequestLogMeta, elapsed_ms: u64) {
     if pretty_console_logs_enabled() {
-        let rpc_fragment =
-            meta.rpc_method.map(|method| format!(" rpc={method}")).unwrap_or_default();
         eprintln!(
-            "[grpc] peer={} status=OK elapsed={}ms method={}{}",
-            meta.peer.as_deref().unwrap_or("-"),
-            elapsed_ms,
-            meta.grpc_method,
-            rpc_fragment
+            "{} {} {} {} {}{}",
+            pretty_tag("grpc", 36),
+            pretty_status("OK", 32),
+            pretty_elapsed(elapsed_ms),
+            pretty_method(short_grpc_method(meta.grpc_method)),
+            pretty_secondary(&format!("peer={}", meta.peer.as_deref().unwrap_or("-"))),
+            meta.rpc_method
+                .map(|method| format!(" {}", pretty_secondary(&format!("rpc={method}"))))
+                .unwrap_or_default()
         );
         return;
     }
@@ -321,6 +330,67 @@ fn pretty_console_logs_enabled() -> bool {
         std::env::var("LXMF_LOG_PRETTY").ok().as_deref(),
         Some("1" | "true" | "TRUE" | "yes" | "YES" | "on" | "ON")
     )
+}
+
+fn pretty_color_enabled() -> bool {
+    if matches!(
+        std::env::var("LXMF_LOG_COLOR").ok().as_deref(),
+        Some("1" | "true" | "TRUE" | "yes" | "YES" | "on" | "ON" | "always" | "ALWAYS")
+    ) {
+        return true;
+    }
+    if matches!(
+        std::env::var("LXMF_LOG_COLOR").ok().as_deref(),
+        Some("0" | "false" | "FALSE" | "no" | "NO" | "off" | "OFF" | "never" | "NEVER")
+    ) {
+        return false;
+    }
+    pretty_console_logs_enabled() && std::io::stderr().is_terminal()
+}
+
+fn ansi(text: &str, code: &str) -> String {
+    if pretty_color_enabled() {
+        format!("\x1b[{code}m{text}\x1b[0m")
+    } else {
+        text.to_string()
+    }
+}
+
+fn pretty_tag(label: &str, color: u8) -> String {
+    ansi(&format!("[{label:<4}]"), &color.to_string())
+}
+
+fn pretty_status(label: &str, color: u8) -> String {
+    ansi(&format!("{label:<12}"), &format!("1;{color}"))
+}
+
+fn pretty_elapsed(elapsed_ms: u64) -> String {
+    ansi(&format!("{elapsed_ms:>4}ms"), "2")
+}
+
+fn pretty_method(method: &str) -> String {
+    ansi(method, "1")
+}
+
+fn pretty_secondary(value: &str) -> String {
+    ansi(value, "2")
+}
+
+fn pretty_error(value: &str) -> String {
+    ansi(&format!("error={value}"), "31")
+}
+
+fn short_grpc_method(method: &str) -> &str {
+    method.strip_prefix('/').unwrap_or(method)
+}
+
+fn grpc_status_color(status_code: &str) -> u8 {
+    match status_code {
+        "OK" => 32,
+        "InvalidArgument" | "Unauthenticated" | "PermissionDenied" | "NotFound"
+        | "FailedPrecondition" | "AlreadyExists" => 33,
+        _ => 31,
+    }
 }
 
 #[derive(Clone)]
@@ -804,6 +874,8 @@ struct DeleteMarkerPayload {
 struct PeerRecordPayload {
     peer: String,
     last_seen: i64,
+    #[serde(default)]
+    capabilities: Vec<String>,
     #[serde(default)]
     name: Option<String>,
     #[serde(default)]
@@ -2280,6 +2352,57 @@ impl PeerService for PeerGrpcService {
         }))
     }
 
+    async fn search_peers(
+        &self,
+        request: Request<SearchPeersRequest>,
+    ) -> Result<Response<SearchPeersResponse>, Status> {
+        let criteria = request.into_inner();
+        let required_capabilities = criteria
+            .required_capabilities
+            .iter()
+            .map(|capability| capability.trim().to_ascii_lowercase())
+            .filter(|capability| !capability.is_empty())
+            .collect::<Vec<_>>();
+        let response = self
+            .bridge
+            .invoke("/lxmf.peers.v1.PeerService/SearchPeers", None, "list_peers", None)
+            .await?;
+        let payload: PeerListPayload = parse_result(response)?;
+        let query = criteria.query.trim().to_ascii_lowercase();
+        let peers = payload
+            .peers
+            .into_iter()
+            .filter(|peer| !peer.peer.trim().is_empty())
+            .map(Peer::from)
+            .filter(|peer| {
+                if criteria.alive_only && !peer.alive {
+                    return false;
+                }
+                if !required_capabilities.is_empty()
+                    && !required_capabilities.iter().all(|required| {
+                        peer.capabilities
+                            .iter()
+                            .any(|capability| capability.to_ascii_lowercase() == *required)
+                    })
+                {
+                    return false;
+                }
+                if query.is_empty() {
+                    return true;
+                }
+                [
+                    peer.peer_id.as_str(),
+                    peer.name.as_deref().unwrap_or_default(),
+                    peer.name_source.as_deref().unwrap_or_default(),
+                    peer.peer_type.as_deref().unwrap_or_default(),
+                ]
+                .iter()
+                .any(|field| field.to_ascii_lowercase().contains(&query))
+            })
+            .collect();
+        Ok(Response::new(SearchPeersResponse { peers }))
+    }
+
     async fn sync_peer(
         &self,
         request: Request<SyncPeerRequest>,
@@ -2784,9 +2907,13 @@ impl From<GeoPointPayload> for GeoPoint {
 
 impl From<PeerRecordPayload> for Peer {
     fn from(value: PeerRecordPayload) -> Self {
+        let capability_count = value.capabilities.len() as u32;
         Self {
             peer_id: value.peer,
             last_seen_ts_ms: value.last_seen,
+            capabilities: value.capabilities,
+            has_capabilities: capability_count > 0,
+            capability_count,
             name: value.name,
             name_source: value.name_source,
             peer_type: value.peer_type,
@@ -4106,6 +4233,73 @@ mod tests {
             .expect("clear peers")
             .into_inner();
         assert_eq!(cleared.cleared, "peers");
+    }
+
+    #[tokio::test]
+    async fn search_peers_filters_live_peer_table() {
+        let daemon = RpcDaemon::test_instance();
+        daemon
+            .accept_announce_with_metadata(
+                "peer-rmap".to_string(),
+                210,
+                Some("rmap.world".to_string()),
+                Some("announce".to_string()),
+                None,
+                Some(vec!["propagation".to_string(), "ops".to_string()]),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(1),
+                None,
+                None,
+                None,
+                None,
+            )
+            .expect("accept announce");
+        daemon
+            .accept_announce_with_metadata(
+                "peer-other".to_string(),
+                211,
+                Some("other".to_string()),
+                Some("announce".to_string()),
+                None,
+                Some(vec!["chat".to_string()]),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(1),
+                None,
+                None,
+                None,
+                None,
+            )
+            .expect("accept announce");
+        let service = PeerGrpcService { bridge: GrpcBridge::new(Arc::new(daemon)) };
+
+        let response = service
+            .search_peers(Request::new(SearchPeersRequest {
+                query: "rmap".to_string(),
+                alive_only: true,
+                required_capabilities: vec!["propagation".to_string()],
+            }))
+            .await
+            .expect("search peers")
+            .into_inner();
+        assert_eq!(response.peers.len(), 1);
+        assert_eq!(response.peers[0].peer_id, "peer-rmap");
+        assert!(response.peers[0].alive);
+        assert!(response.peers[0]
+            .capabilities
+            .iter()
+            .any(|capability| capability == "propagation"));
     }
 
     #[tokio::test]

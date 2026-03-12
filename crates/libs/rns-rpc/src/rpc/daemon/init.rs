@@ -380,10 +380,16 @@ impl RpcDaemon {
         } else {
             Some("discovered".to_string())
         };
+        let capability_list = if let Some(caps) = capabilities {
+            normalize_capabilities(caps)
+        } else {
+            parse_capabilities_from_app_data_hex(app_data_hex.as_deref())
+        };
         let record = if should_peer {
             self.upsert_peer(
                 peer.clone(),
                 timestamp,
+                capability_list.clone(),
                 name.clone(),
                 name_source.clone(),
                 peer_type.clone(),
@@ -392,15 +398,11 @@ impl RpcDaemon {
             self.transient_peer_record(
                 peer.clone(),
                 timestamp,
+                capability_list.clone(),
                 name.clone(),
                 name_source.clone(),
                 peer_type,
             )
-        };
-        let capability_list = if let Some(caps) = capabilities {
-            normalize_capabilities(caps)
-        } else {
-            parse_capabilities_from_app_data_hex(app_data_hex.as_deref())
         };
 
         let announce_record = AnnounceRecord {
@@ -454,17 +456,22 @@ impl RpcDaemon {
         &self,
         peer: String,
         timestamp: i64,
+        capabilities: Vec<String>,
         name: Option<String>,
         name_source: Option<String>,
         peer_type: Option<String>,
     ) -> Result<PeerRecord, std::io::Error> {
         let cleaned_name = clean_optional_text(name);
         let cleaned_name_source = clean_optional_text(name_source);
+        let cleaned_capabilities = normalize_capabilities(capabilities);
 
         let mut guard = self.peers.lock().expect("peers mutex poisoned");
         if let Some(existing) = guard.get_mut(&peer) {
             existing.last_seen = timestamp;
             existing.seen_count = existing.seen_count.saturating_add(1);
+            if !cleaned_capabilities.is_empty() {
+                existing.capabilities = cleaned_capabilities.clone();
+            }
             if let Some(name) = cleaned_name {
                 existing.name = Some(name);
                 existing.name_source = cleaned_name_source;
@@ -485,6 +492,7 @@ impl RpcDaemon {
         let record = PeerRecord {
             peer: peer.clone(),
             last_seen: timestamp,
+            capabilities: cleaned_capabilities,
             name: cleaned_name,
             name_source: cleaned_name_source,
             peer_type,
@@ -551,6 +559,7 @@ impl RpcDaemon {
         &self,
         peer: String,
         timestamp: i64,
+        capabilities: Vec<String>,
         name: Option<String>,
         name_source: Option<String>,
         peer_type: Option<String>,
@@ -558,6 +567,7 @@ impl RpcDaemon {
         PeerRecord {
             peer,
             last_seen: timestamp,
+            capabilities: normalize_capabilities(capabilities),
             name: clean_optional_text(name),
             name_source: clean_optional_text(name_source),
             peer_type,
