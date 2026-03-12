@@ -15,6 +15,7 @@ use std::time::{Duration, Instant};
 const DEFAULT_RPC_ADDR: &str = "127.0.0.1:4243";
 const READY_TIMEOUT: Duration = Duration::from_secs(10);
 const READY_POLL_INTERVAL: Duration = Duration::from_millis(100);
+const GENERATED_RETICULUMD_CONFIG: &str = "reticulumd.generated.toml";
 const PYTHON_DEFAULT_LXMD_CONFIG: &str = r#"# This is an example LXM Daemon config file.
 
 [propagation]
@@ -33,6 +34,36 @@ delivery_transfer_max_accepted_size = 1000
 
 [logging]
 loglevel = 4
+"#;
+const SINGLE_TOML_DEFAULT_CONFIG: &str = r#"[node]
+display_name = "Rust LXMF Node"
+
+[rpc]
+listen = "127.0.0.1:4243"
+
+[transport]
+listen = "0.0.0.0:37428"
+
+[storage]
+db = "./storage/reticulum.db"
+identity = "./identity"
+
+[propagation]
+enable = true
+announce_at_start = true
+announce_interval = 60
+autopeer = true
+autopeer_maxdepth = 6
+
+[lxmf]
+announce_at_start = true
+
+[[interfaces]]
+type = "tcp_client"
+enabled = true
+name = "rmap.world"
+host = "rmap.world"
+port = 4242
 "#;
 
 #[derive(Parser, Debug)]
@@ -145,6 +176,87 @@ struct LxmdPaths {
     identity_file: PathBuf,
     storage_dir: PathBuf,
     messages_dir: PathBuf,
+    generated_rnsconfig: PathBuf,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+struct SingleTomlConfigFile {
+    #[serde(default)]
+    node: SingleTomlNode,
+    #[serde(default)]
+    rpc: SingleTomlRpc,
+    #[serde(default)]
+    transport: SingleTomlTransport,
+    #[serde(default)]
+    storage: SingleTomlStorage,
+    #[serde(default)]
+    propagation: SingleTomlPropagation,
+    #[serde(default)]
+    lxmf: SingleTomlLxmf,
+    #[serde(default)]
+    interfaces: Vec<SingleTomlInterface>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+struct SingleTomlNode {
+    display_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+struct SingleTomlRpc {
+    listen: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+struct SingleTomlTransport {
+    listen: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+struct SingleTomlStorage {
+    db: Option<PathBuf>,
+    identity: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+struct SingleTomlPropagation {
+    enable: Option<bool>,
+    announce_at_start: Option<bool>,
+    announce_interval: Option<u64>,
+    autopeer: Option<bool>,
+    autopeer_maxdepth: Option<u32>,
+    auth_required: Option<bool>,
+    max_peers: Option<u32>,
+    from_static_only: Option<bool>,
+    message_storage_limit_mb: Option<u64>,
+    peering_cost: Option<u32>,
+    remote_peering_cost_max: Option<u32>,
+    static_peers: Option<Vec<String>>,
+    control_allowed: Option<Vec<String>>,
+    prioritised_destinations: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+struct SingleTomlLxmf {
+    announce_at_start: Option<bool>,
+    on_inbound: Option<String>,
+    display_name: Option<String>,
+    delivery_transfer_max_accepted_size: Option<f64>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+struct SingleTomlInterface {
+    #[serde(rename = "type")]
+    interface_type: String,
+    #[serde(default = "default_true_bool")]
+    enabled: bool,
+    name: Option<String>,
+    host: Option<String>,
+    port: Option<u16>,
+}
+
+fn default_true_bool() -> bool {
+    true
 }
 
 #[derive(Debug, Clone)]
@@ -630,11 +742,24 @@ fn emit_compatibility_notes(args: &Args, effective: &EffectiveArgs) {
 
 fn compatibility_notes(args: &Args, effective: &EffectiveArgs) -> Vec<String> {
     let mut notes = Vec::new();
-    if args.config.is_some() {
-        notes.push(format!(
-            "--config loaded launcher settings for profile '{}' and rpc '{}'",
-            effective.profile, effective.rpc
-        ));
+    if let Some(config) = args.config.as_ref() {
+        let message = if is_single_toml_config(config).unwrap_or(false) {
+            format!(
+                "--config loaded single-file TOML settings for profile '{}' and rpc '{}'",
+                effective.profile, effective.rpc
+            )
+        } else if is_legacy_launcher_toml(config) {
+            format!(
+                "--config loaded launcher settings for profile '{}' and rpc '{}'",
+                effective.profile, effective.rpc
+            )
+        } else {
+            format!(
+                "--config loaded Python-style lxmd directory settings for profile '{}' and rpc '{}'",
+                effective.profile, effective.rpc
+            )
+        };
+        notes.push(message);
     }
     if args.on_inbound.is_some() {
         notes.push(
@@ -673,7 +798,7 @@ fn compatibility_notes(args: &Args, effective: &EffectiveArgs) -> Vec<String> {
 }
 
 fn example_config() -> &'static str {
-    PYTHON_DEFAULT_LXMD_CONFIG
+    SINGLE_TOML_DEFAULT_CONFIG
 }
 
 fn resolve_reticulumd_binary(override_path: Option<&Path>) -> PathBuf {
@@ -1258,12 +1383,21 @@ fn load_effective_args(args: &Args) -> Result<EffectiveArgs, String> {
         query_identity: None,
         python_compat: PythonCompatConfig::default(),
     };
-    let paths = prepare_lxmd_paths(args.config.as_deref())?;
-    apply_python_config_file(&mut effective, &paths)?;
     if let Some(config_path) = args.config.as_ref() {
-        if is_legacy_launcher_toml(config_path) {
+        if is_single_toml_config(config_path)? {
+            let paths = prepare_lxmd_paths(Some(config_path))?;
+            apply_single_toml_config(&mut effective, config_path, &paths)?;
+        } else if is_legacy_launcher_toml(config_path) {
+            let paths = prepare_lxmd_paths(Some(config_path))?;
+            apply_python_config_file(&mut effective, &paths)?;
             apply_config_file(&mut effective, config_path)?;
+        } else {
+            let paths = prepare_lxmd_paths(Some(config_path))?;
+            apply_python_config_file(&mut effective, &paths)?;
         }
+    } else {
+        let paths = prepare_lxmd_paths(args.config.as_deref())?;
+        apply_python_config_file(&mut effective, &paths)?;
     }
 
     effective.profile = args.profile.clone();
@@ -1318,6 +1452,7 @@ fn prepare_lxmd_paths(config_arg: Option<&Path>) -> Result<LxmdPaths, String> {
     let identity_file = config_dir.join("identity");
     let storage_dir = config_dir.join("storage");
     let messages_dir = storage_dir.join("messages");
+    let generated_rnsconfig = config_dir.join(GENERATED_RETICULUMD_CONFIG);
 
     fs::create_dir_all(&messages_dir)
         .map_err(|err| format!("failed to create {}: {err}", messages_dir.display()))?;
@@ -1326,7 +1461,14 @@ fn prepare_lxmd_paths(config_arg: Option<&Path>) -> Result<LxmdPaths, String> {
             .map_err(|err| format!("failed to create {}: {err}", config_file.display()))?;
     }
 
-    Ok(LxmdPaths { config_dir, config_file, identity_file, storage_dir, messages_dir })
+    Ok(LxmdPaths {
+        config_dir,
+        config_file,
+        identity_file,
+        storage_dir,
+        messages_dir,
+        generated_rnsconfig,
+    })
 }
 
 fn default_lxmd_config_dir() -> Result<PathBuf, String> {
@@ -1450,6 +1592,139 @@ fn apply_python_config_file(
     Ok(())
 }
 
+fn is_single_toml_config(path: &Path) -> Result<bool, String> {
+    if !path.is_file() || path.extension().and_then(|ext| ext.to_str()) != Some("toml") {
+        return Ok(false);
+    }
+    let contents = fs::read_to_string(path)
+        .map_err(|err| format!("failed to read {}: {err}", path.display()))?;
+    let value: toml::Value = toml::from_str(&contents)
+        .map_err(|err| format!("invalid TOML in {}: {err}", path.display()))?;
+    let Some(table) = value.as_table() else {
+        return Ok(false);
+    };
+    if table.contains_key("lxmd") && table.len() == 1 {
+        return Ok(false);
+    }
+    Ok(
+        table.contains_key("node")
+            || table.contains_key("rpc")
+            || table.contains_key("transport")
+            || table.contains_key("storage")
+            || table.contains_key("propagation")
+            || table.contains_key("lxmf")
+            || table.contains_key("interfaces"),
+    )
+}
+
+fn apply_single_toml_config(
+    effective: &mut EffectiveArgs,
+    config_path: &Path,
+    paths: &LxmdPaths,
+) -> Result<(), String> {
+    let contents = fs::read_to_string(config_path)
+        .map_err(|err| format!("failed to read {}: {err}", config_path.display()))?;
+    let config: SingleTomlConfigFile = toml::from_str(&contents)
+        .map_err(|err| format!("invalid TOML in {}: {err}", config_path.display()))?;
+
+    effective.config_dir = Some(paths.config_dir.clone());
+    effective.messages_dir = Some(paths.messages_dir.clone());
+    effective.db = Some(resolve_config_path(
+        config.storage.db.as_deref(),
+        config_path,
+        &paths.storage_dir.join("reticulum.db"),
+    ));
+    effective.identity = Some(resolve_config_path(
+        config.storage.identity.as_deref(),
+        config_path,
+        &paths.identity_file,
+    ));
+    effective.rnsconfig = Some(paths.generated_rnsconfig.clone());
+
+    if let Some(rpc) = config.rpc.listen {
+        effective.rpc = rpc;
+    }
+    if let Some(transport) = config.transport.listen {
+        effective.transport = Some(transport);
+    }
+    if let Some(display_name) = config
+        .lxmf
+        .display_name
+        .clone()
+        .or(config.node.display_name.clone())
+        .filter(|value| !value.trim().is_empty())
+    {
+        effective.display_name = Some(display_name);
+    }
+    if let Some(enable) = config.propagation.enable {
+        effective.propagation_node = enable;
+    }
+    if let Some(on_inbound) = config.lxmf.on_inbound.filter(|value| !value.trim().is_empty()) {
+        effective.on_inbound = Some(on_inbound);
+    }
+
+    effective.python_compat.auth_required = config.propagation.auth_required.unwrap_or(false);
+    effective.python_compat.autopeer = config.propagation.autopeer.unwrap_or(true);
+    effective.python_compat.autopeer_maxdepth = config.propagation.autopeer_maxdepth.or(Some(6));
+    effective.python_compat.max_peers = config.propagation.max_peers;
+    effective.python_compat.from_static_only = config.propagation.from_static_only.unwrap_or(false);
+    effective.python_compat.message_storage_limit_mb = config.propagation.message_storage_limit_mb;
+    effective.python_compat.peering_cost = config.propagation.peering_cost;
+    effective.python_compat.remote_peering_cost_max = config.propagation.remote_peering_cost_max;
+    effective.python_compat.static_peers = config.propagation.static_peers.unwrap_or_default();
+    effective.python_compat.control_allowed =
+        config.propagation.control_allowed.unwrap_or_default();
+    effective.python_compat.prioritised_destinations =
+        config.propagation.prioritised_destinations.unwrap_or_default();
+    effective.python_compat.node_announce_at_start =
+        config.propagation.announce_at_start.unwrap_or(false);
+    effective.python_compat.node_announce_interval_min = config.propagation.announce_interval;
+    effective.python_compat.peer_announce_at_start = config.lxmf.announce_at_start.unwrap_or(false);
+    effective.python_compat.delivery_transfer_max_kb =
+        config.lxmf.delivery_transfer_max_accepted_size;
+
+    write_generated_reticulumd_config(paths.generated_rnsconfig.as_path(), &config.interfaces)?;
+    Ok(())
+}
+
+fn resolve_config_path(value: Option<&Path>, config_path: &Path, default: &Path) -> PathBuf {
+    match value {
+        Some(path) if path.is_absolute() => path.to_path_buf(),
+        Some(path) => config_path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join(path),
+        None => default.to_path_buf(),
+    }
+}
+
+fn write_generated_reticulumd_config(
+    output_path: &Path,
+    interfaces: &[SingleTomlInterface],
+) -> Result<(), String> {
+    let mut output = String::new();
+    for interface in interfaces {
+        if !interface.enabled {
+            continue;
+        }
+        output.push_str("[[interfaces]]\n");
+        output.push_str(&format!("type = {:?}\n", interface.interface_type));
+        output.push_str("enabled = true\n");
+        if let Some(name) = interface.name.as_ref() {
+            output.push_str(&format!("name = {:?}\n", name));
+        }
+        if let Some(host) = interface.host.as_ref() {
+            output.push_str(&format!("host = {:?}\n", host));
+        }
+        if let Some(port) = interface.port {
+            output.push_str(&format!("port = {port}\n"));
+        }
+        output.push('\n');
+    }
+    fs::write(output_path, output)
+        .map_err(|err| format!("failed to write {}: {err}", output_path.display()))
+}
+
 fn parse_python_lxmd_config(
     input: &str,
 ) -> std::collections::BTreeMap<String, std::collections::BTreeMap<String, String>> {
@@ -1566,7 +1841,8 @@ fn apply_config_file(effective: &mut EffectiveArgs, config_path: &Path) -> Resul
 mod tests {
     use super::{
         apply_config_file, compact_json, compatibility_notes, decode_rpc_frame, encode_rpc_frame,
-        json_env, load_effective_args, parse_python_lxmd_config, prepare_lxmd_paths,
+        is_single_toml_config, json_env, load_effective_args, parse_python_lxmd_config,
+        prepare_lxmd_paths,
         requires_supervised_launch, sanitize_file_name, EffectiveArgs,
     };
     use clap::Parser;
@@ -1672,6 +1948,68 @@ reticulumd = "/tmp/reticulumd"
         assert_eq!(effective.on_inbound.as_deref(), Some("echo hi"));
         assert_eq!(effective.display_name.as_deref(), Some("node-a"));
         assert_eq!(effective.transport.as_deref(), Some("127.0.0.1:4242"));
+    }
+
+    #[test]
+    fn single_toml_config_is_detected_and_loaded() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join("lxmd.toml");
+        fs::write(
+            &path,
+            r#"[node]
+display_name = "Node A"
+
+[rpc]
+listen = "127.0.0.1:5555"
+
+[transport]
+listen = "0.0.0.0:37777"
+
+[storage]
+db = "./state/reticulum.db"
+identity = "./state/identity"
+
+[propagation]
+enable = true
+announce_at_start = true
+announce_interval = 90
+autopeer = true
+autopeer_maxdepth = 7
+
+[lxmf]
+on_inbound = "echo hi"
+
+[[interfaces]]
+type = "tcp_client"
+enabled = true
+name = "rmap.world"
+host = "rmap.world"
+port = 4242
+"#,
+        )
+        .expect("write config");
+
+        assert!(is_single_toml_config(&path).expect("detect single toml"));
+        let args = super::Args::parse_from(["lxmd", "--config", path.to_str().expect("utf8 path")]);
+        let effective = load_effective_args(&args).expect("effective args");
+        assert_eq!(effective.rpc, "127.0.0.1:5555");
+        assert_eq!(effective.transport.as_deref(), Some("0.0.0.0:37777"));
+        assert_eq!(effective.display_name.as_deref(), Some("Node A"));
+        assert!(effective.propagation_node);
+        assert_eq!(effective.on_inbound.as_deref(), Some("echo hi"));
+        assert_eq!(effective.python_compat.autopeer_maxdepth, Some(7));
+        assert_eq!(
+            effective.db.as_deref(),
+            Some(temp.path().join("state/reticulum.db").as_path())
+        );
+        assert_eq!(
+            effective.identity.as_deref(),
+            Some(temp.path().join("state/identity").as_path())
+        );
+        let generated = temp.path().join(super::GENERATED_RETICULUMD_CONFIG);
+        let generated_contents = fs::read_to_string(&generated).expect("generated reticulum config");
+        assert!(generated_contents.contains("host = \"rmap.world\""));
+        assert!(generated_contents.contains("port = 4242"));
     }
 
     #[test]
