@@ -2516,6 +2516,10 @@ pub async fn serve(
         .register_encoded_file_descriptor_set(FILE_DESCRIPTOR_SET)
         .build_v1()
         .map_err(|err| -> Box<dyn std::error::Error + Send + Sync> { Box::new(err) })?;
+    let reflection_service = tonic::service::interceptor::InterceptedService::new(
+        reflection_service,
+        GrpcAuthInterceptor::new(bridge.daemon.clone()),
+    );
     let mut server = tonic::transport::Server::builder();
     let grpc_scheme = if let Some(tls) = tls {
         server = server.tls_config(build_tls_config(&tls)?)?;
