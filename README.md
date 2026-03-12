@@ -80,9 +80,9 @@ host-native `lxmd` and `reticulumd` binaries, generates
 `target/release-bundles/`. The command emits `.zip` bundles on Windows and
 `.tar.gz` bundles on macOS/Linux.
 
-If `sccache` is installed, the workspace automatically uses it through
-[`/.cargo/config.toml`](/Users/tommy/Documents/TAK/LXMF-rs/.cargo/config.toml); otherwise builds
-fall back to plain `rustc` with no extra setup required.
+If `sccache` is installed and you want to use it, set `RUSTC_WRAPPER=sccache`
+in your shell before building. The workspace no longer hardcodes a Unix-only
+wrapper path, so native Windows builds work without extra Cargo config.
 
 Cross-language protocol benchmark reports are written to
 `target/criterion/python-impl-compare.txt` and compare Rust core paths to the
