@@ -4719,22 +4719,13 @@ fn create_release_archive(
         if archive.exists() {
             fs::remove_file(&archive).with_context(|| format!("remove {}", archive.display()))?;
         }
-        let archive_arg = archive
-            .to_str()
-            .ok_or_else(|| anyhow!("invalid archive path: {}", archive.display()))?;
         let staging_arg = staging_dir
             .to_str()
             .ok_or_else(|| anyhow!("invalid staging path: {}", staging_dir.display()))?;
-        run(
-            "powershell",
-            &[
-                "-NoProfile",
-                "-Command",
-                "Compress-Archive -Path $args[0] -DestinationPath $args[1] -Force",
-                staging_arg,
-                archive_arg,
-            ],
-        )?;
+        let archive_arg = archive
+            .to_str()
+            .ok_or_else(|| anyhow!("invalid archive path: {}", archive.display()))?;
+        run("tar", &["-a", "-c", "-f", archive_arg, staging_arg])?;
         return Ok(archive);
     }
 
