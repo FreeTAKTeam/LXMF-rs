@@ -98,6 +98,7 @@ tokio-util = "0.7.15"
 bzip2 = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+serde_cbor = "0.11"
 tempfile = "3"
 sha2 = "0.10"
 toml = "0.8"

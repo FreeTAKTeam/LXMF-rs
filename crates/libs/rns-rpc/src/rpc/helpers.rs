@@ -91,24 +91,107 @@ fn parse_capabilities_from_app_data_hex(app_data_hex: Option<&str>) -> Vec<Strin
         return Vec::new();
     }
 
-    let Ok(value) = rmp_serde::from_slice::<MsgPackValue>(&app_data) else {
-        return Vec::new();
-    };
-    let mut capabilities = Vec::new();
-    if let Some(entries) = value.as_array() {
-        if entries.len() >= 3 && parse_bool_capability_flag(&entries[2]) {
-            capabilities.push("propagation".to_string());
-        }
-        for entry in entries {
-            if let Some(parsed) = extract_capabilities_from_msgpack(entry) {
-                capabilities.extend(parsed);
-            }
-        }
-    } else if let Some(parsed) = extract_capabilities_from_msgpack(&value) {
-        capabilities.extend(parsed);
+    if let Some(capabilities) = parse_rch_capabilities_from_lxmf_announce(&app_data) {
+        return capabilities;
     }
 
-    normalize_capabilities(capabilities)
+    if let Ok(value) = rmp_serde::from_slice::<MsgPackValue>(&app_data) {
+        let mut capabilities = Vec::new();
+        if let Some(entries) = value.as_array() {
+            if entries.len() >= 3 && parse_bool_capability_flag(&entries[2]) {
+                capabilities.push("propagation".to_string());
+            }
+            for entry in entries {
+                if let Some(parsed) = extract_capabilities_from_msgpack(entry) {
+                    capabilities.extend(parsed);
+                }
+            }
+        } else if let Some(parsed) = extract_capabilities_from_msgpack(&value) {
+            capabilities.extend(parsed);
+        }
+        let capabilities = normalize_capabilities(capabilities);
+        if !capabilities.is_empty() {
+            return capabilities;
+        }
+    }
+
+    parse_capabilities_from_utf8_app_data(&app_data)
+}
+
+fn parse_rch_capabilities_from_lxmf_announce(app_data: &[u8]) -> Option<Vec<String>> {
+    let value = rmp_serde::from_slice::<MsgPackValue>(app_data).ok()?;
+    let entries = value.as_array()?;
+    let capability_payload = match entries.get(2) {
+        Some(MsgPackValue::Binary(bytes)) => bytes.as_slice(),
+        Some(MsgPackValue::String(text)) => text.as_str()?.as_bytes(),
+        _ => return None,
+    };
+
+    let capabilities = parse_rch_capability_payload(capability_payload);
+    (!capabilities.is_empty()).then_some(capabilities)
+}
+
+fn parse_rch_capability_payload(payload: &[u8]) -> Vec<String> {
+    if payload.is_empty() {
+        return Vec::new();
+    }
+
+    if let Ok(value) = serde_cbor::from_slice::<JsonValue>(payload) {
+        let capabilities = extract_rch_capabilities_from_json_value(&value);
+        if !capabilities.is_empty() {
+            return capabilities;
+        }
+    }
+
+    if let Ok(value) = rmp_serde::from_slice::<MsgPackValue>(payload) {
+        let capabilities = extract_rch_capabilities_from_msgpack_value(&value);
+        if !capabilities.is_empty() {
+            return capabilities;
+        }
+    }
+
+    Vec::new()
+}
+
+fn extract_rch_capabilities_from_json_value(value: &JsonValue) -> Vec<String> {
+    let JsonValue::Object(map) = value else {
+        return Vec::new();
+    };
+    let Some(app) = map.get("app").and_then(JsonValue::as_str) else {
+        return Vec::new();
+    };
+    if !app.eq_ignore_ascii_case("rch") {
+        return Vec::new();
+    }
+    map.get("caps")
+        .map(extract_capabilities_from_json_value)
+        .unwrap_or_default()
+}
+
+fn extract_rch_capabilities_from_msgpack_value(value: &MsgPackValue) -> Vec<String> {
+    let MsgPackValue::Map(entries) = value else {
+        return Vec::new();
+    };
+
+    let mut app_is_rch = false;
+    let mut capabilities = Vec::new();
+    for (key, value) in entries {
+        let Some(name) = msgpack_key_to_string(key) else {
+            continue;
+        };
+        if name == "app" {
+            app_is_rch = capability_value_to_string(value)
+                .is_some_and(|app| app.eq_ignore_ascii_case("rch"));
+        } else if name == "caps" {
+            capabilities = extract_capabilities_from_msgpack(value).unwrap_or_default();
+        }
+    }
+
+    if app_is_rch {
+        return capabilities;
+    }
+
+    Vec::new()
 }
 
 fn parse_bool_capability_flag(value: &MsgPackValue) -> bool {
@@ -245,6 +328,80 @@ fn capability_value_to_string(value: &MsgPackValue) -> Option<String> {
     }
 }
 
+fn parse_capabilities_from_utf8_app_data(app_data: &[u8]) -> Vec<String> {
+    let Ok(text) = std::str::from_utf8(app_data) else {
+        return Vec::new();
+    };
+    let text = text.trim();
+    if text.is_empty() {
+        return Vec::new();
+    }
+
+    if let Ok(value) = serde_json::from_str::<JsonValue>(text) {
+        let capabilities = extract_capabilities_from_json_value(&value);
+        if !capabilities.is_empty() {
+            return capabilities;
+        }
+    }
+
+    parse_capabilities_from_tagged_text(text)
+}
+
+fn extract_capabilities_from_json_value(value: &JsonValue) -> Vec<String> {
+    match value {
+        JsonValue::Array(values) => normalize_capabilities(
+            values.iter().filter_map(json_capability_value_to_string).collect(),
+        ),
+        JsonValue::Object(map) => {
+            for key in ["capabilities", "caps"] {
+                if let Some(value) = map.get(key) {
+                    let capabilities = extract_capabilities_from_json_value(value);
+                    if !capabilities.is_empty() {
+                        return capabilities;
+                    }
+                }
+            }
+            Vec::new()
+        }
+        _ => Vec::new(),
+    }
+}
+
+fn json_capability_value_to_string(value: &JsonValue) -> Option<String> {
+    match value {
+        JsonValue::String(value) => Some(value.to_string()),
+        _ => None,
+    }
+}
+
+fn parse_capabilities_from_tagged_text(text: &str) -> Vec<String> {
+    let lowered = text.to_ascii_lowercase();
+    for marker in ["capabilities=", "caps=", "capabilities:", "caps:"] {
+        if let Some(index) = lowered.find(marker) {
+            let tail = &text[index + marker.len()..];
+            let candidate = tail
+                .split(|ch: char| matches!(ch, ';' | '\n' | '\r'))
+                .next()
+                .unwrap_or_default()
+                .trim()
+                .trim_matches(|ch| matches!(ch, '[' | ']' | '"' | '\''));
+            if !candidate.is_empty() {
+                let capabilities = candidate
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string)
+                    .collect::<Vec<_>>();
+                let capabilities = normalize_capabilities(capabilities);
+                if !capabilities.is_empty() {
+                    return capabilities;
+                }
+            }
+        }
+    }
+    Vec::new()
+}
+
 fn msgpack_key_to_string(key: &MsgPackValue) -> Option<String> {
     match key {
         MsgPackValue::String(key) => key.as_str().map(|key| key.trim().to_ascii_lowercase()),
@@ -269,3 +426,58 @@ fn encode_hex(bytes: impl AsRef<[u8]>) -> String {
 const LEGACY_EVENT_QUEUE_CAPACITY: usize = 32;
 const SDK_EVENT_LOG_CAPACITY: usize = 1024;
 const SDK_STREAM_ID: &str = "sdk-events";
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_capabilities_from_utf8_json_app_data() {
+        let hex = hex::encode(r#"{"capabilities":["propagation","telemetry_relay"]}"#);
+        let capabilities = parse_capabilities_from_app_data_hex(Some(hex.as_str()));
+        assert_eq!(capabilities, vec!["propagation".to_string(), "telemetry_relay".to_string()]);
+    }
+
+    #[test]
+    fn parses_capabilities_from_tagged_utf8_text_app_data() {
+        let hex = hex::encode("node metadata; caps=propagation, telemetry_relay");
+        let capabilities = parse_capabilities_from_app_data_hex(Some(hex.as_str()));
+        assert_eq!(capabilities, vec!["propagation".to_string(), "telemetry_relay".to_string()]);
+    }
+
+    #[test]
+    fn parses_rch_capabilities_from_msgpack_third_slot() {
+        let capability_payload = rmp_serde::to_vec_named(&serde_json::json!({
+            "app": "rch",
+            "schema": 1,
+            "caps": ["telemetry_relay", "topic_broker"],
+        }))
+        .expect("encode capability payload");
+        let announce = rmp_serde::to_vec_named(&rmpv::Value::Array(vec![
+            rmpv::Value::String("Reticulum Community Hub".into()),
+            rmpv::Value::from(0),
+            rmpv::Value::Binary(capability_payload),
+        ]))
+        .expect("encode announce payload");
+        let capabilities = parse_capabilities_from_app_data_hex(Some(hex::encode(announce).as_str()));
+        assert_eq!(capabilities, vec!["telemetry_relay".to_string(), "topic_broker".to_string()]);
+    }
+
+    #[test]
+    fn parses_rch_capabilities_from_cbor_third_slot() {
+        let capability_payload = serde_cbor::to_vec(&serde_json::json!({
+            "app": "rch",
+            "schema": 1,
+            "caps": ["telemetry_relay", "tak_bridge"],
+        }))
+        .expect("encode cbor capability payload");
+        let announce = rmp_serde::to_vec_named(&rmpv::Value::Array(vec![
+            rmpv::Value::String("Reticulum Community Hub".into()),
+            rmpv::Value::from(0),
+            rmpv::Value::Binary(capability_payload),
+        ]))
+        .expect("encode announce payload");
+        let capabilities = parse_capabilities_from_app_data_hex(Some(hex::encode(announce).as_str()));
+        assert_eq!(capabilities, vec!["telemetry_relay".to_string(), "tak_bridge".to_string()]);
+    }
+}
