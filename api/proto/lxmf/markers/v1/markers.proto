@@ -1,0 +1,67 @@
+syntax = "proto3";
+
+package lxmf.markers.v1;
+
+import "lxmf/common/v1/pagination.proto";
+
+message GeoPoint {
+  double lat = 1;
+  double lon = 2;
+  optional double alt_m = 3;
+}
+
+message Marker {
+  string marker_id = 1;
+  string label = 2;
+  GeoPoint position = 3;
+  optional string topic_id = 4;
+  uint64 revision = 5;
+  uint64 updated_ts_ms = 6;
+}
+
+message CreateMarkerRequest {
+  string label = 1;
+  GeoPoint position = 2;
+  optional string topic_id = 3;
+}
+
+message CreateMarkerResponse {
+  Marker marker = 1;
+}
+
+message ListMarkersRequest {
+  optional string topic_id = 1;
+  lxmf.common.v1.PageRequest page = 2;
+}
+
+message ListMarkersResponse {
+  repeated Marker markers = 1;
+  lxmf.common.v1.PageInfo page_info = 2;
+}
+
+message UpdateMarkerPositionRequest {
+  string marker_id = 1;
+  uint64 expected_revision = 2;
+  GeoPoint position = 3;
+}
+
+message UpdateMarkerPositionResponse {
+  Marker marker = 1;
+}
+
+message DeleteMarkerRequest {
+  string marker_id = 1;
+  uint64 expected_revision = 2;
+}
+
+message DeleteMarkerResponse {
+  bool accepted = 1;
+  string marker_id = 2;
+}
+
+service MarkerService {
+  rpc CreateMarker(CreateMarkerRequest) returns (CreateMarkerResponse);
+  rpc ListMarkers(ListMarkersRequest) returns (ListMarkersResponse);
+  rpc UpdateMarkerPosition(UpdateMarkerPositionRequest) returns (UpdateMarkerPositionResponse);
+  rpc DeleteMarker(DeleteMarkerRequest) returns (DeleteMarkerResponse);
+}

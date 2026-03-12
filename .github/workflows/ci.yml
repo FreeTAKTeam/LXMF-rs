@@ -217,6 +217,23 @@ jobs:
       - name: Interfaces required checks
         run: cargo xtask ci --stage interfaces-required
 
+  grpc-surface:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Proto contract check
+        run: cargo run -p xtask -- proto-check
+      - name: gRPC transport tests
+        run: cargo test -p rns-rpc grpc::tests
+      - name: gRPC client and operator tools
+        run: cargo check -p reticulumd -p rns-tools -p lxmf-grpc-client
+
   embedded-node-build:
     runs-on: ubuntu-latest
     steps:

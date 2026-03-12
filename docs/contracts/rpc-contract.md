@@ -2,6 +2,10 @@
 
 This document freezes the daemon RPC methods that `lxmf` relies on.
 
+For new non-browser integrations, gRPC is the preferred API. This document
+remains the compatibility contract for the JSON-RPC/MessagePack daemon surface.
+See `docs/contracts/grpc-adoption-and-migration.md`.
+
 Scope:
 - Transport: HTTP `POST /rpc` with framed MessagePack payloads.
 - Event stream: HTTP `GET /events` with framed MessagePack events.

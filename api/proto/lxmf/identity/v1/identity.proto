@@ -1,0 +1,107 @@
+syntax = "proto3";
+
+package lxmf.identity.v1;
+
+import "google/protobuf/struct.proto";
+import "lxmf/common/v1/pagination.proto";
+
+message Identity {
+  string identity = 1;
+  string public_key = 2;
+  optional string display_name = 3;
+  repeated string capabilities = 4;
+}
+
+message Contact {
+  string identity = 1;
+  optional string display_name = 2;
+  string trust_level = 3;
+  bool bootstrap = 4;
+  uint64 updated_ts_ms = 5;
+  google.protobuf.Struct metadata = 6;
+  google.protobuf.Struct extensions = 7;
+}
+
+message PresenceRecord {
+  string peer_id = 1;
+  int64 last_seen_ts_ms = 2;
+  int64 first_seen_ts_ms = 3;
+  uint64 seen_count = 4;
+  optional string name = 5;
+  optional string name_source = 6;
+  optional string trust_level = 7;
+  optional bool bootstrap = 8;
+  google.protobuf.Struct extensions = 9;
+}
+
+message ListIdentitiesRequest {}
+
+message ListIdentitiesResponse {
+  repeated Identity identities = 1;
+}
+
+message ResolveIdentityRequest {
+  string hash = 1;
+}
+
+message ResolveIdentityResponse {
+  optional string identity = 1;
+}
+
+message AnnounceNowRequest {}
+
+message AnnounceNowResponse {
+  bool accepted = 1;
+  uint64 announce_id = 2;
+}
+
+message ListPresenceRequest {
+  lxmf.common.v1.PageRequest page = 1;
+}
+
+message ListPresenceResponse {
+  repeated PresenceRecord peers = 1;
+  lxmf.common.v1.PageInfo page_info = 2;
+}
+
+message UpdateContactRequest {
+  string identity = 1;
+  optional string display_name = 2;
+  optional string trust_level = 3;
+  optional bool bootstrap = 4;
+  google.protobuf.Struct metadata = 5;
+  google.protobuf.Struct extensions = 6;
+}
+
+message UpdateContactResponse {
+  Contact contact = 1;
+}
+
+message ListContactsRequest {
+  lxmf.common.v1.PageRequest page = 1;
+}
+
+message ListContactsResponse {
+  repeated Contact contacts = 1;
+  lxmf.common.v1.PageInfo page_info = 2;
+}
+
+message BootstrapIdentityRequest {
+  string identity = 1;
+  bool auto_sync = 2;
+}
+
+message BootstrapIdentityResponse {
+  Contact contact = 1;
+  bool synced = 2;
+}
+
+service IdentityService {
+  rpc ListIdentities(ListIdentitiesRequest) returns (ListIdentitiesResponse);
+  rpc ResolveIdentity(ResolveIdentityRequest) returns (ResolveIdentityResponse);
+  rpc AnnounceNow(AnnounceNowRequest) returns (AnnounceNowResponse);
+  rpc ListPresence(ListPresenceRequest) returns (ListPresenceResponse);
+  rpc UpdateContact(UpdateContactRequest) returns (UpdateContactResponse);
+  rpc ListContacts(ListContactsRequest) returns (ListContactsResponse);
+  rpc BootstrapIdentity(BootstrapIdentityRequest) returns (BootstrapIdentityResponse);
+}

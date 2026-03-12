@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package lxmf.common.v1;
+
+message ErrorDetail {
+  string code = 1;
+  string message = 2;
+  string category = 3;
+  bool retryable = 4;
+  bool user_actionable = 5;
+}

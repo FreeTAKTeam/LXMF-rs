@@ -1,0 +1,11 @@
+[package]
+name = "grpc-hello-rust"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+lxmf-grpc-client = { path = "../../crates/libs/lxmf-grpc-client" }
+tokio = { version = "1.44.2", features = ["macros", "rt-multi-thread"] }
+
+[workspace]

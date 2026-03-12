@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+  "crates/libs/lxmf-grpc-client",
   "crates/libs/rns-embedded-core",
   "crates/libs/rns-embedded-ffi",
   "crates/libs/rns-embedded-runtime",
@@ -16,6 +17,7 @@ members = [
   "xtask",
 ]
 default-members = [
+  "crates/libs/lxmf-grpc-client",
   "crates/libs/rns-embedded-core",
   "crates/libs/rns-embedded-ffi",
   "crates/libs/rns-embedded-runtime",
@@ -57,6 +59,7 @@ allowed_app_edges = [
   "reticulumd->rns-core",
   "reticulumd->rns-rpc",
   "reticulumd->rns-transport",
+  "rns-tools->lxmf-grpc-client",
   "rns-tools->rns-embedded-core",
   "rns-tools->rns-embedded-runtime",
   "rns-tools->rns-rpc",
@@ -71,6 +74,7 @@ clap = { version = "4.5.29", features = ["derive"] }
 clap_complete = "4.5"
 criterion = "0.5"
 lxmf-core = { version = "0.1.0", path = "crates/libs/lxmf-core" }
+lxmf-grpc-client = { version = "0.1.0", path = "crates/libs/lxmf-grpc-client" }
 lxmf-sdk = { version = "0.1.0", path = "crates/libs/lxmf-sdk" }
 rns-core = { version = "0.1.0", path = "crates/libs/rns-core" }
 rns-rpc = { version = "0.1.0", path = "crates/libs/rns-rpc" }
@@ -98,6 +102,10 @@ tempfile = "3"
 sha2 = "0.10"
 toml = "0.8"
 tokio = { version = "1.44.2", features = ["full"] }
+tonic = { version = "0.14.2", features = ["transport", "tls-ring"] }
+tonic-prost = "0.14.2"
+prost = "0.14.1"
+prost-types = "0.14.1"
 tokio-rustls = "0.26.2"
 tokio-serial = "5.4.4"
 rustls = "0.23.23"

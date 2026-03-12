@@ -165,6 +165,9 @@ const CANARY_CRITERIA_REPORT_JSON_PATH: &str =
     "target/release-readiness/canary-criteria-report.json";
 const GENERATED_MIGRATION_NOTES_PATH: &str =
     "target/release-readiness/generated-migration-notes.md";
+const PROTO_ROOT_PATH: &str = "api/proto";
+const GENERATED_GRPC_RUST_DIR: &str = "generated/grpc/rust";
+const GENERATED_GRPC_DESCRIPTOR_PATH: &str = "generated/grpc/lxmf-descriptor-set.bin";
 
 const RELEASE_BINARIES: &[&str] = &[
     "lxmf-cli",
@@ -408,6 +411,8 @@ enum XtaskCommand {
         #[arg(long)]
         check: bool,
     },
+    ProtoCheck,
+    ProtoGenerate,
     CompatKitCheck,
     E2eCompatibility,
     MeshSim,
@@ -504,6 +509,7 @@ enum CiStage {
     InteropCorpusCheck,
     InteropDriftCheck,
     SchemaClientCheck,
+    ProtoCheck,
     CompatKitCheck,
     E2eCompatibility,
     SdkProfileBuild,
@@ -599,6 +605,8 @@ fn main() -> Result<()> {
         XtaskCommand::SchemaClientGenerate { check } => {
             run_schema_client_generate(check).map(|_| ())
         }
+        XtaskCommand::ProtoCheck => run_proto_check(),
+        XtaskCommand::ProtoGenerate => run_proto_generate(),
         XtaskCommand::CompatKitCheck => run_compat_kit_check(),
         XtaskCommand::E2eCompatibility => run_e2e_compatibility(),
         XtaskCommand::MeshSim => run_mesh_sim(),
@@ -688,6 +696,7 @@ fn run_ci(stage: Option<CiStage>) -> Result<()> {
     run_sdk_drill_check()?;
     run_sdk_soak_check()?;
     run_sdk_schema_check()?;
+    run_proto_check()?;
     run_interop_artifacts(false)?;
     run_interop_matrix_check()?;
     run_interop_corpus_check()?;
@@ -767,6 +776,7 @@ fn run_ci_stage(stage: CiStage) -> Result<()> {
         CiStage::InteropCorpusCheck => run_interop_corpus_check(),
         CiStage::InteropDriftCheck => run_interop_drift_check(false),
         CiStage::SchemaClientCheck => run_schema_client_check(),
+        CiStage::ProtoCheck => run_proto_check(),
         CiStage::CompatKitCheck => run_compat_kit_check(),
         CiStage::CertificationReportCheck => run_certification_report_check(),
         CiStage::E2eCompatibility => run_e2e_compatibility(),
@@ -5454,5 +5464,80 @@ fn run(cmd: &str, args: &[&str]) -> Result<()> {
     if !status.success() {
         bail!("command failed: {cmd} {}", args.join(" "));
     }
+    Ok(())
+}
+
+fn run_proto_check() -> Result<()> {
+    compile_proto_tree(None)
+}
+
+fn run_proto_generate() -> Result<()> {
+    let output_dir = Path::new(GENERATED_GRPC_RUST_DIR);
+    if output_dir.exists() {
+        fs::remove_dir_all(output_dir)
+            .with_context(|| format!("remove {}", output_dir.display()))?;
+    }
+    compile_proto_tree(Some(output_dir))
+}
+
+fn compile_proto_tree(output_dir: Option<&Path>) -> Result<()> {
+    let proto_root = Path::new(PROTO_ROOT_PATH);
+    let mut proto_files = Vec::new();
+    collect_proto_files(proto_root, &mut proto_files)?;
+    if proto_files.is_empty() {
+        bail!("no proto files found under {}", proto_root.display());
+    }
+
+    let out_dir = match output_dir {
+        Some(path) => path.to_path_buf(),
+        None => std::env::temp_dir().join("lxmf-rs-proto-check"),
+    };
+
+    if out_dir.exists() && output_dir.is_none() {
+        fs::remove_dir_all(&out_dir).with_context(|| format!("remove {}", out_dir.display()))?;
+    }
+    fs::create_dir_all(&out_dir).with_context(|| format!("create {}", out_dir.display()))?;
+
+    let descriptor_path = if output_dir.is_some() {
+        let descriptor = Path::new(GENERATED_GRPC_DESCRIPTOR_PATH);
+        if let Some(parent) = descriptor.parent() {
+            fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
+        }
+        descriptor.to_path_buf()
+    } else {
+        out_dir.join("lxmf-descriptor-set.bin")
+    };
+
+    let protoc = protoc_bin_vendored::protoc_bin_path().context("resolve vendored protoc")?;
+    std::env::set_var("PROTOC", &protoc);
+    tonic_prost_build::configure()
+        .build_client(true)
+        .build_server(true)
+        .build_transport(true)
+        .out_dir(&out_dir)
+        .file_descriptor_set_path(&descriptor_path)
+        .protoc_arg("--experimental_allow_proto3_optional")
+        .compile_protos(&proto_files, &[proto_root.to_path_buf()])
+        .with_context(|| format!("compile proto tree rooted at {}", proto_root.display()))?;
+
+    Ok(())
+}
+
+fn collect_proto_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
+    let mut entries = fs::read_dir(dir)
+        .with_context(|| format!("read proto directory {}", dir.display()))?
+        .collect::<Result<Vec<_>, _>>()
+        .with_context(|| format!("read entries in {}", dir.display()))?;
+    entries.sort_by_key(|entry| entry.path());
+
+    for entry in entries {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_proto_files(&path, files)?;
+        } else if path.extension().is_some_and(|ext| ext == "proto") {
+            files.push(path);
+        }
+    }
+
     Ok(())
 }

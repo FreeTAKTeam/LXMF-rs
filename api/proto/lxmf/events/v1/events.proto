@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package lxmf.events.v1;
+
+import "google/protobuf/struct.proto";
+
+message EventEnvelope {
+  string event_type = 1;
+  google.protobuf.Struct payload = 2;
+  string event_id = 3;
+  uint64 seq_no = 4;
+  uint64 ts_ms = 5;
+  string severity = 6;
+  string source_component = 7;
+}
+
+message PollEventsRequest {
+  optional string cursor = 1;
+  uint32 max = 2;
+}
+
+message PollEventsResponse {
+  repeated EventEnvelope events = 1;
+  string next_cursor = 2;
+  uint64 dropped_count = 3;
+}
+
+message SubscribeEventsRequest {
+  optional string resume_token = 1;
+}
+
+service EventService {
+  rpc PollEvents(PollEventsRequest) returns (PollEventsResponse);
+  rpc SubscribeEvents(SubscribeEventsRequest) returns (stream EventEnvelope);
+}

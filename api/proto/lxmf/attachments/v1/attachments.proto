@@ -1,0 +1,133 @@
+syntax = "proto3";
+
+package lxmf.attachments.v1;
+
+import "lxmf/common/v1/pagination.proto";
+
+message Attachment {
+  string attachment_id = 1;
+  string name = 2;
+  string content_type = 3;
+  uint64 byte_len = 4;
+  string checksum_sha256 = 5;
+  uint64 created_ts_ms = 6;
+  optional uint64 expires_ts_ms = 7;
+  repeated string topic_ids = 8;
+}
+
+message StoreAttachmentRequest {
+  string name = 1;
+  string content_type = 2;
+  string bytes_base64 = 3;
+  optional uint64 expires_ts_ms = 4;
+  repeated string topic_ids = 5;
+}
+
+message StoreAttachmentResponse {
+  Attachment attachment = 1;
+}
+
+message GetAttachmentRequest {
+  string attachment_id = 1;
+}
+
+message GetAttachmentResponse {
+  Attachment attachment = 1;
+}
+
+message DeleteAttachmentRequest {
+  string attachment_id = 1;
+}
+
+message DeleteAttachmentResponse {
+  bool accepted = 1;
+  string attachment_id = 2;
+}
+
+message DownloadAttachmentRequest {
+  string attachment_id = 1;
+}
+
+message DownloadAttachmentResponse {
+  bool accepted = 1;
+  string attachment_id = 2;
+  string bytes_base64 = 3;
+}
+
+message UploadHandle {
+  string upload_id = 1;
+  string attachment_id = 2;
+  uint32 chunk_size_hint = 3;
+  uint64 next_offset = 4;
+}
+
+message UploadStartRequest {
+  string name = 1;
+  string content_type = 2;
+  uint64 total_size = 3;
+  string checksum_sha256 = 4;
+  optional uint64 expires_ts_ms = 5;
+  repeated string topic_ids = 6;
+}
+
+message UploadStartResponse {
+  UploadHandle upload = 1;
+}
+
+message UploadChunkRequest {
+  string upload_id = 1;
+  uint64 offset = 2;
+  string bytes_base64 = 3;
+}
+
+message UploadChunkResponse {
+  bool accepted = 1;
+  uint64 next_offset = 2;
+  bool complete = 3;
+}
+
+message UploadCommitRequest {
+  string upload_id = 1;
+}
+
+message UploadCommitResponse {
+  Attachment attachment = 1;
+}
+
+message DownloadChunkRequest {
+  string attachment_id = 1;
+  optional uint64 offset = 2;
+  optional uint32 max_bytes = 3;
+}
+
+message DownloadChunkResponse {
+  string attachment_id = 1;
+  uint64 offset = 2;
+  uint64 next_offset = 3;
+  uint64 total_size = 4;
+  bool done = 5;
+  string checksum_sha256 = 6;
+  string bytes_base64 = 7;
+}
+
+message ListAttachmentsRequest {
+  optional string topic_id = 1;
+  lxmf.common.v1.PageRequest page = 2;
+}
+
+message ListAttachmentsResponse {
+  repeated Attachment attachments = 1;
+  lxmf.common.v1.PageInfo page_info = 2;
+}
+
+service AttachmentService {
+  rpc StoreAttachment(StoreAttachmentRequest) returns (StoreAttachmentResponse);
+  rpc GetAttachment(GetAttachmentRequest) returns (GetAttachmentResponse);
+  rpc DeleteAttachment(DeleteAttachmentRequest) returns (DeleteAttachmentResponse);
+  rpc DownloadAttachment(DownloadAttachmentRequest) returns (DownloadAttachmentResponse);
+  rpc UploadStart(UploadStartRequest) returns (UploadStartResponse);
+  rpc UploadChunk(UploadChunkRequest) returns (UploadChunkResponse);
+  rpc UploadCommit(UploadCommitRequest) returns (UploadCommitResponse);
+  rpc DownloadChunk(DownloadChunkRequest) returns (DownloadChunkResponse);
+  rpc ListAttachments(ListAttachmentsRequest) returns (ListAttachmentsResponse);
+}

@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package lxmf.common.v1;
+
+import "google/protobuf/struct.proto";
+
+message InterfaceRecord {
+  string type = 1;
+  bool enabled = 2;
+  optional string host = 3;
+  optional uint32 port = 4;
+  optional string name = 5;
+  optional google.protobuf.Struct settings = 6;
+}

@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package lxmf.admin.v1;
+
+import "lxmf/common/v1/interfaces.proto";
+
+message ListInterfacesRequest {}
+
+message ListInterfacesResponse {
+  repeated lxmf.common.v1.InterfaceRecord interfaces = 1;
+}
+
+message InterfaceSet {
+  repeated lxmf.common.v1.InterfaceRecord interfaces = 1;
+}
+
+message SetInterfacesRequest {
+  repeated lxmf.common.v1.InterfaceRecord interfaces = 1;
+}
+
+message SetInterfacesResponse {
+  bool updated = 1;
+  bool restart_required = 2;
+  repeated string applied_interfaces = 3;
+  repeated string affected_interfaces = 4;
+}
+
+message ReloadConfigRequest {
+  optional InterfaceSet desired_interfaces = 1;
+}
+
+message ReloadConfigResponse {
+  bool reloaded = 1;
+  bool hot_applied_legacy_tcp_only = 2;
+  bool restart_required = 3;
+  repeated string affected_interfaces = 4;
+}
+
+service InterfaceAdminService {
+  rpc ListInterfaces(ListInterfacesRequest) returns (ListInterfacesResponse);
+  rpc SetInterfaces(SetInterfacesRequest) returns (SetInterfacesResponse);
+  rpc ReloadConfig(ReloadConfigRequest) returns (ReloadConfigResponse);
+}

@@ -22,6 +22,8 @@ serde_json.workspace = true
 sha2.workspace = true
 tokio.workspace = true
 toml.workspace = true
+tonic-prost-build = "0.14"
+protoc-bin-vendored = "3"
 
 [package.metadata.cargo-udeps]
 ignore = { normal = ["globset", "jsonschema"] }

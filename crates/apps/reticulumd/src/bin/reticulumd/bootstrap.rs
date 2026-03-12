@@ -36,8 +36,10 @@ pub(super) struct RpcTlsConfig {
 
 pub(super) struct BootstrapContext {
     pub(super) rpc_addr: SocketAddr,
+    pub(super) grpc_addr: Option<SocketAddr>,
     pub(super) daemon: Arc<RpcDaemon>,
     pub(super) rpc_tls: Option<RpcTlsConfig>,
+    pub(super) grpc_tls: Option<RpcTlsConfig>,
 }
 
 #[derive(Clone, Debug)]
@@ -57,18 +59,24 @@ pub(super) struct InterfaceStartupFailure {
 
 pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     let rpc_addr: SocketAddr = args.rpc.parse().expect("invalid rpc address");
-    let rpc_tls =
-        match (args.rpc_tls_cert.clone(), args.rpc_tls_key.clone(), args.rpc_tls_client_ca.clone())
-        {
-            (None, None, None) => None,
-            (Some(cert_chain_path), Some(private_key_path), client_ca_path) => {
-                Some(RpcTlsConfig { cert_chain_path, private_key_path, client_ca_path })
-            }
-            (None, None, Some(_)) => {
-                panic!("--rpc-tls-client-ca requires --rpc-tls-cert and --rpc-tls-key")
-            }
-            _ => panic!("--rpc-tls-cert and --rpc-tls-key must be provided together"),
-        };
+    let grpc_addr: Option<SocketAddr> =
+        args.grpc.as_ref().map(|addr| addr.parse().expect("invalid grpc address"));
+    let rpc_tls = parse_tls_args(
+        "--rpc-tls-cert",
+        "--rpc-tls-key",
+        "--rpc-tls-client-ca",
+        args.rpc_tls_cert.clone(),
+        args.rpc_tls_key.clone(),
+        args.rpc_tls_client_ca.clone(),
+    );
+    let grpc_tls = parse_tls_args(
+        "--grpc-tls-cert",
+        "--grpc-tls-key",
+        "--grpc-tls-client-ca",
+        args.grpc_tls_cert.clone(),
+        args.grpc_tls_key.clone(),
+        args.grpc_tls_client_ca.clone(),
+    );
     let store = MessagesStore::open(&args.db).expect("open sqlite");
 
     let identity_path = args.identity.clone().unwrap_or_else(|| {
@@ -619,7 +627,27 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         spawn_announce_worker(daemon.clone(), transport, peer_crypto);
     }
 
-    BootstrapContext { rpc_addr, daemon, rpc_tls }
+    BootstrapContext { rpc_addr, grpc_addr, daemon, rpc_tls, grpc_tls }
+}
+
+fn parse_tls_args(
+    cert_flag: &str,
+    key_flag: &str,
+    client_ca_flag: &str,
+    cert_chain_path: Option<PathBuf>,
+    private_key_path: Option<PathBuf>,
+    client_ca_path: Option<PathBuf>,
+) -> Option<RpcTlsConfig> {
+    match (cert_chain_path, private_key_path, client_ca_path) {
+        (None, None, None) => None,
+        (Some(cert_chain_path), Some(private_key_path), client_ca_path) => {
+            Some(RpcTlsConfig { cert_chain_path, private_key_path, client_ca_path })
+        }
+        (None, None, Some(_)) => {
+            panic!("{client_ca_flag} requires {cert_flag} and {key_flag}")
+        }
+        _ => panic!("{cert_flag} and {key_flag} must be provided together"),
+    }
 }
 
 fn interface_record_from_config(iface: &InterfaceConfig) -> InterfaceRecord {

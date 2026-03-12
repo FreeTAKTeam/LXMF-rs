@@ -141,7 +141,11 @@ cargo run -p rns-tools --bin rnx -- e2e --timeout-secs 20
 - Support and LTS policy: `docs/contracts/support-policy.md`
 - Extension registry: `docs/contracts/extension-registry.md`
 - RPC contract: `docs/contracts/rpc-contract.md`
+- gRPC adoption and migration: `docs/contracts/grpc-adoption-and-migration.md`
 - Payload contract: `docs/contracts/payload-contract.md`
+- gRPC getting started: `docs/grpc-getting-started.md`
+- gRPC runbook: `docs/runbooks/grpc.md`
+- gRPC release notes: `docs/releases/2026-03-grpc-surface.md`
 - Release readiness: `docs/runbooks/release-readiness.md`
 - Release scorecard process: `docs/architecture/overview.md`
 

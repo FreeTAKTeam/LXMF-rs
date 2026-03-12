@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package lxmf.delivery.v1;
+
+message SendRequest {}
+
+message SendResponse {
+  string message_id = 1;
+}
+
+message GetStatusRequest {
+  string message_id = 1;
+}
+
+message GetStatusResponse {}
+
+message CancelRequest {
+  string message_id = 1;
+}
+
+message CancelResponse {
+  string result = 1;
+}
+
+service DeliveryService {
+  rpc Send(SendRequest) returns (SendResponse);
+  rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
+  rpc Cancel(CancelRequest) returns (CancelResponse);
+}

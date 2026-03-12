@@ -18,10 +18,21 @@ serde_json.workspace = true
 rusqlite = { workspace = true }
 serde.workspace = true
 tokio = { workspace = true, features = ["full"] }
+tonic.workspace = true
+tonic-prost.workspace = true
+prost.workspace = true
+prost-types.workspace = true
+tonic-reflection = "0.14"
+tokio-stream = { version = "0.1", features = ["sync"] }
+x509-parser.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
+
+[build-dependencies]
+tonic-prost-build = "0.14"
+protoc-bin-vendored = "3"
 
 [[bench]]
 name = "rpc_hotpaths"

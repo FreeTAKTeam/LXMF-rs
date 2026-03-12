@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package lxmf.topics.v1;
+
+import "lxmf/common/v1/pagination.proto";
+
+message Topic {
+  string topic_id = 1;
+  string topic_path = 2;
+}
+
+message CreateTopicRequest {
+  string topic_path = 1;
+}
+
+message CreateTopicResponse {
+  Topic topic = 1;
+}
+
+message ListTopicsRequest {
+  lxmf.common.v1.PageRequest page = 1;
+}
+
+message ListTopicsResponse {
+  repeated Topic topics = 1;
+  lxmf.common.v1.PageInfo page_info = 2;
+}
+
+service TopicService {
+  rpc CreateTopic(CreateTopicRequest) returns (CreateTopicResponse);
+  rpc ListTopics(ListTopicsRequest) returns (ListTopicsResponse);
+}

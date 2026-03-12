@@ -4,7 +4,11 @@ Status: Active
 Policy version: `1`
 
 ## Scope
-This policy defines support windows for `lxmf-sdk`, `rns-rpc`, and shipped app binaries in this repository.
+This policy defines support windows for `lxmf-sdk`, `rns-rpc`, the gRPC service
+surface exposed by `reticulumd`, and shipped app binaries in this repository.
+
+API preference and migration stance between gRPC and JSON-RPC are defined in
+`docs/contracts/grpc-adoption-and-migration.md`.
 
 ## Release Channels
 

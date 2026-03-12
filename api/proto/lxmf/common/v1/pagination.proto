@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package lxmf.common.v1;
+
+message PageRequest {
+  string page_token = 1;
+  uint32 page_size = 2;
+}
+
+message PageInfo {
+  string next_page_token = 1;
+}
