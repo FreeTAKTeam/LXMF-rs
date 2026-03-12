@@ -1,5 +1,7 @@
 use crate::http::TransportAuthContext;
-use crate::{InterfaceRecord as RpcInterfaceRecord, RpcDaemon, RpcError, RpcRequest, RpcResponse};
+use crate::{
+    InterfaceRecord as RpcInterfaceRecord, RpcDaemon, RpcError, RpcRequest, RpcResponse,
+};
 use serde::Deserialize;
 use serde_json::{json, Value as JsonValue};
 use std::convert::TryFrom;
@@ -67,6 +69,12 @@ pub mod lxmf {
             include!(concat!(env!("OUT_DIR"), "/lxmf.markers.v1.rs"));
         }
     }
+
+    pub mod peers {
+        pub mod v1 {
+            include!(concat!(env!("OUT_DIR"), "/lxmf.peers.v1.rs"));
+        }
+    }
 }
 
 use lxmf::admin::v1::interface_admin_service_server::{
@@ -104,6 +112,11 @@ use lxmf::markers::v1::{
     ListMarkersRequest, ListMarkersResponse, Marker, UpdateMarkerPositionRequest,
     UpdateMarkerPositionResponse,
 };
+use lxmf::peers::v1::peer_service_server::{PeerService, PeerServiceServer};
+use lxmf::peers::v1::{
+    ClearPeersRequest, ClearPeersResponse, ListPeersRequest, ListPeersResponse, Peer,
+    SyncPeerRequest, SyncPeerResponse, UnpeerRequest, UnpeerResponse,
+};
 use lxmf::runtime::v1::runtime_service_server::{RuntimeService, RuntimeServiceServer};
 use lxmf::runtime::v1::{
     GetSnapshotRequest, GetSnapshotResponse, NegotiateMtlsAuthConfig, NegotiateRequest,
@@ -128,6 +141,14 @@ struct GrpcBridge {
     next_request_id: Arc<AtomicU64>,
 }
 
+#[derive(Debug)]
+struct GrpcRequestLogMeta {
+    peer: Option<String>,
+    grpc_method: &'static str,
+    rpc_method: Option<&'static str>,
+    rpc_request_id: Option<u64>,
+}
+
 impl GrpcBridge {
     fn new(daemon: Arc<RpcDaemon>) -> Self {
         Self { daemon, next_request_id: Arc::new(AtomicU64::new(1)) }
@@ -135,19 +156,90 @@ impl GrpcBridge {
 
     async fn invoke(
         &self,
-        method: &'static str,
+        grpc_method: &'static str,
+        peer: Option<String>,
+        rpc_method: &'static str,
         params: Option<JsonValue>,
     ) -> Result<RpcResponse, Status> {
         let daemon = self.daemon.clone();
         let id = self.next_request_id.fetch_add(1, Ordering::Relaxed);
-        tokio::task::spawn_blocking(move || {
-            daemon.handle_rpc(RpcRequest { id, method: method.to_string(), params })
+        let meta = GrpcRequestLogMeta {
+            peer,
+            grpc_method,
+            rpc_method: Some(rpc_method),
+            rpc_request_id: Some(id),
+        };
+        let started_at = std::time::Instant::now();
+        let result = tokio::task::spawn_blocking(move || {
+            daemon.handle_rpc(RpcRequest { id, method: rpc_method.to_string(), params })
         })
         .await
         .map_err(|err| Status::internal(format!("gRPC worker join failed: {err}")))?
         .map_err(|err| map_io_error(&err))
-        .and_then(ensure_rpc_success)
+        .and_then(ensure_rpc_success);
+        emit_grpc_access_log(&meta, &result, started_at.elapsed().as_millis() as u64);
+        result
     }
+}
+
+fn grpc_peer<T>(request: &Request<T>) -> Option<String> {
+    request.remote_addr().map(|addr| addr.to_string())
+}
+
+fn emit_grpc_access_log(
+    meta: &GrpcRequestLogMeta,
+    result: &Result<RpcResponse, Status>,
+    elapsed_ms: u64,
+) {
+    let (status_code, error_text) = match result {
+        Ok(_) => ("OK".to_string(), None),
+        Err(status) => (status.code().to_string(), Some(status.message().to_string())),
+    };
+    let payload = json!({
+        "event": "grpc_request",
+        "peer": meta.peer,
+        "grpc_method": meta.grpc_method,
+        "rpc_method": meta.rpc_method,
+        "rpc_request_id": meta.rpc_request_id,
+        "trace_ref": serde_json::Value::Null,
+        "status_code": status_code,
+        "elapsed_ms": elapsed_ms,
+        "ok": result.is_ok(),
+        "error": error_text,
+    });
+    eprintln!("{}", payload);
+}
+
+fn emit_grpc_status_log(meta: &GrpcRequestLogMeta, status: &Status, elapsed_ms: u64) {
+    let payload = json!({
+        "event": "grpc_request",
+        "peer": meta.peer,
+        "grpc_method": meta.grpc_method,
+        "rpc_method": meta.rpc_method,
+        "rpc_request_id": meta.rpc_request_id,
+        "trace_ref": serde_json::Value::Null,
+        "status_code": status.code().to_string(),
+        "elapsed_ms": elapsed_ms,
+        "ok": false,
+        "error": status.message(),
+    });
+    eprintln!("{}", payload);
+}
+
+fn emit_grpc_ok_log(meta: &GrpcRequestLogMeta, elapsed_ms: u64) {
+    let payload = json!({
+        "event": "grpc_request",
+        "peer": meta.peer,
+        "grpc_method": meta.grpc_method,
+        "rpc_method": meta.rpc_method,
+        "rpc_request_id": meta.rpc_request_id,
+        "trace_ref": serde_json::Value::Null,
+        "status_code": "OK",
+        "elapsed_ms": elapsed_ms,
+        "ok": true,
+        "error": serde_json::Value::Null,
+    });
+    eprintln!("{}", payload);
 }
 
 #[derive(Clone)]
@@ -182,6 +274,11 @@ struct IdentityGrpcService {
 
 #[derive(Clone)]
 struct MarkerGrpcService {
+    bridge: GrpcBridge,
+}
+
+#[derive(Clone)]
+struct PeerGrpcService {
     bridge: GrpcBridge,
 }
 
@@ -479,6 +576,62 @@ struct DeleteMarkerPayload {
     marker_id: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct PeerRecordPayload {
+    peer: String,
+    last_seen: i64,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    name_source: Option<String>,
+    #[serde(default)]
+    peer_type: Option<String>,
+    #[serde(default)]
+    alive: bool,
+    #[serde(default)]
+    last_sync_attempt: i64,
+    #[serde(default)]
+    next_sync_attempt: i64,
+    #[serde(default)]
+    sync_backoff: u32,
+    #[serde(default)]
+    network_distance: u32,
+    #[serde(default)]
+    rx_bytes: u64,
+    #[serde(default)]
+    tx_bytes: u64,
+    #[serde(default)]
+    acceptance_rate: f64,
+    #[serde(default)]
+    first_seen: i64,
+    #[serde(default)]
+    seen_count: u64,
+}
+
+#[derive(Debug, Deserialize)]
+struct PeerListPayload {
+    #[serde(default)]
+    peers: Vec<PeerRecordPayload>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SyncPeerPayload {
+    peer: String,
+    #[serde(default)]
+    synced: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct UnpeerPayload {
+    #[serde(default)]
+    removed: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct ClearPeersPayload {
+    cleared: String,
+}
+
 #[derive(Debug, Deserialize, Default)]
 struct SetInterfacesPayload {
     #[serde(default)]
@@ -501,8 +654,17 @@ impl RuntimeService for RuntimeGrpcService {
         &self,
         request: Request<NegotiateRequest>,
     ) -> Result<Response<NegotiateResponse>, Status> {
+        let peer = grpc_peer(&request);
         let params = negotiate_request_to_json(request.into_inner())?;
-        let response = self.bridge.invoke("sdk_negotiate_v2", Some(params)).await?;
+        let response = self
+            .bridge
+            .invoke(
+                "/lxmf.runtime.v1.RuntimeService/Negotiate",
+                peer,
+                "sdk_negotiate_v2",
+                Some(params),
+            )
+            .await?;
         let payload: NegotiatePayload = parse_result(response)?;
         Ok(Response::new(NegotiateResponse {
             runtime_id: payload.runtime_id,
@@ -515,11 +677,15 @@ impl RuntimeService for RuntimeGrpcService {
         &self,
         request: Request<GetSnapshotRequest>,
     ) -> Result<Response<GetSnapshotResponse>, Status> {
+        let peer = grpc_peer(&request);
+        let include_counts = request.into_inner().include_counts;
         let snapshot = self
             .bridge
             .invoke(
+                "/lxmf.runtime.v1.RuntimeService/GetSnapshot",
+                peer,
                 "sdk_snapshot_v2",
-                Some(json!({ "include_counts": request.into_inner().include_counts })),
+                Some(json!({ "include_counts": include_counts })),
             )
             .await?;
         let payload: SnapshotPayload = parse_result(snapshot)?;
@@ -537,9 +703,17 @@ impl RuntimeService for RuntimeGrpcService {
 impl InterfaceAdminService for InterfaceAdminGrpcService {
     async fn list_interfaces(
         &self,
-        _request: Request<ListInterfacesRequest>,
+        request: Request<ListInterfacesRequest>,
     ) -> Result<Response<ListInterfacesResponse>, Status> {
-        let response = self.bridge.invoke("list_interfaces", None).await?;
+        let response = self
+            .bridge
+            .invoke(
+                "/lxmf.admin.v1.InterfaceAdminService/ListInterfaces",
+                grpc_peer(&request),
+                "list_interfaces",
+                None,
+            )
+            .await?;
         let payload: ListInterfacesPayload = parse_result(response)?;
         Ok(Response::new(ListInterfacesResponse {
             interfaces: payload.interfaces.into_iter().map(Into::into).collect(),
@@ -550,13 +724,22 @@ impl InterfaceAdminService for InterfaceAdminGrpcService {
         &self,
         request: Request<SetInterfacesRequest>,
     ) -> Result<Response<SetInterfacesResponse>, Status> {
+        let peer = grpc_peer(&request);
         let interfaces = request
             .into_inner()
             .interfaces
             .into_iter()
             .map(RpcInterfaceRecord::try_from)
             .collect::<Result<Vec<_>, _>>()?;
-        match self.bridge.invoke("set_interfaces", Some(json!({ "interfaces": interfaces }))).await
+        match self
+            .bridge
+            .invoke(
+                "/lxmf.admin.v1.InterfaceAdminService/SetInterfaces",
+                peer,
+                "set_interfaces",
+                Some(json!({ "interfaces": interfaces })),
+            )
+            .await
         {
             Ok(response) => {
                 let payload: SetInterfacesPayload = parse_result(response)?;
@@ -581,6 +764,7 @@ impl InterfaceAdminService for InterfaceAdminGrpcService {
         &self,
         request: Request<ReloadConfigRequest>,
     ) -> Result<Response<ReloadConfigResponse>, Status> {
+        let peer = grpc_peer(&request);
         let params = match request.into_inner().desired_interfaces {
             Some(desired_interfaces) => Some(json!({
                 "interfaces": desired_interfaces
@@ -591,7 +775,16 @@ impl InterfaceAdminService for InterfaceAdminGrpcService {
             })),
             None => None,
         };
-        match self.bridge.invoke("reload_config", params).await {
+        match self
+            .bridge
+            .invoke(
+                "/lxmf.admin.v1.InterfaceAdminService/ReloadConfig",
+                peer,
+                "reload_config",
+                params,
+            )
+            .await
+        {
             Ok(response) => {
                 let payload: ReloadConfigPayload = parse_result(response)?;
                 Ok(Response::new(ReloadConfigResponse {
@@ -618,13 +811,22 @@ impl TopicService for TopicGrpcService {
         &self,
         request: Request<CreateTopicRequest>,
     ) -> Result<Response<CreateTopicResponse>, Status> {
+        let peer = grpc_peer(&request);
         let request = request.into_inner();
         let params = if request.topic_path.trim().is_empty() {
             json!({})
         } else {
             json!({ "topic_path": request.topic_path })
         };
-        let response = self.bridge.invoke("sdk_topic_create_v2", Some(params)).await?;
+        let response = self
+            .bridge
+            .invoke(
+                "/lxmf.topics.v1.TopicService/CreateTopic",
+                peer,
+                "sdk_topic_create_v2",
+                Some(params),
+            )
+            .await?;
         let payload: TopicEnvelopePayload = parse_result(response)?;
         Ok(Response::new(CreateTopicResponse { topic: payload.topic.map(Into::into) }))
     }
@@ -633,6 +835,7 @@ impl TopicService for TopicGrpcService {
         &self,
         request: Request<ListTopicsRequest>,
     ) -> Result<Response<ListTopicsResponse>, Status> {
+        let peer = grpc_peer(&request);
         let page = request.into_inner().page;
         let params = page.as_ref().map_or_else(
             || json!({}),
@@ -650,7 +853,15 @@ impl TopicService for TopicGrpcService {
                 JsonValue::Object(params)
             },
         );
-        let response = self.bridge.invoke("sdk_topic_list_v2", Some(params)).await?;
+        let response = self
+            .bridge
+            .invoke(
+                "/lxmf.topics.v1.TopicService/ListTopics",
+                peer,
+                "sdk_topic_list_v2",
+                Some(params),
+            )
+            .await?;
         let payload: TopicListPayload = parse_result(response)?;
         Ok(Response::new(ListTopicsResponse {
             topics: payload.topics.into_iter().map(Into::into).collect(),
@@ -667,6 +878,7 @@ impl AttachmentService for AttachmentGrpcService {
         &self,
         request: Request<StoreAttachmentRequest>,
     ) -> Result<Response<StoreAttachmentResponse>, Status> {
+        let peer = grpc_peer(&request);
         let request = request.into_inner();
         let mut params = serde_json::Map::new();
         params.insert("name".to_string(), JsonValue::String(request.name));
@@ -685,7 +897,14 @@ impl AttachmentService for AttachmentGrpcService {
             );
         }
         let response =
-            self.bridge.invoke("sdk_attachment_store_v2", Some(JsonValue::Object(params))).await?;
+            self.bridge
+                .invoke(
+                    "/lxmf.attachments.v1.AttachmentService/StoreAttachment",
+                    peer,
+                    "sdk_attachment_store_v2",
+                    Some(JsonValue::Object(params)),
+                )
+                .await?;
         let payload: AttachmentEnvelopePayload = parse_result(response)?;
         Ok(Response::new(StoreAttachmentResponse {
             attachment: payload.attachment.map(Into::into),
@@ -696,11 +915,15 @@ impl AttachmentService for AttachmentGrpcService {
         &self,
         request: Request<GetAttachmentRequest>,
     ) -> Result<Response<GetAttachmentResponse>, Status> {
+        let peer = grpc_peer(&request);
+        let attachment_id = request.into_inner().attachment_id;
         let response = self
             .bridge
             .invoke(
+                "/lxmf.attachments.v1.AttachmentService/GetAttachment",
+                peer,
                 "sdk_attachment_get_v2",
-                Some(json!({ "attachment_id": request.into_inner().attachment_id })),
+                Some(json!({ "attachment_id": attachment_id })),
             )
             .await?;
         let payload: AttachmentEnvelopePayload = parse_result(response)?;
@@ -711,11 +934,15 @@ impl AttachmentService for AttachmentGrpcService {
         &self,
         request: Request<DeleteAttachmentRequest>,
     ) -> Result<Response<DeleteAttachmentResponse>, Status> {
+        let peer = grpc_peer(&request);
+        let attachment_id = request.into_inner().attachment_id;
         let response = self
             .bridge
             .invoke(
+                "/lxmf.attachments.v1.AttachmentService/DeleteAttachment",
+                peer,
                 "sdk_attachment_delete_v2",
-                Some(json!({ "attachment_id": request.into_inner().attachment_id })),
+                Some(json!({ "attachment_id": attachment_id })),
             )
             .await?;
         let payload: DeleteAttachmentPayload = parse_result(response)?;
@@ -729,11 +956,15 @@ impl AttachmentService for AttachmentGrpcService {
         &self,
         request: Request<DownloadAttachmentRequest>,
     ) -> Result<Response<DownloadAttachmentResponse>, Status> {
+        let peer = grpc_peer(&request);
+        let attachment_id = request.into_inner().attachment_id;
         let response = self
             .bridge
             .invoke(
+                "/lxmf.attachments.v1.AttachmentService/DownloadAttachment",
+                peer,
                 "sdk_attachment_download_v2",
-                Some(json!({ "attachment_id": request.into_inner().attachment_id })),
+                Some(json!({ "attachment_id": attachment_id })),
             )
             .await?;
         let payload: DownloadAttachmentPayload = parse_result(response)?;
@@ -748,6 +979,7 @@ impl AttachmentService for AttachmentGrpcService {
         &self,
         request: Request<UploadStartRequest>,
     ) -> Result<Response<UploadStartResponse>, Status> {
+        let peer = grpc_peer(&request);
         let request = request.into_inner();
         let mut params = serde_json::Map::new();
         params.insert("name".to_string(), JsonValue::String(request.name));
@@ -771,7 +1003,12 @@ impl AttachmentService for AttachmentGrpcService {
         }
         let response = self
             .bridge
-            .invoke("sdk_attachment_upload_start_v2", Some(JsonValue::Object(params)))
+            .invoke(
+                "/lxmf.attachments.v1.AttachmentService/UploadStart",
+                peer,
+                "sdk_attachment_upload_start_v2",
+                Some(JsonValue::Object(params)),
+            )
             .await?;
         let payload: UploadStartPayload = parse_result(response)?;
         Ok(Response::new(UploadStartResponse {
@@ -788,10 +1025,13 @@ impl AttachmentService for AttachmentGrpcService {
         &self,
         request: Request<UploadChunkRequest>,
     ) -> Result<Response<UploadChunkResponse>, Status> {
+        let peer = grpc_peer(&request);
         let request = request.into_inner();
         let response = self
             .bridge
             .invoke(
+                "/lxmf.attachments.v1.AttachmentService/UploadChunk",
+                peer,
                 "sdk_attachment_upload_chunk_v2",
                 Some(json!({
                     "upload_id": request.upload_id,
@@ -812,11 +1052,15 @@ impl AttachmentService for AttachmentGrpcService {
         &self,
         request: Request<UploadCommitRequest>,
     ) -> Result<Response<UploadCommitResponse>, Status> {
+        let peer = grpc_peer(&request);
+        let upload_id = request.into_inner().upload_id;
         let response = self
             .bridge
             .invoke(
+                "/lxmf.attachments.v1.AttachmentService/UploadCommit",
+                peer,
                 "sdk_attachment_upload_commit_v2",
-                Some(json!({ "upload_id": request.into_inner().upload_id })),
+                Some(json!({ "upload_id": upload_id })),
             )
             .await?;
         let payload: AttachmentEnvelopePayload = parse_result(response)?;
@@ -827,6 +1071,7 @@ impl AttachmentService for AttachmentGrpcService {
         &self,
         request: Request<DownloadChunkRequest>,
     ) -> Result<Response<DownloadChunkResponse>, Status> {
+        let peer = grpc_peer(&request);
         let request = request.into_inner();
         let mut params = serde_json::Map::new();
         params.insert("attachment_id".to_string(), JsonValue::String(request.attachment_id));
@@ -842,7 +1087,12 @@ impl AttachmentService for AttachmentGrpcService {
         }
         let response = self
             .bridge
-            .invoke("sdk_attachment_download_chunk_v2", Some(JsonValue::Object(params)))
+            .invoke(
+                "/lxmf.attachments.v1.AttachmentService/DownloadChunk",
+                peer,
+                "sdk_attachment_download_chunk_v2",
+                Some(JsonValue::Object(params)),
+            )
             .await?;
         let payload: DownloadChunkPayload = parse_result(response)?;
         Ok(Response::new(DownloadChunkResponse {
@@ -860,6 +1110,7 @@ impl AttachmentService for AttachmentGrpcService {
         &self,
         request: Request<ListAttachmentsRequest>,
     ) -> Result<Response<ListAttachmentsResponse>, Status> {
+        let peer = grpc_peer(&request);
         let request = request.into_inner();
         let mut params = serde_json::Map::new();
         if let Some(topic_id) = request.topic_id.filter(|value| !value.trim().is_empty()) {
@@ -877,7 +1128,14 @@ impl AttachmentService for AttachmentGrpcService {
             }
         }
         let response =
-            self.bridge.invoke("sdk_attachment_list_v2", Some(JsonValue::Object(params))).await?;
+            self.bridge
+                .invoke(
+                    "/lxmf.attachments.v1.AttachmentService/ListAttachments",
+                    peer,
+                    "sdk_attachment_list_v2",
+                    Some(JsonValue::Object(params)),
+                )
+                .await?;
         let payload: AttachmentListPayload = parse_result(response)?;
         Ok(Response::new(ListAttachmentsResponse {
             attachments: payload.attachments.into_iter().map(Into::into).collect(),
@@ -897,6 +1155,7 @@ impl EventService for EventGrpcService {
         &self,
         request: Request<PollEventsRequest>,
     ) -> Result<Response<PollEventsResponse>, Status> {
+        let peer = grpc_peer(&request);
         let request = request.into_inner();
         if request.max == 0 {
             return Err(Status::invalid_argument("poll max must be greater than zero"));
@@ -907,7 +1166,14 @@ impl EventService for EventGrpcService {
             params.insert("cursor".to_string(), JsonValue::String(cursor));
         }
         let response =
-            self.bridge.invoke("sdk_poll_events_v2", Some(JsonValue::Object(params))).await?;
+            self.bridge
+                .invoke(
+                    "/lxmf.events.v1.EventService/PollEvents",
+                    peer,
+                    "sdk_poll_events_v2",
+                    Some(JsonValue::Object(params)),
+                )
+                .await?;
         let payload: PollEventsPayload = parse_result(response)?;
         Ok(Response::new(PollEventsResponse {
             events: payload.events.into_iter().map(Into::into).collect(),
@@ -920,11 +1186,20 @@ impl EventService for EventGrpcService {
         &self,
         request: Request<SubscribeEventsRequest>,
     ) -> Result<Response<Self::SubscribeEventsStream>, Status> {
+        let meta = GrpcRequestLogMeta {
+            peer: grpc_peer(&request),
+            grpc_method: "/lxmf.events.v1.EventService/SubscribeEvents",
+            rpc_method: None,
+            rpc_request_id: None,
+        };
+        let started_at = std::time::Instant::now();
         let request = request.into_inner();
         if request.resume_token.as_deref().is_some_and(|token| !token.trim().is_empty()) {
-            return Err(Status::unimplemented(
+            let status = Status::unimplemented(
                 "resume_token is not supported for live SubscribeEvents; use PollEvents for replay",
-            ));
+            );
+            emit_grpc_status_log(&meta, &status, started_at.elapsed().as_millis() as u64);
+            return Err(status);
         }
         let receiver = self.bridge.daemon.subscribe_events();
         let stream = BroadcastStream::new(receiver).map(|item| match item {
@@ -933,6 +1208,7 @@ impl EventService for EventGrpcService {
                 Status::unavailable(format!("event stream lagged behind by {skipped} messages")),
             ),
         });
+        emit_grpc_ok_log(&meta, started_at.elapsed().as_millis() as u64);
         Ok(Response::new(Box::pin(stream)))
     }
 }
@@ -941,9 +1217,17 @@ impl EventService for EventGrpcService {
 impl IdentityService for IdentityGrpcService {
     async fn list_identities(
         &self,
-        _request: Request<ListIdentitiesRequest>,
+        request: Request<ListIdentitiesRequest>,
     ) -> Result<Response<ListIdentitiesResponse>, Status> {
-        let response = self.bridge.invoke("sdk_identity_list_v2", Some(json!({}))).await?;
+        let response = self
+            .bridge
+            .invoke(
+                "/lxmf.identity.v1.IdentityService/ListIdentities",
+                grpc_peer(&request),
+                "sdk_identity_list_v2",
+                Some(json!({})),
+            )
+            .await?;
         let payload: IdentityListPayload = parse_result(response)?;
         Ok(Response::new(ListIdentitiesResponse {
             identities: payload.identities.into_iter().map(Into::into).collect(),
@@ -954,9 +1238,16 @@ impl IdentityService for IdentityGrpcService {
         &self,
         request: Request<ResolveIdentityRequest>,
     ) -> Result<Response<ResolveIdentityResponse>, Status> {
+        let peer = grpc_peer(&request);
+        let hash = request.into_inner().hash;
         let response = self
             .bridge
-            .invoke("sdk_identity_resolve_v2", Some(json!({ "hash": request.into_inner().hash })))
+            .invoke(
+                "/lxmf.identity.v1.IdentityService/ResolveIdentity",
+                peer,
+                "sdk_identity_resolve_v2",
+                Some(json!({ "hash": hash })),
+            )
             .await?;
         let payload: ResolveIdentityPayload = parse_result(response)?;
         Ok(Response::new(ResolveIdentityResponse { identity: payload.identity }))
@@ -964,9 +1255,17 @@ impl IdentityService for IdentityGrpcService {
 
     async fn announce_now(
         &self,
-        _request: Request<AnnounceNowRequest>,
+        request: Request<AnnounceNowRequest>,
     ) -> Result<Response<AnnounceNowResponse>, Status> {
-        let response = self.bridge.invoke("sdk_identity_announce_now_v2", Some(json!({}))).await?;
+        let response = self
+            .bridge
+            .invoke(
+                "/lxmf.identity.v1.IdentityService/AnnounceNow",
+                grpc_peer(&request),
+                "sdk_identity_announce_now_v2",
+                Some(json!({})),
+            )
+            .await?;
         let payload: AnnounceNowPayload = parse_result(response)?;
         Ok(Response::new(AnnounceNowResponse {
             accepted: payload.accepted,
@@ -978,6 +1277,7 @@ impl IdentityService for IdentityGrpcService {
         &self,
         request: Request<ListPresenceRequest>,
     ) -> Result<Response<ListPresenceResponse>, Status> {
+        let peer = grpc_peer(&request);
         let page = request.into_inner().page;
         let params = page.as_ref().map_or_else(
             || json!({}),
@@ -995,7 +1295,15 @@ impl IdentityService for IdentityGrpcService {
                 JsonValue::Object(params)
             },
         );
-        let response = self.bridge.invoke("sdk_identity_presence_list_v2", Some(params)).await?;
+        let response = self
+            .bridge
+            .invoke(
+                "/lxmf.identity.v1.IdentityService/ListPresence",
+                peer,
+                "sdk_identity_presence_list_v2",
+                Some(params),
+            )
+            .await?;
         let payload: PresenceListEnvelopePayload = parse_result(response)?;
         Ok(Response::new(ListPresenceResponse {
             peers: payload.presence_list.peers.into_iter().map(Into::into).collect(),
@@ -1009,6 +1317,7 @@ impl IdentityService for IdentityGrpcService {
         &self,
         request: Request<UpdateContactRequest>,
     ) -> Result<Response<UpdateContactResponse>, Status> {
+        let peer = grpc_peer(&request);
         let request = request.into_inner();
         let mut params = serde_json::Map::new();
         params.insert("identity".to_string(), JsonValue::String(request.identity));
@@ -1029,7 +1338,12 @@ impl IdentityService for IdentityGrpcService {
         }
         let response = self
             .bridge
-            .invoke("sdk_identity_contact_update_v2", Some(JsonValue::Object(params)))
+            .invoke(
+                "/lxmf.identity.v1.IdentityService/UpdateContact",
+                peer,
+                "sdk_identity_contact_update_v2",
+                Some(JsonValue::Object(params)),
+            )
             .await?;
         let payload: ContactEnvelopePayload = parse_result(response)?;
         Ok(Response::new(UpdateContactResponse { contact: Some(payload.contact.into()) }))
@@ -1039,6 +1353,7 @@ impl IdentityService for IdentityGrpcService {
         &self,
         request: Request<ListContactsRequest>,
     ) -> Result<Response<ListContactsResponse>, Status> {
+        let peer = grpc_peer(&request);
         let page = request.into_inner().page;
         let params = page.as_ref().map_or_else(
             || json!({}),
@@ -1056,7 +1371,15 @@ impl IdentityService for IdentityGrpcService {
                 JsonValue::Object(params)
             },
         );
-        let response = self.bridge.invoke("sdk_identity_contact_list_v2", Some(params)).await?;
+        let response = self
+            .bridge
+            .invoke(
+                "/lxmf.identity.v1.IdentityService/ListContacts",
+                peer,
+                "sdk_identity_contact_list_v2",
+                Some(params),
+            )
+            .await?;
         let payload: ContactListEnvelopePayload = parse_result(response)?;
         Ok(Response::new(ListContactsResponse {
             contacts: payload.contact_list.contacts.into_iter().map(Into::into).collect(),
@@ -1070,10 +1393,13 @@ impl IdentityService for IdentityGrpcService {
         &self,
         request: Request<BootstrapIdentityRequest>,
     ) -> Result<Response<BootstrapIdentityResponse>, Status> {
+        let peer = grpc_peer(&request);
         let request = request.into_inner();
         let response = self
             .bridge
             .invoke(
+                "/lxmf.identity.v1.IdentityService/BootstrapIdentity",
+                peer,
                 "sdk_identity_bootstrap_v2",
                 Some(json!({
                     "identity": request.identity,
@@ -1095,6 +1421,7 @@ impl MarkerService for MarkerGrpcService {
         &self,
         request: Request<CreateMarkerRequest>,
     ) -> Result<Response<CreateMarkerResponse>, Status> {
+        let peer = grpc_peer(&request);
         let request = request.into_inner();
         let mut params = serde_json::Map::new();
         params.insert("label".to_string(), JsonValue::String(request.label));
@@ -1103,7 +1430,14 @@ impl MarkerService for MarkerGrpcService {
             params.insert("topic_id".to_string(), JsonValue::String(topic_id));
         }
         let response =
-            self.bridge.invoke("sdk_marker_create_v2", Some(JsonValue::Object(params))).await?;
+            self.bridge
+                .invoke(
+                    "/lxmf.markers.v1.MarkerService/CreateMarker",
+                    peer,
+                    "sdk_marker_create_v2",
+                    Some(JsonValue::Object(params)),
+                )
+                .await?;
         let payload: MarkerEnvelopePayload = parse_result(response)?;
         Ok(Response::new(CreateMarkerResponse { marker: Some(payload.marker.into()) }))
     }
@@ -1112,6 +1446,7 @@ impl MarkerService for MarkerGrpcService {
         &self,
         request: Request<ListMarkersRequest>,
     ) -> Result<Response<ListMarkersResponse>, Status> {
+        let peer = grpc_peer(&request);
         let request = request.into_inner();
         let mut params = serde_json::Map::new();
         if let Some(topic_id) = request.topic_id.filter(|value| !value.trim().is_empty()) {
@@ -1129,7 +1464,14 @@ impl MarkerService for MarkerGrpcService {
             }
         }
         let response =
-            self.bridge.invoke("sdk_marker_list_v2", Some(JsonValue::Object(params))).await?;
+            self.bridge
+                .invoke(
+                    "/lxmf.markers.v1.MarkerService/ListMarkers",
+                    peer,
+                    "sdk_marker_list_v2",
+                    Some(JsonValue::Object(params)),
+                )
+                .await?;
         let payload: MarkerListPayload = parse_result(response)?;
         Ok(Response::new(ListMarkersResponse {
             markers: payload.markers.into_iter().map(Into::into).collect(),
@@ -1143,10 +1485,13 @@ impl MarkerService for MarkerGrpcService {
         &self,
         request: Request<UpdateMarkerPositionRequest>,
     ) -> Result<Response<UpdateMarkerPositionResponse>, Status> {
+        let peer = grpc_peer(&request);
         let request = request.into_inner();
         let response = self
             .bridge
             .invoke(
+                "/lxmf.markers.v1.MarkerService/UpdateMarkerPosition",
+                peer,
                 "sdk_marker_update_position_v2",
                 Some(json!({
                     "marker_id": request.marker_id,
@@ -1163,10 +1508,13 @@ impl MarkerService for MarkerGrpcService {
         &self,
         request: Request<DeleteMarkerRequest>,
     ) -> Result<Response<DeleteMarkerResponse>, Status> {
+        let peer = grpc_peer(&request);
         let request = request.into_inner();
         let response = self
             .bridge
             .invoke(
+                "/lxmf.markers.v1.MarkerService/DeleteMarker",
+                peer,
                 "sdk_marker_delete_v2",
                 Some(json!({
                     "marker_id": request.marker_id,
@@ -1179,6 +1527,73 @@ impl MarkerService for MarkerGrpcService {
             accepted: payload.accepted,
             marker_id: payload.marker_id,
         }))
+    }
+}
+
+#[tonic::async_trait]
+impl PeerService for PeerGrpcService {
+    async fn list_peers(
+        &self,
+        request: Request<ListPeersRequest>,
+    ) -> Result<Response<ListPeersResponse>, Status> {
+        let response = self
+            .bridge
+            .invoke("/lxmf.peers.v1.PeerService/ListPeers", grpc_peer(&request), "list_peers", None)
+            .await?;
+        let payload: PeerListPayload = parse_result(response)?;
+        Ok(Response::new(ListPeersResponse {
+            peers: payload.peers.into_iter().map(Into::into).collect(),
+        }))
+    }
+
+    async fn sync_peer(
+        &self,
+        request: Request<SyncPeerRequest>,
+    ) -> Result<Response<SyncPeerResponse>, Status> {
+        let peer = grpc_peer(&request);
+        let peer_id = request.into_inner().peer_id;
+        let response = self
+            .bridge
+            .invoke(
+                "/lxmf.peers.v1.PeerService/SyncPeer",
+                peer,
+                "peer_sync",
+                Some(json!({ "peer": peer_id })),
+            )
+            .await?;
+        let payload: SyncPeerPayload = parse_result(response)?;
+        Ok(Response::new(SyncPeerResponse { peer_id: payload.peer, synced: payload.synced }))
+    }
+
+    async fn unpeer(
+        &self,
+        request: Request<UnpeerRequest>,
+    ) -> Result<Response<UnpeerResponse>, Status> {
+        let peer = grpc_peer(&request);
+        let peer_id = request.into_inner().peer_id;
+        let response = self
+            .bridge
+            .invoke(
+                "/lxmf.peers.v1.PeerService/Unpeer",
+                peer,
+                "peer_unpeer",
+                Some(json!({ "peer": peer_id })),
+            )
+            .await?;
+        let payload: UnpeerPayload = parse_result(response)?;
+        Ok(Response::new(UnpeerResponse { removed: payload.removed }))
+    }
+
+    async fn clear_peers(
+        &self,
+        request: Request<ClearPeersRequest>,
+    ) -> Result<Response<ClearPeersResponse>, Status> {
+        let response = self
+            .bridge
+            .invoke("/lxmf.peers.v1.PeerService/ClearPeers", grpc_peer(&request), "clear_peers", None)
+            .await?;
+        let payload: ClearPeersPayload = parse_result(response)?;
+        Ok(Response::new(ClearPeersResponse { cleared: payload.cleared }))
     }
 }
 
@@ -1217,14 +1632,22 @@ pub async fn serve(
         MarkerGrpcService { bridge: bridge.clone() },
         auth_interceptor,
     );
+    let peer_service = PeerServiceServer::with_interceptor(
+        PeerGrpcService { bridge: bridge.clone() },
+        GrpcAuthInterceptor::new(bridge.daemon.clone()),
+    );
     let reflection_service = tonic_reflection::server::Builder::configure()
         .register_encoded_file_descriptor_set(FILE_DESCRIPTOR_SET)
         .build_v1()
         .map_err(|err| -> Box<dyn std::error::Error + Send + Sync> { Box::new(err) })?;
     let mut server = tonic::transport::Server::builder();
-    if let Some(tls) = tls {
+    let grpc_scheme = if let Some(tls) = tls {
         server = server.tls_config(build_tls_config(&tls)?)?;
-    }
+        "https"
+    } else {
+        "http"
+    };
+    println!("reticulumd gRPC listening on {}://{}", grpc_scheme, addr);
     server
         .add_service(reflection_service)
         .add_service(runtime_service)
@@ -1234,6 +1657,7 @@ pub async fn serve(
         .add_service(event_service)
         .add_service(identity_service)
         .add_service(marker_service)
+        .add_service(peer_service)
         .serve(addr)
         .await
         .map_err(Into::into)
@@ -1564,6 +1988,28 @@ impl From<MarkerRecordPayload> for Marker {
 impl From<GeoPointPayload> for GeoPoint {
     fn from(value: GeoPointPayload) -> Self {
         Self { lat: value.lat, lon: value.lon, alt_m: value.alt_m }
+    }
+}
+
+impl From<PeerRecordPayload> for Peer {
+    fn from(value: PeerRecordPayload) -> Self {
+        Self {
+            peer_id: value.peer,
+            last_seen_ts_ms: value.last_seen,
+            name: value.name,
+            name_source: value.name_source,
+            peer_type: value.peer_type,
+            alive: value.alive,
+            last_sync_attempt_ts_ms: value.last_sync_attempt,
+            next_sync_attempt_ts_ms: value.next_sync_attempt,
+            sync_backoff: value.sync_backoff,
+            network_distance: value.network_distance,
+            rx_bytes: value.rx_bytes,
+            tx_bytes: value.tx_bytes,
+            acceptance_rate: value.acceptance_rate,
+            first_seen_ts_ms: value.first_seen,
+            seen_count: value.seen_count,
+        }
     }
 }
 
@@ -2328,6 +2774,8 @@ mod tests {
         let imported = service
             .bridge
             .invoke(
+                "/tests/identity/import",
+                None,
                 "sdk_identity_import_v2",
                 Some(json!({
                     "bundle_base64": "eyJpZGVudGl0eSI6Im5vZGUtYiIsInB1YmxpY19rZXkiOiJub2RlLWItcHViIiwiZGlzcGxheV9uYW1lIjoiTm9kZSBCIiwiY2FwYWJpbGl0aWVzIjpbIm9wcyJdLCJleHRlbnNpb25zIjp7fX0="
@@ -2379,6 +2827,8 @@ mod tests {
         service
             .bridge
             .invoke(
+                "/tests/identity/import",
+                None,
                 "sdk_identity_import_v2",
                 Some(json!({
                     "bundle_base64": "eyJpZGVudGl0eSI6Im5vZGUtYiIsInB1YmxpY19rZXkiOiJub2RlLWItcHViIiwiZGlzcGxheV9uYW1lIjoiTm9kZSBCIiwiY2FwYWJpbGl0aWVzIjpbIm9wcyJdLCJleHRlbnNpb25zIjp7fX0="
@@ -2517,5 +2967,55 @@ mod tests {
             .into_inner();
         assert!(deleted.accepted);
         assert_eq!(deleted.marker_id, updated.marker_id);
+    }
+
+    #[tokio::test]
+    async fn list_peers_maps_peer_payloads() {
+        let daemon = RpcDaemon::test_instance();
+        daemon
+            .handle_rpc(RpcRequest {
+                id: 200,
+                method: "peer_sync".to_string(),
+                params: Some(json!({ "peer": "peer-a" })),
+            })
+            .expect("sync peer");
+        let service = PeerGrpcService { bridge: GrpcBridge::new(Arc::new(daemon)) };
+
+        let response = service
+            .list_peers(Request::new(ListPeersRequest {}))
+            .await
+            .expect("list peers")
+            .into_inner();
+        assert_eq!(response.peers.len(), 1);
+        assert_eq!(response.peers[0].peer_id, "peer-a");
+        assert_eq!(response.peers[0].peer_type.as_deref(), Some("manual"));
+    }
+
+    #[tokio::test]
+    async fn sync_unpeer_and_clear_peers_map_results() {
+        let daemon = RpcDaemon::test_instance();
+        let service = PeerGrpcService { bridge: GrpcBridge::new(Arc::new(daemon)) };
+
+        let synced = service
+            .sync_peer(Request::new(SyncPeerRequest { peer_id: "peer-b".to_string() }))
+            .await
+            .expect("sync peer")
+            .into_inner();
+        assert!(synced.synced);
+        assert_eq!(synced.peer_id, "peer-b");
+
+        let unpeered = service
+            .unpeer(Request::new(UnpeerRequest { peer_id: "peer-b".to_string() }))
+            .await
+            .expect("unpeer")
+            .into_inner();
+        assert!(unpeered.removed);
+
+        let cleared = service
+            .clear_peers(Request::new(ClearPeersRequest {}))
+            .await
+            .expect("clear peers")
+            .into_inner();
+        assert_eq!(cleared.cleared, "peers");
     }
 }

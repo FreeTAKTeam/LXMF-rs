@@ -5,7 +5,7 @@ meta {
 }
 
 grpc {
-  url: 127.0.0.1:50051
+  url: {{grpc_host}}
   method: /lxmf.attachments.v1.AttachmentService/DownloadAttachment
   body: grpc
   auth: inherit
@@ -16,7 +16,7 @@ body:grpc {
   name: message 1
   content: '''
     {
-      "attachmentId": "attachment-1"
+      "attachmentId": "{{attachment_id}}"
     }
   '''
 }

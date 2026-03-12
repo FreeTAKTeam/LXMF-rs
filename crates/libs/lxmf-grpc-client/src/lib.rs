@@ -57,6 +57,12 @@ pub mod lxmf {
             include!(concat!(env!("OUT_DIR"), "/lxmf.markers.v1.rs"));
         }
     }
+
+    pub mod peers {
+        pub mod v1 {
+            include!(concat!(env!("OUT_DIR"), "/lxmf.peers.v1.rs"));
+        }
+    }
 }
 
 pub use lxmf::admin::v1::interface_admin_service_client::InterfaceAdminServiceClient;
@@ -64,6 +70,7 @@ pub use lxmf::attachments::v1::attachment_service_client::AttachmentServiceClien
 pub use lxmf::events::v1::event_service_client::EventServiceClient;
 pub use lxmf::identity::v1::identity_service_client::IdentityServiceClient;
 pub use lxmf::markers::v1::marker_service_client::MarkerServiceClient;
+pub use lxmf::peers::v1::peer_service_client::PeerServiceClient;
 pub use lxmf::runtime::v1::runtime_service_client::RuntimeServiceClient;
 pub use lxmf::topics::v1::topic_service_client::TopicServiceClient;
 
@@ -196,6 +203,10 @@ impl LxmfGrpcClient {
 
     pub fn markers(&self) -> MarkerServiceClient<ClientTransport> {
         MarkerServiceClient::with_interceptor(self.channel.clone(), self.interceptor.clone())
+    }
+
+    pub fn peers(&self) -> PeerServiceClient<ClientTransport> {
+        PeerServiceClient::with_interceptor(self.channel.clone(), self.interceptor.clone())
     }
 }
 

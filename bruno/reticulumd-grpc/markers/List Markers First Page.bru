@@ -5,7 +5,7 @@ meta {
 }
 
 grpc {
-  url: 127.0.0.1:50051
+  url: {{grpc_host}}
   method: /lxmf.markers.v1.MarkerService/ListMarkers
   body: grpc
   auth: inherit

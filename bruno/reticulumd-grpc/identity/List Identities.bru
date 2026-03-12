@@ -5,7 +5,7 @@ meta {
 }
 
 grpc {
-  url: 127.0.0.1:50051
+  url: {{grpc_host}}
   method: /lxmf.identity.v1.IdentityService/ListIdentities
   body: grpc
   auth: inherit

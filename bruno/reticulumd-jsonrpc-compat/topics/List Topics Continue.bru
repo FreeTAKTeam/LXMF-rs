@@ -9,7 +9,7 @@ docs {
 }
 
 post {
-  url: http://127.0.0.1:4243/rpc/json
+  url: {{rpc_base}}/rpc/json
   body: json
   auth: none
 }
@@ -25,7 +25,7 @@ body:json {
     "id": 22,
     "method": "sdk_topic_list_v2",
     "params": {
-      "cursor": "replace-with-next_cursor",
+      "cursor": "{{next_cursor}}",
       "limit": 25
     }
   }

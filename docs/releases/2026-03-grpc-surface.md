@@ -30,6 +30,7 @@ The currently exposed service surface includes:
 - `lxmf.events.v1.EventService`
 - `lxmf.identity.v1.IdentityService`
 - `lxmf.markers.v1.MarkerService`
+- `lxmf.peers.v1.PeerService`
 
 ## New Operator Paths
 

@@ -1,12 +1,12 @@
 meta {
-  name: Poll Events Continue
+  name: Clear Peers
   type: grpc
-  seq: 2
+  seq: 4
 }
 
 grpc {
   url: {{grpc_host}}
-  method: /lxmf.events.v1.EventService/PollEvents
+  method: /lxmf.peers.v1.PeerService/ClearPeers
   body: grpc
   auth: inherit
   methodType: unary
@@ -15,9 +15,6 @@ grpc {
 body:grpc {
   name: message 1
   content: '''
-    {
-      "cursor": "{{next_cursor}}",
-      "max": 16
-    }
+    {}
   '''
 }

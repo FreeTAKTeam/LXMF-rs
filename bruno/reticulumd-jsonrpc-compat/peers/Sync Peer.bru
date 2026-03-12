@@ -1,11 +1,11 @@
 meta {
-  name: Create Topic
+  name: Sync Peer
   type: http
-  seq: 1
+  seq: 2
 }
 
 docs {
-  Creates a topic path for later marker, attachment, or publish flows.
+  Starts or refreshes sync for one peer id. Replace the placeholder peer with a real peer id from List Peers.
 }
 
 post {
@@ -22,10 +22,10 @@ headers {
 body:json {
   {
     "jsonrpc": "2.0",
-    "id": 20,
-    "method": "sdk_topic_create_v2",
+    "id": 71,
+    "method": "peer_sync",
     "params": {
-      "topic_path": "tak/alpha"
+      "peer": "{{peer_id}}"
     }
   }
 }

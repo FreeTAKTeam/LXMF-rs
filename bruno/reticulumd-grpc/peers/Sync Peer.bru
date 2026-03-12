@@ -1,12 +1,12 @@
 meta {
-  name: Poll Events Continue
+  name: Sync Peer
   type: grpc
   seq: 2
 }
 
 grpc {
   url: {{grpc_host}}
-  method: /lxmf.events.v1.EventService/PollEvents
+  method: /lxmf.peers.v1.PeerService/SyncPeer
   body: grpc
   auth: inherit
   methodType: unary
@@ -16,8 +16,7 @@ body:grpc {
   name: message 1
   content: '''
     {
-      "cursor": "{{next_cursor}}",
-      "max": 16
+      "peerId": "{{peer_id}}"
     }
   '''
 }

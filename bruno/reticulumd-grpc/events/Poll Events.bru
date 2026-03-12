@@ -5,7 +5,7 @@ meta {
 }
 
 grpc {
-  url: 127.0.0.1:50051
+  url: {{grpc_host}}
   method: /lxmf.events.v1.EventService/PollEvents
   body: grpc
   auth: inherit

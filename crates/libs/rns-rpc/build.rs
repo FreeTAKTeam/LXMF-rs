@@ -26,6 +26,7 @@ fn main() {
         proto_root.join("lxmf/events/v1/events.proto"),
         proto_root.join("lxmf/identity/v1/identity.proto"),
         proto_root.join("lxmf/markers/v1/markers.proto"),
+        proto_root.join("lxmf/peers/v1/peers.proto"),
     ];
     let descriptor_path =
         PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR")).join("lxmf-reflection-descriptor.bin");

@@ -5,7 +5,7 @@ meta {
 }
 
 grpc {
-  url: 127.0.0.1:50051
+  url: {{grpc_host}}
   method: /lxmf.attachments.v1.AttachmentService/ListAttachments
   body: grpc
   auth: inherit
@@ -17,7 +17,7 @@ body:grpc {
   content: '''
     {
       "page": {
-        "pageToken": "replace-with-nextPageToken",
+        "pageToken": "{{next_page_token}}",
         "pageSize": 25
       }
     }

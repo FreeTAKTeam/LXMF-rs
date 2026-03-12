@@ -17,6 +17,7 @@ The live gRPC surface currently includes:
 - `lxmf.events.v1.EventService`
 - `lxmf.identity.v1.IdentityService`
 - `lxmf.markers.v1.MarkerService`
+- `lxmf.peers.v1.PeerService`
 
 This is the preferred path for new non-browser integrations.
 

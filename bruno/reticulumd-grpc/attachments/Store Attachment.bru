@@ -5,7 +5,7 @@ meta {
 }
 
 grpc {
-  url: 127.0.0.1:50051
+  url: {{grpc_host}}
   method: /lxmf.attachments.v1.AttachmentService/StoreAttachment
   body: grpc
   auth: inherit

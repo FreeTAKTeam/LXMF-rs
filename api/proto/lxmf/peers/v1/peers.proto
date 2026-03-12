@@ -1,0 +1,71 @@
+syntax = "proto3";
+
+package lxmf.peers.v1;
+
+// Peer record returned by peer inspection calls.
+message Peer {
+  string peer_id = 1;
+  int64 last_seen_ts_ms = 2;
+  optional string name = 3;
+  optional string name_source = 4;
+  optional string peer_type = 5;
+  bool alive = 6;
+  int64 last_sync_attempt_ts_ms = 7;
+  int64 next_sync_attempt_ts_ms = 8;
+  uint32 sync_backoff = 9;
+  uint32 network_distance = 10;
+  uint64 rx_bytes = 11;
+  uint64 tx_bytes = 12;
+  double acceptance_rate = 13;
+  int64 first_seen_ts_ms = 14;
+  uint64 seen_count = 15;
+}
+
+// Empty request for listing peers.
+message ListPeersRequest {}
+
+// Returns the current peer table.
+message ListPeersResponse {
+  repeated Peer peers = 1;
+}
+
+// Starts or refreshes sync for one peer id.
+message SyncPeerRequest {
+  string peer_id = 1;
+}
+
+// Reports whether peer sync was accepted.
+message SyncPeerResponse {
+  string peer_id = 1;
+  bool synced = 2;
+}
+
+// Removes one peer from the peer table.
+message UnpeerRequest {
+  string peer_id = 1;
+}
+
+// Reports whether peer removal succeeded.
+message UnpeerResponse {
+  bool removed = 1;
+}
+
+// Clears the peer table.
+message ClearPeersRequest {}
+
+// Reports that the peer table was cleared.
+message ClearPeersResponse {
+  string cleared = 1;
+}
+
+// Peer inspection and control operations.
+service PeerService {
+  // Lists the current peer table.
+  rpc ListPeers(ListPeersRequest) returns (ListPeersResponse);
+  // Starts or refreshes sync for one peer.
+  rpc SyncPeer(SyncPeerRequest) returns (SyncPeerResponse);
+  // Removes one peer.
+  rpc Unpeer(UnpeerRequest) returns (UnpeerResponse);
+  // Clears the full peer table.
+  rpc ClearPeers(ClearPeersRequest) returns (ClearPeersResponse);
+}

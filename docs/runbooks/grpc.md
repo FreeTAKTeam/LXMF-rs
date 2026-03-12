@@ -41,6 +41,11 @@ with `grpcurl` or generated clients.
   - `ListMarkers`
   - `UpdateMarkerPosition`
   - `DeleteMarker`
+- `lxmf.peers.v1.PeerService`
+  - `ListPeers`
+  - `SyncPeer`
+  - `Unpeer`
+  - `ClearPeers`
 
 ## Start `reticulumd`
 
@@ -254,6 +259,26 @@ grpcurl \
   -d '{"page":{"pageSize":25}}' \
   127.0.0.1:50051 \
   lxmf.markers.v1.MarkerService/ListMarkers
+```
+
+List peers:
+
+```bash
+grpcurl \
+  -plaintext \
+  -d '{}' \
+  127.0.0.1:50051 \
+  lxmf.peers.v1.PeerService/ListPeers
+```
+
+Sync a peer:
+
+```bash
+grpcurl \
+  -plaintext \
+  -d '{"peerId":"peer-a"}' \
+  127.0.0.1:50051 \
+  lxmf.peers.v1.PeerService/SyncPeer
 ```
 
 Create marker:

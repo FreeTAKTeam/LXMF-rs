@@ -47,6 +47,10 @@ Included requests:
 - `identity/Announce Now`
 - `markers/List Markers First Page`
 - `markers/Create Marker`
+- `peers/List Peers`
+- `peers/Sync Peer`
+- `peers/Unpeer`
+- `peers/Clear Peers`
 
 Example payloads and usage notes live in:
 
