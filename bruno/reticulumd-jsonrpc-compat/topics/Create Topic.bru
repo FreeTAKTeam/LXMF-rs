@@ -1,0 +1,35 @@
+meta {
+  name: Create Topic
+  type: http
+  seq: 1
+}
+
+docs {
+  Creates a topic path for later marker, attachment, or publish flows.
+}
+
+post {
+  url: http://127.0.0.1:4243/rpc/json
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Accept: application/json
+}
+
+body:json {
+  {
+    "jsonrpc": "2.0",
+    "id": 20,
+    "method": "sdk_topic_create_v2",
+    "params": {
+      "topic_path": "tak/alpha"
+    }
+  }
+}
+
+assert {
+  res.status: eq 200
+}

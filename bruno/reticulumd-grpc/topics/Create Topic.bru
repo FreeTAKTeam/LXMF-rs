@@ -1,0 +1,22 @@
+meta {
+  name: Create Topic
+  type: grpc
+  seq: 2
+}
+
+grpc {
+  url: 127.0.0.1:50051
+  method: /lxmf.topics.v1.TopicService/CreateTopic
+  body: grpc
+  auth: inherit
+  methodType: unary
+}
+
+body:grpc {
+  name: message 1
+  content: '''
+    {
+      "topicPath": "tak/alpha"
+    }
+  '''
+}

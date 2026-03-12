@@ -1,0 +1,35 @@
+meta {
+  name: Poll Events
+  type: http
+  seq: 1
+}
+
+docs {
+  Polls the event feed from the current head. Add cursor in params for a follow-up page.
+}
+
+post {
+  url: http://127.0.0.1:4243/rpc/json
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Accept: application/json
+}
+
+body:json {
+  {
+    "jsonrpc": "2.0",
+    "id": 40,
+    "method": "sdk_poll_events_v2",
+    "params": {
+      "max": 16
+    }
+  }
+}
+
+assert {
+  res.status: eq 200
+}

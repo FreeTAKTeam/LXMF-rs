@@ -1,0 +1,35 @@
+meta {
+  name: Get Snapshot
+  type: http
+  seq: 1
+}
+
+docs {
+  Returns a point-in-time runtime snapshot.
+}
+
+post {
+  url: http://127.0.0.1:4243/rpc/json
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Accept: application/json
+}
+
+body:json {
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "sdk_snapshot_v2",
+    "params": {
+      "include_counts": true
+    }
+  }
+}
+
+assert {
+  res.status: eq 200
+}

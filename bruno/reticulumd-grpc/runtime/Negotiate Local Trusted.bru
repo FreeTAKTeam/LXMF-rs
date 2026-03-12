@@ -1,0 +1,35 @@
+meta {
+  name: Negotiate Local Trusted
+  type: grpc
+  seq: 2
+}
+
+grpc {
+  url: 127.0.0.1:50051
+  method: /lxmf.runtime.v1.RuntimeService/Negotiate
+  body: grpc
+  auth: inherit
+  methodType: unary
+}
+
+body:grpc {
+  name: message 1
+  content: '''
+    {
+      "supportedContractVersions": [2],
+      "requestedCapabilities": [
+        "sdk.capability.topics",
+        "sdk.capability.attachments",
+        "sdk.capability.markers",
+        "sdk.capability.identity_multi",
+        "sdk.capability.contact_management"
+      ],
+      "config": {
+        "profile": "desktop-local-runtime",
+        "bindMode": "local_only",
+        "authMode": "local_trusted",
+        "overflowPolicy": "reject"
+      }
+    }
+  '''
+}

@@ -1,0 +1,22 @@
+meta {
+  name: Download Attachment
+  type: grpc
+  seq: 3
+}
+
+grpc {
+  url: 127.0.0.1:50051
+  method: /lxmf.attachments.v1.AttachmentService/DownloadAttachment
+  body: grpc
+  auth: inherit
+  methodType: unary
+}
+
+body:grpc {
+  name: message 1
+  content: '''
+    {
+      "attachmentId": "attachment-1"
+    }
+  '''
+}

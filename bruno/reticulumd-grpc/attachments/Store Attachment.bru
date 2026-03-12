@@ -1,0 +1,24 @@
+meta {
+  name: Store Attachment
+  type: grpc
+  seq: 2
+}
+
+grpc {
+  url: 127.0.0.1:50051
+  method: /lxmf.attachments.v1.AttachmentService/StoreAttachment
+  body: grpc
+  auth: inherit
+  methodType: unary
+}
+
+body:grpc {
+  name: message 1
+  content: '''
+    {
+      "name": "brief.txt",
+      "contentType": "text/plain",
+      "bytesBase64": "aGVsbG8="
+    }
+  '''
+}

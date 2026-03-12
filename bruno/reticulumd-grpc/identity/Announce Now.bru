@@ -1,0 +1,20 @@
+meta {
+  name: Announce Now
+  type: grpc
+  seq: 2
+}
+
+grpc {
+  url: 127.0.0.1:50051
+  method: /lxmf.identity.v1.IdentityService/AnnounceNow
+  body: grpc
+  auth: inherit
+  methodType: unary
+}
+
+body:grpc {
+  name: message 1
+  content: '''
+    {}
+  '''
+}

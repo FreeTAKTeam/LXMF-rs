@@ -1,0 +1,27 @@
+meta {
+  name: Create Marker
+  type: grpc
+  seq: 2
+}
+
+grpc {
+  url: 127.0.0.1:50051
+  method: /lxmf.markers.v1.MarkerService/CreateMarker
+  body: grpc
+  auth: inherit
+  methodType: unary
+}
+
+body:grpc {
+  name: message 1
+  content: '''
+    {
+      "label": "checkpoint-alpha",
+      "position": {
+        "lat": 45.4215,
+        "lon": -75.6972,
+        "altM": 70
+      }
+    }
+  '''
+}

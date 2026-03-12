@@ -1,0 +1,38 @@
+meta {
+  name: Store Attachment
+  type: http
+  seq: 1
+}
+
+docs {
+  Stores a full attachment in one request. The bytes are base64-encoded.
+}
+
+post {
+  url: http://127.0.0.1:4243/rpc/json
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Accept: application/json
+}
+
+body:json {
+  {
+    "jsonrpc": "2.0",
+    "id": 30,
+    "method": "sdk_attachment_store_v2",
+    "params": {
+      "name": "brief.txt",
+      "content_type": "text/plain",
+      "bytes_base64": "aGVsbG8=",
+      "topic_ids": []
+    }
+  }
+}
+
+assert {
+  res.status: eq 200
+}

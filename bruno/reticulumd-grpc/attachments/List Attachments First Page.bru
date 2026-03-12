@@ -1,0 +1,24 @@
+meta {
+  name: List Attachments First Page
+  type: grpc
+  seq: 1
+}
+
+grpc {
+  url: 127.0.0.1:50051
+  method: /lxmf.attachments.v1.AttachmentService/ListAttachments
+  body: grpc
+  auth: inherit
+  methodType: unary
+}
+
+body:grpc {
+  name: message 1
+  content: '''
+    {
+      "page": {
+        "pageSize": 25
+      }
+    }
+  '''
+}

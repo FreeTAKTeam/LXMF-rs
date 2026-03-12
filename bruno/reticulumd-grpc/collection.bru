@@ -1,0 +1,43 @@
+meta {
+  name: reticulumd-grpc
+  type: collection
+}
+
+docs {
+  Bruno collection for the reticulumd gRPC surface.
+
+  Current gRPC endpoint:
+  - 127.0.0.1:50051
+
+  Reflection:
+  - enabled by the daemon
+
+  Proto import root if you prefer manual proto browsing:
+  - /Users/tommy/Documents/TAK/LXMF-rs/api/proto
+
+  Included requests:
+  - runtime/Get Snapshot
+  - runtime/Negotiate Local Trusted
+  - admin/List Interfaces
+  - admin/Reload Config
+  - topics/List Topics First Page
+  - topics/Create Topic
+  - attachments/List Attachments First Page
+  - attachments/Store Attachment
+  - attachments/Download Attachment
+  - events/Poll Events
+  - identity/List Identities
+  - identity/Announce Now
+  - markers/List Markers First Page
+  - markers/Create Marker
+
+  Start the daemon with:
+  cargo run -p reticulumd --bin reticulumd -- \
+    --rpc 127.0.0.1:4243 \
+    --grpc 127.0.0.1:50051 \
+    --db reticulum.db
+
+  For full operational guidance:
+  - docs/grpc-getting-started.md
+  - docs/runbooks/grpc.md
+}

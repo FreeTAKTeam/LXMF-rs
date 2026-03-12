@@ -1,0 +1,48 @@
+meta {
+  name: Negotiate Local Trusted
+  type: http
+  seq: 2
+}
+
+docs {
+  Negotiates a local_trusted runtime profile for desktop-style local development.
+}
+
+post {
+  url: http://127.0.0.1:4243/rpc/json
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Accept: application/json
+}
+
+body:json {
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "sdk_negotiate_v2",
+    "params": {
+      "supported_contract_versions": [2],
+      "requested_capabilities": [
+        "sdk.capability.topics",
+        "sdk.capability.attachments",
+        "sdk.capability.markers",
+        "sdk.capability.identity_multi",
+        "sdk.capability.contact_management"
+      ],
+      "config": {
+        "profile": "desktop-local-runtime",
+        "bind_mode": "local_only",
+        "auth_mode": "local_trusted",
+        "overflow_policy": "reject"
+      }
+    }
+  }
+}
+
+assert {
+  res.status: eq 200
+}

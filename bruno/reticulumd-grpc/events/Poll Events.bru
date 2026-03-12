@@ -1,0 +1,22 @@
+meta {
+  name: Poll Events
+  type: grpc
+  seq: 1
+}
+
+grpc {
+  url: 127.0.0.1:50051
+  method: /lxmf.events.v1.EventService/PollEvents
+  body: grpc
+  auth: inherit
+  methodType: unary
+}
+
+body:grpc {
+  name: message 1
+  content: '''
+    {
+      "max": 16
+    }
+  '''
+}
