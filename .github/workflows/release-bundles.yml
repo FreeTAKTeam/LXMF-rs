@@ -61,8 +61,13 @@ jobs:
           cache-targets: true
           cache-on-failure: false
       - name: Build daemon bundle
+        if: runner.os != 'Windows'
         shell: bash
         run: cargo xtask package-daemon-bundle --version "$RELEASE_VERSION"
+      - name: Build daemon bundle
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: cargo xtask package-daemon-bundle --version "$env:RELEASE_VERSION"
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
