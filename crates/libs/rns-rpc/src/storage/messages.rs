@@ -147,9 +147,7 @@ impl MessagesStore {
         let count: i64 = self.with_read_conn(|conn| {
             conn.query_row("SELECT COUNT(*) FROM messages", [], |row| row.get(0))
         })?;
-        self.write_state
-            .message_count_cache
-            .store(count.max(0) as u64, Ordering::Relaxed);
+        self.write_state.message_count_cache.store(count.max(0) as u64, Ordering::Relaxed);
         Ok(())
     }
 
@@ -163,10 +161,8 @@ impl MessagesStore {
                 while let Ok(command) = rx.recv() {
                     match command {
                         OutboundWriteCommand::InsertMessage { record, reply } => {
-                            let _ = reply.send(Self::insert_message_direct(
-                                write_state.as_ref(),
-                                &record,
-                            ));
+                            let _ = reply
+                                .send(Self::insert_message_direct(write_state.as_ref(), &record));
                         }
                         OutboundWriteCommand::ResolveReceiptStatus {
                             message_id,
@@ -185,18 +181,22 @@ impl MessagesStore {
             .expect("spawn messages outbound writer");
     }
 
-    fn with_write_conn<T>(&self, f: impl FnOnce(&Connection) -> rusqlite::Result<T>) -> rusqlite::Result<T> {
+    fn with_write_conn<T>(
+        &self,
+        f: impl FnOnce(&Connection) -> rusqlite::Result<T>,
+    ) -> rusqlite::Result<T> {
         let started = std::time::Instant::now();
         let conn = self.write_state.conn.lock().expect("messages sqlite write mutex poisoned");
         let waited_ns = started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
-        self.write_state
-            .write_lock_wait_ns_total
-            .fetch_add(waited_ns, Ordering::Relaxed);
+        self.write_state.write_lock_wait_ns_total.fetch_add(waited_ns, Ordering::Relaxed);
         self.write_state.write_ops_total.fetch_add(1, Ordering::Relaxed);
         f(&conn)
     }
 
-    fn with_read_conn<T>(&self, f: impl FnOnce(&Connection) -> rusqlite::Result<T>) -> rusqlite::Result<T> {
+    fn with_read_conn<T>(
+        &self,
+        f: impl FnOnce(&Connection) -> rusqlite::Result<T>,
+    ) -> rusqlite::Result<T> {
         if let Some(conn) = &self.read_conn {
             let started = std::time::Instant::now();
             let conn = conn.lock().expect("messages sqlite read mutex poisoned");
@@ -228,14 +228,15 @@ impl MessagesStore {
         let started = std::time::Instant::now();
         let conn = write_state.conn.lock().expect("messages sqlite write mutex poisoned");
         let waited_ns = started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
-        write_state
-            .write_lock_wait_ns_total
-            .fetch_add(waited_ns, Ordering::Relaxed);
+        write_state.write_lock_wait_ns_total.fetch_add(waited_ns, Ordering::Relaxed);
         write_state.write_ops_total.fetch_add(1, Ordering::Relaxed);
         f(&conn)
     }
 
-    fn insert_message_direct(write_state: &WriteState, record: &MessageRecord) -> rusqlite::Result<()> {
+    fn insert_message_direct(
+        write_state: &WriteState,
+        record: &MessageRecord,
+    ) -> rusqlite::Result<()> {
         let fields_json =
             record.fields.as_ref().map(|value| serde_json::to_string(value).unwrap_or_default());
         Self::write_lock_and_run(write_state, |conn| {
@@ -316,10 +317,7 @@ impl MessagesStore {
     pub fn insert_message(&self, record: &MessageRecord) -> rusqlite::Result<()> {
         let (reply_tx, reply_rx) = mpsc::channel();
         self.outbound_write_tx
-            .send(OutboundWriteCommand::InsertMessage {
-                record: record.clone(),
-                reply: reply_tx,
-            })
+            .send(OutboundWriteCommand::InsertMessage { record: record.clone(), reply: reply_tx })
             .map_err(|err| rusqlite::Error::ToSqlConversionFailure(Box::new(err)))?;
         reply_rx.recv().map_err(|err| rusqlite::Error::ToSqlConversionFailure(Box::new(err)))?
     }
@@ -427,10 +425,7 @@ impl MessagesStore {
                 [],
                 |row| row.get(0),
             )?;
-            Ok(MessageStorageStats {
-                count,
-                bytes: bytes.unwrap_or(0).max(0) as u64,
-            })
+            Ok(MessageStorageStats { count, bytes: bytes.unwrap_or(0).max(0) as u64 })
         })
     }
 
@@ -493,11 +488,9 @@ impl MessagesStore {
 
     pub fn count_outbound_messages(&self) -> rusqlite::Result<u64> {
         let count: i64 = self.with_read_conn(|conn| {
-            conn.query_row(
-                "SELECT COUNT(*) FROM messages WHERE direction = 'out'",
-                [],
-                |row| row.get(0),
-            )
+            conn.query_row("SELECT COUNT(*) FROM messages WHERE direction = 'out'", [], |row| {
+                row.get(0)
+            })
         })?;
         Ok(count.max(0) as u64)
     }
@@ -926,7 +919,8 @@ impl MessagesStore {
             let _ = conn.execute("ALTER TABLE announces ADD COLUMN rssi REAL", []);
             let _ = conn.execute("ALTER TABLE announces ADD COLUMN snr REAL", []);
             let _ = conn.execute("ALTER TABLE announces ADD COLUMN q REAL", []);
-            let _ = conn.execute("ALTER TABLE announces ADD COLUMN stamp_cost_flexibility INTEGER", []);
+            let _ =
+                conn.execute("ALTER TABLE announces ADD COLUMN stamp_cost_flexibility INTEGER", []);
             let _ = conn.execute("ALTER TABLE announces ADD COLUMN peering_cost INTEGER", []);
             Ok(())
         })
@@ -983,9 +977,7 @@ mod tests {
     #[test]
     fn message_count_uses_direct_count() {
         let store = MessagesStore::in_memory().expect("in-memory store");
-        store
-            .insert_message(&outbound_message("msg-1", 1, None))
-            .expect("insert msg-1");
+        store.insert_message(&outbound_message("msg-1", 1, None)).expect("insert msg-1");
         store
             .insert_message(&outbound_message("msg-2", 2, Some("delivered")))
             .expect("insert msg-2");
@@ -996,9 +988,7 @@ mod tests {
     #[test]
     fn message_count_cache_ignores_replace_for_existing_id() {
         let store = MessagesStore::in_memory().expect("in-memory store");
-        store
-            .insert_message(&outbound_message("msg-1", 1, None))
-            .expect("insert original");
+        store.insert_message(&outbound_message("msg-1", 1, None)).expect("insert original");
         store
             .insert_message(&outbound_message("msg-1", 2, Some("delivered")))
             .expect("replace existing");
@@ -1061,9 +1051,7 @@ mod tests {
     #[test]
     fn clear_messages_resets_message_count_cache() {
         let store = MessagesStore::in_memory().expect("in-memory store");
-        store
-            .insert_message(&outbound_message("msg-1", 1, None))
-            .expect("insert msg-1");
+        store.insert_message(&outbound_message("msg-1", 1, None)).expect("insert msg-1");
         store
             .insert_message(&outbound_message("msg-2", 2, Some("delivered")))
             .expect("insert msg-2");
@@ -1084,9 +1072,8 @@ mod tests {
         store.insert_message(&second).expect("insert second");
 
         let before = store.message_storage_stats().expect("stats before");
-        let pruned = store
-            .prune_messages_to_limit_bytes(before.bytes.saturating_sub(64))
-            .expect("prune");
+        let pruned =
+            store.prune_messages_to_limit_bytes(before.bytes.saturating_sub(64)).expect("prune");
 
         assert_eq!(pruned, vec!["msg-1".to_string()]);
         let remaining = store.list_messages(10, None).expect("remaining");
@@ -1123,13 +1110,10 @@ mod tests {
     #[test]
     fn resolve_receipt_status_updates_non_terminal_message() {
         let store = MessagesStore::in_memory().expect("in-memory store");
-        store
-            .insert_message(&outbound_message("msg-1", 1, None))
-            .expect("insert message");
+        store.insert_message(&outbound_message("msg-1", 1, None)).expect("insert message");
 
-        let resolved = store
-            .resolve_receipt_status("msg-1", "sent: direct")
-            .expect("resolve status");
+        let resolved =
+            store.resolve_receipt_status("msg-1", "sent: direct").expect("resolve status");
 
         assert_eq!(resolved.as_deref(), Some("sent: direct"));
         assert_eq!(
@@ -1150,9 +1134,8 @@ mod tests {
             .insert_message(&outbound_message("msg-1", 1, Some("delivered")))
             .expect("insert delivered message");
 
-        let resolved = store
-            .resolve_receipt_status("msg-1", "sent: direct")
-            .expect("resolve status");
+        let resolved =
+            store.resolve_receipt_status("msg-1", "sent: direct").expect("resolve status");
 
         assert_eq!(resolved.as_deref(), Some("delivered"));
         assert_eq!(

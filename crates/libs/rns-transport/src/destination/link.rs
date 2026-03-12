@@ -68,6 +68,7 @@ pub struct LinkEventData {
 pub struct Link {
     id: LinkId,
     destination: DestinationDesc,
+    ingress_iface: Option<AddressHash>,
     priv_identity: PrivateIdentity,
     peer_identity: Identity,
     derived_key: DerivedKey,
@@ -87,6 +88,7 @@ impl Link {
         Self {
             id: AddressHash::new_empty(),
             destination,
+            ingress_iface: None,
             priv_identity: PrivateIdentity::new_from_rand(OsRng),
             peer_identity: Identity::default(),
             derived_key: DerivedKey::new_empty(),
@@ -130,6 +132,7 @@ impl Link {
         let mut link = Self {
             id: link_id,
             destination,
+            ingress_iface: None,
             priv_identity: PrivateIdentity::new(StaticSecret::random_from_rng(OsRng), signing_key),
             peer_identity,
             derived_key: DerivedKey::new_empty(),
@@ -406,6 +409,14 @@ impl Link {
 
     pub fn destination(&self) -> &DestinationDesc {
         &self.destination
+    }
+
+    pub fn ingress_iface(&self) -> Option<AddressHash> {
+        self.ingress_iface
+    }
+
+    pub fn set_ingress_iface(&mut self, iface: AddressHash) {
+        self.ingress_iface = Some(iface);
     }
 
     pub fn peer_identity(&self) -> &Identity {

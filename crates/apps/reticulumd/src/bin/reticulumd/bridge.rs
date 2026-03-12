@@ -2,8 +2,8 @@ use super::bridge_helpers::{
     diagnostics_enabled, log_delivery_trace, opportunistic_payload, payload_preview,
     send_trace_detail,
 };
-use reticulum_daemon::lxmf_bridge::rmpv_to_json;
 use reticulum_daemon::lxmf_bridge::build_wire_message;
+use reticulum_daemon::lxmf_bridge::rmpv_to_json;
 use reticulum_daemon::receipt_bridge::{track_receipt_mapping, ReceiptEvent};
 use rns_core::identity::PrivateIdentity;
 use rns_rpc::{AnnounceBridge, OutboundBridge, RemoteControlBridge, RpcDaemon};
@@ -412,8 +412,10 @@ impl TransportBridge {
         data: rmpv::Value,
     ) -> Result<JsonValue, std::io::Error> {
         let remote = remote.trim().to_string();
-        let identity_override = identity_private_key_hex.map(str::trim).filter(|value| !value.is_empty()).map(
-            |value| {
+        let identity_override = identity_private_key_hex
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| {
                 let bytes = hex::decode(value).map_err(|err| {
                     std::io::Error::new(
                         std::io::ErrorKind::InvalidInput,
@@ -426,16 +428,23 @@ impl TransportBridge {
                         format!("invalid identity private key: {err:?}"),
                     )
                 })
-            },
-        ).transpose()?;
+            })
+            .transpose()?;
         let request_identity = identity_override.unwrap_or_else(|| self.signer.clone());
         let timeout = Duration::from_secs_f64(timeout_secs.max(0.1));
         let transport = self.transport.clone();
 
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async move {
-                remote_control_request(transport.as_ref(), &request_identity, &remote, path, data, timeout)
-                    .await
+                remote_control_request(
+                    transport.as_ref(),
+                    &request_identity,
+                    &remote,
+                    path,
+                    data,
+                    timeout,
+                )
+                .await
             })
         })
     }
@@ -465,26 +474,40 @@ async fn remote_control_request(
         }
     }
     let remote_identity = remote_identity.ok_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::NotFound, "no path known for propagation control node")
+        std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "no path known for propagation control node",
+        )
     })?;
 
-    let destination =
-        SingleOutputDestination::new(remote_identity, DestinationName::new("lxmf", "propagation.control"));
+    let destination = SingleOutputDestination::new(
+        remote_identity,
+        DestinationName::new("lxmf", "propagation.control"),
+    );
     let link = transport.link(destination.desc).await;
     await_link_activation(transport, &link, timeout).await?;
     let link_id = *link.lock().await.id();
 
     let identify_payload = build_link_identify_payload(request_identity, &link_id);
-    send_link_context_packet(transport, &link, PacketContext::LinkIdentify, identify_payload.as_slice())
-        .await?;
+    send_link_context_packet(
+        transport,
+        &link,
+        PacketContext::LinkIdentify,
+        identify_payload.as_slice(),
+    )
+    .await?;
 
     let mut data_rx = transport.received_data_events();
     let mut resource_rx = transport.resource_events();
     let request_payload = build_link_request_payload(path, data)?;
-    let request_id =
-        send_link_context_packet(transport, &link, PacketContext::Request, request_payload.as_slice())
-            .await?
-            .ok_or_else(|| std::io::Error::other("missing remote control request id"))?;
+    let request_id = send_link_context_packet(
+        transport,
+        &link,
+        PacketContext::Request,
+        request_payload.as_slice(),
+    )
+    .await?
+    .ok_or_else(|| std::io::Error::other("missing remote control request id"))?;
 
     let response = wait_for_link_request_response(
         &mut data_rx,
@@ -604,7 +627,10 @@ async fn send_link_context_packet(
 
     let outcome = transport.send_packet_with_outcome(packet).await;
     if !send_outcome_is_sent(outcome) {
-        return Err(std::io::Error::other(send_outcome_status("propagation control request", outcome)));
+        return Err(std::io::Error::other(send_outcome_status(
+            "propagation control request",
+            outcome,
+        )));
     }
     Ok(request_id)
 }
@@ -632,7 +658,9 @@ async fn wait_for_link_request_response(
             result = data_rx.recv() => {
                 match result {
                     Ok(event) => {
-                        if event.destination != expected_destination {
+                        if event.destination != expected_link_id
+                            && event.destination != expected_destination
+                        {
                             continue;
                         }
                         if let Some((response_id, payload)) = parse_link_response_frame(event.data.as_slice()) {

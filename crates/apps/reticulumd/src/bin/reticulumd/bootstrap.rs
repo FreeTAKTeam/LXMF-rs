@@ -1,7 +1,7 @@
 use super::announce_worker::spawn_announce_worker;
 use super::bridge::{PeerCrypto, TransportBridge};
-use super::interface_hot_apply::{legacy_tcp_interface_key, LegacyTcpInterfaceMutationBridge};
 use super::inbound_worker::spawn_inbound_worker;
+use super::interface_hot_apply::{legacy_tcp_interface_key, LegacyTcpInterfaceMutationBridge};
 use super::interfaces::{ble, common::interface_label, lora, serial};
 use super::receipt_worker::spawn_receipt_worker;
 use super::Args;
@@ -12,8 +12,7 @@ use reticulum_daemon::config::{DaemonConfig, InterfaceConfig};
 use reticulum_daemon::identity_store::load_or_create_identity;
 use reticulum_daemon::receipt_bridge::ReceiptBridge;
 use rns_rpc::{
-    AnnounceBridge, InterfaceRecord, MessagesStore, OutboundBridge, RemoteControlBridge,
-    RpcDaemon,
+    AnnounceBridge, InterfaceRecord, MessagesStore, OutboundBridge, RemoteControlBridge, RpcDaemon,
 };
 use rns_transport::destination::{DestinationName, SingleInputDestination};
 use rns_transport::iface::tcp_client::TcpClient;
@@ -197,7 +196,8 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
                                 None,
                                 Some(runtime_iface.as_str()),
                             );
-                            if let Some(key) = legacy_tcp_interface_key(&configured_interfaces[index])
+                            if let Some(key) =
+                                legacy_tcp_interface_key(&configured_interfaces[index])
                             {
                                 hot_apply_seeded_tcp.push((
                                     key,
@@ -489,7 +489,8 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
 
     let bridge: Option<Arc<TransportBridge>> =
         transport.as_ref().zip(announce_destination.as_ref()).map(|(transport, destination)| {
-            let propagation_app_data = encode_propagation_node_app_data(local_display_name.as_deref());
+            let propagation_app_data =
+                encode_propagation_node_app_data(local_display_name.as_deref());
             Arc::new(TransportBridge::new(
                 transport.clone(),
                 identity.clone(),
@@ -539,27 +540,38 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
             let _ = bridge.announce_now();
         }
     }
-    if let Some((transport, destination, interval_secs)) = transport
-        .as_ref()
-        .zip(announce_destination.as_ref())
-        .zip(peer_announce_interval_secs)
-        .map(|((transport, destination), interval_secs)| (transport, destination, interval_secs))
+    if let Some((transport, destination, interval_secs)) =
+        transport.as_ref().zip(announce_destination.as_ref()).zip(peer_announce_interval_secs).map(
+            |((transport, destination), interval_secs)| (transport, destination, interval_secs),
+        )
     {
-        spawn_destination_announce_scheduler(transport.clone(), destination.clone(), None, interval_secs);
+        spawn_destination_announce_scheduler(
+            transport.clone(),
+            destination.clone(),
+            None,
+            interval_secs,
+        );
     }
 
     if propagation_control_enabled && node_announce_at_start {
-        if let Some((transport, destination)) = transport.as_ref().zip(propagation_destination.as_ref()) {
-            let propagation_app_data = encode_propagation_node_app_data(local_display_name.as_deref());
+        if let Some((transport, destination)) =
+            transport.as_ref().zip(propagation_destination.as_ref())
+        {
+            let propagation_app_data =
+                encode_propagation_node_app_data(local_display_name.as_deref());
             transport.send_announce(destination, propagation_app_data.as_deref()).await;
         }
-        if let Some((transport, destination)) = transport.as_ref().zip(control_destination.as_ref()) {
+        if let Some((transport, destination)) = transport.as_ref().zip(control_destination.as_ref())
+        {
             transport.send_announce(destination, None).await;
         }
     }
     if let Some(interval_secs) = node_announce_interval_secs {
-        if let Some((transport, destination)) = transport.as_ref().zip(propagation_destination.as_ref()) {
-            let propagation_app_data = encode_propagation_node_app_data(local_display_name.as_deref());
+        if let Some((transport, destination)) =
+            transport.as_ref().zip(propagation_destination.as_ref())
+        {
+            let propagation_app_data =
+                encode_propagation_node_app_data(local_display_name.as_deref());
             spawn_destination_announce_scheduler(
                 transport.clone(),
                 destination.clone(),
@@ -567,8 +579,14 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
                 interval_secs,
             );
         }
-        if let Some((transport, destination)) = transport.as_ref().zip(control_destination.as_ref()) {
-            spawn_destination_announce_scheduler(transport.clone(), destination.clone(), None, interval_secs);
+        if let Some((transport, destination)) = transport.as_ref().zip(control_destination.as_ref())
+        {
+            spawn_destination_announce_scheduler(
+                transport.clone(),
+                destination.clone(),
+                None,
+                interval_secs,
+            );
         }
     }
 

@@ -11,19 +11,18 @@ use super::errors::Error;
 #[cfg(feature = "sdk-async")]
 use super::events::{map_event_batch, subscription_cursor, EventBatch, SubscriptionStart};
 use super::operations::{OperationEntry, OperationRegistry, RegistryError};
-use crate::error::{code, ErrorCategory as SdkErrorCategory, SdkError};
 use crate::domain::{
     AttachmentDownloadChunkRequest, AttachmentId, AttachmentListRequest, AttachmentStoreRequest,
     AttachmentUploadChunkRequest, AttachmentUploadCommitRequest, AttachmentUploadStartRequest,
     ContactListRequest, ContactUpdateRequest, IdentityBootstrapRequest, MarkerCreateRequest,
     MarkerDeleteRequest, MarkerListRequest, MarkerUpdatePositionRequest, PresenceListRequest,
     RemoteCommandRequest, TelemetryQuery, TopicCreateRequest, TopicId, TopicListRequest,
-    TopicPublishRequest, TopicSubscriptionRequest, VoiceSessionId,
-    VoiceSessionOpenRequest, VoiceSessionUpdateRequest,
-    WorkflowAttachmentReportRequest, WorkflowAttachmentReportResult, WorkflowMissionUpdateRequest,
-    WorkflowMissionUpdateResult, WorkflowPeerReadyRequest, WorkflowPeerReadyResult,
-    WorkflowTopicSyncRequest, WorkflowTopicSyncResult,
+    TopicPublishRequest, TopicSubscriptionRequest, VoiceSessionId, VoiceSessionOpenRequest,
+    VoiceSessionUpdateRequest, WorkflowAttachmentReportRequest, WorkflowAttachmentReportResult,
+    WorkflowMissionUpdateRequest, WorkflowMissionUpdateResult, WorkflowPeerReadyRequest,
+    WorkflowPeerReadyResult, WorkflowTopicSyncRequest, WorkflowTopicSyncResult,
 };
+use crate::error::{code, ErrorCategory as SdkErrorCategory, SdkError};
 use crate::{
     Client as CoreClient, ClientHandle, DeliverySnapshot, DeliveryState as RawDeliveryState,
     EventCursor, LxmfSdk, Profile as CoreProfile, RuntimeSnapshot, RuntimeState, SdkBackend,
@@ -614,8 +613,7 @@ impl<B: SdkBackend> Client<B> {
                 Ok(envelope_result(
                     canonical_id,
                     correlation_id,
-                    serde_json::to_value(result)
-                        .expect("workflow peer ready should serialize"),
+                    serde_json::to_value(result).expect("workflow peer ready should serialize"),
                 ))
             }
             "app.workflow.topic_sync" => {
@@ -630,13 +628,12 @@ impl<B: SdkBackend> Client<B> {
                 Ok(envelope_result(
                     canonical_id,
                     correlation_id,
-                    serde_json::to_value(result)
-                        .expect("workflow topic sync should serialize"),
+                    serde_json::to_value(result).expect("workflow topic sync should serialize"),
                 ))
             }
             "app.workflow.attachment_report_publish" => {
-                let req: WorkflowAttachmentReportRequest =
-                    serde_json::from_value(payload).map_err(|err| {
+                let req: WorkflowAttachmentReportRequest = serde_json::from_value(payload)
+                    .map_err(|err| {
                         invalid_envelope(
                             format!("invalid workflow attachment report payload: {err}"),
                             canonical_id.as_str(),
@@ -662,8 +659,7 @@ impl<B: SdkBackend> Client<B> {
                 Ok(envelope_result(
                     canonical_id,
                     correlation_id,
-                    serde_json::to_value(result)
-                        .expect("workflow mission update should serialize"),
+                    serde_json::to_value(result).expect("workflow mission update should serialize"),
                 ))
             }
             "app.attachment.store" => {
@@ -1454,9 +1450,13 @@ impl<B: SdkBackend> Client<B> {
         if let Some(summary) = request.summary_payload {
             payload.insert("summary".to_owned(), summary);
         }
-        payload.insert("attachment_id".to_owned(), JsonValue::String(attachment.attachment_id.0.clone()));
+        payload.insert(
+            "attachment_id".to_owned(),
+            JsonValue::String(attachment.attachment_id.0.clone()),
+        );
         payload.insert("attachment_name".to_owned(), JsonValue::String(attachment.name.clone()));
-        payload.insert("content_type".to_owned(), JsonValue::String(attachment.content_type.clone()));
+        payload
+            .insert("content_type".to_owned(), JsonValue::String(attachment.content_type.clone()));
         let published = self
             .backend
             .topic_publish(TopicPublishRequest {
@@ -1550,42 +1550,41 @@ impl<B: SdkBackend> Client<B> {
                     attachments
                         .iter()
                         .map(|attachment| {
-                            JsonValue::Object(
-                                JsonMap::from_iter([
-                                    (
-                                        "attachment_id".to_owned(),
-                                        JsonValue::String(attachment.attachment_id.0.clone()),
-                                    ),
-                                    ("name".to_owned(), JsonValue::String(attachment.name.clone())),
-                                    (
-                                        "content_type".to_owned(),
-                                        JsonValue::String(attachment.content_type.clone()),
-                                    ),
-                                    (
-                                        "byte_len".to_owned(),
-                                        JsonValue::Number(serde_json::Number::from(
-                                            attachment.byte_len,
-                                        )),
-                                    ),
-                                ])
-                            )
+                            JsonValue::Object(JsonMap::from_iter([
+                                (
+                                    "attachment_id".to_owned(),
+                                    JsonValue::String(attachment.attachment_id.0.clone()),
+                                ),
+                                ("name".to_owned(), JsonValue::String(attachment.name.clone())),
+                                (
+                                    "content_type".to_owned(),
+                                    JsonValue::String(attachment.content_type.clone()),
+                                ),
+                                (
+                                    "byte_len".to_owned(),
+                                    JsonValue::Number(serde_json::Number::from(
+                                        attachment.byte_len,
+                                    )),
+                                ),
+                            ]))
                         })
                         .collect(),
                 ),
             );
         }
-        let source = self.identities()?.into_iter().next().map(|identity| identity.identity).ok_or_else(
-            || {
-                Error::from(
-                    SdkError::new(
-                        code::RUNTIME_INVALID_STATE,
-                        SdkErrorCategory::Runtime,
-                        "mission update requires an active identity",
+        let source =
+            self.identities()?.into_iter().next().map(|identity| identity.identity).ok_or_else(
+                || {
+                    Error::from(
+                        SdkError::new(
+                            code::RUNTIME_INVALID_STATE,
+                            SdkErrorCategory::Runtime,
+                            "mission update requires an active identity",
+                        )
+                        .with_user_actionable(true),
                     )
-                    .with_user_actionable(true),
-                )
-            },
-        )?;
+                },
+            )?;
         let mut send_request =
             SendRequest::new(source, request.peer_identity.0, JsonValue::Object(payload));
         if let Some(correlation_id) = request.correlation_id {
@@ -1604,10 +1603,7 @@ impl<B: SdkBackend> Client<B> {
     }
 
     fn find_contact(&self, identity: &str) -> Result<Option<Contact>, Error> {
-        Ok(self
-            .collect_contacts(None)?
-            .into_iter()
-            .find(|contact| contact.identity == identity))
+        Ok(self.collect_contacts(None)?.into_iter().find(|contact| contact.identity == identity))
     }
 
     fn find_topic_by_path(
@@ -1625,11 +1621,9 @@ impl<B: SdkBackend> Client<B> {
                     extensions: BTreeMap::new(),
                 })
                 .map_err(Error::from)?;
-            if let Some(found) = page
-                .topics
-                .into_iter()
-                .find(|topic| topic.topic_path.as_ref().map(|path| path.0.as_str()) == Some(topic_path))
-            {
+            if let Some(found) = page.topics.into_iter().find(|topic| {
+                topic.topic_path.as_ref().map(|path| path.0.as_str()) == Some(topic_path)
+            }) {
                 return Ok(Some(found));
             }
             match page.next_cursor {

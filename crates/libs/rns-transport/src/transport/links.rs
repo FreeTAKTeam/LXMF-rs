@@ -122,6 +122,30 @@ impl Transport {
         Ok(resource_hash)
     }
 
+    pub async fn send_resource_direct(
+        &self,
+        link_id: &AddressHash,
+        iface: AddressHash,
+        data: Vec<u8>,
+        metadata: Option<Vec<u8>>,
+    ) -> Result<Hash, RnsError> {
+        let link = self
+            .find_in_link(link_id)
+            .await
+            .ok_or(RnsError::InvalidArgument)?;
+        let (resource_hash, packet) = {
+            let mut handler = self.handler.lock().await;
+            let link_guard = link.lock().await;
+            handler.resource_manager.start_send(&link_guard, data, metadata)?
+        };
+        self.handler
+            .lock()
+            .await
+            .send(TxMessage { tx_type: TxMessageType::Direct(iface), packet })
+            .await;
+        Ok(resource_hash)
+    }
+
     pub async fn find_out_link(&self, link_id: &AddressHash) -> Option<Arc<Mutex<Link>>> {
         let links = {
             let handler = self.handler.lock().await;

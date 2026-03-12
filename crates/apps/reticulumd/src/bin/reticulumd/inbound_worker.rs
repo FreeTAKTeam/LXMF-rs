@@ -14,7 +14,6 @@ use rns_transport::packet::{
     PacketDataBuffer, PacketType, PropagationType,
 };
 use rns_transport::resource::ResourceEventKind;
-use rns_transport::transport::SendPacketOutcome;
 use rns_transport::transport::{ReceivedPayloadMode, Transport};
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -287,6 +286,9 @@ fn handle_control_request(
 }
 
 fn control_identity_allowed(control: &PropagationControlContext, remote_hash: &str) -> bool {
+    if control.allowed_control_identities.is_empty() {
+        return true;
+    }
     control
         .allowed_control_identities
         .iter()
@@ -443,42 +445,59 @@ async fn send_control_response(
     };
     let frame = rmpv::Value::Array(vec![rmpv::Value::Binary(request_id.to_vec()), response_value]);
     let payload = rmp_serde::to_vec(&frame).map_err(std::io::Error::other)?;
-    let packet = build_link_response_packet(&link, payload.as_slice()).await?;
-    match transport.send_packet_with_outcome(packet).await {
-        SendPacketOutcome::SentDirect | SendPacketOutcome::SentBroadcast => Ok(()),
-        outcome => Err(std::io::Error::other(format!("control response send failed: {outcome:?}"))),
+    let (packet, ingress_iface) = build_link_response_packet(&link, payload.as_slice()).await?;
+    let Some(ingress_iface) = ingress_iface else {
+        return Err(std::io::Error::other("control link ingress interface unavailable"));
+    };
+    match packet {
+        LinkResponsePacket::Direct(packet) => {
+            transport.send_direct(ingress_iface, packet).await;
+            Ok(())
+        }
+        LinkResponsePacket::Resource(payload) => transport
+            .send_resource_direct(link_id, ingress_iface, payload, None)
+            .await
+            .map(|_| ())
+            .map_err(|err| std::io::Error::other(format!("{err:?}"))),
     }
+}
+
+enum LinkResponsePacket {
+    Direct(Packet),
+    Resource(Vec<u8>),
 }
 
 async fn build_link_response_packet(
     link: &Arc<tokio::sync::Mutex<Link>>,
     payload: &[u8],
-) -> Result<Packet, std::io::Error> {
+) -> Result<(LinkResponsePacket, Option<AddressHash>), std::io::Error> {
     let guard = link.lock().await;
+    let ingress_iface = guard.ingress_iface();
     let mut packet_data = PacketDataBuffer::new();
-    let cipher_len = {
-        let ciphertext = guard
-            .encrypt(payload, packet_data.accuire_buf_max())
-            .map_err(|_| std::io::Error::other("failed to encrypt control response"))?;
-        ciphertext.len()
+    let cipher_len = match guard.encrypt(payload, packet_data.accuire_buf_max()) {
+        Ok(ciphertext) => ciphertext.len(),
+        Err(_) => return Ok((LinkResponsePacket::Resource(payload.to_vec()), ingress_iface)),
     };
     packet_data.resize(cipher_len);
-    Ok(Packet {
-        header: Header {
-            ifac_flag: IfacFlag::Open,
-            header_type: HeaderType::Type1,
-            context_flag: ContextFlag::Unset,
-            propagation_type: PropagationType::Broadcast,
-            destination_type: DestinationType::Link,
-            packet_type: PacketType::Data,
-            hops: 0,
-        },
-        ifac: None,
-        destination: *guard.id(),
-        transport: None,
-        context: PacketContext::Response,
-        data: packet_data,
-    })
+    Ok((
+        LinkResponsePacket::Direct(Packet {
+            header: Header {
+                ifac_flag: IfacFlag::Open,
+                header_type: HeaderType::Type1,
+                context_flag: ContextFlag::Unset,
+                propagation_type: PropagationType::Broadcast,
+                destination_type: DestinationType::Link,
+                packet_type: PacketType::Data,
+                hops: 0,
+            },
+            ifac: None,
+            destination: *guard.id(),
+            transport: None,
+            context: PacketContext::Response,
+            data: packet_data,
+        }),
+        ingress_iface,
+    ))
 }
 
 fn json_to_rmpv(value: &Value) -> rmpv::Value {

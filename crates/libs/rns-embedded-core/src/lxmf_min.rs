@@ -38,7 +38,8 @@ impl MinimalEnvelope {
 
 pub fn encode_envelope(envelope: &MinimalEnvelope) -> EmbeddedResult<Vec<u8>> {
     envelope.validate()?;
-    let body_len_u32 = u32::try_from(envelope.body.len()).map_err(|_| EmbeddedError::InvalidInput)?;
+    let body_len_u32 =
+        u32::try_from(envelope.body.len()).map_err(|_| EmbeddedError::InvalidInput)?;
 
     let mut out = Vec::with_capacity(HEADER_LEN + envelope.body.len());
     out.extend_from_slice(MAGIC);
@@ -79,19 +80,14 @@ pub fn decode_envelope(bytes: &[u8]) -> EmbeddedResult<MinimalEnvelope> {
     }
     let body = bytes[HEADER_LEN..].to_vec();
 
-    let envelope = MinimalEnvelope {
-        source,
-        destination,
-        sequence,
-        body,
-    };
+    let envelope = MinimalEnvelope { source, destination, sequence, body };
     envelope.validate()?;
     Ok(envelope)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{MinimalEnvelope, decode_envelope, encode_envelope};
+    use super::{decode_envelope, encode_envelope, MinimalEnvelope};
     use serde::Deserialize;
 
     #[derive(Debug, Deserialize)]

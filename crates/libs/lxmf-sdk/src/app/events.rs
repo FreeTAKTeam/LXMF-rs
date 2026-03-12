@@ -356,10 +356,8 @@ mod tests {
             base_event("announce_received", json!({ "peer": "peer-a" })),
             "desktop_default",
         );
-        let peer_sync = map_sdk_event(
-            base_event("peer_sync", json!({ "peer": "peer-a" })),
-            "desktop_default",
-        );
+        let peer_sync =
+            map_sdk_event(base_event("peer_sync", json!({ "peer": "peer-a" })), "desktop_default");
         let contact_update = map_sdk_event(
             base_event("contact_updated", json!({ "identity": "peer-a" })),
             "desktop_default",
@@ -390,10 +388,7 @@ mod tests {
             "desktop_default",
         );
         let failed = map_sdk_event(
-            base_event(
-                "command.failed",
-                json!({ "correlation_id": "cmd-1", "target": "peer-a" }),
-            ),
+            base_event("command.failed", json!({ "correlation_id": "cmd-1", "target": "peer-a" })),
             "desktop_default",
         );
 

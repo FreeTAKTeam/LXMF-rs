@@ -12,6 +12,13 @@ pub struct RpcResponse {
     pub error: Option<RpcError>,
 }
 
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone, Eq)]
+pub struct SdkCursorHint {
+    pub method: String,
+    pub next_cursor: String,
+    pub captured_at_ms: u64,
+}
+
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct RpcError {
     pub code: String,
@@ -369,6 +376,7 @@ pub struct RpcDaemon {
     sdk_attachment_payloads: Mutex<HashMap<String, String>>,
     sdk_attachment_order: Mutex<Vec<String>>,
     sdk_attachment_uploads: Mutex<HashMap<String, SdkAttachmentUploadSession>>,
+    sdk_cursor_hints: Mutex<HashMap<String, SdkCursorHint>>,
     sdk_markers: Mutex<HashMap<String, SdkMarkerRecord>>,
     sdk_marker_order: Mutex<Vec<String>>,
     sdk_identities: Mutex<HashMap<String, SdkIdentityBundle>>,

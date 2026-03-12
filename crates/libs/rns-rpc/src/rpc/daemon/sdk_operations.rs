@@ -22,6 +22,16 @@ const SDK_OPERATION_SPECS: &[SdkOperationSpec] = &[
         rpc_method: "sdk_snapshot_v2",
     },
     SdkOperationSpec {
+        id: "app.runtime.cursor_hint",
+        group: "runtime",
+        kind: "query",
+        transport_variant: "rpc",
+        description: "Return the latest remembered pagination cursor for one method or all methods.",
+        aliases: &["sdk_cursor_hint_v2"],
+        required_capabilities: &[],
+        rpc_method: "sdk_cursor_hint_v2",
+    },
+    SdkOperationSpec {
         id: "app.delivery.send",
         group: "delivery",
         kind: "command",
@@ -495,6 +505,11 @@ impl RpcDaemon {
                 method: method.to_owned(),
                 params: Some(params),
             })?,
+            "sdk_cursor_hint_v2" => self.handle_sdk_cursor_hint_v2(RpcRequest {
+                id: request_id,
+                method: method.to_owned(),
+                params: Some(params),
+            })?,
             "sdk_status_v2" => self.handle_sdk_status_v2(RpcRequest {
                 id: request_id,
                 method: method.to_owned(),
@@ -754,6 +769,7 @@ impl RpcDaemon {
             "sdk_topic_create_v2" => raw.get("topic").cloned().unwrap_or(JsonValue::Null),
             "sdk_topic_get_v2" => raw.get("topic").cloned().unwrap_or(JsonValue::Null),
             "sdk_topic_list_v2" => raw,
+            "sdk_cursor_hint_v2" => raw,
             "sdk_topic_subscribe_v2" => raw,
             "sdk_topic_unsubscribe_v2" => raw,
             "sdk_topic_publish_v2" => raw,
@@ -835,6 +851,7 @@ impl RpcDaemon {
         let delegated_params = match rpc_method {
             "sdk_send_v2" => parsed.payload,
             "sdk_snapshot_v2" => json!({}),
+            "sdk_cursor_hint_v2" => parsed.payload,
             "sdk_status_v2" => json!({
                 "message_id": parsed.payload.get("message_id").and_then(JsonValue::as_str),
             }),

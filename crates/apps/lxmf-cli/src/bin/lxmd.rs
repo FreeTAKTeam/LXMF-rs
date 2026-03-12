@@ -270,10 +270,7 @@ fn main() -> ExitCode {
         cmd.env("LXMD_NODE_ANNOUNCE_INTERVAL_SECS", interval_min.saturating_mul(60).to_string());
     }
     if !effective.python_compat.control_allowed.is_empty() {
-        cmd.env(
-            "LXMD_CONTROL_ALLOWED",
-            effective.python_compat.control_allowed.join(","),
-        );
+        cmd.env("LXMD_CONTROL_ALLOWED", effective.python_compat.control_allowed.join(","));
     }
 
     let rpc_addr = effective.rpc.as_str();
@@ -317,7 +314,9 @@ fn maybe_handle_query_mode(args: &EffectiveArgs) -> Option<ExitCode> {
         }
     };
 
-    let result = if let Some(remote) = args.remote.as_deref().filter(|remote| !looks_like_rpc_addr(remote)) {
+    let result = if let Some(remote) =
+        args.remote.as_deref().filter(|remote| !looks_like_rpc_addr(remote))
+    {
         let identity_private_key_hex = match read_identity_private_key_hex(
             args.query_identity.as_deref().or(args.identity.as_deref()),
         ) {
@@ -358,7 +357,12 @@ fn maybe_handle_query_mode(args: &EffectiveArgs) -> Option<ExitCode> {
                 value
             })
         } else {
-            show_remote_status_and_peers(&rpc_addr, remote, identity_private_key_hex.as_deref(), args)
+            show_remote_status_and_peers(
+                &rpc_addr,
+                remote,
+                identity_private_key_hex.as_deref(),
+                args,
+            )
         }
     } else if let Some(peer) = args.sync.as_deref() {
         rpc_call(&rpc_addr, "peer_sync", Some(json!({ "peer": peer }))).map(|value| {
@@ -395,10 +399,17 @@ fn looks_like_rpc_addr(value: &str) -> bool {
     value.contains(':') || value.starts_with("http://") || value.starts_with("https://")
 }
 
-fn show_status_and_peers(rpc_addr: &str, args: &EffectiveArgs) -> Result<serde_json::Value, String> {
-    let status =
-        rpc_call(rpc_addr, "daemon_status_ex", None).or_else(|_| rpc_call(rpc_addr, "propagation_status", None))?;
-    let peers = rpc_call(rpc_addr, "list_peers", None).unwrap_or_else(|_| json!({ "peers": [] }));
+fn show_status_and_peers(
+    rpc_addr: &str,
+    args: &EffectiveArgs,
+) -> Result<serde_json::Value, String> {
+    let status = unwrap_rpc_result(
+        rpc_call(rpc_addr, "daemon_status_ex", None)
+            .or_else(|_| rpc_call(rpc_addr, "propagation_status", None))?,
+    );
+    let peers = unwrap_rpc_result(
+        rpc_call(rpc_addr, "list_peers", None).unwrap_or_else(|_| json!({ "peers": [] })),
+    );
 
     if args.status {
         print_status_summary(&status, &peers);
@@ -422,7 +433,7 @@ fn show_remote_status_and_peers(
     identity_private_key_hex: Option<&str>,
     args: &EffectiveArgs,
 ) -> Result<serde_json::Value, String> {
-    let response = rpc_call(
+    let response = unwrap_rpc_result(rpc_call(
         rpc_addr,
         "propagation_remote_status",
         Some(json!({
@@ -430,7 +441,7 @@ fn show_remote_status_and_peers(
             "identity_private_key_hex": identity_private_key_hex,
             "timeout_secs": args.timeout_secs,
         })),
-    )?;
+    )?);
     let status = response.get("status").cloned().unwrap_or(response.clone());
 
     if args.status || (!args.status && !args.peers) {
@@ -443,6 +454,10 @@ fn show_remote_status_and_peers(
     Ok(status)
 }
 
+fn unwrap_rpc_result(value: serde_json::Value) -> serde_json::Value {
+    value.get("result").cloned().unwrap_or(value)
+}
+
 fn print_status_summary(status: &serde_json::Value, peers: &serde_json::Value) {
     let propagation = status.get("propagation").unwrap_or(status);
     let delivery_policy = status.get("delivery_policy");
@@ -451,15 +466,10 @@ fn print_status_summary(status: &serde_json::Value, peers: &serde_json::Value) {
     let target_cost = propagation.get("target_cost").and_then(|value| value.as_u64()).unwrap_or(0);
     let total_ingested =
         propagation.get("total_ingested").and_then(|value| value.as_u64()).unwrap_or(0);
-    let selected_node = propagation
-        .get("selected_node")
-        .and_then(|value| value.as_str())
-        .unwrap_or("<none>");
-    let peer_count = peers
-        .get("peers")
-        .and_then(|value| value.as_array())
-        .map(|items| items.len())
-        .unwrap_or(0);
+    let selected_node =
+        propagation.get("selected_node").and_then(|value| value.as_str()).unwrap_or("<none>");
+    let peer_count =
+        peers.get("peers").and_then(|value| value.as_array()).map(|items| items.len()).unwrap_or(0);
     let auth_required = delivery_policy
         .and_then(|policy| policy.get("auth_required"))
         .and_then(|value| value.as_bool())
@@ -515,15 +525,12 @@ fn print_remote_status_summary(status: &serde_json::Value) {
     let total_peers = status.get("total_peers").and_then(|value| value.as_u64()).unwrap_or(0);
     let discovered_peers =
         status.get("discovered_peers").and_then(|value| value.as_u64()).unwrap_or(0);
-    let target_cost =
-        status.get("target_stamp_cost").and_then(|value| value.as_u64()).unwrap_or(0);
+    let target_cost = status.get("target_stamp_cost").and_then(|value| value.as_u64()).unwrap_or(0);
     let flexibility =
         status.get("stamp_cost_flexibility").and_then(|value| value.as_u64()).unwrap_or(0);
     let max_peers = status.get("max_peers").and_then(|value| value.as_u64()).unwrap_or(0);
-    let destination = status
-        .get("destination_hash")
-        .and_then(|value| value.as_str())
-        .unwrap_or("<unknown>");
+    let destination =
+        status.get("destination_hash").and_then(|value| value.as_str()).unwrap_or("<unknown>");
 
     println!();
     println!("Remote LXMF Propagation Node status");
@@ -630,7 +637,9 @@ fn compatibility_notes(args: &Args, effective: &EffectiveArgs) -> Vec<String> {
         ));
     }
     if args.on_inbound.is_some() {
-        notes.push("--on-inbound will execute a local shell command for each inbound message".to_string());
+        notes.push(
+            "--on-inbound will execute a local shell command for each inbound message".to_string(),
+        );
     }
     if args.status || args.peers || args.sync.is_some() || args.unpeer.is_some() {
         if args.remote.as_ref().is_some_and(|remote| looks_like_rpc_addr(remote)) {
@@ -646,7 +655,10 @@ fn compatibility_notes(args: &Args, effective: &EffectiveArgs) -> Vec<String> {
         notes.push("--verbose is accepted for compatibility; use standard Rust logging env vars for runtime verbosity".to_string());
     }
     if !effective.python_compat.control_allowed.is_empty() {
-        notes.push("control_allowed is parsed from Python config and exported to the daemon control ACL".to_string());
+        notes.push(
+            "control_allowed is parsed from Python config and exported to the daemon control ACL"
+                .to_string(),
+        );
     }
     if effective.python_compat.max_peers.is_some()
         || !effective.python_compat.static_peers.is_empty()
@@ -736,10 +748,8 @@ fn enable_propagation_mode(rpc_addr: &str) -> Result<(), String> {
         })),
     )?;
     if let Some(error) = response.get("error").and_then(|value| value.as_object()) {
-        let message = error
-            .get("message")
-            .and_then(|value| value.as_str())
-            .unwrap_or("unknown rpc error");
+        let message =
+            error.get("message").and_then(|value| value.as_str()).unwrap_or("unknown rpc error");
         return Err(message.to_string());
     }
     Ok(())
@@ -750,25 +760,23 @@ fn apply_python_compat_config(rpc_addr: &str, args: &EffectiveArgs) -> Result<()
     let mut delivery_params = serde_json::Map::new();
     delivery_params.insert("auth_required".to_string(), json!(compat.auth_required));
     if !compat.allowed_identities.is_empty() {
-        delivery_params.insert(
-            "allowed_destinations".to_string(),
-            json!(compat.allowed_identities),
-        );
+        delivery_params
+            .insert("allowed_destinations".to_string(), json!(compat.allowed_identities));
     }
     if !compat.ignored_destinations.is_empty() {
-        delivery_params.insert(
-            "ignored_destinations".to_string(),
-            json!(compat.ignored_destinations),
-        );
+        delivery_params
+            .insert("ignored_destinations".to_string(), json!(compat.ignored_destinations));
     }
     if !compat.prioritised_destinations.is_empty() {
-        delivery_params.insert(
-            "prioritised_destinations".to_string(),
-            json!(compat.prioritised_destinations),
-        );
+        delivery_params
+            .insert("prioritised_destinations".to_string(), json!(compat.prioritised_destinations));
     }
     if !delivery_params.is_empty() {
-        rpc_call(rpc_addr, "set_delivery_policy", Some(serde_json::Value::Object(delivery_params)))?;
+        rpc_call(
+            rpc_addr,
+            "set_delivery_policy",
+            Some(serde_json::Value::Object(delivery_params)),
+        )?;
     }
 
     if compat.propagation_stamp_cost_target.is_some()
@@ -807,11 +815,7 @@ fn apply_python_compat_config(rpc_addr: &str, args: &EffectiveArgs) -> Result<()
         )?;
 
         for peer in &compat.static_peers {
-            let _ = rpc_call(
-                rpc_addr,
-                "peer_sync",
-                Some(json!({ "peer": peer })),
-            );
+            let _ = rpc_call(rpc_addr, "peer_sync", Some(json!({ "peer": peer })));
         }
     }
 
@@ -845,8 +849,9 @@ fn spawn_on_inbound_watcher(rpc_addr: String, command: String, messages_dir: Opt
                         }
                     }
                 }
-                Err(err) if err.contains("SDK_RUNTIME_CURSOR_EXPIRED")
-                    || err.contains("SDK_RUNTIME_STREAM_DEGRADED") =>
+                Err(err)
+                    if err.contains("SDK_RUNTIME_CURSOR_EXPIRED")
+                        || err.contains("SDK_RUNTIME_STREAM_DEGRADED") =>
                 {
                     cursor = None;
                     thread::sleep(Duration::from_millis(250));
@@ -874,21 +879,13 @@ fn poll_event_batch(
     )?;
     let result = response.get("result").unwrap_or(&response);
     if let Some(error) = response.get("error").or_else(|| result.get("error")) {
-        let code = error
-            .get("code")
-            .and_then(|value| value.as_str())
-            .unwrap_or("RPC_ERROR");
-        let message = error
-            .get("message")
-            .and_then(|value| value.as_str())
-            .unwrap_or("unknown rpc error");
+        let code = error.get("code").and_then(|value| value.as_str()).unwrap_or("RPC_ERROR");
+        let message =
+            error.get("message").and_then(|value| value.as_str()).unwrap_or("unknown rpc error");
         return Err(format!("{code}: {message}"));
     }
-    let events = result
-        .get("events")
-        .and_then(|value| value.as_array())
-        .cloned()
-        .unwrap_or_default();
+    let events =
+        result.get("events").and_then(|value| value.as_array()).cloned().unwrap_or_default();
     let next_cursor =
         result.get("next_cursor").and_then(|value| value.as_str()).map(ToOwned::to_owned);
     Ok((events, next_cursor))
@@ -912,6 +909,16 @@ fn rpc_call(
     request_bytes.extend_from_slice(&payload);
     let response = http_request_bytes(rpc_addr, &request_bytes)?;
     let body = http_body(&response).ok_or_else(|| "rpc response missing body".to_string())?;
+    if let Some(status) = http_status_code(&response) {
+        if status >= 400 && !looks_like_rpc_frame(body) {
+            let message = String::from_utf8_lossy(body).trim().to_string();
+            return Err(if message.is_empty() {
+                format!("rpc http error {status}")
+            } else {
+                message
+            });
+        }
+    }
     decode_rpc_frame(body)
 }
 
@@ -919,12 +926,8 @@ fn http_request_bytes(rpc_addr: &str, request: &[u8]) -> Result<Vec<u8>, String>
     let addr = resolve_socket_addr(rpc_addr)?;
     let mut stream =
         TcpStream::connect_timeout(&addr, Duration::from_secs(2)).map_err(|err| err.to_string())?;
-    stream
-        .set_read_timeout(Some(Duration::from_secs(2)))
-        .map_err(|err| err.to_string())?;
-    stream
-        .set_write_timeout(Some(Duration::from_secs(2)))
-        .map_err(|err| err.to_string())?;
+    stream.set_read_timeout(Some(Duration::from_secs(2))).map_err(|err| err.to_string())?;
+    stream.set_write_timeout(Some(Duration::from_secs(2))).map_err(|err| err.to_string())?;
     stream.write_all(request).map_err(|err| err.to_string())?;
     let mut bytes = Vec::new();
     stream.read_to_end(&mut bytes).map_err(|err| err.to_string())?;
@@ -940,10 +943,23 @@ fn resolve_socket_addr(rpc_addr: &str) -> Result<SocketAddr, String> {
 }
 
 fn http_body(response: &[u8]) -> Option<&[u8]> {
-    response
-        .windows(4)
-        .position(|window| window == b"\r\n\r\n")
-        .map(|index| &response[index + 4..])
+    response.windows(4).position(|window| window == b"\r\n\r\n").map(|index| &response[index + 4..])
+}
+
+fn http_status_code(response: &[u8]) -> Option<u16> {
+    let header_end = response.windows(2).position(|window| window == b"\r\n")?;
+    let status_line = std::str::from_utf8(&response[..header_end]).ok()?;
+    let mut parts = status_line.split_whitespace();
+    let _http = parts.next()?;
+    parts.next()?.parse::<u16>().ok()
+}
+
+fn looks_like_rpc_frame(body: &[u8]) -> bool {
+    if body.len() < 4 {
+        return false;
+    }
+    let len = u32::from_be_bytes([body[0], body[1], body[2], body[3]]) as usize;
+    body.len() >= len + 4
 }
 
 fn encode_rpc_frame(value: serde_json::Value) -> Result<Vec<u8>, String> {
@@ -1014,7 +1030,8 @@ fn run_on_inbound_command(
     event: &serde_json::Value,
     messages_dir: Option<&Path>,
 ) -> Result<(), String> {
-    let event_type = event.get("event_type").and_then(|value| value.as_str()).unwrap_or("<unknown>");
+    let event_type =
+        event.get("event_type").and_then(|value| value.as_str()).unwrap_or("<unknown>");
     if event_type != "inbound" {
         return Ok(());
     }
@@ -1044,10 +1061,7 @@ fn run_on_inbound_command(
         .env("LXMD_MESSAGE_TIMESTAMP", json_env(&message, "timestamp"))
         .env(
             "LXMD_MESSAGE_PATH",
-            message_path
-                .as_ref()
-                .map(|path| path.display().to_string())
-                .unwrap_or_default(),
+            message_path.as_ref().map(|path| path.display().to_string()).unwrap_or_default(),
         )
         .stdin(Stdio::piped())
         .stdout(Stdio::inherit())
@@ -1083,7 +1097,8 @@ fn read_identity_private_key_hex(path: Option<&Path>) -> Result<Option<String>, 
     let Some(path) = path else {
         return Ok(None);
     };
-    let bytes = fs::read(path).map_err(|err| format!("failed to read identity {}: {err}", path.display()))?;
+    let bytes = fs::read(path)
+        .map_err(|err| format!("failed to read identity {}: {err}", path.display()))?;
     Ok(Some(hex::encode(bytes)))
 }
 
@@ -1111,13 +1126,15 @@ fn write_inbound_message_file(
 fn sanitize_file_name(input: &str) -> String {
     input
         .chars()
-        .map(|ch| {
-            if ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-') {
-                ch
-            } else {
-                '_'
-            }
-        })
+        .map(
+            |ch| {
+                if ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-') {
+                    ch
+                } else {
+                    '_'
+                }
+            },
+        )
         .collect()
 }
 
@@ -1136,11 +1153,12 @@ fn pack_saved_inbound_message(
     payload: &serde_json::Value,
     message: &serde_json::Value,
 ) -> Result<Vec<u8>, String> {
-    let lxmf_bytes = if let Some(raw_hex) = payload.get("lxmf_bytes_hex").and_then(|value| value.as_str()) {
-        hex::decode(raw_hex).map_err(|err| err.to_string())?
-    } else {
-        reconstruct_inbound_wire_bytes(message)?
-    };
+    let lxmf_bytes =
+        if let Some(raw_hex) = payload.get("lxmf_bytes_hex").and_then(|value| value.as_str()) {
+            hex::decode(raw_hex).map_err(|err| err.to_string())?
+        } else {
+            reconstruct_inbound_wire_bytes(message)?
+        };
     let container = SavedMessageContainer {
         state: 0x00,
         lxmf_bytes: &lxmf_bytes,
@@ -1160,11 +1178,7 @@ fn reconstruct_inbound_wire_bytes(message: &serde_json::Value) -> Result<Vec<u8>
     let timestamp = message.get("timestamp").and_then(|value| value.as_i64()).unwrap_or(0);
     let title = message.get("title").and_then(|value| value.as_str()).unwrap_or("");
     let content = message.get("content").and_then(|value| value.as_str()).unwrap_or("");
-    let fields = message
-        .get("fields")
-        .map(json_to_rmpv)
-        .transpose()?
-        .unwrap_or(rmpv::Value::Nil);
+    let fields = message.get("fields").map(json_to_rmpv).transpose()?.unwrap_or(rmpv::Value::Nil);
     let payload = rmpv::Value::Array(vec![
         rmpv::Value::from(timestamp),
         rmpv::Value::from(title),
@@ -1285,12 +1299,14 @@ fn load_effective_args(args: &Args) -> Result<EffectiveArgs, String> {
 
 fn prepare_lxmd_paths(config_arg: Option<&Path>) -> Result<LxmdPaths, String> {
     let config_dir = if let Some(path) = config_arg {
-        if path.is_dir() || (!path.exists() && path.extension().is_none() && path.file_name().and_then(|name| name.to_str()) != Some("config")) {
+        if path.is_dir()
+            || (!path.exists()
+                && path.extension().is_none()
+                && path.file_name().and_then(|name| name.to_str()) != Some("config"))
+        {
             path.to_path_buf()
         } else {
-            path.parent()
-                .map(Path::to_path_buf)
-                .unwrap_or_else(|| PathBuf::from("."))
+            path.parent().map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from("."))
         }
     } else {
         default_lxmd_config_dir()?
@@ -1330,7 +1346,10 @@ fn default_lxmd_config_dir() -> Result<PathBuf, String> {
     Ok(home.join(".lxmd"))
 }
 
-fn apply_python_config_file(effective: &mut EffectiveArgs, paths: &LxmdPaths) -> Result<(), String> {
+fn apply_python_config_file(
+    effective: &mut EffectiveArgs,
+    paths: &LxmdPaths,
+) -> Result<(), String> {
     effective.config_dir = Some(paths.config_dir.clone());
     effective.db = Some(paths.storage_dir.join("reticulum.db"));
     effective.identity = Some(paths.identity_file.clone());
@@ -1360,20 +1379,19 @@ fn apply_python_config_file(effective: &mut EffectiveArgs, paths: &LxmdPaths) ->
     }
 
     if let Some(propagation) = sections.get("propagation") {
-        if let Some(enabled) = propagation.get("enable_node").and_then(|value| parse_python_bool(value)) {
+        if let Some(enabled) =
+            propagation.get("enable_node").and_then(|value| parse_python_bool(value))
+        {
             effective.propagation_node = enabled;
         }
         effective.python_compat.auth_required = propagation
             .get("auth_required")
             .and_then(|value| parse_python_bool(value))
             .unwrap_or(false);
-        effective.python_compat.autopeer = propagation
-            .get("autopeer")
-            .and_then(|value| parse_python_bool(value))
-            .unwrap_or(true);
-        effective.python_compat.autopeer_maxdepth = propagation
-            .get("autopeer_maxdepth")
-            .and_then(|value| value.parse::<u32>().ok());
+        effective.python_compat.autopeer =
+            propagation.get("autopeer").and_then(|value| parse_python_bool(value)).unwrap_or(true);
+        effective.python_compat.autopeer_maxdepth =
+            propagation.get("autopeer_maxdepth").and_then(|value| value.parse::<u32>().ok());
         effective.python_compat.node_name = propagation
             .get("node_name")
             .map(|value| value.trim().to_string())
@@ -1392,9 +1410,8 @@ fn apply_python_config_file(effective: &mut EffectiveArgs, paths: &LxmdPaths) ->
             .unwrap_or_default();
         effective.python_compat.max_peers =
             propagation.get("max_peers").and_then(|value| value.parse::<u32>().ok());
-        effective.python_compat.message_storage_limit_mb = propagation
-            .get("message_storage_limit")
-            .and_then(|value| value.parse::<u64>().ok());
+        effective.python_compat.message_storage_limit_mb =
+            propagation.get("message_storage_limit").and_then(|value| value.parse::<u64>().ok());
         effective.python_compat.propagation_message_max_kb = propagation
             .get("propagation_message_max_accepted_size")
             .and_then(|value| value.parse::<f64>().ok());
@@ -1409,9 +1426,8 @@ fn apply_python_config_file(effective: &mut EffectiveArgs, paths: &LxmdPaths) ->
             .and_then(|value| value.parse::<u32>().ok());
         effective.python_compat.peering_cost =
             propagation.get("peering_cost").and_then(|value| value.parse::<u32>().ok());
-        effective.python_compat.remote_peering_cost_max = propagation
-            .get("remote_peering_cost_max")
-            .and_then(|value| value.parse::<u32>().ok());
+        effective.python_compat.remote_peering_cost_max =
+            propagation.get("remote_peering_cost_max").and_then(|value| value.parse::<u32>().ok());
         effective.python_compat.from_static_only = propagation
             .get("from_static_only")
             .and_then(|value| parse_python_bool(value))
@@ -1420,12 +1436,10 @@ fn apply_python_config_file(effective: &mut EffectiveArgs, paths: &LxmdPaths) ->
             .get("announce_at_start")
             .and_then(|value| parse_python_bool(value))
             .unwrap_or(false);
-        effective.python_compat.node_announce_interval_min = propagation
-            .get("announce_interval")
-            .and_then(|value| value.parse::<u64>().ok());
-        effective.python_compat.peer_announce_interval_min = propagation
-            .get("peer_announce_interval")
-            .and_then(|value| value.parse::<u64>().ok());
+        effective.python_compat.node_announce_interval_min =
+            propagation.get("announce_interval").and_then(|value| value.parse::<u64>().ok());
+        effective.python_compat.peer_announce_interval_min =
+            propagation.get("peer_announce_interval").and_then(|value| value.parse::<u64>().ok());
     }
 
     effective.python_compat.allowed_identities =
@@ -1436,8 +1450,11 @@ fn apply_python_config_file(effective: &mut EffectiveArgs, paths: &LxmdPaths) ->
     Ok(())
 }
 
-fn parse_python_lxmd_config(input: &str) -> std::collections::BTreeMap<String, std::collections::BTreeMap<String, String>> {
-    let mut sections = std::collections::BTreeMap::<String, std::collections::BTreeMap<String, String>>::new();
+fn parse_python_lxmd_config(
+    input: &str,
+) -> std::collections::BTreeMap<String, std::collections::BTreeMap<String, String>> {
+    let mut sections =
+        std::collections::BTreeMap::<String, std::collections::BTreeMap<String, String>>::new();
     let mut current_section = String::new();
 
     for raw_line in input.lines() {
@@ -1486,8 +1503,8 @@ fn read_hash_list(path: &Path) -> Result<Vec<String>, String> {
     if !path.exists() {
         return Ok(Vec::new());
     }
-    let contents =
-        fs::read_to_string(path).map_err(|err| format!("failed to read {}: {err}", path.display()))?;
+    let contents = fs::read_to_string(path)
+        .map_err(|err| format!("failed to read {}: {err}", path.display()))?;
     Ok(contents
         .lines()
         .map(str::trim)

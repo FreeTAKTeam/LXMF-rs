@@ -76,7 +76,9 @@ async fn apply_legacy_tcp_interfaces(
     let current_keys = managed.keys().cloned().collect::<Vec<_>>();
     for key in current_keys {
         let should_remove = match (managed.get(&key), desired.get(&key)) {
-            (Some(current), Some(next)) => !next.enabled || legacy_tcp_changed(&current.record, next),
+            (Some(current), Some(next)) => {
+                !next.enabled || legacy_tcp_changed(&current.record, next)
+            }
             (Some(_), None) => true,
             (None, _) => false,
         };
@@ -107,7 +109,8 @@ pub(super) fn legacy_tcp_interface_key(record: &InterfaceRecord) -> Option<Strin
     if record.kind != "tcp_client" {
         return None;
     }
-    if let Some(name) = record.name.as_ref().map(|value| value.trim()).filter(|value| !value.is_empty())
+    if let Some(name) =
+        record.name.as_ref().map(|value| value.trim()).filter(|value| !value.is_empty())
     {
         return Some(name.to_string());
     }
@@ -126,7 +129,10 @@ fn tcp_endpoint(record: &InterfaceRecord) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{InterfaceMutationBridge, InterfaceRecord, InterfaceManager, LegacyTcpInterfaceMutationBridge};
+    use super::{
+        InterfaceManager, InterfaceMutationBridge, InterfaceRecord,
+        LegacyTcpInterfaceMutationBridge,
+    };
     use std::sync::Arc;
     use tokio::net::TcpListener;
     use tokio::time::{timeout, Duration};

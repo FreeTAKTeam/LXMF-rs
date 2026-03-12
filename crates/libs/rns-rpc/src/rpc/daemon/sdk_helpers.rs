@@ -765,6 +765,73 @@ impl RpcDaemon {
         Some(format!("{prefix}{next_index}"))
     }
 
+    fn record_sdk_cursor_hint(&self, method: &str, response: &RpcResponse) {
+        if response.error.is_some() {
+            return;
+        }
+        let Some(next_cursor) = response
+            .result
+            .as_ref()
+            .and_then(JsonValue::as_object)
+            .and_then(|result| result.get("next_cursor"))
+            .and_then(JsonValue::as_str)
+            .map(str::trim)
+            .filter(|cursor| !cursor.is_empty())
+        else {
+            return;
+        };
+
+        let hint = SdkCursorHint {
+            method: method.to_string(),
+            next_cursor: next_cursor.to_string(),
+            captured_at_ms: now_millis_u64(),
+        };
+        let mut guard =
+            self.sdk_cursor_hints.lock().expect("sdk_cursor_hints mutex poisoned");
+        guard.insert(method.to_string(), hint);
+    }
+
+    fn handle_sdk_cursor_hint_v2(&self, request: RpcRequest) -> Result<RpcResponse, std::io::Error> {
+        let params = request.params.unwrap_or_else(|| JsonValue::Object(JsonMap::new()));
+        let requested_method = match params.get("method") {
+            Some(JsonValue::String(value)) => {
+                let trimmed = value.trim();
+                if trimmed.is_empty() {
+                    return Ok(self.sdk_error_response(
+                        request.id,
+                        "SDK_VALIDATION_INVALID_ARGUMENT",
+                        "method must not be empty",
+                    ));
+                }
+                Some(trimmed.to_string())
+            }
+            Some(JsonValue::Null) | None => None,
+            Some(_) => {
+                return Ok(self.sdk_error_response(
+                    request.id,
+                    "SDK_VALIDATION_INVALID_ARGUMENT",
+                    "method must be a string",
+                ))
+            }
+        };
+
+        let guard = self.sdk_cursor_hints.lock().expect("sdk_cursor_hints mutex poisoned");
+        let result = if let Some(method) = requested_method {
+            let hint = guard.get(method.as_str()).cloned();
+            json!({
+                "method": method,
+                "hint": hint,
+            })
+        } else {
+            let hints = guard
+                .iter()
+                .map(|(method, hint)| (method.clone(), json!(hint)))
+                .collect::<JsonMap<String, JsonValue>>();
+            json!({ "hints": hints })
+        };
+        Ok(RpcResponse { id: request.id, result: Some(result), error: None })
+    }
+
     fn normalize_non_empty(value: &str) -> Option<String> {
         let trimmed = value.trim();
         if trimmed.is_empty() {

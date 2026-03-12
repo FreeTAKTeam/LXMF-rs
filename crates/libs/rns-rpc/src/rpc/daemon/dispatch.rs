@@ -63,6 +63,7 @@ impl RpcDaemon {
             }
             "sdk_snapshot_v2" => self.handle_sdk_snapshot_v2(request),
             "sdk_status_v2" => self.handle_sdk_status_v2(request),
+            "sdk_cursor_hint_v2" => self.handle_sdk_cursor_hint_v2(request),
             "sdk_configure_v2" => self.handle_sdk_configure_v2(request),
             "sdk_shutdown_v2" => self.handle_sdk_shutdown_v2(request),
             "sdk_topic_create_v2" => self.handle_sdk_topic_create_v2(request),
@@ -127,6 +128,7 @@ impl RpcDaemon {
 
         match response {
             Ok(response) => {
+                self.record_sdk_cursor_hint(method.as_str(), &response);
                 let elapsed_ms = metrics_started.elapsed().as_millis() as u64;
                 self.metrics_record_rpc_response(method.as_str(), elapsed_ms, &response);
                 if let Some(trace_id) = lifecycle_trace_id.as_deref() {

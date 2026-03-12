@@ -110,6 +110,7 @@ pub(super) async fn handle_link_request_as_destination<'a>(
                 );
 
                 if let Ok(mut link) = link {
+                    link.set_ingress_iface(iface);
                     eprintln!(
                         "[tp] link_proof_tx dst={} link_id={}",
                         packet.destination,

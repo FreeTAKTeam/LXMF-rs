@@ -80,6 +80,7 @@ impl RpcDaemon {
             sdk_attachment_payloads: Mutex::new(HashMap::new()),
             sdk_attachment_order: Mutex::new(Vec::new()),
             sdk_attachment_uploads: Mutex::new(HashMap::new()),
+            sdk_cursor_hints: Mutex::new(HashMap::new()),
             sdk_markers: Mutex::new(HashMap::new()),
             sdk_marker_order: Mutex::new(Vec::new()),
             sdk_identities: Mutex::new(sdk_identities),

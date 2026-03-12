@@ -87,21 +87,16 @@ impl BleGattInterface {
             if let Err(err) = establish_session(&mut backend, &settings).await {
                 eprintln!(
                     "ble_gatt: establish session failed iface={} backend={} err={}",
-                    label,
-                    backend_name,
-                    err.message
+                    label, backend_name, err.message
                 );
                 sleep(reconnect_backoff).await;
-                reconnect_backoff =
-                    next_backoff(reconnect_backoff, settings.max_reconnect_backoff);
+                reconnect_backoff = next_backoff(reconnect_backoff, settings.max_reconnect_backoff);
                 continue;
             }
             reconnect_backoff = settings.reconnect_backoff;
             eprintln!(
                 "ble_gatt: session established iface={} backend={} addr={}",
-                label,
-                backend_name,
-                iface_address
+                label, backend_name, iface_address
             );
 
             let mut tx_buffer = [0_u8; BLE_RAW_PACKET_BUFFER];
@@ -172,8 +167,7 @@ impl BleGattInterface {
             }
             if reconnect_needed {
                 sleep(reconnect_backoff).await;
-                reconnect_backoff =
-                    next_backoff(reconnect_backoff, settings.max_reconnect_backoff);
+                reconnect_backoff = next_backoff(reconnect_backoff, settings.max_reconnect_backoff);
             }
         }
 
@@ -459,9 +453,7 @@ impl NativeBleBackend {
             .ok_or_else(|| BleBackendError::retryable("notification stream closed"))?;
 
         if notification.uuid != notify_uuid {
-            return Err(BleBackendError::retryable(
-                "notification for unexpected characteristic",
-            ));
+            return Err(BleBackendError::retryable("notification for unexpected characteristic"));
         }
 
         Ok(notification.value)
@@ -557,23 +549,18 @@ impl BleBackend for NativeBleBackend {
         payload: &[u8],
         _settings: &BleRuntimeSettings,
     ) -> Result<(), BleBackendError> {
-        self.write_payload(payload)
-            .await
-            .map_err(|err| BleBackendError::retryable(format!("write probe payload: {}", err.message)))
+        self.write_payload(payload).await.map_err(|err| {
+            BleBackendError::retryable(format!("write probe payload: {}", err.message))
+        })
     }
 
     async fn read_probe_notification(
         &mut self,
         settings: &BleRuntimeSettings,
     ) -> Result<Vec<u8>, BleBackendError> {
-        self.read_notification_value(settings)
-            .await
-            .map_err(|err| {
-                BleBackendError::retryable(format!(
-                    "probe notification read failed: {}",
-                    err.message
-                ))
-            })
+        self.read_notification_value(settings).await.map_err(|err| {
+            BleBackendError::retryable(format!("probe notification read failed: {}", err.message))
+        })
     }
 
     async fn cleanup(&mut self, _settings: &BleRuntimeSettings) -> Result<(), BleBackendError> {

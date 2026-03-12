@@ -74,25 +74,10 @@ fn sdk_rpc_release_b_streaming_methods_have_paired_response_fixtures() {
         let response_ok_invalid = format!("{method}.response.ok.invalid.json");
         let response_error_valid = format!("{method}.response.error.valid.json");
 
-        assert!(
-            names.contains(&request_valid),
-            "missing fixture: {request_valid}"
-        );
-        assert!(
-            names.contains(&request_invalid),
-            "missing fixture: {request_invalid}"
-        );
-        assert!(
-            names.contains(&response_ok_valid),
-            "missing fixture: {response_ok_valid}"
-        );
-        assert!(
-            names.contains(&response_ok_invalid),
-            "missing fixture: {response_ok_invalid}"
-        );
-        assert!(
-            names.contains(&response_error_valid),
-            "missing fixture: {response_error_valid}"
-        );
+        assert!(names.contains(&request_valid), "missing fixture: {request_valid}");
+        assert!(names.contains(&request_invalid), "missing fixture: {request_invalid}");
+        assert!(names.contains(&response_ok_valid), "missing fixture: {response_ok_valid}");
+        assert!(names.contains(&response_ok_invalid), "missing fixture: {response_ok_invalid}");
+        assert!(names.contains(&response_error_valid), "missing fixture: {response_error_valid}");
     }
 }

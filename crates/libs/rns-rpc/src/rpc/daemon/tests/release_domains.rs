@@ -147,6 +147,64 @@ fn sdk_release_b_domain_methods_roundtrip() {
 }
 
 #[test]
+fn sdk_cursor_hint_returns_latest_non_null_cursor_for_method() {
+    let daemon = RpcDaemon::test_instance();
+
+    for (id, topic_path) in [(900_u64, "ops/alpha"), (901_u64, "ops/bravo")] {
+        let created = daemon
+            .handle_rpc(rpc_request(
+                id,
+                "sdk_topic_create_v2",
+                json!({
+                    "topic_path": topic_path,
+                    "metadata": { "kind": "ops" },
+                }),
+            ))
+            .expect("topic create");
+        assert!(created.error.is_none());
+    }
+
+    let paged = daemon
+        .handle_rpc(rpc_request(902, "sdk_topic_list_v2", json!({ "limit": 1 })))
+        .expect("paged topic list");
+    assert!(paged.error.is_none());
+    let first_cursor = paged.result.expect("paged result")["next_cursor"]
+        .as_str()
+        .expect("first cursor")
+        .to_string();
+
+    let hinted = daemon
+        .handle_rpc(rpc_request(
+            903,
+            "sdk_cursor_hint_v2",
+            json!({ "method": "sdk_topic_list_v2" }),
+        ))
+        .expect("cursor hint");
+    assert!(hinted.error.is_none());
+    let hinted_result = hinted.result.expect("hint result");
+    assert_eq!(hinted_result["method"], json!("sdk_topic_list_v2"));
+    assert_eq!(hinted_result["hint"]["method"], json!("sdk_topic_list_v2"));
+    assert_eq!(hinted_result["hint"]["next_cursor"], json!(first_cursor.clone()));
+    assert!(hinted_result["hint"]["captured_at_ms"].as_u64().is_some());
+
+    let terminal = daemon
+        .handle_rpc(rpc_request(904, "sdk_topic_list_v2", json!({ "limit": 10 })))
+        .expect("terminal topic list");
+    assert!(terminal.error.is_none());
+    assert_eq!(terminal.result.expect("terminal result")["next_cursor"], JsonValue::Null);
+
+    let retained = daemon
+        .handle_rpc(rpc_request(
+            905,
+            "sdk_cursor_hint_v2",
+            json!({ "method": "sdk_topic_list_v2" }),
+        ))
+        .expect("retained cursor hint");
+    assert!(retained.error.is_none());
+    assert_eq!(retained.result.expect("retained result")["hint"]["next_cursor"], json!(first_cursor));
+}
+
+#[test]
 fn sdk_domain_snapshot_restore_accepts_legacy_remote_command_arrays() {
     let store = MessagesStore::in_memory().expect("in-memory store");
     store

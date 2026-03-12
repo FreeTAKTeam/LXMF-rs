@@ -20,9 +20,6 @@ fn failure_injection_matrix_lists_required_rows() {
     ];
 
     for row in required {
-        assert!(
-            body.contains(row),
-            "failure matrix missing required scenario row: {row}"
-        );
+        assert!(body.contains(row), "failure matrix missing required scenario row: {row}");
     }
 }

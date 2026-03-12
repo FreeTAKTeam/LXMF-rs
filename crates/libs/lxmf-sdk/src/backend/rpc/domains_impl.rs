@@ -454,13 +454,17 @@ impl RpcBackendClient {
             "sdk_command_session_get_v2",
             Some(json!({ "correlation_id": correlation_id })),
         )?;
-        let payload = Self::decode_field_or_root::<JsonValue>(&result, "session", "command_session_get response")?;
+        let payload = Self::decode_field_or_root::<JsonValue>(
+            &result,
+            "session",
+            "command_session_get response",
+        )?;
         if payload.is_null() {
             return Ok(None);
         }
-        serde_json::from_value(payload).map(Some).map_err(|err| {
-            SdkError::new(code::INTERNAL, ErrorCategory::Internal, err.to_string())
-        })
+        serde_json::from_value(payload)
+            .map(Some)
+            .map_err(|err| SdkError::new(code::INTERNAL, ErrorCategory::Internal, err.to_string()))
     }
 
     pub(super) fn command_session_list_impl(

@@ -1,7 +1,7 @@
+use crate::types::{Ack, MessageId};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use std::collections::BTreeMap;
-use crate::types::{Ack, MessageId};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct TopicId(pub String);

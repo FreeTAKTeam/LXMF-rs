@@ -159,7 +159,9 @@ where
             let total_len = header_end
                 .checked_add(4)
                 .and_then(|body_start| body_start.checked_add(content_length))
-                .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "rpc request too large"))?;
+                .ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::InvalidData, "rpc request too large")
+                })?;
             expected_len = Some(total_len);
             if buffer.len() >= total_len {
                 break;

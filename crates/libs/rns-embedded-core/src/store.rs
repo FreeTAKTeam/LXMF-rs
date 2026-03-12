@@ -1,6 +1,4 @@
-use crate::{
-    EmbeddedError, EmbeddedResult, attachment::ChunkCursor, hash::digest32,
-};
+use crate::{attachment::ChunkCursor, hash::digest32, EmbeddedError, EmbeddedResult};
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 
@@ -25,11 +23,7 @@ pub struct JournaledEmbeddedStore {
 
 impl JournaledEmbeddedStore {
     pub fn new() -> Self {
-        Self {
-            replay_floors: BTreeMap::new(),
-            cursors: BTreeMap::new(),
-            schema_version: SCHEMA_V2,
-        }
+        Self { replay_floors: BTreeMap::new(), cursors: BTreeMap::new(), schema_version: SCHEMA_V2 }
     }
 
     pub fn schema_version(&self) -> u8 {
@@ -40,7 +34,8 @@ impl JournaledEmbeddedStore {
         let mut body = Vec::new();
         body.push(self.schema_version);
 
-        let replay_len = u16::try_from(self.replay_floors.len()).map_err(|_| EmbeddedError::InvalidState)?;
+        let replay_len =
+            u16::try_from(self.replay_floors.len()).map_err(|_| EmbeddedError::InvalidState)?;
         body.extend_from_slice(&replay_len.to_le_bytes());
         for (identity, floor) in &self.replay_floors {
             body.extend_from_slice(identity);
@@ -140,11 +135,7 @@ impl JournaledEmbeddedStore {
             return Err(EmbeddedError::StorageCorruption);
         }
 
-        Ok(Self {
-            replay_floors,
-            cursors,
-            schema_version: SCHEMA_V2,
-        })
+        Ok(Self { replay_floors, cursors, schema_version: SCHEMA_V2 })
     }
 }
 
@@ -229,7 +220,7 @@ fn read_identity(bytes: &[u8], idx: &mut usize) -> EmbeddedResult<[u8; 32]> {
 #[cfg(test)]
 mod tests {
     use super::{EmbeddedStore, JournaledEmbeddedStore, SCHEMA_V1};
-    use crate::{EmbeddedError, attachment::ChunkCursor};
+    use crate::{attachment::ChunkCursor, EmbeddedError};
 
     #[test]
     fn snapshot_roundtrip_preserves_state() {
@@ -262,7 +253,8 @@ mod tests {
         let mut snapshot = store.snapshot_bytes().expect("snapshot");
         snapshot[12] ^= 0x55;
 
-        let err = JournaledEmbeddedStore::from_snapshot_bytes(&snapshot).expect_err("corruption detected");
+        let err = JournaledEmbeddedStore::from_snapshot_bytes(&snapshot)
+            .expect_err("corruption detected");
         assert_eq!(err, EmbeddedError::StorageCorruption);
     }
 

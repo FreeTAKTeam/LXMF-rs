@@ -87,10 +87,7 @@ impl Profile {
             },
             Self::TestingDefault => DeliveryPlan {
                 profile: self.clone(),
-                retry: RetryPolicy {
-                    max_attempts: 2,
-                    backoff: BackoffSchedule::fixed(10),
-                },
+                retry: RetryPolicy { max_attempts: 2, backoff: BackoffSchedule::fixed(10) },
                 reconnect: ReconnectPolicy {
                     enabled: true,
                     max_attempts: Some(2),
@@ -114,4 +111,3 @@ impl Profile {
         }
     }
 }
-
