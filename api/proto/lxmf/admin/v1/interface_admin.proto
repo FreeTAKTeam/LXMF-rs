@@ -4,20 +4,25 @@ package lxmf.admin.v1;
 
 import "lxmf/common/v1/interfaces.proto";
 
+// Empty request for listing configured daemon interfaces.
 message ListInterfacesRequest {}
 
+// Returns the current daemon interface configuration.
 message ListInterfacesResponse {
   repeated lxmf.common.v1.InterfaceRecord interfaces = 1;
 }
 
+// Wraps a full desired interface set for reload operations.
 message InterfaceSet {
   repeated lxmf.common.v1.InterfaceRecord interfaces = 1;
 }
 
+// Replaces the active interface set through the admin API.
 message SetInterfacesRequest {
   repeated lxmf.common.v1.InterfaceRecord interfaces = 1;
 }
 
+// Reports whether interface mutation was applied or needs restart.
 message SetInterfacesResponse {
   bool updated = 1;
   bool restart_required = 2;
@@ -25,10 +30,12 @@ message SetInterfacesResponse {
   repeated string affected_interfaces = 4;
 }
 
+// Reloads daemon configuration, optionally with an explicit desired interface set.
 message ReloadConfigRequest {
   optional InterfaceSet desired_interfaces = 1;
 }
 
+// Reports reload and hot-apply outcomes.
 message ReloadConfigResponse {
   bool reloaded = 1;
   bool hot_applied_legacy_tcp_only = 2;
@@ -36,8 +43,12 @@ message ReloadConfigResponse {
   repeated string affected_interfaces = 4;
 }
 
+// Administrative interface management operations.
 service InterfaceAdminService {
+  // Returns the currently configured interfaces.
   rpc ListInterfaces(ListInterfacesRequest) returns (ListInterfacesResponse);
+  // Replaces the active interface set when supported.
   rpc SetInterfaces(SetInterfacesRequest) returns (SetInterfacesResponse);
+  // Reloads config and reports whether restart is required.
   rpc ReloadConfig(ReloadConfigRequest) returns (ReloadConfigResponse);
 }

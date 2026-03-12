@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package lxmf.runtime.v1;
 
+// Store-and-forward limits negotiated for a runtime session.
 message NegotiateStoreForwardConfig {
   optional uint32 max_messages = 1;
   optional uint64 max_message_age_ms = 2;
@@ -9,6 +10,7 @@ message NegotiateStoreForwardConfig {
   optional string eviction_priority = 4;
 }
 
+// Token-auth backend configuration included during negotiation.
 message NegotiateTokenAuthConfig {
   string issuer = 1;
   string audience = 2;
@@ -17,6 +19,7 @@ message NegotiateTokenAuthConfig {
   string shared_secret = 5;
 }
 
+// mTLS backend configuration included during negotiation.
 message NegotiateMtlsAuthConfig {
   string ca_bundle_path = 1;
   bool require_client_cert = 2;
@@ -25,6 +28,7 @@ message NegotiateMtlsAuthConfig {
   optional string client_key_path = 5;
 }
 
+// RPC backend limits and auth settings negotiated for the runtime.
 message NegotiateRpcBackendConfig {
   optional string listen_addr = 1;
   optional uint64 read_timeout_ms = 2;
@@ -35,6 +39,7 @@ message NegotiateRpcBackendConfig {
   optional NegotiateMtlsAuthConfig mtls_auth = 7;
 }
 
+// Runtime policy requested during negotiation.
 message NegotiateRuntimeConfig {
   string profile = 1;
   optional string bind_mode = 2;
@@ -45,22 +50,26 @@ message NegotiateRuntimeConfig {
   optional NegotiateRpcBackendConfig rpc_backend = 7;
 }
 
+// Negotiates contract version and runtime capabilities.
 message NegotiateRequest {
   repeated uint32 supported_contract_versions = 1;
   repeated string requested_capabilities = 2;
   NegotiateRuntimeConfig config = 3;
 }
 
+// Returns the active runtime contract and capabilities.
 message NegotiateResponse {
   string runtime_id = 1;
   uint32 active_contract_version = 2;
   repeated string effective_capabilities = 3;
 }
 
+// Fetches a runtime snapshot, optionally including count-heavy sections.
 message GetSnapshotRequest {
   bool include_counts = 1;
 }
 
+// Snapshot of the current runtime state.
 message GetSnapshotResponse {
   string runtime_id = 1;
   string state = 2;
@@ -69,7 +78,10 @@ message GetSnapshotResponse {
   repeated string effective_capabilities = 5;
 }
 
+// Runtime negotiation and snapshot operations.
 service RuntimeService {
+  // Negotiates the active contract version and capability set.
   rpc Negotiate(NegotiateRequest) returns (NegotiateResponse);
+  // Returns a point-in-time runtime snapshot.
   rpc GetSnapshot(GetSnapshotRequest) returns (GetSnapshotResponse);
 }

@@ -5,6 +5,7 @@ package lxmf.identity.v1;
 import "google/protobuf/struct.proto";
 import "lxmf/common/v1/pagination.proto";
 
+// Basic identity metadata exposed to clients.
 message Identity {
   string identity = 1;
   string public_key = 2;
@@ -12,6 +13,7 @@ message Identity {
   repeated string capabilities = 4;
 }
 
+// Contact record stored by the daemon.
 message Contact {
   string identity = 1;
   optional string display_name = 2;
@@ -22,6 +24,7 @@ message Contact {
   google.protobuf.Struct extensions = 7;
 }
 
+// Presence summary for a discovered peer identity.
 message PresenceRecord {
   string peer_id = 1;
   int64 last_seen_ts_ms = 2;
@@ -34,36 +37,45 @@ message PresenceRecord {
   google.protobuf.Struct extensions = 9;
 }
 
+// Empty request for listing imported or known identities.
 message ListIdentitiesRequest {}
 
+// Returns known identities.
 message ListIdentitiesResponse {
   repeated Identity identities = 1;
 }
 
+// Resolves a public hash to a known identity id when available.
 message ResolveIdentityRequest {
   string hash = 1;
 }
 
+// Returns a resolved identity id when found.
 message ResolveIdentityResponse {
   optional string identity = 1;
 }
 
+// Requests an immediate announce for the current daemon identity.
 message AnnounceNowRequest {}
 
+// Reports whether announce dispatch was accepted.
 message AnnounceNowResponse {
   bool accepted = 1;
   uint64 announce_id = 2;
 }
 
+// Lists recent presence observations with pagination.
 message ListPresenceRequest {
   lxmf.common.v1.PageRequest page = 1;
 }
 
+// Returns one presence page.
 message ListPresenceResponse {
   repeated PresenceRecord peers = 1;
   lxmf.common.v1.PageInfo page_info = 2;
 }
 
+// Creates or updates a contact record.
 message UpdateContactRequest {
   string identity = 1;
   optional string display_name = 2;
@@ -73,35 +85,48 @@ message UpdateContactRequest {
   google.protobuf.Struct extensions = 6;
 }
 
+// Returns the normalized stored contact.
 message UpdateContactResponse {
   Contact contact = 1;
 }
 
+// Lists known contacts with pagination.
 message ListContactsRequest {
   lxmf.common.v1.PageRequest page = 1;
 }
 
+// Returns one contact page.
 message ListContactsResponse {
   repeated Contact contacts = 1;
   lxmf.common.v1.PageInfo page_info = 2;
 }
 
+// Marks an identity for bootstrap and optional sync.
 message BootstrapIdentityRequest {
   string identity = 1;
   bool auto_sync = 2;
 }
 
+// Returns the updated contact plus sync result.
 message BootstrapIdentityResponse {
   Contact contact = 1;
   bool synced = 2;
 }
 
+// Identity discovery, contact, and bootstrap operations.
 service IdentityService {
+  // Lists known identities.
   rpc ListIdentities(ListIdentitiesRequest) returns (ListIdentitiesResponse);
+  // Resolves a hash to an identity id when known.
   rpc ResolveIdentity(ResolveIdentityRequest) returns (ResolveIdentityResponse);
+  // Dispatches an immediate announce.
   rpc AnnounceNow(AnnounceNowRequest) returns (AnnounceNowResponse);
+  // Lists recent presence records.
   rpc ListPresence(ListPresenceRequest) returns (ListPresenceResponse);
+  // Creates or updates a contact.
   rpc UpdateContact(UpdateContactRequest) returns (UpdateContactResponse);
+  // Lists contacts.
   rpc ListContacts(ListContactsRequest) returns (ListContactsResponse);
+  // Bootstraps an identity for trusted sync flows.
   rpc BootstrapIdentity(BootstrapIdentityRequest) returns (BootstrapIdentityResponse);
 }

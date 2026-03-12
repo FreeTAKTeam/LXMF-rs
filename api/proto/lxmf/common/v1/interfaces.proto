@@ -4,6 +4,7 @@ package lxmf.common.v1;
 
 import "google/protobuf/struct.proto";
 
+// Portable interface configuration record shared across admin operations.
 message InterfaceRecord {
   string type = 1;
   bool enabled = 2;

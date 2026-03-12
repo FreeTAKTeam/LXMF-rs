@@ -2,28 +2,38 @@ syntax = "proto3";
 
 package lxmf.delivery.v1;
 
+// Sends a message through the delivery pipeline.
 message SendRequest {}
 
+// Returns the accepted delivery message id.
 message SendResponse {
   string message_id = 1;
 }
 
+// Looks up the delivery status of a previously accepted message.
 message GetStatusRequest {
   string message_id = 1;
 }
 
+// Returns delivery status details for a message.
 message GetStatusResponse {}
 
+// Cancels a previously queued or in-flight message.
 message CancelRequest {
   string message_id = 1;
 }
 
+// Returns the cancellation result.
 message CancelResponse {
   string result = 1;
 }
 
+// Delivery lifecycle operations for outbound messages.
 service DeliveryService {
+  // Sends a new message.
   rpc Send(SendRequest) returns (SendResponse);
+  // Returns status for a message id.
   rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
+  // Cancels a previously sent message when possible.
   rpc Cancel(CancelRequest) returns (CancelResponse);
 }

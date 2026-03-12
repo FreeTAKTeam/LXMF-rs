@@ -4,12 +4,14 @@ package lxmf.markers.v1;
 
 import "lxmf/common/v1/pagination.proto";
 
+// Geographic point used by marker positions.
 message GeoPoint {
   double lat = 1;
   double lon = 2;
   optional double alt_m = 3;
 }
 
+// Marker record returned by marker operations.
 message Marker {
   string marker_id = 1;
   string label = 2;
@@ -19,49 +21,62 @@ message Marker {
   uint64 updated_ts_ms = 6;
 }
 
+// Creates a new marker.
 message CreateMarkerRequest {
   string label = 1;
   GeoPoint position = 2;
   optional string topic_id = 3;
 }
 
+// Returns the created marker.
 message CreateMarkerResponse {
   Marker marker = 1;
 }
 
+// Lists markers, optionally filtered by topic.
 message ListMarkersRequest {
   optional string topic_id = 1;
   lxmf.common.v1.PageRequest page = 2;
 }
 
+// Returns one marker page and a continuation token.
 message ListMarkersResponse {
   repeated Marker markers = 1;
   lxmf.common.v1.PageInfo page_info = 2;
 }
 
+// Moves an existing marker using optimistic revision checks.
 message UpdateMarkerPositionRequest {
   string marker_id = 1;
   uint64 expected_revision = 2;
   GeoPoint position = 3;
 }
 
+// Returns the updated marker.
 message UpdateMarkerPositionResponse {
   Marker marker = 1;
 }
 
+// Deletes an existing marker using optimistic revision checks.
 message DeleteMarkerRequest {
   string marker_id = 1;
   uint64 expected_revision = 2;
 }
 
+// Reports whether marker deletion was accepted.
 message DeleteMarkerResponse {
   bool accepted = 1;
   string marker_id = 2;
 }
 
+// Marker create/list/update/delete operations.
 service MarkerService {
+  // Creates a new marker.
   rpc CreateMarker(CreateMarkerRequest) returns (CreateMarkerResponse);
+  // Lists markers with pagination.
   rpc ListMarkers(ListMarkersRequest) returns (ListMarkersResponse);
+  // Updates a marker position.
   rpc UpdateMarkerPosition(UpdateMarkerPositionRequest) returns (UpdateMarkerPositionResponse);
+  // Deletes a marker.
   rpc DeleteMarker(DeleteMarkerRequest) returns (DeleteMarkerResponse);
 }

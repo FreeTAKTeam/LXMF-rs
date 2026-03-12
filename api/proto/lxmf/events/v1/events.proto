@@ -4,6 +4,7 @@ package lxmf.events.v1;
 
 import "google/protobuf/struct.proto";
 
+// Normalized daemon event row delivered by polling or streaming.
 message EventEnvelope {
   string event_type = 1;
   google.protobuf.Struct payload = 2;
@@ -14,22 +15,28 @@ message EventEnvelope {
   string source_component = 7;
 }
 
+// Polls the event stream from an optional cursor.
 message PollEventsRequest {
   optional string cursor = 1;
   uint32 max = 2;
 }
 
+// Returns one event page plus continuation metadata.
 message PollEventsResponse {
   repeated EventEnvelope events = 1;
   string next_cursor = 2;
   uint64 dropped_count = 3;
 }
 
+// Starts a live subscription from the current event head or a resume token.
 message SubscribeEventsRequest {
   optional string resume_token = 1;
 }
 
+// Event polling and live subscription operations.
 service EventService {
+  // Returns a bounded page of events.
   rpc PollEvents(PollEventsRequest) returns (PollEventsResponse);
+  // Streams live events as they are published.
   rpc SubscribeEvents(SubscribeEventsRequest) returns (stream EventEnvelope);
 }

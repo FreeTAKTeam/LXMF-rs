@@ -4,6 +4,7 @@ package lxmf.attachments.v1;
 
 import "lxmf/common/v1/pagination.proto";
 
+// Attachment metadata returned by attachment lifecycle calls.
 message Attachment {
   string attachment_id = 1;
   string name = 2;
@@ -15,6 +16,7 @@ message Attachment {
   repeated string topic_ids = 8;
 }
 
+// Stores a complete attachment in one call.
 message StoreAttachmentRequest {
   string name = 1;
   string content_type = 2;
@@ -23,37 +25,45 @@ message StoreAttachmentRequest {
   repeated string topic_ids = 5;
 }
 
+// Returns the stored attachment metadata.
 message StoreAttachmentResponse {
   Attachment attachment = 1;
 }
 
+// Looks up attachment metadata by id.
 message GetAttachmentRequest {
   string attachment_id = 1;
 }
 
+// Returns attachment metadata for a single attachment.
 message GetAttachmentResponse {
   Attachment attachment = 1;
 }
 
+// Deletes an attachment by id.
 message DeleteAttachmentRequest {
   string attachment_id = 1;
 }
 
+// Reports whether a delete request was accepted.
 message DeleteAttachmentResponse {
   bool accepted = 1;
   string attachment_id = 2;
 }
 
+// Downloads the full attachment payload by id.
 message DownloadAttachmentRequest {
   string attachment_id = 1;
 }
 
+// Returns a full attachment payload encoded as base64.
 message DownloadAttachmentResponse {
   bool accepted = 1;
   string attachment_id = 2;
   string bytes_base64 = 3;
 }
 
+// Upload state returned by chunked upload startup.
 message UploadHandle {
   string upload_id = 1;
   string attachment_id = 2;
@@ -61,6 +71,7 @@ message UploadHandle {
   uint64 next_offset = 4;
 }
 
+// Starts a chunked attachment upload session.
 message UploadStartRequest {
   string name = 1;
   string content_type = 2;
@@ -70,36 +81,43 @@ message UploadStartRequest {
   repeated string topic_ids = 6;
 }
 
+// Returns the upload handle and next expected offset.
 message UploadStartResponse {
   UploadHandle upload = 1;
 }
 
+// Sends one chunk for a previously started upload session.
 message UploadChunkRequest {
   string upload_id = 1;
   uint64 offset = 2;
   string bytes_base64 = 3;
 }
 
+// Reports chunk acceptance and the next expected offset.
 message UploadChunkResponse {
   bool accepted = 1;
   uint64 next_offset = 2;
   bool complete = 3;
 }
 
+// Finalizes a started upload after all chunks have been sent.
 message UploadCommitRequest {
   string upload_id = 1;
 }
 
+// Returns the committed attachment metadata.
 message UploadCommitResponse {
   Attachment attachment = 1;
 }
 
+// Reads a window of attachment bytes from an offset.
 message DownloadChunkRequest {
   string attachment_id = 1;
   optional uint64 offset = 2;
   optional uint32 max_bytes = 3;
 }
 
+// Returns one chunk of attachment bytes plus resume metadata.
 message DownloadChunkResponse {
   string attachment_id = 1;
   uint64 offset = 2;
@@ -110,24 +128,36 @@ message DownloadChunkResponse {
   string bytes_base64 = 7;
 }
 
+// Lists attachments, optionally filtered by topic id.
 message ListAttachmentsRequest {
   optional string topic_id = 1;
   lxmf.common.v1.PageRequest page = 2;
 }
 
+// Returns one attachment page and a continuation token.
 message ListAttachmentsResponse {
   repeated Attachment attachments = 1;
   lxmf.common.v1.PageInfo page_info = 2;
 }
 
+// Attachment CRUD and chunked transfer operations.
 service AttachmentService {
+  // Stores a complete attachment in a single request.
   rpc StoreAttachment(StoreAttachmentRequest) returns (StoreAttachmentResponse);
+  // Fetches metadata for a single attachment.
   rpc GetAttachment(GetAttachmentRequest) returns (GetAttachmentResponse);
+  // Deletes an attachment by id.
   rpc DeleteAttachment(DeleteAttachmentRequest) returns (DeleteAttachmentResponse);
+  // Downloads the full attachment payload.
   rpc DownloadAttachment(DownloadAttachmentRequest) returns (DownloadAttachmentResponse);
+  // Starts a chunked upload session.
   rpc UploadStart(UploadStartRequest) returns (UploadStartResponse);
+  // Uploads one chunk for an existing session.
   rpc UploadChunk(UploadChunkRequest) returns (UploadChunkResponse);
+  // Commits a finished chunked upload.
   rpc UploadCommit(UploadCommitRequest) returns (UploadCommitResponse);
+  // Downloads one chunk from an attachment.
   rpc DownloadChunk(DownloadChunkRequest) returns (DownloadChunkResponse);
+  // Lists attachments with pagination.
   rpc ListAttachments(ListAttachmentsRequest) returns (ListAttachmentsResponse);
 }

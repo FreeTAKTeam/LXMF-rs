@@ -4,29 +4,37 @@ package lxmf.topics.v1;
 
 import "lxmf/common/v1/pagination.proto";
 
+// Topic record returned by topic operations.
 message Topic {
   string topic_id = 1;
   string topic_path = 2;
 }
 
+// Creates a topic from a topic path.
 message CreateTopicRequest {
   string topic_path = 1;
 }
 
+// Returns the created topic.
 message CreateTopicResponse {
   Topic topic = 1;
 }
 
+// Lists topics with pagination.
 message ListTopicsRequest {
   lxmf.common.v1.PageRequest page = 1;
 }
 
+// Returns one topic page and a continuation token.
 message ListTopicsResponse {
   repeated Topic topics = 1;
   lxmf.common.v1.PageInfo page_info = 2;
 }
 
+// Topic create and list operations.
 service TopicService {
+  // Creates a new topic.
   rpc CreateTopic(CreateTopicRequest) returns (CreateTopicResponse);
+  // Lists topics with pagination.
   rpc ListTopics(ListTopicsRequest) returns (ListTopicsResponse);
 }
