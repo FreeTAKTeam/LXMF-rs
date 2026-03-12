@@ -1,7 +1,5 @@
 use crate::http::TransportAuthContext;
-use crate::{
-    InterfaceRecord as RpcInterfaceRecord, RpcDaemon, RpcError, RpcRequest, RpcResponse,
-};
+use crate::{InterfaceRecord as RpcInterfaceRecord, RpcDaemon, RpcError, RpcRequest, RpcResponse};
 use serde::Deserialize;
 use serde_json::{json, Value as JsonValue};
 use std::convert::TryFrom;
@@ -31,6 +29,18 @@ pub mod lxmf {
     pub mod runtime {
         pub mod v1 {
             include!(concat!(env!("OUT_DIR"), "/lxmf.runtime.v1.rs"));
+        }
+    }
+
+    pub mod delivery {
+        pub mod v1 {
+            include!(concat!(env!("OUT_DIR"), "/lxmf.delivery.v1.rs"));
+        }
+    }
+
+    pub mod command {
+        pub mod v1 {
+            include!(concat!(env!("OUT_DIR"), "/lxmf.command.v1.rs"));
         }
     }
 
@@ -94,15 +104,28 @@ use lxmf::attachments::v1::{
     StoreAttachmentResponse, UploadChunkRequest, UploadChunkResponse, UploadCommitRequest,
     UploadCommitResponse, UploadHandle, UploadStartRequest, UploadStartResponse,
 };
+use lxmf::command::v1::command_service_server::{CommandService, CommandServiceServer};
+use lxmf::command::v1::{
+    CommandSession as CommandSessionProto, GetCommandSessionRequest, GetCommandSessionResponse,
+    InvokeCommandRequest, InvokeCommandResponse, ListCommandSessionsRequest,
+    ListCommandSessionsResponse, ReplyCommandRequest, ReplyCommandResponse,
+};
 use lxmf::common::v1::InterfaceRecord;
+use lxmf::delivery::v1::delivery_service_server::{DeliveryService, DeliveryServiceServer};
+use lxmf::delivery::v1::{
+    CancelRequest, CancelResponse, GetStatusRequest, GetStatusResponse,
+    MessageRecord as DeliveryMessageRecord, SendRequest, SendResponse,
+};
 use lxmf::events::v1::event_service_server::{EventService, EventServiceServer};
 use lxmf::events::v1::{
     EventEnvelope, PollEventsRequest, PollEventsResponse, SubscribeEventsRequest,
 };
 use lxmf::identity::v1::identity_service_server::{IdentityService, IdentityServiceServer};
 use lxmf::identity::v1::{
-    AnnounceNowRequest, AnnounceNowResponse, BootstrapIdentityRequest, BootstrapIdentityResponse,
-    Contact, Identity, ListContactsRequest, ListContactsResponse, ListIdentitiesRequest,
+    ActivateIdentityRequest, ActivateIdentityResponse, AnnounceNowRequest, AnnounceNowResponse,
+    BootstrapIdentityRequest, BootstrapIdentityResponse, Contact, ExportIdentityRequest,
+    ExportIdentityResponse, Identity, IdentityBundle, ImportIdentityRequest,
+    ImportIdentityResponse, ListContactsRequest, ListContactsResponse, ListIdentitiesRequest,
     ListIdentitiesResponse, ListPresenceRequest, ListPresenceResponse, PresenceRecord,
     ResolveIdentityRequest, ResolveIdentityResponse, UpdateContactRequest, UpdateContactResponse,
 };
@@ -119,13 +142,17 @@ use lxmf::peers::v1::{
 };
 use lxmf::runtime::v1::runtime_service_server::{RuntimeService, RuntimeServiceServer};
 use lxmf::runtime::v1::{
-    GetSnapshotRequest, GetSnapshotResponse, NegotiateMtlsAuthConfig, NegotiateRequest,
-    NegotiateResponse, NegotiateRpcBackendConfig, NegotiateRuntimeConfig,
-    NegotiateStoreForwardConfig, NegotiateTokenAuthConfig,
+    GetDaemonStatusRequest, GetDaemonStatusResponse, GetPropagationStatusRequest,
+    GetPropagationStatusResponse, GetSnapshotRequest, GetSnapshotResponse, NegotiateMtlsAuthConfig,
+    NegotiateRequest, NegotiateResponse, NegotiateRpcBackendConfig, NegotiateRuntimeConfig,
+    NegotiateStoreForwardConfig, NegotiateTokenAuthConfig, SetPropagationRequest,
+    SetPropagationResponse,
 };
 use lxmf::topics::v1::topic_service_server::{TopicService, TopicServiceServer};
 use lxmf::topics::v1::{
-    CreateTopicRequest, CreateTopicResponse, ListTopicsRequest, ListTopicsResponse, Topic,
+    CreateTopicRequest, CreateTopicResponse, GetTopicRequest, GetTopicResponse, ListTopicsRequest,
+    ListTopicsResponse, PublishTopicRequest, PublishTopicResponse, SubscribeTopicRequest,
+    SubscribeTopicResponse, Topic, UnsubscribeTopicRequest, UnsubscribeTopicResponse,
 };
 
 #[derive(Clone, Debug)]
@@ -195,6 +222,22 @@ fn emit_grpc_access_log(
         Ok(_) => ("OK".to_string(), None),
         Err(status) => (status.code().to_string(), Some(status.message().to_string())),
     };
+    if pretty_console_logs_enabled() {
+        let rpc_fragment =
+            meta.rpc_method.map(|method| format!(" rpc={method}")).unwrap_or_default();
+        let error_fragment =
+            error_text.as_ref().map(|error| format!(" error={error}")).unwrap_or_default();
+        eprintln!(
+            "[grpc] peer={} status={} elapsed={}ms method={}{}{}",
+            meta.peer.as_deref().unwrap_or("-"),
+            status_code,
+            elapsed_ms,
+            meta.grpc_method,
+            rpc_fragment,
+            error_fragment
+        );
+        return;
+    }
     let payload = json!({
         "event": "grpc_request",
         "peer": meta.peer,
@@ -211,6 +254,25 @@ fn emit_grpc_access_log(
 }
 
 fn emit_grpc_status_log(meta: &GrpcRequestLogMeta, status: &Status, elapsed_ms: u64) {
+    if pretty_console_logs_enabled() {
+        let rpc_fragment =
+            meta.rpc_method.map(|method| format!(" rpc={method}")).unwrap_or_default();
+        let error_fragment = if status.message().is_empty() {
+            String::new()
+        } else {
+            format!(" error={}", status.message())
+        };
+        eprintln!(
+            "[grpc] peer={} status={} elapsed={}ms method={}{}{}",
+            meta.peer.as_deref().unwrap_or("-"),
+            status.code(),
+            elapsed_ms,
+            meta.grpc_method,
+            rpc_fragment,
+            error_fragment
+        );
+        return;
+    }
     let payload = json!({
         "event": "grpc_request",
         "peer": meta.peer,
@@ -227,6 +289,18 @@ fn emit_grpc_status_log(meta: &GrpcRequestLogMeta, status: &Status, elapsed_ms: 
 }
 
 fn emit_grpc_ok_log(meta: &GrpcRequestLogMeta, elapsed_ms: u64) {
+    if pretty_console_logs_enabled() {
+        let rpc_fragment =
+            meta.rpc_method.map(|method| format!(" rpc={method}")).unwrap_or_default();
+        eprintln!(
+            "[grpc] peer={} status=OK elapsed={}ms method={}{}",
+            meta.peer.as_deref().unwrap_or("-"),
+            elapsed_ms,
+            meta.grpc_method,
+            rpc_fragment
+        );
+        return;
+    }
     let payload = json!({
         "event": "grpc_request",
         "peer": meta.peer,
@@ -242,8 +316,25 @@ fn emit_grpc_ok_log(meta: &GrpcRequestLogMeta, elapsed_ms: u64) {
     eprintln!("{}", payload);
 }
 
+fn pretty_console_logs_enabled() -> bool {
+    matches!(
+        std::env::var("LXMF_LOG_PRETTY").ok().as_deref(),
+        Some("1" | "true" | "TRUE" | "yes" | "YES" | "on" | "ON")
+    )
+}
+
 #[derive(Clone)]
 struct RuntimeGrpcService {
+    bridge: GrpcBridge,
+}
+
+#[derive(Clone)]
+struct DeliveryGrpcService {
+    bridge: GrpcBridge,
+}
+
+#[derive(Clone)]
+struct CommandGrpcService {
     bridge: GrpcBridge,
 }
 
@@ -290,6 +381,105 @@ struct SnapshotPayload {
     config_revision: u64,
     #[serde(default)]
     effective_capabilities: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeliverySendPayload {
+    message_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeliveryMessagePayload {
+    id: String,
+    source: String,
+    destination: String,
+    title: String,
+    content: String,
+    timestamp: i64,
+    direction: String,
+    #[serde(default)]
+    fields: Option<JsonValue>,
+    #[serde(default)]
+    receipt_status: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeliveryStatusPayload {
+    #[serde(default)]
+    message: Option<DeliveryMessagePayload>,
+    #[serde(default)]
+    meta: JsonValue,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeliveryCancelPayload {
+    message_id: String,
+    result: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct CommandSessionPayload {
+    command_id: String,
+    correlation_id: String,
+    command: String,
+    #[serde(default)]
+    target: Option<String>,
+    #[serde(default)]
+    timeout_ms: Option<u64>,
+    #[serde(default)]
+    delivery_state: Option<String>,
+    command_state: String,
+    created_at_ms: u64,
+    updated_at_ms: u64,
+    request_payload: JsonValue,
+    #[serde(default)]
+    response_payload: Option<JsonValue>,
+    #[serde(default)]
+    accepted: Option<bool>,
+    #[serde(default)]
+    extensions: JsonValue,
+}
+
+#[derive(Debug, Deserialize)]
+struct CommandInvokeEnvelopePayload {
+    accepted: bool,
+    payload: JsonValue,
+    #[serde(default)]
+    extensions: JsonValue,
+    session: CommandSessionPayload,
+}
+
+#[derive(Debug, Deserialize)]
+struct CommandInvokeResultPayload {
+    response: CommandInvokeEnvelopePayload,
+}
+
+#[derive(Debug, Deserialize)]
+struct CommandReplyResultPayload {
+    accepted: bool,
+    correlation_id: String,
+    reply_accepted: bool,
+    payload: JsonValue,
+    session: CommandSessionPayload,
+}
+
+#[derive(Debug, Deserialize)]
+struct CommandSessionGetPayload {
+    #[serde(default)]
+    session: Option<CommandSessionPayload>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CommandSessionListEnvelopePayload {
+    #[serde(default)]
+    sessions: Vec<CommandSessionPayload>,
+    #[serde(default)]
+    next_cursor: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CommandSessionListPayload {
+    session_list: CommandSessionListEnvelopePayload,
 }
 
 #[derive(Debug, Deserialize)]
@@ -342,6 +532,14 @@ struct TopicListPayload {
     topics: Vec<TopicRecordPayload>,
     #[serde(default)]
     next_cursor: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct TopicAcceptedPayload {
+    #[serde(default)]
+    accepted: bool,
+    #[serde(default)]
+    topic_id: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -445,6 +643,13 @@ struct IdentityListPayload {
 }
 
 #[derive(Debug, Deserialize)]
+struct ActivateIdentityPayload {
+    #[serde(default)]
+    accepted: bool,
+    identity: String,
+}
+
+#[derive(Debug, Deserialize)]
 struct IdentityBundlePayload {
     identity: String,
     public_key: String,
@@ -452,6 +657,25 @@ struct IdentityBundlePayload {
     display_name: Option<String>,
     #[serde(default)]
     capabilities: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct IdentityEnvelopePayload {
+    identity: Option<IdentityBundlePayload>,
+}
+
+#[derive(Debug, Deserialize)]
+struct IdentityExportBundlePayload {
+    bundle_base64: String,
+    #[serde(default)]
+    passphrase: Option<String>,
+    #[serde(default)]
+    extensions: JsonValue,
+}
+
+#[derive(Debug, Deserialize)]
+struct IdentityExportPayload {
+    bundle: IdentityExportBundlePayload,
 }
 
 #[derive(Debug, Deserialize)]
@@ -697,6 +921,344 @@ impl RuntimeService for RuntimeGrpcService {
             effective_capabilities: payload.effective_capabilities,
         }))
     }
+
+    async fn get_daemon_status(
+        &self,
+        request: Request<GetDaemonStatusRequest>,
+    ) -> Result<Response<GetDaemonStatusResponse>, Status> {
+        let peer = grpc_peer(&request);
+        let response = self
+            .bridge
+            .invoke(
+                "/lxmf.runtime.v1.RuntimeService/GetDaemonStatus",
+                peer,
+                "daemon_status_ex",
+                None,
+            )
+            .await?;
+        let status: JsonValue = parse_result(response)?;
+        Ok(Response::new(GetDaemonStatusResponse { status: json_to_struct(status) }))
+    }
+
+    async fn get_propagation_status(
+        &self,
+        request: Request<GetPropagationStatusRequest>,
+    ) -> Result<Response<GetPropagationStatusResponse>, Status> {
+        let peer = grpc_peer(&request);
+        let response = self
+            .bridge
+            .invoke(
+                "/lxmf.runtime.v1.RuntimeService/GetPropagationStatus",
+                peer,
+                "propagation_status",
+                None,
+            )
+            .await?;
+        let payload: JsonValue = parse_result(response)?;
+        let propagation = payload.get("propagation").cloned().unwrap_or(payload);
+        Ok(Response::new(GetPropagationStatusResponse { propagation: json_to_struct(propagation) }))
+    }
+
+    async fn set_propagation(
+        &self,
+        request: Request<SetPropagationRequest>,
+    ) -> Result<Response<SetPropagationResponse>, Status> {
+        let peer = grpc_peer(&request);
+        let request = request.into_inner();
+        let mut params = serde_json::Map::new();
+        params.insert("enabled".to_string(), JsonValue::Bool(request.enabled));
+        if let Some(store_root) = request.store_root {
+            params.insert("store_root".to_string(), JsonValue::String(store_root));
+        }
+        if let Some(target_cost) = request.target_cost {
+            params.insert(
+                "target_cost".to_string(),
+                JsonValue::Number(serde_json::Number::from(target_cost)),
+            );
+        }
+        if let Some(limit) = request.message_storage_limit_mb {
+            params.insert(
+                "message_storage_limit_mb".to_string(),
+                JsonValue::Number(serde_json::Number::from(limit)),
+            );
+        }
+        if let Some(autopeer) = request.autopeer {
+            params.insert("autopeer".to_string(), JsonValue::Bool(autopeer));
+        }
+        if let Some(autopeer_maxdepth) = request.autopeer_maxdepth {
+            params.insert(
+                "autopeer_maxdepth".to_string(),
+                JsonValue::Number(serde_json::Number::from(autopeer_maxdepth)),
+            );
+        }
+        if !request.static_peers.is_empty() {
+            params.insert(
+                "static_peers".to_string(),
+                JsonValue::Array(request.static_peers.into_iter().map(JsonValue::String).collect()),
+            );
+        }
+        if let Some(max_peers) = request.max_peers {
+            params.insert(
+                "max_peers".to_string(),
+                JsonValue::Number(serde_json::Number::from(max_peers)),
+            );
+        }
+        if let Some(from_static_only) = request.from_static_only {
+            params.insert("from_static_only".to_string(), JsonValue::Bool(from_static_only));
+        }
+        if let Some(peering_cost) = request.peering_cost {
+            params.insert(
+                "peering_cost".to_string(),
+                JsonValue::Number(serde_json::Number::from(peering_cost)),
+            );
+        }
+        if let Some(remote_peering_cost_max) = request.remote_peering_cost_max {
+            params.insert(
+                "remote_peering_cost_max".to_string(),
+                JsonValue::Number(serde_json::Number::from(remote_peering_cost_max)),
+            );
+        }
+        let response = self
+            .bridge
+            .invoke(
+                "/lxmf.runtime.v1.RuntimeService/SetPropagation",
+                peer,
+                "propagation_enable",
+                Some(JsonValue::Object(params)),
+            )
+            .await?;
+        let payload: JsonValue = parse_result(response)?;
+        let propagation = payload.get("propagation").cloned().unwrap_or(payload);
+        Ok(Response::new(SetPropagationResponse { propagation: json_to_struct(propagation) }))
+    }
+}
+
+#[tonic::async_trait]
+impl CommandService for CommandGrpcService {
+    async fn invoke_command(
+        &self,
+        request: Request<InvokeCommandRequest>,
+    ) -> Result<Response<InvokeCommandResponse>, Status> {
+        let peer = grpc_peer(&request);
+        let request = request.into_inner();
+        let payload = request
+            .payload
+            .ok_or_else(|| Status::invalid_argument("command payload is required"))?;
+        let mut params = serde_json::Map::new();
+        params.insert("command".to_string(), JsonValue::String(request.command));
+        params.insert("payload".to_string(), struct_to_json(payload));
+        if let Some(target) = request.target {
+            params.insert("target".to_string(), JsonValue::String(target));
+        }
+        if let Some(timeout_ms) = request.timeout_ms {
+            params.insert(
+                "timeout_ms".to_string(),
+                JsonValue::Number(serde_json::Number::from(timeout_ms)),
+            );
+        }
+        if let Some(extensions) = request.extensions {
+            params.insert("extensions".to_string(), struct_to_json(extensions));
+        }
+        let response = self
+            .bridge
+            .invoke(
+                "/lxmf.command.v1.CommandService/InvokeCommand",
+                peer,
+                "sdk_command_invoke_v2",
+                Some(JsonValue::Object(params)),
+            )
+            .await?;
+        let payload: CommandInvokeResultPayload = parse_result(response)?;
+        Ok(Response::new(InvokeCommandResponse {
+            accepted: payload.response.accepted,
+            payload: json_to_struct(payload.response.payload),
+            extensions: json_to_struct(payload.response.extensions),
+            session: Some(payload.response.session.into()),
+        }))
+    }
+
+    async fn reply_command(
+        &self,
+        request: Request<ReplyCommandRequest>,
+    ) -> Result<Response<ReplyCommandResponse>, Status> {
+        let peer = grpc_peer(&request);
+        let request = request.into_inner();
+        let payload =
+            request.payload.ok_or_else(|| Status::invalid_argument("reply payload is required"))?;
+        let mut params = serde_json::Map::new();
+        params.insert("correlation_id".to_string(), JsonValue::String(request.correlation_id));
+        params.insert("accepted".to_string(), JsonValue::Bool(request.accepted));
+        params.insert("payload".to_string(), struct_to_json(payload));
+        if let Some(extensions) = request.extensions {
+            params.insert("extensions".to_string(), struct_to_json(extensions));
+        }
+        let response = self
+            .bridge
+            .invoke(
+                "/lxmf.command.v1.CommandService/ReplyCommand",
+                peer,
+                "sdk_command_reply_v2",
+                Some(JsonValue::Object(params)),
+            )
+            .await?;
+        let payload: CommandReplyResultPayload = parse_result(response)?;
+        Ok(Response::new(ReplyCommandResponse {
+            accepted: payload.accepted,
+            correlation_id: payload.correlation_id,
+            reply_accepted: payload.reply_accepted,
+            payload: json_to_struct(payload.payload),
+            session: Some(payload.session.into()),
+        }))
+    }
+
+    async fn get_command_session(
+        &self,
+        request: Request<GetCommandSessionRequest>,
+    ) -> Result<Response<GetCommandSessionResponse>, Status> {
+        let peer = grpc_peer(&request);
+        let correlation_id = request.into_inner().correlation_id;
+        let response = self
+            .bridge
+            .invoke(
+                "/lxmf.command.v1.CommandService/GetCommandSession",
+                peer,
+                "sdk_command_session_get_v2",
+                Some(json!({ "correlation_id": correlation_id })),
+            )
+            .await?;
+        let payload: CommandSessionGetPayload = parse_result(response)?;
+        Ok(Response::new(GetCommandSessionResponse { session: payload.session.map(Into::into) }))
+    }
+
+    async fn list_command_sessions(
+        &self,
+        request: Request<ListCommandSessionsRequest>,
+    ) -> Result<Response<ListCommandSessionsResponse>, Status> {
+        let peer = grpc_peer(&request);
+        let page = request.into_inner().page;
+        let params = page.as_ref().map_or_else(
+            || json!({}),
+            |page| {
+                let mut params = serde_json::Map::new();
+                if !page.page_token.is_empty() {
+                    params.insert("cursor".to_string(), JsonValue::String(page.page_token.clone()));
+                }
+                if page.page_size > 0 {
+                    params.insert(
+                        "limit".to_string(),
+                        JsonValue::Number(serde_json::Number::from(page.page_size)),
+                    );
+                }
+                JsonValue::Object(params)
+            },
+        );
+        let response = self
+            .bridge
+            .invoke(
+                "/lxmf.command.v1.CommandService/ListCommandSessions",
+                peer,
+                "sdk_command_session_list_v2",
+                Some(params),
+            )
+            .await?;
+        let payload: CommandSessionListPayload = parse_result(response)?;
+        Ok(Response::new(ListCommandSessionsResponse {
+            sessions: payload.session_list.sessions.into_iter().map(Into::into).collect(),
+            page_info: Some(lxmf::common::v1::PageInfo {
+                next_page_token: payload.session_list.next_cursor.unwrap_or_default(),
+            }),
+        }))
+    }
+}
+
+#[tonic::async_trait]
+impl DeliveryService for DeliveryGrpcService {
+    async fn send(&self, request: Request<SendRequest>) -> Result<Response<SendResponse>, Status> {
+        let peer = grpc_peer(&request);
+        let request = request.into_inner();
+        let mut params = serde_json::Map::new();
+        params.insert("id".to_string(), JsonValue::String(request.id));
+        params.insert("source".to_string(), JsonValue::String(request.source));
+        params.insert("destination".to_string(), JsonValue::String(request.destination));
+        params.insert("content".to_string(), JsonValue::String(request.content));
+        if !request.title.is_empty() {
+            params.insert("title".to_string(), JsonValue::String(request.title));
+        }
+        if let Some(fields) = request.fields {
+            params.insert("fields".to_string(), struct_to_json(fields));
+        }
+        if let Some(method) = request.method {
+            params.insert("method".to_string(), JsonValue::String(method));
+        }
+        if let Some(stamp_cost) = request.stamp_cost {
+            params.insert(
+                "stamp_cost".to_string(),
+                JsonValue::Number(serde_json::Number::from(stamp_cost)),
+            );
+        }
+        if let Some(include_ticket) = request.include_ticket {
+            params.insert("include_ticket".to_string(), JsonValue::Bool(include_ticket));
+        }
+        if let Some(try_propagation_on_fail) = request.try_propagation_on_fail {
+            params.insert(
+                "try_propagation_on_fail".to_string(),
+                JsonValue::Bool(try_propagation_on_fail),
+            );
+        }
+
+        let response = self
+            .bridge
+            .invoke(
+                "/lxmf.delivery.v1.DeliveryService/Send",
+                peer,
+                "sdk_send_v2",
+                Some(JsonValue::Object(params)),
+            )
+            .await?;
+        let payload: DeliverySendPayload = parse_result(response)?;
+        Ok(Response::new(SendResponse { message_id: payload.message_id }))
+    }
+
+    async fn get_status(
+        &self,
+        request: Request<GetStatusRequest>,
+    ) -> Result<Response<GetStatusResponse>, Status> {
+        let peer = grpc_peer(&request);
+        let message_id = request.into_inner().message_id;
+        let response = self
+            .bridge
+            .invoke(
+                "/lxmf.delivery.v1.DeliveryService/GetStatus",
+                peer,
+                "sdk_status_v2",
+                Some(json!({ "message_id": message_id })),
+            )
+            .await?;
+        let payload: DeliveryStatusPayload = parse_result(response)?;
+        Ok(Response::new(GetStatusResponse {
+            message: payload.message.map(Into::into),
+            meta: json_to_struct(payload.meta),
+        }))
+    }
+
+    async fn cancel(
+        &self,
+        request: Request<CancelRequest>,
+    ) -> Result<Response<CancelResponse>, Status> {
+        let peer = grpc_peer(&request);
+        let message_id = request.into_inner().message_id;
+        let response = self
+            .bridge
+            .invoke(
+                "/lxmf.delivery.v1.DeliveryService/Cancel",
+                peer,
+                "sdk_cancel_message_v2",
+                Some(json!({ "message_id": message_id })),
+            )
+            .await?;
+        let payload: DeliveryCancelPayload = parse_result(response)?;
+        Ok(Response::new(CancelResponse { message_id: payload.message_id, result: payload.result }))
+    }
 }
 
 #[tonic::async_trait]
@@ -870,6 +1432,102 @@ impl TopicService for TopicGrpcService {
             }),
         }))
     }
+
+    async fn get_topic(
+        &self,
+        request: Request<GetTopicRequest>,
+    ) -> Result<Response<GetTopicResponse>, Status> {
+        let peer = grpc_peer(&request);
+        let topic_id = request.into_inner().topic_id;
+        let response = self
+            .bridge
+            .invoke(
+                "/lxmf.topics.v1.TopicService/GetTopic",
+                peer,
+                "sdk_topic_get_v2",
+                Some(json!({ "topic_id": topic_id })),
+            )
+            .await?;
+        let payload: TopicEnvelopePayload = parse_result(response)?;
+        Ok(Response::new(GetTopicResponse { topic: payload.topic.map(Into::into) }))
+    }
+
+    async fn subscribe_topic(
+        &self,
+        request: Request<SubscribeTopicRequest>,
+    ) -> Result<Response<SubscribeTopicResponse>, Status> {
+        let peer = grpc_peer(&request);
+        let request = request.into_inner();
+        let mut params = serde_json::Map::new();
+        params.insert("topic_id".to_string(), JsonValue::String(request.topic_id));
+        if let Some(cursor) = request.cursor.filter(|value| !value.trim().is_empty()) {
+            params.insert("cursor".to_string(), JsonValue::String(cursor));
+        }
+        let response = self
+            .bridge
+            .invoke(
+                "/lxmf.topics.v1.TopicService/SubscribeTopic",
+                peer,
+                "sdk_topic_subscribe_v2",
+                Some(JsonValue::Object(params)),
+            )
+            .await?;
+        let payload: TopicAcceptedPayload = parse_result(response)?;
+        Ok(Response::new(SubscribeTopicResponse {
+            accepted: payload.accepted,
+            topic_id: payload.topic_id,
+        }))
+    }
+
+    async fn unsubscribe_topic(
+        &self,
+        request: Request<UnsubscribeTopicRequest>,
+    ) -> Result<Response<UnsubscribeTopicResponse>, Status> {
+        let peer = grpc_peer(&request);
+        let topic_id = request.into_inner().topic_id;
+        let response = self
+            .bridge
+            .invoke(
+                "/lxmf.topics.v1.TopicService/UnsubscribeTopic",
+                peer,
+                "sdk_topic_unsubscribe_v2",
+                Some(json!({ "topic_id": topic_id })),
+            )
+            .await?;
+        let payload: TopicAcceptedPayload = parse_result(response)?;
+        Ok(Response::new(UnsubscribeTopicResponse {
+            accepted: payload.accepted,
+            topic_id: payload.topic_id,
+        }))
+    }
+
+    async fn publish_topic(
+        &self,
+        request: Request<PublishTopicRequest>,
+    ) -> Result<Response<PublishTopicResponse>, Status> {
+        let peer = grpc_peer(&request);
+        let request = request.into_inner();
+        let payload = request
+            .payload
+            .ok_or_else(|| Status::invalid_argument("publish payload is required"))?;
+        let mut params = serde_json::Map::new();
+        params.insert("topic_id".to_string(), JsonValue::String(request.topic_id));
+        params.insert("payload".to_string(), struct_to_json(payload));
+        if let Some(correlation_id) = request.correlation_id {
+            params.insert("correlation_id".to_string(), JsonValue::String(correlation_id));
+        }
+        let response = self
+            .bridge
+            .invoke(
+                "/lxmf.topics.v1.TopicService/PublishTopic",
+                peer,
+                "sdk_topic_publish_v2",
+                Some(JsonValue::Object(params)),
+            )
+            .await?;
+        let payload: TopicAcceptedPayload = parse_result(response)?;
+        Ok(Response::new(PublishTopicResponse { accepted: payload.accepted }))
+    }
 }
 
 #[tonic::async_trait]
@@ -896,15 +1554,15 @@ impl AttachmentService for AttachmentGrpcService {
                 JsonValue::Array(request.topic_ids.into_iter().map(JsonValue::String).collect()),
             );
         }
-        let response =
-            self.bridge
-                .invoke(
-                    "/lxmf.attachments.v1.AttachmentService/StoreAttachment",
-                    peer,
-                    "sdk_attachment_store_v2",
-                    Some(JsonValue::Object(params)),
-                )
-                .await?;
+        let response = self
+            .bridge
+            .invoke(
+                "/lxmf.attachments.v1.AttachmentService/StoreAttachment",
+                peer,
+                "sdk_attachment_store_v2",
+                Some(JsonValue::Object(params)),
+            )
+            .await?;
         let payload: AttachmentEnvelopePayload = parse_result(response)?;
         Ok(Response::new(StoreAttachmentResponse {
             attachment: payload.attachment.map(Into::into),
@@ -1127,15 +1785,15 @@ impl AttachmentService for AttachmentGrpcService {
                 );
             }
         }
-        let response =
-            self.bridge
-                .invoke(
-                    "/lxmf.attachments.v1.AttachmentService/ListAttachments",
-                    peer,
-                    "sdk_attachment_list_v2",
-                    Some(JsonValue::Object(params)),
-                )
-                .await?;
+        let response = self
+            .bridge
+            .invoke(
+                "/lxmf.attachments.v1.AttachmentService/ListAttachments",
+                peer,
+                "sdk_attachment_list_v2",
+                Some(JsonValue::Object(params)),
+            )
+            .await?;
         let payload: AttachmentListPayload = parse_result(response)?;
         Ok(Response::new(ListAttachmentsResponse {
             attachments: payload.attachments.into_iter().map(Into::into).collect(),
@@ -1165,15 +1823,15 @@ impl EventService for EventGrpcService {
         if let Some(cursor) = request.cursor.filter(|value| !value.trim().is_empty()) {
             params.insert("cursor".to_string(), JsonValue::String(cursor));
         }
-        let response =
-            self.bridge
-                .invoke(
-                    "/lxmf.events.v1.EventService/PollEvents",
-                    peer,
-                    "sdk_poll_events_v2",
-                    Some(JsonValue::Object(params)),
-                )
-                .await?;
+        let response = self
+            .bridge
+            .invoke(
+                "/lxmf.events.v1.EventService/PollEvents",
+                peer,
+                "sdk_poll_events_v2",
+                Some(JsonValue::Object(params)),
+            )
+            .await?;
         let payload: PollEventsPayload = parse_result(response)?;
         Ok(Response::new(PollEventsResponse {
             events: payload.events.into_iter().map(Into::into).collect(),
@@ -1231,6 +1889,77 @@ impl IdentityService for IdentityGrpcService {
         let payload: IdentityListPayload = parse_result(response)?;
         Ok(Response::new(ListIdentitiesResponse {
             identities: payload.identities.into_iter().map(Into::into).collect(),
+        }))
+    }
+
+    async fn activate_identity(
+        &self,
+        request: Request<ActivateIdentityRequest>,
+    ) -> Result<Response<ActivateIdentityResponse>, Status> {
+        let peer = grpc_peer(&request);
+        let identity = request.into_inner().identity;
+        let response = self
+            .bridge
+            .invoke(
+                "/lxmf.identity.v1.IdentityService/ActivateIdentity",
+                peer,
+                "sdk_identity_activate_v2",
+                Some(json!({ "identity": identity })),
+            )
+            .await?;
+        let payload: ActivateIdentityPayload = parse_result(response)?;
+        Ok(Response::new(ActivateIdentityResponse {
+            accepted: payload.accepted,
+            identity: payload.identity,
+        }))
+    }
+
+    async fn import_identity(
+        &self,
+        request: Request<ImportIdentityRequest>,
+    ) -> Result<Response<ImportIdentityResponse>, Status> {
+        let peer = grpc_peer(&request);
+        let request = request.into_inner();
+        let mut params = serde_json::Map::new();
+        params.insert("bundle_base64".to_string(), JsonValue::String(request.bundle_base64));
+        if let Some(passphrase) = request.passphrase {
+            params.insert("passphrase".to_string(), JsonValue::String(passphrase));
+        }
+        let response = self
+            .bridge
+            .invoke(
+                "/lxmf.identity.v1.IdentityService/ImportIdentity",
+                peer,
+                "sdk_identity_import_v2",
+                Some(JsonValue::Object(params)),
+            )
+            .await?;
+        let payload: IdentityEnvelopePayload = parse_result(response)?;
+        Ok(Response::new(ImportIdentityResponse { identity: payload.identity.map(Into::into) }))
+    }
+
+    async fn export_identity(
+        &self,
+        request: Request<ExportIdentityRequest>,
+    ) -> Result<Response<ExportIdentityResponse>, Status> {
+        let peer = grpc_peer(&request);
+        let identity = request.into_inner().identity;
+        let response = self
+            .bridge
+            .invoke(
+                "/lxmf.identity.v1.IdentityService/ExportIdentity",
+                peer,
+                "sdk_identity_export_v2",
+                Some(json!({ "identity": identity })),
+            )
+            .await?;
+        let payload: IdentityExportPayload = parse_result(response)?;
+        Ok(Response::new(ExportIdentityResponse {
+            bundle: Some(IdentityBundle {
+                bundle_base64: payload.bundle.bundle_base64,
+                passphrase: payload.bundle.passphrase,
+                extensions: json_to_struct(payload.bundle.extensions),
+            }),
         }))
     }
 
@@ -1429,15 +2158,15 @@ impl MarkerService for MarkerGrpcService {
         if let Some(topic_id) = request.topic_id.filter(|value| !value.trim().is_empty()) {
             params.insert("topic_id".to_string(), JsonValue::String(topic_id));
         }
-        let response =
-            self.bridge
-                .invoke(
-                    "/lxmf.markers.v1.MarkerService/CreateMarker",
-                    peer,
-                    "sdk_marker_create_v2",
-                    Some(JsonValue::Object(params)),
-                )
-                .await?;
+        let response = self
+            .bridge
+            .invoke(
+                "/lxmf.markers.v1.MarkerService/CreateMarker",
+                peer,
+                "sdk_marker_create_v2",
+                Some(JsonValue::Object(params)),
+            )
+            .await?;
         let payload: MarkerEnvelopePayload = parse_result(response)?;
         Ok(Response::new(CreateMarkerResponse { marker: Some(payload.marker.into()) }))
     }
@@ -1463,15 +2192,15 @@ impl MarkerService for MarkerGrpcService {
                 );
             }
         }
-        let response =
-            self.bridge
-                .invoke(
-                    "/lxmf.markers.v1.MarkerService/ListMarkers",
-                    peer,
-                    "sdk_marker_list_v2",
-                    Some(JsonValue::Object(params)),
-                )
-                .await?;
+        let response = self
+            .bridge
+            .invoke(
+                "/lxmf.markers.v1.MarkerService/ListMarkers",
+                peer,
+                "sdk_marker_list_v2",
+                Some(JsonValue::Object(params)),
+            )
+            .await?;
         let payload: MarkerListPayload = parse_result(response)?;
         Ok(Response::new(ListMarkersResponse {
             markers: payload.markers.into_iter().map(Into::into).collect(),
@@ -1542,7 +2271,12 @@ impl PeerService for PeerGrpcService {
             .await?;
         let payload: PeerListPayload = parse_result(response)?;
         Ok(Response::new(ListPeersResponse {
-            peers: payload.peers.into_iter().map(Into::into).collect(),
+            peers: payload
+                .peers
+                .into_iter()
+                .filter(|peer| !peer.peer.trim().is_empty())
+                .map(Into::into)
+                .collect(),
         }))
     }
 
@@ -1551,7 +2285,10 @@ impl PeerService for PeerGrpcService {
         request: Request<SyncPeerRequest>,
     ) -> Result<Response<SyncPeerResponse>, Status> {
         let peer = grpc_peer(&request);
-        let peer_id = request.into_inner().peer_id;
+        let peer_id = request.into_inner().peer_id.trim().to_string();
+        if peer_id.is_empty() {
+            return Err(Status::invalid_argument("peer_id is required"));
+        }
         let response = self
             .bridge
             .invoke(
@@ -1570,7 +2307,10 @@ impl PeerService for PeerGrpcService {
         request: Request<UnpeerRequest>,
     ) -> Result<Response<UnpeerResponse>, Status> {
         let peer = grpc_peer(&request);
-        let peer_id = request.into_inner().peer_id;
+        let peer_id = request.into_inner().peer_id.trim().to_string();
+        if peer_id.is_empty() {
+            return Err(Status::invalid_argument("peer_id is required"));
+        }
         let response = self
             .bridge
             .invoke(
@@ -1590,7 +2330,12 @@ impl PeerService for PeerGrpcService {
     ) -> Result<Response<ClearPeersResponse>, Status> {
         let response = self
             .bridge
-            .invoke("/lxmf.peers.v1.PeerService/ClearPeers", grpc_peer(&request), "clear_peers", None)
+            .invoke(
+                "/lxmf.peers.v1.PeerService/ClearPeers",
+                grpc_peer(&request),
+                "clear_peers",
+                None,
+            )
             .await?;
         let payload: ClearPeersPayload = parse_result(response)?;
         Ok(Response::new(ClearPeersResponse { cleared: payload.cleared }))
@@ -1606,6 +2351,14 @@ pub async fn serve(
     let auth_interceptor = GrpcAuthInterceptor::new(bridge.daemon.clone());
     let runtime_service = RuntimeServiceServer::with_interceptor(
         RuntimeGrpcService { bridge: bridge.clone() },
+        auth_interceptor.clone(),
+    );
+    let command_service = CommandServiceServer::with_interceptor(
+        CommandGrpcService { bridge: bridge.clone() },
+        auth_interceptor.clone(),
+    );
+    let delivery_service = DeliveryServiceServer::with_interceptor(
+        DeliveryGrpcService { bridge: bridge.clone() },
         auth_interceptor.clone(),
     );
     let admin_service = InterfaceAdminServiceServer::with_interceptor(
@@ -1651,6 +2404,8 @@ pub async fn serve(
     server
         .add_service(reflection_service)
         .add_service(runtime_service)
+        .add_service(command_service)
+        .add_service(delivery_service)
         .add_service(admin_service)
         .add_service(topic_service)
         .add_service(attachment_service)
@@ -1885,6 +2640,42 @@ impl TryFrom<InterfaceRecord> for RpcInterfaceRecord {
 impl From<TopicRecordPayload> for Topic {
     fn from(value: TopicRecordPayload) -> Self {
         Self { topic_id: value.topic_id, topic_path: value.topic_path.unwrap_or_default() }
+    }
+}
+
+impl From<DeliveryMessagePayload> for DeliveryMessageRecord {
+    fn from(value: DeliveryMessagePayload) -> Self {
+        Self {
+            id: value.id,
+            source: value.source,
+            destination: value.destination,
+            title: value.title,
+            content: value.content,
+            timestamp: value.timestamp,
+            direction: value.direction,
+            fields: value.fields.and_then(json_to_struct),
+            receipt_status: value.receipt_status,
+        }
+    }
+}
+
+impl From<CommandSessionPayload> for CommandSessionProto {
+    fn from(value: CommandSessionPayload) -> Self {
+        Self {
+            command_id: value.command_id,
+            correlation_id: value.correlation_id,
+            command: value.command,
+            target: value.target,
+            timeout_ms: value.timeout_ms,
+            delivery_state: value.delivery_state,
+            command_state: value.command_state,
+            created_at_ms: value.created_at_ms,
+            updated_at_ms: value.updated_at_ms,
+            request_payload: json_to_struct(value.request_payload),
+            response_payload: value.response_payload.and_then(json_to_struct),
+            accepted: value.accepted,
+            extensions: json_to_struct(value.extensions),
+        }
     }
 }
 
@@ -2214,6 +3005,190 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn runtime_status_and_propagation_diagnostics_map_raw_structs() {
+        let daemon = RpcDaemon::test_instance();
+        daemon.replace_interfaces(vec![RpcInterfaceRecord {
+            kind: "tcp_client".to_string(),
+            enabled: true,
+            host: Some("rmap.world".to_string()),
+            port: Some(4242),
+            name: Some("primary".to_string()),
+            settings: Some(json!({
+                "_runtime": {
+                    "startup_status": "active",
+                    "iface": "tcp_client#0"
+                }
+            })),
+        }]);
+        daemon
+            .handle_rpc(RpcRequest {
+                id: 7,
+                method: "propagation_enable".to_string(),
+                params: Some(json!({
+                    "enabled": true,
+                    "target_cost": 9,
+                    "autopeer": true,
+                    "max_peers": 20,
+                })),
+            })
+            .expect("enable propagation");
+
+        let service = RuntimeGrpcService { bridge: GrpcBridge::new(Arc::new(daemon)) };
+
+        let status = service
+            .get_daemon_status(Request::new(GetDaemonStatusRequest {}))
+            .await
+            .expect("daemon status")
+            .into_inner();
+        let status = struct_to_json(status.status.expect("status struct"));
+        assert_eq!(status["interfaces"][0]["name"].as_str(), Some("primary"));
+        assert_eq!(
+            status["interfaces"][0]["settings"]["_runtime"]["startup_status"].as_str(),
+            Some("active")
+        );
+
+        let propagation = service
+            .get_propagation_status(Request::new(GetPropagationStatusRequest {}))
+            .await
+            .expect("propagation status")
+            .into_inner();
+        let propagation = struct_to_json(propagation.propagation.expect("propagation struct"));
+        assert_eq!(propagation["enabled"].as_bool(), Some(true));
+        assert_eq!(propagation["target_cost"].as_f64(), Some(9.0));
+        assert_eq!(propagation["max_peers"].as_f64(), Some(20.0));
+    }
+
+    #[tokio::test]
+    async fn set_propagation_updates_runtime_state() {
+        let daemon = RpcDaemon::test_instance();
+        let service = RuntimeGrpcService { bridge: GrpcBridge::new(Arc::new(daemon)) };
+
+        let updated = service
+            .set_propagation(Request::new(SetPropagationRequest {
+                enabled: true,
+                store_root: None,
+                target_cost: Some(0),
+                message_storage_limit_mb: None,
+                autopeer: Some(true),
+                autopeer_maxdepth: Some(6),
+                static_peers: Vec::new(),
+                max_peers: Some(20),
+                from_static_only: Some(false),
+                peering_cost: None,
+                remote_peering_cost_max: None,
+            }))
+            .await
+            .expect("set propagation")
+            .into_inner();
+        let propagation = struct_to_json(updated.propagation.expect("propagation struct"));
+        assert_eq!(propagation["enabled"].as_bool(), Some(true));
+        assert_eq!(propagation["autopeer"].as_bool(), Some(true));
+        assert_eq!(propagation["max_peers"].as_f64(), Some(20.0));
+    }
+
+    #[tokio::test]
+    async fn delivery_send_status_and_cancel_map_daemon_payloads() {
+        let service =
+            DeliveryGrpcService { bridge: GrpcBridge::new(Arc::new(RpcDaemon::test_instance())) };
+
+        let sent = service
+            .send(Request::new(SendRequest {
+                id: "msg-1".to_string(),
+                source: "node-a".to_string(),
+                destination: "node-b".to_string(),
+                title: "Test".to_string(),
+                content: "hello".to_string(),
+                fields: None,
+                method: Some("direct".to_string()),
+                stamp_cost: None,
+                include_ticket: None,
+                try_propagation_on_fail: None,
+            }))
+            .await
+            .expect("send should succeed")
+            .into_inner();
+        assert_eq!(sent.message_id, "msg-1");
+
+        let status = service
+            .get_status(Request::new(GetStatusRequest { message_id: "msg-1".to_string() }))
+            .await
+            .expect("status should succeed")
+            .into_inner();
+        let message = status.message.expect("message record");
+        assert_eq!(message.id, "msg-1");
+        assert_eq!(message.destination, "node-b");
+        assert_eq!(message.content, "hello");
+
+        let cancelled = service
+            .cancel(Request::new(CancelRequest { message_id: "msg-1".to_string() }))
+            .await
+            .expect("cancel should succeed")
+            .into_inner();
+        assert_eq!(cancelled.message_id, "msg-1");
+        assert_eq!(cancelled.result, "TooLateToCancel");
+    }
+
+    #[tokio::test]
+    async fn command_invoke_reply_get_and_list_sessions_map_payloads() {
+        let daemon = RpcDaemon::test_instance();
+        negotiate_remote_commands_capability(&daemon);
+        let service = CommandGrpcService { bridge: GrpcBridge::new(Arc::new(daemon)) };
+
+        let invoked = service
+            .invoke_command(Request::new(InvokeCommandRequest {
+                command: "status".to_string(),
+                target: Some("peer-a".to_string()),
+                payload: Some(json_to_struct(json!({"mode":"quick"})).expect("payload")),
+                timeout_ms: Some(5_000),
+                extensions: None,
+            }))
+            .await
+            .expect("invoke command should succeed")
+            .into_inner();
+        assert!(invoked.accepted);
+        let session = invoked.session.expect("session");
+        assert_eq!(session.command, "status");
+        assert_eq!(session.target.as_deref(), Some("peer-a"));
+
+        let replied = service
+            .reply_command(Request::new(ReplyCommandRequest {
+                correlation_id: session.correlation_id.clone(),
+                accepted: true,
+                payload: Some(json_to_struct(json!({"ok":true})).expect("reply payload")),
+                extensions: None,
+            }))
+            .await
+            .expect("reply command should succeed")
+            .into_inner();
+        assert!(replied.accepted);
+        assert!(replied.reply_accepted);
+
+        let fetched = service
+            .get_command_session(Request::new(GetCommandSessionRequest {
+                correlation_id: session.correlation_id.clone(),
+            }))
+            .await
+            .expect("get command session should succeed")
+            .into_inner();
+        let fetched_session = fetched.session.expect("session");
+        assert_eq!(fetched_session.command_state, "completed");
+        assert_eq!(fetched_session.accepted, Some(true));
+
+        let listed = service
+            .list_command_sessions(Request::new(ListCommandSessionsRequest {
+                page: Some(lxmf::common::v1::PageRequest {
+                    page_token: String::new(),
+                    page_size: 10,
+                }),
+            }))
+            .await
+            .expect("list command sessions should succeed")
+            .into_inner();
+        assert_eq!(listed.sessions.len(), 1);
+        assert_eq!(listed.sessions[0].correlation_id, session.correlation_id);
+    }
+
+    #[tokio::test]
     async fn list_interfaces_returns_daemon_interfaces() {
         let daemon = RpcDaemon::test_instance();
         daemon.replace_interfaces(vec![RpcInterfaceRecord {
@@ -2325,7 +3300,11 @@ mod tests {
                 method: "sdk_negotiate_v2".to_string(),
                 params: Some(json!({
                     "supported_contract_versions": [2],
-                    "requested_capabilities": ["sdk.capability.topics"],
+                    "requested_capabilities": [
+                        "sdk.capability.topics",
+                        "sdk.capability.topic_subscriptions",
+                        "sdk.capability.topic_fanout"
+                    ],
                     "config": {
                         "profile": "desktop-full",
                         "bind_mode": "local_only",
@@ -2335,6 +3314,25 @@ mod tests {
                 })),
             })
             .expect("negotiate topics capability");
+    }
+
+    fn negotiate_remote_commands_capability(daemon: &RpcDaemon) {
+        daemon
+            .handle_rpc(RpcRequest {
+                id: 98,
+                method: "sdk_negotiate_v2".to_string(),
+                params: Some(json!({
+                    "supported_contract_versions": [2],
+                    "requested_capabilities": ["sdk.capability.remote_commands"],
+                    "config": {
+                        "profile": "desktop-full",
+                        "bind_mode": "local_only",
+                        "auth_mode": "local_trusted",
+                        "overflow_policy": "reject"
+                    }
+                })),
+            })
+            .expect("negotiate remote command capability");
     }
 
     fn negotiate_attachments_capability(daemon: &RpcDaemon) {
@@ -2447,6 +3445,60 @@ mod tests {
         let topic = response.topic.expect("topic");
         assert_eq!(topic.topic_path, "tak/alpha");
         assert!(topic.topic_id.starts_with("topic-"));
+    }
+
+    #[tokio::test]
+    async fn topic_get_subscribe_publish_and_unsubscribe_map_payloads() {
+        let daemon = RpcDaemon::test_instance();
+        negotiate_topics_capability(&daemon);
+        let service = TopicGrpcService { bridge: GrpcBridge::new(Arc::new(daemon)) };
+
+        let created = service
+            .create_topic(Request::new(CreateTopicRequest { topic_path: "tak/bravo".to_string() }))
+            .await
+            .expect("create topic should succeed")
+            .into_inner();
+        let topic = created.topic.expect("topic");
+
+        let fetched = service
+            .get_topic(Request::new(GetTopicRequest { topic_id: topic.topic_id.clone() }))
+            .await
+            .expect("get topic should succeed")
+            .into_inner();
+        assert_eq!(fetched.topic.expect("topic").topic_path, "tak/bravo");
+
+        let subscribed = service
+            .subscribe_topic(Request::new(SubscribeTopicRequest {
+                topic_id: topic.topic_id.clone(),
+                cursor: None,
+            }))
+            .await
+            .expect("subscribe topic should succeed")
+            .into_inner();
+        assert!(subscribed.accepted);
+
+        let published = service
+            .publish_topic(Request::new(PublishTopicRequest {
+                topic_id: topic.topic_id.clone(),
+                payload: Some(
+                    json_to_struct(json!({"kind":"test","value":1})).expect("payload struct"),
+                ),
+                correlation_id: Some("corr-1".to_string()),
+            }))
+            .await
+            .expect("publish topic should succeed")
+            .into_inner();
+        assert!(published.accepted);
+
+        let unsubscribed = service
+            .unsubscribe_topic(Request::new(UnsubscribeTopicRequest {
+                topic_id: topic.topic_id.clone(),
+            }))
+            .await
+            .expect("unsubscribe topic should succeed")
+            .into_inner();
+        assert!(unsubscribed.accepted);
+        assert_eq!(unsubscribed.topic_id, topic.topic_id);
     }
 
     #[tokio::test]
@@ -2803,6 +3855,43 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn activate_import_and_export_identity_map_payloads() {
+        let daemon = RpcDaemon::test_instance();
+        negotiate_identity_capabilities(&daemon);
+        let service = IdentityGrpcService { bridge: GrpcBridge::new(Arc::new(daemon)) };
+
+        let imported = service
+            .import_identity(Request::new(ImportIdentityRequest {
+                bundle_base64: "eyJpZGVudGl0eSI6Im5vZGUtYyIsInB1YmxpY19rZXkiOiJub2RlLWMtcHViIiwiZGlzcGxheV9uYW1lIjoiTm9kZSBDIiwiY2FwYWJpbGl0aWVzIjpbIm9wcyJdLCJleHRlbnNpb25zIjp7fX0=".to_string(),
+                passphrase: None,
+            }))
+            .await
+            .expect("import identity should succeed")
+            .into_inner();
+        let imported_identity = imported.identity.expect("identity");
+        assert_eq!(imported_identity.identity, "node-c");
+
+        let activated = service
+            .activate_identity(Request::new(ActivateIdentityRequest {
+                identity: "node-c".to_string(),
+            }))
+            .await
+            .expect("activate identity should succeed")
+            .into_inner();
+        assert!(activated.accepted);
+        assert_eq!(activated.identity, "node-c");
+
+        let exported = service
+            .export_identity(Request::new(ExportIdentityRequest { identity: "node-c".to_string() }))
+            .await
+            .expect("export identity should succeed")
+            .into_inner();
+        let bundle = exported.bundle.expect("bundle");
+        assert!(!bundle.bundle_base64.is_empty());
+        assert!(bundle.passphrase.is_none());
+    }
+
+    #[tokio::test]
     async fn announce_now_returns_acceptance() {
         let daemon = RpcDaemon::test_instance();
         negotiate_identity_capabilities(&daemon);
@@ -3017,5 +4106,23 @@ mod tests {
             .expect("clear peers")
             .into_inner();
         assert_eq!(cleared.cleared, "peers");
+    }
+
+    #[tokio::test]
+    async fn sync_and_unpeer_reject_blank_peer_ids() {
+        let daemon = RpcDaemon::test_instance();
+        let service = PeerGrpcService { bridge: GrpcBridge::new(Arc::new(daemon)) };
+
+        let sync_err = service
+            .sync_peer(Request::new(SyncPeerRequest { peer_id: "   ".to_string() }))
+            .await
+            .expect_err("blank peer_id should be rejected");
+        assert_eq!(sync_err.code(), tonic::Code::InvalidArgument);
+
+        let unpeer_err = service
+            .unpeer(Request::new(UnpeerRequest { peer_id: "".to_string() }))
+            .await
+            .expect_err("blank peer_id should be rejected");
+        assert_eq!(unpeer_err.code(), tonic::Code::InvalidArgument);
     }
 }

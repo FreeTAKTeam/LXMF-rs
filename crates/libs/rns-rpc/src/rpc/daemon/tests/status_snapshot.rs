@@ -353,3 +353,14 @@ fn unpeered_peers_do_not_consume_max_peer_capacity() {
         .expect("daemon status result");
     assert_eq!(status["peer_count"].as_u64(), Some(1));
 }
+
+#[test]
+fn peer_sync_rejects_blank_peer_identifier() {
+    let daemon = RpcDaemon::test_instance();
+
+    let err = daemon
+        .handle_rpc(rpc_request(90, "peer_sync", json!({ "peer": "   " })))
+        .expect_err("blank peer id should be rejected");
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+    assert!(err.to_string().contains("peer is required"));
+}

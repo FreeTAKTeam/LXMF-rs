@@ -1,0 +1,26 @@
+meta {
+  name: Import Identity
+  type: grpc
+  seq: 3
+}
+
+docs {
+  Imports a serialized identity bundle.
+}
+
+grpc {
+  url: {{grpc_host}}
+  method: /lxmf.identity.v1.IdentityService/ImportIdentity
+  body: grpc
+  auth: inherit
+  methodType: unary
+}
+
+body:grpc {
+  name: message 1
+  content: '''
+    {
+      "bundleBase64": "eyJpZGVudGl0eSI6Im5vZGUtYiIsInB1YmxpY19rZXkiOiJub2RlLWItcHViIiwiZGlzcGxheV9uYW1lIjoiTm9kZSBCIiwiY2FwYWJpbGl0aWVzIjpbIm9wcyJdLCJleHRlbnNpb25zIjp7fX0="
+    }
+  '''
+}

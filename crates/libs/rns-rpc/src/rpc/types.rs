@@ -418,7 +418,10 @@ pub trait AnnounceBridge: Send + Sync {
 }
 
 pub trait InterfaceMutationBridge: Send + Sync {
-    fn apply_interfaces(&self, interfaces: Vec<InterfaceRecord>) -> Result<(), std::io::Error>;
+    fn apply_interfaces(
+        &self,
+        interfaces: Vec<InterfaceRecord>,
+    ) -> Result<Vec<InterfaceRecord>, std::io::Error>;
 }
 
 pub trait RemoteControlBridge: Send + Sync {

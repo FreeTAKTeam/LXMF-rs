@@ -1,0 +1,28 @@
+meta {
+  name: Get Topic
+  type: grpc
+  seq: 3
+}
+
+docs {
+  Looks up one topic by id.
+
+  Create a topic first or set `{{topic_id}}` manually.
+}
+
+grpc {
+  url: {{grpc_host}}
+  method: /lxmf.topics.v1.TopicService/GetTopic
+  body: grpc
+  auth: inherit
+  methodType: unary
+}
+
+body:grpc {
+  name: message 1
+  content: '''
+    {
+      "topicId": "{{topic_id}}"
+    }
+  '''
+}

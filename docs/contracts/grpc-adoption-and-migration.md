@@ -40,6 +40,8 @@ Use JSON-RPC when you need:
 The live gRPC surface currently includes:
 
 - `lxmf.runtime.v1.RuntimeService`
+- `lxmf.command.v1.CommandService`
+- `lxmf.delivery.v1.DeliveryService`
 - `lxmf.admin.v1.InterfaceAdminService`
 - `lxmf.topics.v1.TopicService`
 - `lxmf.attachments.v1.AttachmentService`
@@ -55,6 +57,8 @@ This is sufficient for early adopter and internal integration use.
 ### Ready on gRPC
 
 - runtime negotiation and snapshot
+- remote command invoke/reply/session inspection
+- outbound message send/status/cancel
 - interface listing and mutation
 - topic creation and pagination
 - attachment lifecycle, including chunked upload/download

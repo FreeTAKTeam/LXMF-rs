@@ -1,0 +1,28 @@
+meta {
+  name: List Command Sessions
+  type: grpc
+  seq: 3
+}
+
+grpc {
+  url: {{grpc_host}}
+  method: /lxmf.command.v1.CommandService/ListCommandSessions
+  body: grpc
+  auth: inherit
+  methodType: unary
+}
+
+body:grpc {
+  name: message 1
+  content: '''
+    {
+      "page": {
+        "pageSize": 25
+      }
+    }
+  '''
+}
+
+docs {
+  Lists tracked remote command sessions.
+}

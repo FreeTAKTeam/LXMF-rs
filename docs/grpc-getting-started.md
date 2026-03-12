@@ -11,6 +11,8 @@ service, or TLS/mTLS details, use the runbook at
 The live gRPC surface currently includes:
 
 - `lxmf.runtime.v1.RuntimeService`
+- `lxmf.command.v1.CommandService`
+- `lxmf.delivery.v1.DeliveryService`
 - `lxmf.admin.v1.InterfaceAdminService`
 - `lxmf.topics.v1.TopicService`
 - `lxmf.attachments.v1.AttachmentService`

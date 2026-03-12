@@ -7,6 +7,10 @@ use std::io;
 use std::sync::Arc;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 
+use crate::bootstrap::{
+    mark_interface_runtime_fields, mark_interface_runtime_managed, mark_interface_startup_status,
+};
+
 #[derive(Clone)]
 pub(super) struct LegacyTcpInterfaceMutationBridge {
     tx: UnboundedSender<LegacyTcpInterfaceCommand>,
@@ -24,15 +28,31 @@ impl LegacyTcpInterfaceMutationBridge {
 }
 
 impl InterfaceMutationBridge for LegacyTcpInterfaceMutationBridge {
-    fn apply_interfaces(&self, interfaces: Vec<InterfaceRecord>) -> Result<(), io::Error> {
-        self.tx.send(LegacyTcpInterfaceCommand::Apply(interfaces)).map_err(|_| {
+    fn apply_interfaces(
+        &self,
+        interfaces: Vec<InterfaceRecord>,
+    ) -> Result<Vec<InterfaceRecord>, io::Error> {
+        let effective = interfaces
+            .iter()
+            .cloned()
+            .map(|mut record| {
+                if record.kind == "tcp_client" && record.enabled {
+                    mark_interface_startup_status(&mut record, "spawned", None, None);
+                    mark_interface_runtime_managed(&mut record, "daemon_transport");
+                    mark_interface_runtime_fields(&mut record, "running", 0);
+                }
+                record
+            })
+            .collect::<Vec<_>>();
+        self.tx.send(LegacyTcpInterfaceCommand::Apply { interfaces }).map_err(|_| {
             io::Error::new(io::ErrorKind::BrokenPipe, "interface mutation worker is not running")
-        })
+        })?;
+        Ok(effective)
     }
 }
 
 enum LegacyTcpInterfaceCommand {
-    Apply(Vec<InterfaceRecord>),
+    Apply { interfaces: Vec<InterfaceRecord> },
 }
 
 #[derive(Clone)]
@@ -53,7 +73,7 @@ async fn run_legacy_tcp_interface_worker(
 
     while let Some(command) = rx.recv().await {
         match command {
-            LegacyTcpInterfaceCommand::Apply(interfaces) => {
+            LegacyTcpInterfaceCommand::Apply { interfaces } => {
                 apply_legacy_tcp_interfaces(&iface_manager, &mut managed, interfaces).await;
             }
         }
@@ -155,9 +175,17 @@ mod tests {
         let iface_manager = Arc::new(tokio::sync::Mutex::new(InterfaceManager::new(8)));
         let bridge = LegacyTcpInterfaceMutationBridge::spawn(iface_manager, Vec::new());
 
-        bridge
+        let applied = bridge
             .apply_interfaces(vec![tcp_record("loopback", "127.0.0.1", addr.port())])
             .expect("apply interfaces");
+        assert_eq!(applied.len(), 1);
+        let runtime = applied[0]
+            .settings
+            .as_ref()
+            .and_then(|value| value.get("_runtime"))
+            .expect("runtime metadata");
+        assert_eq!(runtime.get("startup_status").and_then(|value| value.as_str()), Some("spawned"));
+        assert_eq!(runtime.get("runtime_status").and_then(|value| value.as_str()), Some("running"));
 
         let accept = timeout(Duration::from_secs(2), listener.accept())
             .await

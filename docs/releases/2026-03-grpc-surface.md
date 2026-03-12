@@ -24,6 +24,8 @@ JSON-RPC remains supported for compatibility and browser-oriented tooling.
 The currently exposed service surface includes:
 
 - `lxmf.runtime.v1.RuntimeService`
+- `lxmf.command.v1.CommandService`
+- `lxmf.delivery.v1.DeliveryService`
 - `lxmf.admin.v1.InterfaceAdminService`
 - `lxmf.topics.v1.TopicService`
 - `lxmf.attachments.v1.AttachmentService`

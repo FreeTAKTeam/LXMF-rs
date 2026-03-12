@@ -1,0 +1,28 @@
+meta {
+  name: Get Message Status
+  type: grpc
+  seq: 2
+}
+
+docs {
+  Looks up the persisted delivery status for `{{message_id}}`.
+
+  Run `Send Message` first or set `message_id` manually.
+}
+
+grpc {
+  url: {{grpc_host}}
+  method: /lxmf.delivery.v1.DeliveryService/GetStatus
+  body: grpc
+  auth: inherit
+  methodType: unary
+}
+
+body:grpc {
+  name: message 1
+  content: '''
+    {
+      "messageId": "{{message_id}}"
+    }
+  '''
+}

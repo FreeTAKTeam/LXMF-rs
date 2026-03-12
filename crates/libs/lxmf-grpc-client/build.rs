@@ -20,6 +20,8 @@ fn main() {
         proto_root.join("lxmf/common/v1/interfaces.proto"),
         proto_root.join("lxmf/common/v1/pagination.proto"),
         proto_root.join("lxmf/runtime/v1/runtime.proto"),
+        proto_root.join("lxmf/delivery/v1/delivery.proto"),
+        proto_root.join("lxmf/command/v1/command.proto"),
         proto_root.join("lxmf/admin/v1/interface_admin.proto"),
         proto_root.join("lxmf/topics/v1/topics.proto"),
         proto_root.join("lxmf/attachments/v1/attachments.proto"),

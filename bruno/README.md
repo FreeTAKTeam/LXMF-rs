@@ -23,7 +23,8 @@ Common usage rules:
   the `next_cursor` or `nextPageToken` from the previous response.
 - Event polling may validly return only a continuation token and no rows yet.
 - Some requests use Bruno variables like `{{next_cursor}}`, `{{next_page_token}}`,
-  `{{peer_id}}`, and `{{attachment_id}}`. Set those before running the request.
+  `{{peer_id}}`, `{{attachment_id}}`, `{{message_id}}`, `{{topic_id}}`, and
+  `{{correlation_id}}`. Set those before running the request.
 
 ## Why JSON-RPC First
 

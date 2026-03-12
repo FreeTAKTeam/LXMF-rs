@@ -250,6 +250,24 @@ fn emit_rpc_access_log(
     error_text: Option<&str>,
 ) {
     let status_code = parse_status_code(response).unwrap_or(0);
+    if pretty_console_logs_enabled() {
+        let rpc_fragment =
+            meta.rpc_method.as_ref().map(|method| format!(" rpc={method}")).unwrap_or_default();
+        let path_fragment =
+            if meta.path.is_empty() { String::new() } else { format!(" path={}", meta.path) };
+        let error_fragment = error_text.map(|error| format!(" error={error}")).unwrap_or_default();
+        eprintln!(
+            "[rpc] peer={} status={} elapsed={}ms method={}{}{}{}",
+            peer_addr,
+            status_code,
+            elapsed_ms,
+            meta.http_method,
+            path_fragment,
+            rpc_fragment,
+            error_fragment
+        );
+        return;
+    }
     let payload = json!({
         "event": "rpc_request",
         "peer": peer_addr.to_string(),
@@ -264,6 +282,13 @@ fn emit_rpc_access_log(
         "error": error_text,
     });
     eprintln!("{}", payload);
+}
+
+fn pretty_console_logs_enabled() -> bool {
+    matches!(
+        std::env::var("LXMF_LOG_PRETTY").ok().as_deref(),
+        Some("1" | "true" | "TRUE" | "yes" | "YES" | "on" | "ON")
+    )
 }
 
 fn build_tls_server_config(config: &RpcTlsConfig) -> io::Result<std::sync::Arc<ServerConfig>> {

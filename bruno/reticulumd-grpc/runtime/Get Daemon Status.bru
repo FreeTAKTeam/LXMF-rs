@@ -1,0 +1,26 @@
+meta {
+  name: Get Daemon Status
+  type: grpc
+  seq: 3
+}
+
+grpc {
+  url: {{grpc_host}}
+  method: /lxmf.runtime.v1.RuntimeService/GetDaemonStatus
+  body: grpc
+  auth: inherit
+  methodType: unary
+}
+
+body:grpc {
+  name: message 1
+  content: '''
+    {}
+  '''
+}
+
+docs {
+  Returns the raw daemon status snapshot.
+
+  Use this to inspect interface runtime metadata, peer counts, and propagation summary in one place.
+}

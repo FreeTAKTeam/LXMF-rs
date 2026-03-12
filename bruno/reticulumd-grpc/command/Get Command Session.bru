@@ -1,0 +1,26 @@
+meta {
+  name: Get Command Session
+  type: grpc
+  seq: 2
+}
+
+grpc {
+  url: {{grpc_host}}
+  method: /lxmf.command.v1.CommandService/GetCommandSession
+  body: grpc
+  auth: inherit
+  methodType: unary
+}
+
+body:grpc {
+  name: message 1
+  content: '''
+    {
+      "correlationId": "{{correlation_id}}"
+    }
+  '''
+}
+
+docs {
+  Fetches one command session by {{correlation_id}}.
+}

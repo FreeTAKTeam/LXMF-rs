@@ -22,6 +22,18 @@ pub mod lxmf {
         }
     }
 
+    pub mod delivery {
+        pub mod v1 {
+            include!(concat!(env!("OUT_DIR"), "/lxmf.delivery.v1.rs"));
+        }
+    }
+
+    pub mod command {
+        pub mod v1 {
+            include!(concat!(env!("OUT_DIR"), "/lxmf.command.v1.rs"));
+        }
+    }
+
     pub mod admin {
         pub mod v1 {
             include!(concat!(env!("OUT_DIR"), "/lxmf.admin.v1.rs"));
@@ -67,6 +79,8 @@ pub mod lxmf {
 
 pub use lxmf::admin::v1::interface_admin_service_client::InterfaceAdminServiceClient;
 pub use lxmf::attachments::v1::attachment_service_client::AttachmentServiceClient;
+pub use lxmf::command::v1::command_service_client::CommandServiceClient;
+pub use lxmf::delivery::v1::delivery_service_client::DeliveryServiceClient;
 pub use lxmf::events::v1::event_service_client::EventServiceClient;
 pub use lxmf::identity::v1::identity_service_client::IdentityServiceClient;
 pub use lxmf::markers::v1::marker_service_client::MarkerServiceClient;
@@ -183,6 +197,14 @@ impl LxmfGrpcClient {
             self.channel.clone(),
             self.interceptor.clone(),
         )
+    }
+
+    pub fn delivery(&self) -> DeliveryServiceClient<ClientTransport> {
+        DeliveryServiceClient::with_interceptor(self.channel.clone(), self.interceptor.clone())
+    }
+
+    pub fn commands(&self) -> CommandServiceClient<ClientTransport> {
+        CommandServiceClient::with_interceptor(self.channel.clone(), self.interceptor.clone())
     }
 
     pub fn topics(&self) -> TopicServiceClient<ClientTransport> {

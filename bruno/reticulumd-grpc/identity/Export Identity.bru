@@ -1,0 +1,26 @@
+meta {
+  name: Export Identity
+  type: grpc
+  seq: 4
+}
+
+docs {
+  Exports one identity bundle as base64.
+}
+
+grpc {
+  url: {{grpc_host}}
+  method: /lxmf.identity.v1.IdentityService/ExportIdentity
+  body: grpc
+  auth: inherit
+  methodType: unary
+}
+
+body:grpc {
+  name: message 1
+  content: '''
+    {
+      "identity": "node-b"
+    }
+  '''
+}

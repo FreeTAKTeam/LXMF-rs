@@ -1,0 +1,28 @@
+meta {
+  name: Subscribe Topic
+  type: grpc
+  seq: 4
+}
+
+docs {
+  Subscribes to `{{topic_id}}`.
+
+  Optional cursor support is available, but first-time subscriptions should omit it.
+}
+
+grpc {
+  url: {{grpc_host}}
+  method: /lxmf.topics.v1.TopicService/SubscribeTopic
+  body: grpc
+  auth: inherit
+  methodType: unary
+}
+
+body:grpc {
+  name: message 1
+  content: '''
+    {
+      "topicId": "{{topic_id}}"
+    }
+  '''
+}

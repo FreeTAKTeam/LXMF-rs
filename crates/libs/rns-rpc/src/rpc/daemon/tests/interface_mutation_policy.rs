@@ -24,9 +24,12 @@
     }
 
     impl InterfaceMutationBridge for RecordingInterfaceMutationBridge {
-        fn apply_interfaces(&self, interfaces: Vec<InterfaceRecord>) -> Result<(), std::io::Error> {
-            self.applied.lock().expect("applied mutex poisoned").push(interfaces);
-            Ok(())
+        fn apply_interfaces(
+            &self,
+            interfaces: Vec<InterfaceRecord>,
+        ) -> Result<Vec<InterfaceRecord>, std::io::Error> {
+            self.applied.lock().expect("applied mutex poisoned").push(interfaces.clone());
+            Ok(interfaces)
         }
     }
 
@@ -36,7 +39,7 @@
         fn apply_interfaces(
             &self,
             _interfaces: Vec<InterfaceRecord>,
-        ) -> Result<(), std::io::Error> {
+        ) -> Result<Vec<InterfaceRecord>, std::io::Error> {
             Err(std::io::Error::new(
                 std::io::ErrorKind::BrokenPipe,
                 "interface mutation worker is not running",

@@ -1,0 +1,26 @@
+meta {
+  name: Get Propagation Status
+  type: grpc
+  seq: 4
+}
+
+grpc {
+  url: {{grpc_host}}
+  method: /lxmf.runtime.v1.RuntimeService/GetPropagationStatus
+  body: grpc
+  auth: inherit
+  methodType: unary
+}
+
+body:grpc {
+  name: message 1
+  content: '''
+    {}
+  '''
+}
+
+docs {
+  Returns propagation policy and counters.
+
+  If peers remain empty after adding an interface, check whether propagation is enabled, whether autopeer is on, and what the current peer limits are.
+}

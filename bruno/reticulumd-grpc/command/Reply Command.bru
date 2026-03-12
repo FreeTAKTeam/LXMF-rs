@@ -1,0 +1,32 @@
+meta {
+  name: Reply Command
+  type: grpc
+  seq: 4
+}
+
+grpc {
+  url: {{grpc_host}}
+  method: /lxmf.command.v1.CommandService/ReplyCommand
+  body: grpc
+  auth: inherit
+  methodType: unary
+}
+
+body:grpc {
+  name: message 1
+  content: '''
+    {
+      "correlationId": "{{correlation_id}}",
+      "accepted": true,
+      "payload": {
+        "ok": true
+      }
+    }
+  '''
+}
+
+docs {
+  Applies a reply/update to {{correlation_id}}.
+  
+  This is mostly useful for simulation/testing or controlled command workflows.
+}

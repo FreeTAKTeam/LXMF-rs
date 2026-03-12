@@ -8,13 +8,26 @@ with `grpcurl` or generated clients.
 - `lxmf.runtime.v1.RuntimeService`
   - `Negotiate`
   - `GetSnapshot`
+- `lxmf.command.v1.CommandService`
+  - `InvokeCommand`
+  - `ReplyCommand`
+  - `GetCommandSession`
+  - `ListCommandSessions`
+- `lxmf.delivery.v1.DeliveryService`
+  - `Send`
+  - `GetStatus`
+  - `Cancel`
 - `lxmf.admin.v1.InterfaceAdminService`
   - `ListInterfaces`
   - `SetInterfaces`
   - `ReloadConfig`
 - `lxmf.topics.v1.TopicService`
   - `CreateTopic`
+  - `GetTopic`
   - `ListTopics`
+  - `SubscribeTopic`
+  - `UnsubscribeTopic`
+  - `PublishTopic`
 - `lxmf.attachments.v1.AttachmentService`
   - `StoreAttachment`
   - `GetAttachment`
@@ -30,6 +43,9 @@ with `grpcurl` or generated clients.
   - `SubscribeEvents`
 - `lxmf.identity.v1.IdentityService`
   - `ListIdentities`
+  - `ActivateIdentity`
+  - `ImportIdentity`
+  - `ExportIdentity`
   - `ResolveIdentity`
   - `AnnounceNow`
   - `ListPresence`
@@ -140,6 +156,67 @@ grpcurl \
   lxmf.runtime.v1.RuntimeService/GetSnapshot
 ```
 
+Invoke a command:
+
+```bash
+grpcurl \
+  -plaintext \
+  -d '{
+    "command":"status",
+    "target":"peer-a",
+    "payload":{"mode":"quick"},
+    "timeoutMs":"5000"
+  }' \
+  127.0.0.1:50051 \
+  lxmf.command.v1.CommandService/InvokeCommand
+```
+
+List command sessions:
+
+```bash
+grpcurl \
+  -plaintext \
+  -d '{"page":{"pageSize":25}}' \
+  127.0.0.1:50051 \
+  lxmf.command.v1.CommandService/ListCommandSessions
+```
+
+Send a message:
+
+```bash
+grpcurl \
+  -plaintext \
+  -d '{
+    "id":"msg-1",
+    "source":"node-a",
+    "destination":"node-b",
+    "title":"Test",
+    "content":"hello"
+  }' \
+  127.0.0.1:50051 \
+  lxmf.delivery.v1.DeliveryService/Send
+```
+
+Get delivery status:
+
+```bash
+grpcurl \
+  -plaintext \
+  -d '{"messageId":"msg-1"}' \
+  127.0.0.1:50051 \
+  lxmf.delivery.v1.DeliveryService/GetStatus
+```
+
+Cancel a message:
+
+```bash
+grpcurl \
+  -plaintext \
+  -d '{"messageId":"msg-1"}' \
+  127.0.0.1:50051 \
+  lxmf.delivery.v1.DeliveryService/Cancel
+```
+
 Negotiate:
 
 ```bash
@@ -231,6 +308,16 @@ grpcurl \
   lxmf.topics.v1.TopicService/CreateTopic
 ```
 
+Get topic:
+
+```bash
+grpcurl \
+  -plaintext \
+  -d '{"topicId":"topic-1"}' \
+  127.0.0.1:50051 \
+  lxmf.topics.v1.TopicService/GetTopic
+```
+
 List topics:
 
 ```bash
@@ -249,6 +336,30 @@ grpcurl \
   -d '{"page":{"pageSize":25,"pageToken":"topic:25"}}' \
   127.0.0.1:50051 \
   lxmf.topics.v1.TopicService/ListTopics
+```
+
+Subscribe to a topic:
+
+```bash
+grpcurl \
+  -plaintext \
+  -d '{"topicId":"topic-1"}' \
+  127.0.0.1:50051 \
+  lxmf.topics.v1.TopicService/SubscribeTopic
+```
+
+Publish to a topic:
+
+```bash
+grpcurl \
+  -plaintext \
+  -d '{
+    "topicId":"topic-1",
+    "payload":{"kind":"note","value":"hello"},
+    "correlationId":"corr-1"
+  }' \
+  127.0.0.1:50051 \
+  lxmf.topics.v1.TopicService/PublishTopic
 ```
 
 List markers:
@@ -451,6 +562,36 @@ grpcurl \
   -d '{}' \
   127.0.0.1:50051 \
   lxmf.identity.v1.IdentityService/ListIdentities
+```
+
+Activate identity:
+
+```bash
+grpcurl \
+  -plaintext \
+  -d '{"identity":"node-b"}' \
+  127.0.0.1:50051 \
+  lxmf.identity.v1.IdentityService/ActivateIdentity
+```
+
+Import identity:
+
+```bash
+grpcurl \
+  -plaintext \
+  -d '{"bundleBase64":"<base64 bundle>"}' \
+  127.0.0.1:50051 \
+  lxmf.identity.v1.IdentityService/ImportIdentity
+```
+
+Export identity:
+
+```bash
+grpcurl \
+  -plaintext \
+  -d '{"identity":"node-b"}' \
+  127.0.0.1:50051 \
+  lxmf.identity.v1.IdentityService/ExportIdentity
 ```
 
 Resolve identity:

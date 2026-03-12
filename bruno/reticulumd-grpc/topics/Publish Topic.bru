@@ -1,0 +1,33 @@
+meta {
+  name: Publish Topic
+  type: grpc
+  seq: 5
+}
+
+docs {
+  Publishes a structured payload to `{{topic_id}}`.
+
+  The payload is a protobuf Struct, so object-shaped JSON is the right form here.
+}
+
+grpc {
+  url: {{grpc_host}}
+  method: /lxmf.topics.v1.TopicService/PublishTopic
+  body: grpc
+  auth: inherit
+  methodType: unary
+}
+
+body:grpc {
+  name: message 1
+  content: '''
+    {
+      "topicId": "{{topic_id}}",
+      "payload": {
+        "kind": "note",
+        "value": "hello"
+      },
+      "correlationId": "corr-1"
+    }
+  '''
+}

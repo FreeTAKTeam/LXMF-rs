@@ -1,0 +1,32 @@
+meta {
+  name: Send Message
+  type: grpc
+  seq: 1
+}
+
+grpc {
+  url: {{grpc_host}}
+  method: /lxmf.delivery.v1.DeliveryService/Send
+  body: grpc
+  auth: inherit
+  methodType: unary
+}
+
+body:grpc {
+  name: message 1
+  content: '''
+    {
+      "id": "{{message_id}}",
+      "source": "node-a",
+      "destination": "node-b",
+      "title": "Test",
+      "content": "hello"
+    }
+  '''
+}
+
+docs {
+  Sends a minimal outbound message through the gRPC delivery surface.
+  
+  Reuse the same `message_id` in the follow-up status and cancel requests.
+}

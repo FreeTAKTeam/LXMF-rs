@@ -53,6 +53,7 @@ impl RpcDaemon {
                     .lock()
                     .expect("peers mutex poisoned")
                     .values()
+                    .filter(|record| !record.peer.trim().is_empty())
                     .cloned()
                     .collect::<Vec<_>>();
                 peers.sort_by(|a, b| {
@@ -122,23 +123,24 @@ impl RpcDaemon {
                 }
                 Self::validate_legacy_hot_apply_uniqueness(&parsed.interfaces)?;
 
-                if let Some(bridge) = self
+                let applied_interfaces = if let Some(bridge) = self
                     .interface_mutation_bridge
                     .lock()
                     .expect("interface mutation bridge mutex poisoned")
                     .clone()
                 {
-                    bridge.apply_interfaces(parsed.interfaces.clone())?;
-                }
+                    bridge.apply_interfaces(parsed.interfaces.clone())?
+                } else {
+                    parsed.interfaces.clone()
+                };
                 {
                     let mut guard = self.interfaces.lock().expect("interfaces mutex poisoned");
-                    *guard = parsed.interfaces.clone();
+                    *guard = applied_interfaces.clone();
                 }
                 self.update_daemon_status_snapshot(|snapshot| {
-                    snapshot.interfaces = parsed.interfaces.clone();
+                    snapshot.interfaces = applied_interfaces.clone();
                 });
-                let applied_interfaces = parsed
-                    .interfaces
+                let applied_interface_ids = applied_interfaces
                     .iter()
                     .enumerate()
                     .map(|(index, iface)| Self::interface_identifier(iface, index))
@@ -146,7 +148,7 @@ impl RpcDaemon {
 
                 let event = RpcEvent {
                     event_type: "interfaces_updated".into(),
-                    payload: json!({ "interfaces": parsed.interfaces }),
+                    payload: json!({ "interfaces": applied_interfaces }),
                 };
                 self.publish_event(event);
 
@@ -154,7 +156,7 @@ impl RpcDaemon {
                     id: request.id,
                     result: Some(json!({
                         "updated": true,
-                        "applied_interfaces": applied_interfaces,
+                        "applied_interfaces": applied_interface_ids,
                         "rejected_interfaces": Vec::<String>::new(),
                     })),
                     error: None,
@@ -227,24 +229,26 @@ impl RpcDaemon {
                     }
                     Self::validate_legacy_hot_apply_uniqueness(&parsed.interfaces)?;
 
-                    if let Some(bridge) = self
+                    let applied_interfaces = if let Some(bridge) = self
                         .interface_mutation_bridge
                         .lock()
                         .expect("interface mutation bridge mutex poisoned")
                         .clone()
                     {
-                        bridge.apply_interfaces(parsed.interfaces.clone())?;
-                    }
+                        bridge.apply_interfaces(parsed.interfaces.clone())?
+                    } else {
+                        parsed.interfaces.clone()
+                    };
                     {
                         let mut guard = self.interfaces.lock().expect("interfaces mutex poisoned");
-                        *guard = parsed.interfaces.clone();
+                        *guard = applied_interfaces.clone();
                     }
                     self.update_daemon_status_snapshot(|snapshot| {
-                        snapshot.interfaces = parsed.interfaces.clone();
+                        snapshot.interfaces = applied_interfaces.clone();
                     });
                     let update_event = RpcEvent {
                         event_type: "interfaces_updated".into(),
-                        payload: json!({ "interfaces": parsed.interfaces }),
+                        payload: json!({ "interfaces": applied_interfaces }),
                     };
                     self.publish_event(update_event);
                 }
@@ -270,14 +274,22 @@ impl RpcDaemon {
                 })?;
                 let parsed: PeerOpParams = serde_json::from_value(params)
                     .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
+                let peer_id = parsed.peer.trim();
+                if peer_id.is_empty() {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "peer is required",
+                    ));
+                }
 
                 let timestamp = now_i64();
-                let peer_type = if self.is_static_peer(parsed.peer.as_str()) {
+                let peer_type = if self.is_static_peer(peer_id) {
                     Some("static".to_string())
                 } else {
                     Some("manual".to_string())
                 };
-                let record = self.upsert_peer(parsed.peer, timestamp, None, None, peer_type)?;
+                let record =
+                    self.upsert_peer(peer_id.to_string(), timestamp, None, None, peer_type)?;
                 {
                     let mut guard = self.peers.lock().expect("peers mutex poisoned");
                     if let Some(existing) = guard.get_mut(&record.peer) {
@@ -312,10 +324,17 @@ impl RpcDaemon {
                 })?;
                 let parsed: PeerOpParams = serde_json::from_value(params)
                     .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
+                let peer_id = parsed.peer.trim();
+                if peer_id.is_empty() {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "peer is required",
+                    ));
+                }
 
                 let removed = {
                     let mut guard = self.peers.lock().expect("peers mutex poisoned");
-                    let removed = if let Some(existing) = guard.get_mut(&parsed.peer) {
+                    let removed = if let Some(existing) = guard.get_mut(peer_id) {
                         existing.alive = false;
                         existing.peer_type = Some("unpeered".to_string());
                         existing.next_sync_attempt = 0;
@@ -335,7 +354,7 @@ impl RpcDaemon {
                 };
                 let event = RpcEvent {
                     event_type: "peer_unpeer".into(),
-                    payload: json!({ "peer": parsed.peer, "removed": removed }),
+                    payload: json!({ "peer": peer_id, "removed": removed }),
                 };
                 self.publish_event(event);
                 Ok(RpcResponse {

@@ -3,6 +3,7 @@ syntax = "proto3";
 package lxmf.topics.v1;
 
 import "lxmf/common/v1/pagination.proto";
+import "google/protobuf/struct.proto";
 
 // Topic record returned by topic operations.
 message Topic {
@@ -20,6 +21,16 @@ message CreateTopicResponse {
   Topic topic = 1;
 }
 
+// Looks up a topic by id.
+message GetTopicRequest {
+  string topic_id = 1;
+}
+
+// Returns the matching topic when present.
+message GetTopicResponse {
+  Topic topic = 1;
+}
+
 // Lists topics with pagination.
 message ListTopicsRequest {
   lxmf.common.v1.PageRequest page = 1;
@@ -31,10 +42,53 @@ message ListTopicsResponse {
   lxmf.common.v1.PageInfo page_info = 2;
 }
 
+// Subscribes the runtime to a topic.
+message SubscribeTopicRequest {
+  string topic_id = 1;
+  optional string cursor = 2;
+}
+
+// Returns the subscription acceptance.
+message SubscribeTopicResponse {
+  bool accepted = 1;
+  string topic_id = 2;
+}
+
+// Unsubscribes the runtime from a topic.
+message UnsubscribeTopicRequest {
+  string topic_id = 1;
+}
+
+// Returns the unsubscribe acceptance.
+message UnsubscribeTopicResponse {
+  bool accepted = 1;
+  string topic_id = 2;
+}
+
+// Publishes a structured payload to a topic.
+message PublishTopicRequest {
+  string topic_id = 1;
+  google.protobuf.Struct payload = 2;
+  optional string correlation_id = 3;
+}
+
+// Returns the publish acceptance.
+message PublishTopicResponse {
+  bool accepted = 1;
+}
+
 // Topic create and list operations.
 service TopicService {
   // Creates a new topic.
   rpc CreateTopic(CreateTopicRequest) returns (CreateTopicResponse);
+  // Gets one topic by id.
+  rpc GetTopic(GetTopicRequest) returns (GetTopicResponse);
   // Lists topics with pagination.
   rpc ListTopics(ListTopicsRequest) returns (ListTopicsResponse);
+  // Subscribes to a topic.
+  rpc SubscribeTopic(SubscribeTopicRequest) returns (SubscribeTopicResponse);
+  // Unsubscribes from a topic.
+  rpc UnsubscribeTopic(UnsubscribeTopicRequest) returns (UnsubscribeTopicResponse);
+  // Publishes a payload to a topic.
+  rpc PublishTopic(PublishTopicRequest) returns (PublishTopicResponse);
 }

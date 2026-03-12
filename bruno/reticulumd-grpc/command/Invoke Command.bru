@@ -1,0 +1,33 @@
+meta {
+  name: Invoke Command
+  type: grpc
+  seq: 1
+}
+
+grpc {
+  url: {{grpc_host}}
+  method: /lxmf.command.v1.CommandService/InvokeCommand
+  body: grpc
+  auth: inherit
+  methodType: unary
+}
+
+body:grpc {
+  name: message 1
+  content: '''
+    {
+      "command": "status",
+      "target": "peer-a",
+      "payload": {
+        "mode": "quick"
+      },
+      "timeoutMs": 5000
+    }
+  '''
+}
+
+docs {
+  Dispatches a remote command and creates a tracked session.
+  
+  Copy the returned correlation_id into {{correlation_id}} for the follow-up session requests.
+}

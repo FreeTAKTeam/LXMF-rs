@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package lxmf.runtime.v1;
 
+import "google/protobuf/struct.proto";
+
 // Store-and-forward limits negotiated for a runtime session.
 message NegotiateStoreForwardConfig {
   optional uint32 max_messages = 1;
@@ -78,10 +80,52 @@ message GetSnapshotResponse {
   repeated string effective_capabilities = 5;
 }
 
+// Empty request for fetching the daemon status snapshot.
+message GetDaemonStatusRequest {}
+
+// Returns the raw daemon status snapshot for diagnostics.
+message GetDaemonStatusResponse {
+  google.protobuf.Struct status = 1;
+}
+
+// Empty request for fetching propagation status.
+message GetPropagationStatusRequest {}
+
+// Returns raw propagation counters and policy fields for diagnostics.
+message GetPropagationStatusResponse {
+  google.protobuf.Struct propagation = 1;
+}
+
+// Updates propagation policy and returns the effective state.
+message SetPropagationRequest {
+  bool enabled = 1;
+  optional string store_root = 2;
+  optional uint32 target_cost = 3;
+  optional uint64 message_storage_limit_mb = 4;
+  optional bool autopeer = 5;
+  optional uint32 autopeer_maxdepth = 6;
+  repeated string static_peers = 7;
+  optional uint32 max_peers = 8;
+  optional bool from_static_only = 9;
+  optional uint32 peering_cost = 10;
+  optional uint32 remote_peering_cost_max = 11;
+}
+
+// Returns the effective propagation state after applying an update.
+message SetPropagationResponse {
+  google.protobuf.Struct propagation = 1;
+}
+
 // Runtime negotiation and snapshot operations.
 service RuntimeService {
   // Negotiates the active contract version and capability set.
   rpc Negotiate(NegotiateRequest) returns (NegotiateResponse);
   // Returns a point-in-time runtime snapshot.
   rpc GetSnapshot(GetSnapshotRequest) returns (GetSnapshotResponse);
+  // Returns the current daemon status snapshot.
+  rpc GetDaemonStatus(GetDaemonStatusRequest) returns (GetDaemonStatusResponse);
+  // Returns the current propagation status snapshot.
+  rpc GetPropagationStatus(GetPropagationStatusRequest) returns (GetPropagationStatusResponse);
+  // Updates propagation policy and returns the effective state.
+  rpc SetPropagation(SetPropagationRequest) returns (SetPropagationResponse);
 }

@@ -1,0 +1,33 @@
+meta {
+  name: Enable Propagation (Autopeer)
+  type: grpc
+  seq: 5
+}
+
+grpc {
+  url: {{grpc_host}}
+  method: /lxmf.runtime.v1.RuntimeService/SetPropagation
+  body: grpc
+  auth: inherit
+  methodType: unary
+}
+
+body:grpc {
+  name: message 1
+  content: '''
+    {
+      "enabled": true,
+      "targetCost": 0,
+      "autopeer": true,
+      "autopeerMaxdepth": 6,
+      "maxPeers": 20,
+      "fromStaticOnly": false
+    }
+  '''
+}
+
+docs {
+  Enables propagation and autopeer for local testing.
+
+  Run this before announcing or listing peers if your interface is up but peer discovery remains empty.
+}

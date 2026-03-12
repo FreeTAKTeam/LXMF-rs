@@ -1,0 +1,29 @@
+meta {
+  name: Cancel Message
+  type: grpc
+  seq: 3
+}
+
+docs {
+  Attempts to cancel `{{message_id}}`.
+
+  Direct local delivery may already be terminal, in which case `TooLateToCancel`
+  is a normal result rather than an RPC failure.
+}
+
+grpc {
+  url: {{grpc_host}}
+  method: /lxmf.delivery.v1.DeliveryService/Cancel
+  body: grpc
+  auth: inherit
+  methodType: unary
+}
+
+body:grpc {
+  name: message 1
+  content: '''
+    {
+      "messageId": "{{message_id}}"
+    }
+  '''
+}

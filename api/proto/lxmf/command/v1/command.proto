@@ -1,0 +1,90 @@
+syntax = "proto3";
+
+package lxmf.command.v1;
+
+import "google/protobuf/struct.proto";
+import "lxmf/common/v1/pagination.proto";
+
+// A remote command session tracked by the daemon.
+message CommandSession {
+  string command_id = 1;
+  string correlation_id = 2;
+  string command = 3;
+  optional string target = 4;
+  optional uint64 timeout_ms = 5;
+  optional string delivery_state = 6;
+  string command_state = 7;
+  uint64 created_at_ms = 8;
+  uint64 updated_at_ms = 9;
+  google.protobuf.Struct request_payload = 10;
+  google.protobuf.Struct response_payload = 11;
+  optional bool accepted = 12;
+  google.protobuf.Struct extensions = 13;
+}
+
+// Requests that a remote command be dispatched.
+message InvokeCommandRequest {
+  string command = 1;
+  optional string target = 2;
+  google.protobuf.Struct payload = 3;
+  optional uint64 timeout_ms = 4;
+  google.protobuf.Struct extensions = 5;
+}
+
+// Returns the accepted command envelope and normalized session.
+message InvokeCommandResponse {
+  bool accepted = 1;
+  google.protobuf.Struct payload = 2;
+  google.protobuf.Struct extensions = 3;
+  CommandSession session = 4;
+}
+
+// Applies a remote command reply/update to an existing session.
+message ReplyCommandRequest {
+  string correlation_id = 1;
+  bool accepted = 2;
+  google.protobuf.Struct payload = 3;
+  google.protobuf.Struct extensions = 4;
+}
+
+// Returns the updated command session.
+message ReplyCommandResponse {
+  bool accepted = 1;
+  string correlation_id = 2;
+  bool reply_accepted = 3;
+  google.protobuf.Struct payload = 4;
+  CommandSession session = 5;
+}
+
+// Looks up a single command session by correlation id.
+message GetCommandSessionRequest {
+  string correlation_id = 1;
+}
+
+// Returns one command session when present.
+message GetCommandSessionResponse {
+  CommandSession session = 1;
+}
+
+// Lists command sessions with cursor pagination.
+message ListCommandSessionsRequest {
+  lxmf.common.v1.PageRequest page = 1;
+}
+
+// Returns one page of command sessions.
+message ListCommandSessionsResponse {
+  repeated CommandSession sessions = 1;
+  lxmf.common.v1.PageInfo page_info = 2;
+}
+
+// Remote command invocation and session inspection.
+service CommandService {
+  // Dispatches a remote command request.
+  rpc InvokeCommand(InvokeCommandRequest) returns (InvokeCommandResponse);
+  // Applies a command reply/update.
+  rpc ReplyCommand(ReplyCommandRequest) returns (ReplyCommandResponse);
+  // Returns one command session.
+  rpc GetCommandSession(GetCommandSessionRequest) returns (GetCommandSessionResponse);
+  // Lists command sessions.
+  rpc ListCommandSessions(ListCommandSessionsRequest) returns (ListCommandSessionsResponse);
+}

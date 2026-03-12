@@ -1,0 +1,26 @@
+meta {
+  name: Activate Identity
+  type: grpc
+  seq: 2
+}
+
+docs {
+  Activates one imported identity as the current runtime identity.
+}
+
+grpc {
+  url: {{grpc_host}}
+  method: /lxmf.identity.v1.IdentityService/ActivateIdentity
+  body: grpc
+  auth: inherit
+  methodType: unary
+}
+
+body:grpc {
+  name: message 1
+  content: '''
+    {
+      "identity": "node-b"
+    }
+  '''
+}

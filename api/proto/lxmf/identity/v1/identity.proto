@@ -55,6 +55,45 @@ message ResolveIdentityResponse {
   optional string identity = 1;
 }
 
+// Activates an imported identity as the runtime's current identity.
+message ActivateIdentityRequest {
+  string identity = 1;
+}
+
+// Returns activation acceptance and the selected identity id.
+message ActivateIdentityResponse {
+  bool accepted = 1;
+  string identity = 2;
+}
+
+// Imports a serialized identity bundle.
+message ImportIdentityRequest {
+  string bundle_base64 = 1;
+  optional string passphrase = 2;
+}
+
+// Returns the normalized imported identity.
+message ImportIdentityResponse {
+  Identity identity = 1;
+}
+
+// Exports one identity as a portable bundle.
+message ExportIdentityRequest {
+  string identity = 1;
+}
+
+// Bundle returned by export.
+message IdentityBundle {
+  string bundle_base64 = 1;
+  optional string passphrase = 2;
+  google.protobuf.Struct extensions = 3;
+}
+
+// Returns the exported bundle.
+message ExportIdentityResponse {
+  IdentityBundle bundle = 1;
+}
+
 // Requests an immediate announce for the current daemon identity.
 message AnnounceNowRequest {}
 
@@ -119,6 +158,12 @@ service IdentityService {
   rpc ListIdentities(ListIdentitiesRequest) returns (ListIdentitiesResponse);
   // Resolves a hash to an identity id when known.
   rpc ResolveIdentity(ResolveIdentityRequest) returns (ResolveIdentityResponse);
+  // Activates an identity as the current runtime identity.
+  rpc ActivateIdentity(ActivateIdentityRequest) returns (ActivateIdentityResponse);
+  // Imports an identity bundle.
+  rpc ImportIdentity(ImportIdentityRequest) returns (ImportIdentityResponse);
+  // Exports an identity bundle.
+  rpc ExportIdentity(ExportIdentityRequest) returns (ExportIdentityResponse);
   // Dispatches an immediate announce.
   rpc AnnounceNow(AnnounceNowRequest) returns (AnnounceNowResponse);
   // Lists recent presence records.

@@ -140,6 +140,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     let node_announce_interval_secs = env_u64("LXMD_NODE_ANNOUNCE_INTERVAL_SECS");
 
     if let Some(addr) = args.transport.clone() {
+        println!("reticulumd transport listening on reticulum://{}", addr);
         let transport_identity =
             rns_transport::identity_bridge::to_transport_private_identity(&identity);
         let config = TransportConfig::new("daemon", &transport_identity, true);
@@ -452,6 +453,9 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         }
         transport = Some(Arc::new(transport_instance));
     } else if let Some(config) = daemon_config.as_ref() {
+        eprintln!(
+            "[daemon] transport disabled; configured interfaces will remain inactive until you start reticulumd with --transport HOST:PORT"
+        );
         for (index, iface) in config.interfaces.iter().enumerate() {
             if !iface.enabled() {
                 continue;
@@ -494,6 +498,18 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     {
         panic!("{policy_error}");
     }
+
+    let grpc_summary =
+        grpc_addr.map(|addr| addr.to_string()).unwrap_or_else(|| "disabled".to_string());
+    let transport_summary = args.transport.clone().unwrap_or_else(|| "disabled".to_string());
+    println!(
+        "reticulumd startup summary: rpc={} grpc={} transport={} interfaces={} identity={}",
+        rpc_addr,
+        grpc_summary,
+        transport_summary,
+        configured_interfaces.len(),
+        identity_hash
+    );
 
     let bridge: Option<Arc<TransportBridge>> =
         transport.as_ref().zip(announce_destination.as_ref()).map(|(transport, destination)| {

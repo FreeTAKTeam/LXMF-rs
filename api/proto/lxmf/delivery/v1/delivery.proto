@@ -2,8 +2,34 @@ syntax = "proto3";
 
 package lxmf.delivery.v1;
 
+import "google/protobuf/struct.proto";
+
+// An outbound or persisted LXMF message record.
+message MessageRecord {
+  string id = 1;
+  string source = 2;
+  string destination = 3;
+  string title = 4;
+  string content = 5;
+  int64 timestamp = 6;
+  string direction = 7;
+  google.protobuf.Struct fields = 8;
+  optional string receipt_status = 9;
+}
+
 // Sends a message through the delivery pipeline.
-message SendRequest {}
+message SendRequest {
+  string id = 1;
+  string source = 2;
+  string destination = 3;
+  string title = 4;
+  string content = 5;
+  google.protobuf.Struct fields = 6;
+  optional string method = 7;
+  optional uint32 stamp_cost = 8;
+  optional bool include_ticket = 9;
+  optional bool try_propagation_on_fail = 10;
+}
 
 // Returns the accepted delivery message id.
 message SendResponse {
@@ -16,7 +42,10 @@ message GetStatusRequest {
 }
 
 // Returns delivery status details for a message.
-message GetStatusResponse {}
+message GetStatusResponse {
+  optional MessageRecord message = 1;
+  google.protobuf.Struct meta = 2;
+}
 
 // Cancels a previously queued or in-flight message.
 message CancelRequest {
@@ -25,7 +54,8 @@ message CancelRequest {
 
 // Returns the cancellation result.
 message CancelResponse {
-  string result = 1;
+  string message_id = 1;
+  string result = 2;
 }
 
 // Delivery lifecycle operations for outbound messages.

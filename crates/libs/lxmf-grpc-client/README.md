@@ -4,7 +4,7 @@
 
 It compiles client stubs directly from the workspace proto tree and exposes:
 
-- generated service clients for runtime, admin, topics, attachments, events, identity, markers, and peers
+- generated service clients for runtime, delivery, command, admin, topics, attachments, events, identity, markers, and peers
 - a small `LxmfGrpcClient` wrapper that builds a shared gRPC channel
 - optional bearer-token metadata injection
 - optional TLS/mTLS client settings
