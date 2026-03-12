@@ -1,4 +1,4 @@
-.PHONY: bootstrap fmt clippy test test-all test-full-targets doc deny audit udeps boundaries ci release-check api-diff licenses migration-checks forbidden-deps python-impl-bench python-impl-bench-report python-lxmd-smoke check-bin run-bin sccache-show-stats sccache-zero-stats
+.PHONY: bootstrap fmt clippy test test-all test-full-targets doc deny audit udeps boundaries ci release-check package-daemon-bundle api-diff licenses migration-checks forbidden-deps python-impl-bench python-impl-bench-report python-lxmd-smoke check-bin run-bin sccache-show-stats sccache-zero-stats
 
 bootstrap:
 	./tools/scripts/bootstrap-dev.sh
@@ -55,6 +55,9 @@ forbidden-deps:
 ci: fmt clippy test doc boundaries migration-checks
 
 release-check: ci deny audit
+
+package-daemon-bundle:
+	cargo xtask package-daemon-bundle $(if $(VERSION),--version $(VERSION),)
 
 api-diff:
 	@for manifest in \

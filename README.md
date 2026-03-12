@@ -58,6 +58,7 @@ or via `xtask`:
 ```bash
 cargo xtask ci
 cargo xtask release-check
+cargo xtask package-daemon-bundle --version 0.1
 cargo xtask api-diff
 cargo xtask python-impl-bench-compare
 cargo xtask python-impl-bench-compare --profile report
@@ -69,8 +70,15 @@ For fast local iteration on one binary, prefer narrow commands:
 ```bash
 make check-bin PKG=lxmf-cli BIN=lxmd
 make run-bin PKG=rns-tools BIN=rnsd ARGS="--help"
+make package-daemon-bundle VERSION=0.1
 make python-lxmd-smoke
 ```
+
+For release artifacts, `cargo xtask package-daemon-bundle` builds the
+host-native `lxmd` and `reticulumd` binaries, generates
+`lxmd.example.config`, copies `README.md`, and writes a release archive under
+`target/release-bundles/`. The command emits `.zip` bundles on Windows and
+`.tar.gz` bundles on macOS/Linux.
 
 If `sccache` is installed, the workspace automatically uses it through
 [`/.cargo/config.toml`](/Users/tommy/Documents/TAK/LXMF-rs/.cargo/config.toml); otherwise builds

@@ -86,6 +86,9 @@ const SUPPLY_CHAIN_SIGNATURE_PATH: &str =
     "target/supply-chain/provenance/artifact-provenance.sha256";
 const REPRODUCIBLE_BUILD_REPORT_PATH: &str =
     "target/supply-chain/reproducible/reproducible-build-report.txt";
+const RELEASE_BUNDLE_OUTPUT_DIR: &str = "target/release-bundles";
+const DAEMON_RELEASE_BINARIES: &[(&str, &str)] =
+    &[("lxmf-cli", "lxmd"), ("reticulumd", "reticulumd")];
 const CARGO_AUDIT_IGNORE_ADVISORIES: &[&str] =
     &["RUSTSEC-2024-0421", "RUSTSEC-2024-0436", "RUSTSEC-2026-0009", "RUSTSEC-2025-0134"];
 const REQUIRED_INTERFACE_CI_JOBS: &[&str] = &[
@@ -368,6 +371,10 @@ enum XtaskCommand {
         stage: Option<CiStage>,
     },
     ReleaseCheck,
+    PackageDaemonBundle {
+        #[arg(long)]
+        version: Option<String>,
+    },
     ApiDiff,
     Licenses,
     MigrationChecks,
@@ -565,6 +572,7 @@ fn main() -> Result<()> {
     match xtask.command {
         XtaskCommand::Ci { stage } => run_ci(stage),
         XtaskCommand::ReleaseCheck => run_release_check(),
+        XtaskCommand::PackageDaemonBundle { version } => run_package_daemon_bundle(version),
         XtaskCommand::ApiDiff => run_api_diff(),
         XtaskCommand::Licenses => run_licenses(),
         XtaskCommand::MigrationChecks => run_migration_checks(),
@@ -4597,6 +4605,151 @@ fn run_reproducible_build_check() -> Result<()> {
         bail!("reproducible build report is missing at {REPRODUCIBLE_BUILD_REPORT_PATH}");
     }
     Ok(())
+}
+
+fn run_package_daemon_bundle(version: Option<String>) -> Result<()> {
+    let version = release_version_label(version)?;
+    let bundle_stem = format!("lxmd-daemon-{version}-{}", release_platform_label());
+    let output_dir = Path::new(RELEASE_BUNDLE_OUTPUT_DIR);
+    fs::create_dir_all(output_dir).with_context(|| format!("create {}", output_dir.display()))?;
+
+    for (package, binary) in DAEMON_RELEASE_BINARIES {
+        run("cargo", &["build", "--release", "-p", package, "--bin", binary])?;
+    }
+
+    let staging_dir = output_dir.join(&bundle_stem);
+    if staging_dir.exists() {
+        fs::remove_dir_all(&staging_dir)
+            .with_context(|| format!("remove {}", staging_dir.display()))?;
+    }
+    fs::create_dir_all(&staging_dir)
+        .with_context(|| format!("create {}", staging_dir.display()))?;
+
+    for (_, binary) in DAEMON_RELEASE_BINARIES {
+        let binary_name = executable_name(binary);
+        let source = Path::new("target").join("release").join(&binary_name);
+        let destination = staging_dir.join(&binary_name);
+        fs::copy(&source, &destination).with_context(|| {
+            format!("copy bundled binary {} -> {}", source.display(), destination.display())
+        })?;
+    }
+
+    let lxmd_path = Path::new("target").join("release").join(executable_name("lxmd"));
+    let example_config = capture_command_stdout(
+        lxmd_path.to_str().ok_or_else(|| anyhow!("invalid lxmd path: {}", lxmd_path.display()))?,
+        &["--exampleconfig"],
+    )?;
+    let example_config_path = staging_dir.join("lxmd.example.config");
+    fs::write(&example_config_path, example_config.as_bytes())
+        .with_context(|| format!("write {}", example_config_path.display()))?;
+
+    let readme_path = staging_dir.join("README.md");
+    fs::copy("README.md", &readme_path)
+        .with_context(|| format!("copy README.md -> {}", readme_path.display()))?;
+
+    let archive_path = create_release_archive(output_dir, &staging_dir, &bundle_stem)?;
+    let archive_bytes = fs::read(&archive_path)
+        .with_context(|| format!("read archive {}", archive_path.display()))?;
+    let archive_name = archive_path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| anyhow!("invalid archive filename: {}", archive_path.display()))?;
+    let sha_path = output_dir.join(format!("{archive_name}.sha256"));
+    let checksum_line = format!("{}  {archive_name}\n", sha256_hex(&archive_bytes));
+    fs::write(&sha_path, checksum_line.as_bytes())
+        .with_context(|| format!("write {}", sha_path.display()))?;
+
+    fs::remove_dir_all(&staging_dir)
+        .with_context(|| format!("remove {}", staging_dir.display()))?;
+
+    println!("created {}", archive_path.display());
+    println!("created {}", sha_path.display());
+    Ok(())
+}
+
+fn release_version_label(version: Option<String>) -> Result<String> {
+    if let Some(version) = version.map(|value| value.trim().to_string()) {
+        if !version.is_empty() {
+            return Ok(version.replace('/', "-"));
+        }
+    }
+
+    if let Ok(tag) = capture_command_stdout("git", &["describe", "--tags", "--exact-match"]) {
+        if !tag.is_empty() {
+            return Ok(tag.replace('/', "-"));
+        }
+    }
+
+    let manifest = fs::read_to_string("crates/apps/lxmf-cli/Cargo.toml")
+        .context("read crates/apps/lxmf-cli/Cargo.toml for release version")?;
+    for line in manifest.lines() {
+        let trimmed = line.trim();
+        if let Some(value) = trimmed.strip_prefix("version = ") {
+            return Ok(value.trim_matches('"').replace('/', "-"));
+        }
+    }
+
+    bail!("unable to determine release version for daemon bundle")
+}
+
+fn release_platform_label() -> String {
+    let os = match std::env::consts::OS {
+        "macos" => "macos",
+        "windows" => "windows",
+        "linux" => "linux",
+        other => other,
+    };
+    let arch = match std::env::consts::ARCH {
+        "x86_64" => "x64",
+        "aarch64" => "arm64",
+        "x86" => "x86",
+        "arm" => "arm",
+        other => other,
+    };
+    format!("{os}-{arch}")
+}
+
+fn create_release_archive(
+    output_dir: &Path,
+    staging_dir: &Path,
+    bundle_stem: &str,
+) -> Result<PathBuf> {
+    if cfg!(windows) {
+        let archive = output_dir.join(format!("{bundle_stem}.zip"));
+        if archive.exists() {
+            fs::remove_file(&archive).with_context(|| format!("remove {}", archive.display()))?;
+        }
+        let archive_arg = archive
+            .to_str()
+            .ok_or_else(|| anyhow!("invalid archive path: {}", archive.display()))?;
+        let staging_arg = staging_dir
+            .to_str()
+            .ok_or_else(|| anyhow!("invalid staging path: {}", staging_dir.display()))?;
+        run(
+            "powershell",
+            &[
+                "-NoProfile",
+                "-Command",
+                "Compress-Archive -Path $args[0] -DestinationPath $args[1] -Force",
+                staging_arg,
+                archive_arg,
+            ],
+        )?;
+        return Ok(archive);
+    }
+
+    let archive = output_dir.join(format!("{bundle_stem}.tar.gz"));
+    if archive.exists() {
+        fs::remove_file(&archive).with_context(|| format!("remove {}", archive.display()))?;
+    }
+    let archive_arg =
+        archive.to_str().ok_or_else(|| anyhow!("invalid archive path: {}", archive.display()))?;
+    let staging_name = staging_dir
+        .file_name()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| anyhow!("invalid staging path: {}", staging_dir.display()))?;
+    run("tar", &["-C", RELEASE_BUNDLE_OUTPUT_DIR, "-czf", archive_arg, staging_name])?;
+    Ok(archive)
 }
 
 fn write_bytes(path: &str, bytes: &[u8]) -> Result<()> {

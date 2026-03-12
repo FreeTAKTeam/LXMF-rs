@@ -1,0 +1,92 @@
+name: Release Bundles
+
+on:
+  push:
+    tags:
+      - "v*"
+      - "[0-9]*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version or tag name to embed in bundle filenames
+        required: true
+        type: string
+      publish_release:
+        description: Publish uploaded bundle artifacts to the matching GitHub release
+        required: false
+        default: false
+        type: boolean
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  validate-release-version:
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate release version format
+        run: |
+          [[ "$RELEASE_VERSION" =~ ^v?[0-9]+\.[0-9]+(\.[0-9]+)?([.-][0-9A-Za-z]+)?$ ]]
+      - name: Require an existing tag before manual publish
+        if: github.event_name == 'workflow_dispatch' && inputs.publish_release
+        run: |
+          git rev-parse -q --verify "refs/tags/$RELEASE_VERSION"
+
+  build-bundles:
+    needs: validate-release-version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact_name: daemon-bundle-linux
+          - os: macos-latest
+            artifact_name: daemon-bundle-macos
+          - os: windows-latest
+            artifact_name: daemon-bundle-windows
+    runs-on: ${{ matrix.os }}
+    env:
+      RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Build daemon bundle
+        shell: bash
+        run: cargo xtask package-daemon-bundle --version "$RELEASE_VERSION"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: target/release-bundles/*
+          if-no-files-found: error
+
+  publish-release:
+    needs: build-bundles
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || inputs.publish_release
+    permissions:
+      contents: write
+    env:
+      RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: daemon-bundle-*
+          merge-multiple: true
+      - name: Publish release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_VERSION }}
+          files: dist/*
+          fail_on_unmatched_files: true
+          generate_release_notes: true
