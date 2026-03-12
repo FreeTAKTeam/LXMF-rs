@@ -22,7 +22,7 @@ impl RpcDaemon {
                 "store-forward capacity reached and policy rejected new outbound message",
             ));
         }
-        self.append_delivery_trace(&id, "queued".to_string());
+        self.append_delivery_trace(&id, "queued");
         let mut record = MessageRecord {
             id: id.clone(),
             source,
@@ -40,7 +40,7 @@ impl RpcDaemon {
         let store_elapsed_ns =
             store_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
         self.metrics_record_sdk_send_store_write(store_elapsed_ns);
-        self.append_delivery_trace(&id, "sending".to_string());
+        self.append_delivery_trace(&id, "sending");
         if self.outbound_bridge.is_some() {
             let _status_guard =
                 self.delivery_status_lock.lock().expect("delivery_status_lock mutex poisoned");
@@ -51,7 +51,7 @@ impl RpcDaemon {
                 .map_err(std::io::Error::other)?
                 .unwrap_or(sending_status);
             if resolved_status == "sending" {
-                self.append_delivery_trace(&id, "sending".to_string());
+                self.append_delivery_trace(&id, "sending");
             }
             record.receipt_status = Some(resolved_status);
         }
@@ -70,15 +70,20 @@ impl RpcDaemon {
             let resolved_status = {
                 let _status_guard =
                     self.delivery_status_lock.lock().expect("delivery_status_lock mutex poisoned");
-                let resolved_status = self
-                    .store
-                    .resolve_receipt_status(&id, &status)
-                    .map_err(std::io::Error::other)?
-                    .unwrap_or_else(|| status.clone());
-                if resolved_status == status {
-                    self.append_delivery_trace(&id, status.clone());
+                let resolved_status =
+                    self.store.resolve_receipt_status(&id, &status).map_err(std::io::Error::other)?;
+                match resolved_status {
+                    Some(resolved_status) => {
+                        if resolved_status == status {
+                            self.append_delivery_trace(&id, status.as_str());
+                        }
+                        resolved_status
+                    }
+                    None => {
+                        self.append_delivery_trace(&id, status.as_str());
+                        status
+                    }
                 }
-                resolved_status
             };
             record.receipt_status = Some(resolved_status.clone());
             let reason_code = delivery_reason_code(&resolved_status);
@@ -128,15 +133,20 @@ impl RpcDaemon {
         let resolved_status = {
             let _status_guard =
                 self.delivery_status_lock.lock().expect("delivery_status_lock mutex poisoned");
-            let resolved_status = self
-                .store
-                .resolve_receipt_status(&id, &sent_status)
-                .map_err(std::io::Error::other)?
-                .unwrap_or_else(|| sent_status.clone());
-            if resolved_status == sent_status {
-                self.append_delivery_trace(&id, sent_status.clone());
+            let resolved_status =
+                self.store.resolve_receipt_status(&id, &sent_status).map_err(std::io::Error::other)?;
+            match resolved_status {
+                Some(resolved_status) => {
+                    if resolved_status == sent_status {
+                        self.append_delivery_trace(&id, sent_status.as_str());
+                    }
+                    resolved_status
+                }
+                None => {
+                    self.append_delivery_trace(&id, sent_status.as_str());
+                    sent_status
+                }
             }
-            resolved_status
         };
         record.receipt_status = Some(resolved_status.clone());
         let event = RpcEvent {

@@ -125,6 +125,57 @@ cargo run -p reticulumd -- --help
 cargo run -p rns-tools --bin rnx -- e2e --timeout-secs 20
 ```
 
+## Running the LXMF Daemon (`lxmd`)
+
+`lxmd` is the CLI compatibility entrypoint used to run the Rust daemon process (`reticulumd`) in this repository.
+
+The command below starts the daemon and blocks in the foreground:
+
+```bash
+cargo run -p lxmf-cli --bin lxmd -- --config <path>
+```
+
+`--config` can point to either:
+
+- a config directory (example: `C:\Users\you\lxmd`),
+- a legacy Python-style config file (for example: `C:\Users\you\lxmd\config`), or
+- a TOML file with newer single-file LXMF/Reticulum config keys.
+
+If no `--config` is supplied, `lxmd` uses:
+
+- `C:\etc\lxmd` if present,
+- otherwise `%HOME%\.config\lxmd` if that contains a config file,
+- otherwise `%HOME%\.lxmd`.
+
+On first run in a config directory, `lxmd` creates `storage\messages` and writes a default
+`config` file if one is missing. It then launches a sibling `reticulumd.exe` binary.
+
+To see a concrete example config, run:
+
+```bash
+cargo run -p lxmf-cli --bin lxmd -- --exampleconfig
+```
+
+Useful operational flags:
+
+- `--status` prints daemon and propagation status.
+- `--peers` lists peers.
+- `--sync <peer>` and `-b/--break <peer>` request peer sync / unpeer actions.
+- `--remote <dest>` targets control operations at a remote node by destination hash.
+- `--identity <path>` points to an identity file (or directory context).
+- `--on-inbound <command>` executes a local command per inbound delivery event.
+- `--quiet` / `--verbose` control launcher output.
+- `--service` enables service-oriented startup behavior (and still uses the same process model).
+
+You can run status-only operations without launching a local daemon process when needed. For example:
+
+```bash
+cargo run -p lxmf-cli --bin lxmd -- --config <path> --status --rpc 127.0.0.1:4243
+```
+
+`lxmd` accepts `--rnsconfig` to pass a custom `reticulumd` config path and reads `RETICULUMD_BIN`
+when you need a non-standard daemon binary location.
+
 ## Contracts and Runbooks
 
 - Compatibility contract: `docs/contracts/compatibility-contract.md`

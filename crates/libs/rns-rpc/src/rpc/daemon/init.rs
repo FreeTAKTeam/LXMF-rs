@@ -381,21 +381,9 @@ impl RpcDaemon {
             Some("discovered".to_string())
         };
         let record = if should_peer {
-            self.upsert_peer(
-                peer.clone(),
-                timestamp,
-                name.clone(),
-                name_source.clone(),
-                peer_type.clone(),
-            )?
+            self.upsert_peer(peer, timestamp, name, name_source, peer_type)?
         } else {
-            self.transient_peer_record(
-                peer.clone(),
-                timestamp,
-                name.clone(),
-                name_source.clone(),
-                peer_type,
-            )
+            self.transient_peer_record(peer, timestamp, name, name_source, peer_type)
         };
         let capability_list = if let Some(caps) = capabilities {
             normalize_capabilities(caps)
@@ -469,8 +457,8 @@ impl RpcDaemon {
                 existing.name = Some(name);
                 existing.name_source = cleaned_name_source;
             }
-            if let Some(peer_type) = peer_type.clone() {
-                existing.peer_type = Some(peer_type);
+            if let Some(peer_type) = &peer_type {
+                existing.peer_type = Some(peer_type.clone());
             }
             let record = existing.clone();
             let peer_count = Self::active_peer_count_from_guard(&guard);

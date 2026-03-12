@@ -76,7 +76,7 @@ impl RpcDaemon {
             self.store
                 .update_receipt_status(message_id, "cancelled")
                 .map_err(std::io::Error::other)?;
-            self.append_delivery_trace(message_id, "cancelled".to_string());
+            self.append_delivery_trace(message_id, "cancelled");
             let event = RpcEvent {
                 event_type: "delivery_cancelled".into(),
                 payload: json!({ "message_id": message_id, "result": "Accepted" }),

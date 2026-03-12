@@ -525,7 +525,7 @@ impl RpcDaemon {
             .map_err(std::io::Error::other)?;
         if !expired_ids.is_empty() {
             for message_id in expired_ids.iter() {
-                self.append_delivery_trace(message_id, "expired".to_string());
+                self.append_delivery_trace(message_id, "expired");
             }
             self.publish_event(RpcEvent {
                 event_type: "store_forward_expired".to_string(),
@@ -565,7 +565,7 @@ impl RpcDaemon {
             .map_err(std::io::Error::other)?;
         if !pruned_ids.is_empty() {
             for message_id in pruned_ids.iter() {
-                self.append_delivery_trace(message_id, "rejected:store_forward_pruned".to_string());
+                self.append_delivery_trace(message_id, "rejected:store_forward_pruned");
             }
             self.publish_event(RpcEvent {
                 event_type: "store_forward_pruned".to_string(),

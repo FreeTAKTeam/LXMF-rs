@@ -462,6 +462,7 @@ async fn send_control_response(
     }
 }
 
+#[allow(clippy::large_enum_variant)]
 enum LinkResponsePacket {
     Direct(Packet),
     Resource(Vec<u8>),

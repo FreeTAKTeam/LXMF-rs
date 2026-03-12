@@ -1,8 +1,17 @@
 # LXMF + Reticulum Full Parity Implementation Plan
 
+> 2026-03-12 update: Reticulum compatibility planning now keys off the
+> published Reticulum API reference and live interoperability proof, not module
+> names alone. Use `docs/contracts/compatibility-matrix.md`,
+> `docs/plans/reticulum-parity-matrix.md`, and
+> `docs/contracts/external-client-interop-acceptance-v1.md` as the current
+> Reticulum planning sources of truth. Until those gates are satisfied, this
+> repository should be described as an in-progress Reticulum implementation, not
+> as `Reticulum`.
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-Last updated: 2026-01-26
+Last updated: 2026-03-12
 
 **Goal:** Achieve byte‑exact and behavioral parity between Python LXMF/Reticulum and Rust LXMF‑rs/Reticulum‑rs, including CLI behavior, storage formats, and transport semantics.
 

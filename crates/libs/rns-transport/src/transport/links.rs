@@ -129,10 +129,7 @@ impl Transport {
         data: Vec<u8>,
         metadata: Option<Vec<u8>>,
     ) -> Result<Hash, RnsError> {
-        let link = self
-            .find_in_link(link_id)
-            .await
-            .ok_or(RnsError::InvalidArgument)?;
+        let link = self.find_in_link(link_id).await.ok_or(RnsError::InvalidArgument)?;
         let (resource_hash, packet) = {
             let mut handler = self.handler.lock().await;
             let link_guard = link.lock().await;

@@ -71,7 +71,7 @@ impl FaultInjectingMockTransport {
     }
 
     fn should_trigger(step: usize, n: usize) -> bool {
-        n > 0 && step > 0 && step.is_multiple_of(n)
+        n > 0 && step > 0 && step % n == 0
     }
 }
 

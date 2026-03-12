@@ -422,7 +422,7 @@ impl RpcDaemon {
                     }
                 };
                 if updated {
-                    self.append_delivery_trace(&message_id, status.clone());
+                    self.append_delivery_trace(&message_id, status.as_str());
                 }
                 let reason_code = delivery_reason_code(&status);
                 let event = RpcEvent {

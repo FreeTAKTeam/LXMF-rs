@@ -556,7 +556,7 @@ fn show_remote_status_and_peers(
     )?);
     let status = response.get("status").cloned().unwrap_or(response.clone());
 
-    if args.status || (!args.status && !args.peers) {
+    if args.status || !args.peers {
         print_remote_status_summary(&status);
     }
     if args.peers {
@@ -1606,15 +1606,13 @@ fn is_single_toml_config(path: &Path) -> Result<bool, String> {
     if table.contains_key("lxmd") && table.len() == 1 {
         return Ok(false);
     }
-    Ok(
-        table.contains_key("node")
-            || table.contains_key("rpc")
-            || table.contains_key("transport")
-            || table.contains_key("storage")
-            || table.contains_key("propagation")
-            || table.contains_key("lxmf")
-            || table.contains_key("interfaces"),
-    )
+    Ok(table.contains_key("node")
+        || table.contains_key("rpc")
+        || table.contains_key("transport")
+        || table.contains_key("storage")
+        || table.contains_key("propagation")
+        || table.contains_key("lxmf")
+        || table.contains_key("interfaces"))
 }
 
 fn apply_single_toml_config(
@@ -1690,10 +1688,7 @@ fn apply_single_toml_config(
 fn resolve_config_path(value: Option<&Path>, config_path: &Path, default: &Path) -> PathBuf {
     match value {
         Some(path) if path.is_absolute() => path.to_path_buf(),
-        Some(path) => config_path
-            .parent()
-            .unwrap_or_else(|| Path::new("."))
-            .join(path),
+        Some(path) => config_path.parent().unwrap_or_else(|| Path::new(".")).join(path),
         None => default.to_path_buf(),
     }
 }
@@ -1842,8 +1837,7 @@ mod tests {
     use super::{
         apply_config_file, compact_json, compatibility_notes, decode_rpc_frame, encode_rpc_frame,
         is_single_toml_config, json_env, load_effective_args, parse_python_lxmd_config,
-        prepare_lxmd_paths,
-        requires_supervised_launch, sanitize_file_name, EffectiveArgs,
+        prepare_lxmd_paths, requires_supervised_launch, sanitize_file_name, EffectiveArgs,
     };
     use clap::Parser;
     use serde_json::json;
@@ -1998,16 +1992,14 @@ port = 4242
         assert!(effective.propagation_node);
         assert_eq!(effective.on_inbound.as_deref(), Some("echo hi"));
         assert_eq!(effective.python_compat.autopeer_maxdepth, Some(7));
-        assert_eq!(
-            effective.db.as_deref(),
-            Some(temp.path().join("state/reticulum.db").as_path())
-        );
+        assert_eq!(effective.db.as_deref(), Some(temp.path().join("state/reticulum.db").as_path()));
         assert_eq!(
             effective.identity.as_deref(),
             Some(temp.path().join("state/identity").as_path())
         );
         let generated = temp.path().join(super::GENERATED_RETICULUMD_CONFIG);
-        let generated_contents = fs::read_to_string(&generated).expect("generated reticulum config");
+        let generated_contents =
+            fs::read_to_string(&generated).expect("generated reticulum config");
         assert!(generated_contents.contains("host = \"rmap.world\""));
         assert!(generated_contents.contains("port = 4242"));
     }

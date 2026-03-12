@@ -27,6 +27,7 @@ impl RpcDaemon {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn apply_sdk_command_update(
         &self,
         correlation_id: &str,
@@ -48,7 +49,7 @@ impl RpcDaemon {
             if let Some(accepted) = accepted {
                 session.accepted = Some(accepted);
             }
-            if let Some(payload) = payload.clone() {
+            if let Some(payload) = payload {
                 session.response_payload = Some(payload);
             }
             if let Some(delivery_state) = delivery_state {
@@ -81,6 +82,7 @@ impl RpcDaemon {
         Ok(Some(updated_session))
     }
 
+    #[allow(clippy::type_complexity)]
     fn inbound_sdk_command_update(
         record: &MessageRecord,
     ) -> Option<(
@@ -94,8 +96,7 @@ impl RpcDaemon {
     )> {
         let fields = record.fields.as_ref()?.as_object()?;
         let command = fields.get("sdk_command")?.as_object()?;
-        let correlation_id =
-            Self::normalize_non_empty(command.get("correlation_id")?.as_str()?)?.to_owned();
+        let correlation_id = Self::normalize_non_empty(command.get("correlation_id")?.as_str()?)?;
         let event = Self::normalize_non_empty(command.get("event")?.as_str()?)?;
         let accepted = command.get("accepted").and_then(JsonValue::as_bool);
         let payload = command.get("payload").cloned();
@@ -158,7 +159,15 @@ impl RpcDaemon {
         &self,
         record: &MessageRecord,
     ) -> Result<bool, std::io::Error> {
-        let Some((correlation_id, event_type, accepted, payload, extensions, delivery_state, command_state)) =
+        let Some((
+            correlation_id,
+            event_type,
+            accepted,
+            payload,
+            extensions,
+            delivery_state,
+            command_state,
+        )) =
             Self::inbound_sdk_command_update(record)
         else {
             return Ok(false);
@@ -239,15 +248,18 @@ impl RpcDaemon {
                 .get_message(message_id.as_str())
                 .map_err(std::io::Error::other)?
                 .and_then(|stored| stored.receipt_status);
-            let should_mark_generated = existing_status.as_deref().is_none_or(|status| {
-                let normalized = status.trim().to_ascii_lowercase();
-                !normalized.starts_with("sent") && !Self::is_terminal_receipt_status(status)
-            });
+            let should_mark_generated = match existing_status.as_deref() {
+                Some(status) => {
+                    let normalized = status.trim().to_ascii_lowercase();
+                    !normalized.starts_with("sent") && !Self::is_terminal_receipt_status(status)
+                }
+                None => true,
+            };
             if should_mark_generated {
                 self.store
                     .update_receipt_status(message_id.as_str(), paper_status.as_str())
                     .map_err(std::io::Error::other)?;
-                self.append_delivery_trace(message_id.as_str(), paper_status);
+                self.append_delivery_trace(message_id.as_str(), paper_status.as_str());
             }
         }
         let envelope = json!({

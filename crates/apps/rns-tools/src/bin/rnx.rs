@@ -623,6 +623,7 @@ fn sha256_hex(bytes: &[u8]) -> String {
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+#[allow(clippy::too_many_arguments)]
 fn run_camera_capture_upload(
     rpc: String,
     peripheral_id: String,
@@ -696,11 +697,11 @@ fn capture_camera_over_ble(
         let peripheral =
             match find_peripheral(&adapter, peripheral_id, Some(service_uuid), timeout).await {
                 Ok(peripheral) => peripheral,
-                Err(error) => {
+                Err(_error) => {
                     #[cfg(target_os = "macos")]
                     {
                         return Err(io::Error::other(format!(
-                        "{error}; on macOS use `rnx ble-find-camera` first and pass the returned id"
+                        "{_error}; on macOS use `rnx ble-find-camera` first and pass the returned id"
                     )));
                     }
                     #[cfg(not(target_os = "macos"))]
@@ -886,7 +887,7 @@ fn run_ble_scan(
                 continue;
             };
             if let Some(expected_service) = service_filter {
-                if !properties.services.iter().any(|service| *service == expected_service) {
+                if !properties.services.contains(&expected_service) {
                     continue;
                 }
             }
@@ -983,13 +984,12 @@ fn run_ble_find_camera(
             for (_, rssi, peripheral, name) in candidates {
                 let id = peripheral.id().to_string();
                 let connected = peripheral.is_connected().await.map_err(io::Error::other)?;
-                if !connected {
-                    if tokio::time::timeout(Duration::from_millis(650), peripheral.connect())
+                if !connected
+                    && tokio::time::timeout(Duration::from_millis(650), peripheral.connect())
                         .await
                         .is_err()
-                    {
-                        continue;
-                    }
+                {
+                    continue;
                 }
                 if peripheral.discover_services().await.is_err() {
                     let _ = peripheral.disconnect().await;
@@ -1020,6 +1020,7 @@ fn run_ble_find_camera(
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+#[allow(clippy::too_many_arguments)]
 fn run_ble_native_peer(
     scan_secs: u64,
     name_hint: String,
@@ -1206,6 +1207,7 @@ fn run_ble_native_peer(
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+#[allow(clippy::too_many_arguments)]
 fn run_ble_native_bridge(
     scan_secs: u64,
     name_hint: String,
@@ -1446,6 +1448,7 @@ struct TcpSessionOutcome {
     capture_bytes: Option<Vec<u8>>,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn handle_tcp_native_session(
     label: &str,
     peer_addr: std::net::SocketAddr,
@@ -1653,6 +1656,7 @@ fn handle_tcp_native_session(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_tcp_native_listener(
     bind: String,
     serve: bool,
@@ -1727,6 +1731,7 @@ fn run_tcp_native_listener(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_tcp_native_bridge(
     bind: String,
     serve: bool,
@@ -1964,13 +1969,12 @@ async fn find_camera_peripheral_by_profile(
         candidates.sort_by_key(|(rank, _)| *rank);
         for (_, peripheral) in candidates {
             let connected = peripheral.is_connected().await.map_err(io::Error::other)?;
-            if !connected {
-                if tokio::time::timeout(Duration::from_millis(700), peripheral.connect())
+            if !connected
+                && tokio::time::timeout(Duration::from_millis(700), peripheral.connect())
                     .await
                     .is_err()
-                {
-                    continue;
-                }
+            {
+                continue;
             }
             if peripheral.discover_services().await.is_err() {
                 let _ = peripheral.disconnect().await;

@@ -194,15 +194,19 @@ impl RpcDaemon {
             }
         }
     }
-    fn append_delivery_trace(&self, message_id: &str, status: String) {
+    fn append_delivery_trace(&self, message_id: &str, status: &str) {
         const MAX_DELIVERY_TRACE_ENTRIES: usize = 32;
         const MAX_TRACKED_MESSAGE_TRACES: usize = 2048;
 
         let timestamp = now_i64();
-        let reason_code = delivery_reason_code(&status).map(ToOwned::to_owned);
+        let reason_code = delivery_reason_code(status).map(ToOwned::to_owned);
         let mut guard = self.delivery_traces.lock().expect("delivery traces mutex poisoned");
         let entry = guard.entry(message_id.to_string()).or_default();
-        entry.push(DeliveryTraceEntry { status, timestamp, reason_code });
+        entry.push(DeliveryTraceEntry {
+            status: status.to_string(),
+            timestamp,
+            reason_code,
+        });
         if entry.len() > MAX_DELIVERY_TRACE_ENTRIES {
             let drain_count = entry.len().saturating_sub(MAX_DELIVERY_TRACE_ENTRIES);
             entry.drain(0..drain_count);

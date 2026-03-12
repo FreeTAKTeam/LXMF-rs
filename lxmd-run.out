@@ -1,0 +1,4 @@
+[daemon] delivery destination hash=5e6628c9a5656f80366c64150a32a087
+[daemon] propagation destination hash=6dee4caf17f87a1051504791002c8786
+[daemon] control destination hash=f2e29f00e8ddda9f81d1845a7224793e
+reticulumd listening on http://127.0.0.1:4243

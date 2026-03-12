@@ -230,11 +230,8 @@ impl ResourceManager {
         }
         if let Some(packet) = proof_packet {
             responses.push(packet);
-            return;
-        }
-        if let Some(packet) = request_packet {
+        } else if let Some(packet) = request_packet {
             responses.push(packet);
-            return;
         }
     }
 

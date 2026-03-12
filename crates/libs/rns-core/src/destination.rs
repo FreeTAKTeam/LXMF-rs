@@ -512,6 +512,7 @@ fn create_address_hash<I: HashIdentity>(identity: &I, name: &DestinationName) ->
     ))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn verify_announce_with_buffer(
     identity: &Identity,
     destination: &[u8],

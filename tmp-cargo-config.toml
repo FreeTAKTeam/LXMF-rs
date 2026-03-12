@@ -9,5 +9,4 @@ architecture-checks = "xtask architecture-checks"
 
 [build]
 target-dir = "target"
-# Disable the legacy Unix-only rustc wrapper when running on Windows.
 rustc-wrapper = ""
