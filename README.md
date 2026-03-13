@@ -1,5 +1,7 @@
 # LXMF-rs Monorepo
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/FreeTAKTeam/LXMF-rs)
+
 Rust monorepo for LXMF and Reticulum with strict library/app boundaries and enterprise quality gates.
 
 ## Repository Layout
