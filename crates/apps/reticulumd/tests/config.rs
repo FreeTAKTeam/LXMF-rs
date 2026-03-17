@@ -45,6 +45,37 @@ fn filters_enabled_tcp_clients() {
 }
 
 #[test]
+fn filters_enabled_tcp_servers_with_default_host() {
+    let cfg = DaemonConfig {
+        interfaces: vec![
+            InterfaceConfig {
+                kind: "tcp_server".into(),
+                enabled: Some(true),
+                host: None,
+                port: Some(4242),
+                ..InterfaceConfig::default()
+            },
+            InterfaceConfig {
+                kind: "tcp_server".into(),
+                enabled: Some(true),
+                host: Some("127.0.0.1".into()),
+                port: Some(4243),
+                ..InterfaceConfig::default()
+            },
+            InterfaceConfig {
+                kind: "tcp_server".into(),
+                enabled: Some(false),
+                host: Some("192.0.2.1".into()),
+                port: Some(9999),
+                ..InterfaceConfig::default()
+            },
+        ],
+    };
+    let endpoints = cfg.tcp_server_endpoints();
+    assert_eq!(endpoints, vec![("0.0.0.0".to_string(), 4242), ("127.0.0.1".to_string(), 4243)]);
+}
+
+#[test]
 fn parses_enabled_serial_interface_with_settings() {
     let input = r#"
 interfaces = [

@@ -1500,6 +1500,11 @@ fn apply_python_config_file(
     let contents = fs::read_to_string(&paths.config_file)
         .map_err(|err| format!("failed to read {}: {err}", paths.config_file.display()))?;
     let sections = parse_python_lxmd_config(&contents);
+    let interfaces = parse_python_reticulum_interfaces(&contents);
+    if !interfaces.is_empty() {
+        write_generated_reticulumd_config(paths.generated_rnsconfig.as_path(), &interfaces)?;
+        effective.rnsconfig = Some(paths.generated_rnsconfig.clone());
+    }
 
     if let Some(lxmf) = sections.get("lxmf") {
         if let Some(value) = lxmf.get("display_name").filter(|value| !value.is_empty()) {
@@ -1606,15 +1611,13 @@ fn is_single_toml_config(path: &Path) -> Result<bool, String> {
     if table.contains_key("lxmd") && table.len() == 1 {
         return Ok(false);
     }
-    Ok(
-        table.contains_key("node")
-            || table.contains_key("rpc")
-            || table.contains_key("transport")
-            || table.contains_key("storage")
-            || table.contains_key("propagation")
-            || table.contains_key("lxmf")
-            || table.contains_key("interfaces"),
-    )
+    Ok(table.contains_key("node")
+        || table.contains_key("rpc")
+        || table.contains_key("transport")
+        || table.contains_key("storage")
+        || table.contains_key("propagation")
+        || table.contains_key("lxmf")
+        || table.contains_key("interfaces"))
 }
 
 fn apply_single_toml_config(
@@ -1690,10 +1693,7 @@ fn apply_single_toml_config(
 fn resolve_config_path(value: Option<&Path>, config_path: &Path, default: &Path) -> PathBuf {
     match value {
         Some(path) if path.is_absolute() => path.to_path_buf(),
-        Some(path) => config_path
-            .parent()
-            .unwrap_or_else(|| Path::new("."))
-            .join(path),
+        Some(path) => config_path.parent().unwrap_or_else(|| Path::new(".")).join(path),
         None => default.to_path_buf(),
     }
 }
@@ -1751,6 +1751,108 @@ fn parse_python_lxmd_config(
     }
 
     sections
+}
+
+fn parse_python_reticulum_interfaces(input: &str) -> Vec<SingleTomlInterface> {
+    #[derive(Default)]
+    struct PythonIface {
+        name: Option<String>,
+        iface_type: Option<String>,
+        enabled: Option<bool>,
+        host: Option<String>,
+        port: Option<u16>,
+    }
+
+    fn push_current(out: &mut Vec<SingleTomlInterface>, current: Option<PythonIface>) {
+        let Some(current) = current else {
+            return;
+        };
+        let Some(raw_type) = current.iface_type.as_deref().map(|value| value.trim()) else {
+            return;
+        };
+        let mapped_type = match raw_type.to_ascii_lowercase().as_str() {
+            "tcpserverinterface" | "tcp_server" => "tcp_server",
+            "tcpclientinterface" | "tcp_client" => "tcp_client",
+            _ => return,
+        };
+        let Some(port) = current.port else {
+            return;
+        };
+        out.push(SingleTomlInterface {
+            interface_type: mapped_type.to_string(),
+            enabled: current.enabled.unwrap_or(true),
+            name: current.name,
+            host: current.host,
+            port: Some(port),
+        });
+    }
+
+    let mut parsed = Vec::new();
+    let mut in_interfaces = false;
+    let mut current: Option<PythonIface> = None;
+
+    for raw_line in input.lines() {
+        let line = raw_line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+
+        if line.starts_with('[') && line.ends_with(']') {
+            if line.starts_with("[[") && line.ends_with("]]") {
+                if !in_interfaces {
+                    continue;
+                }
+                push_current(&mut parsed, current.take());
+                let name = line[2..line.len() - 2].trim();
+                current = Some(PythonIface {
+                    name: (!name.is_empty()).then_some(name.to_string()),
+                    ..PythonIface::default()
+                });
+                continue;
+            }
+
+            push_current(&mut parsed, current.take());
+            let section = line[1..line.len() - 1].trim().to_ascii_lowercase();
+            in_interfaces = section == "interfaces";
+            continue;
+        }
+
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        if !in_interfaces {
+            continue;
+        }
+        let Some(current) = current.as_mut() else {
+            continue;
+        };
+        let key = key.trim().to_ascii_lowercase();
+        let value = strip_inline_comment(value).trim();
+        match key.as_str() {
+            "type" => current.iface_type = Some(value.to_string()),
+            "enabled" => current.enabled = parse_python_bool(value),
+            "target_host" | "host" => current.host = Some(value.to_string()),
+            "target_port" | "listen_port" | "port" => {
+                current.port = value.parse::<u16>().ok();
+            }
+            "listen_ip" => {
+                if !value.is_empty() {
+                    current.host = Some(value.to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+
+    push_current(&mut parsed, current.take());
+    for iface in &mut parsed {
+        if iface.interface_type == "tcp_server"
+            && iface.host.as_deref().map(str::trim).is_none_or(|value| value.is_empty())
+        {
+            iface.host = Some("0.0.0.0".to_string());
+        }
+    }
+    parsed
 }
 
 fn strip_inline_comment(value: &str) -> &str {
@@ -1842,8 +1944,8 @@ mod tests {
     use super::{
         apply_config_file, compact_json, compatibility_notes, decode_rpc_frame, encode_rpc_frame,
         is_single_toml_config, json_env, load_effective_args, parse_python_lxmd_config,
-        prepare_lxmd_paths,
-        requires_supervised_launch, sanitize_file_name, EffectiveArgs,
+        parse_python_reticulum_interfaces, prepare_lxmd_paths, requires_supervised_launch,
+        sanitize_file_name, EffectiveArgs,
     };
     use clap::Parser;
     use serde_json::json;
@@ -1998,17 +2100,75 @@ port = 4242
         assert!(effective.propagation_node);
         assert_eq!(effective.on_inbound.as_deref(), Some("echo hi"));
         assert_eq!(effective.python_compat.autopeer_maxdepth, Some(7));
-        assert_eq!(
-            effective.db.as_deref(),
-            Some(temp.path().join("state/reticulum.db").as_path())
-        );
+        assert_eq!(effective.db.as_deref(), Some(temp.path().join("state/reticulum.db").as_path()));
         assert_eq!(
             effective.identity.as_deref(),
             Some(temp.path().join("state/identity").as_path())
         );
         let generated = temp.path().join(super::GENERATED_RETICULUMD_CONFIG);
-        let generated_contents = fs::read_to_string(&generated).expect("generated reticulum config");
+        let generated_contents =
+            fs::read_to_string(&generated).expect("generated reticulum config");
         assert!(generated_contents.contains("host = \"rmap.world\""));
+        assert!(generated_contents.contains("port = 4242"));
+    }
+
+    #[test]
+    fn python_reticulum_interfaces_parse_tcp_server_and_client() {
+        let interfaces = parse_python_reticulum_interfaces(
+            r#"
+[interfaces]
+  [[Server]]
+    type = TCPServerInterface
+    enabled = yes
+    listen_ip = 0.0.0.0
+    listen_port = 4242
+
+  [[Client]]
+    type = TCPClientInterface
+    enabled = yes
+    target_host = rmap.world
+    target_port = 4243
+"#,
+        );
+        assert_eq!(interfaces.len(), 2);
+        assert_eq!(interfaces[0].interface_type, "tcp_server");
+        assert_eq!(interfaces[0].host.as_deref(), Some("0.0.0.0"));
+        assert_eq!(interfaces[0].port, Some(4242));
+        assert_eq!(interfaces[1].interface_type, "tcp_client");
+        assert_eq!(interfaces[1].host.as_deref(), Some("rmap.world"));
+        assert_eq!(interfaces[1].port, Some(4243));
+    }
+
+    #[test]
+    fn python_config_generates_reticulumd_interfaces_file() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let config_dir = temp.path().join("lxmd");
+        std::fs::create_dir_all(&config_dir).expect("create config dir");
+        let config_path = config_dir.join("config");
+        fs::write(
+            &config_path,
+            r#"
+[propagation]
+enable_node = yes
+
+[interfaces]
+  [[Server]]
+    type = TCPServerInterface
+    enabled = yes
+    listen_port = 4242
+"#,
+        )
+        .expect("write config");
+
+        let args =
+            super::Args::parse_from(["lxmd", "--config", config_path.to_str().expect("utf8 path")]);
+        let effective = load_effective_args(&args).expect("effective args");
+        let generated = config_dir.join(super::GENERATED_RETICULUMD_CONFIG);
+        let generated_contents = fs::read_to_string(&generated).expect("generated config");
+
+        assert_eq!(effective.rnsconfig.as_deref(), Some(generated.as_path()));
+        assert!(generated_contents.contains("type = \"tcp_server\""));
+        assert!(generated_contents.contains("host = \"0.0.0.0\""));
         assert!(generated_contents.contains("port = 4242"));
     }
 

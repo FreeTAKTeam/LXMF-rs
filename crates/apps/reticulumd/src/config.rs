@@ -127,6 +127,30 @@ impl DaemonConfig {
             })
             .collect()
     }
+
+    pub fn enabled_tcp_servers(&self) -> Vec<&InterfaceConfig> {
+        self.interfaces
+            .iter()
+            .filter(|iface| iface.enabled.unwrap_or(false) && iface.kind == "tcp_server")
+            .collect()
+    }
+
+    pub fn tcp_server_endpoints(&self) -> Vec<(String, u16)> {
+        self.enabled_tcp_servers()
+            .iter()
+            .filter_map(|iface| {
+                let port = iface.port?;
+                let host = iface
+                    .host
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("0.0.0.0")
+                    .to_string();
+                Some((host, port))
+            })
+            .collect()
+    }
 }
 
 impl InterfaceConfig {

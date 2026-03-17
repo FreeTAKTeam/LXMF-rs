@@ -29,6 +29,7 @@ Status legend: `not-started` | `partial` | `done`
 - Interface parity is incomplete. The Python reference includes more built-in interface types than the active Rust daemon starts or validates.
 - Utility parity is incomplete. Most `rns-tools` binaries are placeholders while the Python repo ships working utilities.
 - Runtime/config parity is incomplete. The Rust daemon has a narrower set of supported live mutations and startup semantics than the Python reference.
+- `lxmd` TCP server parity is incomplete. Python-style interface-driven server mode is not fully mirrored by the Rust launcher/runtime path without Rust-specific transport overrides.
 - Discovery/bootstrap parity is incomplete. Core announce/path logic exists, but the higher-level interface/discovery story is still narrower than the Python implementation.
 
 ## Reassessment Summary

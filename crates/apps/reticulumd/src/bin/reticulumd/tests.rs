@@ -1,6 +1,6 @@
 use crate::bootstrap::{
     enforce_startup_policy, mark_interface_runtime_fields, mark_interface_startup_status,
-    InterfaceStartupFailure,
+    select_tcp_server_bind, InterfaceStartupFailure,
 };
 use crate::bridge_helpers::opportunistic_payload;
 use crate::interfaces::{lora, serial};
@@ -186,6 +186,50 @@ fn strict_startup_policy_rejects_interface_failures() {
 }
 
 #[test]
+fn select_tcp_server_bind_uses_single_enabled_interface_when_transport_not_set() {
+    let args = test_args(PathBuf::from("/tmp/db"), None, None, false);
+    let config = reticulum_daemon::config::DaemonConfig {
+        interfaces: vec![InterfaceConfig {
+            kind: "tcp_server".to_string(),
+            enabled: Some(true),
+            host: None,
+            port: Some(4242),
+            ..InterfaceConfig::default()
+        }],
+    };
+
+    let selected = select_tcp_server_bind(&args, Some(&config)).expect("select server");
+    assert_eq!(selected.bind_addr.as_deref(), Some("0.0.0.0:4242"));
+    assert_eq!(selected.selected_index, Some(0));
+}
+
+#[test]
+fn select_tcp_server_bind_rejects_multiple_enabled_servers_without_override() {
+    let args = test_args(PathBuf::from("/tmp/db"), None, None, false);
+    let config = reticulum_daemon::config::DaemonConfig {
+        interfaces: vec![
+            InterfaceConfig {
+                kind: "tcp_server".to_string(),
+                enabled: Some(true),
+                host: Some("0.0.0.0".to_string()),
+                port: Some(4242),
+                ..InterfaceConfig::default()
+            },
+            InterfaceConfig {
+                kind: "tcp_server".to_string(),
+                enabled: Some(true),
+                host: Some("127.0.0.1".to_string()),
+                port: Some(4243),
+                ..InterfaceConfig::default()
+            },
+        ],
+    };
+
+    let err = select_tcp_server_bind(&args, Some(&config)).expect_err("multiple servers must fail");
+    assert!(err.contains("multiple enabled tcp_server interfaces"));
+}
+
+#[test]
 fn bootstrap_best_effort_marks_interfaces_inactive_when_transport_is_disabled() {
     let temp = TempDir::new().expect("temp dir");
     let db_path = temp.path().join("reticulum.db");
@@ -225,6 +269,53 @@ interfaces = [
             .and_then(|value| value.get("startup_status"))
             .and_then(|value| value.as_str()),
         Some("inactive_transport_disabled")
+    );
+}
+
+#[test]
+fn bootstrap_starts_tcp_server_from_config_without_transport_flag() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let config_path = temp.path().join("daemon.toml");
+    fs::write(
+        &config_path,
+        r#"
+interfaces = [
+  { type = "tcp_server", enabled = true, name = "server-main", host = "127.0.0.1", port = 0 }
+]
+"#,
+    )
+    .expect("write config");
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    let context = runtime.block_on(async {
+        bootstrap::bootstrap(test_args(db_path.clone(), Some(config_path.clone()), None, false))
+            .await
+    });
+    let response = context
+        .daemon
+        .handle_rpc(RpcRequest { id: 1, method: "list_interfaces".to_string(), params: None })
+        .expect("list_interfaces");
+    let interfaces = response
+        .result
+        .expect("result")
+        .get("interfaces")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .expect("interfaces array");
+
+    let tcp_server = interfaces
+        .iter()
+        .find(|entry| entry.get("type").and_then(|value| value.as_str()) == Some("tcp_server"))
+        .expect("tcp_server entry");
+    assert_eq!(
+        tcp_server
+            .get("settings")
+            .and_then(|value| value.get("_runtime"))
+            .and_then(|value| value.get("startup_status"))
+            .and_then(|value| value.as_str()),
+        Some("active")
     );
 }
 

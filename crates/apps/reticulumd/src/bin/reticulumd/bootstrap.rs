@@ -140,14 +140,25 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     let peer_announce_interval_secs = env_u64("LXMD_PEER_ANNOUNCE_INTERVAL_SECS");
     let node_announce_interval_secs = env_u64("LXMD_NODE_ANNOUNCE_INTERVAL_SECS");
 
-    if let Some(addr) = args.transport.clone() {
-        println!(
-            "{}",
-            pretty_boot_line(
-                "transport",
-                &format!("reticulumd transport listening on reticulum://{}", addr)
-            )
-        );
+    let selected_tcp_server = match select_tcp_server_bind(&args, daemon_config.as_ref()) {
+        Ok(selection) => selection,
+        Err(err) => {
+            panic!("{err}");
+        }
+    };
+    let transport_required = selected_tcp_server.bind_addr.is_some();
+
+    if transport_required {
+        if let Some(addr) = selected_tcp_server.bind_addr.as_ref() {
+            println!(
+                "{}",
+                pretty_boot_line(
+                    "transport",
+                    &format!("reticulumd transport listening on reticulum://{}", addr)
+                )
+            );
+        }
+        println!("{}", pretty_daemon_line("transport enabled"));
         let transport_identity =
             rns_transport::identity_bridge::to_transport_private_identity(&identity);
         let config = TransportConfig::new("daemon", &transport_identity, true);
@@ -159,12 +170,16 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
             )))
             .await;
         let iface_manager = transport_instance.iface_manager();
-        let server_iface = iface_manager
-            .lock()
-            .await
-            .spawn(TcpServer::new(addr.clone(), iface_manager.clone()), TcpServer::spawn);
-        eprintln!("[daemon] tcp_server enabled iface={} bind={}", server_iface, addr);
-        startup_successes += 1;
+        let mut server_iface = None;
+        if let Some(addr) = selected_tcp_server.bind_addr.as_ref() {
+            let active_iface = iface_manager
+                .lock()
+                .await
+                .spawn(TcpServer::new(addr.clone(), iface_manager.clone()), TcpServer::spawn);
+            eprintln!("[daemon] tcp_server enabled iface={} bind={}", active_iface, addr);
+            startup_successes += 1;
+            server_iface = Some(active_iface);
+        }
         if let Some(config) = daemon_config.as_ref() {
             for (index, iface) in config.interfaces.iter().enumerate() {
                 if !iface.enabled() {
@@ -172,6 +187,71 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
                 }
                 let label = interface_label(iface, index);
                 match iface.kind.as_str() {
+                    "tcp_server" => {
+                        let Some(port) = iface.port else {
+                            let err = "tcp_server requires port for startup".to_string();
+                            eprintln!(
+                                "[daemon] tcp_server startup rejected name={} err={}",
+                                label, err
+                            );
+                            mark_interface_startup_status(
+                                &mut configured_interfaces[index],
+                                "failed",
+                                Some(err.as_str()),
+                                None,
+                            );
+                            startup_failures.push(InterfaceStartupFailure {
+                                label,
+                                kind: iface.kind.clone(),
+                                error: err,
+                            });
+                            continue;
+                        };
+                        let host = iface
+                            .host
+                            .as_deref()
+                            .map(str::trim)
+                            .filter(|value| !value.is_empty())
+                            .unwrap_or("0.0.0.0");
+                        let endpoint = format!("{}:{}", host, port);
+                        let startup_status = if selected_tcp_server.selected_index == Some(index) {
+                            "active"
+                        } else {
+                            "skipped_conflicting_server"
+                        };
+                        let startup_error = if selected_tcp_server.selected_index == Some(index) {
+                            None
+                        } else {
+                            Some(
+                                "tcp_server skipped because another bind was selected by launcher configuration",
+                            )
+                        };
+                        let runtime_iface = if selected_tcp_server.selected_index == Some(index) {
+                            server_iface.as_ref().map(ToString::to_string)
+                        } else {
+                            None
+                        };
+                        mark_interface_startup_status(
+                            &mut configured_interfaces[index],
+                            startup_status,
+                            startup_error,
+                            runtime_iface.as_deref(),
+                        );
+                        if selected_tcp_server.selected_index != Some(index) {
+                            startup_failures.push(InterfaceStartupFailure {
+                                label,
+                                kind: iface.kind.clone(),
+                                error: format!(
+                                    "tcp_server endpoint {} ignored because selected endpoint is {}",
+                                    endpoint,
+                                    selected_tcp_server
+                                        .bind_addr
+                                        .as_deref()
+                                        .unwrap_or("<none>")
+                                ),
+                            });
+                        }
+                    }
                     "tcp_client" => {
                         if let (Some(host), Some(port)) = (iface.host.as_ref(), iface.port) {
                             let endpoint = format!("{}:{}", host, port);
@@ -390,8 +470,10 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
                 }
             }
         }
-        eprintln!("{}", pretty_daemon_line("transport enabled"));
-        if let Some((host, port)) = addr.rsplit_once(':') {
+        if let (Some(addr), Some(active_iface)) =
+            (selected_tcp_server.bind_addr.as_ref(), server_iface.as_ref())
+        {
+            let (host, port) = addr.rsplit_once(':').unwrap_or(("0.0.0.0", "0"));
             let mut server_record = InterfaceRecord {
                 kind: "tcp_server".into(),
                 enabled: true,
@@ -400,7 +482,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
                 name: Some("daemon-transport".into()),
                 settings: None,
             };
-            let runtime_iface = server_iface.to_string();
+            let runtime_iface = active_iface.to_string();
             mark_interface_startup_status(
                 &mut server_record,
                 "active",
@@ -752,6 +834,58 @@ fn interface_record_from_config(iface: &InterfaceConfig) -> InterfaceRecord {
         name: iface.name.clone(),
         settings: iface.settings_json(),
     }
+}
+
+#[derive(Debug, Default)]
+pub(super) struct TcpServerSelection {
+    pub(super) bind_addr: Option<String>,
+    pub(super) selected_index: Option<usize>,
+}
+
+pub(super) fn select_tcp_server_bind(
+    args: &Args,
+    daemon_config: Option<&DaemonConfig>,
+) -> Result<TcpServerSelection, String> {
+    if let Some(addr) = args.transport.as_ref() {
+        return Ok(TcpServerSelection { bind_addr: Some(addr.clone()), selected_index: None });
+    }
+
+    let Some(config) = daemon_config else {
+        return Ok(TcpServerSelection::default());
+    };
+
+    let mut matches = Vec::new();
+    for (index, iface) in config.interfaces.iter().enumerate() {
+        if !iface.enabled() || iface.kind != "tcp_server" {
+            continue;
+        }
+        let Some(port) = iface.port else {
+            continue;
+        };
+        let host = iface
+            .host
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("0.0.0.0");
+        matches.push((index, format!("{}:{}", host, port)));
+    }
+
+    if matches.len() > 1 {
+        return Err(format!(
+            "multiple enabled tcp_server interfaces configured without --transport override: {}",
+            matches.iter().map(|(_, endpoint)| endpoint.as_str()).collect::<Vec<_>>().join(", ")
+        ));
+    }
+
+    Ok(matches
+        .into_iter()
+        .next()
+        .map(|(selected_index, bind_addr)| TcpServerSelection {
+            bind_addr: Some(bind_addr),
+            selected_index: Some(selected_index),
+        })
+        .unwrap_or_default())
 }
 
 pub(super) fn mark_interface_startup_status(
