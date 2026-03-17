@@ -204,6 +204,33 @@ fn select_tcp_server_bind_uses_single_enabled_interface_when_transport_not_set()
 }
 
 #[test]
+fn select_tcp_server_bind_prefers_transport_override() {
+    let args = test_args(PathBuf::from("/tmp/db"), None, Some("127.0.0.1:4333".to_string()), false);
+    let config = reticulum_daemon::config::DaemonConfig {
+        interfaces: vec![
+            InterfaceConfig {
+                kind: "tcp_server".to_string(),
+                enabled: Some(true),
+                host: Some("0.0.0.0".to_string()),
+                port: Some(4242),
+                ..InterfaceConfig::default()
+            },
+            InterfaceConfig {
+                kind: "tcp_server".to_string(),
+                enabled: Some(true),
+                host: Some("127.0.0.1".to_string()),
+                port: Some(4243),
+                ..InterfaceConfig::default()
+            },
+        ],
+    };
+
+    let selected = select_tcp_server_bind(&args, Some(&config)).expect("transport override wins");
+    assert_eq!(selected.bind_addr.as_deref(), Some("127.0.0.1:4333"));
+    assert_eq!(selected.selected_index, None);
+}
+
+#[test]
 fn select_tcp_server_bind_rejects_multiple_enabled_servers_without_override() {
     let args = test_args(PathBuf::from("/tmp/db"), None, None, false);
     let config = reticulum_daemon::config::DaemonConfig {
@@ -317,6 +344,59 @@ interfaces = [
             .and_then(|value| value.as_str()),
         Some("active")
     );
+}
+
+#[test]
+fn bootstrap_transport_override_shadows_configured_tcp_servers_without_failure() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let config_path = temp.path().join("daemon.toml");
+    fs::write(
+        &config_path,
+        r#"
+interfaces = [
+  { type = "tcp_server", enabled = true, name = "server-a", host = "127.0.0.1", port = 4242 },
+  { type = "tcp_server", enabled = true, name = "server-b", host = "127.0.0.1", port = 4243 }
+]
+"#,
+    )
+    .expect("write config");
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    let context = runtime.block_on(async {
+        bootstrap::bootstrap(test_args(
+            db_path.clone(),
+            Some(config_path.clone()),
+            Some("127.0.0.1:0".to_string()),
+            true,
+        ))
+        .await
+    });
+    let response = context
+        .daemon
+        .handle_rpc(RpcRequest { id: 1, method: "list_interfaces".to_string(), params: None })
+        .expect("list_interfaces");
+    let interfaces = response
+        .result
+        .expect("result")
+        .get("interfaces")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .expect("interfaces array");
+
+    let shadowed = interfaces
+        .iter()
+        .filter(|entry| {
+            entry
+                .get("settings")
+                .and_then(|value| value.get("_runtime"))
+                .and_then(|value| value.get("startup_status"))
+                .and_then(|value| value.as_str())
+                == Some("shadowed_by_transport_override")
+        })
+        .count();
+    assert!(shadowed >= 2);
 }
 
 #[test]

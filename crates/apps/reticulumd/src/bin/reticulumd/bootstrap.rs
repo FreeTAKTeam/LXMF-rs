@@ -217,13 +217,13 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
                         let startup_status = if selected_tcp_server.selected_index == Some(index) {
                             "active"
                         } else {
-                            "skipped_conflicting_server"
+                            "shadowed_by_transport_override"
                         };
                         let startup_error = if selected_tcp_server.selected_index == Some(index) {
                             None
                         } else {
                             Some(
-                                "tcp_server skipped because another bind was selected by launcher configuration",
+                                "tcp_server ignored because --transport selected the active bind endpoint",
                             )
                         };
                         let runtime_iface = if selected_tcp_server.selected_index == Some(index) {
@@ -238,18 +238,12 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
                             runtime_iface.as_deref(),
                         );
                         if selected_tcp_server.selected_index != Some(index) {
-                            startup_failures.push(InterfaceStartupFailure {
+                            eprintln!(
+                                "[daemon] tcp_server startup skipped name={} endpoint={} selected={}",
                                 label,
-                                kind: iface.kind.clone(),
-                                error: format!(
-                                    "tcp_server endpoint {} ignored because selected endpoint is {}",
-                                    endpoint,
-                                    selected_tcp_server
-                                        .bind_addr
-                                        .as_deref()
-                                        .unwrap_or("<none>")
-                                ),
-                            });
+                                endpoint,
+                                selected_tcp_server.bind_addr.as_deref().unwrap_or("<none>")
+                            );
                         }
                     }
                     "tcp_client" => {
@@ -470,27 +464,29 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
                 }
             }
         }
-        if let (Some(addr), Some(active_iface)) =
-            (selected_tcp_server.bind_addr.as_ref(), server_iface.as_ref())
-        {
-            let (host, port) = addr.rsplit_once(':').unwrap_or(("0.0.0.0", "0"));
-            let mut server_record = InterfaceRecord {
-                kind: "tcp_server".into(),
-                enabled: true,
-                host: Some(host.to_string()),
-                port: port.parse::<u16>().ok(),
-                name: Some("daemon-transport".into()),
-                settings: None,
-            };
-            let runtime_iface = active_iface.to_string();
-            mark_interface_startup_status(
-                &mut server_record,
-                "active",
-                None,
-                Some(runtime_iface.as_str()),
-            );
-            mark_interface_runtime_managed(&mut server_record, "daemon_transport");
-            configured_interfaces.push(server_record);
+        if selected_tcp_server.selected_index.is_none() {
+            if let (Some(addr), Some(active_iface)) =
+                (selected_tcp_server.bind_addr.as_ref(), server_iface.as_ref())
+            {
+                let (host, port) = addr.rsplit_once(':').unwrap_or(("0.0.0.0", "0"));
+                let mut server_record = InterfaceRecord {
+                    kind: "tcp_server".into(),
+                    enabled: true,
+                    host: Some(host.to_string()),
+                    port: port.parse::<u16>().ok(),
+                    name: Some("daemon-transport".into()),
+                    settings: None,
+                };
+                let runtime_iface = active_iface.to_string();
+                mark_interface_startup_status(
+                    &mut server_record,
+                    "active",
+                    None,
+                    Some(runtime_iface.as_str()),
+                );
+                mark_interface_runtime_managed(&mut server_record, "daemon_transport");
+                configured_interfaces.push(server_record);
+            }
         }
 
         let destination = transport_instance
@@ -602,7 +598,8 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
 
     let grpc_summary =
         grpc_addr.map(|addr| addr.to_string()).unwrap_or_else(|| "disabled".to_string());
-    let transport_summary = args.transport.clone().unwrap_or_else(|| "disabled".to_string());
+    let transport_summary =
+        selected_tcp_server.bind_addr.clone().unwrap_or_else(|| "disabled".to_string());
     println!(
         "{}",
         pretty_boot_line(
