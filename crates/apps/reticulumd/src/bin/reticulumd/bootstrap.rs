@@ -188,7 +188,39 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
                 let label = interface_label(iface, index);
                 match iface.kind.as_str() {
                     "tcp_server" => {
-                        let Some(port) = iface.port else {
+                        let selected_for_startup =
+                            selected_tcp_server.selected_index == Some(index);
+                        if !selected_for_startup {
+                            mark_interface_startup_status(
+                                &mut configured_interfaces[index],
+                                "shadowed_by_transport_override",
+                                Some(
+                                    "tcp_server ignored because --transport selected the active bind endpoint",
+                                ),
+                                None,
+                            );
+                            let endpoint = iface
+                                .port
+                                .map(|port| {
+                                    let host = iface
+                                        .host
+                                        .as_deref()
+                                        .map(str::trim)
+                                        .filter(|value| !value.is_empty())
+                                        .unwrap_or("0.0.0.0");
+                                    format!("{}:{}", host, port)
+                                })
+                                .unwrap_or_else(|| "<missing-port>".to_string());
+                            eprintln!(
+                                "[daemon] tcp_server startup skipped name={} endpoint={} selected={}",
+                                label,
+                                endpoint,
+                                selected_tcp_server.bind_addr.as_deref().unwrap_or("<none>")
+                            );
+                            continue;
+                        }
+
+                        if iface.port.is_none() {
                             let err = "tcp_server requires port for startup".to_string();
                             eprintln!(
                                 "[daemon] tcp_server startup rejected name={} err={}",
@@ -206,45 +238,13 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
                                 error: err,
                             });
                             continue;
-                        };
-                        let host = iface
-                            .host
-                            .as_deref()
-                            .map(str::trim)
-                            .filter(|value| !value.is_empty())
-                            .unwrap_or("0.0.0.0");
-                        let endpoint = format!("{}:{}", host, port);
-                        let startup_status = if selected_tcp_server.selected_index == Some(index) {
-                            "active"
-                        } else {
-                            "shadowed_by_transport_override"
-                        };
-                        let startup_error = if selected_tcp_server.selected_index == Some(index) {
-                            None
-                        } else {
-                            Some(
-                                "tcp_server ignored because --transport selected the active bind endpoint",
-                            )
-                        };
-                        let runtime_iface = if selected_tcp_server.selected_index == Some(index) {
-                            server_iface.as_ref().map(ToString::to_string)
-                        } else {
-                            None
-                        };
+                        }
                         mark_interface_startup_status(
                             &mut configured_interfaces[index],
-                            startup_status,
-                            startup_error,
-                            runtime_iface.as_deref(),
+                            "active",
+                            None,
+                            server_iface.as_ref().map(ToString::to_string).as_deref(),
                         );
-                        if selected_tcp_server.selected_index != Some(index) {
-                            eprintln!(
-                                "[daemon] tcp_server startup skipped name={} endpoint={} selected={}",
-                                label,
-                                endpoint,
-                                selected_tcp_server.bind_addr.as_deref().unwrap_or("<none>")
-                            );
-                        }
                     }
                     "tcp_client" => {
                         if let (Some(host), Some(port)) = (iface.host.as_ref(), iface.port) {

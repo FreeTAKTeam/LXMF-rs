@@ -400,6 +400,61 @@ interfaces = [
 }
 
 #[test]
+fn bootstrap_transport_override_shadows_missing_port_tcp_server_without_strict_failure() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let config_path = temp.path().join("daemon.toml");
+    fs::write(
+        &config_path,
+        r#"
+interfaces = [
+  { type = "tcp_server", enabled = true, name = "server-a", host = "127.0.0.1", port = 4242 },
+  { type = "tcp_server", enabled = true, name = "server-b" }
+]
+"#,
+    )
+    .expect("write config");
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    let context = runtime.block_on(async {
+        bootstrap::bootstrap(test_args(
+            db_path.clone(),
+            Some(config_path.clone()),
+            Some("127.0.0.1:0".to_string()),
+            true,
+        ))
+        .await
+    });
+    let response = context
+        .daemon
+        .handle_rpc(RpcRequest { id: 1, method: "list_interfaces".to_string(), params: None })
+        .expect("list_interfaces");
+    let interfaces = response
+        .result
+        .expect("result")
+        .get("interfaces")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .expect("interfaces array");
+
+    let shadowed_missing_port = interfaces.iter().any(|entry| {
+        entry.get("name").and_then(|value| value.as_str()) == Some("server-b")
+            && entry
+                .get("settings")
+                .and_then(|value| value.get("_runtime"))
+                .and_then(|value| value.get("startup_status"))
+                .and_then(|value| value.as_str())
+                == Some("shadowed_by_transport_override")
+    });
+
+    assert!(
+        shadowed_missing_port,
+        "shadowed tcp_server without a port should remain non-fatal under transport override"
+    );
+}
+
+#[test]
 fn bootstrap_strict_mode_panics_when_transport_is_disabled_for_enabled_interfaces() {
     let temp = TempDir::new().expect("temp dir");
     let db_path = temp.path().join("reticulum.db");
