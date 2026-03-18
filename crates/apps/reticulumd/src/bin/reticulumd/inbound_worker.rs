@@ -21,6 +21,15 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
+pub(super) const OUTBOUND_RESOURCE_SENT_STATUS: &str = "sent: link resource";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct OutboundResourceTracking {
+    pub(super) message_id: String,
+    pub(super) peer: String,
+    pub(super) bytes: usize,
+}
+
 fn inbound_payload_mode(mode: ReceivedPayloadMode) -> InboundPayloadMode {
     match mode {
         ReceivedPayloadMode::FullWire => InboundPayloadMode::FullWire,
@@ -33,7 +42,7 @@ pub(super) fn spawn_inbound_worker(
     transport: Arc<Transport>,
     control: PropagationControlContext,
     receipt_tx: tokio::sync::mpsc::UnboundedSender<ReceiptEvent>,
-    outbound_resource_map: Arc<Mutex<HashMap<String, String>>>,
+    outbound_resource_map: Arc<Mutex<HashMap<String, OutboundResourceTracking>>>,
 ) {
     if control.enabled {
         spawn_control_worker(daemon.clone(), transport.clone(), control.clone());
@@ -60,12 +69,20 @@ pub(super) fn spawn_inbound_worker(
                     }
                     ResourceEventKind::OutboundComplete => {
                         let resource_hash_hex = hex::encode(event.hash.as_slice());
-                        if let Some(message_id) = take_outbound_resource_message_id(
+                        if let Some(tracking) = take_outbound_resource_tracking(
                             &outbound_resource_map,
                             resource_hash_hex.as_str(),
                         ) {
+                            daemon.record_outbound_peer_activity(
+                                &tracking.peer,
+                                tracking.bytes,
+                                true,
+                            );
                             let _ = receipt_tx
-                                .send(ReceiptEvent { message_id, status: "delivered".to_string() });
+                                .send(ReceiptEvent {
+                                    message_id: tracking.message_id,
+                                    status: OUTBOUND_RESOURCE_SENT_STATUS.to_string(),
+                                });
                         }
                     }
                     ResourceEventKind::Progress(_) => {}
@@ -527,19 +544,29 @@ fn json_to_rmpv(value: &Value) -> rmpv::Value {
     }
 }
 
-pub(super) fn take_outbound_resource_message_id(
-    outbound_resource_map: &Arc<Mutex<HashMap<String, String>>>,
+pub(super) fn track_outbound_resource(
+    outbound_resource_map: &Arc<Mutex<HashMap<String, OutboundResourceTracking>>>,
+    resource_hash_hex: String,
+    tracking: OutboundResourceTracking,
+) {
+    if let Ok(mut guard) = outbound_resource_map.lock() {
+        guard.insert(resource_hash_hex, tracking);
+    }
+}
+
+pub(super) fn take_outbound_resource_tracking(
+    outbound_resource_map: &Arc<Mutex<HashMap<String, OutboundResourceTracking>>>,
     resource_hash_hex: &str,
-) -> Option<String> {
+) -> Option<OutboundResourceTracking> {
     outbound_resource_map.lock().ok().and_then(|mut guard| guard.remove(resource_hash_hex))
 }
 
 pub(super) fn prune_outbound_resource_mappings_for_message(
-    outbound_resource_map: &Arc<Mutex<HashMap<String, String>>>,
+    outbound_resource_map: &Arc<Mutex<HashMap<String, OutboundResourceTracking>>>,
     message_id: &str,
 ) {
     if let Ok(mut guard) = outbound_resource_map.lock() {
-        guard.retain(|_, mapped_message_id| mapped_message_id != message_id);
+        guard.retain(|_, tracking| tracking.message_id != message_id);
     }
 }
 

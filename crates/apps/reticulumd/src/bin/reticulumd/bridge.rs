@@ -2,6 +2,7 @@ use super::bridge_helpers::{
     diagnostics_enabled, log_delivery_trace, opportunistic_payload, payload_preview,
     send_trace_detail,
 };
+use super::inbound_worker::{track_outbound_resource, OutboundResourceTracking};
 use reticulum_daemon::lxmf_bridge::build_wire_message;
 use reticulum_daemon::lxmf_bridge::rmpv_to_json;
 use reticulum_daemon::receipt_bridge::{track_receipt_mapping, ReceiptEvent};
@@ -40,7 +41,7 @@ pub(super) struct TransportBridge {
     control_announce_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>>,
     peer_crypto: Arc<Mutex<HashMap<String, PeerCrypto>>>,
     receipt_map: Arc<Mutex<HashMap<String, String>>>,
-    outbound_resource_map: Arc<Mutex<HashMap<String, String>>>,
+    outbound_resource_map: Arc<Mutex<HashMap<String, OutboundResourceTracking>>>,
     receipt_tx: tokio::sync::mpsc::UnboundedSender<ReceiptEvent>,
 }
 
@@ -62,7 +63,7 @@ impl TransportBridge {
         control_announce_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>>,
         peer_crypto: Arc<Mutex<HashMap<String, PeerCrypto>>>,
         receipt_map: Arc<Mutex<HashMap<String, String>>>,
-        outbound_resource_map: Arc<Mutex<HashMap<String, String>>>,
+        outbound_resource_map: Arc<Mutex<HashMap<String, OutboundResourceTracking>>>,
         receipt_tx: tokio::sync::mpsc::UnboundedSender<ReceiptEvent>,
     ) -> Self {
         Self {
@@ -94,7 +95,7 @@ struct DeliveryTask {
     transport: Arc<Transport>,
     peer_crypto: Arc<Mutex<HashMap<String, PeerCrypto>>>,
     receipt_map: Arc<Mutex<HashMap<String, String>>>,
-    outbound_resource_map: Arc<Mutex<HashMap<String, String>>>,
+    outbound_resource_map: Arc<Mutex<HashMap<String, OutboundResourceTracking>>>,
     receipt_tx: tokio::sync::mpsc::UnboundedSender<ReceiptEvent>,
     message_id: String,
     destination: [u8; 16],
@@ -196,11 +197,16 @@ impl DeliveryTask {
                     receipt_tx.send(ReceiptEvent { message_id, status: "sent: link".to_string() });
             }
             Ok(LinkSendResult::Resource(resource_hash)) => {
-                daemon.record_outbound_peer_activity(&destination_hex, payload.len(), true);
                 let resource_hash_hex = hex::encode(resource_hash.as_slice());
-                if let Ok(mut guard) = outbound_resource_map.lock() {
-                    guard.insert(resource_hash_hex.clone(), message_id.clone());
-                }
+                track_outbound_resource(
+                    &outbound_resource_map,
+                    resource_hash_hex.clone(),
+                    OutboundResourceTracking {
+                        message_id: message_id.clone(),
+                        peer: destination_hex.clone(),
+                        bytes: payload.len(),
+                    },
+                );
                 let detail = format!("resource_hash={resource_hash_hex}");
                 log_delivery_trace(&message_id, &destination_hex, "link", &detail);
                 let _ = receipt_tx.send(ReceiptEvent {
