@@ -35,6 +35,7 @@ const KEEPALIVE_MAX_SECS: f32 = 360.0;
 const KEEPALIVE_MIN_SECS: f32 = 5.0;
 const STALE_FACTOR: f32 = 2.0;
 const CHANNEL_RX_WINDOW_MAX: u16 = 48;
+const CHANNEL_RTT_SLOW_SECS: f32 = 1.45;
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum LinkStatus {
@@ -478,6 +479,9 @@ impl Link {
         if self.status != LinkStatus::Active {
             return Err(ChannelError::LinkNotReady);
         }
+        if self.channel_pending.len() >= self.channel_send_window() {
+            return Err(ChannelError::LinkNotReady);
+        }
 
         let sequence = self.next_channel_sequence;
         self.next_channel_sequence = self.next_channel_sequence.wrapping_add(1);
@@ -491,6 +495,14 @@ impl Link {
 
     pub fn channel_state(&self, sequence: u16) -> ChannelMessageState {
         self.channel_states.get(&sequence).copied().unwrap_or(ChannelMessageState::New)
+    }
+
+    fn channel_send_window(&self) -> usize {
+        if self.rtt.as_secs_f32() > CHANNEL_RTT_SLOW_SECS {
+            1
+        } else {
+            2
+        }
     }
 
     fn packet_with_context(&self, data: &[u8], context: PacketContext) -> Result<Packet, RnsError> {
@@ -1160,6 +1172,78 @@ mod tests {
         let result = catch_unwind(AssertUnwindSafe(|| outbound.handle_packet(&packet, iface)));
         assert!(result.is_ok(), "channel handler panic should be contained");
         assert!(matches!(result.unwrap(), LinkHandleResult::Proof(_)));
+    }
+
+    #[test]
+    fn channel_send_window_limits_outstanding_messages_until_proved() {
+        let signer = PrivateIdentity::new_from_rand(OsRng);
+        let identity = *signer.as_identity();
+        let destination = DestinationDesc {
+            identity,
+            address_hash: identity.address_hash,
+            name: DestinationName::new("lxmf", "delivery"),
+        };
+        let (tx, _) = tokio::sync::broadcast::channel(8);
+
+        let mut outbound = Link::new(destination, tx.clone());
+        let request = outbound.request();
+        let mut inbound =
+            Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
+                .expect("link request should parse");
+        let iface = AddressHash::new_from_rand(OsRng);
+        assert!(matches!(
+            outbound.handle_packet(&inbound.prove(), iface),
+            LinkHandleResult::Activated
+        ));
+        inbound.register_channel_handler(0x7000, |_| true);
+
+        let (_first_sequence, first_packet) = outbound
+            .send_channel_message(0x7000, b"first".to_vec())
+            .expect("first channel message");
+        let (_second_sequence, _second_packet) = outbound
+            .send_channel_message(0x7000, b"second".to_vec())
+            .expect("second channel message");
+        assert!(matches!(
+            outbound.send_channel_message(0x7000, b"third".to_vec()),
+            Err(ChannelError::LinkNotReady)
+        ));
+
+        let proof = match inbound.handle_packet(&first_packet, iface) {
+            LinkHandleResult::Proof(proof) => proof,
+            _ => panic!("first channel packet should generate proof"),
+        };
+        assert!(matches!(outbound.handle_packet(&proof, iface), LinkHandleResult::None));
+        assert!(outbound.send_channel_message(0x7000, b"third".to_vec()).is_ok());
+    }
+
+    #[test]
+    fn slow_rtt_links_start_with_single_channel_slot() {
+        let signer = PrivateIdentity::new_from_rand(OsRng);
+        let identity = *signer.as_identity();
+        let destination = DestinationDesc {
+            identity,
+            address_hash: identity.address_hash,
+            name: DestinationName::new("lxmf", "delivery"),
+        };
+        let (tx, _) = tokio::sync::broadcast::channel(8);
+
+        let mut outbound = Link::new(destination, tx.clone());
+        let request = outbound.request();
+        let mut inbound =
+            Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
+                .expect("link request should parse");
+        let iface = AddressHash::new_from_rand(OsRng);
+        assert!(matches!(
+            outbound.handle_packet(&inbound.prove(), iface),
+            LinkHandleResult::Activated
+        ));
+
+        outbound.rtt = Duration::from_secs_f32(1.6);
+        assert!(outbound.send_channel_message(0x7001, b"first".to_vec()).is_ok());
+        assert!(matches!(
+            outbound.send_channel_message(0x7001, b"second".to_vec()),
+            Err(ChannelError::LinkNotReady)
+        ));
     }
 
     #[test]
