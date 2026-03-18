@@ -28,6 +28,7 @@ pub(super) struct OutboundResourceTracking {
     pub(super) message_id: String,
     pub(super) peer: String,
     pub(super) bytes: usize,
+    pub(super) sent_status: String,
 }
 
 fn inbound_payload_mode(mode: ReceivedPayloadMode) -> InboundPayloadMode {
@@ -80,7 +81,7 @@ pub(super) fn spawn_inbound_worker(
                             );
                             let _ = receipt_tx.send(ReceiptEvent {
                                 message_id: tracking.message_id,
-                                status: OUTBOUND_RESOURCE_SENT_STATUS.to_string(),
+                                status: tracking.sent_status,
                             });
                         }
                     }

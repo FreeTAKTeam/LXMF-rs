@@ -178,6 +178,13 @@ impl RpcDaemon {
         });
     }
 
+    pub fn outbound_propagation_node(&self) -> Option<String> {
+        self.outbound_propagation_node
+            .lock()
+            .expect("propagation node mutex poisoned")
+            .clone()
+    }
+
     pub fn message_storage_stats(&self) -> Result<(u64, u64), std::io::Error> {
         let stats = self.store.message_storage_stats().map_err(std::io::Error::other)?;
         Ok((stats.count, stats.bytes))

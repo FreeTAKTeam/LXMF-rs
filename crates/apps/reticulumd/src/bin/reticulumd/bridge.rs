@@ -2,12 +2,18 @@ use super::bridge_helpers::{
     diagnostics_enabled, log_delivery_trace, opportunistic_payload, payload_preview,
     send_trace_detail,
 };
-use super::inbound_worker::{track_outbound_resource, OutboundResourceTracking};
+use super::inbound_worker::{
+    track_outbound_resource, OutboundResourceTracking, OUTBOUND_RESOURCE_SENT_STATUS,
+};
+use lxmf::WireMessage;
+use rand_core::OsRng;
 use reticulum_daemon::lxmf_bridge::build_wire_message;
 use reticulum_daemon::lxmf_bridge::rmpv_to_json;
 use reticulum_daemon::receipt_bridge::{track_receipt_mapping, ReceiptEvent};
-use rns_core::identity::PrivateIdentity;
-use rns_rpc::{AnnounceBridge, OutboundBridge, RemoteControlBridge, RpcDaemon};
+use rns_core::identity::{Identity as CoreIdentity, PrivateIdentity};
+use rns_rpc::{
+    AnnounceBridge, OutboundBridge, OutboundDeliveryOptions, RemoteControlBridge, RpcDaemon,
+};
 use rns_transport::delivery::await_link_activation;
 use rns_transport::delivery::{
     send_outcome_is_sent, send_outcome_status, send_via_link, LinkSendResult,
@@ -90,6 +96,52 @@ impl TransportBridge {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RequestedDeliveryMethod {
+    Opportunistic,
+    Direct,
+    Propagated,
+    Paper,
+}
+
+impl RequestedDeliveryMethod {
+    pub(crate) fn parse(method: Option<&str>) -> Result<Self, std::io::Error> {
+        let normalized = method.map(str::trim).unwrap_or_default().to_ascii_lowercase();
+        match normalized.as_str() {
+            "" | "direct" => Ok(Self::Direct),
+            "opportunistic" => Ok(Self::Opportunistic),
+            "propagated" => Ok(Self::Propagated),
+            "paper" => Ok(Self::Paper),
+            other => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("unsupported delivery method '{other}'"),
+            )),
+        }
+    }
+}
+
+pub(crate) fn validate_delivery_request(
+    method: RequestedDeliveryMethod,
+    propagation_node: Option<&str>,
+) -> Result<(), std::io::Error> {
+    match method {
+        RequestedDeliveryMethod::Propagated => {
+            if propagation_node.is_none() {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "no outbound propagation node selected",
+                ));
+            }
+            Ok(())
+        }
+        RequestedDeliveryMethod::Paper => Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "paper delivery is not supported by the transport bridge",
+        )),
+        RequestedDeliveryMethod::Opportunistic | RequestedDeliveryMethod::Direct => Ok(()),
+    }
+}
+
 struct DeliveryTask {
     daemon: Arc<RpcDaemon>,
     transport: Arc<Transport>,
@@ -103,85 +155,297 @@ struct DeliveryTask {
     destination_hex: String,
     payload: Vec<u8>,
     peer_identity: Option<Identity>,
+    requested_method: RequestedDeliveryMethod,
+    try_propagation_on_fail: bool,
+    propagation_node_hex: Option<String>,
 }
 
 impl DeliveryTask {
     async fn run(self) {
-        let Self {
-            daemon,
-            transport,
-            peer_crypto,
-            receipt_map,
-            outbound_resource_map,
-            receipt_tx,
-            message_id,
-            destination,
-            destination_hash,
-            destination_hex,
-            payload,
-            peer_identity,
-        } = self;
+        log_delivery_trace(&self.message_id, &self.destination_hex, "start", "delivery requested");
+        match self.requested_method {
+            RequestedDeliveryMethod::Direct => self.run_direct().await,
+            RequestedDeliveryMethod::Opportunistic => self.run_opportunistic().await,
+            RequestedDeliveryMethod::Propagated => self.run_propagated().await,
+            RequestedDeliveryMethod::Paper => {
+                let _ = self.receipt_tx.send(ReceiptEvent {
+                    message_id: self.message_id,
+                    status: "failed: paper delivery is not supported by the transport bridge"
+                        .to_string(),
+                });
+            }
+        }
+    }
 
-        log_delivery_trace(&message_id, &destination_hex, "start", "delivery requested");
-        let mut identity = peer_identity;
-        // Refresh routing for the destination before link setup.
-        transport.request_path(&destination_hash, None, None).await;
-        log_delivery_trace(&message_id, &destination_hex, "path-request", "requested");
+    async fn run_direct(self) {
+        let Some(identity) = self.resolve_destination_identity().await else {
+            return;
+        };
+        let destination_desc = DestinationDesc {
+            identity,
+            address_hash: self.destination_hash,
+            name: DestinationName::new("lxmf", "delivery"),
+        };
+
+        match self
+            .send_via_link_mode(
+                "link",
+                self.destination_hex.as_str(),
+                destination_desc,
+                &self.payload,
+                "sent: link",
+                "sending: link resource",
+                OUTBOUND_RESOURCE_SENT_STATUS,
+            )
+            .await
+        {
+            Ok(()) => {}
+            Err(err) if self.try_propagation_on_fail && self.propagation_node_hex.is_some() => {
+                let detail = format!("direct failed err={err}; trying propagated");
+                log_delivery_trace(&self.message_id, &self.destination_hex, "link", &detail);
+                let _ = self.receipt_tx.send(ReceiptEvent {
+                    message_id: self.message_id.clone(),
+                    status: format!("link failed: {err}; trying propagated"),
+                });
+                self.run_propagated().await;
+            }
+            Err(err) => {
+                let detail = format!("direct failed err={err}");
+                log_delivery_trace(&self.message_id, &self.destination_hex, "link", &detail);
+                let _ = self.receipt_tx.send(ReceiptEvent {
+                    message_id: self.message_id,
+                    status: format!("failed: {err}"),
+                });
+            }
+        }
+    }
+
+    async fn run_propagated(self) {
+        let Some(destination_identity) = self.resolve_destination_identity().await else {
+            return;
+        };
+        let Some(propagation_node_hex) = self.propagation_node_hex.clone() else {
+            let _ = self.receipt_tx.send(ReceiptEvent {
+                message_id: self.message_id,
+                status: "failed: no outbound propagation node selected".to_string(),
+            });
+            return;
+        };
+
+        let propagation_hash = match parse_destination_hash_required(&propagation_node_hex) {
+            Ok(hash) => AddressHash::new(hash),
+            Err(err) => {
+                let _ = self.receipt_tx.send(ReceiptEvent {
+                    message_id: self.message_id,
+                    status: format!("failed: {err}"),
+                });
+                return;
+            }
+        };
+        let Some(propagation_identity) = self
+            .resolve_identity(
+                Some(propagation_node_hex.as_str()),
+                propagation_hash,
+                None,
+                "propagation-node",
+                "failed: propagation node not announced",
+            )
+            .await
+        else {
+            return;
+        };
+
+        let payload = match build_propagation_payload(&self.payload, &destination_identity) {
+            Ok(payload) => payload,
+            Err(err) => {
+                let _ = self.receipt_tx.send(ReceiptEvent {
+                    message_id: self.message_id,
+                    status: format!("failed: {err}"),
+                });
+                return;
+            }
+        };
+        let propagation_destination = SingleOutputDestination::new(
+            propagation_identity,
+            DestinationName::new("lxmf", "propagation"),
+        );
+
+        if let Err(err) = self
+            .send_via_link_mode(
+                "propagation",
+                propagation_node_hex.as_str(),
+                propagation_destination.desc,
+                &payload,
+                "sent: propagated",
+                "sending: propagated resource",
+                "sent: propagated resource",
+            )
+            .await
+        {
+            let detail = format!("propagated failed err={err}");
+            log_delivery_trace(&self.message_id, &self.destination_hex, "propagation", &detail);
+            let _ = self.receipt_tx.send(ReceiptEvent {
+                message_id: self.message_id,
+                status: format!("failed: {err}"),
+            });
+        }
+    }
+
+    async fn run_opportunistic(self) {
+        // Opportunistic SINGLE packets must carry LXMF wire bytes
+        // without the destination prefix. Receivers prepend the
+        // packet destination hash before unpacking.
+        let opportunistic_payload = opportunistic_payload(&self.payload, &self.destination);
+        let mut data = PacketDataBuffer::new();
+        if data.write(opportunistic_payload).is_err() {
+            log_delivery_trace(
+                &self.message_id,
+                &self.destination_hex,
+                "opportunistic",
+                "payload too large",
+            );
+            let _ = self.receipt_tx.send(ReceiptEvent {
+                message_id: self.message_id,
+                status: "failed: opportunistic payload too large".to_string(),
+            });
+            return;
+        }
+
+        let packet = Packet {
+            header: Header {
+                ifac_flag: IfacFlag::Open,
+                header_type: HeaderType::Type1,
+                context_flag: ContextFlag::Unset,
+                propagation_type: PropagationType::Broadcast,
+                destination_type: DestinationType::Single,
+                packet_type: PacketType::Data,
+                hops: 0,
+            },
+            ifac: None,
+            destination: self.destination_hash,
+            transport: None,
+            context: PacketContext::None,
+            data,
+        };
+        let packet_hash = hex::encode(packet.hash().to_bytes());
+        track_receipt_mapping(&self.receipt_map, &packet_hash, &self.message_id);
+        if diagnostics_enabled() {
+            let detail = format!(
+                "sending packet_hash={} payload_len={} payload_prefix={}",
+                packet_hash,
+                opportunistic_payload.len(),
+                payload_preview(opportunistic_payload, 16)
+            );
+            log_delivery_trace(&self.message_id, &self.destination_hex, "opportunistic", &detail);
+        } else {
+            log_delivery_trace(&self.message_id, &self.destination_hex, "opportunistic", "sending");
+        }
+        let trace = self.transport.send_packet_with_trace(packet).await;
+        let trace_detail = send_trace_detail(trace);
+        log_delivery_trace(&self.message_id, &self.destination_hex, "opportunistic", &trace_detail);
+        let outcome = trace.outcome;
+        if !send_outcome_is_sent(outcome) {
+            if let Ok(mut map) = self.receipt_map.lock() {
+                map.remove(&packet_hash);
+            }
+        }
+        let _ = self.receipt_tx.send(ReceiptEvent {
+            message_id: self.message_id,
+            status: send_outcome_status("opportunistic", outcome),
+        });
+    }
+
+    async fn resolve_destination_identity(&self) -> Option<Identity> {
+        let identity = self
+            .resolve_identity(
+                Some(self.destination_hex.as_str()),
+                self.destination_hash,
+                self.peer_identity,
+                "identity",
+                "failed: peer not announced",
+            )
+            .await?;
+
+        if let Ok(mut peers) = self.peer_crypto.lock() {
+            peers.insert(self.destination_hex.clone(), PeerCrypto { identity });
+        }
+        Some(identity)
+    }
+
+    async fn resolve_identity(
+        &self,
+        destination_hex: Option<&str>,
+        destination_hash: AddressHash,
+        cached: Option<Identity>,
+        stage: &str,
+        failure_status: &str,
+    ) -> Option<Identity> {
+        let mut identity = cached;
+        self.transport.request_path(&destination_hash, None, None).await;
+        log_delivery_trace(&self.message_id, &self.destination_hex, stage, "path-requested");
 
         if identity.is_none() {
-            log_delivery_trace(&message_id, &destination_hex, "identity", "waiting for announce");
-            let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(12);
+            let detail = destination_hex.unwrap_or(self.destination_hex.as_str());
+            log_delivery_trace(&self.message_id, detail, stage, "waiting for announce");
+            let deadline = tokio::time::Instant::now() + Duration::from_secs(12);
             while tokio::time::Instant::now() < deadline {
-                if let Some(found) = transport.destination_identity(&destination_hash).await {
+                if let Some(found) = self.transport.destination_identity(&destination_hash).await {
                     identity = Some(found);
                     break;
                 }
-                tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                tokio::time::sleep(Duration::from_millis(250)).await;
             }
         }
 
         let Some(identity) = identity else {
-            log_delivery_trace(&message_id, &destination_hex, "identity", "not found");
-            let _ = receipt_tx.send(ReceiptEvent {
-                message_id,
-                status: "failed: peer not announced".to_string(),
+            let detail = destination_hex.unwrap_or(self.destination_hex.as_str());
+            log_delivery_trace(&self.message_id, detail, stage, "not found");
+            let _ = self.receipt_tx.send(ReceiptEvent {
+                message_id: self.message_id.clone(),
+                status: failure_status.to_string(),
             });
-            return;
-        };
-        log_delivery_trace(&message_id, &destination_hex, "identity", "resolved");
-
-        if let Ok(mut peers) = peer_crypto.lock() {
-            peers.insert(destination_hex.clone(), PeerCrypto { identity });
-        }
-
-        let destination_desc = DestinationDesc {
-            identity,
-            address_hash: destination_hash,
-            name: DestinationName::new("lxmf", "delivery"),
+            return None;
         };
 
+        let detail = destination_hex.unwrap_or(self.destination_hex.as_str());
+        log_delivery_trace(&self.message_id, detail, stage, "resolved");
+        Some(identity)
+    }
+
+    async fn send_via_link_mode(
+        &self,
+        trace_stage: &str,
+        activity_peer: &str,
+        destination_desc: DestinationDesc,
+        payload: &[u8],
+        packet_status: &str,
+        resource_status: &str,
+        resource_sent_status: &str,
+    ) -> Result<(), std::io::Error> {
         let result = send_via_link(
-            transport.as_ref(),
+            self.transport.as_ref(),
             destination_desc,
-            &payload,
-            std::time::Duration::from_secs(20),
+            payload,
+            Duration::from_secs(20),
         )
         .await;
         if diagnostics_enabled() {
-            let payload_starts_with_dst = payload.len() >= 16 && payload[..16] == destination[..];
+            let payload_starts_with_dst =
+                payload.len() >= 16 && payload[..16] == self.destination[..];
             let detail = format!(
                 "payload_len={} payload_prefix={} starts_with_dst={}",
                 payload.len(),
-                payload_preview(&payload, 16),
+                payload_preview(payload, 16),
                 payload_starts_with_dst
             );
-            log_delivery_trace(&message_id, &destination_hex, "payload", &detail);
+            log_delivery_trace(&self.message_id, &self.destination_hex, "payload", &detail);
         }
+
         match result {
             Ok(LinkSendResult::Packet(packet)) => {
-                daemon.record_outbound_peer_activity(&destination_hex, payload.len(), true);
+                self.daemon.record_outbound_peer_activity(activity_peer, payload.len(), true);
                 let packet_hash = hex::encode(packet.hash().to_bytes());
-                track_receipt_mapping(&receipt_map, &packet_hash, &message_id);
+                track_receipt_mapping(&self.receipt_map, &packet_hash, &self.message_id);
                 let detail = if diagnostics_enabled() {
                     format!(
                         "packet_hash={} packet_data_len={} packet_data_prefix={}",
@@ -192,100 +456,36 @@ impl DeliveryTask {
                 } else {
                     format!("packet_hash={packet_hash}")
                 };
-                log_delivery_trace(&message_id, &destination_hex, "link", &detail);
-                let _ =
-                    receipt_tx.send(ReceiptEvent { message_id, status: "sent: link".to_string() });
+                log_delivery_trace(&self.message_id, &self.destination_hex, trace_stage, &detail);
+                let _ = self.receipt_tx.send(ReceiptEvent {
+                    message_id: self.message_id.clone(),
+                    status: packet_status.to_string(),
+                });
+                Ok(())
             }
             Ok(LinkSendResult::Resource(resource_hash)) => {
                 let resource_hash_hex = hex::encode(resource_hash.as_slice());
                 track_outbound_resource(
-                    &outbound_resource_map,
+                    &self.outbound_resource_map,
                     resource_hash_hex.clone(),
                     OutboundResourceTracking {
-                        message_id: message_id.clone(),
-                        peer: destination_hex.clone(),
+                        message_id: self.message_id.clone(),
+                        peer: activity_peer.to_string(),
                         bytes: payload.len(),
+                        sent_status: resource_sent_status.to_string(),
                     },
                 );
                 let detail = format!("resource_hash={resource_hash_hex}");
-                log_delivery_trace(&message_id, &destination_hex, "link", &detail);
-                let _ = receipt_tx.send(ReceiptEvent {
-                    message_id,
-                    status: "sending: link resource".to_string(),
+                log_delivery_trace(&self.message_id, &self.destination_hex, trace_stage, &detail);
+                let _ = self.receipt_tx.send(ReceiptEvent {
+                    message_id: self.message_id.clone(),
+                    status: resource_status.to_string(),
                 });
+                Ok(())
             }
             Err(err) => {
-                daemon.record_outbound_peer_activity(&destination_hex, payload.len(), false);
-                let err_detail = format!("failed err={err}");
-                log_delivery_trace(&message_id, &destination_hex, "link", &err_detail);
-                eprintln!(
-                    "[daemon] link delivery failed dst={} msg_id={} err={}; trying opportunistic",
-                    destination_hex, message_id, err
-                );
-                let _ = receipt_tx.send(ReceiptEvent {
-                    message_id: message_id.clone(),
-                    status: format!("link failed: {err}; trying opportunistic"),
-                });
-
-                // Opportunistic SINGLE packets must carry LXMF wire bytes
-                // without the destination prefix. Receivers prepend the
-                // packet destination hash before unpacking.
-                let opportunistic_payload = opportunistic_payload(&payload, &destination);
-                let mut data = PacketDataBuffer::new();
-                if data.write(opportunistic_payload).is_err() {
-                    log_delivery_trace(
-                        &message_id,
-                        &destination_hex,
-                        "opportunistic",
-                        "payload too large",
-                    );
-                    let _ = receipt_tx
-                        .send(ReceiptEvent { message_id, status: format!("failed: {}", err) });
-                    return;
-                }
-
-                let packet = Packet {
-                    header: Header {
-                        ifac_flag: IfacFlag::Open,
-                        header_type: HeaderType::Type1,
-                        context_flag: ContextFlag::Unset,
-                        propagation_type: PropagationType::Broadcast,
-                        destination_type: DestinationType::Single,
-                        packet_type: PacketType::Data,
-                        hops: 0,
-                    },
-                    ifac: None,
-                    destination: destination_hash,
-                    transport: None,
-                    context: PacketContext::None,
-                    data,
-                };
-                let packet_hash = hex::encode(packet.hash().to_bytes());
-                track_receipt_mapping(&receipt_map, &packet_hash, &message_id);
-                if diagnostics_enabled() {
-                    let detail = format!(
-                        "sending packet_hash={} payload_len={} payload_prefix={}",
-                        packet_hash,
-                        opportunistic_payload.len(),
-                        payload_preview(opportunistic_payload, 16)
-                    );
-                    log_delivery_trace(&message_id, &destination_hex, "opportunistic", &detail);
-                } else {
-                    log_delivery_trace(&message_id, &destination_hex, "opportunistic", "sending");
-                }
-                let trace = transport.send_packet_with_trace(packet).await;
-                let trace_detail = send_trace_detail(trace);
-                log_delivery_trace(&message_id, &destination_hex, "opportunistic", &trace_detail);
-                let outcome = trace.outcome;
-                if !send_outcome_is_sent(outcome) {
-                    if let Ok(mut map) = receipt_map.lock() {
-                        map.remove(&packet_hash);
-                    }
-                }
-                let _ = receipt_tx.send(ReceiptEvent {
-                    message_id,
-                    status: send_outcome_status("opportunistic", outcome),
-                });
+                self.daemon.record_outbound_peer_activity(activity_peer, payload.len(), false);
+                Err(err)
             }
         }
     }
@@ -295,7 +495,7 @@ impl OutboundBridge for TransportBridge {
     fn deliver(
         &self,
         record: &rns_rpc::MessageRecord,
-        _options: &rns_rpc::OutboundDeliveryOptions,
+        options: &OutboundDeliveryOptions,
     ) -> Result<(), std::io::Error> {
         let destination = parse_destination_hash_required(&record.destination)?;
         let peer_info =
@@ -318,6 +518,9 @@ impl OutboundBridge for TransportBridge {
             .expect("transport bridge daemon mutex poisoned")
             .clone()
             .ok_or_else(|| std::io::Error::other("daemon bridge unavailable"))?;
+        let requested_method = RequestedDeliveryMethod::parse(options.method.as_deref())?;
+        let propagation_node_hex = daemon.outbound_propagation_node();
+        validate_delivery_request(requested_method, propagation_node_hex.as_deref())?;
 
         let task = DeliveryTask {
             daemon,
@@ -332,10 +535,30 @@ impl OutboundBridge for TransportBridge {
             destination_hex: record.destination.clone(),
             payload,
             peer_identity,
+            requested_method,
+            try_propagation_on_fail: options.try_propagation_on_fail,
+            propagation_node_hex,
         };
         tokio::spawn(task.run());
         Ok(())
     }
+}
+
+fn build_propagation_payload(
+    payload: &[u8],
+    destination_identity: &Identity,
+) -> Result<Vec<u8>, std::io::Error> {
+    let wire = WireMessage::unpack(payload).map_err(std::io::Error::other)?;
+    let core_identity = CoreIdentity::new_from_slices(
+        destination_identity.public_key_bytes(),
+        destination_identity.verifying_key_bytes(),
+    );
+    wire.pack_propagation_with_rng(&core_identity, now_secs_f64(), OsRng)
+        .map_err(std::io::Error::other)
+}
+
+fn now_secs_f64() -> f64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs_f64()
 }
 
 impl AnnounceBridge for TransportBridge {

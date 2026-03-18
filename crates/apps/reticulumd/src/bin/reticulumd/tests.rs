@@ -2,6 +2,7 @@ use crate::bootstrap::{
     enforce_startup_policy, mark_interface_runtime_fields, mark_interface_startup_status,
     select_tcp_server_bind, InterfaceStartupFailure,
 };
+use crate::bridge::{validate_delivery_request, RequestedDeliveryMethod};
 use crate::bridge_helpers::opportunistic_payload;
 use crate::inbound_worker::{
     prune_outbound_resource_mappings_for_message, take_outbound_resource_tracking,
@@ -68,6 +69,7 @@ fn outbound_resource_tracking_round_trips_and_prunes() {
             message_id: "msg-1".to_string(),
             peer: "peer-a".to_string(),
             bytes: 128,
+            sent_status: OUTBOUND_RESOURCE_SENT_STATUS.to_string(),
         },
     );
     track_outbound_resource(
@@ -77,6 +79,7 @@ fn outbound_resource_tracking_round_trips_and_prunes() {
             message_id: "msg-2".to_string(),
             peer: "peer-b".to_string(),
             bytes: 256,
+            sent_status: OUTBOUND_RESOURCE_SENT_STATUS.to_string(),
         },
     );
 
@@ -84,6 +87,7 @@ fn outbound_resource_tracking_round_trips_and_prunes() {
     assert_eq!(tracking.message_id, "msg-1");
     assert_eq!(tracking.peer, "peer-a");
     assert_eq!(tracking.bytes, 128);
+    assert_eq!(tracking.sent_status, OUTBOUND_RESOURCE_SENT_STATUS);
 
     prune_outbound_resource_mappings_for_message(&map, "msg-2");
     assert!(take_outbound_resource_tracking(&map, "res-2").is_none());
@@ -92,6 +96,44 @@ fn outbound_resource_tracking_round_trips_and_prunes() {
 #[test]
 fn outbound_resource_completion_stays_non_terminal() {
     assert_eq!(OUTBOUND_RESOURCE_SENT_STATUS, "sent: link resource");
+}
+
+#[test]
+fn delivery_method_defaults_to_direct() {
+    assert_eq!(
+        RequestedDeliveryMethod::parse(None).expect("default method"),
+        RequestedDeliveryMethod::Direct
+    );
+    assert_eq!(
+        RequestedDeliveryMethod::parse(Some("  ")).expect("blank method"),
+        RequestedDeliveryMethod::Direct
+    );
+}
+
+#[test]
+fn delivery_method_parses_supported_modes() {
+    assert_eq!(
+        RequestedDeliveryMethod::parse(Some("opportunistic")).expect("opportunistic"),
+        RequestedDeliveryMethod::Opportunistic
+    );
+    assert_eq!(
+        RequestedDeliveryMethod::parse(Some("PrOpAgAtEd")).expect("propagated"),
+        RequestedDeliveryMethod::Propagated
+    );
+    assert_eq!(
+        RequestedDeliveryMethod::parse(Some("paper")).expect("paper"),
+        RequestedDeliveryMethod::Paper
+    );
+}
+
+#[test]
+fn propagated_delivery_requires_selected_node() {
+    let err = validate_delivery_request(RequestedDeliveryMethod::Propagated, None)
+        .expect_err("missing propagation node should fail");
+    assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
+
+    validate_delivery_request(RequestedDeliveryMethod::Propagated, Some("deadbeef"))
+        .expect("selected node should satisfy propagated delivery");
 }
 
 #[test]
