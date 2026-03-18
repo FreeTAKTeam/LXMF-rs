@@ -39,13 +39,7 @@ fn lxmd_three_node_tcp_full_test_waits_for_announces_before_delivery() {
     );
     write_config(
         &client_two_dir,
-        &node_config(
-            "client-two",
-            client_two_rpc,
-            client_two_transport,
-            "tcp_client",
-            server_port,
-        ),
+        &node_config("client-two", client_two_rpc, client_two_transport, "tcp_client", server_port),
     );
     write_config(
         &client_three_dir,
@@ -152,9 +146,7 @@ fn resolve_test_binary_if_present(name: &str, provided: Option<&str>) -> Option<
     let current_exe = std::env::current_exe().expect("current test executable path");
     let deps_dir = current_exe.parent().expect("test executable parent");
     let target_dir = deps_dir.parent().expect("target debug dir");
-    binary_candidates(target_dir, name)
-        .into_iter()
-        .find(|candidate| candidate.exists())
+    binary_candidates(target_dir, name).into_iter().find(|candidate| candidate.exists())
 }
 
 fn resolve_test_binary(name: &str, provided: Option<&str>) -> PathBuf {
@@ -178,10 +170,8 @@ fn build_workspace_binary(name: &str) -> Result<(), String> {
     };
 
     let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
-    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(3)
-        .expect("workspace root");
+    let workspace_root =
+        Path::new(env!("CARGO_MANIFEST_DIR")).ancestors().nth(3).expect("workspace root");
     let output = Command::new(cargo)
         .arg("build")
         .arg("-p")
@@ -294,9 +284,7 @@ fn wait_for_ready(rpc_port: u16, node: &mut SpawnedNode, label: &str) -> Result<
     if stderr.is_empty() {
         Err(format!("timed out waiting for {label} readyz on port {rpc_port}"))
     } else {
-        Err(format!(
-            "timed out waiting for {label} readyz on port {rpc_port}; stderr: {stderr}"
-        ))
+        Err(format!("timed out waiting for {label} readyz on port {rpc_port}; stderr: {stderr}"))
     }
 }
 
@@ -306,11 +294,8 @@ fn daemon_status(rpc_port: u16) -> Result<Value, String> {
 
 fn status_hash(status: &Value) -> Option<String> {
     for key in ["delivery_destination_hash", "identity_hash"] {
-        if let Some(hash) = status
-            .get(key)
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
+        if let Some(hash) =
+            status.get(key).and_then(Value::as_str).map(str::trim).filter(|value| !value.is_empty())
         {
             return Some(hash.to_string());
         }
@@ -355,11 +340,7 @@ fn wait_for_inbound_message(rpc_port: u16, expected_content: &str) -> Result<(),
     Err(format!("inbound content '{expected_content}' did not arrive on rpc port {rpc_port}"))
 }
 
-fn collect_node_diagnostics(
-    label: &str,
-    rpc_port: u16,
-    node: Option<&mut SpawnedNode>,
-) -> String {
+fn collect_node_diagnostics(label: &str, rpc_port: u16, node: Option<&mut SpawnedNode>) -> String {
     let Some(node) = node else {
         return format!("{label} diagnostics:\nnode was not started");
     };
@@ -443,19 +424,13 @@ fn rpc_call(rpc_port: u16, method: &str, params: Option<Value>) -> Result<Value,
 
 fn rpc_error_is_rate_limited(error: &Value) -> bool {
     error.as_str() == Some("SDK_SECURITY_RATE_LIMITED")
-        || error
-            .as_array()
-            .and_then(|items| items.first())
-            .and_then(Value::as_str)
+        || error.as_array().and_then(|items| items.first()).and_then(Value::as_str)
             == Some("SDK_SECURITY_RATE_LIMITED")
         || error.get("code").and_then(Value::as_str) == Some("SDK_SECURITY_RATE_LIMITED")
 }
 
 fn rpc_value_is_direct_error(items: &[Value]) -> bool {
-    items
-        .first()
-        .and_then(Value::as_str)
-        .is_some_and(|code| code.starts_with("SDK_"))
+    items.first().and_then(Value::as_str).is_some_and(|code| code.starts_with("SDK_"))
 }
 
 fn http_get_ready(rpc_port: u16) -> Result<bool, String> {
