@@ -150,6 +150,10 @@ impl Transport {
         self.iface_manager.clone()
     }
 
+    pub fn channel(&self, link_id: AddressHash) -> TransportChannel {
+        TransportChannel { handler: self.handler.clone(), link_id }
+    }
+
     pub fn iface_rx(&self) -> broadcast::Receiver<RxMessage> {
         self.iface_messages_tx.subscribe()
     }

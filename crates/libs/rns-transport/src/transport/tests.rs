@@ -3,7 +3,7 @@ use super::path::handle_link_request_as_intermediate;
 use super::wire::{handle_data, handle_proof};
 use super::*;
 
-use crate::channel::MessageState as ChannelMessageState;
+use crate::channel::{MessageState as ChannelMessageState, TypedMessage};
 use crate::destination::link::{Link, LinkEvent, LinkEventData, LinkPayload};
 use crate::destination::{DestinationName, SingleInputDestination};
 use crate::identity::PrivateIdentity;
@@ -200,6 +200,23 @@ async fn send_packet_with_outcome_drops_announce_without_route() {
 
 struct CountingReceiptHandler {
     count: Arc<AtomicUsize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TestTypedMessage {
+    value: Vec<u8>,
+}
+
+impl TypedMessage for TestTypedMessage {
+    const MSG_TYPE: u16 = 0x7777;
+
+    fn encode(&self) -> Vec<u8> {
+        self.value.clone()
+    }
+
+    fn decode(payload: &[u8]) -> Result<Self, crate::channel::ChannelError> {
+        Ok(Self { value: payload.to_vec() })
+    }
 }
 
 impl ReceiptHandler for CountingReceiptHandler {
@@ -449,4 +466,69 @@ async fn transport_channel_message_state_tracks_delivery() {
         transport.channel_message_state(&link_id, sequence).await.expect("state"),
         ChannelMessageState::Delivered
     );
+}
+
+#[tokio::test]
+async fn transport_channel_handle_reports_missing_link() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let config = TransportConfig::new("test", &local_identity, true);
+    let transport = Transport::new(config);
+
+    let link_id = AddressHash::new_from_rand(OsRng);
+    let channel = transport.channel(link_id);
+
+    assert_eq!(channel.link_id(), link_id);
+    assert!(matches!(
+        channel.message_state(0).await,
+        Err(crate::channel::ChannelError::LinkNotReady)
+    ));
+}
+
+#[tokio::test]
+async fn transport_channel_handle_supports_typed_messages() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let config = TransportConfig::new("test", &local_identity, true);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+
+    let signer = PrivateIdentity::new_from_rand(OsRng);
+    let identity = *signer.as_identity();
+    let destination = crate::destination::DestinationDesc {
+        identity,
+        address_hash: identity.address_hash,
+        name: DestinationName::new("lxmf", "delivery"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(8);
+    let mut outbound = Link::new(destination, tx.clone());
+    let request = outbound.request();
+    let mut inbound = Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
+        .expect("link request should parse");
+    let iface = AddressHash::new_from_rand(OsRng);
+    assert!(matches!(
+        outbound.handle_packet(&inbound.prove(), iface),
+        crate::destination::link::LinkHandleResult::Activated
+    ));
+
+    let link_id = *outbound.id();
+    handler.lock().await.out_links.insert(destination.address_hash, Arc::new(Mutex::new(outbound)));
+    let channel = transport.channel(link_id);
+
+    let seen = Arc::new(StdMutex::new(Vec::new()));
+    let seen_clone = seen.clone();
+    channel
+        .register_typed_handler::<TestTypedMessage, _>(move |message| {
+            seen_clone.lock().expect("lock").push(message);
+            true
+        })
+        .await
+        .expect("typed handler");
+
+    let message = TestTypedMessage { value: b"typed-payload".to_vec() };
+    let (_sequence, packet) = inbound
+        .send_channel_message(TestTypedMessage::MSG_TYPE, message.encode())
+        .expect("typed channel packet");
+    handle_data(&packet, iface, handler.lock().await).await;
+
+    let seen = seen.lock().expect("lock");
+    assert_eq!(seen.as_slice(), &[message]);
 }

@@ -392,6 +392,106 @@ impl Transport {
     }
 }
 
+impl TransportChannel {
+    async fn find_link(&self) -> Option<Arc<Mutex<Link>>> {
+        let (out_links, in_link) = {
+            let handler = self.handler.lock().await;
+            (
+                handler.out_links.values().cloned().collect::<Vec<_>>(),
+                handler.in_links.get(&self.link_id).cloned(),
+            )
+        };
+
+        if let Some(link) = in_link {
+            return Some(link);
+        }
+
+        for link in out_links {
+            if *link.lock().await.id() == self.link_id {
+                return Some(link);
+            }
+        }
+
+        None
+    }
+
+    pub fn link_id(&self) -> AddressHash {
+        self.link_id
+    }
+
+    pub async fn send(
+        &self,
+        msg_type: u16,
+        payload: Vec<u8>,
+    ) -> Result<u16, crate::channel::ChannelError> {
+        let link = self.find_link().await.ok_or(crate::channel::ChannelError::LinkNotReady)?;
+
+        let (sequence, iface, packet) = {
+            let mut link = link.lock().await;
+            let iface = link.ingress_iface().ok_or(crate::channel::ChannelError::LinkNotReady)?;
+            let (sequence, packet) = link.send_channel_message(msg_type, payload)?;
+            (sequence, iface, packet)
+        };
+
+        let dispatch = self
+            .handler
+            .lock()
+            .await
+            .send(TxMessage { tx_type: TxMessageType::Direct(iface), packet })
+            .await;
+        if dispatch.sent_ifaces == 0 {
+            link.lock().await.mark_channel_failed(sequence);
+            return Err(crate::channel::ChannelError::LinkNotReady);
+        }
+
+        Ok(sequence)
+    }
+
+    pub async fn send_typed<M: crate::channel::TypedMessage>(
+        &self,
+        message: &M,
+    ) -> Result<u16, crate::channel::ChannelError> {
+        self.send(M::MSG_TYPE, message.encode()).await
+    }
+
+    pub async fn register_handler<F>(
+        &self,
+        msg_type: u16,
+        handler: F,
+    ) -> Result<(), crate::channel::ChannelError>
+    where
+        F: FnMut(crate::channel::Envelope) -> bool + Send + 'static,
+    {
+        let link = self.find_link().await.ok_or(crate::channel::ChannelError::LinkNotReady)?;
+        link.lock().await.register_channel_handler(msg_type, handler);
+        Ok(())
+    }
+
+    pub async fn register_typed_handler<M, F>(
+        &self,
+        mut handler: F,
+    ) -> Result<(), crate::channel::ChannelError>
+    where
+        M: crate::channel::TypedMessage,
+        F: FnMut(M) -> bool + Send + 'static,
+    {
+        self.register_handler(M::MSG_TYPE, move |envelope| match M::decode(&envelope.payload) {
+            Ok(message) => handler(message),
+            Err(_) => false,
+        })
+        .await
+    }
+
+    pub async fn message_state(
+        &self,
+        sequence: u16,
+    ) -> Result<crate::channel::MessageState, crate::channel::ChannelError> {
+        let link = self.find_link().await.ok_or(crate::channel::ChannelError::LinkNotReady)?;
+        let state = link.lock().await.channel_state(sequence);
+        Ok(state)
+    }
+}
+
 impl Drop for Transport {
     fn drop(&mut self) {
         self.cancel.cancel();

@@ -58,6 +58,14 @@ impl Envelope {
 
 pub type Handler = Box<dyn FnMut(Envelope) -> bool + Send>;
 
+pub trait TypedMessage: Sized {
+    const MSG_TYPE: u16;
+
+    fn encode(&self) -> Vec<u8>;
+
+    fn decode(payload: &[u8]) -> Result<Self, ChannelError>;
+}
+
 pub struct Channel<O: ChannelOutlet> {
     outlet: O,
     next_sequence: u16,
@@ -84,6 +92,17 @@ impl<O: ChannelOutlet> Channel<O> {
         self.handlers.insert(msg_type, Box::new(handler));
     }
 
+    pub fn register_typed_handler<M, F>(&mut self, mut handler: F)
+    where
+        M: TypedMessage,
+        F: FnMut(M) -> bool + Send + 'static,
+    {
+        self.register_handler(M::MSG_TYPE, move |envelope| match M::decode(&envelope.payload) {
+            Ok(message) => handler(message),
+            Err(_) => false,
+        });
+    }
+
     pub fn send(&mut self, msg_type: u16, payload: Vec<u8>) -> Result<u16, ChannelError> {
         if payload.len() + 6 > self.outlet.mdu() {
             return Err(ChannelError::PayloadTooLarge);
@@ -98,6 +117,10 @@ impl<O: ChannelOutlet> Channel<O> {
         self.pending.insert(sequence, envelope.clone());
         self.states.insert(sequence, MessageState::Sent);
         Ok(sequence)
+    }
+
+    pub fn send_typed<M: TypedMessage>(&mut self, message: &M) -> Result<u16, ChannelError> {
+        self.send(M::MSG_TYPE, message.encode())
     }
 
     pub fn resend(&mut self, sequence: u16) -> Result<(), ChannelError> {

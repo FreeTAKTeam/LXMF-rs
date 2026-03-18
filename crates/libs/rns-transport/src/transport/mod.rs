@@ -228,6 +228,12 @@ pub struct Transport {
     cancel: CancellationToken,
 }
 
+#[derive(Clone)]
+pub struct TransportChannel {
+    handler: Arc<Mutex<TransportHandler>>,
+    link_id: AddressHash,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SendPacketOutcome {
     SentDirect,
