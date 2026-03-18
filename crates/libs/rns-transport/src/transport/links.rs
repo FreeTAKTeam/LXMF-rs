@@ -263,6 +263,26 @@ impl Transport {
         Ok(removed)
     }
 
+    pub async fn open_channel(
+        &self,
+        link_id: &AddressHash,
+    ) -> Result<(), crate::channel::ChannelError> {
+        let link =
+            self.find_any_link(link_id).await.ok_or(crate::channel::ChannelError::LinkNotReady)?;
+        link.lock().await.open_channel();
+        Ok(())
+    }
+
+    pub async fn close_channel(
+        &self,
+        link_id: &AddressHash,
+    ) -> Result<(), crate::channel::ChannelError> {
+        let link =
+            self.find_any_link(link_id).await.ok_or(crate::channel::ChannelError::LinkNotReady)?;
+        link.lock().await.close_channel();
+        Ok(())
+    }
+
     pub async fn channel_message_state(
         &self,
         link_id: &AddressHash,
@@ -456,6 +476,18 @@ impl TransportChannel {
         }
 
         Ok(sequence)
+    }
+
+    pub async fn open(&self) -> Result<(), crate::channel::ChannelError> {
+        let link = self.find_link().await.ok_or(crate::channel::ChannelError::LinkNotReady)?;
+        link.lock().await.open_channel();
+        Ok(())
+    }
+
+    pub async fn close(&self) -> Result<(), crate::channel::ChannelError> {
+        let link = self.find_link().await.ok_or(crate::channel::ChannelError::LinkNotReady)?;
+        link.lock().await.close_channel();
+        Ok(())
     }
 
     pub async fn send_typed<M: crate::channel::TypedMessage>(

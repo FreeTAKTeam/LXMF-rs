@@ -22,6 +22,8 @@ iterating.
   and frame acceptance, matching Python’s retry behavior more closely.
 - Duplicate, out-of-order, or malformed channel frames therefore do not suppress
   the transport proof that the sender is waiting for.
+- Links can now hold explicit channel-open state even before any handler is
+  attached, which is closer to Python’s `get_channel()` semantics.
 - Channel packets without a registered consumer are dropped from the channel path
   and are not proved.
 
@@ -91,6 +93,8 @@ The current implementation is intentionally narrower than Python’s full
   adaptive window promotion behavior expected from sustained medium/fast rounds.
 - Rust still models “channel open” as “at least one registered handler”, whereas
   Python models it as the existence of the link-owned `Channel` object itself.
+  Rust now has an explicit open/close channel state, but it is still driven by
+  the transport handle rather than a persistent link-owned `Channel` object.
 - Rust still does not expose a real `StreamDataMessage` / buffer layer equivalent
   to Python `RNS.Buffer`.
 

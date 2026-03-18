@@ -132,6 +132,7 @@ pub struct Link {
     stale_time: Duration,
     next_channel_sequence: u16,
     next_channel_rx_sequence: u16,
+    channel_open: bool,
     next_channel_handler_id: u64,
     channel_handlers: HashMap<u16, Vec<RegisteredChannelHandler>>,
     channel_pending: HashMap<Hash, PendingChannelPacket>,
@@ -172,6 +173,7 @@ impl Link {
             stale_time: Duration::from_secs_f32(KEEPALIVE_MAX_SECS * STALE_FACTOR),
             next_channel_sequence: 0,
             next_channel_rx_sequence: 0,
+            channel_open: false,
             next_channel_handler_id: 0,
             channel_handlers: HashMap::new(),
             channel_pending: HashMap::new(),
@@ -236,6 +238,7 @@ impl Link {
             stale_time: Duration::from_secs_f32(KEEPALIVE_MAX_SECS * STALE_FACTOR),
             next_channel_sequence: 0,
             next_channel_rx_sequence: 0,
+            channel_open: false,
             next_channel_handler_id: 0,
             channel_handlers: HashMap::new(),
             channel_pending: HashMap::new(),
@@ -284,6 +287,7 @@ impl Link {
         self.stale_time = Duration::from_secs_f32(KEEPALIVE_MAX_SECS * STALE_FACTOR);
         self.next_channel_sequence = 0;
         self.next_channel_rx_sequence = 0;
+        self.channel_open = false;
         self.channel_pending.clear();
         self.channel_states.clear();
         self.channel_rx_ring.clear();
@@ -528,6 +532,7 @@ impl Link {
     where
         F: FnMut(ChannelEnvelope) -> bool + Send + 'static,
     {
+        self.channel_open = true;
         let id = HandlerId::new(self.next_channel_handler_id);
         self.next_channel_handler_id = self.next_channel_handler_id.wrapping_add(1);
         self.channel_handlers
@@ -567,6 +572,7 @@ impl Link {
         if self.status != LinkStatus::Active {
             return Err(ChannelError::LinkNotReady);
         }
+        self.channel_open = true;
         if self.channel_pending.len() >= self.channel_send_window() {
             return Err(ChannelError::LinkNotReady);
         }
@@ -592,6 +598,14 @@ impl Link {
 
     pub fn channel_state(&self, sequence: u16) -> ChannelMessageState {
         self.channel_states.get(&sequence).copied().unwrap_or(ChannelMessageState::New)
+    }
+
+    pub fn open_channel(&mut self) {
+        self.channel_open = true;
+    }
+
+    pub fn close_channel(&mut self) {
+        self.channel_open = false;
     }
 
     pub(crate) fn mark_channel_failed(&mut self, sequence: u16) {
@@ -1024,7 +1038,7 @@ impl Link {
     }
 
     fn channel_is_open(&self) -> bool {
-        !self.channel_handlers.is_empty()
+        self.channel_open || !self.channel_handlers.is_empty()
     }
 
     fn handle_channel_frame(&mut self, plain_text: &[u8]) -> bool {
@@ -1296,6 +1310,37 @@ mod tests {
     }
 
     #[test]
+    fn explicitly_open_channel_proves_packets_without_handlers() {
+        let signer = PrivateIdentity::new_from_rand(OsRng);
+        let identity = *signer.as_identity();
+        let destination = DestinationDesc {
+            identity,
+            address_hash: identity.address_hash,
+            name: DestinationName::new("lxmf", "delivery"),
+        };
+        let (tx, _) = tokio::sync::broadcast::channel(8);
+
+        let mut outbound = Link::new(destination, tx.clone());
+        let request = outbound.request();
+        let mut inbound =
+            Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
+                .expect("link request should parse");
+        let iface = AddressHash::new_from_rand(OsRng);
+        assert!(matches!(
+            outbound.handle_packet(&inbound.prove(), iface),
+            LinkHandleResult::Activated
+        ));
+
+        outbound.open_channel();
+
+        let (_sequence, packet) = inbound
+            .send_channel_message(0xBEEF, b"open-no-handler".to_vec())
+            .expect("channel message");
+
+        assert!(matches!(outbound.handle_packet(&packet, iface), LinkHandleResult::Proof(_)));
+    }
+
+    #[test]
     fn out_of_order_channel_messages_are_buffered_until_contiguous() {
         let signer = PrivateIdentity::new_from_rand(OsRng);
         let identity = *signer.as_identity();
@@ -1439,7 +1484,7 @@ mod tests {
     }
 
     #[test]
-    fn removing_last_channel_handler_closes_channel_consumer() {
+    fn removing_last_channel_handler_keeps_explicit_channel_open_state() {
         let signer = PrivateIdentity::new_from_rand(OsRng);
         let identity = *signer.as_identity();
         let destination = DestinationDesc {
@@ -1471,7 +1516,10 @@ mod tests {
 
         let (_sequence, packet) =
             inbound.send_channel_message(0x6161, b"no-consumer".to_vec()).expect("channel message");
-        assert!(matches!(outbound.handle_packet(&packet, iface), LinkHandleResult::None));
+        assert!(matches!(
+            outbound.handle_packet(&packet, iface),
+            LinkHandleResult::Proof(_)
+        ));
         assert!(seen.lock().expect("lock").is_empty());
     }
 
