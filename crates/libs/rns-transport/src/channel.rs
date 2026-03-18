@@ -12,6 +12,7 @@ pub enum MessageState {
 #[derive(Debug)]
 pub enum ChannelError {
     NoHandler,
+    LinkNotReady,
     PayloadTooLarge,
     InvalidFrame,
 }

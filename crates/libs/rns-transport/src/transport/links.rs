@@ -206,6 +206,42 @@ impl Transport {
         Ok(resource_hash)
     }
 
+    pub async fn send_channel_message(
+        &self,
+        link_id: &AddressHash,
+        msg_type: u16,
+        payload: Vec<u8>,
+    ) -> Result<u16, crate::channel::ChannelError> {
+        let (out_links, in_link) = {
+            let handler = self.handler.lock().await;
+            (
+                handler.out_links.values().cloned().collect::<Vec<_>>(),
+                handler.in_links.get(link_id).cloned(),
+            )
+        };
+
+        let link = if let Some(link) = in_link {
+            Some(link)
+        } else {
+            let mut found = None;
+            for link in out_links {
+                if *link.lock().await.id() == *link_id {
+                    found = Some(link);
+                    break;
+                }
+            }
+            found
+        }
+        .ok_or(crate::channel::ChannelError::LinkNotReady)?;
+
+        let (sequence, packet) = {
+            let mut link = link.lock().await;
+            link.send_channel_message(msg_type, payload)?
+        };
+        self.handler.lock().await.send_packet(packet).await;
+        Ok(sequence)
+    }
+
     pub async fn send_resource_direct(
         &self,
         link_id: &AddressHash,

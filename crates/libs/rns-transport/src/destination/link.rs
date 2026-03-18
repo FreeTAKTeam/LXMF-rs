@@ -1,5 +1,6 @@
 use std::{
     cmp::min,
+    collections::HashMap,
     time::{Duration, Instant},
 };
 
@@ -10,6 +11,10 @@ use x25519_dalek::StaticSecret;
 
 use crate::{
     buffer::OutputBuffer,
+    channel::{
+        ChannelError, Envelope as ChannelEnvelope, Handler as ChannelHandler,
+        MessageState as ChannelMessageState,
+    },
     crypt::fernet::{CachedFernet, PlainText, Token},
     error::RnsError,
     hash::{AddressHash, Hash, ADDRESS_HASH_SIZE, HASH_SIZE},
@@ -97,6 +102,10 @@ pub struct Link {
     stale_since: Option<Instant>,
     keepalive: Duration,
     stale_time: Duration,
+    next_channel_sequence: u16,
+    channel_handlers: HashMap<u16, ChannelHandler>,
+    channel_pending: HashMap<Hash, u16>,
+    channel_states: HashMap<u16, ChannelMessageState>,
     event_tx: tokio::sync::broadcast::Sender<LinkEventData>,
 }
 
@@ -124,6 +133,10 @@ impl Link {
             stale_since: None,
             keepalive: Duration::from_secs_f32(KEEPALIVE_MAX_SECS),
             stale_time: Duration::from_secs_f32(KEEPALIVE_MAX_SECS * STALE_FACTOR),
+            next_channel_sequence: 0,
+            channel_handlers: HashMap::new(),
+            channel_pending: HashMap::new(),
+            channel_states: HashMap::new(),
             event_tx,
         }
     }
@@ -175,6 +188,10 @@ impl Link {
             stale_since: None,
             keepalive: Duration::from_secs_f32(KEEPALIVE_MAX_SECS),
             stale_time: Duration::from_secs_f32(KEEPALIVE_MAX_SECS * STALE_FACTOR),
+            next_channel_sequence: 0,
+            channel_handlers: HashMap::new(),
+            channel_pending: HashMap::new(),
+            channel_states: HashMap::new(),
             event_tx,
         };
 
@@ -210,6 +227,9 @@ impl Link {
         self.stale_since = None;
         self.keepalive = Duration::from_secs_f32(KEEPALIVE_MAX_SECS);
         self.stale_time = Duration::from_secs_f32(KEEPALIVE_MAX_SECS * STALE_FACTOR);
+        self.next_channel_sequence = 0;
+        self.channel_pending.clear();
+        self.channel_states.clear();
 
         packet
     }
@@ -316,6 +336,9 @@ impl Link {
                             request_id,
                         ),
                     )));
+                    if packet.context == PacketContext::Channel {
+                        self.handle_channel_frame(plain_text);
+                    }
                     if matches!(packet.context, PacketContext::None | PacketContext::Channel) {
                         return LinkHandleResult::Proof(self.prove_packet(packet));
                     }
@@ -382,6 +405,15 @@ impl Link {
         match packet.header.packet_type {
             PacketType::Data => return self.handle_data_packet(packet),
             PacketType::Proof => {
+                if self.status == LinkStatus::Active && packet.context == PacketContext::LinkProof {
+                    if let Ok(hash) = self.validate_packet_proof(packet) {
+                        self.note_inbound(packet.context);
+                        if let Some(sequence) = self.channel_pending.remove(&hash) {
+                            self.channel_states.insert(sequence, ChannelMessageState::Delivered);
+                        }
+                        return LinkHandleResult::None;
+                    }
+                }
                 if self.status == LinkStatus::Pending
                     && packet.context == PacketContext::LinkRequestProof
                 {
@@ -422,6 +454,36 @@ impl Link {
 
     pub fn channel_packet(&self, data: &[u8]) -> Result<Packet, RnsError> {
         self.packet_with_context(data, PacketContext::Channel)
+    }
+
+    pub fn register_channel_handler<F>(&mut self, msg_type: u16, handler: F)
+    where
+        F: FnMut(ChannelEnvelope) -> bool + Send + 'static,
+    {
+        self.channel_handlers.insert(msg_type, Box::new(handler));
+    }
+
+    pub fn send_channel_message(
+        &mut self,
+        msg_type: u16,
+        payload: Vec<u8>,
+    ) -> Result<(u16, Packet), ChannelError> {
+        if self.status != LinkStatus::Active {
+            return Err(ChannelError::LinkNotReady);
+        }
+
+        let sequence = self.next_channel_sequence;
+        self.next_channel_sequence = self.next_channel_sequence.wrapping_add(1);
+        let envelope = ChannelEnvelope { msg_type, sequence, payload };
+        let raw = envelope.pack();
+        let packet = self.channel_packet(&raw).map_err(|_| ChannelError::PayloadTooLarge)?;
+        self.channel_pending.insert(packet.hash(), sequence);
+        self.channel_states.insert(sequence, ChannelMessageState::Sent);
+        Ok((sequence, packet))
+    }
+
+    pub fn channel_state(&self, sequence: u16) -> ChannelMessageState {
+        self.channel_states.get(&sequence).copied().unwrap_or(ChannelMessageState::New)
     }
 
     fn packet_with_context(&self, data: &[u8], context: PacketContext) -> Result<Packet, RnsError> {
@@ -650,6 +712,9 @@ impl Link {
         });
     }
     pub fn close(&mut self) {
+        for sequence in self.channel_pending.drain().map(|(_, sequence)| sequence) {
+            self.channel_states.insert(sequence, ChannelMessageState::Failed);
+        }
         self.status = LinkStatus::Closed;
         self.session_cipher = None;
 
@@ -661,6 +726,9 @@ impl Link {
     pub fn restart(&mut self) {
         log::warn!("link({}): restart after {}s", self.id, self.request_time.elapsed().as_secs());
 
+        for sequence in self.channel_pending.drain().map(|(_, sequence)| sequence) {
+            self.channel_states.insert(sequence, ChannelMessageState::Failed);
+        }
         self.status = LinkStatus::Pending;
         self.session_cipher = None;
         self.activated_at = None;
@@ -685,6 +753,22 @@ impl Link {
     pub(crate) fn validate_packet_proof(&self, packet: &Packet) -> Result<Hash, RnsError> {
         validate_link_packet_proof(&self.peer_identity, &self.id, packet)
     }
+
+    fn handle_channel_frame(&mut self, plain_text: &[u8]) {
+        let Ok(envelope) = ChannelEnvelope::unpack(plain_text) else {
+            log::warn!("link({}): invalid channel frame", self.id);
+            return;
+        };
+        let Some(handler) = self.channel_handlers.get_mut(&envelope.msg_type) else {
+            log::debug!(
+                "link({}): channel frame without handler type={}",
+                self.id,
+                envelope.msg_type
+            );
+            return;
+        };
+        let _ = handler(envelope);
+    }
 }
 
 include!("link/proof.rs");
@@ -693,6 +777,7 @@ include!("link/proof.rs");
 mod tests {
     use super::*;
     use crate::destination::{DestinationDesc, DestinationName};
+    use std::sync::{Arc, Mutex};
 
     #[test]
     fn link_handshake_roundtrip_encrypts_and_decrypts() {
@@ -827,6 +912,111 @@ mod tests {
             }
             other => panic!("unexpected event: {:?}", std::mem::discriminant(&other)),
         }
+    }
+
+    #[test]
+    fn channel_handlers_receive_unpacked_envelopes() {
+        let signer = PrivateIdentity::new_from_rand(OsRng);
+        let identity = *signer.as_identity();
+        let destination = DestinationDesc {
+            identity,
+            address_hash: identity.address_hash,
+            name: DestinationName::new("lxmf", "delivery"),
+        };
+        let (tx, _) = tokio::sync::broadcast::channel(8);
+
+        let mut outbound = Link::new(destination, tx.clone());
+        let request = outbound.request();
+        let mut inbound =
+            Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
+                .expect("link request should parse");
+        let iface = AddressHash::new_from_rand(OsRng);
+        assert!(matches!(
+            outbound.handle_packet(&inbound.prove(), iface),
+            LinkHandleResult::Activated
+        ));
+
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let seen_clone = seen.clone();
+        outbound.register_channel_handler(0x1234, move |envelope| {
+            seen_clone.lock().expect("lock").push(envelope);
+            true
+        });
+
+        let (_sequence, packet) = inbound
+            .send_channel_message(0x1234, b"hello-channel".to_vec())
+            .expect("channel message");
+        assert!(matches!(outbound.handle_packet(&packet, iface), LinkHandleResult::Proof(_)));
+
+        let seen = seen.lock().expect("lock");
+        assert_eq!(seen.len(), 1);
+        assert_eq!(seen[0].msg_type, 0x1234);
+        assert_eq!(seen[0].payload, b"hello-channel");
+    }
+
+    #[test]
+    fn channel_messages_mark_delivered_when_their_link_proof_arrives() {
+        let signer = PrivateIdentity::new_from_rand(OsRng);
+        let identity = *signer.as_identity();
+        let destination = DestinationDesc {
+            identity,
+            address_hash: identity.address_hash,
+            name: DestinationName::new("lxmf", "delivery"),
+        };
+        let (tx, _) = tokio::sync::broadcast::channel(8);
+
+        let mut outbound = Link::new(destination, tx.clone());
+        let request = outbound.request();
+        let mut inbound =
+            Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
+                .expect("link request should parse");
+        let iface = AddressHash::new_from_rand(OsRng);
+        assert!(matches!(
+            outbound.handle_packet(&inbound.prove(), iface),
+            LinkHandleResult::Activated
+        ));
+
+        let (sequence, packet) = outbound
+            .send_channel_message(0x55AA, b"needs-proof".to_vec())
+            .expect("channel message");
+        assert_eq!(outbound.channel_state(sequence), ChannelMessageState::Sent);
+
+        let proof = match inbound.handle_packet(&packet, iface) {
+            LinkHandleResult::Proof(proof) => proof,
+            _ => panic!("channel packet should generate link proof"),
+        };
+        assert!(matches!(outbound.handle_packet(&proof, iface), LinkHandleResult::None));
+        assert_eq!(outbound.channel_state(sequence), ChannelMessageState::Delivered);
+    }
+
+    #[test]
+    fn pending_channel_messages_fail_when_link_closes() {
+        let signer = PrivateIdentity::new_from_rand(OsRng);
+        let identity = *signer.as_identity();
+        let destination = DestinationDesc {
+            identity,
+            address_hash: identity.address_hash,
+            name: DestinationName::new("lxmf", "delivery"),
+        };
+        let (tx, _) = tokio::sync::broadcast::channel(8);
+
+        let mut outbound = Link::new(destination, tx.clone());
+        let request = outbound.request();
+        let mut inbound =
+            Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
+                .expect("link request should parse");
+        let iface = AddressHash::new_from_rand(OsRng);
+        assert!(matches!(
+            outbound.handle_packet(&inbound.prove(), iface),
+            LinkHandleResult::Activated
+        ));
+
+        let (sequence, _packet) =
+            outbound.send_channel_message(0x9001, b"will-fail".to_vec()).expect("channel message");
+        assert_eq!(outbound.channel_state(sequence), ChannelMessageState::Sent);
+
+        outbound.close();
+        assert_eq!(outbound.channel_state(sequence), ChannelMessageState::Failed);
     }
 
     #[test]
