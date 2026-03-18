@@ -1847,11 +1847,7 @@ fn parse_python_reticulum_interfaces(input: &str) -> Vec<SingleTomlInterface> {
     push_current(&mut parsed, current.take());
     for iface in &mut parsed {
         if iface.interface_type == "tcp_server"
-            && iface
-                .host
-                .as_deref()
-                .map(str::trim)
-                .map_or(true, |value| value.is_empty())
+            && iface.host.as_deref().map(str::trim).map_or(true, |value| value.is_empty())
         {
             iface.host = Some("0.0.0.0".to_string());
         }
