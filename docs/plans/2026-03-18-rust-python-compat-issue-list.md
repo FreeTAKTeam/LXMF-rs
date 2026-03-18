@@ -21,9 +21,20 @@ Goal:
   transport incompatible with Python Reticulum/LXMF behavior
 - prioritize the issues that block a credible "Python replacement" claim
 
+Status snapshot as of 2026-03-18:
+
+- merged and substantially addressed: `10` issues
+  - `1`, `2`, `5`, `11`, `12`, `13`, `14`, `15`, `16`, `17`
+- open draft follow-up work on merged `15`:
+  - [#110](https://github.com/FreeTAKTeam/LXMF-rs/pull/110) buffer writer parity
+  - [#111](https://github.com/FreeTAKTeam/LXMF-rs/pull/111) buffer callback parity
+- remaining numbered issues still open: `31`
+
 ## Priority 1
 
 ### 1. Announce validation accepts destination-hash mismatch
+
+Status: merged in [#106](https://github.com/FreeTAKTeam/LXMF-rs/pull/106)
 
 Area: transport, routing, ratchets
 
@@ -45,6 +56,8 @@ Impact:
 - higher-level behavior becomes nondeterministic because the trust root is wrong
 
 ### 2. Packet receipts can be satisfied by forged proofs
+
+Status: merged in [#106](https://github.com/FreeTAKTeam/LXMF-rs/pull/106)
 
 Area: packet proofs, delivery receipts
 
@@ -103,6 +116,8 @@ Impact:
 - Rust cannot truthfully claim propagated LXMF delivery support
 
 ### 5. Link activation has a proof race
+
+Status: merged in [#107](https://github.com/FreeTAKTeam/LXMF-rs/pull/107)
 
 Area: link establishment
 
@@ -211,6 +226,8 @@ Impact:
 
 ### 11. Known-destination public-key stability check is missing
 
+Status: merged in [#106](https://github.com/FreeTAKTeam/LXMF-rs/pull/106)
+
 Area: announce trust model
 
 Rust behavior:
@@ -226,6 +243,8 @@ Impact:
 - Rust is weaker than Python against key-substitution style announce drift
 
 ### 12. Ratchet-bearing announce parsing is more permissive than Python
+
+Status: merged in [#106](https://github.com/FreeTAKTeam/LXMF-rs/pull/106)
 
 Area: announce parsing, ratchets
 
@@ -244,6 +263,8 @@ Impact:
 
 ### 13. Transported link-request proofs skip Python validation gates
 
+Status: merged in [#106](https://github.com/FreeTAKTeam/LXMF-rs/pull/106)
+
 Area: routed proofs
 
 Rust behavior:
@@ -260,6 +281,8 @@ Impact:
 - Rust can relay proofs that Python would drop
 
 ### 14. Link interface binding is recorded but not enforced
+
+Status: merged in [#107](https://github.com/FreeTAKTeam/LXMF-rs/pull/107)
 
 Area: link security, multi-interface behavior
 
@@ -279,6 +302,8 @@ Impact:
 
 ### 15. Channel packet semantics are not implemented
 
+Status: merged baseline in [#109](https://github.com/FreeTAKTeam/LXMF-rs/pull/109); deeper buffer-layer parity is still in progress in [#110](https://github.com/FreeTAKTeam/LXMF-rs/pull/110) and [#111](https://github.com/FreeTAKTeam/LXMF-rs/pull/111)
+
 Area: link data plane
 
 Rust behavior:
@@ -296,6 +321,8 @@ Impact:
 
 ### 16. Link proof behavior for request/response/identify differs from Python
 
+Status: merged in [#107](https://github.com/FreeTAKTeam/LXMF-rs/pull/107)
+
 Area: link receipts
 
 Rust behavior:
@@ -311,6 +338,8 @@ Impact:
 - receipt behavior diverges even when wire bytes otherwise match
 
 ### 17. Link watchdog timing is fixed-interval instead of RTT-driven
+
+Status: merged in [#107](https://github.com/FreeTAKTeam/LXMF-rs/pull/107)
 
 Area: liveness
 
@@ -729,6 +758,17 @@ Impact:
 - if Rust ever uses the custom storage encoding for external `.lxm` interchange, it will not be Python-compatible
 
 ## Surface Summary
+
+Recently addressed in merged PRs:
+
+- announce trust baseline: issues `1`, `11`, `12`
+- proof and routed-proof validation baseline: issues `2`, `13`
+- link establishment, interface enforcement, proof-policy, and watchdog baseline: issues `5`, `14`, `16`, `17`
+- live channel baseline: issue `15`
+
+Still actively being refined on open stacked PRs:
+
+- raw buffer-writer and callback parity on top of the merged live channel baseline: [#110](https://github.com/FreeTAKTeam/LXMF-rs/pull/110), [#111](https://github.com/FreeTAKTeam/LXMF-rs/pull/111)
 
 Confirmed relatively aligned primitives:
 
