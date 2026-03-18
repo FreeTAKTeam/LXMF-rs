@@ -1,6 +1,7 @@
 use std::{
     cmp::min,
     collections::{HashMap, VecDeque},
+    panic::{catch_unwind, AssertUnwindSafe},
     time::{Duration, Instant},
 };
 
@@ -323,12 +324,6 @@ impl Link {
             | PacketContext::LinkIdentify => {
                 let mut buffer = [0u8; PACKET_MDU];
                 if let Ok(plain_text) = self.decrypt(packet.data.as_slice(), &mut buffer[..]) {
-                    let preview_len = plain_text.len().min(32);
-                    eprintln!(
-                        "[link] data_plain len={} preview={}",
-                        plain_text.len(),
-                        bytes_to_hex(&plain_text[..preview_len])
-                    );
                     log::trace!("link({}): data {}B", self.id, plain_text.len());
                     let request_id = if packet.context == PacketContext::Request {
                         let hash = packet.hash().to_bytes();
@@ -346,9 +341,12 @@ impl Link {
                         ),
                     )));
                     if packet.context == PacketContext::Channel {
-                        self.handle_channel_frame(plain_text);
+                        if self.handle_channel_frame(plain_text) {
+                            return LinkHandleResult::Proof(self.prove_packet(packet));
+                        }
+                        return LinkHandleResult::None;
                     }
-                    if matches!(packet.context, PacketContext::None | PacketContext::Channel) {
+                    if packet.context == PacketContext::None {
                         return LinkHandleResult::Proof(self.prove_packet(packet));
                     }
                     return LinkHandleResult::None;
@@ -766,16 +764,21 @@ impl Link {
         validate_link_packet_proof(&self.peer_identity, &self.id, packet)
     }
 
-    fn handle_channel_frame(&mut self, plain_text: &[u8]) {
+    fn handle_channel_frame(&mut self, plain_text: &[u8]) -> bool {
+        if self.channel_handlers.is_empty() {
+            log::debug!("link({}): channel data received without open channel", self.id);
+            return false;
+        }
+
         let Ok(envelope) = ChannelEnvelope::unpack(plain_text) else {
             log::warn!("link({}): invalid channel frame", self.id);
-            return;
+            return false;
         };
 
         let distance = envelope.sequence.wrapping_sub(self.next_channel_rx_sequence);
         if distance >= 0x8000 {
             log::debug!("link({}): duplicate/old channel frame seq={}", self.id, envelope.sequence);
-            return;
+            return false;
         }
         if distance >= CHANNEL_RX_WINDOW_MAX {
             log::debug!(
@@ -784,7 +787,7 @@ impl Link {
                 envelope.sequence,
                 self.next_channel_rx_sequence
             );
-            return;
+            return false;
         }
         if self.channel_rx_ring.insert(envelope.sequence, envelope).is_some() {
             log::debug!(
@@ -792,7 +795,7 @@ impl Link {
                 self.id,
                 self.next_channel_rx_sequence
             );
-            return;
+            return false;
         }
 
         let mut ready = VecDeque::new();
@@ -810,8 +813,12 @@ impl Link {
                 );
                 continue;
             };
-            let _ = handler(envelope);
+            if catch_unwind(AssertUnwindSafe(|| handler(envelope))).is_err() {
+                log::error!("link({}): channel handler panicked", self.id);
+            }
         }
+
+        true
     }
 }
 
@@ -944,7 +951,11 @@ mod tests {
         ));
         while rx.try_recv().is_ok() {}
 
-        let packet = inbound.channel_packet(b"channel-payload").expect("channel packet");
+        outbound.register_channel_handler(0xCAFE, |_| true);
+
+        let (_sequence, packet) = inbound
+            .send_channel_message(0xCAFE, b"channel-payload".to_vec())
+            .expect("channel packet");
 
         assert!(matches!(outbound.handle_packet(&packet, iface), LinkHandleResult::Proof(_)));
 
@@ -952,7 +963,10 @@ mod tests {
         match event.event {
             LinkEvent::Data(payload) => {
                 assert_eq!(payload.context(), PacketContext::Channel);
-                assert_eq!(payload.as_slice(), b"channel-payload");
+                let envelope =
+                    ChannelEnvelope::unpack(payload.as_slice()).expect("channel envelope payload");
+                assert_eq!(envelope.msg_type, 0xCAFE);
+                assert_eq!(envelope.payload, b"channel-payload");
             }
             other => panic!("unexpected event: {:?}", std::mem::discriminant(&other)),
         }
@@ -996,6 +1010,34 @@ mod tests {
         assert_eq!(seen.len(), 1);
         assert_eq!(seen[0].msg_type, 0x1234);
         assert_eq!(seen[0].payload, b"hello-channel");
+    }
+
+    #[test]
+    fn channel_packets_without_open_handler_are_not_proved() {
+        let signer = PrivateIdentity::new_from_rand(OsRng);
+        let identity = *signer.as_identity();
+        let destination = DestinationDesc {
+            identity,
+            address_hash: identity.address_hash,
+            name: DestinationName::new("lxmf", "delivery"),
+        };
+        let (tx, _) = tokio::sync::broadcast::channel(8);
+
+        let mut outbound = Link::new(destination, tx.clone());
+        let request = outbound.request();
+        let mut inbound =
+            Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
+                .expect("link request should parse");
+        let iface = AddressHash::new_from_rand(OsRng);
+        assert!(matches!(
+            outbound.handle_packet(&inbound.prove(), iface),
+            LinkHandleResult::Activated
+        ));
+
+        let (_sequence, packet) =
+            inbound.send_channel_message(0xBEEF, b"no-handler".to_vec()).expect("channel message");
+
+        assert!(matches!(outbound.handle_packet(&packet, iface), LinkHandleResult::None));
     }
 
     #[test]
@@ -1082,10 +1124,42 @@ mod tests {
             inbound.send_channel_message(0x2468, b"dedupe".to_vec()).expect("channel message");
 
         assert!(matches!(outbound.handle_packet(&packet, iface), LinkHandleResult::Proof(_)));
-        assert!(matches!(outbound.handle_packet(&packet, iface), LinkHandleResult::Proof(_)));
+        assert!(matches!(outbound.handle_packet(&packet, iface), LinkHandleResult::None));
 
         let seen = seen.lock().expect("lock");
         assert_eq!(seen.as_slice(), &[0]);
+    }
+
+    #[test]
+    fn channel_handler_panics_do_not_unwind_receive_path() {
+        let signer = PrivateIdentity::new_from_rand(OsRng);
+        let identity = *signer.as_identity();
+        let destination = DestinationDesc {
+            identity,
+            address_hash: identity.address_hash,
+            name: DestinationName::new("lxmf", "delivery"),
+        };
+        let (tx, _) = tokio::sync::broadcast::channel(8);
+
+        let mut outbound = Link::new(destination, tx.clone());
+        let request = outbound.request();
+        let mut inbound =
+            Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
+                .expect("link request should parse");
+        let iface = AddressHash::new_from_rand(OsRng);
+        assert!(matches!(
+            outbound.handle_packet(&inbound.prove(), iface),
+            LinkHandleResult::Activated
+        ));
+
+        outbound.register_channel_handler(0x9999, |_| -> bool { panic!("boom") });
+
+        let (_sequence, packet) =
+            inbound.send_channel_message(0x9999, b"panic".to_vec()).expect("channel message");
+
+        let result = catch_unwind(AssertUnwindSafe(|| outbound.handle_packet(&packet, iface)));
+        assert!(result.is_ok(), "channel handler panic should be contained");
+        assert!(matches!(result.unwrap(), LinkHandleResult::Proof(_)));
     }
 
     #[test]
@@ -1109,6 +1183,7 @@ mod tests {
             outbound.handle_packet(&inbound.prove(), iface),
             LinkHandleResult::Activated
         ));
+        inbound.register_channel_handler(0x55AA, |_| true);
 
         let (sequence, packet) = outbound
             .send_channel_message(0x55AA, b"needs-proof".to_vec())

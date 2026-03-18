@@ -1,12 +1,3 @@
-fn bytes_to_hex(bytes: &[u8]) -> String {
-    let mut out = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        use std::fmt::Write;
-        let _ = write!(&mut out, "{:02x}", byte);
-    }
-    out
-}
-
 pub(crate) fn validate_link_request_proof_packet(
     destination: &DestinationDesc,
     id: &LinkId,

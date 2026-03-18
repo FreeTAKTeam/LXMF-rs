@@ -423,6 +423,7 @@ async fn transport_channel_message_state_tracks_delivery() {
     let link_id = *outbound.id();
     let outbound = Arc::new(Mutex::new(outbound));
     handler.lock().await.out_links.insert(destination.address_hash, outbound.clone());
+    inbound.register_channel_handler(0x55AA, |_| true);
 
     let (sequence, packet) = {
         let mut outbound = outbound.lock().await;
