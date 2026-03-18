@@ -3,9 +3,8 @@
 This note explains how application JSON moves through the current `lxmf-sdk`
 and `lxmf-core` layers.
 
-It supplements [overview.md](/Users/broth/Documents/work/ATAK/src/LXMF-rs/docs/architecture/overview.md)
-with the data-path details that matter when callers need predictable LXMF field
-encoding.
+It supplements `docs/architecture/overview.md` with the data-path details that
+matter when callers need predictable LXMF field encoding.
 
 ## Short Version
 
@@ -31,7 +30,7 @@ In the RPC backend implementation:
   inside the forwarded fields object.
 
 This behavior is implemented in
-[core_impl.rs](/Users/broth/Documents/work/ATAK/src/LXMF-rs/crates/libs/lxmf-sdk/src/backend/rpc/core_impl.rs).
+`crates/libs/lxmf-sdk/src/backend/rpc/core_impl.rs`.
 
 ### `lxmf-core`
 
@@ -44,8 +43,8 @@ This behavior is implemented in
 
 This behavior is implemented in:
 
-- [payload.rs](/Users/broth/Documents/work/ATAK/src/LXMF-rs/crates/libs/lxmf-core/src/message/payload.rs)
-- [wire_fields.rs](/Users/broth/Documents/work/ATAK/src/LXMF-rs/crates/libs/lxmf-core/src/wire_fields.rs)
+- `crates/libs/lxmf-core/src/message/payload.rs`
+- `crates/libs/lxmf-core/src/wire_fields.rs`
 
 ## What "JSON Becomes MessagePack" Means Here
 
@@ -86,7 +85,7 @@ When JSON is converted into LXMF field data:
 - non-numeric keys remain string keys
 
 That behavior comes from `json_key_to_rmpv()` in
-[wire_fields.rs](/Users/broth/Documents/work/ATAK/src/LXMF-rs/crates/libs/lxmf-core/src/wire_fields.rs).
+`crates/libs/lxmf-core/src/wire_fields.rs`.
 
 This matters for canonical LXMF fields such as:
 
@@ -95,7 +94,7 @@ This matters for canonical LXMF fields such as:
 - ticket: field `0x0C`, JSON key form `"12"`
 
 The canonical field mappings are defined in
-[payload-contract.md](/Users/broth/Documents/work/ATAK/src/LXMF-rs/docs/contracts/payload-contract.md).
+`docs/contracts/payload-contract.md`.
 
 ## Commands Field Example
 
@@ -108,7 +107,14 @@ If callers need explicit command-field control, the canonical API is:
 - `payload_fields::CommandEntry`
 
 These APIs live in
-[payload_fields.rs](/Users/broth/Documents/work/ATAK/src/LXMF-rs/crates/libs/lxmf-core/src/payload_fields.rs).
+`crates/libs/lxmf-core/src/payload_fields.rs`.
+
+## Maintenance Notes
+
+- Keep repository paths relative and portable.
+- If the JSON-to-wire mapping changes, update this note alongside:
+  - `docs/contracts/payload-contract.md`
+  - `docs/sdk/advanced-embedding.md`
 
 ## What the SDK Does Not Expose
 

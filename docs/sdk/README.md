@@ -24,6 +24,7 @@ It complements the formal contracts under `docs/contracts/` with integration-foc
 - `docs/contracts/sdk-v2-events.md`
 - `docs/contracts/sdk-v2-errors.md`
 - `docs/contracts/sdk-v2-feature-matrix.md`
+- `docs/architecture/json-lxmf-fields.md` for JSON-to-wire field mapping details
 
 App API roadmap contracts:
 

@@ -4,15 +4,26 @@
 
 Rust monorepo for LXMF and Reticulum with strict library/app boundaries and enterprise quality gates.
 
-## Repository Layout
+## Start Here
+
+- Contributor workflow: `CONTRIBUTING.md`
+- Docs map and retention rules: `docs/README.md`
+- SDK guide: `docs/sdk/README.md`
+- Support policy: `docs/contracts/support-policy.md`
+
+## Workspace Layout
 
 ```text
 LXMF-rs/
 ├── crates/
 │   ├── libs/
 │   │   ├── lxmf-core/
+│   │   ├── lxmf-grpc-client/
 │   │   ├── lxmf-sdk/
 │   │   ├── rns-core/
+│   │   ├── rns-embedded-core/
+│   │   ├── rns-embedded-ffi/
+│   │   ├── rns-embedded-runtime/
 │   │   ├── rns-transport/
 │   │   ├── rns-rpc/
 │   │   └── test-support/
@@ -20,30 +31,67 @@ LXMF-rs/
 │   │   ├── lxmf-cli/
 │   │   ├── reticulumd/
 │   │   └── rns-tools/
-└── docs/
+│   └── internal/
+│       └── legacy crates kept outside the workspace
+├── docs/
     ├── adr/
     ├── architecture/
     ├── contracts/
+    ├── fixtures/
     ├── migrations/
-    └── runbooks/
+    ├── runbooks/
+    ├── schemas/
+    └── sdk/
+├── bruno/
+├── examples/
 ├── tools/
 │   └── scripts/
+├── scripts/
 ├── xtask/
-└── target/
-
-Note: legacy migration-only implementation crates are retained under
-`crates/internal/` and are excluded from the active workspace graph.
+└── wrappers/
 ```
 
-## Public Crates
+`Cargo.toml` is the source of truth for active workspace members. Some crate
+directories are intentionally present on disk but excluded from the workspace.
+
+## Active Libraries
 
 - `lxmf-core`: message/payload/identity primitives.
 - `lxmf-sdk`: host-facing client API (`start/send/cancel/status/configure/poll/snapshot/shutdown`).
+- `lxmf-grpc-client`: generated Rust client for the gRPC surface.
 - `rns-embedded-runtime`: node-centric embedded runtime facade with lifecycle, event, and managed `std` driver support.
 - `rns-embedded-ffi`: C ABI for embedded/manual-tick compatibility and the v1 node-centric API.
+- `rns-embedded-core`: shared embedded/runtime types and fixtures.
 - `rns-core`: Reticulum cryptographic and packet primitives.
 - `rns-transport`: transport + iface + receipt/resource API.
 - `rns-rpc`: RPC request/response/event contracts and bridges.
+- `test-support`: schema/fixture validation and integration-test helpers.
+
+## Active Applications
+
+- `lxmf-cli`
+- `reticulumd`
+- `rns-tools`
+
+## Bootstrap
+
+Recommended:
+
+```bash
+make bootstrap
+```
+
+Direct script form:
+
+```bash
+./tools/scripts/bootstrap-dev.sh
+```
+
+Verification-only mode:
+
+```bash
+./tools/scripts/bootstrap-dev.sh --check --skip-smoke
+```
 
 ## Build and Validation
 
@@ -76,63 +124,6 @@ make package-daemon-bundle VERSION=0.1
 make python-lxmd-smoke
 ```
 
-For release artifacts, `cargo xtask package-daemon-bundle` builds the
-host-native `lxmd` and `reticulumd` binaries, generates
-`lxmd.example.config`, copies `README.md`, and writes a release archive under
-`target/release-bundles/`. The command emits `.zip` bundles on Windows and
-`.tar.gz` bundles on macOS/Linux.
-
-On macOS, Gatekeeper may quarantine a downloaded release bundle because the
-project does not currently ship signed/notarized binaries. If that happens,
-remove the quarantine attribute after extracting the archive:
-
-```bash
-xattr -dr com.apple.quarantine /path/to/lxmd-daemon-<version>-macos-arm64
-chmod +x /path/to/lxmd-daemon-<version>-macos-arm64/lxmd
-chmod +x /path/to/lxmd-daemon-<version>-macos-arm64/reticulumd
-```
-
-You can also remove the attribute on just one binary, for example
-`xattr -d com.apple.quarantine ./lxmd`.
-
-If `sccache` is installed and you want to use it, set `RUSTC_WRAPPER=sccache`
-in your shell before building. The workspace no longer hardcodes a Unix-only
-wrapper path, so native Windows builds work without extra Cargo config.
-
-Cross-language protocol benchmark reports are written to
-`target/criterion/python-impl-compare.txt` and compare Rust core paths to the
-installed Python `RNS` and `LXMF` implementations. Benchmark configuration
-lives in `tools/benchmarks/python_impl.toml`, and the operating runbook is
-`docs/runbooks/python-impl-benchmarking.md`. For publishable claims, use
-`cargo xtask python-impl-bench-report`, which runs the stricter `report`
-profile repeatedly and writes aggregated timing/resource artifacts under
-`target/criterion/python-impl-report/`.
-
-For daemon-level mixed-runtime smoke coverage, `make python-lxmd-smoke` launches
-a Rust `lxmd` node and an installed Python `lxmd` node together, then verifies
-cross-runtime remote status control and Python-originated inbound delivery into
-the Rust node.
-
-## Developer Bootstrap
-
-One-command local setup:
-
-```bash
-make bootstrap
-```
-
-Direct script form:
-
-```bash
-./tools/scripts/bootstrap-dev.sh
-```
-
-Verification-only mode (used by CI):
-
-```bash
-./tools/scripts/bootstrap-dev.sh --check --skip-smoke
-```
-
 ## Binaries
 
 - `lxmf-cli`
@@ -148,21 +139,24 @@ cargo run -p reticulumd -- --help
 cargo run -p rns-tools --bin rnx -- e2e --timeout-secs 20
 ```
 
-## Contracts and Runbooks
+## Documentation Entry Points
 
+- Docs map: `docs/README.md`
+- API surface and stability: `docs/lxmf-rs-api.md`
+- CLI quick reference: `docs/lxmf-cli.md`
+- Architecture overview: `docs/architecture/overview.md`
+- JSON and wire-field mapping: `docs/architecture/json-lxmf-fields.md`
 - Compatibility contract: `docs/contracts/compatibility-contract.md`
 - Compatibility matrix: `docs/contracts/compatibility-matrix.md`
 - Third-party compatibility kit: `docs/contracts/third-party-compatibility-kit.md`
 - Support and LTS policy: `docs/contracts/support-policy.md`
 - Extension registry: `docs/contracts/extension-registry.md`
 - RPC contract: `docs/contracts/rpc-contract.md`
-- gRPC adoption and migration: `docs/contracts/grpc-adoption-and-migration.md`
 - Payload contract: `docs/contracts/payload-contract.md`
 - gRPC getting started: `docs/grpc-getting-started.md`
 - gRPC runbook: `docs/runbooks/grpc.md`
 - gRPC release notes: `docs/releases/2026-03-grpc-surface.md`
 - Release readiness: `docs/runbooks/release-readiness.md`
-- Release scorecard process: `docs/architecture/overview.md`
 
 ## SDK Guide
 
@@ -172,6 +166,23 @@ cargo run -p rns-tools --bin rnx -- e2e --timeout-secs 20
 - Config cookbook: `docs/runbooks/sdk-config-cookbook.md`
 - Lifecycle/events: `docs/sdk/lifecycle-and-events.md`
 - Advanced embedding: `docs/sdk/advanced-embedding.md`
+
+## Release Bundles
+
+`cargo xtask package-daemon-bundle` builds the host-native `lxmd` and
+`reticulumd` binaries, generates `lxmd.example.config`, copies `README.md`, and
+writes a release archive under `target/release-bundles/`. The command emits
+`.zip` bundles on Windows and `.tar.gz` bundles on macOS/Linux.
+
+On macOS, Gatekeeper may quarantine a downloaded release bundle because the
+project does not currently ship signed/notarized binaries. If that happens,
+remove the quarantine attribute after extracting the archive:
+
+```bash
+xattr -dr com.apple.quarantine /path/to/lxmd-daemon-<version>-macos-arm64
+chmod +x /path/to/lxmd-daemon-<version>-macos-arm64/lxmd
+chmod +x /path/to/lxmd-daemon-<version>-macos-arm64/reticulumd
+```
 
 ## Embedded Node FFI
 
@@ -185,7 +196,6 @@ cargo run -p rns-tools --bin rnx -- e2e --timeout-secs 20
 
 ## Governance
 
-- Governance docs: `SECURITY.md`
 - Security policy: `SECURITY.md`
 - Code ownership: `.github/CODEOWNERS`
 
@@ -267,10 +277,6 @@ sudo systemctl status lxmd.service --no-pager
 sudo journalctl -u lxmd.service -f
 ```
 
-## License
-
-MIT
-
 ## Using the official GitHub release binaries
 
 Latest release artifacts are published at:
@@ -306,3 +312,17 @@ Expand-Archive lxmd-daemon-<version>-windows-x86_64.zip .
 ```
 
 If you are using Linux and the Linux daemon guide above, point `--config` at the downloaded config file and keep binaries in place via your package manager path or your custom install path.
+
+## Notes
+
+- If `sccache` is installed and you want to use it, set
+  `RUSTC_WRAPPER=sccache` before building.
+- Cross-language benchmark configuration lives in
+  `tools/benchmarks/python_impl.toml`, and the operating runbook is
+  `docs/runbooks/python-impl-benchmarking.md`.
+- For daemon-level mixed-runtime smoke coverage, `make python-lxmd-smoke`
+  launches a Rust `lxmd` node and an installed Python `lxmd` node together.
+
+## License
+
+MIT

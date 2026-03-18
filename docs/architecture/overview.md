@@ -26,6 +26,7 @@
 - Guide index: `docs/sdk/README.md`
 - Lifecycle/event operations: `docs/sdk/lifecycle-and-events.md`
 - Profile/security configuration: `docs/sdk/configuration-profiles.md`
+- JSON and wire-field mapping details: `docs/architecture/json-lxmf-fields.md`
 
 ## Layering Rules
 - `crates/libs/*` must not depend on `crates/apps/*`.

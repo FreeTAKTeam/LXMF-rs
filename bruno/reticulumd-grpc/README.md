@@ -8,7 +8,7 @@ request-file format.
 ## Open in Bruno
 
 ```bash
-open -a Bruno /Users/tommy/Documents/TAK/LXMF-rs/bruno/reticulumd-grpc
+open -a Bruno "$(pwd)/bruno/reticulumd-grpc"
 ```
 
 ## Run the Daemon
@@ -29,7 +29,7 @@ Use:
 
 If Bruno asks for proto import paths, use:
 
-- `/Users/tommy/Documents/TAK/LXMF-rs/api/proto`
+- `api/proto` from the repository root
 
 Included requests:
 
@@ -66,7 +66,7 @@ Included requests:
 
 Example payloads and usage notes live in:
 
-- `/Users/tommy/Documents/TAK/LXMF-rs/docs/grpc-getting-started.md`
-- `/Users/tommy/Documents/TAK/LXMF-rs/docs/runbooks/grpc.md`
+- `docs/grpc-getting-started.md`
+- `docs/runbooks/grpc.md`
 
 If you save more request variants, I can extend the collection the same way.

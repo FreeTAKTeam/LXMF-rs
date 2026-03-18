@@ -1,11 +1,16 @@
-# `lxmf` Operator CLI
+# LXMF CLI Quick Reference
 
-`lxmf-cli` is the operator-facing command line for `lxmf-sdk` over `reticulumd` RPC.
+This note documents the `lxmf` operator CLI implemented by the `lxmf-cli`
+crate.
+
+The same crate also ships `lxmd`, which is a separate daemon-compatibility
+entrypoint. This page is about `lxmf`, not `lxmd`.
 
 ## Invocation
 
 ```bash
 cargo run -p lxmf-cli -- --help
+cargo run -p lxmf-cli --bin lxmd -- --help
 ```
 
 ## Global Flags
@@ -65,3 +70,9 @@ Generate shell completions:
 ```bash
 cargo run -p lxmf-cli -- completions --shell zsh > _lxmf
 ```
+
+Related references:
+
+- `README.md`
+- `docs/contracts/sdk-v2.md`
+- `docs/contracts/rpc-contract.md`

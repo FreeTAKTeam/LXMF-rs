@@ -1,5 +1,7 @@
 ## Summary
 
+Contributor guide: `CONTRIBUTING.md`
+
 ## Type
 - [ ] breaking
 - [ ] refactor
