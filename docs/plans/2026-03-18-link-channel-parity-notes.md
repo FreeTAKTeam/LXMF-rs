@@ -109,6 +109,8 @@ The current implementation is intentionally narrower than Python’s full
   semantics.
 - Cross-process or daemon-visible channel abstractions if channel traffic becomes
   part of the public RPC surface.
+- A fuller Rust equivalent of Python `RNS.Buffer`; current work has only laid the
+  `StreamDataMessage` / raw reader-writer foundation.
 
 ## Why This Note Exists
 
