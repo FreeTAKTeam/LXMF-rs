@@ -1,7 +1,116 @@
 use super::path::send_to_next_hop;
 use super::*;
+use ed25519_dalek::{Signature, SIGNATURE_LENGTH};
 
-pub(super) async fn handle_proof(packet: Packet, handler: Arc<Mutex<TransportHandler>>) {
+fn validate_destination_receipt_proof(
+    identity: &Identity,
+    packet: &Packet,
+) -> Result<Hash, RnsError> {
+    if packet.header.packet_type != PacketType::Proof
+        || packet.context == PacketContext::LinkRequestProof
+        || packet.data.len() < HASH_SIZE + SIGNATURE_LENGTH
+    {
+        return Err(RnsError::PacketError);
+    }
+
+    let mut hash = [0u8; HASH_SIZE];
+    hash.copy_from_slice(&packet.data.as_slice()[..HASH_SIZE]);
+    let signature =
+        Signature::from_slice(&packet.data.as_slice()[HASH_SIZE..HASH_SIZE + SIGNATURE_LENGTH])
+            .map_err(|_| RnsError::CryptoError)?;
+    identity.verify(&hash, &signature)?;
+
+    Ok(Hash::new(hash))
+}
+
+pub(super) async fn validated_receipt_hash(
+    packet: &Packet,
+    handler: &TransportHandler,
+) -> Option<[u8; HASH_SIZE]> {
+    if packet.header.packet_type != PacketType::Proof {
+        return None;
+    }
+
+    if packet.header.destination_type == DestinationType::Link
+        && packet.context == PacketContext::LinkProof
+    {
+        let mut link = handler
+            .in_links
+            .get(&packet.destination)
+            .cloned()
+            .or_else(|| handler.out_links.get(&packet.destination).cloned());
+        if link.is_none() {
+            for candidate in handler.out_links.values() {
+                if *candidate.lock().await.id() == packet.destination {
+                    link = Some(candidate.clone());
+                    break;
+                }
+            }
+        }
+        if let Some(link) = link {
+            let link = link.lock().await;
+            if let Ok(hash) = link.validate_packet_proof(packet) {
+                return Some(hash.to_bytes());
+            }
+        }
+        return None;
+    }
+
+    if let Some(destination) = handler.single_out_destinations.get(&packet.destination).cloned() {
+        let destination = destination.lock().await;
+        if let Ok(hash) = validate_destination_receipt_proof(&destination.identity, packet) {
+            return Some(hash.to_bytes());
+        }
+    }
+    if let Some(destination) = handler.single_in_destinations.get(&packet.destination).cloned() {
+        let destination = destination.lock().await;
+        if let Ok(hash) =
+            validate_destination_receipt_proof(destination.identity.as_identity(), packet)
+        {
+            return Some(hash.to_bytes());
+        }
+    }
+
+    None
+}
+
+async fn should_forward_link_request_proof(
+    packet: &Packet,
+    handler: &TransportHandler,
+    iface: AddressHash,
+) -> bool {
+    if packet.context != PacketContext::LinkRequestProof {
+        return true;
+    }
+
+    let Some((original_destination, expected_iface)) =
+        handler.link_table.proof_validation_context(&packet.destination)
+    else {
+        return false;
+    };
+    if expected_iface != iface {
+        return false;
+    }
+
+    let Some(destination) = handler.single_out_destinations.get(&original_destination).cloned()
+    else {
+        return false;
+    };
+    let destination = destination.lock().await;
+
+    crate::destination::link::validate_link_request_proof_packet(
+        &destination.desc,
+        &packet.destination,
+        packet,
+    )
+    .is_ok()
+}
+
+pub(super) async fn handle_proof(
+    packet: Packet,
+    handler: Arc<Mutex<TransportHandler>>,
+    iface: AddressHash,
+) {
     if packet.context == PacketContext::ResourceProof
         && packet.header.destination_type == DestinationType::Link
     {
@@ -36,14 +145,10 @@ pub(super) async fn handle_proof(packet: Packet, handler: Arc<Mutex<TransportHan
         return;
     }
     eprintln!("[tp] proof dst={} ctx={:02x}", packet.destination, packet.context as u8);
-    let receipt_hash =
-        if packet.context != PacketContext::LinkRequestProof && packet.data.len() >= HASH_SIZE {
-            let mut hash = [0u8; HASH_SIZE];
-            hash.copy_from_slice(&packet.data.as_slice()[..HASH_SIZE]);
-            Some(hash)
-        } else {
-            None
-        };
+    let receipt_hash = {
+        let handler = handler.lock().await;
+        validated_receipt_hash(&packet, &handler).await
+    };
     if let Some(receipt_hash) = receipt_hash {
         let receipt = DeliveryReceipt::new(receipt_hash);
         let receipt_handler = {
@@ -70,28 +175,14 @@ pub(super) async fn handle_proof(packet: Packet, handler: Arc<Mutex<TransportHan
         handler.send_packet(packet).await;
     }
 
-    let maybe_packet = handler.link_table.handle_proof(&packet);
+    let maybe_packet = if should_forward_link_request_proof(&packet, &handler, iface).await {
+        handler.link_table.handle_proof(&packet)
+    } else {
+        None
+    };
 
     if let Some((packet, iface)) = maybe_packet {
         handler.send(TxMessage { tx_type: TxMessageType::Direct(iface), packet }).await;
-    }
-}
-
-pub(super) fn handle_inbound_packet_for_test(
-    packet: &Packet,
-    _handler: &mut MutexGuard<'_, TransportHandler>,
-) -> Option<DeliveryReceipt> {
-    match packet.header.packet_type {
-        PacketType::Proof => {
-            if packet.context != PacketContext::LinkRequestProof && packet.data.len() >= HASH_SIZE {
-                let mut hash = [0u8; HASH_SIZE];
-                hash.copy_from_slice(&packet.data.as_slice()[..HASH_SIZE]);
-                Some(DeliveryReceipt::new(hash))
-            } else {
-                None
-            }
-        }
-        _ => None,
     }
 }
 

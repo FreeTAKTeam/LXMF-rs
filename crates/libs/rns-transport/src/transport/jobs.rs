@@ -139,7 +139,7 @@ pub(super) async fn manage_transport(
                             ).await,
                             PacketType::Proof => {
                                 drop(handler);
-                                handle_proof(packet, handler_arc.clone()).await;
+                                handle_proof(packet, handler_arc.clone(), message.address).await;
                             }
                             PacketType::Data => handle_data(&packet, message.address, handler).await,
                         }

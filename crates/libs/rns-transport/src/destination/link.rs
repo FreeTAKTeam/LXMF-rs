@@ -12,7 +12,7 @@ use crate::{
     buffer::OutputBuffer,
     crypt::fernet::{CachedFernet, PlainText, Token},
     error::RnsError,
-    hash::{AddressHash, Hash, ADDRESS_HASH_SIZE},
+    hash::{AddressHash, Hash, ADDRESS_HASH_SIZE, HASH_SIZE},
     identity::{DecryptIdentity, DerivedKey, EncryptIdentity, Identity, PrivateIdentity},
     packet::{
         DestinationType, Header, Packet, PacketContext, PacketDataBuffer, PacketType, PACKET_MDU,
@@ -304,7 +304,8 @@ impl Link {
                 if self.status == LinkStatus::Pending
                     && packet.context == PacketContext::LinkRequestProof
                 {
-                    if let Ok(identity) = validate_proof_packet(&self.destination, &self.id, packet)
+                    if let Ok(identity) =
+                        validate_link_request_proof_packet(&self.destination, &self.id, packet)
                     {
                         log::debug!("link({}): has been proved", self.id);
 
@@ -515,6 +516,10 @@ impl Link {
 
     pub fn id(&self) -> &LinkId {
         &self.id
+    }
+
+    pub(crate) fn validate_packet_proof(&self, packet: &Packet) -> Result<Hash, RnsError> {
+        validate_link_packet_proof(&self.peer_identity, &self.id, packet)
     }
 }
 

@@ -1,5 +1,4 @@
 use super::jobs::manage_transport;
-use super::wire::handle_inbound_packet_for_test;
 use super::*;
 
 impl Transport {
@@ -209,8 +208,10 @@ impl Transport {
 
     pub async fn handle_inbound_for_test(&self, packet: Packet) {
         let (receipt, receipt_handler) = {
-            let mut handler = self.handler.lock().await;
-            let receipt = handle_inbound_packet_for_test(&packet, &mut handler);
+            let handler = self.handler.lock().await;
+            let receipt = super::wire::validated_receipt_hash(&packet, &handler)
+                .await
+                .map(DeliveryReceipt::new);
             let receipt_handler = handler.receipt_handler.clone();
             (receipt, receipt_handler)
         };

@@ -86,6 +86,10 @@ impl LinkTable {
         self.entries.get(link_id).filter(|e| e.validated).map(|e| e.original_destination)
     }
 
+    pub fn proof_validation_context(&self, link_id: &LinkId) -> Option<(AddressHash, AddressHash)> {
+        self.entries.get(link_id).map(|entry| (entry.original_destination, entry.next_hop_iface))
+    }
+
     pub fn handle_keepalive(&mut self, packet: &Packet) -> Option<(Packet, AddressHash)> {
         if let Some(entry) = self.entries.get_mut(&packet.destination) {
             entry.timestamp = Instant::now();

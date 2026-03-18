@@ -129,7 +129,7 @@ impl DestinationAnnounce {
         let expected_hash =
             create_address_hash(&identity, &DestinationName::new_from_hash_slice(name_hash));
         if expected_hash != *destination {
-            eprintln!("[announce] dest mismatch expected={} got={}", expected_hash, destination);
+            return Err(RnsError::IncorrectHash);
         }
 
         let verify_announce =
@@ -201,21 +201,9 @@ impl DestinationAnnounce {
         };
 
         if has_ratchet_flag {
-            return parse_with_ratchet();
-        }
-
-        // Compatibility: some Python announces may include ratchet bytes even when
-        // this header flag is not set. Prefer no-ratchet parsing first, then fall
-        // back to ratchet parsing if signature verification fails.
-        match parse_without_ratchet() {
-            Ok(info) => Ok(info),
-            Err(err_without_ratchet) => {
-                if remaining >= SIGNATURE_LENGTH + RATCHET_LENGTH {
-                    parse_with_ratchet().or(Err(err_without_ratchet))
-                } else {
-                    Err(err_without_ratchet)
-                }
-            }
+            parse_with_ratchet()
+        } else {
+            parse_without_ratchet()
         }
     }
 }

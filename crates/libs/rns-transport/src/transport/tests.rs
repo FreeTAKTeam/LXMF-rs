@@ -1,4 +1,6 @@
 use super::announce::handle_announce;
+use super::path::handle_link_request_as_intermediate;
+use super::wire::handle_proof;
 use super::*;
 
 use crate::destination::link::{LinkEvent, LinkEventData, LinkPayload};
@@ -6,6 +8,10 @@ use crate::destination::{DestinationName, SingleInputDestination};
 use crate::identity::PrivateIdentity;
 use crate::packet::{Header, HeaderType};
 use rand_core::OsRng;
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+};
 use tokio::time::{timeout, Duration};
 
 #[tokio::test]
@@ -188,4 +194,152 @@ async fn send_packet_with_outcome_drops_announce_without_route() {
     let outcome = transport.send_packet_with_outcome(packet).await;
 
     assert_eq!(outcome, SendPacketOutcome::DroppedNoRoute);
+}
+
+struct CountingReceiptHandler {
+    count: Arc<AtomicUsize>,
+}
+
+impl ReceiptHandler for CountingReceiptHandler {
+    fn on_receipt(&self, _receipt: &DeliveryReceipt) {
+        self.count.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
+#[tokio::test]
+async fn handle_inbound_for_test_rejects_forged_destination_proof() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let config = TransportConfig::new("test", &local_identity, true);
+    let mut transport = Transport::new(config);
+    let handler = transport.get_handler();
+
+    let remote_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut remote_destination =
+        SingleInputDestination::new(remote_identity, DestinationName::new("lxmf", "delivery"));
+    let announce = remote_destination.announce(OsRng, None).expect("valid announce packet");
+    handle_announce(&announce, handler.lock().await, AddressHash::new_from_rand(OsRng)).await;
+
+    let count = Arc::new(AtomicUsize::new(0));
+    transport.set_receipt_handler(Box::new(CountingReceiptHandler { count: count.clone() })).await;
+
+    let packet_hash = [0x44u8; HASH_SIZE];
+    let mut data = PacketDataBuffer::new();
+    data.safe_write(&packet_hash);
+    data.safe_write(&[0xAA; ed25519_dalek::SIGNATURE_LENGTH]);
+    let packet = Packet {
+        header: Header { packet_type: PacketType::Proof, ..Default::default() },
+        destination: announce.destination,
+        context: PacketContext::None,
+        data,
+        ..Default::default()
+    };
+
+    transport.handle_inbound_for_test(packet).await;
+
+    assert_eq!(count.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn handle_inbound_for_test_accepts_valid_destination_proof() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let config = TransportConfig::new("test", &local_identity, true);
+    let mut transport = Transport::new(config);
+    let handler = transport.get_handler();
+
+    let remote_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut remote_destination =
+        SingleInputDestination::new(remote_identity, DestinationName::new("lxmf", "delivery"));
+    let announce = remote_destination.announce(OsRng, None).expect("valid announce packet");
+    handle_announce(&announce, handler.lock().await, AddressHash::new_from_rand(OsRng)).await;
+
+    let count = Arc::new(AtomicUsize::new(0));
+    transport.set_receipt_handler(Box::new(CountingReceiptHandler { count: count.clone() })).await;
+
+    let packet_hash = [0x55u8; HASH_SIZE];
+    let signature = remote_destination.identity.sign(&packet_hash).to_bytes();
+    let mut data = PacketDataBuffer::new();
+    data.safe_write(&packet_hash);
+    data.safe_write(&signature);
+    let packet = Packet {
+        header: Header { packet_type: PacketType::Proof, ..Default::default() },
+        destination: announce.destination,
+        context: PacketContext::None,
+        data,
+        ..Default::default()
+    };
+
+    transport.handle_inbound_for_test(packet).await;
+
+    assert_eq!(count.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn routed_link_request_proof_requires_matching_iface_and_signature() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut config = TransportConfig::new("test", &local_identity, true);
+    config.set_retransmit(true);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+
+    let remote_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut remote_destination =
+        SingleInputDestination::new(remote_identity, DestinationName::new("lxmf", "delivery"));
+    let announce = remote_destination.announce(OsRng, None).expect("valid announce packet");
+    handle_announce(&announce, handler.lock().await, AddressHash::new_from_rand(OsRng)).await;
+
+    let received_from = AddressHash::new_from_slice(&[1u8; 16]);
+    let next_hop = AddressHash::new_from_slice(&[2u8; 16]);
+    let next_hop_iface = AddressHash::new_from_slice(&[3u8; 16]);
+
+    let (tx, _) = tokio::sync::broadcast::channel(4);
+    let mut outbound_link =
+        crate::destination::link::Link::new(remote_destination.desc, tx.clone());
+    let request = outbound_link.request();
+    handle_link_request_as_intermediate(
+        received_from,
+        next_hop,
+        next_hop_iface,
+        &request,
+        handler.lock().await,
+    )
+    .await;
+
+    let mut inbound_link = crate::destination::link::Link::new_from_request(
+        &request,
+        remote_destination.sign_key().clone(),
+        remote_destination.desc,
+        tx,
+    )
+    .expect("link from request");
+
+    let valid_proof = inbound_link.prove();
+    handle_proof(valid_proof, handler.clone(), AddressHash::new_from_slice(&[9u8; 16])).await;
+    {
+        let guard = handler.lock().await;
+        assert!(
+            guard.link_table.original_destination(outbound_link.id()).is_none(),
+            "proof from wrong interface must not validate"
+        );
+    }
+
+    let mut bad_signature_proof = inbound_link.prove();
+    bad_signature_proof.data.as_mut_slice()[0] ^= 0x01;
+    handle_proof(bad_signature_proof, handler.clone(), next_hop_iface).await;
+    {
+        let guard = handler.lock().await;
+        assert!(
+            guard.link_table.original_destination(outbound_link.id()).is_none(),
+            "invalid proof signature must not validate"
+        );
+    }
+
+    let valid_proof = inbound_link.prove();
+    handle_proof(valid_proof, handler.clone(), next_hop_iface).await;
+    {
+        let guard = handler.lock().await;
+        assert_eq!(
+            guard.link_table.original_destination(outbound_link.id()),
+            Some(request.destination)
+        );
+    }
 }

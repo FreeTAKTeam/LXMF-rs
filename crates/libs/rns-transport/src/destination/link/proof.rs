@@ -7,7 +7,7 @@ fn bytes_to_hex(bytes: &[u8]) -> String {
     out
 }
 
-fn validate_proof_packet(
+pub(crate) fn validate_link_request_proof_packet(
     destination: &DestinationDesc,
     id: &LinkId,
     packet: &Packet,
@@ -53,4 +53,32 @@ fn validate_proof_packet(
         .map_err(|_| RnsError::IncorrectSignature)?;
 
     Ok(identity)
+}
+
+pub(crate) fn validate_link_packet_proof(
+    identity: &Identity,
+    id: &LinkId,
+    packet: &Packet,
+) -> Result<Hash, RnsError> {
+    if packet.header.packet_type != PacketType::Proof
+        || packet.header.destination_type != DestinationType::Link
+        || packet.context != PacketContext::LinkProof
+    {
+        return Err(RnsError::PacketError);
+    }
+    if packet.destination != *id {
+        return Err(RnsError::IncorrectHash);
+    }
+    if packet.data.len() < HASH_SIZE + SIGNATURE_LENGTH {
+        return Err(RnsError::PacketError);
+    }
+
+    let mut hash = [0u8; HASH_SIZE];
+    hash.copy_from_slice(&packet.data.as_slice()[..HASH_SIZE]);
+    let signature = Signature::from_slice(&packet.data.as_slice()[HASH_SIZE..HASH_SIZE + SIGNATURE_LENGTH])
+        .map_err(|_| RnsError::CryptoError)?;
+
+    identity.verify(&hash, &signature)?;
+
+    Ok(Hash::new(hash))
 }

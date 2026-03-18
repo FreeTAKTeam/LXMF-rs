@@ -27,6 +27,19 @@ pub(super) async fn handle_announce<'a>(
             return;
         }
     };
+    if let Some(existing) = handler.single_out_destinations.get(&packet.destination).cloned() {
+        let existing = existing.lock().await;
+        if existing.identity.public_key != announce.destination.identity.public_key
+            || existing.identity.verifying_key != announce.destination.identity.verifying_key
+        {
+            log::warn!(
+                "tp({}): rejecting announce for {} due to identity drift",
+                handler.config.name,
+                packet.destination
+            );
+            return;
+        }
+    }
     let ratchet = announce.ratchet;
     if let Some(ratchet_bytes) = ratchet {
         if let Some(store) = handler.ratchet_store.as_mut() {
