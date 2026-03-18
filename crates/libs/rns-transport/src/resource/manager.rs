@@ -52,6 +52,7 @@ impl ResourceManager {
         std::mem::take(&mut self.events)
     }
 
+    #[cfg(test)]
     pub(crate) fn has_no_outbound_state(&self) -> bool {
         self.pending_outgoing.is_empty() && self.outgoing.is_empty()
     }
@@ -75,19 +76,19 @@ impl ResourceManager {
         requests
     }
 
-    pub fn retry_advertisements(&mut self, now: Instant) -> Vec<(AddressHash, Packet)> {
+    pub fn poll_outgoing(&mut self, now: Instant) -> Vec<(AddressHash, Packet)> {
         let mut packets = Vec::new();
         let mut failed = Vec::new();
 
         for (hash, sender) in self.outgoing.iter_mut() {
-            if sender.advertisement_retry_due(now, self.retry_interval) {
-                if let Some(packet) = sender.retry_advertisement() {
+            match sender.poll(now, self.retry_interval) {
+                OutboundResourcePoll::Send(packet) => {
                     packets.push((sender.link_id, packet));
-                } else {
+                }
+                OutboundResourcePoll::Failed => {
                     failed.push(*hash);
                 }
-            } else if sender.stalled(now, self.retry_interval) {
-                failed.push(*hash);
+                OutboundResourcePoll::None => {}
             }
         }
 
