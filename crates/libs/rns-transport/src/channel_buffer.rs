@@ -121,6 +121,28 @@ struct ReaderState {
     callbacks: HashMap<ReadyCallbackId, ReadyCallback>,
 }
 
+fn dispatch_ready_callbacks(callbacks: Vec<ReadyCallback>, ready: usize) {
+    if callbacks.is_empty() {
+        return;
+    }
+
+    match tokio::runtime::Handle::try_current() {
+        Ok(handle) => {
+            handle.spawn_blocking(move || {
+                for callback in callbacks {
+                    callback(ready);
+                }
+            });
+        }
+        Err(err) => {
+            log::warn!("channel_buffer: failed to detach ready callbacks: {}", err);
+            for callback in callbacks {
+                callback(ready);
+            }
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct RawChannelReader {
     stream_id: u16,
@@ -154,9 +176,7 @@ impl RawChannelReader {
                 let ready = state.buffer.len();
                 let callbacks = state.callbacks.values().cloned().collect::<Vec<_>>();
                 drop(state);
-                for callback in callbacks {
-                    callback(ready);
-                }
+                dispatch_ready_callbacks(callbacks, ready);
                 true
             })
             .await?;
@@ -415,8 +435,11 @@ mod tests {
     use crate::identity::PrivateIdentity;
     use crate::transport::{Transport, TransportConfig};
     use rand_core::OsRng;
+    use std::sync::mpsc;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Mutex as StdMutex;
     use tokio::sync::Mutex;
+    use tokio::time::timeout;
 
     #[test]
     fn stream_data_message_roundtrips_compressed_payloads() {
@@ -462,7 +485,11 @@ mod tests {
 
         let ready = Arc::new(StdMutex::new(Vec::new()));
         let ready_clone = ready.clone();
-        reader.add_ready_callback(move |count| ready_clone.lock().expect("lock").push(count));
+        let (tx, rx) = mpsc::channel();
+        reader.add_ready_callback(move |count| {
+            ready_clone.lock().expect("lock").push(count);
+            tx.send(count).expect("callback signal");
+        });
 
         let message =
             StreamDataMessage::new(23, b"hello-channel".to_vec(), false, false).expect("message");
@@ -472,6 +499,7 @@ mod tests {
 
         let result = outbound.lock().await.handle_packet(&packet, iface);
         assert!(matches!(result, LinkHandleResult::Proof(_)));
+        assert_eq!(rx.recv_timeout(Duration::from_secs(1)).expect("ready callback"), 13);
         assert_eq!(reader.ready_len(), b"hello-channel".len());
         assert_eq!(reader.read(5).expect("chunk"), b"hello".to_vec());
         assert_eq!(reader.read(32).expect("chunk"), b"-channel".to_vec());
@@ -479,10 +507,72 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn raw_channel_reader_callbacks_can_reenter_reader_without_deadlock() {
+    async fn raw_channel_reader_eof_only_triggers_ready_callback_with_zero() {
         let transport = test_transport();
         let (outbound, mut inbound, iface, channel) = linked_channel(&transport).await;
         let reader = RawChannelReader::attach(24, channel).await.expect("reader");
+
+        let (tx, rx) = mpsc::channel();
+        reader.add_ready_callback(move |count| {
+            tx.send(count).expect("callback signal");
+        });
+
+        let message = StreamDataMessage::new(24, Vec::new(), true, false).expect("message");
+        let (_sequence, packet) = inbound
+            .send_channel_message(StreamDataMessage::MSG_TYPE, message.encode())
+            .expect("channel message");
+
+        let result = outbound.lock().await.handle_packet(&packet, iface);
+        assert!(matches!(result, LinkHandleResult::Proof(_)));
+        assert_eq!(rx.recv_timeout(Duration::from_secs(1)).expect("ready callback"), 0);
+        assert_eq!(reader.read(64).expect("eof"), Vec::<u8>::new());
+        assert!(reader.is_eof());
+    }
+
+    #[tokio::test]
+    async fn raw_channel_reader_callbacks_run_detached_from_receive_lock() {
+        let transport = test_transport();
+        let (outbound, mut inbound, iface, channel) = linked_channel(&transport).await;
+        let reader = RawChannelReader::attach(25, channel).await.expect("reader");
+
+        let callback_started = Arc::new(AtomicBool::new(false));
+        let callback_started_clone = callback_started.clone();
+        let (tx, rx) = mpsc::channel();
+        reader.add_ready_callback(move |count| {
+            callback_started_clone.store(true, Ordering::SeqCst);
+            std::thread::sleep(Duration::from_millis(100));
+            tx.send(count).expect("callback signal");
+        });
+
+        let message = StreamDataMessage::new(25, b"async".to_vec(), false, false).expect("message");
+        let (_sequence, packet) = inbound
+            .send_channel_message(StreamDataMessage::MSG_TYPE, message.encode())
+            .expect("channel message");
+
+        let result = outbound.lock().await.handle_packet(&packet, iface);
+        assert!(matches!(result, LinkHandleResult::Proof(_)));
+        assert_eq!(reader.ready_len(), b"async".len());
+        assert_eq!(reader.read(32).expect("chunk"), b"async".to_vec());
+        assert!(
+            timeout(Duration::from_secs(1), async move {
+                loop {
+                    if callback_started.load(Ordering::SeqCst) {
+                        break;
+                    }
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .is_ok()
+        );
+        assert_eq!(rx.recv_timeout(Duration::from_secs(1)).expect("ready callback"), 5);
+    }
+
+    #[tokio::test]
+    async fn raw_channel_reader_callbacks_can_reenter_reader_without_deadlock() {
+        let transport = test_transport();
+        let (outbound, mut inbound, iface, channel) = linked_channel(&transport).await;
+        let reader = RawChannelReader::attach(26, channel).await.expect("reader");
         let callback_reader = reader.clone();
         let (tx, rx) = std::sync::mpsc::sync_channel(1);
         reader.add_ready_callback(move |_| {
@@ -490,7 +580,7 @@ mod tests {
         });
 
         let message =
-            StreamDataMessage::new(24, b"reenter".to_vec(), false, false).expect("message");
+            StreamDataMessage::new(26, b"reenter".to_vec(), false, false).expect("message");
         let (_sequence, packet) = inbound
             .send_channel_message(StreamDataMessage::MSG_TYPE, message.encode())
             .expect("channel message");

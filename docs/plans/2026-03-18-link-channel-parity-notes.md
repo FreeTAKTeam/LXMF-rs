@@ -126,6 +126,8 @@ The current implementation is intentionally narrower than Python’s full
 - This is intentionally narrower than Python `RNS.Buffer`:
   - it provides the message format, attachable async reader, and chunking writer
   - it does not yet provide a full `std::io`-style buffered stream facade
+  - raw reader ready callbacks now run detached from the receive path, and EOF-only messages fire
+    callbacks with `ready_bytes == 0`, matching Python more closely
   - raw writer backpressure now behaves like Python `RawChannelWriter.write()`: it returns a
     short write of `0` on `LinkNotReady` instead of surfacing a hard error
   - raw writer close is best-effort like Python: it waits briefly for send readiness, then does a
