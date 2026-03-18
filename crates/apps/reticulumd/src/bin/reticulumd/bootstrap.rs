@@ -2,7 +2,7 @@ use super::announce_worker::spawn_announce_worker;
 use super::bridge::{PeerCrypto, TransportBridge};
 use super::inbound_worker::spawn_inbound_worker;
 use super::interface_hot_apply::{legacy_tcp_interface_key, LegacyTcpInterfaceMutationBridge};
-use super::interfaces::{ble, common::interface_label, lora, serial};
+use super::interfaces::{ble, common::interface_label, lora, serial, udp};
 use super::receipt_worker::spawn_receipt_worker;
 use super::Args;
 use reticulum_daemon::announce_names::{
@@ -17,6 +17,7 @@ use rns_rpc::{
 use rns_transport::destination::{DestinationName, SingleInputDestination};
 use rns_transport::iface::tcp_client::TcpClient;
 use rns_transport::iface::tcp_server::TcpServer;
+use rns_transport::iface::udp::UdpInterface;
 use rns_transport::transport::{Transport, TransportConfig};
 use serde_json::{Map as JsonMap, Value as JsonValue};
 use std::collections::HashMap;
@@ -315,6 +316,63 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
                             });
                         }
                     }
+                    "udp" => match udp::bind_and_forward_addr(iface) {
+                        Ok((bind_addr, forward_addr)) => {
+                            if args.strict_interface_startup {
+                                if let Err(err) = udp::strict_preflight(bind_addr.as_str()).await {
+                                    eprintln!(
+                                        "[daemon] udp startup rejected name={} err={}",
+                                        label, err
+                                    );
+                                    mark_interface_startup_status(
+                                        &mut configured_interfaces[index],
+                                        "failed",
+                                        Some(err.as_str()),
+                                        None,
+                                    );
+                                    startup_failures.push(InterfaceStartupFailure {
+                                        label,
+                                        kind: iface.kind.clone(),
+                                        error: err,
+                                    });
+                                    continue;
+                                }
+                            }
+                            let udp_iface = iface_manager.lock().await.spawn(
+                                UdpInterface::new(bind_addr.clone(), forward_addr.clone()),
+                                UdpInterface::spawn,
+                            );
+                            eprintln!(
+                                "[daemon] udp enabled iface={} name={} bind={} forward={}",
+                                udp_iface,
+                                label,
+                                bind_addr,
+                                forward_addr.as_deref().unwrap_or("<none>")
+                            );
+                            let runtime_iface = udp_iface.to_string();
+                            mark_interface_startup_status(
+                                &mut configured_interfaces[index],
+                                "spawned",
+                                None,
+                                Some(runtime_iface.as_str()),
+                            );
+                            startup_successes += 1;
+                        }
+                        Err(err) => {
+                            eprintln!("[daemon] udp startup rejected name={} err={}", label, err);
+                            mark_interface_startup_status(
+                                &mut configured_interfaces[index],
+                                "failed",
+                                Some(err.as_str()),
+                                None,
+                            );
+                            startup_failures.push(InterfaceStartupFailure {
+                                label,
+                                kind: iface.kind.clone(),
+                                error: err,
+                            });
+                        }
+                    },
                     "serial" => match serial::build_adapter(iface) {
                         Ok(adapter) => {
                             if args.strict_interface_startup {

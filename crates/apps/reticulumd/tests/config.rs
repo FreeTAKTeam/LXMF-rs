@@ -76,6 +76,37 @@ fn filters_enabled_tcp_servers_with_default_host() {
 }
 
 #[test]
+fn parses_udp_interface_with_target_settings() {
+    let input = r#"
+interfaces = [
+  { type = "udp", enabled = true, host = "127.0.0.1", port = 4242, target_host = "127.0.0.1", target_port = 4243, name = "udp-main" }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse udp config");
+    let iface = &cfg.interfaces[0];
+    assert_eq!(iface.kind, "udp");
+    assert_eq!(iface.host.as_deref(), Some("127.0.0.1"));
+    assert_eq!(iface.port, Some(4242));
+    assert_eq!(iface.target_host.as_deref(), Some("127.0.0.1"));
+    assert_eq!(iface.target_port, Some(4243));
+}
+
+#[test]
+fn rejects_udp_target_host_without_target_port() {
+    let input = r#"
+interfaces = [
+  { type = "udp", enabled = true, host = "127.0.0.1", port = 4242, target_host = "127.0.0.1" }
+]
+"#;
+    let err = DaemonConfig::from_toml(input).expect_err("partial udp target settings must fail");
+    let message = err.to_string();
+    assert!(
+        message.contains("target_host and target_port must be provided together for udp"),
+        "unexpected parse error: {message}"
+    );
+}
+
+#[test]
 fn parses_enabled_serial_interface_with_settings() {
     let input = r#"
 interfaces = [

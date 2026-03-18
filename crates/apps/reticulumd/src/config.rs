@@ -44,6 +44,10 @@ pub struct InterfaceConfig {
     #[serde(default)]
     pub name: Option<String>,
     #[serde(default)]
+    pub target_host: Option<String>,
+    #[serde(default)]
+    pub target_port: Option<u16>,
+    #[serde(default)]
     pub device: Option<String>,
     #[serde(default)]
     pub baud_rate: Option<u32>,
@@ -161,6 +165,10 @@ impl InterfaceConfig {
     pub fn settings_json(&self) -> Option<JsonValue> {
         let mut settings = JsonMap::new();
         match self.kind.as_str() {
+            "udp" => {
+                insert_opt_string(&mut settings, "target_host", self.target_host.as_ref());
+                insert_opt_u64(&mut settings, "target_port", self.target_port.map(u64::from));
+            }
             "serial" => {
                 insert_opt_string(&mut settings, "device", self.device.as_ref());
                 insert_opt_u64(&mut settings, "baud_rate", self.baud_rate.map(u64::from));
@@ -234,11 +242,35 @@ impl InterfaceConfig {
             return Err(format!("interfaces[{index}].type is required"));
         }
         match kind {
+            "udp" => self.validate_udp(index),
             "serial" => self.validate_serial(index),
             "ble_gatt" => self.validate_ble(index),
             "lora" => self.validate_lora(index),
             _ => Ok(()),
         }
+    }
+
+    fn validate_udp(&self, index: usize) -> Result<(), String> {
+        self.reject_unknown_new_kind_keys(index, "udp")?;
+        if !self.enabled() {
+            return Ok(());
+        }
+        let has_bind_host =
+            self.host.as_deref().map(str::trim).is_some_and(|value| !value.is_empty());
+        if !has_bind_host {
+            return Err(format!("interfaces[{index}].host is required for udp"));
+        }
+        if self.port.is_none() {
+            return Err(format!("interfaces[{index}].port is required for udp"));
+        }
+        let has_target_host =
+            self.target_host.as_deref().map(str::trim).is_some_and(|value| !value.is_empty());
+        if has_target_host ^ self.target_port.is_some() {
+            return Err(format!(
+                "interfaces[{index}].target_host and target_port must be provided together for udp"
+            ));
+        }
+        Ok(())
     }
 
     fn validate_serial(&self, index: usize) -> Result<(), String> {
