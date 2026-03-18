@@ -5,6 +5,7 @@ use crate::bootstrap::{
 use crate::bridge_helpers::opportunistic_payload;
 use crate::interfaces::{lora, serial};
 use crate::{bootstrap, Args};
+use futures::FutureExt;
 use reticulum_daemon::config::InterfaceConfig;
 use rns_rpc::{InterfaceRecord, RpcRequest};
 use rns_transport::delivery::send_outcome_status;
@@ -464,6 +465,108 @@ fn reticulum_parity_matrix_mentions_config_driven_lxmd_tcp_server_startup() {
             && text.contains("without Rust-only transport overrides"),
         "reticulum parity matrix should document config-driven lxmd tcp_server startup parity"
     );
+}
+
+#[test]
+fn bootstrap_starts_udp_interface_from_config() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let config_path = temp.path().join("daemon.toml");
+    fs::write(
+        &config_path,
+        r#"
+interfaces = [
+  { type = "udp", enabled = true, name = "udp-main", host = "127.0.0.1", port = 0, target_host = "127.0.0.1", target_port = 4242 }
+]
+"#,
+    )
+    .expect("write config");
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    let context = runtime.block_on(async {
+        bootstrap::bootstrap(test_args(db_path.clone(), Some(config_path.clone()), None, false))
+            .await
+    });
+    let response = context
+        .daemon
+        .handle_rpc(RpcRequest { id: 1, method: "list_interfaces".to_string(), params: None })
+        .expect("list_interfaces");
+    let interfaces = response
+        .result
+        .expect("result")
+        .get("interfaces")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .expect("interfaces array");
+
+    let udp = interfaces
+        .iter()
+        .find(|entry| entry.get("type").and_then(|value| value.as_str()) == Some("udp"))
+        .expect("udp entry");
+    assert_eq!(udp.get("host").and_then(|value| value.as_str()), Some("127.0.0.1"));
+    assert_eq!(udp.get("port").and_then(|value| value.as_u64()), Some(0));
+    assert_eq!(
+        udp.get("settings")
+            .and_then(|value| value.get("target_host"))
+            .and_then(|value| value.as_str()),
+        Some("127.0.0.1")
+    );
+    assert_eq!(
+        udp.get("settings")
+            .and_then(|value| value.get("target_port"))
+            .and_then(|value| value.as_u64()),
+        Some(4242)
+    );
+    assert_eq!(
+        udp.get("settings")
+            .and_then(|value| value.get("_runtime"))
+            .and_then(|value| value.get("startup_status"))
+            .and_then(|value| value.as_str()),
+        Some("spawned")
+    );
+}
+
+#[test]
+fn bootstrap_strict_mode_rejects_unbindable_udp_interface() {
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    runtime.block_on(async {
+        let occupied = tokio::net::UdpSocket::bind("127.0.0.1:0").await.expect("bind port");
+        let occupied_addr = occupied.local_addr().expect("local addr");
+
+        let temp = TempDir::new().expect("temp dir");
+        let db_path = temp.path().join("reticulum.db");
+        let config_path = temp.path().join("daemon.toml");
+        fs::write(
+            &config_path,
+            format!(
+                "interfaces = [\n  {{ type = \"udp\", enabled = true, name = \"udp-main\", host = \"127.0.0.1\", port = {}, target_host = \"127.0.0.1\", target_port = 4242 }}\n]\n",
+                occupied_addr.port()
+            ),
+        )
+        .expect("write config");
+
+        let result = std::panic::AssertUnwindSafe(bootstrap::bootstrap(test_args(
+            db_path.clone(),
+            Some(config_path.clone()),
+            None,
+            true,
+        )))
+        .catch_unwind()
+        .await;
+
+        let panic_payload = result.expect_err("strict startup should panic on occupied udp port");
+        let panic_message = if let Some(message) = panic_payload.downcast_ref::<String>() {
+            message.clone()
+        } else if let Some(message) = panic_payload.downcast_ref::<&str>() {
+            (*message).to_string()
+        } else {
+            String::new()
+        };
+        assert!(panic_message.contains("strict interface startup policy rejected"));
+        assert!(panic_message.contains("udp-main"));
+    });
 }
 
 #[test]
