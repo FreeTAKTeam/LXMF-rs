@@ -1,6 +1,6 @@
 use std::{
     cmp::min,
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     time::{Duration, Instant},
 };
 
@@ -33,6 +33,7 @@ const STALE_GRACE_SECS: f32 = 5.0;
 const KEEPALIVE_MAX_SECS: f32 = 360.0;
 const KEEPALIVE_MIN_SECS: f32 = 5.0;
 const STALE_FACTOR: f32 = 2.0;
+const CHANNEL_RX_WINDOW_MAX: u16 = 48;
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum LinkStatus {
@@ -103,9 +104,11 @@ pub struct Link {
     keepalive: Duration,
     stale_time: Duration,
     next_channel_sequence: u16,
+    next_channel_rx_sequence: u16,
     channel_handlers: HashMap<u16, ChannelHandler>,
     channel_pending: HashMap<Hash, u16>,
     channel_states: HashMap<u16, ChannelMessageState>,
+    channel_rx_ring: HashMap<u16, ChannelEnvelope>,
     event_tx: tokio::sync::broadcast::Sender<LinkEventData>,
 }
 
@@ -134,9 +137,11 @@ impl Link {
             keepalive: Duration::from_secs_f32(KEEPALIVE_MAX_SECS),
             stale_time: Duration::from_secs_f32(KEEPALIVE_MAX_SECS * STALE_FACTOR),
             next_channel_sequence: 0,
+            next_channel_rx_sequence: 0,
             channel_handlers: HashMap::new(),
             channel_pending: HashMap::new(),
             channel_states: HashMap::new(),
+            channel_rx_ring: HashMap::new(),
             event_tx,
         }
     }
@@ -189,9 +194,11 @@ impl Link {
             keepalive: Duration::from_secs_f32(KEEPALIVE_MAX_SECS),
             stale_time: Duration::from_secs_f32(KEEPALIVE_MAX_SECS * STALE_FACTOR),
             next_channel_sequence: 0,
+            next_channel_rx_sequence: 0,
             channel_handlers: HashMap::new(),
             channel_pending: HashMap::new(),
             channel_states: HashMap::new(),
+            channel_rx_ring: HashMap::new(),
             event_tx,
         };
 
@@ -228,8 +235,10 @@ impl Link {
         self.keepalive = Duration::from_secs_f32(KEEPALIVE_MAX_SECS);
         self.stale_time = Duration::from_secs_f32(KEEPALIVE_MAX_SECS * STALE_FACTOR);
         self.next_channel_sequence = 0;
+        self.next_channel_rx_sequence = 0;
         self.channel_pending.clear();
         self.channel_states.clear();
+        self.channel_rx_ring.clear();
 
         packet
     }
@@ -715,6 +724,7 @@ impl Link {
         for sequence in self.channel_pending.drain().map(|(_, sequence)| sequence) {
             self.channel_states.insert(sequence, ChannelMessageState::Failed);
         }
+        self.channel_rx_ring.clear();
         self.status = LinkStatus::Closed;
         self.session_cipher = None;
 
@@ -729,6 +739,7 @@ impl Link {
         for sequence in self.channel_pending.drain().map(|(_, sequence)| sequence) {
             self.channel_states.insert(sequence, ChannelMessageState::Failed);
         }
+        self.channel_rx_ring.clear();
         self.status = LinkStatus::Pending;
         self.session_cipher = None;
         self.activated_at = None;
@@ -736,6 +747,7 @@ impl Link {
         self.last_keepalive = None;
         self.last_proof = None;
         self.stale_since = None;
+        self.next_channel_rx_sequence = 0;
     }
 
     pub fn elapsed(&self) -> Duration {
@@ -759,15 +771,47 @@ impl Link {
             log::warn!("link({}): invalid channel frame", self.id);
             return;
         };
-        let Some(handler) = self.channel_handlers.get_mut(&envelope.msg_type) else {
+
+        let distance = envelope.sequence.wrapping_sub(self.next_channel_rx_sequence);
+        if distance >= 0x8000 {
+            log::debug!("link({}): duplicate/old channel frame seq={}", self.id, envelope.sequence);
+            return;
+        }
+        if distance >= CHANNEL_RX_WINDOW_MAX {
             log::debug!(
-                "link({}): channel frame without handler type={}",
+                "link({}): channel frame outside receive window seq={} next={}",
                 self.id,
-                envelope.msg_type
+                envelope.sequence,
+                self.next_channel_rx_sequence
             );
             return;
-        };
-        let _ = handler(envelope);
+        }
+        if self.channel_rx_ring.insert(envelope.sequence, envelope).is_some() {
+            log::debug!(
+                "link({}): duplicate buffered channel frame seq={}",
+                self.id,
+                self.next_channel_rx_sequence
+            );
+            return;
+        }
+
+        let mut ready = VecDeque::new();
+        while let Some(envelope) = self.channel_rx_ring.remove(&self.next_channel_rx_sequence) {
+            ready.push_back(envelope);
+            self.next_channel_rx_sequence = self.next_channel_rx_sequence.wrapping_add(1);
+        }
+
+        for envelope in ready {
+            let Some(handler) = self.channel_handlers.get_mut(&envelope.msg_type) else {
+                log::debug!(
+                    "link({}): channel frame without handler type={}",
+                    self.id,
+                    envelope.msg_type
+                );
+                continue;
+            };
+            let _ = handler(envelope);
+        }
     }
 }
 
@@ -952,6 +996,96 @@ mod tests {
         assert_eq!(seen.len(), 1);
         assert_eq!(seen[0].msg_type, 0x1234);
         assert_eq!(seen[0].payload, b"hello-channel");
+    }
+
+    #[test]
+    fn out_of_order_channel_messages_are_buffered_until_contiguous() {
+        let signer = PrivateIdentity::new_from_rand(OsRng);
+        let identity = *signer.as_identity();
+        let destination = DestinationDesc {
+            identity,
+            address_hash: identity.address_hash,
+            name: DestinationName::new("lxmf", "delivery"),
+        };
+        let (tx, _) = tokio::sync::broadcast::channel(8);
+
+        let mut outbound = Link::new(destination, tx.clone());
+        let request = outbound.request();
+        let mut inbound =
+            Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
+                .expect("link request should parse");
+        let iface = AddressHash::new_from_rand(OsRng);
+        assert!(matches!(
+            outbound.handle_packet(&inbound.prove(), iface),
+            LinkHandleResult::Activated
+        ));
+
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let seen_clone = seen.clone();
+        outbound.register_channel_handler(0x4321, move |envelope| {
+            seen_clone.lock().expect("lock").push((envelope.sequence, envelope.payload));
+            true
+        });
+
+        let (_first_sequence, first_packet) =
+            inbound.send_channel_message(0x4321, b"first".to_vec()).expect("first channel message");
+        let (_second_sequence, second_packet) = inbound
+            .send_channel_message(0x4321, b"second".to_vec())
+            .expect("second channel message");
+
+        assert!(matches!(
+            outbound.handle_packet(&second_packet, iface),
+            LinkHandleResult::Proof(_)
+        ));
+        assert!(seen.lock().expect("lock").is_empty());
+
+        assert!(matches!(outbound.handle_packet(&first_packet, iface), LinkHandleResult::Proof(_)));
+
+        let seen = seen.lock().expect("lock");
+        assert_eq!(seen.len(), 2);
+        assert_eq!(seen[0].0, 0);
+        assert_eq!(seen[0].1, b"first");
+        assert_eq!(seen[1].0, 1);
+        assert_eq!(seen[1].1, b"second");
+    }
+
+    #[test]
+    fn duplicate_channel_messages_are_ignored() {
+        let signer = PrivateIdentity::new_from_rand(OsRng);
+        let identity = *signer.as_identity();
+        let destination = DestinationDesc {
+            identity,
+            address_hash: identity.address_hash,
+            name: DestinationName::new("lxmf", "delivery"),
+        };
+        let (tx, _) = tokio::sync::broadcast::channel(8);
+
+        let mut outbound = Link::new(destination, tx.clone());
+        let request = outbound.request();
+        let mut inbound =
+            Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
+                .expect("link request should parse");
+        let iface = AddressHash::new_from_rand(OsRng);
+        assert!(matches!(
+            outbound.handle_packet(&inbound.prove(), iface),
+            LinkHandleResult::Activated
+        ));
+
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let seen_clone = seen.clone();
+        outbound.register_channel_handler(0x2468, move |envelope| {
+            seen_clone.lock().expect("lock").push(envelope.sequence);
+            true
+        });
+
+        let (_sequence, packet) =
+            inbound.send_channel_message(0x2468, b"dedupe".to_vec()).expect("channel message");
+
+        assert!(matches!(outbound.handle_packet(&packet, iface), LinkHandleResult::Proof(_)));
+        assert!(matches!(outbound.handle_packet(&packet, iface), LinkHandleResult::Proof(_)));
+
+        let seen = seen.lock().expect("lock");
+        assert_eq!(seen.as_slice(), &[0]);
     }
 
     #[test]
