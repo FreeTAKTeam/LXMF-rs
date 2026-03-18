@@ -13,6 +13,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install Linux BLE build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libdbus-1-dev
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt,clippy
@@ -32,6 +36,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install Linux BLE build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libdbus-1-dev
       - uses: dtolnay/rust-toolchain@stable
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
@@ -50,6 +58,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install Linux BLE build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libdbus-1-dev
       - uses: dtolnay/rust-toolchain@stable
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
