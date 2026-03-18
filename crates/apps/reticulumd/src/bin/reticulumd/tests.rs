@@ -3,6 +3,10 @@ use crate::bootstrap::{
     select_tcp_server_bind, InterfaceStartupFailure,
 };
 use crate::bridge_helpers::opportunistic_payload;
+use crate::inbound_worker::{
+    prune_outbound_resource_mappings_for_message, take_outbound_resource_tracking,
+    track_outbound_resource, OutboundResourceTracking, OUTBOUND_RESOURCE_SENT_STATUS,
+};
 use crate::interfaces::{lora, serial};
 use crate::{bootstrap, Args};
 use futures::FutureExt;
@@ -12,8 +16,10 @@ use rns_transport::delivery::send_outcome_status;
 use rns_transport::destination_hash::parse_destination_hash_required;
 use rns_transport::transport::SendPacketOutcome;
 use serde_json::json;
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tempfile::TempDir;
 
@@ -50,6 +56,42 @@ fn send_outcome_status_maps_failures() {
         send_outcome_status("opportunistic", SendPacketOutcome::DroppedNoRoute),
         "failed: opportunistic no route"
     );
+}
+
+#[test]
+fn outbound_resource_tracking_round_trips_and_prunes() {
+    let map = Arc::new(Mutex::new(HashMap::new()));
+    track_outbound_resource(
+        &map,
+        "res-1".to_string(),
+        OutboundResourceTracking {
+            message_id: "msg-1".to_string(),
+            peer: "peer-a".to_string(),
+            bytes: 128,
+        },
+    );
+    track_outbound_resource(
+        &map,
+        "res-2".to_string(),
+        OutboundResourceTracking {
+            message_id: "msg-2".to_string(),
+            peer: "peer-b".to_string(),
+            bytes: 256,
+        },
+    );
+
+    let tracking = take_outbound_resource_tracking(&map, "res-1").expect("resource mapping");
+    assert_eq!(tracking.message_id, "msg-1");
+    assert_eq!(tracking.peer, "peer-a");
+    assert_eq!(tracking.bytes, 128);
+
+    prune_outbound_resource_mappings_for_message(&map, "msg-2");
+    assert!(take_outbound_resource_tracking(&map, "res-2").is_none());
+}
+
+#[test]
+fn outbound_resource_completion_stays_non_terminal() {
+    assert_eq!(OUTBOUND_RESOURCE_SENT_STATUS, "sent: link resource");
 }
 
 #[test]

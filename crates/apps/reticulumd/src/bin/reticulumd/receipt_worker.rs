@@ -1,5 +1,7 @@
 use super::bridge_helpers::log_delivery_trace;
-use super::inbound_worker::prune_outbound_resource_mappings_for_message;
+use super::inbound_worker::{
+    prune_outbound_resource_mappings_for_message, OutboundResourceTracking,
+};
 use reticulum_daemon::receipt_bridge::{handle_receipt_event, ReceiptEvent};
 use rns_rpc::RpcDaemon;
 use rns_transport::receipt::prune_receipt_mappings_for_message;
@@ -11,7 +13,7 @@ pub(super) fn spawn_receipt_worker(
     daemon: Arc<RpcDaemon>,
     mut receipt_rx: UnboundedReceiver<ReceiptEvent>,
     receipt_map: Arc<Mutex<HashMap<String, String>>>,
-    outbound_resource_map: Arc<Mutex<HashMap<String, String>>>,
+    outbound_resource_map: Arc<Mutex<HashMap<String, OutboundResourceTracking>>>,
 ) {
     let daemon_receipts = daemon;
     tokio::spawn(async move {

@@ -1,6 +1,6 @@
 use super::announce_worker::spawn_announce_worker;
 use super::bridge::{PeerCrypto, TransportBridge};
-use super::inbound_worker::spawn_inbound_worker;
+use super::inbound_worker::{spawn_inbound_worker, OutboundResourceTracking};
 use super::interface_hot_apply::{legacy_tcp_interface_key, LegacyTcpInterfaceMutationBridge};
 use super::interfaces::{ble, common::interface_label, lora, serial, udp};
 use super::receipt_worker::spawn_receipt_worker;
@@ -129,7 +129,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     let mut control_destination_hash_hex: Option<String> = None;
     let mut delivery_source_hash = [0u8; 16];
     let receipt_map: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
-    let outbound_resource_map: Arc<Mutex<HashMap<String, String>>> =
+    let outbound_resource_map: Arc<Mutex<HashMap<String, OutboundResourceTracking>>> =
         Arc::new(Mutex::new(HashMap::new()));
     let (receipt_tx, receipt_rx) = unbounded_channel();
     let mut hot_apply_seeded_tcp: Vec<(String, InterfaceRecord, rns_transport::hash::AddressHash)> =
