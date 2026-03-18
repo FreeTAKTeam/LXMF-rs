@@ -203,8 +203,14 @@ impl Transport {
         let (resource_hash, packet) =
             handler.resource_manager.start_send(&link_guard, data, metadata)?;
         drop(link_guard);
-        handler.send_packet(packet).await;
-        Ok(resource_hash)
+        let outcome = handler.send_packet_with_outcome(packet).await;
+        let sent = matches!(outcome, SendPacketOutcome::SentDirect | SendPacketOutcome::SentBroadcast);
+        handler.resource_manager.confirm_outbound_dispatch(resource_hash, sent);
+        if sent {
+            Ok(resource_hash)
+        } else {
+            Err(RnsError::ConnectionError)
+        }
     }
 
     pub async fn send_channel_message(
@@ -307,12 +313,19 @@ impl Transport {
             let link_guard = link.lock().await;
             handler.resource_manager.start_send(&link_guard, data, metadata)?
         };
-        self.handler
+        let dispatch = self
+            .handler
             .lock()
             .await
             .send(TxMessage { tx_type: TxMessageType::Direct(iface), packet })
             .await;
-        Ok(resource_hash)
+        let sent = dispatch.sent_ifaces > 0;
+        self.handler.lock().await.resource_manager.confirm_outbound_dispatch(resource_hash, sent);
+        if sent {
+            Ok(resource_hash)
+        } else {
+            Err(RnsError::ConnectionError)
+        }
     }
 
     pub async fn find_out_link(&self, link_id: &AddressHash) -> Option<Arc<Mutex<Link>>> {

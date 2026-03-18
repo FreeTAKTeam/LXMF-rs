@@ -1,13 +1,14 @@
 #[derive(Debug, Clone)]
 struct ResourceSender {
+    link_id: AddressHash,
     resource_hash: Hash,
-    random_hash: [u8; RANDOM_HASH_SIZE],
-    original_hash: Hash,
     parts: Vec<Vec<u8>>,
     map_hashes: Vec<[u8; MAPHASH_LEN]>,
     expected_proof: Hash,
-    data_size: u64,
-    has_metadata: bool,
+    advertisement_packet: Packet,
+    last_activity: Instant,
+    adv_sent: Instant,
+    retries_left: u8,
     status: ResourceStatus,
 }
 
@@ -58,38 +59,78 @@ impl ResourceSender {
             map_hashes.push(map_hash(part, &random_hash));
         }
 
-        Ok(Self {
-            resource_hash,
+        let advertisement = ResourceAdvertisement {
+            transfer_size: parts.iter().map(|part| part.len() as u64).sum(),
+            data_size,
+            parts: parts.len() as u32,
+            hash: resource_hash,
             random_hash,
             original_hash: resource_hash,
+            segment_index: 1,
+            total_segments: 1,
+            request_id: None,
+            flags: {
+                let mut flags = FLAG_ENCRYPTED;
+                if has_metadata {
+                    flags |= FLAG_METADATA;
+                }
+                flags
+            },
+            hashmap: slice_hashmap_segment(&map_hashes, 0),
+        };
+        let advertisement_packet = build_link_packet(
+            link,
+            PacketType::Data,
+            PacketContext::ResourceAdvrtisement,
+            &advertisement.pack()?,
+        )?;
+        let now = Instant::now();
+
+        Ok(Self {
+            link_id: *link.id(),
+            resource_hash,
             parts,
             map_hashes,
             expected_proof,
-            data_size,
-            has_metadata,
-            status: ResourceStatus::Advertised,
+            advertisement_packet,
+            last_activity: now,
+            adv_sent: now,
+            retries_left: 0,
+            status: ResourceStatus::None,
         })
     }
 
-    fn advertisement(&self, segment: usize) -> ResourceAdvertisement {
-        let hashmap = slice_hashmap_segment(&self.map_hashes, segment);
-        let mut flags = FLAG_ENCRYPTED;
-        if self.has_metadata {
-            flags |= FLAG_METADATA;
+    fn advertisement_packet(&self) -> Packet {
+        self.advertisement_packet
+    }
+
+    fn mark_advertised(&mut self, retry_limit: u8) {
+        let now = Instant::now();
+        self.last_activity = now;
+        self.adv_sent = now;
+        self.retries_left = retry_limit;
+        self.status = ResourceStatus::Advertised;
+    }
+
+    fn retry_advertisement(&mut self) -> Option<Packet> {
+        if self.status != ResourceStatus::Advertised || self.retries_left == 0 {
+            return None;
         }
-        ResourceAdvertisement {
-            transfer_size: self.parts.iter().map(|part| part.len() as u64).sum(),
-            data_size: self.data_size,
-            parts: self.parts.len() as u32,
-            hash: self.resource_hash,
-            random_hash: self.random_hash,
-            original_hash: self.original_hash,
-            segment_index: segment as u32 + 1,
-            total_segments: 1,
-            request_id: None,
-            flags,
-            hashmap,
-        }
+
+        self.retries_left -= 1;
+        let now = Instant::now();
+        self.last_activity = now;
+        self.adv_sent = now;
+        Some(self.advertisement_packet())
+    }
+
+    fn advertisement_retry_due(&self, now: Instant, retry_interval: Duration) -> bool {
+        self.status == ResourceStatus::Advertised && now.duration_since(self.adv_sent) >= retry_interval
+    }
+
+    fn stalled(&self, now: Instant, retry_interval: Duration) -> bool {
+        matches!(self.status, ResourceStatus::Transferring | ResourceStatus::AwaitingProof)
+            && now.duration_since(self.last_activity) >= retry_interval
     }
 
     fn handle_request_into(
@@ -154,6 +195,7 @@ impl ResourceSender {
 
         if self.status == ResourceStatus::Advertised || self.status == ResourceStatus::Transferring
         {
+            self.last_activity = Instant::now();
             self.status = ResourceStatus::Transferring;
         }
     }
