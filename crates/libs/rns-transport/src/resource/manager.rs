@@ -1,5 +1,6 @@
 #[derive(Debug)]
 pub struct ResourceManager {
+    pending_outgoing: HashMap<Hash, ResourceSender>,
     outgoing: HashMap<Hash, ResourceSender>,
     incoming: HashMap<Hash, ResourceReceiver>,
     events: Vec<ResourceEvent>,
@@ -14,6 +15,7 @@ impl ResourceManager {
 
     pub fn new_with_config(retry_interval: Duration, retry_limit: u8) -> Self {
         Self {
+            pending_outgoing: HashMap::new(),
             outgoing: HashMap::new(),
             incoming: HashMap::new(),
             events: Vec::new(),
@@ -30,20 +32,28 @@ impl ResourceManager {
     ) -> Result<(Hash, Packet), RnsError> {
         let sender = ResourceSender::new(link, data, metadata)?;
         let resource_hash = sender.resource_hash;
-        let advertisement = sender.advertisement(0);
-        let payload = advertisement.pack()?;
-        let packet = build_link_packet(
-            link,
-            PacketType::Data,
-            PacketContext::ResourceAdvrtisement,
-            &payload,
-        )?;
-        self.outgoing.insert(resource_hash, sender);
+        let packet = sender.advertisement_packet();
+        self.pending_outgoing.insert(resource_hash, sender);
         Ok((resource_hash, packet))
+    }
+
+    pub fn confirm_outbound_dispatch(&mut self, resource_hash: Hash, sent: bool) {
+        let Some(mut sender) = self.pending_outgoing.remove(&resource_hash) else {
+            return;
+        };
+
+        if sent {
+            sender.mark_advertised(self.retry_limit);
+            self.outgoing.insert(resource_hash, sender);
+        }
     }
 
     pub fn drain_events(&mut self) -> Vec<ResourceEvent> {
         std::mem::take(&mut self.events)
+    }
+
+    pub(crate) fn has_no_outbound_state(&self) -> bool {
+        self.pending_outgoing.is_empty() && self.outgoing.is_empty()
     }
 
     pub fn retry_requests(&mut self, now: Instant) -> Vec<(AddressHash, ResourceRequest)> {
@@ -63,6 +73,29 @@ impl ResourceManager {
             self.incoming.remove(&hash);
         }
         requests
+    }
+
+    pub fn retry_advertisements(&mut self, now: Instant) -> Vec<(AddressHash, Packet)> {
+        let mut packets = Vec::new();
+        let mut failed = Vec::new();
+
+        for (hash, sender) in self.outgoing.iter_mut() {
+            if sender.advertisement_retry_due(now, self.retry_interval) {
+                if let Some(packet) = sender.retry_advertisement() {
+                    packets.push((sender.link_id, packet));
+                } else {
+                    failed.push(*hash);
+                }
+            } else if sender.stalled(now, self.retry_interval) {
+                failed.push(*hash);
+            }
+        }
+
+        for hash in failed {
+            self.outgoing.remove(&hash);
+        }
+
+        packets
     }
 
     pub fn handle_packet(&mut self, packet: &Packet, link: &mut Link) -> Vec<Packet> {
@@ -112,7 +145,13 @@ impl ResourceManager {
             return;
         }
         let resource_hash = advertisement.hash;
-        let mut receiver = ResourceReceiver::new(&advertisement, *link.id());
+        if self.incoming.get(&resource_hash).is_some_and(|receiver| receiver.is_active()) {
+            return;
+        }
+        let Ok(mut receiver) = ResourceReceiver::new(&advertisement, *link.id()) else {
+            log::warn!("resource: rejecting unreasonable advertisement");
+            return;
+        };
         let request = receiver.build_request();
         receiver.mark_request();
         self.incoming.insert(resource_hash, receiver);
@@ -179,10 +218,15 @@ impl ResourceManager {
         let mut proof_packet: Option<Packet> = None;
         let mut request_packet: Option<Packet> = None;
         let mut payload: Option<ResourcePayload> = None;
+        let mut failed: Option<Hash> = None;
         for (hash, receiver) in self.incoming.iter_mut() {
             let before_received = receiver.received;
             match receiver.handle_part(packet.data.as_slice(), link) {
                 PartOutcome::NoMatch => continue,
+                PartOutcome::Failed => {
+                    failed = Some(*hash);
+                    break;
+                }
                 PartOutcome::Complete(packet, data_payload) => {
                     completed = Some(*hash);
                     proof_packet = Some(packet);
@@ -214,6 +258,10 @@ impl ResourceManager {
                     break;
                 }
             }
+        }
+        if let Some(hash) = failed {
+            self.incoming.remove(&hash);
+            return;
         }
         if let Some(hash) = completed {
             self.incoming.remove(&hash);
@@ -255,6 +303,7 @@ impl ResourceManager {
         if let Ok(hash_bytes) = copy_hash(packet.data.as_slice()) {
             let hash = Hash::new(hash_bytes);
             self.incoming.remove(&hash);
+            self.pending_outgoing.remove(&hash);
             self.outgoing.remove(&hash);
         }
     }

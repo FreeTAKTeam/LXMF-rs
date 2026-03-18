@@ -8,6 +8,7 @@ use crate::channel::{
 };
 use crate::destination::link::{Link, LinkEvent, LinkEventData, LinkPayload};
 use crate::destination::{DestinationName, SingleInputDestination};
+use crate::error::RnsError;
 use crate::identity::PrivateIdentity;
 use crate::packet::{Header, HeaderType};
 use rand_core::OsRng;
@@ -648,4 +649,39 @@ async fn transport_channel_handle_can_open_channel_without_handlers() {
         inbound.send_channel_message(0xEEEE, b"open-no-handler".to_vec()).expect("channel message");
     let result = outbound.lock().await.handle_packet(&packet, iface);
     assert!(matches!(result, crate::destination::link::LinkHandleResult::Proof(_)));
+}
+
+#[tokio::test]
+async fn send_resource_returns_error_when_advertisement_dispatch_drops() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let config = TransportConfig::new("test", &local_identity, true);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+
+    let signer = PrivateIdentity::new_from_rand(OsRng);
+    let identity = *signer.as_identity();
+    let destination = crate::destination::DestinationDesc {
+        identity,
+        address_hash: identity.address_hash,
+        name: DestinationName::new("lxmf", "delivery"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(8);
+    let mut outbound = Link::new(destination, tx.clone());
+    let request = outbound.request();
+    let mut inbound = Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
+        .expect("link request should parse");
+    let iface = AddressHash::new_from_rand(OsRng);
+    assert!(matches!(
+        outbound.handle_packet(&inbound.prove(), iface),
+        crate::destination::link::LinkHandleResult::Activated
+    ));
+
+    let link_id = *outbound.id();
+    handler.lock().await.out_links.insert(destination.address_hash, Arc::new(Mutex::new(outbound)));
+
+    let result = transport.send_resource(&link_id, b"resource".to_vec(), None).await;
+    assert!(matches!(result, Err(RnsError::ConnectionError)));
+
+    let guard = handler.lock().await;
+    assert!(guard.resource_manager.has_no_outbound_state());
 }

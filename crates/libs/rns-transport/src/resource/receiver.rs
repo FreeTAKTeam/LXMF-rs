@@ -28,12 +28,17 @@ struct ResourcePayload {
 enum PartOutcome {
     NoMatch,
     Incomplete,
+    Failed,
     Complete(Packet, ResourcePayload),
 }
 
 impl ResourceReceiver {
-    fn new(adv: &ResourceAdvertisement, link_id: AddressHash) -> Self {
+    fn new(adv: &ResourceAdvertisement, link_id: AddressHash) -> Result<Self, RnsError> {
         let now = Instant::now();
+        let max_parts = adv.transfer_size.max(1);
+        if adv.parts == 0 || u64::from(adv.parts) > max_parts {
+            return Err(RnsError::InvalidArgument);
+        }
         let total_parts = adv.parts as usize;
         let mut receiver = Self {
             resource_hash: adv.hash,
@@ -54,7 +59,7 @@ impl ResourceReceiver {
             status: ResourceStatus::Advertised,
         };
         receiver.apply_hashmap_segment(adv.segment_index.saturating_sub(1) as usize, &adv.hashmap);
-        receiver
+        Ok(receiver)
     }
 
     fn apply_hashmap_segment(&mut self, segment: usize, bytes: &[u8]) {
@@ -108,7 +113,7 @@ impl ResourceReceiver {
     fn handle_part(&mut self, part: &[u8], link: &Link) -> PartOutcome {
         if self.split {
             self.status = ResourceStatus::Failed;
-            return PartOutcome::Incomplete;
+            return PartOutcome::Failed;
         }
 
         let hash = map_hash(part, &self.random_hash);
@@ -140,7 +145,7 @@ impl ResourceReceiver {
                     Ok(value) => value,
                     Err(_) => {
                         self.status = ResourceStatus::Failed;
-                        return PartOutcome::Incomplete;
+                        return PartOutcome::Failed;
                     }
                 };
                 decrypted.to_vec()
@@ -159,7 +164,7 @@ impl ResourceReceiver {
                 let mut decompressed = Vec::new();
                 if decoder.read_to_end(&mut decompressed).is_err() {
                     self.status = ResourceStatus::Failed;
-                    return PartOutcome::Incomplete;
+                    return PartOutcome::Failed;
                 }
                 payload = decompressed;
             }
@@ -170,7 +175,7 @@ impl ResourceReceiver {
                     | payload[2] as usize;
                 if size > METADATA_MAX_SIZE {
                     self.status = ResourceStatus::Failed;
-                    return PartOutcome::Incomplete;
+                    return PartOutcome::Failed;
                 }
                 if payload.len() >= 3 + size {
                     let meta = payload[3..3 + size].to_vec();
@@ -190,7 +195,7 @@ impl ResourceReceiver {
                 Ok(hash) => Hash::new(hash),
                 Err(_) => {
                     self.status = ResourceStatus::Failed;
-                    return PartOutcome::Incomplete;
+                    return PartOutcome::Failed;
                 }
             };
 
@@ -202,7 +207,7 @@ impl ResourceReceiver {
                     Ok(hash) => Hash::new(hash),
                     Err(_) => {
                         self.status = ResourceStatus::Failed;
-                        return PartOutcome::Incomplete;
+                        return PartOutcome::Failed;
                     }
                 };
                 let proof_payload = ResourceProof { resource_hash: self.resource_hash, proof };
@@ -217,7 +222,7 @@ impl ResourceReceiver {
                     Err(_) => {
                         log::warn!("resource: failed to build proof packet");
                         self.status = ResourceStatus::Failed;
-                        return PartOutcome::Incomplete;
+                        return PartOutcome::Failed;
                     }
                 };
                 return PartOutcome::Complete(
@@ -226,10 +231,15 @@ impl ResourceReceiver {
                 );
             } else {
                 self.status = ResourceStatus::Failed;
+                return PartOutcome::Failed;
             }
         }
 
         PartOutcome::Incomplete
+    }
+
+    fn is_active(&self) -> bool {
+        !matches!(self.status, ResourceStatus::Complete | ResourceStatus::Failed)
     }
 
     fn mark_request(&mut self) {
