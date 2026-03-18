@@ -293,8 +293,27 @@ impl Link {
         LinkHandleResult::None
     }
 
-    pub fn handle_packet(&mut self, packet: &Packet) -> LinkHandleResult {
+    fn iface_matches(&self, iface: AddressHash) -> bool {
+        if let Some(expected_iface) = self.ingress_iface {
+            if expected_iface != iface {
+                log::warn!(
+                    "link({}): dropping packet from iface {} expected {}",
+                    self.id,
+                    iface,
+                    expected_iface
+                );
+                return false;
+            }
+        }
+
+        true
+    }
+
+    pub fn handle_packet(&mut self, packet: &Packet, iface: AddressHash) -> LinkHandleResult {
         if packet.destination != self.id {
+            return LinkHandleResult::None;
+        }
+        if !self.iface_matches(iface) {
             return LinkHandleResult::None;
         }
 
@@ -310,6 +329,7 @@ impl Link {
                         log::debug!("link({}): has been proved", self.id);
 
                         self.handshake(identity);
+                        self.ingress_iface.get_or_insert(iface);
 
                         self.status = LinkStatus::Active;
                         self.rtt = self.request_time.elapsed();
@@ -548,7 +568,8 @@ mod tests {
             Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
                 .expect("link request should parse");
         let proof = inbound.prove();
-        assert!(matches!(outbound.handle_packet(&proof), LinkHandleResult::Activated));
+        let proof_iface = AddressHash::new_from_rand(OsRng);
+        assert!(matches!(outbound.handle_packet(&proof, proof_iface), LinkHandleResult::Activated));
 
         let plaintext = b"session-cached-link-payload";
         let mut cipher_buf = [0u8; PACKET_MDU];
@@ -557,5 +578,39 @@ mod tests {
         let mut plain_buf = [0u8; PACKET_MDU];
         let decrypted = inbound.decrypt(ciphertext, &mut plain_buf).expect("decrypt");
         assert_eq!(decrypted, plaintext);
+    }
+
+    #[test]
+    fn outbound_link_binds_to_proof_iface_and_rejects_other_ifaces() {
+        let signer = PrivateIdentity::new_from_rand(OsRng);
+        let identity = *signer.as_identity();
+        let destination = DestinationDesc {
+            identity,
+            address_hash: identity.address_hash,
+            name: DestinationName::new("lxmf", "delivery"),
+        };
+        let (tx, _) = tokio::sync::broadcast::channel(4);
+
+        let mut outbound = Link::new(destination, tx.clone());
+        let request = outbound.request();
+
+        let mut inbound =
+            Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
+                .expect("link request should parse");
+        let proof = inbound.prove();
+        let bound_iface = AddressHash::new_from_rand(OsRng);
+        assert!(matches!(outbound.handle_packet(&proof, bound_iface), LinkHandleResult::Activated));
+        assert_eq!(outbound.ingress_iface(), Some(bound_iface));
+
+        let payload = inbound.data_packet(b"hello over the right iface").expect("data packet");
+
+        assert!(matches!(
+            outbound.handle_packet(&payload, AddressHash::new_from_rand(OsRng)),
+            LinkHandleResult::None
+        ));
+        assert!(matches!(
+            outbound.handle_packet(&payload, bound_iface),
+            LinkHandleResult::Proof(_)
+        ));
     }
 }

@@ -167,7 +167,7 @@ pub(super) async fn handle_proof(
     let mut rtt_packets = Vec::new();
     for link in handler.out_links.values() {
         let mut link = link.lock().await;
-        if let LinkHandleResult::Activated = link.handle_packet(&packet) {
+        if let LinkHandleResult::Activated = link.handle_packet(&packet, iface) {
             rtt_packets.push(link.create_rtt());
         }
     }
@@ -315,7 +315,7 @@ pub(super) async fn handle_data<'a>(
         let mut link_packets = Vec::new();
         if let Some(link) = handler.in_links.get(&packet.destination).cloned() {
             let mut link = link.lock().await;
-            let result = link.handle_packet(packet);
+            let result = link.handle_packet(packet, iface);
             if let LinkHandleResult::KeepAlive = result {
                 link_packets.push(link.keep_alive_packet(KEEP_ALIVE_RESPONSE));
             } else if let LinkHandleResult::Proof(proof_packet) = result {
@@ -326,7 +326,7 @@ pub(super) async fn handle_data<'a>(
         let mut proof_packets = Vec::new();
         for link in handler.out_links.values() {
             let mut link = link.lock().await;
-            let result = link.handle_packet(packet);
+            let result = link.handle_packet(packet, iface);
             if let LinkHandleResult::Proof(proof_packet) = result {
                 proof_packets.push(proof_packet);
             }

@@ -184,9 +184,9 @@ impl Transport {
 
         let link = Arc::new(Mutex::new(link));
 
-        self.send_packet(packet).await;
-
         self.handler.lock().await.out_links.insert(destination.address_hash, link.clone());
+
+        self.send_packet(packet).await;
 
         link
     }
