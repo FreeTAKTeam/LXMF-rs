@@ -2262,6 +2262,27 @@ fn sdk_config_and_terminal_state_survive_restart_without_orphan_transitions() {
 
 #[test]
 fn sdk_backup_restore_drill_recovers_snapshot_and_messages() {
+    fn sqlite_sidecar_paths(path: &std::path::Path) -> [std::path::PathBuf; 2] {
+        let file_name = path.file_name().expect("sqlite file name").to_string_lossy();
+        [
+            path.with_file_name(format!("{file_name}-wal")),
+            path.with_file_name(format!("{file_name}-shm")),
+        ]
+    }
+
+    fn checkpoint_sqlite_db(path: &std::path::Path) {
+        let conn = rusqlite::Connection::open(path).expect("open sqlite for checkpoint");
+        conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);").expect("checkpoint sqlite db");
+    }
+
+    fn restore_sqlite_file(from: &std::path::Path, to: &std::path::Path) {
+        let _ = std::fs::remove_file(to);
+        for sidecar in sqlite_sidecar_paths(to) {
+            let _ = std::fs::remove_file(sidecar);
+        }
+        std::fs::copy(from, to).expect("restore backup");
+    }
+
     use std::time::{SystemTime, UNIX_EPOCH};
 
     let run_id = SystemTime::now().duration_since(UNIX_EPOCH).expect("unix epoch").as_nanos();
@@ -2308,6 +2329,7 @@ fn sdk_backup_restore_drill_recovers_snapshot_and_messages() {
         assert!(inbound.error.is_none());
     }
 
+    checkpoint_sqlite_db(db_path.as_path());
     std::fs::copy(db_path.as_path(), backup_path.as_path()).expect("copy backup");
 
     {
@@ -2343,7 +2365,7 @@ fn sdk_backup_restore_drill_recovers_snapshot_and_messages() {
         assert!(drift_inbound.error.is_none());
     }
 
-    std::fs::copy(backup_path.as_path(), db_path.as_path()).expect("restore backup");
+    restore_sqlite_file(backup_path.as_path(), db_path.as_path());
 
     {
         let store = MessagesStore::open(db_path.as_path()).expect("open restored sqlite store");
@@ -2396,4 +2418,10 @@ fn sdk_backup_restore_drill_recovers_snapshot_and_messages() {
 
     let _ = std::fs::remove_file(&db_path);
     let _ = std::fs::remove_file(&backup_path);
+    for sidecar in sqlite_sidecar_paths(db_path.as_path()) {
+        let _ = std::fs::remove_file(sidecar);
+    }
+    for sidecar in sqlite_sidecar_paths(backup_path.as_path()) {
+        let _ = std::fs::remove_file(sidecar);
+    }
 }

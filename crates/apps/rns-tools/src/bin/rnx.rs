@@ -707,6 +707,7 @@ fn capture_camera_over_ble(
                     }
                     #[cfg(not(target_os = "macos"))]
                     {
+                        let _ = &error;
                         find_camera_peripheral_by_profile(
                             &adapter,
                             peripheral_id,
@@ -1965,13 +1966,12 @@ async fn find_camera_peripheral_by_profile(
         candidates.sort_by_key(|(rank, _)| *rank);
         for (_, peripheral) in candidates {
             let connected = peripheral.is_connected().await.map_err(io::Error::other)?;
-            if !connected {
-                if tokio::time::timeout(Duration::from_millis(700), peripheral.connect())
+            if !connected
+                && tokio::time::timeout(Duration::from_millis(700), peripheral.connect())
                     .await
                     .is_err()
-                {
-                    continue;
-                }
+            {
+                continue;
             }
             if peripheral.discover_services().await.is_err() {
                 let _ = peripheral.disconnect().await;
