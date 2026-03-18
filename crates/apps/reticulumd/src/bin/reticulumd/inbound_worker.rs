@@ -451,7 +451,7 @@ async fn send_control_response(
     };
     match packet {
         LinkResponsePacket::Direct(packet) => {
-            transport.send_direct(ingress_iface, packet).await;
+            transport.send_direct(ingress_iface, *packet).await;
             Ok(())
         }
         LinkResponsePacket::Resource(payload) => transport
@@ -463,7 +463,7 @@ async fn send_control_response(
 }
 
 enum LinkResponsePacket {
-    Direct(Packet),
+    Direct(Box<Packet>),
     Resource(Vec<u8>),
 }
 
@@ -480,7 +480,7 @@ async fn build_link_response_packet(
     };
     packet_data.resize(cipher_len);
     Ok((
-        LinkResponsePacket::Direct(Packet {
+        LinkResponsePacket::Direct(Box::new(Packet {
             header: Header {
                 ifac_flag: IfacFlag::Open,
                 header_type: HeaderType::Type1,
@@ -495,7 +495,7 @@ async fn build_link_response_packet(
             transport: None,
             context: PacketContext::Response,
             data: packet_data,
-        }),
+        })),
         ingress_iface,
     ))
 }

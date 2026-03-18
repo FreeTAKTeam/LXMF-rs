@@ -634,7 +634,7 @@ fn run_pr_core_ci() -> Result<()> {
     run("cargo", &["test", "-p", "rns-rpc", "grpc::tests"])?;
     run("cargo", &["check", "-p", "reticulumd", "-p", "rns-tools", "-p", "lxmf-grpc-client"])?;
     run("bash", &["tools/scripts/check-boundaries.sh"])?;
-    run("cargo", &["deny", "check"])?;
+    run_cargo_deny_policy_check()?;
     run_cargo_audit()?;
     Ok(())
 }
@@ -649,7 +649,7 @@ fn run_ci_stage(stage: CiStage) -> Result<()> {
         CiStage::TestIntegration => run("cargo", &["test", "--workspace", "--tests"]),
         CiStage::Doc => run("cargo", &["doc", "--workspace", "--no-deps"]),
         CiStage::Security => {
-            run("cargo", &["deny", "check"])?;
+            run_cargo_deny_policy_check()?;
             run_cargo_audit()?;
             run_security_review_check()
         }
@@ -732,6 +732,10 @@ fn run_cargo_audit() -> Result<()> {
         args.push(advisory);
     }
     run("cargo", &args)
+}
+
+fn run_cargo_deny_policy_check() -> Result<()> {
+    run("cargo", &["deny", "check", "bans", "licenses", "sources"])
 }
 
 fn run_release_check() -> Result<()> {

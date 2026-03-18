@@ -549,7 +549,7 @@ impl RpcDaemon {
 
     fn should_autopeer_peer(&self, hops: Option<u32>) -> bool {
         let propagation = self.propagation_state.lock().expect("propagation mutex poisoned");
-        if !propagation.autopeer {
+        if propagation.from_static_only || !propagation.autopeer {
             return false;
         }
         hops.unwrap_or(1) <= propagation.autopeer_maxdepth.max(1)

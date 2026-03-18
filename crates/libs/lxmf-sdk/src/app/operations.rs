@@ -9,6 +9,8 @@ use std::sync::OnceLock;
 #[serde(transparent)]
 pub struct OperationId(String);
 
+type OperationIndexes = (BTreeMap<OperationId, usize>, BTreeMap<String, OperationId>);
+
 impl OperationId {
     pub fn new(value: impl Into<String>) -> Self {
         Self(value.into())
@@ -249,9 +251,7 @@ impl OperationRegistry {
         Self::new(merged)
     }
 
-    fn build_indexes(
-        entries: &[OperationEntry],
-    ) -> Result<(BTreeMap<OperationId, usize>, BTreeMap<String, OperationId>), RegistryError> {
+    fn build_indexes(entries: &[OperationEntry]) -> Result<OperationIndexes, RegistryError> {
         let mut by_id = BTreeMap::<OperationId, usize>::new();
         let mut aliases = BTreeMap::<String, OperationId>::new();
 
@@ -796,12 +796,12 @@ mod tests {
         let registry = OperationRegistry::built_in();
         let grouped = registry.entries_by_group();
 
-        assert!(grouped.get("runtime").is_some());
-        assert!(grouped.get("attachments").is_some());
-        assert!(grouped.get("markers").is_some());
-        assert!(grouped.get("telemetry").is_some());
-        assert!(grouped.get("topics").is_some());
-        assert!(grouped.get("voice").is_some());
+        assert!(grouped.contains_key("runtime"));
+        assert!(grouped.contains_key("attachments"));
+        assert!(grouped.contains_key("markers"));
+        assert!(grouped.contains_key("telemetry"));
+        assert!(grouped.contains_key("topics"));
+        assert!(grouped.contains_key("voice"));
         assert!(grouped
             .get("identity")
             .expect("identity group")

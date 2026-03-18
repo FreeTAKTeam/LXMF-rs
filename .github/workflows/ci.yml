@@ -93,6 +93,6 @@ jobs:
         with:
           tool: cargo-deny,cargo-audit
       - name: Dependency policy
-        run: cargo deny check
+        run: cargo deny check bans licenses sources
       - name: Advisory audit
         run: cargo audit --ignore RUSTSEC-2024-0421 --ignore RUSTSEC-2024-0436 --ignore RUSTSEC-2026-0009 --ignore RUSTSEC-2025-0134

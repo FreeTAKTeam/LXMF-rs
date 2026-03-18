@@ -2579,7 +2579,7 @@ mod tests {
                 .lock()
                 .expect("voice update results")
                 .pop_front()
-                .unwrap_or_else(|| Ok(crate::domain::VoiceSessionState::Active))
+                .unwrap_or(Ok(crate::domain::VoiceSessionState::Active))
         }
 
         fn voice_session_close(

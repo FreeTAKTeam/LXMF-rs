@@ -556,7 +556,7 @@ fn show_remote_status_and_peers(
     )?);
     let status = response.get("status").cloned().unwrap_or(response.clone());
 
-    if args.status || (!args.status && !args.peers) {
+    if args.status || !args.peers {
         print_remote_status_summary(&status);
     }
     if args.peers {
