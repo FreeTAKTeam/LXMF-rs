@@ -1,13 +1,15 @@
 use super::announce::handle_announce;
 use super::path::handle_link_request_as_intermediate;
-use super::wire::handle_proof;
+use super::wire::{handle_data, handle_proof};
 use super::*;
 
-use crate::destination::link::{LinkEvent, LinkEventData, LinkPayload};
+use crate::channel::MessageState as ChannelMessageState;
+use crate::destination::link::{Link, LinkEvent, LinkEventData, LinkPayload};
 use crate::destination::{DestinationName, SingleInputDestination};
 use crate::identity::PrivateIdentity;
 use crate::packet::{Header, HeaderType};
 use rand_core::OsRng;
+use std::sync::Mutex as StdMutex;
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc,
@@ -342,4 +344,108 @@ async fn routed_link_request_proof_requires_matching_iface_and_signature() {
             Some(request.destination)
         );
     }
+}
+
+#[tokio::test]
+async fn transport_register_channel_handler_dispatches_inbound_channel_message() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let config = TransportConfig::new("test", &local_identity, true);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+
+    let signer = PrivateIdentity::new_from_rand(OsRng);
+    let identity = *signer.as_identity();
+    let destination = crate::destination::DestinationDesc {
+        identity,
+        address_hash: identity.address_hash,
+        name: DestinationName::new("lxmf", "delivery"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(8);
+    let mut outbound = Link::new(destination, tx.clone());
+    let request = outbound.request();
+    let mut inbound = Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
+        .expect("link request should parse");
+    let iface = AddressHash::new_from_rand(OsRng);
+    assert!(matches!(
+        outbound.handle_packet(&inbound.prove(), iface),
+        crate::destination::link::LinkHandleResult::Activated
+    ));
+
+    let link_id = *outbound.id();
+    handler.lock().await.out_links.insert(destination.address_hash, Arc::new(Mutex::new(outbound)));
+
+    let seen = Arc::new(StdMutex::new(Vec::new()));
+    let seen_clone = seen.clone();
+    transport
+        .register_channel_handler(&link_id, 0x4444, move |envelope| {
+            seen_clone.lock().expect("lock").push(envelope);
+            true
+        })
+        .await
+        .expect("register handler");
+
+    let (_sequence, packet) = inbound
+        .send_channel_message(0x4444, b"transport-channel".to_vec())
+        .expect("channel message");
+    handle_data(&packet, iface, handler.lock().await).await;
+
+    let seen = seen.lock().expect("lock");
+    assert_eq!(seen.len(), 1);
+    assert_eq!(seen[0].msg_type, 0x4444);
+    assert_eq!(seen[0].payload, b"transport-channel");
+}
+
+#[tokio::test]
+async fn transport_channel_message_state_tracks_delivery() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let config = TransportConfig::new("test", &local_identity, true);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+
+    let signer = PrivateIdentity::new_from_rand(OsRng);
+    let identity = *signer.as_identity();
+    let destination = crate::destination::DestinationDesc {
+        identity,
+        address_hash: identity.address_hash,
+        name: DestinationName::new("lxmf", "delivery"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(8);
+    let mut outbound = Link::new(destination, tx.clone());
+    let request = outbound.request();
+    let mut inbound = Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
+        .expect("link request should parse");
+    let iface = AddressHash::new_from_rand(OsRng);
+    assert!(matches!(
+        outbound.handle_packet(&inbound.prove(), iface),
+        crate::destination::link::LinkHandleResult::Activated
+    ));
+
+    let link_id = *outbound.id();
+    let outbound = Arc::new(Mutex::new(outbound));
+    handler.lock().await.out_links.insert(destination.address_hash, outbound.clone());
+
+    let (sequence, packet) = {
+        let mut outbound = outbound.lock().await;
+        outbound.send_channel_message(0x55AA, b"tracked".to_vec()).expect("channel message")
+    };
+    assert_eq!(
+        transport.channel_message_state(&link_id, sequence).await.expect("state"),
+        ChannelMessageState::Sent
+    );
+
+    let proof = match inbound.handle_packet(&packet, iface) {
+        crate::destination::link::LinkHandleResult::Proof(proof) => proof,
+        _ => panic!("channel packet should generate proof"),
+    };
+    {
+        let mut outbound = outbound.lock().await;
+        assert!(matches!(
+            outbound.handle_packet(&proof, iface),
+            crate::destination::link::LinkHandleResult::None
+        ));
+    }
+    assert_eq!(
+        transport.channel_message_state(&link_id, sequence).await.expect("state"),
+        ChannelMessageState::Delivered
+    );
 }

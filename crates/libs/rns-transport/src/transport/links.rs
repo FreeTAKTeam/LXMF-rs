@@ -1,6 +1,28 @@
 use super::*;
 
 impl Transport {
+    async fn find_any_link(&self, link_id: &AddressHash) -> Option<Arc<Mutex<Link>>> {
+        let (out_links, in_link) = {
+            let handler = self.handler.lock().await;
+            (
+                handler.out_links.values().cloned().collect::<Vec<_>>(),
+                handler.in_links.get(link_id).cloned(),
+            )
+        };
+
+        if let Some(link) = in_link {
+            return Some(link);
+        }
+
+        for link in out_links {
+            if *link.lock().await.id() == *link_id {
+                return Some(link);
+            }
+        }
+
+        None
+    }
+
     pub async fn send_to_all_out_links(&self, payload: &[u8]) {
         let packets = {
             let handler = self.handler.lock().await;
@@ -175,28 +197,7 @@ impl Transport {
         data: Vec<u8>,
         metadata: Option<Vec<u8>>,
     ) -> Result<Hash, RnsError> {
-        let (out_links, in_link) = {
-            let handler = self.handler.lock().await;
-            (
-                handler.out_links.values().cloned().collect::<Vec<_>>(),
-                handler.in_links.get(link_id).cloned(),
-            )
-        };
-
-        let link = if let Some(link) = in_link {
-            Some(link)
-        } else {
-            let mut found = None;
-            for link in out_links {
-                if *link.lock().await.id() == *link_id {
-                    found = Some(link);
-                    break;
-                }
-            }
-            found
-        };
-
-        let link = link.ok_or(RnsError::InvalidArgument)?;
+        let link = self.find_any_link(link_id).await.ok_or(RnsError::InvalidArgument)?;
         let mut handler = self.handler.lock().await;
         let link_guard = link.lock().await;
         let (resource_hash, packet) =
@@ -212,27 +213,8 @@ impl Transport {
         msg_type: u16,
         payload: Vec<u8>,
     ) -> Result<u16, crate::channel::ChannelError> {
-        let (out_links, in_link) = {
-            let handler = self.handler.lock().await;
-            (
-                handler.out_links.values().cloned().collect::<Vec<_>>(),
-                handler.in_links.get(link_id).cloned(),
-            )
-        };
-
-        let link = if let Some(link) = in_link {
-            Some(link)
-        } else {
-            let mut found = None;
-            for link in out_links {
-                if *link.lock().await.id() == *link_id {
-                    found = Some(link);
-                    break;
-                }
-            }
-            found
-        }
-        .ok_or(crate::channel::ChannelError::LinkNotReady)?;
+        let link =
+            self.find_any_link(link_id).await.ok_or(crate::channel::ChannelError::LinkNotReady)?;
 
         let (sequence, packet) = {
             let mut link = link.lock().await;
@@ -240,6 +222,32 @@ impl Transport {
         };
         self.handler.lock().await.send_packet(packet).await;
         Ok(sequence)
+    }
+
+    pub async fn register_channel_handler<F>(
+        &self,
+        link_id: &AddressHash,
+        msg_type: u16,
+        handler: F,
+    ) -> Result<(), crate::channel::ChannelError>
+    where
+        F: FnMut(crate::channel::Envelope) -> bool + Send + 'static,
+    {
+        let link =
+            self.find_any_link(link_id).await.ok_or(crate::channel::ChannelError::LinkNotReady)?;
+        link.lock().await.register_channel_handler(msg_type, handler);
+        Ok(())
+    }
+
+    pub async fn channel_message_state(
+        &self,
+        link_id: &AddressHash,
+        sequence: u16,
+    ) -> Result<crate::channel::MessageState, crate::channel::ChannelError> {
+        let link =
+            self.find_any_link(link_id).await.ok_or(crate::channel::ChannelError::LinkNotReady)?;
+        let state = link.lock().await.channel_state(sequence);
+        Ok(state)
     }
 
     pub async fn send_resource_direct(
