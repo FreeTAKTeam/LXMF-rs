@@ -24,6 +24,29 @@ impl Transport {
         }
     }
 
+    pub async fn send_channel_to_all_out_links(&self, payload: &[u8]) {
+        let packets = {
+            let handler = self.handler.lock().await;
+            let mut packets = Vec::new();
+            for link in handler.out_links.values() {
+                let link = link.lock().await;
+                if link.status() == LinkStatus::Active {
+                    if let Ok(packet) = link.channel_packet(payload) {
+                        packets.push(packet);
+                    }
+                }
+            }
+            packets
+        };
+        if packets.is_empty() {
+            return;
+        }
+        let mut handler = self.handler.lock().await;
+        for packet in packets {
+            handler.send_packet(packet).await;
+        }
+    }
+
     pub async fn send_to_out_links(&self, destination: &AddressHash, payload: &[u8]) {
         let mut count = 0usize;
         let packets = {
@@ -35,6 +58,36 @@ impl Transport {
                     && link.status() == LinkStatus::Active
                 {
                     if let Ok(packet) = link.data_packet(payload) {
+                        packets.push(packet);
+                    }
+                }
+            }
+            packets
+        };
+        if !packets.is_empty() {
+            let mut handler = self.handler.lock().await;
+            for packet in packets {
+                handler.send_packet(packet).await;
+                count += 1;
+            }
+        }
+
+        if count == 0 {
+            log::trace!("tp({}): no output links for {} destination", self.name, destination);
+        }
+    }
+
+    pub async fn send_channel_to_out_links(&self, destination: &AddressHash, payload: &[u8]) {
+        let mut count = 0usize;
+        let packets = {
+            let handler = self.handler.lock().await;
+            let mut packets = Vec::new();
+            for link in handler.out_links.values() {
+                let link = link.lock().await;
+                if link.destination().address_hash == *destination
+                    && link.status() == LinkStatus::Active
+                {
+                    if let Ok(packet) = link.channel_packet(payload) {
                         packets.push(packet);
                     }
                 }
@@ -66,6 +119,37 @@ impl Transport {
                     && link.status() == LinkStatus::Active
                 {
                     if let Ok(packet) = link.data_packet(payload) {
+                        packets.push(packet);
+                    }
+                }
+            }
+            packets
+        };
+        if !packets.is_empty() {
+            let mut handler = self.handler.lock().await;
+            for packet in packets {
+                handler.send_packet(packet).await;
+                count += 1;
+            }
+        }
+
+        if count == 0 {
+            log::trace!("tp({}): no input links for {} destination", self.name, destination);
+        }
+    }
+
+    pub async fn send_channel_to_in_links(&self, destination: &AddressHash, payload: &[u8]) {
+        let mut count = 0usize;
+        let packets = {
+            let handler = self.handler.lock().await;
+            let mut packets = Vec::new();
+            for link in handler.in_links.values() {
+                let link = link.lock().await;
+
+                if link.destination().address_hash == *destination
+                    && link.status() == LinkStatus::Active
+                {
+                    if let Ok(packet) = link.channel_packet(payload) {
                         packets.push(packet);
                     }
                 }

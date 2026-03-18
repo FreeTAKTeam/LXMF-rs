@@ -417,6 +417,14 @@ impl Link {
     }
 
     pub fn data_packet(&self, data: &[u8]) -> Result<Packet, RnsError> {
+        self.packet_with_context(data, PacketContext::None)
+    }
+
+    pub fn channel_packet(&self, data: &[u8]) -> Result<Packet, RnsError> {
+        self.packet_with_context(data, PacketContext::Channel)
+    }
+
+    fn packet_with_context(&self, data: &[u8], context: PacketContext) -> Result<Packet, RnsError> {
         if self.status != LinkStatus::Active {
             log::warn!("link: can't create data packet for closed link");
         }
@@ -433,7 +441,7 @@ impl Link {
             ifac: None,
             destination: self.id,
             transport: None,
-            context: PacketContext::None,
+            context,
             data: packet_data,
         })
     }
@@ -807,8 +815,7 @@ mod tests {
         ));
         while rx.try_recv().is_ok() {}
 
-        let mut packet = inbound.data_packet(b"channel-payload").expect("data packet");
-        packet.context = PacketContext::Channel;
+        let packet = inbound.channel_packet(b"channel-payload").expect("channel packet");
 
         assert!(matches!(outbound.handle_packet(&packet, iface), LinkHandleResult::Proof(_)));
 
