@@ -644,9 +644,8 @@ async fn transport_channel_handle_can_open_channel_without_handlers() {
     let channel = transport.channel(link_id);
     channel.open().await.expect("open channel");
 
-    let (_sequence, packet) = inbound
-        .send_channel_message(0xEEEE, b"open-no-handler".to_vec())
-        .expect("channel message");
+    let (_sequence, packet) =
+        inbound.send_channel_message(0xEEEE, b"open-no-handler".to_vec()).expect("channel message");
     let result = outbound.lock().await.handle_packet(&packet, iface);
     assert!(matches!(result, crate::destination::link::LinkHandleResult::Proof(_)));
 }

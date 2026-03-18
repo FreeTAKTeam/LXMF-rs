@@ -1524,10 +1524,7 @@ mod tests {
 
         let (_sequence, packet) =
             inbound.send_channel_message(0x6161, b"no-consumer".to_vec()).expect("channel message");
-        assert!(matches!(
-            outbound.handle_packet(&packet, iface),
-            LinkHandleResult::Proof(_)
-        ));
+        assert!(matches!(outbound.handle_packet(&packet, iface), LinkHandleResult::Proof(_)));
         assert!(seen.lock().expect("lock").is_empty());
     }
 
