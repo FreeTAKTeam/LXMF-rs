@@ -457,8 +457,9 @@ interfaces = [
 
 #[test]
 fn reticulum_parity_matrix_mentions_config_driven_lxmd_tcp_server_startup() {
-    let text = fs::read_to_string("docs/plans/reticulum-parity-matrix.md")
-        .expect("read reticulum parity matrix");
+    let parity_matrix_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../docs/plans/reticulum-parity-matrix.md");
+    let text = fs::read_to_string(&parity_matrix_path).expect("read reticulum parity matrix");
 
     assert!(
         text.contains("Python-style interface-driven `tcp_server` startup now works from config")
@@ -485,8 +486,13 @@ interfaces = [
     let runtime =
         tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
     let context = runtime.block_on(async {
-        bootstrap::bootstrap(test_args(db_path.clone(), Some(config_path.clone()), None, false))
-            .await
+        bootstrap::bootstrap(test_args(
+            db_path.clone(),
+            Some(config_path.clone()),
+            Some("127.0.0.1:0".to_string()),
+            false,
+        ))
+        .await
     });
     let response = context
         .daemon
@@ -556,7 +562,10 @@ fn bootstrap_strict_mode_rejects_unbindable_udp_interface() {
         .catch_unwind()
         .await;
 
-        let panic_payload = result.expect_err("strict startup should panic on occupied udp port");
+        let panic_payload = match result {
+            Ok(_) => panic!("strict startup should panic on occupied udp port"),
+            Err(panic_payload) => panic_payload,
+        };
         let panic_message = if let Some(message) = panic_payload.downcast_ref::<String>() {
             message.clone()
         } else if let Some(message) = panic_payload.downcast_ref::<&str>() {
