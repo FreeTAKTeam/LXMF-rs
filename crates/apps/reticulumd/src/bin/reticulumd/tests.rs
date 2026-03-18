@@ -455,6 +455,18 @@ interfaces = [
 }
 
 #[test]
+fn reticulum_parity_matrix_mentions_config_driven_lxmd_tcp_server_startup() {
+    let text = fs::read_to_string("docs/plans/reticulum-parity-matrix.md")
+        .expect("read reticulum parity matrix");
+
+    assert!(
+        text.contains("Python-style interface-driven `tcp_server` startup now works from config")
+            && text.contains("without Rust-only transport overrides"),
+        "reticulum parity matrix should document config-driven lxmd tcp_server startup parity"
+    );
+}
+
+#[test]
 fn bootstrap_strict_mode_panics_when_transport_is_disabled_for_enabled_interfaces() {
     let temp = TempDir::new().expect("temp dir");
     let db_path = temp.path().join("reticulum.db");
