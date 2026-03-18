@@ -3,7 +3,9 @@ use super::path::handle_link_request_as_intermediate;
 use super::wire::{handle_data, handle_proof};
 use super::*;
 
-use crate::channel::{MessageState as ChannelMessageState, TypedMessage};
+use crate::channel::{
+    ChannelError, MessageState as ChannelMessageState, SystemMessageTypes, TypedMessage,
+};
 use crate::destination::link::{Link, LinkEvent, LinkEventData, LinkPayload};
 use crate::destination::{DestinationName, SingleInputDestination};
 use crate::identity::PrivateIdentity;
@@ -216,6 +218,21 @@ impl TypedMessage for TestTypedMessage {
 
     fn decode(payload: &[u8]) -> Result<Self, crate::channel::ChannelError> {
         Ok(Self { value: payload.to_vec() })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ReservedTypedMessage;
+
+impl TypedMessage for ReservedTypedMessage {
+    const MSG_TYPE: u16 = SystemMessageTypes::StreamData as u16;
+
+    fn encode(&self) -> Vec<u8> {
+        Vec::new()
+    }
+
+    fn decode(_payload: &[u8]) -> Result<Self, crate::channel::ChannelError> {
+        Ok(Self)
     }
 }
 
@@ -579,4 +596,19 @@ async fn transport_channel_handle_can_remove_handlers() {
     handle_data(&packet, iface, handler.lock().await).await;
 
     assert!(seen.lock().expect("lock").is_empty());
+}
+
+#[tokio::test]
+async fn transport_channel_handle_rejects_reserved_typed_messages_by_default() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let config = TransportConfig::new("test", &local_identity, true);
+    let transport = Transport::new(config);
+
+    let link_id = AddressHash::new_from_rand(OsRng);
+    let channel = transport.channel(link_id);
+
+    assert!(matches!(
+        channel.register_typed_handler::<ReservedTypedMessage, _>(|_message| true).await,
+        Err(ChannelError::InvalidMessageType)
+    ));
 }

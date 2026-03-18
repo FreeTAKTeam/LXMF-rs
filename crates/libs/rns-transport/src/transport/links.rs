@@ -486,6 +486,7 @@ impl TransportChannel {
         M: crate::channel::TypedMessage,
         F: FnMut(M) -> bool + Send + 'static,
     {
+        crate::channel::validate_typed_message_type::<M>()?;
         self.register_handler(M::MSG_TYPE, move |envelope| match M::decode(&envelope.payload) {
             Ok(message) => handler(message),
             Err(_) => false,

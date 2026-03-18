@@ -15,6 +15,7 @@ pub enum ChannelError {
     LinkNotReady,
     PayloadTooLarge,
     InvalidFrame,
+    InvalidMessageType,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -67,6 +68,14 @@ impl Envelope {
 
 pub type Handler = Box<dyn FnMut(Envelope) -> bool + Send>;
 
+pub const SYSTEM_MSG_TYPE_MIN: u16 = 0xF000;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u16)]
+pub enum SystemMessageTypes {
+    StreamData = 0xFF00,
+}
+
 struct RegisteredHandler {
     id: HandlerId,
     handler: Handler,
@@ -75,9 +84,21 @@ struct RegisteredHandler {
 pub trait TypedMessage: Sized {
     const MSG_TYPE: u16;
 
+    fn is_system_type() -> bool {
+        false
+    }
+
     fn encode(&self) -> Vec<u8>;
 
     fn decode(payload: &[u8]) -> Result<Self, ChannelError>;
+}
+
+pub(crate) fn validate_typed_message_type<M: TypedMessage>() -> Result<(), ChannelError> {
+    if M::MSG_TYPE >= SYSTEM_MSG_TYPE_MIN && !M::is_system_type() {
+        return Err(ChannelError::InvalidMessageType);
+    }
+
+    Ok(())
 }
 
 pub struct Channel<O: ChannelOutlet> {
@@ -114,15 +135,19 @@ impl<O: ChannelOutlet> Channel<O> {
         id
     }
 
-    pub fn register_typed_handler<M, F>(&mut self, mut handler: F) -> HandlerId
+    pub fn register_typed_handler<M, F>(
+        &mut self,
+        mut handler: F,
+    ) -> Result<HandlerId, ChannelError>
     where
         M: TypedMessage,
         F: FnMut(M) -> bool + Send + 'static,
     {
-        self.register_handler(M::MSG_TYPE, move |envelope| match M::decode(&envelope.payload) {
+        validate_typed_message_type::<M>()?;
+        Ok(self.register_handler(M::MSG_TYPE, move |envelope| match M::decode(&envelope.payload) {
             Ok(message) => handler(message),
             Err(_) => false,
-        })
+        }))
     }
 
     pub fn remove_handler(&mut self, handler_id: HandlerId) -> bool {
@@ -210,5 +235,84 @@ impl<O: ChannelOutlet> Channel<O> {
 
     pub fn outlet_mut(&mut self) -> &mut O {
         &mut self.outlet
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct MockOutlet;
+
+    impl ChannelOutlet for MockOutlet {
+        fn send(&mut self, _raw: &[u8]) -> Result<(), ChannelError> {
+            Ok(())
+        }
+
+        fn resend(&mut self, _raw: &[u8]) -> Result<(), ChannelError> {
+            Ok(())
+        }
+
+        fn mdu(&self) -> usize {
+            512
+        }
+
+        fn rtt(&self) -> Duration {
+            Duration::from_millis(10)
+        }
+
+        fn is_usable(&self) -> bool {
+            true
+        }
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct ReservedTypedMessage;
+
+    impl TypedMessage for ReservedTypedMessage {
+        const MSG_TYPE: u16 = SystemMessageTypes::StreamData as u16;
+
+        fn encode(&self) -> Vec<u8> {
+            Vec::new()
+        }
+
+        fn decode(_payload: &[u8]) -> Result<Self, ChannelError> {
+            Ok(Self)
+        }
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct SystemTypedMessage;
+
+    impl TypedMessage for SystemTypedMessage {
+        const MSG_TYPE: u16 = SystemMessageTypes::StreamData as u16;
+
+        fn is_system_type() -> bool {
+            true
+        }
+
+        fn encode(&self) -> Vec<u8> {
+            Vec::new()
+        }
+
+        fn decode(_payload: &[u8]) -> Result<Self, ChannelError> {
+            Ok(Self)
+        }
+    }
+
+    #[test]
+    fn typed_messages_reject_reserved_msg_types_by_default() {
+        assert!(matches!(
+            validate_typed_message_type::<ReservedTypedMessage>(),
+            Err(ChannelError::InvalidMessageType)
+        ));
+    }
+
+    #[test]
+    fn system_typed_messages_can_use_reserved_msg_types() {
+        let mut channel = Channel::new(MockOutlet);
+        let _handler_id = channel
+            .register_typed_handler::<SystemTypedMessage, _>(|_message| true)
+            .expect("system message types should register");
     }
 }

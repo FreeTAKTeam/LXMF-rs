@@ -41,6 +41,8 @@ iterating.
   returns `true`.
 - Channel handlers can be removed explicitly, which is required for buffer-like
   consumers that attach and detach over the lifetime of a link.
+- Typed channel registrations now reject Python-reserved system message ids by
+  default unless the message type explicitly opts into system-message use.
 
 ### Channel send path
 
@@ -89,6 +91,8 @@ The current implementation is intentionally narrower than Python’s full
   adaptive window promotion behavior expected from sustained medium/fast rounds.
 - Rust still models “channel open” as “at least one registered handler”, whereas
   Python models it as the existence of the link-owned `Channel` object itself.
+- Rust still does not expose a real `StreamDataMessage` / buffer layer equivalent
+  to Python `RNS.Buffer`.
 
 ## Remaining Gaps
 
