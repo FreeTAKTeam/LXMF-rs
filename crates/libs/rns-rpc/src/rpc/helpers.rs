@@ -380,7 +380,7 @@ fn parse_capabilities_from_tagged_text(text: &str) -> Vec<String> {
         if let Some(index) = lowered.find(marker) {
             let tail = &text[index + marker.len()..];
             let candidate = tail
-                .split(|ch: char| matches!(ch, ';' | '\n' | '\r'))
+                .split([';', '\n', '\r'])
                 .next()
                 .unwrap_or_default()
                 .trim()

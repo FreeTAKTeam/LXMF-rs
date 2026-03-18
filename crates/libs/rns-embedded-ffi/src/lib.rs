@@ -1,5 +1,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![allow(clippy::missing_safety_doc)]
+#![allow(clippy::not_unsafe_ptr_arg_deref)]
 
 extern crate alloc;
 

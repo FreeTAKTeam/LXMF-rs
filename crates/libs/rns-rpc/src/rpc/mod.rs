@@ -1,3 +1,5 @@
+#![allow(clippy::items_after_test_module)]
+
 pub mod codec;
 mod daemon;
 pub mod event_sink;

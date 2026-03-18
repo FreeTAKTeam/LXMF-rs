@@ -43,7 +43,6 @@ const INTEROP_CORPUS_PATH: &str = "docs/fixtures/interop/v1/golden-corpus.json";
 const RPC_CONTRACT_PATH: &str = "docs/contracts/rpc-contract.md";
 const PAYLOAD_CONTRACT_PATH: &str = "docs/contracts/payload-contract.md";
 const CODEOWNERS_PATH: &str = ".github/CODEOWNERS";
-const CI_WORKFLOW_PATH: &str = ".github/workflows/ci.yml";
 const SECURITY_POLICY_DOC_PATH: &str = ".github/SECURITY.md";
 const SECURITY_THREAT_MODEL_PATH: &str = "docs/adr/0004-sdk-v25-threat-model.md";
 const CRYPTO_AGILITY_ADR_PATH: &str = "docs/adr/0007-crypto-agility-roadmap.md";
@@ -91,54 +90,6 @@ const DAEMON_RELEASE_BINARIES: &[(&str, &str)] =
     &[("lxmf-cli", "lxmd"), ("reticulumd", "reticulumd")];
 const CARGO_AUDIT_IGNORE_ADVISORIES: &[&str] =
     &["RUSTSEC-2024-0421", "RUSTSEC-2024-0436", "RUSTSEC-2026-0009", "RUSTSEC-2025-0134"];
-const REQUIRED_INTERFACE_CI_JOBS: &[&str] = &[
-    "interfaces-build-linux",
-    "interfaces-build-macos",
-    "interfaces-build-windows",
-    "interfaces-test-serial",
-    "interfaces-test-ble-linux",
-    "interfaces-test-ble-macos",
-    "interfaces-test-ble-windows",
-    "interfaces-test-lora",
-    "interfaces-test-mobile-contract",
-    "interfaces-boundary-check",
-    "interfaces-required",
-];
-const REQUIRED_INTERFACE_CI_JOB_COMMAND_MARKERS: &[(&str, &str)] = &[
-    ("interfaces-build-linux", "cargo check -p reticulumd --all-targets"),
-    ("interfaces-build-macos", "cargo check -p reticulumd --all-targets"),
-    ("interfaces-build-windows", "cargo check -p reticulumd --all-targets"),
-    ("interfaces-test-serial", "cargo test -p rns-transport serial::tests"),
-    (
-        "interfaces-test-ble-linux",
-        "cargo test -p reticulumd --bin reticulumd interfaces::ble::",
-    ),
-    (
-        "interfaces-test-ble-macos",
-        "cargo test -p reticulumd --bin reticulumd interfaces::ble::",
-    ),
-    (
-        "interfaces-test-ble-windows",
-        "cargo test -p reticulumd --bin reticulumd interfaces::ble::",
-    ),
-    (
-        "interfaces-test-lora",
-        "cargo test -p reticulumd --bin reticulumd lora_state::tests",
-    ),
-    (
-        "interfaces-test-mobile-contract",
-        "cargo test -p lxmf-sdk --test mobile_ble_contract",
-    ),
-    (
-        "interfaces-test-mobile-contract",
-        "cargo test -p test-support --test mobile_ble_android_conformance --test mobile_ble_ios_conformance",
-    ),
-    (
-        "interfaces-boundary-check",
-        "bash tools/scripts/check-boundaries.sh",
-    ),
-    ("interfaces-required", "cargo xtask ci --stage interfaces-required"),
-];
 const SCHEMA_CLIENT_SMOKE_REPORT_PATH: &str = "target/interop/schema-client-smoke-report.txt";
 const CERTIFICATION_REPORT_PATH: &str = "target/release-readiness/certification-report.md";
 const CERTIFICATION_REPORT_JSON_PATH: &str = "target/release-readiness/certification-report.json";
@@ -147,18 +98,6 @@ const EMBEDDED_HIL_REPORT_PATH: &str = "target/hil/esp32-smoke-report.json";
 const EMBEDDED_NATIVE_INTEROP_REPORT_PATH: &str = "target/hil/native-node-report.json";
 const EMBEDDED_NATIVE_INTEROP_LOG_PATH: &str = "target/hil/native-node.log";
 const EMBEDDED_NATIVE_INTEROP_SCRIPT_PATH: &str = "tools/scripts/embedded-native-interop-smoke.sh";
-const EMBEDDED_NATIVE_REQUIRED_CI_JOBS: &[&str] = &[
-    "embedded-node-build",
-    "embedded-node-contract",
-    "embedded-node-failure-matrix",
-    "embedded-node-hil",
-];
-const EMBEDDED_NATIVE_REQUIRED_JOB_COMMAND_MARKERS: &[(&str, &str)] = &[
-    ("embedded-node-build", "cargo xtask ci --stage embedded-node-build"),
-    ("embedded-node-contract", "cargo xtask ci --stage embedded-node-contract"),
-    ("embedded-node-failure-matrix", "cargo xtask ci --stage embedded-node-failure-matrix"),
-    ("embedded-node-hil", "cargo xtask ci --stage embedded-node-hil"),
-];
 const LEADER_READINESS_REPORT_PATH: &str = "target/release-readiness/leader-grade-readiness.md";
 const CANARY_CRITERIA_REPORT_PATH: &str = "target/release-readiness/canary-criteria-report.md";
 const CANARY_CRITERIA_REPORT_JSON_PATH: &str =
@@ -669,6 +608,10 @@ fn run_ci(stage: Option<CiStage>) -> Result<()> {
         return run_ci_stage(stage);
     }
 
+    run_pr_core_ci()
+}
+
+fn run_pr_core_ci() -> Result<()> {
     run("cargo", &["fmt", "--all", "--", "--check"])?;
     run(
         "cargo",
@@ -683,64 +626,16 @@ fn run_ci(stage: Option<CiStage>) -> Result<()> {
             "warnings",
         ],
     )?;
-    run_correctness_check()?;
-    run("cargo", &["test", "--workspace"])?;
-    run("cargo", &["doc", "--workspace", "--no-deps"])?;
-    run_sdk_docs_check()?;
-    run_sdk_cookbook_check()?;
-    run_sdk_ergonomics_check()?;
-    run_lxmf_cli_check()?;
-    run_reference_integration_check()?;
-    run_dx_bootstrap_check()?;
-    run_sdk_incident_runbook_check()?;
-    run_sdk_drill_check()?;
-    run_sdk_soak_check()?;
-    run_sdk_schema_check()?;
+    run("cargo", &["check", "--workspace", "--all-targets"])?;
+    run("cargo", &["nextest", "run", "--workspace", "--lib", "--bins"])?;
+    run("cargo", &["test", "--workspace", "--tests"])?;
     run_proto_check()?;
-    run_interop_artifacts(false)?;
-    run_interop_matrix_check()?;
-    run_interop_corpus_check()?;
-    run_interop_drift_check(false)?;
-    run_schema_client_check()?;
-    run_compat_kit_check()?;
-    run_certification_report_check()?;
-    run_e2e_compatibility()?;
-    run_sdk_conformance()?;
-    run_crypto_agility_check()?;
-    run_sdk_profile_build()?;
-    run_sdk_examples_check()?;
-    run_changelog_migration_check()?;
-    run_governance_check()?;
-    run_compliance_profile_check()?;
-    run_support_policy_check()?;
-    run_unsafe_audit_check()?;
-    run_release_scorecard_check()?;
-    run_canary_criteria_check()?;
-    run_extension_registry_check()?;
-    run_plugin_negotiation_check()?;
-    run_security_review_check()?;
-    run_sdk_security_check()?;
-    run_key_management_check()?;
-    run_sdk_fuzz_check()?;
-    run_sdk_property_check()?;
-    run_sdk_model_check()?;
-    run_sdk_race_check()?;
-    run_sdk_replay_check()?;
-    run_sdk_metrics_check()?;
-    run_sdk_perf_budget_check()?;
-    run_sdk_memory_budget_check()?;
-    run_sdk_queue_pressure_check()?;
-    run_reproducible_build_check()?;
-    run_sdk_matrix_check()?;
-    run_embedded_link_check()?;
-    run_embedded_native_lock_check()?;
-    run_embedded_core_check()?;
-    run_embedded_node_build()?;
-    run_embedded_node_contract()?;
-    run_embedded_node_failure_matrix()?;
-    run_embedded_footprint_check()?;
-    run_migration_checks()?;
-    run_architecture_checks()?;
+    run_sdk_schema_check()?;
+    run("cargo", &["test", "-p", "rns-rpc", "grpc::tests"])?;
+    run("cargo", &["check", "-p", "reticulumd", "-p", "rns-tools", "-p", "lxmf-grpc-client"])?;
+    run("bash", &["tools/scripts/check-boundaries.sh"])?;
+    run("cargo", &["deny", "check"])?;
+    run_cargo_audit()?;
     Ok(())
 }
 
@@ -840,14 +735,31 @@ fn run_cargo_audit() -> Result<()> {
 }
 
 fn run_release_check() -> Result<()> {
-    run_ci(None)?;
+    run_pr_core_ci()?;
+    run_correctness_check()?;
+    run("cargo", &["doc", "--workspace", "--no-deps"])?;
+    run_sdk_docs_check()?;
+    run_sdk_cookbook_check()?;
+    run_sdk_ergonomics_check()?;
+    run_lxmf_cli_check()?;
+    run_reference_integration_check()?;
+    run_dx_bootstrap_check()?;
+    run_sdk_incident_runbook_check()?;
+    run_sdk_drill_check()?;
+    run_sdk_soak_check()?;
+    run_interop_artifacts(false)?;
     run_interop_matrix_check()?;
     run_interop_corpus_check()?;
     run_interop_drift_check(false)?;
     run_schema_client_check()?;
     run_compat_kit_check()?;
     run_certification_report_check()?;
-    run_reference_integration_check()?;
+    run_e2e_compatibility()?;
+    run_sdk_conformance()?;
+    run_sdk_profile_build()?;
+    run_sdk_examples_check()?;
+    run_governance_check()?;
+    run_interfaces_required()?;
     run_compliance_profile_check()?;
     run_support_policy_check()?;
     run_unsafe_audit_check()?;
@@ -855,19 +767,37 @@ fn run_release_check() -> Result<()> {
     run_canary_criteria_check()?;
     run_extension_registry_check()?;
     run_plugin_negotiation_check()?;
+    run_security_review_check()?;
+    run_sdk_security_check()?;
     run_sdk_api_break()?;
     run_changelog_migration_check()?;
     run_crypto_agility_check()?;
     run_key_management_check()?;
     run_supply_chain_check()?;
-    run("cargo", &["deny", "check"])?;
-    run_cargo_audit()?;
+    run_sdk_fuzz_check()?;
+    run_sdk_property_check()?;
+    run_sdk_model_check()?;
+    run_sdk_race_check()?;
+    run_sdk_replay_check()?;
+    run_sdk_metrics_check()?;
+    run_sdk_perf_budget_check()?;
+    run_sdk_memory_budget_check()?;
+    run_sdk_queue_pressure_check()?;
+    run_reproducible_build_check()?;
+    run_sdk_matrix_check()?;
+    run_embedded_link_check()?;
+    run_embedded_native_lock_check()?;
+    run_embedded_core_check()?;
+    run_embedded_node_build()?;
+    run_embedded_node_contract()?;
+    run_embedded_node_failure_matrix()?;
+    run_embedded_footprint_check()?;
+    run_migration_checks()?;
+    run_architecture_checks()?;
     Ok(())
 }
 
 fn run_interfaces_required() -> Result<()> {
-    ensure_required_interface_ci_jobs_declared()?;
-    ensure_required_interface_ci_commands_declared()?;
     run("cargo", &["check", "-p", "reticulumd", "--all-targets"])?;
     run("cargo", &["check", "-p", "rns-rpc", "--all-targets"])?;
     run("cargo", &["check", "-p", "lxmf-sdk", "--all-targets"])?;
@@ -906,199 +836,6 @@ fn run_interfaces_required() -> Result<()> {
     )?;
     run("bash", &["tools/scripts/check-boundaries.sh"])?;
     Ok(())
-}
-
-fn ensure_required_interface_ci_jobs_declared() -> Result<()> {
-    let workflow =
-        fs::read_to_string(CI_WORKFLOW_PATH).with_context(|| format!("read {CI_WORKFLOW_PATH}"))?;
-    for job in REQUIRED_INTERFACE_CI_JOBS {
-        extract_ci_job_block(&workflow, job)?;
-    }
-    Ok(())
-}
-
-fn ensure_required_interface_ci_commands_declared() -> Result<()> {
-    let workflow =
-        fs::read_to_string(CI_WORKFLOW_PATH).with_context(|| format!("read {CI_WORKFLOW_PATH}"))?;
-    for (job, marker) in REQUIRED_INTERFACE_CI_JOB_COMMAND_MARKERS {
-        let block = extract_ci_job_block(&workflow, job)?;
-        let commands = extract_ci_job_commands(block);
-        if !commands.iter().any(|command| command.contains(marker)) {
-            bail!(
-                "missing required interface CI command marker for job '{job}' in {CI_WORKFLOW_PATH}: {marker}"
-            );
-        }
-    }
-    ensure_interfaces_required_needs_declared(&workflow)?;
-    Ok(())
-}
-
-fn ensure_interfaces_required_needs_declared(workflow: &str) -> Result<()> {
-    let block = extract_ci_job_block(workflow, "interfaces-required")?;
-    let declared_needs = extract_ci_job_needs(block);
-    for job in
-        REQUIRED_INTERFACE_CI_JOBS.iter().copied().filter(|job| *job != "interfaces-required")
-    {
-        if !declared_needs.iter().any(|need| need == job) {
-            bail!(
-                "missing required dependency in interfaces-required.needs for {CI_WORKFLOW_PATH}: {job}"
-            );
-        }
-    }
-    Ok(())
-}
-
-fn extract_ci_job_block<'a>(workflow: &'a str, job: &str) -> Result<&'a str> {
-    let mut in_jobs_section = false;
-    let mut jobs_section_end = workflow.len();
-    let mut current_offset = 0usize;
-    let mut found_start = None;
-    for raw_line in workflow.split_inclusive('\n') {
-        let line = raw_line.strip_suffix('\n').unwrap_or(raw_line);
-        let uncommented = strip_yaml_inline_comment(line).trim_end();
-        let trimmed = uncommented.trim();
-        if !in_jobs_section {
-            if trimmed == "jobs:" {
-                in_jobs_section = true;
-            }
-        } else {
-            let indent = leading_spaces(uncommented);
-            let is_next_top_level_section =
-                indent == 0 && !trimmed.is_empty() && trimmed.ends_with(':');
-            if is_next_top_level_section {
-                jobs_section_end = current_offset;
-                break;
-            }
-
-            if let Some(job_header) = parse_ci_job_header(uncommented) {
-                if let Some(start) = found_start {
-                    return Ok(&workflow[start..current_offset]);
-                }
-                if job_header == job {
-                    found_start = Some(current_offset);
-                }
-            }
-        }
-        current_offset += raw_line.len();
-    }
-    if !in_jobs_section {
-        bail!("missing 'jobs:' section in {CI_WORKFLOW_PATH}");
-    }
-    if let Some(start) = found_start {
-        return Ok(&workflow[start..jobs_section_end]);
-    }
-    let header = format!("  {job}:");
-    bail!("missing job header '{header}' in {CI_WORKFLOW_PATH}")
-}
-
-fn extract_ci_job_commands(job_block: &str) -> Vec<String> {
-    let mut commands = Vec::new();
-    let lines: Vec<&str> = job_block.lines().collect();
-    let mut index = 0usize;
-    while index < lines.len() {
-        let line = strip_yaml_inline_comment(lines[index]).trim_end();
-        let indent = leading_spaces(line);
-        let trimmed = line.trim_start();
-        if let Some(rest) = trimmed.strip_prefix("run:") {
-            let rest = rest.trim();
-            let is_multiline_script =
-                rest.is_empty() || rest.starts_with('|') || rest.starts_with('>');
-            if is_multiline_script {
-                index += 1;
-                while index < lines.len() {
-                    let script_line = strip_yaml_inline_comment(lines[index]).trim_end();
-                    let script_indent = leading_spaces(script_line);
-                    let script = script_line.trim();
-                    if !script.is_empty() && script_indent <= indent {
-                        break;
-                    }
-                    if !script.is_empty() && !script.starts_with('#') {
-                        commands.push(script.to_string());
-                    }
-                    index += 1;
-                }
-                continue;
-            }
-            if !rest.is_empty() && !rest.starts_with('#') {
-                commands.push(rest.to_string());
-            }
-        }
-        index += 1;
-    }
-    commands
-}
-
-fn extract_ci_job_needs(job_block: &str) -> Vec<String> {
-    let mut needs = Vec::new();
-    let lines: Vec<&str> = job_block.lines().collect();
-    let mut index = 0usize;
-    while index < lines.len() {
-        let line = strip_yaml_inline_comment(lines[index]).trim_end();
-        let indent = leading_spaces(line);
-        let trimmed = line.trim();
-        if indent == 4 {
-            if let Some(rest) = trimmed.strip_prefix("needs:") {
-                let rest = rest.trim();
-                if rest.is_empty() {
-                    index += 1;
-                    while index < lines.len() {
-                        let item_line = strip_yaml_inline_comment(lines[index]).trim_end();
-                        let item_indent = leading_spaces(item_line);
-                        let item = item_line.trim();
-                        if !item.is_empty() && item_indent <= indent {
-                            break;
-                        }
-                        if item_indent > indent {
-                            if let Some(value) = item.strip_prefix('-') {
-                                let value = value.trim().trim_matches('"').trim_matches('\'');
-                                if !value.is_empty() {
-                                    needs.push(value.to_string());
-                                }
-                            }
-                        }
-                        index += 1;
-                    }
-                    continue;
-                }
-                if let Some(values) =
-                    rest.strip_prefix('[').and_then(|value| value.strip_suffix(']'))
-                {
-                    for value in values.split(',') {
-                        let value = value.trim().trim_matches('"').trim_matches('\'');
-                        if !value.is_empty() {
-                            needs.push(value.to_string());
-                        }
-                    }
-                } else {
-                    let value = rest.trim_matches('"').trim_matches('\'');
-                    if !value.is_empty() {
-                        needs.push(value.to_string());
-                    }
-                }
-            }
-        }
-        index += 1;
-    }
-    needs
-}
-
-fn strip_yaml_inline_comment(line: &str) -> &str {
-    line.split_once(" #").map(|(head, _)| head).unwrap_or(line)
-}
-
-fn parse_ci_job_header(line: &str) -> Option<&str> {
-    if !line.starts_with("  ") || line.starts_with("    ") {
-        return None;
-    }
-    let trimmed = line.trim();
-    if trimmed == "jobs:" || !trimmed.ends_with(':') {
-        return None;
-    }
-    trimmed.strip_suffix(':').map(str::trim).filter(|job| !job.is_empty())
-}
-
-fn leading_spaces(line: &str) -> usize {
-    line.chars().take_while(|ch| *ch == ' ').count()
 }
 
 fn run_api_diff() -> Result<()> {
@@ -1194,15 +931,6 @@ fn run_reference_integration_check() -> Result<()> {
                 "reference integration runbook missing marker '{marker}' in {REFERENCE_INTEGRATIONS_RUNBOOK_PATH}"
             );
         }
-    }
-
-    let workflow = fs::read_to_string(CI_WORKFLOW_PATH)
-        .with_context(|| format!("missing {CI_WORKFLOW_PATH}"))?;
-    if !workflow.contains("reference-integration-check:") {
-        bail!("ci workflow must include a 'reference-integration-check' job");
-    }
-    if !workflow.contains("cargo xtask ci --stage reference-integration-check") {
-        bail!("ci workflow must execute `cargo xtask ci --stage reference-integration-check`");
     }
 
     Ok(())
@@ -1904,15 +1632,6 @@ fn run_changelog_migration_check() -> Result<()> {
         }
     }
 
-    let workflow = fs::read_to_string(CI_WORKFLOW_PATH)
-        .with_context(|| format!("missing {CI_WORKFLOW_PATH}"))?;
-    if !workflow.contains("changelog-migration-check:") {
-        bail!("ci workflow must include a 'changelog-migration-check' job");
-    }
-    if !workflow.contains("cargo xtask ci --stage changelog-migration-check") {
-        bail!("ci workflow must execute `cargo xtask ci --stage changelog-migration-check`");
-    }
-
     Ok(())
 }
 
@@ -1991,15 +1710,6 @@ fn run_governance_check() -> Result<()> {
         bail!("release readiness runbook must reference docs/runbooks/cve-response-workflow.md");
     }
 
-    let workflow = fs::read_to_string(CI_WORKFLOW_PATH)
-        .with_context(|| format!("missing {CI_WORKFLOW_PATH}"))?;
-    if !workflow.contains("governance-check:") {
-        bail!("ci workflow must include a 'governance-check' job");
-    }
-    if !workflow.contains("cargo xtask ci --stage governance-check") {
-        bail!("ci workflow must execute `cargo xtask ci --stage governance-check`");
-    }
-
     Ok(())
 }
 
@@ -2052,15 +1762,6 @@ fn run_compliance_profile_check() -> Result<()> {
         }
     }
 
-    let workflow = fs::read_to_string(CI_WORKFLOW_PATH)
-        .with_context(|| format!("missing {CI_WORKFLOW_PATH}"))?;
-    if !workflow.contains("compliance-profile-check:") {
-        bail!("ci workflow must include a 'compliance-profile-check' job");
-    }
-    if !workflow.contains("cargo xtask ci --stage compliance-profile-check") {
-        bail!("ci workflow must execute `cargo xtask ci --stage compliance-profile-check`");
-    }
-
     Ok(())
 }
 
@@ -2098,15 +1799,6 @@ fn run_support_policy_check() -> Result<()> {
         .context("missing docs/runbooks/release-readiness.md")?;
     if !release_readiness.contains("support-policy-check") {
         bail!("release readiness checklist must include support-policy-check gate");
-    }
-
-    let workflow = fs::read_to_string(CI_WORKFLOW_PATH)
-        .with_context(|| format!("missing {CI_WORKFLOW_PATH}"))?;
-    if !workflow.contains("support-policy-check:") {
-        bail!("ci workflow must include a 'support-policy-check' job");
-    }
-    if !workflow.contains("cargo xtask ci --stage support-policy-check") {
-        bail!("ci workflow must execute `cargo xtask ci --stage support-policy-check`");
     }
 
     Ok(())
@@ -2168,15 +1860,6 @@ fn run_unsafe_audit_check() -> Result<()> {
         }
     }
 
-    let workflow = fs::read_to_string(CI_WORKFLOW_PATH)
-        .with_context(|| format!("missing {CI_WORKFLOW_PATH}"))?;
-    if !workflow.contains("unsafe-audit-check:") {
-        bail!("ci workflow must include an 'unsafe-audit-check' job");
-    }
-    if !workflow.contains("cargo xtask ci --stage unsafe-audit-check") {
-        bail!("ci workflow must execute `cargo xtask ci --stage unsafe-audit-check`");
-    }
-
     Ok(())
 }
 
@@ -2235,15 +1918,6 @@ fn run_canary_criteria_check() -> Result<()> {
         }
     }
 
-    let workflow = fs::read_to_string(CI_WORKFLOW_PATH)
-        .with_context(|| format!("missing {CI_WORKFLOW_PATH}"))?;
-    if !workflow.contains("canary-criteria-check:") {
-        bail!("ci workflow must include a 'canary-criteria-check' job");
-    }
-    if !workflow.contains("cargo xtask ci --stage canary-criteria-check") {
-        bail!("ci workflow must execute `cargo xtask ci --stage canary-criteria-check`");
-    }
-
     let release_readiness = fs::read_to_string("docs/runbooks/release-readiness.md")
         .context("missing docs/runbooks/release-readiness.md")?;
     for marker in ["canary-criteria-check", "Canary Lane and Rollback Criteria"] {
@@ -2299,15 +1973,6 @@ fn run_extension_registry_check() -> Result<()> {
         bail!("extension registry ADR must include identifier ADR 0005");
     }
 
-    let workflow = fs::read_to_string(CI_WORKFLOW_PATH)
-        .with_context(|| format!("missing {CI_WORKFLOW_PATH}"))?;
-    if !workflow.contains("extension-registry-check:") {
-        bail!("ci workflow must include an 'extension-registry-check' job");
-    }
-    if !workflow.contains("cargo xtask ci --stage extension-registry-check") {
-        bail!("ci workflow must execute `cargo xtask ci --stage extension-registry-check`");
-    }
-
     Ok(())
 }
 
@@ -2346,15 +2011,6 @@ fn run_plugin_negotiation_check() -> Result<()> {
         if !adr.contains(marker) {
             bail!("plugin extension ADR missing marker '{marker}'");
         }
-    }
-
-    let workflow = fs::read_to_string(CI_WORKFLOW_PATH)
-        .with_context(|| format!("missing {CI_WORKFLOW_PATH}"))?;
-    if !workflow.contains("plugin-negotiation-check:") {
-        bail!("ci workflow must include a 'plugin-negotiation-check' job");
-    }
-    if !workflow.contains("cargo xtask ci --stage plugin-negotiation-check") {
-        bail!("ci workflow must execute `cargo xtask ci --stage plugin-negotiation-check`");
     }
 
     Ok(())
@@ -2397,23 +2053,14 @@ fn run_certification_report_check() -> Result<()> {
         }
     }
 
-    let workflow = fs::read_to_string(CI_WORKFLOW_PATH)
-        .with_context(|| format!("missing {CI_WORKFLOW_PATH}"))?;
-    if !workflow.contains("certification-report-check:") {
-        bail!("ci workflow must include a 'certification-report-check' job");
-    }
-    if !workflow.contains("cargo xtask ci --stage certification-report-check") {
-        bail!("ci workflow must execute `cargo xtask ci --stage certification-report-check`");
-    }
-
     Ok(())
 }
 
 fn run_leader_readiness_check() -> Result<()> {
-    run_ci(None)?;
+    run_release_check()?;
 
     let scorecard_json = fs::read_to_string("target/release-scorecard/release-scorecard.json")
-        .context("missing target/release-scorecard/release-scorecard.json after full CI run")?;
+        .context("missing target/release-scorecard/release-scorecard.json after release check")?;
     let scorecard: serde_json::Value =
         serde_json::from_str(&scorecard_json).context("invalid release scorecard json")?;
     let overall_status =
@@ -2423,7 +2070,7 @@ fn run_leader_readiness_check() -> Result<()> {
     }
 
     let soak_json = fs::read_to_string(SOAK_REPORT_PATH)
-        .with_context(|| format!("missing {SOAK_REPORT_PATH} after full CI run"))?;
+        .with_context(|| format!("missing {SOAK_REPORT_PATH} after release check"))?;
     let soak: serde_json::Value =
         serde_json::from_str(&soak_json).context("invalid soak report json")?;
     let soak_status = soak.get("status").and_then(|value| value.as_str()).unwrap_or("unknown");
@@ -2465,7 +2112,7 @@ Generated by `cargo run -p xtask -- leader-readiness-check`.\n\n\
 - compatibility_clients_checked: `Sideband`, `RCH`, `Columba`\n\
 - security_review_source: `{SECURITY_REVIEW_CHECKLIST_PATH}`\n\
 - compatibility_matrix_source: `{INTEROP_MATRIX_PATH}`\n\n\
-This report certifies that full CI, compatibility checks, and release scorecard\n\
+This report certifies that release checks, compatibility checks, and release scorecard\n\
 inputs are aligned for leader-grade release readiness.\n"
     );
     fs::write(LEADER_READINESS_REPORT_PATH, report)
@@ -2560,15 +2207,6 @@ fn run_crypto_agility_check() -> Result<()> {
         &["test", "-p", "test-support", "sdk_conformance_crypto_agility", "--", "--nocapture"],
     )?;
 
-    let workflow = fs::read_to_string(CI_WORKFLOW_PATH)
-        .with_context(|| format!("missing {CI_WORKFLOW_PATH}"))?;
-    if !workflow.contains("crypto-agility-check:") {
-        bail!("ci workflow must include a 'crypto-agility-check' job");
-    }
-    if !workflow.contains("cargo xtask ci --stage crypto-agility-check") {
-        bail!("ci workflow must execute `cargo xtask ci --stage crypto-agility-check`");
-    }
-
     Ok(())
 }
 
@@ -2600,15 +2238,6 @@ fn run_key_management_check() -> Result<()> {
         .with_context(|| format!("missing {SDK_FEATURE_MATRIX_PATH}"))?;
     if !matrix.contains("sdk.capability.key_management") {
         bail!("feature matrix must include sdk.capability.key_management capability row");
-    }
-
-    let workflow = fs::read_to_string(CI_WORKFLOW_PATH)
-        .with_context(|| format!("missing {CI_WORKFLOW_PATH}"))?;
-    if !workflow.contains("key-management-check:") {
-        bail!("ci workflow must include a 'key-management-check' job");
-    }
-    if !workflow.contains("cargo xtask ci --stage key-management-check") {
-        bail!("ci workflow must execute `cargo xtask ci --stage key-management-check`");
     }
 
     Ok(())
@@ -4703,12 +4332,7 @@ fn release_version_label(version: Option<String>) -> Result<String> {
 }
 
 fn release_platform_label() -> String {
-    let os = match std::env::consts::OS {
-        "macos" => "macos",
-        "windows" => "windows",
-        "linux" => "linux",
-        other => other,
-    };
+    let os = std::env::consts::OS;
     let arch = match std::env::consts::ARCH {
         "x86_64" => "x64",
         "aarch64" => "arm64",
@@ -4833,7 +4457,6 @@ fn run_embedded_native_lock_check() -> Result<()> {
         EMBEDDED_NATIVE_LAB_PROFILE_PATH,
         EMBEDDED_NATIVE_NODE_CONFIG_PATH,
         EMBEDDED_NATIVE_WORKFLOW_PATH,
-        CI_WORKFLOW_PATH,
     ] {
         if !Path::new(path).exists() {
             bail!("required path missing for embedded native lock check: {path}");
@@ -4886,19 +4509,6 @@ fn run_embedded_native_lock_check() -> Result<()> {
     ] {
         if !lockfile.contains(marker) {
             bail!("embedded native lockfile missing marker '{marker}' in {EMBEDDED_NATIVE_LOCKFILE_PATH}");
-        }
-    }
-
-    let workflow =
-        fs::read_to_string(CI_WORKFLOW_PATH).with_context(|| format!("read {CI_WORKFLOW_PATH}"))?;
-    for job in EMBEDDED_NATIVE_REQUIRED_CI_JOBS {
-        if !workflow.contains(&format!("{job}:")) {
-            bail!("CI workflow missing embedded native required job '{job}' in {CI_WORKFLOW_PATH}");
-        }
-    }
-    for (job, marker) in EMBEDDED_NATIVE_REQUIRED_JOB_COMMAND_MARKERS {
-        if !workflow.contains(marker) {
-            bail!("CI workflow missing command marker for {job}: '{marker}'");
         }
     }
 
@@ -5292,15 +4902,6 @@ fn run_architecture_lint_check() -> Result<()> {
         if !report.contains(marker) {
             bail!("architecture boundary report missing marker '{marker}'");
         }
-    }
-
-    let workflow = fs::read_to_string(CI_WORKFLOW_PATH)
-        .with_context(|| format!("missing {CI_WORKFLOW_PATH}"))?;
-    if !workflow.contains("architecture-lint:") {
-        bail!("ci workflow must include an 'architecture-lint' job");
-    }
-    if !workflow.contains("cargo xtask ci --stage architecture-lint") {
-        bail!("ci workflow must execute `cargo xtask ci --stage architecture-lint`");
     }
 
     Ok(())

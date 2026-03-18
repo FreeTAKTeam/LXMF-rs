@@ -393,6 +393,7 @@ impl RpcDaemon {
         })
     }
 
+    #[allow(clippy::result_large_err)]
     fn handle_sdk_poll_events_v2(
         &self,
         request: RpcRequest,

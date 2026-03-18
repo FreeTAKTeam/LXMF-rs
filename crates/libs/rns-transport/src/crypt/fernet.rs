@@ -248,7 +248,7 @@ impl CachedFernet {
         text: PlainText,
         out_buf: &'a mut [u8],
     ) -> Result<Token<'a>, RnsError> {
-        Fernet::new(self.sign_key, self.enc_key.clone(), rng).encrypt(text, out_buf)
+        Fernet::new(self.sign_key, self.enc_key, rng).encrypt(text, out_buf)
     }
 
     pub fn verify<'a>(&self, token: Token<'a>) -> Result<VerifiedToken<'a>, RnsError> {

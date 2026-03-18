@@ -1,3 +1,13 @@
+type InboundSdkCommandUpdate = (
+    String,
+    &'static str,
+    Option<bool>,
+    Option<JsonValue>,
+    JsonMap<String, JsonValue>,
+    Option<String>,
+    Option<&'static str>,
+);
+
 impl RpcDaemon {
     fn sdk_command_event_payload_summary(payload: &JsonValue) -> JsonValue {
         let byte_len = payload.to_string().len();
@@ -27,6 +37,7 @@ impl RpcDaemon {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn apply_sdk_command_update(
         &self,
         correlation_id: &str,
@@ -83,15 +94,7 @@ impl RpcDaemon {
 
     fn inbound_sdk_command_update(
         record: &MessageRecord,
-    ) -> Option<(
-        String,
-        &'static str,
-        Option<bool>,
-        Option<JsonValue>,
-        JsonMap<String, JsonValue>,
-        Option<String>,
-        Option<&'static str>,
-    )> {
+    ) -> Option<InboundSdkCommandUpdate> {
         let fields = record.fields.as_ref()?.as_object()?;
         let command = fields.get("sdk_command")?.as_object()?;
         let correlation_id =
@@ -239,7 +242,7 @@ impl RpcDaemon {
                 .get_message(message_id.as_str())
                 .map_err(std::io::Error::other)?
                 .and_then(|stored| stored.receipt_status);
-            let should_mark_generated = existing_status.as_deref().is_none_or(|status| {
+            let should_mark_generated = existing_status.as_deref().map_or(true, |status| {
                 let normalized = status.trim().to_ascii_lowercase();
                 !normalized.starts_with("sent") && !Self::is_terminal_receipt_status(status)
             });
