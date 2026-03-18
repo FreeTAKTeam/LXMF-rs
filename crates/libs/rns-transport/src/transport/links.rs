@@ -242,14 +242,25 @@ impl Transport {
         link_id: &AddressHash,
         msg_type: u16,
         handler: F,
-    ) -> Result<(), crate::channel::ChannelError>
+    ) -> Result<crate::channel::HandlerId, crate::channel::ChannelError>
     where
         F: FnMut(crate::channel::Envelope) -> bool + Send + 'static,
     {
         let link =
             self.find_any_link(link_id).await.ok_or(crate::channel::ChannelError::LinkNotReady)?;
-        link.lock().await.register_channel_handler(msg_type, handler);
-        Ok(())
+        let handler_id = link.lock().await.register_channel_handler(msg_type, handler);
+        Ok(handler_id)
+    }
+
+    pub async fn remove_channel_handler(
+        &self,
+        link_id: &AddressHash,
+        handler_id: crate::channel::HandlerId,
+    ) -> Result<bool, crate::channel::ChannelError> {
+        let link =
+            self.find_any_link(link_id).await.ok_or(crate::channel::ChannelError::LinkNotReady)?;
+        let removed = link.lock().await.remove_channel_handler(handler_id);
+        Ok(removed)
     }
 
     pub async fn channel_message_state(
@@ -458,19 +469,19 @@ impl TransportChannel {
         &self,
         msg_type: u16,
         handler: F,
-    ) -> Result<(), crate::channel::ChannelError>
+    ) -> Result<crate::channel::HandlerId, crate::channel::ChannelError>
     where
         F: FnMut(crate::channel::Envelope) -> bool + Send + 'static,
     {
         let link = self.find_link().await.ok_or(crate::channel::ChannelError::LinkNotReady)?;
-        link.lock().await.register_channel_handler(msg_type, handler);
-        Ok(())
+        let handler_id = link.lock().await.register_channel_handler(msg_type, handler);
+        Ok(handler_id)
     }
 
     pub async fn register_typed_handler<M, F>(
         &self,
         mut handler: F,
-    ) -> Result<(), crate::channel::ChannelError>
+    ) -> Result<crate::channel::HandlerId, crate::channel::ChannelError>
     where
         M: crate::channel::TypedMessage,
         F: FnMut(M) -> bool + Send + 'static,
@@ -480,6 +491,15 @@ impl TransportChannel {
             Err(_) => false,
         })
         .await
+    }
+
+    pub async fn remove_handler(
+        &self,
+        handler_id: crate::channel::HandlerId,
+    ) -> Result<bool, crate::channel::ChannelError> {
+        let link = self.find_link().await.ok_or(crate::channel::ChannelError::LinkNotReady)?;
+        let removed = link.lock().await.remove_channel_handler(handler_id);
+        Ok(removed)
     }
 
     pub async fn message_state(

@@ -13,7 +13,7 @@ use x25519_dalek::StaticSecret;
 use crate::{
     buffer::OutputBuffer,
     channel::{
-        ChannelError, Envelope as ChannelEnvelope, Handler as ChannelHandler,
+        ChannelError, Envelope as ChannelEnvelope, Handler as ChannelHandler, HandlerId,
         MessageState as ChannelMessageState,
     },
     crypt::fernet::{CachedFernet, PlainText, Token},
@@ -55,6 +55,11 @@ struct PendingChannelPacket {
     packet: Packet,
     tries: u8,
     next_retry_at: Instant,
+}
+
+struct RegisteredChannelHandler {
+    id: HandlerId,
+    handler: ChannelHandler,
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
@@ -127,7 +132,8 @@ pub struct Link {
     stale_time: Duration,
     next_channel_sequence: u16,
     next_channel_rx_sequence: u16,
-    channel_handlers: HashMap<u16, ChannelHandler>,
+    next_channel_handler_id: u64,
+    channel_handlers: HashMap<u16, Vec<RegisteredChannelHandler>>,
     channel_pending: HashMap<Hash, PendingChannelPacket>,
     channel_states: HashMap<u16, ChannelMessageState>,
     channel_rx_ring: HashMap<u16, ChannelEnvelope>,
@@ -166,6 +172,7 @@ impl Link {
             stale_time: Duration::from_secs_f32(KEEPALIVE_MAX_SECS * STALE_FACTOR),
             next_channel_sequence: 0,
             next_channel_rx_sequence: 0,
+            next_channel_handler_id: 0,
             channel_handlers: HashMap::new(),
             channel_pending: HashMap::new(),
             channel_states: HashMap::new(),
@@ -229,6 +236,7 @@ impl Link {
             stale_time: Duration::from_secs_f32(KEEPALIVE_MAX_SECS * STALE_FACTOR),
             next_channel_sequence: 0,
             next_channel_rx_sequence: 0,
+            next_channel_handler_id: 0,
             channel_handlers: HashMap::new(),
             channel_pending: HashMap::new(),
             channel_states: HashMap::new(),
@@ -357,8 +365,23 @@ impl Link {
         self.note_inbound(packet.context);
 
         match packet.context {
+            PacketContext::Channel => {
+                if !self.channel_is_open() {
+                    log::debug!("link({}): channel data received without open channel", self.id);
+                    return LinkHandleResult::None;
+                }
+
+                let proof = self.prove_packet(packet);
+                let mut buffer = [0u8; PACKET_MDU];
+                if let Ok(plain_text) = self.decrypt(packet.data.as_slice(), &mut buffer[..]) {
+                    log::trace!("link({}): data {}B", self.id, plain_text.len());
+                    self.handle_channel_frame(plain_text);
+                } else {
+                    log::error!("link({}): can't decrypt packet", self.id);
+                }
+                return LinkHandleResult::Proof(proof);
+            }
             PacketContext::None
-            | PacketContext::Channel
             | PacketContext::Request
             | PacketContext::Response
             | PacketContext::LinkIdentify => {
@@ -373,12 +396,6 @@ impl Link {
                     } else {
                         None
                     };
-                    if packet.context == PacketContext::Channel {
-                        if self.handle_channel_frame(plain_text) {
-                            return LinkHandleResult::Proof(self.prove_packet(packet));
-                        }
-                        return LinkHandleResult::None;
-                    }
                     self.post_event(LinkEvent::Data(Box::new(
                         LinkPayload::new_from_slice_with_context_and_request_id(
                             plain_text,
@@ -507,11 +524,39 @@ impl Link {
         self.packet_with_context(data, PacketContext::Channel)
     }
 
-    pub fn register_channel_handler<F>(&mut self, msg_type: u16, handler: F)
+    pub fn register_channel_handler<F>(&mut self, msg_type: u16, handler: F) -> HandlerId
     where
         F: FnMut(ChannelEnvelope) -> bool + Send + 'static,
     {
-        self.channel_handlers.insert(msg_type, Box::new(handler));
+        let id = HandlerId::new(self.next_channel_handler_id);
+        self.next_channel_handler_id = self.next_channel_handler_id.wrapping_add(1);
+        self.channel_handlers
+            .entry(msg_type)
+            .or_default()
+            .push(RegisteredChannelHandler { id, handler: Box::new(handler) });
+        id
+    }
+
+    pub fn remove_channel_handler(&mut self, handler_id: HandlerId) -> bool {
+        let mut empty_msg_types = Vec::new();
+        let mut removed = false;
+
+        for (msg_type, handlers) in &mut self.channel_handlers {
+            let before = handlers.len();
+            handlers.retain(|registered| registered.id != handler_id);
+            if handlers.is_empty() {
+                empty_msg_types.push(*msg_type);
+            }
+            if handlers.len() != before {
+                removed = true;
+            }
+        }
+
+        for msg_type in empty_msg_types {
+            self.channel_handlers.remove(&msg_type);
+        }
+
+        removed
     }
 
     pub fn send_channel_message(
@@ -978,9 +1023,12 @@ impl Link {
         validate_link_packet_proof(&self.peer_identity, &self.id, packet)
     }
 
+    fn channel_is_open(&self) -> bool {
+        !self.channel_handlers.is_empty()
+    }
+
     fn handle_channel_frame(&mut self, plain_text: &[u8]) -> bool {
-        if self.channel_handlers.is_empty() {
-            log::debug!("link({}): channel data received without open channel", self.id);
+        if !self.channel_is_open() {
             return false;
         }
 
@@ -1019,7 +1067,7 @@ impl Link {
         }
 
         for envelope in ready {
-            let Some(handler) = self.channel_handlers.get_mut(&envelope.msg_type) else {
+            let Some(handlers) = self.channel_handlers.get_mut(&envelope.msg_type) else {
                 log::debug!(
                     "link({}): channel frame without handler type={}",
                     self.id,
@@ -1027,8 +1075,12 @@ impl Link {
                 );
                 continue;
             };
-            if catch_unwind(AssertUnwindSafe(|| handler(envelope))).is_err() {
-                log::error!("link({}): channel handler panicked", self.id);
+            for registered in handlers {
+                match catch_unwind(AssertUnwindSafe(|| (registered.handler)(envelope.clone()))) {
+                    Ok(true) => break,
+                    Ok(false) => {}
+                    Err(_) => log::error!("link({}): channel handler panicked", self.id),
+                }
             }
         }
 
@@ -1327,10 +1379,100 @@ mod tests {
             inbound.send_channel_message(0x2468, b"dedupe".to_vec()).expect("channel message");
 
         assert!(matches!(outbound.handle_packet(&packet, iface), LinkHandleResult::Proof(_)));
-        assert!(matches!(outbound.handle_packet(&packet, iface), LinkHandleResult::None));
+        assert!(matches!(outbound.handle_packet(&packet, iface), LinkHandleResult::Proof(_)));
 
         let seen = seen.lock().expect("lock");
         assert_eq!(seen.as_slice(), &[0]);
+    }
+
+    #[test]
+    fn channel_handlers_run_in_registration_order_and_short_circuit() {
+        let signer = PrivateIdentity::new_from_rand(OsRng);
+        let identity = *signer.as_identity();
+        let destination = DestinationDesc {
+            identity,
+            address_hash: identity.address_hash,
+            name: DestinationName::new("lxmf", "delivery"),
+        };
+        let (tx, _) = tokio::sync::broadcast::channel(8);
+
+        let mut outbound = Link::new(destination, tx.clone());
+        let request = outbound.request();
+        let mut inbound =
+            Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
+                .expect("link request should parse");
+        let iface = AddressHash::new_from_rand(OsRng);
+        assert!(matches!(
+            outbound.handle_packet(&inbound.prove(), iface),
+            LinkHandleResult::Activated
+        ));
+
+        let calls = Arc::new(Mutex::new(Vec::<&'static str>::new()));
+        let first_short_circuits = Arc::new(Mutex::new(false));
+
+        let calls_clone = calls.clone();
+        let first_flag = first_short_circuits.clone();
+        outbound.register_channel_handler(0x5151, move |_| {
+            calls_clone.lock().expect("lock").push("first");
+            *first_flag.lock().expect("lock")
+        });
+
+        let calls_clone = calls.clone();
+        outbound.register_channel_handler(0x5151, move |_| {
+            calls_clone.lock().expect("lock").push("second");
+            true
+        });
+
+        let (_sequence, packet) =
+            inbound.send_channel_message(0x5151, b"fan-out".to_vec()).expect("channel message");
+        assert!(matches!(outbound.handle_packet(&packet, iface), LinkHandleResult::Proof(_)));
+        assert_eq!(calls.lock().expect("lock").as_slice(), ["first", "second"]);
+
+        calls.lock().expect("lock").clear();
+        *first_short_circuits.lock().expect("lock") = true;
+
+        let (_sequence, packet) = inbound
+            .send_channel_message(0x5151, b"short-circuit".to_vec())
+            .expect("channel message");
+        assert!(matches!(outbound.handle_packet(&packet, iface), LinkHandleResult::Proof(_)));
+        assert_eq!(calls.lock().expect("lock").as_slice(), ["first"]);
+    }
+
+    #[test]
+    fn removing_last_channel_handler_closes_channel_consumer() {
+        let signer = PrivateIdentity::new_from_rand(OsRng);
+        let identity = *signer.as_identity();
+        let destination = DestinationDesc {
+            identity,
+            address_hash: identity.address_hash,
+            name: DestinationName::new("lxmf", "delivery"),
+        };
+        let (tx, _) = tokio::sync::broadcast::channel(8);
+
+        let mut outbound = Link::new(destination, tx.clone());
+        let request = outbound.request();
+        let mut inbound =
+            Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
+                .expect("link request should parse");
+        let iface = AddressHash::new_from_rand(OsRng);
+        assert!(matches!(
+            outbound.handle_packet(&inbound.prove(), iface),
+            LinkHandleResult::Activated
+        ));
+
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let seen_clone = seen.clone();
+        let handler_id = outbound.register_channel_handler(0x6161, move |envelope| {
+            seen_clone.lock().expect("lock").push(envelope);
+            true
+        });
+        assert!(outbound.remove_channel_handler(handler_id));
+        assert!(!outbound.remove_channel_handler(handler_id));
+
+        let (_sequence, packet) =
+            inbound.send_channel_message(0x6161, b"no-consumer".to_vec()).expect("channel message");
+        assert!(matches!(outbound.handle_packet(&packet, iface), LinkHandleResult::None));
+        assert!(seen.lock().expect("lock").is_empty());
     }
 
     #[test]

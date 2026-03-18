@@ -17,6 +17,15 @@ pub enum ChannelError {
     InvalidFrame,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct HandlerId(u64);
+
+impl HandlerId {
+    pub(crate) fn new(raw: u64) -> Self {
+        Self(raw)
+    }
+}
+
 pub trait ChannelOutlet: Send {
     fn send(&mut self, raw: &[u8]) -> Result<(), ChannelError>;
     fn resend(&mut self, raw: &[u8]) -> Result<(), ChannelError>;
@@ -58,6 +67,11 @@ impl Envelope {
 
 pub type Handler = Box<dyn FnMut(Envelope) -> bool + Send>;
 
+struct RegisteredHandler {
+    id: HandlerId,
+    handler: Handler,
+}
+
 pub trait TypedMessage: Sized {
     const MSG_TYPE: u16;
 
@@ -69,7 +83,8 @@ pub trait TypedMessage: Sized {
 pub struct Channel<O: ChannelOutlet> {
     outlet: O,
     next_sequence: u16,
-    handlers: HashMap<u16, Handler>,
+    next_handler_id: u64,
+    handlers: HashMap<u16, Vec<RegisteredHandler>>,
     pending: HashMap<u16, Envelope>,
     states: HashMap<u16, MessageState>,
 }
@@ -79,20 +94,27 @@ impl<O: ChannelOutlet> Channel<O> {
         Self {
             outlet,
             next_sequence: 0,
+            next_handler_id: 0,
             handlers: HashMap::new(),
             pending: HashMap::new(),
             states: HashMap::new(),
         }
     }
 
-    pub fn register_handler<F>(&mut self, msg_type: u16, handler: F)
+    pub fn register_handler<F>(&mut self, msg_type: u16, handler: F) -> HandlerId
     where
         F: FnMut(Envelope) -> bool + Send + 'static,
     {
-        self.handlers.insert(msg_type, Box::new(handler));
+        let id = HandlerId::new(self.next_handler_id);
+        self.next_handler_id = self.next_handler_id.wrapping_add(1);
+        self.handlers
+            .entry(msg_type)
+            .or_default()
+            .push(RegisteredHandler { id, handler: Box::new(handler) });
+        id
     }
 
-    pub fn register_typed_handler<M, F>(&mut self, mut handler: F)
+    pub fn register_typed_handler<M, F>(&mut self, mut handler: F) -> HandlerId
     where
         M: TypedMessage,
         F: FnMut(M) -> bool + Send + 'static,
@@ -100,7 +122,29 @@ impl<O: ChannelOutlet> Channel<O> {
         self.register_handler(M::MSG_TYPE, move |envelope| match M::decode(&envelope.payload) {
             Ok(message) => handler(message),
             Err(_) => false,
-        });
+        })
+    }
+
+    pub fn remove_handler(&mut self, handler_id: HandlerId) -> bool {
+        let mut empty_msg_types = Vec::new();
+        let mut removed = false;
+
+        for (msg_type, handlers) in &mut self.handlers {
+            let before = handlers.len();
+            handlers.retain(|registered| registered.id != handler_id);
+            if handlers.is_empty() {
+                empty_msg_types.push(*msg_type);
+            }
+            if handlers.len() != before {
+                removed = true;
+            }
+        }
+
+        for msg_type in empty_msg_types {
+            self.handlers.remove(&msg_type);
+        }
+
+        removed
     }
 
     pub fn send(&mut self, msg_type: u16, payload: Vec<u8>) -> Result<u16, ChannelError> {
@@ -135,10 +179,15 @@ impl<O: ChannelOutlet> Channel<O> {
 
     pub fn receive(&mut self, raw: &[u8]) -> Result<bool, ChannelError> {
         let envelope = Envelope::unpack(raw)?;
-        let Some(handler) = self.handlers.get_mut(&envelope.msg_type) else {
+        let Some(handlers) = self.handlers.get_mut(&envelope.msg_type) else {
             return Err(ChannelError::NoHandler);
         };
-        Ok(handler(envelope))
+        for registered in handlers {
+            if (registered.handler)(envelope.clone()) {
+                return Ok(true);
+            }
+        }
+        Ok(false)
     }
 
     pub fn mark_delivered(&mut self, sequence: u16) {

@@ -532,3 +532,51 @@ async fn transport_channel_handle_supports_typed_messages() {
     let seen = seen.lock().expect("lock");
     assert_eq!(seen.as_slice(), &[message]);
 }
+
+#[tokio::test]
+async fn transport_channel_handle_can_remove_handlers() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let config = TransportConfig::new("test", &local_identity, true);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+
+    let signer = PrivateIdentity::new_from_rand(OsRng);
+    let identity = *signer.as_identity();
+    let destination = crate::destination::DestinationDesc {
+        identity,
+        address_hash: identity.address_hash,
+        name: DestinationName::new("lxmf", "delivery"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(8);
+    let mut outbound = Link::new(destination, tx.clone());
+    let request = outbound.request();
+    let mut inbound = Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
+        .expect("link request should parse");
+    let iface = AddressHash::new_from_rand(OsRng);
+    assert!(matches!(
+        outbound.handle_packet(&inbound.prove(), iface),
+        crate::destination::link::LinkHandleResult::Activated
+    ));
+
+    let link_id = *outbound.id();
+    handler.lock().await.out_links.insert(destination.address_hash, Arc::new(Mutex::new(outbound)));
+    let channel = transport.channel(link_id);
+
+    let seen = Arc::new(StdMutex::new(Vec::new()));
+    let seen_clone = seen.clone();
+    let handler_id = channel
+        .register_handler(0x7777, move |envelope| {
+            seen_clone.lock().expect("lock").push(envelope);
+            true
+        })
+        .await
+        .expect("register handler");
+    assert!(channel.remove_handler(handler_id).await.expect("remove handler"));
+    assert!(!channel.remove_handler(handler_id).await.expect("remove handler twice"));
+
+    let (_sequence, packet) =
+        inbound.send_channel_message(0x7777, b"removed".to_vec()).expect("channel message");
+    handle_data(&packet, iface, handler.lock().await).await;
+
+    assert!(seen.lock().expect("lock").is_empty());
+}

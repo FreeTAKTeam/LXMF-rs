@@ -18,6 +18,10 @@ iterating.
   link has an open channel consumer.
 - In practice, the Rust implementation currently treats registered channel
   handlers as the “open channel” signal.
+- Once a channel consumer is open, Rust now proves channel packets before decode
+  and frame acceptance, matching Python’s retry behavior more closely.
+- Duplicate, out-of-order, or malformed channel frames therefore do not suppress
+  the transport proof that the sender is waiting for.
 - Channel packets without a registered consumer are dropped from the channel path
   and are not proved.
 
@@ -33,6 +37,10 @@ iterating.
 - Invalid channel frames are rejected without crashing link processing.
 - Channel handler panics are contained and logged instead of unwinding the link
   receive path.
+- Channel handlers are ordered and short-circuit on the first handler that
+  returns `true`.
+- Channel handlers can be removed explicitly, which is required for buffer-like
+  consumers that attach and detach over the lifetime of a link.
 
 ### Channel send path
 
@@ -79,6 +87,8 @@ The current implementation is intentionally narrower than Python’s full
   suppression, retry scheduling, and window adjustment.
 - Rust does not yet expose the richer Python message-factory API or the full
   adaptive window promotion behavior expected from sustained medium/fast rounds.
+- Rust still models “channel open” as “at least one registered handler”, whereas
+  Python models it as the existence of the link-owned `Channel` object itself.
 
 ## Remaining Gaps
 
