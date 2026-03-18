@@ -9,6 +9,7 @@ use rns_core::ratchets::{
 };
 use rns_transport::destination::link::{Link, LinkHandleResult};
 use rns_transport::destination::{DestinationDesc, DestinationName as TransportDestinationName};
+use rns_transport::hash::AddressHash;
 use rns_transport::identity_bridge::to_transport_private_identity;
 use rns_transport::packet::{Packet, PacketDataBuffer, PACKET_MDU};
 use rns_transport::resource::ResourceManager;
@@ -3514,7 +3515,8 @@ fn rust_active_link_pair() -> Result<(Link, Link, Vec<u8>)> {
         Link::new_from_request(&request, receiver.sign_key().clone(), destination, tx)
             .map_err(|err| anyhow!("input link: {err:?}"))?;
     let proof = inbound.prove();
-    if !matches!(outbound.handle_packet(&proof), LinkHandleResult::Activated) {
+    let proof_iface = AddressHash::new_from_rand(OsRng);
+    if !matches!(outbound.handle_packet(&proof, proof_iface), LinkHandleResult::Activated) {
         bail!("link activation did not succeed");
     }
 

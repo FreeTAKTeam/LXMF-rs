@@ -4,7 +4,7 @@ use rns_core::identity::PrivateIdentity as CorePrivateIdentity;
 use rns_transport::crypt::fernet::{CachedFernet, Fernet, PlainText, Token};
 use rns_transport::destination::link::{Link, LinkHandleResult};
 use rns_transport::destination::{DestinationDesc, DestinationName};
-use rns_transport::hash::Hash;
+use rns_transport::hash::{AddressHash, Hash};
 use rns_transport::identity_bridge::to_transport_private_identity;
 use rns_transport::packet::{Packet, PacketDataBuffer, PACKET_MDU};
 use rns_transport::resource::{
@@ -34,7 +34,8 @@ fn active_link_pair() -> (Link, Link, Vec<u8>) {
         Link::new_from_request(&request, receiver.sign_key().clone(), destination, tx)
             .expect("input link");
     let proof = inbound.prove();
-    assert!(matches!(outbound.handle_packet(&proof), LinkHandleResult::Activated));
+    let proof_iface = AddressHash::new_from_rand(OsRng);
+    assert!(matches!(outbound.handle_packet(&proof, proof_iface), LinkHandleResult::Activated));
 
     let payload = vec![0x2a; 128];
     (outbound, inbound, payload)
