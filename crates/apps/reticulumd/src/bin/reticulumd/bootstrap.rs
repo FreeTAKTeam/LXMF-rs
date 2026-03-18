@@ -162,7 +162,10 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         println!("{}", pretty_daemon_line("transport enabled"));
         let transport_identity =
             rns_transport::identity_bridge::to_transport_private_identity(&identity);
-        let config = TransportConfig::new("daemon", &transport_identity, true);
+        let mut config = TransportConfig::new("daemon", &transport_identity, true);
+        // Central tcp_server topologies depend on the daemon relaying announces and path
+        // responses between connected peers, which is gated by transport retransmit mode.
+        config.set_retransmit(true);
         let mut transport_instance = Transport::new(config);
         transport_instance
             .set_receipt_handler(Box::new(ReceiptBridge::new(
