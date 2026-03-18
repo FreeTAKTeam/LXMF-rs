@@ -35,7 +35,18 @@ const KEEPALIVE_MAX_SECS: f32 = 360.0;
 const KEEPALIVE_MIN_SECS: f32 = 5.0;
 const STALE_FACTOR: f32 = 2.0;
 const CHANNEL_RX_WINDOW_MAX: u16 = 48;
+const CHANNEL_WINDOW_INIT: u8 = 2;
+const CHANNEL_WINDOW_MIN: u8 = 2;
+const CHANNEL_WINDOW_MIN_LIMIT_MEDIUM: u8 = 5;
+const CHANNEL_WINDOW_MIN_LIMIT_FAST: u8 = 16;
+const CHANNEL_WINDOW_MAX_SLOW: u8 = 5;
+const CHANNEL_WINDOW_MAX_MEDIUM: u8 = 12;
+const CHANNEL_WINDOW_MAX_FAST: u8 = 48;
+const CHANNEL_FAST_RATE_THRESHOLD: u8 = 10;
+const CHANNEL_RTT_FAST_SECS: f32 = 0.18;
+const CHANNEL_RTT_MEDIUM_SECS: f32 = 0.75;
 const CHANNEL_RTT_SLOW_SECS: f32 = 1.45;
+const CHANNEL_WINDOW_FLEXIBILITY: u8 = 4;
 const CHANNEL_MAX_TRIES: u8 = 5;
 
 #[derive(Debug, Copy, Clone)]
@@ -120,6 +131,12 @@ pub struct Link {
     channel_pending: HashMap<Hash, PendingChannelPacket>,
     channel_states: HashMap<u16, ChannelMessageState>,
     channel_rx_ring: HashMap<u16, ChannelEnvelope>,
+    channel_window: u8,
+    channel_window_max: u8,
+    channel_window_min: u8,
+    channel_window_flexibility: u8,
+    channel_fast_rate_rounds: u8,
+    channel_medium_rate_rounds: u8,
     event_tx: tokio::sync::broadcast::Sender<LinkEventData>,
 }
 
@@ -153,6 +170,12 @@ impl Link {
             channel_pending: HashMap::new(),
             channel_states: HashMap::new(),
             channel_rx_ring: HashMap::new(),
+            channel_window: CHANNEL_WINDOW_INIT,
+            channel_window_max: CHANNEL_WINDOW_MAX_SLOW,
+            channel_window_min: CHANNEL_WINDOW_MIN,
+            channel_window_flexibility: CHANNEL_WINDOW_FLEXIBILITY,
+            channel_fast_rate_rounds: 0,
+            channel_medium_rate_rounds: 0,
             event_tx,
         }
     }
@@ -210,6 +233,12 @@ impl Link {
             channel_pending: HashMap::new(),
             channel_states: HashMap::new(),
             channel_rx_ring: HashMap::new(),
+            channel_window: CHANNEL_WINDOW_INIT,
+            channel_window_max: CHANNEL_WINDOW_MAX_SLOW,
+            channel_window_min: CHANNEL_WINDOW_MIN,
+            channel_window_flexibility: CHANNEL_WINDOW_FLEXIBILITY,
+            channel_fast_rate_rounds: 0,
+            channel_medium_rate_rounds: 0,
             event_tx,
         };
 
@@ -250,6 +279,7 @@ impl Link {
         self.channel_pending.clear();
         self.channel_states.clear();
         self.channel_rx_ring.clear();
+        self.reset_channel_flow_control();
 
         packet
     }
@@ -383,6 +413,7 @@ impl Link {
                         let measured_rtt = self.request_time.elapsed().as_secs_f32();
                         self.rtt = Duration::from_secs_f32(measured_rtt.max(peer_rtt));
                         self.update_keepalive_timing();
+                        self.refresh_channel_flow_control();
                         if self.activated_at.is_none() {
                             self.activated_at = Some(Instant::now());
                         }
@@ -428,6 +459,7 @@ impl Link {
                         if let Some(pending) = self.channel_pending.remove(&hash) {
                             self.channel_states
                                 .insert(pending.sequence, ChannelMessageState::Delivered);
+                            self.note_channel_delivery();
                         }
                         return LinkHandleResult::None;
                     }
@@ -449,6 +481,7 @@ impl Link {
                         self.last_proof = self.activated_at;
                         self.stale_since = None;
                         self.update_keepalive_timing();
+                        self.refresh_channel_flow_control();
 
                         log::debug!("link({}): activated", self.id);
 
@@ -547,6 +580,7 @@ impl Link {
         let mut exhausted = false;
 
         for hash in timed_out {
+            self.note_channel_timeout();
             if let Some(pending) = self.channel_pending.get_mut(&hash) {
                 if pending.tries >= CHANNEL_MAX_TRIES {
                     exhausted = true;
@@ -573,17 +607,104 @@ impl Link {
     }
 
     fn channel_send_window(&self) -> usize {
-        if self.rtt.as_secs_f32() > CHANNEL_RTT_SLOW_SECS {
-            1
-        } else {
-            2
-        }
+        usize::from(self.channel_window)
     }
 
     fn channel_retry_timeout_for(rtt: Duration, tries: u8, outstanding: usize) -> Duration {
         let base = (rtt.as_secs_f32() * 2.5).max(0.025);
         let multiplier = 1.5_f32.powi(i32::from(tries.saturating_sub(1)));
         Duration::from_secs_f32(multiplier * base * (outstanding as f32 + 1.5))
+    }
+
+    fn channel_window_profile(rtt: Duration) -> (u8, u8, u8, u8) {
+        if rtt.as_secs_f32() > CHANNEL_RTT_SLOW_SECS {
+            (1, 1, 1, 1)
+        } else {
+            (
+                CHANNEL_WINDOW_INIT,
+                CHANNEL_WINDOW_MAX_SLOW,
+                CHANNEL_WINDOW_MIN,
+                CHANNEL_WINDOW_FLEXIBILITY,
+            )
+        }
+    }
+
+    fn reset_channel_flow_control(&mut self) {
+        let (window, window_max, window_min, flexibility) = Self::channel_window_profile(self.rtt);
+        self.channel_window = window;
+        self.channel_window_max = window_max;
+        self.channel_window_min = window_min;
+        self.channel_window_flexibility = flexibility;
+        self.channel_fast_rate_rounds = 0;
+        self.channel_medium_rate_rounds = 0;
+    }
+
+    fn refresh_channel_flow_control(&mut self) {
+        let (window, window_max, window_min, flexibility) = Self::channel_window_profile(self.rtt);
+        self.channel_window_max = window_max;
+        self.channel_window_min = window_min;
+        self.channel_window_flexibility = flexibility;
+        if self.channel_window < self.channel_window_min || self.channel_window == 0 {
+            self.channel_window = self.channel_window_min.max(window);
+        }
+        if self.channel_window > self.channel_window_max {
+            self.channel_window = self.channel_window_max;
+        }
+    }
+
+    fn note_channel_delivery(&mut self) {
+        if self.channel_window < self.channel_window_max {
+            self.channel_window += 1;
+        }
+
+        if self.rtt.is_zero() {
+            return;
+        }
+
+        if self.rtt.as_secs_f32() > CHANNEL_RTT_FAST_SECS {
+            self.channel_fast_rate_rounds = 0;
+
+            if self.rtt.as_secs_f32() > CHANNEL_RTT_MEDIUM_SECS {
+                self.channel_medium_rate_rounds = 0;
+            } else {
+                self.channel_medium_rate_rounds = self.channel_medium_rate_rounds.saturating_add(1);
+                if self.channel_window_max < CHANNEL_WINDOW_MAX_MEDIUM
+                    && self.channel_medium_rate_rounds == CHANNEL_FAST_RATE_THRESHOLD
+                {
+                    self.channel_window_max = CHANNEL_WINDOW_MAX_MEDIUM;
+                    self.channel_window_min = CHANNEL_WINDOW_MIN_LIMIT_MEDIUM;
+                    if self.channel_window < self.channel_window_min {
+                        self.channel_window = self.channel_window_min;
+                    }
+                }
+            }
+        } else {
+            self.channel_fast_rate_rounds = self.channel_fast_rate_rounds.saturating_add(1);
+            if self.channel_window_max < CHANNEL_WINDOW_MAX_FAST
+                && self.channel_fast_rate_rounds == CHANNEL_FAST_RATE_THRESHOLD
+            {
+                self.channel_window_max = CHANNEL_WINDOW_MAX_FAST;
+                self.channel_window_min = CHANNEL_WINDOW_MIN_LIMIT_FAST;
+                if self.channel_window < self.channel_window_min {
+                    self.channel_window = self.channel_window_min;
+                }
+            }
+        }
+    }
+
+    fn note_channel_timeout(&mut self) {
+        self.channel_fast_rate_rounds = 0;
+        self.channel_medium_rate_rounds = 0;
+
+        if self.channel_window > self.channel_window_min {
+            self.channel_window -= 1;
+        }
+        if self.channel_window_max > self.channel_window_min + self.channel_window_flexibility {
+            self.channel_window_max -= 1;
+        }
+        if self.channel_window > self.channel_window_max {
+            self.channel_window = self.channel_window_max;
+        }
     }
 
     fn packet_with_context(&self, data: &[u8], context: PacketContext) -> Result<Packet, RnsError> {
@@ -1309,11 +1430,87 @@ mod tests {
         ));
 
         outbound.rtt = Duration::from_secs_f32(1.6);
+        outbound.refresh_channel_flow_control();
         assert!(outbound.send_channel_message(0x7001, b"first".to_vec()).is_ok());
         assert!(matches!(
             outbound.send_channel_message(0x7001, b"second".to_vec()),
             Err(ChannelError::LinkNotReady)
         ));
+    }
+
+    #[test]
+    fn channel_window_grows_after_successful_deliveries() {
+        let signer = PrivateIdentity::new_from_rand(OsRng);
+        let identity = *signer.as_identity();
+        let destination = DestinationDesc {
+            identity,
+            address_hash: identity.address_hash,
+            name: DestinationName::new("lxmf", "delivery"),
+        };
+        let (tx, _) = tokio::sync::broadcast::channel(8);
+
+        let mut outbound = Link::new(destination, tx.clone());
+        let request = outbound.request();
+        let mut inbound =
+            Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
+                .expect("link request should parse");
+        let iface = AddressHash::new_from_rand(OsRng);
+        assert!(matches!(
+            outbound.handle_packet(&inbound.prove(), iface),
+            LinkHandleResult::Activated
+        ));
+        inbound.register_channel_handler(0x7200, |_| true);
+
+        assert_eq!(outbound.channel_send_window(), 2);
+
+        let (_sequence, packet) =
+            outbound.send_channel_message(0x7200, b"first".to_vec()).expect("channel message");
+        let proof = match inbound.handle_packet(&packet, iface) {
+            LinkHandleResult::Proof(proof) => proof,
+            _ => panic!("channel packet should generate proof"),
+        };
+        assert!(matches!(outbound.handle_packet(&proof, iface), LinkHandleResult::None));
+
+        assert_eq!(outbound.channel_send_window(), 3);
+    }
+
+    #[test]
+    fn channel_window_shrinks_after_retry_timeout() {
+        let signer = PrivateIdentity::new_from_rand(OsRng);
+        let identity = *signer.as_identity();
+        let destination = DestinationDesc {
+            identity,
+            address_hash: identity.address_hash,
+            name: DestinationName::new("lxmf", "delivery"),
+        };
+        let (tx, _) = tokio::sync::broadcast::channel(8);
+
+        let mut outbound = Link::new(destination, tx.clone());
+        let request = outbound.request();
+        let mut inbound =
+            Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
+                .expect("link request should parse");
+        let iface = AddressHash::new_from_rand(OsRng);
+        assert!(matches!(
+            outbound.handle_packet(&inbound.prove(), iface),
+            LinkHandleResult::Activated
+        ));
+        inbound.register_channel_handler(0x7201, |_| true);
+
+        let (_sequence, packet) =
+            outbound.send_channel_message(0x7201, b"grow".to_vec()).expect("channel message");
+        let proof = match inbound.handle_packet(&packet, iface) {
+            LinkHandleResult::Proof(proof) => proof,
+            _ => panic!("channel packet should generate proof"),
+        };
+        assert!(matches!(outbound.handle_packet(&proof, iface), LinkHandleResult::None));
+        assert_eq!(outbound.channel_send_window(), 3);
+
+        let (_sequence, _packet) =
+            outbound.send_channel_message(0x7201, b"timeout".to_vec()).expect("channel message");
+        let _ = outbound.poll_channel_timeouts(Instant::now() + Duration::from_secs(1));
+
+        assert_eq!(outbound.channel_send_window(), 2);
     }
 
     #[test]
