@@ -63,6 +63,8 @@ iterating.
 
 - Pending channel packets carry retry metadata on the `Link`.
 - The existing transport link-maintenance loop polls channel retry deadlines.
+- The maintenance loop now wakes earlier when a channel retry deadline is sooner
+  than the normal one-second sweep.
 - Timed-out channel packets are retransmitted directly on the bound iface.
 - Retry exhaustion fails all pending channel messages and closes the link.
 - Retry timeout uses the Python-style shape:

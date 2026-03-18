@@ -665,6 +665,14 @@ impl Link {
         resend_packets
     }
 
+    pub(crate) fn next_channel_retry_at(&self) -> Option<Instant> {
+        if !matches!(self.status, LinkStatus::Active | LinkStatus::Stale) {
+            return None;
+        }
+
+        self.channel_pending.values().map(|pending| pending.next_retry_at).min()
+    }
+
     fn channel_send_window(&self) -> usize {
         usize::from(self.channel_window)
     }

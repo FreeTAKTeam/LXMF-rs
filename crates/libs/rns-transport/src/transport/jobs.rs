@@ -4,6 +4,46 @@ use super::wire::{handle_data, handle_proof};
 use super::*;
 use crate::destination::link::LinkWatchdogAction;
 
+const MIN_LINKS_CHECK_DELAY: Duration = Duration::from_millis(10);
+
+fn link_check_delay_from_deadline(
+    now: std::time::Instant,
+    earliest_retry: Option<std::time::Instant>,
+) -> Duration {
+    let Some(deadline) = earliest_retry else {
+        return INTERVAL_LINKS_CHECK;
+    };
+
+    if deadline <= now {
+        return MIN_LINKS_CHECK_DELAY;
+    }
+
+    std::cmp::min(deadline.duration_since(now), INTERVAL_LINKS_CHECK)
+}
+
+async fn next_link_check_delay(handler_arc: &Arc<Mutex<TransportHandler>>) -> Duration {
+    let (in_links, out_links) = {
+        let handler = handler_arc.lock().await;
+        (
+            handler.in_links.values().cloned().collect::<Vec<_>>(),
+            handler.out_links.values().cloned().collect::<Vec<_>>(),
+        )
+    };
+
+    let now = std::time::Instant::now();
+    let mut earliest_retry = None;
+    for link in in_links.into_iter().chain(out_links) {
+        if let Some(deadline) = link.lock().await.next_channel_retry_at() {
+            earliest_retry = Some(match earliest_retry {
+                Some(current) => std::cmp::min(current, deadline),
+                None => deadline,
+            });
+        }
+    }
+
+    link_check_delay_from_deadline(now, earliest_retry)
+}
+
 pub(super) async fn handle_check_links<'a>(mut handler: MutexGuard<'a, TransportHandler>) {
     let mut links_to_remove: Vec<AddressHash> = Vec::new();
     let mut pending_packets: Vec<Packet> = Vec::new();
@@ -178,11 +218,13 @@ pub(super) async fn manage_transport(
                     break;
                 }
 
+                let retry_delay = next_link_check_delay(&handler).await;
+
                 tokio::select! {
                     _ = cancel.cancelled() => {
                         break;
                     },
-                    _ = time::sleep(INTERVAL_LINKS_CHECK) => {
+                    _ = time::sleep(retry_delay) => {
                         handle_check_links(handler.lock().await).await;
                     }
                 }
@@ -302,5 +344,33 @@ pub(super) async fn manage_transport(
                 }
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn link_check_delay_uses_retry_deadline_when_sooner_than_default_sweep() {
+        let now = std::time::Instant::now();
+        let deadline = now + Duration::from_millis(150);
+
+        assert_eq!(link_check_delay_from_deadline(now, Some(deadline)), Duration::from_millis(150));
+    }
+
+    #[test]
+    fn link_check_delay_clamps_overdue_retries_to_minimum_delay() {
+        let now = std::time::Instant::now();
+        let deadline = now - Duration::from_millis(5);
+
+        assert_eq!(link_check_delay_from_deadline(now, Some(deadline)), MIN_LINKS_CHECK_DELAY);
+    }
+
+    #[test]
+    fn link_check_delay_keeps_default_sweep_without_pending_retries() {
+        let now = std::time::Instant::now();
+
+        assert_eq!(link_check_delay_from_deadline(now, None), INTERVAL_LINKS_CHECK);
     }
 }
