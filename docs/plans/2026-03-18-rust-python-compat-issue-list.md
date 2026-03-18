@@ -21,16 +21,15 @@ Goal:
   transport incompatible with Python Reticulum/LXMF behavior
 - prioritize the issues that block a credible "Python replacement" claim
 
-Status snapshot as of 2026-03-18:
+Status snapshot as of 2026-03-19:
 
-- merged and substantially addressed: `10` issues
-  - `1`, `2`, `5`, `11`, `12`, `13`, `14`, `15`, `16`, `17`
-- merged follow-up work on merged `15`:
-  - [#110](https://github.com/FreeTAKTeam/LXMF-rs/pull/110) buffer writer parity
-- open draft follow-up work on merged `15`:
-  - [#111](https://github.com/FreeTAKTeam/LXMF-rs/pull/111) buffer callback parity
-- remaining numbered issues still open: `31`
-
+- merged and substantially addressed: `15` issues
+  - `1`, `2`, `5`, `6`, `7`, `8`, `9`, `11`, `12`, `13`, `14`, `15`, `16`, `17`, `19`
+- open draft PRs in progress: `1` issue
+  - [#113](https://github.com/FreeTAKTeam/LXMF-rs/pull/113): `10`
+- open follow-up on merged `15`:
+  - [#111](https://github.com/FreeTAKTeam/LXMF-rs/pull/111): buffer callback parity on top of the merged channel buffer baseline
+- remaining numbered issues not yet under active PR: `25`
 ## Priority 1
 
 ### 1. Announce validation accepts destination-hash mismatch
@@ -138,6 +137,8 @@ Impact:
 
 ### 6. Resource startup reports success before advertisement send is proven
 
+Status: in progress in [#112](https://github.com/FreeTAKTeam/LXMF-rs/pull/112)
+
 Area: resources, daemon send path
 
 Rust behavior:
@@ -156,6 +157,8 @@ Impact:
 
 ### 7. Outbound resources lack Python-style retry, timeout, and cleanup
 
+Status: in progress in [#112](https://github.com/FreeTAKTeam/LXMF-rs/pull/112)
+
 Area: resources
 
 Rust behavior:
@@ -172,6 +175,8 @@ Impact:
 - stalled outbound resources can live forever in Rust
 
 ### 8. Failed inbound resources can get stuck forever
+
+Status: in progress in [#112](https://github.com/FreeTAKTeam/LXMF-rs/pull/112)
 
 Area: resources
 
@@ -191,6 +196,8 @@ Impact:
 
 ### 9. Duplicate resource advertisements reset receive progress
 
+Status: in progress in [#112](https://github.com/FreeTAKTeam/LXMF-rs/pull/112)
+
 Area: resources
 
 Rust behavior:
@@ -206,6 +213,8 @@ Impact:
 - Rust can discard already-received parts and retry state
 
 ### 10. Resource proof is treated as final LXMF delivery
+
+Status: in progress in [#113](https://github.com/FreeTAKTeam/LXMF-rs/pull/113), stacked on [#112](https://github.com/FreeTAKTeam/LXMF-rs/pull/112)
 
 Area: daemon status model
 
@@ -373,6 +382,8 @@ Impact:
 - Rust daemon can be forced into excessive allocation with fewer recovery paths
 
 ### 19. Inbound resource worker assumes every completed resource is LXMF
+
+Status: in progress in [#112](https://github.com/FreeTAKTeam/LXMF-rs/pull/112)
 
 Area: daemon inbound pipeline
 
@@ -765,12 +776,13 @@ Recently addressed in merged PRs:
 - announce trust baseline: issues `1`, `11`, `12`
 - proof and routed-proof validation baseline: issues `2`, `13`
 - link establishment, interface enforcement, proof-policy, and watchdog baseline: issues `5`, `14`, `16`, `17`
-- live channel baseline: issue `15`
+- live channel and buffer-writer baseline: issue `15`
+- resource lifecycle and generic-resource handling baseline: issues `6`, `7`, `8`, `9`, `19`
 
 Still actively being refined on open stacked PRs:
 
-- raw buffer-writer and callback parity on top of the merged live channel baseline: [#110](https://github.com/FreeTAKTeam/LXMF-rs/pull/110), [#111](https://github.com/FreeTAKTeam/LXMF-rs/pull/111)
-
+- callback dispatch parity on top of the merged channel buffer baseline: [#111](https://github.com/FreeTAKTeam/LXMF-rs/pull/111)
+- daemon receipt semantics for resource-backed sends: [#113](https://github.com/FreeTAKTeam/LXMF-rs/pull/113)
 Confirmed relatively aligned primitives:
 
 - identity hashing and announce random-blob layout look intentionally Python-aware
