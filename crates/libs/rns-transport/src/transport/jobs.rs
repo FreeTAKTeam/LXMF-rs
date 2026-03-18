@@ -2,6 +2,7 @@ use super::announce::{handle_announce, retransmit_announces};
 use super::path::{handle_fixed_destinations, handle_link_request};
 use super::wire::{handle_data, handle_proof};
 use super::*;
+use crate::destination::link::LinkWatchdogAction;
 
 pub(super) async fn handle_check_links<'a>(mut handler: MutexGuard<'a, TransportHandler>) {
     let mut links_to_remove: Vec<AddressHash> = Vec::new();
@@ -10,9 +11,19 @@ pub(super) async fn handle_check_links<'a>(mut handler: MutexGuard<'a, Transport
     // Clean up input links
     for link_entry in &handler.in_links {
         let mut link = link_entry.1.lock().await;
-        if link.elapsed() > INTERVAL_INPUT_LINK_CLEANUP {
-            link.close();
-            links_to_remove.push(*link_entry.0);
+        match link.status() {
+            LinkStatus::Closed => links_to_remove.push(*link_entry.0),
+            LinkStatus::Pending | LinkStatus::Handshake => {
+                if link.elapsed() > INTERVAL_INPUT_LINK_CLEANUP {
+                    link.close();
+                    links_to_remove.push(*link_entry.0);
+                }
+            }
+            LinkStatus::Active | LinkStatus::Stale => {
+                if link.check_watchdog(false) == LinkWatchdogAction::Close {
+                    links_to_remove.push(*link_entry.0);
+                }
+            }
         }
     }
 
@@ -24,9 +35,24 @@ pub(super) async fn handle_check_links<'a>(mut handler: MutexGuard<'a, Transport
 
     for link_entry in &handler.out_links {
         let mut link = link_entry.1.lock().await;
-        if link.status() == LinkStatus::Closed {
-            link.close();
-            links_to_remove.push(*link_entry.0);
+        match link.status() {
+            LinkStatus::Closed => links_to_remove.push(*link_entry.0),
+            LinkStatus::Active | LinkStatus::Stale => match link.check_watchdog(true) {
+                LinkWatchdogAction::SendKeepAlive => {
+                    pending_packets.push(link.keep_alive_packet(KEEP_ALIVE_REQUEST));
+                }
+                LinkWatchdogAction::Close => {
+                    links_to_remove.push(*link_entry.0);
+                }
+                LinkWatchdogAction::None => {}
+            },
+            LinkStatus::Pending => {
+                if link.elapsed() > INTERVAL_OUTPUT_LINK_REPEAT {
+                    log::warn!("tp({}): repeat link request {}", handler.config.name, link.id());
+                    pending_packets.push(link.request());
+                }
+            }
+            LinkStatus::Handshake => {}
         }
     }
 
@@ -34,34 +60,7 @@ pub(super) async fn handle_check_links<'a>(mut handler: MutexGuard<'a, Transport
         handler.out_links.remove(addr);
     }
 
-    for link_entry in &handler.out_links {
-        let mut link = link_entry.1.lock().await;
-
-        if link.status() == LinkStatus::Active && link.elapsed() > INTERVAL_OUTPUT_LINK_RESTART {
-            link.restart();
-        }
-
-        if link.status() == LinkStatus::Pending && link.elapsed() > INTERVAL_OUTPUT_LINK_REPEAT {
-            log::warn!("tp({}): repeat link request {}", handler.config.name, link.id());
-            pending_packets.push(link.request());
-        }
-    }
-
     for packet in pending_packets {
-        handler.send_packet(packet).await;
-    }
-}
-
-pub(super) async fn handle_keep_links<'a>(mut handler: MutexGuard<'a, TransportHandler>) {
-    let mut packets = Vec::new();
-    for link in handler.out_links.values() {
-        let link = link.lock().await;
-
-        if link.status() == LinkStatus::Active {
-            packets.push(link.keep_alive_packet(KEEP_ALIVE_REQUEST));
-        }
-    }
-    for packet in packets {
         handler.send_packet(packet).await;
     }
 }
@@ -165,28 +164,6 @@ pub(super) async fn manage_transport(
                     },
                     _ = time::sleep(INTERVAL_LINKS_CHECK) => {
                         handle_check_links(handler.lock().await).await;
-                    }
-                }
-            }
-        });
-    }
-
-    {
-        let handler = handler_arc.clone();
-        let cancel = cancel.clone();
-
-        tokio::spawn(async move {
-            loop {
-                if cancel.is_cancelled() {
-                    break;
-                }
-
-                tokio::select! {
-                    _ = cancel.cancelled() => {
-                        break;
-                    },
-                    _ = time::sleep(INTERVAL_OUTPUT_LINK_KEEP) => {
-                        handle_keep_links(handler.lock().await).await;
                     }
                 }
             }

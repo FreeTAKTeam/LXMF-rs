@@ -113,9 +113,7 @@ pub const PATHFINDER_M: usize = 128; // Max hops
 
 const INTERVAL_LINKS_CHECK: Duration = Duration::from_secs(1);
 const INTERVAL_INPUT_LINK_CLEANUP: Duration = Duration::from_secs(20);
-const INTERVAL_OUTPUT_LINK_RESTART: Duration = Duration::from_secs(60);
 const INTERVAL_OUTPUT_LINK_REPEAT: Duration = Duration::from_secs(6);
-const INTERVAL_OUTPUT_LINK_KEEP: Duration = Duration::from_secs(5);
 const INTERVAL_IFACE_CLEANUP: Duration = Duration::from_secs(10);
 const INTERVAL_ANNOUNCES_RETRANSMIT: Duration = Duration::from_secs(1);
 const INTERVAL_KEEP_PACKET_CACHED: Duration = Duration::from_secs(180);
