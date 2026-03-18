@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use bzip2::write::BzEncoder;
 use bzip2::Compression;
+use tokio::time::{sleep, Instant};
 
 use crate::channel::{ChannelError, HandlerId, SystemMessageTypes, TypedMessage};
 use crate::packet::PACKET_MDU;
@@ -16,6 +18,8 @@ const STREAM_DATA_OVERHEAD: usize = 2 + 6;
 const STREAM_DATA_MAX_LEN: usize = PACKET_MDU - STREAM_DATA_OVERHEAD;
 const MAX_CHUNK_LEN: usize = 1024 * 16;
 const COMPRESSION_TRIES: usize = 4;
+const CLOSE_WAIT_FALLBACK: Duration = Duration::from_secs(15);
+const CLOSE_WAIT_POLL: Duration = Duration::from_millis(50);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StreamDataMessage {
@@ -193,7 +197,9 @@ impl RawChannelReader {
     }
 
     pub async fn close(&self) -> Result<bool, ChannelError> {
-        self.channel.remove_handler(self.handler_id).await
+        let removed = self.channel.remove_handler(self.handler_id).await?;
+        self.state.lock().expect("reader state").callbacks.clear();
+        Ok(removed)
     }
 }
 
@@ -212,11 +218,38 @@ impl RawChannelWriter {
         Ok(Self { stream_id, channel, eof_sent: false })
     }
 
+    pub fn stream_id(&self) -> u16 {
+        self.stream_id
+    }
+
+    pub fn max_chunk_len(&self) -> usize {
+        STREAM_DATA_MAX_LEN
+    }
+
     pub async fn write(&self, bytes: &[u8]) -> Result<usize, ChannelError> {
         let (message, processed) = Self::encode_chunk(self.stream_id, bytes, false)?;
         self.channel.open().await?;
-        self.channel.send_typed(&message).await?;
-        Ok(processed)
+        match self.channel.send_typed(&message).await {
+            Ok(_) => Ok(processed),
+            Err(ChannelError::LinkNotReady) => Ok(0),
+            Err(err) => Err(err),
+        }
+    }
+
+    pub async fn write_all(&self, bytes: &[u8]) -> Result<usize, ChannelError> {
+        let mut total = 0usize;
+        let mut remaining = bytes;
+
+        while !remaining.is_empty() {
+            let written = self.write(remaining).await?;
+            if written == 0 {
+                break;
+            }
+            total += written;
+            remaining = &remaining[written..];
+        }
+
+        Ok(total)
     }
 
     pub async fn close(&mut self) -> Result<(), ChannelError> {
@@ -224,9 +257,35 @@ impl RawChannelWriter {
             return Ok(());
         }
 
+        let timeout = self
+            .channel
+            .close_wait_hint()
+            .await
+            .unwrap_or(CLOSE_WAIT_FALLBACK);
+        let deadline = Instant::now() + timeout;
+
+        loop {
+            match self.channel.is_ready_to_send().await {
+                Ok(true) => break,
+                Ok(false) if Instant::now() < deadline => sleep(CLOSE_WAIT_POLL).await,
+                Ok(false) | Err(ChannelError::LinkNotReady) => break,
+                Err(err) => return Err(err),
+            }
+        }
+
         let message = StreamDataMessage::new(self.stream_id, Vec::new(), true, false)?;
-        self.channel.open().await?;
-        self.channel.send_typed(&message).await?;
+        match self.channel.open().await {
+            Ok(()) => {}
+            Err(ChannelError::LinkNotReady) => {
+                self.eof_sent = true;
+                return Ok(());
+            }
+            Err(err) => return Err(err),
+        }
+        match self.channel.send_typed(&message).await {
+            Ok(_) | Err(ChannelError::LinkNotReady) => {}
+            Err(err) => return Err(err),
+        }
         self.eof_sent = true;
         Ok(())
     }
@@ -273,6 +332,51 @@ impl RawChannelWriter {
         let raw = bytes[..chunk_len].to_vec();
         let message = StreamDataMessage::new(stream_id, raw, eof, false)?;
         Ok((message, chunk_len))
+    }
+}
+
+pub struct BidirectionalChannelBuffer {
+    pub reader: RawChannelReader,
+    pub writer: RawChannelWriter,
+}
+
+pub struct Buffer;
+
+impl Buffer {
+    pub async fn create_reader<F>(
+        stream_id: u16,
+        channel: TransportChannel,
+        ready_callback: Option<F>,
+    ) -> Result<RawChannelReader, ChannelError>
+    where
+        F: Fn(usize) + Send + Sync + 'static,
+    {
+        let reader = RawChannelReader::attach(stream_id, channel).await?;
+        if let Some(callback) = ready_callback {
+            reader.add_ready_callback(callback);
+        }
+        Ok(reader)
+    }
+
+    pub fn create_writer(
+        stream_id: u16,
+        channel: TransportChannel,
+    ) -> Result<RawChannelWriter, ChannelError> {
+        RawChannelWriter::new(stream_id, channel)
+    }
+
+    pub async fn create_bidirectional_buffer<F>(
+        receive_stream_id: u16,
+        send_stream_id: u16,
+        channel: TransportChannel,
+        ready_callback: Option<F>,
+    ) -> Result<BidirectionalChannelBuffer, ChannelError>
+    where
+        F: Fn(usize) + Send + Sync + 'static,
+    {
+        let reader = Self::create_reader(receive_stream_id, channel.clone(), ready_callback).await?;
+        let writer = Self::create_writer(send_stream_id, channel)?;
+        Ok(BidirectionalChannelBuffer { reader, writer })
     }
 }
 
@@ -349,6 +453,66 @@ mod tests {
         let result = outbound.lock().await.handle_packet(&packet, iface);
         assert!(matches!(result, LinkHandleResult::Proof(_)));
         assert!(reader.read(64).is_none());
+    }
+
+    #[test]
+    fn raw_channel_writer_encode_chunk_accepts_large_prefix() {
+        let payload = vec![b'Z'; STREAM_DATA_MAX_LEN * 2 + 17];
+        let (message, processed) =
+            RawChannelWriter::encode_chunk(11, payload.as_slice(), false).expect("chunk");
+
+        assert!(processed > 0);
+        assert!(processed <= payload.len());
+        assert!(message.encode().len() <= PACKET_MDU);
+    }
+
+    #[tokio::test]
+    async fn raw_channel_writer_write_all_returns_zero_without_ready_link() {
+        let transport = test_transport();
+        let (_outbound, _inbound, _iface, channel) = linked_channel(&transport).await;
+        let writer = RawChannelWriter::new(11, channel).expect("writer");
+        let payload = vec![b'Z'; STREAM_DATA_MAX_LEN * 2 + 17];
+
+        let written = writer.write_all(payload.as_slice()).await.expect("write all");
+        assert_eq!(written, 0);
+    }
+
+    #[tokio::test]
+    async fn raw_channel_writer_returns_zero_when_link_not_ready() {
+        let transport = test_transport();
+        let (_outbound, _inbound, _iface, channel) = linked_channel(&transport).await;
+        let writer = RawChannelWriter::new(12, channel).expect("writer");
+        let payload = vec![b'Q'; STREAM_DATA_MAX_LEN];
+
+        assert_eq!(writer.write(payload.as_slice()).await.expect("backpressure"), 0);
+    }
+
+    #[tokio::test]
+    async fn raw_channel_writer_close_is_best_effort_under_backpressure() {
+        let transport = test_transport();
+        let (_outbound, _inbound, _iface, channel) = linked_channel(&transport).await;
+        let mut writer = RawChannelWriter::new(13, channel).expect("writer");
+
+        writer.close().await.expect("close");
+        assert!(writer.eof_sent);
+    }
+
+    #[tokio::test]
+    async fn buffer_create_bidirectional_buffer_builds_reader_and_writer() {
+        let transport = test_transport();
+        let (_outbound, _inbound, _iface, channel) = linked_channel(&transport).await;
+
+        let pair = Buffer::create_bidirectional_buffer(
+            21,
+            22,
+            channel,
+            Some(|_ready| {}),
+        )
+        .await
+        .expect("pair");
+
+        assert_eq!(pair.reader.stream_id(), 21);
+        assert_eq!(pair.writer.stream_id(), 22);
     }
 
     fn test_transport() -> Transport {
