@@ -7,10 +7,17 @@ use crate::destination::link::LinkWatchdogAction;
 pub(super) async fn handle_check_links<'a>(mut handler: MutexGuard<'a, TransportHandler>) {
     let mut links_to_remove: Vec<AddressHash> = Vec::new();
     let mut pending_packets: Vec<Packet> = Vec::new();
+    let mut direct_messages: Vec<TxMessage> = Vec::new();
+    let now = std::time::Instant::now();
 
     // Clean up input links
     for link_entry in &handler.in_links {
         let mut link = link_entry.1.lock().await;
+        if let Some(iface) = link.ingress_iface() {
+            for packet in link.poll_channel_timeouts(now) {
+                direct_messages.push(TxMessage { tx_type: TxMessageType::Direct(iface), packet });
+            }
+        }
         match link.status() {
             LinkStatus::Closed => links_to_remove.push(*link_entry.0),
             LinkStatus::Pending | LinkStatus::Handshake => {
@@ -35,11 +42,21 @@ pub(super) async fn handle_check_links<'a>(mut handler: MutexGuard<'a, Transport
 
     for link_entry in &handler.out_links {
         let mut link = link_entry.1.lock().await;
+        if let Some(iface) = link.ingress_iface() {
+            for packet in link.poll_channel_timeouts(now) {
+                direct_messages.push(TxMessage { tx_type: TxMessageType::Direct(iface), packet });
+            }
+        }
         match link.status() {
             LinkStatus::Closed => links_to_remove.push(*link_entry.0),
             LinkStatus::Active | LinkStatus::Stale => match link.check_watchdog(true) {
                 LinkWatchdogAction::SendKeepAlive => {
-                    pending_packets.push(link.keep_alive_packet(KEEP_ALIVE_REQUEST));
+                    if let Some(iface) = link.ingress_iface() {
+                        direct_messages.push(TxMessage {
+                            tx_type: TxMessageType::Direct(iface),
+                            packet: link.keep_alive_packet(KEEP_ALIVE_REQUEST),
+                        });
+                    }
                 }
                 LinkWatchdogAction::Close => {
                     links_to_remove.push(*link_entry.0);
@@ -62,6 +79,9 @@ pub(super) async fn handle_check_links<'a>(mut handler: MutexGuard<'a, Transport
 
     for packet in pending_packets {
         handler.send_packet(packet).await;
+    }
+    for message in direct_messages {
+        handler.send(message).await;
     }
 }
 

@@ -36,6 +36,15 @@ const KEEPALIVE_MIN_SECS: f32 = 5.0;
 const STALE_FACTOR: f32 = 2.0;
 const CHANNEL_RX_WINDOW_MAX: u16 = 48;
 const CHANNEL_RTT_SLOW_SECS: f32 = 1.45;
+const CHANNEL_MAX_TRIES: u8 = 5;
+
+#[derive(Debug, Copy, Clone)]
+struct PendingChannelPacket {
+    sequence: u16,
+    packet: Packet,
+    tries: u8,
+    next_retry_at: Instant,
+}
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum LinkStatus {
@@ -108,7 +117,7 @@ pub struct Link {
     next_channel_sequence: u16,
     next_channel_rx_sequence: u16,
     channel_handlers: HashMap<u16, ChannelHandler>,
-    channel_pending: HashMap<Hash, u16>,
+    channel_pending: HashMap<Hash, PendingChannelPacket>,
     channel_states: HashMap<u16, ChannelMessageState>,
     channel_rx_ring: HashMap<u16, ChannelEnvelope>,
     event_tx: tokio::sync::broadcast::Sender<LinkEventData>,
@@ -334,6 +343,12 @@ impl Link {
                     } else {
                         None
                     };
+                    if packet.context == PacketContext::Channel {
+                        if self.handle_channel_frame(plain_text) {
+                            return LinkHandleResult::Proof(self.prove_packet(packet));
+                        }
+                        return LinkHandleResult::None;
+                    }
                     self.post_event(LinkEvent::Data(Box::new(
                         LinkPayload::new_from_slice_with_context_and_request_id(
                             plain_text,
@@ -341,12 +356,6 @@ impl Link {
                             request_id,
                         ),
                     )));
-                    if packet.context == PacketContext::Channel {
-                        if self.handle_channel_frame(plain_text) {
-                            return LinkHandleResult::Proof(self.prove_packet(packet));
-                        }
-                        return LinkHandleResult::None;
-                    }
                     if packet.context == PacketContext::None {
                         return LinkHandleResult::Proof(self.prove_packet(packet));
                     }
@@ -416,8 +425,9 @@ impl Link {
                 if self.status == LinkStatus::Active && packet.context == PacketContext::LinkProof {
                     if let Ok(hash) = self.validate_packet_proof(packet) {
                         self.note_inbound(packet.context);
-                        if let Some(sequence) = self.channel_pending.remove(&hash) {
-                            self.channel_states.insert(sequence, ChannelMessageState::Delivered);
+                        if let Some(pending) = self.channel_pending.remove(&hash) {
+                            self.channel_states
+                                .insert(pending.sequence, ChannelMessageState::Delivered);
                         }
                         return LinkHandleResult::None;
                     }
@@ -488,7 +498,16 @@ impl Link {
         let envelope = ChannelEnvelope { msg_type, sequence, payload };
         let raw = envelope.pack();
         let packet = self.channel_packet(&raw).map_err(|_| ChannelError::PayloadTooLarge)?;
-        self.channel_pending.insert(packet.hash(), sequence);
+        self.channel_pending.insert(
+            packet.hash(),
+            PendingChannelPacket {
+                sequence,
+                packet,
+                tries: 1,
+                next_retry_at: Instant::now()
+                    + Self::channel_retry_timeout_for(self.rtt, 1, self.channel_pending.len() + 1),
+            },
+        );
         self.channel_states.insert(sequence, ChannelMessageState::Sent);
         Ok((sequence, packet))
     }
@@ -497,12 +516,74 @@ impl Link {
         self.channel_states.get(&sequence).copied().unwrap_or(ChannelMessageState::New)
     }
 
+    pub(crate) fn mark_channel_failed(&mut self, sequence: u16) {
+        if let Some(hash) = self
+            .channel_pending
+            .iter()
+            .find_map(|(hash, pending)| (pending.sequence == sequence).then_some(*hash))
+        {
+            self.channel_pending.remove(&hash);
+        }
+        self.channel_states.insert(sequence, ChannelMessageState::Failed);
+    }
+
+    pub(crate) fn poll_channel_timeouts(&mut self, now: Instant) -> Vec<Packet> {
+        if !matches!(self.status, LinkStatus::Active | LinkStatus::Stale) {
+            return Vec::new();
+        }
+
+        let timed_out = self
+            .channel_pending
+            .iter()
+            .filter_map(|(hash, pending)| (pending.next_retry_at <= now).then_some(*hash))
+            .collect::<Vec<_>>();
+        if timed_out.is_empty() {
+            return Vec::new();
+        }
+
+        let outstanding = self.channel_pending.len().max(1);
+        let rtt = self.rtt;
+        let mut resend_packets = Vec::new();
+        let mut exhausted = false;
+
+        for hash in timed_out {
+            if let Some(pending) = self.channel_pending.get_mut(&hash) {
+                if pending.tries >= CHANNEL_MAX_TRIES {
+                    exhausted = true;
+                    break;
+                }
+
+                pending.tries += 1;
+                let tries = pending.tries;
+                let retry_timeout = Self::channel_retry_timeout_for(rtt, tries, outstanding);
+                pending.next_retry_at = now + retry_timeout;
+                resend_packets.push(pending.packet);
+            }
+        }
+
+        if exhausted {
+            for pending in self.channel_pending.drain().map(|(_, pending)| pending) {
+                self.channel_states.insert(pending.sequence, ChannelMessageState::Failed);
+            }
+            self.close();
+            return Vec::new();
+        }
+
+        resend_packets
+    }
+
     fn channel_send_window(&self) -> usize {
         if self.rtt.as_secs_f32() > CHANNEL_RTT_SLOW_SECS {
             1
         } else {
             2
         }
+    }
+
+    fn channel_retry_timeout_for(rtt: Duration, tries: u8, outstanding: usize) -> Duration {
+        let base = (rtt.as_secs_f32() * 2.5).max(0.025);
+        let multiplier = 1.5_f32.powi(i32::from(tries.saturating_sub(1)));
+        Duration::from_secs_f32(multiplier * base * (outstanding as f32 + 1.5))
     }
 
     fn packet_with_context(&self, data: &[u8], context: PacketContext) -> Result<Packet, RnsError> {
@@ -731,8 +812,8 @@ impl Link {
         });
     }
     pub fn close(&mut self) {
-        for sequence in self.channel_pending.drain().map(|(_, sequence)| sequence) {
-            self.channel_states.insert(sequence, ChannelMessageState::Failed);
+        for pending in self.channel_pending.drain().map(|(_, pending)| pending) {
+            self.channel_states.insert(pending.sequence, ChannelMessageState::Failed);
         }
         self.channel_rx_ring.clear();
         self.status = LinkStatus::Closed;
@@ -746,8 +827,8 @@ impl Link {
     pub fn restart(&mut self) {
         log::warn!("link({}): restart after {}s", self.id, self.request_time.elapsed().as_secs());
 
-        for sequence in self.channel_pending.drain().map(|(_, sequence)| sequence) {
-            self.channel_states.insert(sequence, ChannelMessageState::Failed);
+        for pending in self.channel_pending.drain().map(|(_, pending)| pending) {
+            self.channel_states.insert(pending.sequence, ChannelMessageState::Failed);
         }
         self.channel_rx_ring.clear();
         self.status = LinkStatus::Pending;
@@ -941,7 +1022,7 @@ mod tests {
     }
 
     #[test]
-    fn channel_packets_are_forwarded_and_generate_link_proofs() {
+    fn channel_packets_do_not_emit_generic_link_events_and_generate_link_proofs() {
         let signer = PrivateIdentity::new_from_rand(OsRng);
         let identity = *signer.as_identity();
         let destination = DestinationDesc {
@@ -970,18 +1051,7 @@ mod tests {
             .expect("channel packet");
 
         assert!(matches!(outbound.handle_packet(&packet, iface), LinkHandleResult::Proof(_)));
-
-        let event = rx.try_recv().expect("channel payload event");
-        match event.event {
-            LinkEvent::Data(payload) => {
-                assert_eq!(payload.context(), PacketContext::Channel);
-                let envelope =
-                    ChannelEnvelope::unpack(payload.as_slice()).expect("channel envelope payload");
-                assert_eq!(envelope.msg_type, 0xCAFE);
-                assert_eq!(envelope.payload, b"channel-payload");
-            }
-            other => panic!("unexpected event: {:?}", std::mem::discriminant(&other)),
-        }
+        assert!(rx.try_recv().is_err(), "channel packets should stay on the channel path");
     }
 
     #[test]
@@ -1244,6 +1314,80 @@ mod tests {
             outbound.send_channel_message(0x7001, b"second".to_vec()),
             Err(ChannelError::LinkNotReady)
         ));
+    }
+
+    #[test]
+    fn timed_out_channel_messages_are_retransmitted() {
+        let signer = PrivateIdentity::new_from_rand(OsRng);
+        let identity = *signer.as_identity();
+        let destination = DestinationDesc {
+            identity,
+            address_hash: identity.address_hash,
+            name: DestinationName::new("lxmf", "delivery"),
+        };
+        let (tx, _) = tokio::sync::broadcast::channel(8);
+
+        let mut outbound = Link::new(destination, tx.clone());
+        let request = outbound.request();
+        let mut inbound =
+            Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
+                .expect("link request should parse");
+        let iface = AddressHash::new_from_rand(OsRng);
+        assert!(matches!(
+            outbound.handle_packet(&inbound.prove(), iface),
+            LinkHandleResult::Activated
+        ));
+
+        let (sequence, packet) =
+            outbound.send_channel_message(0x7100, b"retry-me".to_vec()).expect("channel message");
+        let resend_packets =
+            outbound.poll_channel_timeouts(Instant::now() + Duration::from_secs(1));
+
+        assert_eq!(resend_packets.len(), 1);
+        assert_eq!(resend_packets[0].hash(), packet.hash());
+        assert_eq!(outbound.channel_state(sequence), ChannelMessageState::Sent);
+        assert_eq!(outbound.status(), LinkStatus::Active);
+    }
+
+    #[test]
+    fn channel_retry_exhaustion_closes_link_and_fails_pending_messages() {
+        let signer = PrivateIdentity::new_from_rand(OsRng);
+        let identity = *signer.as_identity();
+        let destination = DestinationDesc {
+            identity,
+            address_hash: identity.address_hash,
+            name: DestinationName::new("lxmf", "delivery"),
+        };
+        let (tx, _) = tokio::sync::broadcast::channel(8);
+
+        let mut outbound = Link::new(destination, tx.clone());
+        let request = outbound.request();
+        let mut inbound =
+            Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
+                .expect("link request should parse");
+        let iface = AddressHash::new_from_rand(OsRng);
+        assert!(matches!(
+            outbound.handle_packet(&inbound.prove(), iface),
+            LinkHandleResult::Activated
+        ));
+
+        let (sequence, _packet) = outbound
+            .send_channel_message(0x7101, b"eventually-fails".to_vec())
+            .expect("channel message");
+
+        for seconds in 1..=4 {
+            let resend_packets =
+                outbound.poll_channel_timeouts(Instant::now() + Duration::from_secs(seconds));
+            assert_eq!(resend_packets.len(), 1);
+            assert_eq!(outbound.status(), LinkStatus::Active);
+            assert_eq!(outbound.channel_state(sequence), ChannelMessageState::Sent);
+        }
+
+        let resend_packets =
+            outbound.poll_channel_timeouts(Instant::now() + Duration::from_secs(5));
+        assert!(resend_packets.is_empty());
+        assert_eq!(outbound.status(), LinkStatus::Closed);
+        assert_eq!(outbound.channel_state(sequence), ChannelMessageState::Failed);
     }
 
     #[test]

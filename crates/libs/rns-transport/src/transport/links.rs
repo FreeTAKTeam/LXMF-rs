@@ -216,11 +216,24 @@ impl Transport {
         let link =
             self.find_any_link(link_id).await.ok_or(crate::channel::ChannelError::LinkNotReady)?;
 
-        let (sequence, packet) = {
+        let (sequence, iface, packet) = {
             let mut link = link.lock().await;
-            link.send_channel_message(msg_type, payload)?
+            let iface = link.ingress_iface().ok_or(crate::channel::ChannelError::LinkNotReady)?;
+            let (sequence, packet) = link.send_channel_message(msg_type, payload)?;
+            (sequence, iface, packet)
         };
-        self.handler.lock().await.send_packet(packet).await;
+
+        let dispatch = self
+            .handler
+            .lock()
+            .await
+            .send(TxMessage { tx_type: TxMessageType::Direct(iface), packet })
+            .await;
+        if dispatch.sent_ifaces == 0 {
+            link.lock().await.mark_channel_failed(sequence);
+            return Err(crate::channel::ChannelError::LinkNotReady);
+        }
+
         Ok(sequence)
     }
 
