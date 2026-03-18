@@ -7,6 +7,7 @@ use reticulum_daemon::inbound_delivery::{
 use reticulum_daemon::receipt_bridge::ReceiptEvent;
 use rns_rpc::{RpcDaemon, RpcRequest};
 use rns_transport::destination::link::{Link, LinkEvent};
+use rns_transport::destination::{DestinationDesc, DestinationName};
 use rns_transport::hash::AddressHash;
 use rns_transport::identity::Identity;
 use rns_transport::packet::{
@@ -45,7 +46,7 @@ pub(super) fn spawn_inbound_worker(
                 match event.kind {
                     ResourceEventKind::Complete(complete) => {
                         if let Some(destination) =
-                            resolve_link_destination(transport.as_ref(), &event.link_id).await
+                            resolve_lxmf_resource_destination(transport.as_ref(), &event.link_id).await
                         {
                             if let Some(record) = decode_inbound_payload(
                                 destination,
@@ -541,21 +542,62 @@ pub(super) fn prune_outbound_resource_mappings_for_message(
     }
 }
 
-async fn resolve_link_destination(
+async fn resolve_lxmf_resource_destination(
     transport: &Transport,
     link_id: &AddressHash,
 ) -> Option<[u8; 16]> {
     if let Some(link) = transport.find_in_link(link_id).await {
         let guard = link.lock().await;
-        let mut destination = [0u8; 16];
-        destination.copy_from_slice(guard.destination().address_hash.as_slice());
-        return Some(destination);
+        if is_lxmf_delivery_destination(guard.destination()) {
+            let mut destination = [0u8; 16];
+            destination.copy_from_slice(guard.destination().address_hash.as_slice());
+            return Some(destination);
+        }
+        return None;
     }
     if let Some(link) = transport.find_out_link(link_id).await {
         let guard = link.lock().await;
-        let mut destination = [0u8; 16];
-        destination.copy_from_slice(guard.destination().address_hash.as_slice());
-        return Some(destination);
+        if is_lxmf_delivery_destination(guard.destination()) {
+            let mut destination = [0u8; 16];
+            destination.copy_from_slice(guard.destination().address_hash.as_slice());
+            return Some(destination);
+        }
     }
     None
+}
+
+fn is_lxmf_delivery_destination(destination: &DestinationDesc) -> bool {
+    destination.name.hash == DestinationName::new("lxmf", "delivery").hash
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_lxmf_delivery_destination;
+    use rand_core::OsRng;
+    use rns_transport::destination::{DestinationDesc, DestinationName};
+    use rns_transport::identity::PrivateIdentity;
+
+    #[test]
+    fn lxmf_delivery_destination_is_accepted_for_resource_decode() {
+        let signer = PrivateIdentity::new_from_rand(OsRng);
+        let destination = DestinationDesc {
+            identity: *signer.as_identity(),
+            address_hash: *signer.address_hash(),
+            name: DestinationName::new("lxmf", "delivery"),
+        };
+
+        assert!(is_lxmf_delivery_destination(&destination));
+    }
+
+    #[test]
+    fn non_delivery_destination_is_rejected_for_resource_decode() {
+        let signer = PrivateIdentity::new_from_rand(OsRng);
+        let destination = DestinationDesc {
+            identity: *signer.as_identity(),
+            address_hash: *signer.address_hash(),
+            name: DestinationName::new("lxmf", "propagation.control"),
+        };
+
+        assert!(!is_lxmf_delivery_destination(&destination));
+    }
 }

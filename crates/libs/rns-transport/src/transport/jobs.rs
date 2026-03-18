@@ -327,7 +327,7 @@ pub(super) async fn manage_transport(
                         let mut handler = handler.lock().await;
                         let now = Instant::now();
                         let requests = handler.resource_manager.retry_requests(now);
-                        let advertisements = handler.resource_manager.retry_advertisements(now);
+                        let advertisements = handler.resource_manager.poll_outgoing(now);
                         for (link_id, request) in requests {
                             let link = handler
                                 .in_links
