@@ -189,6 +189,120 @@ cargo run -p rns-tools --bin rnx -- e2e --timeout-secs 20
 - Security policy: `SECURITY.md`
 - Code ownership: `.github/CODEOWNERS`
 
+## Linux daemon setup (systemd)
+
+The following installs a long-running `lxmd` service. `lxmd` also launches `reticulumd`, so a single unit is enough for most deployments.
+
+1. Install binaries (from source)
+
+```bash
+cargo build --release -p lxmf-cli -p reticulumd
+sudo install -m 0755 target/release/lxmd /usr/local/bin/lxmd
+sudo install -m 0755 target/release/reticulumd /usr/local/bin/reticulumd
+```
+
+2. Create a dedicated service user and daemon directories
+
+```bash
+sudo useradd --system --create-home --shell /usr/sbin/nologin lxmd
+sudo mkdir -p /etc/lxmf/lxmd /etc/lxmf/reticulumd /var/log/lxmf
+sudo chown -R lxmd:lxmd /etc/lxmf /var/log/lxmf
+```
+
+3. Create a starting config file for `lxmd`
+
+```bash
+sudo mkdir -p /etc/lxmf/lxmd
+sudo chown lxmd:lxmd /etc/lxmf/lxmd
+sudo -u lxmd /usr/local/bin/lxmd --exampleconfig > /etc/lxmf/lxmd/config
+sudo chmod 600 /etc/lxmf/lxmd/config
+```
+
+Optional: set an explicit Reticulum config for `reticulumd` (instead of relying on generated defaults).
+
+```bash
+sudo cp crates/apps/reticulumd/examples/service-reference.toml /etc/lxmf/reticulumd/config.toml
+sudo chown lxmd:lxmd /etc/lxmf/reticulumd/config.toml
+```
+
+4. Install a systemd unit for the daemon
+
+```bash
+sudo tee /etc/systemd/system/lxmd.service > /dev/null <<'EOF'
+[Unit]
+Description=LXMF daemon (lxmd + reticulumd)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=lxmd
+Group=lxmd
+WorkingDirectory=/etc/lxmf/lxmd
+ExecStart=/usr/local/bin/lxmd --config /etc/lxmf/lxmd/config --rnsconfig /etc/lxmf/reticulumd/config.toml
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+Environment=RUST_LOG=info
+
+[Install]
+WantedBy=multi-user.target
+EOF
+```
+
+If you are not using `/etc/lxmf/reticulumd/config.toml`, remove `--rnsconfig /etc/lxmf/reticulumd/config.toml` from `ExecStart` and run only with `--config`.
+
+5. Enable and start the service
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now lxmd.service
+sudo systemctl status lxmd.service --no-pager
+```
+
+6. Tail logs and verify health
+
+```bash
+sudo journalctl -u lxmd.service -f
+```
+
 ## License
 
 MIT
+
+## Using the official GitHub release binaries
+
+Latest release artifacts are published at:
+
+[https://github.com/FreeTAKTeam/LXMF-rs/releases](https://github.com/FreeTAKTeam/LXMF-rs/releases)
+
+1. Open the release page and download the package for your platform.
+
+2. Linux/macOS
+
+```bash
+tar -xzf lxmd-daemon-<version>-linux-amd64.tar.gz
+tar -xzf lxmd-daemon-<version>-macos-arm64.tar.gz
+```
+
+3. Windows
+
+```powershell
+Expand-Archive lxmd-daemon-<version>-windows-x86_64.zip .
+```
+
+4. Run directly for validation
+
+```bash
+./lxmd --help
+./reticulumd --help
+```
+
+5. Generate a starter `lxmd` config and follow the same daemon setup flow as above
+
+```bash
+./lxmd --exampleconfig > /tmp/lxmd.config
+```
+
+If you are using Linux and the Linux daemon guide above, point `--config` at the downloaded config file and keep binaries in place via your package manager path or your custom install path.
