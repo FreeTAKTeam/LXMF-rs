@@ -270,7 +270,10 @@ impl Link {
                             request_id,
                         ),
                     )));
-                    return LinkHandleResult::Proof(self.prove_packet(packet));
+                    if packet.context == PacketContext::None {
+                        return LinkHandleResult::Proof(self.prove_packet(packet));
+                    }
+                    return LinkHandleResult::None;
                 } else {
                     log::error!("link({}): can't decrypt packet", self.id);
                 }
@@ -612,5 +615,39 @@ mod tests {
             outbound.handle_packet(&payload, bound_iface),
             LinkHandleResult::Proof(_)
         ));
+    }
+
+    #[test]
+    fn control_context_packets_do_not_auto_generate_link_proofs() {
+        let signer = PrivateIdentity::new_from_rand(OsRng);
+        let identity = *signer.as_identity();
+        let destination = DestinationDesc {
+            identity,
+            address_hash: identity.address_hash,
+            name: DestinationName::new("lxmf", "delivery"),
+        };
+        let (tx, _) = tokio::sync::broadcast::channel(4);
+
+        let mut outbound = Link::new(destination, tx.clone());
+        let request = outbound.request();
+        let mut inbound =
+            Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
+                .expect("link request should parse");
+        let iface = AddressHash::new_from_rand(OsRng);
+        assert!(matches!(
+            outbound.handle_packet(&inbound.prove(), iface),
+            LinkHandleResult::Activated
+        ));
+
+        for context in
+            [PacketContext::Request, PacketContext::Response, PacketContext::LinkIdentify]
+        {
+            let mut packet = inbound.data_packet(b"control-payload").expect("data packet");
+            packet.context = context;
+            assert!(
+                matches!(outbound.handle_packet(&packet, iface), LinkHandleResult::None),
+                "{context:?} should not auto-generate a link proof"
+            );
+        }
     }
 }
