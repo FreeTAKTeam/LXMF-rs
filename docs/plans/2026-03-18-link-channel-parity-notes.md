@@ -119,8 +119,10 @@ The current implementation is intentionally narrower than Python’s full
   - `RawChannelReader`
   - `RawChannelWriter`
   - `Buffer::create_reader()`
+  - `Buffer::create_reader_with_callback()`
   - `Buffer::create_writer()`
   - `Buffer::create_bidirectional_buffer()`
+  - `Buffer::create_bidirectional_buffer_with_callback()`
 - This is intentionally narrower than Python `RNS.Buffer`:
   - it provides the message format, attachable async reader, and chunking writer
   - it does not yet provide a full `std::io`-style buffered stream facade

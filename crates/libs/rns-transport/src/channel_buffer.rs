@@ -44,8 +44,12 @@ impl StreamDataMessage {
         Ok(Self { stream_id, data: data.into(), eof, compressed })
     }
 
-    pub fn max_data_len() -> usize {
+    pub fn max_encoded_data_len() -> usize {
         STREAM_DATA_MAX_LEN
+    }
+
+    pub fn max_decoded_data_len() -> usize {
+        MAX_CHUNK_LEN
     }
 }
 
@@ -320,7 +324,7 @@ impl RawChannelWriter {
                 let mut encoder = BzEncoder::new(Vec::new(), Compression::default());
                 encoder.write_all(&bytes[..segment_len]).map_err(|_| ChannelError::InvalidFrame)?;
                 let candidate = encoder.finish().map_err(|_| ChannelError::InvalidFrame)?;
-                if candidate.len() < STREAM_DATA_MAX_LEN && candidate.len() < segment_len {
+                if candidate.len() <= STREAM_DATA_MAX_LEN && candidate.len() < segment_len {
                     compressed_data = Some(candidate);
                     processed_length = segment_len;
                     break;
@@ -348,18 +352,23 @@ pub struct BidirectionalChannelBuffer {
 pub struct Buffer;
 
 impl Buffer {
-    pub async fn create_reader<F>(
+    pub async fn create_reader(
         stream_id: u16,
         channel: TransportChannel,
-        ready_callback: Option<F>,
+    ) -> Result<RawChannelReader, ChannelError> {
+        RawChannelReader::attach(stream_id, channel).await
+    }
+
+    pub async fn create_reader_with_callback<F>(
+        stream_id: u16,
+        channel: TransportChannel,
+        ready_callback: F,
     ) -> Result<RawChannelReader, ChannelError>
     where
         F: Fn(usize) + Send + Sync + 'static,
     {
-        let reader = RawChannelReader::attach(stream_id, channel).await?;
-        if let Some(callback) = ready_callback {
-            reader.add_ready_callback(callback);
-        }
+        let reader = Self::create_reader(stream_id, channel).await?;
+        reader.add_ready_callback(ready_callback);
         Ok(reader)
     }
 
@@ -370,17 +379,28 @@ impl Buffer {
         RawChannelWriter::new(stream_id, channel)
     }
 
-    pub async fn create_bidirectional_buffer<F>(
+    pub async fn create_bidirectional_buffer(
         receive_stream_id: u16,
         send_stream_id: u16,
         channel: TransportChannel,
-        ready_callback: Option<F>,
+    ) -> Result<BidirectionalChannelBuffer, ChannelError> {
+        let reader = Self::create_reader(receive_stream_id, channel.clone()).await?;
+        let writer = Self::create_writer(send_stream_id, channel)?;
+        Ok(BidirectionalChannelBuffer { reader, writer })
+    }
+
+    pub async fn create_bidirectional_buffer_with_callback<F>(
+        receive_stream_id: u16,
+        send_stream_id: u16,
+        channel: TransportChannel,
+        ready_callback: F,
     ) -> Result<BidirectionalChannelBuffer, ChannelError>
     where
         F: Fn(usize) + Send + Sync + 'static,
     {
         let reader =
-            Self::create_reader(receive_stream_id, channel.clone(), ready_callback).await?;
+            Self::create_reader_with_callback(receive_stream_id, channel.clone(), ready_callback)
+                .await?;
         let writer = Self::create_writer(send_stream_id, channel)?;
         Ok(BidirectionalChannelBuffer { reader, writer })
     }
@@ -556,7 +576,7 @@ mod tests {
         let transport = test_transport();
         let (_outbound, _inbound, _iface, channel) = linked_channel(&transport).await;
 
-        let pair = Buffer::create_bidirectional_buffer(21, 22, channel, Some(|_ready| {}))
+        let pair = Buffer::create_bidirectional_buffer_with_callback(21, 22, channel, |_ready| {})
             .await
             .expect("pair");
 
