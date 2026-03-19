@@ -204,7 +204,8 @@ impl Transport {
             handler.resource_manager.start_send(&link_guard, data, metadata)?;
         drop(link_guard);
         let outcome = handler.send_packet_with_outcome(packet).await;
-        let sent = matches!(outcome, SendPacketOutcome::SentDirect | SendPacketOutcome::SentBroadcast);
+        let sent =
+            matches!(outcome, SendPacketOutcome::SentDirect | SendPacketOutcome::SentBroadcast);
         handler.resource_manager.confirm_outbound_dispatch(resource_hash, sent);
         if sent {
             Ok(resource_hash)
