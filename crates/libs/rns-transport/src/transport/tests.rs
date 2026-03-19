@@ -140,6 +140,7 @@ async fn announce_retransmit_key_uses_destination_hash() {
 
     let iface = AddressHash::new_from_rand(OsRng);
     handle_announce(&announce, handler.lock().await, iface).await;
+    tokio::time::sleep(Duration::from_millis(550)).await;
 
     let mut guard = handler.lock().await;
     let transport_id = *guard.config.identity.address_hash();

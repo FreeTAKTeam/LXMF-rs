@@ -53,14 +53,6 @@ async fn process_announce<'a>(
         handler.path_table.handle_announce(packet, packet.transport, iface);
     }
 
-    let retransmit = handler.config.retransmit;
-    if retransmit {
-        let transport_id = *handler.config.identity.address_hash();
-        if let Some(message) = handler.announce_table.new_packet(&dest_hash, &transport_id) {
-            handler.send(message).await;
-        }
-    }
-
     let name_hash = {
         let destination = destination.lock().await;
         let source = destination.desc.name.as_name_hash_slice();
