@@ -74,8 +74,5 @@ fn resource_completion_receipt_stays_non_terminal_until_delivery_receipt() {
     let final_status = daemon
         .handle_rpc(RpcRequest { id: 12, method: "list_messages".into(), params: None })
         .unwrap();
-    assert_eq!(
-        final_status.result.unwrap()["messages"][0]["receipt_status"],
-        json!("delivered")
-    );
+    assert_eq!(final_status.result.unwrap()["messages"][0]["receipt_status"], json!("delivered"));
 }
