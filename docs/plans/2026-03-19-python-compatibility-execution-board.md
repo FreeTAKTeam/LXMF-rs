@@ -9,13 +9,14 @@ Goal:
 - close the remaining numbered compatibility issues in
   `docs/plans/2026-03-18-rust-python-compat-issue-list.md`
 
-Current stacked PRs:
+Merged foundation PRs:
 
 - `#110` buffer writer parity
 - `#111` buffer callback parity
 - `#112` resource lifecycle truth and generic-resource handling
 - `#113` daemon receipt semantics for resource-backed sends
 - `#114` honor LXMF delivery modes in reticulumd bridge
+- `#115` path tag lifetime parity
 
 Working rule:
 
@@ -24,19 +25,11 @@ Working rule:
 - every PR must point to exact Python reference behavior
 - every PR must add or tighten a parity test
 
-## Immediate Merge Order
+Foundation status:
 
-1. Merge `#110`
-2. Merge `#111`
-3. Merge `#112`
-4. Merge `#113`
-5. Merge `#114`
-
-Post-merge cleanup:
-
-- update `docs/plans/2026-03-18-rust-python-compat-issue-list.md`
-- mark `3` and `4` as in progress or merged according to `#114` review outcome
-- keep formatting-only diffs out of parity branches
+- the initial channel, resource, delivery-mode, and path-tag parity stack is on `main`
+- the compatibility harness can treat those behaviors as the starting baseline
+- keep formatting-only diffs out of future parity branches
 
 ## Workstreams
 

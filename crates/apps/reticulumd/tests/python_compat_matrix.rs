@@ -17,26 +17,36 @@ struct CompatibilityCase {
     description: &'static str,
 }
 
-const COMPATIBILITY_CASES: [CompatibilityCase; 5] = [
+const COMPATIBILITY_CASES: [CompatibilityCase; 7] = [
     CompatibilityCase {
-        id: "direct_delivery",
+        id: "direct_rust_to_python",
         mode: CompatibilityMode::Direct,
         description: "Rust node can deliver to Python node using direct mode",
     },
     CompatibilityCase {
-        id: "opportunistic_delivery",
+        id: "direct_python_to_rust",
+        mode: CompatibilityMode::Direct,
+        description: "Python node can deliver to Rust node using direct mode",
+    },
+    CompatibilityCase {
+        id: "opportunistic_rust_to_python",
         mode: CompatibilityMode::Opportunistic,
         description: "Rust node can deliver to Python node using opportunistic mode",
     },
     CompatibilityCase {
-        id: "propagated_delivery",
+        id: "propagated_rust_to_python",
         mode: CompatibilityMode::Propagated,
         description: "Rust node can deliver to Python node through selected propagation node",
     },
     CompatibilityCase {
+        id: "propagated_python_to_rust",
+        mode: CompatibilityMode::Propagated,
+        description: "Python node can deliver to Rust node through a Rust propagation node",
+    },
+    CompatibilityCase {
         id: "resource_transfer",
         mode: CompatibilityMode::Resource,
-        description: "Python-originated resource payload is accepted by Rust daemon",
+        description: "Rust and Python nodes can exchange resource payloads on shared links",
     },
     CompatibilityCase {
         id: "lxm_interchange",
@@ -47,7 +57,17 @@ const COMPATIBILITY_CASES: [CompatibilityCase; 5] = [
 
 #[test]
 fn compatibility_matrix_covers_required_modes() {
-    assert_eq!(COMPATIBILITY_CASES.len(), 5, "matrix should include first five required modes");
+    assert!(
+        COMPATIBILITY_CASES.len() >= 7,
+        "matrix should cover the documented required scenarios"
+    );
+    assert_case_present("direct_rust_to_python");
+    assert_case_present("direct_python_to_rust");
+    assert_case_present("opportunistic_rust_to_python");
+    assert_case_present("propagated_rust_to_python");
+    assert_case_present("propagated_python_to_rust");
+    assert_case_present("resource_transfer");
+    assert_case_present("lxm_interchange");
     assert!(COMPATIBILITY_CASES.iter().any(|case| case.mode == CompatibilityMode::Direct));
     assert!(COMPATIBILITY_CASES.iter().any(|case| case.mode == CompatibilityMode::Opportunistic));
     assert!(COMPATIBILITY_CASES.iter().any(|case| case.mode == CompatibilityMode::Propagated));
@@ -57,20 +77,32 @@ fn compatibility_matrix_covers_required_modes() {
 
 #[test]
 #[ignore = "requires live Python compatibility harness environment"]
-fn python_compat_direct_delivery() {
-    run_case("direct_delivery");
+fn python_compat_direct_rust_to_python() {
+    run_case("direct_rust_to_python");
 }
 
 #[test]
 #[ignore = "requires live Python compatibility harness environment"]
-fn python_compat_opportunistic_delivery() {
-    run_case("opportunistic_delivery");
+fn python_compat_direct_python_to_rust() {
+    run_case("direct_python_to_rust");
 }
 
 #[test]
 #[ignore = "requires live Python compatibility harness environment"]
-fn python_compat_propagated_delivery() {
-    run_case("propagated_delivery");
+fn python_compat_opportunistic_rust_to_python() {
+    run_case("opportunistic_rust_to_python");
+}
+
+#[test]
+#[ignore = "requires live Python compatibility harness environment"]
+fn python_compat_propagated_rust_to_python() {
+    run_case("propagated_rust_to_python");
+}
+
+#[test]
+#[ignore = "requires live Python compatibility harness environment"]
+fn python_compat_propagated_python_to_rust() {
+    run_case("propagated_python_to_rust");
 }
 
 #[test]
@@ -105,4 +137,12 @@ fn run_case(case_id: &str) {
             case_id, stdout, stderr
         );
     }
+}
+
+fn assert_case_present(case_id: &str) {
+    assert!(
+        COMPATIBILITY_CASES.iter().any(|case| case.id == case_id && !case.description.is_empty()),
+        "missing compatibility case '{}'",
+        case_id
+    );
 }
