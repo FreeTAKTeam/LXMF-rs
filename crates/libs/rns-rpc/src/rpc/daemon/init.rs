@@ -180,6 +180,22 @@ impl RpcDaemon {
         Ok(record)
     }
 
+    pub fn current_stamp_policy(&self) -> StampPolicy {
+        self.stamp_policy.lock().expect("stamp mutex poisoned").clone()
+    }
+
+    pub fn valid_issued_tickets_for(&self, destination: &str) -> Vec<Vec<u8>> {
+        let now = now_i64();
+        self.ticket_cache
+            .lock()
+            .expect("ticket mutex poisoned")
+            .get(destination)
+            .filter(|record| record.expires_at > now)
+            .and_then(|record| hex::decode(record.ticket.as_str()).ok())
+            .into_iter()
+            .collect()
+    }
+
     pub fn replace_interfaces(&self, interfaces: Vec<InterfaceRecord>) {
         let mut guard = self.interfaces.lock().expect("interfaces mutex poisoned");
         *guard = interfaces.clone();

@@ -3,6 +3,7 @@ use super::bridge_helpers::{diagnostics_enabled, payload_preview};
 use lxmf::inbound_decode::InboundPayloadMode;
 use reticulum_daemon::inbound_delivery::{
     decode_inbound_payload, decode_inbound_payload_with_diagnostics,
+    inbound_stamp_policy_allows_payload,
 };
 use reticulum_daemon::receipt_bridge::ReceiptEvent;
 use rns_rpc::{RpcDaemon, RpcRequest};
@@ -59,6 +60,20 @@ pub(super) fn spawn_inbound_worker(
                             resolve_lxmf_resource_destination(transport.as_ref(), &event.link_id)
                                 .await
                         {
+                            if let Err(error) = inbound_stamp_policy_allows_payload(
+                                daemon.as_ref(),
+                                destination,
+                                &complete.data,
+                                InboundPayloadMode::FullWire,
+                            ) {
+                                if diagnostics_enabled() {
+                                    eprintln!(
+                                        "[daemon-rx] dropping inbound resource due to stamp policy: {}",
+                                        error
+                                    );
+                                }
+                                continue;
+                            }
                             if let Some(record) = decode_inbound_payload(
                                 destination,
                                 &complete.data,
@@ -143,6 +158,23 @@ fn spawn_packet_inbound_worker(
                 } else {
                     decode_inbound_payload(destination, data, payload_mode)
                 };
+                if record.is_some()
+                    && inbound_stamp_policy_allows_payload(
+                        daemon_inbound.as_ref(),
+                        destination,
+                        data,
+                        payload_mode,
+                    )
+                    .is_err()
+                {
+                    if diagnostics_enabled() {
+                        eprintln!(
+                            "[daemon-rx] dropping inbound payload due to stamp policy: dst={}",
+                            destination_hex
+                        );
+                    }
+                    continue;
+                }
                 if let Some(record) = record {
                     daemon_inbound.record_inbound_peer_activity(&record.source, data.len());
                     let _ = daemon_inbound.accept_inbound_with_raw(record, data);

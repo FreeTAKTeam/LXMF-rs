@@ -1,17 +1,12 @@
-use hkdf::Hkdf;
 use lxmf::identity;
 use lxmf::message::Message;
 use lxmf::LxmfError;
 use lxmf::{Payload, WireMessage};
 use rmpv::Value as RmpValue;
-use rns_core::hash::address_hash;
 use rns_core::identity::PrivateIdentity;
 use serde_json::Value as JsonValue;
-use sha2::{Digest, Sha256};
 
-const FIELD_TICKET: i64 = 0x0C;
-const TICKET_LENGTH: usize = 16;
-const WORKBLOCK_EXPAND_ROUNDS: usize = 3000;
+use crate::lxmf_stamps::FIELD_TICKET;
 
 pub use lxmf::wire_fields::{json_to_rmpv, rmpv_to_json};
 
@@ -115,23 +110,11 @@ fn merge_ticket_field(fields: &mut RmpValue, expires_at: i64, ticket: &[u8]) {
 }
 
 fn decode_ticket_hex(ticket_hex: &str) -> Result<Vec<u8>, LxmfError> {
-    let bytes = hex::decode(ticket_hex.trim())
-        .map_err(|error| LxmfError::Encode(format!("invalid outbound ticket hex: {error}")))?;
-    if bytes.len() != TICKET_LENGTH {
-        return Err(LxmfError::Encode(format!(
-            "invalid outbound ticket length {}; expected {} bytes",
-            bytes.len(),
-            TICKET_LENGTH
-        )));
-    }
-    Ok(bytes)
+    crate::lxmf_stamps::decode_ticket_hex(ticket_hex).map_err(LxmfError::Encode)
 }
 
 fn ticket_stamp(ticket: &[u8], message_id: &[u8; 32]) -> Vec<u8> {
-    let mut material = Vec::with_capacity(ticket.len() + message_id.len());
-    material.extend_from_slice(ticket);
-    material.extend_from_slice(message_id);
-    address_hash(&material).to_vec()
+    crate::lxmf_stamps::ticket_stamp(ticket, message_id)
 }
 
 fn current_time_secs_f64() -> f64 {
@@ -142,55 +125,7 @@ fn current_time_secs_f64() -> f64 {
 }
 
 fn generate_stamp(message_id: &[u8; 32], stamp_cost: u32) -> Option<Vec<u8>> {
-    let workblock = stamp_workblock(message_id, WORKBLOCK_EXPAND_ROUNDS);
-    let mut nonce = 0u64;
-    loop {
-        let stamp = nonce.to_le_bytes().to_vec();
-        if stamp_valid(&stamp, stamp_cost, &workblock) {
-            return Some(stamp);
-        }
-        nonce = nonce.wrapping_add(1);
-        if nonce == 0 {
-            return None;
-        }
-    }
-}
-
-fn stamp_workblock(material: &[u8], expand_rounds: usize) -> Vec<u8> {
-    let mut workblock = Vec::with_capacity(expand_rounds * 256);
-    for n in 0..expand_rounds {
-        let mut salt_data = Vec::with_capacity(material.len() + 8);
-        salt_data.extend_from_slice(material);
-        let packed = rmp_serde::to_vec(&n).unwrap_or_default();
-        salt_data.extend_from_slice(&packed);
-        let salt_hash = Sha256::digest(&salt_data);
-        let hk = Hkdf::<Sha256>::new(Some(salt_hash.as_slice()), material);
-        let mut okm = [0u8; 256];
-        hk.expand(&[], &mut okm).expect("hkdf expand for LXMF stamp workblock");
-        workblock.extend_from_slice(&okm);
-    }
-    workblock
-}
-
-fn stamp_valid(stamp: &[u8], target_cost: u32, workblock: &[u8]) -> bool {
-    stamp_value(workblock, stamp) >= target_cost
-}
-
-fn stamp_value(workblock: &[u8], stamp: &[u8]) -> u32 {
-    let mut material = Vec::with_capacity(workblock.len() + stamp.len());
-    material.extend_from_slice(workblock);
-    material.extend_from_slice(stamp);
-    let hash = Sha256::digest(&material);
-    let mut value = 0u32;
-    for byte in hash {
-        if byte == 0 {
-            value += 8;
-        } else {
-            value += byte.leading_zeros();
-            break;
-        }
-    }
-    value
+    crate::lxmf_stamps::generate_stamp(message_id, stamp_cost)
 }
 
 pub fn decode_wire_message(bytes: &[u8]) -> Result<Message, LxmfError> {

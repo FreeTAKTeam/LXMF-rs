@@ -3,5 +3,6 @@ pub mod config;
 pub mod identity_store;
 pub mod inbound_delivery;
 pub mod lxmf_bridge;
+pub mod lxmf_stamps;
 pub mod receipt_bridge;
 pub mod rns_crypto;
