@@ -242,6 +242,7 @@ impl AnnounceTable {
     pub fn to_retransmit(&mut self, transport_id: &AddressHash) -> Vec<TxMessage> {
         let mut messages = vec![];
         let mut completed = vec![];
+        let mut completed_responses = vec![];
         let now = Instant::now();
 
         for (destination, ref mut entry) in &mut self.map {
@@ -270,18 +271,25 @@ impl AnnounceTable {
 
         let n_announces = messages.len();
 
-        for ref mut entry in self.responses.values_mut() {
+        for (destination, ref mut entry) in &mut self.responses {
+            if entry.retries == 0 {
+                completed_responses.push(*destination);
+                continue;
+            }
             if now < entry.timeout {
                 continue;
             }
             if let Some(message) = entry.retransmit(transport_id) {
                 messages.push(message);
+                if entry.retries == 0 {
+                    completed_responses.push(*destination);
+                }
+            } else {
+                completed_responses.push(*destination);
             }
         }
 
         let n_responses = messages.len() - n_announces;
-
-        self.responses.clear(); // every response is only retransmitted once
 
         if !(messages.is_empty() && completed.is_empty()) {
             log::trace!(
@@ -296,6 +304,10 @@ impl AnnounceTable {
             if let Some(announce) = self.map.remove(&destination) {
                 self.cache.insert(destination, announce);
             }
+        }
+
+        for destination in completed_responses {
+            self.responses.remove(&destination);
         }
 
         messages
@@ -321,8 +333,7 @@ mod tests {
         let destination = AddressHash::new_from_rand(OsRng);
         let received_from = AddressHash::new_from_rand(OsRng);
         let transport_id = AddressHash::new_from_rand(OsRng);
-        let mut packet = Packet::default();
-        packet.destination = destination;
+        let packet = Packet { destination, ..Packet::default() };
 
         table.add(&packet, destination, received_from);
         assert!(table.to_retransmit(&transport_id).is_empty());
@@ -341,19 +352,19 @@ mod tests {
         let received_from = AddressHash::new_from_rand(OsRng);
         let transport_id = AddressHash::new_from_rand(OsRng);
         let to_iface = AddressHash::new_from_rand(OsRng);
-        let mut packet = Packet::default();
-        packet.destination = destination;
+        let packet = Packet { destination, ..Packet::default() };
 
         table.add(&packet, destination, received_from);
         assert!(table.add_response(destination, to_iface, 3));
+        assert!(table.to_retransmit(&transport_id).is_empty());
+        assert_eq!(table.responses.len(), 1);
 
         sleep(StdDuration::from_millis(450));
 
         let messages = table.to_retransmit(&transport_id);
         assert_eq!(messages.len(), 1);
         assert!(matches!(messages[0].tx_type, TxMessageType::Direct(iface) if iface == to_iface));
-
-        assert!(table.to_retransmit(&transport_id).is_empty());
+        assert!(table.responses.is_empty());
 
         sleep(StdDuration::from_millis(125));
 
