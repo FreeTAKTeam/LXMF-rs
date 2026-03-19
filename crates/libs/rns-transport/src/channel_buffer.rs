@@ -122,10 +122,7 @@ pub struct RawChannelReader {
 }
 
 impl RawChannelReader {
-    pub async fn attach(
-        stream_id: u16,
-        channel: TransportChannel,
-    ) -> Result<Self, ChannelError> {
+    pub async fn attach(stream_id: u16, channel: TransportChannel) -> Result<Self, ChannelError> {
         if stream_id > STREAM_ID_MAX {
             return Err(ChannelError::InvalidFrame);
         }
@@ -257,11 +254,7 @@ impl RawChannelWriter {
             return Ok(());
         }
 
-        let timeout = self
-            .channel
-            .close_wait_hint()
-            .await
-            .unwrap_or(CLOSE_WAIT_FALLBACK);
+        let timeout = self.channel.close_wait_hint().await.unwrap_or(CLOSE_WAIT_FALLBACK);
         let deadline = Instant::now() + timeout;
 
         loop {
@@ -311,9 +304,7 @@ impl RawChannelWriter {
                 }
 
                 let mut encoder = BzEncoder::new(Vec::new(), Compression::default());
-                encoder
-                    .write_all(&bytes[..segment_len])
-                    .map_err(|_| ChannelError::InvalidFrame)?;
+                encoder.write_all(&bytes[..segment_len]).map_err(|_| ChannelError::InvalidFrame)?;
                 let candidate = encoder.finish().map_err(|_| ChannelError::InvalidFrame)?;
                 if candidate.len() < STREAM_DATA_MAX_LEN && candidate.len() < segment_len {
                     compressed_data = Some(candidate);
@@ -374,7 +365,8 @@ impl Buffer {
     where
         F: Fn(usize) + Send + Sync + 'static,
     {
-        let reader = Self::create_reader(receive_stream_id, channel.clone(), ready_callback).await?;
+        let reader =
+            Self::create_reader(receive_stream_id, channel.clone(), ready_callback).await?;
         let writer = Self::create_writer(send_stream_id, channel)?;
         Ok(BidirectionalChannelBuffer { reader, writer })
     }
@@ -445,7 +437,8 @@ mod tests {
         let reader = RawChannelReader::attach(9, channel).await.expect("reader");
         assert!(reader.close().await.expect("close"));
 
-        let message = StreamDataMessage::new(9, b"after-close".to_vec(), false, false).expect("message");
+        let message =
+            StreamDataMessage::new(9, b"after-close".to_vec(), false, false).expect("message");
         let (_sequence, packet) = inbound
             .send_channel_message(StreamDataMessage::MSG_TYPE, message.encode())
             .expect("channel message");
@@ -502,14 +495,9 @@ mod tests {
         let transport = test_transport();
         let (_outbound, _inbound, _iface, channel) = linked_channel(&transport).await;
 
-        let pair = Buffer::create_bidirectional_buffer(
-            21,
-            22,
-            channel,
-            Some(|_ready| {}),
-        )
-        .await
-        .expect("pair");
+        let pair = Buffer::create_bidirectional_buffer(21, 22, channel, Some(|_ready| {}))
+            .await
+            .expect("pair");
 
         assert_eq!(pair.reader.stream_id(), 21);
         assert_eq!(pair.writer.stream_id(), 22);
@@ -523,12 +511,7 @@ mod tests {
 
     async fn linked_channel(
         transport: &Transport,
-    ) -> (
-        Arc<Mutex<Link>>,
-        Link,
-        AddressHash,
-        TransportChannel,
-    ) {
+    ) -> (Arc<Mutex<Link>>, Link, AddressHash, TransportChannel) {
         let signer = PrivateIdentity::new_from_rand(OsRng);
         let identity = *signer.as_identity();
         let destination = DestinationDesc {
@@ -539,8 +522,9 @@ mod tests {
         let outbound = transport.link(destination).await;
         let request = outbound.lock().await.request();
         let (tx, _) = tokio::sync::broadcast::channel(8);
-        let mut inbound = Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
-            .expect("link request should parse");
+        let mut inbound =
+            Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
+                .expect("link request should parse");
         let iface = AddressHash::new_from_rand(OsRng);
         assert!(matches!(
             outbound.lock().await.handle_packet(&inbound.prove(), iface),
