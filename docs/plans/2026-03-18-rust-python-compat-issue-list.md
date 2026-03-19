@@ -25,8 +25,9 @@ Status snapshot as of 2026-03-18:
 
 - merged and substantially addressed: `10` issues
   - `1`, `2`, `5`, `11`, `12`, `13`, `14`, `15`, `16`, `17`
-- open draft follow-up work on merged `15`:
+- merged follow-up work on merged `15`:
   - [#110](https://github.com/FreeTAKTeam/LXMF-rs/pull/110) buffer writer parity
+- open draft follow-up work on merged `15`:
   - [#111](https://github.com/FreeTAKTeam/LXMF-rs/pull/111) buffer callback parity
 - remaining numbered issues still open: `31`
 
