@@ -78,11 +78,10 @@ pub(super) fn spawn_inbound_worker(
                                 tracking.bytes,
                                 true,
                             );
-                            let _ = receipt_tx
-                                .send(ReceiptEvent {
-                                    message_id: tracking.message_id,
-                                    status: OUTBOUND_RESOURCE_SENT_STATUS.to_string(),
-                                });
+                            let _ = receipt_tx.send(ReceiptEvent {
+                                message_id: tracking.message_id,
+                                status: OUTBOUND_RESOURCE_SENT_STATUS.to_string(),
+                            });
                         }
                     }
                     ResourceEventKind::Progress(_) => {}
