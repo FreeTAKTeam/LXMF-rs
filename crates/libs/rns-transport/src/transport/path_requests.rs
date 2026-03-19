@@ -219,20 +219,24 @@ impl PathRequests {
             self.discovery.remove(&key);
         }
 
-        if self.announce_cap > 0 && self.discovery.len() >= self.announce_cap {
+        let pending_for_iface = self.pending_recursive_count(on_iface);
+
+        if self.announce_cap > 0 && pending_for_iface >= self.announce_cap {
             log::info!(
-                "tp({}): rejecting discovery path request for destination {} as announce cap reached",
+                "tp({}): rejecting discovery path request for destination {} on iface {:?} as announce cap reached",
                 self.name,
-                destination
+                destination,
+                on_iface
             );
             return false;
         }
 
-        if self.announce_queue_len > 0 && self.queue.len() >= self.announce_queue_len {
+        if self.announce_queue_len > 0 && pending_for_iface >= self.announce_queue_len {
             log::info!(
-                "tp({}): rejecting discovery path request for destination {} as announce queue is full",
+                "tp({}): rejecting discovery path request for destination {} on iface {:?} as announce queue is full",
                 self.name,
-                destination
+                destination,
+                on_iface
             );
             return false;
         }
@@ -242,6 +246,17 @@ impl PathRequests {
         self.queue.push_back((key, expiry));
 
         true
+    }
+
+    fn pending_recursive_count(&self, on_iface: Option<AddressHash>) -> usize {
+        match on_iface {
+            Some(iface) => self
+                .discovery
+                .keys()
+                .filter(|(_, queued_iface)| *queued_iface == Some(iface))
+                .count(),
+            None => self.discovery.len(),
+        }
     }
 
     pub fn generate_recursive(
@@ -317,5 +332,31 @@ mod tests {
         assert!(testee.generate_recursive(&destination, Some(iface_a), None).is_some());
         assert!(testee.generate_recursive(&destination, Some(iface_a), None).is_none());
         assert!(testee.generate_recursive(&destination, Some(iface_b), None).is_some());
+    }
+
+    #[test]
+    fn recursive_request_caps_are_scoped_per_interface() {
+        let mut testee = PathRequests::new("", None, 16, 1, 30);
+        let destination_a = AddressHash::new_from_rand(OsRng);
+        let destination_b = AddressHash::new_from_rand(OsRng);
+        let iface_a = AddressHash::new_from_rand(OsRng);
+        let iface_b = AddressHash::new_from_rand(OsRng);
+
+        assert!(testee.generate_recursive(&destination_a, Some(iface_a), None).is_some());
+        assert!(testee.generate_recursive(&destination_b, Some(iface_a), None).is_none());
+        assert!(testee.generate_recursive(&destination_b, Some(iface_b), None).is_some());
+    }
+
+    #[test]
+    fn recursive_request_queue_limit_is_scoped_per_interface() {
+        let mut testee = PathRequests::new("", None, 1, 0, 30);
+        let destination_a = AddressHash::new_from_rand(OsRng);
+        let destination_b = AddressHash::new_from_rand(OsRng);
+        let iface_a = AddressHash::new_from_rand(OsRng);
+        let iface_b = AddressHash::new_from_rand(OsRng);
+
+        assert!(testee.generate_recursive(&destination_a, Some(iface_a), None).is_some());
+        assert!(testee.generate_recursive(&destination_b, Some(iface_a), None).is_none());
+        assert!(testee.generate_recursive(&destination_b, Some(iface_b), None).is_some());
     }
 }
