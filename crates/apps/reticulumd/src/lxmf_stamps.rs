@@ -51,7 +51,7 @@ pub fn validate_stamp(
     let stamp = stamp?;
 
     for ticket in tickets {
-        if ticket_stamp(ticket.as_slice(), message_id) == stamp {
+        if target_cost <= COST_TICKET && ticket_stamp(ticket.as_slice(), message_id) == stamp {
             return Some(COST_TICKET);
         }
     }
@@ -69,7 +69,7 @@ pub fn stamp_workblock(material: &[u8], expand_rounds: usize) -> Vec<u8> {
     for n in 0..expand_rounds {
         let mut salt_data = Vec::with_capacity(material.len() + 8);
         salt_data.extend_from_slice(material);
-        let packed = rmp_serde::to_vec(&n).unwrap_or_default();
+        let packed = rmp_serde::to_vec(&n).expect("msgpack encode LXMF stamp workblock round");
         salt_data.extend_from_slice(&packed);
         let salt_hash = Sha256::digest(&salt_data);
         let hk = Hkdf::<Sha256>::new(Some(salt_hash.as_slice()), material);

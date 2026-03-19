@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use lxmf::inbound_decode::{decode_inbound_message, InboundPayloadMode};
 use lxmf::WireMessage;
 use rns_rpc::{MessageRecord, RpcDaemon};
@@ -88,15 +90,15 @@ pub fn inbound_stamp_policy_allows_payload(
     }
 
     let wire = match mode {
-        InboundPayloadMode::FullWire => payload.to_vec(),
+        InboundPayloadMode::FullWire => Cow::Borrowed(payload),
         InboundPayloadMode::DestinationStripped => {
             let mut with_destination_prefix = Vec::with_capacity(16 + payload.len());
             with_destination_prefix.extend_from_slice(&fallback_destination);
             with_destination_prefix.extend_from_slice(payload);
-            with_destination_prefix
+            Cow::Owned(with_destination_prefix)
         }
     };
-    let message = WireMessage::unpack(&wire)
+    let message = WireMessage::unpack(wire.as_ref())
         .map_err(|error| format!("stamp validation decode failed: {error}"))?;
     let source_hex = hex::encode(message.source);
     let tickets = daemon.valid_issued_tickets_for(source_hex.as_str());
