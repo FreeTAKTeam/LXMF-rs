@@ -15,7 +15,7 @@ use reticulum_daemon::config::InterfaceConfig;
 use rns_core::identity::PrivateIdentity;
 use rns_rpc::{InterfaceRecord, MessagesStore, OutboundBridge, RpcDaemon, RpcRequest};
 use rns_transport::delivery::send_outcome_status;
-use rns_transport::destination::DestinationName;
+use rns_transport::destination::{link::LinkStatus, DestinationDesc, DestinationName};
 use rns_transport::destination_hash::parse_destination_hash_required;
 use rns_transport::transport::{SendPacketOutcome, Transport, TransportConfig};
 use serde_json::json;
@@ -254,6 +254,72 @@ async fn transport_bridge_rejects_propagated_send_without_selected_node() {
         "unexpected error: {}",
         error.message
     );
+}
+
+#[tokio::test]
+async fn propagation_link_cache_reuses_same_selected_node() {
+    let (_daemon, bridge) = test_transport_bridge_fixture().await;
+    let signer = PrivateIdentity::new_from_rand(rand_core::OsRng);
+    let identity = rns_transport::identity_bridge::to_transport_private_identity(&signer);
+    let destination = DestinationDesc {
+        identity: *identity.as_identity(),
+        address_hash: *identity.address_hash(),
+        name: DestinationName::new("lxmf", "propagation"),
+    };
+
+    let first = bridge.propagation_link_for_test("peer-a", destination).await;
+    let second = bridge.propagation_link_for_test("peer-a", destination).await;
+
+    let first_id = *first.lock().await.id();
+    let second_id = *second.lock().await.id();
+    assert_eq!(first_id, second_id);
+}
+
+#[tokio::test]
+async fn propagation_link_cache_closes_previous_link_when_selected_node_changes() {
+    let (_daemon, bridge) = test_transport_bridge_fixture().await;
+    let signer_a = PrivateIdentity::new_from_rand(rand_core::OsRng);
+    let identity_a = rns_transport::identity_bridge::to_transport_private_identity(&signer_a);
+    let destination_a = DestinationDesc {
+        identity: *identity_a.as_identity(),
+        address_hash: *identity_a.address_hash(),
+        name: DestinationName::new("lxmf", "propagation"),
+    };
+    let signer_b = PrivateIdentity::new_from_rand(rand_core::OsRng);
+    let identity_b = rns_transport::identity_bridge::to_transport_private_identity(&signer_b);
+    let destination_b = DestinationDesc {
+        identity: *identity_b.as_identity(),
+        address_hash: *identity_b.address_hash(),
+        name: DestinationName::new("lxmf", "propagation"),
+    };
+
+    let first = bridge.propagation_link_for_test("peer-a", destination_a).await;
+    let second = bridge.propagation_link_for_test("peer-b", destination_b).await;
+
+    let first_id = *first.lock().await.id();
+    let second_id = *second.lock().await.id();
+    assert_ne!(first_id, second_id);
+    assert_eq!(first.lock().await.status(), LinkStatus::Closed);
+}
+
+#[tokio::test]
+async fn propagation_link_cache_recreates_closed_link_for_same_selected_node() {
+    let (_daemon, bridge) = test_transport_bridge_fixture().await;
+    let signer = PrivateIdentity::new_from_rand(rand_core::OsRng);
+    let identity = rns_transport::identity_bridge::to_transport_private_identity(&signer);
+    let destination = DestinationDesc {
+        identity: *identity.as_identity(),
+        address_hash: *identity.address_hash(),
+        name: DestinationName::new("lxmf", "propagation"),
+    };
+
+    let first = bridge.propagation_link_for_test("peer-a", destination).await;
+    let first_id = *first.lock().await.id();
+    first.lock().await.close();
+
+    let second = bridge.propagation_link_for_test("peer-a", destination).await;
+
+    assert_ne!(first_id, *second.lock().await.id());
 }
 
 #[test]

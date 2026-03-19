@@ -60,6 +60,14 @@ pub async fn send_via_link(
 ) -> io::Result<LinkSendResult> {
     let link = transport.link(destination).await;
     await_link_activation(transport, &link, wait_timeout).await?;
+    send_on_link(transport, &link, payload).await
+}
+
+pub async fn send_on_link(
+    transport: &Transport,
+    link: &Arc<tokio::sync::Mutex<Link>>,
+    payload: &[u8],
+) -> io::Result<LinkSendResult> {
     let link_id = *link.lock().await.id();
 
     let packet = {

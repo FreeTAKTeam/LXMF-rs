@@ -16,7 +16,7 @@ use rns_rpc::{
 };
 use rns_transport::delivery::await_link_activation;
 use rns_transport::delivery::{
-    send_outcome_is_sent, send_outcome_status, send_via_link, LinkSendResult,
+    send_on_link, send_outcome_is_sent, send_outcome_status, send_via_link, LinkSendResult,
 };
 use rns_transport::destination::{
     link::{Link, LinkStatus},
@@ -35,6 +35,12 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+#[derive(Clone)]
+struct CachedPropagationLink {
+    node_hex: String,
+    link: Arc<tokio::sync::Mutex<Link>>,
+}
+
 pub(super) struct TransportBridge {
     daemon: Arc<Mutex<Option<Arc<RpcDaemon>>>>,
     transport: Arc<Transport>,
@@ -48,6 +54,7 @@ pub(super) struct TransportBridge {
     peer_crypto: Arc<Mutex<HashMap<String, PeerCrypto>>>,
     receipt_map: Arc<Mutex<HashMap<String, String>>>,
     outbound_resource_map: Arc<Mutex<HashMap<String, OutboundResourceTracking>>>,
+    outbound_propagation_link: Arc<tokio::sync::Mutex<Option<CachedPropagationLink>>>,
     receipt_tx: tokio::sync::mpsc::UnboundedSender<ReceiptEvent>,
 }
 
@@ -85,6 +92,7 @@ impl TransportBridge {
             peer_crypto,
             receipt_map,
             outbound_resource_map,
+            outbound_propagation_link: Arc::new(tokio::sync::Mutex::new(None)),
             receipt_tx,
         }
     }
@@ -93,6 +101,21 @@ impl TransportBridge {
         if let Ok(mut guard) = self.daemon.lock() {
             *guard = Some(daemon);
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn propagation_link_for_test(
+        &self,
+        node_hex: &str,
+        destination: DestinationDesc,
+    ) -> Arc<tokio::sync::Mutex<Link>> {
+        propagation_link_for_node(
+            self.transport.as_ref(),
+            &self.outbound_propagation_link,
+            node_hex,
+            destination,
+        )
+        .await
     }
 }
 
@@ -152,6 +175,7 @@ struct DeliveryTask {
     peer_crypto: Arc<Mutex<HashMap<String, PeerCrypto>>>,
     receipt_map: Arc<Mutex<HashMap<String, String>>>,
     outbound_resource_map: Arc<Mutex<HashMap<String, OutboundResourceTracking>>>,
+    outbound_propagation_link: Arc<tokio::sync::Mutex<Option<CachedPropagationLink>>>,
     receipt_tx: tokio::sync::mpsc::UnboundedSender<ReceiptEvent>,
     message_id: String,
     destination: [u8; 16],
@@ -242,19 +266,6 @@ impl DeliveryTask {
                 return;
             }
         };
-        let Some(propagation_identity) = self
-            .resolve_identity(
-                Some(propagation_node_hex.as_str()),
-                propagation_hash,
-                None,
-                "propagation-node",
-                "failed: propagation node not announced",
-            )
-            .await
-        else {
-            return;
-        };
-
         let payload = match build_propagation_payload(&self.payload, &destination_identity) {
             Ok(payload) => payload,
             Err(err) => {
@@ -265,16 +276,26 @@ impl DeliveryTask {
                 return;
             }
         };
-        let propagation_destination = SingleOutputDestination::new(
-            propagation_identity,
-            DestinationName::new("lxmf", "propagation"),
-        );
+
+        let propagation_link = match self
+            .resolve_or_create_propagation_link(&propagation_node_hex, propagation_hash)
+            .await
+        {
+            Ok(link) => link,
+            Err(err) => {
+                let _ = self.receipt_tx.send(ReceiptEvent {
+                    message_id: self.message_id,
+                    status: format!("failed: {err}"),
+                });
+                return;
+            }
+        };
 
         if let Err(err) = self
-            .send_via_link_mode(
+            .send_via_existing_link_mode(
                 "propagation",
                 propagation_node_hex.as_str(),
-                propagation_destination.desc,
+                propagation_link,
                 &payload,
                 LinkModeStatuses {
                     packet: "sent: propagated",
@@ -372,6 +393,47 @@ impl DeliveryTask {
             peers.insert(self.destination_hex.clone(), PeerCrypto { identity });
         }
         Some(identity)
+    }
+
+    async fn resolve_or_create_propagation_link(
+        &self,
+        propagation_node_hex: &str,
+        propagation_hash: AddressHash,
+    ) -> Result<Arc<tokio::sync::Mutex<Link>>, std::io::Error> {
+        if let Some(link) =
+            cached_propagation_link(&self.outbound_propagation_link, propagation_node_hex).await
+        {
+            return Ok(link);
+        }
+
+        let Some(propagation_identity) = self
+            .resolve_identity(
+                Some(propagation_node_hex),
+                propagation_hash,
+                None,
+                "propagation-node",
+                "failed: propagation node not announced",
+            )
+            .await
+        else {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "propagation node not announced",
+            ));
+        };
+
+        let propagation_destination = SingleOutputDestination::new(
+            propagation_identity,
+            DestinationName::new("lxmf", "propagation"),
+        );
+
+        Ok(propagation_link_for_node(
+            self.transport.as_ref(),
+            &self.outbound_propagation_link,
+            propagation_node_hex,
+            propagation_destination.desc,
+        )
+        .await)
     }
 
     async fn resolve_identity(
@@ -489,6 +551,101 @@ impl DeliveryTask {
             }
         }
     }
+
+    async fn send_via_existing_link_mode(
+        &self,
+        trace_stage: &str,
+        activity_peer: &str,
+        link: Arc<tokio::sync::Mutex<Link>>,
+        payload: &[u8],
+        packet_status: &str,
+        resource_status: &str,
+        resource_sent_status: &str,
+    ) -> Result<(), std::io::Error> {
+        await_link_activation(self.transport.as_ref(), &link, Duration::from_secs(5)).await?;
+        let result = send_on_link(self.transport.as_ref(), &link, payload).await;
+        let destination_desc = *link.lock().await.destination();
+        match result {
+            Ok(LinkSendResult::Packet(packet)) => {
+                let packet_hash = hex::encode(packet.hash().to_bytes());
+                track_receipt_mapping(&self.receipt_map, &packet_hash, &self.message_id);
+                let detail = format!("packet_hash={packet_hash}");
+                log_delivery_trace(&self.message_id, &self.destination_hex, trace_stage, &detail);
+                self.daemon.record_outbound_peer_activity(activity_peer, payload.len(), true);
+                let _ = self.receipt_tx.send(ReceiptEvent {
+                    message_id: self.message_id.clone(),
+                    status: packet_status.to_string(),
+                });
+                Ok(())
+            }
+            Ok(LinkSendResult::Resource(resource_hash)) => {
+                let resource_hash_hex = hex::encode(resource_hash.to_bytes());
+                track_outbound_resource(
+                    &self.outbound_resource_map,
+                    resource_hash_hex.clone(),
+                    OutboundResourceTracking {
+                        message_id: self.message_id.clone(),
+                        peer: activity_peer.to_string(),
+                        bytes: payload.len(),
+                        sent_status: resource_sent_status.to_string(),
+                    },
+                );
+                let detail = format!(
+                    "resource_hash={} bytes={} peer={} destination={}",
+                    resource_hash_hex,
+                    payload.len(),
+                    activity_peer,
+                    destination_desc.address_hash
+                );
+                log_delivery_trace(&self.message_id, &self.destination_hex, trace_stage, &detail);
+                let _ = self.receipt_tx.send(ReceiptEvent {
+                    message_id: self.message_id.clone(),
+                    status: resource_status.to_string(),
+                });
+                Ok(())
+            }
+            Err(err) => Err(err),
+        }
+    }
+}
+
+async fn cached_propagation_link(
+    state: &Arc<tokio::sync::Mutex<Option<CachedPropagationLink>>>,
+    node_hex: &str,
+) -> Option<Arc<tokio::sync::Mutex<Link>>> {
+    let mut guard = state.lock().await;
+    let Some(cached) = guard.clone() else {
+        return None;
+    };
+
+    if cached.node_hex != node_hex {
+        cached.link.lock().await.close();
+        *guard = None;
+        return None;
+    }
+
+    if cached.link.lock().await.status() == LinkStatus::Closed {
+        *guard = None;
+        return None;
+    }
+
+    Some(cached.link)
+}
+
+async fn propagation_link_for_node(
+    transport: &Transport,
+    state: &Arc<tokio::sync::Mutex<Option<CachedPropagationLink>>>,
+    node_hex: &str,
+    destination: DestinationDesc,
+) -> Arc<tokio::sync::Mutex<Link>> {
+    if let Some(link) = cached_propagation_link(state, node_hex).await {
+        return link;
+    }
+
+    let link = transport.link(destination).await;
+    let mut guard = state.lock().await;
+    *guard = Some(CachedPropagationLink { node_hex: node_hex.to_string(), link: link.clone() });
+    link
 }
 
 impl OutboundBridge for TransportBridge {
@@ -537,6 +694,7 @@ impl OutboundBridge for TransportBridge {
             peer_crypto: self.peer_crypto.clone(),
             receipt_map: self.receipt_map.clone(),
             outbound_resource_map: self.outbound_resource_map.clone(),
+            outbound_propagation_link: self.outbound_propagation_link.clone(),
             receipt_tx: self.receipt_tx.clone(),
             message_id: record.id.clone(),
             destination,
