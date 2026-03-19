@@ -435,8 +435,8 @@ mod tests {
     use crate::identity::PrivateIdentity;
     use crate::transport::{Transport, TransportConfig};
     use rand_core::OsRng;
-    use std::sync::mpsc;
     use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::mpsc;
     use std::sync::Mutex as StdMutex;
     use tokio::sync::Mutex;
     use tokio::time::timeout;
@@ -553,18 +553,16 @@ mod tests {
         assert!(matches!(result, LinkHandleResult::Proof(_)));
         assert_eq!(reader.ready_len(), b"async".len());
         assert_eq!(reader.read(32).expect("chunk"), b"async".to_vec());
-        assert!(
-            timeout(Duration::from_secs(1), async move {
-                loop {
-                    if callback_started.load(Ordering::SeqCst) {
-                        break;
-                    }
-                    tokio::task::yield_now().await;
+        assert!(timeout(Duration::from_secs(1), async move {
+            loop {
+                if callback_started.load(Ordering::SeqCst) {
+                    break;
                 }
-            })
-            .await
-            .is_ok()
-        );
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .is_ok());
         assert_eq!(rx.recv_timeout(Duration::from_secs(1)).expect("ready callback"), 5);
     }
 
