@@ -276,7 +276,7 @@ async fn propagation_link_cache_reuses_same_selected_node() {
 }
 
 #[tokio::test]
-async fn propagation_link_cache_closes_previous_link_when_selected_node_changes() {
+async fn propagation_link_cache_does_not_close_previous_link_when_selected_node_changes() {
     let (_daemon, bridge) = test_transport_bridge_fixture().await;
     let signer_a = PrivateIdentity::new_from_rand(rand_core::OsRng);
     let identity_a = rns_transport::identity_bridge::to_transport_private_identity(&signer_a);
@@ -299,7 +299,7 @@ async fn propagation_link_cache_closes_previous_link_when_selected_node_changes(
     let first_id = *first.lock().await.id();
     let second_id = *second.lock().await.id();
     assert_ne!(first_id, second_id);
-    assert_eq!(first.lock().await.status(), LinkStatus::Closed);
+    assert_ne!(first.lock().await.status(), LinkStatus::Closed);
 }
 
 #[tokio::test]

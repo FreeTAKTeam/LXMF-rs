@@ -558,11 +558,9 @@ impl DeliveryTask {
         activity_peer: &str,
         link: Arc<tokio::sync::Mutex<Link>>,
         payload: &[u8],
-        packet_status: &str,
-        resource_status: &str,
-        resource_sent_status: &str,
+        statuses: LinkModeStatuses,
     ) -> Result<(), std::io::Error> {
-        await_link_activation(self.transport.as_ref(), &link, Duration::from_secs(5)).await?;
+        await_link_activation(self.transport.as_ref(), &link, Duration::from_secs(20)).await?;
         let result = send_on_link(self.transport.as_ref(), &link, payload).await;
         let destination_desc = *link.lock().await.destination();
         match result {
@@ -574,7 +572,7 @@ impl DeliveryTask {
                 self.daemon.record_outbound_peer_activity(activity_peer, payload.len(), true);
                 let _ = self.receipt_tx.send(ReceiptEvent {
                     message_id: self.message_id.clone(),
-                    status: packet_status.to_string(),
+                    status: statuses.packet.to_string(),
                 });
                 Ok(())
             }
@@ -587,7 +585,7 @@ impl DeliveryTask {
                         message_id: self.message_id.clone(),
                         peer: activity_peer.to_string(),
                         bytes: payload.len(),
-                        sent_status: resource_sent_status.to_string(),
+                        sent_status: statuses.resource_sent.to_string(),
                     },
                 );
                 let detail = format!(
@@ -600,7 +598,7 @@ impl DeliveryTask {
                 log_delivery_trace(&self.message_id, &self.destination_hex, trace_stage, &detail);
                 let _ = self.receipt_tx.send(ReceiptEvent {
                     message_id: self.message_id.clone(),
-                    status: resource_status.to_string(),
+                    status: statuses.resource.to_string(),
                 });
                 Ok(())
             }
@@ -614,12 +612,9 @@ async fn cached_propagation_link(
     node_hex: &str,
 ) -> Option<Arc<tokio::sync::Mutex<Link>>> {
     let mut guard = state.lock().await;
-    let Some(cached) = guard.clone() else {
-        return None;
-    };
+    let cached = guard.clone()?;
 
     if cached.node_hex != node_hex {
-        cached.link.lock().await.close();
         *guard = None;
         return None;
     }
