@@ -17,7 +17,7 @@ struct ResourceSender {
 
 enum OutboundResourcePoll {
     None,
-    Send(Packet),
+    Send(Box<Packet>),
     Failed,
 }
 
@@ -138,7 +138,7 @@ impl ResourceSender {
                 self.retries_left -= 1;
                 self.last_activity = now;
                 self.adv_sent = now;
-                OutboundResourcePoll::Send(self.advertisement_packet())
+                OutboundResourcePoll::Send(Box::new(self.advertisement_packet()))
             }
             ResourceStatus::Transferring => {
                 if now.duration_since(self.last_activity) < retry_interval {
@@ -241,7 +241,7 @@ impl ResourceSender {
             }
             if self.sent_parts.iter().all(|sent| *sent) {
                 self.status = ResourceStatus::AwaitingProof;
-                self.retries_left = self.max_retries.max(1).min(3);
+                self.retries_left = self.max_retries.clamp(1, 3);
             } else {
                 self.status = ResourceStatus::Transferring;
             }
