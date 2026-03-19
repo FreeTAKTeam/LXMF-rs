@@ -14,8 +14,9 @@ use core::{fmt, marker::PhantomData};
 use ed25519_dalek::{Signature, SigningKey, VerifyingKey, SIGNATURE_LENGTH};
 use rand_core::CryptoRngCore;
 use sha2::Digest;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::path::Path;
+use std::time::Instant;
 use x25519_dalek::PublicKey;
 
 #[path = "destination/primitives.rs"]
@@ -35,6 +36,7 @@ use ratchet::{try_decrypt_with_ratchets, RatchetState};
 pub const NAME_HASH_LENGTH: usize = 10;
 pub const RAND_HASH_LENGTH: usize = 10;
 pub const PATH_RESPONSE_TAG_WINDOW: u64 = 30;
+pub const PATH_RESPONSE_TAG_CAP: usize = 64;
 pub const MIN_ANNOUNCE_DATA_LENGTH: usize =
     PUBLIC_KEY_LENGTH * 2 + NAME_HASH_LENGTH + RAND_HASH_LENGTH + SIGNATURE_LENGTH;
 
@@ -216,7 +218,8 @@ pub struct Destination<I: HashIdentity, D: Direction, T: Type> {
     pub identity: I,
     pub desc: DestinationDesc,
     ratchet_state: RatchetState,
-    path_responses: BTreeMap<Vec<u8>, (u64, Packet)>,
+    path_responses: BTreeMap<Vec<u8>, (Instant, Packet)>,
+    path_response_queue: VecDeque<(Vec<u8>, Instant)>,
 }
 
 impl<I: HashIdentity, D: Direction, T: Type> Destination<I, D, T> {
@@ -269,6 +272,7 @@ impl Destination<PrivateIdentity, Input, Single> {
             desc: DestinationDesc { identity: pub_identity, name, address_hash },
             ratchet_state: RatchetState::default(),
             path_responses: BTreeMap::new(),
+            path_response_queue: VecDeque::new(),
         }
     }
 
@@ -412,15 +416,32 @@ impl Destination<PrivateIdentity, Input, Single> {
         })
     }
 
+    fn prune_path_responses(&mut self, now: Instant) {
+        while let Some((tag, expires_at)) = self.path_response_queue.front().cloned() {
+            if expires_at > now && self.path_responses.len() <= PATH_RESPONSE_TAG_CAP {
+                break;
+            }
+            self.path_response_queue.pop_front();
+            self.path_responses.remove(&tag);
+        }
+    }
+
     pub fn path_response<R: CryptoRngCore + Copy>(
+        &mut self,
+        rng: R,
+        app_data: Option<&[u8]>,
+    ) -> Result<Packet, RnsError> {
+        self.path_response_with_tag(rng, app_data, None)
+    }
+
+    pub fn path_response_with_tag<R: CryptoRngCore + Copy>(
         &mut self,
         rng: R,
         app_data: Option<&[u8]>,
         tag: Option<&[u8]>,
     ) -> Result<Packet, RnsError> {
-        let now = now_secs().floor() as u64;
-        self.path_responses
-            .retain(|_, (timestamp, _)| now.saturating_sub(*timestamp) <= PATH_RESPONSE_TAG_WINDOW);
+        let now = Instant::now();
+        self.prune_path_responses(now);
 
         if let Some(tag) = tag {
             if let Some((_, cached)) = self.path_responses.get(tag) {
@@ -432,7 +453,11 @@ impl Destination<PrivateIdentity, Input, Single> {
         announce.context = PacketContext::PathResponse;
 
         if let Some(tag) = tag {
-            self.path_responses.insert(tag.to_vec(), (now, announce));
+            let expires_at = now + std::time::Duration::from_secs(PATH_RESPONSE_TAG_WINDOW);
+            let tag = tag.to_vec();
+            self.path_responses.insert(tag.clone(), (expires_at, announce));
+            self.path_response_queue.push_back((tag, expires_at));
+            self.prune_path_responses(now);
         }
 
         Ok(announce)
@@ -466,6 +491,7 @@ impl Destination<Identity, Output, Single> {
             desc: DestinationDesc { identity, name, address_hash },
             ratchet_state: RatchetState::default(),
             path_responses: BTreeMap::new(),
+            path_response_queue: VecDeque::new(),
         }
     }
 }
@@ -480,6 +506,7 @@ impl<D: Direction> Destination<EmptyIdentity, D, Plain> {
             desc: DestinationDesc { identity: Default::default(), name, address_hash },
             ratchet_state: RatchetState::default(),
             path_responses: BTreeMap::new(),
+            path_response_queue: VecDeque::new(),
         }
     }
 }

@@ -25,7 +25,7 @@ pub(super) async fn handle_path_request<'a>(
             let response = dest
                 .lock()
                 .await
-                .path_response(OsRng, None, Some(request.tag_bytes.as_slice()))
+                .path_response_with_tag(OsRng, None, Some(request.tag_bytes.as_slice()))
                 .expect("valid path response");
 
             handler

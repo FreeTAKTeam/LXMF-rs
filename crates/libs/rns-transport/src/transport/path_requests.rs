@@ -78,6 +78,7 @@ impl PathRequest {
 
 pub struct PathRequests {
     cache: BTreeMap<DuplicateKey, Instant>,
+    cache_queue: VecDeque<(DuplicateKey, Instant)>,
     name: String,
     transport_id: Option<AddressHash>,
     controlled_destination: PlainInputDestination,
@@ -98,6 +99,7 @@ impl PathRequests {
     ) -> Self {
         Self {
             cache: BTreeMap::new(),
+            cache_queue: VecDeque::new(),
             name: name.into(),
             transport_id,
             controlled_destination: create_path_request_destination(),
@@ -109,14 +111,38 @@ impl PathRequests {
         }
     }
 
+    fn prune_cache(&mut self, now: Instant) {
+        while let Some((key, timeout)) = self.cache_queue.front().cloned() {
+            if timeout > now {
+                break;
+            }
+            self.cache_queue.pop_front();
+            self.cache.remove(&key);
+        }
+    }
+
+    fn prune_discovery(&mut self, now: Instant) {
+        while let Some((queued_key, timeout)) = self.queue.front().copied() {
+            if timeout > now {
+                break;
+            }
+            self.queue.pop_front();
+            self.discovery.remove(&queued_key);
+        }
+    }
+
     pub fn decode(&mut self, data: &[u8]) -> Option<PathRequest> {
+        self.decode_at(data, Instant::now())
+    }
+
+    fn decode_at(&mut self, data: &[u8], now: Instant) -> Option<PathRequest> {
         let path_request = PathRequest::decode(data, &self.name);
-        let now = Instant::now();
-        self.cache.retain(|_, timeout| *timeout > now);
+        self.prune_cache(now);
 
         if let Some(ref request) = path_request {
             let key = (request.destination, request.tag_bytes.clone());
-            let is_new = self.cache.insert(key, now + self.request_timeout).is_none();
+            let expires_at = now + self.request_timeout;
+            let is_new = self.cache.insert(key.clone(), expires_at).is_none();
 
             if !is_new {
                 log::info!(
@@ -126,6 +152,8 @@ impl PathRequests {
                 );
                 return None;
             }
+
+            self.cache_queue.push_back((key, expires_at));
         }
 
         path_request
@@ -165,17 +193,18 @@ impl PathRequests {
         destination: &AddressHash,
         on_iface: Option<AddressHash>,
     ) -> bool {
-        let now = Instant::now();
+        self.allow_recursive_at(destination, on_iface, Instant::now())
+    }
+
+    fn allow_recursive_at(
+        &mut self,
+        destination: &AddressHash,
+        on_iface: Option<AddressHash>,
+        now: Instant,
+    ) -> bool {
         let key = (*destination, on_iface);
 
-        self.discovery.retain(|_, timeout| *timeout > now);
-        while let Some((queued_key, timeout)) = self.queue.front().copied() {
-            if timeout > now {
-                break;
-            }
-            self.queue.pop_front();
-            self.discovery.remove(&queued_key);
-        }
+        self.prune_discovery(now);
 
         if let Some(timeout) = self.discovery.get(&key) {
             if *timeout >= now {
@@ -234,8 +263,6 @@ impl PathRequests {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::thread::sleep;
-    use std::time::Duration as StdDuration;
 
     #[test]
     fn path_request_roundtrip() {
@@ -270,13 +297,14 @@ mod tests {
         let destination = AddressHash::new_from_rand(OsRng);
         let tag = vec![0x55; ADDRESS_HASH_SIZE];
         let packet = testee.generate(&destination, Some(tag));
+        let now = Instant::now();
 
-        assert!(testee.decode(packet.data.as_slice()).is_some());
-        assert!(testee.decode(packet.data.as_slice()).is_none());
+        assert!(testee.decode_at(packet.data.as_slice(), now).is_some());
+        assert!(testee.decode_at(packet.data.as_slice(), now).is_none());
 
-        sleep(StdDuration::from_millis(1100));
-
-        assert!(testee.decode(packet.data.as_slice()).is_some());
+        assert!(testee
+            .decode_at(packet.data.as_slice(), now + Duration::from_millis(1100))
+            .is_some());
     }
 
     #[test]
