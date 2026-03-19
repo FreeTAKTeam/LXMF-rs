@@ -31,6 +31,7 @@ pub fn build_wire_message(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn build_wire_message_with_options(
     source: [u8; 16],
     destination: [u8; 16],
@@ -85,7 +86,7 @@ pub fn build_wire_message_with_options(
 
 fn merge_ticket_field(fields: &mut RmpValue, expires_at: i64, ticket: &[u8]) {
     let entry = (
-        RmpValue::Integer(i64::from(FIELD_TICKET).into()),
+        RmpValue::Integer(FIELD_TICKET.into()),
         RmpValue::Array(vec![
             RmpValue::Integer(expires_at.into()),
             RmpValue::Binary(ticket.to_vec()),
@@ -96,7 +97,7 @@ fn merge_ticket_field(fields: &mut RmpValue, expires_at: i64, ticket: &[u8]) {
         RmpValue::Map(items) => {
             if let Some(existing) = items
                 .iter_mut()
-                .find(|(key, _)| matches!(key, RmpValue::Integer(value) if value.as_i64() == Some(i64::from(FIELD_TICKET))))
+                .find(|(key, _)| matches!(key, RmpValue::Integer(value) if value.as_i64() == Some(FIELD_TICKET)))
             {
                 existing.1 = entry.1;
             } else {
