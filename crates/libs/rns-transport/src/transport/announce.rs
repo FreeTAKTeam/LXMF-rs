@@ -1,32 +1,14 @@
+use super::announce_limits::AnnounceLimitAction;
 use super::*;
 
-pub(super) async fn handle_announce<'a>(
+async fn process_announce<'a>(
     packet: &Packet,
     mut handler: MutexGuard<'a, TransportHandler>,
     iface: AddressHash,
-) {
-    if let Some(blocked_until) = handler.announce_limits.check(&packet.destination) {
-        log::info!(
-            "tp({}): too many announces from {}, blocked for {} seconds",
-            handler.config.name,
-            &packet.destination,
-            blocked_until.as_secs(),
-        );
-        return;
-    }
-
+    announce: crate::destination::AnnounceInfo<'_>,
+) -> MutexGuard<'a, TransportHandler> {
     let destination_known = handler.has_destination(&packet.destination);
 
-    let announce = match DestinationAnnounce::validate(packet) {
-        Ok(result) => result,
-        Err(err) => {
-            eprintln!(
-                "[transport] announce validate failed dst={} err={:?}",
-                packet.destination, err
-            );
-            return;
-        }
-    };
     if let Some(existing) = handler.single_out_destinations.get(&packet.destination).cloned() {
         let existing = existing.lock().await;
         if existing.identity.public_key != announce.destination.identity.public_key
@@ -37,7 +19,7 @@ pub(super) async fn handle_announce<'a>(
                 handler.config.name,
                 packet.destination
             );
-            return;
+            return handler;
         }
     }
     let ratchet = announce.ratchet;
@@ -96,6 +78,42 @@ pub(super) async fn handle_announce<'a>(
         hops: packet.header.hops,
         interface,
     });
+
+    handler
+}
+
+pub(super) async fn handle_announce<'a>(
+    packet: &Packet,
+    mut handler: MutexGuard<'a, TransportHandler>,
+    iface: AddressHash,
+) {
+    let announce = match DestinationAnnounce::validate(packet) {
+        Ok(result) => result,
+        Err(err) => {
+            eprintln!(
+                "[transport] announce validate failed dst={} err={:?}",
+                packet.destination, err
+            );
+            return;
+        }
+    };
+
+    let destination_known = handler.has_destination(&packet.destination);
+    match handler.announce_limits.check(iface, packet, destination_known) {
+        AnnounceLimitAction::Allow => {}
+        AnnounceLimitAction::Hold(release_after) => {
+            log::info!(
+                "tp({}): holding announce for {} on iface {} for at least {} seconds",
+                handler.config.name,
+                packet.destination,
+                iface,
+                release_after.as_secs(),
+            );
+            return;
+        }
+    }
+
+    let _ = process_announce(packet, handler, iface, announce).await;
 }
 
 pub(super) async fn retransmit_announces<'a>(mut handler: MutexGuard<'a, TransportHandler>) {
@@ -104,5 +122,28 @@ pub(super) async fn retransmit_announces<'a>(mut handler: MutexGuard<'a, Transpo
 
     for message in messages {
         handler.send(message).await;
+    }
+}
+
+pub(super) async fn release_held_announces<'a>(handler: MutexGuard<'a, TransportHandler>) {
+    let mut handler = handler;
+    let released = handler.announce_limits.release_ready();
+
+    for released_announce in released {
+        let packet = released_announce.packet;
+        let iface = released_announce.iface;
+        let announce = match DestinationAnnounce::validate(&packet) {
+            Ok(result) => result,
+            Err(err) => {
+                log::warn!(
+                    "tp: dropping held announce for {} after revalidate failure: {:?}",
+                    packet.destination,
+                    err
+                );
+                continue;
+            }
+        };
+
+        handler = process_announce(&packet, handler, iface, announce).await;
     }
 }

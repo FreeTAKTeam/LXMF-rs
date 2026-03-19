@@ -1,4 +1,4 @@
-use super::announce::{handle_announce, retransmit_announces};
+use super::announce::{handle_announce, release_held_announces, retransmit_announces};
 use super::path::{handle_fixed_destinations, handle_link_request};
 use super::wire::{handle_data, handle_proof};
 use super::*;
@@ -284,7 +284,7 @@ pub(super) async fn manage_transport(
         });
     }
 
-    if retransmit {
+    {
         let handler = handler_arc.clone();
         let cancel = cancel.clone();
 
@@ -299,7 +299,14 @@ pub(super) async fn manage_transport(
                         break;
                     },
                     _ = time::sleep(INTERVAL_ANNOUNCES_RETRANSMIT) => {
-                        retransmit_announces(handler.lock().await).await;
+                        let guard = handler.lock().await;
+                        if retransmit {
+                            retransmit_announces(guard).await;
+                        } else {
+                            release_held_announces(guard).await;
+                            continue;
+                        }
+                        release_held_announces(handler.lock().await).await;
                     }
                 }
             }

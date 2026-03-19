@@ -1,4 +1,5 @@
-use super::announce::handle_announce;
+use super::announce::{handle_announce, release_held_announces};
+use super::announce_limits::{AnnounceLimits, AnnounceRateLimit};
 use super::path::handle_link_request_as_intermediate;
 use super::wire::{handle_data, handle_proof};
 use super::*;
@@ -153,6 +154,89 @@ async fn announce_retransmit_key_uses_destination_hash() {
         keyed_by_identity.is_none(),
         "identity hash must not be used as announce retransmit key"
     );
+}
+
+#[tokio::test]
+async fn unknown_announces_are_held_per_interface_and_released_by_lowest_hops() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let config = TransportConfig::new("test", &local_identity, true);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+    let mut announce_rx = transport.recv_announces().await;
+
+    handler.lock().await.announce_limits = AnnounceLimits::with_rate_limit(AnnounceRateLimit {
+        incoming_freq_samples: 3,
+        max_held_announces: 8,
+        new_time: Duration::from_secs(3600),
+        burst_freq_new: 100.0,
+        burst_freq: 100.0,
+        burst_hold: Duration::from_millis(20),
+        burst_penalty: Duration::from_millis(20),
+        held_release_interval: Duration::from_millis(10),
+    });
+
+    let iface = AddressHash::new_from_rand(OsRng);
+
+    let mut first_destination = SingleInputDestination::new(
+        PrivateIdentity::new_from_rand(OsRng),
+        DestinationName::new("lxmf", "delivery"),
+    );
+    let mut first_announce = first_destination.announce(OsRng, None).expect("announce");
+    first_announce.header.hops = 4;
+    handle_announce(&first_announce, handler.lock().await, iface).await;
+    let first_event = timeout(Duration::from_millis(200), announce_rx.recv())
+        .await
+        .expect("first announce should emit")
+        .expect("broadcast receive");
+    assert_eq!(first_event.hops, 4);
+    tokio::time::sleep(Duration::from_millis(5)).await;
+
+    let mut higher_hop_destination = SingleInputDestination::new(
+        PrivateIdentity::new_from_rand(OsRng),
+        DestinationName::new("lxmf", "delivery"),
+    );
+    let mut higher_hop_announce = higher_hop_destination.announce(OsRng, None).expect("announce");
+    higher_hop_announce.header.hops = 3;
+    handle_announce(&higher_hop_announce, handler.lock().await, iface).await;
+    tokio::time::sleep(Duration::from_millis(5)).await;
+
+    let mut lower_hop_destination = SingleInputDestination::new(
+        PrivateIdentity::new_from_rand(OsRng),
+        DestinationName::new("lxmf", "delivery"),
+    );
+    let mut lower_hop_announce = lower_hop_destination.announce(OsRng, None).expect("announce");
+    lower_hop_announce.header.hops = 1;
+    handle_announce(&lower_hop_announce, handler.lock().await, iface).await;
+
+    assert!(matches!(
+        announce_rx.try_recv(),
+        Err(tokio::sync::broadcast::error::TryRecvError::Empty)
+    ));
+
+    tokio::time::sleep(Duration::from_millis(55)).await;
+    release_held_announces(handler.lock().await).await;
+    assert!(matches!(
+        announce_rx.try_recv(),
+        Err(tokio::sync::broadcast::error::TryRecvError::Empty)
+    ));
+
+    tokio::time::sleep(Duration::from_millis(25)).await;
+    release_held_announces(handler.lock().await).await;
+
+    let released_lowest = timeout(Duration::from_millis(200), announce_rx.recv())
+        .await
+        .expect("lowest-hop held announce should emit")
+        .expect("broadcast receive");
+    assert_eq!(released_lowest.hops, 1);
+
+    tokio::time::sleep(Duration::from_millis(15)).await;
+    release_held_announces(handler.lock().await).await;
+
+    let released_next = timeout(Duration::from_millis(200), announce_rx.recv())
+        .await
+        .expect("next held announce should emit")
+        .expect("broadcast receive");
+    assert_eq!(released_next.hops, 3);
 }
 
 #[tokio::test]
