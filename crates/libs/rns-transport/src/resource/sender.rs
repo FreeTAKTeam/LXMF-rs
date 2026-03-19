@@ -1,3 +1,5 @@
+const MAX_AWAITING_PROOF_RETRIES: u8 = 3;
+
 #[derive(Debug, Clone)]
 struct ResourceSender {
     link_id: AddressHash,
@@ -241,7 +243,9 @@ impl ResourceSender {
             }
             if self.sent_parts.iter().all(|sent| *sent) {
                 self.status = ResourceStatus::AwaitingProof;
-                self.retries_left = self.max_retries.clamp(1, 3);
+                // Once all parts are sent, only wait a small, bounded number of
+                // retry intervals for the terminal proof before timing out.
+                self.retries_left = self.max_retries.clamp(1, MAX_AWAITING_PROOF_RETRIES);
             } else {
                 self.status = ResourceStatus::Transferring;
             }
