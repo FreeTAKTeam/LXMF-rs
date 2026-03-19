@@ -83,6 +83,7 @@ pub struct PathRequests {
     transport_id: Option<AddressHash>,
     controlled_destination: PlainInputDestination,
     discovery: BTreeMap<DiscoveryKey, Instant>,
+    pending_recursive_by_iface: BTreeMap<Option<AddressHash>, usize>,
     announce_queue_len: usize,
     announce_cap: usize,
     request_timeout: Duration,
@@ -104,6 +105,7 @@ impl PathRequests {
             transport_id,
             controlled_destination: create_path_request_destination(),
             discovery: BTreeMap::new(),
+            pending_recursive_by_iface: BTreeMap::new(),
             announce_queue_len,
             announce_cap,
             request_timeout: Duration::from_secs(request_timeout_secs.max(1)),
@@ -127,7 +129,9 @@ impl PathRequests {
                 break;
             }
             self.queue.pop_front();
-            self.discovery.remove(&queued_key);
+            if self.discovery.remove(&queued_key).is_some() {
+                self.decrement_pending_recursive_count(queued_key.1);
+            }
         }
     }
 
@@ -217,6 +221,7 @@ impl PathRequests {
                 return false;
             }
             self.discovery.remove(&key);
+            self.decrement_pending_recursive_count(on_iface);
         }
 
         let pending_for_iface = self.pending_recursive_count(on_iface);
@@ -243,6 +248,7 @@ impl PathRequests {
 
         let expiry = now + self.request_timeout;
         self.discovery.insert(key, expiry);
+        self.increment_pending_recursive_count(on_iface);
         self.queue.push_back((key, expiry));
 
         true
@@ -250,12 +256,22 @@ impl PathRequests {
 
     fn pending_recursive_count(&self, on_iface: Option<AddressHash>) -> usize {
         match on_iface {
-            Some(iface) => self
-                .discovery
-                .keys()
-                .filter(|(_, queued_iface)| *queued_iface == Some(iface))
-                .count(),
+            Some(iface) => self.pending_recursive_by_iface.get(&Some(iface)).copied().unwrap_or(0),
             None => self.discovery.len(),
+        }
+    }
+
+    fn increment_pending_recursive_count(&mut self, on_iface: Option<AddressHash>) {
+        let count = self.pending_recursive_by_iface.entry(on_iface).or_insert(0);
+        *count += 1;
+    }
+
+    fn decrement_pending_recursive_count(&mut self, on_iface: Option<AddressHash>) {
+        if let Some(count) = self.pending_recursive_by_iface.get_mut(&on_iface) {
+            *count = count.saturating_sub(1);
+            if *count == 0 {
+                self.pending_recursive_by_iface.remove(&on_iface);
+            }
         }
     }
 
@@ -358,5 +374,26 @@ mod tests {
         assert!(testee.generate_recursive(&destination_a, Some(iface_a), None).is_some());
         assert!(testee.generate_recursive(&destination_b, Some(iface_a), None).is_none());
         assert!(testee.generate_recursive(&destination_b, Some(iface_b), None).is_some());
+    }
+
+    #[test]
+    fn expired_recursive_requests_release_interface_capacity() {
+        let mut testee = PathRequests::new("", None, 1, 1, 1);
+        let destination_a = AddressHash::new_from_rand(OsRng);
+        let destination_b = AddressHash::new_from_rand(OsRng);
+        let iface = AddressHash::new_from_rand(OsRng);
+        let now = Instant::now();
+
+        assert!(testee.allow_recursive_at(&destination_a, Some(iface), now));
+        assert!(!testee.allow_recursive_at(
+            &destination_b,
+            Some(iface),
+            now + Duration::from_millis(500)
+        ));
+        assert!(testee.allow_recursive_at(
+            &destination_b,
+            Some(iface),
+            now + Duration::from_millis(1100)
+        ));
     }
 }
