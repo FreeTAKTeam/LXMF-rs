@@ -210,6 +210,35 @@ fn autopeer_disabled_keeps_announced_peer_unpeered() {
 }
 
 #[test]
+fn announce_received_persists_stamp_cost_in_announce_log() {
+    let daemon = RpcDaemon::test_instance();
+    let announce = daemon
+        .handle_rpc(rpc_request(
+            43,
+            "announce_received",
+            json!({
+                "peer": "peer-stamp",
+                "timestamp": 1_700_000_011i64,
+                "stamp_cost": 21,
+                "stamp_cost_flexibility": 4,
+            }),
+        ))
+        .expect("announce received");
+    assert!(announce.error.is_none());
+
+    let result = daemon
+        .handle_rpc(RpcRequest { id: 44, method: "list_announces".to_string(), params: None })
+        .expect("list announces")
+        .result
+        .expect("list announces result");
+    let rows = result["announces"].as_array().expect("announce rows");
+    let row = rows.first().expect("announce row");
+    assert_eq!(row["peer"].as_str(), Some("peer-stamp"));
+    assert_eq!(row["stamp_cost"].as_u64(), Some(21));
+    assert_eq!(row["stamp_cost_flexibility"].as_u64(), Some(4));
+}
+
+#[test]
 fn peer_activity_updates_runtime_counters() {
     let daemon = RpcDaemon::test_instance();
     daemon

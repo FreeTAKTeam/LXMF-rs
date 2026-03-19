@@ -31,6 +31,7 @@ pub struct AnnounceRecord {
     pub rssi: Option<f64>,
     pub snr: Option<f64>,
     pub q: Option<f64>,
+    pub stamp_cost: Option<u32>,
     pub stamp_cost_flexibility: Option<u32>,
     pub peering_cost: Option<u32>,
 }
@@ -711,7 +712,7 @@ impl MessagesStore {
         let capabilities_json = serde_json::to_string(&record.capabilities).unwrap_or_default();
         self.with_write_conn(|conn| {
             conn.execute(
-                "INSERT OR REPLACE INTO announces (id, peer, timestamp, name, name_source, first_seen, seen_count, app_data_hex, capabilities, rssi, snr, q, stamp_cost_flexibility, peering_cost) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                "INSERT OR REPLACE INTO announces (id, peer, timestamp, name, name_source, first_seen, seen_count, app_data_hex, capabilities, rssi, snr, q, stamp_cost, stamp_cost_flexibility, peering_cost) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
                 params![
                     &record.id,
                     &record.peer,
@@ -725,6 +726,7 @@ impl MessagesStore {
                     record.rssi,
                     record.snr,
                     record.q,
+                    record.stamp_cost,
                     record.stamp_cost_flexibility,
                     record.peering_cost,
                 ],
@@ -761,13 +763,14 @@ impl MessagesStore {
                     rssi: row.get(9)?,
                     snr: row.get(10)?,
                     q: row.get(11)?,
-                    stamp_cost_flexibility: row.get(12)?,
-                    peering_cost: row.get(13)?,
+                    stamp_cost: row.get(12)?,
+                    stamp_cost_flexibility: row.get(13)?,
+                    peering_cost: row.get(14)?,
                 })
             };
             if let Some(ts) = before_ts {
-                let query_with_id = "SELECT id, peer, timestamp, name, name_source, first_seen, seen_count, app_data_hex, capabilities, rssi, snr, q, stamp_cost_flexibility, peering_cost FROM announces WHERE (timestamp < ?1 OR (timestamp = ?1 AND id < ?2)) ORDER BY timestamp DESC, id DESC LIMIT ?3";
-                let query_without_id = "SELECT id, peer, timestamp, name, name_source, first_seen, seen_count, app_data_hex, capabilities, rssi, snr, q, stamp_cost_flexibility, peering_cost FROM announces WHERE timestamp < ?1 ORDER BY timestamp DESC, id DESC LIMIT ?2";
+                let query_with_id = "SELECT id, peer, timestamp, name, name_source, first_seen, seen_count, app_data_hex, capabilities, rssi, snr, q, stamp_cost, stamp_cost_flexibility, peering_cost FROM announces WHERE (timestamp < ?1 OR (timestamp = ?1 AND id < ?2)) ORDER BY timestamp DESC, id DESC LIMIT ?3";
+                let query_without_id = "SELECT id, peer, timestamp, name, name_source, first_seen, seen_count, app_data_hex, capabilities, rssi, snr, q, stamp_cost, stamp_cost_flexibility, peering_cost FROM announces WHERE timestamp < ?1 ORDER BY timestamp DESC, id DESC LIMIT ?2";
                 if let Some(ann_id) = before_id {
                     let mut stmt = conn.prepare(query_with_id)?;
                     let mut rows = stmt.query(params![ts, ann_id, limit as i64])?;
@@ -783,7 +786,7 @@ impl MessagesStore {
                 }
             } else {
                 let mut stmt = conn.prepare(
-                    "SELECT id, peer, timestamp, name, name_source, first_seen, seen_count, app_data_hex, capabilities, rssi, snr, q, stamp_cost_flexibility, peering_cost FROM announces ORDER BY timestamp DESC LIMIT ?1",
+                    "SELECT id, peer, timestamp, name, name_source, first_seen, seen_count, app_data_hex, capabilities, rssi, snr, q, stamp_cost, stamp_cost_flexibility, peering_cost FROM announces ORDER BY timestamp DESC LIMIT ?1",
                 )?;
                 let mut rows = stmt.query(params![limit as i64])?;
                 while let Some(row) = rows.next()? {
@@ -890,6 +893,7 @@ impl MessagesStore {
                     rssi REAL,
                     snr REAL,
                     q REAL,
+                    stamp_cost INTEGER,
                     stamp_cost_flexibility INTEGER,
                     peering_cost INTEGER
                 );
@@ -919,6 +923,7 @@ impl MessagesStore {
             let _ = conn.execute("ALTER TABLE announces ADD COLUMN rssi REAL", []);
             let _ = conn.execute("ALTER TABLE announces ADD COLUMN snr REAL", []);
             let _ = conn.execute("ALTER TABLE announces ADD COLUMN q REAL", []);
+            let _ = conn.execute("ALTER TABLE announces ADD COLUMN stamp_cost INTEGER", []);
             let _ =
                 conn.execute("ALTER TABLE announces ADD COLUMN stamp_cost_flexibility INTEGER", []);
             let _ = conn.execute("ALTER TABLE announces ADD COLUMN peering_cost INTEGER", []);

@@ -167,7 +167,7 @@ impl RpcDaemon {
                     parsed.rssi,
                     parsed.snr,
                     parsed.q,
-                    None,
+                    parsed.stamp_cost,
                     Some(stamp_cost_flexibility),
                     Some(peering_cost),
                     None,

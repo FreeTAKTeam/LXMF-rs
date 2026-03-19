@@ -34,6 +34,8 @@ struct AnnounceReceivedParams {
     #[serde(default)]
     q: Option<f64>,
     #[serde(default)]
+    stamp_cost: Option<u32>,
+    #[serde(default)]
     stamp_cost_flexibility: Option<u32>,
     #[serde(default)]
     peering_cost: Option<u32>,
