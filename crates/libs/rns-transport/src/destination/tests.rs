@@ -252,3 +252,24 @@ fn announce_random_blob_matches_python_layout() {
     assert!(emitted >= before.saturating_sub(1));
     assert!(emitted <= after.saturating_add(1));
 }
+
+#[test]
+fn path_response_reuses_cached_announce_for_same_tag() {
+    let priv_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut destination = SingleInputDestination::new(
+        priv_identity,
+        DestinationName::new("example_utilities", "announcesample.fruits"),
+    );
+    let tag = [0xAB; 16];
+
+    let first = destination
+        .path_response(FixedRng::new(0x10), None, Some(&tag))
+        .expect("first path response");
+    let second = destination
+        .path_response(FixedRng::new(0x80), None, Some(&tag))
+        .expect("cached path response");
+
+    assert_eq!(first.context, crate::packet::PacketContext::PathResponse);
+    assert_eq!(second.context, crate::packet::PacketContext::PathResponse);
+    assert_eq!(first.data, second.data);
+}

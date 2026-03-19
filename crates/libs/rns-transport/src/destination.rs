@@ -14,6 +14,7 @@ use core::{fmt, marker::PhantomData};
 use ed25519_dalek::{Signature, SigningKey, VerifyingKey, SIGNATURE_LENGTH};
 use rand_core::CryptoRngCore;
 use sha2::Digest;
+use std::collections::BTreeMap;
 use std::path::Path;
 use x25519_dalek::PublicKey;
 
@@ -33,6 +34,7 @@ use ratchet::{try_decrypt_with_ratchets, RatchetState};
 
 pub const NAME_HASH_LENGTH: usize = 10;
 pub const RAND_HASH_LENGTH: usize = 10;
+pub const PATH_RESPONSE_TAG_WINDOW: u64 = 30;
 pub const MIN_ANNOUNCE_DATA_LENGTH: usize =
     PUBLIC_KEY_LENGTH * 2 + NAME_HASH_LENGTH + RAND_HASH_LENGTH + SIGNATURE_LENGTH;
 
@@ -214,6 +216,7 @@ pub struct Destination<I: HashIdentity, D: Direction, T: Type> {
     pub identity: I,
     pub desc: DestinationDesc,
     ratchet_state: RatchetState,
+    path_responses: BTreeMap<Vec<u8>, (u64, Packet)>,
 }
 
 impl<I: HashIdentity, D: Direction, T: Type> Destination<I, D, T> {
@@ -265,6 +268,7 @@ impl Destination<PrivateIdentity, Input, Single> {
             identity,
             desc: DestinationDesc { identity: pub_identity, name, address_hash },
             ratchet_state: RatchetState::default(),
+            path_responses: BTreeMap::new(),
         }
     }
 
@@ -412,9 +416,24 @@ impl Destination<PrivateIdentity, Input, Single> {
         &mut self,
         rng: R,
         app_data: Option<&[u8]>,
+        tag: Option<&[u8]>,
     ) -> Result<Packet, RnsError> {
+        let now = now_secs().floor() as u64;
+        self.path_responses
+            .retain(|_, (timestamp, _)| now.saturating_sub(*timestamp) <= PATH_RESPONSE_TAG_WINDOW);
+
+        if let Some(tag) = tag {
+            if let Some((_, cached)) = self.path_responses.get(tag) {
+                return Ok(*cached);
+            }
+        }
+
         let mut announce = self.announce(rng, app_data)?;
         announce.context = PacketContext::PathResponse;
+
+        if let Some(tag) = tag {
+            self.path_responses.insert(tag.to_vec(), (now, announce));
+        }
 
         Ok(announce)
     }
@@ -446,6 +465,7 @@ impl Destination<Identity, Output, Single> {
             identity,
             desc: DestinationDesc { identity, name, address_hash },
             ratchet_state: RatchetState::default(),
+            path_responses: BTreeMap::new(),
         }
     }
 }
@@ -459,6 +479,7 @@ impl<D: Direction> Destination<EmptyIdentity, D, Plain> {
             identity,
             desc: DestinationDesc { identity: Default::default(), name, address_hash },
             ratchet_state: RatchetState::default(),
+            path_responses: BTreeMap::new(),
         }
     }
 }

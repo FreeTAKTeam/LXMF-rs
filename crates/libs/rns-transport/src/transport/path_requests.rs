@@ -1,4 +1,4 @@
-use alloc::collections::{BTreeMap, BTreeSet, VecDeque};
+use alloc::collections::{BTreeMap, VecDeque};
 
 use rand_core::OsRng;
 
@@ -28,6 +28,8 @@ pub fn create_path_request_destination() -> PlainInputDestination {
 }
 
 pub type TagBytes = Vec<u8>;
+type DuplicateKey = (AddressHash, TagBytes);
+type DiscoveryKey = (AddressHash, Option<AddressHash>);
 
 pub fn create_random_tag() -> TagBytes {
     AddressHash::new_from_rand(OsRng).as_slice().into()
@@ -75,15 +77,15 @@ impl PathRequest {
 }
 
 pub struct PathRequests {
-    cache: BTreeSet<(AddressHash, TagBytes)>,
+    cache: BTreeMap<DuplicateKey, Instant>,
     name: String,
     transport_id: Option<AddressHash>,
     controlled_destination: PlainInputDestination,
-    discovery: BTreeMap<AddressHash, Instant>,
+    discovery: BTreeMap<DiscoveryKey, Instant>,
     announce_queue_len: usize,
     announce_cap: usize,
     request_timeout: Duration,
-    queue: VecDeque<(AddressHash, Instant)>,
+    queue: VecDeque<(DiscoveryKey, Instant)>,
 }
 
 impl PathRequests {
@@ -95,7 +97,7 @@ impl PathRequests {
         request_timeout_secs: u64,
     ) -> Self {
         Self {
-            cache: BTreeSet::new(),
+            cache: BTreeMap::new(),
             name: name.into(),
             transport_id,
             controlled_destination: create_path_request_destination(),
@@ -109,9 +111,12 @@ impl PathRequests {
 
     pub fn decode(&mut self, data: &[u8]) -> Option<PathRequest> {
         let path_request = PathRequest::decode(data, &self.name);
+        let now = Instant::now();
+        self.cache.retain(|_, timeout| *timeout > now);
 
         if let Some(ref request) = path_request {
-            let is_new = self.cache.insert((request.destination, request.tag_bytes.clone()));
+            let key = (request.destination, request.tag_bytes.clone());
+            let is_new = self.cache.insert(key, now + self.request_timeout).is_none();
 
             if !is_new {
                 log::info!(
@@ -158,29 +163,31 @@ impl PathRequests {
     fn allow_recursive(
         &mut self,
         destination: &AddressHash,
-        _on_iface: Option<AddressHash>,
+        on_iface: Option<AddressHash>,
     ) -> bool {
         let now = Instant::now();
+        let key = (*destination, on_iface);
 
         self.discovery.retain(|_, timeout| *timeout > now);
-        while let Some((queued_dest, timeout)) = self.queue.front().copied() {
+        while let Some((queued_key, timeout)) = self.queue.front().copied() {
             if timeout > now {
                 break;
             }
             self.queue.pop_front();
-            self.discovery.remove(&queued_dest);
+            self.discovery.remove(&queued_key);
         }
 
-        if let Some(timeout) = self.discovery.get(destination) {
+        if let Some(timeout) = self.discovery.get(&key) {
             if *timeout >= now {
                 log::info!(
-                    "tp({}): rejecting discovery path request for destination {} as a request is already pending",
+                    "tp({}): rejecting discovery path request for destination {} on iface {:?} as a request is already pending",
                     self.name,
-                    destination
+                    destination,
+                    on_iface
                 );
                 return false;
             }
-            self.discovery.remove(destination);
+            self.discovery.remove(&key);
         }
 
         if self.announce_cap > 0 && self.discovery.len() >= self.announce_cap {
@@ -202,8 +209,8 @@ impl PathRequests {
         }
 
         let expiry = now + self.request_timeout;
-        self.discovery.insert(*destination, expiry);
-        self.queue.push_back((*destination, expiry));
+        self.discovery.insert(key, expiry);
+        self.queue.push_back((key, expiry));
 
         true
     }
@@ -227,6 +234,8 @@ impl PathRequests {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::thread::sleep;
+    use std::time::Duration as StdDuration;
 
     #[test]
     fn path_request_roundtrip() {
@@ -238,5 +247,47 @@ mod tests {
         let decoded = testee.decode(encoded.data.as_slice()).unwrap();
 
         assert_eq!(decoded.destination, dest);
+    }
+
+    #[test]
+    fn recursive_path_request_preserves_supplied_tag() {
+        let mut testee = PathRequests::new("", None, 16, 16, 30);
+        let destination = AddressHash::new_from_rand(OsRng);
+        let iface = AddressHash::new_from_rand(OsRng);
+        let tag = vec![0xAA; ADDRESS_HASH_SIZE];
+
+        let packet = testee
+            .generate_recursive(&destination, Some(iface), Some(tag.clone()))
+            .expect("recursive request");
+        let decoded = PathRequest::decode(packet.data.as_slice(), "").expect("decode request");
+
+        assert_eq!(decoded.tag_bytes, tag);
+    }
+
+    #[test]
+    fn duplicate_path_request_entries_expire() {
+        let mut testee = PathRequests::new("", None, 16, 16, 1);
+        let destination = AddressHash::new_from_rand(OsRng);
+        let tag = vec![0x55; ADDRESS_HASH_SIZE];
+        let packet = testee.generate(&destination, Some(tag));
+
+        assert!(testee.decode(packet.data.as_slice()).is_some());
+        assert!(testee.decode(packet.data.as_slice()).is_none());
+
+        sleep(StdDuration::from_millis(1100));
+
+        assert!(testee.decode(packet.data.as_slice()).is_some());
+    }
+
+    #[test]
+    fn recursive_requests_are_tracked_per_interface() {
+        let mut testee = PathRequests::new("", None, 16, 16, 30);
+        let destination = AddressHash::new_from_rand(OsRng);
+        let iface_a = AddressHash::new_from_rand(OsRng);
+        let iface_b = AddressHash::new_from_rand(OsRng);
+
+        assert!(testee.generate_recursive(&destination, Some(iface_a), None).is_some());
+        assert!(testee.generate_recursive(&destination, Some(iface_a), None).is_none());
+        assert!(testee.generate_recursive(&destination, Some(iface_b), None).is_some());
     }
 }
