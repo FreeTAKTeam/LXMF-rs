@@ -1,3 +1,6 @@
+use alloc::collections::btree_map::Entry;
+use core::cmp::Reverse;
+
 use alloc::collections::{BTreeMap, VecDeque};
 
 use tokio::time::Duration;
@@ -134,13 +137,31 @@ impl AnnounceLimitEntry {
         }
     }
 
-    fn hold(&mut self, packet: &Packet, now: Instant, rate_limit: &AnnounceRateLimit) {
-        if self.held_announces.contains_key(&packet.destination)
-            || self.held_announces.len() < rate_limit.max_held_announces
-        {
-            self.held_announces
-                .insert(packet.destination, HeldAnnounce { packet: *packet, held_at: now });
+    fn hold(&mut self, packet: &Packet, now: Instant, rate_limit: &AnnounceRateLimit) -> bool {
+        if let Entry::Occupied(mut entry) = self.held_announces.entry(packet.destination) {
+            entry.insert(HeldAnnounce { packet: *packet, held_at: now });
+            return true;
         }
+
+        if rate_limit.max_held_announces == 0 {
+            return false;
+        }
+
+        if self.held_announces.len() >= rate_limit.max_held_announces {
+            let worst_destination = self
+                .held_announces
+                .iter()
+                .max_by_key(|(_, held)| (held.packet.header.hops, Reverse(held.held_at)))
+                .map(|(destination, _)| *destination);
+
+            if let Some(destination) = worst_destination {
+                self.held_announces.remove(&destination);
+            }
+        }
+
+        self.held_announces
+            .insert(packet.destination, HeldAnnounce { packet: *packet, held_at: now });
+        true
     }
 
     fn next_release_delay(&self, now: Instant, rate_limit: &AnnounceRateLimit) -> Duration {
@@ -170,9 +191,7 @@ impl AnnounceLimitEntry {
             .min_by_key(|(_, held)| (held.packet.header.hops, held.held_at))
             .map(|(destination, held)| (*destination, held.packet));
 
-        let Some((destination, packet)) = selected else {
-            return None;
-        };
+        let (destination, packet) = selected?;
 
         self.held_announces.remove(&destination);
         self.held_release = now + rate_limit.held_release_interval;
@@ -213,8 +232,9 @@ impl AnnounceLimits {
             return AnnounceLimitAction::Allow;
         }
 
-        if entry.should_ingress_limit(now, &self.rate_limit) {
-            entry.hold(packet, now, &self.rate_limit);
+        if entry.should_ingress_limit(now, &self.rate_limit)
+            && entry.hold(packet, now, &self.rate_limit)
+        {
             return AnnounceLimitAction::Hold(entry.next_release_delay(now, &self.rate_limit));
         }
 
@@ -320,5 +340,36 @@ mod tests {
         let released = limits.release_ready();
         assert_eq!(released.len(), 1);
         assert_eq!(released[0].packet.destination, AddressHash::new([2; 16]));
+    }
+
+    #[test]
+    fn held_announces_evict_worst_entry_when_capacity_is_reached() {
+        let mut rate_limit = test_rate_limit();
+        rate_limit.max_held_announces = 1;
+        let mut limits = AnnounceLimits::with_rate_limit(rate_limit);
+        let iface = AddressHash::new([0xDD; crate::hash::ADDRESS_HASH_SIZE]);
+
+        assert_eq!(
+            limits.check(iface, &announce_packet(AddressHash::new([1; 16]), 4), false),
+            AnnounceLimitAction::Allow
+        );
+        sleep(StdDuration::from_millis(5));
+        assert!(matches!(
+            limits.check(iface, &announce_packet(AddressHash::new([2; 16]), 5), false),
+            AnnounceLimitAction::Hold(_)
+        ));
+        sleep(StdDuration::from_millis(5));
+        assert!(matches!(
+            limits.check(iface, &announce_packet(AddressHash::new([3; 16]), 1), false),
+            AnnounceLimitAction::Hold(_)
+        ));
+
+        sleep(StdDuration::from_millis(55));
+        assert!(limits.release_ready().is_empty());
+
+        sleep(StdDuration::from_millis(25));
+        let released = limits.release_ready();
+        assert_eq!(released.len(), 1);
+        assert_eq!(released[0].packet.destination, AddressHash::new([3; 16]));
     }
 }

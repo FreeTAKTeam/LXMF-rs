@@ -240,6 +240,48 @@ async fn unknown_announces_are_held_per_interface_and_released_by_lowest_hops() 
 }
 
 #[tokio::test]
+async fn learned_announces_are_not_held_after_route_is_known() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let config = TransportConfig::new("test", &local_identity, true);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+    let mut announce_rx = transport.recv_announces().await;
+
+    handler.lock().await.announce_limits = AnnounceLimits::with_rate_limit(AnnounceRateLimit {
+        incoming_freq_samples: 3,
+        max_held_announces: 8,
+        new_time: Duration::from_secs(3600),
+        burst_freq_new: 100.0,
+        burst_freq: 100.0,
+        burst_hold: Duration::from_millis(20),
+        burst_penalty: Duration::from_millis(20),
+        held_release_interval: Duration::from_millis(10),
+    });
+
+    let iface = AddressHash::new_from_rand(OsRng);
+    let mut destination = SingleInputDestination::new(
+        PrivateIdentity::new_from_rand(OsRng),
+        DestinationName::new("lxmf", "delivery"),
+    );
+    let announce = destination.announce(OsRng, None).expect("announce");
+
+    handle_announce(&announce, handler.lock().await, iface).await;
+    timeout(Duration::from_millis(200), announce_rx.recv())
+        .await
+        .expect("first announce should emit")
+        .expect("broadcast receive");
+
+    tokio::time::sleep(Duration::from_millis(5)).await;
+    handle_announce(&announce, handler.lock().await, iface).await;
+
+    let repeated = timeout(Duration::from_millis(200), announce_rx.recv())
+        .await
+        .expect("known announce should bypass ingress hold")
+        .expect("broadcast receive");
+    assert_eq!(repeated.hops, announce.header.hops);
+}
+
+#[tokio::test]
 async fn send_packet_with_outcome_reports_missing_identity() {
     let identity = PrivateIdentity::new_from_rand(OsRng);
     let config = TransportConfig::new("test", &identity, true);
