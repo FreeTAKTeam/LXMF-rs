@@ -134,11 +134,9 @@ pub(crate) fn validate_delivery_request(
             }
             Ok(())
         }
-        RequestedDeliveryMethod::Paper => Err(std::io::Error::new(
-            std::io::ErrorKind::Unsupported,
-            "paper delivery is not supported by the transport bridge",
-        )),
-        RequestedDeliveryMethod::Opportunistic | RequestedDeliveryMethod::Direct => Ok(()),
+        RequestedDeliveryMethod::Paper
+        | RequestedDeliveryMethod::Opportunistic
+        | RequestedDeliveryMethod::Direct => Ok(()),
     }
 }
 
@@ -167,13 +165,7 @@ impl DeliveryTask {
             RequestedDeliveryMethod::Direct => self.run_direct().await,
             RequestedDeliveryMethod::Opportunistic => self.run_opportunistic().await,
             RequestedDeliveryMethod::Propagated => self.run_propagated().await,
-            RequestedDeliveryMethod::Paper => {
-                let _ = self.receipt_tx.send(ReceiptEvent {
-                    message_id: self.message_id,
-                    status: "failed: paper delivery is not supported by the transport bridge"
-                        .to_string(),
-                });
-            }
+            RequestedDeliveryMethod::Paper => {}
         }
     }
 
@@ -521,6 +513,15 @@ impl OutboundBridge for TransportBridge {
         let requested_method = RequestedDeliveryMethod::parse(options.method.as_deref())?;
         let propagation_node_hex = daemon.outbound_propagation_node();
         validate_delivery_request(requested_method, propagation_node_hex.as_deref())?;
+        if requested_method == RequestedDeliveryMethod::Paper {
+            log_delivery_trace(
+                &record.id,
+                &record.destination,
+                "paper",
+                "deferred to sdk_paper_encode_v2",
+            );
+            return Ok(());
+        }
 
         let task = DeliveryTask {
             daemon,

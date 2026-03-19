@@ -2,7 +2,7 @@ use crate::bootstrap::{
     enforce_startup_policy, mark_interface_runtime_fields, mark_interface_startup_status,
     select_tcp_server_bind, InterfaceStartupFailure,
 };
-use crate::bridge::{validate_delivery_request, RequestedDeliveryMethod};
+use crate::bridge::{validate_delivery_request, RequestedDeliveryMethod, TransportBridge};
 use crate::bridge_helpers::opportunistic_payload;
 use crate::inbound_worker::{
     prune_outbound_resource_mappings_for_message, take_outbound_resource_tracking,
@@ -12,10 +12,12 @@ use crate::interfaces::{lora, serial};
 use crate::{bootstrap, Args};
 use futures::FutureExt;
 use reticulum_daemon::config::InterfaceConfig;
-use rns_rpc::{InterfaceRecord, RpcRequest};
+use rns_core::identity::PrivateIdentity;
+use rns_rpc::{InterfaceRecord, MessagesStore, OutboundBridge, RpcDaemon, RpcRequest};
 use rns_transport::delivery::send_outcome_status;
+use rns_transport::destination::DestinationName;
 use rns_transport::destination_hash::parse_destination_hash_required;
-use rns_transport::transport::SendPacketOutcome;
+use rns_transport::transport::{SendPacketOutcome, Transport, TransportConfig};
 use serde_json::json;
 use std::collections::HashMap;
 use std::fs;
@@ -134,6 +136,124 @@ fn propagated_delivery_requires_selected_node() {
 
     validate_delivery_request(RequestedDeliveryMethod::Propagated, Some("deadbeef"))
         .expect("selected node should satisfy propagated delivery");
+}
+
+async fn test_transport_bridge_fixture() -> (Arc<RpcDaemon>, Arc<TransportBridge>) {
+    let signer = PrivateIdentity::new_from_rand(rand_core::OsRng);
+    let transport_identity = rns_transport::identity_bridge::to_transport_private_identity(&signer);
+    let mut transport = Transport::new(TransportConfig::new("test", &transport_identity, true));
+    let announce_destination = transport
+        .add_destination(transport_identity.clone(), DestinationName::new("lxmf", "delivery"))
+        .await;
+    let transport = Arc::new(transport);
+
+    let receipt_map = Arc::new(Mutex::new(HashMap::new()));
+    let outbound_resource_map = Arc::new(Mutex::new(HashMap::new()));
+    let peer_crypto = Arc::new(Mutex::new(HashMap::new()));
+    let (receipt_tx, _receipt_rx) = tokio::sync::mpsc::unbounded_channel();
+
+    let bridge = Arc::new(TransportBridge::new(
+        transport,
+        signer,
+        [0u8; 16],
+        announce_destination,
+        None,
+        None,
+        None,
+        None,
+        peer_crypto,
+        receipt_map,
+        outbound_resource_map,
+        receipt_tx,
+    ));
+
+    let daemon = Arc::new(RpcDaemon::with_store_and_bridges(
+        MessagesStore::in_memory().expect("in-memory store"),
+        "bridge-test-node".to_string(),
+        Some(bridge.clone() as Arc<dyn OutboundBridge>),
+        None,
+    ));
+    bridge.set_daemon(daemon.clone());
+
+    (daemon, bridge)
+}
+
+#[tokio::test]
+async fn transport_bridge_leaves_paper_messages_non_terminal_for_encoding() {
+    let (daemon, _bridge) = test_transport_bridge_fixture().await;
+
+    let send = daemon
+        .handle_rpc(RpcRequest {
+            id: 200,
+            method: "send_message_v2".into(),
+            params: Some(json!({
+                "id": "paper-bridge-1",
+                "source": "src",
+                "destination": "0123456789abcdef0123456789abcdef",
+                "title": "",
+                "content": "hello",
+                "method": "paper"
+            })),
+        })
+        .expect("send");
+    assert!(send.error.is_none(), "paper send should remain schedulable");
+
+    let status = daemon
+        .handle_rpc(RpcRequest {
+            id: 201,
+            method: "sdk_status_v2".into(),
+            params: Some(json!({ "message_id": "paper-bridge-1" })),
+        })
+        .expect("status");
+    assert_eq!(status.result.expect("result")["message"]["receipt_status"], json!("sending"));
+
+    let encode = daemon
+        .handle_rpc(RpcRequest {
+            id: 202,
+            method: "sdk_paper_encode_v2".into(),
+            params: Some(json!({ "message_id": "paper-bridge-1" })),
+        })
+        .expect("paper encode");
+    assert!(encode.error.is_none(), "paper encode should stay available on bridge-backed runtime");
+
+    let final_status = daemon
+        .handle_rpc(RpcRequest {
+            id: 203,
+            method: "sdk_status_v2".into(),
+            params: Some(json!({ "message_id": "paper-bridge-1" })),
+        })
+        .expect("status after encode");
+    assert_eq!(
+        final_status.result.expect("result")["message"]["receipt_status"],
+        json!("sent: paper")
+    );
+}
+
+#[tokio::test]
+async fn transport_bridge_rejects_propagated_send_without_selected_node() {
+    let (daemon, _bridge) = test_transport_bridge_fixture().await;
+
+    let send = daemon
+        .handle_rpc(RpcRequest {
+            id: 210,
+            method: "send_message_v2".into(),
+            params: Some(json!({
+                "id": "propagated-bridge-1",
+                "source": "src",
+                "destination": "0123456789abcdef0123456789abcdef",
+                "title": "",
+                "content": "hello",
+                "method": "propagated"
+            })),
+        })
+        .expect("send");
+    let error = send.error.expect("propagated send should fail without node");
+    assert_eq!(error.code, "DELIVERY_FAILED");
+    assert!(
+        error.message.contains("no outbound propagation node selected"),
+        "unexpected error: {}",
+        error.message
+    );
 }
 
 #[test]
