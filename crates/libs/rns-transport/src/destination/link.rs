@@ -677,6 +677,15 @@ impl Link {
         usize::from(self.channel_window)
     }
 
+    pub fn channel_ready_to_send(&self) -> bool {
+        self.status == LinkStatus::Active
+            && self.ingress_iface.is_some()
+            && self.channel_pending.len() < self.channel_send_window()
+    }
+
+    pub fn channel_close_wait_hint(&self) -> Duration {
+        Duration::from_secs_f32(self.rtt.as_secs_f32() * self.channel_pending.len() as f32)
+    }
     fn channel_retry_timeout_for(rtt: Duration, tries: u8, outstanding: usize) -> Duration {
         let base = (rtt.as_secs_f32() * 2.5).max(0.025);
         let multiplier = 1.5_f32.powi(i32::from(tries.saturating_sub(1)));

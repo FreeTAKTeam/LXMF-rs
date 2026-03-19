@@ -490,6 +490,17 @@ impl TransportChannel {
         Ok(())
     }
 
+    pub async fn is_ready_to_send(&self) -> Result<bool, crate::channel::ChannelError> {
+        let link = self.find_link().await.ok_or(crate::channel::ChannelError::LinkNotReady)?;
+        let ready = link.lock().await.channel_ready_to_send();
+        Ok(ready)
+    }
+
+    pub async fn close_wait_hint(&self) -> Result<Duration, crate::channel::ChannelError> {
+        let link = self.find_link().await.ok_or(crate::channel::ChannelError::LinkNotReady)?;
+        let hint = link.lock().await.channel_close_wait_hint();
+        Ok(hint)
+    }
     pub async fn send_typed<M: crate::channel::TypedMessage>(
         &self,
         message: &M,

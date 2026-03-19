@@ -6,6 +6,7 @@ extern crate alloc;
 
 pub mod buffer;
 pub mod channel;
+pub mod channel_buffer;
 pub mod config;
 pub mod crypt;
 pub mod delivery;

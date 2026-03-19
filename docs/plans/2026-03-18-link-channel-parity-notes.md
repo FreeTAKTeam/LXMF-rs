@@ -109,6 +109,25 @@ The current implementation is intentionally narrower than Python’s full
   semantics.
 - Cross-process or daemon-visible channel abstractions if channel traffic becomes
   part of the public RPC surface.
+- A fuller Rust equivalent of Python `RNS.Buffer`; current work has only laid the
+  `StreamDataMessage` / raw reader-writer foundation.
+
+## Buffer Foundation
+
+- Rust now has a `channel_buffer` module with:
+  - `StreamDataMessage`
+  - `RawChannelReader`
+  - `RawChannelWriter`
+  - `Buffer::create_reader()`
+  - `Buffer::create_writer()`
+  - `Buffer::create_bidirectional_buffer()`
+- This is intentionally narrower than Python `RNS.Buffer`:
+  - it provides the message format, attachable async reader, and chunking writer
+  - it does not yet provide a full `std::io`-style buffered stream facade
+  - raw writer backpressure now behaves like Python `RawChannelWriter.write()`: it returns a
+    short write of `0` on `LinkNotReady` instead of surfacing a hard error
+  - raw writer close is best-effort like Python: it waits briefly for send readiness, then does a
+    single EOF send attempt and does not guarantee full drain
 
 ## Why This Note Exists
 
