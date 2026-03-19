@@ -240,6 +240,39 @@ fn announce_received_persists_stamp_cost_in_announce_log() {
 }
 
 #[test]
+fn ticket_generate_reuses_valid_ticket_for_destination() {
+    let daemon = RpcDaemon::test_instance();
+
+    let first = daemon
+        .handle_rpc(rpc_request(
+            90,
+            "ticket_generate",
+            json!({
+                "destination": "peer-ticket",
+            }),
+        ))
+        .expect("ticket generate")
+        .result
+        .expect("ticket generate result");
+    let second = daemon
+        .handle_rpc(rpc_request(
+            91,
+            "ticket_generate",
+            json!({
+                "destination": "peer-ticket",
+            }),
+        ))
+        .expect("ticket generate")
+        .result
+        .expect("ticket generate result");
+
+    assert_eq!(first["destination"].as_str(), Some("peer-ticket"));
+    assert_eq!(first["ticket"], second["ticket"]);
+    assert_eq!(first["expires_at"], second["expires_at"]);
+    assert_eq!(first["ticket"].as_str().map(str::len), Some(32));
+}
+
+#[test]
 fn autopeered_announce_records_propagation_peer_state() {
     let daemon = RpcDaemon::test_instance();
     daemon

@@ -7,7 +7,7 @@ use super::inbound_worker::{
 };
 use lxmf::WireMessage;
 use rand_core::OsRng;
-use reticulum_daemon::lxmf_bridge::build_wire_message;
+use reticulum_daemon::lxmf_bridge::build_wire_message_with_options;
 use reticulum_daemon::lxmf_bridge::rmpv_to_json;
 use reticulum_daemon::receipt_bridge::{track_receipt_mapping, ReceiptEvent};
 use rns_core::identity::{Identity as CoreIdentity, PrivateIdentity};
@@ -653,23 +653,45 @@ impl OutboundBridge for TransportBridge {
         let peer_info =
             self.peer_crypto.lock().expect("peer map").get(&record.destination).copied();
         let peer_identity = peer_info.map(|info| info.identity);
-
-        let payload = build_wire_message(
-            self.delivery_source_hash,
-            destination,
-            &record.title,
-            &record.content,
-            record.fields.clone(),
-            &self.signer,
-        )
-        .map_err(std::io::Error::other)?;
-
         let daemon = self
             .daemon
             .lock()
             .expect("transport bridge daemon mutex poisoned")
             .clone()
             .ok_or_else(|| std::io::Error::other("daemon bridge unavailable"))?;
+
+        let include_ticket = if options.include_ticket {
+            Some(
+                daemon
+                    .ensure_ticket(record.destination.as_str(), None)
+                    .map_err(std::io::Error::other)?,
+            )
+        } else {
+            None
+        };
+        let include_ticket_bytes = include_ticket
+            .as_ref()
+            .map(|ticket| {
+                hex::decode(ticket.ticket.as_str())
+                    .map(|bytes| (ticket.expires_at, bytes))
+                    .map_err(std::io::Error::other)
+            })
+            .transpose()?;
+
+        let payload = build_wire_message_with_options(
+            self.delivery_source_hash,
+            destination,
+            &record.title,
+            &record.content,
+            record.fields.clone(),
+            &self.signer,
+            options.stamp_cost,
+            options.ticket.as_deref(),
+            include_ticket_bytes
+                .as_ref()
+                .map(|(expires_at, ticket)| (*expires_at, ticket.as_slice())),
+        )
+        .map_err(std::io::Error::other)?;
         let requested_method = RequestedDeliveryMethod::parse(options.method.as_deref())?;
         let propagation_node_hex = daemon.outbound_propagation_node();
         validate_delivery_request(requested_method, propagation_node_hex.as_deref())?;

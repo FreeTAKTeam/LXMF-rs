@@ -1,5 +1,6 @@
 use reticulum_daemon::lxmf_bridge::{
-    build_wire_message, decode_wire_message, json_to_rmpv, rmpv_to_json,
+    build_wire_message, build_wire_message_with_options, decode_wire_message, json_to_rmpv,
+    rmpv_to_json,
 };
 use rns_core::identity::PrivateIdentity;
 
@@ -186,6 +187,64 @@ fn build_wire_message_rejects_ambiguous_attachment_strings_without_prefix() {
     let err = build_wire_message(source, destination, "title", "content", Some(fields), &identity)
         .expect_err("ambiguous attachment text must fail");
     assert!(err.to_string().contains("attachment text data must use explicit"));
+}
+
+#[test]
+fn build_wire_message_with_include_ticket_adds_ticket_field() {
+    let identity = PrivateIdentity::new_from_name("include-ticket");
+    let mut source = [0u8; 16];
+    source.copy_from_slice(identity.address_hash().as_slice());
+    let destination = [0x55u8; 16];
+    let expires_at = 1_900_000_000_i64;
+    let ticket = [0xabu8; 16];
+
+    let wire = build_wire_message_with_options(
+        source,
+        destination,
+        "title",
+        "content",
+        None,
+        &identity,
+        None,
+        None,
+        Some((expires_at, &ticket)),
+    )
+    .expect("wire");
+    let message = decode_wire_message(&wire).expect("decode");
+    let fields = message.fields.expect("fields");
+    let json = rmpv_to_json(&fields).expect("json");
+
+    assert_eq!(json["12"][0].as_i64(), Some(expires_at));
+    assert_eq!(
+        json["12"][1],
+        serde_json::json!([
+            171, 171, 171, 171, 171, 171, 171, 171, 171, 171, 171, 171, 171, 171, 171, 171
+        ])
+    );
+}
+
+#[test]
+fn build_wire_message_with_stamp_cost_generates_stamp() {
+    let identity = PrivateIdentity::new_from_name("stamp-cost");
+    let mut source = [0u8; 16];
+    source.copy_from_slice(identity.address_hash().as_slice());
+    let destination = [0x66u8; 16];
+
+    let wire = build_wire_message_with_options(
+        source,
+        destination,
+        "title",
+        "content",
+        None,
+        &identity,
+        Some(1),
+        None,
+        None,
+    )
+    .expect("wire");
+    let message = decode_wire_message(&wire).expect("decode");
+
+    assert_eq!(message.stamp.as_ref().map(Vec::len), Some(8));
 }
 
 #[test]

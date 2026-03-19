@@ -1,4 +1,7 @@
 impl RpcDaemon {
+    const DEFAULT_TICKET_EXPIRY_SECS: u64 = 21 * 24 * 60 * 60;
+    const TICKET_RENEW_SECS: i64 = 14 * 24 * 60 * 60;
+
     fn active_peer_count_from_guard(
         guard: &std::collections::HashMap<String, crate::rpc::PeerRecord>,
     ) -> usize {
@@ -136,6 +139,45 @@ impl RpcDaemon {
                 Some(trimmed.to_string())
             }
         });
+    }
+
+    pub fn ensure_ticket(
+        &self,
+        destination: &str,
+        ttl_secs: Option<u64>,
+    ) -> Result<TicketRecord, std::io::Error> {
+        use rand_core::{OsRng, RngCore};
+
+        let ttl_secs = ttl_secs.unwrap_or(Self::DEFAULT_TICKET_EXPIRY_SECS);
+        let ttl = i64::try_from(ttl_secs).map_err(|_| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("ttl_secs exceeds supported range: {ttl_secs}"),
+            )
+        })?;
+        let now = now_i64();
+        let mut guard = self.ticket_cache.lock().expect("ticket mutex poisoned");
+        if let Some(existing) = guard.get(destination).cloned() {
+            if existing.expires_at - now > Self::TICKET_RENEW_SECS {
+                return Ok(existing);
+            }
+        }
+
+        let expires_at = now.checked_add(ttl).ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("ttl_secs causes timestamp overflow: {ttl_secs}"),
+            )
+        })?;
+        let mut ticket = [0u8; 16];
+        OsRng.fill_bytes(&mut ticket);
+        let record = TicketRecord {
+            destination: destination.to_string(),
+            ticket: hex::encode(ticket),
+            expires_at,
+        };
+        guard.insert(destination.to_string(), record.clone());
+        Ok(record)
     }
 
     pub fn replace_interfaces(&self, interfaces: Vec<InterfaceRecord>) {

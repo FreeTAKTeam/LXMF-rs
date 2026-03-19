@@ -2297,6 +2297,7 @@ dependencies = [
  "ed25519-dalek",
  "futures",
  "hex",
+ "hkdf",
  "lxmf-core",
  "rand_core",
  "rmp-serde",
