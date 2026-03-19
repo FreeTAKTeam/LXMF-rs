@@ -380,7 +380,7 @@ impl RpcDaemon {
         let is_static = self.is_static_peer(peer.as_str());
         let remote_peering_cost_allowed = self.remote_peering_cost_allowed(peering_cost);
         if !is_static && !remote_peering_cost_allowed {
-            self.remove_peer(peer.as_str());
+            self.remove_autopeered_peer_if_stale_or_expensive(peer.as_str(), timestamp);
         }
         let should_peer =
             is_static || (remote_peering_cost_allowed && self.should_autopeer_peer(hops));
@@ -616,8 +616,14 @@ impl RpcDaemon {
         existing.peering_cost = peering_cost;
     }
 
-    fn remove_peer(&self, peer: &str) {
+    fn remove_autopeered_peer_if_stale_or_expensive(&self, peer: &str, timestamp: i64) {
         let mut guard = self.peers.lock().expect("peers mutex poisoned");
+        let should_remove = guard.get(peer).is_some_and(|existing| {
+            existing.peer_type.as_deref() == Some("auto") && timestamp >= existing.peering_timebase
+        });
+        if !should_remove {
+            return;
+        }
         let removed = guard.remove(peer).is_some();
         if !removed {
             return;

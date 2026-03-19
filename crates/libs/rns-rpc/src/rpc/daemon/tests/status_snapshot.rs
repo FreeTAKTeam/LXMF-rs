@@ -523,6 +523,129 @@ fn peer_sync_preserves_existing_auto_peer_type() {
 }
 
 #[test]
+fn stale_high_cost_announce_does_not_remove_newer_autopeer() {
+    let daemon = RpcDaemon::test_instance();
+    daemon
+        .handle_rpc(rpc_request(
+            55,
+            "propagation_enable",
+            json!({
+                "enabled": true,
+                "autopeer": true,
+                "remote_peering_cost_max": 5,
+            }),
+        ))
+        .expect("enable propagation");
+
+    daemon
+        .accept_announce_with_metadata(
+            "peer-auto".to_string(),
+            1_700_000_400,
+            None,
+            None,
+            None,
+            Some(vec!["propagation".to_string()]),
+            None,
+            None,
+            None,
+            Some(3),
+            Some(Some(1)),
+            Some(Some(4)),
+            None,
+            Some(1),
+            None,
+            None,
+            None,
+            None,
+        )
+        .expect("accept initial announce");
+
+    daemon
+        .accept_announce_with_metadata(
+            "peer-auto".to_string(),
+            1_700_000_399,
+            None,
+            None,
+            None,
+            Some(vec!["propagation".to_string()]),
+            None,
+            None,
+            None,
+            Some(3),
+            Some(Some(1)),
+            Some(Some(9)),
+            None,
+            Some(1),
+            None,
+            None,
+            None,
+            None,
+        )
+        .expect("accept stale high-cost announce");
+
+    let peers = daemon
+        .handle_rpc(RpcRequest { id: 56, method: "list_peers".to_string(), params: None })
+        .expect("list peers")
+        .result
+        .expect("list peers result");
+    let row = peers["peers"].as_array().and_then(|rows| rows.first()).expect("peer row");
+    assert_eq!(row["peer"].as_str(), Some("peer-auto"));
+    assert_eq!(row["peer_type"].as_str(), Some("auto"));
+}
+
+#[test]
+fn high_cost_announce_does_not_remove_manual_peer() {
+    let daemon = RpcDaemon::test_instance();
+    daemon
+        .handle_rpc(rpc_request(
+            57,
+            "propagation_enable",
+            json!({
+                "enabled": true,
+                "autopeer": true,
+                "remote_peering_cost_max": 5,
+            }),
+        ))
+        .expect("enable propagation");
+
+    daemon
+        .handle_rpc(rpc_request(58, "peer_sync", json!({ "peer": "peer-manual" })))
+        .expect("manual peer sync");
+
+    daemon
+        .accept_announce_with_metadata(
+            "peer-manual".to_string(),
+            1_700_000_500,
+            None,
+            None,
+            None,
+            Some(vec!["propagation".to_string()]),
+            None,
+            None,
+            None,
+            Some(3),
+            Some(Some(1)),
+            Some(Some(9)),
+            None,
+            Some(1),
+            None,
+            None,
+            None,
+            None,
+        )
+        .expect("accept high-cost announce");
+
+    let peers = daemon
+        .handle_rpc(RpcRequest { id: 59, method: "list_peers".to_string(), params: None })
+        .expect("list peers")
+        .result
+        .expect("list peers result");
+    let row = peers["peers"].as_array().and_then(|rows| rows.first()).expect("peer row");
+    assert_eq!(row["peer"].as_str(), Some("peer-manual"));
+    assert_eq!(row["peer_type"].as_str(), Some("manual"));
+}
+
+#[test]
 fn propagation_counters_track_ingest_and_unpeered_attempts() {
     let daemon = RpcDaemon::test_instance();
     daemon
