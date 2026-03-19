@@ -234,8 +234,212 @@ fn announce_received_persists_stamp_cost_in_announce_log() {
     let rows = result["announces"].as_array().expect("announce rows");
     let row = rows.first().expect("announce row");
     assert_eq!(row["peer"].as_str(), Some("peer-stamp"));
+    assert_eq!(row["timestamp"].as_i64(), Some(1_700_000_011));
     assert_eq!(row["stamp_cost"].as_u64(), Some(21));
     assert_eq!(row["stamp_cost_flexibility"].as_u64(), Some(4));
+}
+
+#[test]
+fn autopeered_announce_records_propagation_peer_state() {
+    let daemon = RpcDaemon::test_instance();
+    daemon
+        .handle_rpc(rpc_request(
+            45,
+            "propagation_enable",
+            json!({
+                "enabled": true,
+                "autopeer": true,
+                "autopeer_maxdepth": 2,
+                "remote_peering_cost_max": 8,
+            }),
+        ))
+        .expect("enable propagation");
+
+    daemon
+        .accept_announce_with_metadata(
+            "peer-auto".to_string(),
+            1_700_000_100,
+            Some("Peer Auto".to_string()),
+            Some("announce".to_string()),
+            None,
+            Some(vec!["propagation".to_string()]),
+            None,
+            None,
+            None,
+            Some(4),
+            Some(Some(1)),
+            Some(Some(7)),
+            None,
+            Some(1),
+            None,
+            None,
+            None,
+            None,
+        )
+        .expect("accept announce");
+
+    let peers = daemon
+        .handle_rpc(RpcRequest { id: 46, method: "list_peers".to_string(), params: None })
+        .expect("list peers")
+        .result
+        .expect("list peers result");
+    let row = peers["peers"].as_array().and_then(|rows| rows.first()).expect("peer row");
+    assert_eq!(row["peer"].as_str(), Some("peer-auto"));
+    assert_eq!(row["peer_type"].as_str(), Some("auto"));
+    assert_eq!(row["peering_timebase"].as_i64(), Some(1_700_000_100));
+    assert_eq!(row["propagation_stamp_cost"].as_u64(), Some(4));
+    assert_eq!(row["propagation_stamp_cost_flexibility"].as_u64(), Some(1));
+    assert_eq!(row["peering_cost"].as_u64(), Some(7));
+}
+
+#[test]
+fn stale_announce_does_not_regress_propagation_peer_state() {
+    let daemon = RpcDaemon::test_instance();
+    daemon
+        .handle_rpc(rpc_request(
+            47,
+            "propagation_enable",
+            json!({
+                "enabled": true,
+                "autopeer": true,
+            }),
+        ))
+        .expect("enable propagation");
+
+    daemon
+        .accept_announce_with_metadata(
+            "peer-auto".to_string(),
+            1_700_000_200,
+            Some("New Peer".to_string()),
+            Some("announce".to_string()),
+            None,
+            Some(vec!["propagation".to_string()]),
+            None,
+            None,
+            None,
+            Some(5),
+            Some(Some(2)),
+            Some(Some(6)),
+            None,
+            Some(1),
+            None,
+            None,
+            None,
+            None,
+        )
+        .expect("accept fresh announce");
+    daemon
+        .accept_announce_with_metadata(
+            "peer-auto".to_string(),
+            1_700_000_150,
+            Some("Old Peer".to_string()),
+            Some("announce".to_string()),
+            None,
+            Some(vec!["propagation".to_string()]),
+            None,
+            None,
+            None,
+            Some(2),
+            Some(Some(0)),
+            Some(Some(3)),
+            None,
+            Some(1),
+            None,
+            None,
+            None,
+            None,
+        )
+        .expect("accept stale announce");
+
+    let peers = daemon
+        .handle_rpc(RpcRequest { id: 48, method: "list_peers".to_string(), params: None })
+        .expect("list peers")
+        .result
+        .expect("list peers result");
+    let row = peers["peers"].as_array().and_then(|rows| rows.first()).expect("peer row");
+    assert_eq!(row["name"].as_str(), Some("New Peer"));
+    assert_eq!(row["peering_timebase"].as_i64(), Some(1_700_000_200));
+    assert_eq!(row["propagation_stamp_cost"].as_u64(), Some(5));
+    assert_eq!(row["propagation_stamp_cost_flexibility"].as_u64(), Some(2));
+    assert_eq!(row["peering_cost"].as_u64(), Some(6));
+
+    let announces = daemon
+        .handle_rpc(RpcRequest { id: 49, method: "list_announces".to_string(), params: None })
+        .expect("list announces")
+        .result
+        .expect("list announces result");
+    let rows = announces["announces"].as_array().expect("announce rows");
+    assert_eq!(rows.first().and_then(|row| row["timestamp"].as_i64()), Some(1_700_000_200));
+    assert_eq!(rows.get(1).and_then(|row| row["timestamp"].as_i64()), Some(1_700_000_150));
+}
+
+#[test]
+fn peering_cost_policy_blocks_and_breaks_autopeers() {
+    let daemon = RpcDaemon::test_instance();
+    daemon
+        .handle_rpc(rpc_request(
+            50,
+            "propagation_enable",
+            json!({
+                "enabled": true,
+                "autopeer": true,
+                "remote_peering_cost_max": 5,
+            }),
+        ))
+        .expect("enable propagation");
+
+    daemon
+        .accept_announce_with_metadata(
+            "peer-auto".to_string(),
+            1_700_000_300,
+            None,
+            None,
+            None,
+            Some(vec!["propagation".to_string()]),
+            None,
+            None,
+            None,
+            Some(3),
+            Some(Some(1)),
+            Some(Some(4)),
+            None,
+            Some(1),
+            None,
+            None,
+            None,
+            None,
+        )
+        .expect("accept initial announce");
+
+    daemon
+        .accept_announce_with_metadata(
+            "peer-auto".to_string(),
+            1_700_000_301,
+            None,
+            None,
+            None,
+            Some(vec!["propagation".to_string()]),
+            None,
+            None,
+            None,
+            Some(3),
+            Some(Some(1)),
+            Some(Some(9)),
+            None,
+            Some(1),
+            None,
+            None,
+            None,
+            None,
+        )
+        .expect("accept high-cost announce");
+
+    let peers = daemon
+        .handle_rpc(RpcRequest { id: 51, method: "list_peers".to_string(), params: None })
+        .expect("list peers")
+        .result
+        .expect("list peers result");
+    assert_eq!(peers["peers"].as_array().map(|rows| rows.len()), Some(0));
 }
 
 #[test]
@@ -374,6 +578,15 @@ fn unpeered_peers_do_not_consume_max_peer_capacity() {
         .handle_rpc(rpc_request(84, "peer_sync", json!({ "peer": "peer-b" })))
         .expect("sync replacement peer-b");
     assert!(replacement.error.is_none(), "replacement peer should be admitted after unpeer");
+
+    let peers = daemon
+        .handle_rpc(RpcRequest { id: 86, method: "list_peers".to_string(), params: None })
+        .expect("list peers")
+        .result
+        .expect("list peers result");
+    let rows = peers["peers"].as_array().expect("peer rows");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["peer"].as_str(), Some("peer-b"));
 
     let status = daemon
         .handle_rpc(RpcRequest { id: 85, method: "daemon_status_ex".to_string(), params: None })

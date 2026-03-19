@@ -525,6 +525,14 @@ pub struct PeerRecord {
     pub first_seen: i64,
     #[serde(default)]
     pub seen_count: u64,
+    #[serde(default)]
+    pub peering_timebase: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub propagation_stamp_cost: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub propagation_stamp_cost_flexibility: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub peering_cost: Option<u32>,
 }
 
 fn default_true() -> bool {

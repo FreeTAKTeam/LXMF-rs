@@ -340,18 +340,8 @@ impl RpcDaemon {
 
                 let removed = {
                     let mut guard = self.peers.lock().expect("peers mutex poisoned");
-                    let removed = if let Some(existing) = guard.get_mut(peer_id) {
-                        existing.alive = false;
-                        existing.peer_type = Some("unpeered".to_string());
-                        existing.next_sync_attempt = 0;
-                        true
-                    } else {
-                        false
-                    };
-                    let peer_count = guard
-                        .values()
-                        .filter(|record| record.peer_type.as_deref() != Some("unpeered"))
-                        .count();
+                    let removed = guard.remove(peer_id).is_some();
+                    let peer_count = guard.len();
                     drop(guard);
                     self.update_daemon_status_snapshot(|snapshot| {
                         snapshot.peer_count = peer_count;

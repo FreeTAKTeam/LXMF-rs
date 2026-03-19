@@ -378,7 +378,12 @@ impl RpcDaemon {
         let stamp_cost_flexibility = stamp_cost_flexibility.flatten();
         let peering_cost = peering_cost.flatten();
         let is_static = self.is_static_peer(peer.as_str());
-        let should_peer = is_static || self.should_autopeer_peer(hops);
+        let remote_peering_cost_allowed = self.remote_peering_cost_allowed(peering_cost);
+        if !is_static && !remote_peering_cost_allowed {
+            self.remove_peer(peer.as_str());
+        }
+        let should_peer =
+            is_static || (remote_peering_cost_allowed && self.should_autopeer_peer(hops));
         let peer_type = if is_static {
             Some("static".to_string())
         } else if should_peer {
@@ -392,14 +397,22 @@ impl RpcDaemon {
             parse_capabilities_from_app_data_hex(app_data_hex.as_deref())
         };
         let record = if should_peer {
-            self.upsert_peer(
+            let record = self.upsert_peer(
                 peer.clone(),
                 timestamp,
                 capability_list.clone(),
                 name.clone(),
                 name_source.clone(),
                 peer_type.clone(),
-            )?
+            )?;
+            self.refresh_peer_propagation_state(
+                peer.as_str(),
+                timestamp,
+                stamp_cost,
+                stamp_cost_flexibility,
+                peering_cost,
+            );
+            record
         } else {
             self.transient_peer_record(
                 peer.clone(),
@@ -412,9 +425,9 @@ impl RpcDaemon {
         };
 
         let announce_record = AnnounceRecord {
-            id: format!("announce-{}-{}-{}", record.last_seen, record.peer, record.seen_count),
+            id: format!("announce-{}-{}-{}", timestamp, record.peer, record.seen_count),
             peer: record.peer.clone(),
-            timestamp: record.last_seen,
+            timestamp,
             name: record.name.clone(),
             name_source: record.name_source.clone(),
             first_seen: record.first_seen,
@@ -435,7 +448,7 @@ impl RpcDaemon {
             payload: json!({
                 "id": announce_record.id,
                 "peer": record.peer,
-                "timestamp": record.last_seen,
+                "timestamp": timestamp,
                 "name": record.name,
                 "name_source": record.name_source,
                 "first_seen": record.first_seen,
@@ -475,17 +488,20 @@ impl RpcDaemon {
 
         let mut guard = self.peers.lock().expect("peers mutex poisoned");
         if let Some(existing) = guard.get_mut(&peer) {
-            existing.last_seen = timestamp;
+            let is_newer = timestamp >= existing.last_seen;
+            existing.last_seen = existing.last_seen.max(timestamp);
             existing.seen_count = existing.seen_count.saturating_add(1);
-            if !cleaned_capabilities.is_empty() {
+            if is_newer && !cleaned_capabilities.is_empty() {
                 existing.capabilities = cleaned_capabilities.clone();
             }
-            if let Some(name) = cleaned_name {
-                existing.name = Some(name);
-                existing.name_source = cleaned_name_source;
-            }
-            if let Some(peer_type) = peer_type.clone() {
-                existing.peer_type = Some(peer_type);
+            if is_newer {
+                if let Some(name) = cleaned_name {
+                    existing.name = Some(name);
+                    existing.name_source = cleaned_name_source;
+                }
+                if let Some(peer_type) = peer_type.clone() {
+                    existing.peer_type = Some(peer_type);
+                }
             }
             let record = existing.clone();
             let peer_count = Self::active_peer_count_from_guard(&guard);
@@ -514,6 +530,10 @@ impl RpcDaemon {
             acceptance_rate: 1.0,
             first_seen: timestamp,
             seen_count: 1,
+            peering_timebase: 0,
+            propagation_stamp_cost: None,
+            propagation_stamp_cost_flexibility: None,
+            peering_cost: None,
         };
         guard.insert(peer, record.clone());
         let peer_count = Self::active_peer_count_from_guard(&guard);
@@ -563,6 +583,52 @@ impl RpcDaemon {
         hops.unwrap_or(1) <= propagation.autopeer_maxdepth.max(1)
     }
 
+    fn remote_peering_cost_allowed(&self, peering_cost: Option<u32>) -> bool {
+        let propagation = self.propagation_state.lock().expect("propagation mutex poisoned");
+        match (peering_cost, propagation.remote_peering_cost_max) {
+            (Some(remote_cost), Some(max_cost)) => remote_cost <= max_cost,
+            _ => true,
+        }
+    }
+
+    fn refresh_peer_propagation_state(
+        &self,
+        peer: &str,
+        timestamp: i64,
+        stamp_cost: Option<u32>,
+        stamp_cost_flexibility: Option<u32>,
+        peering_cost: Option<u32>,
+    ) {
+        let mut guard = self.peers.lock().expect("peers mutex poisoned");
+        let Some(existing) = guard.get_mut(peer) else {
+            return;
+        };
+        if timestamp < existing.peering_timebase {
+            return;
+        }
+
+        existing.alive = true;
+        existing.sync_backoff = 0;
+        existing.next_sync_attempt = 0;
+        existing.peering_timebase = timestamp;
+        existing.propagation_stamp_cost = stamp_cost;
+        existing.propagation_stamp_cost_flexibility = stamp_cost_flexibility;
+        existing.peering_cost = peering_cost;
+    }
+
+    fn remove_peer(&self, peer: &str) {
+        let mut guard = self.peers.lock().expect("peers mutex poisoned");
+        let removed = guard.remove(peer).is_some();
+        if !removed {
+            return;
+        }
+        let peer_count = Self::active_peer_count_from_guard(&guard);
+        drop(guard);
+        self.update_daemon_status_snapshot(|snapshot| {
+            snapshot.peer_count = peer_count;
+        });
+    }
+
     fn transient_peer_record(
         &self,
         peer: String,
@@ -589,6 +655,10 @@ impl RpcDaemon {
             acceptance_rate: 1.0,
             first_seen: timestamp,
             seen_count: 1,
+            peering_timebase: 0,
+            propagation_stamp_cost: None,
+            propagation_stamp_cost_flexibility: None,
+            peering_cost: None,
         }
     }
 
