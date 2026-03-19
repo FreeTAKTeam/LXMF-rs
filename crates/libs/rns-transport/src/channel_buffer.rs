@@ -1,5 +1,6 @@
 use std::collections::HashMap;
-use std::io::Write;
+use std::io::{Read, Write};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -83,10 +84,13 @@ impl TypedMessage for StreamDataMessage {
 
         if compressed {
             let compressed_data = data;
-            let mut decoder = bzip2::read::BzDecoder::new(compressed_data.as_slice());
+            let decoder = bzip2::read::BzDecoder::new(compressed_data.as_slice());
             let mut decoded = Vec::new();
-            std::io::Read::read_to_end(&mut decoder, &mut decoded)
-                .map_err(|_| ChannelError::InvalidFrame)?;
+            let mut limited = decoder.take(MAX_CHUNK_LEN as u64 + 1);
+            limited.read_to_end(&mut decoded).map_err(|_| ChannelError::InvalidFrame)?;
+            if decoded.len() > MAX_CHUNK_LEN {
+                return Err(ChannelError::InvalidFrame);
+            }
             data = decoded;
         }
 
@@ -103,7 +107,7 @@ impl ReadyCallbackId {
     }
 }
 
-type ReadyCallback = Box<dyn Fn(usize) + Send + Sync>;
+type ReadyCallback = Arc<dyn Fn(usize) + Send + Sync>;
 
 #[derive(Default)]
 struct ReaderState {
@@ -144,7 +148,9 @@ impl RawChannelReader {
                     state.eof = true;
                 }
                 let ready = state.buffer.len();
-                for callback in state.callbacks.values() {
+                let callbacks = state.callbacks.values().cloned().collect::<Vec<_>>();
+                drop(state);
+                for callback in callbacks {
                     callback(ready);
                 }
                 true
@@ -165,7 +171,7 @@ impl RawChannelReader {
         let mut state = self.state.lock().expect("reader state");
         let id = ReadyCallbackId::new(state.next_callback_id);
         state.next_callback_id = state.next_callback_id.wrapping_add(1);
-        state.callbacks.insert(id, Box::new(callback));
+        state.callbacks.insert(id, Arc::new(callback));
         id
     }
 
@@ -203,7 +209,7 @@ impl RawChannelReader {
 pub struct RawChannelWriter {
     stream_id: u16,
     channel: TransportChannel,
-    eof_sent: bool,
+    eof_sent: AtomicBool,
 }
 
 impl RawChannelWriter {
@@ -212,7 +218,7 @@ impl RawChannelWriter {
             return Err(ChannelError::InvalidFrame);
         }
 
-        Ok(Self { stream_id, channel, eof_sent: false })
+        Ok(Self { stream_id, channel, eof_sent: AtomicBool::new(false) })
     }
 
     pub fn stream_id(&self) -> u16 {
@@ -220,10 +226,14 @@ impl RawChannelWriter {
     }
 
     pub fn max_chunk_len(&self) -> usize {
-        STREAM_DATA_MAX_LEN
+        MAX_CHUNK_LEN
     }
 
     pub async fn write(&self, bytes: &[u8]) -> Result<usize, ChannelError> {
+        if self.eof_sent.load(Ordering::Acquire) {
+            return Ok(0);
+        }
+
         let (message, processed) = Self::encode_chunk(self.stream_id, bytes, false)?;
         self.channel.open().await?;
         match self.channel.send_typed(&message).await {
@@ -234,6 +244,10 @@ impl RawChannelWriter {
     }
 
     pub async fn write_all(&self, bytes: &[u8]) -> Result<usize, ChannelError> {
+        if self.eof_sent.load(Ordering::Acquire) {
+            return Ok(0);
+        }
+
         let mut total = 0usize;
         let mut remaining = bytes;
 
@@ -250,7 +264,7 @@ impl RawChannelWriter {
     }
 
     pub async fn close(&mut self) -> Result<(), ChannelError> {
-        if self.eof_sent {
+        if self.eof_sent.load(Ordering::Acquire) {
             return Ok(());
         }
 
@@ -270,7 +284,7 @@ impl RawChannelWriter {
         match self.channel.open().await {
             Ok(()) => {}
             Err(ChannelError::LinkNotReady) => {
-                self.eof_sent = true;
+                self.eof_sent.store(true, Ordering::Release);
                 return Ok(());
             }
             Err(err) => return Err(err),
@@ -279,7 +293,7 @@ impl RawChannelWriter {
             Ok(_) | Err(ChannelError::LinkNotReady) => {}
             Err(err) => return Err(err),
         }
-        self.eof_sent = true;
+        self.eof_sent.store(true, Ordering::Release);
         Ok(())
     }
 
@@ -297,7 +311,7 @@ impl RawChannelWriter {
         let mut processed_length = 0usize;
 
         if chunk_len > 32 {
-            for attempt in 1..COMPRESSION_TRIES {
+            for attempt in 1..=COMPRESSION_TRIES {
                 let segment_len = chunk_len / attempt;
                 if segment_len == 0 {
                     break;
@@ -398,6 +412,20 @@ mod tests {
         assert!(!decoded.eof);
     }
 
+    #[test]
+    fn stream_data_message_rejects_oversized_compressed_payloads() {
+        let payload = vec![b'A'; MAX_CHUNK_LEN + 1];
+        let mut encoder = BzEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(payload.as_slice()).expect("compress");
+        let compressed = encoder.finish().expect("finish");
+
+        let message = StreamDataMessage::new(7, compressed, false, true).expect("message");
+        assert!(matches!(
+            StreamDataMessage::decode(&message.encode()),
+            Err(ChannelError::InvalidFrame)
+        ));
+    }
+
     #[tokio::test]
     async fn stream_data_message_rejects_out_of_range_stream_ids() {
         assert!(StreamDataMessage::new(STREAM_ID_MAX + 1, Vec::new(), false, false).is_err());
@@ -428,6 +456,28 @@ mod tests {
         assert_eq!(reader.read(5).expect("chunk"), b"hello".to_vec());
         assert_eq!(reader.read(32).expect("chunk"), b"-channel".to_vec());
         assert_eq!(ready.lock().expect("lock").as_slice(), &[13]);
+    }
+
+    #[tokio::test]
+    async fn raw_channel_reader_callbacks_can_reenter_reader_without_deadlock() {
+        let transport = test_transport();
+        let (outbound, mut inbound, iface, channel) = linked_channel(&transport).await;
+        let reader = RawChannelReader::attach(24, channel).await.expect("reader");
+        let callback_reader = reader.clone();
+        let (tx, rx) = std::sync::mpsc::sync_channel(1);
+        reader.add_ready_callback(move |_| {
+            tx.send(callback_reader.ready_len()).expect("send ready len");
+        });
+
+        let message =
+            StreamDataMessage::new(24, b"reenter".to_vec(), false, false).expect("message");
+        let (_sequence, packet) = inbound
+            .send_channel_message(StreamDataMessage::MSG_TYPE, message.encode())
+            .expect("channel message");
+
+        let result = outbound.lock().await.handle_packet(&packet, iface);
+        assert!(matches!(result, LinkHandleResult::Proof(_)));
+        assert_eq!(rx.recv_timeout(Duration::from_secs(1)).expect("callback"), 7);
     }
 
     #[tokio::test]
@@ -487,7 +537,18 @@ mod tests {
         let mut writer = RawChannelWriter::new(13, channel).expect("writer");
 
         writer.close().await.expect("close");
-        assert!(writer.eof_sent);
+        assert!(writer.eof_sent.load(Ordering::Acquire));
+    }
+
+    #[tokio::test]
+    async fn raw_channel_writer_refuses_writes_after_eof() {
+        let transport = test_transport();
+        let channel = transport.channel(AddressHash::new_from_rand(OsRng));
+        let writer = RawChannelWriter::new(13, channel).expect("writer");
+        writer.eof_sent.store(true, Ordering::Release);
+
+        assert_eq!(writer.write(b"after-eof").await.expect("write"), 0);
+        assert_eq!(writer.write_all(b"after-eof").await.expect("write all"), 0);
     }
 
     #[tokio::test]
