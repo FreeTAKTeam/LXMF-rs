@@ -140,6 +140,12 @@ pub(crate) fn validate_delivery_request(
     }
 }
 
+struct LinkModeStatuses {
+    packet: &'static str,
+    resource: &'static str,
+    resource_sent: &'static str,
+}
+
 struct DeliveryTask {
     daemon: Arc<RpcDaemon>,
     transport: Arc<Transport>,
@@ -185,9 +191,11 @@ impl DeliveryTask {
                 self.destination_hex.as_str(),
                 destination_desc,
                 &self.payload,
-                "sent: link",
-                "sending: link resource",
-                OUTBOUND_RESOURCE_SENT_STATUS,
+                LinkModeStatuses {
+                    packet: "sent: link",
+                    resource: "sending: link resource",
+                    resource_sent: OUTBOUND_RESOURCE_SENT_STATUS,
+                },
             )
             .await
         {
@@ -268,9 +276,11 @@ impl DeliveryTask {
                 propagation_node_hex.as_str(),
                 propagation_destination.desc,
                 &payload,
-                "sent: propagated",
-                "sending: propagated resource",
-                "sent: propagated resource",
+                LinkModeStatuses {
+                    packet: "sent: propagated",
+                    resource: "sending: propagated resource",
+                    resource_sent: "sent: propagated resource",
+                },
             )
             .await
         {
@@ -410,9 +420,7 @@ impl DeliveryTask {
         activity_peer: &str,
         destination_desc: DestinationDesc,
         payload: &[u8],
-        packet_status: &str,
-        resource_status: &str,
-        resource_sent_status: &str,
+        statuses: LinkModeStatuses,
     ) -> Result<(), std::io::Error> {
         let result = send_via_link(
             self.transport.as_ref(),
@@ -451,7 +459,7 @@ impl DeliveryTask {
                 log_delivery_trace(&self.message_id, &self.destination_hex, trace_stage, &detail);
                 let _ = self.receipt_tx.send(ReceiptEvent {
                     message_id: self.message_id.clone(),
-                    status: packet_status.to_string(),
+                    status: statuses.packet.to_string(),
                 });
                 Ok(())
             }
@@ -464,14 +472,14 @@ impl DeliveryTask {
                         message_id: self.message_id.clone(),
                         peer: activity_peer.to_string(),
                         bytes: payload.len(),
-                        sent_status: resource_sent_status.to_string(),
+                        sent_status: statuses.resource_sent.to_string(),
                     },
                 );
                 let detail = format!("resource_hash={resource_hash_hex}");
                 log_delivery_trace(&self.message_id, &self.destination_hex, trace_stage, &detail);
                 let _ = self.receipt_tx.send(ReceiptEvent {
                     message_id: self.message_id.clone(),
-                    status: resource_status.to_string(),
+                    status: statuses.resource.to_string(),
                 });
                 Ok(())
             }
