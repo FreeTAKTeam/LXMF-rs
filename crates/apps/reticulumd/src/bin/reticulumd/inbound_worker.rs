@@ -46,7 +46,8 @@ pub(super) fn spawn_inbound_worker(
                 match event.kind {
                     ResourceEventKind::Complete(complete) => {
                         if let Some(destination) =
-                            resolve_lxmf_resource_destination(transport.as_ref(), &event.link_id).await
+                            resolve_lxmf_resource_destination(transport.as_ref(), &event.link_id)
+                                .await
                         {
                             if let Some(record) = decode_inbound_payload(
                                 destination,
