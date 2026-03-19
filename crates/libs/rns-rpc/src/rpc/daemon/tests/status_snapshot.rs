@@ -473,6 +473,56 @@ fn peer_activity_updates_runtime_counters() {
 }
 
 #[test]
+fn peer_sync_preserves_existing_auto_peer_type() {
+    let daemon = RpcDaemon::test_instance();
+    daemon
+        .handle_rpc(rpc_request(
+            52,
+            "propagation_enable",
+            json!({
+                "enabled": true,
+                "autopeer": true,
+            }),
+        ))
+        .expect("enable propagation");
+
+    daemon
+        .accept_announce_with_metadata(
+            "peer-auto".to_string(),
+            1_700_000_220,
+            Some("Peer Auto".to_string()),
+            Some("announce".to_string()),
+            None,
+            Some(vec!["propagation".to_string()]),
+            None,
+            None,
+            None,
+            Some(4),
+            Some(Some(1)),
+            Some(Some(4)),
+            None,
+            Some(1),
+            None,
+            None,
+            None,
+            None,
+        )
+        .expect("accept announce");
+
+    daemon
+        .handle_rpc(rpc_request(53, "peer_sync", json!({ "peer": "peer-auto" })))
+        .expect("peer sync");
+
+    let peers = daemon
+        .handle_rpc(RpcRequest { id: 54, method: "list_peers".to_string(), params: None })
+        .expect("list peers")
+        .result
+        .expect("list peers result");
+    let row = peers["peers"].as_array().and_then(|rows| rows.first()).expect("peer row");
+    assert_eq!(row["peer_type"].as_str(), Some("auto"));
+}
+
+#[test]
 fn propagation_counters_track_ingest_and_unpeered_attempts() {
     let daemon = RpcDaemon::test_instance();
     daemon

@@ -283,10 +283,16 @@ impl RpcDaemon {
                 }
 
                 let timestamp = now_i64();
+                let existing_peer_type = self
+                    .peers
+                    .lock()
+                    .expect("peers mutex poisoned")
+                    .get(peer_id)
+                    .and_then(|record| record.peer_type.clone());
                 let peer_type = if self.is_static_peer(peer_id) {
                     Some("static".to_string())
                 } else {
-                    Some("manual".to_string())
+                    existing_peer_type.or(Some("manual".to_string()))
                 };
                 let record = self.upsert_peer(
                     peer_id.to_string(),
