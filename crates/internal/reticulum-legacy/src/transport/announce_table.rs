@@ -5,7 +5,7 @@ use tokio::time::{Duration, Instant};
 use crate::hash::AddressHash;
 use crate::iface::{TxMessage, TxMessageType};
 use crate::packet::{
-    ContextFlag, DestinationType, Header, HeaderType, IfacFlag, Packet, PacketContext, PacketType,
+    DestinationType, Header, HeaderType, IfacFlag, Packet, PacketContext, PacketType,
     PropagationType,
 };
 
@@ -290,6 +290,7 @@ impl Default for AnnounceTable {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::packet::ContextFlag;
     use rand_core::OsRng;
 
     #[test]
