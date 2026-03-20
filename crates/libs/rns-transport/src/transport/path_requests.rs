@@ -30,7 +30,7 @@ pub fn create_path_request_destination() -> PlainInputDestination {
 pub type TagBytes = Vec<u8>;
 type DuplicateKey = (AddressHash, TagBytes);
 type DiscoveryKey = (AddressHash, Option<AddressHash>);
-type LocalResponseKey = (AddressHash, Option<AddressHash>, AddressHash, TagBytes);
+type LocalResponseKey = (AddressHash, Option<AddressHash>, AddressHash, AddressHash);
 
 pub fn create_random_tag() -> TagBytes {
     AddressHash::new_from_rand(OsRng).as_slice().into()
@@ -75,6 +75,13 @@ impl PathRequest {
 
         Some(Self { destination, requesting_transport, tag_bytes })
     }
+}
+
+fn local_response_tag_key(tag_bytes: &[u8]) -> AddressHash {
+    let mut bounded = [0u8; ADDRESS_HASH_SIZE];
+    let copy_len = core::cmp::min(tag_bytes.len(), ADDRESS_HASH_SIZE);
+    bounded[..copy_len].copy_from_slice(&tag_bytes[..copy_len]);
+    AddressHash::new(bounded)
 }
 
 pub struct PathRequests {
@@ -143,10 +150,12 @@ impl PathRequests {
     }
 
     fn prune_local_responses(&mut self, now: Instant) {
-        while let Some((key, timeout)) = self.local_response_queue.front().cloned() {
-            if timeout > now {
+        while let Some((key, timeout)) = self.local_response_queue.front() {
+            if *timeout > now {
                 break;
             }
+            let key = *key;
+            let timeout = *timeout;
             self.local_response_queue.pop_front();
             if self.local_response_cache.get(&key).copied() == Some(timeout) {
                 self.local_response_cache.remove(&key);
@@ -237,7 +246,7 @@ impl PathRequests {
     ) -> bool {
         self.prune_local_responses(now);
 
-        let key = (*destination, requesting_transport, on_iface, tag_bytes.to_vec());
+        let key = (*destination, requesting_transport, on_iface, local_response_tag_key(tag_bytes));
         if let Some(timeout) = self.local_response_cache.get(&key) {
             if *timeout > now {
                 return false;
@@ -573,6 +582,36 @@ mod tests {
                 now + cooldown + Duration::from_millis(2)
             ),
             "refreshing the throttle should keep the replacement entry alive"
+        );
+    }
+
+    #[test]
+    fn oversized_request_tags_share_the_bounded_local_response_key() {
+        let mut testee = PathRequests::new("", None, 16, 16, 30);
+        let destination = AddressHash::new_from_rand(OsRng);
+        let requester = Some(AddressHash::new_from_rand(OsRng));
+        let iface = AddressHash::new_from_rand(OsRng);
+        let truncated_tag = AddressHash::new_from_rand(OsRng);
+        let mut oversized_tag = truncated_tag.as_slice().to_vec();
+        oversized_tag.extend_from_slice(&[0xAB; ADDRESS_HASH_SIZE]);
+        let now = Instant::now();
+
+        assert!(testee.allow_local_response_at(
+            &destination,
+            requester,
+            iface,
+            &oversized_tag,
+            now
+        ));
+        assert!(
+            !testee.allow_local_response_at(
+                &destination,
+                requester,
+                iface,
+                truncated_tag.as_slice(),
+                now
+            ),
+            "oversized tags should collapse to the same bounded throttle key"
         );
     }
 
