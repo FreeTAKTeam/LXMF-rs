@@ -9,10 +9,7 @@ struct CompatibilityCase {
 }
 
 const HARNESS_CASES: [CompatibilityCase; 3] = [
-    CompatibilityCase {
-        id: "direct",
-        description: "Direct mixed Rust/Python delivery path",
-    },
+    CompatibilityCase { id: "direct", description: "Direct mixed Rust/Python delivery path" },
     CompatibilityCase {
         id: "opportunistic",
         description: "Opportunistic mixed Rust/Python delivery path",
@@ -32,11 +29,13 @@ fn compatibility_matrix_covers_first_slice() {
 }
 
 #[test]
+#[ignore = "requires live Python compatibility harness environment"]
 fn python_compat_direct() {
     run_case("direct");
 }
 
 #[test]
+#[ignore = "requires live Python compatibility harness environment"]
 fn python_compat_opportunistic() {
     run_case("opportunistic");
 }
@@ -51,15 +50,17 @@ fn run_case(case_id: &str) {
     let script = smoke_script_path();
     let python_bin = env::var("LXMF_PYTHON_BIN").unwrap_or_else(|_| "python3".to_string());
     let python_path = effective_python_path();
-    if let Err(reason) = ensure_environment(&script, &python_bin, python_path.as_deref()) {
-        eprintln!("python compatibility harness skipped ({case_id}): {reason}");
-        return;
-    }
+    ensure_environment(&script, &python_bin, python_path.as_deref()).unwrap_or_else(|reason| {
+        panic!("python compatibility harness unavailable for '{case_id}': {reason}")
+    });
 
     let mut cmd = Command::new("bash");
     cmd.arg(&script).arg("--scenario").arg(case_id);
     cmd.env("PYTHON_BIN", &python_bin);
-    cmd.env("TIMEOUT_SECS", env::var("LXMF_PY_COMPAT_TIMEOUT").unwrap_or_else(|_| "90".to_string()));
+    cmd.env(
+        "TIMEOUT_SECS",
+        env::var("LXMF_PY_COMPAT_TIMEOUT").unwrap_or_else(|_| "90".to_string()),
+    );
     if let Some(path) = python_path {
         cmd.env("PYTHONPATH", path);
     }
@@ -76,9 +77,10 @@ fn run_case(case_id: &str) {
 }
 
 fn smoke_script_path() -> PathBuf {
-    env::var("LXMF_PY_COMPAT_SMOKE")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../tools/scripts/python-lxmd-rust-lxmd-smoke.sh"))
+    env::var("LXMF_PY_COMPAT_SMOKE").map(PathBuf::from).unwrap_or_else(|_| {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../tools/scripts/python-lxmd-rust-lxmd-smoke.sh")
+    })
 }
 
 fn effective_python_path() -> Option<String> {
@@ -96,7 +98,11 @@ fn effective_python_path() -> Option<String> {
     })
 }
 
-fn ensure_environment(script: &Path, python_bin: &str, python_path: Option<&str>) -> Result<(), String> {
+fn ensure_environment(
+    script: &Path,
+    python_bin: &str,
+    python_path: Option<&str>,
+) -> Result<(), String> {
     if !script.exists() {
         return Err(format!("missing script at {}", script.display()));
     }
@@ -111,16 +117,17 @@ fn ensure_environment(script: &Path, python_bin: &str, python_path: Option<&str>
         .status()
         .map_err(|error| format!("unable to run python '{}': {}", python_bin, error))?;
     if !status.success() {
-        return Err("missing Python modules RNS/LXMF; set PYTHONPATH or install editable checkouts".to_string());
+        return Err(
+            "missing Python modules RNS/LXMF; set PYTHONPATH or install editable checkouts"
+                .to_string(),
+        );
     }
     Ok(())
 }
 
 fn assert_case_present(case_id: &str) {
     assert!(
-        HARNESS_CASES
-            .iter()
-            .any(|case| case.id == case_id && !case.description.is_empty()),
+        HARNESS_CASES.iter().any(|case| case.id == case_id && !case.description.is_empty()),
         "missing compatibility case '{}'",
         case_id
     );

@@ -10,7 +10,7 @@ LOG_DIR="${LOG_DIR:-${REPO_ROOT}/target/interop/python-lxmd-rust-lxmd}"
 REPORT_PATH="${REPORT_PATH:-${LOG_DIR}/report.json}"
 TIMEOUT_SECS="${TIMEOUT_SECS:-45}"
 SENDER_WAIT_SECS="${SENDER_WAIT_SECS:-240}"
-SCENARIO="${SCENARIO:-propagated_resource_lxm}"
+SCENARIO="${SCENARIO:-direct}"
 LXMD_BIN="${LXMD_BIN:-${REPO_ROOT}/target/debug/lxmd}"
 
 PORT_SEED="${PORT_SEED:-$$}"
@@ -34,11 +34,21 @@ parse_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --scenario)
-        SCENARIO="${2:-}"
+        if [[ $# -lt 2 || -z "${2:-}" ]]; then
+          echo "missing value for --scenario" >&2
+          usage >&2
+          exit 2
+        fi
+        SCENARIO="$2"
         shift 2
         ;;
       --timeout)
-        TIMEOUT_SECS="${2:-}"
+        if [[ $# -lt 2 || -z "${2:-}" ]]; then
+          echo "missing value for --timeout" >&2
+          usage >&2
+          exit 2
+        fi
+        TIMEOUT_SECS="$2"
         shift 2
         ;;
       --help|-h)
