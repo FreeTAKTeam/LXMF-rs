@@ -5,7 +5,7 @@ use tokio::time::{Duration, Instant};
 use crate::hash::AddressHash;
 use crate::iface::{TxMessage, TxMessageType};
 use crate::packet::{
-    ContextFlag, DestinationType, Header, HeaderType, IfacFlag, Packet, PacketContext, PacketType,
+    DestinationType, Header, HeaderType, IfacFlag, Packet, PacketContext, PacketType,
     PropagationType,
 };
 
@@ -51,7 +51,7 @@ impl AnnounceEntry {
             header: Header {
                 ifac_flag: IfacFlag::Open,
                 header_type: HeaderType::Type2,
-                context_flag: ContextFlag::Unset,
+                context_flag: self.packet.header.context_flag,
                 propagation_type: PropagationType::Broadcast,
                 destination_type: DestinationType::Single,
                 packet_type: PacketType::Announce,
@@ -284,5 +284,35 @@ impl AnnounceTable {
 impl Default for AnnounceTable {
     fn default() -> Self {
         Self::new(100_000, 5)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::packet::ContextFlag;
+    use rand_core::OsRng;
+
+    #[test]
+    fn retransmit_preserves_original_context_flag() {
+        let mut entry = AnnounceEntry {
+            packet: Packet {
+                header: Header { context_flag: ContextFlag::Set, ..Header::default() },
+                ..Packet::default()
+            },
+            timestamp: Instant::now(),
+            timeout: Instant::now() + Duration::from_secs(60),
+            received_from: AddressHash::new_from_rand(OsRng),
+            retries: 1,
+            hops: 0,
+            response_to_iface: None,
+        };
+
+        let transport_id = AddressHash::new_from_rand(OsRng);
+        let retransmitted = entry
+            .retransmit(&transport_id)
+            .expect("ready announce entry retransmits");
+
+        assert_eq!(retransmitted.packet.header.context_flag, ContextFlag::Set);
     }
 }

@@ -8,6 +8,7 @@ use crate::buffer::OutputBuffer;
 use crate::error::RnsError;
 use crate::hash::{AddressHash, Hash};
 use crate::identity::PrivateIdentity;
+use crate::packet::ContextFlag;
 use crate::serde::Serialize;
 
 use super::DestinationAnnounce;
@@ -191,6 +192,29 @@ fn announce_includes_ratchet_when_enabled() {
     let announce = destination.announce(OsRng, None).expect("valid announce packet");
     let info = DestinationAnnounce::validate(&announce).expect("valid announce");
     assert!(info.ratchet.is_some());
+}
+
+#[test]
+fn announce_with_ratchet_bytes_but_unset_flag_is_rejected() {
+    let temp = TempDir::new().expect("temp dir");
+    let priv_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut destination = SingleInputDestination::new(
+        priv_identity,
+        DestinationName::new("example_utilities", "announcesample.fruits"),
+    );
+    let ratchet_path = temp
+        .path()
+        .join("ratchets")
+        .join(format!("{}.ratchets", destination.desc.address_hash.to_hex_string()));
+    destination.enable_ratchets(&ratchet_path).expect("enable ratchets");
+
+    let mut announce = destination.announce(OsRng, None).expect("valid announce packet");
+    announce.header.context_flag = ContextFlag::Unset;
+
+    match DestinationAnnounce::validate(&announce) {
+        Ok(_) => panic!("ratchet bytes without ratchet flag must fail validation"),
+        Err(err) => assert!(matches!(err, RnsError::IncorrectSignature)),
+    }
 }
 
 #[test]

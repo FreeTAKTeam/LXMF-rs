@@ -9,14 +9,69 @@ PYTHON_BIN="${PYTHON_BIN:-python3}"
 LOG_DIR="${LOG_DIR:-${REPO_ROOT}/target/interop/python-lxmd-rust-lxmd}"
 REPORT_PATH="${REPORT_PATH:-${LOG_DIR}/report.json}"
 TIMEOUT_SECS="${TIMEOUT_SECS:-45}"
+SENDER_WAIT_SECS="${SENDER_WAIT_SECS:-240}"
+SCENARIO="${SCENARIO:-direct}"
+LXMD_BIN="${LXMD_BIN:-${REPO_ROOT}/target/debug/lxmd}"
 
-RUST_RPC_ADDR="${RUST_RPC_ADDR:-127.0.0.1:4243}"
-RUST_TRANSPORT_ADDR="${RUST_TRANSPORT_ADDR:-127.0.0.1:37429}"
+PORT_SEED="${PORT_SEED:-$$}"
+RUST_RPC_PORT="${RUST_RPC_PORT:-$((4243 + (PORT_SEED % 2000)))}"
+RUST_TRANSPORT_PORT="${RUST_TRANSPORT_PORT:-$((37429 + (PORT_SEED % 2000)))}"
+RUST_RPC_ADDR="${RUST_RPC_ADDR:-127.0.0.1:${RUST_RPC_PORT}}"
+RUST_TRANSPORT_ADDR="${RUST_TRANSPORT_ADDR:-127.0.0.1:${RUST_TRANSPORT_PORT}}"
 RUST_TRANSPORT_HOST="${RUST_TRANSPORT_ADDR%:*}"
 RUST_TRANSPORT_PORT="${RUST_TRANSPORT_ADDR##*:}"
 
-PY_SHARED_INSTANCE_PORT="${PY_SHARED_INSTANCE_PORT:-$((39428 + ($$ % 200)))}"
+PY_SHARED_INSTANCE_PORT="${PY_SHARED_INSTANCE_PORT:-$((39428 + (PORT_SEED % 2000)))}"
 PY_INSTANCE_CONTROL_PORT="${PY_INSTANCE_CONTROL_PORT:-$((PY_SHARED_INSTANCE_PORT + 1))}"
+
+usage() {
+  cat <<'EOF'
+Usage: python-lxmd-rust-lxmd-smoke.sh [--scenario direct|opportunistic|propagated_resource_lxm] [--timeout SECONDS]
+EOF
+}
+
+parse_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --scenario)
+        if [[ $# -lt 2 || -z "${2:-}" ]]; then
+          echo "missing value for --scenario" >&2
+          usage >&2
+          exit 2
+        fi
+        SCENARIO="$2"
+        shift 2
+        ;;
+      --timeout)
+        if [[ $# -lt 2 || -z "${2:-}" ]]; then
+          echo "missing value for --timeout" >&2
+          usage >&2
+          exit 2
+        fi
+        TIMEOUT_SECS="$2"
+        shift 2
+        ;;
+      --help|-h)
+        usage
+        exit 0
+        ;;
+      *)
+        echo "unknown argument: $1" >&2
+        usage >&2
+        exit 2
+        ;;
+    esac
+  done
+
+  case "${SCENARIO}" in
+    direct|opportunistic|propagated_resource_lxm) ;;
+    *)
+      echo "unsupported scenario: ${SCENARIO}" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+}
 
 require_python_modules() {
   "${PYTHON_BIN}" - <<'PY' >/dev/null
@@ -176,6 +231,7 @@ cleanup() {
   fi
 }
 trap cleanup EXIT
+parse_args "$@"
 
 require_python_modules
 
@@ -275,11 +331,11 @@ cat > "${PY_SENDER_RNS_DIR}/config" <<EOF
     target_port = ${RUST_TRANSPORT_PORT}
 EOF
 
-cargo build -p reticulumd --bin reticulumd --quiet
-cargo build -p lxmf-cli --bin lxmd --quiet
+cargo build --manifest-path "${REPO_ROOT}/crates/apps/reticulumd/Cargo.toml" --bin reticulumd --quiet
+cargo build --manifest-path "${REPO_ROOT}/crates/apps/lxmf-cli/Cargo.toml" --bin lxmd --quiet
 
 (
-  "${REPO_ROOT}/target/debug/lxmd" \
+  "${LXMD_BIN}" \
     --config "${RUST_DIR}/launcher.toml" >"${RUST_LOG}" 2>&1
 ) &
 RUST_PID=$!
@@ -334,39 +390,51 @@ fi
 PY_DELIVERY_HASH="$(destination_hash_from_identity "${PY_DIR}/identity" "lxmf" "delivery")"
 PY_PROPAGATION_HASH="$(destination_hash_from_identity "${PY_DIR}/identity" "lxmf" "propagation")"
 
-for _ in $(seq 1 "${TIMEOUT_SECS}"); do
-  if "${PYTHON_BIN}" -m LXMF.Utilities.lxmd \
-      -v \
-      --config "${PY_DIR}" \
-      --rnsconfig "${PY_RNS_DIR}" \
-      --identity "${PY_DIR}/identity" \
-      --timeout 10 \
-      --remote "${RUST_PROPAGATION_HASH}" \
-      --status >"${PY_REMOTE_STATUS_LOG}" 2>&1; then
-    break
-  fi
-  sleep 1
-done
+if [[ "${SCENARIO}" == "propagated_resource_lxm" ]]; then
+  for _ in $(seq 1 "${TIMEOUT_SECS}"); do
+    if "${PYTHON_BIN}" -m LXMF.Utilities.lxmd \
+        -v \
+        --config "${PY_DIR}" \
+        --rnsconfig "${PY_RNS_DIR}" \
+        --identity "${PY_DIR}/identity" \
+        --timeout 10 \
+        --remote "${RUST_PROPAGATION_HASH}" \
+        --status >"${PY_REMOTE_STATUS_LOG}" 2>&1; then
+      break
+    fi
+    sleep 1
+  done
 
-for _ in $(seq 1 "${TIMEOUT_SECS}"); do
-  if "${REPO_ROOT}/target/debug/lxmd" \
-      --config "${RUST_DIR}/launcher.toml" \
-      --timeout 10 \
-      --remote "${PY_PROPAGATION_HASH}" \
-      --status >"${RUST_REMOTE_STATUS_LOG}" 2>&1; then
-    break
-  fi
-  sleep 1
-done
+  for _ in $(seq 1 "${TIMEOUT_SECS}"); do
+    if "${LXMD_BIN}" \
+        --config "${RUST_DIR}/launcher.toml" \
+        --timeout 10 \
+        --remote "${PY_PROPAGATION_HASH}" \
+        --status >"${RUST_REMOTE_STATUS_LOG}" 2>&1; then
+      break
+    fi
+    sleep 1
+  done
 
-assert_contains "${RUST_REMOTE_STATUS_LOG}" "Remote LXMF Propagation Node status" "Rust remote status against Python node"
+  assert_contains "${RUST_REMOTE_STATUS_LOG}" "Remote LXMF Propagation Node status" "Rust remote status against Python node"
+fi
 
 PY_MESSAGE_CONTENT="python-smoke-message-$(date +%s)"
+PY_MESSAGE_METHOD="opportunistic"
+if [[ "${SCENARIO}" == "direct" ]]; then
+  PY_MESSAGE_METHOD="direct"
+elif [[ "${SCENARIO}" == "propagated_resource_lxm" ]]; then
+  PY_MESSAGE_METHOD="propagated"
+  PY_MESSAGE_CONTENT="python-smoke-resource-lxm-$(date +%s)-$(head -c 8192 /dev/zero | tr '\0' 'r')"
+fi
 "${PYTHON_BIN}" - <<'PY' \
   "${PY_SENDER_RNS_DIR}" \
   "${PY_SENDER_DIR}" \
   "${RUST_DELIVERY_HASH}" \
-  "${PY_MESSAGE_CONTENT}" >"${PY_SEND_LOG}"
+  "${RUST_PROPAGATION_HASH}" \
+  "${PY_MESSAGE_CONTENT}" \
+  "${PY_MESSAGE_METHOD}" \
+  "${SENDER_WAIT_SECS}" >"${PY_SEND_LOG}"
 import json
 import os
 import sys
@@ -375,15 +443,26 @@ import time
 import RNS
 import LXMF
 
-rns_config, storage_dir, destination_hash_hex, content = sys.argv[1:5]
+rns_config, storage_dir, destination_hash_hex, propagation_hash_hex, content, message_method, sender_wait_secs = sys.argv[1:8]
 destination_hash = bytes.fromhex(destination_hash_hex)
+propagation_hash = bytes.fromhex(propagation_hash_hex)
+sender_wait_secs = int(sender_wait_secs)
 
 RNS.Reticulum(configdir=rns_config, loglevel=0)
 identity = RNS.Identity()
 router = LXMF.LXMRouter(identity=identity, storagepath=storage_dir)
 source = router.register_delivery_identity(identity, display_name="Python Smoke Sender")
+desired_method = {
+    "direct": LXMF.LXMessage.DIRECT,
+    "opportunistic": LXMF.LXMessage.OPPORTUNISTIC,
+    "propagated": LXMF.LXMessage.PROPAGATED,
+}.get(message_method)
+if desired_method is None:
+    raise SystemExit(f"unknown message method {message_method}")
+if desired_method == LXMF.LXMessage.PROPAGATED:
+    router.set_outbound_propagation_node(propagation_hash)
 
-deadline = time.time() + 30
+deadline = time.time() + sender_wait_secs
 while time.time() < deadline:
     if RNS.Transport.has_path(destination_hash):
         break
@@ -393,7 +472,7 @@ else:
     raise SystemExit("timed out waiting for Rust delivery path")
 
 remote_identity = None
-deadline = time.time() + 15
+deadline = time.time() + max(15, sender_wait_secs // 2)
 while time.time() < deadline:
     remote_identity = RNS.Identity.recall(destination_hash)
     if remote_identity is not None:
@@ -414,11 +493,11 @@ message = LXMF.LXMessage(
     destination,
     source,
     content=content,
-    desired_method=LXMF.LXMessage.OPPORTUNISTIC,
+    desired_method=desired_method,
 )
 router.handle_outbound(message)
 
-deadline = time.time() + 45
+deadline = time.time() + sender_wait_secs
 while time.time() < deadline:
     if message.state in (LXMF.LXMessage.DELIVERED, LXMF.LXMessage.SENT):
         print(
@@ -427,6 +506,7 @@ while time.time() < deadline:
                     "state": int(message.state),
                     "destination": destination_hash_hex,
                     "source": RNS.hexrep(source.hash, delimit=False).lower(),
+                    "method": message_method,
                 }
             )
         )
@@ -486,7 +566,8 @@ fi
   "${PY_DELIVERY_HASH}" \
   "${PY_PROPAGATION_HASH}" \
   "${HOOK_MESSAGE_FILE}" \
-  "${PY_MESSAGE_CONTENT}"
+  "${PY_MESSAGE_CONTENT}" \
+  "${SCENARIO}"
 import json
 import sys
 
@@ -504,13 +585,13 @@ import sys
     py_propagation_hash,
     hook_message_file,
     py_message_content,
-) = sys.argv[1:14]
+    scenario,
+) = sys.argv[1:15]
 
 report = {
     "status": "pass",
+    "scenario": scenario,
     "proof": {
-        "python_remote_status_to_rust": rust_propagation_hash,
-        "rust_remote_status_to_python": py_propagation_hash,
         "python_to_rust_inbound_content": py_message_content,
         "rust_hook_message_file": hook_message_file,
     },
@@ -535,6 +616,21 @@ with open(report_path, "w", encoding="utf-8") as handle:
     handle.write("\n")
 PY
 
+if [[ "${SCENARIO}" == "propagated_resource_lxm" ]]; then
+  "${PYTHON_BIN}" - <<'PY' "${REPORT_PATH}" "${RUST_PROPAGATION_HASH}" "${PY_PROPAGATION_HASH}"
+import json
+import sys
+from pathlib import Path
+
+report_path, rust_prop, py_prop = sys.argv[1:4]
+report = json.loads(Path(report_path).read_text(encoding="utf-8"))
+report["proof"]["python_remote_status_to_rust"] = rust_prop
+report["proof"]["rust_remote_status_to_python"] = py_prop
+Path(report_path).write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+PY
+fi
+
 echo "[python-lxmd-rust-lxmd-smoke] pass"
+echo "[python-lxmd-rust-lxmd-smoke] scenario=${SCENARIO}"
 echo "[python-lxmd-rust-lxmd-smoke] report=${REPORT_PATH}"
 echo "[python-lxmd-rust-lxmd-smoke] logs=${TMP_ROOT}"
