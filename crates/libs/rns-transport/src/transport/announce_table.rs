@@ -57,7 +57,7 @@ impl AnnounceEntry {
             header: Header {
                 ifac_flag: IfacFlag::Open,
                 header_type: HeaderType::Type2,
-                context_flag: ContextFlag::Unset,
+                context_flag: self.packet.header.context_flag,
                 propagation_type: PropagationType::Broadcast,
                 destination_type: DestinationType::Single,
                 packet_type: PacketType::Announce,
@@ -415,5 +415,27 @@ mod tests {
         assert!(matches!(messages[0].tx_type, TxMessageType::Direct(iface) if iface == to_iface));
         assert!(table.responses.is_empty());
         assert!(table.to_retransmit(&transport_id).is_empty());
+    }
+
+    #[test]
+    fn retransmit_preserves_original_context_flag() {
+        let mut entry = AnnounceEntry {
+            packet: Packet {
+                header: Header { context_flag: ContextFlag::Set, ..Header::default() },
+                ..Packet::default()
+            },
+            timestamp: Instant::now(),
+            timeout: Instant::now() - Duration::from_millis(1),
+            received_from: AddressHash::new_from_rand(OsRng),
+            retries: 0,
+            hops: 0,
+            response_to_iface: None,
+        };
+
+        let transport_id = AddressHash::new_from_rand(OsRng);
+        let retransmitted =
+            entry.retransmit(&transport_id).expect("ready announce entry retransmits");
+
+        assert_eq!(retransmitted.packet.header.context_flag, ContextFlag::Set);
     }
 }
