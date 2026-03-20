@@ -152,8 +152,7 @@ impl MessagingStore {
     }
 
     pub fn record_announce(&mut self, record: AnnounceRecord) {
-        self.announce_records
-            .insert(record.destination_hex.clone(), record);
+        self.announce_records.insert(record.destination_hex.clone(), record);
     }
 
     pub fn list_announces(&self) -> Vec<AnnounceRecord> {
@@ -178,7 +177,8 @@ impl MessagingStore {
 
         for record in self.announce_records.values() {
             if record.destination_kind == "app" {
-                app_dest_by_identity.insert(record.identity_hex.clone(), record.destination_hex.clone());
+                app_dest_by_identity
+                    .insert(record.identity_hex.clone(), record.destination_hex.clone());
                 app_records.insert(record.destination_hex.clone(), record.clone());
             } else if record.destination_kind == "lxmf_delivery" {
                 lxmf_dest_by_identity
@@ -206,11 +206,7 @@ impl MessagingStore {
                     .and_then(|value| lxmf_records.get(value))
                     .and_then(|record| record.display_name.clone()),
                 app_data: Some(app_record.app_data.clone()),
-                state: if connected_match {
-                    PeerState::Connected
-                } else {
-                    PeerState::Disconnected
-                },
+                state: if connected_match { PeerState::Connected } else { PeerState::Disconnected },
                 last_seen_at_ms: app_record.received_at_ms.max(
                     lxmf_destination_hex
                         .as_ref()
@@ -268,8 +264,7 @@ impl MessagingStore {
 
     pub fn upsert_message(&mut self, message: MessageRecord) -> bool {
         let is_new = !self.message_records.contains_key(message.message_id_hex.as_str());
-        self.message_records
-            .insert(message.message_id_hex.clone(), message.clone());
+        self.message_records.insert(message.message_id_hex.clone(), message.clone());
         if is_new {
             self.message_order.push(message.message_id_hex);
         }
@@ -307,10 +302,8 @@ impl MessagingStore {
         }
         out.sort_by(|left, right| {
             let left_time = left.received_at_ms.or(left.sent_at_ms).unwrap_or(left.updated_at_ms);
-            let right_time = right
-                .received_at_ms
-                .or(right.sent_at_ms)
-                .unwrap_or(right.updated_at_ms);
+            let right_time =
+                right.received_at_ms.or(right.sent_at_ms).unwrap_or(right.updated_at_ms);
             left_time.cmp(&right_time)
         });
         out
@@ -332,26 +325,27 @@ impl MessagingStore {
         let records = self.list_messages(None);
         let mut by_conversation = HashMap::<String, ConversationRecord>::new();
         for record in records {
-            let entry = by_conversation
-                .entry(record.conversation_id.clone())
-                .or_insert_with(|| ConversationRecord {
-                    conversation_id: record.conversation_id.clone(),
-                    peer_destination_hex: record.destination_hex.clone(),
-                    peer_display_name: peer_map
-                        .get(&record.destination_hex)
-                        .and_then(peer_display_name_for),
-                    last_message_preview: None,
-                    last_message_at_ms: 0,
-                    unread_count: 0,
-                    last_message_state: None,
+            let entry =
+                by_conversation.entry(record.conversation_id.clone()).or_insert_with(|| {
+                    ConversationRecord {
+                        conversation_id: record.conversation_id.clone(),
+                        peer_destination_hex: record.destination_hex.clone(),
+                        peer_display_name: peer_map
+                            .get(&record.destination_hex)
+                            .and_then(peer_display_name_for),
+                        last_message_preview: None,
+                        last_message_at_ms: 0,
+                        unread_count: 0,
+                        last_message_state: None,
+                    }
                 });
 
-            let event_time = record.received_at_ms.or(record.sent_at_ms).unwrap_or(record.updated_at_ms);
+            let event_time =
+                record.received_at_ms.or(record.sent_at_ms).unwrap_or(record.updated_at_ms);
             if event_time >= entry.last_message_at_ms {
                 entry.peer_destination_hex = record.destination_hex.clone();
-                entry.peer_display_name = peer_map
-                    .get(&record.destination_hex)
-                    .and_then(peer_display_name_for);
+                entry.peer_display_name =
+                    peer_map.get(&record.destination_hex).and_then(peer_display_name_for);
                 entry.last_message_preview = message_preview(record.body_utf8.as_str());
                 entry.last_message_at_ms = event_time;
                 entry.last_message_state = Some(record.state);
@@ -367,8 +361,7 @@ impl MessagingStore {
     }
 
     pub fn store_outbound(&mut self, outbound: StoredOutboundMessage) {
-        self.outbound_messages
-            .insert(outbound.message_id_hex.clone(), outbound);
+        self.outbound_messages.insert(outbound.message_id_hex.clone(), outbound);
     }
 
     pub fn outbound(&self, message_id_hex: &str) -> Option<StoredOutboundMessage> {
