@@ -5,9 +5,7 @@ use tokio::time::{Duration, Instant};
 
 use crate::hash::AddressHash;
 use crate::iface::{TxMessage, TxMessageType};
-use crate::packet::{
-    Header, HeaderType, Packet, PropagationType,
-};
+use crate::packet::{Header, HeaderType, Packet, PropagationType};
 
 const PATHFINDER_RETRY_GRACE: Duration = Duration::from_secs(5);
 const PATHFINDER_RETRY_WINDOW: Duration = Duration::from_millis(500);
@@ -211,13 +209,13 @@ impl AnnounceTable {
         to_iface: AddressHash,
         hops: u8,
     ) -> bool {
-        if let Some(entry) = self.map.remove(&destination) {
-            self.do_add_response(entry, destination, to_iface, hops);
+        if let Some(entry) = self.map.get(&destination) {
+            self.do_add_response(entry.clone(), destination, to_iface, hops);
             return true;
         }
 
         if let Some(entry) = self.cache.get(&destination) {
-            self.do_add_response(entry.clone(), destination, to_iface, hops);
+            self.do_add_response(entry, destination, to_iface, hops);
             return true;
         }
 
@@ -336,10 +334,10 @@ impl Default for AnnounceTable {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::packet::PacketContext;
     use rand_core::OsRng;
     use std::thread::sleep;
     use std::time::Duration as StdDuration;
-    use crate::packet::PacketContext;
 
     #[test]
     fn announce_entries_use_random_window_and_grace_retry() {
@@ -384,17 +382,13 @@ mod tests {
         let received_from = AddressHash::new_from_rand(OsRng);
         let transport_id = AddressHash::new_from_rand(OsRng);
         let to_iface = AddressHash::new_from_rand(OsRng);
-        let packet = Packet {
-            destination,
-            context: PacketContext::None,
-            ..Packet::default()
-        };
+        let packet = Packet { destination, context: PacketContext::None, ..Packet::default() };
 
         table.add(&packet, destination, received_from);
         assert!(table.add_response(destination, to_iface, 3));
         assert!(
-            !table.map.contains_key(&destination),
-            "live announce entry must be removed when converted into a direct path response"
+            table.map.contains_key(&destination),
+            "live announce entry must stay available for later remote path requests"
         );
         assert!(table.to_retransmit(&transport_id).is_empty());
         assert_eq!(table.responses.len(), 1);
@@ -413,6 +407,16 @@ mod tests {
         assert!(matches!(messages[0].tx_type, TxMessageType::Direct(iface) if iface == to_iface));
         assert_eq!(messages[0].packet.context, PacketContext::None);
         assert!(table.responses.is_empty());
-        assert!(table.to_retransmit(&transport_id).is_empty());
+        assert!(table.map.contains_key(&destination));
+        assert!(table.add_response(destination, to_iface, 4));
+
+        sleep(StdDuration::from_millis(450));
+
+        let messages = table.to_retransmit(&transport_id);
+        assert_eq!(messages.len(), 1);
+        assert!(matches!(messages[0].tx_type, TxMessageType::Direct(iface) if iface == to_iface));
+        assert_eq!(messages[0].packet.header.hops, 4);
+        assert!(table.responses.is_empty());
+        assert!(table.map.contains_key(&destination));
     }
 }
