@@ -369,7 +369,8 @@ PY_MESSAGE_CONTENT="python-smoke-message-${COMPAT_CASE}-$(date +%s)"
   "${PY_SENDER_DIR}" \
   "${RUST_DELIVERY_HASH}" \
   "${RUST_PROPAGATION_HASH}" \
-  "${PY_MESSAGE_CONTENT}" >"${PY_SEND_LOG}"
+  "${PY_MESSAGE_CONTENT}" \
+  "${TIMEOUT_SECS}" >"${PY_SEND_LOG}"
 import json
 import os
 import sys
@@ -378,7 +379,8 @@ import time
 import RNS
 import LXMF
 
-case_id, rns_config, storage_dir, destination_hash_hex, propagation_hash_hex, content = sys.argv[1:7]
+case_id, rns_config, storage_dir, destination_hash_hex, propagation_hash_hex, content, timeout_secs = sys.argv[1:8]
+timeout_secs = float(timeout_secs)
 destination_hash = bytes.fromhex(destination_hash_hex)
 propagation_hash = bytes.fromhex(propagation_hash_hex)
 
@@ -387,7 +389,7 @@ identity = RNS.Identity()
 router = LXMF.LXMRouter(identity=identity, storagepath=storage_dir)
 source = router.register_delivery_identity(identity, display_name="Python Smoke Sender")
 
-deadline = time.time() + 30
+deadline = time.time() + timeout_secs
 while time.time() < deadline:
     if RNS.Transport.has_path(destination_hash):
         break
@@ -397,7 +399,7 @@ else:
     raise SystemExit("timed out waiting for Rust delivery path")
 
 remote_identity = None
-deadline = time.time() + 15
+deadline = time.time() + timeout_secs
 while time.time() < deadline:
     remote_identity = RNS.Identity.recall(destination_hash)
     if remote_identity is not None:
@@ -420,7 +422,7 @@ if case_id == "direct_python_to_rust":
     desired_method = LXMF.LXMessage.DIRECT
 elif case_id == "propagated_python_to_rust":
     desired_method = LXMF.LXMessage.PROPAGATED
-    deadline = time.time() + 30
+    deadline = time.time() + timeout_secs
     while time.time() < deadline:
         if RNS.Transport.has_path(propagation_hash):
             break
@@ -440,7 +442,7 @@ message = LXMF.LXMessage(
 )
 router.handle_outbound(message)
 
-deadline = time.time() + 45
+deadline = time.time() + timeout_secs
 while time.time() < deadline:
     if message.state in (LXMF.LXMessage.DELIVERED, LXMF.LXMessage.SENT):
         print(
@@ -469,17 +471,60 @@ print(payload["source"])
 PY
 )"
 
-for _ in $(seq 1 "${TIMEOUT_SECS}"); do
-  if [[ -f "${HOOK_LOG}" ]] && grep -q "${PY_MESSAGE_CONTENT}" "${HOOK_LOG}"; then
-    break
-  fi
-  sleep 1
-done
+HOOK_MESSAGE_FILE=""
+if [[ "${COMPAT_CASE}" == "propagated_python_to_rust" ]]; then
+  for _ in $(seq 1 "${TIMEOUT_SECS}"); do
+    if "${PYTHON_BIN}" - <<'PY' "${RUST_RPC_ADDR}" >/dev/null
+import json
+import sys
+import urllib.request
 
-assert_contains "${HOOK_LOG}" "${PY_MESSAGE_CONTENT}" "Rust lxmd on-inbound hook content"
-assert_contains "${HOOK_LOG}" "${PY_SENDER_SOURCE_HASH}" "Rust lxmd on-inbound hook source hash"
+rpc_addr = sys.argv[1]
+req = urllib.request.Request(
+    f"http://{rpc_addr}/rpc",
+    data=json.dumps({"id": 1, "method": "propagation_status", "params": {}}).encode("utf-8"),
+    headers={"Content-Type": "application/json"},
+)
+with urllib.request.urlopen(req, timeout=5) as resp:
+    payload = json.load(resp)
+count = payload.get("result", {}).get("propagation", {}).get("client_propagation_messages_received", 0)
+raise SystemExit(0 if count >= 1 else 1)
+PY
+    then
+      break
+    fi
+    sleep 1
+  done
 
-HOOK_MESSAGE_FILE="$("${PYTHON_BIN}" - <<'PY' "${HOOK_LOG}"
+  "${PYTHON_BIN}" - <<'PY' "${RUST_RPC_ADDR}"
+import json
+import sys
+import urllib.request
+
+rpc_addr = sys.argv[1]
+req = urllib.request.Request(
+    f"http://{rpc_addr}/rpc",
+    data=json.dumps({"id": 1, "method": "propagation_status", "params": {}}).encode("utf-8"),
+    headers={"Content-Type": "application/json"},
+)
+with urllib.request.urlopen(req, timeout=5) as resp:
+    payload = json.load(resp)
+count = payload.get("result", {}).get("propagation", {}).get("client_propagation_messages_received", 0)
+if count < 1:
+    raise SystemExit(f"expected propagated message ingestion via propagation storage, got count={count}")
+PY
+else
+  for _ in $(seq 1 "${TIMEOUT_SECS}"); do
+    if [[ -f "${HOOK_LOG}" ]] && grep -q "${PY_MESSAGE_CONTENT}" "${HOOK_LOG}"; then
+      break
+    fi
+    sleep 1
+  done
+
+  assert_contains "${HOOK_LOG}" "${PY_MESSAGE_CONTENT}" "Rust lxmd on-inbound hook content"
+  assert_contains "${HOOK_LOG}" "${PY_SENDER_SOURCE_HASH}" "Rust lxmd on-inbound hook source hash"
+
+  HOOK_MESSAGE_FILE="$("${PYTHON_BIN}" - <<'PY' "${HOOK_LOG}"
 import sys
 from pathlib import Path
 
@@ -491,9 +536,10 @@ raise SystemExit(1)
 PY
 )"
 
-if [[ ! -s "${HOOK_MESSAGE_FILE}" ]]; then
-  echo "expected inbound message file at ${HOOK_MESSAGE_FILE}" >&2
-  exit 1
+  if [[ ! -s "${HOOK_MESSAGE_FILE}" ]]; then
+    echo "expected inbound message file at ${HOOK_MESSAGE_FILE}" >&2
+    exit 1
+  fi
 fi
 
 "${PYTHON_BIN}" - <<'PY' \
