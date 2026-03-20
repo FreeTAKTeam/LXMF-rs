@@ -417,23 +417,29 @@ fn canonical_propagation_transient_bytes(
     transient_data: &[u8],
     target_cost: u32,
 ) -> Result<[u8; 32], std::io::Error> {
+    let lxm_data = propagation_payload_hash_input(transient_data, target_cost)?;
+    let transient_hash = Sha256::digest(lxm_data);
+    let mut transient_id = [0u8; 32];
+    transient_id.copy_from_slice(transient_hash.as_slice());
+    Ok(transient_id)
+}
+
+fn propagation_payload_hash_input<'a>(
+    transient_data: &'a [u8],
+    target_cost: u32,
+) -> Result<&'a [u8], std::io::Error> {
     if target_cost == 0 {
-        let transient_hash = Sha256::digest(transient_data);
-        let mut transient_id = [0u8; 32];
-        transient_id.copy_from_slice(transient_hash.as_slice());
-        return Ok(transient_id);
+        return Ok(split_propagation_stamp(transient_data)
+            .map(|(lxm_data, _)| lxm_data)
+            .unwrap_or(transient_data));
     }
 
-    if transient_data.len() <= MIN_PROPAGATION_STAMPED_PAYLOAD_SIZE {
-        return Err(std::io::Error::new(
+    let (lxm_data, stamp) = split_propagation_stamp(transient_data).ok_or_else(|| {
+        std::io::Error::new(
             std::io::ErrorKind::PermissionDenied,
             "invalid propagation stamp",
-        ));
-    }
-
-    let split_at = transient_data.len() - PROPAGATION_STAMP_SIZE;
-    let lxm_data = &transient_data[..split_at];
-    let stamp = &transient_data[split_at..];
+        )
+    })?;
 
     let transient_hash = Sha256::digest(lxm_data);
     let workblock = propagation_stamp_workblock(transient_hash.as_slice());
@@ -444,9 +450,16 @@ fn canonical_propagation_transient_bytes(
         ));
     }
 
-    let mut transient_id = [0u8; 32];
-    transient_id.copy_from_slice(transient_hash.as_slice());
-    Ok(transient_id)
+    Ok(lxm_data)
+}
+
+fn split_propagation_stamp(transient_data: &[u8]) -> Option<(&[u8], &[u8])> {
+    if transient_data.len() <= MIN_PROPAGATION_STAMPED_PAYLOAD_SIZE {
+        return None;
+    }
+
+    let split_at = transient_data.len() - PROPAGATION_STAMP_SIZE;
+    Some((&transient_data[..split_at], &transient_data[split_at..]))
 }
 
 fn propagation_stamp_workblock(material: &[u8]) -> Vec<u8> {

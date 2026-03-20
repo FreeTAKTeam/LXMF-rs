@@ -864,6 +864,30 @@ fn propagation_ingest_derives_transient_id_from_payload_bytes() {
 }
 
 #[test]
+fn propagation_ingest_accepts_stamped_payload_with_canonical_transient_id_when_cost_is_zero() {
+    use sha2::{Digest, Sha256};
+
+    let daemon = RpcDaemon::test_instance();
+    let lxm_data = vec![0x55_u8; 113];
+    let transient_data = stamped_propagation_payload(&lxm_data, 1);
+    let canonical_transient_id = hex::encode(Sha256::digest(&lxm_data));
+
+    let response = daemon
+        .handle_rpc(rpc_request(
+            72,
+            "propagation_ingest",
+            json!({
+                "transient_id": canonical_transient_id,
+                "payload_hex": hex::encode(&transient_data),
+            }),
+        ))
+        .expect("stamped propagation ingest at zero target cost");
+    let result = response.result.expect("ingest result");
+    assert_eq!(result["ingested_count"].as_u64(), Some(1));
+    assert_eq!(result["transient_id"].as_str(), Some(canonical_transient_id.as_str()));
+}
+
+#[test]
 fn propagation_ingest_rejects_mismatched_transient_id() {
     let daemon = RpcDaemon::test_instance();
     let err = daemon
