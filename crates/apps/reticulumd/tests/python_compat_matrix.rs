@@ -85,8 +85,14 @@ fn smoke_script_path() -> PathBuf {
 
 fn effective_python_path() -> Option<String> {
     let from_env = env::var("PYTHONPATH").ok().filter(|v| !v.trim().is_empty());
-    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..").canonicalize().ok()?;
-    let parent = repo_root.parent()?;
+    let repo_root = match Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..").canonicalize() {
+        Ok(path) => path,
+        Err(_) => return from_env,
+    };
+    let parent = match repo_root.parent() {
+        Some(parent) => parent,
+        None => return from_env,
+    };
     let reticulum = parent.join("Reticulum");
     let lxmf = parent.join("LXMF");
     if !reticulum.exists() || !lxmf.exists() {
