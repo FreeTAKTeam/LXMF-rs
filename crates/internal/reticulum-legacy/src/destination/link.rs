@@ -169,7 +169,7 @@ impl Link {
 
     pub fn prove(&mut self) -> Packet {
         log::debug!("link({}): prove", self.id);
-        eprintln!("[link] prove link_id={} proof_hops={}", self.id, self.proof_hops);
+        log::trace!("[link] prove link_id={} proof_hops={}", self.id, self.proof_hops);
 
         if self.status != LinkStatus::Active {
             self.status = LinkStatus::Active;

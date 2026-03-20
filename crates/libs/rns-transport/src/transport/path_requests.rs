@@ -30,7 +30,7 @@ pub fn create_path_request_destination() -> PlainInputDestination {
 pub type TagBytes = Vec<u8>;
 type DuplicateKey = (AddressHash, TagBytes);
 type DiscoveryKey = (AddressHash, Option<AddressHash>);
-type LocalResponseKey = (AddressHash, Option<AddressHash>, AddressHash);
+type LocalResponseKey = (AddressHash, Option<AddressHash>, TagBytes, AddressHash);
 
 pub fn create_random_tag() -> TagBytes {
     AddressHash::new_from_rand(OsRng).as_slice().into()
@@ -143,12 +143,14 @@ impl PathRequests {
     }
 
     fn prune_local_responses(&mut self, now: Instant) {
-        while let Some((key, timeout)) = self.local_response_queue.front().copied() {
+        while let Some((key, timeout)) = self.local_response_queue.front().cloned() {
             if timeout > now {
                 break;
             }
             self.local_response_queue.pop_front();
-            self.local_response_cache.remove(&key);
+            if self.local_response_cache.get(&key).copied() == Some(timeout) {
+                self.local_response_cache.remove(&key);
+            }
         }
     }
 
@@ -213,21 +215,29 @@ impl PathRequests {
         &mut self,
         destination: &AddressHash,
         requesting_transport: Option<AddressHash>,
+        tag_bytes: &[u8],
         on_iface: AddressHash,
     ) -> bool {
-        self.allow_local_response_at(destination, requesting_transport, on_iface, Instant::now())
+        self.allow_local_response_at(
+            destination,
+            requesting_transport,
+            tag_bytes,
+            on_iface,
+            Instant::now(),
+        )
     }
 
     fn allow_local_response_at(
         &mut self,
         destination: &AddressHash,
         requesting_transport: Option<AddressHash>,
+        tag_bytes: &[u8],
         on_iface: AddressHash,
         now: Instant,
     ) -> bool {
         self.prune_local_responses(now);
 
-        let key = (*destination, requesting_transport, on_iface);
+        let key = (*destination, requesting_transport, tag_bytes.to_vec(), on_iface);
         if let Some(timeout) = self.local_response_cache.get(&key) {
             if *timeout > now {
                 return false;
@@ -236,7 +246,7 @@ impl PathRequests {
         }
 
         let expiry = now + self.local_response_cooldown;
-        self.local_response_cache.insert(key, expiry);
+        self.local_response_cache.insert(key.clone(), expiry);
         self.local_response_queue.push_back((key, expiry));
         true
     }
@@ -408,9 +418,9 @@ mod tests {
         let requester = Some(AddressHash::new_from_rand(OsRng));
         let now = Instant::now();
 
-        assert!(testee.allow_local_response_at(&destination, requester, iface_a, now));
-        assert!(!testee.allow_local_response_at(&destination, requester, iface_a, now));
-        assert!(testee.allow_local_response_at(&destination, requester, iface_b, now));
+        assert!(testee.allow_local_response_at(&destination, requester, b"tag-a", iface_a, now));
+        assert!(!testee.allow_local_response_at(&destination, requester, b"tag-a", iface_a, now));
+        assert!(testee.allow_local_response_at(&destination, requester, b"tag-a", iface_b, now));
     }
 
     #[test]
@@ -421,11 +431,12 @@ mod tests {
         let requester = Some(AddressHash::new_from_rand(OsRng));
         let now = Instant::now();
 
-        assert!(testee.allow_local_response_at(&destination, requester, iface, now));
-        assert!(!testee.allow_local_response_at(&destination, requester, iface, now));
+        assert!(testee.allow_local_response_at(&destination, requester, b"tag-a", iface, now));
+        assert!(!testee.allow_local_response_at(&destination, requester, b"tag-a", iface, now));
         assert!(testee.allow_local_response_at(
             &destination,
             requester,
+            b"tag-a",
             iface,
             now + super::super::LOCAL_PATH_RESPONSE_COOLDOWN + Duration::from_millis(1)
         ));
@@ -440,9 +451,52 @@ mod tests {
         let iface = AddressHash::new_from_rand(OsRng);
         let now = Instant::now();
 
-        assert!(testee.allow_local_response_at(&destination, requester_a, iface, now));
-        assert!(testee.allow_local_response_at(&destination, requester_b, iface, now));
-        assert!(!testee.allow_local_response_at(&destination, requester_a, iface, now));
+        assert!(testee.allow_local_response_at(&destination, requester_a, b"tag-a", iface, now));
+        assert!(testee.allow_local_response_at(&destination, requester_b, b"tag-a", iface, now));
+        assert!(!testee.allow_local_response_at(&destination, requester_a, b"tag-a", iface, now));
+    }
+
+    #[test]
+    fn local_response_throttle_is_scoped_per_request_tag() {
+        let mut testee = PathRequests::new("", None, 16, 16, 30);
+        let destination = AddressHash::new_from_rand(OsRng);
+        let requester = Some(AddressHash::new_from_rand(OsRng));
+        let iface = AddressHash::new_from_rand(OsRng);
+        let now = Instant::now();
+
+        assert!(testee.allow_local_response_at(&destination, requester, b"tag-a", iface, now));
+        assert!(testee.allow_local_response_at(&destination, requester, b"tag-b", iface, now));
+        assert!(!testee.allow_local_response_at(&destination, requester, b"tag-a", iface, now));
+    }
+
+    #[test]
+    fn refreshing_an_expired_local_response_does_not_drop_the_new_entry() {
+        let mut testee = PathRequests::new("", None, 16, 16, 30);
+        let destination = AddressHash::new_from_rand(OsRng);
+        let requester = Some(AddressHash::new_from_rand(OsRng));
+        let iface = AddressHash::new_from_rand(OsRng);
+        let cooldown = super::super::LOCAL_PATH_RESPONSE_COOLDOWN;
+        let now = Instant::now();
+
+        assert!(testee.allow_local_response_at(&destination, requester, b"tag-a", iface, now));
+        let refresh_at = now + cooldown + Duration::from_millis(1);
+        assert!(testee.allow_local_response_at(
+            &destination,
+            requester,
+            b"tag-a",
+            iface,
+            refresh_at
+        ));
+        assert!(
+            !testee.allow_local_response_at(
+                &destination,
+                requester,
+                b"tag-a",
+                iface,
+                refresh_at + Duration::from_millis(1)
+            ),
+            "stale queue entries must not evict the refreshed cooldown"
+        );
     }
 
     #[test]

@@ -203,7 +203,9 @@ for attempt in range(60):
         error = value[2] if len(value) > 2 else None
     else:
         result = value.get("result", value)
-        error = value.get("error") or result.get("error")
+        error = value.get("error")
+        if error is None and isinstance(result, dict):
+            error = result.get("error")
     if error and is_rate_limited(error) and attempt + 1 < 60:
         time.sleep(5)
         continue

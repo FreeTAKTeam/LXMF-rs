@@ -21,10 +21,12 @@ pub(super) async fn handle_path_request<'a>(
 ) {
     if let Some(request) = handler.path_requests.decode(packet.data.as_slice()) {
         if let Some(dest) = handler.single_in_destinations.get(&request.destination).cloned() {
-            let app_data = handler.single_in_destination_app_data.get(&request.destination).cloned();
+            let app_data =
+                handler.single_in_destination_app_data.get(&request.destination).cloned();
             if !handler.path_requests.allow_local_response(
                 &request.destination,
                 request.requesting_transport,
+                &request.tag_bytes,
                 iface,
             ) {
                 log::trace!(
@@ -39,7 +41,11 @@ pub(super) async fn handle_path_request<'a>(
             let response = dest
                 .lock()
                 .await
-                .path_response_with_tag(OsRng, app_data.as_deref(), Some(request.tag_bytes.as_slice()))
+                .path_response_with_tag(
+                    OsRng,
+                    app_data.as_deref(),
+                    Some(request.tag_bytes.as_slice()),
+                )
                 .expect("valid path response");
 
             handler
