@@ -218,8 +218,7 @@ impl WireMessage {
         }
 
         let envelope = (timestamp, vec![serde_bytes::ByteBuf::from(transient_payload)]);
-        let packed =
-            rmp_serde::to_vec(&envelope).map_err(|e| LxmfError::Encode(e.to_string()))?;
+        let packed = rmp_serde::to_vec(&envelope).map_err(|e| LxmfError::Encode(e.to_string()))?;
         let mut transient_id_bytes = [0u8; 32];
         transient_id_bytes.copy_from_slice(transient_id.as_slice());
         Ok((packed, transient_id_bytes))
