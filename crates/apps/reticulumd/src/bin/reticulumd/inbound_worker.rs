@@ -51,16 +51,19 @@ pub(super) fn spawn_inbound_worker(
     if control.enabled {
         spawn_control_worker(daemon.clone(), transport.clone(), control.clone());
     }
-    spawn_packet_inbound_worker(daemon.clone(), transport.clone(), control);
+    spawn_packet_inbound_worker(daemon.clone(), transport.clone(), control.clone());
     tokio::spawn(async move {
         let mut rx = transport.resource_events();
         loop {
             if let Ok(event) = rx.recv().await {
                 match event.kind {
                     ResourceEventKind::Complete(complete) => {
-                        if let Some(destination) =
-                            resolve_lxmf_resource_destination(transport.as_ref(), &event.link_id)
-                                .await
+                        if let Some(destination) = resolve_lxmf_resource_destination(
+                            transport.as_ref(),
+                            &event.link_id,
+                            &control,
+                        )
+                        .await
                         {
                             match destination {
                                 InboundLxmfDestination::Delivery(destination) => {
@@ -236,6 +239,10 @@ fn is_lxmf_propagation_destination(
 ) -> bool {
     let destination_hex = hex::encode(destination.as_slice());
     control.propagation_destination_hash_hex.as_deref() == Some(destination_hex.as_str())
+}
+
+fn propagation_ingest_enabled(control: &PropagationControlContext) -> bool {
+    control.propagation_destination_hash_hex.is_some()
 }
 
 fn ingest_propagation_envelope(
@@ -693,6 +700,7 @@ enum InboundLxmfDestination {
 async fn resolve_lxmf_resource_destination(
     transport: &Transport,
     link_id: &AddressHash,
+    control: &PropagationControlContext,
 ) -> Option<InboundLxmfDestination> {
     if let Some(link) = transport.find_in_link(link_id).await {
         let guard = link.lock().await;
@@ -701,7 +709,9 @@ async fn resolve_lxmf_resource_destination(
             destination.copy_from_slice(guard.destination().address_hash.as_slice());
             return Some(InboundLxmfDestination::Delivery(destination));
         }
-        if is_lxmf_propagation_link_destination(guard.destination()) {
+        if propagation_ingest_enabled(control)
+            && is_lxmf_propagation_link_destination(guard.destination())
+        {
             return Some(InboundLxmfDestination::Propagation);
         }
         return None;
@@ -713,7 +723,9 @@ async fn resolve_lxmf_resource_destination(
             destination.copy_from_slice(guard.destination().address_hash.as_slice());
             return Some(InboundLxmfDestination::Delivery(destination));
         }
-        if is_lxmf_propagation_link_destination(guard.destination()) {
+        if propagation_ingest_enabled(control)
+            && is_lxmf_propagation_link_destination(guard.destination())
+        {
             return Some(InboundLxmfDestination::Propagation);
         }
     }
@@ -732,8 +744,9 @@ fn is_lxmf_propagation_link_destination(destination: &DestinationDesc) -> bool {
 mod tests {
     use super::{
         ingest_propagation_envelope, is_lxmf_delivery_destination,
-        is_lxmf_propagation_link_destination,
+        is_lxmf_propagation_link_destination, propagation_ingest_enabled,
     };
+    use crate::bootstrap::PropagationControlContext;
     use hkdf::Hkdf;
     use rand_core::OsRng;
     use reticulum_daemon::inbound_delivery;
@@ -776,6 +789,18 @@ mod tests {
         };
 
         assert!(is_lxmf_propagation_link_destination(&destination));
+    }
+
+    #[test]
+    fn send_only_nodes_do_not_enable_propagation_resource_ingest() {
+        let control = PropagationControlContext {
+            enabled: false,
+            propagation_destination_hash_hex: None,
+            control_destination_hash_hex: None,
+            allowed_control_identities: Vec::new(),
+        };
+
+        assert!(!propagation_ingest_enabled(&control));
     }
 
     #[test]
@@ -886,7 +911,7 @@ mod tests {
                 })),
             })
             .expect("enable propagation");
-        let transient = stamped_propagation_payload(&vec![0x42_u8; 113], 1);
+        let transient = stamped_propagation_payload(&[0x42_u8; 113], 1);
         let envelope =
             rmp_serde::to_vec(&(1.0_f64, vec![transient])).expect("propagation envelope");
         let destination = [0x22_u8; 16];
