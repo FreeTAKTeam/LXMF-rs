@@ -244,8 +244,10 @@ impl RpcDaemon {
                     .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
 
                 let payload_hex = parsed.payload_hex.unwrap_or_default();
-                let transient_id = self
-                    .ingest_propagation_payload_hex(payload_hex.as_str(), parsed.transient_id.as_deref())?;
+                let transient_id = self.ingest_propagation_payload_hex(
+                    payload_hex.as_str(),
+                    parsed.transient_id.as_deref(),
+                )?;
                 let state =
                     self.propagation_state.lock().expect("propagation mutex poisoned").clone();
 
