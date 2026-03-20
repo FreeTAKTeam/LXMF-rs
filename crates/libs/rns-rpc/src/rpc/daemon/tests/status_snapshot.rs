@@ -835,6 +835,7 @@ fn propagation_ingest_derives_transient_id_from_payload_bytes() {
 
     let daemon = RpcDaemon::test_instance();
     let payload = b"unstamped-propagation-wire-payload";
+    let payload_hex = hex::encode(payload);
     let expected_transient_id = hex::encode(Sha256::digest(payload));
 
     let response = daemon
@@ -842,7 +843,7 @@ fn propagation_ingest_derives_transient_id_from_payload_bytes() {
             70,
             "propagation_ingest",
             json!({
-                "payload_hex": hex::encode(payload),
+                "payload_hex": payload_hex,
             }),
         ))
         .expect("propagation ingest");
@@ -860,7 +861,7 @@ fn propagation_ingest_derives_transient_id_from_payload_bytes() {
         .expect("fetch ingested propagation payload")
         .result
         .expect("fetch result");
-    assert_eq!(fetched["payload_hex"].as_str(), Some(hex::encode(payload).as_str()));
+    assert_eq!(fetched["payload_hex"].as_str(), Some(payload_hex.as_str()));
 }
 
 #[test]
@@ -901,6 +902,47 @@ fn propagation_ingest_rejects_mismatched_transient_id() {
         ))
         .expect_err("mismatched transient_id must be rejected");
     assert!(err.to_string().contains("transient_id does not match propagation payload"));
+}
+
+#[test]
+fn propagation_ingest_without_payload_does_not_increment_counts_or_store_payload() {
+    let daemon = RpcDaemon::test_instance();
+
+    let response = daemon
+        .handle_rpc(rpc_request(
+            73,
+            "propagation_ingest",
+            json!({
+                "transient_id": "abcd",
+            }),
+        ))
+        .expect("ingest without payload");
+    let result = response.result.expect("ingest result");
+    assert_eq!(result["ingested_count"].as_u64(), Some(0));
+    assert_eq!(result["transient_id"].as_str(), Some("abcd"));
+
+    let snapshot = daemon
+        .handle_rpc(RpcRequest { id: 74, method: "daemon_status_ex".to_string(), params: None })
+        .expect("daemon status")
+        .result
+        .expect("daemon status result");
+    assert_eq!(snapshot["propagation"]["last_ingest_count"].as_u64(), Some(0));
+    assert_eq!(snapshot["propagation"]["total_ingested"].as_u64(), Some(0));
+    assert_eq!(
+        snapshot["propagation"]["client_propagation_messages_received"].as_u64(),
+        Some(0)
+    );
+
+    let err = daemon
+        .handle_rpc(rpc_request(
+            75,
+            "propagation_fetch",
+            json!({
+                "transient_id": "abcd",
+            }),
+        ))
+        .expect_err("payload should not have been stored");
+    assert!(err.to_string().contains("transient_id not found"));
 }
 
 fn stamped_propagation_payload(lxm_data: &[u8], target_cost: u32) -> Vec<u8> {

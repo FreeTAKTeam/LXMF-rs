@@ -141,6 +141,7 @@ impl RpcDaemon {
                         encode_hex(hasher.finalize())
                     })
                 });
+                let ingested_count = usize::from(!payload_hex.is_empty() && !transient_id.is_empty());
 
                 if !payload_hex.is_empty() {
                     self.propagation_payloads
@@ -152,7 +153,6 @@ impl RpcDaemon {
                 let state = {
                     let mut guard =
                         self.propagation_state.lock().expect("propagation mutex poisoned");
-                    let ingested_count = usize::from(!transient_id.is_empty());
                     guard.last_ingest_count = ingested_count;
                     guard.total_ingested += ingested_count;
                     guard.client_propagation_messages_received = guard
@@ -424,10 +424,10 @@ fn canonical_propagation_transient_bytes(
     Ok(transient_id)
 }
 
-fn propagation_payload_hash_input<'a>(
-    transient_data: &'a [u8],
+fn propagation_payload_hash_input(
+    transient_data: &[u8],
     target_cost: u32,
-) -> Result<&'a [u8], std::io::Error> {
+) -> Result<&[u8], std::io::Error> {
     if target_cost == 0 {
         return Ok(split_propagation_stamp(transient_data)
             .map(|(lxm_data, _)| lxm_data)
