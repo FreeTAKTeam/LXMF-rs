@@ -119,13 +119,13 @@ impl RpcDaemon {
                     .lock()
                     .expect("propagation mutex poisoned")
                     .target_cost;
-                let validated_transient_id = if target_cost > 0 && !payload_hex.is_empty() {
-                    Some(validate_propagation_transient_hex(payload_hex.as_str(), target_cost)?)
+                let validated_payload = if target_cost > 0 && !payload_hex.is_empty() {
+                    Some(validate_and_strip_propagation_payload_hex(payload_hex.as_str(), target_cost)?)
                 } else {
                     None
                 };
                 let transient_id = parsed.transient_id.unwrap_or_else(|| {
-                    if let Some(transient_id) = validated_transient_id.as_ref() {
+                    if let Some((transient_id, _payload_hex)) = validated_payload.as_ref() {
                         return transient_id.clone();
                     }
                     let mut hasher = Sha256::new();
@@ -133,7 +133,13 @@ impl RpcDaemon {
                     encode_hex(hasher.finalize())
                 });
 
-                if !payload_hex.is_empty() {
+                if let Some(payload_hex) = validated_payload.map(|(_transient_id, payload_hex)| payload_hex).or_else(|| {
+                    if payload_hex.is_empty() {
+                        None
+                    } else {
+                        Some(payload_hex)
+                    }
+                }) {
                     self.propagation_payloads
                         .lock()
                         .expect("propagation payload mutex poisoned")
@@ -387,18 +393,32 @@ impl RpcDaemon {
 const PROPAGATION_STAMP_SIZE: usize = 32;
 const PROPAGATION_STAMP_WORKBLOCK_ROUNDS: usize = 1000;
 
-fn validate_propagation_transient_hex(
+fn validate_and_strip_propagation_payload_hex(
     payload_hex: &str,
     target_cost: u32,
-) -> Result<String, std::io::Error> {
-    let transient_data = hex::decode(payload_hex.trim()).map_err(|err| {
+) -> Result<(String, String), std::io::Error> {
+    let transient_data = decode_propagation_payload_hex(payload_hex)?;
+    let (transient_id, payload) = validate_and_strip_propagation_payload_bytes(&transient_data, target_cost)?;
+    Ok((hex::encode(transient_id), hex::encode(payload)))
+}
+
+fn decode_propagation_payload_hex(payload_hex: &str) -> Result<Vec<u8>, std::io::Error> {
+    hex::decode(payload_hex.trim()).map_err(|err| {
         std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
             format!("invalid propagation payload hex: {err}"),
         )
-    })?;
-    let transient_id = validate_propagation_transient_bytes(&transient_data, target_cost)?;
-    Ok(hex::encode(transient_id))
+    })
+}
+
+fn validate_and_strip_propagation_payload_bytes(
+    transient_data: &[u8],
+    target_cost: u32,
+) -> Result<([u8; 32], &[u8]), std::io::Error> {
+    validate_propagation_transient_bytes(transient_data, target_cost).map(|transient_id| {
+        let split_at = transient_data.len() - PROPAGATION_STAMP_SIZE;
+        (transient_id, &transient_data[..split_at])
+    })
 }
 
 fn validate_propagation_transient_bytes(

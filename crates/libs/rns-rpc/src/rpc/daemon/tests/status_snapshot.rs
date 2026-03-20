@@ -756,6 +756,8 @@ fn propagation_ingest_rejects_missing_stamp_when_cost_required() {
 
 #[test]
 fn propagation_ingest_accepts_valid_stamp_when_cost_required() {
+    use sha2::Digest;
+
     let daemon = RpcDaemon::test_instance();
     daemon
         .handle_rpc(rpc_request(
@@ -768,7 +770,8 @@ fn propagation_ingest_accepts_valid_stamp_when_cost_required() {
         ))
         .expect("enable propagation");
 
-    let transient_data = stamped_propagation_payload(b"propagation-wire-payload", 1);
+    let lxm_data = b"propagation-wire-payload";
+    let transient_data = stamped_propagation_payload(lxm_data, 1);
     let response = daemon
         .handle_rpc(rpc_request(
             68,
@@ -780,6 +783,7 @@ fn propagation_ingest_accepts_valid_stamp_when_cost_required() {
         .expect("valid stamped propagation ingest");
     let result = response.result.expect("ingest result");
     let transient_id = result["transient_id"].as_str().expect("transient id").to_string();
+    assert_eq!(transient_id, hex::encode(sha2::Sha256::digest(lxm_data)));
     assert_eq!(result["ingested_count"].as_u64(), Some(1));
 
     let fetched = daemon
@@ -793,7 +797,7 @@ fn propagation_ingest_accepts_valid_stamp_when_cost_required() {
         .expect("fetch ingested propagation payload")
         .result
         .expect("fetch result");
-    let expected_payload_hex = hex::encode(&transient_data);
+    let expected_payload_hex = hex::encode(lxm_data);
     assert_eq!(fetched["payload_hex"].as_str(), Some(expected_payload_hex.as_str()));
 }
 
