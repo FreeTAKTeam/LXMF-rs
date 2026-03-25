@@ -19,6 +19,8 @@ RUST_TRANSPORT_PORT="${RUST_TRANSPORT_ADDR##*:}"
 
 PY_SHARED_INSTANCE_PORT="${PY_SHARED_INSTANCE_PORT:-$((39428 + ($$ % 200)))}"
 PY_INSTANCE_CONTROL_PORT="${PY_INSTANCE_CONTROL_PORT:-$((PY_SHARED_INSTANCE_PORT + 1))}"
+PY_ENDPOINT_CONTROL_PORT="${PY_ENDPOINT_CONTROL_PORT:-$((PY_INSTANCE_CONTROL_PORT + 10))}"
+PY_ENDPOINT_HELPER="${PY_ENDPOINT_HELPER:-${REPO_ROOT}/crates/apps/lxmf-cli/tests/support/python_lxmf_endpoint.py}"
 
 require_python_modules() {
   "${PYTHON_BIN}" - <<'PY' >/dev/null
@@ -218,6 +220,63 @@ raise SystemExit(f"rpc call {method} exhausted retry budget")
 PY
 }
 
+python_control_call() {
+  local control_port="$1"
+  local method="$2"
+  local params_json="${3:-{}}"
+  "${PYTHON_BIN}" - <<'PY' "${control_port}" "${method}" "${params_json}"
+import json
+import socket
+import sys
+
+control_port = int(sys.argv[1])
+method = sys.argv[2]
+params = json.loads(sys.argv[3])
+
+request = json.dumps({"method": method, "params": params}).encode("utf-8") + b"\n"
+with socket.create_connection(("127.0.0.1", control_port), timeout=30) as sock:
+    sock.sendall(request)
+    sock.shutdown(socket.SHUT_WR)
+    response = bytearray()
+    while True:
+        chunk = sock.recv(65536)
+        if not chunk:
+            break
+        response.extend(chunk)
+
+if not response:
+    raise SystemExit("empty response from python endpoint control server")
+
+payload = json.loads(response.decode("utf-8"))
+if not payload.get("ok"):
+    raise SystemExit(payload.get("error") or "python endpoint control call failed")
+
+print(json.dumps(payload.get("result")))
+PY
+}
+
+wait_for_python_control() {
+  local control_port="$1"
+  for _ in $(seq 1 "${TIMEOUT_SECS}"); do
+    if python_control_call "${control_port}" "status" "{}" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+wait_for_rust_peer() {
+  local peer_hash="$1"
+  for _ in $(seq 1 "${TIMEOUT_SECS}"); do
+    if rpc_call "${RUST_RPC_ADDR}" "list_peers" "null" | grep -Eq "\"peer\": *\"${peer_hash}\""; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
 mkdir -p "${LOG_DIR}"
 TMP_ROOT="$(mktemp -d "${LOG_DIR}/run.XXXXXX")"
 
@@ -238,6 +297,10 @@ PY_HOOK_LOG="${HOOK_STATE_DIR}/python-hook.log"
 
 cleanup() {
   local status=$?
+  if [[ -n "${PY_ENDPOINT_PID:-}" ]]; then
+    kill "${PY_ENDPOINT_PID}" >/dev/null 2>&1 || true
+    wait "${PY_ENDPOINT_PID}" >/dev/null 2>&1 || true
+  fi
   if [[ -n "${PY_PID:-}" ]]; then
     kill "${PY_PID}" >/dev/null 2>&1 || true
     wait "${PY_PID}" >/dev/null 2>&1 || true
@@ -468,6 +531,256 @@ RUST_DELIVERY_HASH="$(destination_hash_from_identity "${RUST_DIR}/identity" "lxm
 RUST_PROPAGATION_HASH="$(destination_hash_from_identity "${RUST_DIR}/identity" "lxmf" "propagation")"
 RUST_CONTROL_IDENTITY_HASH="$(identity_hash_from_file "${RUST_DIR}/identity")"
 
+run_link_case() {
+  local py_endpoint_storage="${PY_DIR}/endpoint-storage"
+  local py_status_json=""
+  local py_delivery_hash=""
+  local smoke_message_marker="smoke-message-${COMPAT_CASE}-$(date +%s)"
+  local smoke_message_content="${smoke_message_marker}"
+  local active_snapshot=""
+  local steady_snapshot=""
+  local closed_snapshot=""
+  local message_json=""
+  local rust_message_id=""
+  local keepalive_wait=""
+
+  printf 'link lifecycle case via python endpoint helper\n' >"${PY_REMOTE_STATUS_LOG}"
+  printf 'link lifecycle case via python endpoint helper\n' >"${RUST_REMOTE_STATUS_LOG}"
+
+  (
+    "${PYTHON_BIN}" "${PY_ENDPOINT_HELPER}" \
+      --name "python-link-endpoint" \
+      --display-name "Python Link Endpoint" \
+      --rnsconfig "${PY_RNS_DIR}" \
+      --storage "${py_endpoint_storage}" \
+      --control-port "${PY_ENDPOINT_CONTROL_PORT}" >"${PY_LOG}" 2>&1
+  ) &
+  PY_ENDPOINT_PID=$!
+
+  if ! wait_for_python_control "${PY_ENDPOINT_CONTROL_PORT}"; then
+    echo "Python endpoint helper did not become ready" >&2
+    exit 1
+  fi
+
+  py_status_json="$(python_control_call "${PY_ENDPOINT_CONTROL_PORT}" "status" "{}")"
+  py_delivery_hash="$("${PYTHON_BIN}" - <<'PY' "${py_status_json}"
+import json
+import sys
+
+print(json.loads(sys.argv[1])["delivery_destination_hash"])
+PY
+  )"
+
+  case "${COMPAT_CASE}" in
+    link_liveness_rust_to_python|link_teardown_rust_to_python)
+      python_control_call "${PY_ENDPOINT_CONTROL_PORT}" "announce" "{}" >/dev/null
+      rpc_call "${RUST_RPC_ADDR}" "announce_now" "null" >/dev/null
+      if ! wait_for_rust_peer "${py_delivery_hash}"; then
+        echo "Rust did not learn Python endpoint announce for ${COMPAT_CASE}" >&2
+        exit 1
+      fi
+      rust_message_id="rust-link-${COMPAT_CASE}-$(date +%s)"
+      rpc_call "${RUST_RPC_ADDR}" "send_message_v2" "$(cat <<EOF
+{"id":"${rust_message_id}","source":"${RUST_DELIVERY_HASH}","destination":"${py_delivery_hash}","title":"","content":"${smoke_message_content}","method":"direct"}
+EOF
+)" >"${PY_SEND_LOG}"
+      message_json="$(python_control_call "${PY_ENDPOINT_CONTROL_PORT}" "wait_message" "$(cat <<EOF
+{"content":"${smoke_message_content}","timeout":${TIMEOUT_SECS}}
+EOF
+)")"
+      active_snapshot="$(python_control_call "${PY_ENDPOINT_CONTROL_PORT}" "wait_link_state" "$(cat <<EOF
+{"state":"active","timeout":${TIMEOUT_SECS}}
+EOF
+)")"
+      ;;
+    link_liveness_python_to_rust|link_teardown_python_to_rust)
+      rpc_call "${RUST_RPC_ADDR}" "announce_now" "null" >/dev/null
+      active_snapshot="$(python_control_call "${PY_ENDPOINT_CONTROL_PORT}" "open_link" "$(cat <<EOF
+{"destination":"${RUST_DELIVERY_HASH}","timeout":${TIMEOUT_SECS}}
+EOF
+)")"
+      ;;
+    *)
+      echo "unsupported link lifecycle case: ${COMPAT_CASE}" >&2
+      exit 2
+      ;;
+  esac
+
+  case "${COMPAT_CASE}" in
+    link_liveness_rust_to_python|link_liveness_python_to_rust)
+      keepalive_wait="$("${PYTHON_BIN}" - <<'PY' "${active_snapshot}"
+import json
+import math
+import sys
+
+snapshot = json.loads(sys.argv[1])
+print(max(7, int(math.ceil(snapshot["keepalive_seconds"])) + 2))
+PY
+      )"
+      sleep "${keepalive_wait}"
+      steady_snapshot="$(python_control_call "${PY_ENDPOINT_CONTROL_PORT}" "link_status" "{}")"
+      "${PYTHON_BIN}" - <<'PY' "${COMPAT_CASE}" "${active_snapshot}" "${steady_snapshot}"
+import json
+import sys
+
+case_id, active_raw, steady_raw = sys.argv[1:4]
+active = json.loads(active_raw)
+steady = json.loads(steady_raw)
+
+assert active["status_name"] == "active", active
+assert steady["status_name"] == "active", steady
+assert steady["established_count"] >= 1, steady
+assert steady["closed_count"] == 0, steady
+assert steady["rtt_seconds"] is not None and steady["rtt_seconds"] > 0, steady
+keepalive = steady["keepalive_seconds"]
+assert keepalive is not None and keepalive >= 5, steady
+assert steady["no_data_for_seconds"] >= max(4.0, keepalive - 1.0), steady
+assert steady["inactive_for_seconds"] < keepalive + 3.0, steady
+assert steady["no_inbound_for_seconds"] < keepalive + 3.0, steady
+assert steady["no_outbound_for_seconds"] < keepalive + 3.0, steady
+if case_id == "link_liveness_rust_to_python":
+    assert steady["initiator"] is False, steady
+else:
+    assert steady["initiator"] is True, steady
+PY
+      kill "${RUST_PID}" >/dev/null 2>&1 || true
+      wait "${RUST_PID}" >/dev/null 2>&1 || true
+      unset RUST_PID
+      closed_snapshot="$(python_control_call "${PY_ENDPOINT_CONTROL_PORT}" "wait_link_state" "$(cat <<EOF
+{"state":"closed","timeout":${TIMEOUT_SECS}}
+EOF
+)")"
+      "${PYTHON_BIN}" - <<'PY' "${closed_snapshot}"
+import json
+import sys
+
+closed = json.loads(sys.argv[1])
+assert closed["status_name"] == "closed", closed
+assert closed["closed_count"] >= 1, closed
+reason = closed.get("teardown_reason") or {}
+assert reason.get("name") == "timeout", closed
+PY
+      ;;
+    link_teardown_python_to_rust)
+      python_control_call "${PY_ENDPOINT_CONTROL_PORT}" "teardown_link" "{}" >/dev/null
+      closed_snapshot="$(python_control_call "${PY_ENDPOINT_CONTROL_PORT}" "wait_link_state" "$(cat <<EOF
+{"state":"closed","timeout":${TIMEOUT_SECS}}
+EOF
+)")"
+      "${PYTHON_BIN}" - <<'PY' "${closed_snapshot}"
+import json
+import sys
+
+closed = json.loads(sys.argv[1])
+assert closed["status_name"] == "closed", closed
+reason = closed.get("teardown_reason") or {}
+assert reason.get("name") == "initiator_closed", closed
+assert closed["initiator"] is True, closed
+PY
+      if ! wait_for_file_pattern "${RUST_LOG}" "link: close" "${TIMEOUT_SECS}"; then
+        echo "Rust did not log link close after Python teardown" >&2
+        exit 1
+      fi
+      ;;
+    link_teardown_rust_to_python)
+      python_control_call "${PY_ENDPOINT_CONTROL_PORT}" "set_keepalive_responses" '{"enabled": false}' >/dev/null
+      closed_snapshot="$(python_control_call "${PY_ENDPOINT_CONTROL_PORT}" "wait_link_state" "$(cat <<EOF
+{"state":"closed","timeout":${TIMEOUT_SECS}}
+EOF
+)")"
+      "${PYTHON_BIN}" - <<'PY' "${closed_snapshot}"
+import json
+import sys
+
+closed = json.loads(sys.argv[1])
+assert closed["status_name"] == "closed", closed
+reason = closed.get("teardown_reason") or {}
+assert reason.get("name") == "initiator_closed", closed
+assert closed["initiator"] is False, closed
+PY
+      if ! wait_for_file_pattern "${RUST_LOG}" "link: close" "${TIMEOUT_SECS}"; then
+        echo "Rust did not log link close after watchdog teardown" >&2
+        exit 1
+      fi
+      ;;
+  esac
+
+  "${PYTHON_BIN}" - <<'PY' \
+    "${REPORT_PATH}" \
+    "${TMP_ROOT}" \
+    "${RUST_LOG}" \
+    "${PY_LOG}" \
+    "${PY_REMOTE_STATUS_LOG}" \
+    "${RUST_REMOTE_STATUS_LOG}" \
+    "${RUST_DELIVERY_HASH}" \
+    "${py_delivery_hash}" \
+    "${COMPAT_CASE}" \
+    "${smoke_message_content}" \
+    "${active_snapshot}" \
+    "${steady_snapshot}" \
+    "${closed_snapshot}" \
+    "${message_json}"
+import json
+import sys
+
+(
+    report_path,
+    tmp_root,
+    rust_log,
+    py_log,
+    py_remote_status_log,
+    rust_remote_status_log,
+    rust_delivery_hash,
+    py_delivery_hash,
+    compat_case,
+    smoke_message_content,
+    active_snapshot,
+    steady_snapshot,
+    closed_snapshot,
+    message_json,
+) = sys.argv[1:15]
+
+def decode(value):
+    return json.loads(value) if value else None
+
+report = {
+    "status": "pass",
+    "case": compat_case,
+    "proof": {
+        "smoke_message_content": smoke_message_content,
+        "active_link": decode(active_snapshot),
+        "steady_link": decode(steady_snapshot),
+        "closed_link": decode(closed_snapshot),
+        "message": decode(message_json),
+    },
+    "hashes": {
+        "rust_delivery": rust_delivery_hash,
+        "python_delivery": py_delivery_hash,
+    },
+    "logs": {
+        "tmp_root": tmp_root,
+        "rust_lxmd": rust_log,
+        "python_endpoint": py_log,
+        "python_remote_status": py_remote_status_log,
+        "rust_remote_status": rust_remote_status_log,
+    },
+}
+
+with open(report_path, "w", encoding="utf-8") as handle:
+    json.dump(report, handle, indent=2)
+    handle.write("\n")
+PY
+
+  echo "[python-lxmd-rust-lxmd-smoke] pass"
+  echo "[python-lxmd-rust-lxmd-smoke] report=${REPORT_PATH}"
+  echo "[python-lxmd-rust-lxmd-smoke] logs=${TMP_ROOT}"
+  exit 0
+}
+
+if [[ "${COMPAT_CASE}" == link_* ]]; then
+  run_link_case
+fi
+
 cat > "${PY_DIR}/config" <<EOF
 [propagation]
 enable_node = yes
@@ -561,6 +874,8 @@ SMOKE_MESSAGE_CONTENT="${SMOKE_MESSAGE_MARKER}"
 if [[ "${COMPAT_CASE}" == "resource_transfer" ]]; then
   SMOKE_MESSAGE_CONTENT="${SMOKE_MESSAGE_MARKER}:$(printf 'x%.0s' $(seq 1 16384))"
 fi
+HOOK_MESSAGE_FILE=""
+
 if [[ "${COMPAT_CASE}" == *_python_to_rust ]]; then
   "${PYTHON_BIN}" - <<'PY' \
   "${COMPAT_CASE}" \
@@ -568,7 +883,8 @@ if [[ "${COMPAT_CASE}" == *_python_to_rust ]]; then
   "${PY_SENDER_DIR}" \
   "${RUST_DELIVERY_HASH}" \
   "${RUST_PROPAGATION_HASH}" \
-  "${SMOKE_MESSAGE_CONTENT}" >"${PY_SEND_LOG}"
+  "${SMOKE_MESSAGE_CONTENT}" \
+  "${TIMEOUT_SECS}" >"${PY_SEND_LOG}"
 import json
 import os
 import sys
@@ -743,20 +1059,13 @@ else
 
   RUST_MESSAGE_ID="rust-smoke-${COMPAT_CASE}-$(date +%s)"
   rpc_call "${RUST_RPC_ADDR}" "announce_now" "null" >/dev/null
-  if [[ "${COMPAT_CASE}" == "opportunistic_rust_to_python" ]]; then
-    PEER_VISIBLE=0
-    for _ in $(seq 1 "${TIMEOUT_SECS}"); do
-      if rpc_call "${RUST_RPC_ADDR}" "list_peers" "null" | grep -Eq "\"peer\": *\"${PY_DELIVERY_HASH}\""; then
-        PEER_VISIBLE=1
-        break
-      fi
-      sleep 1
-    done
-    if [[ "${PEER_VISIBLE}" -ne 1 ]]; then
-      echo "Rust did not learn Python delivery announce for opportunistic send" >&2
+  if [[ "${COMPAT_CASE}" == "direct_rust_to_python" || "${COMPAT_CASE}" == "opportunistic_rust_to_python" || "${COMPAT_CASE}" == "resource_transfer" ]]; then
+    if ! wait_for_rust_peer "${PY_DELIVERY_HASH}"; then
+      echo "Rust did not learn Python delivery announce for ${COMPAT_CASE}" >&2
       exit 1
     fi
   fi
+
   rpc_call "${RUST_RPC_ADDR}" "send_message_v2" "$(cat <<EOF
 {"id":"${RUST_MESSAGE_ID}","source":"${RUST_DELIVERY_HASH}","destination":"${PY_DELIVERY_HASH}","title":"","content":"${SMOKE_MESSAGE_CONTENT}","method":"${RUST_SEND_METHOD}"}
 EOF
@@ -776,36 +1085,6 @@ EOF
   fi
 
   HOOK_MESSAGE_FILE="$("${PYTHON_BIN}" - <<'PY' "${PY_HOOK_LOG}"
-  "${PYTHON_BIN}" - <<'PY' "${RUST_RPC_ADDR}"
-import json
-import sys
-import urllib.request
-
-rpc_addr = sys.argv[1]
-req = urllib.request.Request(
-    f"http://{rpc_addr}/rpc",
-    data=json.dumps({"id": 1, "method": "propagation_status", "params": {}}).encode("utf-8"),
-    headers={"Content-Type": "application/json"},
-)
-with urllib.request.urlopen(req, timeout=5) as resp:
-    payload = json.load(resp)
-count = payload.get("result", {}).get("propagation", {}).get("client_propagation_messages_received", 0)
-if count < 1:
-    raise SystemExit(f"expected propagated message ingestion via propagation storage, got count={count}")
-PY
-else
-  for _ in $(seq 1 "${TIMEOUT_SECS}"); do
-    if [[ -f "${HOOK_LOG}" ]] && grep -q "${PY_MESSAGE_CONTENT}" "${HOOK_LOG}"; then
-      break
-    fi
-    sleep 1
-  done
-
-  assert_contains "${HOOK_LOG}" "${PY_MESSAGE_CONTENT}" "Rust lxmd on-inbound hook content"
-  assert_contains "${HOOK_LOG}" "${PY_SENDER_SOURCE_HASH}" "Rust lxmd on-inbound hook source hash"
-
-  HOOK_MESSAGE_FILE="$("${PYTHON_BIN}" - <<'PY' "${HOOK_LOG}"
-
 import sys
 from pathlib import Path
 
@@ -820,6 +1099,12 @@ PY
   if [[ ! -s "${HOOK_MESSAGE_FILE}" ]]; then
     echo "expected inbound message file at ${HOOK_MESSAGE_FILE}" >&2
     exit 1
+  fi
+
+  if [[ "${COMPAT_CASE}" == "propagated_rust_to_python" ]]; then
+    assert_contains <(
+      rpc_call "${RUST_RPC_ADDR}" "propagation_status" "{}"
+    ) "\"client_propagation_messages_received\": *[1-9]" "propagated message ingestion count"
   fi
 fi
 

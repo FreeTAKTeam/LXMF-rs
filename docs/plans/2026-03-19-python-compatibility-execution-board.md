@@ -191,15 +191,21 @@ Required scenarios:
 
 - direct Rust -> Python
 - direct Python -> Rust
+- opportunistic Python -> Rust
 - opportunistic Rust -> Python
 - propagated Rust -> Python via Python router
 - propagated Python -> Rust via Rust router
+- link liveness Rust -> Python
+- link liveness Python -> Rust
+- link teardown Rust -> Python
+- link teardown Python -> Rust
 - Rust/Python resource transfer on shared links
 - `.lxm` round-trip interchange
 
 Acceptance:
 
 - the project has an explicit test plan for the compatibility claim
+- every declared matrix case is dispatchable through the Python harness and the local smoke-script router
 
 ### G. Review Gate
 

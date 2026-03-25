@@ -1,4 +1,6 @@
 use std::env;
+use std::fs;
+use std::path::PathBuf;
 use std::process::Command;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -6,6 +8,7 @@ enum CompatibilityMode {
     Direct,
     Opportunistic,
     Propagated,
+    LinkLifecycle,
     Resource,
     LxmInterchange,
 }
@@ -17,7 +20,7 @@ struct CompatibilityCase {
     description: &'static str,
 }
 
-const COMPATIBILITY_CASES: [CompatibilityCase; 8] = [
+const COMPATIBILITY_CASES: [CompatibilityCase; 12] = [
     CompatibilityCase {
         id: "direct_rust_to_python",
         mode: CompatibilityMode::Direct,
@@ -49,6 +52,26 @@ const COMPATIBILITY_CASES: [CompatibilityCase; 8] = [
         description: "Python node can deliver to Rust node through a Rust propagation node",
     },
     CompatibilityCase {
+        id: "link_liveness_rust_to_python",
+        mode: CompatibilityMode::LinkLifecycle,
+        description: "Rust-initiated direct links stay alive with adaptive keepalives and time out like Python",
+    },
+    CompatibilityCase {
+        id: "link_liveness_python_to_rust",
+        mode: CompatibilityMode::LinkLifecycle,
+        description: "Python-initiated direct links stay alive with adaptive keepalives and time out like Rust",
+    },
+    CompatibilityCase {
+        id: "link_teardown_rust_to_python",
+        mode: CompatibilityMode::LinkLifecycle,
+        description: "Rust watchdog teardown emits a protocol close packet Python accepts as a remote close",
+    },
+    CompatibilityCase {
+        id: "link_teardown_python_to_rust",
+        mode: CompatibilityMode::LinkLifecycle,
+        description: "Python manual teardown closes the Rust link through the protocol close path",
+    },
+    CompatibilityCase {
         id: "resource_transfer",
         mode: CompatibilityMode::Resource,
         description: "Rust and Python nodes can exchange resource payloads on shared links",
@@ -63,7 +86,7 @@ const COMPATIBILITY_CASES: [CompatibilityCase; 8] = [
 #[test]
 fn compatibility_matrix_covers_required_modes() {
     assert!(
-        COMPATIBILITY_CASES.len() >= 8,
+        COMPATIBILITY_CASES.len() >= 12,
         "matrix should cover the documented required scenarios"
     );
     assert_case_present("direct_rust_to_python");
@@ -72,11 +95,16 @@ fn compatibility_matrix_covers_required_modes() {
     assert_case_present("opportunistic_rust_to_python");
     assert_case_present("propagated_rust_to_python");
     assert_case_present("propagated_python_to_rust");
+    assert_case_present("link_liveness_rust_to_python");
+    assert_case_present("link_liveness_python_to_rust");
+    assert_case_present("link_teardown_rust_to_python");
+    assert_case_present("link_teardown_python_to_rust");
     assert_case_present("resource_transfer");
     assert_case_present("lxm_interchange");
     assert!(COMPATIBILITY_CASES.iter().any(|case| case.mode == CompatibilityMode::Direct));
     assert!(COMPATIBILITY_CASES.iter().any(|case| case.mode == CompatibilityMode::Opportunistic));
     assert!(COMPATIBILITY_CASES.iter().any(|case| case.mode == CompatibilityMode::Propagated));
+    assert!(COMPATIBILITY_CASES.iter().any(|case| case.mode == CompatibilityMode::LinkLifecycle));
     assert!(COMPATIBILITY_CASES.iter().any(|case| case.mode == CompatibilityMode::Resource));
     assert!(COMPATIBILITY_CASES.iter().any(|case| case.mode == CompatibilityMode::LxmInterchange));
 }
@@ -119,6 +147,30 @@ fn python_compat_propagated_python_to_rust() {
 
 #[test]
 #[ignore = "requires live Python compatibility harness environment"]
+fn python_compat_link_liveness_rust_to_python() {
+    run_case("link_liveness_rust_to_python");
+}
+
+#[test]
+#[ignore = "requires live Python compatibility harness environment"]
+fn python_compat_link_liveness_python_to_rust() {
+    run_case("link_liveness_python_to_rust");
+}
+
+#[test]
+#[ignore = "requires live Python compatibility harness environment"]
+fn python_compat_link_teardown_rust_to_python() {
+    run_case("link_teardown_rust_to_python");
+}
+
+#[test]
+#[ignore = "requires live Python compatibility harness environment"]
+fn python_compat_link_teardown_python_to_rust() {
+    run_case("link_teardown_python_to_rust");
+}
+
+#[test]
+#[ignore = "requires live Python compatibility harness environment"]
 fn python_compat_resource_transfer() {
     run_case("resource_transfer");
 }
@@ -157,4 +209,27 @@ fn assert_case_present(case_id: &str) {
         "missing compatibility case '{}'",
         case_id
     );
+}
+
+#[test]
+fn compatibility_cases_are_dispatchable_by_harness_and_smoke_script() {
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let harness = fs::read_to_string(repo_root.join("tools/scripts/python_compat_harness.py"))
+        .expect("python harness should be readable");
+    let smoke = fs::read_to_string(repo_root.join("tools/scripts/python-lxmd-rust-lxmd-smoke.sh"))
+        .expect("smoke dispatcher should be readable");
+
+    for case in COMPATIBILITY_CASES {
+        let case_literal = format!("\"{}\"", case.id);
+        assert!(
+            harness.contains(&case_literal),
+            "python harness does not advertise compatibility case '{}'",
+            case.id
+        );
+        assert!(
+            smoke.contains(case.id),
+            "smoke dispatcher does not reference compatibility case '{}'",
+            case.id
+        );
+    }
 }

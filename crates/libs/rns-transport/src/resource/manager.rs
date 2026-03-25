@@ -48,6 +48,12 @@ impl ResourceManager {
         }
     }
 
+    pub fn remove_link_state(&mut self, link_id: AddressHash) {
+        self.pending_outgoing.retain(|_, sender| sender.link_id != link_id);
+        self.outgoing.retain(|_, sender| sender.link_id != link_id);
+        self.incoming.retain(|_, receiver| receiver.link_id != link_id);
+    }
+
     pub fn drain_events(&mut self) -> Vec<ResourceEvent> {
         std::mem::take(&mut self.events)
     }

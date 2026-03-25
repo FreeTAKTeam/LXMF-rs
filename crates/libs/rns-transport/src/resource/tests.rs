@@ -324,6 +324,48 @@ mod tests {
         assert!(!manager.outgoing.contains_key(&resource_hash));
     }
 
+    #[test]
+    fn resource_manager_removes_link_scoped_state_on_link_close() {
+        let signer = PrivateIdentity::new_from_rand(OsRng);
+        let identity = *signer.as_identity();
+        let destination = DestinationDesc {
+            identity,
+            address_hash: identity.address_hash,
+            name: DestinationName::new("lxmf", "resource"),
+        };
+        let (tx, _) = tokio::sync::broadcast::channel(1);
+        let mut link = Link::new(destination, tx);
+        link.request();
+
+        let mut manager = ResourceManager::new_with_config(Duration::from_secs(1), 2);
+        let (resource_hash, _) =
+            manager.start_send(&link, b"cleanup".to_vec(), None).expect("start sender");
+        manager.confirm_outbound_dispatch(resource_hash, true);
+
+        let adv = ResourceAdvertisement {
+            transfer_size: 1,
+            data_size: 1,
+            parts: 1,
+            hash: Hash::new_from_slice(&[0x33; 32]),
+            random_hash: [0u8; RANDOM_HASH_SIZE],
+            original_hash: Hash::new_from_slice(&[0x33; 32]),
+            segment_index: 1,
+            total_segments: 1,
+            request_id: None,
+            flags: 0,
+            hashmap: vec![0u8; MAPHASH_LEN],
+        };
+        let packet =
+            resource_packet(PacketContext::ResourceAdvrtisement, &adv.pack().expect("advertisement"), *link.id());
+        let _ = manager.handle_packet(&packet, &mut link);
+
+        manager.remove_link_state(*link.id());
+
+        assert!(manager.pending_outgoing.is_empty());
+        assert!(manager.outgoing.is_empty());
+        assert!(manager.incoming.is_empty());
+    }
+
     fn resource_packet(context: PacketContext, payload: &[u8], destination: AddressHash) -> Packet {
         Packet {
             header: Header {

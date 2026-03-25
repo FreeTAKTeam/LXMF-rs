@@ -13,7 +13,7 @@ Status legend: `not-started` | `partial` | `done`
 | `RNS/Destination.py` | `crates/libs/rns-core` + `crates/libs/rns-transport` | done | Destination hashing, announces, and destination descriptors are implemented and tested. |
 | `RNS/Packet.py` | `crates/libs/rns-core` + `crates/libs/rns-transport` | done | Packet framing, serialization, and header semantics are present in active crates. |
 | `RNS/Transport.py` | `crates/libs/rns-transport` + `crates/apps/reticulumd` | partial | Core path/announce/resource/link transport exists, but full reference behavior and runtime policy parity are incomplete. |
-| `RNS/Link.py` | `crates/libs/rns-transport` | done | Link establishment and `send_via_link()` behavior are implemented and tested. |
+| `RNS/Link.py` | `crates/libs/rns-transport` | done | Link establishment, adaptive keepalive/stale timing, Python-style activity timers, protocol `LinkClose`, and link-scoped cleanup are implemented and covered by active tests plus the live Rust/Python compatibility matrix. |
 | `RNS/Interfaces/*` | `crates/libs/rns-transport` + `crates/apps/reticulumd` | partial | Active support is limited to `tcp_client`, `tcp_server`, `udp`, `serial`, `ble_gatt`, and startup-only `lora`; Python interface families such as Auto, AX.25, Backbone, I2P, KISS, Local, Pipe, RNode, and Weave are absent. |
 | `RNS/Cryptography/*` | `crates/libs/rns-core` | done | Active workspace implements the required crypto primitives used by Reticulum packets and identities. |
 | `RNS/Resource.py` | `crates/libs/rns-transport` | done | Resource sender/receiver/manager flow is implemented and covered by active tests. |

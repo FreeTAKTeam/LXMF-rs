@@ -19,6 +19,39 @@ fn transport_diag_enabled() -> bool {
 }
 
 impl TransportHandler {
+    async fn note_link_packet_sent(&self, packet: &Packet) {
+        let link = if packet.header.packet_type == PacketType::LinkRequest {
+            let requested_id = crate::destination::link::LinkId::from(packet);
+            let mut matched = None;
+            for candidate in self.out_links.values() {
+                if *candidate.lock().await.id() == requested_id {
+                    matched = Some(candidate.clone());
+                    break;
+                }
+            }
+            matched
+        } else if packet.header.destination_type == DestinationType::Link {
+            if let Some(link) = self.in_links.get(&packet.destination).cloned() {
+                Some(link)
+            } else {
+                let mut matched = None;
+                for candidate in self.out_links.values() {
+                    if *candidate.lock().await.id() == packet.destination {
+                        matched = Some(candidate.clone());
+                        break;
+                    }
+                }
+                matched
+            }
+        } else {
+            None
+        };
+
+        if let Some(link) = link {
+            link.lock().await.note_outbound(packet.context);
+        }
+    }
+
     pub(super) async fn send_packet(&mut self, packet: Packet) {
         let _ = self.send_packet_with_trace(packet).await;
     }
@@ -179,8 +212,13 @@ impl TransportHandler {
     }
 
     pub(super) async fn send(&self, message: TxMessage) -> TxDispatchTrace {
-        self.packet_cache.lock().await.update(&message.packet);
-        self.iface_manager.lock().await.send(message).await
+        let packet = message.packet;
+        self.packet_cache.lock().await.update(&packet);
+        let dispatch = self.iface_manager.lock().await.send(message).await;
+        if dispatch.sent_ifaces > 0 {
+            self.note_link_packet_sent(&packet).await;
+        }
+        dispatch
     }
 
     pub(super) fn has_destination(&self, address: &AddressHash) -> bool {

@@ -51,6 +51,7 @@ impl TransportConfig {
         self.link_proof_timeout_secs = secs;
     }
 
+    /// Sets propagated LinkTable retention only; direct-link keepalive/stale timing remains per-link RTT-driven.
     pub fn set_link_idle_timeout_secs(&mut self, secs: u64) {
         self.link_idle_timeout_secs = secs;
     }

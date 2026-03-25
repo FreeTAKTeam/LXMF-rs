@@ -28,6 +28,13 @@ Last updated: 2026-02-21
 | `auth_token_v1` | `docs/contracts/sdk-v2-errors.md` | Token auth requirements, replay rejection (`jti`), and redacted failures. |
 | `auth_mtls_v1` | `docs/contracts/sdk-v2-errors.md` | Transport-bound mTLS identity checks with explicit client material policy. |
 
+## Reticulum Link Liveness Parity
+
+- `rns-transport` uses RTT-driven keepalive and stale deadlines as the baseline for direct links, matching the adaptive timing model in Python Reticulum.
+- Direct links now expose Python-style activity timers (`no_inbound_for`, `no_outbound_for`, `no_data_for`, `inactive_for`) and send protocol `LinkClose` packets on manual or watchdog teardown.
+- Transport maintenance wakes on the earliest per-link watchdog deadline instead of relying only on a fixed one-second sweep, and link-scoped resource state is purged when a link closes.
+- Mixed Rust/Python compatibility coverage includes live ignored cases for direct-link liveness and teardown in both directions, backed by the Python endpoint control harness.
+
 ## Client Matrix (v1)
 
 Legend: `required`, `optional`, `planned`, `n/a`.

@@ -153,6 +153,7 @@ pub struct TransportConfig {
     announce_cap: usize,
     path_request_timeout_secs: u64,
     link_proof_timeout_secs: u64,
+    // Retains propagated LinkTable entries; direct-link watchdog timing stays RTT-driven in Link.
     link_idle_timeout_secs: u64,
     resource_retry_interval_secs: u64,
     resource_retry_limit: u8,

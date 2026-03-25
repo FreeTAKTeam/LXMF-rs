@@ -90,11 +90,12 @@ pub enum LinkHandleResult {
     KeepAlive,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
+#[allow(clippy::large_enum_variant)]
 pub enum LinkWatchdogAction {
     None,
     SendKeepAlive,
-    Close,
+    SendTeardown(Packet),
 }
 
 #[derive(Clone)]
@@ -125,6 +126,8 @@ pub struct Link {
     rtt: Duration,
     activated_at: Option<Instant>,
     last_inbound: Option<Instant>,
+    last_outbound: Option<Instant>,
+    last_data: Option<Instant>,
     last_keepalive: Option<Instant>,
     last_proof: Option<Instant>,
     stale_since: Option<Instant>,
@@ -166,6 +169,8 @@ impl Link {
             rtt: Duration::from_secs(0),
             activated_at: None,
             last_inbound: None,
+            last_outbound: None,
+            last_data: None,
             last_keepalive: None,
             last_proof: None,
             stale_since: None,
@@ -231,6 +236,8 @@ impl Link {
             rtt: Duration::from_secs(0),
             activated_at: None,
             last_inbound: None,
+            last_outbound: None,
+            last_data: None,
             last_keepalive: None,
             last_proof: None,
             stale_since: None,
@@ -259,6 +266,8 @@ impl Link {
     }
 
     pub fn request(&mut self) -> Packet {
+        self.refresh_local_identity();
+
         let mut packet_data = PacketDataBuffer::new();
 
         packet_data.safe_write(self.priv_identity.as_identity().public_key.as_bytes());
@@ -279,7 +288,10 @@ impl Link {
         self.session_cipher = None;
         self.request_time = Instant::now();
         self.activated_at = None;
+        self.ingress_iface = None;
         self.last_inbound = None;
+        self.last_outbound = Some(self.request_time);
+        self.last_data = Some(self.request_time);
         self.last_keepalive = None;
         self.last_proof = None;
         self.stale_since = None;
@@ -426,6 +438,15 @@ impl Link {
                     log::trace!("link({}): keep-alive response", self.id);
                     return LinkHandleResult::None;
                 }
+            }
+            PacketContext::LinkClose => {
+                let mut buffer = [0u8; PACKET_MDU];
+                if let Ok(plain_text) = self.decrypt(packet.data.as_slice(), &mut buffer[..]) {
+                    if plain_text == self.id.as_slice() {
+                        self.finalize_local_close();
+                    }
+                }
+                return LinkHandleResult::None;
             }
             PacketContext::LinkRTT => {
                 let mut buffer = [0u8; PACKET_MDU];
@@ -909,6 +930,13 @@ impl Link {
         }
     }
 
+    fn refresh_local_identity(&mut self) {
+        self.priv_identity = PrivateIdentity::new(
+            StaticSecret::random_from_rng(OsRng),
+            self.priv_identity.sign_key().clone(),
+        );
+    }
+
     fn handshake(&mut self, peer_identity: Identity) {
         log::debug!("link({}): handshake", self.id);
 
@@ -931,7 +959,18 @@ impl Link {
             self.stale_since = None;
         }
         if context != PacketContext::KeepAlive {
+            self.last_data = Some(now);
             self.request_time = now;
+        }
+    }
+
+    pub(crate) fn note_outbound(&mut self, context: PacketContext) {
+        let now = Instant::now();
+        self.last_outbound = Some(now);
+        if context == PacketContext::KeepAlive {
+            self.last_keepalive = Some(now);
+        } else {
+            self.last_data = Some(now);
         }
     }
 
@@ -950,6 +989,53 @@ impl Link {
             .unwrap_or(self.request_time)
     }
 
+    fn activity_anchor(&self, last_activity: Option<Instant>) -> Instant {
+        [self.activated_at, last_activity].into_iter().flatten().max().unwrap_or(self.request_time)
+    }
+
+    pub fn no_inbound_for(&self) -> Duration {
+        Instant::now().duration_since(self.activity_anchor(self.last_inbound))
+    }
+
+    pub fn no_outbound_for(&self) -> Duration {
+        Instant::now().duration_since(self.activity_anchor(self.last_outbound))
+    }
+
+    pub fn no_data_for(&self) -> Duration {
+        Instant::now().duration_since(self.activity_anchor(self.last_data))
+    }
+
+    pub fn inactive_for(&self) -> Duration {
+        self.no_inbound_for().min(self.no_outbound_for())
+    }
+
+    pub fn next_watchdog_deadline(&self, initiator: bool) -> Option<Instant> {
+        match self.status {
+            LinkStatus::Active => {
+                let inbound_anchor = self.inbound_anchor();
+                let keepalive_due_at = inbound_anchor + self.keepalive;
+                if keepalive_due_at > Instant::now() {
+                    return Some(keepalive_due_at);
+                }
+
+                let stale_due_at = inbound_anchor + self.stale_time;
+                if !initiator {
+                    return Some(stale_due_at);
+                }
+
+                let keepalive_anchor = self.last_keepalive.unwrap_or(inbound_anchor);
+                Some((keepalive_anchor + self.keepalive).min(stale_due_at))
+            }
+            LinkStatus::Stale => self.stale_since.map(|stale_since| {
+                stale_since
+                    + Duration::from_secs_f32(
+                        (self.rtt.as_secs_f32() * KEEPALIVE_TIMEOUT_FACTOR) + STALE_GRACE_SECS,
+                    )
+            }),
+            _ => None,
+        }
+    }
+
     pub fn check_watchdog(&mut self, initiator: bool) -> LinkWatchdogAction {
         let now = Instant::now();
         match self.status {
@@ -965,7 +1051,6 @@ impl Link {
                     if initiator {
                         let keepalive_anchor = self.last_keepalive.unwrap_or(inbound_anchor);
                         if now.duration_since(keepalive_anchor) >= self.keepalive {
-                            self.last_keepalive = Some(now);
                             return LinkWatchdogAction::SendKeepAlive;
                         }
                     }
@@ -978,8 +1063,9 @@ impl Link {
                 );
                 if let Some(stale_since) = self.stale_since {
                     if now.duration_since(stale_since) >= stale_timeout {
-                        self.close();
-                        return LinkWatchdogAction::Close;
+                        if let Some(packet) = self.teardown() {
+                            return LinkWatchdogAction::SendTeardown(packet);
+                        }
                     }
                 }
                 LinkWatchdogAction::None
@@ -1009,17 +1095,48 @@ impl Link {
             event,
         });
     }
-    pub fn close(&mut self) {
+
+    fn finalize_local_close(&mut self) {
         for pending in self.channel_pending.drain().map(|(_, pending)| pending) {
             self.channel_states.insert(pending.sequence, ChannelMessageState::Failed);
         }
         self.channel_rx_ring.clear();
+        self.channel_open = false;
         self.status = LinkStatus::Closed;
+        self.peer_identity = Identity::default();
+        self.derived_key = DerivedKey::new_empty();
         self.session_cipher = None;
+        self.last_keepalive = None;
+        self.last_proof = None;
+        self.stale_since = None;
+        self.next_channel_sequence = 0;
+        self.next_channel_rx_sequence = 0;
+        self.reset_channel_flow_control();
 
         self.post_event(LinkEvent::Closed);
 
         log::warn!("link: close {}", self.id);
+    }
+
+    fn teardown_packet(&self) -> Result<Packet, RnsError> {
+        self.packet_with_context(self.id.as_slice(), PacketContext::LinkClose)
+    }
+
+    pub fn teardown(&mut self) -> Option<Packet> {
+        let packet = if matches!(self.status, LinkStatus::Active | LinkStatus::Stale) {
+            self.teardown_packet().ok()
+        } else {
+            None
+        };
+        if packet.is_some() {
+            self.note_outbound(PacketContext::LinkClose);
+        }
+        self.finalize_local_close();
+        packet
+    }
+
+    pub fn close(&mut self) {
+        self.finalize_local_close();
     }
 
     pub fn restart(&mut self) {
@@ -1030,13 +1147,22 @@ impl Link {
         }
         self.channel_rx_ring.clear();
         self.status = LinkStatus::Pending;
+        self.peer_identity = Identity::default();
+        self.derived_key = DerivedKey::new_empty();
         self.session_cipher = None;
         self.activated_at = None;
+        self.ingress_iface = None;
         self.last_inbound = None;
+        self.last_outbound = None;
+        self.last_data = None;
         self.last_keepalive = None;
         self.last_proof = None;
         self.stale_since = None;
         self.next_channel_rx_sequence = 0;
+        self.keepalive = Duration::from_secs_f32(KEEPALIVE_MAX_SECS);
+        self.stale_time = Duration::from_secs_f32(KEEPALIVE_MAX_SECS * STALE_FACTOR);
+        self.refresh_local_identity();
+        self.reset_channel_flow_control();
     }
 
     pub fn elapsed(&self) -> Duration {
@@ -1859,6 +1985,164 @@ mod tests {
     }
 
     #[test]
+    fn activity_timers_exclude_keepalives_from_data_timer() {
+        let signer = PrivateIdentity::new_from_rand(OsRng);
+        let identity = *signer.as_identity();
+        let destination = DestinationDesc {
+            identity,
+            address_hash: identity.address_hash,
+            name: DestinationName::new("lxmf", "delivery"),
+        };
+        let (tx, _) = tokio::sync::broadcast::channel(4);
+
+        let mut link = Link::new(destination, tx);
+        let stale_anchor = Instant::now() - Duration::from_secs(5);
+        link.status = LinkStatus::Active;
+        link.activated_at = Some(stale_anchor);
+        link.last_inbound = Some(stale_anchor);
+        link.last_outbound = Some(stale_anchor);
+        link.last_data = Some(stale_anchor);
+
+        link.note_inbound(PacketContext::KeepAlive);
+        link.note_outbound(PacketContext::KeepAlive);
+
+        assert!(link.no_inbound_for() < Duration::from_secs(1));
+        assert!(link.no_outbound_for() < Duration::from_secs(1));
+        assert!(link.no_data_for() >= Duration::from_secs(5));
+        assert!(link.inactive_for() < Duration::from_secs(1));
+    }
+
+    #[test]
+    fn teardown_builds_link_close_packet_and_purges_session_state() {
+        let signer = PrivateIdentity::new_from_rand(OsRng);
+        let identity = *signer.as_identity();
+        let destination = DestinationDesc {
+            identity,
+            address_hash: identity.address_hash,
+            name: DestinationName::new("lxmf", "delivery"),
+        };
+        let (tx, _) = tokio::sync::broadcast::channel(4);
+
+        let mut outbound = Link::new(destination, tx.clone());
+        let request = outbound.request();
+        let mut inbound =
+            Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
+                .expect("link request should parse");
+        let iface = AddressHash::new_from_rand(OsRng);
+        assert!(matches!(
+            outbound.handle_packet(&inbound.prove(), iface),
+            LinkHandleResult::Activated
+        ));
+
+        let packet = outbound.teardown().expect("active teardown should produce close packet");
+        assert_eq!(packet.header.packet_type, PacketType::Data);
+        assert_eq!(packet.context, PacketContext::LinkClose);
+        assert_eq!(outbound.status(), LinkStatus::Closed);
+        assert!(outbound.session_cipher.is_none());
+        assert_eq!(outbound.derived_key.as_bytes(), DerivedKey::new_empty().as_bytes());
+        assert_eq!(outbound.peer_identity().address_hash, Identity::default().address_hash);
+
+        let mut plain = [0u8; PACKET_MDU];
+        let decrypted = inbound.decrypt(packet.data.as_slice(), &mut plain).expect("decrypt close");
+        assert_eq!(decrypted, outbound.id().as_slice());
+    }
+
+    #[test]
+    fn inbound_link_close_packet_tears_down_active_link() {
+        let signer = PrivateIdentity::new_from_rand(OsRng);
+        let identity = *signer.as_identity();
+        let destination = DestinationDesc {
+            identity,
+            address_hash: identity.address_hash,
+            name: DestinationName::new("lxmf", "delivery"),
+        };
+        let (tx, _) = tokio::sync::broadcast::channel(4);
+
+        let mut outbound = Link::new(destination, tx.clone());
+        let request = outbound.request();
+        let mut inbound =
+            Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
+                .expect("link request should parse");
+        let iface = AddressHash::new_from_rand(OsRng);
+        assert!(matches!(
+            outbound.handle_packet(&inbound.prove(), iface),
+            LinkHandleResult::Activated
+        ));
+
+        let close_packet =
+            outbound.teardown().expect("active teardown should produce close packet");
+        assert!(matches!(inbound.handle_packet(&close_packet, iface), LinkHandleResult::None));
+        assert_eq!(inbound.status(), LinkStatus::Closed);
+        assert!(inbound.session_cipher.is_none());
+        assert_eq!(inbound.derived_key.as_bytes(), DerivedKey::new_empty().as_bytes());
+    }
+
+    #[test]
+    fn link_rtt_packets_update_adaptive_keepalive_timing() {
+        let signer = PrivateIdentity::new_from_rand(OsRng);
+        let identity = *signer.as_identity();
+        let destination = DestinationDesc {
+            identity,
+            address_hash: identity.address_hash,
+            name: DestinationName::new("lxmf", "delivery"),
+        };
+        let (tx, _) = tokio::sync::broadcast::channel(4);
+
+        let mut outbound = Link::new(destination, tx.clone());
+        let request = outbound.request();
+        let mut inbound =
+            Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
+                .expect("link request should parse");
+        let iface = AddressHash::new_from_rand(OsRng);
+        outbound.request_time = Instant::now() - Duration::from_millis(250);
+        assert!(matches!(
+            outbound.handle_packet(&inbound.prove(), iface),
+            LinkHandleResult::Activated
+        ));
+
+        let rtt_packet = outbound.create_rtt();
+        assert!(matches!(inbound.handle_packet(&rtt_packet, iface), LinkHandleResult::None));
+        assert!(outbound.rtt >= Duration::from_millis(250));
+        assert!(inbound.rtt > Duration::ZERO);
+        assert!(inbound.keepalive < Duration::from_secs_f32(KEEPALIVE_MAX_SECS));
+        assert_eq!(
+            inbound.stale_time,
+            Duration::from_secs_f32(inbound.keepalive.as_secs_f32() * STALE_FACTOR)
+        );
+    }
+
+    #[test]
+    fn next_watchdog_deadline_tracks_keepalive_and_stale_timeouts() {
+        let signer = PrivateIdentity::new_from_rand(OsRng);
+        let identity = *signer.as_identity();
+        let destination = DestinationDesc {
+            identity,
+            address_hash: identity.address_hash,
+            name: DestinationName::new("lxmf", "delivery"),
+        };
+        let (tx, _) = tokio::sync::broadcast::channel(4);
+
+        let mut link = Link::new(destination, tx);
+        link.status = LinkStatus::Active;
+        link.rtt = Duration::from_millis(200);
+        link.update_keepalive_timing();
+        let anchor = Instant::now();
+        link.activated_at = Some(anchor);
+        link.last_inbound = Some(anchor);
+        let active_deadline = link.next_watchdog_deadline(true).expect("active deadline");
+        assert!(active_deadline >= anchor + link.keepalive);
+
+        link.status = LinkStatus::Stale;
+        link.stale_since = Some(anchor);
+        let stale_deadline = link.next_watchdog_deadline(false).expect("stale deadline");
+        let expected = anchor
+            + Duration::from_secs_f32(
+                (link.rtt.as_secs_f32() * KEEPALIVE_TIMEOUT_FACTOR) + STALE_GRACE_SECS,
+            );
+        assert_eq!(stale_deadline, expected);
+    }
+
+    #[test]
     fn watchdog_transitions_active_links_to_stale_and_then_closed() {
         let signer = PrivateIdentity::new_from_rand(OsRng);
         let identity = *signer.as_identity();
@@ -1886,7 +2170,12 @@ mod tests {
                     (link.rtt.as_secs_f32() * KEEPALIVE_TIMEOUT_FACTOR) + STALE_GRACE_SECS + 1.0,
                 ),
         );
-        assert_eq!(link.check_watchdog(false), LinkWatchdogAction::Close);
+        let action = link.check_watchdog(false);
+        let packet = match action {
+            LinkWatchdogAction::SendTeardown(packet) => packet,
+            _ => panic!("watchdog should emit teardown packet"),
+        };
+        assert_eq!(packet.context, PacketContext::LinkClose);
         assert_eq!(link.status, LinkStatus::Closed);
     }
 

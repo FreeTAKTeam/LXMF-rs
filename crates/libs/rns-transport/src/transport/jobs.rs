@@ -31,21 +31,36 @@ async fn next_link_check_delay(handler_arc: &Arc<Mutex<TransportHandler>>) -> Du
     };
 
     let now = std::time::Instant::now();
-    let mut earliest_retry = None;
-    for link in in_links.into_iter().chain(out_links) {
-        if let Some(deadline) = link.lock().await.next_channel_retry_at() {
-            earliest_retry = Some(match earliest_retry {
+    let mut earliest_deadline = None;
+    for link in in_links {
+        let link = link.lock().await;
+        for deadline in
+            [link.next_channel_retry_at(), link.next_watchdog_deadline(false)].into_iter().flatten()
+        {
+            earliest_deadline = Some(match earliest_deadline {
+                Some(current) => std::cmp::min(current, deadline),
+                None => deadline,
+            });
+        }
+    }
+    for link in out_links {
+        let link = link.lock().await;
+        for deadline in
+            [link.next_channel_retry_at(), link.next_watchdog_deadline(true)].into_iter().flatten()
+        {
+            earliest_deadline = Some(match earliest_deadline {
                 Some(current) => std::cmp::min(current, deadline),
                 None => deadline,
             });
         }
     }
 
-    link_check_delay_from_deadline(now, earliest_retry)
+    link_check_delay_from_deadline(now, earliest_deadline)
 }
 
 pub(super) async fn handle_check_links<'a>(mut handler: MutexGuard<'a, TransportHandler>) {
     let mut links_to_remove: Vec<AddressHash> = Vec::new();
+    let mut closed_link_ids: Vec<AddressHash> = Vec::new();
     let mut pending_packets: Vec<Packet> = Vec::new();
     let mut direct_messages: Vec<TxMessage> = Vec::new();
     let now = std::time::Instant::now();
@@ -59,16 +74,25 @@ pub(super) async fn handle_check_links<'a>(mut handler: MutexGuard<'a, Transport
             }
         }
         match link.status() {
-            LinkStatus::Closed => links_to_remove.push(*link_entry.0),
+            LinkStatus::Closed => {
+                links_to_remove.push(*link_entry.0);
+                closed_link_ids.push(*link.id());
+            }
             LinkStatus::Pending | LinkStatus::Handshake => {
                 if link.elapsed() > INTERVAL_INPUT_LINK_CLEANUP {
                     link.close();
                     links_to_remove.push(*link_entry.0);
+                    closed_link_ids.push(*link.id());
                 }
             }
             LinkStatus::Active | LinkStatus::Stale => {
-                if link.check_watchdog(false) == LinkWatchdogAction::Close {
+                if let LinkWatchdogAction::SendTeardown(packet) = link.check_watchdog(false) {
+                    if let Some(iface) = link.ingress_iface() {
+                        direct_messages
+                            .push(TxMessage { tx_type: TxMessageType::Direct(iface), packet });
+                    }
                     links_to_remove.push(*link_entry.0);
+                    closed_link_ids.push(*link.id());
                 }
             }
         }
@@ -77,8 +101,12 @@ pub(super) async fn handle_check_links<'a>(mut handler: MutexGuard<'a, Transport
     for addr in &links_to_remove {
         handler.in_links.remove(addr);
     }
+    for link_id in &closed_link_ids {
+        handler.resource_manager.remove_link_state(*link_id);
+    }
 
     links_to_remove.clear();
+    closed_link_ids.clear();
 
     for link_entry in &handler.out_links {
         let mut link = link_entry.1.lock().await;
@@ -88,7 +116,10 @@ pub(super) async fn handle_check_links<'a>(mut handler: MutexGuard<'a, Transport
             }
         }
         match link.status() {
-            LinkStatus::Closed => links_to_remove.push(*link_entry.0),
+            LinkStatus::Closed => {
+                links_to_remove.push(*link_entry.0);
+                closed_link_ids.push(*link.id());
+            }
             LinkStatus::Active | LinkStatus::Stale => match link.check_watchdog(true) {
                 LinkWatchdogAction::SendKeepAlive => {
                     if let Some(iface) = link.ingress_iface() {
@@ -98,8 +129,13 @@ pub(super) async fn handle_check_links<'a>(mut handler: MutexGuard<'a, Transport
                         });
                     }
                 }
-                LinkWatchdogAction::Close => {
+                LinkWatchdogAction::SendTeardown(packet) => {
+                    if let Some(iface) = link.ingress_iface() {
+                        direct_messages
+                            .push(TxMessage { tx_type: TxMessageType::Direct(iface), packet });
+                    }
                     links_to_remove.push(*link_entry.0);
+                    closed_link_ids.push(*link.id());
                 }
                 LinkWatchdogAction::None => {}
             },
@@ -115,6 +151,9 @@ pub(super) async fn handle_check_links<'a>(mut handler: MutexGuard<'a, Transport
 
     for addr in &links_to_remove {
         handler.out_links.remove(addr);
+    }
+    for link_id in &closed_link_ids {
+        handler.resource_manager.remove_link_state(*link_id);
     }
 
     for packet in pending_packets {

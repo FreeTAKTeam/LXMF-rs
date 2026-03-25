@@ -347,15 +347,17 @@ Impact:
 
 - receipt behavior diverges even when wire bytes otherwise match
 
-### 17. Link watchdog timing is fixed-interval instead of RTT-driven
+### 17. Link watchdog timing follow-through lagged behind the RTT-driven baseline
 
-Status: merged in [#107](https://github.com/FreeTAKTeam/LXMF-rs/pull/107)
+Status: baseline merged in [#107](https://github.com/FreeTAKTeam/LXMF-rs/pull/107); follow-through parity is now implemented in the active workspace
 
 Area: liveness
 
 Rust behavior:
 
-- [`crates/libs/rns-transport/src/transport/jobs.rs`](crates/libs/rns-transport/src/transport/jobs.rs:13) and [`crates/libs/rns-transport/src/transport/jobs.rs`](crates/libs/rns-transport/src/transport/jobs.rs:40) use elapsed-time thresholds
+- [`crates/libs/rns-transport/src/destination/link.rs`](crates/libs/rns-transport/src/destination/link.rs:1016) derives direct-link keepalive and stale deadlines from per-link RTT, exposes Python-style activity timers, and emits protocol `LinkClose` packets on manual or watchdog teardown
+- [`crates/libs/rns-transport/src/transport/jobs.rs`](crates/libs/rns-transport/src/transport/jobs.rs:24) now schedules maintenance from the earliest watchdog or channel-retry deadline instead of a fixed-interval sweep alone
+- [`crates/libs/rns-transport/src/resource/manager.rs`](crates/libs/rns-transport/src/resource/manager.rs:158) purges link-scoped resource retries when links close so teardown matches Python lifecycle expectations more closely
 
 Python reference:
 
@@ -363,7 +365,7 @@ Python reference:
 
 Impact:
 
-- Rust will diverge from Python on long-latency or bursty links
+- the RTT-driven watchdog gap is closed; remaining risk is limited to continued live interop verification rather than a known timing-model mismatch
 
 ### 18. Inbound resource allocation is unbounded by advertised parts
 
