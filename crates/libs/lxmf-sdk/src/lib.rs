@@ -9,6 +9,8 @@ pub mod domain;
 mod error;
 pub mod event;
 mod lifecycle;
+#[cfg(feature = "std")]
+pub mod messaging;
 pub mod profiles;
 pub mod types;
 
@@ -65,6 +67,12 @@ pub use event::{
 };
 // Stability class: stable
 pub use lifecycle::{Lifecycle, SdkMethod};
+#[cfg(feature = "std")]
+pub use messaging::{
+    AnnounceRecord, ConversationRecord, MessageDirection, MessageMethod, MessageRecord,
+    MessageState, MessagingStore, PeerRecord, PeerState, SendMessageRequest, StoredOutboundMessage,
+    SyncPhase, SyncStatus,
+};
 pub use profiles::{
     default_effective_limits, default_memory_budget, required_capabilities, supports_capability,
     MemoryBudget,

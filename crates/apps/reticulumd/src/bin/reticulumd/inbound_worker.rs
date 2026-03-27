@@ -18,11 +18,13 @@ use rns_transport::packet::{
 use rns_transport::resource::ResourceEventKind;
 use rns_transport::transport::{ReceivedPayloadMode, Transport};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
 pub(super) const OUTBOUND_RESOURCE_SENT_STATUS: &str = "sent: link resource";
+const MIN_PROPAGATION_STAMPED_PAYLOAD_SIZE: usize = 112 + 32;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct OutboundResourceTracking {
@@ -49,16 +51,19 @@ pub(super) fn spawn_inbound_worker(
     if control.enabled {
         spawn_control_worker(daemon.clone(), transport.clone(), control.clone());
     }
-    spawn_packet_inbound_worker(daemon.clone(), transport.clone(), control);
+    spawn_packet_inbound_worker(daemon.clone(), transport.clone(), control.clone());
     tokio::spawn(async move {
         let mut rx = transport.resource_events();
         loop {
             if let Ok(event) = rx.recv().await {
                 match event.kind {
                     ResourceEventKind::Complete(complete) => {
-                        if let Some(destination) =
-                            resolve_lxmf_resource_destination(transport.as_ref(), &event.link_id)
-                                .await
+                        if let Some(destination) = resolve_lxmf_resource_destination(
+                            transport.as_ref(),
+                            &event.link_id,
+                            &control,
+                        )
+                        .await
                         {
                             match destination {
                                 InboundLxmfDestination::Delivery(destination) => {
@@ -86,10 +91,9 @@ pub(super) fn spawn_inbound_worker(
                                     }
                                 }
                                 InboundLxmfDestination::Propagation => {
-                                    if let Err(error) = ingest_propagation_envelope(
-                                        daemon.as_ref(),
-                                        &complete.data,
-                                    ) {
+                                    if let Err(error) =
+                                        ingest_propagation_envelope(daemon.as_ref(), &complete.data)
+                                    {
                                         if diagnostics_enabled() {
                                             eprintln!(
                                                 "[daemon-rx] dropping inbound propagation resource: {}",
@@ -151,8 +155,7 @@ fn spawn_packet_inbound_worker(
                     );
                 }
                 if is_lxmf_propagation_destination(&event.destination, &control) {
-                    if let Err(error) = ingest_propagation_envelope(daemon_inbound.as_ref(), data)
-                    {
+                    if let Err(error) = ingest_propagation_envelope(daemon_inbound.as_ref(), data) {
                         if diagnostics_enabled() {
                             eprintln!(
                                 "[daemon-rx] dropping inbound propagation payload: dst={} error={}",
@@ -238,26 +241,52 @@ fn is_lxmf_propagation_destination(
     control.propagation_destination_hash_hex.as_deref() == Some(destination_hex.as_str())
 }
 
+fn propagation_ingest_enabled(control: &PropagationControlContext) -> bool {
+    control.propagation_destination_hash_hex.is_some()
+}
+
 fn ingest_propagation_envelope(
     daemon: &RpcDaemon,
     payload: &[u8],
 ) -> Result<usize, std::io::Error> {
-    let (_timestamp, messages): (f64, Vec<Vec<u8>>) = rmp_serde::from_slice(payload).map_err(
-        |err| {
+    let (_timestamp, messages): (f64, Vec<Vec<u8>>) =
+        rmp_serde::from_slice(payload).map_err(|err| {
             std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 format!("invalid propagation envelope: {err}"),
             )
-        },
-    )?;
+        })?;
+    let target_cost = daemon.propagation_target_cost();
     let transient_ids = messages
         .iter()
         .map(|message| daemon.canonical_propagation_payload_bytes(message))
         .collect::<Result<Vec<_>, _>>()?;
     for (message, transient_id) in messages.iter().zip(transient_ids.iter()) {
-        daemon.ingest_propagation_payload_bytes(message, Some(transient_id.as_str()))?;
+        let aliases = propagation_transient_aliases(message, transient_id, target_cost);
+        daemon.ingest_propagation_payload_bytes_with_aliases(
+            message,
+            transient_id.as_str(),
+            aliases.as_slice(),
+        )?;
     }
     Ok(messages.len())
+}
+
+fn propagation_transient_aliases(
+    payload: &[u8],
+    canonical_transient_id: &str,
+    target_cost: u32,
+) -> Vec<String> {
+    if target_cost != 0 || payload.len() <= MIN_PROPAGATION_STAMPED_PAYLOAD_SIZE {
+        return Vec::new();
+    }
+
+    let stamped_transient_id = hex::encode(Sha256::digest(&payload[..payload.len() - 32]));
+    if stamped_transient_id.eq_ignore_ascii_case(canonical_transient_id) {
+        Vec::new()
+    } else {
+        vec![stamped_transient_id]
+    }
 }
 
 fn spawn_control_worker(
@@ -671,6 +700,7 @@ enum InboundLxmfDestination {
 async fn resolve_lxmf_resource_destination(
     transport: &Transport,
     link_id: &AddressHash,
+    control: &PropagationControlContext,
 ) -> Option<InboundLxmfDestination> {
     if let Some(link) = transport.find_in_link(link_id).await {
         let guard = link.lock().await;
@@ -679,7 +709,9 @@ async fn resolve_lxmf_resource_destination(
             destination.copy_from_slice(guard.destination().address_hash.as_slice());
             return Some(InboundLxmfDestination::Delivery(destination));
         }
-        if is_lxmf_propagation_link_destination(guard.destination()) {
+        if propagation_ingest_enabled(control)
+            && is_lxmf_propagation_link_destination(guard.destination())
+        {
             return Some(InboundLxmfDestination::Propagation);
         }
         return None;
@@ -691,7 +723,9 @@ async fn resolve_lxmf_resource_destination(
             destination.copy_from_slice(guard.destination().address_hash.as_slice());
             return Some(InboundLxmfDestination::Delivery(destination));
         }
-        if is_lxmf_propagation_link_destination(guard.destination()) {
+        if propagation_ingest_enabled(control)
+            && is_lxmf_propagation_link_destination(guard.destination())
+        {
             return Some(InboundLxmfDestination::Propagation);
         }
     }
@@ -708,13 +742,14 @@ fn is_lxmf_propagation_link_destination(destination: &DestinationDesc) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use reticulum_daemon::inbound_delivery;
     use super::{
         ingest_propagation_envelope, is_lxmf_delivery_destination,
-        is_lxmf_propagation_link_destination,
+        is_lxmf_propagation_link_destination, propagation_ingest_enabled,
     };
+    use crate::bootstrap::PropagationControlContext;
     use hkdf::Hkdf;
     use rand_core::OsRng;
+    use reticulum_daemon::inbound_delivery;
     use rns_rpc::{RpcDaemon, RpcRequest};
     use rns_transport::destination::{DestinationDesc, DestinationName};
     use rns_transport::identity::PrivateIdentity;
@@ -754,6 +789,18 @@ mod tests {
         };
 
         assert!(is_lxmf_propagation_link_destination(&destination));
+    }
+
+    #[test]
+    fn send_only_nodes_do_not_enable_propagation_resource_ingest() {
+        let control = PropagationControlContext {
+            enabled: false,
+            propagation_destination_hash_hex: None,
+            control_destination_hash_hex: None,
+            allowed_control_identities: Vec::new(),
+        };
+
+        assert!(!propagation_ingest_enabled(&control));
     }
 
     #[test]
@@ -824,6 +871,34 @@ mod tests {
     }
 
     #[test]
+    fn inbound_stamped_propagation_payload_is_fetchable_by_sender_transient_id_when_target_cost_is_zero(
+    ) {
+        let daemon = RpcDaemon::test_instance();
+        let lxm_data = vec![0x24_u8; 113];
+        let transient = stamped_propagation_payload(&lxm_data, 1);
+        let sender_transient_id = hex::encode(Sha256::digest(&lxm_data));
+        let legacy_transient_id = hex::encode(Sha256::digest(&transient));
+        let envelope =
+            rmp_serde::to_vec(&(1.0_f64, vec![transient.clone()])).expect("propagation envelope");
+
+        let ingested = ingest_propagation_envelope(&daemon, &envelope).expect("ingest envelope");
+        assert_eq!(ingested, 1);
+
+        for transient_id in [sender_transient_id, legacy_transient_id] {
+            let fetched = daemon
+                .handle_rpc(RpcRequest {
+                    id: 6,
+                    method: "propagation_fetch".to_string(),
+                    params: Some(serde_json::json!({ "transient_id": transient_id })),
+                })
+                .expect("fetch propagation payload")
+                .result
+                .expect("fetch result");
+            assert_eq!(fetched["payload_hex"].as_str(), Some(hex::encode(&transient).as_str()));
+        }
+    }
+
+    #[test]
     fn propagation_envelope_does_not_decode_as_normal_lxmf_delivery() {
         let daemon = RpcDaemon::test_instance();
         daemon
@@ -836,18 +911,17 @@ mod tests {
                 })),
             })
             .expect("enable propagation");
-        let transient = stamped_propagation_payload(&vec![0x42_u8; 113], 1);
-        let envelope = rmp_serde::to_vec(&(1.0_f64, vec![transient])).expect("propagation envelope");
+        let transient = stamped_propagation_payload(&[0x42_u8; 113], 1);
+        let envelope =
+            rmp_serde::to_vec(&(1.0_f64, vec![transient])).expect("propagation envelope");
         let destination = [0x22_u8; 16];
 
-        assert!(
-            inbound_delivery::decode_inbound_payload(
-                destination,
-                &envelope,
-                lxmf::inbound_decode::InboundPayloadMode::FullWire,
-            )
-            .is_none()
-        );
+        assert!(inbound_delivery::decode_inbound_payload(
+            destination,
+            &envelope,
+            lxmf::inbound_decode::InboundPayloadMode::FullWire,
+        )
+        .is_none());
         assert!(ingest_propagation_envelope(&daemon, &envelope).is_ok());
     }
 
@@ -860,14 +934,13 @@ mod tests {
         for round in 0..PROPAGATION_STAMP_ROUNDS {
             let mut salt_data = Vec::with_capacity(transient_id.len() + 8);
             salt_data.extend_from_slice(transient_id.as_slice());
-            let packed = rmp_serde::to_vec(&(round as u32))
-                .expect("msgpack encode propagation stamp round");
+            let packed =
+                rmp_serde::to_vec(&(round as u32)).expect("msgpack encode propagation stamp round");
             salt_data.extend_from_slice(&packed);
             let salt_hash = Sha256::digest(&salt_data);
             let hk = Hkdf::<Sha256>::new(Some(salt_hash.as_slice()), transient_id.as_slice());
             let mut okm = [0u8; 256];
-            hk.expand(&[], &mut okm)
-                .expect("hkdf expand propagation stamp workblock");
+            hk.expand(&[], &mut okm).expect("hkdf expand propagation stamp workblock");
             workblock.extend_from_slice(&okm);
         }
 
