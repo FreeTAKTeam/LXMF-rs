@@ -266,7 +266,9 @@ impl Link {
     }
 
     pub fn request(&mut self) -> Packet {
-        self.refresh_local_identity();
+        if self.status != LinkStatus::Pending {
+            self.refresh_local_identity();
+        }
 
         let mut packet_data = PacketDataBuffer::new();
 
@@ -1282,6 +1284,28 @@ mod tests {
         let mut plain_buf = [0u8; PACKET_MDU];
         let decrypted = inbound.decrypt(ciphertext, &mut plain_buf).expect("decrypt");
         assert_eq!(decrypted, plaintext);
+    }
+
+    #[test]
+    fn pending_request_retries_preserve_link_id() {
+        let signer = PrivateIdentity::new_from_rand(OsRng);
+        let identity = *signer.as_identity();
+        let destination = DestinationDesc {
+            identity,
+            address_hash: identity.address_hash,
+            name: DestinationName::new("lxmf", "delivery"),
+        };
+        let (tx, _) = tokio::sync::broadcast::channel(4);
+
+        let mut outbound = Link::new(destination, tx);
+        let first_request = outbound.request();
+        let first_id = *outbound.id();
+
+        let retry_request = outbound.request();
+
+        assert_eq!(first_id, *outbound.id());
+        assert_eq!(first_id, LinkId::from(&first_request));
+        assert_eq!(first_id, LinkId::from(&retry_request));
     }
 
     #[test]
