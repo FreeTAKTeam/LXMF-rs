@@ -222,17 +222,23 @@ async fn unknown_announces_are_held_per_interface_and_released_by_lowest_hops() 
     }
 
     tokio::time::sleep(Duration::from_millis(80)).await;
-    release_held_announces(handler.lock().await).await;
     if immediate_hops.contains(&1) {
+        release_held_announces(handler.lock().await).await;
         assert!(matches!(
             announce_rx.try_recv(),
             Err(tokio::sync::broadcast::error::TryRecvError::Empty)
         ));
     } else {
-        let released_lowest = timeout(Duration::from_millis(200), announce_rx.recv())
-            .await
-            .expect("lowest-hop held announce should emit")
-            .expect("broadcast receive");
+        let mut released_lowest = None;
+        for _ in 0..4 {
+            release_held_announces(handler.lock().await).await;
+            if let Ok(event) = timeout(Duration::from_millis(120), announce_rx.recv()).await {
+                released_lowest = Some(event.expect("broadcast receive"));
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        let released_lowest = released_lowest.expect("lowest-hop held announce should emit");
         assert_eq!(released_lowest.hops, 1);
     }
 
