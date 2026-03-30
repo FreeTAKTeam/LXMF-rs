@@ -819,7 +819,7 @@ fn propagation_ingest_accepts_valid_stamp_when_cost_required() {
 
     let fetched = daemon
         .handle_rpc(rpc_request(
-            70,
+            69,
             "propagation_fetch",
             json!({
                 "transient_id": transient_id,
@@ -828,7 +828,7 @@ fn propagation_ingest_accepts_valid_stamp_when_cost_required() {
         .expect("fetch ingested propagation payload")
         .result
         .expect("fetch result");
-    let expected_payload_hex = hex::encode(&transient_data);
+    let expected_payload_hex = hex::encode(&lxm_data);
     assert_eq!(fetched["payload_hex"].as_str(), Some(expected_payload_hex.as_str()));
 }
 
@@ -843,7 +843,7 @@ fn propagation_ingest_derives_transient_id_from_payload_bytes() {
 
     let response = daemon
         .handle_rpc(rpc_request(
-            71,
+            70,
             "propagation_ingest",
             json!({
                 "payload_hex": payload_hex,
@@ -855,7 +855,7 @@ fn propagation_ingest_derives_transient_id_from_payload_bytes() {
 
     let fetched = daemon
         .handle_rpc(rpc_request(
-            72,
+            71,
             "propagation_fetch",
             json!({
                 "transient_id": expected_transient_id,
@@ -868,11 +868,49 @@ fn propagation_ingest_derives_transient_id_from_payload_bytes() {
 }
 
 #[test]
+fn propagation_ingest_accepts_stamped_payload_with_canonical_transient_id_when_cost_is_zero() {
+    use sha2::{Digest, Sha256};
+
+    let daemon = RpcDaemon::test_instance();
+    let lxm_data = vec![0x55_u8; 113];
+    let transient_data = stamped_propagation_payload(&lxm_data, 1);
+    let canonical_transient_id = hex::encode(Sha256::digest(&lxm_data));
+
+    let response = daemon
+        .handle_rpc(rpc_request(
+            72,
+            "propagation_ingest",
+            json!({
+                "transient_id": canonical_transient_id,
+                "payload_hex": hex::encode(&transient_data),
+            }),
+        ))
+        .expect("stamped propagation ingest at zero target cost");
+    let result = response.result.expect("ingest result");
+    assert_eq!(result["ingested_count"].as_u64(), Some(1));
+    assert_eq!(result["transient_id"].as_str(), Some(canonical_transient_id.as_str()));
+
+    let fetched = daemon
+        .handle_rpc(rpc_request(
+            73,
+            "propagation_fetch",
+            json!({
+                "transient_id": canonical_transient_id,
+            }),
+        ))
+        .expect("fetch ingested propagation payload")
+        .result
+        .expect("fetch result");
+    let expected_payload_hex = hex::encode(&lxm_data);
+    assert_eq!(fetched["payload_hex"].as_str(), Some(expected_payload_hex.as_str()));
+}
+
+#[test]
 fn propagation_ingest_rejects_mismatched_transient_id() {
     let daemon = RpcDaemon::test_instance();
     let err = daemon
         .handle_rpc(rpc_request(
-            73,
+            74,
             "propagation_ingest",
             json!({
                 "transient_id": "deadbeef",
@@ -889,7 +927,7 @@ fn propagation_ingest_without_payload_does_not_increment_counts_or_store_payload
 
     let response = daemon
         .handle_rpc(rpc_request(
-            74,
+            75,
             "propagation_ingest",
             json!({
                 "transient_id": "abcd",
@@ -901,7 +939,7 @@ fn propagation_ingest_without_payload_does_not_increment_counts_or_store_payload
     assert_eq!(result["transient_id"].as_str(), Some("abcd"));
 
     let snapshot = daemon
-        .handle_rpc(RpcRequest { id: 75, method: "daemon_status_ex".to_string(), params: None })
+        .handle_rpc(RpcRequest { id: 76, method: "daemon_status_ex".to_string(), params: None })
         .expect("daemon status")
         .result
         .expect("daemon status result");
@@ -914,7 +952,7 @@ fn propagation_ingest_without_payload_does_not_increment_counts_or_store_payload
 
     let err = daemon
         .handle_rpc(rpc_request(
-            76,
+            77,
             "propagation_fetch",
             json!({
                 "transient_id": "abcd",
