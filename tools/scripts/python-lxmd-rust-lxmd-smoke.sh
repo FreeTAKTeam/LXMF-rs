@@ -583,9 +583,9 @@ import RNS
 import LXMF
 
 case_id, rns_config, storage_dir, destination_hash_hex, propagation_hash_hex, timeout_secs, content = sys.argv[1:8]
+timeout_secs = max(float(timeout_secs), 1.0)
 destination_hash = bytes.fromhex(destination_hash_hex)
 propagation_hash = bytes.fromhex(propagation_hash_hex)
-timeout_secs = max(float(timeout_secs), 1.0)
 
 RNS.Reticulum(configdir=rns_config, loglevel=0)
 identity = RNS.Identity()
