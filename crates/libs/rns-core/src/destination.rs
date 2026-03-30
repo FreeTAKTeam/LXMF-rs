@@ -182,12 +182,9 @@ impl DestinationAnnounce {
             });
         }
 
-        // Compatibility: some Python announces may include ratchet bytes even when
-        // this header flag is not set. Prefer no-ratchet parsing first, then fall
-        // back to ratchet parsing if signature verification fails.
         let signature = &announce_data[offset..(offset + SIGNATURE_LENGTH)];
         let app_data = &announce_data[(offset + SIGNATURE_LENGTH)..];
-        match verify_announce_with_buffer(
+        verify_announce_with_buffer(
             &identity,
             destination.as_slice(),
             public_key.as_bytes(),
@@ -198,50 +195,16 @@ impl DestinationAnnounce {
             signature,
             app_data,
             signed_data,
-        ) {
-            Ok(()) => Ok(AnnounceInfo {
-                destination: SingleOutputDestination::new(
-                    identity,
-                    DestinationName::new_from_hash_slice(name_hash),
-                ),
-                app_data,
-                ratchet: None,
-            }),
-            Err(err_without_ratchet) => {
-                if remaining < SIGNATURE_LENGTH + RATCHET_LENGTH {
-                    return Err(err_without_ratchet);
-                }
+        )?;
 
-                let ratchet = &announce_data[offset..offset + RATCHET_LENGTH];
-                let sig_start = offset + RATCHET_LENGTH;
-                let sig_end = sig_start + SIGNATURE_LENGTH;
-                let signature = &announce_data[sig_start..sig_end];
-                let app_data = &announce_data[sig_end..];
-                verify_announce_with_buffer(
-                    &identity,
-                    destination.as_slice(),
-                    public_key.as_bytes(),
-                    verifying_key.as_bytes(),
-                    name_hash,
-                    rand_hash,
-                    Some(ratchet),
-                    signature,
-                    app_data,
-                    signed_data,
-                )
-                .or(Err(err_without_ratchet))?;
-                let mut ratchet_bytes = [0u8; RATCHET_LENGTH];
-                ratchet_bytes.copy_from_slice(ratchet);
-                Ok(AnnounceInfo {
-                    destination: SingleOutputDestination::new(
-                        identity,
-                        DestinationName::new_from_hash_slice(name_hash),
-                    ),
-                    app_data,
-                    ratchet: Some(ratchet_bytes),
-                })
-            }
-        }
+        Ok(AnnounceInfo {
+            destination: SingleOutputDestination::new(
+                identity,
+                DestinationName::new_from_hash_slice(name_hash),
+            ),
+            app_data,
+            ratchet: None,
+        })
     }
 }
 
