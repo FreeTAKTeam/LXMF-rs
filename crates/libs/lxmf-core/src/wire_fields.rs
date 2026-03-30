@@ -41,8 +41,7 @@ pub fn normalize_attachment_fields_for_wire(
     let canonical = fields.contains_key(FIELD_ATTACHMENTS_PUBLIC_KEY);
     let legacy = fields.contains_key(FIELD_ATTACHMENTS_LEGACY_FILES_KEY);
     let raw_wire = fields.contains_key(FIELD_ATTACHMENTS_WIRE_KEY);
-    let alias_count =
-        usize::from(canonical) + usize::from(legacy) + usize::from(raw_wire);
+    let alias_count = usize::from(canonical) + usize::from(legacy) + usize::from(raw_wire);
 
     if alias_count > 1 {
         return Err(LxmfError::Encode(format!(
@@ -70,10 +69,7 @@ pub fn normalize_attachment_fields_for_wire(
     };
 
     let entries = raw_entries.as_array().ok_or_else(|| {
-        LxmfError::Encode(format!(
-            "field '{}' must be an array of attachment objects",
-            source_key
-        ))
+        LxmfError::Encode(format!("field '{}' must be an array of attachment objects", source_key))
     })?;
     if entries.is_empty() {
         return Ok(());

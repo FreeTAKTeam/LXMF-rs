@@ -433,10 +433,8 @@ mod tests {
         let encrypted = &lxmf_data[16..];
         let mut ephemeral_pub = [0u8; PUBLIC_KEY_LENGTH];
         ephemeral_pub.copy_from_slice(&encrypted[..PUBLIC_KEY_LENGTH]);
-        let derived = receiver.derive_key(
-            &PublicKey::from(ephemeral_pub),
-            Some(receiver.address_hash().as_slice()),
-        );
+        let derived = receiver
+            .derive_key(&PublicKey::from(ephemeral_pub), Some(receiver.address_hash().as_slice()));
         let mut plaintext = vec![0u8; packed.len()];
         let decrypted = receiver
             .decrypt(OsRng, &encrypted[PUBLIC_KEY_LENGTH..], &derived, &mut plaintext)
@@ -450,34 +448,27 @@ mod tests {
     fn unpack_storage_accepts_python_msgpack_container() {
         let sender = PrivateIdentity::new_from_name("python-storage-sender");
         let receiver = PrivateIdentity::new_from_name("python-storage-receiver");
-        let payload =
-            Payload::new(1_773_999_123.25, Some(b"content".to_vec()), Some(b"title".to_vec()), None, None);
+        let payload = Payload::new(
+            1_773_999_123.25,
+            Some(b"content".to_vec()),
+            Some(b"title".to_vec()),
+            None,
+            None,
+        );
         let mut wire =
             WireMessage::new(address_hash_bytes(&receiver), address_hash_bytes(&sender), payload);
         wire.sign(&sender).expect("sign");
 
         let packed_wire = wire.pack().expect("pack");
         let python_container = rmp_serde::to_vec(&rmpv::Value::Map(vec![
-            (
-                rmpv::Value::String("state".into()),
-                rmpv::Value::Integer(4_i64.into()),
-            ),
-            (
-                rmpv::Value::String("lxmf_bytes".into()),
-                rmpv::Value::Binary(packed_wire.clone()),
-            ),
-            (
-                rmpv::Value::String("transport_encrypted".into()),
-                rmpv::Value::Boolean(true),
-            ),
+            (rmpv::Value::String("state".into()), rmpv::Value::Integer(4_i64.into())),
+            (rmpv::Value::String("lxmf_bytes".into()), rmpv::Value::Binary(packed_wire.clone())),
+            (rmpv::Value::String("transport_encrypted".into()), rmpv::Value::Boolean(true)),
             (
                 rmpv::Value::String("transport_encryption".into()),
                 rmpv::Value::String("Curve25519".into()),
             ),
-            (
-                rmpv::Value::String("method".into()),
-                rmpv::Value::Integer(2_i64.into()),
-            ),
+            (rmpv::Value::String("method".into()), rmpv::Value::Integer(2_i64.into())),
         ]))
         .expect("pack python container");
 

@@ -74,7 +74,8 @@ fn decode_inbound_payload_mode(
     mode: InboundPayloadMode,
 ) -> Result<MessageRecord, lxmf::LxmfError> {
     let message = decode_inbound_message(destination, payload, mode)?;
-    let fields = merge_inbound_lxmf_metadata(message.fields.as_ref().and_then(rmpv_to_json), &message);
+    let fields =
+        merge_inbound_lxmf_metadata(message.fields.as_ref().and_then(rmpv_to_json), &message);
     Ok(MessageRecord {
         id: message.id,
         source: hex::encode(message.source),
@@ -94,9 +95,8 @@ fn merge_inbound_lxmf_metadata(
 ) -> Option<JsonValue> {
     let title_utf8 = String::from_utf8(message.title.clone()).ok();
     let content_utf8 = String::from_utf8(message.content.clone()).ok();
-    let needs_metadata = title_utf8.is_none()
-        || content_utf8.is_none()
-        || message.timestamp_f64.fract() != 0.0;
+    let needs_metadata =
+        title_utf8.is_none() || content_utf8.is_none() || message.timestamp_f64.fract() != 0.0;
     if !needs_metadata {
         return fields;
     }
