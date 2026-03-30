@@ -543,16 +543,22 @@ fn normalize_propagation_payload_hex(
     Ok((hex::encode(transient_id), hex::encode(payload)))
 }
 
+fn canonical_propagation_transient_hex(
+    payload_hex: &str,
+    target_cost: u32,
+) -> Result<String, std::io::Error> {
+    let transient_data = decode_propagation_payload_hex(payload_hex)?;
+    let transient_id = canonical_propagation_transient_bytes(&transient_data, target_cost)?;
+    Ok(hex::encode(transient_id))
+}
+
 fn decode_propagation_payload_hex(payload_hex: &str) -> Result<Vec<u8>, std::io::Error> {
     hex::decode(payload_hex.trim()).map_err(|err| {
         std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
             format!("invalid propagation payload hex: {err}"),
         )
-
-    })?;
-    let transient_id = canonical_propagation_transient_bytes(&transient_data, target_cost)?;
-    Ok(hex::encode(transient_id))
+    })
 }
 
 fn canonical_propagation_transient_bytes(
@@ -577,7 +583,18 @@ fn canonical_propagation_transient_bytes(
     let lxm_data = &transient_data[..split_at];
     let stamp = &transient_data[split_at..];
 
-    })
+    let transient_hash = Sha256::digest(lxm_data);
+    let workblock = propagation_stamp_workblock(transient_hash.as_slice());
+    if !propagation_stamp_valid(stamp, target_cost, workblock.as_slice()) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "invalid propagation stamp",
+        ));
+    }
+
+    let mut transient_id = [0u8; 32];
+    transient_id.copy_from_slice(transient_hash.as_slice());
+    Ok(transient_id)
 }
 
 fn normalize_propagation_payload_bytes(
