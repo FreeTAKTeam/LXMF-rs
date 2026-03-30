@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
   "crates/libs/lxmf-grpc-client",
+  "crates/libs/rns-embedded-mininode",
   "crates/libs/rns-embedded-core",
   "crates/libs/rns-embedded-ffi",
   "crates/libs/rns-embedded-runtime",
@@ -18,6 +19,7 @@ members = [
 ]
 default-members = [
   "crates/libs/lxmf-grpc-client",
+  "crates/libs/rns-embedded-mininode",
   "crates/libs/rns-embedded-core",
   "crates/libs/rns-embedded-ffi",
   "crates/libs/rns-embedded-runtime",

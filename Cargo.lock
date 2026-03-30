@@ -2410,6 +2410,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "rns-embedded-mininode"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "lxmf-core",
+ "rand_core",
+ "rmp-serde",
+ "rmpv",
+ "rns-core",
+]
+
+[[package]]
 name = "rns-embedded-runtime"
 version = "0.1.0"
 dependencies = [
