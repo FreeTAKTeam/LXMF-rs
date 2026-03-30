@@ -62,21 +62,13 @@ fn rust_to_python_lxmd_relay_remote_path_e2e() {
 
     let python_bin = env::var("LXMF_PYTHON_BIN").unwrap_or_else(|_| "python3".to_string());
     let reticulum_repo = env::var("RETICULUM_PY_REPO").unwrap_or_else(|_| {
-        workspace_root
-            .parent()
-            .expect("workspace parent")
-            .join("reticulum")
-            .display()
-            .to_string()
+        workspace_root.parent().expect("workspace parent").join("reticulum").display().to_string()
     });
     let lxmf_repo = env::var("LXMF_PY_REPO").unwrap_or_else(|_| {
         workspace_root.parent().expect("workspace parent").join("lxmf").display().to_string()
     });
 
-    assert!(
-        Path::new(&reticulum_repo).exists(),
-        "reticulum repo not found: {reticulum_repo}"
-    );
+    assert!(Path::new(&reticulum_repo).exists(), "reticulum repo not found: {reticulum_repo}");
     assert!(Path::new(&lxmf_repo).exists(), "lxmf repo not found: {lxmf_repo}");
 
     let temp = tempfile::tempdir().expect("tempdir");
@@ -191,8 +183,8 @@ fn rust_to_python_lxmd_relay_remote_path_e2e() {
         let sender_status = daemon_status(sender_rpc)?;
         let recipient_hash = status_hash(&recipient_status)
             .unwrap_or_else(|| panic!("rust-recipient delivery hash: {recipient_status}"));
-        let sender_hash =
-            status_hash(&sender_status).unwrap_or_else(|| panic!("rust-sender delivery hash: {sender_status}"));
+        let sender_hash = status_hash(&sender_status)
+            .unwrap_or_else(|| panic!("rust-sender delivery hash: {sender_status}"));
 
         rpc_call(recipient_rpc, "announce_now", None)?;
 
@@ -275,21 +267,13 @@ fn python_to_rust_lxmd_relay_remote_path_e2e() {
 
     let python_bin = env::var("LXMF_PYTHON_BIN").unwrap_or_else(|_| "python3".to_string());
     let reticulum_repo = env::var("RETICULUM_PY_REPO").unwrap_or_else(|_| {
-        workspace_root
-            .parent()
-            .expect("workspace parent")
-            .join("reticulum")
-            .display()
-            .to_string()
+        workspace_root.parent().expect("workspace parent").join("reticulum").display().to_string()
     });
     let lxmf_repo = env::var("LXMF_PY_REPO").unwrap_or_else(|_| {
         workspace_root.parent().expect("workspace parent").join("lxmf").display().to_string()
     });
 
-    assert!(
-        Path::new(&reticulum_repo).exists(),
-        "reticulum repo not found: {reticulum_repo}"
-    );
+    assert!(Path::new(&reticulum_repo).exists(), "reticulum repo not found: {reticulum_repo}");
     assert!(Path::new(&lxmf_repo).exists(), "lxmf repo not found: {lxmf_repo}");
     assert!(helper_script.exists(), "python helper script not found: {}", helper_script.display());
 
@@ -442,8 +426,16 @@ fn python_to_rust_lxmd_relay_remote_path_e2e() {
     let failure_details = if let Err(err) = &outcome {
         Some(format!(
             "{err}\n\n{}\n\n{}\n\n{}\n\n{}",
-            collect_node_diagnostics("rust-upstream-relay", upstream_relay_rpc, upstream_relay.as_mut()),
-            collect_node_diagnostics("rust-downstream-relay", downstream_relay_rpc, downstream_relay.as_mut()),
+            collect_node_diagnostics(
+                "rust-upstream-relay",
+                upstream_relay_rpc,
+                upstream_relay.as_mut()
+            ),
+            collect_node_diagnostics(
+                "rust-downstream-relay",
+                downstream_relay_rpc,
+                downstream_relay.as_mut()
+            ),
             collect_python_endpoint_diagnostics(
                 "python-sender",
                 python_sender_control,
@@ -887,7 +879,10 @@ fn wait_for_inbound_message(rpc_port: u16, expected_content: &str) -> Result<(),
     Err(format!("inbound content '{expected_content}' did not arrive on rpc port {rpc_port}"))
 }
 
-fn wait_for_python_inbound_message(control_port: u16, expected_content: &str) -> Result<(), String> {
+fn wait_for_python_inbound_message(
+    control_port: u16,
+    expected_content: &str,
+) -> Result<(), String> {
     let deadline = Instant::now() + TEST_TIMEOUT;
     while Instant::now() < deadline {
         let messages = python_control_call(control_port, "list_messages", None)?;

@@ -359,12 +359,12 @@ impl DeliveryTask {
                 Ok(payload) => payload,
                 Err(err) => {
                     let _ = self.receipt_tx.send(ReceiptEvent {
-                    message_id: self.message_id,
-                    status: format!("failed: {err}"),
-                });
-                return;
-            }
-        };
+                        message_id: self.message_id,
+                        status: format!("failed: {err}"),
+                    });
+                    return;
+                }
+            };
         log_delivery_trace(
             &self.message_id,
             &self.destination_hex,
@@ -609,7 +609,12 @@ impl DeliveryTask {
             identity = self.cached_identity_for_destination(destination_hash);
             if identity.is_some() {
                 let detail = destination_hex.unwrap_or(self.destination_hex.as_str());
-                log_delivery_trace(&self.message_id, detail, stage, "resolved from cached peer identity");
+                log_delivery_trace(
+                    &self.message_id,
+                    detail,
+                    stage,
+                    "resolved from cached peer identity",
+                );
             }
         }
 
@@ -725,12 +730,9 @@ impl DeliveryTask {
                 let detail = format!("packet_hash={packet_hash}");
                 log_delivery_trace(&self.message_id, &self.destination_hex, trace_stage, &detail);
                 if let Some(ref mut signal_rx) = propagation_signal_rx {
-                    if let Some(signal) = wait_for_propagation_signal(
-                        signal_rx,
-                        link_id,
-                        Duration::from_millis(1500),
-                    )
-                    .await
+                    if let Some(signal) =
+                        wait_for_propagation_signal(signal_rx, link_id, Duration::from_millis(1500))
+                            .await
                     {
                         if signal == PROPAGATION_INVALID_STAMP_SIGNAL {
                             return Err(std::io::Error::other(

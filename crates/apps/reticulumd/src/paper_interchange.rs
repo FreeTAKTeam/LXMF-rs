@@ -22,12 +22,16 @@ pub struct InterchangeMessageSummary {
     pub stamp_base64: Option<String>,
 }
 
-pub fn decode_storage_file(path: impl AsRef<Path>) -> Result<InterchangeMessageSummary, lxmf::LxmfError> {
+pub fn decode_storage_file(
+    path: impl AsRef<Path>,
+) -> Result<InterchangeMessageSummary, lxmf::LxmfError> {
     let wire = WireMessage::unpack_storage_from_file(path)?;
     summarize_wire_message(&wire)
 }
 
-pub fn summarize_wire_message(wire: &WireMessage) -> Result<InterchangeMessageSummary, lxmf::LxmfError> {
+pub fn summarize_wire_message(
+    wire: &WireMessage,
+) -> Result<InterchangeMessageSummary, lxmf::LxmfError> {
     let packed = wire.pack()?;
     let message = Message::from_wire(&packed)?;
     let title_utf8 = String::from_utf8(message.title.clone()).ok();
@@ -66,26 +70,14 @@ mod tests {
         let wire = build_wire_message(source, destination, "title", "content", None, &sender)
             .expect("wire");
         let container = rmp_serde::to_vec_named(&rmpv::Value::Map(vec![
-            (
-                rmpv::Value::String("state".into()),
-                rmpv::Value::Integer(4_i64.into()),
-            ),
-            (
-                rmpv::Value::String("lxmf_bytes".into()),
-                rmpv::Value::Binary(wire.clone()),
-            ),
-            (
-                rmpv::Value::String("transport_encrypted".into()),
-                rmpv::Value::Boolean(true),
-            ),
+            (rmpv::Value::String("state".into()), rmpv::Value::Integer(4_i64.into())),
+            (rmpv::Value::String("lxmf_bytes".into()), rmpv::Value::Binary(wire.clone())),
+            (rmpv::Value::String("transport_encrypted".into()), rmpv::Value::Boolean(true)),
             (
                 rmpv::Value::String("transport_encryption".into()),
                 rmpv::Value::String("Curve25519".into()),
             ),
-            (
-                rmpv::Value::String("method".into()),
-                rmpv::Value::Integer(2_i64.into()),
-            ),
+            (rmpv::Value::String("method".into()), rmpv::Value::Integer(2_i64.into())),
         ]))
         .expect("container");
         let temp = tempfile::NamedTempFile::new().expect("temp");
