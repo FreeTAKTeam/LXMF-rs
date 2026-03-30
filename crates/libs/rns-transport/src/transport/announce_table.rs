@@ -215,7 +215,7 @@ impl AnnounceTable {
         }
 
         if let Some(entry) = self.cache.get(&destination) {
-            self.do_add_response(entry.clone(), destination, to_iface, hops);
+            self.do_add_response(entry, destination, to_iface, hops);
             return true;
         }
 
@@ -388,7 +388,7 @@ mod tests {
         assert!(table.add_response(destination, to_iface, 3));
         assert!(
             table.map.contains_key(&destination),
-            "live announce entry must stay available for later path responses"
+            "live announce entry must stay available for later remote path requests"
         );
         assert!(table.to_retransmit(&transport_id).is_empty());
         assert_eq!(table.responses.len(), 1);
@@ -407,9 +407,16 @@ mod tests {
         assert!(matches!(messages[0].tx_type, TxMessageType::Direct(iface) if iface == to_iface));
         assert_eq!(messages[0].packet.context, PacketContext::None);
         assert!(table.responses.is_empty());
-        assert!(
-            table.map.contains_key(&destination),
-            "serving one path response must not discard the learned announce"
-        );
+        assert!(table.map.contains_key(&destination));
+        assert!(table.add_response(destination, to_iface, 4));
+
+        sleep(StdDuration::from_millis(450));
+
+        let messages = table.to_retransmit(&transport_id);
+        assert_eq!(messages.len(), 1);
+        assert!(matches!(messages[0].tx_type, TxMessageType::Direct(iface) if iface == to_iface));
+        assert_eq!(messages[0].packet.header.hops, 4);
+        assert!(table.responses.is_empty());
+        assert!(table.map.contains_key(&destination));
     }
 }

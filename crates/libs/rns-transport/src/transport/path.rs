@@ -26,8 +26,8 @@ pub(super) async fn handle_path_request<'a>(
             if !handler.path_requests.allow_local_response(
                 &request.destination,
                 request.requesting_transport,
+                &request.tag_bytes,
                 iface,
-                request.tag_bytes.as_slice(),
             ) {
                 log::trace!(
                     "tp({}): suppressing repeated local path response for {} on {}",

@@ -16,6 +16,16 @@ SUPPORTED_CASES = {
     "lxm_interchange",
 }
 
+SMOKE_SCRIPT_CASES = {
+    "direct_python_to_rust",
+    "opportunistic_rust_to_python",
+    "opportunistic_python_to_rust",
+    "propagated_rust_to_python",
+    "propagated_python_to_rust",
+    "resource_transfer",
+    "lxm_interchange",
+}
+
 
 def main() -> int:
     supported_cases = ", ".join(sorted(SUPPORTED_CASES))
@@ -36,16 +46,24 @@ def main() -> int:
 
     repo_root = Path(__file__).resolve().parents[2]
     smoke_script = repo_root / "tools" / "scripts" / "python-lxmd-rust-lxmd-smoke.sh"
+    if case_id not in SMOKE_SCRIPT_CASES:
+        print(
+            f"compatibility case {case_id!r} is recognized but is not yet wired to a local dispatcher",
+            file=sys.stderr,
+        )
+        return 3
+
     if not smoke_script.is_file():
         print(f"missing smoke script: {smoke_script}", file=sys.stderr)
         return 2
+
     env = os.environ.copy()
     env["COMPAT_CASE"] = case_id
     env.setdefault("LXMF_PYTHON_BIN", sys.executable)
     env.setdefault("PYTHON_BIN", env["LXMF_PYTHON_BIN"])
 
     result = subprocess.run(
-        [str(smoke_script)],
+        ["bash", str(smoke_script)],
         cwd=repo_root,
         env=env,
         check=False,
