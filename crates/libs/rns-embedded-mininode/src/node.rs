@@ -388,9 +388,11 @@ impl<S: MiniNodeStore> MiniNode<S> {
             });
         }
 
-        for message_id in
-            snapshot.recent_message_ids.into_iter().take(self.config.max_recent_messages)
-        {
+        let keep_recent_from = snapshot
+            .recent_message_ids
+            .len()
+            .saturating_sub(self.config.max_recent_messages);
+        for message_id in snapshot.recent_message_ids.into_iter().skip(keep_recent_from) {
             self.recent_message_ids.push_back(message_id);
         }
 
@@ -437,7 +439,7 @@ mod tests {
         adapters::MemoryLink,
         config::MiniNodeConfig,
         event::NodeEvent,
-        store::MemoryStore,
+        store::{MemoryStore, NodeSnapshot},
         telemetry::{BatteryStatus, PositionFix, TelemetryQuery, TelemetrySample},
     };
 
@@ -561,5 +563,22 @@ mod tests {
             .send_message_with_latest_telemetry([0x33; 16], b"status", 8)
             .expect("telemetry message");
         assert_eq!(envelope.destination_hash, [0x33; 16]);
+    }
+
+    #[test]
+    fn restore_snapshot_keeps_most_recent_message_ids_when_trimmed() {
+        let identity = rns_core::identity::PrivateIdentity::new_from_name("restore-trimmed");
+        let config =
+            MiniNodeConfig { max_recent_messages: 2, ..MiniNodeConfig::default() };
+        let snapshot = NodeSnapshot {
+            recent_message_ids: vec![[0x11; 32], [0x22; 32], [0x33; 32]],
+            ..NodeSnapshot::default()
+        };
+
+        let node = MiniNode::new_with_identity(identity, config, MemoryStore::new(), snapshot);
+
+        assert_eq!(node.recent_message_ids.len(), 2);
+        assert_eq!(node.recent_message_ids[0], [0x22; 32]);
+        assert_eq!(node.recent_message_ids[1], [0x33; 32]);
     }
 }
