@@ -827,8 +827,9 @@ fn resolve_destination_identity_blocking(
     destination_hash: AddressHash,
     timeout: Duration,
 ) -> Option<Identity> {
-    tokio::task::block_in_place(|| {
-        tokio::runtime::Handle::current().block_on(async move {
+    std::thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+        runtime.block_on(async move {
             let mut identity = transport.destination_identity(&destination_hash).await;
             if identity.is_none() {
                 transport.request_path(&destination_hash, None, None).await;
@@ -841,6 +842,9 @@ fn resolve_destination_identity_blocking(
             identity
         })
     })
+    .join()
+    .ok()
+    .flatten()
 }
 
 impl OutboundBridge for TransportBridge {

@@ -158,8 +158,7 @@ pub(super) async fn manage_transport(
                     Some(message) = rx_receiver.recv() => {
                         let _ = iface_messages_tx.send(message);
 
-                        let mut packet = message.packet;
-                        packet.header.hops = packet.header.hops.saturating_add(1);
+                        let packet = message.packet;
 
                         let mut handler = handler_arc.lock().await;
 
