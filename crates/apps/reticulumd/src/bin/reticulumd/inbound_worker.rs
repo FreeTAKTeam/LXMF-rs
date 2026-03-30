@@ -966,7 +966,7 @@ mod tests {
                 })),
             })
             .expect("enable propagation");
-        let transient = stamped_propagation_payload(&vec![0x42_u8; 113], 1);
+        let transient = stamped_propagation_payload(&[0x42_u8; 113], 1);
         let envelope =
             rmp_serde::to_vec(&(1.0_f64, vec![transient])).expect("propagation envelope");
         let destination = [0x22_u8; 16];
