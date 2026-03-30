@@ -571,9 +571,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         transport_instance
             .set_destination_announce_app_data(
                 announce_destination.as_ref().expect("delivery destination"),
-                local_display_name
-                    .as_deref()
-                    .and_then(encode_delivery_display_name_app_data),
+                local_display_name.as_deref().and_then(encode_delivery_display_name_app_data),
             )
             .await;
         if propagation_control_enabled {

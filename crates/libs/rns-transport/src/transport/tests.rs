@@ -522,9 +522,8 @@ fn link_request_proof_starts_with_zero_hops() {
     let mut request = outbound.request();
     request.header.hops = 2;
 
-    let mut inbound =
-        Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
-            .expect("link request should parse");
+    let mut inbound = Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
+        .expect("link request should parse");
     let proof = inbound.prove();
 
     assert_eq!(proof.context, PacketContext::LinkRequestProof);
@@ -546,13 +545,7 @@ async fn routed_link_request_proof_preserves_wire_shape_when_forwarded_backwards
     let mut outbound_link = Link::new(remote_destination.desc, tx.clone());
     let mut request = outbound_link.request();
     request.header.hops = 1;
-    link_table.add(
-        &request,
-        request.destination,
-        received_from,
-        next_hop,
-        next_hop_iface,
-    );
+    link_table.add(&request, request.destination, received_from, next_hop, next_hop_iface);
 
     let mut inbound = Link::new_from_request(
         &request,

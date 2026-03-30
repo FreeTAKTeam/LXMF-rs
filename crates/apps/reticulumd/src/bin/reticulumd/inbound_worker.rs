@@ -267,14 +267,13 @@ async fn ingest_propagation_envelope(
     payload: &[u8],
     delivery_destination: Option<&Arc<tokio::sync::Mutex<SingleInputDestination>>>,
 ) -> Result<usize, std::io::Error> {
-    let (_timestamp, messages): (f64, Vec<Vec<u8>>) = rmp_serde::from_slice(payload).map_err(
-        |err| {
+    let (_timestamp, messages): (f64, Vec<Vec<u8>>) =
+        rmp_serde::from_slice(payload).map_err(|err| {
             std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 format!("invalid propagation envelope: {err}"),
             )
-        },
-    )?;
+        })?;
     for message in messages.iter() {
         let transient_id = daemon.canonical_propagation_payload_bytes(message)?;
         if try_accept_local_propagated_message(daemon, delivery_destination, message).await? {
@@ -839,8 +838,8 @@ mod tests {
     use hkdf::Hkdf;
     use lxmf::WireMessage;
     use rand_core::OsRng;
-    use reticulum_daemon::lxmf_bridge::build_wire_message_with_options;
     use reticulum_daemon::inbound_delivery;
+    use reticulum_daemon::lxmf_bridge::build_wire_message_with_options;
     use rns_rpc::{RpcDaemon, RpcRequest};
     use rns_transport::destination::{DestinationDesc, DestinationName, SingleInputDestination};
     use rns_transport::identity::PrivateIdentity;
@@ -968,17 +967,16 @@ mod tests {
             })
             .expect("enable propagation");
         let transient = stamped_propagation_payload(&vec![0x42_u8; 113], 1);
-        let envelope = rmp_serde::to_vec(&(1.0_f64, vec![transient])).expect("propagation envelope");
+        let envelope =
+            rmp_serde::to_vec(&(1.0_f64, vec![transient])).expect("propagation envelope");
         let destination = [0x22_u8; 16];
 
-        assert!(
-            inbound_delivery::decode_inbound_payload(
-                destination,
-                &envelope,
-                lxmf::inbound_decode::InboundPayloadMode::FullWire,
-            )
-            .is_none()
-        );
+        assert!(inbound_delivery::decode_inbound_payload(
+            destination,
+            &envelope,
+            lxmf::inbound_decode::InboundPayloadMode::FullWire,
+        )
+        .is_none());
         assert!(ingest_propagation_envelope(&daemon, &envelope, None).await.is_ok());
     }
 
@@ -991,8 +989,10 @@ mod tests {
             delivery_private.clone(),
             DestinationName::new("lxmf", "delivery"),
         )));
-        let source_destination =
-            SingleInputDestination::new(source_private.clone(), DestinationName::new("lxmf", "delivery"));
+        let source_destination = SingleInputDestination::new(
+            source_private.clone(),
+            DestinationName::new("lxmf", "delivery"),
+        );
         let mut destination_hash = [0u8; 16];
         {
             let destination = delivery_destination.lock().await;
@@ -1032,11 +1032,7 @@ mod tests {
         assert_eq!(ingested, 1);
 
         let messages = daemon
-            .handle_rpc(RpcRequest {
-                id: 40,
-                method: "list_messages".to_string(),
-                params: None,
-            })
+            .handle_rpc(RpcRequest { id: 40, method: "list_messages".to_string(), params: None })
             .expect("list messages")
             .result
             .expect("list messages result");
@@ -1057,14 +1053,13 @@ mod tests {
         for round in 0..PROPAGATION_STAMP_ROUNDS {
             let mut salt_data = Vec::with_capacity(transient_id.len() + 8);
             salt_data.extend_from_slice(transient_id.as_slice());
-            let packed = rmp_serde::to_vec(&(round as u32))
-                .expect("msgpack encode propagation stamp round");
+            let packed =
+                rmp_serde::to_vec(&(round as u32)).expect("msgpack encode propagation stamp round");
             salt_data.extend_from_slice(&packed);
             let salt_hash = Sha256::digest(&salt_data);
             let hk = Hkdf::<Sha256>::new(Some(salt_hash.as_slice()), transient_id.as_slice());
             let mut okm = [0u8; 256];
-            hk.expand(&[], &mut okm)
-                .expect("hkdf expand propagation stamp workblock");
+            hk.expand(&[], &mut okm).expect("hkdf expand propagation stamp workblock");
             workblock.extend_from_slice(&okm);
         }
 

@@ -37,8 +37,8 @@ pub(super) fn spawn_announce_worker(
                     }
                 }
                 let timestamp = now_epoch_secs_i64();
-                let app_data_hex =
-                    (!event.app_data.as_slice().is_empty()).then(|| hex::encode(event.app_data.as_slice()));
+                let app_data_hex = (!event.app_data.as_slice().is_empty())
+                    .then(|| hex::encode(event.app_data.as_slice()));
                 let aspect = lxmf_aspect_from_name_hash(dest.desc.name.as_name_hash_slice());
                 let hops = Some(u32::from(event.hops));
                 let interface = Some(hex::encode(event.interface.as_slice()));

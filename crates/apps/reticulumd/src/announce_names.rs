@@ -56,8 +56,7 @@ pub fn lxmf_aspect_from_name_hash(name_hash: &[u8]) -> Option<String> {
         return Some("lxmf.propagation".to_string());
     }
 
-    let control =
-        rns_transport::destination::DestinationName::new("lxmf", "propagation.control");
+    let control = rns_transport::destination::DestinationName::new("lxmf", "propagation.control");
     if name_hash == control.as_name_hash_slice() {
         return Some("lxmf.propagation.control".to_string());
     }
