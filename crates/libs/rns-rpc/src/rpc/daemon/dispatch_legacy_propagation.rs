@@ -41,6 +41,48 @@ impl RpcDaemon {
         )?))
     }
 
+    pub fn propagation_target_cost(&self) -> u32 {
+        self.propagation_state
+            .lock()
+            .expect("propagation mutex poisoned")
+            .target_cost
+    }
+
+    pub fn ingest_propagation_payload_bytes_with_aliases(
+        &self,
+        payload: &[u8],
+        transient_id: &str,
+        aliases: &[String],
+    ) -> Result<String, std::io::Error> {
+        let payload_hex = hex::encode(payload);
+        if !payload_hex.is_empty() {
+            let mut guard = self
+                .propagation_payloads
+                .lock()
+                .expect("propagation payload mutex poisoned");
+            guard.insert(transient_id.to_string(), payload_hex.clone());
+            for alias in aliases {
+                guard.insert(alias.clone(), payload_hex.clone());
+            }
+        }
+
+        let state = {
+            let mut guard = self.propagation_state.lock().expect("propagation mutex poisoned");
+            let ingested_count = usize::from(!transient_id.is_empty());
+            guard.last_ingest_count = ingested_count;
+            guard.total_ingested += ingested_count;
+            guard.client_propagation_messages_received = guard
+                .client_propagation_messages_received
+                .saturating_add(ingested_count);
+            guard.clone()
+        };
+        self.update_daemon_status_snapshot(|snapshot| {
+            snapshot.propagation = state;
+        });
+
+        Ok(transient_id.to_string())
+    }
+
     pub fn ingest_propagation_payload_hex(
         &self,
         payload_hex: &str,
@@ -205,8 +247,10 @@ impl RpcDaemon {
                     .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
 
                 let payload_hex = parsed.payload_hex.unwrap_or_default();
-                let transient_id = self
-                    .ingest_propagation_payload_hex(payload_hex.as_str(), parsed.transient_id.as_deref())?;
+                let transient_id = self.ingest_propagation_payload_hex(
+                    payload_hex.as_str(),
+                    parsed.transient_id.as_deref(),
+                )?;
                 let state =
                     self.propagation_state.lock().expect("propagation mutex poisoned").clone();
 
@@ -443,7 +487,7 @@ const PROPAGATION_STAMP_SIZE: usize = 32;
 const PROPAGATION_STAMP_WORKBLOCK_ROUNDS: usize = 1000;
 // Python rejects propagation-stamped payloads that cannot contain a minimally
 // structured LXMF message before validating the trailing stamp.
-const MIN_PROPAGATION_STAMPED_PAYLOAD_SIZE: usize = 112 + PROPAGATION_STAMP_SIZE;
+pub const MIN_PROPAGATION_STAMPED_PAYLOAD_SIZE: usize = 112 + PROPAGATION_STAMP_SIZE;
 
 fn canonical_propagation_transient_hex(
     payload_hex: &str,
