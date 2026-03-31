@@ -388,10 +388,8 @@ impl<S: MiniNodeStore> MiniNode<S> {
             });
         }
 
-        let keep_recent_from = snapshot
-            .recent_message_ids
-            .len()
-            .saturating_sub(self.config.max_recent_messages);
+        let keep_recent_from =
+            snapshot.recent_message_ids.len().saturating_sub(self.config.max_recent_messages);
         for message_id in snapshot.recent_message_ids.into_iter().skip(keep_recent_from) {
             self.recent_message_ids.push_back(message_id);
         }
@@ -568,8 +566,7 @@ mod tests {
     #[test]
     fn restore_snapshot_keeps_most_recent_message_ids_when_trimmed() {
         let identity = rns_core::identity::PrivateIdentity::new_from_name("restore-trimmed");
-        let config =
-            MiniNodeConfig { max_recent_messages: 2, ..MiniNodeConfig::default() };
+        let config = MiniNodeConfig { max_recent_messages: 2, ..MiniNodeConfig::default() };
         let snapshot = NodeSnapshot {
             recent_message_ids: vec![[0x11; 32], [0x22; 32], [0x33; 32]],
             ..NodeSnapshot::default()

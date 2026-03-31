@@ -49,6 +49,8 @@ allowed_library_edges = [
   "lxmf-sdk->rns-rpc",
   "rns-embedded-ffi->rns-embedded-core",
   "rns-embedded-ffi->rns-embedded-runtime",
+  "rns-embedded-mininode->lxmf-core",
+  "rns-embedded-mininode->rns-core",
   "rns-embedded-runtime->rns-embedded-core",
   "rns-transport->rns-core",
   "test-support->lxmf-sdk",
