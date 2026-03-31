@@ -6,6 +6,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 cd "${REPO_ROOT}"
 
 PYTHON_BIN="${PYTHON_BIN:-python3}"
+PYTHON_BIN="${LXMF_PYTHON_BIN:-${PYTHON_BIN}}"
 LOG_DIR="${LOG_DIR:-${REPO_ROOT}/target/interop/python-lxmd-rust-lxmd}"
 REPORT_PATH="${REPORT_PATH:-${LOG_DIR}/report.json}"
 TIMEOUT_SECS="${TIMEOUT_SECS:-45}"
@@ -203,11 +204,14 @@ for attempt in range(60):
     if isinstance(value, list):
         result = value[1] if len(value) > 1 else None
         error = value[2] if len(value) > 2 else None
-    else:
+    elif isinstance(value, dict):
         result = value.get("result", value)
         error = value.get("error")
         if error is None and isinstance(result, dict):
             error = result.get("error")
+    else:
+        result = value
+        error = None
     if error and is_rate_limited(error) and attempt + 1 < 60:
         time.sleep(5)
         continue
@@ -883,8 +887,8 @@ if [[ "${COMPAT_CASE}" == *_python_to_rust ]]; then
   "${PY_SENDER_DIR}" \
   "${RUST_DELIVERY_HASH}" \
   "${RUST_PROPAGATION_HASH}" \
-  "${SMOKE_MESSAGE_CONTENT}" \
-  "${TIMEOUT_SECS}" >"${PY_SEND_LOG}"
+  "${TIMEOUT_SECS}" \
+  "${SMOKE_MESSAGE_CONTENT}" >"${PY_SEND_LOG}"
 import json
 import os
 import sys
@@ -893,8 +897,8 @@ import time
 import RNS
 import LXMF
 
-case_id, rns_config, storage_dir, destination_hash_hex, propagation_hash_hex, content, timeout_secs = sys.argv[1:8]
-timeout_secs = float(timeout_secs)
+case_id, rns_config, storage_dir, destination_hash_hex, propagation_hash_hex, timeout_secs, content = sys.argv[1:8]
+timeout_secs = max(float(timeout_secs), 1.0)
 destination_hash = bytes.fromhex(destination_hash_hex)
 propagation_hash = bytes.fromhex(propagation_hash_hex)
 
@@ -903,7 +907,7 @@ identity = RNS.Identity()
 router = LXMF.LXMRouter(identity=identity, storagepath=storage_dir)
 source = router.register_delivery_identity(identity, display_name="Python Smoke Sender")
 
-deadline = time.time() + 30
+deadline = time.time() + timeout_secs
 remote_identity = None
 desired_method = LXMF.LXMessage.OPPORTUNISTIC
 if case_id in ("direct_python_to_rust", "opportunistic_python_to_rust"):
@@ -938,7 +942,7 @@ elif case_id == "propagated_python_to_rust":
     else:
         raise SystemExit("timed out waiting for Rust propagation path")
 
-    deadline = time.time() + 15
+    deadline = time.time() + max(15.0, timeout_secs / 3.0)
     while time.time() < deadline:
         remote_identity = RNS.Identity.recall(propagation_hash)
         if remote_identity is not None:

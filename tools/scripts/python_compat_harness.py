@@ -40,8 +40,7 @@ def main() -> int:
     supported_cases = ", ".join(sorted(SUPPORTED_CASES))
     if len(sys.argv) != 2:
         print(
-            "usage: python_compat_harness.py <case_id> "
-            f"(one of: {supported_cases})",
+            f"usage: python_compat_harness.py <case_id> (one of: {supported_cases})",
             file=sys.stderr,
         )
         return 2
@@ -49,8 +48,7 @@ def main() -> int:
     case_id = sys.argv[1]
     if case_id not in SUPPORTED_CASES:
         print(
-            f"unsupported compatibility case: {case_id}. "
-            f"Supported cases: {supported_cases}",
+            f"unsupported compatibility case: {case_id}. Supported cases: {supported_cases}",
             file=sys.stderr,
         )
         return 2
@@ -64,14 +62,14 @@ def main() -> int:
         )
         return 3
 
-    if not smoke_script.exists() or not smoke_script.is_file():
+    if not smoke_script.is_file():
         print(f"missing smoke script: {smoke_script}", file=sys.stderr)
         return 2
 
     env = os.environ.copy()
     env["COMPAT_CASE"] = case_id
-    if python_bin := env.get("LXMF_PYTHON_BIN"):
-        env.setdefault("PYTHON_BIN", python_bin)
+    env.setdefault("LXMF_PYTHON_BIN", sys.executable)
+    env.setdefault("PYTHON_BIN", env["LXMF_PYTHON_BIN"])
 
     result = subprocess.run(
         ["bash", str(smoke_script)],
