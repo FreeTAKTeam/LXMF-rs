@@ -1,24 +1,21 @@
 use super::announce_worker::spawn_announce_worker;
-use super::bridge::{PeerCrypto, TransportBridge};
+use super::bridge::TransportBridge;
 use super::inbound_worker::{spawn_inbound_worker, OutboundResourceTracking};
-use super::interface_hot_apply::{legacy_tcp_interface_key, LegacyTcpInterfaceMutationBridge};
-use super::interfaces::{ble, common::interface_label, lora, serial, udp};
+use super::interface_hot_apply::LegacyTcpInterfaceMutationBridge;
 use super::receipt_worker::spawn_receipt_worker;
 use super::Args;
+#[path = "bootstrap_transport.rs"]
+mod transport_startup;
 use reticulum_daemon::announce_names::{
     encode_delivery_display_name_app_data, normalize_display_name,
 };
 use reticulum_daemon::config::{DaemonConfig, InterfaceConfig};
 use reticulum_daemon::identity_store::load_or_create_identity;
-use reticulum_daemon::receipt_bridge::ReceiptBridge;
 use rns_rpc::{
     AnnounceBridge, InterfaceRecord, MessagesStore, OutboundBridge, RemoteControlBridge, RpcDaemon,
 };
-use rns_transport::destination::{DestinationName, SingleInputDestination};
-use rns_transport::iface::tcp_client::TcpClient;
-use rns_transport::iface::tcp_server::TcpServer;
-use rns_transport::iface::udp::UdpInterface;
-use rns_transport::transport::{Transport, TransportConfig};
+use rns_transport::destination::SingleInputDestination;
+use rns_transport::transport::Transport;
 use serde_json::{Map as JsonMap, Value as JsonValue};
 use std::collections::HashMap;
 use std::io::IsTerminal;
@@ -28,6 +25,7 @@ use std::sync::{Arc, Mutex};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::time::{timeout, Duration};
+use transport_startup::start_transport_and_interfaces;
 
 #[derive(Clone, Debug)]
 pub(super) struct RpcTlsConfig {
@@ -93,37 +91,10 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
             config.interfaces.iter().map(interface_record_from_config).collect::<Vec<_>>()
         })
         .unwrap_or_default();
-    let mut startup_successes = 0usize;
-    let mut startup_failures: Vec<InterfaceStartupFailure> = Vec::new();
-
-    if let Some(config) = daemon_config.as_ref() {
-        for (index, iface) in config.interfaces.iter().enumerate() {
-            if !iface.enabled() {
-                mark_interface_startup_status(
-                    &mut configured_interfaces[index],
-                    "disabled",
-                    None,
-                    None,
-                );
-            }
-        }
-    }
-
-    let mut transport: Option<Arc<Transport>> = None;
-    let peer_crypto: Arc<Mutex<HashMap<String, PeerCrypto>>> = Arc::new(Mutex::new(HashMap::new()));
-    let mut announce_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>> = None;
-    let mut propagation_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>> = None;
-    let mut control_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>> = None;
-    let mut delivery_destination_hash_hex: Option<String> = None;
-    let mut propagation_destination_hash_hex: Option<String> = None;
-    let mut control_destination_hash_hex: Option<String> = None;
-    let mut delivery_source_hash = [0u8; 16];
     let receipt_map: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
     let outbound_resource_map: Arc<Mutex<HashMap<String, OutboundResourceTracking>>> =
         Arc::new(Mutex::new(HashMap::new()));
     let (receipt_tx, receipt_rx) = unbounded_channel();
-    let mut hot_apply_seeded_tcp: Vec<(String, InterfaceRecord, rns_transport::hash::AddressHash)> =
-        Vec::new();
     let propagation_control_enabled = env_flag("LXMD_PROPAGATION_NODE");
     let configured_control_identities = parse_hex_list_env("LXMD_CONTROL_ALLOWED");
     let peer_announce_at_start = env_flag("LXMD_PEER_ANNOUNCE_AT_START");
@@ -131,512 +102,32 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     let peer_announce_interval_secs = env_u64("LXMD_PEER_ANNOUNCE_INTERVAL_SECS");
     let node_announce_interval_secs = env_u64("LXMD_NODE_ANNOUNCE_INTERVAL_SECS");
 
-    let selected_tcp_server = match select_tcp_server_bind(&args, daemon_config.as_ref()) {
-        Ok(selection) => selection,
-        Err(err) => {
-            panic!("{err}");
-        }
-    };
-    let transport_required = selected_tcp_server.bind_addr.is_some();
+    let startup = start_transport_and_interfaces(
+        &args,
+        daemon_config.as_ref(),
+        &identity,
+        local_display_name.as_deref(),
+        configured_interfaces,
+        receipt_map.clone(),
+        receipt_tx.clone(),
+        propagation_control_enabled,
+    )
+    .await;
 
-    if transport_required {
-        if let Some(addr) = selected_tcp_server.bind_addr.as_ref() {
-            println!(
-                "{}",
-                pretty_boot_line(
-                    "transport",
-                    &format!("reticulumd transport listening on reticulum://{}", addr)
-                )
-            );
-        }
-        println!("{}", pretty_daemon_line("transport enabled"));
-        let transport_identity =
-            rns_transport::identity_bridge::to_transport_private_identity(&identity);
-        let mut config = TransportConfig::new("daemon", &transport_identity, true);
-        // Central tcp_server topologies depend on the daemon relaying announces and path
-        // responses between connected peers, which is gated by transport retransmit mode.
-        config.set_retransmit(true);
-        let mut transport_instance = Transport::new(config);
-        transport_instance
-            .set_receipt_handler(Box::new(ReceiptBridge::new(
-                receipt_map.clone(),
-                receipt_tx.clone(),
-            )))
-            .await;
-        let iface_manager = transport_instance.iface_manager();
-        let mut server_iface = None;
-        if let Some(addr) = selected_tcp_server.bind_addr.as_ref() {
-            let active_iface = iface_manager
-                .lock()
-                .await
-                .spawn(TcpServer::new(addr.clone(), iface_manager.clone()), TcpServer::spawn);
-            eprintln!("[daemon] tcp_server enabled iface={} bind={}", active_iface, addr);
-            startup_successes += 1;
-            server_iface = Some(active_iface);
-        }
-        if let Some(config) = daemon_config.as_ref() {
-            for (index, iface) in config.interfaces.iter().enumerate() {
-                if !iface.enabled() {
-                    continue;
-                }
-                let label = interface_label(iface, index);
-                match iface.kind.as_str() {
-                    "tcp_server" => {
-                        let selected_for_startup =
-                            selected_tcp_server.selected_index == Some(index);
-                        if !selected_for_startup {
-                            mark_interface_startup_status(
-                                &mut configured_interfaces[index],
-                                "shadowed_by_transport_override",
-                                Some(
-                                    "tcp_server ignored because --transport selected the active bind endpoint",
-                                ),
-                                None,
-                            );
-                            let endpoint = iface
-                                .port
-                                .map(|port| {
-                                    let host = iface
-                                        .host
-                                        .as_deref()
-                                        .map(str::trim)
-                                        .filter(|value| !value.is_empty())
-                                        .unwrap_or("0.0.0.0");
-                                    format!("{}:{}", host, port)
-                                })
-                                .unwrap_or_else(|| "<missing-port>".to_string());
-                            eprintln!(
-                                "[daemon] tcp_server startup skipped name={} endpoint={} selected={}",
-                                label,
-                                endpoint,
-                                selected_tcp_server.bind_addr.as_deref().unwrap_or("<none>")
-                            );
-                            continue;
-                        }
-
-                        if iface.port.is_none() {
-                            let err = "tcp_server requires port for startup".to_string();
-                            eprintln!(
-                                "[daemon] tcp_server startup rejected name={} err={}",
-                                label, err
-                            );
-                            mark_interface_startup_status(
-                                &mut configured_interfaces[index],
-                                "failed",
-                                Some(err.as_str()),
-                                None,
-                            );
-                            startup_failures.push(InterfaceStartupFailure {
-                                label,
-                                kind: iface.kind.clone(),
-                                error: err,
-                            });
-                            continue;
-                        }
-                        mark_interface_startup_status(
-                            &mut configured_interfaces[index],
-                            "active",
-                            None,
-                            server_iface.as_ref().map(ToString::to_string).as_deref(),
-                        );
-                    }
-                    "tcp_client" => {
-                        if let (Some(host), Some(port)) = (iface.host.as_ref(), iface.port) {
-                            let endpoint = format!("{}:{}", host, port);
-                            if args.strict_interface_startup {
-                                if let Err(err) =
-                                    strict_tcp_client_preflight(endpoint.as_str()).await
-                                {
-                                    eprintln!(
-                                        "[daemon] tcp_client startup rejected name={} err={}",
-                                        label, err
-                                    );
-                                    mark_interface_startup_status(
-                                        &mut configured_interfaces[index],
-                                        "failed",
-                                        Some(err.as_str()),
-                                        None,
-                                    );
-                                    startup_failures.push(InterfaceStartupFailure {
-                                        label,
-                                        kind: iface.kind.clone(),
-                                        error: err,
-                                    });
-                                    continue;
-                                }
-                            }
-                            let client_iface = iface_manager
-                                .lock()
-                                .await
-                                .spawn(TcpClient::new(endpoint), TcpClient::spawn);
-                            eprintln!(
-                                "[daemon] tcp_client enabled iface={} name={} host={} port={}",
-                                client_iface, label, host, port
-                            );
-                            let runtime_iface = client_iface.to_string();
-                            mark_interface_startup_status(
-                                &mut configured_interfaces[index],
-                                "spawned",
-                                None,
-                                Some(runtime_iface.as_str()),
-                            );
-                            if let Some(key) =
-                                legacy_tcp_interface_key(&configured_interfaces[index])
-                            {
-                                hot_apply_seeded_tcp.push((
-                                    key,
-                                    configured_interfaces[index].clone(),
-                                    client_iface,
-                                ));
-                            }
-                            startup_successes += 1;
-                        } else {
-                            let err = "tcp_client requires host and port for startup".to_string();
-                            eprintln!(
-                                "[daemon] tcp_client startup rejected name={} err={}",
-                                label, err
-                            );
-                            mark_interface_startup_status(
-                                &mut configured_interfaces[index],
-                                "failed",
-                                Some(err.as_str()),
-                                None,
-                            );
-                            startup_failures.push(InterfaceStartupFailure {
-                                label,
-                                kind: iface.kind.clone(),
-                                error: err,
-                            });
-                        }
-                    }
-                    "udp" => match udp::bind_and_forward_addr(iface) {
-                        Ok((bind_addr, forward_addr)) => {
-                            if args.strict_interface_startup {
-                                if let Err(err) = udp::strict_preflight(bind_addr.as_str()).await {
-                                    eprintln!(
-                                        "[daemon] udp startup rejected name={} err={}",
-                                        label, err
-                                    );
-                                    mark_interface_startup_status(
-                                        &mut configured_interfaces[index],
-                                        "failed",
-                                        Some(err.as_str()),
-                                        None,
-                                    );
-                                    startup_failures.push(InterfaceStartupFailure {
-                                        label,
-                                        kind: iface.kind.clone(),
-                                        error: err,
-                                    });
-                                    continue;
-                                }
-                            }
-                            let udp_iface = iface_manager.lock().await.spawn(
-                                UdpInterface::new(bind_addr.clone(), forward_addr.clone()),
-                                UdpInterface::spawn,
-                            );
-                            eprintln!(
-                                "[daemon] udp enabled iface={} name={} bind={} forward={}",
-                                udp_iface,
-                                label,
-                                bind_addr,
-                                forward_addr.as_deref().unwrap_or("<none>")
-                            );
-                            let runtime_iface = udp_iface.to_string();
-                            mark_interface_startup_status(
-                                &mut configured_interfaces[index],
-                                "spawned",
-                                None,
-                                Some(runtime_iface.as_str()),
-                            );
-                            startup_successes += 1;
-                        }
-                        Err(err) => {
-                            eprintln!("[daemon] udp startup rejected name={} err={}", label, err);
-                            mark_interface_startup_status(
-                                &mut configured_interfaces[index],
-                                "failed",
-                                Some(err.as_str()),
-                                None,
-                            );
-                            startup_failures.push(InterfaceStartupFailure {
-                                label,
-                                kind: iface.kind.clone(),
-                                error: err,
-                            });
-                        }
-                    },
-                    "serial" => match serial::build_adapter(iface) {
-                        Ok(adapter) => {
-                            if args.strict_interface_startup {
-                                if let Err(err) = adapter.preflight_open() {
-                                    eprintln!(
-                                        "[daemon] serial startup rejected name={} err={}",
-                                        label, err
-                                    );
-                                    mark_interface_startup_status(
-                                        &mut configured_interfaces[index],
-                                        "failed",
-                                        Some(err.as_str()),
-                                        None,
-                                    );
-                                    startup_failures.push(InterfaceStartupFailure {
-                                        label,
-                                        kind: iface.kind.clone(),
-                                        error: err,
-                                    });
-                                    continue;
-                                }
-                            }
-                            let serial_iface =
-                                iface_manager.lock().await.spawn(adapter, |context| async move {
-                                    rns_transport::iface::serial::SerialInterface::spawn(context)
-                                        .await
-                                });
-                            eprintln!(
-                                "[daemon] serial enabled iface={} name={} device={} baud_rate={}",
-                                serial_iface,
-                                label,
-                                iface.device.as_deref().unwrap_or("<unset>"),
-                                iface.baud_rate.unwrap_or_default()
-                            );
-                            let runtime_iface = serial_iface.to_string();
-                            mark_interface_startup_status(
-                                &mut configured_interfaces[index],
-                                "spawned",
-                                None,
-                                Some(runtime_iface.as_str()),
-                            );
-                            startup_successes += 1;
-                        }
-                        Err(err) => {
-                            eprintln!(
-                                "[daemon] serial startup rejected name={} err={}",
-                                label, err
-                            );
-                            mark_interface_startup_status(
-                                &mut configured_interfaces[index],
-                                "failed",
-                                Some(err.as_str()),
-                                None,
-                            );
-                            startup_failures.push(InterfaceStartupFailure {
-                                label,
-                                kind: iface.kind.clone(),
-                                error: err,
-                            });
-                        }
-                    },
-                    "ble_gatt" => match ble::spawn(iface_manager.clone(), iface).await {
-                        Ok(ble_iface) => {
-                            eprintln!(
-                                "[daemon] ble_gatt enabled iface={} name={} peripheral_id={}",
-                                ble_iface,
-                                label,
-                                iface.peripheral_id.as_deref().unwrap_or("<unset>")
-                            );
-                            let runtime_iface = ble_iface.to_string();
-                            mark_interface_startup_status(
-                                &mut configured_interfaces[index],
-                                "spawned",
-                                None,
-                                Some(runtime_iface.as_str()),
-                            );
-                            mark_interface_runtime_fields(
-                                &mut configured_interfaces[index],
-                                "running",
-                                0,
-                            );
-                            startup_successes += 1;
-                        }
-                        Err(err) => {
-                            eprintln!(
-                                "[daemon] ble_gatt startup rejected name={} err={}",
-                                label, err
-                            );
-                            mark_interface_startup_status(
-                                &mut configured_interfaces[index],
-                                "failed",
-                                Some(err.as_str()),
-                                None,
-                            );
-                            mark_interface_runtime_fields(
-                                &mut configured_interfaces[index],
-                                "degraded",
-                                0,
-                            );
-                            startup_failures.push(InterfaceStartupFailure {
-                                label,
-                                kind: iface.kind.clone(),
-                                error: err,
-                            });
-                        }
-                    },
-                    "lora" => match lora::startup(iface) {
-                        Ok(()) => {
-                            mark_interface_startup_status(
-                                &mut configured_interfaces[index],
-                                "validated_startup_only",
-                                None,
-                                None,
-                            );
-                            startup_successes += 1;
-                        }
-                        Err(err) => {
-                            eprintln!("[daemon] lora startup rejected name={} err={}", label, err);
-                            mark_interface_startup_status(
-                                &mut configured_interfaces[index],
-                                "failed",
-                                Some(err.as_str()),
-                                None,
-                            );
-                            startup_failures.push(InterfaceStartupFailure {
-                                label,
-                                kind: iface.kind.clone(),
-                                error: err,
-                            });
-                        }
-                    },
-                    _ => {
-                        let err = format!("unsupported interface kind '{}'", iface.kind);
-                        eprintln!("[daemon] interface startup rejected name={} err={}", label, err);
-                        mark_interface_startup_status(
-                            &mut configured_interfaces[index],
-                            "failed",
-                            Some(err.as_str()),
-                            None,
-                        );
-                        startup_failures.push(InterfaceStartupFailure {
-                            label,
-                            kind: iface.kind.clone(),
-                            error: err,
-                        });
-                    }
-                }
-            }
-        }
-        if selected_tcp_server.selected_index.is_none() {
-            if let (Some(addr), Some(active_iface)) =
-                (selected_tcp_server.bind_addr.as_ref(), server_iface.as_ref())
-            {
-                let (host, port) = addr.rsplit_once(':').unwrap_or(("0.0.0.0", "0"));
-                let mut server_record = InterfaceRecord {
-                    kind: "tcp_server".into(),
-                    enabled: true,
-                    host: Some(host.to_string()),
-                    port: port.parse::<u16>().ok(),
-                    name: Some("daemon-transport".into()),
-                    settings: None,
-                };
-                let runtime_iface = active_iface.to_string();
-                mark_interface_startup_status(
-                    &mut server_record,
-                    "active",
-                    None,
-                    Some(runtime_iface.as_str()),
-                );
-                mark_interface_runtime_managed(&mut server_record, "daemon_transport");
-                configured_interfaces.push(server_record);
-            }
-        }
-
-        let destination = transport_instance
-            .add_destination(transport_identity.clone(), DestinationName::new("lxmf", "delivery"))
-            .await;
-        {
-            let dest = destination.lock().await;
-            delivery_source_hash.copy_from_slice(dest.desc.address_hash.as_slice());
-            delivery_destination_hash_hex = Some(hex::encode(dest.desc.address_hash.as_slice()));
-            println!(
-                "{}",
-                pretty_daemon_line(&format!(
-                    "delivery destination hash={}",
-                    hex::encode(dest.desc.address_hash.as_slice())
-                ))
-            );
-        }
-        announce_destination = Some(destination);
-        transport_instance
-            .set_destination_announce_app_data(
-                announce_destination.as_ref().expect("delivery destination"),
-                local_display_name.as_deref().and_then(encode_delivery_display_name_app_data),
-            )
-            .await;
-        if propagation_control_enabled {
-            let propagation = transport_instance
-                .add_destination(
-                    transport_identity.clone(),
-                    DestinationName::new("lxmf", "propagation"),
-                )
-                .await;
-            {
-                let dest = propagation.lock().await;
-                propagation_destination_hash_hex =
-                    Some(hex::encode(dest.desc.address_hash.as_slice()));
-                println!(
-                    "{}",
-                    pretty_daemon_line(&format!(
-                        "propagation destination hash={}",
-                        hex::encode(dest.desc.address_hash.as_slice())
-                    ))
-                );
-            }
-            propagation_destination = Some(propagation);
-            transport_instance
-                .set_destination_announce_app_data(
-                    propagation_destination.as_ref().expect("propagation destination"),
-                    encode_propagation_node_app_data(local_display_name.as_deref()),
-                )
-                .await;
-
-            let control = transport_instance
-                .add_destination(
-                    transport_identity.clone(),
-                    DestinationName::new("lxmf", "propagation.control"),
-                )
-                .await;
-            {
-                let dest = control.lock().await;
-                control_destination_hash_hex = Some(hex::encode(dest.desc.address_hash.as_slice()));
-                println!(
-                    "{}",
-                    pretty_daemon_line(&format!(
-                        "control destination hash={}",
-                        hex::encode(dest.desc.address_hash.as_slice())
-                    ))
-                );
-            }
-            control_destination = Some(control);
-        }
-        transport = Some(Arc::new(transport_instance));
-    } else if let Some(config) = daemon_config.as_ref() {
-        eprintln!(
-            "{}",
-            pretty_warn_line(
-                "transport disabled; configured interfaces will remain inactive until you start reticulumd with --transport HOST:PORT"
-            )
-        );
-        for (index, iface) in config.interfaces.iter().enumerate() {
-            if !iface.enabled() {
-                continue;
-            }
-            let label = interface_label(iface, index);
-            let err =
-                "transport is disabled; start reticulumd with --transport to activate interfaces"
-                    .to_string();
-            mark_interface_startup_status(
-                &mut configured_interfaces[index],
-                "inactive_transport_disabled",
-                Some(err.as_str()),
-                None,
-            );
-            startup_failures.push(InterfaceStartupFailure {
-                label,
-                kind: iface.kind.clone(),
-                error: err,
-            });
-        }
-    }
+    let transport = startup.transport;
+    let peer_crypto = startup.peer_crypto;
+    let announce_destination = startup.announce_destination;
+    let propagation_destination = startup.propagation_destination;
+    let control_destination = startup.control_destination;
+    let delivery_destination_hash_hex = startup.delivery_destination_hash_hex;
+    let propagation_destination_hash_hex = startup.propagation_destination_hash_hex;
+    let control_destination_hash_hex = startup.control_destination_hash_hex;
+    let delivery_source_hash = startup.delivery_source_hash;
+    configured_interfaces = startup.configured_interfaces;
+    let startup_successes = startup.startup_successes;
+    let startup_failures = startup.startup_failures;
+    let hot_apply_seeded_tcp = startup.hot_apply_seeded_tcp;
+    let selected_tcp_server = startup.selected_tcp_server;
 
     if !startup_failures.is_empty() {
         eprintln!(
