@@ -7,6 +7,7 @@ Rust monorepo for LXMF and Reticulum with strict library/app boundaries and ente
 ## Start Here
 
 - Contributor workflow: `CONTRIBUTING.md`
+- Current status and execution order: `docs/status/current-roadmap.md`
 - Docs map and retention rules: `docs/README.md`
 - SDK guide: `docs/sdk/README.md`
 - Support policy: `docs/contracts/support-policy.md`
@@ -168,6 +169,7 @@ cargo run -p rns-tools --bin rnx -- e2e --timeout-secs 20
 ## Documentation Entry Points
 
 - Docs map: `docs/README.md`
+- Current status: `docs/status/current-roadmap.md`
 - API surface and stability: `docs/lxmf-rs-api.md`
 - CLI quick reference: `docs/lxmf-cli.md`
 - Architecture overview: `docs/architecture/overview.md`

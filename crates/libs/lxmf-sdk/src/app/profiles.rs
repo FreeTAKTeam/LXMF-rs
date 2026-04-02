@@ -2,7 +2,7 @@ use super::delivery::{
     BackoffSchedule, DeliveryPlan, QueuePressurePolicy, QueuePressureStrategy, ReconnectPolicy,
     RetryPolicy, TimeoutPolicy,
 };
-use super::node::Profile;
+use super::runtime::Profile;
 
 impl Profile {
     pub fn defaults(&self) -> DeliveryPlan {

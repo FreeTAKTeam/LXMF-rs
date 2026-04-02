@@ -8,6 +8,7 @@ just happen to live under `docs/`.
 
 These are the first places to update when behavior changes:
 
+- `docs/status/`: current repository-wide delivery and parity status
 - `docs/contracts/`: public contracts, compatibility policy, support policy, API
   behavior, and protocol-facing guarantees
 - `docs/sdk/`: integration guidance for embedding `lxmf-sdk`
@@ -43,6 +44,7 @@ deleted or folded into a newer source-of-truth doc.
 
 ## Directory Guide
 
+- `docs/status/current-roadmap.md`: current repo-wide delivery and parity status
 - `docs/sdk/README.md`: starting point for SDK integrators
 - `docs/lxmf-rs-api.md`: API surface and stability summary
 - `docs/lxmf-cli.md`: operator CLI quick reference

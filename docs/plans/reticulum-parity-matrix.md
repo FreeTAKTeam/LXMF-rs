@@ -1,5 +1,8 @@
 # Reticulum Parity Matrix
 
+Status: historical parity snapshot; check `docs/status/current-roadmap.md` for
+current repo-wide status before relying on this file for active execution order.
+
 Last reassessed: 2026-03-10 (`cargo test -p reticulum-rs-rpc --lib`, `cargo test -p reticulum-rs-transport --lib`, `cargo test -p lxmf-wire --lib`)
 
 Status legend: `not-started` | `partial` | `done`

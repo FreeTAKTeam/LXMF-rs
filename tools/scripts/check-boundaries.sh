@@ -261,7 +261,11 @@ if (( ENFORCE_RETM_LEGACY_SHIMS == 1 )); then
   if search_text "\\b(legacy_reticulum|reticulum::|reticulum-rs)\\b" crates/libs/rns-transport/src crates/libs/rns-rpc/src >/dev/null; then
     fail "legacy reticulum symbols still referenced in rns transport/rpc source"
   fi
-  if search_text "reticulum-rs|legacy_reticulum" crates/libs/rns-transport/Cargo.toml crates/libs/rns-rpc/Cargo.toml >/dev/null; then
+  # Only flag actual legacy dependency declarations here. Package names and docs.rs
+  # URLs for the active crates also contain `reticulum-rs`, so a raw substring
+  # search would create false positives and break strict mode permanently.
+  if search_text "^reticulum-rs\\s*=\\s*\\{|package\\s*=\\s*\"reticulum-rs\"|legacy_reticulum|crates/internal/(reticulum|lxmf)-legacy" \
+    crates/libs/rns-transport/Cargo.toml crates/libs/rns-rpc/Cargo.toml >/dev/null; then
     fail "rns transport/rpc still depend on legacy reticulum crate"
   fi
 else

@@ -1,5 +1,8 @@
 # LXMF Parity Matrix
 
+Status: historical parity snapshot; check `docs/status/current-roadmap.md` for
+current repo-wide status before relying on this file for active execution order.
+
 Last reassessed: 2026-03-10 (`cargo test -p reticulum-rs-rpc --lib`, `cargo test -p reticulum-rs-transport --lib`, `cargo test -p lxmf-wire --lib`)
 
 Status legend: `not-started` | `partial` | `done`
@@ -57,7 +60,10 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
 
 ## Confirmed Gaps
 
-- Delivery-mode parity is incomplete. `send_message_v2` accepts `direct`, `opportunistic`, `propagated`, and `paper`, but the live transport bridge does not honor those options yet.
+- Delivery-mode parity baseline note is stale. `reticulumd` delivery-mode
+  handling landed after this snapshot; treat deeper propagation-router behavior
+  as the remaining open area instead of the old "bridge ignores delivery mode"
+  claim.
 - Propagation-node parity is incomplete. The active RPC propagation flow is mostly a local payload store and metadata layer, not full LXMF peer/node sync behavior.
 - Peer parity is incomplete. Peer records and events exist, but the active workspace does not yet match Python `LXMPeer` behavior.
 - Paper-command parity is incomplete. `lxmf-core` has real paper wire helpers, but the daemon SDK layer still uses a simplified `lxm://{destination}/{message_id}` envelope path.
