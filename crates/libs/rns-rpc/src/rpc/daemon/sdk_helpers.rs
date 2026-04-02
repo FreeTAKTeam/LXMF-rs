@@ -1,31 +1,31 @@
-const STORE_FORWARD_MAX_MESSAGES_LIMIT: usize = 1_000_000;
-const EVENT_SINK_MAX_EVENT_BYTES_LIMIT: u64 = 2_097_152;
+pub(super) const STORE_FORWARD_MAX_MESSAGES_LIMIT: usize = 1_000_000;
+pub(super) const EVENT_SINK_MAX_EVENT_BYTES_LIMIT: u64 = 2_097_152;
 
 #[derive(Clone, Debug)]
-struct SdkStoreForwardPolicy {
-    max_messages: usize,
-    max_message_age_ms: u64,
-    capacity_policy: String,
-    eviction_priority: String,
+pub(super) struct SdkStoreForwardPolicy {
+    pub(super) max_messages: usize,
+    pub(super) max_message_age_ms: u64,
+    pub(super) capacity_policy: String,
+    pub(super) eviction_priority: String,
 }
 
+use super::*;
+
 impl RpcDaemon {
-    fn sdk_config_error(code: &str, message: &str) -> RpcError {
+    pub(super) fn sdk_config_error(code: &str, message: &str) -> RpcError {
         RpcError::new(code, message)
     }
 
     #[allow(clippy::result_large_err)]
-    fn validate_sdk_runtime_config(&self, config: &JsonValue) -> Result<(), RpcError> {
+    pub(super) fn validate_sdk_runtime_config(&self, config: &JsonValue) -> Result<(), RpcError> {
         let profile = config
             .get("profile")
             .and_then(JsonValue::as_str)
             .unwrap_or("desktop-full")
             .trim()
             .to_ascii_lowercase();
-        if !matches!(
-            profile.as_str(),
-            "desktop-full" | "desktop-local-runtime" | "embedded-alloc"
-        ) {
+        if !matches!(profile.as_str(), "desktop-full" | "desktop-local-runtime" | "embedded-alloc")
+        {
             return Err(Self::sdk_config_error(
                 "SDK_CAPABILITY_CONTRACT_INCOMPATIBLE",
                 "profile is not supported by the rpc backend",
@@ -106,15 +106,10 @@ impl RpcDaemon {
             }
         }
         if let Some(store_forward) = config.get("store_forward").and_then(JsonValue::as_object) {
-            const ALLOWED_STORE_FORWARD_KEYS: &[&str] = &[
-                "max_messages",
-                "max_message_age_ms",
-                "capacity_policy",
-                "eviction_priority",
-            ];
-            if let Some(key) = store_forward
-                .keys()
-                .find(|key| !ALLOWED_STORE_FORWARD_KEYS.contains(&key.as_str()))
+            const ALLOWED_STORE_FORWARD_KEYS: &[&str] =
+                &["max_messages", "max_message_age_ms", "capacity_policy", "eviction_priority"];
+            if let Some(key) =
+                store_forward.keys().find(|key| !ALLOWED_STORE_FORWARD_KEYS.contains(&key.as_str()))
             {
                 return Err(Self::sdk_config_error(
                     "SDK_CONFIG_UNKNOWN_KEY",
@@ -186,15 +181,10 @@ impl RpcDaemon {
             }
         }
         if let Some(event_stream) = config.get("event_stream").and_then(JsonValue::as_object) {
-            const ALLOWED_EVENT_STREAM_KEYS: &[&str] = &[
-                "max_poll_events",
-                "max_event_bytes",
-                "max_batch_bytes",
-                "max_extension_keys",
-            ];
-            if let Some(key) = event_stream
-                .keys()
-                .find(|key| !ALLOWED_EVENT_STREAM_KEYS.contains(&key.as_str()))
+            const ALLOWED_EVENT_STREAM_KEYS: &[&str] =
+                &["max_poll_events", "max_event_bytes", "max_batch_bytes", "max_extension_keys"];
+            if let Some(key) =
+                event_stream.keys().find(|key| !ALLOWED_EVENT_STREAM_KEYS.contains(&key.as_str()))
             {
                 return Err(Self::sdk_config_error(
                     "SDK_CONFIG_UNKNOWN_KEY",
@@ -242,7 +232,8 @@ impl RpcDaemon {
                     "event_stream.max_extension_keys must be in the range 0..=32",
                 ));
             }
-            if let (Some(max_event_bytes), Some(max_batch_bytes)) = (max_event_bytes, max_batch_bytes)
+            if let (Some(max_event_bytes), Some(max_batch_bytes)) =
+                (max_event_bytes, max_batch_bytes)
             {
                 if max_batch_bytes < max_event_bytes {
                     return Err(Self::sdk_config_error(
@@ -264,9 +255,8 @@ impl RpcDaemon {
         if let Some(event_sink) = config.get("event_sink").and_then(JsonValue::as_object) {
             const ALLOWED_EVENT_SINK_KEYS: &[&str] =
                 &["enabled", "max_event_bytes", "allow_kinds", "extensions"];
-            if let Some(key) = event_sink
-                .keys()
-                .find(|key| !ALLOWED_EVENT_SINK_KEYS.contains(&key.as_str()))
+            if let Some(key) =
+                event_sink.keys().find(|key| !ALLOWED_EVENT_SINK_KEYS.contains(&key.as_str()))
             {
                 return Err(Self::sdk_config_error(
                     "SDK_CONFIG_UNKNOWN_KEY",
@@ -355,8 +345,7 @@ impl RpcDaemon {
                     ));
                 };
                 let issuer = token_auth.get("issuer").and_then(JsonValue::as_str).unwrap_or("");
-                let audience =
-                    token_auth.get("audience").and_then(JsonValue::as_str).unwrap_or("");
+                let audience = token_auth.get("audience").and_then(JsonValue::as_str).unwrap_or("");
                 if issuer.trim().is_empty() || audience.trim().is_empty() {
                     return Err(Self::sdk_config_error(
                         "SDK_VALIDATION_INVALID_ARGUMENT",
@@ -419,8 +408,7 @@ impl RpcDaemon {
                     .get("require_client_cert")
                     .and_then(JsonValue::as_bool)
                     .unwrap_or(true);
-                if require_client_cert
-                    && (client_cert_path.is_none() || client_key_path.is_none())
+                if require_client_cert && (client_cert_path.is_none() || client_key_path.is_none())
                 {
                     return Err(Self::sdk_config_error(
                         "SDK_SECURITY_AUTH_REQUIRED",
@@ -434,7 +422,7 @@ impl RpcDaemon {
         Ok(())
     }
 
-    fn default_store_forward_policy_for_profile(profile: &str) -> SdkStoreForwardPolicy {
+    pub(super) fn default_store_forward_policy_for_profile(profile: &str) -> SdkStoreForwardPolicy {
         match profile {
             "embedded-alloc" => SdkStoreForwardPolicy {
                 max_messages: 2_000,
@@ -451,7 +439,7 @@ impl RpcDaemon {
         }
     }
 
-    fn default_event_sink_config_for_profile(profile: &str) -> JsonValue {
+    pub(super) fn default_event_sink_config_for_profile(profile: &str) -> JsonValue {
         let max_event_bytes = match profile {
             "embedded-alloc" => 8_192_u64,
             "desktop-local-runtime" => 32_768_u64,
@@ -465,12 +453,9 @@ impl RpcDaemon {
         })
     }
 
-    fn sdk_store_forward_policy(&self) -> SdkStoreForwardPolicy {
-        let config = self
-            .sdk_runtime_config
-            .lock()
-            .expect("sdk_runtime_config mutex poisoned")
-            .clone();
+    pub(super) fn sdk_store_forward_policy(&self) -> SdkStoreForwardPolicy {
+        let config =
+            self.sdk_runtime_config.lock().expect("sdk_runtime_config mutex poisoned").clone();
         let profile = config
             .get("profile")
             .and_then(JsonValue::as_str)
@@ -515,7 +500,10 @@ impl RpcDaemon {
         policy
     }
 
-    fn enforce_store_forward_retention(&self, now_ts: i64) -> Result<bool, std::io::Error> {
+    pub(super) fn enforce_store_forward_retention(
+        &self,
+        now_ts: i64,
+    ) -> Result<bool, std::io::Error> {
         let policy = self.sdk_store_forward_policy();
         let max_age = i64::try_from(policy.max_message_age_ms).unwrap_or(i64::MAX);
         let retention_cutoff = now_ts.saturating_sub(max_age);
@@ -556,9 +544,7 @@ impl RpcDaemon {
             return Ok(true);
         }
 
-        let prune_count = outbound_count
-            .saturating_sub(policy.max_messages)
-            .saturating_add(1);
+        let prune_count = outbound_count.saturating_sub(policy.max_messages).saturating_add(1);
         let pruned_ids = self
             .store
             .prune_outbound_messages(prune_count, policy.eviction_priority.as_str())
@@ -583,7 +569,7 @@ impl RpcDaemon {
         Ok(remaining >= policy.max_messages)
     }
 
-    fn default_sdk_identity(identity_hash: &str) -> SdkIdentityBundle {
+    pub(super) fn default_sdk_identity(identity_hash: &str) -> SdkIdentityBundle {
         SdkIdentityBundle {
             identity: identity_hash.to_string(),
             public_key: format!("{identity_hash}-pub"),
@@ -593,14 +579,14 @@ impl RpcDaemon {
         }
     }
 
-    fn next_sdk_domain_id(&self, prefix: &str) -> String {
+    pub(super) fn next_sdk_domain_id(&self, prefix: &str) -> String {
         let mut guard =
             self.sdk_next_domain_seq.lock().expect("sdk_next_domain_seq mutex poisoned");
         *guard = guard.saturating_add(1);
         format!("{prefix}-{:016x}", *guard)
     }
 
-    fn sdk_has_capability(&self, capability: &str) -> bool {
+    pub(super) fn sdk_has_capability(&self, capability: &str) -> bool {
         self.sdk_effective_capabilities
             .lock()
             .expect("sdk_effective_capabilities mutex poisoned")
@@ -608,7 +594,7 @@ impl RpcDaemon {
             .any(|current| current == capability)
     }
 
-    fn should_trace_sdk_lifecycle(method: &str) -> bool {
+    pub(super) fn should_trace_sdk_lifecycle(method: &str) -> bool {
         matches!(
             method,
             "sdk_send_v2"
@@ -620,7 +606,7 @@ impl RpcDaemon {
         )
     }
 
-    fn sdk_lifecycle_trace_id(method: &str, request_id: u64) -> String {
+    pub(super) fn sdk_lifecycle_trace_id(method: &str, request_id: u64) -> String {
         let mut hasher = Sha256::new();
         hasher.update(method.as_bytes());
         hasher.update(request_id.to_le_bytes());
@@ -629,14 +615,17 @@ impl RpcDaemon {
         format!("sdk-trace-{}", &digest[..24])
     }
 
-    fn sdk_lifecycle_trace_ref(trace_id: &str) -> String {
+    pub(super) fn sdk_lifecycle_trace_ref(trace_id: &str) -> String {
         let mut hasher = Sha256::new();
         hasher.update(trace_id.as_bytes());
         let digest = hex::encode(hasher.finalize());
         format!("ref-{}", &digest[..12])
     }
 
-    fn sdk_lifecycle_details(method: &str, response: &RpcResponse) -> JsonMap<String, JsonValue> {
+    pub(super) fn sdk_lifecycle_details(
+        method: &str,
+        response: &RpcResponse,
+    ) -> JsonMap<String, JsonValue> {
         let mut details = JsonMap::new();
         if let Some(error) = response.error.as_ref() {
             details.insert("error_code".to_string(), JsonValue::String(error.code.clone()));
@@ -702,7 +691,7 @@ impl RpcDaemon {
         details
     }
 
-    fn emit_sdk_lifecycle_trace(
+    pub(super) fn emit_sdk_lifecycle_trace(
         &self,
         trace_id: &str,
         request_id: u64,
@@ -727,7 +716,7 @@ impl RpcDaemon {
         self.publish_event(event);
     }
 
-    fn collection_cursor_index(
+    pub(super) fn collection_cursor_index(
         &self,
         cursor: Option<&str>,
         prefix: &str,
@@ -754,7 +743,7 @@ impl RpcDaemon {
         })
     }
 
-    fn collection_next_cursor(
+    pub(super) fn collection_next_cursor(
         prefix: &str,
         next_index: usize,
         total_items: usize,
@@ -765,7 +754,7 @@ impl RpcDaemon {
         Some(format!("{prefix}{next_index}"))
     }
 
-    fn record_sdk_cursor_hint(&self, method: &str, response: &RpcResponse) {
+    pub(super) fn record_sdk_cursor_hint(&self, method: &str, response: &RpcResponse) {
         if response.error.is_some() {
             return;
         }
@@ -786,12 +775,14 @@ impl RpcDaemon {
             next_cursor: next_cursor.to_string(),
             captured_at_ms: now_millis_u64(),
         };
-        let mut guard =
-            self.sdk_cursor_hints.lock().expect("sdk_cursor_hints mutex poisoned");
+        let mut guard = self.sdk_cursor_hints.lock().expect("sdk_cursor_hints mutex poisoned");
         guard.insert(method.to_string(), hint);
     }
 
-    fn handle_sdk_cursor_hint_v2(&self, request: RpcRequest) -> Result<RpcResponse, std::io::Error> {
+    pub(super) fn handle_sdk_cursor_hint_v2(
+        &self,
+        request: RpcRequest,
+    ) -> Result<RpcResponse, std::io::Error> {
         let params = request.params.unwrap_or_else(|| JsonValue::Object(JsonMap::new()));
         let requested_method = match params.get("method") {
             Some(JsonValue::String(value)) => {
@@ -832,7 +823,7 @@ impl RpcDaemon {
         Ok(RpcResponse { id: request.id, result: Some(result), error: None })
     }
 
-    fn normalize_non_empty(value: &str) -> Option<String> {
+    pub(super) fn normalize_non_empty(value: &str) -> Option<String> {
         let trimmed = value.trim();
         if trimmed.is_empty() {
             return None;
@@ -840,7 +831,7 @@ impl RpcDaemon {
         Some(trimmed.to_string())
     }
 
-    fn normalize_voice_state(value: &str) -> Option<&'static str> {
+    pub(super) fn normalize_voice_state(value: &str) -> Option<&'static str> {
         let normalized = value.trim().to_ascii_lowercase();
         match normalized.as_str() {
             "new" => Some("new"),
@@ -853,7 +844,7 @@ impl RpcDaemon {
         }
     }
 
-    fn voice_state_rank(value: &str) -> u8 {
+    pub(super) fn voice_state_rank(value: &str) -> u8 {
         match value {
             "new" => 0,
             "ringing" => 1,
@@ -864,7 +855,7 @@ impl RpcDaemon {
         }
     }
 
-    fn parse_domain_sequence(id: &str) -> Option<u64> {
+    pub(super) fn parse_domain_sequence(id: &str) -> Option<u64> {
         let (_, suffix) = id.rsplit_once('-')?;
         if suffix.len() != 16 {
             return None;
@@ -872,7 +863,7 @@ impl RpcDaemon {
         u64::from_str_radix(suffix, 16).ok()
     }
 
-    fn infer_snapshot_domain_sequence(snapshot: &SdkDomainSnapshotV1) -> u64 {
+    pub(super) fn infer_snapshot_domain_sequence(snapshot: &SdkDomainSnapshotV1) -> u64 {
         let mut max_seq = snapshot.next_domain_seq;
         for id in snapshot.topics.keys() {
             max_seq = max_seq.max(Self::parse_domain_sequence(id).unwrap_or(0));
@@ -892,7 +883,7 @@ impl RpcDaemon {
         max_seq
     }
 
-    fn default_identity_map(&self) -> HashMap<String, SdkIdentityBundle> {
+    pub(super) fn default_identity_map(&self) -> HashMap<String, SdkIdentityBundle> {
         let mut identities = HashMap::new();
         identities.insert(
             self.identity_hash.clone(),
@@ -901,18 +892,13 @@ impl RpcDaemon {
         identities
     }
 
-    fn build_sdk_domain_snapshot(&self) -> SdkDomainSnapshotV1 {
+    pub(super) fn build_sdk_domain_snapshot(&self) -> SdkDomainSnapshotV1 {
         let next_domain_seq =
             *self.sdk_next_domain_seq.lock().expect("sdk_next_domain_seq mutex poisoned");
-        let config_revision = *self
-            .sdk_config_revision
-            .lock()
-            .expect("sdk_config_revision mutex poisoned");
-        let runtime_config = self
-            .sdk_runtime_config
-            .lock()
-            .expect("sdk_runtime_config mutex poisoned")
-            .clone();
+        let config_revision =
+            *self.sdk_config_revision.lock().expect("sdk_config_revision mutex poisoned");
+        let runtime_config =
+            self.sdk_runtime_config.lock().expect("sdk_runtime_config mutex poisoned").clone();
         let topics = self.sdk_topics.lock().expect("sdk_topics mutex poisoned").clone();
         let topic_order =
             self.sdk_topic_order.lock().expect("sdk_topic_order mutex poisoned").clone();
@@ -921,11 +907,8 @@ impl RpcDaemon {
             .lock()
             .expect("sdk_topic_subscriptions mutex poisoned")
             .clone();
-        let telemetry_points = self
-            .sdk_telemetry_points
-            .lock()
-            .expect("sdk_telemetry_points mutex poisoned")
-            .clone();
+        let telemetry_points =
+            self.sdk_telemetry_points.lock().expect("sdk_telemetry_points mutex poisoned").clone();
         let attachments =
             self.sdk_attachments.lock().expect("sdk_attachments mutex poisoned").clone();
         let attachment_payloads = self
@@ -933,35 +916,21 @@ impl RpcDaemon {
             .lock()
             .expect("sdk_attachment_payloads mutex poisoned")
             .clone();
-        let attachment_order = self
-            .sdk_attachment_order
-            .lock()
-            .expect("sdk_attachment_order mutex poisoned")
-            .clone();
+        let attachment_order =
+            self.sdk_attachment_order.lock().expect("sdk_attachment_order mutex poisoned").clone();
         let markers = self.sdk_markers.lock().expect("sdk_markers mutex poisoned").clone();
         let marker_order =
             self.sdk_marker_order.lock().expect("sdk_marker_order mutex poisoned").clone();
-        let identities =
-            self.sdk_identities.lock().expect("sdk_identities mutex poisoned").clone();
-        let contacts =
-            self.sdk_contacts.lock().expect("sdk_contacts mutex poisoned").clone();
+        let identities = self.sdk_identities.lock().expect("sdk_identities mutex poisoned").clone();
+        let contacts = self.sdk_contacts.lock().expect("sdk_contacts mutex poisoned").clone();
         let contact_order =
             self.sdk_contact_order.lock().expect("sdk_contact_order mutex poisoned").clone();
-        let active_identity = self
-            .sdk_active_identity
-            .lock()
-            .expect("sdk_active_identity mutex poisoned")
-            .clone();
-        let remote_commands = self
-            .sdk_remote_commands
-            .lock()
-            .expect("sdk_remote_commands mutex poisoned")
-            .clone();
-        let voice_sessions = self
-            .sdk_voice_sessions
-            .lock()
-            .expect("sdk_voice_sessions mutex poisoned")
-            .clone();
+        let active_identity =
+            self.sdk_active_identity.lock().expect("sdk_active_identity mutex poisoned").clone();
+        let remote_commands =
+            self.sdk_remote_commands.lock().expect("sdk_remote_commands mutex poisoned").clone();
+        let voice_sessions =
+            self.sdk_voice_sessions.lock().expect("sdk_voice_sessions mutex poisoned").clone();
 
         SdkDomainSnapshotV1 {
             next_domain_seq,
@@ -985,25 +954,21 @@ impl RpcDaemon {
         }
     }
 
-    fn normalize_sdk_domain_snapshot(
+    pub(super) fn normalize_sdk_domain_snapshot(
         &self,
         mut snapshot: SdkDomainSnapshotV1,
     ) -> SdkDomainSnapshotV1 {
         snapshot.topic_order.retain(|topic_id| snapshot.topics.contains_key(topic_id));
-        snapshot
-            .topic_subscriptions
-            .retain(|topic_id| snapshot.topics.contains_key(topic_id));
+        snapshot.topic_subscriptions.retain(|topic_id| snapshot.topics.contains_key(topic_id));
         snapshot
             .attachment_order
             .retain(|attachment_id| snapshot.attachments.contains_key(attachment_id));
         snapshot.marker_order.retain(|marker_id| snapshot.markers.contains_key(marker_id));
-        snapshot
-            .contact_order
-            .retain(|identity| snapshot.contacts.contains_key(identity));
+        snapshot.contact_order.retain(|identity| snapshot.contacts.contains_key(identity));
         snapshot.remote_commands.retain(|correlation_id, _| !correlation_id.is_empty());
-        snapshot.attachment_payloads.retain(|attachment_id, _| {
-            snapshot.attachments.contains_key(attachment_id)
-        });
+        snapshot
+            .attachment_payloads
+            .retain(|attachment_id, _| snapshot.attachments.contains_key(attachment_id));
 
         if snapshot.identities.is_empty() {
             snapshot.identities = self.default_identity_map();
@@ -1012,9 +977,10 @@ impl RpcDaemon {
             .identities
             .entry(self.identity_hash.clone())
             .or_insert_with(|| Self::default_sdk_identity(self.identity_hash.as_str()));
-        let active_identity_valid = snapshot.active_identity.as_ref().is_some_and(|value| {
-            snapshot.identities.contains_key(value)
-        });
+        let active_identity_valid = snapshot
+            .active_identity
+            .as_ref()
+            .is_some_and(|value| snapshot.identities.contains_key(value));
         if !active_identity_valid {
             let mut identities = snapshot.identities.keys().cloned().collect::<Vec<_>>();
             identities.sort();
@@ -1033,11 +999,8 @@ impl RpcDaemon {
         snapshot
     }
 
-    fn restore_sdk_domain_snapshot(&self) -> Result<(), std::io::Error> {
-        let snapshot = self
-            .store
-            .get_sdk_domain_snapshot()
-            .map_err(std::io::Error::other)?;
+    pub(super) fn restore_sdk_domain_snapshot(&self) -> Result<(), std::io::Error> {
+        let snapshot = self.store.get_sdk_domain_snapshot().map_err(std::io::Error::other)?;
         let Some(snapshot) = snapshot else {
             return Ok(());
         };
@@ -1049,71 +1012,50 @@ impl RpcDaemon {
 
         *self.sdk_next_domain_seq.lock().expect("sdk_next_domain_seq mutex poisoned") =
             parsed.next_domain_seq;
-        *self
-            .sdk_config_revision
-            .lock()
-            .expect("sdk_config_revision mutex poisoned") = config_revision;
-        *self
-            .sdk_runtime_config
-            .lock()
-            .expect("sdk_runtime_config mutex poisoned") = runtime_config;
+        *self.sdk_config_revision.lock().expect("sdk_config_revision mutex poisoned") =
+            config_revision;
+        *self.sdk_runtime_config.lock().expect("sdk_runtime_config mutex poisoned") =
+            runtime_config;
         *self.sdk_topics.lock().expect("sdk_topics mutex poisoned") = parsed.topics;
         *self.sdk_topic_order.lock().expect("sdk_topic_order mutex poisoned") = parsed.topic_order;
-        *self
-            .sdk_topic_subscriptions
-            .lock()
-            .expect("sdk_topic_subscriptions mutex poisoned") = parsed.topic_subscriptions;
-        *self
-            .sdk_telemetry_points
-            .lock()
-            .expect("sdk_telemetry_points mutex poisoned") = parsed.telemetry_points;
+        *self.sdk_topic_subscriptions.lock().expect("sdk_topic_subscriptions mutex poisoned") =
+            parsed.topic_subscriptions;
+        *self.sdk_telemetry_points.lock().expect("sdk_telemetry_points mutex poisoned") =
+            parsed.telemetry_points;
         *self.sdk_attachments.lock().expect("sdk_attachments mutex poisoned") = parsed.attachments;
-        *self
-            .sdk_attachment_payloads
-            .lock()
-            .expect("sdk_attachment_payloads mutex poisoned") = parsed.attachment_payloads;
-        *self
-            .sdk_attachment_order
-            .lock()
-            .expect("sdk_attachment_order mutex poisoned") = parsed.attachment_order;
+        *self.sdk_attachment_payloads.lock().expect("sdk_attachment_payloads mutex poisoned") =
+            parsed.attachment_payloads;
+        *self.sdk_attachment_order.lock().expect("sdk_attachment_order mutex poisoned") =
+            parsed.attachment_order;
         *self.sdk_markers.lock().expect("sdk_markers mutex poisoned") = parsed.markers;
-        *self.sdk_marker_order.lock().expect("sdk_marker_order mutex poisoned") = parsed.marker_order;
+        *self.sdk_marker_order.lock().expect("sdk_marker_order mutex poisoned") =
+            parsed.marker_order;
         *self.sdk_identities.lock().expect("sdk_identities mutex poisoned") = parsed.identities;
         *self.sdk_contacts.lock().expect("sdk_contacts mutex poisoned") = parsed.contacts;
-        *self.sdk_contact_order.lock().expect("sdk_contact_order mutex poisoned") = parsed.contact_order;
-        *self
-            .sdk_active_identity
-            .lock()
-            .expect("sdk_active_identity mutex poisoned") = parsed.active_identity;
-        *self
-            .sdk_remote_commands
-            .lock()
-            .expect("sdk_remote_commands mutex poisoned") = parsed.remote_commands;
-        *self
-            .sdk_voice_sessions
-            .lock()
-            .expect("sdk_voice_sessions mutex poisoned") = parsed.voice_sessions;
+        *self.sdk_contact_order.lock().expect("sdk_contact_order mutex poisoned") =
+            parsed.contact_order;
+        *self.sdk_active_identity.lock().expect("sdk_active_identity mutex poisoned") =
+            parsed.active_identity;
+        *self.sdk_remote_commands.lock().expect("sdk_remote_commands mutex poisoned") =
+            parsed.remote_commands;
+        *self.sdk_voice_sessions.lock().expect("sdk_voice_sessions mutex poisoned") =
+            parsed.voice_sessions;
         Ok(())
     }
 
-    fn lock_and_restore_sdk_domain_snapshot(
+    pub(super) fn lock_and_restore_sdk_domain_snapshot(
         &self,
     ) -> Result<std::sync::MutexGuard<'_, ()>, std::io::Error> {
-        let guard = self
-            .sdk_domain_state_lock
-            .lock()
-            .expect("sdk_domain_state_lock mutex poisoned");
+        let guard =
+            self.sdk_domain_state_lock.lock().expect("sdk_domain_state_lock mutex poisoned");
         self.restore_sdk_domain_snapshot()?;
         Ok(guard)
     }
 
-    fn persist_sdk_domain_snapshot(&self) -> Result<(), std::io::Error> {
+    pub(super) fn persist_sdk_domain_snapshot(&self) -> Result<(), std::io::Error> {
         let snapshot = self.build_sdk_domain_snapshot();
         let value = serde_json::to_value(&snapshot).map_err(std::io::Error::other)?;
-        self.store
-            .put_sdk_domain_snapshot(&value)
-            .map_err(std::io::Error::other)?;
+        self.store.put_sdk_domain_snapshot(&value).map_err(std::io::Error::other)?;
         Ok(())
     }
-
 }

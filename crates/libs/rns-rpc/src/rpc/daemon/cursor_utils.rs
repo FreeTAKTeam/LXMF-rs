@@ -1,25 +1,30 @@
+use super::*;
+
 #[derive(Debug)]
-struct SdkCursorError {
-    code: String,
-    message: String,
+pub(super) struct SdkCursorError {
+    pub(super) code: String,
+    pub(super) message: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct StreamGapMeta {
-    gap_seq_no: u64,
-    expected_seq_no: u64,
-    observed_seq_no: u64,
-    dropped_count: u64,
+pub(super) struct StreamGapMeta {
+    pub(super) gap_seq_no: u64,
+    pub(super) expected_seq_no: u64,
+    pub(super) observed_seq_no: u64,
+    pub(super) dropped_count: u64,
 }
 
-fn cursor_is_expired(cursor_seq: Option<u64>, oldest_seq: Option<u64>) -> bool {
+pub(super) fn cursor_is_expired(cursor_seq: Option<u64>, oldest_seq: Option<u64>) -> bool {
     matches!(
         (cursor_seq, oldest_seq),
         (Some(cursor), Some(oldest)) if cursor.saturating_add(1) < oldest
     )
 }
 
-fn compute_stream_gap(dropped_count: u64, oldest_seq: Option<u64>) -> Option<StreamGapMeta> {
+pub(super) fn compute_stream_gap(
+    dropped_count: u64,
+    oldest_seq: Option<u64>,
+) -> Option<StreamGapMeta> {
     if dropped_count == 0 {
         return None;
     }
@@ -29,7 +34,7 @@ fn compute_stream_gap(dropped_count: u64, oldest_seq: Option<u64>) -> Option<Str
     Some(StreamGapMeta { gap_seq_no, expected_seq_no, observed_seq_no, dropped_count })
 }
 
-fn parse_announce_cursor(cursor: Option<&str>) -> Option<(Option<i64>, Option<String>)> {
+pub(super) fn parse_announce_cursor(cursor: Option<&str>) -> Option<(Option<i64>, Option<String>)> {
     let raw = cursor?.trim();
     if raw.is_empty() {
         return None;
@@ -42,7 +47,7 @@ fn parse_announce_cursor(cursor: Option<&str>) -> Option<(Option<i64>, Option<St
     raw.parse::<i64>().ok().map(|timestamp| (Some(timestamp), None))
 }
 
-fn delivery_reason_code(status: &str) -> Option<&'static str> {
+pub(super) fn delivery_reason_code(status: &str) -> Option<&'static str> {
     let normalized = status.trim().to_ascii_lowercase();
     if normalized.is_empty() {
         return None;
@@ -68,7 +73,7 @@ fn delivery_reason_code(status: &str) -> Option<&'static str> {
     None
 }
 
-fn merge_json_patch(target: &mut JsonValue, patch: &JsonValue) {
+pub(super) fn merge_json_patch(target: &mut JsonValue, patch: &JsonValue) {
     let JsonValue::Object(patch_map) = patch else {
         *target = patch.clone();
         return;

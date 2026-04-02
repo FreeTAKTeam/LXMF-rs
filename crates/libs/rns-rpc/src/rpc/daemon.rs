@@ -3,8 +3,11 @@ use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine as _;
 use hmac::Mac;
 
-include!("daemon/sdk_helpers.rs");
-include!("daemon/cursor_utils.rs");
+mod cursor_utils;
+mod sdk_helpers;
+
+use cursor_utils::*;
+use sdk_helpers::STORE_FORWARD_MAX_MESSAGES_LIMIT;
 mod dispatch;
 mod dispatch_legacy_clear;
 mod dispatch_legacy_messages;
