@@ -1,17 +1,17 @@
 use std::collections::HashSet;
 use std::fs;
 use std::io;
+use std::path::PathBuf;
 use std::process::Child;
 use std::time::Duration;
 
-use crate::{
+use crate::{harness, DeliveryMode};
+use harness::{
     cleanup_child, derive_preferred_transport_port, ensure_rpc_ok, poll_for_any_peer,
     poll_for_inbound_content, poll_for_peer, reserve_port, rpc_call, spawn_daemon, wait_for_ready,
-    DeliveryMode,
 };
 use rns_rpc::e2e_harness::{build_send_params, build_tcp_client_config, timestamp_millis};
 use rns_rpc::rpc::replay::{execute_trace, load_trace_file, save_capture_file};
-use std::path::PathBuf;
 
 pub(crate) fn run_replay(
     trace: PathBuf,
