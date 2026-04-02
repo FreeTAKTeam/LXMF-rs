@@ -1,4 +1,5 @@
 use clap::Parser;
+use config::{is_legacy_launcher_toml, is_single_toml_config, load_effective_args};
 use serde::Deserialize;
 use serde_json::json;
 use std::env;
@@ -1033,4 +1034,3 @@ on_inbound = rm
         assert_eq!(paths.identity_file, config_dir.join("identity"));
     }
 }
-use config::{is_legacy_launcher_toml, is_single_toml_config, load_effective_args};
