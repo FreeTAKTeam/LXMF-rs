@@ -37,11 +37,9 @@ impl<B: SdkBackend> Client<B> {
             | "app.marker.delete"
             | "app.voice.session.open"
             | "app.voice.session.update"
-            | "app.voice.session.close" => self.dispatch_telemetry_marker_voice_envelope(
-                canonical_id,
-                correlation_id,
-                payload,
-            ),
+            | "app.voice.session.close" => {
+                self.dispatch_telemetry_marker_voice_envelope(canonical_id, correlation_id, payload)
+            }
             _ => unreachable!("content dispatch called for unsupported operation"),
         }
     }

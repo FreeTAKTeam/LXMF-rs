@@ -2,12 +2,12 @@ use super::errors::Error;
 #[cfg(feature = "sdk-async")]
 use super::events::{map_event_batch, EventBatch};
 use super::runtime::{Config, Profile, RunState};
+#[cfg(feature = "sdk-async")]
+use crate::SdkBackendAsyncEvents;
 use crate::{
     Client as CoreClient, ClientHandle, EventCursor, LxmfSdk, RuntimeSnapshot, SdkBackend,
     ShutdownMode,
 };
-#[cfg(feature = "sdk-async")]
-use crate::SdkBackendAsyncEvents;
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]

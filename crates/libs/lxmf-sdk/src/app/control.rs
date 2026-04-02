@@ -11,9 +11,9 @@ use super::runtime::{
     map_delivery_snapshot, map_runtime_state, Config, DeliveryStatus, Handle, RunState,
     RuntimeStatus, SendReceipt, SendRequest,
 };
-use super::session::{SessionState, SharedBackend};
 #[cfg(feature = "sdk-async")]
 use super::session::EventStream;
+use super::session::{SessionState, SharedBackend};
 use crate::{Client as CoreClient, LxmfSdk, SdkBackend, ShutdownMode};
 #[cfg(feature = "sdk-async")]
 use crate::{LxmfSdkAsync, SdkBackendAsyncEvents};

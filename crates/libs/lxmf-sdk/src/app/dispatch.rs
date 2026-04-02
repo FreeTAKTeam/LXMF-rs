@@ -2,9 +2,7 @@ use super::envelope::{Envelope, EnvelopeKind, EnvelopeResponse};
 use super::errors::Error;
 use super::node::Client;
 use super::runtime::{Config, SendRequest};
-use crate::domain::{
-    RemoteCommandRequest,
-};
+use crate::domain::RemoteCommandRequest;
 use crate::{EventCursor, SdkBackend, ShutdownMode};
 use serde_json::Value as JsonValue;
 use std::collections::BTreeMap;
@@ -219,7 +217,10 @@ impl<B: SdkBackend> Client<B> {
     }
 }
 
-pub(super) fn invalid_envelope(message: impl Into<String>, operation_id: impl Into<String>) -> Error {
+pub(super) fn invalid_envelope(
+    message: impl Into<String>,
+    operation_id: impl Into<String>,
+) -> Error {
     let mut details = BTreeMap::new();
     details.insert("operation_id".to_owned(), JsonValue::String(operation_id.into()));
     Error {
