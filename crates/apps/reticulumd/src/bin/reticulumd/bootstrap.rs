@@ -25,7 +25,7 @@ use std::sync::{Arc, Mutex};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::time::{timeout, Duration};
-use transport_startup::start_transport_and_interfaces;
+use transport_startup::{start_transport_and_interfaces, TransportStartupInput};
 
 #[derive(Clone, Debug)]
 pub(super) struct RpcTlsConfig {
@@ -102,16 +102,16 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     let peer_announce_interval_secs = env_u64("LXMD_PEER_ANNOUNCE_INTERVAL_SECS");
     let node_announce_interval_secs = env_u64("LXMD_NODE_ANNOUNCE_INTERVAL_SECS");
 
-    let startup = start_transport_and_interfaces(
-        &args,
-        daemon_config.as_ref(),
-        &identity,
-        local_display_name.as_deref(),
+    let startup = start_transport_and_interfaces(TransportStartupInput {
+        args: &args,
+        daemon_config: daemon_config.as_ref(),
+        identity: &identity,
+        local_display_name: local_display_name.as_deref(),
         configured_interfaces,
-        receipt_map.clone(),
-        receipt_tx.clone(),
+        receipt_map: receipt_map.clone(),
+        receipt_tx: receipt_tx.clone(),
         propagation_control_enabled,
-    )
+    })
     .await;
 
     let transport = startup.transport;

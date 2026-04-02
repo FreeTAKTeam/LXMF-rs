@@ -39,16 +39,32 @@ pub(super) struct TransportStartupArtifacts {
     pub(super) hot_apply_seeded_tcp: Vec<(String, InterfaceRecord, AddressHash)>,
 }
 
+pub(super) struct TransportStartupInput<'a> {
+    pub(super) args: &'a Args,
+    pub(super) daemon_config: Option<&'a DaemonConfig>,
+    pub(super) identity: &'a PrivateIdentity,
+    pub(super) local_display_name: Option<&'a str>,
+    pub(super) configured_interfaces: Vec<InterfaceRecord>,
+    pub(super) receipt_map: Arc<Mutex<HashMap<String, String>>>,
+    pub(super) receipt_tx:
+        tokio::sync::mpsc::UnboundedSender<reticulum_daemon::receipt_bridge::ReceiptEvent>,
+    pub(super) propagation_control_enabled: bool,
+}
+
 pub(super) async fn start_transport_and_interfaces(
-    args: &Args,
-    daemon_config: Option<&DaemonConfig>,
-    identity: &PrivateIdentity,
-    local_display_name: Option<&str>,
-    mut configured_interfaces: Vec<InterfaceRecord>,
-    receipt_map: Arc<Mutex<HashMap<String, String>>>,
-    receipt_tx: tokio::sync::mpsc::UnboundedSender<reticulum_daemon::receipt_bridge::ReceiptEvent>,
-    propagation_control_enabled: bool,
+    input: TransportStartupInput<'_>,
 ) -> TransportStartupArtifacts {
+    let TransportStartupInput {
+        args,
+        daemon_config,
+        identity,
+        local_display_name,
+        mut configured_interfaces,
+        receipt_map,
+        receipt_tx,
+        propagation_control_enabled,
+    } = input;
+
     for record in &mut configured_interfaces {
         if !record.enabled {
             mark_interface_startup_status(record, "disabled", None, None);
