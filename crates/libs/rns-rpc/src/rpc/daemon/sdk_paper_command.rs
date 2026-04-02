@@ -1,3 +1,5 @@
+use super::*;
+
 type InboundSdkCommandUpdate = (
     String,
     &'static str,
@@ -9,7 +11,7 @@ type InboundSdkCommandUpdate = (
 );
 
 impl RpcDaemon {
-    fn sdk_command_event_payload_summary(payload: &JsonValue) -> JsonValue {
+    pub(super) fn sdk_command_event_payload_summary(payload: &JsonValue) -> JsonValue {
         let byte_len = payload.to_string().len();
         match payload {
             JsonValue::Null | JsonValue::Bool(_) | JsonValue::Number(_) => payload.clone(),
@@ -38,7 +40,7 @@ impl RpcDaemon {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn apply_sdk_command_update(
+    pub(super) fn apply_sdk_command_update(
         &self,
         correlation_id: &str,
         event_type: &str,
@@ -92,7 +94,7 @@ impl RpcDaemon {
         Ok(Some(updated_session))
     }
 
-    fn inbound_sdk_command_update(
+    pub(super) fn inbound_sdk_command_update(
         record: &MessageRecord,
     ) -> Option<InboundSdkCommandUpdate> {
         let fields = record.fields.as_ref()?.as_object()?;
@@ -101,11 +103,8 @@ impl RpcDaemon {
         let event = Self::normalize_non_empty(command.get("event")?.as_str()?)?;
         let accepted = command.get("accepted").and_then(JsonValue::as_bool);
         let payload = command.get("payload").cloned();
-        let extensions = command
-            .get("extensions")
-            .and_then(JsonValue::as_object)
-            .cloned()
-            .unwrap_or_default();
+        let extensions =
+            command.get("extensions").and_then(JsonValue::as_object).cloned().unwrap_or_default();
         match event.as_str() {
             "receipt_acknowledged" => Some((
                 correlation_id,
@@ -160,8 +159,15 @@ impl RpcDaemon {
         &self,
         record: &MessageRecord,
     ) -> Result<bool, std::io::Error> {
-        let Some((correlation_id, event_type, accepted, payload, extensions, delivery_state, command_state)) =
-            Self::inbound_sdk_command_update(record)
+        let Some((
+            correlation_id,
+            event_type,
+            accepted,
+            payload,
+            extensions,
+            delivery_state,
+            command_state,
+        )) = Self::inbound_sdk_command_update(record)
         else {
             return Ok(false);
         };
@@ -178,7 +184,7 @@ impl RpcDaemon {
             )?
             .is_some())
     }
-    fn sdk_remote_command_record_to_value(record: &SdkRemoteCommandRecord) -> JsonValue {
+    pub(super) fn sdk_remote_command_record_to_value(record: &SdkRemoteCommandRecord) -> JsonValue {
         json!({
             "command_id": record.command_id,
             "correlation_id": record.correlation_id,
@@ -196,7 +202,7 @@ impl RpcDaemon {
         })
     }
 
-    fn handle_sdk_paper_encode_v2(
+    pub(super) fn handle_sdk_paper_encode_v2(
         &self,
         request: RpcRequest,
     ) -> Result<RpcResponse, std::io::Error> {
@@ -265,7 +271,7 @@ impl RpcDaemon {
         })
     }
 
-    fn handle_sdk_paper_decode_v2(
+    pub(super) fn handle_sdk_paper_decode_v2(
         &self,
         request: RpcRequest,
     ) -> Result<RpcResponse, std::io::Error> {
@@ -317,7 +323,7 @@ impl RpcDaemon {
         })
     }
 
-    fn handle_sdk_command_invoke_v2(
+    pub(super) fn handle_sdk_command_invoke_v2(
         &self,
         request: RpcRequest,
     ) -> Result<RpcResponse, std::io::Error> {
@@ -399,7 +405,7 @@ impl RpcDaemon {
         })
     }
 
-    fn handle_sdk_command_reply_v2(
+    pub(super) fn handle_sdk_command_reply_v2(
         &self,
         request: RpcRequest,
     ) -> Result<RpcResponse, std::io::Error> {
@@ -456,7 +462,7 @@ impl RpcDaemon {
         })
     }
 
-    fn handle_sdk_command_session_get_v2(
+    pub(super) fn handle_sdk_command_session_get_v2(
         &self,
         request: RpcRequest,
     ) -> Result<RpcResponse, std::io::Error> {
@@ -502,7 +508,7 @@ impl RpcDaemon {
         })
     }
 
-    fn handle_sdk_command_session_list_v2(
+    pub(super) fn handle_sdk_command_session_list_v2(
         &self,
         request: RpcRequest,
     ) -> Result<RpcResponse, std::io::Error> {
@@ -519,10 +525,7 @@ impl RpcDaemon {
             .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
         let _ = parsed.extensions.len();
         let limit = parsed.limit.unwrap_or(100).clamp(1, 1000);
-        let selected = self
-            .sdk_remote_commands
-            .lock()
-            .expect("sdk_remote_commands mutex poisoned");
+        let selected = self.sdk_remote_commands.lock().expect("sdk_remote_commands mutex poisoned");
         let mut keys = selected.keys().cloned().collect::<Vec<_>>();
         keys.sort();
         let start_idx = parsed

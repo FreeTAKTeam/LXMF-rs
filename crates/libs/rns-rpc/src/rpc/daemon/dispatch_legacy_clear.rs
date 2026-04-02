@@ -1,5 +1,10 @@
+use super::*;
+
 impl RpcDaemon {
-    fn handle_rpc_legacy_clear(&self, request: RpcRequest) -> Result<RpcResponse, std::io::Error> {
+    pub(super) fn handle_rpc_legacy_clear(
+        &self,
+        request: RpcRequest,
+    ) -> Result<RpcResponse, std::io::Error> {
         match request.method.as_str() {
             "clear_messages" => {
                 self.store.clear_messages().map_err(std::io::Error::other)?;
@@ -33,11 +38,7 @@ impl RpcDaemon {
                 self.sdk_markers.lock().expect("sdk_markers mutex poisoned").clear();
                 self.sdk_marker_order.lock().expect("sdk_marker_order mutex poisoned").clear();
                 self.sdk_contacts.lock().expect("sdk_contacts mutex poisoned").clear();
-                self
-                    .sdk_contact_order
-                    .lock()
-                    .expect("sdk_contact_order mutex poisoned")
-                    .clear();
+                self.sdk_contact_order.lock().expect("sdk_contact_order mutex poisoned").clear();
                 self.persist_sdk_domain_snapshot()?;
                 Ok(RpcResponse {
                     id: request.id,
@@ -98,11 +99,7 @@ impl RpcDaemon {
                 self.sdk_markers.lock().expect("sdk_markers mutex poisoned").clear();
                 self.sdk_marker_order.lock().expect("sdk_marker_order mutex poisoned").clear();
                 self.sdk_contacts.lock().expect("sdk_contacts mutex poisoned").clear();
-                self
-                    .sdk_contact_order
-                    .lock()
-                    .expect("sdk_contact_order mutex poisoned")
-                    .clear();
+                self.sdk_contact_order.lock().expect("sdk_contact_order mutex poisoned").clear();
                 self.sdk_telemetry_points
                     .lock()
                     .expect("sdk_telemetry_points mutex poisoned")

@@ -1,8 +1,10 @@
-impl RpcDaemon {
-    const DEFAULT_TICKET_EXPIRY_SECS: u64 = 21 * 24 * 60 * 60;
-    const TICKET_RENEW_SECS: i64 = 14 * 24 * 60 * 60;
+use super::*;
 
-    fn active_peer_count_from_guard(
+impl RpcDaemon {
+    pub(super) const DEFAULT_TICKET_EXPIRY_SECS: u64 = 21 * 24 * 60 * 60;
+    pub(super) const TICKET_RENEW_SECS: i64 = 14 * 24 * 60 * 60;
+
+    pub(super) fn active_peer_count_from_guard(
         guard: &std::collections::HashMap<String, crate::rpc::PeerRecord>,
     ) -> usize {
         guard.values().filter(|record| record.peer_type.as_deref() != Some("unpeered")).count()
@@ -237,10 +239,7 @@ impl RpcDaemon {
     }
 
     pub fn outbound_propagation_node(&self) -> Option<String> {
-        self.outbound_propagation_node
-            .lock()
-            .expect("propagation node mutex poisoned")
-            .clone()
+        self.outbound_propagation_node.lock().expect("propagation node mutex poisoned").clone()
     }
 
     pub fn message_storage_stats(&self) -> Result<(u64, u64), std::io::Error> {
@@ -310,7 +309,7 @@ impl RpcDaemon {
         });
     }
 
-    fn update_daemon_status_snapshot<F>(&self, update: F)
+    pub(super) fn update_daemon_status_snapshot<F>(&self, update: F)
     where
         F: FnOnce(&mut DaemonStatusSnapshot),
     {
@@ -319,11 +318,11 @@ impl RpcDaemon {
         update(&mut guard);
     }
 
-    fn daemon_status_snapshot(&self) -> DaemonStatusSnapshot {
+    pub(super) fn daemon_status_snapshot(&self) -> DaemonStatusSnapshot {
         self.daemon_status_snapshot.read().expect("daemon_status_snapshot rwlock poisoned").clone()
     }
 
-    fn store_inbound_record(
+    pub(super) fn store_inbound_record(
         &self,
         record: MessageRecord,
         raw_lxmf_bytes: Option<&[u8]>,
@@ -531,7 +530,7 @@ impl RpcDaemon {
         Ok(())
     }
 
-    fn upsert_peer(
+    pub(super) fn upsert_peer(
         &self,
         peer: String,
         timestamp: i64,
@@ -602,7 +601,7 @@ impl RpcDaemon {
         Ok(record)
     }
 
-    fn ensure_peer_admission_allowed(
+    pub(super) fn ensure_peer_admission_allowed(
         &self,
         peer: &str,
         current_peer_count: usize,
@@ -628,12 +627,12 @@ impl RpcDaemon {
         Ok(())
     }
 
-    fn is_static_peer(&self, peer: &str) -> bool {
+    pub(super) fn is_static_peer(&self, peer: &str) -> bool {
         let propagation = self.propagation_state.lock().expect("propagation mutex poisoned");
         propagation.static_peers.iter().any(|candidate| candidate.eq_ignore_ascii_case(peer))
     }
 
-    fn should_autopeer_peer(&self, hops: Option<u32>) -> bool {
+    pub(super) fn should_autopeer_peer(&self, hops: Option<u32>) -> bool {
         let propagation = self.propagation_state.lock().expect("propagation mutex poisoned");
         if propagation.from_static_only || !propagation.autopeer {
             return false;
@@ -641,7 +640,7 @@ impl RpcDaemon {
         hops.unwrap_or(1) <= propagation.autopeer_maxdepth.max(1)
     }
 
-    fn remote_peering_cost_allowed(&self, peering_cost: Option<u32>) -> bool {
+    pub(super) fn remote_peering_cost_allowed(&self, peering_cost: Option<u32>) -> bool {
         let propagation = self.propagation_state.lock().expect("propagation mutex poisoned");
         match (peering_cost, propagation.remote_peering_cost_max) {
             (Some(remote_cost), Some(max_cost)) => remote_cost <= max_cost,
@@ -649,7 +648,7 @@ impl RpcDaemon {
         }
     }
 
-    fn refresh_peer_propagation_state(
+    pub(super) fn refresh_peer_propagation_state(
         &self,
         peer: &str,
         timestamp: i64,
@@ -674,7 +673,7 @@ impl RpcDaemon {
         existing.peering_cost = peering_cost;
     }
 
-    fn remove_autopeered_peer_if_stale_or_expensive(&self, peer: &str, timestamp: i64) {
+    pub(super) fn remove_autopeered_peer_if_stale_or_expensive(&self, peer: &str, timestamp: i64) {
         let mut guard = self.peers.lock().expect("peers mutex poisoned");
         let should_remove = guard.get(peer).is_some_and(|existing| {
             existing.peer_type.as_deref() == Some("auto") && timestamp >= existing.peering_timebase
@@ -693,7 +692,7 @@ impl RpcDaemon {
         });
     }
 
-    fn transient_peer_record(
+    pub(super) fn transient_peer_record(
         &self,
         peer: String,
         timestamp: i64,

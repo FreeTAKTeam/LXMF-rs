@@ -1,3 +1,5 @@
+use super::*;
+
 impl RpcDaemon {
     pub fn handle_rpc(&self, request: RpcRequest) -> Result<RpcResponse, std::io::Error> {
         let request_id = request.id;
@@ -158,8 +160,7 @@ impl RpcDaemon {
                 self.metrics_record_rpc_response(method.as_str(), elapsed_ms, &mapped);
                 if let Some(trace_id) = lifecycle_trace_id.as_deref() {
                     let mut details = Self::sdk_lifecycle_details(method.as_str(), &mapped);
-                    details
-                        .insert("mapped_invalid_input".to_string(), JsonValue::Bool(true));
+                    details.insert("mapped_invalid_input".to_string(), JsonValue::Bool(true));
                     self.emit_sdk_lifecycle_trace(
                         trace_id,
                         request_id,
@@ -194,7 +195,7 @@ impl RpcDaemon {
             }
         }
     }
-    fn append_delivery_trace(&self, message_id: &str, status: String) {
+    pub(super) fn append_delivery_trace(&self, message_id: &str, status: String) {
         const MAX_DELIVERY_TRACE_ENTRIES: usize = 32;
         const MAX_TRACKED_MESSAGE_TRACES: usize = 2048;
 
@@ -235,5 +236,4 @@ impl RpcDaemon {
             }
         }
     }
-
 }

@@ -1,3 +1,5 @@
+use super::*;
+
 #[derive(Clone, Copy)]
 struct SdkOperationSpec {
     id: &'static str,
@@ -26,7 +28,8 @@ const SDK_OPERATION_SPECS: &[SdkOperationSpec] = &[
         group: "runtime",
         kind: "query",
         transport_variant: "rpc",
-        description: "Return the latest remembered pagination cursor for one method or all methods.",
+        description:
+            "Return the latest remembered pagination cursor for one method or all methods.",
         aliases: &["sdk_cursor_hint_v2"],
         required_capabilities: &[],
         rpc_method: "sdk_cursor_hint_v2",
@@ -167,7 +170,8 @@ const SDK_OPERATION_SPECS: &[SdkOperationSpec] = &[
         group: "workflow",
         kind: "command",
         transport_variant: "rpc",
-        description: "Ensure peer and optional topic state, store attachments, and send a mission update.",
+        description:
+            "Ensure peer and optional topic state, store attachments, and send a mission update.",
         aliases: &["sdk_workflow_mission_update_send_v2"],
         required_capabilities: &[
             "sdk.capability.contact_management",
@@ -446,7 +450,7 @@ impl RpcDaemon {
         })
     }
 
-    fn operation_registry_json(&self) -> JsonValue {
+    pub(super) fn operation_registry_json(&self) -> JsonValue {
         let entries = SDK_OPERATION_SPECS
             .iter()
             .filter(|spec| {
@@ -469,11 +473,15 @@ impl RpcDaemon {
         json!({ "entries": entries })
     }
 
-    fn envelope_invalid(&self, request_id: u64, message: impl AsRef<str>) -> RpcResponse {
+    pub(super) fn envelope_invalid(
+        &self,
+        request_id: u64,
+        message: impl AsRef<str>,
+    ) -> RpcResponse {
         self.sdk_error_response(request_id, "SDK_VALIDATION_INVALID_ARGUMENT", message.as_ref())
     }
 
-    fn handle_sdk_operation_registry_v2(
+    pub(super) fn handle_sdk_operation_registry_v2(
         &self,
         request: RpcRequest,
     ) -> Result<RpcResponse, std::io::Error> {
@@ -488,7 +496,7 @@ impl RpcDaemon {
         })
     }
 
-    fn envelope_execute_delegated(
+    pub(super) fn envelope_execute_delegated(
         &self,
         request_id: u64,
         method: &str,
@@ -568,20 +576,18 @@ impl RpcDaemon {
                 method: method.to_owned(),
                 params: Some(params),
             })?,
-            "sdk_workflow_attachment_report_publish_v2" => {
-                self.handle_sdk_workflow_attachment_report_publish_v2(RpcRequest {
+            "sdk_workflow_attachment_report_publish_v2" => self
+                .handle_sdk_workflow_attachment_report_publish_v2(RpcRequest {
                     id: request_id,
                     method: method.to_owned(),
                     params: Some(params),
-                })?
-            }
-            "sdk_workflow_mission_update_send_v2" => {
-                self.handle_sdk_workflow_mission_update_send_v2(RpcRequest {
+                })?,
+            "sdk_workflow_mission_update_send_v2" => self
+                .handle_sdk_workflow_mission_update_send_v2(RpcRequest {
                     id: request_id,
                     method: method.to_owned(),
                     params: Some(params),
-                })?
-            }
+                })?,
             "sdk_topic_create_v2" => self.handle_sdk_topic_create_v2(RpcRequest {
                 id: request_id,
                 method: method.to_owned(),
@@ -815,7 +821,7 @@ impl RpcDaemon {
         })
     }
 
-    fn handle_sdk_envelope_execute_v2(
+    pub(super) fn handle_sdk_envelope_execute_v2(
         &self,
         request: RpcRequest,
     ) -> Result<RpcResponse, std::io::Error> {
@@ -950,7 +956,7 @@ impl RpcDaemon {
         })
     }
 
-    fn handle_sdk_workflow_peer_ready_v2(
+    pub(super) fn handle_sdk_workflow_peer_ready_v2(
         &self,
         request: RpcRequest,
     ) -> Result<RpcResponse, std::io::Error> {
@@ -1069,7 +1075,7 @@ impl RpcDaemon {
         })
     }
 
-    fn handle_sdk_workflow_topic_sync_v2(
+    pub(super) fn handle_sdk_workflow_topic_sync_v2(
         &self,
         request: RpcRequest,
     ) -> Result<RpcResponse, std::io::Error> {
@@ -1142,11 +1148,8 @@ impl RpcDaemon {
             )
         };
 
-        let topic_id = topic
-            .get("topic_id")
-            .and_then(JsonValue::as_str)
-            .unwrap_or_default()
-            .to_owned();
+        let topic_id =
+            topic.get("topic_id").and_then(JsonValue::as_str).unwrap_or_default().to_owned();
 
         let subscribed = self.handle_sdk_topic_subscribe_v2(RpcRequest {
             id: request.id,
@@ -1185,7 +1188,7 @@ impl RpcDaemon {
         })
     }
 
-    fn handle_sdk_workflow_attachment_report_publish_v2(
+    pub(super) fn handle_sdk_workflow_attachment_report_publish_v2(
         &self,
         request: RpcRequest,
     ) -> Result<RpcResponse, std::io::Error> {
@@ -1210,11 +1213,8 @@ impl RpcDaemon {
             .and_then(|workflow| workflow.get("topic"))
             .cloned()
             .unwrap_or(JsonValue::Null);
-        let topic_id = topic
-            .get("topic_id")
-            .and_then(JsonValue::as_str)
-            .unwrap_or_default()
-            .to_owned();
+        let topic_id =
+            topic.get("topic_id").and_then(JsonValue::as_str).unwrap_or_default().to_owned();
 
         let Some(attachment) = params.get("attachment") else {
             return Ok(self.sdk_error_response(
@@ -1276,16 +1276,13 @@ impl RpcDaemon {
         })
     }
 
-    fn handle_sdk_workflow_mission_update_send_v2(
+    pub(super) fn handle_sdk_workflow_mission_update_send_v2(
         &self,
         request: RpcRequest,
     ) -> Result<RpcResponse, std::io::Error> {
         let params = request.params.unwrap_or_else(|| json!({}));
-        let metadata = params
-            .get("metadata")
-            .and_then(JsonValue::as_object)
-            .cloned()
-            .unwrap_or_default();
+        let metadata =
+            params.get("metadata").and_then(JsonValue::as_object).cloned().unwrap_or_default();
         for key in ["content", "topic_id", "group_id", "file_attachments"] {
             if metadata.contains_key(key) {
                 return Ok(self.sdk_error_response(

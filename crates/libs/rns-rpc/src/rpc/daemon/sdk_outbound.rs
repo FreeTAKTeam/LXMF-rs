@@ -1,6 +1,8 @@
+use super::*;
+
 impl RpcDaemon {
     #[allow(clippy::too_many_arguments)]
-    fn store_outbound(
+    pub(super) fn store_outbound(
         &self,
         request_id: u64,
         id: String,
@@ -37,8 +39,7 @@ impl RpcDaemon {
 
         let store_started = std::time::Instant::now();
         self.store.insert_message(&record).map_err(std::io::Error::other)?;
-        let store_elapsed_ns =
-            store_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
+        let store_elapsed_ns = store_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
         self.metrics_record_sdk_send_store_write(store_elapsed_ns);
         self.append_delivery_trace(&id, "sending".to_string());
         if self.outbound_bridge.is_some() {
@@ -156,7 +157,7 @@ impl RpcDaemon {
         Ok(RpcResponse { id: request_id, result: Some(json!({ "message_id": id })), error: None })
     }
 
-    fn local_delivery_hash(&self) -> String {
+    pub(super) fn local_delivery_hash(&self) -> String {
         self.delivery_destination_hash
             .lock()
             .expect("delivery_destination_hash mutex poisoned")
@@ -164,7 +165,7 @@ impl RpcDaemon {
             .unwrap_or_else(|| self.identity_hash.clone())
     }
 
-    fn capabilities() -> Vec<&'static str> {
+    pub(super) fn capabilities() -> Vec<&'static str> {
         vec![
             "status",
             "daemon_status_ex",

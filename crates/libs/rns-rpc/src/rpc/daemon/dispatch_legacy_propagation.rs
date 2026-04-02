@@ -1,12 +1,13 @@
+use super::*;
+
 impl RpcDaemon {
     pub fn note_client_propagation_messages_received(&self, ingested_count: usize) {
         let state = {
             let mut guard = self.propagation_state.lock().expect("propagation mutex poisoned");
             guard.last_ingest_count = ingested_count;
             guard.total_ingested += ingested_count;
-            guard.client_propagation_messages_received = guard
-                .client_propagation_messages_received
-                .saturating_add(ingested_count);
+            guard.client_propagation_messages_received =
+                guard.client_propagation_messages_received.saturating_add(ingested_count);
             guard.clone()
         };
         self.update_daemon_status_snapshot(|snapshot| {
@@ -18,11 +19,8 @@ impl RpcDaemon {
         &self,
         payload_hex: &str,
     ) -> Result<String, std::io::Error> {
-        let target_cost = self
-            .propagation_state
-            .lock()
-            .expect("propagation mutex poisoned")
-            .target_cost;
+        let target_cost =
+            self.propagation_state.lock().expect("propagation mutex poisoned").target_cost;
         canonical_propagation_transient_hex(payload_hex, target_cost)
     }
 
@@ -30,22 +28,13 @@ impl RpcDaemon {
         &self,
         payload: &[u8],
     ) -> Result<String, std::io::Error> {
-        let target_cost = self
-            .propagation_state
-            .lock()
-            .expect("propagation mutex poisoned")
-            .target_cost;
-        Ok(hex::encode(canonical_propagation_transient_bytes(
-            payload,
-            target_cost,
-        )?))
+        let target_cost =
+            self.propagation_state.lock().expect("propagation mutex poisoned").target_cost;
+        Ok(hex::encode(canonical_propagation_transient_bytes(payload, target_cost)?))
     }
 
     pub fn propagation_target_cost(&self) -> u32 {
-        self.propagation_state
-            .lock()
-            .expect("propagation mutex poisoned")
-            .target_cost
+        self.propagation_state.lock().expect("propagation mutex poisoned").target_cost
     }
 
     pub fn ingest_propagation_payload_bytes_with_aliases(
@@ -56,10 +45,8 @@ impl RpcDaemon {
     ) -> Result<String, std::io::Error> {
         let payload_hex = hex::encode(payload);
         if !payload_hex.is_empty() {
-            let mut guard = self
-                .propagation_payloads
-                .lock()
-                .expect("propagation payload mutex poisoned");
+            let mut guard =
+                self.propagation_payloads.lock().expect("propagation payload mutex poisoned");
             guard.insert(transient_id.to_string(), payload_hex.clone());
             for alias in aliases {
                 guard.insert(alias.clone(), payload_hex.clone());
@@ -71,9 +58,8 @@ impl RpcDaemon {
             let ingested_count = usize::from(!transient_id.is_empty());
             guard.last_ingest_count = ingested_count;
             guard.total_ingested += ingested_count;
-            guard.client_propagation_messages_received = guard
-                .client_propagation_messages_received
-                .saturating_add(ingested_count);
+            guard.client_propagation_messages_received =
+                guard.client_propagation_messages_received.saturating_add(ingested_count);
             guard.clone()
         };
         self.update_daemon_status_snapshot(|snapshot| {
@@ -132,7 +118,10 @@ impl RpcDaemon {
         self.ingest_propagation_payload_hex(payload_hex.as_str(), transient_id)
     }
 
-    fn handle_rpc_legacy_propagation(&self, request: RpcRequest) -> Result<RpcResponse, std::io::Error> {
+    pub(super) fn handle_rpc_legacy_propagation(
+        &self,
+        request: RpcRequest,
+    ) -> Result<RpcResponse, std::io::Error> {
         match request.method.as_str() {
             "get_delivery_policy" => {
                 let policy = self.delivery_policy.lock().expect("policy mutex poisoned").clone();
@@ -247,11 +236,8 @@ impl RpcDaemon {
                     .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
 
                 let payload_hex = parsed.payload_hex.unwrap_or_default();
-                let target_cost = self
-                    .propagation_state
-                    .lock()
-                    .expect("propagation mutex poisoned")
-                    .target_cost;
+                let target_cost =
+                    self.propagation_state.lock().expect("propagation mutex poisoned").target_cost;
                 let normalized_payload = if !payload_hex.is_empty() {
                     Some(normalize_propagation_payload_hex(payload_hex.as_str(), target_cost)?)
                 } else {
@@ -277,7 +263,8 @@ impl RpcDaemon {
                             encode_hex(hasher.finalize())
                         })
                 });
-                let ingested_count = usize::from(!payload_hex.is_empty() && !transient_id.is_empty());
+                let ingested_count =
+                    usize::from(!payload_hex.is_empty() && !transient_id.is_empty());
 
                 if let Some(payload_hex) =
                     normalized_payload.map(|(_transient_id, payload_hex)| payload_hex)
@@ -293,9 +280,8 @@ impl RpcDaemon {
                         self.propagation_state.lock().expect("propagation mutex poisoned");
                     guard.last_ingest_count = ingested_count;
                     guard.total_ingested += ingested_count;
-                    guard.client_propagation_messages_received = guard
-                        .client_propagation_messages_received
-                        .saturating_add(ingested_count);
+                    guard.client_propagation_messages_received =
+                        guard.client_propagation_messages_received.saturating_add(ingested_count);
                     guard.clone()
                 };
                 self.update_daemon_status_snapshot(|snapshot| {
@@ -528,7 +514,6 @@ impl RpcDaemon {
             _ => unreachable!("legacy propagation route: {}", request.method),
         }
     }
-
 }
 
 const PROPAGATION_STAMP_SIZE: usize = 32;
@@ -537,16 +522,17 @@ const PROPAGATION_STAMP_WORKBLOCK_ROUNDS: usize = 1000;
 // structured LXMF message before validating the trailing stamp.
 const MIN_PROPAGATION_STAMPED_PAYLOAD_SIZE: usize = 112 + PROPAGATION_STAMP_SIZE;
 
-fn normalize_propagation_payload_hex(
+pub(super) fn normalize_propagation_payload_hex(
     payload_hex: &str,
     target_cost: u32,
 ) -> Result<(String, String), std::io::Error> {
     let transient_data = decode_propagation_payload_hex(payload_hex)?;
-    let (transient_id, payload) = normalize_propagation_payload_bytes(&transient_data, target_cost)?;
+    let (transient_id, payload) =
+        normalize_propagation_payload_bytes(&transient_data, target_cost)?;
     Ok((hex::encode(transient_id), hex::encode(payload)))
 }
 
-fn canonical_propagation_transient_hex(
+pub(super) fn canonical_propagation_transient_hex(
     payload_hex: &str,
     target_cost: u32,
 ) -> Result<String, std::io::Error> {
@@ -555,7 +541,7 @@ fn canonical_propagation_transient_hex(
     Ok(hex::encode(transient_id))
 }
 
-fn decode_propagation_payload_hex(payload_hex: &str) -> Result<Vec<u8>, std::io::Error> {
+pub(super) fn decode_propagation_payload_hex(payload_hex: &str) -> Result<Vec<u8>, std::io::Error> {
     hex::decode(payload_hex.trim()).map_err(|err| {
         std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
@@ -564,7 +550,7 @@ fn decode_propagation_payload_hex(payload_hex: &str) -> Result<Vec<u8>, std::io:
     })
 }
 
-fn canonical_propagation_transient_bytes(
+pub(super) fn canonical_propagation_transient_bytes(
     transient_data: &[u8],
     target_cost: u32,
 ) -> Result<[u8; 32], std::io::Error> {
@@ -600,7 +586,7 @@ fn canonical_propagation_transient_bytes(
     Ok(transient_id)
 }
 
-fn normalize_propagation_payload_bytes(
+pub(super) fn normalize_propagation_payload_bytes(
     transient_data: &[u8],
     target_cost: u32,
 ) -> Result<([u8; 32], &[u8]), std::io::Error> {
@@ -612,7 +598,7 @@ fn normalize_propagation_payload_bytes(
     Ok((transient_id, lxm_data))
 }
 
-fn propagation_payload_hash_input(
+pub(super) fn propagation_payload_hash_input(
     transient_data: &[u8],
     target_cost: u32,
 ) -> Result<&[u8], std::io::Error> {
@@ -623,12 +609,8 @@ fn propagation_payload_hash_input(
     }
 
     let (lxm_data, stamp) = split_propagation_stamp(transient_data).ok_or_else(|| {
-        std::io::Error::new(
-            std::io::ErrorKind::PermissionDenied,
-            "invalid propagation stamp",
-        )
+        std::io::Error::new(std::io::ErrorKind::PermissionDenied, "invalid propagation stamp")
     })?;
-
 
     let transient_hash = Sha256::digest(lxm_data);
     let workblock = propagation_stamp_workblock(transient_hash.as_slice());
@@ -642,7 +624,7 @@ fn propagation_payload_hash_input(
     Ok(lxm_data)
 }
 
-fn split_propagation_stamp(transient_data: &[u8]) -> Option<(&[u8], &[u8])> {
+pub(super) fn split_propagation_stamp(transient_data: &[u8]) -> Option<(&[u8], &[u8])> {
     if transient_data.len() <= MIN_PROPAGATION_STAMPED_PAYLOAD_SIZE {
         return None;
     }
@@ -651,7 +633,7 @@ fn split_propagation_stamp(transient_data: &[u8]) -> Option<(&[u8], &[u8])> {
     Some((&transient_data[..split_at], &transient_data[split_at..]))
 }
 
-fn propagation_stamp_workblock(material: &[u8]) -> Vec<u8> {
+pub(super) fn propagation_stamp_workblock(material: &[u8]) -> Vec<u8> {
     let mut workblock = Vec::with_capacity(PROPAGATION_STAMP_WORKBLOCK_ROUNDS * 256);
     for round in 0..PROPAGATION_STAMP_WORKBLOCK_ROUNDS {
         let mut salt_data = Vec::with_capacity(material.len() + 8);
@@ -668,11 +650,11 @@ fn propagation_stamp_workblock(material: &[u8]) -> Vec<u8> {
     workblock
 }
 
-fn propagation_stamp_valid(stamp: &[u8], target_cost: u32, workblock: &[u8]) -> bool {
+pub(super) fn propagation_stamp_valid(stamp: &[u8], target_cost: u32, workblock: &[u8]) -> bool {
     propagation_stamp_value(workblock, stamp) >= target_cost
 }
 
-fn propagation_stamp_value(workblock: &[u8], stamp: &[u8]) -> u32 {
+pub(super) fn propagation_stamp_value(workblock: &[u8], stamp: &[u8]) -> u32 {
     let mut material = Vec::with_capacity(workblock.len() + stamp.len());
     material.extend_from_slice(workblock);
     material.extend_from_slice(stamp);

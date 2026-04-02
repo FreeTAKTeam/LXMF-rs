@@ -1,5 +1,7 @@
+use super::*;
+
 impl RpcDaemon {
-    fn handle_rpc_legacy_messages(
+    pub(super) fn handle_rpc_legacy_messages(
         &self,
         request: RpcRequest,
     ) -> Result<RpcResponse, std::io::Error> {
@@ -497,7 +499,7 @@ impl RpcDaemon {
         }
     }
 
-    fn restart_required_response(
+    pub(super) fn restart_required_response(
         id: u64,
         operation: &str,
         affected_interfaces: Vec<String>,
@@ -531,11 +533,11 @@ impl RpcDaemon {
         RpcResponse { id, result: None, error: Some(error) }
     }
 
-    fn is_legacy_hot_apply_kind(kind: &str) -> bool {
+    pub(super) fn is_legacy_hot_apply_kind(kind: &str) -> bool {
         matches!(kind, "tcp_client" | "tcp_server")
     }
 
-    fn interface_identifier(iface: &InterfaceRecord, index: usize) -> String {
+    pub(super) fn interface_identifier(iface: &InterfaceRecord, index: usize) -> String {
         iface
             .name
             .as_deref()
@@ -545,7 +547,7 @@ impl RpcDaemon {
             .unwrap_or_else(|| format!("{}[{index}]", iface.kind))
     }
 
-    fn is_reload_hot_apply_compatible(
+    pub(super) fn is_reload_hot_apply_compatible(
         current: &[InterfaceRecord],
         next: &[InterfaceRecord],
     ) -> bool {
@@ -557,7 +559,7 @@ impl RpcDaemon {
         })
     }
 
-    fn validate_legacy_hot_apply_uniqueness(
+    pub(super) fn validate_legacy_hot_apply_uniqueness(
         interfaces: &[InterfaceRecord],
     ) -> Result<(), std::io::Error> {
         let mut seen = std::collections::HashSet::new();
@@ -582,7 +584,7 @@ impl RpcDaemon {
         Ok(())
     }
 
-    fn legacy_tcp_interface_key(iface: &InterfaceRecord) -> Option<String> {
+    pub(super) fn legacy_tcp_interface_key(iface: &InterfaceRecord) -> Option<String> {
         if iface.kind != "tcp_client" {
             return None;
         }

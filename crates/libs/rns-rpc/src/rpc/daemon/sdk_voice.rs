@@ -1,5 +1,7 @@
+use super::*;
+
 impl RpcDaemon {
-    fn handle_sdk_voice_session_open_v2(
+    pub(super) fn handle_sdk_voice_session_open_v2(
         &self,
         request: RpcRequest,
     ) -> Result<RpcResponse, std::io::Error> {
@@ -46,7 +48,7 @@ impl RpcDaemon {
         })
     }
 
-    fn handle_sdk_voice_session_update_v2(
+    pub(super) fn handle_sdk_voice_session_update_v2(
         &self,
         request: RpcRequest,
     ) -> Result<RpcResponse, std::io::Error> {
@@ -118,7 +120,7 @@ impl RpcDaemon {
         })
     }
 
-    fn handle_sdk_voice_session_close_v2(
+    pub(super) fn handle_sdk_voice_session_close_v2(
         &self,
         request: RpcRequest,
     ) -> Result<RpcResponse, std::io::Error> {
@@ -165,5 +167,4 @@ impl RpcDaemon {
             error: None,
         })
     }
-
 }

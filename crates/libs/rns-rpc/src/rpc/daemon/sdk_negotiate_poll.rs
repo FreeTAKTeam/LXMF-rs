@@ -1,5 +1,10 @@
+use super::*;
+
 impl RpcDaemon {
-    fn handle_sdk_negotiate_v2(&self, request: RpcRequest) -> Result<RpcResponse, std::io::Error> {
+    pub(super) fn handle_sdk_negotiate_v2(
+        &self,
+        request: RpcRequest,
+    ) -> Result<RpcResponse, std::io::Error> {
         let params = request.params.ok_or_else(|| {
             std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing params")
         })?;
@@ -22,10 +27,8 @@ impl RpcDaemon {
         };
 
         let profile = parsed.config.profile.trim().to_ascii_lowercase();
-        if !matches!(
-            profile.as_str(),
-            "desktop-full" | "desktop-local-runtime" | "embedded-alloc"
-        ) {
+        if !matches!(profile.as_str(), "desktop-full" | "desktop-local-runtime" | "embedded-alloc")
+        {
             return Ok(self.sdk_error_response(
                 request.id,
                 "SDK_CAPABILITY_CONTRACT_INCOMPATIBLE",
@@ -394,7 +397,7 @@ impl RpcDaemon {
     }
 
     #[allow(clippy::result_large_err)]
-    fn handle_sdk_poll_events_v2(
+    pub(super) fn handle_sdk_poll_events_v2(
         &self,
         request: RpcRequest,
     ) -> Result<RpcResponse, std::io::Error> {
@@ -508,22 +511,22 @@ impl RpcDaemon {
 
         if parsed.cursor.is_none() && event_rows.len() < parsed.max {
             if let Some(gap_meta) = compute_stream_gap(dropped_count, oldest_seq) {
-            let gap_row = json!({
-                    "event_id": format!("gap-{}", gap_meta.gap_seq_no),
-                "runtime_id": self.identity_hash,
-                "stream_id": SDK_STREAM_ID,
-                    "seq_no": gap_meta.gap_seq_no,
-                "contract_version": self.active_contract_version(),
-                "ts_ms": (now_i64().max(0) as u64) * 1000,
-                "event_type": "StreamGap",
-                "severity": "warn",
-                "source_component": "rns-rpc",
-                "payload": {
-                        "expected_seq_no": gap_meta.expected_seq_no,
-                        "observed_seq_no": gap_meta.observed_seq_no,
-                        "dropped_count": gap_meta.dropped_count,
-                },
-            });
+                let gap_row = json!({
+                        "event_id": format!("gap-{}", gap_meta.gap_seq_no),
+                    "runtime_id": self.identity_hash,
+                    "stream_id": SDK_STREAM_ID,
+                        "seq_no": gap_meta.gap_seq_no,
+                    "contract_version": self.active_contract_version(),
+                    "ts_ms": (now_i64().max(0) as u64) * 1000,
+                    "event_type": "StreamGap",
+                    "severity": "warn",
+                    "source_component": "rns-rpc",
+                    "payload": {
+                            "expected_seq_no": gap_meta.expected_seq_no,
+                            "observed_seq_no": gap_meta.observed_seq_no,
+                            "dropped_count": gap_meta.dropped_count,
+                    },
+                });
                 if let Err(response) = append_event_row(gap_row, &mut event_rows, &mut batch_bytes)
                 {
                     return Ok(response);
@@ -583,5 +586,4 @@ impl RpcDaemon {
             error: None,
         })
     }
-
 }

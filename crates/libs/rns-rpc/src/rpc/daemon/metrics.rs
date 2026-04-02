@@ -1,5 +1,7 @@
+use super::*;
+
 impl RpcDaemon {
-    fn metrics_increment(map: &mut BTreeMap<String, u64>, key: &str) {
+    pub(super) fn metrics_increment(map: &mut BTreeMap<String, u64>, key: &str) {
         let count = map.entry(key.to_string()).or_insert(0);
         *count = count.saturating_add(1);
     }
@@ -18,7 +20,7 @@ impl RpcDaemon {
         metrics.http_request_errors_total = metrics.http_request_errors_total.saturating_add(1);
     }
 
-    fn metrics_record_rpc_request(&self, method: &str) {
+    pub(super) fn metrics_record_rpc_request(&self, method: &str) {
         let mut metrics = self.sdk_metrics.lock().expect("sdk_metrics mutex poisoned");
         metrics.rpc_requests_total = metrics.rpc_requests_total.saturating_add(1);
         Self::metrics_increment(&mut metrics.rpc_requests_by_method, method);
@@ -36,7 +38,12 @@ impl RpcDaemon {
         }
     }
 
-    fn metrics_record_rpc_response(&self, method: &str, elapsed_ms: u64, response: &RpcResponse) {
+    pub(super) fn metrics_record_rpc_response(
+        &self,
+        method: &str,
+        elapsed_ms: u64,
+        response: &RpcResponse,
+    ) {
         let mut metrics = self.sdk_metrics.lock().expect("sdk_metrics mutex poisoned");
         if response.error.is_some() {
             metrics.rpc_errors_total = metrics.rpc_errors_total.saturating_add(1);
@@ -48,21 +55,19 @@ impl RpcDaemon {
                 if response.error.is_some() {
                     metrics.sdk_send_error_total = metrics.sdk_send_error_total.saturating_add(1);
                 } else {
-                    metrics.sdk_send_success_total = metrics.sdk_send_success_total.saturating_add(1);
+                    metrics.sdk_send_success_total =
+                        metrics.sdk_send_success_total.saturating_add(1);
                 }
             }
             "sdk_poll_events_v2" => {
                 metrics.sdk_poll_latency_ms.observe(elapsed_ms);
                 if let Some(result) = response.result.as_ref() {
                     if let Some(events) = result.get("events").and_then(JsonValue::as_array) {
-                        metrics.sdk_poll_events_total = metrics
-                            .sdk_poll_events_total
-                            .saturating_add(events.len() as u64);
-                        if events
-                            .iter()
-                            .any(|event| event.get("event_type").and_then(JsonValue::as_str)
-                                == Some("StreamGap"))
-                        {
+                        metrics.sdk_poll_events_total =
+                            metrics.sdk_poll_events_total.saturating_add(events.len() as u64);
+                        if events.iter().any(|event| {
+                            event.get("event_type").and_then(JsonValue::as_str) == Some("StreamGap")
+                        }) {
                             metrics.sdk_poll_batches_with_gap_total =
                                 metrics.sdk_poll_batches_with_gap_total.saturating_add(1);
                         }
@@ -97,7 +102,7 @@ impl RpcDaemon {
         }
     }
 
-    fn metrics_record_rpc_io_error(&self, method: &str, elapsed_ms: u64) {
+    pub(super) fn metrics_record_rpc_io_error(&self, method: &str, elapsed_ms: u64) {
         let mut metrics = self.sdk_metrics.lock().expect("sdk_metrics mutex poisoned");
         metrics.rpc_errors_total = metrics.rpc_errors_total.saturating_add(1);
         Self::metrics_increment(&mut metrics.rpc_errors_by_method, method);
@@ -113,7 +118,7 @@ impl RpcDaemon {
         }
     }
 
-    fn metrics_record_auth_result(&self, elapsed_ms: u64, allowed: bool) {
+    pub(super) fn metrics_record_auth_result(&self, elapsed_ms: u64, allowed: bool) {
         let mut metrics = self.sdk_metrics.lock().expect("sdk_metrics mutex poisoned");
         metrics.sdk_auth_latency_ms.observe(elapsed_ms);
         if !allowed {
@@ -121,26 +126,28 @@ impl RpcDaemon {
         }
     }
 
-    fn metrics_record_event_drop(&self) {
+    pub(super) fn metrics_record_event_drop(&self) {
         let mut metrics = self.sdk_metrics.lock().expect("sdk_metrics mutex poisoned");
         metrics.sdk_event_drops_total = metrics.sdk_event_drops_total.saturating_add(1);
     }
 
-    fn metrics_record_event_sink_publish(&self, kind: &str) {
+    pub(super) fn metrics_record_event_sink_publish(&self, kind: &str) {
         let mut metrics = self.sdk_metrics.lock().expect("sdk_metrics mutex poisoned");
-        metrics.sdk_event_sink_publish_total = metrics.sdk_event_sink_publish_total.saturating_add(1);
+        metrics.sdk_event_sink_publish_total =
+            metrics.sdk_event_sink_publish_total.saturating_add(1);
         Self::metrics_increment(&mut metrics.sdk_event_sink_publish_by_kind, kind);
     }
 
-    fn metrics_record_event_sink_error(&self, kind: &str) {
+    pub(super) fn metrics_record_event_sink_error(&self, kind: &str) {
         let mut metrics = self.sdk_metrics.lock().expect("sdk_metrics mutex poisoned");
         metrics.sdk_event_sink_error_total = metrics.sdk_event_sink_error_total.saturating_add(1);
         Self::metrics_increment(&mut metrics.sdk_event_sink_errors_by_kind, kind);
     }
 
-    fn metrics_record_event_sink_skipped(&self) {
+    pub(super) fn metrics_record_event_sink_skipped(&self) {
         let mut metrics = self.sdk_metrics.lock().expect("sdk_metrics mutex poisoned");
-        metrics.sdk_event_sink_skipped_total = metrics.sdk_event_sink_skipped_total.saturating_add(1);
+        metrics.sdk_event_sink_skipped_total =
+            metrics.sdk_event_sink_skipped_total.saturating_add(1);
     }
 
     pub(crate) fn metrics_record_sdk_send_store_write(&self, elapsed_ns: u64) {
@@ -225,16 +232,13 @@ impl RpcDaemon {
     ) {
         let mut metrics = self.sdk_metrics.lock().expect("sdk_metrics mutex poisoned");
         metrics.daemon_status_calls_total = metrics.daemon_status_calls_total.saturating_add(1);
-        metrics.daemon_status_snapshot_wait_ns_total = metrics
-            .daemon_status_snapshot_wait_ns_total
-            .saturating_add(snapshot_wait_ns);
-        metrics.daemon_status_message_count_wait_ns_total = metrics
-            .daemon_status_message_count_wait_ns_total
-            .saturating_add(message_count_wait_ns);
-        metrics.daemon_status_lock_wait_ns_total =
-            metrics
-                .daemon_status_lock_wait_ns_total
-                .saturating_add(snapshot_wait_ns.saturating_add(message_count_wait_ns));
+        metrics.daemon_status_snapshot_wait_ns_total =
+            metrics.daemon_status_snapshot_wait_ns_total.saturating_add(snapshot_wait_ns);
+        metrics.daemon_status_message_count_wait_ns_total =
+            metrics.daemon_status_message_count_wait_ns_total.saturating_add(message_count_wait_ns);
+        metrics.daemon_status_lock_wait_ns_total = metrics
+            .daemon_status_lock_wait_ns_total
+            .saturating_add(snapshot_wait_ns.saturating_add(message_count_wait_ns));
     }
 
     pub(crate) fn metrics_record_sdk_poll_event_log_lock_wait(&self, wait_ns: u64) {
@@ -250,10 +254,8 @@ impl RpcDaemon {
         let event_queue_depth = self.event_queue.lock().expect("event_queue mutex poisoned").len();
         let sdk_event_log_depth =
             self.sdk_event_log.lock().expect("sdk_event_log mutex poisoned").len();
-        let dropped_count = *self
-            .sdk_dropped_event_count
-            .lock()
-            .expect("sdk_dropped_event_count mutex poisoned");
+        let dropped_count =
+            *self.sdk_dropped_event_count.lock().expect("sdk_dropped_event_count mutex poisoned");
         let store_contention = self.store.contention_snapshot();
         let mut counters = JsonMap::new();
         counters.insert("http_requests_total".to_string(), json!(metrics.http_requests_total));
@@ -264,10 +266,8 @@ impl RpcDaemon {
         counters.insert("rpc_requests_total".to_string(), json!(metrics.rpc_requests_total));
         counters.insert("rpc_errors_total".to_string(), json!(metrics.rpc_errors_total));
         counters.insert("sdk_send_total".to_string(), json!(metrics.sdk_send_total));
-        counters.insert(
-            "sdk_send_success_total".to_string(),
-            json!(metrics.sdk_send_success_total),
-        );
+        counters
+            .insert("sdk_send_success_total".to_string(), json!(metrics.sdk_send_success_total));
         counters.insert("sdk_send_error_total".to_string(), json!(metrics.sdk_send_error_total));
         counters.insert(
             "sdk_send_store_write_ops_total".to_string(),
@@ -294,10 +294,7 @@ impl RpcDaemon {
             json!(metrics.sdk_send_event_publish_ns_total),
         );
         counters.insert("sdk_poll_total".to_string(), json!(metrics.sdk_poll_total));
-        counters.insert(
-            "sdk_poll_events_total".to_string(),
-            json!(metrics.sdk_poll_events_total),
-        );
+        counters.insert("sdk_poll_events_total".to_string(), json!(metrics.sdk_poll_events_total));
         counters.insert(
             "sdk_poll_batches_with_gap_total".to_string(),
             json!(metrics.sdk_poll_batches_with_gap_total),
@@ -319,10 +316,7 @@ impl RpcDaemon {
             "sdk_cancel_already_terminal_total".to_string(),
             json!(metrics.sdk_cancel_already_terminal_total),
         );
-        counters.insert(
-            "sdk_event_drops_total".to_string(),
-            json!(metrics.sdk_event_drops_total),
-        );
+        counters.insert("sdk_event_drops_total".to_string(), json!(metrics.sdk_event_drops_total));
         counters.insert(
             "sdk_event_sink_publish_total".to_string(),
             json!(metrics.sdk_event_sink_publish_total),
@@ -335,19 +329,15 @@ impl RpcDaemon {
             "sdk_event_sink_skipped_total".to_string(),
             json!(metrics.sdk_event_sink_skipped_total),
         );
-        counters.insert(
-            "sdk_auth_failures_total".to_string(),
-            json!(metrics.sdk_auth_failures_total),
-        );
+        counters
+            .insert("sdk_auth_failures_total".to_string(), json!(metrics.sdk_auth_failures_total));
         counters.insert("sdk_event_dropped_count".to_string(), json!(dropped_count));
         counters.insert(
             "ble_connect_failures_total".to_string(),
             json!(metrics.ble_connect_failures_total),
         );
-        counters.insert(
-            "ble_chunk_retries_total".to_string(),
-            json!(metrics.ble_chunk_retries_total),
-        );
+        counters
+            .insert("ble_chunk_retries_total".to_string(), json!(metrics.ble_chunk_retries_total));
         counters.insert("ble_nacks_total".to_string(), json!(metrics.ble_nacks_total));
         counters.insert(
             "ble_tx_queue_timeout_total".to_string(),
@@ -361,14 +351,8 @@ impl RpcDaemon {
             "attachment_upload_checksum_mismatch_total".to_string(),
             json!(metrics.attachment_upload_checksum_mismatch_total),
         );
-        counters.insert(
-            "capture_success_total".to_string(),
-            json!(metrics.capture_success_total),
-        );
-        counters.insert(
-            "capture_failure_total".to_string(),
-            json!(metrics.capture_failure_total),
-        );
+        counters.insert("capture_success_total".to_string(), json!(metrics.capture_success_total));
+        counters.insert("capture_failure_total".to_string(), json!(metrics.capture_failure_total));
         counters.insert(
             "daemon_status_calls_total".to_string(),
             json!(metrics.daemon_status_calls_total),

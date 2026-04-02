@@ -1,5 +1,10 @@
+use super::*;
+
 impl RpcDaemon {
-    fn handle_rpc_legacy_misc(&self, request: RpcRequest) -> Result<RpcResponse, std::io::Error> {
+    pub(super) fn handle_rpc_legacy_misc(
+        &self,
+        request: RpcRequest,
+    ) -> Result<RpcResponse, std::io::Error> {
         match request.method.as_str() {
             "paper_ingest_uri" => {
                 let params = request.params.ok_or_else(|| {
@@ -161,5 +166,4 @@ impl RpcDaemon {
             _ => unreachable!("legacy misc route: {}", request.method),
         }
     }
-
 }

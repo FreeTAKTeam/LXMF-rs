@@ -1,12 +1,18 @@
 # Release Readiness Checklist
 
 This checklist is the publication gate for the Rust workspace.
+It must reflect the checks and status sources that are actually enforced on the
+active branch.
 
 ## 1. Parity truth
 
-- LXMF parity status is tracked in `docs/plans/lxmf-parity-matrix.md`.
-- Reticulum parity status is tracked in `docs/plans/reticulum-parity-matrix.md`.
-- Both matrices must be updated when feature behavior or contracts change.
+- Repository-wide status is tracked first in `docs/status/current-roadmap.md`.
+- `docs/plans/lxmf-parity-matrix.md` and `docs/plans/reticulum-parity-matrix.md`
+  are historical parity snapshots, not the primary release gate.
+- If a parity matrix disagrees with `docs/status/current-roadmap.md`, treat the
+  matrix as stale until it is refreshed in the same change.
+- Rust/Python live interop is still partial and is not yet a required CI gate.
+  Do not mark parity complete until non-ignored evidence exists.
 
 ## 2. Contract and schema gates
 
@@ -29,32 +35,45 @@ This checklist is the publication gate for the Rust workspace.
 
 ## 4. CI quality gates
 
-- `lint-format`
-- `build-matrix` (stable + MSRV)
-- `test-nextest-unit`
-- `test-integration`
-- `doc`
+Current GitHub PR CI in `.github/workflows/ci.yml` enforces these jobs:
+
+- `quality`
+  - `cargo fmt --all -- --check`
+  - `cargo clippy --workspace --all-targets --all-features --no-deps -- -D warnings`
+  - `cargo check --workspace --all-targets`
+- `tests`
+  - `cargo nextest run --workspace --lib --bins`
+  - `cargo test --workspace --tests`
+- `contracts`
+  - `cargo xtask ci --stage sdk-schema-check`
+  - `cargo xtask publish-crates --wave all --dry-run --allow-dirty`
+  - `cargo check -p reticulumd -p rns-tools`
+  - `bash tools/scripts/check-boundaries.sh`
 - `security`
-- `crypto-agility-check`
-- `key-management-check`
-- `unused-deps`
-- `api-surface-check`
-- `compat-kit-check`
-- `reference-integration-check`
-- `schema-client-check`
-- `compliance-profile-check`
-- `support-policy-check`
-- `unsafe-audit-check`
-- `release-scorecard-check`
-- `canary-criteria-check`
-- `extension-registry-check`
-- `plugin-negotiation-check`
-- `certification-report-check`
-- `architecture-lint`
-- `architecture-checks`
-- `changelog-migration-check`
+  - `cargo deny check bans licenses sources`
+  - `cargo audit --ignore RUSTSEC-2024-0421 --ignore RUSTSEC-2024-0436 --ignore RUSTSEC-2026-0009 --ignore RUSTSEC-2025-0134`
+
+The commands below remain useful release checks, but they are not currently
+enforced by pull-request CI unless and until `.github/workflows/ci.yml` is
+expanded.
 
 ## 5. Local release checks
+
+Current high-signal local checks:
+
+```bash
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features --no-deps -- -D warnings
+cargo check --workspace --all-targets
+cargo nextest run --workspace --lib --bins
+cargo test --workspace --tests
+cargo xtask ci --stage sdk-schema-check
+cargo xtask publish-crates --wave all --dry-run --allow-dirty
+bash tools/scripts/check-boundaries.sh
+cargo run -p xtask -- architecture-checks
+```
+
+Extended/manual release checks:
 
 ```bash
 cargo xtask release-check
@@ -152,6 +171,9 @@ Embedded footprint report artifact:
 - `target/embedded/footprint-report.txt`
 
 ## 6. Canary Lane and Rollback Criteria
+
+This section describes a desired release lane. It should not be read as a
+statement that all referenced artifacts are produced by current PR CI.
 
 Canary gate command:
 

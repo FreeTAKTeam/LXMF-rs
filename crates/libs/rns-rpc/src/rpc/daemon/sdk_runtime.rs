@@ -1,5 +1,7 @@
+use super::*;
+
 impl RpcDaemon {
-    fn handle_sdk_cancel_message_v2(
+    pub(super) fn handle_sdk_cancel_message_v2(
         &self,
         request: RpcRequest,
     ) -> Result<RpcResponse, std::io::Error> {
@@ -94,7 +96,10 @@ impl RpcDaemon {
         })
     }
 
-    fn handle_sdk_status_v2(&self, request: RpcRequest) -> Result<RpcResponse, std::io::Error> {
+    pub(super) fn handle_sdk_status_v2(
+        &self,
+        request: RpcRequest,
+    ) -> Result<RpcResponse, std::io::Error> {
         let params = request.params.ok_or_else(|| {
             std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing params")
         })?;
@@ -119,7 +124,10 @@ impl RpcDaemon {
         })
     }
 
-    fn handle_sdk_configure_v2(&self, request: RpcRequest) -> Result<RpcResponse, std::io::Error> {
+    pub(super) fn handle_sdk_configure_v2(
+        &self,
+        request: RpcRequest,
+    ) -> Result<RpcResponse, std::io::Error> {
         let params = request.params.ok_or_else(|| {
             std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing params")
         })?;
@@ -160,9 +168,8 @@ impl RpcDaemon {
             ));
         }
 
-        let mut next_config = {
-            self.sdk_runtime_config.lock().expect("sdk_runtime_config mutex poisoned").clone()
-        };
+        let mut next_config =
+            { self.sdk_runtime_config.lock().expect("sdk_runtime_config mutex poisoned").clone() };
         merge_json_patch(&mut next_config, &parsed.patch);
         if let Err(error) = self.validate_sdk_runtime_config(&next_config) {
             return Ok(RpcResponse { id: request.id, result: None, error: Some(error) });
@@ -201,7 +208,10 @@ impl RpcDaemon {
         })
     }
 
-    fn handle_sdk_shutdown_v2(&self, request: RpcRequest) -> Result<RpcResponse, std::io::Error> {
+    pub(super) fn handle_sdk_shutdown_v2(
+        &self,
+        request: RpcRequest,
+    ) -> Result<RpcResponse, std::io::Error> {
         let params = request.params.ok_or_else(|| {
             std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing params")
         })?;
@@ -235,7 +245,10 @@ impl RpcDaemon {
         })
     }
 
-    fn handle_sdk_snapshot_v2(&self, request: RpcRequest) -> Result<RpcResponse, std::io::Error> {
+    pub(super) fn handle_sdk_snapshot_v2(
+        &self,
+        request: RpcRequest,
+    ) -> Result<RpcResponse, std::io::Error> {
         let params = request
             .params
             .map(serde_json::from_value::<SdkSnapshotV2Params>)
@@ -280,5 +293,4 @@ impl RpcDaemon {
             error: None,
         })
     }
-
 }

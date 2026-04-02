@@ -1,5 +1,7 @@
+use super::*;
+
 impl RpcDaemon {
-    fn response_meta(&self) -> JsonValue {
+    pub(super) fn response_meta(&self) -> JsonValue {
         let profile = self.sdk_profile.lock().expect("sdk_profile mutex poisoned").clone();
         json!({
             "contract_version": format!("v{}", self.active_contract_version()),
@@ -70,8 +72,8 @@ impl RpcDaemon {
             let source_ip = if allow_forwarded {
                 Self::header_value(headers, "x-forwarded-for")
                     .or_else(|| Self::header_value(headers, "x-real-ip"))
-                .or(peer_ip.as_deref())
-                .map(|value| value.split(',').next().unwrap_or(value).trim().to_string())
+                    .or(peer_ip.as_deref())
+                    .map(|value| value.split(',').next().unwrap_or(value).trim().to_string())
             } else {
                 peer_ip
             }
@@ -89,14 +91,13 @@ impl RpcDaemon {
             match auth_mode.as_str() {
                 "local_trusted" => {}
                 "token" => {
-                    let auth_header = Self::header_value(headers, "authorization").ok_or_else(
-                        || {
+                    let auth_header =
+                        Self::header_value(headers, "authorization").ok_or_else(|| {
                             RpcError::new(
                                 "SDK_SECURITY_AUTH_REQUIRED".to_string(),
                                 "authorization header is required".to_string(),
                             )
-                        },
-                    )?;
+                        })?;
                     let token = auth_header
                         .strip_prefix("Bearer ")
                         .or_else(|| auth_header.strip_prefix("bearer "))
@@ -277,7 +278,11 @@ impl RpcDaemon {
     }
 
     #[allow(clippy::result_large_err)]
-    fn enforce_rate_limits(&self, source_ip: &str, principal: &str) -> Result<(), RpcError> {
+    pub(super) fn enforce_rate_limits(
+        &self,
+        source_ip: &str,
+        principal: &str,
+    ) -> Result<(), RpcError> {
         let (per_ip_limit, per_principal_limit) = self.sdk_rate_limits();
         if per_ip_limit == 0 && per_principal_limit == 0 {
             return Ok(());
@@ -316,7 +321,10 @@ impl RpcDaemon {
                     }),
                 };
                 self.publish_event(event);
-                return Err(RpcError::new("SDK_SECURITY_RATE_LIMITED".to_string(), "per-ip request rate limit exceeded".to_string()));
+                return Err(RpcError::new(
+                    "SDK_SECURITY_RATE_LIMITED".to_string(),
+                    "per-ip request rate limit exceeded".to_string(),
+                ));
             }
         }
 
@@ -339,11 +347,13 @@ impl RpcDaemon {
                     }),
                 };
                 self.publish_event(event);
-                return Err(RpcError::new("SDK_SECURITY_RATE_LIMITED".to_string(), "per-principal request rate limit exceeded".to_string()));
+                return Err(RpcError::new(
+                    "SDK_SECURITY_RATE_LIMITED".to_string(),
+                    "per-principal request rate limit exceeded".to_string(),
+                ));
             }
         }
 
         Ok(())
     }
-
 }

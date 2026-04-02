@@ -1,5 +1,7 @@
+use super::*;
+
 impl RpcDaemon {
-    fn sdk_rate_limits(&self) -> (u32, u32) {
+    pub(super) fn sdk_rate_limits(&self) -> (u32, u32) {
         let config =
             self.sdk_runtime_config.lock().expect("sdk_runtime_config mutex poisoned").clone();
         let per_ip = config
@@ -19,7 +21,7 @@ impl RpcDaemon {
         (per_ip, per_principal)
     }
 
-    fn sdk_token_auth_config(
+    pub(super) fn sdk_token_auth_config(
         &self,
     ) -> Option<(String, String, u64, u64, zeroize::Zeroizing<String>)> {
         let config_guard =
@@ -35,7 +37,7 @@ impl RpcDaemon {
         Some((issuer, audience, jti_ttl_ms, clock_skew_secs, shared_secret))
     }
 
-    fn sdk_mtls_auth_config(&self) -> Option<(bool, Option<String>)> {
+    pub(super) fn sdk_mtls_auth_config(&self) -> Option<(bool, Option<String>)> {
         let config =
             self.sdk_runtime_config.lock().expect("sdk_runtime_config mutex poisoned").clone();
         let mtls_auth = config.get("rpc_backend")?.get("mtls_auth")?;
@@ -49,14 +51,14 @@ impl RpcDaemon {
         Some((require_client_cert, allowed_san))
     }
 
-    fn header_value<'a>(headers: &'a [(String, String)], key: &str) -> Option<&'a str> {
+    pub(super) fn header_value<'a>(headers: &'a [(String, String)], key: &str) -> Option<&'a str> {
         headers
             .iter()
             .find(|(name, _)| name.eq_ignore_ascii_case(key))
             .map(|(_, value)| value.as_str())
     }
 
-    fn parse_token_claims(token: &str) -> Option<HashMap<String, String>> {
+    pub(super) fn parse_token_claims(token: &str) -> Option<HashMap<String, String>> {
         let mut claims = HashMap::new();
         for part in token.split(';') {
             let (key, value) = part.split_once('=')?;
@@ -73,13 +75,13 @@ impl RpcDaemon {
         Some(claims)
     }
 
-    fn token_signature(secret: &str, payload: &str) -> Option<String> {
+    pub(super) fn token_signature(secret: &str, payload: &str) -> Option<String> {
         let mut mac = hmac::Hmac::<sha2::Sha256>::new_from_slice(secret.as_bytes()).ok()?;
         mac.update(payload.as_bytes());
         Some(hex::encode(mac.finalize().into_bytes()))
     }
 
-    fn is_loopback_source(source: &str) -> bool {
+    pub(super) fn is_loopback_source(source: &str) -> bool {
         let normalized = source.trim().to_ascii_lowercase();
         normalized == "127.0.0.1"
             || normalized == "::1"
@@ -88,20 +90,20 @@ impl RpcDaemon {
             || normalized.starts_with("127.")
     }
 
-    fn is_terminal_receipt_status(status: &str) -> bool {
+    pub(super) fn is_terminal_receipt_status(status: &str) -> bool {
         let normalized = status.trim().to_ascii_lowercase();
         normalized.starts_with("failed")
             || matches!(normalized.as_str(), "cancelled" | "delivered" | "expired" | "rejected")
     }
 
-    fn active_contract_version(&self) -> u16 {
+    pub(super) fn active_contract_version(&self) -> u16 {
         *self
             .sdk_active_contract_version
             .lock()
             .expect("sdk_active_contract_version mutex poisoned")
     }
 
-    fn sdk_supported_capabilities() -> Vec<String> {
+    pub(super) fn sdk_supported_capabilities() -> Vec<String> {
         vec![
             "sdk.capability.cursor_replay".to_string(),
             "sdk.capability.async_events".to_string(),
@@ -134,7 +136,7 @@ impl RpcDaemon {
         ]
     }
 
-    fn sdk_supported_capabilities_for_profile(profile: &str) -> Vec<String> {
+    pub(super) fn sdk_supported_capabilities_for_profile(profile: &str) -> Vec<String> {
         let mut caps = Self::sdk_supported_capabilities();
         if profile == "embedded-alloc" {
             caps.retain(|capability| capability != "sdk.capability.async_events");
@@ -142,7 +144,7 @@ impl RpcDaemon {
         caps
     }
 
-    fn sdk_required_capabilities_for_profile(profile: &str) -> Vec<String> {
+    pub(super) fn sdk_required_capabilities_for_profile(profile: &str) -> Vec<String> {
         match profile {
             "desktop-local-runtime" => vec![
                 "sdk.capability.cursor_replay".to_string(),
@@ -165,7 +167,7 @@ impl RpcDaemon {
         }
     }
 
-    fn sdk_effective_limits_for_profile(profile: &str) -> JsonValue {
+    pub(super) fn sdk_effective_limits_for_profile(profile: &str) -> JsonValue {
         match profile {
             "desktop-local-runtime" => json!({
                 "max_poll_events": 64,
@@ -191,7 +193,7 @@ impl RpcDaemon {
         }
     }
 
-    fn sdk_max_poll_events(&self) -> usize {
+    pub(super) fn sdk_max_poll_events(&self) -> usize {
         if let Some(value) = self
             .sdk_runtime_config
             .lock()
@@ -210,7 +212,7 @@ impl RpcDaemon {
         }
     }
 
-    fn sdk_max_event_bytes(&self) -> usize {
+    pub(super) fn sdk_max_event_bytes(&self) -> usize {
         if let Some(value) = self
             .sdk_runtime_config
             .lock()
@@ -229,7 +231,7 @@ impl RpcDaemon {
         }
     }
 
-    fn sdk_max_batch_bytes(&self) -> usize {
+    pub(super) fn sdk_max_batch_bytes(&self) -> usize {
         if let Some(value) = self
             .sdk_runtime_config
             .lock()
@@ -247,7 +249,7 @@ impl RpcDaemon {
         }
     }
 
-    fn sdk_max_extension_keys(&self) -> usize {
+    pub(super) fn sdk_max_extension_keys(&self) -> usize {
         if let Some(value) = self
             .sdk_runtime_config
             .lock()
@@ -262,11 +264,11 @@ impl RpcDaemon {
         32
     }
 
-    fn sdk_error_response(&self, id: u64, code: &str, message: &str) -> RpcResponse {
+    pub(super) fn sdk_error_response(&self, id: u64, code: &str, message: &str) -> RpcResponse {
         RpcResponse { id, result: None, error: Some(RpcError::new(code, message)) }
     }
 
-    fn sdk_capability_disabled_response(
+    pub(super) fn sdk_capability_disabled_response(
         &self,
         id: u64,
         method: &str,
@@ -279,11 +281,14 @@ impl RpcDaemon {
         )
     }
 
-    fn sdk_encode_cursor(&self, seq_no: u64) -> String {
+    pub(super) fn sdk_encode_cursor(&self, seq_no: u64) -> String {
         format!("v2:{}:{}:{}", self.identity_hash, SDK_STREAM_ID, seq_no)
     }
 
-    fn sdk_decode_cursor(&self, cursor: Option<&str>) -> Result<Option<u64>, SdkCursorError> {
+    pub(super) fn sdk_decode_cursor(
+        &self,
+        cursor: Option<&str>,
+    ) -> Result<Option<u64>, SdkCursorError> {
         let Some(cursor) = cursor else {
             return Ok(None);
         };
@@ -320,7 +325,7 @@ impl RpcDaemon {
         Ok(Some(seq))
     }
 
-    fn event_severity(event_type: &str) -> &'static str {
+    pub(super) fn event_severity(event_type: &str) -> &'static str {
         if event_type.eq_ignore_ascii_case("StreamGap") {
             return "warn";
         }

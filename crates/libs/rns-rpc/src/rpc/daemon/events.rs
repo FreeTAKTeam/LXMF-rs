@@ -1,5 +1,7 @@
+use super::*;
+
 impl RpcDaemon {
-    fn run_announce_scheduler(
+    pub(super) fn run_announce_scheduler(
         self: std::sync::Arc<Self>,
         interval_secs: u64,
     ) -> tokio::task::JoinHandle<()>
@@ -34,7 +36,7 @@ impl RpcDaemon {
         })
     }
 
-    fn try_until_capacity<F>(&self, block_timeout_ms: u64, mut attempt: F) -> bool
+    pub(super) fn try_until_capacity<F>(&self, block_timeout_ms: u64, mut attempt: F) -> bool
     where
         F: FnMut() -> bool,
     {
@@ -57,7 +59,7 @@ impl RpcDaemon {
         }
     }
 
-    fn sdk_overflow_policy(&self) -> String {
+    pub(super) fn sdk_overflow_policy(&self) -> String {
         let configured = self
             .sdk_runtime_config
             .lock()
@@ -74,7 +76,7 @@ impl RpcDaemon {
         }
     }
 
-    fn sdk_block_timeout_ms(&self) -> u64 {
+    pub(super) fn sdk_block_timeout_ms(&self) -> u64 {
         self.sdk_runtime_config
             .lock()
             .expect("sdk_runtime_config mutex poisoned")
@@ -83,7 +85,7 @@ impl RpcDaemon {
             .unwrap_or(0)
     }
 
-    fn push_legacy_event_with_policy(
+    pub(super) fn push_legacy_event_with_policy(
         &self,
         event: &RpcEvent,
         policy: &str,
@@ -98,17 +100,15 @@ impl RpcDaemon {
                 guard.push_back(event.clone());
                 true
             }
-            "block" => {
-                self.try_until_capacity(block_timeout_ms, || {
-                    let mut guard = self.event_queue.lock().expect("event_queue mutex poisoned");
-                    if guard.len() < LEGACY_EVENT_QUEUE_CAPACITY {
-                        guard.push_back(event.clone());
-                        true
-                    } else {
-                        false
-                    }
-                })
-            }
+            "block" => self.try_until_capacity(block_timeout_ms, || {
+                let mut guard = self.event_queue.lock().expect("event_queue mutex poisoned");
+                if guard.len() < LEGACY_EVENT_QUEUE_CAPACITY {
+                    guard.push_back(event.clone());
+                    true
+                } else {
+                    false
+                }
+            }),
             _ => {
                 let mut guard = self.event_queue.lock().expect("event_queue mutex poisoned");
                 if guard.len() >= LEGACY_EVENT_QUEUE_CAPACITY {
@@ -120,7 +120,7 @@ impl RpcDaemon {
         }
     }
 
-    fn push_sdk_event_log_with_policy(
+    pub(super) fn push_sdk_event_log_with_policy(
         &self,
         sequenced_event: SequencedRpcEvent,
         policy: &str,
@@ -128,27 +128,27 @@ impl RpcDaemon {
     ) -> bool {
         match policy {
             "reject" => {
-                let mut log_guard = self.sdk_event_log.lock().expect("sdk_event_log mutex poisoned");
+                let mut log_guard =
+                    self.sdk_event_log.lock().expect("sdk_event_log mutex poisoned");
                 if log_guard.len() >= SDK_EVENT_LOG_CAPACITY {
                     return false;
                 }
                 log_guard.push_back(sequenced_event);
                 true
             }
-            "block" => {
-                self.try_until_capacity(block_timeout_ms, move || {
-                    let mut log_guard =
-                        self.sdk_event_log.lock().expect("sdk_event_log mutex poisoned");
-                    if log_guard.len() < SDK_EVENT_LOG_CAPACITY {
-                        log_guard.push_back(sequenced_event.clone());
-                        true
-                    } else {
-                        false
-                    }
-                })
-            }
+            "block" => self.try_until_capacity(block_timeout_ms, move || {
+                let mut log_guard =
+                    self.sdk_event_log.lock().expect("sdk_event_log mutex poisoned");
+                if log_guard.len() < SDK_EVENT_LOG_CAPACITY {
+                    log_guard.push_back(sequenced_event.clone());
+                    true
+                } else {
+                    false
+                }
+            }),
             _ => {
-                let mut log_guard = self.sdk_event_log.lock().expect("sdk_event_log mutex poisoned");
+                let mut log_guard =
+                    self.sdk_event_log.lock().expect("sdk_event_log mutex poisoned");
                 if log_guard.len() >= SDK_EVENT_LOG_CAPACITY {
                     log_guard.pop_front();
                     let mut dropped = self
@@ -164,7 +164,7 @@ impl RpcDaemon {
         }
     }
 
-    fn redaction_enabled(&self) -> bool {
+    pub(super) fn redaction_enabled(&self) -> bool {
         self.sdk_runtime_config
             .lock()
             .expect("sdk_runtime_config mutex poisoned")
@@ -174,7 +174,7 @@ impl RpcDaemon {
             .unwrap_or(true)
     }
 
-    fn redaction_transform(&self) -> &'static str {
+    pub(super) fn redaction_transform(&self) -> &'static str {
         match self
             .sdk_runtime_config
             .lock()
@@ -193,7 +193,7 @@ impl RpcDaemon {
         }
     }
 
-    fn sdk_event_sink_enabled(&self) -> bool {
+    pub(super) fn sdk_event_sink_enabled(&self) -> bool {
         self.sdk_runtime_config
             .lock()
             .expect("sdk_runtime_config mutex poisoned")
@@ -203,7 +203,7 @@ impl RpcDaemon {
             .unwrap_or(false)
     }
 
-    fn sdk_event_sink_max_event_bytes(&self) -> usize {
+    pub(super) fn sdk_event_sink_max_event_bytes(&self) -> usize {
         self.sdk_runtime_config
             .lock()
             .expect("sdk_runtime_config mutex poisoned")
@@ -215,7 +215,7 @@ impl RpcDaemon {
             .unwrap_or(65_536)
     }
 
-    fn sdk_event_sink_allowed_kinds(&self) -> Option<HashSet<String>> {
+    pub(super) fn sdk_event_sink_allowed_kinds(&self) -> Option<HashSet<String>> {
         let config = self.sdk_runtime_config.lock().expect("sdk_runtime_config mutex poisoned");
         let kinds = config
             .get("event_sink")
@@ -239,7 +239,7 @@ impl RpcDaemon {
         }
     }
 
-    fn dispatch_event_sink_bridges(&self, seq_no: u64, event: &RpcEvent) {
+    pub(super) fn dispatch_event_sink_bridges(&self, seq_no: u64, event: &RpcEvent) {
         if self.event_sink_bridges.is_empty() || !self.sdk_event_sink_enabled() {
             return;
         }
@@ -253,7 +253,8 @@ impl RpcDaemon {
             event: event.clone(),
         };
         let max_event_bytes = self.sdk_event_sink_max_event_bytes();
-        let event_bytes = serde_json::to_vec(&envelope).map(|payload| payload.len()).unwrap_or(usize::MAX);
+        let event_bytes =
+            serde_json::to_vec(&envelope).map(|payload| payload.len()).unwrap_or(usize::MAX);
         if event_bytes > max_event_bytes {
             self.metrics_record_event_sink_skipped();
             return;
@@ -275,7 +276,7 @@ impl RpcDaemon {
         }
     }
 
-    fn is_sensitive_key(key: &str) -> bool {
+    pub(super) fn is_sensitive_key(key: &str) -> bool {
         matches!(
             key.to_ascii_lowercase().as_str(),
             "peer_id"
@@ -291,7 +292,7 @@ impl RpcDaemon {
         )
     }
 
-    fn redact_scalar(value: &str, transform: &str) -> String {
+    pub(super) fn redact_scalar(value: &str, transform: &str) -> String {
         match transform {
             "truncate" => {
                 let preview = value.chars().take(8).collect::<String>();
@@ -311,7 +312,7 @@ impl RpcDaemon {
         }
     }
 
-    fn redact_sensitive_value(value: &mut JsonValue, transform: &str) {
+    pub(super) fn redact_sensitive_value(value: &mut JsonValue, transform: &str) {
         let replacement = match value {
             JsonValue::String(current) => Self::redact_scalar(current, transform),
             _ => Self::redact_scalar(value.to_string().as_str(), transform),
@@ -319,7 +320,7 @@ impl RpcDaemon {
         *value = JsonValue::String(replacement);
     }
 
-    fn redact_json_value(value: &mut JsonValue, transform: &str) {
+    pub(super) fn redact_json_value(value: &mut JsonValue, transform: &str) {
         match value {
             JsonValue::Object(map) => {
                 for (key, inner) in map.iter_mut() {
@@ -339,7 +340,7 @@ impl RpcDaemon {
         }
     }
 
-    fn redact_event(&self, mut event: RpcEvent) -> RpcEvent {
+    pub(super) fn redact_event(&self, mut event: RpcEvent) -> RpcEvent {
         if !self.redaction_enabled() {
             return event;
         }
