@@ -1,5 +1,7 @@
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 
+use socket2::{Domain, Protocol, Socket, Type};
 use tokio::net::UdpSocket;
 use tokio_util::sync::CancellationToken;
 
@@ -10,6 +12,49 @@ use crate::packet::Packet;
 use crate::serde::Serialize;
 
 use super::{Interface, InterfaceContext};
+
+fn bind_udp(bind_addr: &str) -> std::io::Result<UdpSocket> {
+    let parsed: SocketAddr = bind_addr
+        .parse()
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("bad bind address {}: {}", bind_addr, e)))?;
+
+    let domain = if parsed.is_ipv6() { Domain::IPV6 } else { Domain::IPV4 };
+    let socket = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))?;
+
+    // Allow multiple nodes (or restart of the same node) to bind the same port.
+    socket.set_reuse_address(true)?;
+    #[cfg(unix)]
+    socket.set_reuse_port(true)?;
+
+    // If binding to a multicast group directly, bind to the unspecified address on
+    // the same port instead; then join the group. This works cross-platform.
+    let (bound_addr, multicast_group) = match parsed.ip() {
+        IpAddr::V6(ip) if ip.is_multicast() => {
+            let any: SocketAddr = (std::net::Ipv6Addr::UNSPECIFIED, parsed.port()).into();
+            (any, Some(IpAddr::V6(ip)))
+        }
+        IpAddr::V4(ip) if ip.is_multicast() => {
+            let any: SocketAddr = (std::net::Ipv4Addr::UNSPECIFIED, parsed.port()).into();
+            (any, Some(IpAddr::V4(ip)))
+        }
+        _ => (parsed, None),
+    };
+
+    socket.bind(&bound_addr.into())?;
+
+    if let Some(group) = multicast_group {
+        match group {
+            IpAddr::V6(g) => socket.join_multicast_v6(&g, 0)?,
+            IpAddr::V4(g) => {
+                socket.join_multicast_v4(&g, &std::net::Ipv4Addr::UNSPECIFIED)?
+            }
+        }
+    }
+
+    socket.set_nonblocking(true)?;
+    let std_socket: std::net::UdpSocket = socket.into();
+    UdpSocket::from_std(std_socket)
+}
 
 // UDP trace logging stays on by default for packet-level network bring-up visibility.
 const PACKET_TRACE: bool = true;
@@ -37,8 +82,7 @@ impl UdpInterface {
                 break;
             }
 
-            let socket =
-                UdpSocket::bind(bind_addr.clone()).await.map_err(|_| RnsError::ConnectionError);
+            let socket = bind_udp(&bind_addr).map_err(|_| RnsError::ConnectionError);
 
             if socket.is_err() {
                 log::info!("udp_interface: couldn't bind to <{}>", bind_addr);

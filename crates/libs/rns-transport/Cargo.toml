@@ -33,6 +33,7 @@ serde_json.workspace = true
 sha2.workspace = true
 log.workspace = true
 hex.workspace = true
+socket2 = { version = "0.5", features = ["all"] }
 tokio = { workspace = true, features = ["full"] }
 tokio-util = { workspace = true }
 tokio-serial = { workspace = true }
