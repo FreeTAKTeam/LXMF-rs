@@ -82,7 +82,7 @@ pub(super) async fn handle_announce<'a>(
     let announce = match DestinationAnnounce::validate(packet) {
         Ok(result) => result,
         Err(err) => {
-            eprintln!(
+            log::trace!(
                 "[transport] announce validate failed dst={} err={:?}",
                 packet.destination, err
             );

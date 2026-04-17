@@ -62,13 +62,13 @@ impl TransportHandler {
 
     pub(super) async fn send_packet_with_trace(&mut self, mut packet: Packet) -> SendPacketTrace {
         if packet.header.packet_type == PacketType::Proof {
-            eprintln!(
+            log::trace!(
                 "[tp] send_proof dst={} ctx={:02x}",
                 packet.destination, packet.context as u8
             );
             if packet.context == PacketContext::LinkRequestProof {
                 if let Ok(raw) = packet.to_bytes() {
-                    eprintln!("[tp] lrproof_raw len={} hex={}", raw.len(), bytes_to_hex(&raw));
+                    log::trace!("[tp] lrproof_raw len={} hex={}", raw.len(), bytes_to_hex(&raw));
                 }
             }
         }
@@ -129,7 +129,7 @@ impl TransportHandler {
 
         if transport_diag_enabled() {
             if let Some(entry) = self.path_table.get(&packet.destination) {
-                eprintln!(
+                log::trace!(
                     "[tp-diag] route_lookup dst={} hops={} via_next_hop={} via_iface={}",
                     packet.destination, entry.hops, entry.received_from, entry.iface
                 );
@@ -141,7 +141,7 @@ impl TransportHandler {
                     entry.iface
                 );
             } else {
-                eprintln!("[tp-diag] route_lookup dst={} missing", packet.destination);
+                log::trace!("[tp-diag] route_lookup dst={} missing", packet.destination);
                 log::info!("[tp-diag] route_lookup dst={} missing", packet.destination);
             }
         }
@@ -156,7 +156,7 @@ impl TransportHandler {
                 SendPacketOutcome::DroppedNoRoute
             };
             if transport_diag_enabled() {
-                eprintln!(
+                log::trace!(
                     "[tp-diag] direct_send iface={} outcome={:?} matched={} sent={} failed={}",
                     iface,
                     outcome,
@@ -183,7 +183,7 @@ impl TransportHandler {
                 SendPacketOutcome::DroppedNoRoute
             };
             if transport_diag_enabled() {
-                eprintln!(
+                log::trace!(
                     "[tp-diag] broadcast_send outcome={:?} matched={} sent={} failed={}",
                     outcome, dispatch.matched_ifaces, dispatch.sent_ifaces, dispatch.failed_ifaces
                 );

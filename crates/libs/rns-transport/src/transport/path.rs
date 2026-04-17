@@ -135,7 +135,7 @@ pub(super) async fn handle_link_request_as_destination<'a>(
 
                 if let Ok(mut link) = link {
                     link.set_ingress_iface(iface);
-                    eprintln!(
+                    log::trace!(
                         "[tp] link_proof_tx dst={} link_id={}",
                         packet.destination,
                         link.id()
@@ -181,7 +181,7 @@ pub(super) async fn handle_link_request<'a>(
     iface: AddressHash,
     handler: MutexGuard<'a, TransportHandler>,
 ) {
-    eprintln!(
+    log::trace!(
         "[tp] link_request dst={} ctx={:02x} hops={}",
         packet.destination, packet.context as u8, packet.header.hops
     );

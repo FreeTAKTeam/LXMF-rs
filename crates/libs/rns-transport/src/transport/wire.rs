@@ -144,7 +144,7 @@ pub(super) async fn handle_proof(
         }
         return;
     }
-    eprintln!("[tp] proof dst={} ctx={:02x}", packet.destination, packet.context as u8);
+    log::trace!("[tp] proof dst={} ctx={:02x}", packet.destination, packet.context as u8);
     let receipt_hash = {
         let handler = handler.lock().await;
         validated_receipt_hash(&packet, &handler).await
@@ -306,7 +306,7 @@ pub(super) async fn handle_data<'a>(
             }
         }
 
-        eprintln!(
+        log::trace!(
             "[tp] link_data dst={} ctx={:02x} len={}",
             packet.destination,
             packet.context as u8,

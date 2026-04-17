@@ -98,7 +98,7 @@ impl Transport {
                                         )
                                     },
                                 ) {
-                                    eprintln!(
+                                    log::trace!(
                                         "[tp-diag] received_data_forward link_id=/{}// peer=/{}// ctx={:02x} len={}",
                                         event.id,
                                         event.address_hash,
@@ -204,7 +204,7 @@ impl Transport {
         app_data: Option<&[u8]>,
     ) {
         let mut destination = destination.lock().await;
-        eprintln!(
+        log::trace!(
             "[tp] announce_tx dst={} app_data_len={}",
             destination.desc.address_hash,
             app_data.map(|value| value.len()).unwrap_or(0)
