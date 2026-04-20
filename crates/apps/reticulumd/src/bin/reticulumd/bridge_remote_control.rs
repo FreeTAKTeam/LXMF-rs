@@ -30,16 +30,23 @@ impl TransportBridge {
             .transpose()?;
         let request_identity = identity_override.unwrap_or_else(|| self.signer.clone());
         let timeout = Duration::from_secs_f64(timeout_secs.max(0.1));
+        let path = path.to_string();
         let transport = self.transport.clone();
         let identity_cache = self.outbound_propagation_identities.clone();
 
-        tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async move {
+        std::thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|err| {
+                    std::io::Error::other(format!("failed to build remote control runtime: {err}"))
+                })?;
+            runtime.block_on(async move {
                 let result = remote_control_request(
                     transport.as_ref(),
                     &request_identity,
                     &remote,
-                    path,
+                    &path,
                     data,
                     timeout,
                 )
@@ -52,6 +59,8 @@ impl TransportBridge {
                 result.map(|(json, _)| json)
             })
         })
+        .join()
+        .map_err(|_| std::io::Error::other("remote control helper thread panicked"))?
     }
 }
 

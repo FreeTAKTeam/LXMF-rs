@@ -353,10 +353,8 @@ fn build_tls_server_config(config: &RpcTlsConfig) -> io::Result<std::sync::Arc<S
     let builder = ServerConfig::builder();
     let server_config = if let Some(client_ca_path) = config.client_ca_path.as_ref() {
         let roots = load_root_store(client_ca_path.as_path())?;
-        let verifier = WebPkiClientVerifier::builder(std::sync::Arc::new(roots))
-            .allow_unauthenticated()
-            .build()
-            .map_err(|err| {
+        let verifier =
+            WebPkiClientVerifier::builder(std::sync::Arc::new(roots)).build().map_err(|err| {
                 io::Error::new(
                     io::ErrorKind::InvalidInput,
                     format!(

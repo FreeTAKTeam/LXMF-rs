@@ -1,14 +1,21 @@
 use super::jobs::manage_transport;
 use super::*;
 
+const TRANSPORT_EVENT_CHANNEL_CAPACITY: usize = 1024;
+
 impl Transport {
     pub fn new(config: TransportConfig) -> Self {
-        let (announce_tx, _) = tokio::sync::broadcast::channel(16);
-        let (link_in_event_tx, _) = tokio::sync::broadcast::channel(16);
-        let (link_out_event_tx, _) = tokio::sync::broadcast::channel(16);
-        let (received_data_tx, _) = tokio::sync::broadcast::channel(16);
-        let (iface_messages_tx, _) = tokio::sync::broadcast::channel(16);
-        let (resource_events_tx, _) = tokio::sync::broadcast::channel(16);
+        let (announce_tx, _) = tokio::sync::broadcast::channel(TRANSPORT_EVENT_CHANNEL_CAPACITY);
+        let (link_in_event_tx, _) =
+            tokio::sync::broadcast::channel(TRANSPORT_EVENT_CHANNEL_CAPACITY);
+        let (link_out_event_tx, _) =
+            tokio::sync::broadcast::channel(TRANSPORT_EVENT_CHANNEL_CAPACITY);
+        let (received_data_tx, _) =
+            tokio::sync::broadcast::channel(TRANSPORT_EVENT_CHANNEL_CAPACITY);
+        let (iface_messages_tx, _) =
+            tokio::sync::broadcast::channel(TRANSPORT_EVENT_CHANNEL_CAPACITY);
+        let (resource_events_tx, _) =
+            tokio::sync::broadcast::channel(TRANSPORT_EVENT_CHANNEL_CAPACITY);
 
         let iface_manager = InterfaceManager::new(128);
 

@@ -150,8 +150,11 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         panic!("{policy_error}");
     }
 
-    let transport_summary =
-        selected_tcp_server.bind_addr.clone().unwrap_or_else(|| "disabled".to_string());
+    let transport_summary = if transport.is_some() {
+        selected_tcp_server.bind_addr.clone().unwrap_or_else(|| "configured interfaces".to_string())
+    } else {
+        "disabled".to_string()
+    };
     println!(
         "{}",
         pretty_boot_line(

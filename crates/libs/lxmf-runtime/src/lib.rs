@@ -60,7 +60,10 @@ impl RuntimeHandle {
     }
 
     pub fn send_message(&self, _request: SendMessageRequest) -> SendMessageResponse {
-        SendMessageResponse { ok: true, reason: None }
+        SendMessageResponse {
+            ok: false,
+            reason: Some("lxmf-runtime boundary has no transport adapter attached".to_string()),
+        }
     }
 
     pub fn events_probe_report(&self) -> EventsProbeReport {

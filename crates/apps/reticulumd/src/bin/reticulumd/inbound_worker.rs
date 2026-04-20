@@ -4,24 +4,26 @@ use super::bridge_helpers::{diagnostics_enabled, payload_preview};
 mod control;
 #[path = "inbound_propagation.rs"]
 mod propagation;
-use lxmf::inbound_decode::InboundPayloadMode;
+use lxmf::{inbound_decode::InboundPayloadMode, WireMessage};
 use reticulum_daemon::inbound_delivery::{
     annotate_inbound_record_stamp_status, decode_inbound_payload,
     decode_inbound_payload_with_diagnostics, evaluate_inbound_stamp_policy,
 };
 use reticulum_daemon::receipt_bridge::ReceiptEvent;
-use rns_rpc::{RpcDaemon, RpcRequest};
+use rns_rpc::{MessageRecord, RpcDaemon, RpcRequest};
 use rns_transport::destination::link::{Link, LinkEvent};
 use rns_transport::destination::{DestinationDesc, DestinationName, SingleInputDestination};
 use rns_transport::hash::AddressHash;
 use rns_transport::identity::{DecryptIdentity, Identity};
+use rns_transport::identity_bridge::to_core_identity;
 use rns_transport::packet::{
     ContextFlag, DestinationType, Header, HeaderType, IfacFlag, Packet, PacketContext,
     PacketDataBuffer, PacketType, PropagationType,
 };
 use rns_transport::resource::ResourceEventKind;
 use rns_transport::transport::{ReceivedPayloadMode, Transport};
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
@@ -41,6 +43,80 @@ fn inbound_payload_mode(mode: ReceivedPayloadMode) -> InboundPayloadMode {
         ReceivedPayloadMode::FullWire => InboundPayloadMode::FullWire,
         ReceivedPayloadMode::DestinationStripped => InboundPayloadMode::DestinationStripped,
     }
+}
+
+async fn annotate_inbound_signature_status(
+    transport: &Transport,
+    record: &mut MessageRecord,
+    destination: [u8; 16],
+    payload: &[u8],
+    mode: InboundPayloadMode,
+) {
+    let wire = match mode {
+        InboundPayloadMode::FullWire => Cow::Borrowed(payload),
+        InboundPayloadMode::DestinationStripped => {
+            let mut with_destination = Vec::with_capacity(16 + payload.len());
+            with_destination.extend_from_slice(&destination);
+            with_destination.extend_from_slice(payload);
+            Cow::Owned(with_destination)
+        }
+    };
+
+    let mut checked = false;
+    let mut valid = false;
+    let mut reason = "source_identity_unknown".to_string();
+
+    match WireMessage::unpack(wire.as_ref()) {
+        Ok(message) => {
+            let source_hash = AddressHash::new(message.source);
+            if let Some(identity) = transport.destination_identity(&source_hash).await {
+                checked = true;
+                match message.verify(&to_core_identity(&identity)) {
+                    Ok(true) => {
+                        valid = true;
+                        reason = "verified".to_string();
+                    }
+                    Ok(false) => {
+                        reason = "signature_invalid".to_string();
+                    }
+                    Err(error) => {
+                        reason = format!("verification_error: {error}");
+                    }
+                }
+            }
+        }
+        Err(error) => {
+            reason = format!("decode_error: {error}");
+        }
+    }
+
+    annotate_lxmf_metadata(record, |lxmf| {
+        lxmf.insert("signature_checked".to_string(), Value::Bool(checked));
+        lxmf.insert("signature_valid".to_string(), Value::Bool(valid));
+        lxmf.insert("signature_status".to_string(), Value::String(reason));
+    });
+}
+
+fn annotate_lxmf_metadata(
+    record: &mut MessageRecord,
+    update: impl FnOnce(&mut Map<String, Value>),
+) {
+    let mut root = match record.fields.take() {
+        Some(Value::Object(map)) => map,
+        Some(other) => {
+            let mut map = Map::new();
+            map.insert("_fields_raw".to_string(), other);
+            map
+        }
+        None => Map::new(),
+    };
+    let mut lxmf = match root.remove("_lxmf") {
+        Some(Value::Object(map)) => map,
+        _ => Map::new(),
+    };
+    update(&mut lxmf);
+    root.insert("_lxmf".to_string(), Value::Object(lxmf));
+    record.fields = Some(Value::Object(root));
 }
 
 pub(super) fn spawn_inbound_worker(
@@ -93,6 +169,14 @@ pub(super) fn spawn_inbound_worker(
                                             &mut record,
                                             stamp_status,
                                         );
+                                        annotate_inbound_signature_status(
+                                            transport.as_ref(),
+                                            &mut record,
+                                            destination,
+                                            &complete.data,
+                                            InboundPayloadMode::FullWire,
+                                        )
+                                        .await;
                                         let _ =
                                             daemon.accept_inbound_with_raw(record, &complete.data);
                                     }
@@ -294,6 +378,14 @@ fn spawn_packet_inbound_worker(
                                 if let Some(stamp_status) = stamp_status {
                                     annotate_inbound_record_stamp_status(&mut record, stamp_status);
                                 }
+                                annotate_inbound_signature_status(
+                                    inbound_transport.as_ref(),
+                                    &mut record,
+                                    destination,
+                                    data,
+                                    payload_mode,
+                                )
+                                .await;
                                 daemon_inbound
                                     .record_inbound_peer_activity(&record.source, data.len());
                                 let _ = daemon_inbound.accept_inbound_with_raw(record, data);

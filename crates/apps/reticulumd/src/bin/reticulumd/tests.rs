@@ -528,7 +528,7 @@ fn select_tcp_server_bind_rejects_multiple_enabled_servers_without_override() {
 }
 
 #[test]
-fn bootstrap_best_effort_marks_interfaces_inactive_when_transport_is_disabled() {
+fn bootstrap_best_effort_starts_configured_interfaces_without_transport_flag() {
     let temp = TempDir::new().expect("temp dir");
     let db_path = temp.path().join("reticulum.db");
     let config_path = temp.path().join("daemon.toml");
@@ -566,7 +566,7 @@ interfaces = [
             .and_then(|value| value.get("_runtime"))
             .and_then(|value| value.get("startup_status"))
             .and_then(|value| value.as_str()),
-        Some("inactive_transport_disabled")
+        Some("spawned")
     );
 }
 

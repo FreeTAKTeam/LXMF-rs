@@ -75,7 +75,10 @@ pub(super) async fn start_transport_and_interfaces(
         Ok(selection) => selection,
         Err(err) => panic!("{err}"),
     };
-    let transport_required = selected_tcp_server.bind_addr.is_some();
+    let has_enabled_configured_interface =
+        daemon_config.is_some_and(|config| config.interfaces.iter().any(|iface| iface.enabled()));
+    let transport_required =
+        selected_tcp_server.bind_addr.is_some() || has_enabled_configured_interface;
 
     let mut transport: Option<Arc<Transport>> = None;
     let peer_crypto: Arc<Mutex<HashMap<String, PeerCrypto>>> = Arc::new(Mutex::new(HashMap::new()));
