@@ -37,6 +37,8 @@ use crate::error::RnsError;
 use crate::hash::{AddressHash, Hash, HASH_SIZE};
 use crate::identity::{Identity, PrivateIdentity};
 
+use crate::iface::IfaceRole;
+use crate::iface::IfaceSource;
 use crate::iface::InterfaceManager;
 use crate::iface::InterfaceRxReceiver;
 use crate::iface::RxMessage;
@@ -119,6 +121,11 @@ const INTERVAL_ANNOUNCES_RETRANSMIT: Duration = Duration::from_secs(1);
 const INTERVAL_KEEP_PACKET_CACHED: Duration = Duration::from_secs(180);
 const INTERVAL_PACKET_CACHE_CLEANUP: Duration = Duration::from_secs(90);
 const LOCAL_PATH_RESPONSE_COOLDOWN: Duration = Duration::from_millis(750);
+
+/// How long an auto-spawned per-peer unicast UDP iface may sit idle
+/// before `handle_cleanup` tears it down. Sized so typical peers'
+/// announce cadences (default 300s) refresh it several times over.
+const UNICAST_IFACE_IDLE_TIMEOUT: Duration = Duration::from_secs(1800);
 
 // Other constants
 const KEEP_ALIVE_REQUEST: u8 = 0xFF;
@@ -214,6 +221,25 @@ pub(crate) struct TransportHandler {
     resource_events_tx: broadcast::Sender<ResourceEvent>,
 
     fixed_dest_path_requests: AddressHash,
+
+    /// Per-peer *virtual* unicast UDP ifaces pinned to a specific
+    /// `SocketAddr` when an announce arrives over a multicast iface.
+    /// Keyed by the peer's socket address; value is
+    /// `(virtual_iface_hash, last_seen)`. Refreshed on every announce
+    /// from that peer and GC'd by `handle_cleanup` after
+    /// `UNICAST_IFACE_IDLE_TIMEOUT`.
+    ///
+    /// The virtual iface shares its tx channel with the host multicast
+    /// iface; actual wire routing (unicast vs multicast) is resolved
+    /// inside the host `UdpInterface` by looking the hash up in its
+    /// `PeerRouting` map (see `multicast_peer_routings`).
+    unicast_udp_ifaces: HashMap<std::net::SocketAddr, (AddressHash, Instant)>,
+
+    /// One per registered multicast `UdpInterface`: the shared
+    /// `PeerRouting` that iface's tx/rx tasks consult. Populated by
+    /// `Transport::add_multicast_udp_interface`; consulted by
+    /// `unicast_iface_for_source` to register discovered peers.
+    multicast_peer_routings: HashMap<AddressHash, Arc<Mutex<crate::iface::udp::PeerRouting>>>,
 
     cancel: CancellationToken,
     receipt_handler: Option<Arc<dyn ReceiptHandler>>,

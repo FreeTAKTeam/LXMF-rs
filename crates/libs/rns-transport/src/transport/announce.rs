@@ -5,6 +5,7 @@ async fn process_announce<'a>(
     packet: &Packet,
     mut handler: MutexGuard<'a, TransportHandler>,
     iface: AddressHash,
+    source: IfaceSource,
     announce: crate::destination::AnnounceInfo<'_>,
 ) -> MutexGuard<'a, TransportHandler> {
     let destination_known = handler.has_destination(&packet.destination);
@@ -41,6 +42,12 @@ async fn process_announce<'a>(
     let dest_hash = announce.destination.desc.address_hash;
     let destination = Arc::new(Mutex::new(announce.destination));
 
+    // Auto-unicast: if this announce arrived over a multicast iface from a
+    // known UDP peer, route future point-to-point traffic for this
+    // destination over a per-peer unicast UDP iface instead of back onto
+    // the multicast group. Otherwise keep the original iface.
+    let route_iface = handler.unicast_iface_for_source(iface, source).await.unwrap_or(iface);
+
     if !destination_known {
         if !handler.single_out_destinations.contains_key(&packet.destination) {
             log::trace!("tp({}): new announce for {}", handler.config.name, packet.destination);
@@ -48,9 +55,9 @@ async fn process_announce<'a>(
             handler.single_out_destinations.insert(packet.destination, destination.clone());
         }
 
-        handler.announce_table.add(packet, dest_hash, iface);
+        handler.announce_table.add(packet, dest_hash, route_iface);
 
-        handler.path_table.handle_announce(packet, packet.transport, iface);
+        handler.path_table.handle_announce(packet, packet.transport, route_iface);
     }
 
     let name_hash = {
@@ -60,7 +67,7 @@ async fn process_announce<'a>(
         name_hash.copy_from_slice(source);
         name_hash
     };
-    let interface = iface.as_slice().to_vec();
+    let interface = route_iface.as_slice().to_vec();
 
     let _ = handler.announce_tx.send(AnnounceEvent {
         destination,
@@ -78,13 +85,15 @@ pub(super) async fn handle_announce<'a>(
     packet: &Packet,
     mut handler: MutexGuard<'a, TransportHandler>,
     iface: AddressHash,
+    source: IfaceSource,
 ) {
     let announce = match DestinationAnnounce::validate(packet) {
         Ok(result) => result,
         Err(err) => {
             log::trace!(
                 "[transport] announce validate failed dst={} err={:?}",
-                packet.destination, err
+                packet.destination,
+                err
             );
             return;
         }
@@ -106,7 +115,7 @@ pub(super) async fn handle_announce<'a>(
         }
     }
 
-    let _ = process_announce(packet, handler, iface, announce).await;
+    let _ = process_announce(packet, handler, iface, source, announce).await;
 }
 
 pub(super) async fn retransmit_announces<'a>(mut handler: MutexGuard<'a, TransportHandler>) {
@@ -137,6 +146,11 @@ pub(super) async fn release_held_announces<'a>(handler: MutexGuard<'a, Transport
             }
         };
 
-        handler = process_announce(&packet, handler, iface, announce).await;
+        // Held announces predate auto-unicast redirection because we
+        // don't persist the `IfaceSource` across the hold queue.
+        // Replay on the stored iface; if that iface was multicast, the
+        // route won't get the unicast redirect until the next fresh
+        // announce from this peer arrives.
+        handler = process_announce(&packet, handler, iface, IfaceSource::None, announce).await;
     }
 }

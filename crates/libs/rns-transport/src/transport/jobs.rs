@@ -164,7 +164,8 @@ pub(super) async fn handle_check_links<'a>(mut handler: MutexGuard<'a, Transport
     }
 }
 
-pub(super) async fn handle_cleanup<'a>(handler: MutexGuard<'a, TransportHandler>) {
+pub(super) async fn handle_cleanup<'a>(mut handler: MutexGuard<'a, TransportHandler>) {
+    handler.gc_unicast_ifaces().await;
     handler.iface_manager.lock().await.cleanup();
 }
 
@@ -228,7 +229,8 @@ pub(super) async fn manage_transport(
                             PacketType::Announce => handle_announce(
                                 &packet,
                                 handler,
-                                message.address
+                                message.address,
+                                message.source,
                             ).await,
                             PacketType::LinkRequest => handle_link_request(
                                 &packet,

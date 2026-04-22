@@ -7,7 +7,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::buffer::{InputBuffer, OutputBuffer};
 use crate::hash::AddressHash;
-use crate::iface::{RxMessage, TxMessage};
+use crate::iface::{IfaceSource, RxMessage, TxMessage};
 use crate::packet::Packet;
 use crate::serde::Serialize;
 
@@ -318,6 +318,7 @@ async fn run_serial_stream<IO>(
                                                 .send(RxMessage {
                                                     address: iface_address,
                                                     packet,
+                                                    source: IfaceSource::None,
                                                 })
                                                 .await;
                                         }

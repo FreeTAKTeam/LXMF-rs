@@ -64,7 +64,8 @@ impl TransportHandler {
         if packet.header.packet_type == PacketType::Proof {
             log::trace!(
                 "[tp] send_proof dst={} ctx={:02x}",
-                packet.destination, packet.context as u8
+                packet.destination,
+                packet.context as u8
             );
             if packet.context == PacketContext::LinkRequestProof {
                 if let Ok(raw) = packet.to_bytes() {
@@ -131,7 +132,10 @@ impl TransportHandler {
             if let Some(entry) = self.path_table.get(&packet.destination) {
                 log::trace!(
                     "[tp-diag] route_lookup dst={} hops={} via_next_hop={} via_iface={}",
-                    packet.destination, entry.hops, entry.received_from, entry.iface
+                    packet.destination,
+                    entry.hops,
+                    entry.received_from,
+                    entry.iface
                 );
                 log::info!(
                     "[tp-diag] route_lookup dst={} hops={} via_next_hop={} via_iface={}",
@@ -185,7 +189,10 @@ impl TransportHandler {
             if transport_diag_enabled() {
                 log::trace!(
                     "[tp-diag] broadcast_send outcome={:?} matched={} sent={} failed={}",
-                    outcome, dispatch.matched_ifaces, dispatch.sent_ifaces, dispatch.failed_ifaces
+                    outcome,
+                    dispatch.matched_ifaces,
+                    dispatch.sent_ifaces,
+                    dispatch.failed_ifaces
                 );
                 log::info!(
                     "[tp-diag] broadcast_send outcome={:?} matched={} sent={} failed={}",
@@ -267,5 +274,114 @@ impl TransportHandler {
         let packet = self.path_requests.generate(address, tag);
 
         self.send(TxMessage { tx_type: TxMessageType::Broadcast(on_iface), packet }).await;
+    }
+
+    /// Register (or refresh) the *virtual* unicast iface that the
+    /// transport uses to route point-to-point traffic for the peer
+    /// that delivered this packet. Only acts when:
+    ///   - the packet arrived on a multicast iface, and
+    ///   - that multicast iface has a registered `PeerRouting` map
+    ///     (i.e. it was registered via
+    ///     `Transport::add_multicast_udp_interface`), and
+    ///   - the source is a UDP socket address.
+    ///
+    /// Returns the virtual iface hash to stick in the path_table so
+    /// subsequent `Direct` tx for this peer's destinations is routed
+    /// through the host multicast socket as a unicast send — and,
+    /// symmetrically, so inbound replies from this peer (which arrive
+    /// on the host multicast socket) get re-attributed to this same
+    /// virtual iface by the host's rx task. That symmetry is what
+    /// makes `Link::iface_matches` succeed on the proof/keepalive.
+    pub(super) async fn unicast_iface_for_source(
+        &mut self,
+        rx_iface: AddressHash,
+        source: IfaceSource,
+    ) -> Option<AddressHash> {
+        let peer = match source {
+            IfaceSource::Udp(addr) => addr,
+            IfaceSource::None => return None,
+        };
+
+        let role = { self.iface_manager.lock().await.role(&rx_iface) };
+        if role != Some(IfaceRole::Multicast) {
+            return None;
+        }
+
+        let peer_routing = self.multicast_peer_routings.get(&rx_iface).cloned()?;
+
+        let now = Instant::now();
+        if let Some(entry) = self.unicast_udp_ifaces.get_mut(&peer) {
+            entry.1 = now;
+            return Some(entry.0);
+        }
+
+        let virtual_hash = {
+            let mut mgr = self.iface_manager.lock().await;
+            mgr.register_virtual_iface(rx_iface, IfaceRole::VirtualUnicast)?
+        };
+        peer_routing.lock().await.insert(peer, virtual_hash);
+        log::debug!(
+            "tp({}): registered virtual UDP iface {} for peer {} on host {}",
+            self.config.name,
+            virtual_hash,
+            peer,
+            rx_iface,
+        );
+        self.unicast_udp_ifaces.insert(peer, (virtual_hash, now));
+        Some(virtual_hash)
+    }
+
+    /// Register a `PeerRouting` map for a multicast iface at
+    /// construction time. Called by
+    /// `Transport::add_multicast_udp_interface`.
+    pub(super) fn register_multicast_peer_routing(
+        &mut self,
+        iface: AddressHash,
+        routing: Arc<Mutex<crate::iface::udp::PeerRouting>>,
+    ) {
+        self.multicast_peer_routings.insert(iface, routing);
+    }
+
+    /// Drop virtual unicast ifaces that haven't seen a fresh announce
+    /// from their peer in `UNICAST_IFACE_IDLE_TIMEOUT`. Also clears
+    /// the corresponding entry from the host multicast iface's
+    /// `PeerRouting`, so future packets from that peer are reattributed
+    /// to the multicast iface (re-triggering a fresh virtual iface
+    /// registration if the peer reappears). Called from
+    /// `handle_cleanup`.
+    pub(super) async fn gc_unicast_ifaces(&mut self) {
+        let now = Instant::now();
+        let stale: Vec<std::net::SocketAddr> = self
+            .unicast_udp_ifaces
+            .iter()
+            .filter(|(_, (_, last_seen))| {
+                now.duration_since(*last_seen) > UNICAST_IFACE_IDLE_TIMEOUT
+            })
+            .map(|(peer, _)| *peer)
+            .collect();
+
+        if stale.is_empty() {
+            return;
+        }
+
+        for peer in stale {
+            if let Some((iface_hash, _)) = self.unicast_udp_ifaces.remove(&peer) {
+                let mut removed_from_routing = false;
+                for routing in self.multicast_peer_routings.values() {
+                    if routing.lock().await.remove_by_hash(&iface_hash).is_some() {
+                        removed_from_routing = true;
+                        break;
+                    }
+                }
+                let _ = removed_from_routing;
+                self.iface_manager.lock().await.stop_interface(iface_hash);
+                log::debug!(
+                    "tp({}): GC'd idle virtual UDP iface {} for peer {}",
+                    self.config.name,
+                    iface_hash,
+                    peer,
+                );
+            }
+        }
     }
 }

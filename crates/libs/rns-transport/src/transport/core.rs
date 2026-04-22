@@ -73,6 +73,8 @@ impl Transport {
             resource_response_packets: Vec::new(),
             resource_events_tx: resource_events_tx.clone(),
             fixed_dest_path_requests: path_request_dest,
+            unicast_udp_ifaces: HashMap::new(),
+            multicast_peer_routings: HashMap::new(),
             cancel: cancel.clone(),
             receipt_handler: None,
         }));
@@ -165,6 +167,33 @@ impl Transport {
 
     pub fn iface_manager(&self) -> Arc<Mutex<InterfaceManager>> {
         self.iface_manager.clone()
+    }
+
+    /// Spawn a multicast UDP interface with per-peer routing.
+    ///
+    /// Announces and path requests broadcast to the multicast group
+    /// exactly as before. Point-to-point `Direct` tx for a peer
+    /// discovered via this iface is delivered through the same host
+    /// socket, unicast — the tx task resolves the virtual iface hash
+    /// to a `SocketAddr` via the `PeerRouting` map this method
+    /// registers with the transport handler.
+    ///
+    /// Callers (backend_lxmf.rs) should use this rather than spawning
+    /// a `UdpInterface` with `is_multicast=true` directly; going
+    /// through this helper ensures the transport handler knows about
+    /// the routing map so `unicast_iface_for_source` can register
+    /// peers into it.
+    pub async fn add_multicast_udp_interface(
+        &self,
+        bind_addr: String,
+        forward_addr: Option<String>,
+    ) -> AddressHash {
+        let (iface_hash, peer_routing) = {
+            let mut mgr = self.iface_manager.lock().await;
+            crate::iface::udp::spawn_multicast_udp(&mut mgr, bind_addr, forward_addr)
+        };
+        self.handler.lock().await.register_multicast_peer_routing(iface_hash, peer_routing);
+        iface_hash
     }
 
     pub fn channel(&self, link_id: AddressHash) -> TransportChannel {

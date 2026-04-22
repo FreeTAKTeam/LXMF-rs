@@ -183,7 +183,9 @@ pub(super) async fn handle_link_request<'a>(
 ) {
     log::trace!(
         "[tp] link_request dst={} ctx={:02x} hops={}",
-        packet.destination, packet.context as u8, packet.header.hops
+        packet.destination,
+        packet.context as u8,
+        packet.header.hops
     );
     if let Some(destination) = handler.single_in_destinations.get(&packet.destination).cloned() {
         log::trace!("tp({}): handle link request for {}", handler.config.name, packet.destination);

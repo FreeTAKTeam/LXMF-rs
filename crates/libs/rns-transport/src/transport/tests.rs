@@ -97,7 +97,13 @@ async fn drop_duplicates() {
 
     assert!(handler.lock().await.filter_duplicate_packets(&announce).await);
 
-    handle_announce(&announce, handler.lock().await, next_hop_iface).await;
+    handle_announce(
+        &announce,
+        handler.lock().await,
+        next_hop_iface,
+        crate::iface::IfaceSource::None,
+    )
+    .await;
 
     let data_packet: Packet = Packet {
         data: PacketDataBuffer::new_from_slice(b"foo"),
@@ -141,7 +147,7 @@ async fn announce_retransmit_key_uses_destination_hash() {
     );
 
     let iface = AddressHash::new_from_rand(OsRng);
-    handle_announce(&announce, handler.lock().await, iface).await;
+    handle_announce(&announce, handler.lock().await, iface, crate::iface::IfaceSource::None).await;
     tokio::time::sleep(Duration::from_millis(550)).await;
 
     let mut guard = handler.lock().await;
@@ -186,7 +192,8 @@ async fn unknown_announces_are_held_per_interface_and_released_by_lowest_hops() 
     );
     let mut first_announce = first_destination.announce(OsRng, None).expect("announce");
     first_announce.header.hops = 4;
-    handle_announce(&first_announce, handler.lock().await, iface).await;
+    handle_announce(&first_announce, handler.lock().await, iface, crate::iface::IfaceSource::None)
+        .await;
     let first_event = timeout(Duration::from_millis(200), announce_rx.recv())
         .await
         .expect("first announce should emit")
@@ -200,7 +207,13 @@ async fn unknown_announces_are_held_per_interface_and_released_by_lowest_hops() 
     );
     let mut higher_hop_announce = higher_hop_destination.announce(OsRng, None).expect("announce");
     higher_hop_announce.header.hops = 3;
-    handle_announce(&higher_hop_announce, handler.lock().await, iface).await;
+    handle_announce(
+        &higher_hop_announce,
+        handler.lock().await,
+        iface,
+        crate::iface::IfaceSource::None,
+    )
+    .await;
     tokio::time::sleep(Duration::from_millis(1)).await;
 
     let mut lower_hop_destination = SingleInputDestination::new(
@@ -209,7 +222,13 @@ async fn unknown_announces_are_held_per_interface_and_released_by_lowest_hops() 
     );
     let mut lower_hop_announce = lower_hop_destination.announce(OsRng, None).expect("announce");
     lower_hop_announce.header.hops = 1;
-    handle_announce(&lower_hop_announce, handler.lock().await, iface).await;
+    handle_announce(
+        &lower_hop_announce,
+        handler.lock().await,
+        iface,
+        crate::iface::IfaceSource::None,
+    )
+    .await;
 
     let mut immediate_hops = Vec::new();
     while let Ok(event) = announce_rx.try_recv() {
@@ -289,14 +308,14 @@ async fn learned_announces_are_not_held_after_route_is_known() {
     );
     let announce = destination.announce(OsRng, None).expect("announce");
 
-    handle_announce(&announce, handler.lock().await, iface).await;
+    handle_announce(&announce, handler.lock().await, iface, crate::iface::IfaceSource::None).await;
     timeout(Duration::from_millis(200), announce_rx.recv())
         .await
         .expect("first announce should emit")
         .expect("broadcast receive");
 
     tokio::time::sleep(Duration::from_millis(5)).await;
-    handle_announce(&announce, handler.lock().await, iface).await;
+    handle_announce(&announce, handler.lock().await, iface, crate::iface::IfaceSource::None).await;
 
     let repeated = timeout(Duration::from_millis(200), announce_rx.recv())
         .await
@@ -332,7 +351,7 @@ async fn path_response_announces_are_not_held_by_rate_limits() {
     let mut announce = destination.announce(OsRng, None).expect("announce");
     announce.context = PacketContext::PathResponse;
 
-    handle_announce(&announce, handler.lock().await, iface).await;
+    handle_announce(&announce, handler.lock().await, iface, crate::iface::IfaceSource::None).await;
 
     let received = timeout(Duration::from_millis(200), announce_rx.recv())
         .await
@@ -440,7 +459,13 @@ async fn handle_inbound_for_test_rejects_forged_destination_proof() {
     let mut remote_destination =
         SingleInputDestination::new(remote_identity, DestinationName::new("lxmf", "delivery"));
     let announce = remote_destination.announce(OsRng, None).expect("valid announce packet");
-    handle_announce(&announce, handler.lock().await, AddressHash::new_from_rand(OsRng)).await;
+    handle_announce(
+        &announce,
+        handler.lock().await,
+        AddressHash::new_from_rand(OsRng),
+        crate::iface::IfaceSource::None,
+    )
+    .await;
 
     let count = Arc::new(AtomicUsize::new(0));
     transport.set_receipt_handler(Box::new(CountingReceiptHandler { count: count.clone() })).await;
@@ -473,7 +498,13 @@ async fn handle_inbound_for_test_accepts_valid_destination_proof() {
     let mut remote_destination =
         SingleInputDestination::new(remote_identity, DestinationName::new("lxmf", "delivery"));
     let announce = remote_destination.announce(OsRng, None).expect("valid announce packet");
-    handle_announce(&announce, handler.lock().await, AddressHash::new_from_rand(OsRng)).await;
+    handle_announce(
+        &announce,
+        handler.lock().await,
+        AddressHash::new_from_rand(OsRng),
+        crate::iface::IfaceSource::None,
+    )
+    .await;
 
     let count = Arc::new(AtomicUsize::new(0));
     transport.set_receipt_handler(Box::new(CountingReceiptHandler { count: count.clone() })).await;
@@ -508,7 +539,13 @@ async fn routed_link_request_proof_requires_matching_iface_and_signature() {
     let mut remote_destination =
         SingleInputDestination::new(remote_identity, DestinationName::new("lxmf", "delivery"));
     let announce = remote_destination.announce(OsRng, None).expect("valid announce packet");
-    handle_announce(&announce, handler.lock().await, AddressHash::new_from_rand(OsRng)).await;
+    handle_announce(
+        &announce,
+        handler.lock().await,
+        AddressHash::new_from_rand(OsRng),
+        crate::iface::IfaceSource::None,
+    )
+    .await;
 
     let received_from = AddressHash::new_from_slice(&[1u8; 16]);
     let next_hop = AddressHash::new_from_slice(&[2u8; 16]);
@@ -927,4 +964,315 @@ async fn send_resource_returns_error_when_advertisement_dispatch_drops() {
 
     let guard = handler.lock().await;
     assert!(guard.resource_manager.has_no_outbound_state());
+}
+
+// ---------------------------------------------------------------------
+// Per-peer virtual unicast iface registration
+// (see TransportHandler::unicast_iface_for_source)
+// ---------------------------------------------------------------------
+//
+// On receiving an announce from a UDP peer over a multicast iface, the
+// transport registers a *virtual* iface pinned to that peer's
+// SocketAddr in the iface's PeerRouting map. The virtual iface shares
+// its tx channel with the host multicast iface; the host's tx task
+// resolves the virtual hash to a unicast send on the same socket.
+// This is what stops the 22 Mb/s LAN flood without creating separate
+// per-peer sockets (which would bind to ephemeral ports and confuse
+// ingress attribution).
+
+fn peer_addr(port: u16) -> std::net::SocketAddr {
+    use std::net::{IpAddr, Ipv4Addr};
+    std::net::SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 112)), port)
+}
+
+/// Register a fake multicast iface (role-tagged only — no real socket)
+/// plus a shared `PeerRouting` map, and hand the routing map to the
+/// handler so `unicast_iface_for_source` can use it. Returns the
+/// iface's `AddressHash`.
+///
+/// Mirrors what `Transport::add_multicast_udp_interface` would do,
+/// but without spawning the real UdpInterface task (which needs real
+/// sockets). Tests can still exercise the handler's registration /
+/// cache / GC logic in isolation this way.
+async fn register_fake_multicast_iface(transport: &Transport) -> AddressHash {
+    let routing = Arc::new(Mutex::new(crate::iface::udp::PeerRouting::new()));
+    let iface_hash = {
+        let mgr = transport.iface_manager();
+        let mut mgr = mgr.lock().await;
+        let channel = mgr.new_channel_with_role(16, crate::iface::IfaceRole::Multicast);
+        *channel.address()
+    };
+    transport.get_handler().lock().await.register_multicast_peer_routing(iface_hash, routing);
+    iface_hash
+}
+
+async fn new_unicast_iface_in(transport: &Transport) -> AddressHash {
+    let mgr = transport.iface_manager();
+    let mut mgr = mgr.lock().await;
+    let channel = mgr.new_channel(16);
+    *channel.address()
+}
+
+#[tokio::test]
+async fn unicast_iface_for_source_returns_none_for_non_multicast_iface() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let transport = Transport::new(TransportConfig::new("test", &identity, true));
+    let unicast_iface = new_unicast_iface_in(&transport).await;
+    let handler = transport.get_handler();
+
+    let result = handler
+        .lock()
+        .await
+        .unicast_iface_for_source(unicast_iface, crate::iface::IfaceSource::Udp(peer_addr(4242)))
+        .await;
+
+    assert_eq!(result, None, "non-multicast iface must not trigger auto-unicast");
+}
+
+#[tokio::test]
+async fn unicast_iface_for_source_returns_none_when_source_is_not_udp() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let transport = Transport::new(TransportConfig::new("test", &identity, true));
+    let mc_iface = register_fake_multicast_iface(&transport).await;
+    let handler = transport.get_handler();
+
+    let result = handler
+        .lock()
+        .await
+        .unicast_iface_for_source(mc_iface, crate::iface::IfaceSource::None)
+        .await;
+
+    assert_eq!(result, None, "no source addr means no auto-unicast");
+}
+
+#[tokio::test]
+async fn unicast_iface_for_source_returns_none_when_no_peer_routing_registered() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let transport = Transport::new(TransportConfig::new("test", &identity, true));
+    // Register a Multicast-tagged iface *without* a PeerRouting map.
+    let mc_iface = {
+        let mgr = transport.iface_manager();
+        let mut mgr = mgr.lock().await;
+        let channel = mgr.new_channel_with_role(16, crate::iface::IfaceRole::Multicast);
+        *channel.address()
+    };
+    let handler = transport.get_handler();
+
+    let result = handler
+        .lock()
+        .await
+        .unicast_iface_for_source(mc_iface, crate::iface::IfaceSource::Udp(peer_addr(4242)))
+        .await;
+
+    assert_eq!(
+        result, None,
+        "missing PeerRouting means we can't register — bail rather than silently misroute"
+    );
+}
+
+#[tokio::test]
+async fn unicast_iface_for_source_registers_virtual_iface_and_peer_routing() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let transport = Transport::new(TransportConfig::new("test", &identity, true));
+    let mc_iface = register_fake_multicast_iface(&transport).await;
+    let handler = transport.get_handler();
+
+    let iface_count_before = { transport.iface_manager().lock().await.iface_count() };
+
+    let peer = peer_addr(4242);
+    let virtual_hash = handler
+        .lock()
+        .await
+        .unicast_iface_for_source(mc_iface, crate::iface::IfaceSource::Udp(peer))
+        .await
+        .expect("should register a virtual iface");
+
+    assert_ne!(
+        virtual_hash, mc_iface,
+        "virtual iface hash is distinct from the host multicast iface"
+    );
+
+    // A single LocalInterface entry was added (the virtual one).
+    let iface_count_after = { transport.iface_manager().lock().await.iface_count() };
+    assert_eq!(iface_count_after, iface_count_before + 1);
+
+    // Role is VirtualUnicast so InterfaceManager::send skips it on Broadcast tx.
+    let role = { transport.iface_manager().lock().await.role(&virtual_hash) };
+    assert_eq!(role, Some(crate::iface::IfaceRole::VirtualUnicast));
+
+    // Handler tracks it.
+    let guard = handler.lock().await;
+    assert_eq!(guard.unicast_udp_ifaces.len(), 1);
+    assert_eq!(guard.unicast_udp_ifaces.get(&peer).map(|(h, _)| *h), Some(virtual_hash),);
+
+    // And the PeerRouting map has the forward + reverse entries.
+    let routing = guard.multicast_peer_routings.get(&mc_iface).expect("routing");
+    let routing = routing.lock().await;
+    assert_eq!(routing.hash_for_addr(&peer), Some(virtual_hash));
+    assert_eq!(routing.addr_for_hash(&virtual_hash), Some(peer));
+}
+
+#[tokio::test]
+async fn unicast_iface_for_source_reuses_existing_virtual_iface_for_same_peer() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let transport = Transport::new(TransportConfig::new("test", &identity, true));
+    let mc_iface = register_fake_multicast_iface(&transport).await;
+    let handler = transport.get_handler();
+
+    let peer = peer_addr(4242);
+    let first = handler
+        .lock()
+        .await
+        .unicast_iface_for_source(mc_iface, crate::iface::IfaceSource::Udp(peer))
+        .await
+        .expect("first");
+    let second = handler
+        .lock()
+        .await
+        .unicast_iface_for_source(mc_iface, crate::iface::IfaceSource::Udp(peer))
+        .await
+        .expect("second");
+
+    assert_eq!(first, second, "same peer reuses the same virtual iface hash");
+
+    let guard = handler.lock().await;
+    assert_eq!(guard.unicast_udp_ifaces.len(), 1);
+}
+
+#[tokio::test]
+async fn unicast_iface_for_source_registers_distinct_virtual_ifaces_for_distinct_peers() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let transport = Transport::new(TransportConfig::new("test", &identity, true));
+    let mc_iface = register_fake_multicast_iface(&transport).await;
+    let handler = transport.get_handler();
+
+    let peer_a = peer_addr(4242);
+    let peer_b = peer_addr(5252);
+
+    let iface_a = handler
+        .lock()
+        .await
+        .unicast_iface_for_source(mc_iface, crate::iface::IfaceSource::Udp(peer_a))
+        .await
+        .expect("peer a");
+    let iface_b = handler
+        .lock()
+        .await
+        .unicast_iface_for_source(mc_iface, crate::iface::IfaceSource::Udp(peer_b))
+        .await
+        .expect("peer b");
+
+    assert_ne!(iface_a, iface_b);
+
+    let guard = handler.lock().await;
+    assert_eq!(guard.unicast_udp_ifaces.len(), 2);
+    let routing = guard.multicast_peer_routings.get(&mc_iface).expect("routing").lock().await;
+    assert_eq!(routing.hash_for_addr(&peer_a), Some(iface_a));
+    assert_eq!(routing.hash_for_addr(&peer_b), Some(iface_b));
+}
+
+#[tokio::test]
+async fn unicast_iface_for_source_refreshes_last_seen_on_repeat_call() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let transport = Transport::new(TransportConfig::new("test", &identity, true));
+    let mc_iface = register_fake_multicast_iface(&transport).await;
+    let handler = transport.get_handler();
+
+    let peer = peer_addr(4242);
+    handler
+        .lock()
+        .await
+        .unicast_iface_for_source(mc_iface, crate::iface::IfaceSource::Udp(peer))
+        .await
+        .expect("register");
+
+    {
+        let mut guard = handler.lock().await;
+        let entry = guard.unicast_udp_ifaces.get_mut(&peer).expect("cached");
+        entry.1 = tokio::time::Instant::now() - Duration::from_secs(600);
+    }
+
+    handler
+        .lock()
+        .await
+        .unicast_iface_for_source(mc_iface, crate::iface::IfaceSource::Udp(peer))
+        .await
+        .expect("refresh");
+
+    let guard = handler.lock().await;
+    let (_, last_seen) = guard.unicast_udp_ifaces.get(&peer).expect("cached");
+    let age = tokio::time::Instant::now().saturating_duration_since(*last_seen);
+    assert!(age < Duration::from_secs(1), "last_seen must be refreshed; got age {:?}", age,);
+}
+
+#[tokio::test]
+async fn gc_unicast_ifaces_removes_stale_entries_from_routing_and_manager() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let transport = Transport::new(TransportConfig::new("test", &identity, true));
+    let mc_iface = register_fake_multicast_iface(&transport).await;
+    let handler = transport.get_handler();
+
+    let stale_peer = peer_addr(4242);
+    let fresh_peer = peer_addr(5252);
+
+    let stale_iface = handler
+        .lock()
+        .await
+        .unicast_iface_for_source(mc_iface, crate::iface::IfaceSource::Udp(stale_peer))
+        .await
+        .expect("stale");
+    let fresh_iface = handler
+        .lock()
+        .await
+        .unicast_iface_for_source(mc_iface, crate::iface::IfaceSource::Udp(fresh_peer))
+        .await
+        .expect("fresh");
+
+    {
+        let mut guard = handler.lock().await;
+        let entry = guard.unicast_udp_ifaces.get_mut(&stale_peer).expect("cached");
+        entry.1 = tokio::time::Instant::now() - Duration::from_secs(3600);
+    }
+
+    handler.lock().await.gc_unicast_ifaces().await;
+
+    let guard = handler.lock().await;
+    assert!(!guard.unicast_udp_ifaces.contains_key(&stale_peer));
+    assert!(guard.unicast_udp_ifaces.contains_key(&fresh_peer));
+
+    // PeerRouting map no longer contains the stale peer.
+    let routing = guard.multicast_peer_routings.get(&mc_iface).expect("routing").lock().await;
+    assert_eq!(routing.hash_for_addr(&stale_peer), None);
+    assert_eq!(routing.hash_for_addr(&fresh_peer), Some(fresh_iface));
+    assert_eq!(routing.addr_for_hash(&stale_iface), None);
+    drop(routing);
+
+    // InterfaceManager stopped the stale virtual iface (role lookup now None).
+    let mgr = transport.iface_manager();
+    let mgr = mgr.lock().await;
+    assert_eq!(mgr.role(&stale_iface), None);
+    assert_eq!(mgr.role(&fresh_iface), Some(crate::iface::IfaceRole::VirtualUnicast));
+}
+
+#[tokio::test]
+async fn gc_unicast_ifaces_is_noop_when_no_entries_are_stale() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let transport = Transport::new(TransportConfig::new("test", &identity, true));
+    let mc_iface = register_fake_multicast_iface(&transport).await;
+    let handler = transport.get_handler();
+
+    let peer = peer_addr(4242);
+    let iface = handler
+        .lock()
+        .await
+        .unicast_iface_for_source(mc_iface, crate::iface::IfaceSource::Udp(peer))
+        .await
+        .expect("register");
+
+    handler.lock().await.gc_unicast_ifaces().await;
+
+    let guard = handler.lock().await;
+    assert!(guard.unicast_udp_ifaces.contains_key(&peer));
+    let routing = guard.multicast_peer_routings.get(&mc_iface).expect("routing").lock().await;
+    assert_eq!(routing.hash_for_addr(&peer), Some(iface));
 }

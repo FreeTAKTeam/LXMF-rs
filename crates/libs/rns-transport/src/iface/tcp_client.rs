@@ -7,7 +7,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::buffer::{InputBuffer, OutputBuffer};
 use crate::error::RnsError;
-use crate::iface::RxMessage;
+use crate::iface::{IfaceSource, RxMessage};
 use crate::packet::Packet;
 use crate::serde::Serialize;
 
@@ -162,6 +162,7 @@ impl TcpClient {
                                                             .send(RxMessage {
                                                                 address: iface_address,
                                                                 packet,
+                                                                source: IfaceSource::None,
                                                             })
                                                             .await;
                                                     } else {

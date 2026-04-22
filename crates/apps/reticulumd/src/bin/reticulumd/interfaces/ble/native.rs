@@ -11,7 +11,7 @@ use reticulum_daemon::config::InterfaceConfig;
 use rns_transport::buffer::{InputBuffer, OutputBuffer};
 use rns_transport::hash::AddressHash;
 use rns_transport::iface::hdlc::Hdlc;
-use rns_transport::iface::{Interface, InterfaceContext, InterfaceManager, RxMessage};
+use rns_transport::iface::{IfaceSource, Interface, InterfaceContext, InterfaceManager, RxMessage};
 use rns_transport::packet::Packet;
 use rns_transport::serde::Serialize;
 use std::pin::Pin;
@@ -139,7 +139,7 @@ impl BleGattInterface {
                                     let mut output = OutputBuffer::new(&mut hdlc_rx_buffer);
                                     if Hdlc::decode(frame, &mut output).is_ok() {
                                         if let Ok(packet) = Packet::deserialize(&mut InputBuffer::new(output.as_slice())) {
-                                            let _ = rx_channel.send(RxMessage { address: iface_address, packet }).await;
+                                            let _ = rx_channel.send(RxMessage { address: iface_address, packet, source: IfaceSource::None }).await;
                                         }
                                     }
                                     frame_buffer.drain(..=end);
