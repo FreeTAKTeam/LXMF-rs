@@ -4177,7 +4177,7 @@ fn capture_platform_descriptor() -> Result<String> {
         });
         let arch = std::env::var("PROCESSOR_ARCHITECTURE")
             .unwrap_or_else(|_| std::env::consts::ARCH.to_string());
-        return Ok(format!("{release}; arch={arch}"));
+        Ok(format!("{release}; arch={arch}"))
     }
 
     #[cfg(not(target_family = "windows"))]
