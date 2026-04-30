@@ -40,6 +40,13 @@ REPORT_PATH="${REPORT_PATH:-${LOG_DIR}/report.json}"
 GATE_SUMMARY_PATH="${GATE_SUMMARY_PATH:-${LOG_DIR}/gate-summary.json}"
 mkdir -p "${LOG_DIR}"
 
+if [[ "${REPORT_PATH}" != */* ]]; then
+  REPORT_PATH="./${REPORT_PATH}"
+fi
+if [[ "${GATE_SUMMARY_PATH}" != */* ]]; then
+  GATE_SUMMARY_PATH="./${GATE_SUMMARY_PATH}"
+fi
+
 case "${CLIENT}" in
   meshchatx)
     if [[ -n "${CLIENT_ROOT}" ]]; then
@@ -121,7 +128,9 @@ summary = {
     },
 }
 
-os.makedirs(os.path.dirname(summary_path), exist_ok=True)
+summary_dir = os.path.dirname(summary_path)
+if summary_dir:
+    os.makedirs(summary_dir, exist_ok=True)
 with open(summary_path, "w", encoding="utf-8") as handle:
     json.dump(summary, handle, indent=2, sort_keys=True)
 PY
