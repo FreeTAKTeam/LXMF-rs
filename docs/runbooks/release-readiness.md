@@ -119,11 +119,14 @@ External-client interop release gate:
 
 ```bash
 tools/scripts/external-client-interop-gate.sh meshchatx /path/to/MeshChatX
+tools/scripts/external-client-interop-gate.sh sideband /path/to/Sideband
+tools/scripts/external-client-interop-gate.sh columba /path/to/columba
 ```
 
-Use `sideband /path/to/Sideband` or `columba /path/to/columba` when that client
-is the release target. Do not claim interoperability for a client unless this
-gate emits `status: "pass"` in its summary artifact for the release candidate.
+The gate does not download external clients. Provide the source checkout as the
+second argument or set `MESHCHATX_ROOT`, `SIDEBAND_ROOT`, or `COLUMBA_ROOT`.
+Do not claim interoperability for a client unless this gate emits
+`status: "pass"` in its summary artifact for the release candidate.
 
 Optional soak:
 

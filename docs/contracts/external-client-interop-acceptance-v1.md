@@ -82,6 +82,16 @@ The release gate runs one concrete external-client proof through:
 tools/scripts/external-client-interop-gate.sh <meshchatx|sideband|columba> [client-root]
 ```
 
+The gate does not fetch external clients. The selected client must already be
+available as a local checkout, either through the optional `[client-root]`
+argument or the matching environment variable:
+
+- `MESHCHATX_ROOT`
+- `SIDEBAND_ROOT`
+- `COLUMBA_ROOT`
+
+The default local paths are `../MeshChatX`, `../Sideband`, and `../columba`.
+
 The command delegates to the matching client-specific smoke harness, validates
 that the machine-readable report contains the required proof fields and artifact
 paths, and writes:
@@ -99,4 +109,6 @@ This contract does not yet require:
 - CI gating
 
 The release gate is intentionally local/manual until external client checkouts
-and credentials are available in automation.
+and credentials are available in automation. A future CI version must provide
+those checkouts explicitly, for example through a pinned external interop
+workspace, private checkout token, or prebuilt client image.

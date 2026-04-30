@@ -10,6 +10,7 @@ usage() {
 Usage: tools/scripts/external-client-interop-gate.sh <meshchatx|sideband|columba> [client-root]
 
 Runs one external-client interoperability proof and emits a stable gate summary.
+The selected external client must already exist as a local source checkout.
 
 Environment overrides:
   MESHCHATX_ROOT, SIDEBAND_ROOT, COLUMBA_ROOT
@@ -49,23 +50,35 @@ fi
 
 case "${CLIENT}" in
   meshchatx)
-    if [[ -n "${CLIENT_ROOT}" ]]; then
-      export MESHCHATX_ROOT="${CLIENT_ROOT}"
+    MESHCHATX_ROOT="${CLIENT_ROOT:-${MESHCHATX_ROOT:-${REPO_ROOT}/../MeshChatX}}"
+    if [[ ! -d "${MESHCHATX_ROOT}" ]]; then
+      echo "MeshChatX checkout not found at ${MESHCHATX_ROOT}" >&2
+      echo "Pass a checkout path as the second argument or set MESHCHATX_ROOT." >&2
+      exit 1
     fi
+    export MESHCHATX_ROOT
     LOG_DIR="${LOG_DIR}" REPORT_PATH="${REPORT_PATH}" \
       bash tools/scripts/meshchatx-reticulumd-smoke.sh
     ;;
   sideband)
-    if [[ -n "${CLIENT_ROOT}" ]]; then
-      export SIDEBAND_ROOT="${CLIENT_ROOT}"
+    SIDEBAND_ROOT="${CLIENT_ROOT:-${SIDEBAND_ROOT:-${REPO_ROOT}/../Sideband}}"
+    if [[ ! -d "${SIDEBAND_ROOT}" ]]; then
+      echo "Sideband checkout not found at ${SIDEBAND_ROOT}" >&2
+      echo "Pass a checkout path as the second argument or set SIDEBAND_ROOT." >&2
+      exit 1
     fi
+    export SIDEBAND_ROOT
     LOG_DIR="${LOG_DIR}" REPORT_PATH="${REPORT_PATH}" \
       bash tools/scripts/sideband-reticulumd-smoke.sh
     ;;
   columba)
-    if [[ -n "${CLIENT_ROOT}" ]]; then
-      export COLUMBA_ROOT="${CLIENT_ROOT}"
+    COLUMBA_ROOT="${CLIENT_ROOT:-${COLUMBA_ROOT:-${REPO_ROOT}/../columba}}"
+    if [[ ! -d "${COLUMBA_ROOT}" ]]; then
+      echo "Columba checkout not found at ${COLUMBA_ROOT}" >&2
+      echo "Pass a checkout path as the second argument or set COLUMBA_ROOT." >&2
+      exit 1
     fi
+    export COLUMBA_ROOT
     LOG_DIR="${LOG_DIR}" REPORT_PATH="${REPORT_PATH}" \
       bash tools/scripts/columba-reticulumd-smoke.sh
     ;;
