@@ -174,7 +174,7 @@ fn print_remote_peer_summary(status: &serde_json::Value) {
     }
 
     let mut rows: Vec<_> = peers.iter().collect();
-    rows.sort_by(|(left, _), (right, _)| left.cmp(right));
+    rows.sort_by_key(|(peer, _)| *peer);
     for (peer, details) in rows {
         let name = details.get("name").and_then(|value| value.as_str()).unwrap_or("");
         let last_heard = details.get("last_heard").and_then(|value| value.as_i64()).unwrap_or(0);

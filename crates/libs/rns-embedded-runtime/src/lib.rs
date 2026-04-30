@@ -310,10 +310,7 @@ impl EmbeddedNodeRuntime {
             return Ok(());
         }
 
-        loop {
-            let Some(frame) = self.outbound.front().cloned() else {
-                break;
-            };
+        while let Some(frame) = self.outbound.front().cloned() {
             match transport.send_frame(&frame) {
                 Ok(()) => {
                     self.outbound.pop_front();
