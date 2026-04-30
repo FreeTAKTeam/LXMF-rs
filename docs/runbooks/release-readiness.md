@@ -115,6 +115,16 @@ cargo run -p xtask -- reproducible-build-check
 cargo run -p xtask -- leader-readiness-check
 ```
 
+External-client interop release gate:
+
+```bash
+tools/scripts/external-client-interop-gate.sh meshchatx /path/to/MeshChatX
+```
+
+Use `sideband /path/to/Sideband` or `columba /path/to/columba` when that client
+is the release target. Do not claim interoperability for a client unless this
+gate emits `status: "pass"` in its summary artifact for the release candidate.
+
 Optional soak:
 
 ```bash
@@ -165,6 +175,11 @@ Leader-grade readiness certification artifact:
 - `target/release-readiness/leader-grade-readiness.md`
 - `target/release-readiness/certification-report.md`
 - `target/release-readiness/certification-report.json`
+
+External-client interop gate artifacts:
+
+- `target/interop/external-client-gate/<client>/report.json`
+- `target/interop/external-client-gate/<client>/gate-summary.json`
 
 Embedded footprint report artifact:
 
