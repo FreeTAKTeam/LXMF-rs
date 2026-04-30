@@ -184,6 +184,11 @@ External-client interop gate artifacts:
 - `target/interop/external-client-gate/<client>/report.json`
 - `target/interop/external-client-gate/<client>/gate-summary.json`
 
+The summary artifact must include the selected external client checkout path,
+Git revision metadata when available, generated client config/state artifacts,
+logs, and destination hashes. Keep this artifact with the release candidate
+evidence before making any external-client interoperability claim.
+
 Embedded footprint report artifact:
 
 - `target/embedded/footprint-report.txt`

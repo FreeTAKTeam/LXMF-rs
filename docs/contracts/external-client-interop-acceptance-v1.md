@@ -70,6 +70,9 @@ A passing run must retain:
 - `reticulumd` log path
 - external client log path
 - machine-readable report path
+- external client source checkout path
+- external client git revision metadata when the checkout is a Git repository
+- generated client config/state artifact paths
 - daemon delivery hash
 - external client delivery hash
 - exact message bodies used for both directions
@@ -98,6 +101,10 @@ paths, and writes:
 
 - `target/interop/external-client-gate/<client>/report.json`
 - `target/interop/external-client-gate/<client>/gate-summary.json`
+
+The gate summary records the external client checkout path, Git revision
+metadata when available, the generated client config/state artifacts used by the
+proof, logs, destination hashes, and the client-specific proof report path.
 
 Release notes may only claim external-client interoperability for a client whose
 gate summary has `status: "pass"` for the release candidate.

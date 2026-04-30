@@ -57,6 +57,7 @@ case "${CLIENT}" in
       exit 1
     fi
     export MESHCHATX_ROOT
+    EXTERNAL_CLIENT_ROOT="${MESHCHATX_ROOT}"
     LOG_DIR="${LOG_DIR}" REPORT_PATH="${REPORT_PATH}" \
       bash tools/scripts/meshchatx-reticulumd-smoke.sh
     ;;
@@ -68,6 +69,7 @@ case "${CLIENT}" in
       exit 1
     fi
     export SIDEBAND_ROOT
+    EXTERNAL_CLIENT_ROOT="${SIDEBAND_ROOT}"
     LOG_DIR="${LOG_DIR}" REPORT_PATH="${REPORT_PATH}" \
       bash tools/scripts/sideband-reticulumd-smoke.sh
     ;;
@@ -79,17 +81,19 @@ case "${CLIENT}" in
       exit 1
     fi
     export COLUMBA_ROOT
+    EXTERNAL_CLIENT_ROOT="${COLUMBA_ROOT}"
     LOG_DIR="${LOG_DIR}" REPORT_PATH="${REPORT_PATH}" \
       bash tools/scripts/columba-reticulumd-smoke.sh
     ;;
 esac
 
-python3 - <<'PY' "${CLIENT}" "${REPORT_PATH}" "${GATE_SUMMARY_PATH}"
+python3 - <<'PY' "${CLIENT}" "${REPORT_PATH}" "${GATE_SUMMARY_PATH}" "${EXTERNAL_CLIENT_ROOT}"
 import json
 import os
+import subprocess
 import sys
 
-client, report_path, summary_path = sys.argv[1:4]
+client, report_path, summary_path, client_root = sys.argv[1:5]
 
 with open(report_path, "r", encoding="utf-8") as handle:
     report = json.load(handle)
@@ -107,6 +111,37 @@ def require_artifact(path):
         raise SystemExit(f"interop artifact does not exist: {path}")
     return path
 
+def optional_artifact(path):
+    if isinstance(path, str) and path and os.path.exists(path):
+        return path
+    return None
+
+def git_value(args):
+    try:
+        return subprocess.check_output(
+            ["git", "-C", client_root, *args],
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
+    except (OSError, subprocess.CalledProcessError):
+        return None
+
+def git_dirty():
+    status = git_value(["status", "--porcelain"])
+    if status is None:
+        return None
+    return bool(status)
+
+def client_git_metadata():
+    head = git_value(["rev-parse", "HEAD"])
+    if head is None:
+        return None
+    return {
+        "head": head,
+        "describe": git_value(["describe", "--tags", "--always", "--dirty"]),
+        "dirty": git_dirty(),
+    }
+
 if client == "meshchatx":
     external_hash = require_text("meshchatx_hash")
     artifacts = report.get("artifacts")
@@ -120,6 +155,11 @@ if client == "meshchatx":
     for key in ("daemon_to_meshchatx", "meshchatx_to_daemon"):
         if not isinstance(proof.get(key), str) or not proof[key]:
             raise SystemExit(f"meshchatx report missing proof.{key}")
+    tmp_root = require_artifact(artifacts.get("tmp_root"))
+    config_artifacts = [
+        require_artifact(os.path.join(tmp_root, "mesh-reticulum", "config")),
+        require_artifact(os.path.join(tmp_root, "mesh-config.json")),
+    ]
 else:
     external_hash = require_text("external_client_hash")
     reticulumd_log = require_artifact(report.get("reticulumd_log"))
@@ -128,16 +168,34 @@ else:
     for key in ("daemon_to_external_content", "external_to_daemon_content"):
         if not isinstance(report.get(key), str) or not report[key]:
             raise SystemExit(f"{client} report missing {key}")
+    tmp_root = require_artifact(report.get("tmp_root"))
+    if client == "sideband":
+        config_artifacts = [
+            require_artifact(os.path.join(tmp_root, "sideband-reticulum", "config")),
+            require_artifact(os.path.join(tmp_root, "control", "state.json")),
+        ]
+    else:
+        config_artifacts = [
+            require_artifact(os.path.join(tmp_root, "control", "state.json")),
+            optional_artifact(os.path.join(tmp_root, "columba")),
+        ]
+        config_artifacts = [path for path in config_artifacts if path is not None]
 
 summary = {
     "status": "pass",
     "client": client,
     "report_path": report_path,
+    "external_client": {
+        "root": client_root,
+        "git": client_git_metadata(),
+    },
     "daemon_hash": require_text("daemon_hash"),
     "external_client_hash": external_hash,
     "artifacts": {
+        "tmp_root": tmp_root,
         "reticulumd_log": reticulumd_log,
         "external_client_log": external_log,
+        "client_config": config_artifacts,
     },
 }
 
