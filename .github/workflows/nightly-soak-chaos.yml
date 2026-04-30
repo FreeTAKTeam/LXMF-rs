@@ -13,6 +13,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install Linux BLE build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libdbus-1-dev
       - uses: dtolnay/rust-toolchain@stable
       - name: Nightly soak + chaos campaign
         run: CYCLES=3 BURST_ROUNDS=8 TIMEOUT_SECS=25 PAUSE_SECS=1 CHAOS_INTERVAL=2 CHAOS_NODES=5 CHAOS_TIMEOUT_SECS=90 MAX_FAILURES=0 REPORT_PATH=target/soak/soak-report.json ./tools/scripts/soak-rnx.sh
