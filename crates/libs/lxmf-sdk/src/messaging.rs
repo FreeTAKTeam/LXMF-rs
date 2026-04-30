@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -157,7 +158,7 @@ impl MessagingStore {
 
     pub fn list_announces(&self) -> Vec<AnnounceRecord> {
         let mut records = self.announce_records.values().cloned().collect::<Vec<_>>();
-        records.sort_by(|left, right| right.received_at_ms.cmp(&left.received_at_ms));
+        records.sort_by_key(|record| Reverse(record.received_at_ms));
         records
     }
 
@@ -245,7 +246,7 @@ impl MessagingStore {
             }
         }
 
-        peers.sort_by(|left, right| right.last_seen_at_ms.cmp(&left.last_seen_at_ms));
+        peers.sort_by_key(|peer| Reverse(peer.last_seen_at_ms));
         peers
     }
 
@@ -356,7 +357,7 @@ impl MessagingStore {
         }
 
         let mut out = by_conversation.into_values().collect::<Vec<_>>();
-        out.sort_by(|left, right| right.last_message_at_ms.cmp(&left.last_message_at_ms));
+        out.sort_by_key(|conversation| Reverse(conversation.last_message_at_ms));
         out
     }
 

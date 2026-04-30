@@ -2088,41 +2088,13 @@ fn validate_json_value(name: &str, value: &Value, schema: &Value) -> Result<()> 
             return Ok(());
         }
         match value_type {
-            "object" => {
-                if !value.is_object() {
-                    bail!("{name} must be object");
-                }
-            }
-            "array" => {
-                if !value.is_array() {
-                    bail!("{name} must be array");
-                }
-            }
-            "string" => {
-                if !value.is_string() {
-                    bail!("{name} must be string");
-                }
-            }
-            "number" => {
-                if !value.is_number() {
-                    bail!("{name} must be number");
-                }
-            }
-            "integer" => {
-                if !(value.is_i64() || value.is_u64()) {
-                    bail!("{name} must be integer");
-                }
-            }
-            "boolean" => {
-                if !value.is_boolean() {
-                    bail!("{name} must be boolean");
-                }
-            }
-            "null" => {
-                if !value.is_null() {
-                    bail!("{name} must be null");
-                }
-            }
+            "object" if !value.is_object() => bail!("{name} must be object"),
+            "array" if !value.is_array() => bail!("{name} must be array"),
+            "string" if !value.is_string() => bail!("{name} must be string"),
+            "number" if !value.is_number() => bail!("{name} must be number"),
+            "integer" if !(value.is_i64() || value.is_u64()) => bail!("{name} must be integer"),
+            "boolean" if !value.is_boolean() => bail!("{name} must be boolean"),
+            "null" if !value.is_null() => bail!("{name} must be null"),
             _ => {}
         }
     }

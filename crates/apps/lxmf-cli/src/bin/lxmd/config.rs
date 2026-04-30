@@ -479,11 +479,7 @@ pub(crate) fn parse_python_reticulum_interfaces(input: &str) -> Vec<crate::Singl
             "target_port" | "listen_port" | "port" => {
                 current.port = value.parse::<u16>().ok();
             }
-            "listen_ip" => {
-                if !value.is_empty() {
-                    current.host = Some(value.to_string());
-                }
-            }
+            "listen_ip" if !value.is_empty() => current.host = Some(value.to_string()),
             _ => {}
         }
     }
