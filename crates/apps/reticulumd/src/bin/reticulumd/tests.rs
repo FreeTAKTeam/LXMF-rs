@@ -21,7 +21,7 @@ use rns_transport::transport::{SendPacketOutcome, Transport, TransportConfig};
 use serde_json::json;
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tempfile::TempDir;
@@ -1063,7 +1063,7 @@ interfaces = [
   {{ type = "lora", enabled = true, name = "lora-main", region = "US915", state_path = "{}" }}
 ]
 "#,
-            state_path.display()
+            toml_path_string(&state_path)
         ),
     )
     .expect("write config");
@@ -1153,7 +1153,7 @@ interfaces = [
   {{ type = "lora", enabled = true, name = "lora-main", region = "US915", state_path = "{}" }}
 ]
 "#,
-            state_path.display()
+            toml_path_string(&state_path)
         ),
     )
     .expect("write config");
@@ -1182,6 +1182,10 @@ fn now_unix_ms_for_test() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis() as u64)
         .unwrap_or(0)
+}
+
+fn toml_path_string(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "\\\\")
 }
 
 fn test_args(

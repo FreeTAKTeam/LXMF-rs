@@ -805,15 +805,26 @@ mod tests {
 
     #[test]
     fn compatibility_notes_only_emitted_for_used_flags() {
-        let args = super::Args::parse_from(["lxmd", "--propagation-node", "--service"]);
+        let temp = tempfile::tempdir().expect("tempdir");
+        let config_dir = temp.path().to_str().expect("utf8 path");
+        let args = super::Args::parse_from([
+            "lxmd",
+            "--config",
+            config_dir,
+            "--propagation-node",
+            "--service",
+        ]);
         let effective = load_effective_args(&args).expect("effective args");
         let notes = compatibility_notes(&args, &effective);
-        assert_eq!(notes.len(), 1);
+        assert!(notes.iter().any(|note| note.contains("--service")));
+        assert!(!notes.iter().any(|note| note.contains("--propagation-node")));
     }
 
     #[test]
     fn propagation_node_uses_supervised_launch() {
-        let args = super::Args::parse_from(["lxmd", "--propagation-node"]);
+        let temp = tempfile::tempdir().expect("tempdir");
+        let config_dir = temp.path().to_str().expect("utf8 path");
+        let args = super::Args::parse_from(["lxmd", "--config", config_dir, "--propagation-node"]);
         let effective = load_effective_args(&args).expect("effective args");
         assert!(requires_supervised_launch(&effective));
     }
