@@ -1,8 +1,8 @@
 use alloc::{collections::VecDeque, vec::Vec};
 use rns_embedded_core::{
-    EmbeddedError, EmbeddedResult,
-    packet::{PacketFrame, decode_frame, encode_frame},
+    packet::{decode_frame, encode_frame, PacketFrame},
     transport::{EmbeddedTransport, LinkState, TransportCaps},
+    EmbeddedError, EmbeddedResult,
 };
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -35,9 +35,7 @@ pub struct BleShimTransport {
 
 impl BleShimTransport {
     pub fn new(config: BleShimConfig) -> EmbeddedResult<Self> {
-        if config.mtu_hint == 0
-            || config.max_inbound_frames == 0
-            || config.max_outbound_frames == 0
+        if config.mtu_hint == 0 || config.max_inbound_frames == 0 || config.max_outbound_frames == 0
         {
             return Err(EmbeddedError::InvalidArgument);
         }
@@ -121,14 +119,13 @@ mod tests {
 
     use super::{BleShimConfig, BleShimTransport};
     use crate::{
-        CaptureDefaults, EmbeddedNodeRuntime, FRAME_KIND_ANNOUNCE, NodeTransportMode,
-        RuntimeConfig,
+        CaptureDefaults, EmbeddedNodeRuntime, NodeTransportMode, RuntimeConfig, FRAME_KIND_ANNOUNCE,
     };
     use rns_embedded_core::{
-        EmbeddedError,
-        packet::{PacketFrame, decode_frame, encode_frame},
+        packet::{decode_frame, encode_frame, PacketFrame},
         store::{EmbeddedStore, JournaledEmbeddedStore},
         transport::{EmbeddedTransport, LinkState},
+        EmbeddedError,
     };
 
     fn runtime_config() -> RuntimeConfig {
@@ -184,9 +181,8 @@ mod tests {
 
         shim.set_link_state(LinkState::Up);
         shim.push_inbound_wire(&wire_frame(0x01, 1, b"x")).expect("first inbound");
-        let err = shim
-            .push_inbound_wire(&wire_frame(0x01, 2, b"y"))
-            .expect_err("inbound backpressure");
+        let err =
+            shim.push_inbound_wire(&wire_frame(0x01, 2, b"y")).expect_err("inbound backpressure");
         assert_eq!(err, EmbeddedError::Backpressure);
 
         shim.send_frame(&PacketFrame::new(0x11, 1, b"abc".to_vec()).expect("frame"))
@@ -221,14 +217,11 @@ mod tests {
         let mut shim = BleShimTransport::new(BleShimConfig::default()).expect("shim");
         shim.set_link_state(LinkState::Up);
 
-        shim.push_inbound_wire(&wire_frame(0x45, 9, b"ping"))
-            .expect("push inbound");
+        shim.push_inbound_wire(&wire_frame(0x45, 9, b"ping")).expect("push inbound");
         runtime.tick(0, &mut shim, &mut store).expect("tick");
 
         assert_eq!(
-            store
-                .load_replay_floor(&runtime_config().store_identity)
-                .expect("load replay"),
+            store.load_replay_floor(&runtime_config().store_identity).expect("load replay"),
             9
         );
     }

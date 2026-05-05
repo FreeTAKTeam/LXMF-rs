@@ -1,0 +1,95 @@
+name: Python reference interop
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: python-reference-interop-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RETICULUM_CONFORMANCE_REF: 0319444b20e0815f26c6b9ceeba8fa44de037c9b
+  PYTHON_RETICULUM_REF: 15320e4d2cfabb143c1db20ca887e275fd521585
+  PYTHON_LXMF_REF: 727830cefda83d9c6e3982b48675425f3f988f9c
+
+jobs:
+  python-reference-interop:
+    name: Validate PR against pinned Python reference
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout LXMF-rs PR
+        uses: actions/checkout@v4
+        with:
+          path: lxmf-rs
+
+      - name: Checkout reticulum-conformance
+        uses: actions/checkout@v4
+        with:
+          repository: torlando-tech/reticulum-conformance
+          ref: ${{ env.RETICULUM_CONFORMANCE_REF }}
+          path: reticulum-conformance
+
+      - name: Checkout Python Reticulum
+        uses: actions/checkout@v4
+        with:
+          repository: markqvist/Reticulum
+          ref: ${{ env.PYTHON_RETICULUM_REF }}
+          path: Reticulum
+
+      - name: Checkout Python LXMF
+        uses: actions/checkout@v4
+        with:
+          repository: markqvist/LXMF
+          ref: ${{ env.PYTHON_LXMF_REF }}
+          path: LXMF
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python conformance dependencies
+        working-directory: reticulum-conformance
+        run: python -m pip install -r requirements.txt
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: lxmf-rs -> target
+          cache-targets: true
+          cache-on-failure: false
+
+      - name: Record pinned reference revisions
+        run: |
+          git -C reticulum-conformance rev-parse HEAD
+          git -C Reticulum rev-parse HEAD
+          git -C LXMF rev-parse HEAD
+
+      - name: Python reference conformance baseline
+        working-directory: reticulum-conformance
+        env:
+          PYTHON_RNS_PATH: ${{ github.workspace }}/Reticulum
+          PYTHON_LXMF_PATH: ${{ github.workspace }}/LXMF
+        run: python -m pytest tests/ --reference-only -v --tb=short
+
+      - name: Rust interop artifact gate
+        working-directory: lxmf-rs
+        run: cargo xtask ci --stage interop-artifacts
+
+      - name: Rust SDK conformance gate
+        working-directory: lxmf-rs
+        run: cargo xtask ci --stage sdk-conformance
+
+      - name: Rust E2E compatibility gate
+        working-directory: lxmf-rs
+        run: cargo xtask ci --stage e2e-compatibility

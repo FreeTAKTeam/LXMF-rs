@@ -180,7 +180,9 @@ impl ResolvedSendPolicy {
             if self.queue_pressure_strategy == QueuePressureStrategy::Retry
                 && attempt < self.queue_pressure_max_attempts
             {
-                return AttemptDecision::Retry(self.queue_pressure_backoff.delay_for_attempt(attempt));
+                return AttemptDecision::Retry(
+                    self.queue_pressure_backoff.delay_for_attempt(attempt),
+                );
             }
             return AttemptDecision::Stop(err.clone());
         }

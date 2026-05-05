@@ -32,11 +32,7 @@ pub struct Envelope {
 #[non_exhaustive]
 pub enum EnvelopeValidationError {
     UnknownOperation { operation_id: OperationId },
-    KindMismatch {
-        operation_id: OperationId,
-        expected: EnvelopeKind,
-        actual: EnvelopeKind,
-    },
+    KindMismatch { operation_id: OperationId, expected: EnvelopeKind, actual: EnvelopeKind },
 }
 
 impl fmt::Display for EnvelopeValidationError {
@@ -45,11 +41,7 @@ impl fmt::Display for EnvelopeValidationError {
             Self::UnknownOperation { operation_id } => {
                 write!(f, "unknown operation id '{}'", operation_id.as_str())
             }
-            Self::KindMismatch {
-                operation_id,
-                expected,
-                actual,
-            } => write!(
+            Self::KindMismatch { operation_id, expected, actual } => write!(
                 f,
                 "operation '{}' requires {:?} envelope, got {:?}",
                 operation_id.as_str(),

@@ -15,10 +15,10 @@ use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
+mod app_mode_contract_tests;
 mod auth_mode_tests;
 mod certification_tests;
 mod crypto_agility_tests;
-mod app_mode_contract_tests;
 mod key_management_tests;
 mod model_tests;
 mod release_bc_tests;

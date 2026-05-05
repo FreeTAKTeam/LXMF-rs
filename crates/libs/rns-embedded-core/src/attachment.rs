@@ -1,4 +1,4 @@
-use crate::{EmbeddedError, EmbeddedResult, hash::digest32};
+use crate::{hash::digest32, EmbeddedError, EmbeddedResult};
 use alloc::vec::Vec;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -70,14 +70,14 @@ impl AttachmentReceiver {
         if transfer_id == 0 || chunk_size == 0 || total_size == 0 {
             return Err(EmbeddedError::InvalidArgument);
         }
-        let existing_len = u32::try_from(existing_bytes.len()).map_err(|_| EmbeddedError::InvalidArgument)?;
+        let existing_len =
+            u32::try_from(existing_bytes.len()).map_err(|_| EmbeddedError::InvalidArgument)?;
         if existing_len > total_size {
             return Err(EmbeddedError::InvalidCursor);
         }
         let chunk_size_u32 = u32::from(chunk_size);
-        let expected_sequence = (existing_len / chunk_size_u32)
-            .try_into()
-            .map_err(|_| EmbeddedError::InvalidCursor)?;
+        let expected_sequence =
+            (existing_len / chunk_size_u32).try_into().map_err(|_| EmbeddedError::InvalidCursor)?;
         Ok(Self {
             transfer_id,
             total_size,
@@ -98,7 +98,11 @@ impl AttachmentReceiver {
         }
     }
 
-    pub fn apply_chunk(&mut self, offset: u32, chunk: &AttachmentChunk) -> EmbeddedResult<ChunkApply> {
+    pub fn apply_chunk(
+        &mut self,
+        offset: u32,
+        chunk: &AttachmentChunk,
+    ) -> EmbeddedResult<ChunkApply> {
         if chunk.transfer_id != self.transfer_id {
             return Err(EmbeddedError::NotFound);
         }
@@ -120,11 +124,10 @@ impl AttachmentReceiver {
             return Err(EmbeddedError::SeqGap);
         }
 
-        let payload_len_u32 = u32::try_from(chunk.payload.len()).map_err(|_| EmbeddedError::InvalidArgument)?;
-        let new_offset = self
-            .next_offset
-            .checked_add(payload_len_u32)
-            .ok_or(EmbeddedError::InvalidArgument)?;
+        let payload_len_u32 =
+            u32::try_from(chunk.payload.len()).map_err(|_| EmbeddedError::InvalidArgument)?;
+        let new_offset =
+            self.next_offset.checked_add(payload_len_u32).ok_or(EmbeddedError::InvalidArgument)?;
         if new_offset > self.total_size {
             return Err(EmbeddedError::InvalidArgument);
         }
@@ -150,9 +153,7 @@ impl AttachmentReceiver {
 
     fn handle_duplicate(&self, offset: u32, chunk: &AttachmentChunk) -> EmbeddedResult<ChunkApply> {
         let start = usize::try_from(offset).map_err(|_| EmbeddedError::InvalidCursor)?;
-        let end = start
-            .checked_add(chunk.payload.len())
-            .ok_or(EmbeddedError::InvalidCursor)?;
+        let end = start.checked_add(chunk.payload.len()).ok_or(EmbeddedError::InvalidCursor)?;
         if end > self.bytes.len() {
             return Err(EmbeddedError::InvalidCursor);
         }
@@ -176,13 +177,7 @@ impl<'a> AttachmentChunker<'a> {
         if transfer_id == 0 || chunk_size == 0 || data.is_empty() {
             return Err(EmbeddedError::InvalidArgument);
         }
-        Ok(Self {
-            transfer_id,
-            chunk_size,
-            data,
-            next_offset: 0,
-            next_sequence: 0,
-        })
+        Ok(Self { transfer_id, chunk_size, data, next_offset: 0, next_sequence: 0 })
     }
 
     pub fn resume_from_offset(
@@ -211,21 +206,14 @@ impl<'a> AttachmentChunker<'a> {
         let sequence = self.next_sequence;
         self.next_offset = end;
         self.next_sequence = self.next_sequence.saturating_add(1);
-        Some((
-            offset,
-            AttachmentChunk {
-                transfer_id: self.transfer_id,
-                sequence,
-                payload,
-            },
-        ))
+        Some((offset, AttachmentChunk { transfer_id: self.transfer_id, sequence, payload }))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{AttachmentChunk, AttachmentChunker, AttachmentReceiver, ChunkApply};
-    use crate::{EmbeddedError, hash::digest32};
+    use crate::{hash::digest32, EmbeddedError};
 
     #[test]
     fn roundtrip_append_duplicate_and_commit() {
@@ -234,7 +222,10 @@ mod tests {
         let mut receiver = AttachmentReceiver::start(9, payload.len() as u32, 8).expect("receiver");
 
         let (offset0, chunk0) = chunker.next_chunk().expect("chunk0");
-        assert_eq!(receiver.apply_chunk(offset0, &chunk0).expect("apply chunk0"), ChunkApply::Appended);
+        assert_eq!(
+            receiver.apply_chunk(offset0, &chunk0).expect("apply chunk0"),
+            ChunkApply::Appended
+        );
         assert_eq!(
             receiver.apply_chunk(offset0, &chunk0).expect("apply duplicate"),
             ChunkApply::DuplicateAccepted
@@ -252,26 +243,14 @@ mod tests {
     #[test]
     fn rejects_seq_gap_and_offset_mismatch() {
         let mut receiver = AttachmentReceiver::start(77, 6, 3).expect("receiver");
-        let bad_seq = AttachmentChunk {
-            transfer_id: 77,
-            sequence: 1,
-            payload: b"abc".to_vec(),
-        };
+        let bad_seq = AttachmentChunk { transfer_id: 77, sequence: 1, payload: b"abc".to_vec() };
         let err = receiver.apply_chunk(0, &bad_seq).expect_err("seq gap");
         assert_eq!(err, EmbeddedError::SeqGap);
 
-        let good = AttachmentChunk {
-            transfer_id: 77,
-            sequence: 0,
-            payload: b"abc".to_vec(),
-        };
+        let good = AttachmentChunk { transfer_id: 77, sequence: 0, payload: b"abc".to_vec() };
         receiver.apply_chunk(0, &good).expect("first chunk");
 
-        let next = AttachmentChunk {
-            transfer_id: 77,
-            sequence: 1,
-            payload: b"def".to_vec(),
-        };
+        let next = AttachmentChunk { transfer_id: 77, sequence: 1, payload: b"def".to_vec() };
         let err = receiver.apply_chunk(4, &next).expect_err("offset mismatch");
         assert_eq!(err, EmbeddedError::InvalidCursor);
     }
@@ -279,17 +258,9 @@ mod tests {
     #[test]
     fn duplicate_conflict_maps_to_idempotency_conflict() {
         let mut receiver = AttachmentReceiver::start(21, 4, 2).expect("receiver");
-        let first = AttachmentChunk {
-            transfer_id: 21,
-            sequence: 0,
-            payload: b"ab".to_vec(),
-        };
+        let first = AttachmentChunk { transfer_id: 21, sequence: 0, payload: b"ab".to_vec() };
         receiver.apply_chunk(0, &first).expect("first");
-        let conflicting = AttachmentChunk {
-            transfer_id: 21,
-            sequence: 0,
-            payload: b"zz".to_vec(),
-        };
+        let conflicting = AttachmentChunk { transfer_id: 21, sequence: 0, payload: b"zz".to_vec() };
         let err = receiver.apply_chunk(0, &conflicting).expect_err("conflict");
         assert_eq!(err, EmbeddedError::IdempotencyConflict);
     }
@@ -297,21 +268,13 @@ mod tests {
     #[test]
     fn commit_checks_completeness_and_checksum() {
         let mut receiver = AttachmentReceiver::start(33, 3, 3).expect("receiver");
-        let chunk = AttachmentChunk {
-            transfer_id: 33,
-            sequence: 0,
-            payload: b"abc".to_vec(),
-        };
+        let chunk = AttachmentChunk { transfer_id: 33, sequence: 0, payload: b"abc".to_vec() };
         receiver.apply_chunk(0, &chunk).expect("chunk");
         let err = receiver.clone().commit(Some([0_u8; 32])).expect_err("bad checksum");
         assert_eq!(err, EmbeddedError::ChecksumMismatch);
 
         let mut incomplete = AttachmentReceiver::start(34, 4, 4).expect("incomplete");
-        let c = AttachmentChunk {
-            transfer_id: 34,
-            sequence: 0,
-            payload: b"abc".to_vec(),
-        };
+        let c = AttachmentChunk { transfer_id: 34, sequence: 0, payload: b"abc".to_vec() };
         incomplete.apply_chunk(0, &c).expect("partial");
         let err = incomplete.commit(None).expect_err("incomplete commit");
         assert_eq!(err, EmbeddedError::InvalidArgument);

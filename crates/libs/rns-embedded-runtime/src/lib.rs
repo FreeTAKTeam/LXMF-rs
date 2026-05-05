@@ -10,20 +10,20 @@ pub mod node;
 pub mod tcp;
 
 use alloc::{collections::VecDeque, vec::Vec};
-use rns_embedded_core::{
-    EmbeddedError, EmbeddedResult,
-    lxmf_min::{MinimalEnvelope, decode_envelope, encode_envelope},
-    packet::PacketFrame,
-    replay::ReplayWindow,
-    store::EmbeddedStore,
-    transport::{EmbeddedTransport, LinkState},
-};
 pub use constants::*;
 pub use node::{
     BleNodeBackendConfig, BroadcastOptions, CaptureDefaults, EmbeddedNode, EventSubscription,
     NodeBackendConfig, NodeConfig, NodeError, NodeEvent, NodeEventKind, NodeLifecycleState,
     NodeLogLevel, NodeOperationKind, NodeOperationReceipt, NodeRunState, NodeStatus,
     NodeTransportMode, PollResult, SendOptions, TcpClientConfig, TcpServerConfig,
+};
+use rns_embedded_core::{
+    lxmf_min::{decode_envelope, encode_envelope, MinimalEnvelope},
+    packet::PacketFrame,
+    replay::ReplayWindow,
+    store::EmbeddedStore,
+    transport::{EmbeddedTransport, LinkState},
+    EmbeddedError, EmbeddedResult,
 };
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -64,17 +64,35 @@ pub struct RuntimeStats {
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum RuntimeEvent {
-    Bootstrapped { replay_floor: u64 },
-    AnnounceQueued { sequence: u32 },
-    MessageQueued { sequence: u32, bytes: usize },
-    FrameSent { kind: u8, sequence: u32, bytes: usize },
+    Bootstrapped {
+        replay_floor: u64,
+    },
+    AnnounceQueued {
+        sequence: u32,
+    },
+    MessageQueued {
+        sequence: u32,
+        bytes: usize,
+    },
+    FrameSent {
+        kind: u8,
+        sequence: u32,
+        bytes: usize,
+    },
     FrameDeferred {
         kind: u8,
         sequence: u32,
         error: EmbeddedError,
     },
-    FrameReceived { kind: u8, sequence: u32, bytes: usize },
-    AnnounceReceived { sequence: u32, bytes: usize },
+    FrameReceived {
+        kind: u8,
+        sequence: u32,
+        bytes: usize,
+    },
+    AnnounceReceived {
+        sequence: u32,
+        bytes: usize,
+    },
     LxmfMessageReceived {
         sequence: u32,
         source: [u8; 16],
@@ -185,10 +203,7 @@ impl EmbeddedNodeRuntime {
         let payload = encode_envelope(&envelope)?;
         let frame = PacketFrame::new(FRAME_KIND_LXMF_MESSAGE, sequence, payload)?;
         self.enqueue_frame(frame)?;
-        self.push_event(RuntimeEvent::MessageQueued {
-            sequence,
-            bytes: body.len(),
-        });
+        self.push_event(RuntimeEvent::MessageQueued { sequence, bytes: body.len() });
         Ok(sequence)
     }
 
@@ -264,7 +279,8 @@ impl EmbeddedNodeRuntime {
             }
             FRAME_KIND_LXMF_MESSAGE => {
                 let envelope = decode_envelope(&frame.payload)?;
-                self.stats.lxmf_messages_received = self.stats.lxmf_messages_received.saturating_add(1);
+                self.stats.lxmf_messages_received =
+                    self.stats.lxmf_messages_received.saturating_add(1);
                 self.push_event(RuntimeEvent::LxmfMessageReceived {
                     sequence: frame.sequence,
                     source: envelope.source,
@@ -334,11 +350,8 @@ impl EmbeddedNodeRuntime {
 
     fn queue_announce(&mut self) -> EmbeddedResult<u32> {
         let sequence = self.peek_next_sequence();
-        let frame = PacketFrame::new(
-            FRAME_KIND_ANNOUNCE,
-            sequence,
-            self.config.store_identity.to_vec(),
-        )?;
+        let frame =
+            PacketFrame::new(FRAME_KIND_ANNOUNCE, sequence, self.config.store_identity.to_vec())?;
         self.enqueue_frame(frame)?;
         Ok(sequence)
     }
@@ -409,17 +422,16 @@ mod tests {
     use alloc::vec;
 
     use super::{
-        CaptureDefaults, EmbeddedNodeRuntime, FRAME_KIND_ANNOUNCE, FRAME_KIND_LXMF_MESSAGE,
-        FRAME_KIND_TEST_PING, FRAME_KIND_TEST_PONG, NodeLifecycleState, NodeTransportMode,
-        RuntimeConfig,
-        RuntimeEvent,
+        CaptureDefaults, EmbeddedNodeRuntime, NodeLifecycleState, NodeTransportMode, RuntimeConfig,
+        RuntimeEvent, FRAME_KIND_ANNOUNCE, FRAME_KIND_LXMF_MESSAGE, FRAME_KIND_TEST_PING,
+        FRAME_KIND_TEST_PONG,
     };
     use rns_embedded_core::{
-        EmbeddedError,
-        lxmf_min::{MinimalEnvelope, decode_envelope, encode_envelope},
+        lxmf_min::{decode_envelope, encode_envelope, MinimalEnvelope},
         packet::PacketFrame,
         store::{EmbeddedStore, JournaledEmbeddedStore},
         transport::{FaultInjectingMockTransport, FaultMode, TransportCaps},
+        EmbeddedError,
     };
 
     fn config() -> RuntimeConfig {
@@ -435,10 +447,7 @@ mod tests {
     }
 
     fn transport() -> FaultInjectingMockTransport {
-        FaultInjectingMockTransport::new(TransportCaps {
-            mtu_hint: 1024,
-            ordered_delivery: true,
-        })
+        FaultInjectingMockTransport::new(TransportCaps { mtu_hint: 1024, ordered_delivery: true })
     }
 
     #[test]
@@ -467,9 +476,7 @@ mod tests {
     #[test]
     fn queued_message_encodes_minimal_lxmf_envelope() {
         let mut runtime = EmbeddedNodeRuntime::new(config()).expect("runtime");
-        let seq = runtime
-            .queue_message([0xEF; 16], b"hello from esp")
-            .expect("queue message");
+        let seq = runtime.queue_message([0xEF; 16], b"hello from esp").expect("queue message");
         assert_eq!(seq, 1);
 
         let mut store = JournaledEmbeddedStore::new();
@@ -497,12 +504,7 @@ mod tests {
         let inbound = PacketFrame::new(0x44, 7, b"status".to_vec()).expect("frame");
         tx.enqueue_inbound([inbound.clone()]);
         runtime.tick(0, &mut tx, &mut store).expect("tick");
-        assert_eq!(
-            store
-                .load_replay_floor(&config().store_identity)
-                .expect("load replay"),
-            7
-        );
+        assert_eq!(store.load_replay_floor(&config().store_identity).expect("load replay"), 7);
 
         tx.enqueue_inbound([inbound]);
         runtime.tick(1, &mut tx, &mut store).expect("tick duplicate");
@@ -510,11 +512,7 @@ mod tests {
         let events = runtime.drain_events();
         assert!(events.iter().any(|event| matches!(
             event,
-            RuntimeEvent::FrameReceived {
-                kind: 0x44,
-                sequence: 7,
-                bytes: 6,
-            }
+            RuntimeEvent::FrameReceived { kind: 0x44, sequence: 7, bytes: 6 }
         )));
         assert!(events.iter().any(|event| matches!(
             event,
@@ -529,9 +527,7 @@ mod tests {
     #[test]
     fn backpressure_keeps_message_queued_for_later_tick() {
         let mut runtime = EmbeddedNodeRuntime::new(config()).expect("runtime");
-        runtime
-            .queue_message([0xEF; 16], b"retry me")
-            .expect("queue message");
+        runtime.queue_message([0xEF; 16], b"retry me").expect("queue message");
 
         let mut store = JournaledEmbeddedStore::new();
         let mut tx = transport().with_faults(vec![FaultMode::BackpressureEvery(1)]);
@@ -553,7 +549,9 @@ mod tests {
         let mut runtime = EmbeddedNodeRuntime::new(config()).expect("runtime");
         let mut store = JournaledEmbeddedStore::new();
         let mut transport = transport();
-        transport.enqueue_inbound([PacketFrame::new(FRAME_KIND_TEST_PING, 7, b"ping".to_vec()).expect("ping frame")]);
+        transport.enqueue_inbound([
+            PacketFrame::new(FRAME_KIND_TEST_PING, 7, b"ping".to_vec()).expect("ping frame")
+        ]);
 
         runtime.tick(0, &mut transport, &mut store).expect("tick");
 
@@ -576,7 +574,9 @@ mod tests {
             body: b"hello".to_vec(),
         };
         let inbound_payload = encode_envelope(&inbound_envelope).expect("encode inbound envelope");
-        transport.enqueue_inbound([PacketFrame::new(FRAME_KIND_LXMF_MESSAGE, 8, inbound_payload).expect("lxmf frame")]);
+        transport.enqueue_inbound([
+            PacketFrame::new(FRAME_KIND_LXMF_MESSAGE, 8, inbound_payload).expect("lxmf frame")
+        ]);
 
         runtime.tick(0, &mut transport, &mut store).expect("tick");
 

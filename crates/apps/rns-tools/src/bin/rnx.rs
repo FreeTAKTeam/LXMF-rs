@@ -1,15 +1,22 @@
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine as _;
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+use btleplug::api::{Central, CharPropFlags, Manager as _, Peripheral as _, ScanFilter, WriteType};
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+use btleplug::platform::{Manager, Peripheral};
 use clap::{Parser, ValueEnum};
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+use futures::StreamExt;
 use rns_embedded_core::{
-    lxmf_min::{MinimalEnvelope, decode_envelope, encode_envelope},
-    packet::{PacketFrame, decode_frame, encode_frame},
+    lxmf_min::{decode_envelope, encode_envelope, MinimalEnvelope},
+    packet::{decode_frame, encode_frame, PacketFrame},
     transport::EmbeddedTransport,
 };
 use rns_embedded_runtime::{
-    BLE_FRAME_NATIVE_WIRE, FRAME_KIND_ANNOUNCE, FRAME_KIND_CAPTURE_ATTACHMENT_CHUNK,
-    FRAME_KIND_CAPTURE_ATTACHMENT_DONE, FRAME_KIND_CAPTURE_COMMAND, FRAME_KIND_CAPTURE_RESULT,
-    FRAME_KIND_LXMF_MESSAGE, FRAME_KIND_TEST_PING, tcp::TcpEmbeddedTransport,
+    tcp::TcpEmbeddedTransport, BLE_FRAME_NATIVE_WIRE, FRAME_KIND_ANNOUNCE,
+    FRAME_KIND_CAPTURE_ATTACHMENT_CHUNK, FRAME_KIND_CAPTURE_ATTACHMENT_DONE,
+    FRAME_KIND_CAPTURE_COMMAND, FRAME_KIND_CAPTURE_RESULT, FRAME_KIND_LXMF_MESSAGE,
+    FRAME_KIND_TEST_PING,
 };
 use rns_rpc::e2e_harness::{
     build_daemon_args, build_http_post, build_rpc_frame, build_send_params,
@@ -17,6 +24,7 @@ use rns_rpc::e2e_harness::{
     timestamp_millis,
 };
 use rns_rpc::rpc::replay::{execute_trace, load_trace_file, save_capture_file};
+use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::fs;
 use std::io::{self, BufRead, BufReader, Read, Write};
@@ -25,13 +33,6 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command as ProcessCommand, Stdio};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
-use sha2::{Digest, Sha256};
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-use btleplug::api::{Central, CharPropFlags, Manager as _, Peripheral as _, ScanFilter, WriteType};
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-use btleplug::platform::{Manager, Peripheral};
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-use futures::StreamExt;
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 use uuid::Uuid;
 
@@ -340,15 +341,13 @@ fn run(cli: Cli) -> io::Result<()> {
             service_uuid,
             write_char_uuid,
             notify_char_uuid,
-        } => {
-            run_ble_find_camera(
-                scan_secs,
-                name_hint,
-                service_uuid,
-                write_char_uuid,
-                notify_char_uuid,
-            )
-        }
+        } => run_ble_find_camera(
+            scan_secs,
+            name_hint,
+            service_uuid,
+            write_char_uuid,
+            notify_char_uuid,
+        ),
         Command::BleNativePeer {
             scan_secs,
             name_hint,
@@ -491,9 +490,8 @@ fn run_camera_upload(
     if payload.is_empty() {
         return Err(io::Error::new(io::ErrorKind::InvalidInput, "input file is empty"));
     }
-    let attachment_name = name.or_else(|| {
-        file.file_name().and_then(|value| value.to_str()).map(ToOwned::to_owned)
-    });
+    let attachment_name =
+        name.or_else(|| file.file_name().and_then(|value| value.to_str()).map(ToOwned::to_owned));
     let attachment_name = attachment_name.unwrap_or_else(|| "camera-capture.bin".to_string());
 
     let attachment_id = upload_attachment_via_rpc(
@@ -553,15 +551,12 @@ fn upload_attachment_via_rpc(
         .unwrap_or(65_536);
 
     let effective_chunk_size = chunk_size.min(chunk_size_hint).max(1);
-    let mut next_offset = upload
-        .get("next_offset")
-        .and_then(|value| value.as_u64())
-        .unwrap_or(0);
+    let mut next_offset = upload.get("next_offset").and_then(|value| value.as_u64()).unwrap_or(0);
     req_id = req_id.wrapping_add(1);
 
     while usize::try_from(next_offset).ok().is_some_and(|offset| offset < payload.len()) {
-        let start = usize::try_from(next_offset)
-            .map_err(|_| io::Error::other("upload offset overflow"))?;
+        let start =
+            usize::try_from(next_offset).map_err(|_| io::Error::other("upload offset overflow"))?;
         let end = start.saturating_add(effective_chunk_size).min(payload.len());
         let bytes_base64 = BASE64_STANDARD.encode(&payload[start..end]);
         let chunk_response = rpc_call(
@@ -656,11 +651,7 @@ fn run_camera_capture_upload(
     let name = format!("capture-{}.jpg", timestamp_millis());
     let attachment_id =
         upload_attachment_via_rpc(rpc.as_str(), name, content_type, bytes.as_slice(), chunk_size)?;
-    println!(
-        "CAMERA_CAPTURE_UPLOAD ok: bytes={} attachment_id={}",
-        bytes.len(),
-        attachment_id
-    );
+    println!("CAMERA_CAPTURE_UPLOAD ok: bytes={} attachment_id={}", bytes.len(), attachment_id);
     Ok(())
 }
 
@@ -675,9 +666,7 @@ fn run_camera_capture_upload(
     _chunk_size: usize,
     _timeout_secs: u64,
 ) -> io::Result<()> {
-    Err(io::Error::other(
-        "camera-capture-upload is only supported on linux/macos/windows",
-    ))
+    Err(io::Error::other("camera-capture-upload is only supported on linux/macos/windows"))
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
@@ -704,29 +693,30 @@ fn capture_camera_over_ble(
         let service_uuid = parse_gatt_uuid(service_uuid)?;
         let write_uuid = parse_gatt_uuid(write_char_uuid)?;
         let notify_uuid = parse_gatt_uuid(notify_char_uuid)?;
-        let peripheral = match find_peripheral(&adapter, peripheral_id, Some(service_uuid), timeout).await {
-            Ok(peripheral) => peripheral,
-            Err(error) => {
-                #[cfg(target_os = "macos")]
-                {
-                    return Err(io::Error::other(format!(
+        let peripheral =
+            match find_peripheral(&adapter, peripheral_id, Some(service_uuid), timeout).await {
+                Ok(peripheral) => peripheral,
+                Err(error) => {
+                    #[cfg(target_os = "macos")]
+                    {
+                        return Err(io::Error::other(format!(
                         "{error}; on macOS use `rnx ble-find-camera` first and pass the returned id"
                     )));
+                    }
+                    #[cfg(not(target_os = "macos"))]
+                    {
+                        find_camera_peripheral_by_profile(
+                            &adapter,
+                            peripheral_id,
+                            service_uuid,
+                            write_uuid,
+                            notify_uuid,
+                            timeout,
+                        )
+                        .await?
+                    }
                 }
-                #[cfg(not(target_os = "macos"))]
-                {
-                    find_camera_peripheral_by_profile(
-                        &adapter,
-                        peripheral_id,
-                        service_uuid,
-                        write_uuid,
-                        notify_uuid,
-                        timeout,
-                    )
-                    .await?
-                }
-            }
-        };
+            };
         if !peripheral.is_connected().await.map_err(io::Error::other)? {
             peripheral.connect().await.map_err(io::Error::other)?;
         }
@@ -781,8 +771,12 @@ fn capture_camera_over_ble(
             let remaining = deadline.saturating_duration_since(Instant::now());
             let notification = tokio::time::timeout(remaining, notifications.next())
                 .await
-                .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "capture notification timeout"))?
-                .ok_or_else(|| io::Error::new(io::ErrorKind::UnexpectedEof, "notification stream closed"))?;
+                .map_err(|_| {
+                    io::Error::new(io::ErrorKind::TimedOut, "capture notification timeout")
+                })?
+                .ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::UnexpectedEof, "notification stream closed")
+                })?;
 
             if notification.uuid != notify_uuid || notification.value.is_empty() {
                 continue;
@@ -821,20 +815,29 @@ fn capture_camera_over_ble(
                         ack.push(FRAME_CHUNK_ACK);
                         ack.extend_from_slice(&fid.to_le_bytes());
                         ack.extend_from_slice(&seq.to_le_bytes());
-                        peripheral.write(&write_char, &ack, write_type).await.map_err(io::Error::other)?;
+                        peripheral
+                            .write(&write_char, &ack, write_type)
+                            .await
+                            .map_err(io::Error::other)?;
                         expected_seq = expected_seq.saturating_add(1);
                     } else if seq < expected_seq {
                         let mut ack = Vec::with_capacity(7);
                         ack.push(FRAME_CHUNK_ACK);
                         ack.extend_from_slice(&fid.to_le_bytes());
                         ack.extend_from_slice(&seq.to_le_bytes());
-                        peripheral.write(&write_char, &ack, write_type).await.map_err(io::Error::other)?;
+                        peripheral
+                            .write(&write_char, &ack, write_type)
+                            .await
+                            .map_err(io::Error::other)?;
                     } else {
                         let mut nack = Vec::with_capacity(7);
                         nack.push(FRAME_NACK);
                         nack.extend_from_slice(&fid.to_le_bytes());
                         nack.extend_from_slice(&expected_seq.to_le_bytes());
-                        peripheral.write(&write_char, &nack, write_type).await.map_err(io::Error::other)?;
+                        peripheral
+                            .write(&write_char, &nack, write_type)
+                            .await
+                            .map_err(io::Error::other)?;
                     }
                 }
                 _ => {}
@@ -859,9 +862,7 @@ fn run_ble_scan(
         Some(value) => Some(parse_gatt_uuid(value.as_str())?),
         None => None,
     };
-    let manufacturer_filter = manufacturer_prefix
-        .as_deref()
-        .map(normalize_identifier);
+    let manufacturer_filter = manufacturer_prefix.as_deref().map(normalize_identifier);
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -953,7 +954,8 @@ fn run_ble_find_camera(
 
         while Instant::now() < deadline {
             let peripherals = adapter.peripherals().await.map_err(io::Error::other)?;
-            let mut candidates: Vec<(u8, i16, Peripheral, String)> = Vec::with_capacity(peripherals.len());
+            let mut candidates: Vec<(u8, i16, Peripheral, String)> =
+                Vec::with_capacity(peripherals.len());
             for peripheral in peripherals {
                 let mut rank = 3_u8;
                 let mut rssi = -127_i16;
@@ -994,9 +996,8 @@ fn run_ble_find_camera(
                     continue;
                 }
                 let chars = peripheral.characteristics();
-                let has_write = chars
-                    .iter()
-                    .any(|ch| ch.uuid == write_uuid && ch.service_uuid == service_uuid);
+                let has_write =
+                    chars.iter().any(|ch| ch.uuid == write_uuid && ch.service_uuid == service_uuid);
                 let has_notify = chars
                     .iter()
                     .any(|ch| ch.uuid == notify_uuid && ch.service_uuid == service_uuid);
@@ -1201,9 +1202,7 @@ fn run_ble_native_peer(
     _source_hex: String,
     _timeout_secs: u64,
 ) -> io::Result<()> {
-    Err(io::Error::other(
-        "ble-native-peer is only supported on linux/macos/windows",
-    ))
+    Err(io::Error::other("ble-native-peer is only supported on linux/macos/windows"))
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
@@ -1384,10 +1383,11 @@ fn run_tcp_native_peer(
         }
     };
 
-    let socket_addr = addr
-        .parse()
-        .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, format!("invalid addr: {err}")))?;
-    let mut transport = TcpEmbeddedTransport::connect(socket_addr, u16::MAX).map_err(embedded_to_io)?;
+    let socket_addr = addr.parse().map_err(|err| {
+        io::Error::new(io::ErrorKind::InvalidInput, format!("invalid addr: {err}"))
+    })?;
+    let mut transport =
+        TcpEmbeddedTransport::connect(socket_addr, u16::MAX).map_err(embedded_to_io)?;
     let frame = decode_frame(runtime_frame.as_slice()).map_err(embedded_to_io)?;
     transport.send_frame(&frame).map_err(embedded_to_io)?;
 
@@ -1436,10 +1436,7 @@ fn run_tcp_native_peer(
         }
     }
 
-    println!(
-        "TCP_NATIVE_PEER ok: addr={} responses={} mode={:?}",
-        addr, responses, mode
-    );
+    println!("TCP_NATIVE_PEER ok: addr={} responses={} mode={:?}", addr, responses, mode);
     Ok(())
 }
 
@@ -1520,8 +1517,8 @@ fn handle_tcp_native_session(
                     let chunk_bytes = u16::from_le_bytes([frame.payload[5], frame.payload[6]]);
                     let width = u16::from_le_bytes([frame.payload[7], frame.payload[8]]);
                     let height = u16::from_le_bytes([frame.payload[9], frame.payload[10]]);
-                    let effective_profile =
-                        (frame.payload.len() >= 12).then(|| capture_profile_name_from_wire(frame.payload[11]));
+                    let effective_profile = (frame.payload.len() >= 12)
+                        .then(|| capture_profile_name_from_wire(frame.payload[11]));
                     capture_total_bytes = Some(total_bytes);
                     capture_started = true;
                     if let Some(effective_profile) = effective_profile {
@@ -1556,7 +1553,8 @@ fn handle_tcp_native_session(
                     }
                     let seq = u16::from_le_bytes([frame.payload[0], frame.payload[1]]);
                     let total_chunks = u16::from_le_bytes([frame.payload[2], frame.payload[3]]);
-                    let payload_len = u16::from_le_bytes([frame.payload[4], frame.payload[5]]) as usize;
+                    let payload_len =
+                        u16::from_le_bytes([frame.payload[4], frame.payload[5]]) as usize;
                     if frame.payload.len() != 6 + payload_len {
                         return Err(io::Error::new(
                             io::ErrorKind::InvalidData,
@@ -1619,9 +1617,9 @@ fn handle_tcp_native_session(
                             ),
                         ));
                     }
-                    let path = capture_out
-                        .clone()
-                        .unwrap_or_else(|| PathBuf::from(format!("capture-{}.jpg", timestamp_millis())));
+                    let path = capture_out.clone().unwrap_or_else(|| {
+                        PathBuf::from(format!("capture-{}.jpg", timestamp_millis()))
+                    });
                     std::fs::write(&path, &capture_bytes)?;
                     println!(
                         "{label} capture saved path={} bytes={}",
@@ -1676,7 +1674,8 @@ fn run_tcp_native_listener(
         Some(match mode {
             NativeListenerMode::Passive => unreachable!(),
             NativeListenerMode::RawPing => {
-                PacketFrame::new(FRAME_KIND_TEST_PING, runtime_seq, payload_bytes).map_err(embedded_to_io)?
+                PacketFrame::new(FRAME_KIND_TEST_PING, runtime_seq, payload_bytes)
+                    .map_err(embedded_to_io)?
             }
             NativeListenerMode::LxmfPing => {
                 let source = parse_hex_16(source_hex.as_str())?;
@@ -1694,14 +1693,12 @@ fn run_tcp_native_listener(
                 )
                 .map_err(embedded_to_io)?
             }
-            NativeListenerMode::Capture => {
-                PacketFrame::new(
-                    FRAME_KIND_CAPTURE_COMMAND,
-                    runtime_seq,
-                    build_capture_command_payload(runtime_seq, capture_profile),
-                )
-                .map_err(embedded_to_io)?
-            }
+            NativeListenerMode::Capture => PacketFrame::new(
+                FRAME_KIND_CAPTURE_COMMAND,
+                runtime_seq,
+                build_capture_command_payload(runtime_seq, capture_profile),
+            )
+            .map_err(embedded_to_io)?,
         })
     } else {
         None
@@ -1774,7 +1771,7 @@ fn run_tcp_native_bridge(
                 runtime_seq,
                 build_capture_command_payload(runtime_seq, capture_profile),
             )
-                .map_err(embedded_to_io)?,
+            .map_err(embedded_to_io)?,
         ),
     };
 
@@ -1798,7 +1795,10 @@ fn run_tcp_native_bridge(
         let attachment_id = match mode {
             TcpBridgeMode::LxmfPing => {
                 let body = outcome.lxmf_reply_body.ok_or_else(|| {
-                    io::Error::new(io::ErrorKind::TimedOut, "tcp bridge did not receive LXMF reply body")
+                    io::Error::new(
+                        io::ErrorKind::TimedOut,
+                        "tcp bridge did not receive LXMF reply body",
+                    )
                 })?;
                 upload_attachment_via_rpc(
                     rpc.as_str(),
@@ -1810,7 +1810,10 @@ fn run_tcp_native_bridge(
             }
             TcpBridgeMode::Capture => {
                 let bytes = outcome.capture_bytes.ok_or_else(|| {
-                    io::Error::new(io::ErrorKind::TimedOut, "tcp bridge did not receive capture bytes")
+                    io::Error::new(
+                        io::ErrorKind::TimedOut,
+                        "tcp bridge did not receive capture bytes",
+                    )
                 })?;
                 let attachment = upload_attachment_via_rpc(
                     rpc.as_str(),
@@ -1849,9 +1852,7 @@ fn run_ble_native_bridge(
     _timeout_secs: u64,
     _content_type: String,
 ) -> io::Result<()> {
-    Err(io::Error::other(
-        "ble-native-bridge is only supported on linux/macos/windows",
-    ))
+    Err(io::Error::other("ble-native-bridge is only supported on linux/macos/windows"))
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
@@ -1862,9 +1863,7 @@ fn run_ble_find_camera(
     _write_char_uuid: String,
     _notify_char_uuid: String,
 ) -> io::Result<()> {
-    Err(io::Error::other(
-        "ble-find-camera is only supported on linux/macos/windows",
-    ))
+    Err(io::Error::other("ble-find-camera is only supported on linux/macos/windows"))
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
@@ -1882,11 +1881,7 @@ fn format_manufacturer_data(data: &std::collections::HashMap<u16, Vec<u8>>) -> S
     let mut entries: Vec<String> = data
         .iter()
         .map(|(company, payload)| {
-            format!(
-                "{company:#06x}:{}:{}",
-                hex_lower(payload),
-                ascii_safe(payload)
-            )
+            format!("{company:#06x}:{}:{}", hex_lower(payload), ascii_safe(payload))
         })
         .collect();
     entries.sort_unstable();
@@ -1907,13 +1902,7 @@ fn hex_lower(bytes: &[u8]) -> String {
 fn ascii_safe(bytes: &[u8]) -> String {
     bytes
         .iter()
-        .map(|byte| {
-            if byte.is_ascii_graphic() || *byte == b' ' {
-                *byte as char
-            } else {
-                '.'
-            }
-        })
+        .map(|byte| if byte.is_ascii_graphic() || *byte == b' ' { *byte as char } else { '.' })
         .collect()
 }
 
@@ -1988,22 +1977,17 @@ async fn find_camera_peripheral_by_profile(
                 continue;
             }
             let chars = peripheral.characteristics();
-            let has_write = chars
-                .iter()
-                .any(|ch| ch.uuid == write_uuid && ch.service_uuid == service_uuid);
-            let has_notify = chars
-                .iter()
-                .any(|ch| ch.uuid == notify_uuid && ch.service_uuid == service_uuid);
+            let has_write =
+                chars.iter().any(|ch| ch.uuid == write_uuid && ch.service_uuid == service_uuid);
+            let has_notify =
+                chars.iter().any(|ch| ch.uuid == notify_uuid && ch.service_uuid == service_uuid);
             if has_write && has_notify {
                 return Ok(peripheral);
             }
             let _ = peripheral.disconnect().await;
         }
         if Instant::now() >= deadline {
-            return Err(io::Error::new(
-                io::ErrorKind::TimedOut,
-                "BLE peripheral not found",
-            ));
+            return Err(io::Error::new(io::ErrorKind::TimedOut, "BLE peripheral not found"));
         }
         tokio::time::sleep(Duration::from_millis(250)).await;
     }
@@ -2041,9 +2025,7 @@ async fn peripheral_matches(
 fn identifiers_match(configured: &str, discovered: &str) -> bool {
     let configured = normalize_identifier(configured);
     let discovered = normalize_identifier(discovered);
-    configured == discovered
-        || discovered.contains(&configured)
-        || configured.contains(&discovered)
+    configured == discovered || discovered.contains(&configured) || configured.contains(&discovered)
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]

@@ -50,8 +50,8 @@ pub fn verify_payload(
 
 #[cfg(test)]
 mod tests {
-    use super::{PayloadSigner, PayloadVerifier, Signature, sign_payload, verify_payload};
-    use crate::{EmbeddedError, EmbeddedResult, hash::digest32};
+    use super::{sign_payload, verify_payload, PayloadSigner, PayloadVerifier, Signature};
+    use crate::{hash::digest32, EmbeddedError, EmbeddedResult};
 
     struct FakeCrypto;
 

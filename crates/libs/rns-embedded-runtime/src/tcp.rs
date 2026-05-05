@@ -1,7 +1,7 @@
 use rns_embedded_core::{
-    EmbeddedError, EmbeddedResult,
-    packet::{PacketFrame, decode_frame, encode_frame},
+    packet::{decode_frame, encode_frame, PacketFrame},
     transport::{EmbeddedTransport, LinkState, TransportCaps},
+    EmbeddedError, EmbeddedResult,
 };
 use std::io::{ErrorKind, Read, Write};
 use std::net::{SocketAddr, TcpStream};
@@ -22,16 +22,11 @@ impl TcpEmbeddedTransport {
     }
 
     pub fn from_stream(stream: TcpStream, mtu_hint: u16) -> EmbeddedResult<Self> {
-        stream
-            .set_nonblocking(true)
-            .map_err(|_| EmbeddedError::InvalidState)?;
+        stream.set_nonblocking(true).map_err(|_| EmbeddedError::InvalidState)?;
         Ok(Self {
             stream,
             state: LinkState::Up,
-            caps: TransportCaps {
-                mtu_hint,
-                ordered_delivery: true,
-            },
+            caps: TransportCaps { mtu_hint, ordered_delivery: true },
             recv_buf: Vec::new(),
         })
     }
@@ -99,12 +94,8 @@ impl EmbeddedTransport for TcpEmbeddedTransport {
         let encoded_len =
             u16::try_from(encoded.len()).map_err(|_| EmbeddedError::InvalidArgument)?;
         let header = encoded_len.to_be_bytes();
-        self.stream
-            .write_all(&header)
-            .map_err(|_| EmbeddedError::Disconnected)?;
-        self.stream
-            .write_all(&encoded)
-            .map_err(|_| EmbeddedError::Disconnected)?;
+        self.stream.write_all(&header).map_err(|_| EmbeddedError::Disconnected)?;
+        self.stream.write_all(&encoded).map_err(|_| EmbeddedError::Disconnected)?;
         self.stream.flush().map_err(|_| EmbeddedError::Disconnected)?;
         Ok(())
     }
@@ -121,7 +112,8 @@ impl EmbeddedTransport for TcpEmbeddedTransport {
             return Ok(None);
         }
 
-        let packet_bytes: Vec<u8> = self.recv_buf.drain(..frame_len).skip(LENGTH_PREFIX_LEN).collect();
+        let packet_bytes: Vec<u8> =
+            self.recv_buf.drain(..frame_len).skip(LENGTH_PREFIX_LEN).collect();
         let frame = decode_frame(&packet_bytes)?;
         Ok(Some(frame))
     }
@@ -169,10 +161,7 @@ mod tests {
         (client, server)
     }
 
-    fn poll_until_frame(
-        transport: &mut TcpEmbeddedTransport,
-        timeout: Duration,
-    ) -> PacketFrame {
+    fn poll_until_frame(transport: &mut TcpEmbeddedTransport, timeout: Duration) -> PacketFrame {
         let deadline = Instant::now() + timeout;
         loop {
             match transport.poll_frame() {

@@ -47,7 +47,8 @@ const EMBEDDED_NATIVE_INTEROP_PROFILE_PATH: &str =
 const EMBEDDED_NATIVE_LAB_PROFILE_PATH: &str = "docs/contracts/native-embedded-lab-profile-v1.md";
 const EMBEDDED_NATIVE_NODE_CONFIG_PATH: &str = "docs/contracts/native-embedded-node-config-v1.md";
 const BLE_CAMERA_WIRE_CONTRACT_PATH: &str = "docs/contracts/ble-camera-wire-v1.md";
-const BLE_TRANSPORT_RUNTIME_CONTRACT_PATH: &str = "docs/contracts/ble-transport-runtime-contract.md";
+const BLE_TRANSPORT_RUNTIME_CONTRACT_PATH: &str =
+    "docs/contracts/ble-transport-runtime-contract.md";
 const EMBEDDED_NATIVE_WORKFLOW_PATH: &str = ".github/workflows/nightly-embedded-hil.yml";
 const BACKUP_RESTORE_DRILL_SCRIPT_PATH: &str = "tools/scripts/backup-restore-drill.sh";
 const REFERENCE_INTEGRATIONS_SMOKE_SCRIPT_PATH: &str =
@@ -130,10 +131,7 @@ const EMBEDDED_NATIVE_REQUIRED_CI_JOBS: &[&str] = &[
 const EMBEDDED_NATIVE_REQUIRED_JOB_COMMAND_MARKERS: &[(&str, &str)] = &[
     ("embedded-node-build", "cargo xtask ci --stage embedded-node-build"),
     ("embedded-node-contract", "cargo xtask ci --stage embedded-node-contract"),
-    (
-        "embedded-node-failure-matrix",
-        "cargo xtask ci --stage embedded-node-failure-matrix",
-    ),
+    ("embedded-node-failure-matrix", "cargo xtask ci --stage embedded-node-failure-matrix"),
     ("embedded-node-hil", "cargo xtask ci --stage embedded-node-hil"),
 ];
 const LEADER_READINESS_REPORT_PATH: &str = "target/release-readiness/leader-grade-readiness.md";
@@ -3142,8 +3140,8 @@ fn run_embedded_native_lock_check() -> Result<()> {
         }
     }
 
-    let workflow = fs::read_to_string(CI_WORKFLOW_PATH)
-        .with_context(|| format!("read {CI_WORKFLOW_PATH}"))?;
+    let workflow =
+        fs::read_to_string(CI_WORKFLOW_PATH).with_context(|| format!("read {CI_WORKFLOW_PATH}"))?;
     for job in EMBEDDED_NATIVE_REQUIRED_CI_JOBS {
         if !workflow.contains(&format!("{job}:")) {
             bail!("CI workflow missing embedded native required job '{job}' in {CI_WORKFLOW_PATH}");
@@ -3187,32 +3185,15 @@ fn run_embedded_link_check() -> Result<()> {
 fn run_embedded_core_check() -> Result<()> {
     run(
         "cargo",
-        &[
-            "check",
-            "-p",
-            "rns-embedded-core",
-            "--no-default-features",
-            "--features",
-            "alloc",
-        ],
+        &["check", "-p", "rns-embedded-core", "--no-default-features", "--features", "alloc"],
     )?;
     run("cargo", &["check", "-p", "rns-embedded-core", "--features", "std"])?;
     run("cargo", &["check", "-p", "rns-embedded-ffi", "--features", "std"])?;
     run(
         "cargo",
-        &[
-            "check",
-            "-p",
-            "rns-embedded-runtime",
-            "--no-default-features",
-            "--features",
-            "alloc",
-        ],
+        &["check", "-p", "rns-embedded-runtime", "--no-default-features", "--features", "alloc"],
     )?;
-    run(
-        "cargo",
-        &["check", "-p", "rns-embedded-runtime", "--features", "std"],
-    )?;
+    run("cargo", &["check", "-p", "rns-embedded-runtime", "--features", "std"])?;
     run("cargo", &["check", "-p", "lxmf-core", "--no-default-features", "--features", "alloc"])?;
     run("cargo", &["check", "-p", "rns-core", "--no-default-features", "--features", "alloc"])?;
     run("cargo", &["test", "-p", "rns-embedded-core"])?;
@@ -3293,14 +3274,7 @@ fn run_embedded_hil_check() -> Result<()> {
 fn run_embedded_node_build() -> Result<()> {
     run(
         "cargo",
-        &[
-            "check",
-            "-p",
-            "rns-embedded-core",
-            "--no-default-features",
-            "--features",
-            "alloc",
-        ],
+        &["check", "-p", "rns-embedded-core", "--no-default-features", "--features", "alloc"],
     )?;
     run("cargo", &["check", "-p", "rns-embedded-core", "--features", "std"])?;
     run("cargo", &["check", "-p", "rns-tools", "--bin", "rnx"])?;
@@ -3332,8 +3306,8 @@ fn run_embedded_node_contract() -> Result<()> {
 fn run_embedded_node_failure_matrix() -> Result<()> {
     let failure_matrix = fs::read_to_string("docs/contracts/failure-injection-matrix.md")
         .context("missing docs/contracts/failure-injection-matrix.md")?;
-    let sdk_errors =
-        fs::read_to_string("docs/contracts/sdk-v2-errors.md").context("missing docs/contracts/sdk-v2-errors.md")?;
+    let sdk_errors = fs::read_to_string("docs/contracts/sdk-v2-errors.md")
+        .context("missing docs/contracts/sdk-v2-errors.md")?;
 
     let required_codes = [
         "SDK_RUNTIME_INVALID_CURSOR",
@@ -3367,11 +3341,7 @@ fn run_embedded_node_hil() -> Result<()> {
 
     let report = fs::read_to_string(EMBEDDED_NATIVE_INTEROP_REPORT_PATH)
         .with_context(|| format!("missing {EMBEDDED_NATIVE_INTEROP_REPORT_PATH}"))?;
-    for marker in [
-        "\"status\":\"pass\"",
-        "\"announce_ok\":true",
-        "\"tiny_message_ok\":true",
-    ] {
+    for marker in ["\"status\":\"pass\"", "\"announce_ok\":true", "\"tiny_message_ok\":true"] {
         if !report.contains(marker) {
             bail!(
                 "embedded native interop report missing marker '{marker}' in {EMBEDDED_NATIVE_INTEROP_REPORT_PATH}"

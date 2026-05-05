@@ -1,11 +1,11 @@
 #![allow(clippy::result_large_err)]
 
 mod api;
+pub mod app;
 mod backend;
 pub mod capability;
 mod client;
 pub mod domain;
-pub mod app;
 mod error;
 pub mod event;
 mod lifecycle;
@@ -16,9 +16,8 @@ pub mod types;
 pub use api::{LxmfSdk, LxmfSdkAsync, LxmfSdkManualTick};
 // Stability class: experimental (capability-gated extension traits)
 pub use api::{
-    LxmfSdkAttachments, LxmfSdkGroupDelivery, LxmfSdkIdentity, LxmfSdkMarkers, LxmfSdkPaper,
-    LxmfSdkOperations, LxmfSdkRemoteCommands, LxmfSdkTelemetry, LxmfSdkTopics,
-    LxmfSdkVoiceSignaling,
+    LxmfSdkAttachments, LxmfSdkGroupDelivery, LxmfSdkIdentity, LxmfSdkMarkers, LxmfSdkOperations,
+    LxmfSdkPaper, LxmfSdkRemoteCommands, LxmfSdkTelemetry, LxmfSdkTopics, LxmfSdkVoiceSignaling,
 };
 // Stability class: internal (backend composition surface)
 pub use backend::mobile_ble::{

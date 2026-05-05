@@ -65,7 +65,7 @@ pub fn decode_frame(bytes: &[u8]) -> EmbeddedResult<PacketFrame> {
 
 #[cfg(test)]
 mod tests {
-    use super::{PacketFrame, decode_frame, encode_frame};
+    use super::{decode_frame, encode_frame, PacketFrame};
     use serde::Deserialize;
 
     #[derive(Debug, Deserialize)]
@@ -94,7 +94,11 @@ mod tests {
 
             let decoded = decode_frame(&expected).expect("decode");
             assert_eq!(decoded.kind, fixture.kind, "fixture {} kind mismatch", fixture.id);
-            assert_eq!(decoded.sequence, fixture.sequence, "fixture {} sequence mismatch", fixture.id);
+            assert_eq!(
+                decoded.sequence, fixture.sequence,
+                "fixture {} sequence mismatch",
+                fixture.id
+            );
             assert_eq!(decoded.payload, payload, "fixture {} payload mismatch", fixture.id);
         }
     }

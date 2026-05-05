@@ -344,10 +344,8 @@ mod tests {
             base_event("announce_received", json!({ "peer": "peer-a" })),
             "desktop_default",
         );
-        let peer_sync = map_sdk_event(
-            base_event("peer_sync", json!({ "peer": "peer-a" })),
-            "desktop_default",
-        );
+        let peer_sync =
+            map_sdk_event(base_event("peer_sync", json!({ "peer": "peer-a" })), "desktop_default");
         let contact_update = map_sdk_event(
             base_event("contact_updated", json!({ "identity": "peer-a" })),
             "desktop_default",
