@@ -1,4 +1,3 @@
-use super::CachedPropagationLink;
 use lxmf::WireMessage;
 use rand_core::OsRng;
 use reticulum_daemon::lxmf_stamps::generate_propagation_stamp;
@@ -13,6 +12,12 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub(super) const PROPAGATION_INVALID_STAMP_SIGNAL: u8 = 0xF5;
 pub(super) const DEFAULT_PROPAGATION_STAMP_COST: u32 = 13;
+
+#[derive(Clone)]
+pub(super) struct CachedPropagationLink {
+    pub(super) node_hex: String,
+    pub(super) link: Arc<tokio::sync::Mutex<Link>>,
+}
 
 pub(super) fn build_propagation_payload(
     payload: &[u8],

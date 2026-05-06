@@ -50,12 +50,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 pub(crate) use delivery_method::{validate_delivery_request, RequestedDeliveryMethod};
 use delivery_task::{DeliveryTask, LinkModeStatuses};
 use identity_resolver::resolve_destination_identity_blocking;
-
-#[derive(Clone)]
-struct CachedPropagationLink {
-    node_hex: String,
-    link: Arc<tokio::sync::Mutex<Link>>,
-}
+use propagation::CachedPropagationLink;
 
 pub(super) struct TransportBridge {
     daemon: Arc<Mutex<Option<Arc<RpcDaemon>>>>,
