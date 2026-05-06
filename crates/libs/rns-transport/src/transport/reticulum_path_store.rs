@@ -1,8 +1,8 @@
 use super::*;
-use rmpv::Value as RmpValue;
+use crate::transport::reticulum_announce_cache::{CachedAnnounce, ReticulumAnnounceCache};
 use std::collections::{HashMap, HashSet};
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 impl Transport {
@@ -52,23 +52,17 @@ impl Transport {
             (kept_entries, tunnel_entries, packets)
         };
 
-        let mut cached_announces = Vec::new();
-        for (packet_hash, iface, packet) in packets {
-            cached_announces.push((packet_hash, encode_cached_announce(iface, packet)?));
-        }
-
         let payload = PathTable::encode_python_entries(&entries)
             .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "encode path table"))?;
         let tunnel_payload = TunnelTable::encode_python_entries(&tunnel_entries)
             .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "encode tunnel table"))?;
 
         tokio::fs::create_dir_all(&storage_path).await?;
-        let announce_cache_dir = storage_path.join("cache").join("announces");
-        tokio::fs::create_dir_all(&announce_cache_dir).await?;
+        let announce_cache = ReticulumAnnounceCache::new(&storage_path);
+        announce_cache.ensure_dir().await?;
 
-        for (packet_hash, payload) in cached_announces {
-            tokio::fs::write(cached_announce_path(&announce_cache_dir, packet_hash), payload)
-                .await?;
+        for (packet_hash, iface, packet) in packets {
+            announce_cache.write(packet_hash, iface, packet).await?;
         }
 
         tokio::fs::write(storage_path.join("destination_table"), payload).await?;
@@ -82,7 +76,7 @@ impl Transport {
     ) -> io::Result<usize> {
         let storage_path = storage_path.as_ref().to_path_buf();
         let path = storage_path.join("destination_table");
-        let announce_cache_dir = storage_path.join("cache").join("announces");
+        let announce_cache = ReticulumAnnounceCache::new(&storage_path);
         let now = std::time::Instant::now();
         let now_unix_secs = now_unix_secs();
 
@@ -107,9 +101,7 @@ impl Transport {
 
         let mut path_candidates = Vec::new();
         for entry in mapped_entries {
-            if let Some(cached) =
-                restore_cached_announce(&announce_cache_dir, entry.packet_hash).await?
-            {
+            if let Some(cached) = announce_cache.restore(entry.packet_hash).await? {
                 path_candidates.push(PathRestoreCandidate { entry, cached });
             }
         }
@@ -128,9 +120,7 @@ impl Transport {
                 if tunnel_announces.contains_key(&path.packet_hash) {
                     continue;
                 }
-                if let Some(cached) =
-                    restore_cached_announce(&announce_cache_dir, path.packet_hash).await?
-                {
+                if let Some(cached) = announce_cache.restore(path.packet_hash).await? {
                     tunnel_announces.insert(path.packet_hash, cached);
                 }
             }
@@ -186,11 +176,6 @@ struct PathRestoreCandidate {
     cached: CachedAnnounce,
 }
 
-struct CachedAnnounce {
-    packet: Packet,
-    destination: SingleOutputDestination,
-}
-
 fn cached_announce_compatible(
     handler: &TransportHandler,
     packet: &Packet,
@@ -207,69 +192,6 @@ fn cached_announce_compatible(
         }
     }
     true
-}
-
-async fn restore_cached_announce(
-    announce_cache_dir: &Path,
-    packet_hash: Hash,
-) -> io::Result<Option<CachedAnnounce>> {
-    let Some(packet) = read_cached_announce(announce_cache_dir, packet_hash).await? else {
-        return Ok(None);
-    };
-    if packet.header.packet_type != PacketType::Announce {
-        return Ok(None);
-    }
-    let Ok(announce) = DestinationAnnounce::validate(&packet) else {
-        return Ok(None);
-    };
-    Ok(Some(CachedAnnounce { packet, destination: announce.destination }))
-}
-
-fn encode_cached_announce(iface: AddressHash, packet: Packet) -> io::Result<Vec<u8>> {
-    let raw = packet
-        .to_bytes()
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "encode cached announce"))?;
-    let value =
-        RmpValue::Array(vec![RmpValue::Binary(raw), RmpValue::String(iface.to_string().into())]);
-    let mut payload = Vec::new();
-    rmpv::encode::write_value(&mut payload, &value)
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "encode cached announce"))?;
-    Ok(payload)
-}
-
-async fn read_cached_announce(
-    announce_cache_dir: &Path,
-    packet_hash: Hash,
-) -> io::Result<Option<Packet>> {
-    let path = cached_announce_path(announce_cache_dir, packet_hash);
-    let payload = match tokio::fs::read(path).await {
-        Ok(payload) => payload,
-        Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
-        Err(err) => return Err(err),
-    };
-    let value: RmpValue = rmpv::decode::read_value(&mut std::io::Cursor::new(payload))
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "decode cached announce"))?;
-    let RmpValue::Array(fields) = value else {
-        return Ok(None);
-    };
-    let Some(raw) = fields.first().and_then(rmp_bytes) else {
-        return Ok(None);
-    };
-    Packet::from_bytes(raw)
-        .map(Some)
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "decode cached announce packet"))
-}
-
-fn rmp_bytes(value: &RmpValue) -> Option<&[u8]> {
-    match value {
-        RmpValue::Binary(bytes) => Some(bytes),
-        RmpValue::String(text) => text.as_str().map(str::as_bytes),
-        _ => None,
-    }
-}
-
-fn cached_announce_path(announce_cache_dir: &Path, packet_hash: Hash) -> PathBuf {
-    announce_cache_dir.join(hex::encode(packet_hash.as_slice()))
 }
 
 fn now_unix_secs() -> f64 {
