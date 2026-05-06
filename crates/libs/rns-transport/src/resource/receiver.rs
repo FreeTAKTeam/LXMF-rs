@@ -254,7 +254,7 @@ impl ResourceReceiver {
     }
 
     fn is_active(&self) -> bool {
-        !matches!(self.status, ResourceStatus::Complete | ResourceStatus::Failed)
+        !self.status.is_terminal()
     }
 
     fn mark_request(&mut self) {
@@ -263,7 +263,7 @@ impl ResourceReceiver {
     }
 
     fn retry_due(&self, now: Instant, retry_interval: Duration, max_retries: u8) -> bool {
-        if self.status == ResourceStatus::Complete || self.status == ResourceStatus::Failed {
+        if self.status.is_terminal() {
             return false;
         }
         if self.retry_count >= max_retries {

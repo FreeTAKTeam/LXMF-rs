@@ -25,6 +25,31 @@ mod tests {
     }
 
     #[test]
+    fn resource_status_predicates_make_transfer_fsm_edges_explicit() {
+        for status in [
+            ResourceStatus::None,
+            ResourceStatus::Advertised,
+            ResourceStatus::Transferring,
+            ResourceStatus::AwaitingProof,
+        ] {
+            assert!(!status.is_terminal());
+        }
+        for status in [ResourceStatus::Complete, ResourceStatus::Failed] {
+            assert!(status.is_terminal());
+        }
+        for status in [
+            ResourceStatus::Advertised,
+            ResourceStatus::Transferring,
+            ResourceStatus::AwaitingProof,
+        ] {
+            assert!(status.accepts_transfer_activity());
+        }
+        for status in [ResourceStatus::None, ResourceStatus::Complete, ResourceStatus::Failed] {
+            assert!(!status.accepts_transfer_activity());
+        }
+    }
+
+    #[test]
     fn resource_sender_marks_request_and_response_advertisements() {
         let signer = PrivateIdentity::new_from_rand(OsRng);
         let identity = *signer.as_identity();

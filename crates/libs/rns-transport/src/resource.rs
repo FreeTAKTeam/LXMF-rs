@@ -50,6 +50,16 @@ pub enum ResourceStatus {
     Failed,
 }
 
+impl ResourceStatus {
+    pub fn is_terminal(self) -> bool {
+        matches!(self, Self::Complete | Self::Failed)
+    }
+
+    fn accepts_transfer_activity(self) -> bool {
+        matches!(self, Self::Advertised | Self::Transferring | Self::AwaitingProof)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResourceAdvertisement {
     pub transfer_size: u64,
