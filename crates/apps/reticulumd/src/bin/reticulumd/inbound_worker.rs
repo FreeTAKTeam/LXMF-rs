@@ -26,7 +26,6 @@ use serde_json::{json, Map, Value};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::time::SystemTime;
 
 pub(super) const OUTBOUND_RESOURCE_SENT_STATUS: &str = "sent: link resource";
 
