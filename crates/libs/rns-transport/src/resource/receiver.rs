@@ -12,6 +12,9 @@ struct ResourceReceiver {
     compressed: bool,
     split: bool,
     has_metadata: bool,
+    request_id: Option<Vec<u8>>,
+    is_request: bool,
+    is_response: bool,
     last_progress: Instant,
     last_request: Instant,
     retry_count: u8,
@@ -22,6 +25,9 @@ struct ResourceReceiver {
 struct ResourcePayload {
     data: Vec<u8>,
     metadata: Option<Vec<u8>>,
+    request_id: Option<Vec<u8>>,
+    is_request: bool,
+    is_response: bool,
 }
 
 #[allow(clippy::large_enum_variant)]
@@ -53,6 +59,9 @@ impl ResourceReceiver {
             compressed: adv.compressed(),
             split: (adv.flags & FLAG_SPLIT) == FLAG_SPLIT,
             has_metadata: (adv.flags & FLAG_METADATA) == FLAG_METADATA,
+            request_id: adv.request_id.as_ref().map(|request_id| request_id.to_vec()),
+            is_request: adv.is_request(),
+            is_response: adv.is_response(),
             last_progress: now,
             last_request: now,
             retry_count: 0,
@@ -227,7 +236,13 @@ impl ResourceReceiver {
                 };
                 return PartOutcome::Complete(
                     packet,
-                    ResourcePayload { data: data_payload, metadata },
+                    ResourcePayload {
+                        data: data_payload,
+                        metadata,
+                        request_id: self.request_id.clone(),
+                        is_request: self.is_request,
+                        is_response: self.is_response,
+                    },
                 );
             } else {
                 self.status = ResourceStatus::Failed;

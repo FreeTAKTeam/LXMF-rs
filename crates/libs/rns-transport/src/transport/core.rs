@@ -49,6 +49,7 @@ impl Transport {
         );
 
         let path_request_dest = create_path_request_destination().desc.address_hash;
+        let tunnel_synthesize_dest = create_tunnel_synthesize_destination().desc.address_hash;
 
         let cancel = CancellationToken::new();
         let name = config.name.clone();
@@ -80,6 +81,8 @@ impl Transport {
             resource_response_packets: Vec::new(),
             resource_events_tx: resource_events_tx.clone(),
             fixed_dest_path_requests: path_request_dest,
+            fixed_dest_tunnel_synthesize: tunnel_synthesize_dest,
+            tunnel_table: TunnelTable::new(),
             unicast_udp_ifaces: HashMap::new(),
             multicast_peer_routings: HashMap::new(),
             cancel: cancel.clone(),
@@ -306,5 +309,19 @@ impl Transport {
             .await
             .send(TxMessage { tx_type: TxMessageType::Direct(addr), packet })
             .await;
+    }
+
+    pub async fn synthesize_tunnel_on_interface(&self, iface: AddressHash) -> bool {
+        let packet = {
+            let handler = self.handler.lock().await;
+            let iface_manager = handler.iface_manager.lock().await;
+            let Some(interface_hash) = iface_manager.full_hash(&iface) else {
+                return false;
+            };
+            super::tunnels::synthesize_tunnel_packet(&handler.config.identity, interface_hash)
+        };
+
+        self.send_direct(iface, packet).await;
+        true
     }
 }

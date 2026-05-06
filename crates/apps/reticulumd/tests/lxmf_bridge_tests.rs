@@ -1,7 +1,9 @@
+use lxmf::WireMessage;
 use reticulum_daemon::lxmf_bridge::{
     build_wire_message, build_wire_message_with_options, decode_wire_message, json_to_rmpv,
     rmpv_to_json,
 };
+use reticulum_daemon::lxmf_stamps::ticket_stamp;
 use rns_core::identity::PrivateIdentity;
 
 #[test]
@@ -245,6 +247,36 @@ fn build_wire_message_with_stamp_cost_generates_stamp() {
     let message = decode_wire_message(&wire).expect("decode");
 
     assert_eq!(message.stamp.as_ref().map(Vec::len), Some(8));
+}
+
+#[test]
+fn build_wire_message_with_outbound_ticket_generates_ticket_stamp() {
+    let identity = PrivateIdentity::new_from_name("outbound-ticket");
+    let mut source = [0u8; 16];
+    source.copy_from_slice(identity.address_hash().as_slice());
+    let destination = [0x77u8; 16];
+    let ticket = [0xcdu8; 16];
+    let ticket_hex = hex::encode(ticket);
+
+    let wire = build_wire_message_with_options(
+        source,
+        destination,
+        "title",
+        "content",
+        None,
+        &identity,
+        None,
+        Some(&ticket_hex),
+        None,
+    )
+    .expect("wire");
+    let message = WireMessage::unpack(&wire).expect("decode wire");
+    let expected_stamp = ticket_stamp(&ticket, &message.message_id());
+
+    assert_eq!(
+        message.payload.stamp.as_ref().map(|stamp| stamp.as_ref()),
+        Some(expected_stamp.as_slice())
+    );
 }
 
 #[test]

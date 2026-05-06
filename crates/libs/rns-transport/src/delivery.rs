@@ -77,7 +77,7 @@ pub async fn send_on_link(
 
     match packet {
         Ok(packet) => {
-            let outcome = transport.send_packet_with_outcome(packet).await;
+            let outcome = transport.send_link_packet_on_bound_iface(link, packet).await;
             if !send_outcome_is_sent(outcome) {
                 return Err(io::Error::other(format!(
                     "link packet not sent: {}",

@@ -16,7 +16,7 @@ use crate::serde::Serialize;
 
 use super::{Interface, InterfaceContext};
 
-fn bind_udp(bind_addr: &str) -> std::io::Result<UdpSocket> {
+fn bind_udp(bind_addr: &str, forward_addr: Option<&str>) -> std::io::Result<UdpSocket> {
     let parsed: SocketAddr = bind_addr.parse().map_err(|e| {
         std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
@@ -52,6 +52,12 @@ fn bind_udp(bind_addr: &str) -> std::io::Result<UdpSocket> {
         match group {
             IpAddr::V6(g) => socket.join_multicast_v6(&g, 0)?,
             IpAddr::V4(g) => socket.join_multicast_v4(&g, &std::net::Ipv4Addr::UNSPECIFIED)?,
+        }
+    }
+    if let (IpAddr::V4(bind_ip), Some(forward_addr)) = (parsed.ip(), forward_addr) {
+        if !bind_ip.is_unspecified() && !bind_ip.is_multicast() && is_multicast_addr(forward_addr) {
+            socket.set_multicast_if_v4(&bind_ip)?;
+            socket.set_multicast_loop_v4(true)?;
         }
     }
 
@@ -200,7 +206,8 @@ impl UdpInterface {
                 break;
             }
 
-            let socket = bind_udp(&bind_addr).map_err(|_| RnsError::ConnectionError);
+            let socket = bind_udp(&bind_addr, forward_addr.as_deref())
+                .map_err(|_| RnsError::ConnectionError);
 
             if socket.is_err() {
                 log::info!("udp_interface: couldn't bind to <{}>", bind_addr);

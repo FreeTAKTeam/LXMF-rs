@@ -91,6 +91,9 @@ pub struct ResourceProgress {
 pub struct ResourceComplete {
     pub data: Vec<u8>,
     pub metadata: Option<Vec<u8>>,
+    pub request_id: Option<Vec<u8>>,
+    pub is_request: bool,
+    pub is_response: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

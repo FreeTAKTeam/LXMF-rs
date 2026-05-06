@@ -422,7 +422,7 @@ impl RpcDaemon {
                     .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
                 let message_id = parsed.message_id;
                 let requested_status = parsed.status;
-                let (status, updated) = {
+                let (status, updated, delivered_ticket_destination) = {
                     let _status_guard = self
                         .delivery_status_lock
                         .lock()
@@ -433,21 +433,31 @@ impl RpcDaemon {
                         .as_ref()
                         .and_then(|message| message.receipt_status.clone());
                     if existing_message.is_none() {
-                        (requested_status, false)
+                        (requested_status, false, None)
                     } else if existing_status
                         .as_deref()
                         .is_some_and(Self::is_terminal_receipt_status)
                     {
-                        (existing_status.unwrap_or(requested_status), false)
+                        (existing_status.unwrap_or(requested_status), false, None)
                     } else {
+                        let delivered_ticket_destination = existing_message
+                            .as_ref()
+                            .filter(|message| {
+                                requested_status.eq_ignore_ascii_case("delivered")
+                                    && Self::message_requested_ticket(message)
+                            })
+                            .map(|message| message.destination.clone());
                         self.store
                             .update_receipt_status(&message_id, &requested_status)
                             .map_err(std::io::Error::other)?;
-                        (requested_status, true)
+                        (requested_status, true, delivered_ticket_destination)
                     }
                 };
                 if updated {
                     self.append_delivery_trace(&message_id, status.clone());
+                }
+                if let Some(destination) = delivered_ticket_destination {
+                    self.mark_ticket_delivered(destination.as_str());
                 }
                 let reason_code = delivery_reason_code(&status);
                 let event = RpcEvent {
@@ -497,6 +507,16 @@ impl RpcDaemon {
             }
             _ => unreachable!("legacy message route: {}", request.method),
         }
+    }
+
+    fn message_requested_ticket(message: &MessageRecord) -> bool {
+        let Some(JsonValue::Object(fields)) = message.fields.as_ref() else {
+            return false;
+        };
+        let Some(JsonValue::Object(lxmf)) = fields.get("_lxmf") else {
+            return false;
+        };
+        lxmf.get("include_ticket").and_then(JsonValue::as_bool).unwrap_or(false)
     }
 
     pub(super) fn restart_required_response(

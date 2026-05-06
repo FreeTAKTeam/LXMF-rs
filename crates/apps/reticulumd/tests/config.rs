@@ -1,4 +1,5 @@
 use reticulum_daemon::config::{DaemonConfig, InterfaceConfig};
+use rns_transport::iface::InterfaceMode;
 use std::fs;
 use tempfile::NamedTempFile;
 
@@ -16,6 +17,34 @@ interfaces = [
     assert_eq!(iface.host.as_deref(), Some("rmap.world"));
     assert_eq!(iface.port, Some(4242));
     assert!(iface.enabled.unwrap_or(false));
+}
+
+#[test]
+fn parses_python_interface_mode_aliases() {
+    let input = r#"
+interfaces = [
+  { type = "tcp_client", enabled = true, host = "rmap.world", port = 4242, interface_mode = "ap" },
+  { type = "udp", enabled = false, host = "127.0.0.1", port = 4242, mode = "gw" }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse interface modes");
+    assert_eq!(cfg.interfaces[0].interface_mode().unwrap(), InterfaceMode::AccessPoint);
+    assert_eq!(cfg.interfaces[1].interface_mode().unwrap(), InterfaceMode::Gateway);
+
+    let settings = cfg.interfaces[0].settings_json().expect("settings");
+    assert_eq!(settings["interface_mode"], "access_point");
+}
+
+#[test]
+fn rejects_invalid_interface_mode() {
+    let input = r#"
+interfaces = [
+  { type = "tcp_client", enabled = true, host = "rmap.world", port = 4242, interface_mode = "invalid" }
+]
+"#;
+    let err = DaemonConfig::from_toml(input).expect_err("invalid mode must fail");
+    let message = err.to_string();
+    assert!(message.contains("interface_mode must be one of"), "unexpected parse error: {message}");
 }
 
 #[test]

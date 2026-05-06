@@ -34,6 +34,7 @@ fn daemon_status_ex_reads_cached_status_snapshot() {
                 "enabled": true,
                 "store_root": "/tmp/propagation",
                 "target_cost": 9,
+                "stamp_cost_flexibility": 4,
             }),
         ))
         .expect("enable propagation");
@@ -63,6 +64,7 @@ fn daemon_status_ex_reads_cached_status_snapshot() {
     assert_eq!(result["delivery_policy"]["allowed_destinations"][0].as_str(), Some("alpha"));
     assert_eq!(result["propagation"]["enabled"].as_bool(), Some(true));
     assert_eq!(result["propagation"]["target_cost"].as_u64(), Some(9));
+    assert_eq!(result["propagation"]["stamp_cost_flexibility"].as_u64(), Some(4));
     assert_eq!(result["stamp_policy"]["target_cost"].as_u64(), Some(11));
     assert_eq!(result["stamp_policy"]["flexibility"].as_u64(), Some(3));
 }
@@ -78,6 +80,7 @@ fn propagation_policy_is_reported_and_enforced_for_new_peers() {
             json!({
                 "enabled": true,
                 "target_cost": 9,
+                "stamp_cost_flexibility": 5,
                 "static_peers": ["static-peer"],
                 "max_peers": 1,
                 "from_static_only": true,
@@ -94,6 +97,7 @@ fn propagation_policy_is_reported_and_enforced_for_new_peers() {
         .result
         .expect("daemon status result");
     assert_eq!(result["propagation"]["static_peers"][0].as_str(), Some("static-peer"));
+    assert_eq!(result["propagation"]["stamp_cost_flexibility"].as_u64(), Some(5));
     assert_eq!(result["propagation"]["max_peers"].as_u64(), Some(1));
     assert_eq!(result["propagation"]["from_static_only"].as_bool(), Some(true));
     assert_eq!(result["propagation"]["peering_cost"].as_u64(), Some(18));
@@ -240,6 +244,35 @@ fn announce_received_persists_stamp_cost_in_announce_log() {
 }
 
 #[test]
+fn announce_received_parses_delivery_stamp_cost_from_python_app_data() {
+    let daemon = RpcDaemon::test_instance();
+    let app_data = rmp_serde::to_vec_named(&MsgPackValue::Array(vec![
+        MsgPackValue::Binary(b"Peer Stamp".to_vec()),
+        MsgPackValue::from(22),
+    ]))
+    .expect("encode app data");
+
+    let announce = daemon
+        .handle_rpc(rpc_request(
+            45,
+            "announce_received",
+            json!({
+                "peer": "peer-delivery-stamp",
+                "timestamp": 1_700_000_012i64,
+                "app_data_hex": hex::encode(app_data),
+                "aspect": "lxmf.delivery",
+            }),
+        ))
+        .expect("announce received");
+    assert!(announce.error.is_none());
+
+    assert_eq!(
+        daemon.outbound_stamp_cost_for("peer-delivery-stamp").expect("stamp cost lookup"),
+        Some(22)
+    );
+}
+
+#[test]
 fn ticket_generate_reuses_valid_ticket_for_destination() {
     let daemon = RpcDaemon::test_instance();
 
@@ -270,6 +303,214 @@ fn ticket_generate_reuses_valid_ticket_for_destination() {
     assert_eq!(first["ticket"], second["ticket"]);
     assert_eq!(first["expires_at"], second["expires_at"]);
     assert_eq!(first["ticket"].as_str().map(str::len), Some(32));
+    assert_eq!(first["included"], json!(true));
+}
+
+#[test]
+fn ticket_generate_reuses_persisted_ticket_after_daemon_restart() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let db_path = temp.path().join("tickets.sqlite");
+
+    let first = {
+        let store = MessagesStore::open(db_path.as_path()).expect("open store");
+        let daemon = RpcDaemon::with_store(store, "ticket-node".to_string());
+        daemon
+            .handle_rpc(rpc_request(
+                96,
+                "ticket_generate",
+                json!({
+                    "destination": "peer-ticket-persisted",
+                }),
+            ))
+            .expect("ticket generate")
+            .result
+            .expect("ticket generate result")
+    };
+
+    let second = {
+        let store = MessagesStore::open(db_path.as_path()).expect("reopen store");
+        let daemon = RpcDaemon::with_store(store, "ticket-node".to_string());
+        daemon
+            .handle_rpc(rpc_request(
+                97,
+                "ticket_generate",
+                json!({
+                    "destination": "peer-ticket-persisted",
+                }),
+            ))
+            .expect("ticket generate")
+            .result
+            .expect("ticket generate result")
+    };
+
+    assert_eq!(first["included"], json!(true));
+    assert_eq!(second["included"], json!(true));
+    assert_eq!(first["ticket"], second["ticket"]);
+    assert_eq!(first["expires_at"], second["expires_at"]);
+
+    let store = MessagesStore::open(db_path.as_path()).expect("reopen store");
+    let daemon = RpcDaemon::with_store(store, "ticket-node".to_string());
+    assert_eq!(daemon.valid_issued_tickets_for("peer-ticket-persisted").len(), 1);
+}
+
+#[test]
+fn signed_inbound_ticket_is_remembered_for_outbound_reply() {
+    let daemon = RpcDaemon::test_instance();
+    let expires_at = now_i64() + 3_600;
+    let ticket = "00112233445566778899aabbccddeeff";
+
+    daemon
+        .accept_inbound(MessageRecord {
+            id: "ticket-inbound-1".to_string(),
+            source: "peer-ticket-source".to_string(),
+            destination: "local".to_string(),
+            title: "ticket".to_string(),
+            content: "ticket body".to_string(),
+            timestamp: now_i64(),
+            direction: "in".to_string(),
+            fields: Some(json!({
+                "12": [expires_at, [0, 17, 34, 51, 68, 85, 102, 119, 136, 153, 170, 187, 204, 221, 238, 255]],
+                "_lxmf": {
+                    "signature_valid": true,
+                },
+            })),
+            receipt_status: None,
+        })
+        .expect("accept inbound");
+
+    let remembered =
+        daemon.outbound_ticket_for("peer-ticket-source").expect("outbound ticket").expect("ticket");
+    assert_eq!(remembered.ticket, ticket);
+    assert_eq!(remembered.expires_at, expires_at);
+}
+
+#[test]
+fn unsigned_inbound_ticket_is_not_remembered() {
+    let daemon = RpcDaemon::test_instance();
+    let expires_at = now_i64() + 3_600;
+
+    daemon
+        .accept_inbound(MessageRecord {
+            id: "ticket-inbound-unsigned".to_string(),
+            source: "peer-ticket-source".to_string(),
+            destination: "local".to_string(),
+            title: "ticket".to_string(),
+            content: "ticket body".to_string(),
+            timestamp: now_i64(),
+            direction: "in".to_string(),
+            fields: Some(json!({
+                "12": [expires_at, [0, 17, 34, 51, 68, 85, 102, 119, 136, 153, 170, 187, 204, 221, 238, 255]],
+                "_lxmf": {
+                    "signature_valid": false,
+                },
+            })),
+            receipt_status: None,
+        })
+        .expect("accept inbound");
+
+    assert!(daemon.outbound_ticket_for("peer-ticket-source").expect("outbound ticket").is_none());
+}
+
+#[test]
+fn ticket_generate_suppresses_recently_delivered_ticket() {
+    let daemon = RpcDaemon::test_instance();
+
+    daemon.mark_ticket_delivered("peer-ticket-recent");
+
+    let result = daemon
+        .handle_rpc(rpc_request(
+            92,
+            "ticket_generate",
+            json!({
+                "destination": "peer-ticket-recent",
+            }),
+        ))
+        .expect("ticket generate")
+        .result
+        .expect("ticket generate result");
+
+    assert_eq!(result["destination"].as_str(), Some("peer-ticket-recent"));
+    assert_eq!(result["included"], json!(false));
+    assert_eq!(result["ticket"], JsonValue::Null);
+    assert_eq!(result["expires_at"], JsonValue::Null);
+    assert_eq!(result["reason"].as_str(), Some("ticket_interval"));
+}
+
+#[test]
+fn ticket_generate_suppresses_recent_delivery_after_daemon_restart() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let db_path = temp.path().join("ticket-deliveries.sqlite");
+
+    {
+        let store = MessagesStore::open(db_path.as_path()).expect("open store");
+        let daemon = RpcDaemon::with_store(store, "ticket-node".to_string());
+        daemon.mark_ticket_delivered("peer-ticket-restart-interval");
+    }
+
+    let result = {
+        let store = MessagesStore::open(db_path.as_path()).expect("reopen store");
+        let daemon = RpcDaemon::with_store(store, "ticket-node".to_string());
+        daemon
+            .handle_rpc(rpc_request(
+                98,
+                "ticket_generate",
+                json!({
+                    "destination": "peer-ticket-restart-interval",
+                }),
+            ))
+            .expect("ticket generate")
+            .result
+            .expect("ticket generate result")
+    };
+
+    assert_eq!(result["included"], json!(false));
+    assert_eq!(result["reason"].as_str(), Some("ticket_interval"));
+}
+
+#[test]
+fn delivered_include_ticket_message_starts_ticket_interval() {
+    let daemon = RpcDaemon::test_instance();
+
+    daemon
+        .handle_rpc(rpc_request(
+            93,
+            "sdk_send_v2",
+            json!({
+                "id": "ticket-msg-1",
+                "source": "local",
+                "destination": "peer-ticket-delivered",
+                "title": "ticket",
+                "content": "ticket body",
+                "method": "direct",
+                "include_ticket": true,
+            }),
+        ))
+        .expect("send message");
+    daemon
+        .handle_rpc(rpc_request(
+            94,
+            "record_receipt",
+            json!({
+                "message_id": "ticket-msg-1",
+                "status": "delivered",
+            }),
+        ))
+        .expect("record delivery");
+
+    let result = daemon
+        .handle_rpc(rpc_request(
+            95,
+            "ticket_generate",
+            json!({
+                "destination": "peer-ticket-delivered",
+            }),
+        ))
+        .expect("ticket generate")
+        .result
+        .expect("ticket generate result");
+
+    assert_eq!(result["included"], json!(false));
+    assert_eq!(result["reason"].as_str(), Some("ticket_interval"));
 }
 
 #[test]

@@ -18,6 +18,7 @@ use rns_transport::hash::AddressHash;
 use rns_transport::iface::tcp_client::TcpClient;
 use rns_transport::iface::tcp_server::TcpServer;
 use rns_transport::iface::udp::UdpInterface;
+use rns_transport::iface::{IfaceRole, InterfaceMode};
 use rns_transport::transport::{Transport, TransportConfig};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -43,6 +44,7 @@ pub(super) struct TransportStartupInput<'a> {
     pub(super) args: &'a Args,
     pub(super) daemon_config: Option<&'a DaemonConfig>,
     pub(super) identity: &'a PrivateIdentity,
+    pub(super) reticulum_storage_path: &'a std::path::Path,
     pub(super) local_display_name: Option<&'a str>,
     pub(super) configured_interfaces: Vec<InterfaceRecord>,
     pub(super) receipt_map: Arc<Mutex<HashMap<String, String>>>,
@@ -58,6 +60,7 @@ pub(super) async fn start_transport_and_interfaces(
         args,
         daemon_config,
         identity,
+        reticulum_storage_path,
         local_display_name,
         mut configured_interfaces,
         receipt_map,
@@ -136,7 +139,20 @@ pub(super) async fn start_transport_and_interfaces(
             .await;
             startup_successes += startup.startup_successes;
             startup_failures.extend(startup.startup_failures);
+            for iface in startup.tunnel_synth_ifaces {
+                transport_instance.synthesize_tunnel_on_interface(iface).await;
+            }
             hot_apply_seeded_tcp.extend(startup.hot_apply_seeded_tcp);
+        }
+
+        match transport_instance.restore_reticulum_path_table(reticulum_storage_path).await {
+            Ok(restored) if restored > 0 => {
+                eprintln!("[daemon] restored {} Reticulum path table entries", restored);
+            }
+            Ok(_) => {}
+            Err(err) => {
+                eprintln!("[daemon] failed to restore Reticulum path table: {}", err);
+            }
         }
 
         if selected_tcp_server.selected_index.is_none() {
@@ -286,6 +302,7 @@ struct InterfaceStartupBatch {
     startup_successes: usize,
     startup_failures: Vec<InterfaceStartupFailure>,
     hot_apply_seeded_tcp: Vec<(String, InterfaceRecord, AddressHash)>,
+    tunnel_synth_ifaces: Vec<AddressHash>,
 }
 
 async fn startup_configured_interfaces(
@@ -299,6 +316,7 @@ async fn startup_configured_interfaces(
     let mut startup_successes = 0usize;
     let mut startup_failures = Vec::new();
     let mut hot_apply_seeded_tcp = Vec::new();
+    let mut tunnel_synth_ifaces = Vec::new();
 
     for (index, iface) in config.interfaces.iter().enumerate() {
         if !iface.enabled() {
@@ -316,9 +334,15 @@ async fn startup_configured_interfaces(
                     &mut configured_interfaces[index],
                     &mut startup_failures,
                 );
+                if selected_tcp_server.selected_index == Some(index) {
+                    if let Some(active_iface) = server_iface {
+                        let mode = iface.interface_mode().unwrap_or(InterfaceMode::Full);
+                        iface_manager.lock().await.set_mode(*active_iface, mode);
+                    }
+                }
             }
             "tcp_client" => {
-                if startup_tcp_client(
+                if let Some(client_iface) = startup_tcp_client(
                     args,
                     iface,
                     &label,
@@ -330,6 +354,7 @@ async fn startup_configured_interfaces(
                 .await
                 {
                     startup_successes += 1;
+                    tunnel_synth_ifaces.push(client_iface);
                 }
             }
             "udp" => {
@@ -393,7 +418,12 @@ async fn startup_configured_interfaces(
         }
     }
 
-    InterfaceStartupBatch { startup_successes, startup_failures, hot_apply_seeded_tcp }
+    InterfaceStartupBatch {
+        startup_successes,
+        startup_failures,
+        hot_apply_seeded_tcp,
+        tunnel_synth_ifaces,
+    }
 }
 
 fn startup_tcp_server_record(
@@ -456,7 +486,7 @@ async fn startup_tcp_client(
     record: &mut InterfaceRecord,
     startup_failures: &mut Vec<InterfaceStartupFailure>,
     hot_apply_seeded_tcp: &mut Vec<(String, InterfaceRecord, AddressHash)>,
-) -> bool {
+) -> Option<AddressHash> {
     let (Some(host), Some(port)) = (iface.host.as_ref(), iface.port) else {
         record_startup_failure(
             record,
@@ -465,7 +495,7 @@ async fn startup_tcp_client(
             iface.kind.clone(),
             "tcp_client requires host and port for startup".to_string(),
         );
-        return false;
+        return None;
     };
 
     let endpoint = format!("{}:{}", host, port);
@@ -478,11 +508,17 @@ async fn startup_tcp_client(
                 iface.kind.clone(),
                 err,
             );
-            return false;
+            return None;
         }
     }
 
-    let client_iface = iface_manager.lock().await.spawn(TcpClient::new(endpoint), TcpClient::spawn);
+    let mode = iface.interface_mode().unwrap_or(InterfaceMode::Full);
+    let client_iface = iface_manager.lock().await.spawn_as_with_mode(
+        TcpClient::new(endpoint),
+        TcpClient::spawn,
+        IfaceRole::Unicast,
+        mode,
+    );
     eprintln!(
         "[daemon] tcp_client enabled iface={} name={} host={} port={}",
         client_iface, label, host, port
@@ -492,7 +528,7 @@ async fn startup_tcp_client(
     if let Some(key) = legacy_tcp_interface_key(record) {
         hot_apply_seeded_tcp.push((key, record.clone(), client_iface));
     }
-    true
+    Some(client_iface)
 }
 
 async fn startup_udp(
@@ -530,10 +566,13 @@ async fn startup_udp(
         }
     }
 
-    let udp_iface = iface_manager
-        .lock()
-        .await
-        .spawn(UdpInterface::new(bind_addr.clone(), forward_addr.clone()), UdpInterface::spawn);
+    let mode = iface.interface_mode().unwrap_or(InterfaceMode::Full);
+    let udp_iface = iface_manager.lock().await.spawn_as_with_mode(
+        UdpInterface::new(bind_addr.clone(), forward_addr.clone()),
+        UdpInterface::spawn,
+        IfaceRole::Unicast,
+        mode,
+    );
     eprintln!(
         "[daemon] udp enabled iface={} name={} bind={} forward={}",
         udp_iface,
@@ -581,9 +620,13 @@ async fn startup_serial(
         }
     }
 
-    let serial_iface = iface_manager.lock().await.spawn(adapter, |context| async move {
-        rns_transport::iface::serial::SerialInterface::spawn(context).await
-    });
+    let mode = iface.interface_mode().unwrap_or(InterfaceMode::Full);
+    let serial_iface = iface_manager.lock().await.spawn_as_with_mode(
+        adapter,
+        |context| async move { rns_transport::iface::serial::SerialInterface::spawn(context).await },
+        IfaceRole::Unicast,
+        mode,
+    );
     eprintln!(
         "[daemon] serial enabled iface={} name={} device={} baud_rate={}",
         serial_iface,
@@ -605,6 +648,8 @@ async fn startup_ble(
 ) -> bool {
     match ble::spawn(iface_manager.clone(), iface).await {
         Ok(ble_iface) => {
+            let mode = iface.interface_mode().unwrap_or(InterfaceMode::Full);
+            iface_manager.lock().await.set_mode(ble_iface, mode);
             eprintln!(
                 "[daemon] ble_gatt enabled iface={} name={} peripheral_id={}",
                 ble_iface,

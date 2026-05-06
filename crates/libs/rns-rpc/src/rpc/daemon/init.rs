@@ -3,6 +3,7 @@ use super::*;
 impl RpcDaemon {
     pub(super) const DEFAULT_TICKET_EXPIRY_SECS: u64 = 21 * 24 * 60 * 60;
     pub(super) const TICKET_RENEW_SECS: i64 = 14 * 24 * 60 * 60;
+    pub(super) const TICKET_INTERVAL_SECS: i64 = 24 * 60 * 60;
 
     pub(super) fn active_peer_count_from_guard(
         guard: &std::collections::HashMap<String, crate::rpc::PeerRecord>,
@@ -103,6 +104,7 @@ impl RpcDaemon {
             paper_ingest_seen: Mutex::new(HashSet::new()),
             stamp_policy: Mutex::new(StampPolicy::default()),
             ticket_cache: Mutex::new(HashMap::new()),
+            ticket_last_deliveries: Mutex::new(HashMap::new()),
             delivery_traces: Mutex::new(HashMap::new()),
             daemon_status_snapshot: std::sync::RwLock::new(DaemonStatusSnapshot::default()),
             delivery_status_lock: Mutex::new(()),
@@ -148,6 +150,25 @@ impl RpcDaemon {
         destination: &str,
         ttl_secs: Option<u64>,
     ) -> Result<TicketRecord, std::io::Error> {
+        self.issue_ticket(destination, ttl_secs)
+    }
+
+    pub fn generate_ticket(
+        &self,
+        destination: &str,
+        ttl_secs: Option<u64>,
+    ) -> Result<Option<TicketRecord>, std::io::Error> {
+        if self.ticket_interval_active(destination) {
+            return Ok(None);
+        }
+        self.issue_ticket(destination, ttl_secs).map(Some)
+    }
+
+    fn issue_ticket(
+        &self,
+        destination: &str,
+        ttl_secs: Option<u64>,
+    ) -> Result<TicketRecord, std::io::Error> {
         use rand_core::{OsRng, RngCore};
 
         let ttl_secs = ttl_secs.unwrap_or(Self::DEFAULT_TICKET_EXPIRY_SECS);
@@ -164,6 +185,16 @@ impl RpcDaemon {
                 return Ok(existing);
             }
         }
+        if let Some((ticket, expires_at)) =
+            self.store.get_ticket(destination).map_err(std::io::Error::other)?
+        {
+            if expires_at - now > Self::TICKET_RENEW_SECS {
+                let record =
+                    TicketRecord { destination: destination.to_string(), ticket, expires_at };
+                guard.insert(destination.to_string(), record.clone());
+                return Ok(record);
+            }
+        }
 
         let expires_at = now.checked_add(ttl).ok_or_else(|| {
             std::io::Error::new(
@@ -178,24 +209,103 @@ impl RpcDaemon {
             ticket: hex::encode(ticket),
             expires_at,
         };
+        self.store
+            .upsert_ticket(record.destination.as_str(), record.ticket.as_str(), record.expires_at)
+            .map_err(std::io::Error::other)?;
         guard.insert(destination.to_string(), record.clone());
         Ok(record)
+    }
+
+    pub fn mark_ticket_delivered(&self, destination: &str) {
+        let delivered_at = now_i64();
+        self.ticket_last_deliveries
+            .lock()
+            .expect("ticket delivery mutex poisoned")
+            .insert(destination.to_string(), delivered_at);
+        let _ = self.store.upsert_ticket_last_delivery(destination, delivered_at);
+    }
+
+    fn ticket_interval_active(&self, destination: &str) -> bool {
+        let now = now_i64();
+        if self
+            .ticket_last_deliveries
+            .lock()
+            .expect("ticket delivery mutex poisoned")
+            .get(destination)
+            .is_some_and(|last_delivery| {
+                now.saturating_sub(*last_delivery) < Self::TICKET_INTERVAL_SECS
+            })
+        {
+            return true;
+        }
+
+        self.store.get_ticket_last_delivery(destination).ok().flatten().is_some_and(
+            |last_delivery| now.saturating_sub(last_delivery) < Self::TICKET_INTERVAL_SECS,
+        )
     }
 
     pub fn current_stamp_policy(&self) -> StampPolicy {
         self.stamp_policy.lock().expect("stamp mutex poisoned").clone()
     }
 
+    pub fn current_propagation_state(&self) -> PropagationState {
+        self.propagation_state.lock().expect("propagation mutex poisoned").clone()
+    }
+
     pub fn valid_issued_tickets_for(&self, destination: &str) -> Vec<Vec<u8>> {
         let now = now_i64();
-        self.ticket_cache
+        if let Some(ticket) = self
+            .ticket_cache
             .lock()
             .expect("ticket mutex poisoned")
             .get(destination)
             .filter(|record| record.expires_at > now)
             .and_then(|record| hex::decode(record.ticket.as_str()).ok())
+        {
+            return vec![ticket];
+        }
+
+        self.store
+            .get_ticket(destination)
+            .ok()
+            .flatten()
+            .filter(|(_, expires_at)| *expires_at > now)
+            .and_then(|(ticket, _)| hex::decode(ticket.as_str()).ok())
             .into_iter()
             .collect()
+    }
+
+    pub fn remember_outbound_ticket(
+        &self,
+        destination: &str,
+        ticket: &str,
+        expires_at: i64,
+    ) -> Result<(), std::io::Error> {
+        let ticket = ticket.trim();
+        if hex::decode(ticket).map(|bytes| bytes.len()).unwrap_or_default() != 16 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "outbound ticket must be 16 bytes of hex",
+            ));
+        }
+        self.store
+            .upsert_outbound_ticket(destination, ticket, expires_at)
+            .map_err(std::io::Error::other)
+    }
+
+    pub fn outbound_ticket_for(
+        &self,
+        destination: &str,
+    ) -> Result<Option<TicketRecord>, std::io::Error> {
+        let Some((ticket, expires_at)) =
+            self.store.get_outbound_ticket(destination).map_err(std::io::Error::other)?
+        else {
+            return Ok(None);
+        };
+        if expires_at <= now_i64() {
+            return Ok(None);
+        }
+        Ok(Some(TicketRecord { destination: destination.to_string(), ticket, expires_at }))
     }
 
     pub fn replace_interfaces(&self, interfaces: Vec<InterfaceRecord>) {
@@ -240,6 +350,13 @@ impl RpcDaemon {
 
     pub fn outbound_propagation_node(&self) -> Option<String> {
         self.outbound_propagation_node.lock().expect("propagation node mutex poisoned").clone()
+    }
+
+    pub fn outbound_stamp_cost_for(
+        &self,
+        destination: &str,
+    ) -> Result<Option<u32>, std::io::Error> {
+        self.store.latest_announce_stamp_cost_for(destination).map_err(std::io::Error::other)
     }
 
     pub fn message_storage_stats(&self) -> Result<(u64, u64), std::io::Error> {
@@ -359,6 +476,7 @@ impl RpcDaemon {
     }
 
     pub fn accept_inbound(&self, record: MessageRecord) -> Result<(), std::io::Error> {
+        self.remember_outbound_ticket_from_inbound(&record)?;
         self.store_inbound_record(record.clone(), None)?;
         let _ = self.correlate_inbound_sdk_command(&record)?;
         Ok(())
@@ -369,9 +487,23 @@ impl RpcDaemon {
         record: MessageRecord,
         raw_lxmf_bytes: &[u8],
     ) -> Result<(), std::io::Error> {
+        self.remember_outbound_ticket_from_inbound(&record)?;
         self.store_inbound_record(record.clone(), Some(raw_lxmf_bytes))?;
         let _ = self.correlate_inbound_sdk_command(&record)?;
         Ok(())
+    }
+
+    fn remember_outbound_ticket_from_inbound(
+        &self,
+        record: &MessageRecord,
+    ) -> Result<(), std::io::Error> {
+        let Some((expires_at, ticket)) = inbound_ticket_from_record(record) else {
+            return Ok(());
+        };
+        if expires_at <= now_i64() {
+            return Ok(());
+        }
+        self.remember_outbound_ticket(record.source.as_str(), ticket.as_str(), expires_at)
     }
 
     pub fn accept_announce(&self, peer: String, timestamp: i64) -> Result<(), std::io::Error> {

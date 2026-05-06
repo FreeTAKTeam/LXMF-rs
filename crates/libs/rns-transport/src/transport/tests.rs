@@ -166,6 +166,136 @@ async fn announce_retransmit_key_uses_destination_hash() {
 }
 
 #[tokio::test]
+async fn reticulum_path_table_persistence_restores_route_and_identity_from_cached_announce() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut config = TransportConfig::new("test", &local_identity, true);
+    config.set_retransmit(true);
+    let transport = Transport::new(config);
+    let iface = *transport.iface_manager().lock().await.new_channel(16).address();
+
+    let remote_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut remote_destination =
+        SingleInputDestination::new(remote_identity, DestinationName::new("lxmf", "delivery"));
+    let announce = remote_destination.announce(OsRng, None).expect("valid announce packet");
+    let destination = announce.destination;
+    let expected_identity = *remote_destination.identity.as_identity();
+
+    handle_announce(
+        &announce,
+        transport.get_handler().lock().await,
+        iface,
+        crate::iface::IfaceSource::None,
+    )
+    .await;
+
+    assert_eq!(transport.save_reticulum_path_table(temp.path()).await.expect("save"), 1);
+    assert!(temp.path().join("destination_table").exists());
+    let destination_table = std::fs::read(temp.path().join("destination_table")).expect("read");
+    let value: rmpv::Value =
+        rmpv::decode::read_value(&mut std::io::Cursor::new(destination_table)).expect("msgpack");
+    let rmpv::Value::Array(entries) = value else {
+        panic!("destination_table must be an array");
+    };
+    let rmpv::Value::Array(fields) = &entries[0] else {
+        panic!("destination_table entry must be an array");
+    };
+    let rmpv::Value::Binary(interface_hash) = &fields[6] else {
+        panic!("interface hash must be binary");
+    };
+    assert_eq!(interface_hash.len(), crate::hash::HASH_SIZE);
+    assert!(temp
+        .path()
+        .join("cache")
+        .join("announces")
+        .join(hex::encode(announce.hash().as_slice()))
+        .exists());
+
+    let mut restored_config = TransportConfig::new("test", &local_identity, true);
+    restored_config.set_retransmit(true);
+    let restored = Transport::new(restored_config);
+    let restored_iface = *restored.iface_manager().lock().await.new_channel(16).address();
+    assert_eq!(restored_iface, iface, "test relies on deterministic iface hashes");
+    assert_eq!(restored.restore_reticulum_path_table(temp.path()).await.expect("restore"), 1);
+    let restored_identity = restored.destination_identity(&destination).await.expect("identity");
+    assert_eq!(restored_identity.public_key_bytes(), expected_identity.public_key_bytes());
+    assert_eq!(restored_identity.verifying_key_bytes(), expected_identity.verifying_key_bytes());
+    assert!(
+        restored.get_handler().lock().await.path_table.get(&destination).is_some(),
+        "path table entry should be restored"
+    );
+}
+
+#[tokio::test]
+async fn reticulum_tunnel_table_persistence_restores_tunnel_paths_after_reappearance() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut config = TransportConfig::new("test", &local_identity, true);
+    config.set_retransmit(true);
+    let transport = Transport::new(config);
+    let iface = *transport.iface_manager().lock().await.new_channel(16).address();
+    let iface_hash = transport.iface_manager().lock().await.full_hash(&iface).expect("iface hash");
+
+    let tunnel_identity = PrivateIdentity::new_from_rand(OsRng);
+    let tunnel_synth = super::tunnels::synthesize_tunnel_packet(&tunnel_identity, iface_hash);
+    {
+        let handler = transport.get_handler();
+        let mut handler = handler.lock().await;
+        super::tunnels::handle_tunnel_synthesize_packet(&tunnel_synth, &mut handler, iface).await;
+    }
+
+    let remote_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut remote_destination =
+        SingleInputDestination::new(remote_identity, DestinationName::new("lxmf", "delivery"));
+    let announce = remote_destination.announce(OsRng, None).expect("valid announce packet");
+    let destination = announce.destination;
+    handle_announce(
+        &announce,
+        transport.get_handler().lock().await,
+        iface,
+        crate::iface::IfaceSource::None,
+    )
+    .await;
+
+    assert_eq!(transport.save_reticulum_path_table(temp.path()).await.expect("save"), 1);
+    assert!(temp.path().join("tunnels").exists());
+    std::fs::remove_file(temp.path().join("destination_table")).expect("remove active path table");
+
+    let mut restored_config = TransportConfig::new("test", &local_identity, true);
+    restored_config.set_retransmit(true);
+    let restored = Transport::new(restored_config);
+    let restored_iface = *restored.iface_manager().lock().await.new_channel(16).address();
+    let restored_iface_hash =
+        restored.iface_manager().lock().await.full_hash(&restored_iface).expect("iface hash");
+    assert_eq!(restored_iface_hash, iface_hash, "test relies on deterministic iface hashes");
+
+    assert_eq!(restored.restore_reticulum_path_table(temp.path()).await.expect("restore"), 0);
+    assert!(
+        restored.get_handler().lock().await.path_table.get(&destination).is_none(),
+        "tunnel table load should not restore active path before tunnel reappears"
+    );
+
+    let tunnel_synth =
+        super::tunnels::synthesize_tunnel_packet(&tunnel_identity, restored_iface_hash);
+    {
+        let handler = restored.get_handler();
+        let mut handler = handler.lock().await;
+        super::tunnels::handle_tunnel_synthesize_packet(
+            &tunnel_synth,
+            &mut handler,
+            restored_iface,
+        )
+        .await;
+    }
+
+    assert!(
+        restored.get_handler().lock().await.path_table.get(&destination).is_some(),
+        "tunnel reappearance should restore the persisted tunnel path"
+    );
+    assert!(restored.destination_identity(&destination).await.is_some());
+}
+
+#[tokio::test]
 async fn unknown_announces_are_held_per_interface_and_released_by_lowest_hops() {
     let local_identity = PrivateIdentity::new_from_rand(OsRng);
     let config = TransportConfig::new("test", &local_identity, true);

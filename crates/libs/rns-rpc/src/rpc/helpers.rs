@@ -298,6 +298,57 @@ fn parse_announce_costs_from_app_data_hex(
     (stamp_cost_flexibility, peering_cost)
 }
 
+fn parse_delivery_stamp_cost_from_app_data_hex(app_data_hex: Option<&str>) -> Option<u32> {
+    let raw_hex = app_data_hex.map(str::trim).filter(|value| !value.is_empty())?;
+    let app_data = hex::decode(raw_hex).ok()?;
+    let value = rmp_serde::from_slice::<MsgPackValue>(&app_data).ok()?;
+    let entries = value.as_array()?;
+    entries.get(1).and_then(parse_fuzzy_u32)
+}
+
+fn is_lxmf_delivery_aspect(aspect: Option<&str>) -> bool {
+    matches!(
+        aspect.map(str::trim).map(str::to_ascii_lowercase).as_deref(),
+        Some("lxmf.delivery" | "delivery")
+    )
+}
+
+fn inbound_ticket_from_record(record: &MessageRecord) -> Option<(i64, String)> {
+    let fields = record.fields.as_ref()?.as_object()?;
+    let lxmf = fields.get("_lxmf").and_then(JsonValue::as_object);
+    if lxmf.and_then(|value| value.get("signature_valid")).and_then(JsonValue::as_bool)
+        != Some(true)
+    {
+        return None;
+    }
+
+    let ticket_entry = fields.get("12")?.as_array()?;
+    let expires_at = ticket_entry.first().and_then(json_value_to_i64)?;
+    let ticket = ticket_entry.get(1).and_then(json_ticket_to_hex)?;
+    (ticket.len() == 32).then_some((expires_at, ticket))
+}
+
+fn json_value_to_i64(value: &JsonValue) -> Option<i64> {
+    value.as_i64().or_else(|| value.as_u64().and_then(|value| i64::try_from(value).ok()))
+}
+
+fn json_ticket_to_hex(value: &JsonValue) -> Option<String> {
+    if let Some(text) = value.as_str() {
+        let trimmed = text.trim();
+        if trimmed.len() == 32 && hex::decode(trimmed).ok()?.len() == 16 {
+            return Some(trimmed.to_ascii_lowercase());
+        }
+        return None;
+    }
+
+    let bytes = value
+        .as_array()?
+        .iter()
+        .map(|item| item.as_u64().and_then(|value| u8::try_from(value).ok()))
+        .collect::<Option<Vec<_>>>()?;
+    (bytes.len() == 16).then(|| hex::encode(bytes))
+}
+
 fn extract_capabilities_from_msgpack(value: &MsgPackValue) -> Option<Vec<String>> {
     if let MsgPackValue::Array(entries) = value {
         return Some(normalize_capabilities(
@@ -479,5 +530,19 @@ mod tests {
         .expect("encode announce payload");
         let capabilities = parse_capabilities_from_app_data_hex(Some(hex::encode(announce).as_str()));
         assert_eq!(capabilities, vec!["telemetry_relay".to_string(), "tak_bridge".to_string()]);
+    }
+
+    #[test]
+    fn parses_delivery_stamp_cost_from_python_peer_data_slot() {
+        let app_data = rmp_serde::to_vec_named(&MsgPackValue::Array(vec![
+            MsgPackValue::Binary(b"Peer Name".to_vec()),
+            MsgPackValue::from(23),
+        ]))
+        .expect("encode app data");
+
+        assert_eq!(
+            parse_delivery_stamp_cost_from_app_data_hex(Some(hex::encode(app_data).as_str())),
+            Some(23)
+        );
     }
 }

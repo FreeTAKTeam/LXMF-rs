@@ -37,6 +37,21 @@ impl ResourceManager {
         Ok((resource_hash, packet))
     }
 
+    pub fn start_send_with_options(
+        &mut self,
+        link: &Link,
+        data: Vec<u8>,
+        metadata: Option<Vec<u8>>,
+        request_id: Option<Vec<u8>>,
+        is_response: bool,
+    ) -> Result<(Hash, Packet), RnsError> {
+        let sender = ResourceSender::new_with_options(link, data, metadata, request_id, is_response)?;
+        let resource_hash = sender.resource_hash;
+        let packet = sender.advertisement_packet();
+        self.pending_outgoing.insert(resource_hash, sender);
+        Ok((resource_hash, packet))
+    }
+
     pub fn confirm_outbound_dispatch(&mut self, resource_hash: Hash, sent: bool) {
         let Some(mut sender) = self.pending_outgoing.remove(&resource_hash) else {
             return;
@@ -142,24 +157,46 @@ impl ResourceManager {
         responses: &mut Vec<Packet>,
     ) {
         let Ok(advertisement) = ResourceAdvertisement::unpack(packet.data.as_slice()) else {
+            resource_diag("reject_advertisement unpack_failed");
             return;
         };
+        resource_diag(&format!(
+            "advertisement link={} hash={} parts={} flags=0x{:02x} request={} response={} metadata={} compressed={} encrypted={}",
+            link.id(),
+            advertisement.hash,
+            advertisement.parts,
+            advertisement.flags,
+            advertisement.is_request(),
+            advertisement.is_response(),
+            (advertisement.flags & FLAG_METADATA) == FLAG_METADATA,
+            advertisement.compressed(),
+            advertisement.encrypted()
+        ));
         if (advertisement.flags & FLAG_SPLIT) == FLAG_SPLIT {
             log::warn!(
                 "resource: rejecting unsupported advertisement flags (split={})",
                 (advertisement.flags & FLAG_SPLIT) == FLAG_SPLIT
             );
+            resource_diag("reject_advertisement split");
             return;
         }
         let resource_hash = advertisement.hash;
         if self.incoming.get(&resource_hash).is_some_and(|receiver| receiver.is_active()) {
+            resource_diag(&format!("advertisement_duplicate hash={resource_hash}"));
             return;
         }
         let Ok(mut receiver) = ResourceReceiver::new(&advertisement, *link.id()) else {
             log::warn!("resource: rejecting unreasonable advertisement");
+            resource_diag("reject_advertisement unreasonable");
             return;
         };
         let request = receiver.build_request();
+        resource_diag(&format!(
+            "request_parts hash={} requested={} exhausted={}",
+            resource_hash,
+            request.requested_hashes.len(),
+            request.hashmap_exhausted
+        ));
         receiver.mark_request();
         self.incoming.insert(resource_hash, receiver);
         match build_link_packet(
@@ -235,6 +272,12 @@ impl ResourceManager {
                     break;
                 }
                 PartOutcome::Complete(packet, data_payload) => {
+                    resource_diag(&format!(
+                        "complete hash={} len={} metadata={}",
+                        hash,
+                        data_payload.data.len(),
+                        data_payload.metadata.as_ref().map(|data| data.len()).unwrap_or(0)
+                    ));
                     completed = Some(*hash);
                     proof_packet = Some(packet);
                     payload = Some(data_payload);
@@ -256,6 +299,14 @@ impl ResourceManager {
                         }
                     };
                     if receiver.received > before_received {
+                        resource_diag(&format!(
+                            "progress hash={} received={}/{} bytes={}/{}",
+                            hash,
+                            receiver.received,
+                            receiver.parts.len(),
+                            receiver.received_bytes,
+                            receiver.total_bytes
+                        ));
                         self.events.push(ResourceEvent {
                             hash: *hash,
                             link_id: receiver.link_id,
@@ -279,6 +330,9 @@ impl ResourceManager {
                     kind: ResourceEventKind::Complete(ResourceComplete {
                         data: payload.data,
                         metadata: payload.metadata,
+                        request_id: payload.request_id,
+                        is_request: payload.is_request,
+                        is_response: payload.is_response,
                     }),
                 });
             }
@@ -319,5 +373,13 @@ impl ResourceManager {
 impl Default for ResourceManager {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+fn resource_diag(message: &str) {
+    if std::env::var("RETICULUMD_DIAGNOSTICS").ok().is_some_and(|value| {
+        matches!(value.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on" | "debug")
+    }) {
+        eprintln!("[resource-diag] {message}");
     }
 }

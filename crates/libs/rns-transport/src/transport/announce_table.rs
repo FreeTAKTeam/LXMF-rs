@@ -228,6 +228,14 @@ impl AnnounceTable {
         self.cache.clear();
     }
 
+    pub fn packet_for_destination(&self, destination: &AddressHash) -> Option<Packet> {
+        self.map
+            .get(destination)
+            .or_else(|| self.responses.get(destination))
+            .map(|entry| entry.packet)
+            .or_else(|| self.cache.get(destination).map(|entry| entry.packet))
+    }
+
     pub fn new_packet(
         &mut self,
         dest_hash: &AddressHash,

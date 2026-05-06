@@ -166,7 +166,15 @@ pub(super) async fn handle_check_links<'a>(mut handler: MutexGuard<'a, Transport
 
 pub(super) async fn handle_cleanup<'a>(mut handler: MutexGuard<'a, TransportHandler>) {
     handler.gc_unicast_ifaces().await;
-    handler.iface_manager.lock().await.cleanup();
+    {
+        let iface_manager = handler.iface_manager.clone();
+        let mut iface_manager = iface_manager.lock().await;
+        handler
+            .path_table
+            .remove_stale(std::time::Instant::now(), |iface| iface_manager.mode(iface));
+        handler.tunnel_table.remove_stale(std::time::Instant::now());
+        iface_manager.cleanup();
+    }
 }
 
 pub(super) async fn manage_transport(

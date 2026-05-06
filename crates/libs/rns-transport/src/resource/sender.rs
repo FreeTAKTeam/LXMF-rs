@@ -25,7 +25,18 @@ enum OutboundResourcePoll {
 
 impl ResourceSender {
     fn new(link: &Link, data: Vec<u8>, metadata: Option<Vec<u8>>) -> Result<Self, RnsError> {
+        Self::new_with_options(link, data, metadata, None, false)
+    }
+
+    fn new_with_options(
+        link: &Link,
+        data: Vec<u8>,
+        metadata: Option<Vec<u8>>,
+        request_id: Option<Vec<u8>>,
+        is_response: bool,
+    ) -> Result<Self, RnsError> {
         let has_metadata = metadata.is_some();
+        let has_request_id = request_id.is_some();
         let metadata_prefix = if let Some(payload) = metadata.as_ref() {
             if payload.len() > METADATA_MAX_SIZE {
                 return Err(RnsError::InvalidArgument);
@@ -79,11 +90,14 @@ impl ResourceSender {
             original_hash: resource_hash,
             segment_index: 1,
             total_segments: 1,
-            request_id: None,
+            request_id: request_id.map(ByteBuf::from),
             flags: {
                 let mut flags = FLAG_ENCRYPTED;
                 if has_metadata {
                     flags |= FLAG_METADATA;
+                }
+                if has_request_id {
+                    flags |= if is_response { FLAG_RESPONSE } else { FLAG_REQUEST };
                 }
                 flags
             },

@@ -2,6 +2,9 @@ use std::env;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::Mutex;
+
+static PY_COMPAT_HARNESS_LOCK: Mutex<()> = Mutex::new(());
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CompatibilityMode {
@@ -182,6 +185,7 @@ fn python_compat_lxm_interchange() {
 }
 
 fn run_case(case_id: &str) {
+    let _guard = PY_COMPAT_HARNESS_LOCK.lock().unwrap_or_else(|poison| poison.into_inner());
     let python_bin = env::var("LXMF_PYTHON_BIN").unwrap_or_else(|_| "python3".to_string());
     let harness = env::var("LXMF_PY_COMPAT_HARNESS").expect(
         "set LXMF_PY_COMPAT_HARNESS to a Python harness script path before running ignored tests",

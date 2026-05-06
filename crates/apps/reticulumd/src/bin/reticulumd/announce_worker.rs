@@ -1,19 +1,22 @@
 use super::bridge::PeerCrypto;
 use super::bridge_helpers::diagnostics_enabled;
 use reticulum_daemon::announce_names::{
-    lxmf_aspect_from_name_hash, parse_peer_name_from_app_data, pn_peering_cost_from_app_data,
-    pn_stamp_cost_flexibility_from_app_data, pn_stamp_cost_from_app_data,
+    delivery_stamp_cost_from_app_data, lxmf_aspect_from_name_hash, parse_peer_name_from_app_data,
+    pn_peering_cost_from_app_data, pn_stamp_cost_flexibility_from_app_data,
+    pn_stamp_cost_from_app_data,
 };
 use rns_rpc::RpcDaemon;
 use rns_transport::time::now_epoch_secs_i64;
 use rns_transport::transport::Transport;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 pub(super) fn spawn_announce_worker(
     daemon: Arc<RpcDaemon>,
     transport: Arc<Transport>,
     peer_crypto: Arc<Mutex<HashMap<String, PeerCrypto>>>,
+    reticulum_storage_path: Option<PathBuf>,
 ) {
     let daemon_announce = daemon;
     tokio::spawn(async move {
@@ -40,6 +43,12 @@ pub(super) fn spawn_announce_worker(
                 let app_data_hex = (!event.app_data.as_slice().is_empty())
                     .then(|| hex::encode(event.app_data.as_slice()));
                 let aspect = lxmf_aspect_from_name_hash(dest.desc.name.as_name_hash_slice());
+                let stamp_cost = match aspect.as_deref() {
+                    Some("lxmf.delivery") => {
+                        delivery_stamp_cost_from_app_data(event.app_data.as_slice())
+                    }
+                    _ => pn_stamp_cost_from_app_data(event.app_data.as_slice()),
+                };
                 let hops = Some(u32::from(event.hops));
                 let interface = Some(hex::encode(event.interface.as_slice()));
                 let _ = daemon_announce.accept_announce_with_metadata(
@@ -52,7 +61,7 @@ pub(super) fn spawn_announce_worker(
                     None,
                     None,
                     None,
-                    pn_stamp_cost_from_app_data(event.app_data.as_slice()),
+                    stamp_cost,
                     Some(pn_stamp_cost_flexibility_from_app_data(event.app_data.as_slice())),
                     Some(pn_peering_cost_from_app_data(event.app_data.as_slice())),
                     aspect,
@@ -62,6 +71,13 @@ pub(super) fn spawn_announce_worker(
                     None,
                     None,
                 );
+                if let Some(path) = reticulum_storage_path.as_ref() {
+                    if let Err(err) = transport.save_reticulum_path_table(path).await {
+                        if diagnostics_enabled() {
+                            eprintln!("[daemon] failed to persist Reticulum path table: {err}");
+                        }
+                    }
+                }
             }
         }
     });

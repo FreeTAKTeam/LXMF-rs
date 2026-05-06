@@ -797,6 +797,100 @@ impl MessagesStore {
         })
     }
 
+    pub fn latest_announce_stamp_cost_for(&self, peer: &str) -> rusqlite::Result<Option<u32>> {
+        self.with_read_conn(|conn| {
+            conn.query_row(
+                "SELECT stamp_cost FROM announces WHERE peer = ?1 AND stamp_cost IS NOT NULL ORDER BY timestamp DESC, id DESC LIMIT 1",
+                params![peer],
+                |row| row.get(0),
+            )
+            .optional()
+        })
+    }
+
+    pub fn get_ticket(&self, destination: &str) -> rusqlite::Result<Option<(String, i64)>> {
+        self.with_read_conn(|conn| {
+            conn.query_row(
+                "SELECT ticket, expires_at FROM tickets WHERE destination = ?1",
+                params![destination],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+        })
+    }
+
+    pub fn upsert_ticket(
+        &self,
+        destination: &str,
+        ticket: &str,
+        expires_at: i64,
+    ) -> rusqlite::Result<()> {
+        self.with_write_conn(|conn| {
+            conn.execute(
+                "INSERT INTO tickets (destination, ticket, expires_at) VALUES (?1, ?2, ?3)
+                 ON CONFLICT(destination) DO UPDATE SET ticket = excluded.ticket, expires_at = excluded.expires_at",
+                params![destination, ticket, expires_at],
+            )?;
+            Ok(())
+        })
+    }
+
+    pub fn get_outbound_ticket(
+        &self,
+        destination: &str,
+    ) -> rusqlite::Result<Option<(String, i64)>> {
+        self.with_read_conn(|conn| {
+            conn.query_row(
+                "SELECT ticket, expires_at FROM outbound_tickets WHERE destination = ?1",
+                params![destination],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+        })
+    }
+
+    pub fn upsert_outbound_ticket(
+        &self,
+        destination: &str,
+        ticket: &str,
+        expires_at: i64,
+    ) -> rusqlite::Result<()> {
+        self.with_write_conn(|conn| {
+            conn.execute(
+                "INSERT INTO outbound_tickets (destination, ticket, expires_at) VALUES (?1, ?2, ?3)
+                 ON CONFLICT(destination) DO UPDATE SET ticket = excluded.ticket, expires_at = excluded.expires_at",
+                params![destination, ticket, expires_at],
+            )?;
+            Ok(())
+        })
+    }
+
+    pub fn get_ticket_last_delivery(&self, destination: &str) -> rusqlite::Result<Option<i64>> {
+        self.with_read_conn(|conn| {
+            conn.query_row(
+                "SELECT delivered_at FROM ticket_deliveries WHERE destination = ?1",
+                params![destination],
+                |row| row.get(0),
+            )
+            .optional()
+        })
+    }
+
+    pub fn upsert_ticket_last_delivery(
+        &self,
+        destination: &str,
+        delivered_at: i64,
+    ) -> rusqlite::Result<()> {
+        self.with_write_conn(|conn| {
+            conn.execute(
+                "INSERT INTO ticket_deliveries (destination, delivered_at) VALUES (?1, ?2)
+                 ON CONFLICT(destination) DO UPDATE SET delivered_at = excluded.delivered_at",
+                params![destination, delivered_at],
+            )?;
+            Ok(())
+        })
+    }
+
     pub fn clear_announces(&self) -> rusqlite::Result<()> {
         self.with_write_conn(|conn| {
             conn.execute("DELETE FROM announces", [])?;
@@ -900,6 +994,20 @@ impl MessagesStore {
                 CREATE TABLE IF NOT EXISTS sdk_domain_state (
                     domain TEXT PRIMARY KEY,
                     state_json TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS tickets (
+                    destination TEXT PRIMARY KEY,
+                    ticket TEXT NOT NULL,
+                    expires_at INTEGER NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS outbound_tickets (
+                    destination TEXT PRIMARY KEY,
+                    ticket TEXT NOT NULL,
+                    expires_at INTEGER NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS ticket_deliveries (
+                    destination TEXT PRIMARY KEY,
+                    delivered_at INTEGER NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS idx_messages_timestamp_desc
                     ON messages(timestamp DESC);

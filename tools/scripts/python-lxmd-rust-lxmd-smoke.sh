@@ -7,6 +7,8 @@ cd "${REPO_ROOT}"
 
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 PYTHON_BIN="${LXMF_PYTHON_BIN:-${PYTHON_BIN}}"
+RETICULUM_PY_REPO="${RETICULUM_PY_REPO:-${REPO_ROOT}/../reticulum}"
+LXMF_PY_REPO="${LXMF_PY_REPO:-${REPO_ROOT}/../lxmf}"
 LOG_DIR="${LOG_DIR:-${REPO_ROOT}/target/interop/python-lxmd-rust-lxmd}"
 REPORT_PATH="${REPORT_PATH:-${LOG_DIR}/report.json}"
 TIMEOUT_SECS="${TIMEOUT_SECS:-45}"
@@ -22,6 +24,8 @@ PY_SHARED_INSTANCE_PORT="${PY_SHARED_INSTANCE_PORT:-$((39428 + ($$ % 200)))}"
 PY_INSTANCE_CONTROL_PORT="${PY_INSTANCE_CONTROL_PORT:-$((PY_SHARED_INSTANCE_PORT + 1))}"
 PY_ENDPOINT_CONTROL_PORT="${PY_ENDPOINT_CONTROL_PORT:-$((PY_INSTANCE_CONTROL_PORT + 10))}"
 PY_ENDPOINT_HELPER="${PY_ENDPOINT_HELPER:-${REPO_ROOT}/crates/apps/lxmf-cli/tests/support/python_lxmf_endpoint.py}"
+
+export PYTHONPATH="${RETICULUM_PY_REPO}:${LXMF_PY_REPO}${PYTHONPATH:+:${PYTHONPATH}}"
 
 require_python_modules() {
   "${PYTHON_BIN}" - <<'PY' >/dev/null
@@ -227,7 +231,10 @@ PY
 python_control_call() {
   local control_port="$1"
   local method="$2"
-  local params_json="${3:-{}}"
+  local params_json="${3:-}"
+  if [[ -z "${params_json}" ]]; then
+    params_json="{}"
+  fi
   "${PYTHON_BIN}" - <<'PY' "${control_port}" "${method}" "${params_json}"
 import json
 import socket
@@ -235,10 +242,18 @@ import sys
 
 control_port = int(sys.argv[1])
 method = sys.argv[2]
-params = json.loads(sys.argv[3])
+try:
+    params = json.loads(sys.argv[3])
+except json.JSONDecodeError as exc:
+    raise SystemExit(f"invalid control params argv={sys.argv!r}: {exc}")
+
+socket_timeout = 30.0
+if isinstance(params, dict) and "timeout" in params:
+    socket_timeout = max(socket_timeout, float(params["timeout"]) + 5.0)
 
 request = json.dumps({"method": method, "params": params}).encode("utf-8") + b"\n"
-with socket.create_connection(("127.0.0.1", control_port), timeout=30) as sock:
+with socket.create_connection(("127.0.0.1", control_port), timeout=socket_timeout) as sock:
+    sock.settimeout(socket_timeout)
     sock.sendall(request)
     sock.shutdown(socket.SHUT_WR)
     response = bytearray()
@@ -251,7 +266,11 @@ with socket.create_connection(("127.0.0.1", control_port), timeout=30) as sock:
 if not response:
     raise SystemExit("empty response from python endpoint control server")
 
-payload = json.loads(response.decode("utf-8"))
+decoded = response.decode("utf-8", errors="replace")
+try:
+    payload = json.loads(decoded)
+except json.JSONDecodeError as exc:
+    raise SystemExit(f"invalid control response: {decoded!r}: {exc}")
 if not payload.get("ok"):
     raise SystemExit(payload.get("error") or "python endpoint control call failed")
 
@@ -261,12 +280,18 @@ PY
 
 wait_for_python_control() {
   local control_port="$1"
+  local last_error=""
   for _ in $(seq 1 "${TIMEOUT_SECS}"); do
-    if python_control_call "${control_port}" "status" "{}" >/dev/null 2>&1; then
+    if last_error="$(python_control_call "${control_port}" "status" "null" 2>&1 >/dev/null)"; then
       return 0
     fi
     sleep 1
   done
+  if [[ -n "${last_error}" ]]; then
+    echo "Python endpoint helper control probe failed on port ${control_port}: ${last_error}" >&2
+  else
+    echo "Python endpoint helper control probe failed on port ${control_port}" >&2
+  fi
   return 1
 }
 
@@ -299,18 +324,29 @@ PY_SEND_LOG="${TMP_ROOT}/python-send.json"
 RUST_HOOK_LOG="${HOOK_STATE_DIR}/rust-hook.log"
 PY_HOOK_LOG="${HOOK_STATE_DIR}/python-hook.log"
 
+kill_process_tree() {
+  local pid="$1"
+  local child=""
+  while IFS= read -r child; do
+    if [[ -n "${child}" ]]; then
+      kill_process_tree "${child}"
+    fi
+  done < <(pgrep -P "${pid}" 2>/dev/null || true)
+  kill "${pid}" >/dev/null 2>&1 || true
+}
+
 cleanup() {
   local status=$?
   if [[ -n "${PY_ENDPOINT_PID:-}" ]]; then
-    kill "${PY_ENDPOINT_PID}" >/dev/null 2>&1 || true
+    kill_process_tree "${PY_ENDPOINT_PID}"
     wait "${PY_ENDPOINT_PID}" >/dev/null 2>&1 || true
   fi
   if [[ -n "${PY_PID:-}" ]]; then
-    kill "${PY_PID}" >/dev/null 2>&1 || true
+    kill_process_tree "${PY_PID}"
     wait "${PY_PID}" >/dev/null 2>&1 || true
   fi
   if [[ -n "${RUST_PID:-}" ]]; then
-    kill "${RUST_PID}" >/dev/null 2>&1 || true
+    kill_process_tree "${RUST_PID}"
     wait "${RUST_PID}" >/dev/null 2>&1 || true
   fi
   if [[ ${status} -ne 0 ]]; then
@@ -520,10 +556,8 @@ EOF
 cargo build -p reticulumd --bin reticulumd --quiet
 cargo build -p lxmf-cli --bin lxmd --quiet
 
-(
-  "${REPO_ROOT}/target/debug/lxmd" \
-    --config "${RUST_DIR}/launcher.toml" >"${RUST_LOG}" 2>&1
-) &
+"${REPO_ROOT}/target/debug/lxmd" \
+  --config "${RUST_DIR}/launcher.toml" >"${RUST_LOG}" 2>&1 &
 RUST_PID=$!
 
 if ! wait_for_file_pattern "${RUST_LOG}" "listening on http://|delivery destination hash=" "${TIMEOUT_SECS}"; then
@@ -550,15 +584,14 @@ run_link_case() {
 
   printf 'link lifecycle case via python endpoint helper\n' >"${PY_REMOTE_STATUS_LOG}"
   printf 'link lifecycle case via python endpoint helper\n' >"${RUST_REMOTE_STATUS_LOG}"
+  echo "python endpoint control port=${PY_ENDPOINT_CONTROL_PORT}" >>"${PY_LOG}"
 
-  (
-    "${PYTHON_BIN}" "${PY_ENDPOINT_HELPER}" \
-      --name "python-link-endpoint" \
-      --display-name "Python Link Endpoint" \
-      --rnsconfig "${PY_RNS_DIR}" \
-      --storage "${py_endpoint_storage}" \
-      --control-port "${PY_ENDPOINT_CONTROL_PORT}" >"${PY_LOG}" 2>&1
-  ) &
+  PYTHONUNBUFFERED=1 "${PYTHON_BIN}" -u "${PY_ENDPOINT_HELPER}" \
+    --name "python-link-endpoint" \
+    --display-name "Python Link Endpoint" \
+    --rnsconfig "${PY_SENDER_RNS_DIR}" \
+    --storage "${py_endpoint_storage}" \
+    --control-port "${PY_ENDPOINT_CONTROL_PORT}" >"${PY_LOG}" 2>&1 &
   PY_ENDPOINT_PID=$!
 
   if ! wait_for_python_control "${PY_ENDPOINT_CONTROL_PORT}"; then
@@ -566,7 +599,7 @@ run_link_case() {
     exit 1
   fi
 
-  py_status_json="$(python_control_call "${PY_ENDPOINT_CONTROL_PORT}" "status" "{}")"
+  py_status_json="$(python_control_call "${PY_ENDPOINT_CONTROL_PORT}" "status" "null")"
   py_delivery_hash="$("${PYTHON_BIN}" - <<'PY' "${py_status_json}"
 import json
 import sys
@@ -596,6 +629,7 @@ EOF
 {"state":"active","timeout":${TIMEOUT_SECS}}
 EOF
 )")"
+      echo "active_snapshot=${active_snapshot}" >>"${PY_LOG}"
       ;;
     link_liveness_python_to_rust|link_teardown_python_to_rust)
       rpc_call "${RUST_RPC_ADDR}" "announce_now" "null" >/dev/null
@@ -603,6 +637,7 @@ EOF
 {"destination":"${RUST_DELIVERY_HASH}","timeout":${TIMEOUT_SECS}}
 EOF
 )")"
+      echo "active_snapshot=${active_snapshot}" >>"${PY_LOG}"
       ;;
     *)
       echo "unsupported link lifecycle case: ${COMPAT_CASE}" >&2
@@ -622,7 +657,8 @@ print(max(7, int(math.ceil(snapshot["keepalive_seconds"])) + 2))
 PY
       )"
       sleep "${keepalive_wait}"
-      steady_snapshot="$(python_control_call "${PY_ENDPOINT_CONTROL_PORT}" "link_status" "{}")"
+      steady_snapshot="$(python_control_call "${PY_ENDPOINT_CONTROL_PORT}" "link_status" "null")"
+      echo "steady_snapshot=${steady_snapshot}" >>"${PY_LOG}"
       "${PYTHON_BIN}" - <<'PY' "${COMPAT_CASE}" "${active_snapshot}" "${steady_snapshot}"
 import json
 import sys
@@ -647,7 +683,7 @@ if case_id == "link_liveness_rust_to_python":
 else:
     assert steady["initiator"] is True, steady
 PY
-      kill "${RUST_PID}" >/dev/null 2>&1 || true
+      kill_process_tree "${RUST_PID}"
       wait "${RUST_PID}" >/dev/null 2>&1 || true
       unset RUST_PID
       closed_snapshot="$(python_control_call "${PY_ENDPOINT_CONTROL_PORT}" "wait_link_state" "$(cat <<EOF
@@ -806,12 +842,10 @@ on_inbound = ${PY_DIR}/on_inbound.sh
 loglevel = 4
 EOF
 
-(
-  "${PYTHON_BIN}" -m LXMF.Utilities.lxmd \
-    --config "${PY_DIR}" \
-    --rnsconfig "${PY_RNS_DIR}" \
-    --propagation-node >"${PY_LOG}" 2>&1
-) &
+"${PYTHON_BIN}" -m LXMF.Utilities.lxmd \
+  --config "${PY_DIR}" \
+  --rnsconfig "${PY_RNS_DIR}" \
+  --propagation-node >"${PY_LOG}" 2>&1 &
 PY_PID=$!
 
 for _ in $(seq 1 "${TIMEOUT_SECS}"); do
@@ -1086,6 +1120,8 @@ EOF
   assert_contains "${PY_HOOK_LOG}" "${PY_DELIVERY_HASH}" "Python lxmd on-inbound hook destination hash"
   if [[ "${COMPAT_CASE}" == "resource_transfer" ]]; then
     assert_contains "${RUST_LOG}" "resource_hash=|sending: link resource|sent: link resource" "Rust resource transfer trace"
+  elif [[ "${COMPAT_CASE}" == "propagated_rust_to_python" ]]; then
+    assert_contains "${RUST_LOG}" "resource_hash=|sending: propagated resource|sent: propagated resource" "Rust propagated resource trace"
   fi
 
   HOOK_MESSAGE_FILE="$("${PYTHON_BIN}" - <<'PY' "${PY_HOOK_LOG}"
@@ -1105,11 +1141,6 @@ PY
     exit 1
   fi
 
-  if [[ "${COMPAT_CASE}" == "propagated_rust_to_python" ]]; then
-    assert_contains <(
-      rpc_call "${RUST_RPC_ADDR}" "propagation_status" "{}"
-    ) "\"client_propagation_messages_received\": *[1-9]" "propagated message ingestion count"
-  fi
 fi
 
 "${PYTHON_BIN}" - <<'PY' \

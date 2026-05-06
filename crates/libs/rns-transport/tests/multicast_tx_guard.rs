@@ -44,7 +44,7 @@ fn bind_listener(port: u16, join_mcast: bool) -> UdpSocket {
     socket.bind(&bind_any.into()).expect("bind listener");
     if join_mcast {
         let group: Ipv4Addr = MCAST_GROUP.parse().expect("MCAST_GROUP parses");
-        socket.join_multicast_v4(&group, &Ipv4Addr::UNSPECIFIED).expect("join mcast group");
+        socket.join_multicast_v4(&group, &Ipv4Addr::LOCALHOST).expect("join mcast group");
     }
     socket.set_nonblocking(true).expect("nonblocking");
     let std_sock: std::net::UdpSocket = socket.into();
@@ -63,11 +63,12 @@ fn pick_free_port() -> u16 {
 async fn broadcast_tx_reaches_multicast_listeners() {
     let port = pick_free_port();
     let group_addr = format!("{}:{}", MCAST_GROUP, port);
+    let bind_addr = format!("127.0.0.1:{}", port);
     let listener = bind_listener(port, true);
 
     let mut mgr = InterfaceManager::new(64);
     let (_iface_hash, _routing) =
-        spawn_multicast_udp(&mut mgr, group_addr.clone(), Some(group_addr.clone()));
+        spawn_multicast_udp(&mut mgr, bind_addr.clone(), Some(group_addr.clone()));
     let mgr = Arc::new(Mutex::new(mgr));
 
     // Give the tx task a moment to bind and join the group.
@@ -87,11 +88,12 @@ async fn broadcast_tx_reaches_multicast_listeners() {
 async fn direct_tx_targeting_multicast_iface_is_dropped() {
     let port = pick_free_port();
     let group_addr = format!("{}:{}", MCAST_GROUP, port);
+    let bind_addr = format!("127.0.0.1:{}", port);
     let listener = bind_listener(port, true);
 
     let mut mgr = InterfaceManager::new(64);
     let (iface_hash, _routing) =
-        spawn_multicast_udp(&mut mgr, group_addr.clone(), Some(group_addr.clone()));
+        spawn_multicast_udp(&mut mgr, bind_addr.clone(), Some(group_addr.clone()));
     let mgr = Arc::new(Mutex::new(mgr));
 
     tokio::time::sleep(Duration::from_millis(150)).await;
@@ -133,12 +135,13 @@ async fn direct_tx_to_registered_virtual_iface_is_sent_unicast() {
     assert_ne!(mcast_port, peer_port);
 
     let group_addr = format!("{}:{}", MCAST_GROUP, mcast_port);
+    let bind_addr = format!("127.0.0.1:{}", mcast_port);
     let peer_listener = bind_listener(peer_port, false);
     let peer_addr: SocketAddr = format!("127.0.0.1:{}", peer_port).parse().unwrap();
 
     let mut mgr = InterfaceManager::new(64);
     let (host_hash, routing) =
-        spawn_multicast_udp(&mut mgr, group_addr.clone(), Some(group_addr.clone()));
+        spawn_multicast_udp(&mut mgr, bind_addr.clone(), Some(group_addr.clone()));
 
     // Register a virtual iface pinned to the peer.
     let virtual_hash = mgr
@@ -176,11 +179,12 @@ async fn direct_tx_to_unknown_virtual_iface_is_dropped() {
 
     let port = pick_free_port();
     let group_addr = format!("{}:{}", MCAST_GROUP, port);
+    let bind_addr = format!("127.0.0.1:{}", port);
     let listener = bind_listener(port, true);
 
     let mut mgr = InterfaceManager::new(64);
     let (_host_hash, _routing) =
-        spawn_multicast_udp(&mut mgr, group_addr.clone(), Some(group_addr.clone()));
+        spawn_multicast_udp(&mut mgr, bind_addr.clone(), Some(group_addr.clone()));
     let mgr = Arc::new(Mutex::new(mgr));
 
     tokio::time::sleep(Duration::from_millis(150)).await;

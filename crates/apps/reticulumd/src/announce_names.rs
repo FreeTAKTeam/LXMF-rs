@@ -1,8 +1,68 @@
 pub fn encode_delivery_display_name_app_data(display_name: &str) -> Option<Vec<u8>> {
+    encode_delivery_announce_app_data(display_name, None)
+}
+
+pub fn encode_delivery_announce_app_data(
+    display_name: &str,
+    stamp_cost: Option<u32>,
+) -> Option<Vec<u8>> {
     let normalized = normalize_display_name(display_name)?;
+    let stamp_cost = stamp_cost
+        .filter(|cost| *cost > 0 && *cost < 255)
+        .map(rmpv::Value::from)
+        .unwrap_or(rmpv::Value::Nil);
     let peer_data =
-        rmpv::Value::Array(vec![rmpv::Value::Binary(normalized.into_bytes()), rmpv::Value::Nil]);
+        rmpv::Value::Array(vec![rmpv::Value::Binary(normalized.into_bytes()), stamp_cost]);
     rmp_serde::to_vec(&peer_data).ok()
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct PropagationNodeAnnounceConfig {
+    pub enabled: bool,
+    pub timebase: i64,
+    pub transfer_limit_kb: u32,
+    pub sync_limit_kb: u32,
+    pub stamp_cost: u32,
+    pub stamp_cost_flexibility: u32,
+    pub peering_cost: u32,
+}
+
+impl Default for PropagationNodeAnnounceConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            timebase: 0,
+            transfer_limit_kb: 256,
+            sync_limit_kb: 10240,
+            stamp_cost: 16,
+            stamp_cost_flexibility: 3,
+            peering_cost: 18,
+        }
+    }
+}
+
+pub fn encode_propagation_node_app_data(
+    display_name: Option<&str>,
+    config: PropagationNodeAnnounceConfig,
+) -> Option<Vec<u8>> {
+    let mut metadata = Vec::new();
+    if let Some(name) = display_name.and_then(normalize_display_name) {
+        metadata.push((rmpv::Value::from(1_i64), rmpv::Value::Binary(name.into_bytes())));
+    }
+    let announce_data = rmpv::Value::Array(vec![
+        rmpv::Value::Boolean(false),
+        rmpv::Value::from(config.timebase),
+        rmpv::Value::Boolean(config.enabled),
+        rmpv::Value::from(config.transfer_limit_kb),
+        rmpv::Value::from(config.sync_limit_kb),
+        rmpv::Value::Array(vec![
+            rmpv::Value::from(config.stamp_cost),
+            rmpv::Value::from(config.stamp_cost_flexibility),
+            rmpv::Value::from(config.peering_cost),
+        ]),
+        rmpv::Value::Map(metadata),
+    ]);
+    rmp_serde::to_vec(&announce_data).ok()
 }
 
 pub fn normalize_display_name(value: &str) -> Option<String> {
@@ -66,6 +126,15 @@ pub fn lxmf_aspect_from_name_hash(name_hash: &[u8]) -> Option<String> {
 
 pub fn pn_stamp_cost_from_app_data(data: &[u8]) -> Option<u32> {
     parse_announce_cost_from_app_data(data, 0)
+}
+
+pub fn delivery_stamp_cost_from_app_data(data: &[u8]) -> Option<u32> {
+    let decoded = rmp_serde::from_slice::<rmpv::Value>(data).ok()?;
+    let entries = match decoded {
+        rmpv::Value::Array(entries) => entries,
+        _ => return None,
+    };
+    entries.get(1).and_then(rmp_value_to_u32)
 }
 
 pub fn pn_stamp_cost_flexibility_from_app_data(data: &[u8]) -> Option<u32> {
@@ -253,4 +322,60 @@ fn parse_f64_to_u32(value: f64) -> Option<u32> {
 
 fn parse_text_to_u32(value: &str) -> Option<u32> {
     value.trim().parse::<u32>().ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_python_delivery_stamp_cost_from_second_app_data_slot() {
+        let app_data = rmp_serde::to_vec_named(&rmpv::Value::Array(vec![
+            rmpv::Value::Binary(b"Peer Name".to_vec()),
+            rmpv::Value::from(19),
+        ]))
+        .expect("encode app data");
+
+        assert_eq!(delivery_stamp_cost_from_app_data(app_data.as_slice()), Some(19));
+        assert_eq!(pn_stamp_cost_from_app_data(app_data.as_slice()), None);
+    }
+
+    #[test]
+    fn encodes_python_delivery_app_data_with_optional_stamp_cost() {
+        let app_data =
+            encode_delivery_announce_app_data("Peer Name", Some(21)).expect("encode app data");
+
+        assert_eq!(
+            parse_peer_name_from_app_data(app_data.as_slice()),
+            Some(("Peer Name".to_string(), "delivery_app_data"))
+        );
+        assert_eq!(delivery_stamp_cost_from_app_data(app_data.as_slice()), Some(21));
+
+        let app_data_without_cost =
+            encode_delivery_announce_app_data("Peer Name", Some(255)).expect("encode app data");
+        assert_eq!(delivery_stamp_cost_from_app_data(app_data_without_cost.as_slice()), None);
+    }
+
+    #[test]
+    fn encodes_python_propagation_app_data_with_configured_costs() {
+        let app_data = encode_propagation_node_app_data(
+            Some(" Peer Node "),
+            PropagationNodeAnnounceConfig {
+                timebase: 1_700_000_000,
+                stamp_cost: 21,
+                stamp_cost_flexibility: 5,
+                peering_cost: 13,
+                ..PropagationNodeAnnounceConfig::default()
+            },
+        )
+        .expect("encode propagation app data");
+
+        assert_eq!(
+            parse_peer_name_from_app_data(app_data.as_slice()),
+            Some(("Peer Node".to_string(), "pn_meta"))
+        );
+        assert_eq!(pn_stamp_cost_from_app_data(app_data.as_slice()), Some(21));
+        assert_eq!(pn_stamp_cost_flexibility_from_app_data(app_data.as_slice()), Some(5));
+        assert_eq!(pn_peering_cost_from_app_data(app_data.as_slice()), Some(13));
+    }
 }

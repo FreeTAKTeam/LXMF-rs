@@ -11,14 +11,19 @@ use super::inbound_worker::{
 };
 use lxmf::WireMessage;
 use rand_core::OsRng;
+use reticulum_daemon::announce_names::{
+    encode_delivery_announce_app_data,
+    encode_propagation_node_app_data as encode_python_propagation_node_app_data,
+    parse_peer_name_from_app_data, PropagationNodeAnnounceConfig,
+};
 use reticulum_daemon::lxmf_bridge::build_wire_message_with_options;
 use reticulum_daemon::lxmf_bridge::rmpv_to_json;
 use reticulum_daemon::lxmf_stamps::generate_propagation_stamp;
 use reticulum_daemon::receipt_bridge::{track_receipt_mapping, ReceiptEvent};
 use rns_core::identity::{Identity as CoreIdentity, PrivateIdentity};
 use rns_rpc::{
-    AnnounceBridge, OutboundBridge, OutboundDeliveryOptions, RemoteControlBridge, RpcDaemon,
-    RpcRequest,
+    AnnounceBridge, OutboundBridge, OutboundDeliveryOptions, PaperDecodeOutcome,
+    PaperEncodeEnvelope, RemoteControlBridge, RpcDaemon, RpcRequest,
 };
 use rns_transport::delivery::await_link_activation;
 use rns_transport::delivery::{
@@ -112,6 +117,72 @@ impl TransportBridge {
         if let Ok(mut guard) = self.daemon.lock() {
             *guard = Some(daemon);
         }
+    }
+
+    fn current_delivery_announce_app_data(&self) -> Option<Vec<u8>> {
+        let app_data = self.announce_app_data.clone()?;
+        let Some((display_name, _)) = parse_peer_name_from_app_data(app_data.as_slice()) else {
+            return Some(app_data);
+        };
+        encode_delivery_announce_app_data(display_name.as_str(), self.current_inbound_stamp_cost())
+            .or(Some(app_data))
+    }
+
+    fn current_inbound_stamp_cost(&self) -> Option<u32> {
+        let daemon = self.daemon.lock().ok()?.clone()?;
+        let target_cost = daemon.current_stamp_policy().target_cost;
+        (target_cost > 0 && target_cost < 255).then_some(target_cost)
+    }
+
+    fn current_propagation_announce_app_data(&self) -> Option<Vec<u8>> {
+        let fallback = self.propagation_announce_app_data.clone()?;
+        let display_name = parse_peer_name_from_app_data(fallback.as_slice()).map(|(name, _)| name);
+        let Some(daemon) = self.daemon.lock().ok()?.clone() else {
+            return Some(fallback);
+        };
+        let state = daemon.current_propagation_state();
+        encode_python_propagation_node_app_data(
+            display_name.as_deref(),
+            PropagationNodeAnnounceConfig {
+                enabled: state.enabled,
+                timebase: now_secs_i64(),
+                stamp_cost: if state.target_cost > 0 {
+                    state.target_cost
+                } else {
+                    PropagationNodeAnnounceConfig::default().stamp_cost
+                },
+                stamp_cost_flexibility: state.stamp_cost_flexibility,
+                peering_cost: state
+                    .peering_cost
+                    .unwrap_or_else(|| PropagationNodeAnnounceConfig::default().peering_cost),
+                ..PropagationNodeAnnounceConfig::default()
+            },
+        )
+        .or(Some(fallback))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn current_propagation_announce_app_data_for_test(&self) -> Option<Vec<u8>> {
+        self.current_propagation_announce_app_data()
+    }
+
+    pub(super) fn announce_propagation_now(&self) -> Result<(), std::io::Error> {
+        let transport = self.transport.clone();
+        let propagation_destination = self.propagation_announce_destination.clone();
+        let propagation_app_data = self.current_propagation_announce_app_data();
+        let control_destination = self.control_announce_destination.clone();
+        tokio::spawn(async move {
+            if let Some(destination) = propagation_destination.as_ref() {
+                transport
+                    .set_destination_announce_app_data(destination, propagation_app_data.clone())
+                    .await;
+                transport.send_announce(destination, propagation_app_data.as_deref()).await;
+            }
+            if let Some(destination) = control_destination.as_ref() {
+                transport.send_announce(destination, None).await;
+            }
+        });
+        Ok(())
     }
 
     #[cfg(test)]
@@ -592,11 +663,21 @@ impl DeliveryTask {
         stage: &str,
         failure_status: &str,
     ) -> Option<Identity> {
-        let mut identity = cached;
-        self.transport.request_path(&destination_hash, None, None).await;
-        log_delivery_trace(&self.message_id, &self.destination_hex, stage, "path-requested");
+        let mut identity =
+            cached.or_else(|| self.cached_identity_for_destination(destination_hash));
+        if identity.is_some() {
+            let detail = destination_hex.unwrap_or(self.destination_hex.as_str());
+            log_delivery_trace(
+                &self.message_id,
+                detail,
+                stage,
+                "resolved from cached peer identity",
+            );
+        }
 
         if identity.is_none() {
+            self.transport.request_path(&destination_hash, None, None).await;
+            log_delivery_trace(&self.message_id, &self.destination_hex, stage, "path-requested");
             let detail = destination_hex.unwrap_or(self.destination_hex.as_str());
             log_delivery_trace(&self.message_id, detail, stage, "waiting for announce");
             let deadline = tokio::time::Instant::now() + Duration::from_secs(12);
@@ -700,6 +781,91 @@ fn resolve_destination_identity_blocking(
 }
 
 impl OutboundBridge for TransportBridge {
+    fn encode_paper(
+        &self,
+        record: &rns_rpc::MessageRecord,
+    ) -> Result<Option<PaperEncodeEnvelope>, std::io::Error> {
+        let destination = parse_destination_hash_required(&record.destination)?;
+        let destination_identity = self
+            .peer_crypto
+            .lock()
+            .expect("peer map")
+            .get(&record.destination)
+            .map(|info| info.identity)
+            .or_else(|| {
+                resolve_destination_identity_blocking(
+                    self.transport.clone(),
+                    AddressHash::new(destination),
+                    Duration::from_secs(12),
+                )
+            });
+        let Some(destination_identity) = destination_identity else {
+            return Ok(None);
+        };
+        let payload = build_wire_message_with_options(
+            self.delivery_source_hash,
+            destination,
+            &record.title,
+            &record.content,
+            record.fields.clone(),
+            &self.signer,
+            None,
+            None,
+            None,
+        )
+        .map_err(std::io::Error::other)?;
+        let wire = WireMessage::unpack(payload.as_slice()).map_err(std::io::Error::other)?;
+        let transient_id = hex::encode(wire.message_id());
+        let destination_identity = CoreIdentity::new_from_slices(
+            destination_identity.public_key_bytes(),
+            destination_identity.verifying_key_bytes(),
+        );
+        let uri = wire
+            .pack_paper_uri_with_rng(&destination_identity, OsRng)
+            .map_err(std::io::Error::other)?;
+        Ok(Some(PaperEncodeEnvelope {
+            uri,
+            transient_id,
+            destination_hint: record.destination.clone(),
+            extensions: serde_json::Map::new(),
+        }))
+    }
+
+    fn decode_paper_uri(&self, uri: &str) -> Result<Option<PaperDecodeOutcome>, std::io::Error> {
+        let wire =
+            WireMessage::unpack_paper_uri(uri, &self.signer).map_err(std::io::Error::other)?;
+        let raw_lxmf_bytes = wire.pack().map_err(std::io::Error::other)?;
+        let transient_id = hex::encode(wire.message_id());
+        let destination_hint = hex::encode(wire.destination);
+        let record = rns_rpc::MessageRecord {
+            id: transient_id.clone(),
+            source: hex::encode(wire.source),
+            destination: destination_hint.clone(),
+            title: wire
+                .payload
+                .title
+                .as_ref()
+                .map(|title| String::from_utf8_lossy(title).to_string())
+                .unwrap_or_default(),
+            content: wire
+                .payload
+                .content
+                .as_ref()
+                .map(|content| String::from_utf8_lossy(content).to_string())
+                .unwrap_or_default(),
+            timestamp: wire.payload.timestamp as i64,
+            direction: "in".to_string(),
+            fields: wire.payload.fields.as_ref().and_then(rmpv_to_json),
+            receipt_status: None,
+        };
+        Ok(Some(PaperDecodeOutcome {
+            transient_id,
+            destination_hint,
+            record: Some(record),
+            raw_lxmf_bytes: Some(raw_lxmf_bytes),
+        }))
+    }
+
     fn deliver(
         &self,
         record: &rns_rpc::MessageRecord,
@@ -717,11 +883,9 @@ impl OutboundBridge for TransportBridge {
             .ok_or_else(|| std::io::Error::other("daemon bridge unavailable"))?;
 
         let include_ticket = if options.include_ticket {
-            Some(
-                daemon
-                    .ensure_ticket(record.destination.as_str(), None)
-                    .map_err(std::io::Error::other)?,
-            )
+            daemon
+                .generate_ticket(record.destination.as_str(), None)
+                .map_err(std::io::Error::other)?
         } else {
             None
         };
@@ -733,6 +897,16 @@ impl OutboundBridge for TransportBridge {
                     .map_err(std::io::Error::other)
             })
             .transpose()?;
+        let stamp_cost = match options.stamp_cost {
+            Some(cost) => Some(cost),
+            None => daemon.outbound_stamp_cost_for(record.destination.as_str())?,
+        };
+        let outbound_ticket = match options.ticket.clone() {
+            Some(ticket) => Some(ticket),
+            None => {
+                daemon.outbound_ticket_for(record.destination.as_str())?.map(|ticket| ticket.ticket)
+            }
+        };
 
         let payload = build_wire_message_with_options(
             self.delivery_source_hash,
@@ -741,8 +915,8 @@ impl OutboundBridge for TransportBridge {
             &record.content,
             record.fields.clone(),
             &self.signer,
-            options.stamp_cost,
-            options.ticket.as_deref(),
+            stamp_cost,
+            outbound_ticket.as_deref(),
             include_ticket_bytes
                 .as_ref()
                 .map(|(expires_at, ticket)| (*expires_at, ticket.as_slice())),
@@ -836,17 +1010,26 @@ fn now_secs_f64() -> f64 {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs_f64()
 }
 
+fn now_secs_i64() -> i64 {
+    i64::try_from(SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs())
+        .unwrap_or(i64::MAX)
+}
+
 impl AnnounceBridge for TransportBridge {
     fn announce_now(&self) -> Result<(), std::io::Error> {
         let transport = self.transport.clone();
         let destination = self.announce_destination.clone();
-        let app_data = self.announce_app_data.clone();
+        let app_data = self.current_delivery_announce_app_data();
         let propagation_destination = self.propagation_announce_destination.clone();
-        let propagation_app_data = self.propagation_announce_app_data.clone();
+        let propagation_app_data = self.current_propagation_announce_app_data();
         let control_destination = self.control_announce_destination.clone();
         tokio::spawn(async move {
+            transport.set_destination_announce_app_data(&destination, app_data.clone()).await;
             transport.send_announce(&destination, app_data.as_deref()).await;
             if let Some(destination) = propagation_destination.as_ref() {
+                transport
+                    .set_destination_announce_app_data(destination, propagation_app_data.clone())
+                    .await;
                 transport.send_announce(destination, propagation_app_data.as_deref()).await;
             }
             if let Some(destination) = control_destination.as_ref() {

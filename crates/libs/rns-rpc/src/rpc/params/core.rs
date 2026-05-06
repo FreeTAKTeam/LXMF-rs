@@ -39,6 +39,8 @@ struct AnnounceReceivedParams {
     stamp_cost_flexibility: Option<u32>,
     #[serde(default)]
     peering_cost: Option<u32>,
+    #[serde(default)]
+    aspect: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -77,6 +79,8 @@ struct PropagationEnableParams {
     store_root: Option<String>,
     #[serde(default)]
     target_cost: Option<u32>,
+    #[serde(default)]
+    stamp_cost_flexibility: Option<u32>,
     #[serde(default)]
     message_storage_limit_mb: Option<u64>,
     #[serde(default)]

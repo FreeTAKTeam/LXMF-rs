@@ -17,7 +17,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::hash::AddressHash;
 use crate::hash::Hash;
-use crate::packet::Packet;
+use crate::packet::{Packet, PacketType};
 
 pub use driver::{InterfaceDriver, InterfaceDriverFactory};
 
@@ -44,6 +44,50 @@ pub struct TxDispatchTrace {
     pub matched_ifaces: usize,
     pub sent_ifaces: usize,
     pub failed_ifaces: usize,
+}
+
+#[derive(Debug, Default, PartialEq, Eq, Copy, Clone)]
+pub enum InterfaceMode {
+    #[default]
+    Full,
+    PointToPoint,
+    AccessPoint,
+    Roaming,
+    Boundary,
+    Gateway,
+}
+
+impl InterfaceMode {
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "full" => Some(Self::Full),
+            "pointtopoint" | "point_to_point" | "point-to-point" | "ptp" => {
+                Some(Self::PointToPoint)
+            }
+            "access_point" | "accesspoint" | "access-point" | "ap" => Some(Self::AccessPoint),
+            "roaming" => Some(Self::Roaming),
+            "boundary" => Some(Self::Boundary),
+            "gateway" | "gw" => Some(Self::Gateway),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Full => "full",
+            Self::PointToPoint => "pointtopoint",
+            Self::AccessPoint => "access_point",
+            Self::Roaming => "roaming",
+            Self::Boundary => "boundary",
+            Self::Gateway => "gateway",
+        }
+    }
+}
+
+#[derive(Debug, Default, PartialEq, Eq, Copy, Clone)]
+pub struct AnnounceBroadcastPolicy {
+    pub local_destination: bool,
+    pub next_hop_iface_mode: Option<InterfaceMode>,
 }
 
 /// Where a received packet came from at the wire level.
@@ -128,9 +172,11 @@ pub trait Interface {
 
 struct LocalInterface {
     address: AddressHash,
+    full_hash: Hash,
     tx_send: InterfaceTxSender,
     stop: CancellationToken,
     role: IfaceRole,
+    mode: InterfaceMode,
 }
 
 pub struct InterfaceContext<T: Interface> {
@@ -179,18 +225,35 @@ impl InterfaceManager {
     }
 
     pub fn new_channel_with_role(&mut self, tx_cap: usize, role: IfaceRole) -> InterfaceChannel {
+        self.new_channel_with_role_and_mode(tx_cap, role, InterfaceMode::default())
+    }
+
+    pub fn new_channel_with_role_and_mode(
+        &mut self,
+        tx_cap: usize,
+        role: IfaceRole,
+        mode: InterfaceMode,
+    ) -> InterfaceChannel {
         self.counter += 1;
 
         let counter_bytes = self.counter.to_le_bytes();
-        let address = AddressHash::new_from_hash(&Hash::new_from_slice(&counter_bytes[..]));
+        let full_hash = Hash::new_from_slice(&counter_bytes[..]);
+        let address = AddressHash::new_from_hash(&full_hash);
 
         let (tx_send, tx_recv) = InterfaceChannel::make_tx_channel(tx_cap);
 
-        log::debug!("iface: create channel {} role={:?}", address, role);
+        log::debug!("iface: create channel {} role={:?} mode={:?}", address, role, mode);
 
         let stop = CancellationToken::new();
 
-        self.ifaces.push(LocalInterface { address, tx_send, stop: stop.clone(), role });
+        self.ifaces.push(LocalInterface {
+            address,
+            full_hash,
+            tx_send,
+            stop: stop.clone(),
+            role,
+            mode,
+        });
 
         InterfaceChannel { rx_channel: self.rx_send.clone(), tx_channel: tx_recv, address, stop }
     }
@@ -204,7 +267,17 @@ impl InterfaceManager {
         inner: T,
         role: IfaceRole,
     ) -> InterfaceContext<T> {
-        let channel = self.new_channel_with_role(DEFAULT_IFACE_TX_QUEUE_CAPACITY, role);
+        self.new_context_with_role_and_mode(inner, role, InterfaceMode::default())
+    }
+
+    pub fn new_context_with_role_and_mode<T: Interface>(
+        &mut self,
+        inner: T,
+        role: IfaceRole,
+        mode: InterfaceMode,
+    ) -> InterfaceContext<T> {
+        let channel =
+            self.new_channel_with_role_and_mode(DEFAULT_IFACE_TX_QUEUE_CAPACITY, role, mode);
         let inner = Arc::new(Mutex::new(inner));
         InterfaceContext::<T> { inner: inner.clone(), channel, cancel: self.cancel.clone() }
     }
@@ -229,7 +302,22 @@ impl InterfaceManager {
         R: std::future::Future<Output = ()> + Send + 'static,
         R::Output: Send + 'static,
     {
-        let context = self.new_context_with_role(inner, role);
+        self.spawn_as_with_mode(inner, worker, role, InterfaceMode::default())
+    }
+
+    pub fn spawn_as_with_mode<T: Interface, F, R>(
+        &mut self,
+        inner: T,
+        worker: F,
+        role: IfaceRole,
+        mode: InterfaceMode,
+    ) -> AddressHash
+    where
+        F: FnOnce(InterfaceContext<T>) -> R,
+        R: std::future::Future<Output = ()> + Send + 'static,
+        R::Output: Send + 'static,
+    {
+        let context = self.new_context_with_role_and_mode(inner, role, mode);
         let address = *context.channel.address();
 
         task::spawn(worker(context));
@@ -239,6 +327,27 @@ impl InterfaceManager {
 
     pub fn role(&self, address: &AddressHash) -> Option<IfaceRole> {
         self.ifaces.iter().find(|i| i.address == *address).map(|i| i.role)
+    }
+
+    pub fn mode(&self, address: &AddressHash) -> Option<InterfaceMode> {
+        self.ifaces.iter().find(|i| i.address == *address).map(|i| i.mode)
+    }
+
+    pub fn full_hash(&self, address: &AddressHash) -> Option<Hash> {
+        self.ifaces.iter().find(|i| i.address == *address).map(|i| i.full_hash)
+    }
+
+    pub fn address_for_full_hash(&self, full_hash: &Hash) -> Option<AddressHash> {
+        self.ifaces.iter().find(|i| i.full_hash == *full_hash).map(|i| i.address)
+    }
+
+    pub fn set_mode(&mut self, address: AddressHash, mode: InterfaceMode) -> bool {
+        if let Some(iface) = self.ifaces.iter_mut().find(|i| i.address == address) {
+            iface.mode = mode;
+            true
+        } else {
+            false
+        }
     }
 
     /// Register a virtual iface that shares its tx channel with an
@@ -256,7 +365,9 @@ impl InterfaceManager {
         host: AddressHash,
         role: IfaceRole,
     ) -> Option<AddressHash> {
-        let host_tx = self.ifaces.iter().find(|i| i.address == host).map(|i| i.tx_send.clone())?;
+        let host_iface = self.ifaces.iter().find(|i| i.address == host)?;
+        let host_tx = host_iface.tx_send.clone();
+        let mode = host_iface.mode;
 
         // Virtual iface gets its own CancellationToken so it can be
         // stopped (and GC'd by `cleanup()`) independently of the host.
@@ -266,11 +377,18 @@ impl InterfaceManager {
 
         self.counter += 1;
         let counter_bytes = self.counter.to_le_bytes();
-        let address = AddressHash::new_from_hash(&Hash::new_from_slice(&counter_bytes[..]));
+        let full_hash = Hash::new_from_slice(&counter_bytes[..]);
+        let address = AddressHash::new_from_hash(&full_hash);
 
-        log::debug!("iface: register virtual iface {} on host {} role={:?}", address, host, role);
+        log::debug!(
+            "iface: register virtual iface {} on host {} role={:?} mode={:?}",
+            address,
+            host,
+            role,
+            mode
+        );
 
-        self.ifaces.push(LocalInterface { address, tx_send: host_tx, stop, role });
+        self.ifaces.push(LocalInterface { address, full_hash, tx_send: host_tx, stop, role, mode });
 
         Some(address)
     }
@@ -308,6 +426,14 @@ impl InterfaceManager {
     }
 
     pub async fn send(&self, message: TxMessage) -> TxDispatchTrace {
+        self.send_with_announce_policy(message, None).await
+    }
+
+    pub async fn send_with_announce_policy(
+        &self,
+        message: TxMessage,
+        announce_policy: Option<AnnounceBroadcastPolicy>,
+    ) -> TxDispatchTrace {
         let mut trace = TxDispatchTrace::default();
         for iface in &self.ifaces {
             let should_send = match message.tx_type {
@@ -322,6 +448,13 @@ impl InterfaceManager {
                         let mut should_send = true;
                         if let Some(address) = address {
                             should_send = address != iface.address;
+                        }
+                        if should_send {
+                            should_send = allows_announce_broadcast(
+                                &message.packet,
+                                iface.mode,
+                                announce_policy,
+                            );
                         }
                         should_send
                     }
@@ -386,6 +519,50 @@ impl InterfaceManager {
     }
 }
 
+fn allows_announce_broadcast(
+    packet: &Packet,
+    outgoing_mode: InterfaceMode,
+    policy: Option<AnnounceBroadcastPolicy>,
+) -> bool {
+    if packet.header.packet_type != PacketType::Announce {
+        return true;
+    }
+
+    let Some(policy) = policy else {
+        return true;
+    };
+
+    match outgoing_mode {
+        InterfaceMode::AccessPoint => false,
+        InterfaceMode::Roaming => {
+            policy.local_destination
+                || matches!(
+                    policy.next_hop_iface_mode,
+                    Some(
+                        InterfaceMode::Full
+                            | InterfaceMode::PointToPoint
+                            | InterfaceMode::AccessPoint
+                            | InterfaceMode::Gateway
+                    )
+                )
+        }
+        InterfaceMode::Boundary => {
+            policy.local_destination
+                || matches!(
+                    policy.next_hop_iface_mode,
+                    Some(
+                        InterfaceMode::Full
+                            | InterfaceMode::PointToPoint
+                            | InterfaceMode::AccessPoint
+                            | InterfaceMode::Boundary
+                            | InterfaceMode::Gateway
+                    )
+                )
+        }
+        InterfaceMode::Full | InterfaceMode::PointToPoint | InterfaceMode::Gateway => true,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -401,6 +578,7 @@ mod tests {
         let mut mgr = InterfaceManager::new(16);
         let channel = mgr.new_channel(16);
         assert_eq!(mgr.role(channel.address()), Some(IfaceRole::Unicast));
+        assert_eq!(mgr.mode(channel.address()), Some(InterfaceMode::Full));
     }
 
     #[test]
@@ -412,10 +590,36 @@ mod tests {
     }
 
     #[test]
+    fn new_channel_with_mode_records_mode() {
+        let mut mgr = InterfaceManager::new(16);
+        let channel =
+            mgr.new_channel_with_role_and_mode(16, IfaceRole::Unicast, InterfaceMode::Boundary);
+        assert_eq!(mgr.mode(channel.address()), Some(InterfaceMode::Boundary));
+    }
+
+    #[test]
+    fn set_mode_updates_registered_iface() {
+        let mut mgr = InterfaceManager::new(16);
+        let channel = mgr.new_channel(16);
+        assert!(mgr.set_mode(*channel.address(), InterfaceMode::Roaming));
+        assert_eq!(mgr.mode(channel.address()), Some(InterfaceMode::Roaming));
+    }
+
+    #[test]
+    fn full_hash_roundtrips_to_internal_address() {
+        let mut mgr = InterfaceManager::new(16);
+        let channel = mgr.new_channel(16);
+        let full_hash = mgr.full_hash(channel.address()).expect("full hash");
+        assert_eq!(full_hash.as_slice().len(), crate::hash::HASH_SIZE);
+        assert_eq!(mgr.address_for_full_hash(&full_hash), Some(*channel.address()));
+    }
+
+    #[test]
     fn role_returns_none_for_unknown_address() {
         let mgr = InterfaceManager::new(16);
         let fake = AddressHash::new_from_hash(&Hash::new_from_slice(&[0u8; 32]));
         assert_eq!(mgr.role(&fake), None);
+        assert_eq!(mgr.mode(&fake), None);
     }
 
     #[test]
@@ -450,5 +654,139 @@ mod tests {
     fn iface_role_default_is_unicast() {
         let role = IfaceRole::default();
         assert_eq!(role, IfaceRole::Unicast);
+    }
+
+    #[test]
+    fn interface_mode_parse_matches_python_aliases() {
+        assert_eq!(InterfaceMode::parse("full"), Some(InterfaceMode::Full));
+        assert_eq!(InterfaceMode::parse("accesspoint"), Some(InterfaceMode::AccessPoint));
+        assert_eq!(InterfaceMode::parse("ap"), Some(InterfaceMode::AccessPoint));
+        assert_eq!(InterfaceMode::parse("pointtopoint"), Some(InterfaceMode::PointToPoint));
+        assert_eq!(InterfaceMode::parse("ptp"), Some(InterfaceMode::PointToPoint));
+        assert_eq!(InterfaceMode::parse("roaming"), Some(InterfaceMode::Roaming));
+        assert_eq!(InterfaceMode::parse("boundary"), Some(InterfaceMode::Boundary));
+        assert_eq!(InterfaceMode::parse("gw"), Some(InterfaceMode::Gateway));
+        assert_eq!(InterfaceMode::parse("unknown"), None);
+    }
+
+    #[test]
+    fn virtual_iface_inherits_host_mode() {
+        let mut mgr = InterfaceManager::new(16);
+        let host = *mgr
+            .new_channel_with_role_and_mode(16, IfaceRole::Multicast, InterfaceMode::Gateway)
+            .address();
+        let virtual_iface =
+            mgr.register_virtual_iface(host, IfaceRole::VirtualUnicast).expect("virtual iface");
+        assert_eq!(mgr.mode(&virtual_iface), Some(InterfaceMode::Gateway));
+    }
+
+    #[tokio::test]
+    async fn access_point_blocks_remote_announce_broadcasts() {
+        let mut mgr = InterfaceManager::new(16);
+        let mut rx = mgr
+            .new_channel_with_role_and_mode(16, IfaceRole::Unicast, InterfaceMode::AccessPoint)
+            .tx_channel;
+        let packet = announce_packet();
+        let trace = mgr
+            .send_with_announce_policy(
+                TxMessage { tx_type: TxMessageType::Broadcast(None), packet },
+                Some(AnnounceBroadcastPolicy {
+                    local_destination: false,
+                    next_hop_iface_mode: Some(InterfaceMode::Full),
+                }),
+            )
+            .await;
+        assert_eq!(trace.sent_ifaces, 0);
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn roaming_blocks_remote_announce_without_allowed_next_hop() {
+        let mut mgr = InterfaceManager::new(16);
+        let mut rx = mgr
+            .new_channel_with_role_and_mode(16, IfaceRole::Unicast, InterfaceMode::Roaming)
+            .tx_channel;
+        let packet = announce_packet();
+        let trace = mgr
+            .send_with_announce_policy(
+                TxMessage { tx_type: TxMessageType::Broadcast(None), packet },
+                Some(AnnounceBroadcastPolicy {
+                    local_destination: false,
+                    next_hop_iface_mode: Some(InterfaceMode::Boundary),
+                }),
+            )
+            .await;
+        assert_eq!(trace.sent_ifaces, 0);
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn roaming_allows_local_announce_broadcasts() {
+        let mut mgr = InterfaceManager::new(16);
+        let mut rx = mgr
+            .new_channel_with_role_and_mode(16, IfaceRole::Unicast, InterfaceMode::Roaming)
+            .tx_channel;
+        let packet = announce_packet();
+        let trace = mgr
+            .send_with_announce_policy(
+                TxMessage { tx_type: TxMessageType::Broadcast(None), packet },
+                Some(AnnounceBroadcastPolicy {
+                    local_destination: true,
+                    next_hop_iface_mode: None,
+                }),
+            )
+            .await;
+        assert_eq!(trace.sent_ifaces, 1);
+        assert_eq!(rx.try_recv().expect("announce").packet, packet);
+    }
+
+    #[tokio::test]
+    async fn boundary_blocks_remote_announce_from_roaming_next_hop() {
+        let mut mgr = InterfaceManager::new(16);
+        let mut rx = mgr
+            .new_channel_with_role_and_mode(16, IfaceRole::Unicast, InterfaceMode::Boundary)
+            .tx_channel;
+        let packet = announce_packet();
+        let trace = mgr
+            .send_with_announce_policy(
+                TxMessage { tx_type: TxMessageType::Broadcast(None), packet },
+                Some(AnnounceBroadcastPolicy {
+                    local_destination: false,
+                    next_hop_iface_mode: Some(InterfaceMode::Roaming),
+                }),
+            )
+            .await;
+        assert_eq!(trace.sent_ifaces, 0);
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn boundary_allows_remote_announce_from_boundary_next_hop() {
+        let mut mgr = InterfaceManager::new(16);
+        let mut rx = mgr
+            .new_channel_with_role_and_mode(16, IfaceRole::Unicast, InterfaceMode::Boundary)
+            .tx_channel;
+        let packet = announce_packet();
+        let trace = mgr
+            .send_with_announce_policy(
+                TxMessage { tx_type: TxMessageType::Broadcast(None), packet },
+                Some(AnnounceBroadcastPolicy {
+                    local_destination: false,
+                    next_hop_iface_mode: Some(InterfaceMode::Boundary),
+                }),
+            )
+            .await;
+        assert_eq!(trace.sent_ifaces, 1);
+        assert_eq!(rx.try_recv().expect("announce").packet, packet);
+    }
+
+    fn announce_packet() -> Packet {
+        Packet {
+            header: crate::packet::Header {
+                packet_type: PacketType::Announce,
+                ..Default::default()
+            },
+            ..Default::default()
+        }
     }
 }

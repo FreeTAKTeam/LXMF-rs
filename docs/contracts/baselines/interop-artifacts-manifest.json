@@ -43,8 +43,8 @@
     },
     {
       "path": "docs/contracts/external-client-interop-acceptance-v1.md",
-      "bytes": 2763,
-      "sha256": "44eac66035f845d58a8936d8ad22139b876287d56d2f3cb1c6cd31e5fa290632"
+      "bytes": 4322,
+      "sha256": "0a4c2e87d8983840e2504b18705b2cc6f7f299af5fed28fa554d127b8e20e157"
     },
     {
       "path": "docs/contracts/failure-injection-matrix.md",

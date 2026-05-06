@@ -1942,6 +1942,7 @@ dependencies = [
  "serde_cbor",
  "serde_json",
  "sha2",
+ "tempfile",
  "tokio",
  "tokio-stream",
  "x509-parser",

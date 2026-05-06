@@ -2,7 +2,9 @@ use crate::bootstrap::{
     enforce_startup_policy, mark_interface_runtime_fields, mark_interface_startup_status,
     select_tcp_server_bind, InterfaceStartupFailure,
 };
-use crate::bridge::{validate_delivery_request, RequestedDeliveryMethod, TransportBridge};
+use crate::bridge::{
+    validate_delivery_request, PeerCrypto, RequestedDeliveryMethod, TransportBridge,
+};
 use crate::bridge_helpers::opportunistic_payload;
 use crate::inbound_worker::{
     prune_outbound_resource_mappings_for_message, take_outbound_resource_tracking,
@@ -11,6 +13,12 @@ use crate::inbound_worker::{
 use crate::interfaces::{lora, serial};
 use crate::{bootstrap, Args};
 use futures::FutureExt;
+use lxmf::WireMessage;
+use reticulum_daemon::announce_names::{
+    encode_propagation_node_app_data, pn_peering_cost_from_app_data,
+    pn_stamp_cost_flexibility_from_app_data, pn_stamp_cost_from_app_data,
+    PropagationNodeAnnounceConfig,
+};
 use reticulum_daemon::config::InterfaceConfig;
 use rns_core::identity::PrivateIdentity;
 use rns_rpc::{InterfaceRecord, MessagesStore, OutboundBridge, RpcDaemon, RpcRequest};
@@ -139,6 +147,12 @@ fn propagated_delivery_requires_selected_node() {
 }
 
 async fn test_transport_bridge_fixture() -> (Arc<RpcDaemon>, Arc<TransportBridge>) {
+    let (daemon, bridge, _, _) = test_transport_bridge_fixture_with_peer().await;
+    (daemon, bridge)
+}
+
+async fn test_transport_bridge_fixture_with_peer(
+) -> (Arc<RpcDaemon>, Arc<TransportBridge>, PrivateIdentity, String) {
     let signer = PrivateIdentity::new_from_rand(rand_core::OsRng);
     let transport_identity = rns_transport::identity_bridge::to_transport_private_identity(&signer);
     let mut transport = Transport::new(TransportConfig::new("test", &transport_identity, true));
@@ -150,6 +164,16 @@ async fn test_transport_bridge_fixture() -> (Arc<RpcDaemon>, Arc<TransportBridge
     let receipt_map = Arc::new(Mutex::new(HashMap::new()));
     let outbound_resource_map = Arc::new(Mutex::new(HashMap::new()));
     let peer_crypto = Arc::new(Mutex::new(HashMap::new()));
+    let recipient = PrivateIdentity::new_from_rand(rand_core::OsRng);
+    let recipient_hex = hex::encode(recipient.address_hash().as_slice());
+    peer_crypto.lock().expect("peer map").insert(
+        recipient_hex.clone(),
+        PeerCrypto {
+            identity: rns_transport::identity_bridge::to_transport_identity(
+                recipient.as_identity(),
+            ),
+        },
+    );
     let (receipt_tx, _receipt_rx) = tokio::sync::mpsc::unbounded_channel();
 
     let bridge = Arc::new(TransportBridge::new(
@@ -159,7 +183,10 @@ async fn test_transport_bridge_fixture() -> (Arc<RpcDaemon>, Arc<TransportBridge
         announce_destination,
         None,
         None,
-        None,
+        encode_propagation_node_app_data(
+            Some("Bridge Node"),
+            PropagationNodeAnnounceConfig::default(),
+        ),
         None,
         peer_crypto,
         receipt_map,
@@ -175,7 +202,31 @@ async fn test_transport_bridge_fixture() -> (Arc<RpcDaemon>, Arc<TransportBridge
     ));
     bridge.set_daemon(daemon.clone());
 
-    (daemon, bridge)
+    (daemon, bridge, recipient, recipient_hex)
+}
+
+#[tokio::test]
+async fn transport_bridge_regenerates_propagation_app_data_from_daemon_state() {
+    let (daemon, bridge) = test_transport_bridge_fixture().await;
+    daemon
+        .handle_rpc(RpcRequest {
+            id: 300,
+            method: "propagation_enable".into(),
+            params: Some(json!({
+                "enabled": true,
+                "target_cost": 22,
+                "stamp_cost_flexibility": 6,
+                "peering_cost": 17,
+            })),
+        })
+        .expect("enable propagation");
+
+    let app_data =
+        bridge.current_propagation_announce_app_data_for_test().expect("propagation app data");
+
+    assert_eq!(pn_stamp_cost_from_app_data(app_data.as_slice()), Some(22));
+    assert_eq!(pn_stamp_cost_flexibility_from_app_data(app_data.as_slice()), Some(6));
+    assert_eq!(pn_peering_cost_from_app_data(app_data.as_slice()), Some(17));
 }
 
 #[tokio::test]
@@ -226,6 +277,59 @@ async fn transport_bridge_leaves_paper_messages_non_terminal_for_encoding() {
     assert_eq!(
         final_status.result.expect("result")["message"]["receipt_status"],
         json!("sent: paper")
+    );
+}
+
+#[tokio::test]
+async fn sdk_paper_encode_uses_real_lxm_uri_when_peer_identity_is_known() {
+    let (daemon, _bridge, recipient, recipient_hex) =
+        test_transport_bridge_fixture_with_peer().await;
+
+    let send = daemon
+        .handle_rpc(RpcRequest {
+            id: 261,
+            method: "send_message_v2".into(),
+            params: Some(json!({
+                "id": "paper-real-uri-1",
+                "source": "src",
+                "destination": recipient_hex,
+                "title": "Paper URI Title",
+                "content": "paper uri body",
+                "method": "paper"
+            })),
+        })
+        .expect("send");
+    assert!(send.error.is_none(), "paper send should be accepted");
+
+    let encode = daemon
+        .handle_rpc(RpcRequest {
+            id: 262,
+            method: "sdk_paper_encode_v2".into(),
+            params: Some(json!({ "message_id": "paper-real-uri-1" })),
+        })
+        .expect("paper encode");
+    assert!(encode.error.is_none(), "paper encode should succeed");
+    let uri =
+        encode.result.expect("result")["envelope"]["uri"].as_str().expect("paper uri").to_string();
+    assert!(uri.starts_with("lxm://"));
+    assert!(
+        !uri.trim_start_matches("lxm://").contains('/'),
+        "real paper URI should be one encoded payload, not a placeholder path"
+    );
+
+    let decoded =
+        WireMessage::unpack_paper_uri(uri.as_str(), &recipient).expect("decode real paper URI");
+    assert_eq!(
+        decoded.payload.title.as_ref().map(|title| String::from_utf8_lossy(title).to_string()),
+        Some("Paper URI Title".to_string())
+    );
+    assert_eq!(
+        decoded
+            .payload
+            .content
+            .as_ref()
+            .map(|content| String::from_utf8_lossy(content).to_string()),
+        Some("paper uri body".to_string())
     );
 }
 

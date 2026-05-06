@@ -58,6 +58,14 @@ async fn process_announce<'a>(
         handler.announce_table.add(packet, dest_hash, route_iface);
 
         handler.path_table.handle_announce(packet, packet.transport, route_iface);
+        handler.tunnel_table.note_path(
+            route_iface,
+            packet.destination,
+            packet.transport.unwrap_or(packet.destination),
+            packet.header.hops,
+            packet.hash(),
+            std::time::Instant::now(),
+        );
     }
 
     let name_hash = {

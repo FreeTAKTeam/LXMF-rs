@@ -1,6 +1,27 @@
 use super::*;
 
 impl Transport {
+    pub(crate) async fn send_link_packet_on_bound_iface(
+        &self,
+        link: &Arc<Mutex<Link>>,
+        packet: Packet,
+    ) -> SendPacketOutcome {
+        let Some(iface) = link.lock().await.ingress_iface() else {
+            return SendPacketOutcome::DroppedNoRoute;
+        };
+        let dispatch = self
+            .handler
+            .lock()
+            .await
+            .send(TxMessage { tx_type: TxMessageType::Direct(iface), packet })
+            .await;
+        if dispatch.sent_ifaces > 0 {
+            SendPacketOutcome::SentDirect
+        } else {
+            SendPacketOutcome::DroppedNoRoute
+        }
+    }
+
     async fn find_any_link(&self, link_id: &AddressHash) -> Option<Arc<Mutex<Link>>> {
         let (out_links, in_link) = {
             let handler = self.handler.lock().await;
@@ -203,7 +224,71 @@ impl Transport {
         let (resource_hash, packet) =
             handler.resource_manager.start_send(&link_guard, data, metadata)?;
         drop(link_guard);
-        let outcome = handler.send_packet_with_outcome(packet).await;
+        drop(handler);
+        let outcome = self.send_link_packet_on_bound_iface(&link, packet).await;
+        let mut handler = self.handler.lock().await;
+        let sent =
+            matches!(outcome, SendPacketOutcome::SentDirect | SendPacketOutcome::SentBroadcast);
+        handler.resource_manager.confirm_outbound_dispatch(resource_hash, sent);
+        if sent {
+            Ok(resource_hash)
+        } else {
+            Err(RnsError::ConnectionError)
+        }
+    }
+
+    pub async fn send_response_resource(
+        &self,
+        link_id: &AddressHash,
+        request_id: Vec<u8>,
+        data: Vec<u8>,
+        metadata: Option<Vec<u8>>,
+    ) -> Result<Hash, RnsError> {
+        let link = self.find_any_link(link_id).await.ok_or(RnsError::InvalidArgument)?;
+        let mut handler = self.handler.lock().await;
+        let link_guard = link.lock().await;
+        let (resource_hash, packet) = handler.resource_manager.start_send_with_options(
+            &link_guard,
+            data,
+            metadata,
+            Some(request_id),
+            true,
+        )?;
+        drop(link_guard);
+        drop(handler);
+        let outcome = self.send_link_packet_on_bound_iface(&link, packet).await;
+        let mut handler = self.handler.lock().await;
+        let sent =
+            matches!(outcome, SendPacketOutcome::SentDirect | SendPacketOutcome::SentBroadcast);
+        handler.resource_manager.confirm_outbound_dispatch(resource_hash, sent);
+        if sent {
+            Ok(resource_hash)
+        } else {
+            Err(RnsError::ConnectionError)
+        }
+    }
+
+    pub async fn send_request_resource(
+        &self,
+        link_id: &AddressHash,
+        request_id: Vec<u8>,
+        data: Vec<u8>,
+        metadata: Option<Vec<u8>>,
+    ) -> Result<Hash, RnsError> {
+        let link = self.find_any_link(link_id).await.ok_or(RnsError::InvalidArgument)?;
+        let mut handler = self.handler.lock().await;
+        let link_guard = link.lock().await;
+        let (resource_hash, packet) = handler.resource_manager.start_send_with_options(
+            &link_guard,
+            data,
+            metadata,
+            Some(request_id),
+            false,
+        )?;
+        drop(link_guard);
+        drop(handler);
+        let outcome = self.send_link_packet_on_bound_iface(&link, packet).await;
+        let mut handler = self.handler.lock().await;
         let sent =
             matches!(outcome, SendPacketOutcome::SentDirect | SendPacketOutcome::SentBroadcast);
         handler.resource_manager.confirm_outbound_dispatch(resource_hash, sent);

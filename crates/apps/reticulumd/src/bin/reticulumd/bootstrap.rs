@@ -7,7 +7,9 @@ use super::Args;
 #[path = "bootstrap_transport.rs"]
 mod transport_startup;
 use reticulum_daemon::announce_names::{
-    encode_delivery_display_name_app_data, normalize_display_name,
+    encode_delivery_display_name_app_data,
+    encode_propagation_node_app_data as encode_python_propagation_node_app_data,
+    normalize_display_name, PropagationNodeAnnounceConfig,
 };
 use reticulum_daemon::config::{DaemonConfig, InterfaceConfig};
 use reticulum_daemon::identity_store::load_or_create_identity;
@@ -43,6 +45,7 @@ pub(super) struct BootstrapContext {
 #[derive(Clone)]
 pub(super) struct PropagationControlContext {
     pub(super) enabled: bool,
+    pub(super) local_identity_hash: [u8; 16],
     pub(super) propagation_destination_hash_hex: Option<String>,
     pub(super) control_destination_hash_hex: Option<String>,
     pub(super) delivery_destination:
@@ -75,6 +78,10 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         path
     });
     let identity = load_or_create_identity(&identity_path).expect("load identity");
+    let reticulum_storage_path =
+        args.db.parent().map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."));
+    let mut local_identity_hash = [0u8; 16];
+    local_identity_hash.copy_from_slice(identity.address_hash().as_slice());
     let identity_hash = hex::encode(identity.address_hash().as_slice());
     let local_display_name =
         std::env::var("LXMF_DISPLAY_NAME").ok().and_then(|value| normalize_display_name(&value));
@@ -106,6 +113,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         args: &args,
         daemon_config: daemon_config.as_ref(),
         identity: &identity,
+        reticulum_storage_path: reticulum_storage_path.as_path(),
         local_display_name: local_display_name.as_deref(),
         configured_interfaces,
         receipt_map: receipt_map.clone(),
@@ -222,53 +230,58 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
             let _ = bridge.announce_now();
         }
     }
-    if let Some((transport, destination, interval_secs)) =
-        transport.as_ref().zip(announce_destination.as_ref()).zip(peer_announce_interval_secs).map(
-            |((transport, destination), interval_secs)| (transport, destination, interval_secs),
-        )
-    {
-        spawn_destination_announce_scheduler(
-            transport.clone(),
-            destination.clone(),
-            None,
-            interval_secs,
-        );
+    if let Some(interval_secs) = peer_announce_interval_secs {
+        if let Some(bridge) = bridge.as_ref() {
+            spawn_bridge_announce_scheduler(bridge.clone(), interval_secs);
+        }
     }
 
     if propagation_control_enabled && node_announce_at_start {
-        if let Some((transport, destination)) =
-            transport.as_ref().zip(propagation_destination.as_ref())
-        {
-            let propagation_app_data =
-                encode_propagation_node_app_data(local_display_name.as_deref());
-            transport.send_announce(destination, propagation_app_data.as_deref()).await;
-        }
-        if let Some((transport, destination)) = transport.as_ref().zip(control_destination.as_ref())
-        {
-            transport.send_announce(destination, None).await;
+        if let Some(bridge) = bridge.as_ref() {
+            let _ = bridge.announce_propagation_now();
+        } else {
+            if let Some((transport, destination)) =
+                transport.as_ref().zip(propagation_destination.as_ref())
+            {
+                let propagation_app_data =
+                    encode_propagation_node_app_data(local_display_name.as_deref());
+                transport.send_announce(destination, propagation_app_data.as_deref()).await;
+            }
+            if let Some((transport, destination)) =
+                transport.as_ref().zip(control_destination.as_ref())
+            {
+                transport.send_announce(destination, None).await;
+            }
         }
     }
     if let Some(interval_secs) = node_announce_interval_secs {
-        if let Some((transport, destination)) =
-            transport.as_ref().zip(propagation_destination.as_ref())
-        {
-            let propagation_app_data =
-                encode_propagation_node_app_data(local_display_name.as_deref());
-            spawn_destination_announce_scheduler(
-                transport.clone(),
-                destination.clone(),
-                propagation_app_data,
-                interval_secs,
-            );
-        }
-        if let Some((transport, destination)) = transport.as_ref().zip(control_destination.as_ref())
-        {
-            spawn_destination_announce_scheduler(
-                transport.clone(),
-                destination.clone(),
-                None,
-                interval_secs,
-            );
+        if propagation_control_enabled {
+            if let Some(bridge) = bridge.as_ref() {
+                spawn_bridge_propagation_announce_scheduler(bridge.clone(), interval_secs);
+            } else {
+                if let Some((transport, destination)) =
+                    transport.as_ref().zip(propagation_destination.as_ref())
+                {
+                    let propagation_app_data =
+                        encode_propagation_node_app_data(local_display_name.as_deref());
+                    spawn_destination_announce_scheduler(
+                        transport.clone(),
+                        destination.clone(),
+                        propagation_app_data,
+                        interval_secs,
+                    );
+                }
+                if let Some((transport, destination)) =
+                    transport.as_ref().zip(control_destination.as_ref())
+                {
+                    spawn_destination_announce_scheduler(
+                        transport.clone(),
+                        destination.clone(),
+                        None,
+                        interval_secs,
+                    );
+                }
+            }
         }
     }
 
@@ -291,6 +304,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
             transport.clone(),
             PropagationControlContext {
                 enabled: propagation_control_enabled,
+                local_identity_hash,
                 propagation_destination_hash_hex,
                 control_destination_hash_hex,
                 delivery_destination: announce_destination.clone(),
@@ -299,7 +313,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
             receipt_tx.clone(),
             outbound_resource_map,
         );
-        spawn_announce_worker(daemon.clone(), transport, peer_crypto);
+        spawn_announce_worker(daemon.clone(), transport, peer_crypto, Some(reticulum_storage_path));
     }
 
     BootstrapContext { rpc_addr, daemon, rpc_tls }
@@ -507,30 +521,37 @@ fn spawn_destination_announce_scheduler(
     });
 }
 
+fn spawn_bridge_announce_scheduler(bridge: Arc<TransportBridge>, interval_secs: u64) {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(interval_secs));
+        loop {
+            interval.tick().await;
+            let _ = bridge.announce_now();
+        }
+    });
+}
+
+fn spawn_bridge_propagation_announce_scheduler(bridge: Arc<TransportBridge>, interval_secs: u64) {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(interval_secs));
+        loop {
+            interval.tick().await;
+            let _ = bridge.announce_propagation_now();
+        }
+    });
+}
+
 fn encode_propagation_node_app_data(display_name: Option<&str>) -> Option<Vec<u8>> {
-    let mut metadata = Vec::new();
-    if let Some(name) = display_name {
-        metadata.push((rmpv::Value::from(1_i64), rmpv::Value::Binary(name.as_bytes().to_vec())));
-    }
-    let announce_data = rmpv::Value::Array(vec![
-        rmpv::Value::Boolean(false),
-        rmpv::Value::from(
-            std::time::SystemTime::now()
+    encode_python_propagation_node_app_data(
+        display_name,
+        PropagationNodeAnnounceConfig {
+            timebase: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs() as i64,
-        ),
-        rmpv::Value::Boolean(true),
-        rmpv::Value::from(256_i64),
-        rmpv::Value::from(10240_i64),
-        rmpv::Value::Array(vec![
-            rmpv::Value::from(16_i64),
-            rmpv::Value::from(3_i64),
-            rmpv::Value::from(18_i64),
-        ]),
-        rmpv::Value::Map(metadata),
-    ]);
-    rmp_serde::to_vec(&announce_data).ok()
+            ..PropagationNodeAnnounceConfig::default()
+        },
+    )
 }
 
 pub(super) fn mark_interface_runtime_managed(record: &mut InterfaceRecord, managed_by: &str) {

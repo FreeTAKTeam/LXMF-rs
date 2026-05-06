@@ -10,6 +10,7 @@ use ed25519_dalek::Signature;
 use rand_core::CryptoRngCore;
 use rns_core::crypt::fernet::{Fernet, PlainText, FERNET_MAX_PADDING_SIZE, FERNET_OVERHEAD_SIZE};
 use rns_core::identity::{DerivedKey, Identity, PrivateIdentity, PUBLIC_KEY_LENGTH};
+use rns_core::ratchets::decrypt_with_identity;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use x25519_dalek::{EphemeralSecret, PublicKey};
@@ -292,6 +293,34 @@ impl WireMessage {
             .or_else(|_| base64::engine::general_purpose::URL_SAFE.decode(encoded))
             .map_err(|e| LxmfError::Decode(format!("invalid lxm uri payload: {e}")))
     }
+
+    pub fn unpack_paper(
+        paper_bytes: &[u8],
+        recipient: &PrivateIdentity,
+    ) -> Result<Self, LxmfError> {
+        if paper_bytes.len() <= 16 + PUBLIC_KEY_LENGTH {
+            return Err(LxmfError::Decode("paper message too short".into()));
+        }
+
+        let mut destination = [0u8; 16];
+        destination.copy_from_slice(&paper_bytes[..16]);
+
+        let decrypted = decrypt_with_identity(
+            recipient,
+            recipient.address_hash().as_slice(),
+            &paper_bytes[16..],
+        )
+        .map_err(|err| LxmfError::Decode(format!("paper message decrypt failed: {err:?}")))?;
+        let mut wire = Vec::with_capacity(16 + decrypted.len());
+        wire.extend_from_slice(&destination);
+        wire.extend_from_slice(&decrypted);
+        Self::unpack(&wire)
+    }
+
+    pub fn unpack_paper_uri(uri: &str, recipient: &PrivateIdentity) -> Result<Self, LxmfError> {
+        let paper_bytes = Self::decode_lxm_uri(uri)?;
+        Self::unpack_paper(&paper_bytes, recipient)
+    }
 }
 
 fn encrypt_for_identity<R: CryptoRngCore + Copy>(
@@ -442,6 +471,31 @@ mod tests {
 
         assert_eq!(&lxmf_data[..16], &packed[..16]);
         assert_eq!(decrypted, &packed[16..]);
+    }
+
+    #[test]
+    fn paper_uri_roundtrip_keeps_delivery_hash_separate_from_identity_hash() {
+        let sender = PrivateIdentity::new_from_name("paper-pack-sender");
+        let receiver = PrivateIdentity::new_from_name("paper-pack-receiver");
+        let mut delivery_hash = [0x42u8; 16];
+        assert_ne!(delivery_hash.as_slice(), receiver.address_hash().as_slice());
+        let payload =
+            Payload::new(1.0, Some(b"content".to_vec()), Some(b"title".to_vec()), None, None);
+        let mut wire = WireMessage::new(delivery_hash, address_hash_bytes(&sender), payload);
+        wire.sign(&sender).expect("sign");
+
+        let uri =
+            wire.pack_paper_uri_with_rng(receiver.as_identity(), OsRng).expect("pack paper uri");
+        let unpacked = WireMessage::unpack_paper_uri(&uri, &receiver).expect("unpack paper uri");
+
+        assert_eq!(unpacked.destination, delivery_hash);
+        assert_eq!(unpacked.source, wire.source);
+        assert_eq!(
+            unpacked.payload.to_msgpack().expect("payload msgpack"),
+            wire.payload.to_msgpack().expect("payload msgpack")
+        );
+        delivery_hash[0] ^= 0x01;
+        assert_ne!(unpacked.destination, delivery_hash);
     }
 
     #[test]

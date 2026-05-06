@@ -118,6 +118,110 @@ impl RpcDaemon {
         self.ingest_propagation_payload_hex(payload_hex.as_str(), transient_id)
     }
 
+    pub fn has_propagation_payload(&self, transient_id: &str) -> bool {
+        self.propagation_payloads
+            .lock()
+            .expect("propagation payload mutex poisoned")
+            .contains_key(transient_id)
+    }
+
+    pub fn list_propagation_payloads_for_destination(
+        &self,
+        destination: &[u8; 16],
+    ) -> Vec<(Vec<u8>, usize)> {
+        let mut entries = self
+            .propagation_payloads
+            .lock()
+            .expect("propagation payload mutex poisoned")
+            .iter()
+            .filter_map(|(transient_id, payload_hex)| {
+                let transient_id = hex::decode(transient_id).ok()?;
+                if transient_id.len() != 32 {
+                    return None;
+                }
+                let payload = hex::decode(payload_hex).ok()?;
+                propagation_payload_matches_destination(payload.as_slice(), destination)
+                    .then_some((transient_id, payload.len()))
+            })
+            .collect::<Vec<_>>();
+        entries.sort_by_key(|(_transient_id, size)| *size);
+        entries
+    }
+
+    pub fn fetch_propagation_payloads_for_destination(
+        &self,
+        destination: &[u8; 16],
+        wanted: &[Vec<u8>],
+        transfer_limit_bytes: Option<usize>,
+    ) -> Vec<Vec<u8>> {
+        let guard = self.propagation_payloads.lock().expect("propagation payload mutex poisoned");
+        let mut messages = Vec::new();
+        let per_message_overhead = 16usize;
+        let mut cumulative_size = 24usize;
+        for transient_id in wanted {
+            if transient_id.len() != 32 {
+                continue;
+            }
+            let transient_hex = hex::encode(transient_id);
+            let Some(payload_hex) = guard.get(transient_hex.as_str()) else {
+                continue;
+            };
+            let Ok(payload) = hex::decode(payload_hex) else {
+                continue;
+            };
+            if !propagation_payload_matches_destination(payload.as_slice(), destination) {
+                continue;
+            }
+            let next_size = cumulative_size.saturating_add(payload.len() + per_message_overhead);
+            if transfer_limit_bytes.is_some_and(|limit| next_size > limit) {
+                continue;
+            }
+            cumulative_size = next_size;
+            messages.push(payload);
+        }
+        drop(guard);
+
+        if !messages.is_empty() {
+            let state = {
+                let mut guard = self.propagation_state.lock().expect("propagation mutex poisoned");
+                guard.client_propagation_messages_served =
+                    guard.client_propagation_messages_served.saturating_add(messages.len());
+                guard.clone()
+            };
+            self.update_daemon_status_snapshot(|snapshot| {
+                snapshot.propagation = state;
+            });
+        }
+
+        messages
+    }
+
+    pub fn purge_propagation_payloads_for_destination(
+        &self,
+        destination: &[u8; 16],
+        haves: &[Vec<u8>],
+    ) -> usize {
+        let mut guard =
+            self.propagation_payloads.lock().expect("propagation payload mutex poisoned");
+        let mut purged = 0usize;
+        for transient_id in haves {
+            if transient_id.len() != 32 {
+                continue;
+            }
+            let transient_hex = hex::encode(transient_id);
+            let should_remove = guard
+                .get(transient_hex.as_str())
+                .and_then(|payload_hex| hex::decode(payload_hex).ok())
+                .is_some_and(|payload| {
+                    propagation_payload_matches_destination(payload.as_slice(), destination)
+                });
+            if should_remove && guard.remove(transient_hex.as_str()).is_some() {
+                purged += 1;
+            }
+        }
+        purged
+    }
+
     pub(super) fn handle_rpc_legacy_propagation(
         &self,
         request: RpcRequest,
@@ -192,6 +296,9 @@ impl RpcDaemon {
                     }
                     if let Some(cost) = parsed.target_cost {
                         guard.target_cost = cost;
+                    }
+                    if let Some(flexibility) = parsed.stamp_cost_flexibility {
+                        guard.stamp_cost_flexibility = flexibility;
                     }
                     if let Some(limit) = parsed.message_storage_limit_mb {
                         guard.message_storage_limit_mb = Some(limit);
@@ -631,6 +738,10 @@ pub(super) fn split_propagation_stamp(transient_data: &[u8]) -> Option<(&[u8], &
 
     let split_at = transient_data.len() - PROPAGATION_STAMP_SIZE;
     Some((&transient_data[..split_at], &transient_data[split_at..]))
+}
+
+fn propagation_payload_matches_destination(payload: &[u8], destination: &[u8; 16]) -> bool {
+    payload.len() >= 16 && &payload[..16] == destination
 }
 
 pub(super) fn propagation_stamp_workblock(material: &[u8]) -> Vec<u8> {

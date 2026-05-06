@@ -127,6 +127,8 @@ pub struct PropagationState {
     pub enabled: bool,
     pub store_root: Option<String>,
     pub target_cost: u32,
+    #[serde(default = "default_propagation_stamp_cost_flexibility")]
+    pub stamp_cost_flexibility: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub message_storage_limit_mb: Option<u64>,
     #[serde(default = "default_true")]
@@ -170,6 +172,7 @@ impl Default for PropagationState {
             enabled: false,
             store_root: None,
             target_cost: 0,
+            stamp_cost_flexibility: default_propagation_stamp_cost_flexibility(),
             message_storage_limit_mb: None,
             autopeer: default_true(),
             autopeer_maxdepth: default_autopeer_maxdepth(),
@@ -394,6 +397,7 @@ pub struct RpcDaemon {
     paper_ingest_seen: Mutex<HashSet<String>>,
     stamp_policy: Mutex<StampPolicy>,
     ticket_cache: Mutex<HashMap<String, TicketRecord>>,
+    ticket_last_deliveries: Mutex<HashMap<String, i64>>,
     delivery_traces: Mutex<HashMap<String, Vec<DeliveryTraceEntry>>>,
     daemon_status_snapshot: std::sync::RwLock<DaemonStatusSnapshot>,
     delivery_status_lock: Mutex<()>,
@@ -411,6 +415,20 @@ pub trait OutboundBridge: Send + Sync {
         record: &MessageRecord,
         options: &OutboundDeliveryOptions,
     ) -> Result<(), std::io::Error>;
+
+    fn encode_paper(
+        &self,
+        _record: &MessageRecord,
+    ) -> Result<Option<PaperEncodeEnvelope>, std::io::Error> {
+        Ok(None)
+    }
+
+    fn decode_paper_uri(
+        &self,
+        _uri: &str,
+    ) -> Result<Option<PaperDecodeOutcome>, std::io::Error> {
+        Ok(None)
+    }
 }
 
 pub trait AnnounceBridge: Send + Sync {
@@ -481,6 +499,22 @@ pub struct OutboundDeliveryOptions {
     pub source_private_key: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct PaperEncodeEnvelope {
+    pub uri: String,
+    pub transient_id: String,
+    pub destination_hint: String,
+    pub extensions: JsonMap<String, JsonValue>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PaperDecodeOutcome {
+    pub transient_id: String,
+    pub destination_hint: String,
+    pub record: Option<MessageRecord>,
+    pub raw_lxmf_bytes: Option<Vec<u8>>,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct RpcEvent {
     pub event_type: String,
@@ -541,6 +575,10 @@ fn default_true() -> bool {
 
 fn default_autopeer_maxdepth() -> u32 {
     6
+}
+
+fn default_propagation_stamp_cost_flexibility() -> u32 {
+    3
 }
 
 fn default_network_distance() -> u32 {

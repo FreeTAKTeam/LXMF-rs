@@ -3,7 +3,6 @@ use rns_core::identity::PrivateIdentity;
 use rns_transport::delivery::{send_via_link, LinkSendResult};
 use rns_transport::destination::link::Link;
 use rns_transport::destination::{DestinationDesc, DestinationName};
-use rns_transport::hash::AddressHash;
 use rns_transport::iface::{Interface, InterfaceContext};
 use rns_transport::packet::{DestinationType, PacketType};
 use rns_transport::transport::{Transport, TransportConfig};
@@ -31,7 +30,7 @@ async fn direct_send_uses_link_payloads() {
     let receiver = rns_transport::identity_bridge::to_transport_private_identity(&receiver);
 
     let transport = Transport::new(TransportConfig::new("test", &sender, true));
-    transport.iface_manager().lock().await.spawn(SinkInterface, sink_worker);
+    let proof_iface = transport.iface_manager().lock().await.spawn(SinkInterface, sink_worker);
 
     let destination = DestinationDesc {
         identity: *receiver.as_identity(),
@@ -47,7 +46,6 @@ async fn direct_send_uses_link_payloads() {
         Link::new_from_request(&request, receiver.sign_key().clone(), destination, event_tx)
             .expect("input link");
     let proof = input_link.prove();
-    let proof_iface = AddressHash::new_from_rand(OsRng);
 
     link.lock().await.handle_packet(&proof, proof_iface);
     tokio::time::sleep(Duration::from_millis(20)).await;

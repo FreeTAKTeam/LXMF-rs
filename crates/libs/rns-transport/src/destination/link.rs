@@ -28,6 +28,9 @@ use crate::{
 use super::DestinationDesc;
 
 const LINK_MTU_SIZE: usize = 3;
+const LINK_MTU_MASK: u32 = 0x1F_FFFF;
+const LINK_MODE_MASK: u32 = 0xE0_0000;
+const RETICULUM_COMPAT_MTU: u32 = (PACKET_MDU + 2 + 1 + ADDRESS_HASH_SIZE * 2) as u32;
 const KEEPALIVE_MAX_RTT: f32 = 1.75;
 const KEEPALIVE_TIMEOUT_FACTOR: f32 = 4.0;
 const STALE_GRACE_SECS: f32 = 5.0;
@@ -214,7 +217,7 @@ impl Link {
             bytes.copy_from_slice(
                 &data[PUBLIC_KEY_LENGTH * 2..PUBLIC_KEY_LENGTH * 2 + LINK_MTU_SIZE],
             );
-            Some(bytes)
+            Some(clamp_link_signalling(bytes))
         } else {
             None
         };
@@ -443,9 +446,19 @@ impl Link {
             }
             PacketContext::LinkClose => {
                 let mut buffer = [0u8; PACKET_MDU];
-                if let Ok(plain_text) = self.decrypt(packet.data.as_slice(), &mut buffer[..]) {
-                    if plain_text == self.id.as_slice() {
+                match self.decrypt(packet.data.as_slice(), &mut buffer[..]) {
+                    Ok(plain_text) if plain_text == self.id.as_slice() => {
                         self.finalize_local_close();
+                    }
+                    Ok(plain_text) => {
+                        log::warn!(
+                            "link({}): ignored link close with mismatched payload len={}",
+                            self.id,
+                            plain_text.len()
+                        );
+                    }
+                    Err(err) => {
+                        log::warn!("link({}): failed to decrypt link close: {:?}", self.id, err);
                     }
                 }
                 return LinkHandleResult::None;
@@ -1118,6 +1131,7 @@ impl Link {
         self.post_event(LinkEvent::Closed);
 
         log::warn!("link: close {}", self.id);
+        eprintln!("link: close {}", self.id);
     }
 
     fn teardown_packet(&self) -> Result<Packet, RnsError> {
@@ -1248,6 +1262,14 @@ impl Link {
     }
 }
 
+fn clamp_link_signalling(bytes: [u8; LINK_MTU_SIZE]) -> [u8; LINK_MTU_SIZE] {
+    let value = ((bytes[0] as u32) << 16) | ((bytes[1] as u32) << 8) | bytes[2] as u32;
+    let mode = value & LINK_MODE_MASK;
+    let mtu = (value & LINK_MTU_MASK).min(RETICULUM_COMPAT_MTU);
+    let value = mode | mtu;
+    [((value >> 16) & 0xFF) as u8, ((value >> 8) & 0xFF) as u8, (value & 0xFF) as u8]
+}
+
 include!("link/proof.rs");
 
 #[cfg(test)]
@@ -1255,6 +1277,42 @@ mod tests {
     use super::*;
     use crate::destination::{DestinationDesc, DestinationName};
     use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn inbound_link_request_clamps_peer_mtu_to_supported_packet_capacity() {
+        let requester = PrivateIdentity::new_from_rand(OsRng);
+        let signer = PrivateIdentity::new_from_rand(OsRng);
+        let identity = *signer.as_identity();
+        let destination = DestinationDesc {
+            identity,
+            address_hash: identity.address_hash,
+            name: DestinationName::new("lxmf", "delivery"),
+        };
+        let (tx, _) = tokio::sync::broadcast::channel(4);
+        let mut data = PacketDataBuffer::new();
+        data.safe_write(requester.as_identity().public_key.as_bytes());
+        data.safe_write(requester.as_identity().verifying_key.as_bytes());
+        data.safe_write(&[0x20, 0x20, 0x00]);
+        let request = Packet {
+            header: Header { packet_type: PacketType::LinkRequest, ..Default::default() },
+            ifac: None,
+            destination: destination.address_hash,
+            transport: None,
+            context: PacketContext::None,
+            data,
+        };
+
+        let mut inbound =
+            Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
+                .expect("link request should parse");
+        assert_eq!(inbound.signalling, Some([0x20, 0x01, 0xF3]));
+
+        let proof = inbound.prove();
+        assert_eq!(
+            &proof.data.as_slice()[SIGNATURE_LENGTH + PUBLIC_KEY_LENGTH..],
+            &[0x20, 0x01, 0xF3]
+        );
+    }
 
     #[test]
     fn link_handshake_roundtrip_encrypts_and_decrypts() {
