@@ -8,6 +8,29 @@ use rns_transport::receipt::prune_receipt_mappings_for_message;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReceiptDeliveryState {
+    InProgress,
+    Terminal,
+}
+
+impl ReceiptDeliveryState {
+    fn from_status(status: &str) -> Self {
+        let normalized = status.trim().to_ascii_lowercase();
+        if matches!(normalized.as_str(), "delivered" | "cancelled" | "expired" | "rejected")
+            || normalized.starts_with("failed")
+        {
+            Self::Terminal
+        } else {
+            Self::InProgress
+        }
+    }
+
+    fn should_prune_correlations(self) -> bool {
+        matches!(self, Self::Terminal)
+    }
+}
+
 pub(super) fn handle_receipt_update(
     daemon: &RpcDaemon,
     event: ReceiptEvent,
@@ -18,6 +41,7 @@ pub(super) fn handle_receipt_update(
     let status = event.status.clone();
     let detail = format!("status={status}");
     log_delivery_trace(&message_id, "-", "receipt-update", &detail);
+    let delivery_state = ReceiptDeliveryState::from_status(&status);
     let result = handle_receipt_event(daemon, event);
     if let Err(err) = result {
         let detail = format!("persist-failed err={err}");
@@ -25,16 +49,42 @@ pub(super) fn handle_receipt_update(
         return;
     }
 
-    if is_terminal_receipt_status(&status) {
+    if delivery_state.should_prune_correlations() {
         prune_receipt_mappings_for_message(receipt_map, &message_id);
         prune_outbound_resource_mappings_for_message(outbound_resource_map, &message_id);
     }
     log_delivery_trace(&message_id, "-", "receipt-persist", "ok");
 }
 
-fn is_terminal_receipt_status(status: &str) -> bool {
-    matches!(
-        status.trim().to_ascii_lowercase().as_str(),
-        "delivered" | "cancelled" | "expired" | "rejected"
-    ) || status.trim().to_ascii_lowercase().starts_with("failed")
+#[cfg(test)]
+mod tests {
+    use super::ReceiptDeliveryState;
+
+    #[test]
+    fn terminal_receipt_states_prune_correlation_maps() {
+        for status in ["delivered", "cancelled", "expired", "rejected", "failed: no route"] {
+            assert_eq!(ReceiptDeliveryState::from_status(status), ReceiptDeliveryState::Terminal);
+            assert!(ReceiptDeliveryState::from_status(status).should_prune_correlations());
+        }
+    }
+
+    #[test]
+    fn in_progress_receipt_states_keep_correlation_maps() {
+        for status in ["sending", "sent: link resource", "sent: direct link", "queued"] {
+            assert_eq!(ReceiptDeliveryState::from_status(status), ReceiptDeliveryState::InProgress);
+            assert!(!ReceiptDeliveryState::from_status(status).should_prune_correlations());
+        }
+    }
+
+    #[test]
+    fn receipt_state_matching_is_case_and_space_tolerant() {
+        assert_eq!(
+            ReceiptDeliveryState::from_status("  Failed: timeout  "),
+            ReceiptDeliveryState::Terminal
+        );
+        assert_eq!(
+            ReceiptDeliveryState::from_status("  DELIVERED  "),
+            ReceiptDeliveryState::Terminal
+        );
+    }
 }
