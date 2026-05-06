@@ -1,5 +1,6 @@
 use super::*;
-use reticulum_daemon::lxmf_bridge::rmpv_to_json;
+use reticulum_daemon::lxmf_bridge::{build_wire_message_with_options, rmpv_to_json};
+use rns_rpc::{PaperDecodeOutcome, PaperEncodeEnvelope};
 
 pub(super) fn encode_paper(
     bridge: &TransportBridge,
