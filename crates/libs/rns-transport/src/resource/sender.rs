@@ -28,7 +28,7 @@ impl ResourceSender {
         Self::new_with_options(link, data, metadata, None, false)
     }
 
-    fn new_with_options(
+    pub(super) fn new_with_options(
         link: &Link,
         data: Vec<u8>,
         metadata: Option<Vec<u8>>,

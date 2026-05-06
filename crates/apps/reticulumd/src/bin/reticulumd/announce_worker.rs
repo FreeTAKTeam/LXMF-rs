@@ -11,6 +11,9 @@ use rns_transport::transport::Transport;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use tokio::time::{sleep, Duration};
+
+const RETICULUM_PATH_TABLE_SAVE_DEBOUNCE: Duration = Duration::from_secs(2);
 
 pub(super) fn spawn_announce_worker(
     daemon: Arc<RpcDaemon>,
@@ -19,6 +22,23 @@ pub(super) fn spawn_announce_worker(
     reticulum_storage_path: Option<PathBuf>,
 ) {
     let daemon_announce = daemon;
+    let persist_tx = reticulum_storage_path.as_ref().map(|path| {
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<()>(1);
+        let transport = transport.clone();
+        let path = path.clone();
+        tokio::spawn(async move {
+            while rx.recv().await.is_some() {
+                sleep(RETICULUM_PATH_TABLE_SAVE_DEBOUNCE).await;
+                while rx.try_recv().is_ok() {}
+                if let Err(err) = transport.save_reticulum_path_table(&path).await {
+                    if diagnostics_enabled() {
+                        eprintln!("[daemon] failed to persist Reticulum path table: {err}");
+                    }
+                }
+            }
+        });
+        tx
+    });
     tokio::spawn(async move {
         let mut rx = transport.recv_announces().await;
         loop {
@@ -71,12 +91,8 @@ pub(super) fn spawn_announce_worker(
                     None,
                     None,
                 );
-                if let Some(path) = reticulum_storage_path.as_ref() {
-                    if let Err(err) = transport.save_reticulum_path_table(path).await {
-                        if diagnostics_enabled() {
-                            eprintln!("[daemon] failed to persist Reticulum path table: {err}");
-                        }
-                    }
+                if let Some(tx) = persist_tx.as_ref() {
+                    let _ = tx.try_send(());
                 }
             }
         }

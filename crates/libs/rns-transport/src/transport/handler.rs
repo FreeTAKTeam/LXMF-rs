@@ -1,22 +1,6 @@
+use super::diag;
 use super::wire::should_encrypt_packet;
 use super::*;
-use std::sync::OnceLock;
-
-fn transport_diag_enabled() -> bool {
-    static ENABLED: OnceLock<bool> = OnceLock::new();
-    *ENABLED.get_or_init(|| {
-        std::env::var("RETICULUMD_DIAGNOSTICS")
-            .or_else(|_| std::env::var("RETICULUM_TRANSPORT_DIAGNOSTICS"))
-            .ok()
-            .map(|value| {
-                matches!(
-                    value.trim().to_ascii_lowercase().as_str(),
-                    "1" | "true" | "yes" | "on" | "debug"
-                )
-            })
-            .unwrap_or(false)
-    })
-}
 
 impl TransportHandler {
     async fn note_link_packet_sent(&self, packet: &Packet) {
@@ -128,7 +112,7 @@ impl TransportHandler {
             }
         }
 
-        if transport_diag_enabled() {
+        if diag::enabled() {
             if let Some(entry) = self.path_table.get(&packet.destination) {
                 log::trace!(
                     "[tp-diag] route_lookup dst={} hops={} via_next_hop={} via_iface={}",
@@ -159,7 +143,7 @@ impl TransportHandler {
             } else {
                 SendPacketOutcome::DroppedNoRoute
             };
-            if transport_diag_enabled() {
+            if diag::enabled() {
                 log::trace!(
                     "[tp-diag] direct_send iface={} outcome={:?} matched={} sent={} failed={}",
                     iface,
@@ -186,7 +170,7 @@ impl TransportHandler {
             } else {
                 SendPacketOutcome::DroppedNoRoute
             };
-            if transport_diag_enabled() {
+            if diag::enabled() {
                 log::trace!(
                     "[tp-diag] broadcast_send outcome={:?} matched={} sent={} failed={}",
                     outcome,

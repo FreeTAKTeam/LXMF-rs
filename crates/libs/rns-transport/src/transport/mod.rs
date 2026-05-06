@@ -59,6 +59,7 @@ use crate::resource::{build_resource_request_packet, ResourceEvent, ResourceMana
 
 mod announce_limits;
 pub mod announce_table;
+mod diag;
 pub mod discovery;
 mod link_table;
 mod packet_cache;

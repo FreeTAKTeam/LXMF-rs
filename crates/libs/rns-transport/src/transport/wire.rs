@@ -1,23 +1,7 @@
+use super::diag;
 use super::path::send_to_next_hop;
 use super::*;
 use ed25519_dalek::{Signature, SIGNATURE_LENGTH};
-use std::sync::OnceLock;
-
-fn transport_diag_enabled() -> bool {
-    static ENABLED: OnceLock<bool> = OnceLock::new();
-    *ENABLED.get_or_init(|| {
-        std::env::var("RETICULUMD_DIAGNOSTICS")
-            .or_else(|_| std::env::var("RETICULUM_TRANSPORT_DIAGNOSTICS"))
-            .ok()
-            .map(|value| {
-                matches!(
-                    value.trim().to_ascii_lowercase().as_str(),
-                    "1" | "true" | "yes" | "on" | "debug"
-                )
-            })
-            .unwrap_or(false)
-    })
-}
 
 fn validate_destination_receipt_proof(
     identity: &Identity,
@@ -103,7 +87,7 @@ async fn should_forward_link_request_proof(
     let Some((original_destination, expected_iface)) =
         handler.link_table.proof_validation_context(&packet.destination)
     else {
-        if transport_diag_enabled() {
+        if diag::enabled() {
             log::info!(
                 "[tp-diag] lrproof_forward_skip node={} reason=no_link_table_entry link={} iface={}",
                 handler.config.name,
@@ -114,7 +98,7 @@ async fn should_forward_link_request_proof(
         return false;
     };
     if expected_iface != iface {
-        if transport_diag_enabled() {
+        if diag::enabled() {
             log::info!(
                 "[tp-diag] lrproof_forward_skip node={} reason=wrong_iface link={} expected={} got={}",
                 handler.config.name,
@@ -128,7 +112,7 @@ async fn should_forward_link_request_proof(
 
     let Some(destination) = handler.single_out_destinations.get(&original_destination).cloned()
     else {
-        if transport_diag_enabled() {
+        if diag::enabled() {
             log::info!(
                 "[tp-diag] lrproof_forward_skip node={} reason=missing_destination_identity link={} dst={}",
                 handler.config.name,
@@ -146,7 +130,7 @@ async fn should_forward_link_request_proof(
         packet,
     )
     .is_ok();
-    if transport_diag_enabled() {
+    if diag::enabled() {
         log::info!(
             "[tp-diag] lrproof_forward_validate node={} link={} dst={} iface={} valid={}",
             handler.config.name,
@@ -246,7 +230,7 @@ pub(super) async fn handle_proof(
     };
 
     if let Some((packet, iface)) = maybe_packet {
-        if transport_diag_enabled() {
+        if diag::enabled() {
             log::info!(
                 "[tp-diag] lrproof_forward node={} link={} iface={}",
                 handler.config.name,
@@ -255,7 +239,7 @@ pub(super) async fn handle_proof(
             );
         }
         handler.send(TxMessage { tx_type: TxMessageType::Direct(iface), packet }).await;
-    } else if packet.context == PacketContext::LinkRequestProof && transport_diag_enabled() {
+    } else if packet.context == PacketContext::LinkRequestProof && diag::enabled() {
         log::info!(
             "[tp-diag] lrproof_not_forwarded node={} link={} ingress_iface={}",
             handler.config.name,

@@ -1,21 +1,5 @@
+use super::diag;
 use super::*;
-use std::sync::OnceLock;
-
-fn transport_diag_enabled() -> bool {
-    static ENABLED: OnceLock<bool> = OnceLock::new();
-    *ENABLED.get_or_init(|| {
-        std::env::var("RETICULUMD_DIAGNOSTICS")
-            .or_else(|_| std::env::var("RETICULUM_TRANSPORT_DIAGNOSTICS"))
-            .ok()
-            .map(|value| {
-                matches!(
-                    value.trim().to_ascii_lowercase().as_str(),
-                    "1" | "true" | "yes" | "on" | "debug"
-                )
-            })
-            .unwrap_or(false)
-    })
-}
 
 pub(super) async fn send_to_next_hop<'a>(
     packet: &Packet,
@@ -25,7 +9,7 @@ pub(super) async fn send_to_next_hop<'a>(
     let (packet, maybe_iface) = handler.path_table.handle_inbound_packet(packet, lookup);
 
     if let Some(iface) = maybe_iface {
-        if transport_diag_enabled() {
+        if diag::enabled() {
             log::info!(
                 "[tp-diag] forward_next_hop node={} dst={} lookup={} out={} iface={}",
                 handler.config.name,
@@ -36,7 +20,7 @@ pub(super) async fn send_to_next_hop<'a>(
             );
         }
         handler.send(TxMessage { tx_type: TxMessageType::Direct(iface), packet }).await;
-    } else if transport_diag_enabled() {
+    } else if diag::enabled() {
         log::info!(
             "[tp-diag] forward_next_hop_miss node={} dst={} lookup={}",
             handler.config.name,
@@ -208,7 +192,7 @@ pub(super) async fn handle_link_request_as_intermediate<'a>(
     packet: &Packet,
     mut handler: MutexGuard<'a, TransportHandler>,
 ) {
-    if transport_diag_enabled() {
+    if diag::enabled() {
         log::info!(
             "[tp-diag] link_request_intermediate node={} dst={} from_iface={} next_hop={} next_iface={} packet={}",
             handler.config.name,
