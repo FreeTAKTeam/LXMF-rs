@@ -78,6 +78,18 @@ impl LinkStatus {
     pub fn not_yet_active(&self) -> bool {
         *self == LinkStatus::Pending || *self == LinkStatus::Handshake
     }
+
+    fn can_exchange_data(self) -> bool {
+        matches!(self, Self::Active)
+    }
+
+    fn can_retry_channel_messages(self) -> bool {
+        matches!(self, Self::Active | Self::Stale)
+    }
+
+    fn can_send_teardown(self) -> bool {
+        matches!(self, Self::Active | Self::Stale)
+    }
 }
 
 pub type LinkId = AddressHash;
@@ -657,7 +669,7 @@ impl Link {
     }
 
     pub(crate) fn poll_channel_timeouts(&mut self, now: Instant) -> Vec<Packet> {
-        if !matches!(self.status, LinkStatus::Active | LinkStatus::Stale) {
+        if !self.status.can_retry_channel_messages() {
             return Vec::new();
         }
 
@@ -703,7 +715,7 @@ impl Link {
     }
 
     pub(crate) fn next_channel_retry_at(&self) -> Option<Instant> {
-        if !matches!(self.status, LinkStatus::Active | LinkStatus::Stale) {
+        if !self.status.can_retry_channel_messages() {
             return None;
         }
 
@@ -715,7 +727,7 @@ impl Link {
     }
 
     pub fn channel_ready_to_send(&self) -> bool {
-        self.status == LinkStatus::Active
+        self.status.can_exchange_data()
             && self.ingress_iface.is_some()
             && self.channel_pending.len() < self.channel_send_window()
     }
@@ -821,7 +833,7 @@ impl Link {
     }
 
     fn packet_with_context(&self, data: &[u8], context: PacketContext) -> Result<Packet, RnsError> {
-        if self.status != LinkStatus::Active {
+        if !self.status.can_exchange_data() {
             log::warn!("link: can't create data packet for closed link");
         }
 
@@ -843,7 +855,7 @@ impl Link {
     }
 
     pub fn data_packet_into(&self, data: &[u8], packet: &mut Packet) -> Result<(), RnsError> {
-        if self.status != LinkStatus::Active {
+        if !self.status.can_exchange_data() {
             log::warn!("link: can't create data packet for closed link");
         }
 
@@ -1138,11 +1150,8 @@ impl Link {
     }
 
     pub fn teardown(&mut self) -> Option<Packet> {
-        let packet = if matches!(self.status, LinkStatus::Active | LinkStatus::Stale) {
-            self.teardown_packet().ok()
-        } else {
-            None
-        };
+        let packet =
+            if self.status.can_send_teardown() { self.teardown_packet().ok() } else { None };
         if packet.is_some() {
             self.note_outbound(PacketContext::LinkClose);
         }
@@ -1276,6 +1285,25 @@ mod tests {
     use super::*;
     use crate::destination::{DestinationDesc, DestinationName};
     use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn link_status_predicates_make_lifecycle_edges_explicit() {
+        for status in [LinkStatus::Pending, LinkStatus::Handshake] {
+            assert!(status.not_yet_active());
+            assert!(!status.can_exchange_data());
+            assert!(!status.can_retry_channel_messages());
+            assert!(!status.can_send_teardown());
+        }
+        assert!(LinkStatus::Active.can_exchange_data());
+        assert!(LinkStatus::Active.can_retry_channel_messages());
+        assert!(LinkStatus::Active.can_send_teardown());
+        assert!(!LinkStatus::Stale.can_exchange_data());
+        assert!(LinkStatus::Stale.can_retry_channel_messages());
+        assert!(LinkStatus::Stale.can_send_teardown());
+        assert!(!LinkStatus::Closed.can_exchange_data());
+        assert!(!LinkStatus::Closed.can_retry_channel_messages());
+        assert!(!LinkStatus::Closed.can_send_teardown());
+    }
 
     #[test]
     fn inbound_link_request_clamps_peer_mtu_to_supported_packet_capacity() {
