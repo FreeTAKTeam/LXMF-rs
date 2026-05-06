@@ -1,4 +1,6 @@
 use super::*;
+#[path = "inbound_control_peer.rs"]
+mod peer_commands;
 #[path = "inbound_control_propagation.rs"]
 mod propagation_commands;
 #[path = "inbound_control_response.rs"]
@@ -131,43 +133,14 @@ fn handle_control_request(
     if path_hash == control_path_hash("/pn/get/stats") {
         return ControlResponse::Value(status::compose_python_status(daemon, control));
     }
-
-    let Some(peer_hex) = data.and_then(|value| match value {
-        rmpv::Value::Binary(bytes) if bytes.len() == 16 => Some(hex::encode(bytes)),
-        _ => None,
-    }) else {
-        return ControlResponse::Code(ERROR_INVALID_DATA);
-    };
-    let peer_exists = daemon
-        .handle_rpc(RpcRequest { id: 0, method: "list_peers".to_string(), params: None })
-        .ok()
-        .and_then(|response| response.result)
-        .and_then(|value| value.get("peers").cloned())
-        .and_then(|value| value.as_array().cloned())
-        .map(|rows| {
-            rows.iter()
-                .any(|row| row.get("peer").and_then(Value::as_str) == Some(peer_hex.as_str()))
-        })
-        .unwrap_or(false);
-    if !peer_exists {
-        return ControlResponse::Code(ERROR_NOT_FOUND);
-    }
-
-    if path_hash == control_path_hash("/pn/peer/sync") {
-        let _ = daemon.handle_rpc(RpcRequest {
-            id: 0,
-            method: "peer_sync".to_string(),
-            params: Some(json!({ "peer": peer_hex })),
-        });
-        return ControlResponse::Bool(true);
-    }
-    if path_hash == control_path_hash("/pn/peer/unpeer") {
-        let _ = daemon.handle_rpc(RpcRequest {
-            id: 0,
-            method: "peer_unpeer".to_string(),
-            params: Some(json!({ "peer": peer_hex })),
-        });
-        return ControlResponse::Bool(true);
+    if let Some(response) = peer_commands::handle_peer_command(
+        daemon,
+        path_hash,
+        data,
+        ERROR_INVALID_DATA,
+        ERROR_NOT_FOUND,
+    ) {
+        return response;
     }
 
     ControlResponse::Code(ERROR_INVALID_DATA)
