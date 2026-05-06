@@ -8,6 +8,8 @@ mod announce;
 mod delivery_method;
 #[path = "bridge_delivery_task.rs"]
 mod delivery_task;
+#[path = "bridge_identity.rs"]
+mod identity_resolver;
 #[path = "bridge_link_send.rs"]
 mod link_send;
 #[path = "bridge_outbound.rs"]
@@ -47,6 +49,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub(crate) use delivery_method::{validate_delivery_request, RequestedDeliveryMethod};
 use delivery_task::{DeliveryTask, LinkModeStatuses};
+use identity_resolver::resolve_destination_identity_blocking;
 
 #[derive(Clone)]
 struct CachedPropagationLink {
@@ -132,31 +135,6 @@ impl TransportBridge {
         )
         .await
     }
-}
-
-fn resolve_destination_identity_blocking(
-    transport: Arc<Transport>,
-    destination_hash: AddressHash,
-    timeout: Duration,
-) -> Option<Identity> {
-    std::thread::spawn(move || {
-        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
-        runtime.block_on(async move {
-            let mut identity = transport.destination_identity(&destination_hash).await;
-            if identity.is_none() {
-                transport.request_path(&destination_hash, None, None).await;
-                let deadline = tokio::time::Instant::now() + timeout;
-                while identity.is_none() && tokio::time::Instant::now() < deadline {
-                    tokio::time::sleep(Duration::from_millis(250)).await;
-                    identity = transport.destination_identity(&destination_hash).await;
-                }
-            }
-            identity
-        })
-    })
-    .join()
-    .ok()
-    .flatten()
 }
 
 fn now_secs_i64() -> i64 {
