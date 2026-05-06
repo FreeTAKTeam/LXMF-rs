@@ -1,12 +1,119 @@
 use super::diag;
 use super::*;
+use crate::packet::{DestinationType, Header, HeaderType, PacketType, PropagationType};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct RouteDecision {
+    pub packet: Packet,
+    pub next_iface: Option<AddressHash>,
+}
+
+pub(super) fn route_inbound_packet(
+    path_table: &PathTable,
+    original_packet: &Packet,
+    lookup: Option<AddressHash>,
+) -> RouteDecision {
+    let lookup = lookup.unwrap_or(original_packet.destination);
+
+    let Some(entry) = path_table.get(&lookup) else {
+        return RouteDecision { packet: *original_packet, next_iface: None };
+    };
+
+    let is_direct_hop = entry.hops <= 1 && entry.received_from == lookup;
+    let packet = if is_direct_hop {
+        Packet {
+            header: Header {
+                ifac_flag: original_packet.header.ifac_flag,
+                header_type: HeaderType::Type1,
+                context_flag: original_packet.header.context_flag,
+                propagation_type: PropagationType::Broadcast,
+                destination_type: original_packet.header.destination_type,
+                packet_type: original_packet.header.packet_type,
+                hops: original_packet.header.hops,
+            },
+            ifac: None,
+            destination: original_packet.destination,
+            transport: None,
+            context: original_packet.context,
+            data: original_packet.data,
+        }
+    } else {
+        Packet {
+            header: Header {
+                ifac_flag: original_packet.header.ifac_flag,
+                header_type: HeaderType::Type2,
+                context_flag: original_packet.header.context_flag,
+                propagation_type: PropagationType::Transport,
+                destination_type: original_packet.header.destination_type,
+                packet_type: original_packet.header.packet_type,
+                hops: original_packet.header.hops,
+            },
+            ifac: None,
+            destination: original_packet.destination,
+            transport: Some(entry.received_from),
+            context: original_packet.context,
+            data: original_packet.data,
+        }
+    };
+
+    RouteDecision { packet, next_iface: Some(entry.iface) }
+}
+
+pub(super) fn route_outbound_packet(
+    path_table: &PathTable,
+    original_packet: &Packet,
+) -> RouteDecision {
+    if original_packet.header.header_type == HeaderType::Type2 {
+        return RouteDecision { packet: *original_packet, next_iface: None };
+    }
+
+    if original_packet.header.packet_type == PacketType::Announce {
+        return RouteDecision { packet: *original_packet, next_iface: None };
+    }
+
+    if original_packet.header.destination_type == DestinationType::Plain
+        || original_packet.header.destination_type == DestinationType::Group
+    {
+        return RouteDecision { packet: *original_packet, next_iface: None };
+    }
+
+    let Some(entry) = path_table.get(&original_packet.destination) else {
+        return RouteDecision { packet: *original_packet, next_iface: None };
+    };
+
+    if entry.hops <= 1 && entry.received_from == original_packet.destination {
+        return RouteDecision { packet: *original_packet, next_iface: Some(entry.iface) };
+    }
+
+    RouteDecision {
+        packet: Packet {
+            header: Header {
+                ifac_flag: original_packet.header.ifac_flag,
+                header_type: HeaderType::Type2,
+                context_flag: original_packet.header.context_flag,
+                propagation_type: PropagationType::Transport,
+                destination_type: original_packet.header.destination_type,
+                packet_type: original_packet.header.packet_type,
+                hops: original_packet.header.hops,
+            },
+            ifac: original_packet.ifac,
+            destination: original_packet.destination,
+            transport: Some(entry.received_from),
+            context: original_packet.context,
+            data: original_packet.data,
+        },
+        next_iface: Some(entry.iface),
+    }
+}
 
 pub(super) async fn send_to_next_hop<'a>(
     packet: &Packet,
     handler: &MutexGuard<'a, TransportHandler>,
     lookup: Option<AddressHash>,
 ) -> bool {
-    let (packet, maybe_iface) = handler.path_table.handle_inbound_packet(packet, lookup);
+    let decision = route_inbound_packet(&handler.path_table, packet, lookup);
+    let packet = decision.packet;
+    let maybe_iface = decision.next_iface;
 
     if let Some(iface) = maybe_iface {
         if diag::enabled() {
@@ -238,5 +345,222 @@ pub(super) async fn handle_link_request<'a>(
             handler.config.name,
             packet.destination
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Instant;
+
+    use crate::buffer::StaticBuffer;
+    use crate::packet::{ContextFlag, IfacFlag};
+
+    fn path_table_with_route(
+        destination: AddressHash,
+        received_from: AddressHash,
+        hops: u8,
+        iface: AddressHash,
+    ) -> PathTable {
+        let mut table = PathTable::new();
+        assert!(table.restore_tunnel_path(
+            destination,
+            received_from,
+            hops,
+            iface,
+            Hash::new_from_slice(b"packet"),
+            Instant::now(),
+        ));
+        table
+    }
+
+    fn packet_for_route(
+        destination: AddressHash,
+        header_type: HeaderType,
+        propagation_type: PropagationType,
+        packet_type: PacketType,
+        hops: u8,
+        transport: Option<AddressHash>,
+    ) -> Packet {
+        Packet {
+            header: Header {
+                ifac_flag: IfacFlag::Open,
+                header_type,
+                context_flag: ContextFlag::Unset,
+                propagation_type,
+                destination_type: DestinationType::Single,
+                packet_type,
+                hops,
+            },
+            ifac: None,
+            destination,
+            transport,
+            context: crate::packet::PacketContext::None,
+            data: StaticBuffer::new(),
+        }
+    }
+
+    #[test]
+    fn outbound_direct_hop_preserves_type1_and_ifac_flag() {
+        let destination = AddressHash::new_from_hash(&Hash::new_from_slice(b"destination"));
+        let iface = AddressHash::new_from_hash(&Hash::new_from_slice(b"iface"));
+        let table = path_table_with_route(destination, destination, 1, iface);
+        let packet = packet_for_route(
+            destination,
+            HeaderType::Type1,
+            PropagationType::Broadcast,
+            PacketType::Data,
+            0,
+            None,
+        );
+
+        let decision = route_outbound_packet(&table, &packet);
+
+        assert_eq!(decision.next_iface, Some(iface));
+        assert_eq!(decision.packet.header.ifac_flag, IfacFlag::Open);
+        assert_eq!(decision.packet.header.header_type, HeaderType::Type1);
+        assert_eq!(decision.packet.transport, None);
+    }
+
+    #[test]
+    fn outbound_multihop_promotes_to_type2_transport() {
+        let destination = AddressHash::new_from_hash(&Hash::new_from_slice(b"destination"));
+        let iface = AddressHash::new_from_hash(&Hash::new_from_slice(b"iface"));
+        let next_hop = AddressHash::new_from_hash(&Hash::new_from_slice(b"next_hop"));
+        let table = path_table_with_route(destination, next_hop, 2, iface);
+        let packet = packet_for_route(
+            destination,
+            HeaderType::Type1,
+            PropagationType::Broadcast,
+            PacketType::Data,
+            0,
+            None,
+        );
+
+        let decision = route_outbound_packet(&table, &packet);
+
+        assert_eq!(decision.next_iface, Some(iface));
+        assert_eq!(decision.packet.header.ifac_flag, IfacFlag::Open);
+        assert_eq!(decision.packet.header.header_type, HeaderType::Type2);
+        assert_eq!(decision.packet.header.propagation_type, PropagationType::Transport);
+        assert_eq!(decision.packet.transport, Some(next_hop));
+    }
+
+    #[test]
+    fn outbound_one_hop_transport_promotes_to_type2_transport() {
+        let destination = AddressHash::new_from_hash(&Hash::new_from_slice(b"destination"));
+        let iface = AddressHash::new_from_hash(&Hash::new_from_slice(b"iface"));
+        let transport_hop = AddressHash::new_from_hash(&Hash::new_from_slice(b"transport_hop"));
+        let table = path_table_with_route(destination, transport_hop, 1, iface);
+        let packet = packet_for_route(
+            destination,
+            HeaderType::Type1,
+            PropagationType::Broadcast,
+            PacketType::LinkRequest,
+            0,
+            None,
+        );
+
+        let decision = route_outbound_packet(&table, &packet);
+
+        assert_eq!(decision.next_iface, Some(iface));
+        assert_eq!(decision.packet.header.header_type, HeaderType::Type2);
+        assert_eq!(decision.packet.header.propagation_type, PropagationType::Transport);
+        assert_eq!(decision.packet.transport, Some(transport_hop));
+    }
+
+    #[test]
+    fn inbound_direct_hop_strips_transport_and_preserves_hops() {
+        let destination = AddressHash::new_from_hash(&Hash::new_from_slice(b"destination"));
+        let iface = AddressHash::new_from_hash(&Hash::new_from_slice(b"iface"));
+        let table = path_table_with_route(destination, destination, 1, iface);
+        let packet = packet_for_route(
+            destination,
+            HeaderType::Type2,
+            PropagationType::Transport,
+            PacketType::Data,
+            1,
+            Some(destination),
+        );
+
+        let decision = route_inbound_packet(&table, &packet, None);
+
+        assert_eq!(decision.next_iface, Some(iface));
+        assert_eq!(decision.packet.header.header_type, HeaderType::Type1);
+        assert_eq!(decision.packet.header.propagation_type, PropagationType::Broadcast);
+        assert_eq!(decision.packet.header.hops, 1);
+        assert_eq!(decision.packet.transport, None);
+    }
+
+    #[test]
+    fn inbound_direct_hop_type1_stays_direct() {
+        let destination = AddressHash::new_from_hash(&Hash::new_from_slice(b"destination"));
+        let iface = AddressHash::new_from_hash(&Hash::new_from_slice(b"iface"));
+        let table = path_table_with_route(destination, destination, 1, iface);
+        let packet = packet_for_route(
+            destination,
+            HeaderType::Type1,
+            PropagationType::Broadcast,
+            PacketType::LinkRequest,
+            1,
+            None,
+        );
+
+        let decision = route_inbound_packet(&table, &packet, None);
+
+        assert_eq!(decision.next_iface, Some(iface));
+        assert_eq!(decision.packet.header.header_type, HeaderType::Type1);
+        assert_eq!(decision.packet.header.propagation_type, PropagationType::Broadcast);
+        assert_eq!(decision.packet.header.hops, 1);
+        assert_eq!(decision.packet.transport, None);
+    }
+
+    #[test]
+    fn inbound_one_hop_transport_keeps_type2() {
+        let destination = AddressHash::new_from_hash(&Hash::new_from_slice(b"destination"));
+        let iface = AddressHash::new_from_hash(&Hash::new_from_slice(b"iface"));
+        let transport_hop = AddressHash::new_from_hash(&Hash::new_from_slice(b"transport_hop"));
+        let table = path_table_with_route(destination, transport_hop, 1, iface);
+        let packet = packet_for_route(
+            destination,
+            HeaderType::Type1,
+            PropagationType::Broadcast,
+            PacketType::LinkRequest,
+            1,
+            None,
+        );
+
+        let decision = route_inbound_packet(&table, &packet, None);
+
+        assert_eq!(decision.next_iface, Some(iface));
+        assert_eq!(decision.packet.header.header_type, HeaderType::Type2);
+        assert_eq!(decision.packet.header.propagation_type, PropagationType::Transport);
+        assert_eq!(decision.packet.header.hops, 1);
+        assert_eq!(decision.packet.transport, Some(transport_hop));
+    }
+
+    #[test]
+    fn inbound_multihop_preserves_transport_hops() {
+        let destination = AddressHash::new_from_hash(&Hash::new_from_slice(b"destination"));
+        let iface = AddressHash::new_from_hash(&Hash::new_from_slice(b"iface"));
+        let next_hop = AddressHash::new_from_hash(&Hash::new_from_slice(b"next_hop"));
+        let prior_hop = AddressHash::new_from_hash(&Hash::new_from_slice(b"prior_hop"));
+        let table = path_table_with_route(destination, next_hop, 2, iface);
+        let packet = packet_for_route(
+            destination,
+            HeaderType::Type2,
+            PropagationType::Transport,
+            PacketType::Data,
+            1,
+            Some(prior_hop),
+        );
+
+        let decision = route_inbound_packet(&table, &packet, None);
+
+        assert_eq!(decision.next_iface, Some(iface));
+        assert_eq!(decision.packet.header.header_type, HeaderType::Type2);
+        assert_eq!(decision.packet.header.propagation_type, PropagationType::Transport);
+        assert_eq!(decision.packet.header.hops, 1);
+        assert_eq!(decision.packet.transport, Some(next_hop));
     }
 }

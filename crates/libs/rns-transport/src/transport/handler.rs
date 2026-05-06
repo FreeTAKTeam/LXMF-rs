@@ -134,8 +134,9 @@ impl TransportHandler {
             }
         }
 
-        let (packet, maybe_iface) = self.path_table.handle_packet(&packet);
-        if let Some(iface) = maybe_iface {
+        let route = super::path::route_outbound_packet(&self.path_table, &packet);
+        let packet = route.packet;
+        if let Some(iface) = route.next_iface {
             let dispatch =
                 self.send(TxMessage { tx_type: TxMessageType::Direct(iface), packet }).await;
             let outcome = if dispatch.sent_ifaces > 0 {
