@@ -58,13 +58,12 @@ use crate::ratchets::{encrypt_for_public_key, now_secs, RatchetStore};
 use crate::resource::{build_resource_request_packet, ResourceEvent, ResourceManager};
 
 mod announce_limits;
-pub mod announce_table;
+mod announce_table;
 mod diag;
-pub mod discovery;
 mod link_table;
 mod packet_cache;
 mod path_requests;
-pub mod path_table;
+mod path_table;
 mod persistence;
 mod tunnels;
 

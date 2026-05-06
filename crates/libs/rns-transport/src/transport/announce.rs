@@ -128,7 +128,7 @@ pub(super) async fn handle_announce<'a>(
 
 pub(super) async fn retransmit_announces<'a>(mut handler: MutexGuard<'a, TransportHandler>) {
     let transport_id = *handler.config.identity.address_hash();
-    let messages = handler.announce_table.to_retransmit(&transport_id);
+    let messages = handler.announce_table.drain_retransmissions(&transport_id);
 
     for message in messages {
         handler.send(message).await;

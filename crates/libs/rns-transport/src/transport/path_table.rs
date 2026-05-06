@@ -9,7 +9,6 @@ use crate::{
     iface::InterfaceMode,
     packet::Packet,
 };
-use rmp::encode::write_array_len;
 use rmpv::Value as RmpValue;
 
 const DESTINATION_TIMEOUT: Duration = Duration::from_secs(60 * 60 * 24 * 7);
@@ -45,20 +44,6 @@ impl PathTable {
         Self { map: HashMap::new() }
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.map.is_empty()
-    }
-
-    pub fn to_msgpack(&self) -> Result<Vec<u8>, RnsError> {
-        if !self.map.is_empty() {
-            return Err(RnsError::InvalidArgument);
-        }
-
-        let mut out = Vec::new();
-        write_array_len(&mut out, 0).map_err(|_| RnsError::InvalidArgument)?;
-        Ok(out)
-    }
-
     pub fn get(&self, destination: &AddressHash) -> Option<&PathEntry> {
         self.map.get(destination)
     }
@@ -69,10 +54,6 @@ impl PathTable {
 
     pub fn next_hop_iface(&self, destination: &AddressHash) -> Option<AddressHash> {
         self.map.get(destination).map(|entry| entry.iface)
-    }
-
-    pub fn next_hop(&self, destination: &AddressHash) -> Option<AddressHash> {
-        self.map.get(destination).map(|entry| entry.received_from)
     }
 
     pub fn handle_announce(
@@ -107,12 +88,6 @@ impl PathTable {
             received_from,
             iface,
         );
-    }
-
-    pub fn refresh(&mut self, destination: &AddressHash) {
-        if let Some(entry) = self.map.get_mut(destination) {
-            entry.timestamp = Instant::now();
-        }
     }
 
     pub fn restore_tunnel_path(
