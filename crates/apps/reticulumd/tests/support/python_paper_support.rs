@@ -9,47 +9,65 @@ use sha2::{Digest, Sha256};
 
 static PYTHON_PAPER_INTEROP_LOCK: Mutex<()> = Mutex::new(());
 
+struct PythonPaperHelper {
+    python_bin: String,
+    helper: PathBuf,
+    python_path: String,
+}
+
+impl PythonPaperHelper {
+    fn from_env() -> Self {
+        let python_bin = env::var("LXMF_PYTHON_BIN").unwrap_or_else(|_| "python3".to_string());
+        let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        let reticulum_py_repo = env::var("RETICULUM_PY_REPO")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| repo_root.join("../reticulum"));
+        let lxmf_py_repo = env::var("LXMF_PY_REPO")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| repo_root.join("../lxmf"));
+        let helper = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/support/python_paper_endpoint.py");
+        let python_path = format!("{}:{}", reticulum_py_repo.display(), lxmf_py_repo.display());
+
+        Self { python_bin, helper, python_path }
+    }
+
+    fn run(&self, temp_root: &Path, args: &[&str]) -> serde_json::Value {
+        let config_dir = temp_root.join("rns-config");
+        let storage_dir = temp_root.join("lxmf-storage");
+        let output = Command::new(&self.python_bin)
+            .arg(&self.helper)
+            .arg("--config-dir")
+            .arg(config_dir)
+            .arg("--storage-dir")
+            .arg(storage_dir)
+            .args(args)
+            .env("PYTHONPATH", &self.python_path)
+            .output()
+            .expect("run Python paper helper");
+
+        if !output.status.success() {
+            panic!(
+                "Python paper helper failed\nstatus: {}\nstdout:\n{}\nstderr:\n{}",
+                output.status,
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+
+        let stdout = String::from_utf8(output.stdout).expect("helper stdout utf8");
+        let json_line =
+            stdout.lines().rev().find(|line| !line.trim().is_empty()).expect("json line");
+        serde_json::from_str(json_line).expect("helper json")
+    }
+}
+
 pub(super) fn python_paper_interop_guard() -> MutexGuard<'static, ()> {
     PYTHON_PAPER_INTEROP_LOCK.lock().expect("paper interop lock")
 }
 
 pub(super) fn run_python_paper_helper(temp_root: &Path, args: &[&str]) -> serde_json::Value {
-    let python_bin = env::var("LXMF_PYTHON_BIN").unwrap_or_else(|_| "python3".to_string());
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
-    let reticulum_py_repo = env::var("RETICULUM_PY_REPO")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| repo_root.join("../reticulum"));
-    let lxmf_py_repo =
-        env::var("LXMF_PY_REPO").map(PathBuf::from).unwrap_or_else(|_| repo_root.join("../lxmf"));
-    let helper =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/support/python_paper_endpoint.py");
-    let python_path = format!("{}:{}", reticulum_py_repo.display(), lxmf_py_repo.display());
-
-    let config_dir = temp_root.join("rns-config");
-    let storage_dir = temp_root.join("lxmf-storage");
-    let output = Command::new(python_bin)
-        .arg(helper)
-        .arg("--config-dir")
-        .arg(config_dir)
-        .arg("--storage-dir")
-        .arg(storage_dir)
-        .args(args)
-        .env("PYTHONPATH", python_path)
-        .output()
-        .expect("run Python paper helper");
-
-    if !output.status.success() {
-        panic!(
-            "Python paper helper failed\nstatus: {}\nstdout:\n{}\nstderr:\n{}",
-            output.status,
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        );
-    }
-
-    let stdout = String::from_utf8(output.stdout).expect("helper stdout utf8");
-    let json_line = stdout.lines().rev().find(|line| !line.trim().is_empty()).expect("json line");
-    serde_json::from_str(json_line).expect("helper json")
+    PythonPaperHelper::from_env().run(temp_root, args)
 }
 
 pub(super) fn private_identity_from_json_hex(
