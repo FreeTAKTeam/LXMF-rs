@@ -10,16 +10,15 @@ mod link_send;
 mod outbound;
 #[path = "bridge_paper.rs"]
 mod paper;
+#[path = "bridge_propagation.rs"]
+mod propagation;
 #[path = "bridge_remote_control.rs"]
 mod remote_control;
 use super::inbound_worker::{
     track_outbound_resource, OutboundResourceTracking, OUTBOUND_RESOURCE_SENT_STATUS,
 };
-use lxmf::WireMessage;
-use rand_core::OsRng;
-use reticulum_daemon::lxmf_stamps::generate_propagation_stamp;
 use reticulum_daemon::receipt_bridge::{track_receipt_mapping, ReceiptEvent};
-use rns_core::identity::{Identity as CoreIdentity, PrivateIdentity};
+use rns_core::identity::PrivateIdentity;
 use rns_rpc::{RpcDaemon, RpcRequest};
 use rns_transport::delivery::await_link_activation;
 use rns_transport::delivery::{
@@ -41,9 +40,6 @@ use serde_json::{json, Value as JsonValue};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-
-const PROPAGATION_INVALID_STAMP_SIGNAL: u8 = 0xF5;
-const DEFAULT_PROPAGATION_STAMP_COST: u32 = 13;
 
 #[derive(Clone)]
 struct CachedPropagationLink {
@@ -121,7 +117,7 @@ impl TransportBridge {
         node_hex: &str,
         destination: DestinationDesc,
     ) -> Arc<tokio::sync::Mutex<Link>> {
-        propagation_link_for_node(
+        propagation::propagation_link_for_node(
             self.transport.as_ref(),
             &self.outbound_propagation_link,
             node_hex,
@@ -346,7 +342,7 @@ impl DeliveryTask {
         );
         let target_cost = self
             .propagation_target_cost(propagation_node_hex.as_str())
-            .unwrap_or(DEFAULT_PROPAGATION_STAMP_COST);
+            .unwrap_or(propagation::DEFAULT_PROPAGATION_STAMP_COST);
         log_delivery_trace(
             &self.message_id,
             &self.destination_hex,
@@ -359,17 +355,20 @@ impl DeliveryTask {
             "propagation",
             "building propagation payload",
         );
-        let payload =
-            match build_propagation_payload(&self.payload, &destination_identity, target_cost) {
-                Ok(payload) => payload,
-                Err(err) => {
-                    let _ = self.receipt_tx.send(ReceiptEvent {
-                        message_id: self.message_id,
-                        status: format!("failed: {err}"),
-                    });
-                    return;
-                }
-            };
+        let payload = match propagation::build_propagation_payload(
+            &self.payload,
+            &destination_identity,
+            target_cost,
+        ) {
+            Ok(payload) => payload,
+            Err(err) => {
+                let _ = self.receipt_tx.send(ReceiptEvent {
+                    message_id: self.message_id,
+                    status: format!("failed: {err}"),
+                });
+                return;
+            }
+        };
         log_delivery_trace(
             &self.message_id,
             &self.destination_hex,
@@ -531,8 +530,11 @@ impl DeliveryTask {
         propagation_node_hex: &str,
         propagation_hash: AddressHash,
     ) -> Result<Arc<tokio::sync::Mutex<Link>>, std::io::Error> {
-        if let Some(link) =
-            cached_propagation_link(&self.outbound_propagation_link, propagation_node_hex).await
+        if let Some(link) = propagation::cached_propagation_link(
+            &self.outbound_propagation_link,
+            propagation_node_hex,
+        )
+        .await
         {
             return Ok(link);
         }
@@ -576,7 +578,7 @@ impl DeliveryTask {
             DestinationName::new("lxmf", "propagation"),
         );
 
-        Ok(propagation_link_for_node(
+        Ok(propagation::propagation_link_for_node(
             self.transport.as_ref(),
             &self.outbound_propagation_link,
             propagation_node_hex,
@@ -649,42 +651,6 @@ impl DeliveryTask {
     }
 }
 
-async fn cached_propagation_link(
-    state: &Arc<tokio::sync::Mutex<Option<CachedPropagationLink>>>,
-    node_hex: &str,
-) -> Option<Arc<tokio::sync::Mutex<Link>>> {
-    let mut guard = state.lock().await;
-    let cached = guard.clone()?;
-
-    if cached.node_hex != node_hex {
-        *guard = None;
-        return None;
-    }
-
-    if cached.link.lock().await.status() == LinkStatus::Closed {
-        *guard = None;
-        return None;
-    }
-
-    Some(cached.link)
-}
-
-async fn propagation_link_for_node(
-    transport: &Transport,
-    state: &Arc<tokio::sync::Mutex<Option<CachedPropagationLink>>>,
-    node_hex: &str,
-    destination: DestinationDesc,
-) -> Arc<tokio::sync::Mutex<Link>> {
-    if let Some(link) = cached_propagation_link(state, node_hex).await {
-        return link;
-    }
-
-    let link = transport.link(destination).await;
-    let mut guard = state.lock().await;
-    *guard = Some(CachedPropagationLink { node_hex: node_hex.to_string(), link: link.clone() });
-    link
-}
-
 fn resolve_destination_identity_blocking(
     transport: Arc<Transport>,
     destination_hash: AddressHash,
@@ -710,70 +676,7 @@ fn resolve_destination_identity_blocking(
     .flatten()
 }
 
-fn build_propagation_payload(
-    payload: &[u8],
-    destination_identity: &Identity,
-    propagation_stamp_cost: u32,
-) -> Result<Vec<u8>, std::io::Error> {
-    let wire = WireMessage::unpack(payload).map_err(std::io::Error::other)?;
-    let core_identity = CoreIdentity::new_from_slices(
-        destination_identity.public_key_bytes(),
-        destination_identity.verifying_key_bytes(),
-    );
-    let (lxmf_data, transient_id) = wire
-        .pack_propagation_transient_with_rng(&core_identity, OsRng)
-        .map_err(std::io::Error::other)?;
-    let propagation_stamp = generate_propagation_stamp(&transient_id, propagation_stamp_cost)
-        .ok_or_else(|| std::io::Error::other("failed to generate propagation stamp"))?;
-    WireMessage::pack_propagation_envelope(
-        now_secs_f64(),
-        &lxmf_data,
-        Some(propagation_stamp.as_slice()),
-    )
-    .map_err(std::io::Error::other)
-}
-
-fn now_secs_f64() -> f64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs_f64()
-}
-
 fn now_secs_i64() -> i64 {
     i64::try_from(SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs())
         .unwrap_or(i64::MAX)
-}
-
-async fn wait_for_propagation_signal(
-    rx: &mut tokio::sync::broadcast::Receiver<rns_transport::transport::ReceivedData>,
-    link_id: AddressHash,
-    timeout: Duration,
-) -> Option<u8> {
-    let deadline = tokio::time::Instant::now() + timeout;
-    loop {
-        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
-        if remaining.is_zero() {
-            return None;
-        }
-        let Ok(result) = tokio::time::timeout(remaining, rx.recv()).await else {
-            return None;
-        };
-        let Ok(event) = result else {
-            continue;
-        };
-        if event.destination != link_id {
-            continue;
-        }
-        if !matches!(event.context, Some(PacketContext::None | PacketContext::LinkClose)) {
-            continue;
-        }
-        let Ok(value) = rmp_serde::from_slice::<rmpv::Value>(event.data.as_slice()) else {
-            continue;
-        };
-        let rmpv::Value::Array(items) = value else {
-            continue;
-        };
-        let Some(signal) = items.first().and_then(|entry| entry.as_u64()) else {
-            continue;
-        };
-        return u8::try_from(signal).ok();
-    }
 }

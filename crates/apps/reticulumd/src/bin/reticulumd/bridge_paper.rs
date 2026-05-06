@@ -1,5 +1,8 @@
 use super::*;
+use lxmf::WireMessage;
+use rand_core::OsRng;
 use reticulum_daemon::lxmf_bridge::{build_wire_message_with_options, rmpv_to_json};
+use rns_core::identity::Identity as CoreIdentity;
 use rns_rpc::{PaperDecodeOutcome, PaperEncodeEnvelope};
 
 pub(super) fn encode_paper(

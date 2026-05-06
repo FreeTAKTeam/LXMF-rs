@@ -129,11 +129,14 @@ impl DeliveryTask {
                 let detail = format!("packet_hash={packet_hash}");
                 log_delivery_trace(&self.message_id, &self.destination_hex, trace_stage, &detail);
                 if let Some(ref mut signal_rx) = propagation_signal_rx {
-                    if let Some(signal) =
-                        wait_for_propagation_signal(signal_rx, link_id, Duration::from_millis(1500))
-                            .await
+                    if let Some(signal) = propagation::wait_for_propagation_signal(
+                        signal_rx,
+                        link_id,
+                        Duration::from_millis(1500),
+                    )
+                    .await
                     {
-                        if signal == PROPAGATION_INVALID_STAMP_SIGNAL {
+                        if signal == propagation::PROPAGATION_INVALID_STAMP_SIGNAL {
                             return Err(std::io::Error::other(
                                 "propagation node rejected message: invalid stamp",
                             ));
