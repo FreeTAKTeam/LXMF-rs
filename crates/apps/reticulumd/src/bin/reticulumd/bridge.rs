@@ -4,6 +4,8 @@ use super::bridge_helpers::{
 };
 #[path = "bridge_announce.rs"]
 mod announce;
+#[path = "bridge_delivery_method.rs"]
+mod delivery_method;
 #[path = "bridge_link_send.rs"]
 mod link_send;
 #[path = "bridge_outbound.rs"]
@@ -40,6 +42,8 @@ use serde_json::{json, Value as JsonValue};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+pub(crate) use delivery_method::{validate_delivery_request, RequestedDeliveryMethod};
 
 #[derive(Clone)]
 struct CachedPropagationLink {
@@ -124,50 +128,6 @@ impl TransportBridge {
             destination,
         )
         .await
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RequestedDeliveryMethod {
-    Opportunistic,
-    Direct,
-    Propagated,
-    Paper,
-}
-
-impl RequestedDeliveryMethod {
-    pub(crate) fn parse(method: Option<&str>) -> Result<Self, std::io::Error> {
-        let normalized = method.map(str::trim).unwrap_or_default().to_ascii_lowercase();
-        match normalized.as_str() {
-            "" | "direct" => Ok(Self::Direct),
-            "opportunistic" => Ok(Self::Opportunistic),
-            "propagated" => Ok(Self::Propagated),
-            "paper" => Ok(Self::Paper),
-            other => Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                format!("unsupported delivery method '{other}'"),
-            )),
-        }
-    }
-}
-
-pub(crate) fn validate_delivery_request(
-    method: RequestedDeliveryMethod,
-    propagation_node: Option<&str>,
-) -> Result<(), std::io::Error> {
-    match method {
-        RequestedDeliveryMethod::Propagated => {
-            if propagation_node.is_none() {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::NotFound,
-                    "no outbound propagation node selected",
-                ));
-            }
-            Ok(())
-        }
-        RequestedDeliveryMethod::Paper
-        | RequestedDeliveryMethod::Opportunistic
-        | RequestedDeliveryMethod::Direct => Ok(()),
     }
 }
 
