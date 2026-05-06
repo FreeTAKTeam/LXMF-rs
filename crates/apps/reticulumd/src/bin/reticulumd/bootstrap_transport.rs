@@ -5,15 +5,16 @@ use super::{
 };
 #[path = "bootstrap_interface_startup.rs"]
 mod interface_startup;
+#[path = "bootstrap_transport_destinations.rs"]
+mod transport_destinations;
 use crate::bridge::PeerCrypto;
 use crate::interfaces::common::interface_label;
 use crate::Args;
-use reticulum_daemon::announce_names::encode_delivery_display_name_app_data;
 use reticulum_daemon::config::DaemonConfig;
 use reticulum_daemon::receipt_bridge::ReceiptBridge;
 use rns_core::identity::PrivateIdentity;
 use rns_rpc::InterfaceRecord;
-use rns_transport::destination::{DestinationName, SingleInputDestination};
+use rns_transport::destination::SingleInputDestination;
 use rns_transport::hash::AddressHash;
 use rns_transport::iface::tcp_server::TcpServer;
 use rns_transport::transport::{Transport, TransportConfig};
@@ -177,75 +178,20 @@ pub(super) async fn start_transport_and_interfaces(
             }
         }
 
-        let destination = transport_instance
-            .add_destination(transport_identity.clone(), DestinationName::new("lxmf", "delivery"))
-            .await;
-        {
-            let dest = destination.lock().await;
-            delivery_source_hash.copy_from_slice(dest.desc.address_hash.as_slice());
-            delivery_destination_hash_hex = Some(hex::encode(dest.desc.address_hash.as_slice()));
-            println!(
-                "{}",
-                pretty_daemon_line(&format!(
-                    "delivery destination hash={}",
-                    hex::encode(dest.desc.address_hash.as_slice())
-                ))
-            );
-        }
-        announce_destination = Some(destination);
-        transport_instance
-            .set_destination_announce_app_data(
-                announce_destination.as_ref().expect("delivery destination"),
-                local_display_name.and_then(encode_delivery_display_name_app_data),
-            )
-            .await;
-
-        if propagation_control_enabled {
-            let propagation = transport_instance
-                .add_destination(
-                    transport_identity.clone(),
-                    DestinationName::new("lxmf", "propagation"),
-                )
-                .await;
-            {
-                let dest = propagation.lock().await;
-                propagation_destination_hash_hex =
-                    Some(hex::encode(dest.desc.address_hash.as_slice()));
-                println!(
-                    "{}",
-                    pretty_daemon_line(&format!(
-                        "propagation destination hash={}",
-                        hex::encode(dest.desc.address_hash.as_slice())
-                    ))
-                );
-            }
-            propagation_destination = Some(propagation);
-            transport_instance
-                .set_destination_announce_app_data(
-                    propagation_destination.as_ref().expect("propagation destination"),
-                    encode_propagation_node_app_data(local_display_name),
-                )
-                .await;
-
-            let control = transport_instance
-                .add_destination(
-                    transport_identity.clone(),
-                    DestinationName::new("lxmf", "propagation.control"),
-                )
-                .await;
-            {
-                let dest = control.lock().await;
-                control_destination_hash_hex = Some(hex::encode(dest.desc.address_hash.as_slice()));
-                println!(
-                    "{}",
-                    pretty_daemon_line(&format!(
-                        "control destination hash={}",
-                        hex::encode(dest.desc.address_hash.as_slice())
-                    ))
-                );
-            }
-            control_destination = Some(control);
-        }
+        let destinations = transport_destinations::register_transport_destinations(
+            &mut transport_instance,
+            transport_identity.clone(),
+            local_display_name,
+            propagation_control_enabled,
+        )
+        .await;
+        announce_destination = Some(destinations.delivery);
+        propagation_destination = destinations.propagation;
+        control_destination = destinations.control;
+        delivery_destination_hash_hex = Some(destinations.delivery_destination_hash_hex);
+        propagation_destination_hash_hex = destinations.propagation_destination_hash_hex;
+        control_destination_hash_hex = destinations.control_destination_hash_hex;
+        delivery_source_hash = destinations.delivery_source_hash;
 
         transport = Some(Arc::new(transport_instance));
     } else if let Some(config) = daemon_config {
