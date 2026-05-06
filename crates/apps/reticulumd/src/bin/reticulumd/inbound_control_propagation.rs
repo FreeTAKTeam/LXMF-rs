@@ -1,5 +1,6 @@
 use super::*;
 use reticulum_daemon::lxmf_stamps::validate_peering_key;
+use rns_transport::destination::DestinationName;
 use sha2::Digest;
 
 pub(super) fn handle_message_get_request(

@@ -1,29 +1,27 @@
 use super::bootstrap::PropagationControlContext;
-use super::bridge_helpers::{diagnostics_enabled, payload_preview};
+use super::bridge_helpers::diagnostics_enabled;
 #[path = "inbound_control.rs"]
 mod control;
+#[path = "inbound_delivery_events.rs"]
+mod delivery_events;
 #[path = "inbound_propagation.rs"]
 mod propagation;
-use lxmf::{inbound_decode::InboundPayloadMode, WireMessage};
-use reticulum_daemon::inbound_delivery::{
-    annotate_inbound_record_stamp_status, decode_inbound_payload,
-    decode_inbound_payload_with_diagnostics, evaluate_inbound_stamp_policy,
-};
+#[path = "inbound_routing.rs"]
+mod routing;
 use reticulum_daemon::receipt_bridge::ReceiptEvent;
-use rns_rpc::{MessageRecord, RpcDaemon, RpcRequest};
+use rns_rpc::{RpcDaemon, RpcRequest};
 use rns_transport::destination::link::{Link, LinkEvent};
-use rns_transport::destination::{DestinationDesc, DestinationName, SingleInputDestination};
+use rns_transport::destination::SingleInputDestination;
 use rns_transport::hash::AddressHash;
 use rns_transport::identity::{DecryptIdentity, Identity};
-use rns_transport::identity_bridge::to_core_identity;
 use rns_transport::packet::{
     ContextFlag, DestinationType, Header, HeaderType, IfacFlag, Packet, PacketContext,
     PacketDataBuffer, PacketType, PropagationType,
 };
 use rns_transport::resource::ResourceEventKind;
-use rns_transport::transport::{ReceivedPayloadMode, Transport};
-use serde_json::{json, Map, Value};
-use std::borrow::Cow;
+use rns_transport::transport::Transport;
+use routing::InboundLxmfDestination;
+use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -35,87 +33,6 @@ pub(super) struct OutboundResourceTracking {
     pub(super) peer: String,
     pub(super) bytes: usize,
     pub(super) sent_status: String,
-}
-
-fn inbound_payload_mode(mode: ReceivedPayloadMode) -> InboundPayloadMode {
-    match mode {
-        ReceivedPayloadMode::FullWire => InboundPayloadMode::FullWire,
-        ReceivedPayloadMode::DestinationStripped => InboundPayloadMode::DestinationStripped,
-    }
-}
-
-async fn annotate_inbound_signature_status(
-    transport: &Transport,
-    record: &mut MessageRecord,
-    destination: [u8; 16],
-    payload: &[u8],
-    mode: InboundPayloadMode,
-) {
-    let wire = match mode {
-        InboundPayloadMode::FullWire => Cow::Borrowed(payload),
-        InboundPayloadMode::DestinationStripped => {
-            let mut with_destination = Vec::with_capacity(16 + payload.len());
-            with_destination.extend_from_slice(&destination);
-            with_destination.extend_from_slice(payload);
-            Cow::Owned(with_destination)
-        }
-    };
-
-    let mut checked = false;
-    let mut valid = false;
-    let mut reason = "source_identity_unknown".to_string();
-
-    match WireMessage::unpack(wire.as_ref()) {
-        Ok(message) => {
-            let source_hash = AddressHash::new(message.source);
-            if let Some(identity) = transport.destination_identity(&source_hash).await {
-                checked = true;
-                match message.verify(&to_core_identity(&identity)) {
-                    Ok(true) => {
-                        valid = true;
-                        reason = "verified".to_string();
-                    }
-                    Ok(false) => {
-                        reason = "signature_invalid".to_string();
-                    }
-                    Err(error) => {
-                        reason = format!("verification_error: {error}");
-                    }
-                }
-            }
-        }
-        Err(error) => {
-            reason = format!("decode_error: {error}");
-        }
-    }
-
-    annotate_lxmf_metadata(record, |lxmf| {
-        lxmf.insert("signature_checked".to_string(), Value::Bool(checked));
-        lxmf.insert("signature_valid".to_string(), Value::Bool(valid));
-        lxmf.insert("signature_status".to_string(), Value::String(reason));
-    });
-}
-
-fn annotate_lxmf_metadata(
-    record: &mut MessageRecord,
-    update: impl FnOnce(&mut Map<String, Value>),
-) {
-    let mut root = match record.fields.take() {
-        Some(Value::Object(map)) => map,
-        Some(other) => {
-            let mut map = Map::new();
-            map.insert("_fields_raw".to_string(), other);
-            map
-        }
-        None => Map::new(),
-    };
-    let mut lxmf = match root.remove("_lxmf") {
-        Some(Value::Object(map)) => map,
-        _ => Map::new(),
-    };
-    update(&mut lxmf);
-    root.insert("_lxmf".to_string(), Value::Object(lxmf));
-    record.fields = Some(Value::Object(root));
 }
 
 pub(super) fn spawn_inbound_worker(
@@ -136,49 +53,21 @@ pub(super) fn spawn_inbound_worker(
             if let Ok(event) = rx.recv().await {
                 match event.kind {
                     ResourceEventKind::Complete(complete) => {
-                        if let Some(destination) =
-                            resolve_lxmf_resource_destination(transport.as_ref(), &event.link_id)
-                                .await
+                        if let Some(destination) = routing::resolve_resource_destination(
+                            transport.as_ref(),
+                            &event.link_id,
+                        )
+                        .await
                         {
                             match destination {
                                 InboundLxmfDestination::Delivery(destination) => {
-                                    let stamp_status = match evaluate_inbound_stamp_policy(
+                                    delivery_events::accept_delivery_resource(
                                         daemon.as_ref(),
+                                        transport.as_ref(),
                                         destination,
                                         &complete.data,
-                                        InboundPayloadMode::FullWire,
-                                    ) {
-                                        Ok(status) => status,
-                                        Err(error) => {
-                                            if diagnostics_enabled() {
-                                                eprintln!(
-                                                    "[daemon-rx] dropping inbound resource due to stamp policy: {}",
-                                                    error
-                                                );
-                                            }
-                                            continue;
-                                        }
-                                    };
-                                    if let Some(mut record) = decode_inbound_payload(
-                                        destination,
-                                        &complete.data,
-                                        InboundPayloadMode::FullWire,
-                                    ) {
-                                        annotate_inbound_record_stamp_status(
-                                            &mut record,
-                                            stamp_status,
-                                        );
-                                        annotate_inbound_signature_status(
-                                            transport.as_ref(),
-                                            &mut record,
-                                            destination,
-                                            &complete.data,
-                                            InboundPayloadMode::FullWire,
-                                        )
-                                        .await;
-                                        let _ =
-                                            daemon.accept_inbound_with_raw(record, &complete.data);
-                                    }
+                                    )
+                                    .await;
                                 }
                                 InboundLxmfDestination::Propagation => {
                                     if let Err(error) = propagation::ingest_propagation_envelope(
@@ -232,78 +121,43 @@ fn spawn_packet_inbound_worker(
     let inbound_transport = transport;
     tokio::spawn(async move {
         let local_delivery_destination =
-            local_delivery_destination_hash(control.delivery_destination.as_ref()).await;
+            routing::local_delivery_destination_hash(control.delivery_destination.as_ref()).await;
         let mut rx = inbound_transport.received_data_events();
         loop {
             match rx.recv().await {
                 Ok(event) => {
-                    if should_skip_control_payload(&event, &control) {
+                    if routing::should_skip_control_payload(&event, &control) {
                         continue;
                     }
                     let data = event.data.as_slice();
                     let raw_destination_hex = hex::encode(event.destination.as_slice());
-                    let payload_mode = inbound_payload_mode(event.payload_mode);
-                    let resolved_destination = match event.payload_mode {
-                        ReceivedPayloadMode::DestinationStripped => {
-                            if let Some(destination) = resolve_inbound_lxmf_packet_destination(
-                                inbound_transport.as_ref(),
-                                &event.destination,
-                            )
-                            .await
-                            {
-                                destination
-                            } else if propagation::is_lxmf_propagation_destination(
-                                &event.destination,
-                                &control,
-                            ) {
-                                InboundLxmfDestination::Propagation
-                            } else {
-                                let mut destination = [0u8; 16];
-                                destination.copy_from_slice(event.destination.as_slice());
-                                InboundLxmfDestination::Delivery(destination)
-                            }
+                    let Some(resolved_destination) = routing::resolve_packet_destination(
+                        inbound_transport.as_ref(),
+                        &control,
+                        &event.destination,
+                        event.payload_mode,
+                        local_delivery_destination,
+                    )
+                    .await
+                    else {
+                        if diagnostics_enabled() {
+                            eprintln!(
+                                "[daemon-rx] skipping unresolved full-wire payload: dst={} len={} ctx={:?}",
+                                raw_destination_hex,
+                                data.len(),
+                                event.context
+                            );
                         }
-                        ReceivedPayloadMode::FullWire => {
-                            if let Some(destination) = resolve_inbound_lxmf_packet_destination(
-                                inbound_transport.as_ref(),
-                                &event.destination,
-                            )
-                            .await
-                            {
-                                destination
-                            } else if local_delivery_destination.as_ref().is_some_and(
-                                |destination| {
-                                    destination.as_slice() == event.destination.as_slice()
-                                },
-                            ) {
-                                InboundLxmfDestination::Delivery(
-                                    local_delivery_destination.expect("checked above"),
-                                )
-                            } else {
-                                if diagnostics_enabled() {
-                                    eprintln!(
-                                        "[daemon-rx] skipping unresolved full-wire payload: dst={} len={} ctx={:?}",
-                                        raw_destination_hex,
-                                        data.len(),
-                                        event.context
-                                    );
-                                }
-                                continue;
-                            }
-                        }
+                        continue;
                     };
 
-                    if diagnostics_enabled() {
-                        eprintln!(
-                            "[daemon-rx] dst={} resolved={:?} mode={:?} len={} ratchet_used={} data_prefix={}",
-                            raw_destination_hex,
-                            resolved_destination,
-                            event.payload_mode,
-                            data.len(),
-                            event.ratchet_used,
-                            payload_preview(data, 16)
-                        );
-                    }
+                    delivery_events::log_resolved_packet(
+                        &raw_destination_hex,
+                        resolved_destination,
+                        event.payload_mode,
+                        event.ratchet_used,
+                        data,
+                    );
 
                     match resolved_destination {
                         InboundLxmfDestination::Propagation => {
@@ -324,71 +178,15 @@ fn spawn_packet_inbound_worker(
                             continue;
                         }
                         InboundLxmfDestination::Delivery(destination) => {
-                            let record = if diagnostics_enabled() {
-                                let (record, diagnostics) = decode_inbound_payload_with_diagnostics(
-                                    destination,
-                                    data,
-                                    payload_mode,
-                                );
-                                if let Some(ref decoded) = record {
-                                    eprintln!(
-                                        "[daemon-rx] decoded msg_id={} src={} dst={} title_len={} content_len={}",
-                                        decoded.id,
-                                        decoded.source,
-                                        decoded.destination,
-                                        decoded.title.len(),
-                                        decoded.content.len()
-                                    );
-                                } else {
-                                    eprintln!(
-                                        "[daemon-rx] decode-failed raw_dst={} resolved_dst={} attempts={}",
-                                        raw_destination_hex,
-                                        hex::encode(destination),
-                                        diagnostics.summary()
-                                    );
-                                }
-                                record
-                            } else {
-                                decode_inbound_payload(destination, data, payload_mode)
-                            };
-                            let stamp_status = if record.is_some() {
-                                match evaluate_inbound_stamp_policy(
-                                    daemon_inbound.as_ref(),
-                                    destination,
-                                    data,
-                                    payload_mode,
-                                ) {
-                                    Ok(status) => Some(status),
-                                    Err(_) => {
-                                        if diagnostics_enabled() {
-                                            eprintln!(
-                                                "[daemon-rx] dropping inbound payload due to stamp policy: raw_dst={} resolved_dst={}",
-                                                raw_destination_hex,
-                                                hex::encode(destination)
-                                            );
-                                        }
-                                        continue;
-                                    }
-                                }
-                            } else {
-                                None
-                            };
-                            if let Some(mut record) = record {
-                                if let Some(stamp_status) = stamp_status {
-                                    annotate_inbound_record_stamp_status(&mut record, stamp_status);
-                                }
-                                annotate_inbound_signature_status(
-                                    inbound_transport.as_ref(),
-                                    &mut record,
-                                    destination,
-                                    data,
-                                    payload_mode,
-                                )
-                                .await;
-                                daemon_inbound
-                                    .record_inbound_peer_activity(&record.source, data.len());
-                                let _ = daemon_inbound.accept_inbound_with_raw(record, data);
-                            }
+                            delivery_events::accept_delivery_packet(
+                                daemon_inbound.as_ref(),
+                                inbound_transport.as_ref(),
+                                &raw_destination_hex,
+                                destination,
+                                data,
+                                event.payload_mode,
+                            )
+                            .await;
                         }
                     }
                 }
@@ -404,22 +202,6 @@ fn spawn_packet_inbound_worker(
             }
         }
     });
-}
-
-fn should_skip_control_payload(
-    event: &rns_transport::transport::ReceivedData,
-    control: &PropagationControlContext,
-) -> bool {
-    let Some(control_hash) = control.control_destination_hash_hex.as_deref() else {
-        return false;
-    };
-    if hex::encode(event.destination.as_slice()) != control_hash {
-        return false;
-    }
-    matches!(
-        event.context,
-        Some(PacketContext::Request | PacketContext::Response | PacketContext::LinkIdentify)
-    )
 }
 
 pub(super) fn track_outbound_resource(
@@ -448,129 +230,21 @@ pub(super) fn prune_outbound_resource_mappings_for_message(
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum InboundLxmfDestination {
-    Delivery([u8; 16]),
-    Propagation,
-}
-
-async fn resolve_lxmf_resource_destination(
-    transport: &Transport,
-    link_id: &AddressHash,
-) -> Option<InboundLxmfDestination> {
-    if let Some(link) = transport.find_in_link(link_id).await {
-        let guard = link.lock().await;
-        if is_lxmf_delivery_destination(guard.destination()) {
-            let mut destination = [0u8; 16];
-            destination.copy_from_slice(guard.destination().address_hash.as_slice());
-            return Some(InboundLxmfDestination::Delivery(destination));
-        }
-        if is_lxmf_propagation_link_destination(guard.destination()) {
-            return Some(InboundLxmfDestination::Propagation);
-        }
-        return None;
-    }
-    if let Some(link) = transport.find_out_link(link_id).await {
-        let guard = link.lock().await;
-        if is_lxmf_delivery_destination(guard.destination()) {
-            let mut destination = [0u8; 16];
-            destination.copy_from_slice(guard.destination().address_hash.as_slice());
-            return Some(InboundLxmfDestination::Delivery(destination));
-        }
-        if is_lxmf_propagation_link_destination(guard.destination()) {
-            return Some(InboundLxmfDestination::Propagation);
-        }
-    }
-    None
-}
-
-async fn resolve_inbound_lxmf_packet_destination(
-    transport: &Transport,
-    link_id: &AddressHash,
-) -> Option<InboundLxmfDestination> {
-    let link = transport.find_in_link(link_id).await?;
-    let guard = link.lock().await;
-    if is_lxmf_delivery_destination(guard.destination()) {
-        let mut destination = [0u8; 16];
-        destination.copy_from_slice(guard.destination().address_hash.as_slice());
-        return Some(InboundLxmfDestination::Delivery(destination));
-    }
-    if is_lxmf_propagation_link_destination(guard.destination()) {
-        return Some(InboundLxmfDestination::Propagation);
-    }
-    None
-}
-
-async fn local_delivery_destination_hash(
-    destination: Option<&Arc<tokio::sync::Mutex<SingleInputDestination>>>,
-) -> Option<[u8; 16]> {
-    let destination = destination?;
-    let guard = destination.lock().await;
-    let mut hash = [0u8; 16];
-    hash.copy_from_slice(guard.desc.address_hash.as_slice());
-    Some(hash)
-}
-
-fn is_lxmf_delivery_destination(destination: &DestinationDesc) -> bool {
-    destination.name.hash == DestinationName::new("lxmf", "delivery").hash
-}
-
-fn is_lxmf_propagation_link_destination(destination: &DestinationDesc) -> bool {
-    destination.name.hash == DestinationName::new("lxmf", "propagation").hash
-}
-
 #[cfg(test)]
 mod tests {
     use super::propagation::ingest_propagation_envelope;
-    use super::{is_lxmf_delivery_destination, is_lxmf_propagation_link_destination};
     use hkdf::Hkdf;
     use lxmf::WireMessage;
     use rand_core::OsRng;
     use reticulum_daemon::inbound_delivery;
     use reticulum_daemon::lxmf_bridge::build_wire_message_with_options;
     use rns_rpc::{RpcDaemon, RpcRequest};
-    use rns_transport::destination::{DestinationDesc, DestinationName, SingleInputDestination};
+    use rns_transport::destination::{DestinationName, SingleInputDestination};
     use rns_transport::identity::PrivateIdentity;
     use rns_transport::identity_bridge::{to_core_identity, to_core_private_identity};
     use sha2::{Digest, Sha256};
     use std::sync::Arc;
     use tokio::sync::Mutex as TokioMutex;
-
-    #[test]
-    fn lxmf_delivery_destination_is_accepted_for_resource_decode() {
-        let signer = PrivateIdentity::new_from_rand(OsRng);
-        let destination = DestinationDesc {
-            identity: *signer.as_identity(),
-            address_hash: *signer.address_hash(),
-            name: DestinationName::new("lxmf", "delivery"),
-        };
-
-        assert!(is_lxmf_delivery_destination(&destination));
-    }
-
-    #[test]
-    fn non_delivery_destination_is_rejected_for_resource_decode() {
-        let signer = PrivateIdentity::new_from_rand(OsRng);
-        let destination = DestinationDesc {
-            identity: *signer.as_identity(),
-            address_hash: *signer.address_hash(),
-            name: DestinationName::new("lxmf", "propagation.control"),
-        };
-
-        assert!(!is_lxmf_delivery_destination(&destination));
-    }
-
-    #[test]
-    fn propagation_destination_is_detected_for_resource_decode() {
-        let signer = PrivateIdentity::new_from_rand(OsRng);
-        let destination = DestinationDesc {
-            identity: *signer.as_identity(),
-            address_hash: *signer.address_hash(),
-            name: DestinationName::new("lxmf", "propagation"),
-        };
-
-        assert!(is_lxmf_propagation_link_destination(&destination));
-    }
 
     #[tokio::test]
     async fn inbound_propagation_payload_is_ingested_and_counted() {
