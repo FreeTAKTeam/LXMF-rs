@@ -22,10 +22,9 @@ use reticulum_daemon::announce_names::{
 use reticulum_daemon::config::InterfaceConfig;
 use rns_core::identity::PrivateIdentity;
 use rns_rpc::{InterfaceRecord, MessagesStore, OutboundBridge, RpcDaemon, RpcRequest};
-use rns_transport::delivery::send_outcome_status;
 use rns_transport::destination::{link::LinkStatus, DestinationDesc, DestinationName};
 use rns_transport::destination_hash::parse_destination_hash_required;
-use rns_transport::transport::{SendPacketOutcome, Transport, TransportConfig};
+use rns_transport::transport::{Transport, TransportConfig};
 use serde_json::json;
 use std::collections::HashMap;
 use std::fs;
@@ -47,26 +46,6 @@ fn opportunistic_payload_keeps_payload_without_prefix() {
     let destination = [0xAA; 16];
     let payload = vec![0xBB; 24];
     assert_eq!(opportunistic_payload(&payload, &destination), payload.as_slice());
-}
-
-#[test]
-fn send_outcome_status_maps_success() {
-    assert_eq!(
-        send_outcome_status("opportunistic", SendPacketOutcome::SentDirect),
-        "sent: opportunistic"
-    );
-}
-
-#[test]
-fn send_outcome_status_maps_failures() {
-    assert_eq!(
-        send_outcome_status("opportunistic", SendPacketOutcome::DroppedMissingDestinationIdentity),
-        "failed: opportunistic missing destination identity"
-    );
-    assert_eq!(
-        send_outcome_status("opportunistic", SendPacketOutcome::DroppedNoRoute),
-        "failed: opportunistic no route"
-    );
 }
 
 #[test]
