@@ -211,10 +211,7 @@ async fn reticulum_path_table_persistence_restores_route_and_identity_from_cache
     let restored_identity = restored.destination_identity(&destination).await.expect("identity");
     assert_eq!(restored_identity.public_key_bytes(), expected_identity.public_key_bytes());
     assert_eq!(restored_identity.verifying_key_bytes(), expected_identity.verifying_key_bytes());
-    assert!(
-        restored.get_handler().lock().await.path_table.get(&destination).is_some(),
-        "path table entry should be restored"
-    );
+    assert!(restored.has_path(&destination).await, "path table entry should be restored");
 }
 
 #[tokio::test]
@@ -262,7 +259,7 @@ async fn reticulum_tunnel_table_persistence_restores_tunnel_paths_after_reappear
 
     assert_eq!(restored.restore_reticulum_path_table(temp.path()).await.expect("restore"), 0);
     assert!(
-        restored.get_handler().lock().await.path_table.get(&destination).is_none(),
+        !restored.has_path(&destination).await,
         "tunnel table load should not restore active path before tunnel reappears"
     );
 
@@ -280,7 +277,7 @@ async fn reticulum_tunnel_table_persistence_restores_tunnel_paths_after_reappear
     }
 
     assert!(
-        restored.get_handler().lock().await.path_table.get(&destination).is_some(),
+        restored.has_path(&destination).await,
         "tunnel reappearance should restore the persisted tunnel path"
     );
     assert!(restored.destination_identity(&destination).await.is_some());

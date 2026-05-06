@@ -508,6 +508,10 @@ impl Transport {
         self.handler.lock().await.knows_destination(address)
     }
 
+    pub async fn has_path(&self, address: &AddressHash) -> bool {
+        self.handler.lock().await.path_table.get(address).is_some()
+    }
+
     pub async fn destination_identity(&self, address: &AddressHash) -> Option<Identity> {
         let destination =
             { self.handler.lock().await.single_out_destinations.get(address).cloned() }?;
