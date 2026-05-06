@@ -1,5 +1,6 @@
 use super::bootstrap::PropagationControlContext;
 use super::bridge_helpers::diagnostics_enabled;
+use super::outbound_resources::{take_outbound_resource_tracking, OutboundResourceMap};
 #[path = "inbound_control.rs"]
 mod control;
 #[path = "inbound_delivery_events.rs"]
@@ -22,25 +23,14 @@ use rns_transport::resource::ResourceEventKind;
 use rns_transport::transport::Transport;
 use routing::InboundLxmfDestination;
 use serde_json::{json, Value};
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-
-pub(super) const OUTBOUND_RESOURCE_SENT_STATUS: &str = "sent: link resource";
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct OutboundResourceTracking {
-    pub(super) message_id: String,
-    pub(super) peer: String,
-    pub(super) bytes: usize,
-    pub(super) sent_status: String,
-}
+use std::sync::Arc;
 
 pub(super) fn spawn_inbound_worker(
     daemon: Arc<RpcDaemon>,
     transport: Arc<Transport>,
     control: PropagationControlContext,
     receipt_tx: tokio::sync::mpsc::UnboundedSender<ReceiptEvent>,
-    outbound_resource_map: Arc<Mutex<HashMap<String, OutboundResourceTracking>>>,
+    outbound_resource_map: OutboundResourceMap,
 ) {
     if control.enabled {
         control::spawn_control_worker(daemon.clone(), transport.clone(), control.clone());
@@ -202,32 +192,6 @@ fn spawn_packet_inbound_worker(
             }
         }
     });
-}
-
-pub(super) fn track_outbound_resource(
-    outbound_resource_map: &Arc<Mutex<HashMap<String, OutboundResourceTracking>>>,
-    resource_hash_hex: String,
-    tracking: OutboundResourceTracking,
-) {
-    if let Ok(mut guard) = outbound_resource_map.lock() {
-        guard.insert(resource_hash_hex, tracking);
-    }
-}
-
-pub(super) fn take_outbound_resource_tracking(
-    outbound_resource_map: &Arc<Mutex<HashMap<String, OutboundResourceTracking>>>,
-    resource_hash_hex: &str,
-) -> Option<OutboundResourceTracking> {
-    outbound_resource_map.lock().ok().and_then(|mut guard| guard.remove(resource_hash_hex))
-}
-
-pub(super) fn prune_outbound_resource_mappings_for_message(
-    outbound_resource_map: &Arc<Mutex<HashMap<String, OutboundResourceTracking>>>,
-    message_id: &str,
-) {
-    if let Ok(mut guard) = outbound_resource_map.lock() {
-        guard.retain(|_, tracking| tracking.message_id != message_id);
-    }
 }
 
 #[cfg(test)]

@@ -1,7 +1,8 @@
 use super::announce_worker::spawn_announce_worker;
 use super::bridge::TransportBridge;
-use super::inbound_worker::{spawn_inbound_worker, OutboundResourceTracking};
+use super::inbound_worker::spawn_inbound_worker;
 use super::interface_hot_apply::LegacyTcpInterfaceMutationBridge;
+use super::outbound_resources::OutboundResourceMap;
 use super::receipt_worker::spawn_receipt_worker;
 use super::Args;
 #[path = "bootstrap_transport.rs"]
@@ -99,8 +100,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         })
         .unwrap_or_default();
     let receipt_map: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
-    let outbound_resource_map: Arc<Mutex<HashMap<String, OutboundResourceTracking>>> =
-        Arc::new(Mutex::new(HashMap::new()));
+    let outbound_resource_map: OutboundResourceMap = Arc::new(Mutex::new(HashMap::new()));
     let (receipt_tx, receipt_rx) = unbounded_channel();
     let propagation_control_enabled = env_flag("LXMD_PROPAGATION_NODE");
     let configured_control_identities = parse_hex_list_env("LXMD_CONTROL_ALLOWED");

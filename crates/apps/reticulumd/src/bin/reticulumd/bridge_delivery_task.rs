@@ -12,7 +12,7 @@ pub(super) struct DeliveryTask {
     pub(super) peer_crypto: Arc<Mutex<HashMap<String, PeerCrypto>>>,
     pub(super) outbound_propagation_identities: Arc<Mutex<HashMap<String, Identity>>>,
     pub(super) receipt_map: Arc<Mutex<HashMap<String, String>>>,
-    pub(super) outbound_resource_map: Arc<Mutex<HashMap<String, OutboundResourceTracking>>>,
+    pub(super) outbound_resource_map: OutboundResourceMap,
     pub(super) outbound_propagation_link: Arc<tokio::sync::Mutex<Option<CachedPropagationLink>>>,
     pub(super) receipt_tx: tokio::sync::mpsc::UnboundedSender<ReceiptEvent>,
     pub(super) message_id: String,

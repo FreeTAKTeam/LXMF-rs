@@ -1,4 +1,4 @@
-use super::inbound_worker::OutboundResourceTracking;
+use super::outbound_resources::OutboundResourceMap;
 use super::receipt_events::handle_receipt_update;
 use reticulum_daemon::receipt_bridge::ReceiptEvent;
 use rns_rpc::RpcDaemon;
@@ -10,7 +10,7 @@ pub(super) fn spawn_receipt_worker(
     daemon: Arc<RpcDaemon>,
     mut receipt_rx: UnboundedReceiver<ReceiptEvent>,
     receipt_map: Arc<Mutex<HashMap<String, String>>>,
-    outbound_resource_map: Arc<Mutex<HashMap<String, OutboundResourceTracking>>>,
+    outbound_resource_map: OutboundResourceMap,
 ) {
     let daemon_receipts = daemon;
     tokio::spawn(async move {

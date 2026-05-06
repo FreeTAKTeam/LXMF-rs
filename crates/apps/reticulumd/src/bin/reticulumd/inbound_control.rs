@@ -6,6 +6,8 @@ mod response;
 #[path = "inbound_control_status.rs"]
 mod status;
 use response::ControlResponse;
+use std::collections::HashMap;
+use std::sync::Mutex;
 
 pub(super) fn spawn_control_worker(
     daemon: Arc<RpcDaemon>,

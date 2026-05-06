@@ -1,6 +1,6 @@
 use super::bridge_helpers::log_delivery_trace;
-use super::inbound_worker::{
-    prune_outbound_resource_mappings_for_message, OutboundResourceTracking,
+use super::outbound_resources::{
+    prune_outbound_resource_mappings_for_message, OutboundResourceMap,
 };
 use reticulum_daemon::receipt_bridge::{handle_receipt_event, ReceiptEvent};
 use rns_rpc::RpcDaemon;
@@ -35,7 +35,7 @@ pub(super) fn handle_receipt_update(
     daemon: &RpcDaemon,
     event: ReceiptEvent,
     receipt_map: &Arc<Mutex<HashMap<String, String>>>,
-    outbound_resource_map: &Arc<Mutex<HashMap<String, OutboundResourceTracking>>>,
+    outbound_resource_map: &OutboundResourceMap,
 ) {
     let message_id = event.message_id.clone();
     let status = event.status.clone();

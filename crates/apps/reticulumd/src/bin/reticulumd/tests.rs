@@ -6,10 +6,6 @@ use crate::bridge::{
     validate_delivery_request, PeerCrypto, RequestedDeliveryMethod, TransportBridge,
 };
 use crate::bridge_helpers::opportunistic_payload;
-use crate::inbound_worker::{
-    prune_outbound_resource_mappings_for_message, take_outbound_resource_tracking,
-    track_outbound_resource, OutboundResourceTracking, OUTBOUND_RESOURCE_SENT_STATUS,
-};
 use crate::interfaces::{lora, serial};
 use crate::{bootstrap, Args};
 use futures::FutureExt;
@@ -46,45 +42,6 @@ fn opportunistic_payload_keeps_payload_without_prefix() {
     let destination = [0xAA; 16];
     let payload = vec![0xBB; 24];
     assert_eq!(opportunistic_payload(&payload, &destination), payload.as_slice());
-}
-
-#[test]
-fn outbound_resource_tracking_round_trips_and_prunes() {
-    let map = Arc::new(Mutex::new(HashMap::new()));
-    track_outbound_resource(
-        &map,
-        "res-1".to_string(),
-        OutboundResourceTracking {
-            message_id: "msg-1".to_string(),
-            peer: "peer-a".to_string(),
-            bytes: 128,
-            sent_status: OUTBOUND_RESOURCE_SENT_STATUS.to_string(),
-        },
-    );
-    track_outbound_resource(
-        &map,
-        "res-2".to_string(),
-        OutboundResourceTracking {
-            message_id: "msg-2".to_string(),
-            peer: "peer-b".to_string(),
-            bytes: 256,
-            sent_status: OUTBOUND_RESOURCE_SENT_STATUS.to_string(),
-        },
-    );
-
-    let tracking = take_outbound_resource_tracking(&map, "res-1").expect("resource mapping");
-    assert_eq!(tracking.message_id, "msg-1");
-    assert_eq!(tracking.peer, "peer-a");
-    assert_eq!(tracking.bytes, 128);
-    assert_eq!(tracking.sent_status, OUTBOUND_RESOURCE_SENT_STATUS);
-
-    prune_outbound_resource_mappings_for_message(&map, "msg-2");
-    assert!(take_outbound_resource_tracking(&map, "res-2").is_none());
-}
-
-#[test]
-fn outbound_resource_completion_stays_non_terminal() {
-    assert_eq!(OUTBOUND_RESOURCE_SENT_STATUS, "sent: link resource");
 }
 
 #[test]

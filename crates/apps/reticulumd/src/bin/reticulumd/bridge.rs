@@ -20,8 +20,9 @@ mod paper;
 mod propagation;
 #[path = "bridge_remote_control.rs"]
 mod remote_control;
-use super::inbound_worker::{
-    track_outbound_resource, OutboundResourceTracking, OUTBOUND_RESOURCE_SENT_STATUS,
+use super::outbound_resources::{
+    track_outbound_resource, OutboundResourceMap, OutboundResourceTracking,
+    OUTBOUND_RESOURCE_SENT_STATUS,
 };
 use reticulum_daemon::receipt_bridge::{track_receipt_mapping, ReceiptEvent};
 use rns_core::identity::PrivateIdentity;
@@ -70,7 +71,7 @@ pub(super) struct TransportBridge {
     peer_crypto: Arc<Mutex<HashMap<String, PeerCrypto>>>,
     outbound_propagation_identities: Arc<Mutex<HashMap<String, Identity>>>,
     receipt_map: Arc<Mutex<HashMap<String, String>>>,
-    outbound_resource_map: Arc<Mutex<HashMap<String, OutboundResourceTracking>>>,
+    outbound_resource_map: OutboundResourceMap,
     outbound_propagation_link: Arc<tokio::sync::Mutex<Option<CachedPropagationLink>>>,
     receipt_tx: tokio::sync::mpsc::UnboundedSender<ReceiptEvent>,
 }
@@ -93,7 +94,7 @@ impl TransportBridge {
         control_announce_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>>,
         peer_crypto: Arc<Mutex<HashMap<String, PeerCrypto>>>,
         receipt_map: Arc<Mutex<HashMap<String, String>>>,
-        outbound_resource_map: Arc<Mutex<HashMap<String, OutboundResourceTracking>>>,
+        outbound_resource_map: OutboundResourceMap,
         receipt_tx: tokio::sync::mpsc::UnboundedSender<ReceiptEvent>,
     ) -> Self {
         Self {
