@@ -35,7 +35,7 @@ pub(super) struct TransportStartupArtifacts {
     pub(super) configured_interfaces: Vec<InterfaceRecord>,
     pub(super) startup_successes: usize,
     pub(super) startup_failures: Vec<InterfaceStartupFailure>,
-    pub(super) hot_apply_seeded_tcp: Vec<(String, InterfaceRecord, AddressHash)>,
+    pub(super) seeded_tcp_interfaces: Vec<(String, InterfaceRecord, AddressHash)>,
 }
 
 pub(super) struct TransportStartupInput<'a> {
@@ -92,7 +92,7 @@ pub(super) async fn start_transport_and_interfaces(
     let mut delivery_source_hash = [0u8; 16];
     let mut startup_successes = 0usize;
     let mut startup_failures = Vec::new();
-    let mut hot_apply_seeded_tcp = Vec::new();
+    let mut seeded_tcp_interfaces = Vec::new();
 
     if transport_required {
         if let Some(addr) = selected_tcp_server.bind_addr.as_ref() {
@@ -140,7 +140,7 @@ pub(super) async fn start_transport_and_interfaces(
             for iface in startup.tunnel_synth_ifaces {
                 transport_instance.synthesize_tunnel_on_interface(iface).await;
             }
-            hot_apply_seeded_tcp.extend(startup.hot_apply_seeded_tcp);
+            seeded_tcp_interfaces.extend(startup.seeded_tcp_interfaces);
         }
 
         match transport_instance.restore_reticulum_path_table(reticulum_storage_path).await {
@@ -237,6 +237,6 @@ pub(super) async fn start_transport_and_interfaces(
         configured_interfaces,
         startup_successes,
         startup_failures,
-        hot_apply_seeded_tcp,
+        seeded_tcp_interfaces,
     }
 }

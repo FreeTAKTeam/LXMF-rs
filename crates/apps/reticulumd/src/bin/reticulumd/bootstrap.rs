@@ -1,7 +1,7 @@
 use super::announce_worker::spawn_announce_worker;
 use super::bridge::TransportBridge;
 use super::inbound_worker::spawn_inbound_worker;
-use super::interface_hot_apply::LegacyTcpInterfaceMutationBridge;
+use super::interface_hot_apply::TcpInterfaceMutationBridge;
 use super::outbound_resources::OutboundResourceMap;
 use super::receipt_worker::spawn_receipt_worker;
 use super::Args;
@@ -134,7 +134,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     configured_interfaces = startup.configured_interfaces;
     let startup_successes = startup.startup_successes;
     let startup_failures = startup.startup_failures;
-    let hot_apply_seeded_tcp = startup.hot_apply_seeded_tcp;
+    let seeded_tcp_interfaces = startup.seeded_tcp_interfaces;
     let selected_tcp_server = startup.selected_tcp_server;
 
     if !startup_failures.is_empty() {
@@ -211,9 +211,9 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         announce_bridge,
     ));
     if let Some(transport) = transport.as_ref() {
-        daemon.set_interface_mutation_bridge(Arc::new(LegacyTcpInterfaceMutationBridge::spawn(
+        daemon.set_interface_mutation_bridge(Arc::new(TcpInterfaceMutationBridge::spawn(
             transport.iface_manager(),
-            hot_apply_seeded_tcp,
+            seeded_tcp_interfaces,
         )));
     }
     if let Some(bridge) = bridge.as_ref() {

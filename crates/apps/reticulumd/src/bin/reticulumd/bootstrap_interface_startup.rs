@@ -2,7 +2,7 @@ use super::super::{
     mark_interface_runtime_fields, mark_interface_startup_status, strict_tcp_client_preflight,
 };
 use super::{InterfaceStartupFailure, TcpServerSelection};
-use crate::interface_hot_apply::legacy_tcp_interface_key;
+use crate::interface_hot_apply::tcp_interface_key;
 use crate::interfaces::{ble, common::interface_label, lora, serial, udp};
 use crate::Args;
 use reticulum_daemon::config::{DaemonConfig, InterfaceConfig};
@@ -16,7 +16,7 @@ use std::sync::Arc;
 pub(super) struct InterfaceStartupBatch {
     pub(super) startup_successes: usize,
     pub(super) startup_failures: Vec<InterfaceStartupFailure>,
-    pub(super) hot_apply_seeded_tcp: Vec<(String, InterfaceRecord, AddressHash)>,
+    pub(super) seeded_tcp_interfaces: Vec<(String, InterfaceRecord, AddressHash)>,
     pub(super) tunnel_synth_ifaces: Vec<AddressHash>,
 }
 
@@ -30,7 +30,7 @@ pub(super) async fn startup_configured_interfaces(
 ) -> InterfaceStartupBatch {
     let mut startup_successes = 0usize;
     let mut startup_failures = Vec::new();
-    let mut hot_apply_seeded_tcp = Vec::new();
+    let mut seeded_tcp_interfaces = Vec::new();
     let mut tunnel_synth_ifaces = Vec::new();
 
     for (index, iface) in config.interfaces.iter().enumerate() {
@@ -64,7 +64,7 @@ pub(super) async fn startup_configured_interfaces(
                     iface_manager,
                     &mut configured_interfaces[index],
                     &mut startup_failures,
-                    &mut hot_apply_seeded_tcp,
+                    &mut seeded_tcp_interfaces,
                 )
                 .await
                 {
@@ -136,7 +136,7 @@ pub(super) async fn startup_configured_interfaces(
     InterfaceStartupBatch {
         startup_successes,
         startup_failures,
-        hot_apply_seeded_tcp,
+        seeded_tcp_interfaces,
         tunnel_synth_ifaces,
     }
 }
@@ -200,7 +200,7 @@ async fn startup_tcp_client(
     iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
     record: &mut InterfaceRecord,
     startup_failures: &mut Vec<InterfaceStartupFailure>,
-    hot_apply_seeded_tcp: &mut Vec<(String, InterfaceRecord, AddressHash)>,
+    seeded_tcp_interfaces: &mut Vec<(String, InterfaceRecord, AddressHash)>,
 ) -> Option<AddressHash> {
     let (Some(host), Some(port)) = (iface.host.as_ref(), iface.port) else {
         record_startup_failure(
@@ -240,8 +240,8 @@ async fn startup_tcp_client(
     );
     let runtime_iface = client_iface.to_string();
     mark_interface_startup_status(record, "spawned", None, Some(runtime_iface.as_str()));
-    if let Some(key) = legacy_tcp_interface_key(record) {
-        hot_apply_seeded_tcp.push((key, record.clone(), client_iface));
+    if let Some(key) = tcp_interface_key(record) {
+        seeded_tcp_interfaces.push((key, record.clone(), client_iface));
     }
     Some(client_iface)
 }
