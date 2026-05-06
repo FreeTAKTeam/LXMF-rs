@@ -5,9 +5,7 @@ mod python_channel_process;
 #[path = "support/python_channel_protocol.rs"]
 mod python_channel_protocol;
 
-use std::env;
 use std::fs;
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
 
@@ -31,13 +29,7 @@ const MSG_TYPE: u16 = 0xABCD;
 #[ignore = "requires local Python Reticulum checkout"]
 async fn rust_to_python_channel_roundtrip() {
     let _interop_guard = python_interop_guard().await;
-    let python_bin = env::var("LXMF_PYTHON_BIN").unwrap_or_else(|_| "python3".to_string());
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
-    let reticulum_py_repo = env::var("RETICULUM_PY_REPO")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| repo_root.join("../reticulum"));
-    let helper =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/support/python_channel_endpoint.py");
+    let paths = python_channel_interop_paths();
 
     let server_port = free_tcp_port();
     let temp = tempfile::tempdir().expect("tempdir");
@@ -45,8 +37,7 @@ async fn rust_to_python_channel_roundtrip() {
     fs::create_dir_all(&py_config_dir).expect("python config dir");
     write_python_config(&py_config_dir, server_port);
 
-    let mut child =
-        spawn_python_endpoint(&python_bin, &reticulum_py_repo, &helper, &py_config_dir, "channel");
+    let mut child = paths.spawn_endpoint(&py_config_dir, "channel");
     let ready = read_ready(&mut child).expect("python endpoint ready");
     let _guard = ChildGuard { child: Some(child) };
     wait_for_port(server_port, Duration::from_secs(5)).await;
@@ -96,13 +87,7 @@ async fn rust_to_python_channel_roundtrip() {
 #[ignore = "requires local Python Reticulum checkout"]
 async fn rust_to_python_link_data_roundtrip() {
     let _interop_guard = python_interop_guard().await;
-    let python_bin = env::var("LXMF_PYTHON_BIN").unwrap_or_else(|_| "python3".to_string());
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
-    let reticulum_py_repo = env::var("RETICULUM_PY_REPO")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| repo_root.join("../reticulum"));
-    let helper =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/support/python_channel_endpoint.py");
+    let paths = python_channel_interop_paths();
 
     let server_port = free_tcp_port();
     let temp = tempfile::tempdir().expect("tempdir");
@@ -110,13 +95,7 @@ async fn rust_to_python_link_data_roundtrip() {
     fs::create_dir_all(&py_config_dir).expect("python config dir");
     write_python_config(&py_config_dir, server_port);
 
-    let mut child = spawn_python_endpoint(
-        &python_bin,
-        &reticulum_py_repo,
-        &helper,
-        &py_config_dir,
-        "link-data",
-    );
+    let mut child = paths.spawn_endpoint(&py_config_dir, "link-data");
     let ready = read_ready(&mut child).expect("python endpoint ready");
     let _guard = ChildGuard { child: Some(child) };
     wait_for_port(server_port, Duration::from_secs(5)).await;
@@ -150,13 +129,7 @@ async fn rust_to_python_link_data_roundtrip() {
 #[ignore = "requires local Python Reticulum checkout"]
 async fn rust_to_python_request_response_roundtrip() {
     let _interop_guard = python_interop_guard().await;
-    let python_bin = env::var("LXMF_PYTHON_BIN").unwrap_or_else(|_| "python3".to_string());
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
-    let reticulum_py_repo = env::var("RETICULUM_PY_REPO")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| repo_root.join("../reticulum"));
-    let helper =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/support/python_channel_endpoint.py");
+    let paths = python_channel_interop_paths();
 
     let server_port = free_tcp_port();
     let temp = tempfile::tempdir().expect("tempdir");
@@ -164,8 +137,7 @@ async fn rust_to_python_request_response_roundtrip() {
     fs::create_dir_all(&py_config_dir).expect("python config dir");
     write_python_config(&py_config_dir, server_port);
 
-    let mut child =
-        spawn_python_endpoint(&python_bin, &reticulum_py_repo, &helper, &py_config_dir, "request");
+    let mut child = paths.spawn_endpoint(&py_config_dir, "request");
     let ready = read_ready(&mut child).expect("python endpoint ready");
     let _guard = ChildGuard { child: Some(child) };
     wait_for_port(server_port, Duration::from_secs(5)).await;
@@ -208,13 +180,7 @@ async fn rust_to_python_request_response_roundtrip() {
 #[ignore = "requires local Python Reticulum checkout"]
 async fn rust_to_python_resource_backed_request_response_roundtrip() {
     let _interop_guard = python_interop_guard().await;
-    let python_bin = env::var("LXMF_PYTHON_BIN").unwrap_or_else(|_| "python3".to_string());
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
-    let reticulum_py_repo = env::var("RETICULUM_PY_REPO")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| repo_root.join("../reticulum"));
-    let helper =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/support/python_channel_endpoint.py");
+    let paths = python_channel_interop_paths();
 
     let server_port = free_tcp_port();
     let temp = tempfile::tempdir().expect("tempdir");
@@ -222,13 +188,7 @@ async fn rust_to_python_resource_backed_request_response_roundtrip() {
     fs::create_dir_all(&py_config_dir).expect("python config dir");
     write_python_config(&py_config_dir, server_port);
 
-    let mut child = spawn_python_endpoint(
-        &python_bin,
-        &reticulum_py_repo,
-        &helper,
-        &py_config_dir,
-        "large-request",
-    );
+    let mut child = paths.spawn_endpoint(&py_config_dir, "large-request");
     let ready = read_ready(&mut child).expect("python endpoint ready");
     let _guard = ChildGuard { child: Some(child) };
     wait_for_port(server_port, Duration::from_secs(5)).await;
@@ -285,13 +245,7 @@ async fn rust_to_python_resource_backed_request_response_roundtrip() {
 #[ignore = "requires local Python Reticulum checkout"]
 async fn rust_to_python_file_response_resource_roundtrip() {
     let _interop_guard = python_interop_guard().await;
-    let python_bin = env::var("LXMF_PYTHON_BIN").unwrap_or_else(|_| "python3".to_string());
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
-    let reticulum_py_repo = env::var("RETICULUM_PY_REPO")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| repo_root.join("../reticulum"));
-    let helper =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/support/python_channel_endpoint.py");
+    let paths = python_channel_interop_paths();
 
     let server_port = free_tcp_port();
     let temp = tempfile::tempdir().expect("tempdir");
@@ -299,13 +253,7 @@ async fn rust_to_python_file_response_resource_roundtrip() {
     fs::create_dir_all(&py_config_dir).expect("python config dir");
     write_python_config(&py_config_dir, server_port);
 
-    let mut child = spawn_python_endpoint(
-        &python_bin,
-        &reticulum_py_repo,
-        &helper,
-        &py_config_dir,
-        "file-response",
-    );
+    let mut child = paths.spawn_endpoint(&py_config_dir, "file-response");
     let ready = read_ready(&mut child).expect("python endpoint ready");
     let _guard = ChildGuard { child: Some(child) };
     wait_for_port(server_port, Duration::from_secs(5)).await;
@@ -355,13 +303,7 @@ async fn rust_to_python_file_response_resource_roundtrip() {
 #[ignore = "requires local Python Reticulum checkout"]
 async fn rust_to_python_link_identify_roundtrip() {
     let _interop_guard = python_interop_guard().await;
-    let python_bin = env::var("LXMF_PYTHON_BIN").unwrap_or_else(|_| "python3".to_string());
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
-    let reticulum_py_repo = env::var("RETICULUM_PY_REPO")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| repo_root.join("../reticulum"));
-    let helper =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/support/python_channel_endpoint.py");
+    let paths = python_channel_interop_paths();
 
     let server_port = free_tcp_port();
     let temp = tempfile::tempdir().expect("tempdir");
@@ -369,8 +311,7 @@ async fn rust_to_python_link_identify_roundtrip() {
     fs::create_dir_all(&py_config_dir).expect("python config dir");
     write_python_config(&py_config_dir, server_port);
 
-    let mut child =
-        spawn_python_endpoint(&python_bin, &reticulum_py_repo, &helper, &py_config_dir, "identify");
+    let mut child = paths.spawn_endpoint(&py_config_dir, "identify");
     let ready = read_ready(&mut child).expect("python endpoint ready");
     let _guard = ChildGuard { child: Some(child) };
     wait_for_port(server_port, Duration::from_secs(5)).await;
@@ -420,13 +361,7 @@ async fn rust_to_python_link_identify_roundtrip() {
 #[ignore = "requires local Python Reticulum checkout"]
 async fn rust_to_python_channel_buffer_roundtrip() {
     let _interop_guard = python_interop_guard().await;
-    let python_bin = env::var("LXMF_PYTHON_BIN").unwrap_or_else(|_| "python3".to_string());
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
-    let reticulum_py_repo = env::var("RETICULUM_PY_REPO")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| repo_root.join("../reticulum"));
-    let helper =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/support/python_channel_endpoint.py");
+    let paths = python_channel_interop_paths();
 
     let server_port = free_tcp_port();
     let temp = tempfile::tempdir().expect("tempdir");
@@ -434,8 +369,7 @@ async fn rust_to_python_channel_buffer_roundtrip() {
     fs::create_dir_all(&py_config_dir).expect("python config dir");
     write_python_config(&py_config_dir, server_port);
 
-    let mut child =
-        spawn_python_endpoint(&python_bin, &reticulum_py_repo, &helper, &py_config_dir, "buffer");
+    let mut child = paths.spawn_endpoint(&py_config_dir, "buffer");
     let ready = read_ready(&mut child).expect("python endpoint ready");
     let _guard = ChildGuard { child: Some(child) };
     wait_for_port(server_port, Duration::from_secs(5)).await;
@@ -472,13 +406,7 @@ async fn rust_to_python_channel_buffer_roundtrip() {
 #[ignore = "requires local Python Reticulum checkout"]
 async fn rust_to_python_raw_resource_roundtrip() {
     let _interop_guard = python_interop_guard().await;
-    let python_bin = env::var("LXMF_PYTHON_BIN").unwrap_or_else(|_| "python3".to_string());
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
-    let reticulum_py_repo = env::var("RETICULUM_PY_REPO")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| repo_root.join("../reticulum"));
-    let helper =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/support/python_channel_endpoint.py");
+    let paths = python_channel_interop_paths();
 
     let server_port = free_tcp_port();
     let temp = tempfile::tempdir().expect("tempdir");
@@ -486,8 +414,7 @@ async fn rust_to_python_raw_resource_roundtrip() {
     fs::create_dir_all(&py_config_dir).expect("python config dir");
     write_python_config(&py_config_dir, server_port);
 
-    let mut child =
-        spawn_python_endpoint(&python_bin, &reticulum_py_repo, &helper, &py_config_dir, "resource");
+    let mut child = paths.spawn_endpoint(&py_config_dir, "resource");
     let ready = read_ready(&mut child).expect("python endpoint ready");
     let _guard = ChildGuard { child: Some(child) };
     wait_for_port(server_port, Duration::from_secs(5)).await;
@@ -546,13 +473,7 @@ async fn rust_to_python_raw_resource_roundtrip() {
 #[ignore = "requires local Python Reticulum checkout"]
 async fn python_to_rust_channel_roundtrip() {
     let _interop_guard = python_interop_guard().await;
-    let python_bin = env::var("LXMF_PYTHON_BIN").unwrap_or_else(|_| "python3".to_string());
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
-    let reticulum_py_repo = env::var("RETICULUM_PY_REPO")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| repo_root.join("../reticulum"));
-    let helper =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/support/python_channel_endpoint.py");
+    let paths = python_channel_interop_paths();
 
     let server_port = free_tcp_port();
     let temp = tempfile::tempdir().expect("tempdir");
@@ -582,14 +503,7 @@ async fn python_to_rust_channel_roundtrip() {
         hex::encode(destination.desc.address_hash.as_slice())
     };
 
-    let child = spawn_python_channel_client(
-        &python_bin,
-        &reticulum_py_repo,
-        &helper,
-        &py_config_dir,
-        &destination_hash,
-        "channel",
-    );
+    let child = paths.spawn_channel_client(&py_config_dir, &destination_hash, "channel");
     let mut guard = ChildGuard { child: Some(child) };
 
     let mut in_events = transport.in_link_events();
@@ -645,13 +559,7 @@ async fn python_to_rust_channel_roundtrip() {
 #[ignore = "requires local Python Reticulum checkout"]
 async fn python_to_rust_link_data_roundtrip() {
     let _interop_guard = python_interop_guard().await;
-    let python_bin = env::var("LXMF_PYTHON_BIN").unwrap_or_else(|_| "python3".to_string());
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
-    let reticulum_py_repo = env::var("RETICULUM_PY_REPO")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| repo_root.join("../reticulum"));
-    let helper =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/support/python_channel_endpoint.py");
+    let paths = python_channel_interop_paths();
 
     let server_port = free_tcp_port();
     let temp = tempfile::tempdir().expect("tempdir");
@@ -681,14 +589,7 @@ async fn python_to_rust_link_data_roundtrip() {
         hex::encode(destination.desc.address_hash.as_slice())
     };
 
-    let child = spawn_python_channel_client(
-        &python_bin,
-        &reticulum_py_repo,
-        &helper,
-        &py_config_dir,
-        &destination_hash,
-        "link-data",
-    );
+    let child = paths.spawn_channel_client(&py_config_dir, &destination_hash, "link-data");
     let mut guard = ChildGuard { child: Some(child) };
 
     let mut in_events = transport.in_link_events();
@@ -724,13 +625,7 @@ async fn python_to_rust_link_data_roundtrip() {
 #[ignore = "requires local Python Reticulum checkout"]
 async fn python_to_rust_request_response_roundtrip() {
     let _interop_guard = python_interop_guard().await;
-    let python_bin = env::var("LXMF_PYTHON_BIN").unwrap_or_else(|_| "python3".to_string());
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
-    let reticulum_py_repo = env::var("RETICULUM_PY_REPO")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| repo_root.join("../reticulum"));
-    let helper =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/support/python_channel_endpoint.py");
+    let paths = python_channel_interop_paths();
 
     let server_port = free_tcp_port();
     let temp = tempfile::tempdir().expect("tempdir");
@@ -760,14 +655,7 @@ async fn python_to_rust_request_response_roundtrip() {
         hex::encode(destination.desc.address_hash.as_slice())
     };
 
-    let child = spawn_python_channel_client(
-        &python_bin,
-        &reticulum_py_repo,
-        &helper,
-        &py_config_dir,
-        &destination_hash,
-        "request",
-    );
+    let child = paths.spawn_channel_client(&py_config_dir, &destination_hash, "request");
     let mut guard = ChildGuard { child: Some(child) };
 
     let mut in_events = transport.in_link_events();
@@ -811,13 +699,7 @@ async fn python_to_rust_request_response_roundtrip() {
 #[ignore = "requires local Python Reticulum checkout"]
 async fn python_to_rust_resource_backed_request_response_roundtrip() {
     let _interop_guard = python_interop_guard().await;
-    let python_bin = env::var("LXMF_PYTHON_BIN").unwrap_or_else(|_| "python3".to_string());
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
-    let reticulum_py_repo = env::var("RETICULUM_PY_REPO")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| repo_root.join("../reticulum"));
-    let helper =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/support/python_channel_endpoint.py");
+    let paths = python_channel_interop_paths();
 
     let server_port = free_tcp_port();
     let temp = tempfile::tempdir().expect("tempdir");
@@ -848,14 +730,7 @@ async fn python_to_rust_resource_backed_request_response_roundtrip() {
         hex::encode(destination.desc.address_hash.as_slice())
     };
 
-    let child = spawn_python_channel_client(
-        &python_bin,
-        &reticulum_py_repo,
-        &helper,
-        &py_config_dir,
-        &destination_hash,
-        "large-request",
-    );
+    let child = paths.spawn_channel_client(&py_config_dir, &destination_hash, "large-request");
     let mut guard = ChildGuard { child: Some(child) };
 
     let mut in_events = transport.in_link_events();
@@ -920,13 +795,7 @@ async fn python_to_rust_resource_backed_request_response_roundtrip() {
 #[ignore = "requires local Python Reticulum checkout"]
 async fn python_to_rust_link_identify_roundtrip() {
     let _interop_guard = python_interop_guard().await;
-    let python_bin = env::var("LXMF_PYTHON_BIN").unwrap_or_else(|_| "python3".to_string());
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
-    let reticulum_py_repo = env::var("RETICULUM_PY_REPO")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| repo_root.join("../reticulum"));
-    let helper =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/support/python_channel_endpoint.py");
+    let paths = python_channel_interop_paths();
 
     let server_port = free_tcp_port();
     let temp = tempfile::tempdir().expect("tempdir");
@@ -956,14 +825,7 @@ async fn python_to_rust_link_identify_roundtrip() {
         hex::encode(destination.desc.address_hash.as_slice())
     };
 
-    let child = spawn_python_channel_client(
-        &python_bin,
-        &reticulum_py_repo,
-        &helper,
-        &py_config_dir,
-        &destination_hash,
-        "identify",
-    );
+    let child = paths.spawn_channel_client(&py_config_dir, &destination_hash, "identify");
     let mut guard = ChildGuard { child: Some(child) };
 
     let mut in_events = transport.in_link_events();
@@ -1002,13 +864,7 @@ async fn python_to_rust_link_identify_roundtrip() {
 #[ignore = "requires local Python Reticulum checkout"]
 async fn python_to_rust_channel_buffer_roundtrip() {
     let _interop_guard = python_interop_guard().await;
-    let python_bin = env::var("LXMF_PYTHON_BIN").unwrap_or_else(|_| "python3".to_string());
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
-    let reticulum_py_repo = env::var("RETICULUM_PY_REPO")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| repo_root.join("../reticulum"));
-    let helper =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/support/python_channel_endpoint.py");
+    let paths = python_channel_interop_paths();
 
     let server_port = free_tcp_port();
     let temp = tempfile::tempdir().expect("tempdir");
@@ -1038,14 +894,7 @@ async fn python_to_rust_channel_buffer_roundtrip() {
         hex::encode(destination.desc.address_hash.as_slice())
     };
 
-    let child = spawn_python_channel_client(
-        &python_bin,
-        &reticulum_py_repo,
-        &helper,
-        &py_config_dir,
-        &destination_hash,
-        "buffer",
-    );
+    let child = paths.spawn_channel_client(&py_config_dir, &destination_hash, "buffer");
     let mut guard = ChildGuard { child: Some(child) };
 
     let mut in_events = transport.in_link_events();
@@ -1088,13 +937,7 @@ async fn python_to_rust_channel_buffer_roundtrip() {
 #[ignore = "requires local Python Reticulum checkout"]
 async fn python_to_rust_raw_resource_roundtrip() {
     let _interop_guard = python_interop_guard().await;
-    let python_bin = env::var("LXMF_PYTHON_BIN").unwrap_or_else(|_| "python3".to_string());
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
-    let reticulum_py_repo = env::var("RETICULUM_PY_REPO")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| repo_root.join("../reticulum"));
-    let helper =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/support/python_channel_endpoint.py");
+    let paths = python_channel_interop_paths();
 
     let server_port = free_tcp_port();
     let temp = tempfile::tempdir().expect("tempdir");
@@ -1125,14 +968,7 @@ async fn python_to_rust_raw_resource_roundtrip() {
         hex::encode(destination.desc.address_hash.as_slice())
     };
 
-    let child = spawn_python_channel_client(
-        &python_bin,
-        &reticulum_py_repo,
-        &helper,
-        &py_config_dir,
-        &destination_hash,
-        "resource",
-    );
+    let child = paths.spawn_channel_client(&py_config_dir, &destination_hash, "resource");
     let mut guard = ChildGuard { child: Some(child) };
 
     let mut in_events = transport.in_link_events();

@@ -1,13 +1,47 @@
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::net::{TcpListener, TcpStream};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 
 use tokio::time::{sleep, Instant};
 
 static PYTHON_INTEROP_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+pub(super) struct PythonChannelInteropPaths {
+    python_bin: String,
+    reticulum_py_repo: PathBuf,
+    helper: PathBuf,
+}
+
+impl PythonChannelInteropPaths {
+    pub(super) fn spawn_endpoint(&self, config_dir: &Path, payload_kind: &str) -> Child {
+        spawn_python_endpoint(
+            &self.python_bin,
+            &self.reticulum_py_repo,
+            &self.helper,
+            config_dir,
+            payload_kind,
+        )
+    }
+
+    pub(super) fn spawn_channel_client(
+        &self,
+        config_dir: &Path,
+        destination_hash: &str,
+        payload_kind: &str,
+    ) -> Child {
+        spawn_python_channel_client(
+            &self.python_bin,
+            &self.reticulum_py_repo,
+            &self.helper,
+            config_dir,
+            destination_hash,
+            payload_kind,
+        )
+    }
+}
 
 pub(super) struct ChildGuard {
     pub(super) child: Option<Child>,
@@ -30,6 +64,18 @@ pub(super) struct ReadyLine {
 
 pub(super) async fn python_interop_guard() -> tokio::sync::MutexGuard<'static, ()> {
     PYTHON_INTEROP_LOCK.lock().await
+}
+
+pub(super) fn python_channel_interop_paths() -> PythonChannelInteropPaths {
+    let python_bin = std::env::var("LXMF_PYTHON_BIN").unwrap_or_else(|_| "python3".to_string());
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let reticulum_py_repo = std::env::var("RETICULUM_PY_REPO")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| repo_root.join("../reticulum"));
+    let helper =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/support/python_channel_endpoint.py");
+
+    PythonChannelInteropPaths { python_bin, reticulum_py_repo, helper }
 }
 
 pub(super) fn spawn_python_endpoint(
