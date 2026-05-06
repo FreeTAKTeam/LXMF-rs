@@ -112,27 +112,7 @@ impl TransportHandler {
             }
         }
 
-        if diag::enabled() {
-            if let Some(entry) = self.path_table.get(&packet.destination) {
-                log::trace!(
-                    "[tp-diag] route_lookup dst={} hops={} via_next_hop={} via_iface={}",
-                    packet.destination,
-                    entry.hops,
-                    entry.received_from,
-                    entry.iface
-                );
-                log::info!(
-                    "[tp-diag] route_lookup dst={} hops={} via_next_hop={} via_iface={}",
-                    packet.destination,
-                    entry.hops,
-                    entry.received_from,
-                    entry.iface
-                );
-            } else {
-                log::trace!("[tp-diag] route_lookup dst={} missing", packet.destination);
-                log::info!("[tp-diag] route_lookup dst={} missing", packet.destination);
-            }
-        }
+        diag::log_route_lookup(&self.path_table, &packet.destination);
 
         let route = super::path::route_outbound_packet(&self.path_table, &packet);
         let packet = route.packet;
@@ -144,24 +124,7 @@ impl TransportHandler {
             } else {
                 SendPacketOutcome::DroppedNoRoute
             };
-            if diag::enabled() {
-                log::trace!(
-                    "[tp-diag] direct_send iface={} outcome={:?} matched={} sent={} failed={}",
-                    iface,
-                    outcome,
-                    dispatch.matched_ifaces,
-                    dispatch.sent_ifaces,
-                    dispatch.failed_ifaces
-                );
-                log::info!(
-                    "[tp-diag] direct_send iface={} outcome={:?} matched={} sent={} failed={}",
-                    iface,
-                    outcome,
-                    dispatch.matched_ifaces,
-                    dispatch.sent_ifaces,
-                    dispatch.failed_ifaces
-                );
-            }
+            diag::log_direct_send(iface, outcome, &dispatch);
             SendPacketTrace { outcome, direct_iface: Some(iface), broadcast: false, dispatch }
         } else if self.config.broadcast || packet.header.packet_type == PacketType::Announce {
             let dispatch =
@@ -171,22 +134,7 @@ impl TransportHandler {
             } else {
                 SendPacketOutcome::DroppedNoRoute
             };
-            if diag::enabled() {
-                log::trace!(
-                    "[tp-diag] broadcast_send outcome={:?} matched={} sent={} failed={}",
-                    outcome,
-                    dispatch.matched_ifaces,
-                    dispatch.sent_ifaces,
-                    dispatch.failed_ifaces
-                );
-                log::info!(
-                    "[tp-diag] broadcast_send outcome={:?} matched={} sent={} failed={}",
-                    outcome,
-                    dispatch.matched_ifaces,
-                    dispatch.sent_ifaces,
-                    dispatch.failed_ifaces
-                );
-            }
+            diag::log_broadcast_send(outcome, &dispatch);
             SendPacketTrace { outcome, direct_iface: None, broadcast: true, dispatch }
         } else {
             log::trace!(
