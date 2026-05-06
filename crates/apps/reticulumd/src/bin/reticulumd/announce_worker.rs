@@ -1,3 +1,4 @@
+use super::announce_persistence::spawn_path_table_persistence_worker;
 use super::bridge::PeerCrypto;
 use super::bridge_helpers::diagnostics_enabled;
 use reticulum_daemon::announce_names::{
@@ -11,9 +12,6 @@ use rns_transport::transport::Transport;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use tokio::time::{sleep, Duration};
-
-const RETICULUM_PATH_TABLE_SAVE_DEBOUNCE: Duration = Duration::from_secs(2);
 
 pub(super) fn spawn_announce_worker(
     daemon: Arc<RpcDaemon>,
@@ -22,23 +20,9 @@ pub(super) fn spawn_announce_worker(
     reticulum_storage_path: Option<PathBuf>,
 ) {
     let daemon_announce = daemon;
-    let persist_tx = reticulum_storage_path.as_ref().map(|path| {
-        let (tx, mut rx) = tokio::sync::mpsc::channel::<()>(1);
-        let transport = transport.clone();
-        let path = path.clone();
-        tokio::spawn(async move {
-            while rx.recv().await.is_some() {
-                sleep(RETICULUM_PATH_TABLE_SAVE_DEBOUNCE).await;
-                while rx.try_recv().is_ok() {}
-                if let Err(err) = transport.save_reticulum_path_table(&path).await {
-                    if diagnostics_enabled() {
-                        eprintln!("[daemon] failed to persist Reticulum path table: {err}");
-                    }
-                }
-            }
-        });
-        tx
-    });
+    let persist_tx = reticulum_storage_path
+        .as_ref()
+        .map(|path| spawn_path_table_persistence_worker(transport.clone(), path.clone()));
     tokio::spawn(async move {
         let mut rx = transport.recv_announces().await;
         loop {

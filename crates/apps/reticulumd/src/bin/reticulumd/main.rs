@@ -1,5 +1,6 @@
 #![allow(clippy::items_after_test_module)]
 
+mod announce_persistence;
 mod announce_worker;
 mod bootstrap;
 mod bridge;
