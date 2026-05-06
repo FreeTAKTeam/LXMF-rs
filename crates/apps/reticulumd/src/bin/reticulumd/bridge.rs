@@ -20,8 +20,8 @@ use reticulum_daemon::lxmf_stamps::generate_propagation_stamp;
 use reticulum_daemon::receipt_bridge::{track_receipt_mapping, ReceiptEvent};
 use rns_core::identity::{Identity as CoreIdentity, PrivateIdentity};
 use rns_rpc::{
-    OutboundBridge, OutboundDeliveryOptions, PaperDecodeOutcome, PaperEncodeEnvelope,
-    RemoteControlBridge, RpcDaemon, RpcRequest,
+    OutboundBridge, OutboundDeliveryOptions, PaperDecodeOutcome, PaperEncodeEnvelope, RpcDaemon,
+    RpcRequest,
 };
 use rns_transport::delivery::await_link_activation;
 use rns_transport::delivery::{
@@ -871,55 +871,6 @@ fn now_secs_f64() -> f64 {
 fn now_secs_i64() -> i64 {
     i64::try_from(SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs())
         .unwrap_or(i64::MAX)
-}
-
-impl RemoteControlBridge for TransportBridge {
-    fn propagation_remote_status(
-        &self,
-        remote: &str,
-        identity_private_key_hex: Option<&str>,
-        timeout_secs: f64,
-    ) -> Result<JsonValue, std::io::Error> {
-        self.run_remote_control(
-            remote,
-            identity_private_key_hex,
-            timeout_secs,
-            "/pn/get/stats",
-            rmpv::Value::Nil,
-        )
-    }
-
-    fn propagation_remote_sync(
-        &self,
-        remote: &str,
-        peer: &str,
-        identity_private_key_hex: Option<&str>,
-        timeout_secs: f64,
-    ) -> Result<JsonValue, std::io::Error> {
-        self.run_remote_control(
-            remote,
-            identity_private_key_hex,
-            timeout_secs,
-            "/pn/peer/sync",
-            remote_control::remote_peer_value(peer)?,
-        )
-    }
-
-    fn propagation_remote_unpeer(
-        &self,
-        remote: &str,
-        peer: &str,
-        identity_private_key_hex: Option<&str>,
-        timeout_secs: f64,
-    ) -> Result<JsonValue, std::io::Error> {
-        self.run_remote_control(
-            remote,
-            identity_private_key_hex,
-            timeout_secs,
-            "/pn/peer/unpeer",
-            remote_control::remote_peer_value(peer)?,
-        )
-    }
 }
 
 async fn wait_for_propagation_signal(
