@@ -16,6 +16,22 @@ Runtime states:
 Call legality is enforced per state by `LxmfSdk` and daemon contract logic.
 Illegal transitions return typed `SdkError` values (`SDK_RUNTIME_INVALID_STATE` family).
 
+## Event-Driven Pattern
+
+The default app-facing path is `subscribe_events(start)`, which yields typed events through the
+Rust async stream surface. With the RPC backend this is backed by the daemon's native framed event
+stream over `unix:/path`, TCP, or TLS/mTLS, so applications do not need a one-second polling loop.
+Applications should consume that stream and handle domain events directly:
+
+1. Start the runtime.
+2. Subscribe with `Head`, `Tail`, or `Snapshot`.
+3. Process typed events in order.
+4. Treat `StreamGap` as an explicit data-loss signal.
+5. Use snapshot/cursor recovery only when the stream reports degraded state.
+
+The stream updates its cursor from each event sequence number. If the connection drops, the SDK
+reconnects with the latest cursor and deduplicates replayed sequence numbers.
+
 ## Cursor Polling Pattern
 
 `poll_events(cursor, max)` returns:
@@ -24,7 +40,7 @@ Illegal transitions return typed `SdkError` values (`SDK_RUNTIME_INVALID_STATE` 
 - next cursor token
 - dropped count for stream-gap handling
 
-Recommended polling loop:
+Recommended recovery loop:
 
 1. Start with `cursor = None`.
 2. Process events in order.
@@ -51,7 +67,9 @@ Use `snapshot()` periodically and during recovery:
 
 When `sdk-async` is enabled and negotiated:
 
-- use `subscribe_events(start)` for stream-style consumers
+- use `subscribe_events(start)` for app-facing consumers
 - preserve the same ordering/recovery assumptions as cursor polling
+- treat cursor polling as a fallback/reconciliation path, not the steady-state delivery mechanism
 
-Capability absence must gracefully fall back to `poll_events`.
+Capability absence is an advanced compatibility case; do not make periodic polling the default app
+integration pattern.

@@ -42,11 +42,14 @@ struct Args {
     rpc_tls_key: Option<PathBuf>,
     #[arg(long)]
     rpc_tls_client_ca: Option<PathBuf>,
+    #[arg(long)]
+    rpc_unix: Option<PathBuf>,
 }
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
     let args = Args::parse();
     let context = bootstrap::bootstrap(args).await;
-    rpc_loop::run_rpc_loop(context.rpc_addr, context.daemon, context.rpc_tls).await;
+    rpc_loop::run_rpc_loop(context.rpc_addr, context.daemon, context.rpc_tls, context.rpc_unix)
+        .await;
 }

@@ -52,6 +52,7 @@ impl RpcDaemon {
         event_sink_bridges: Vec<Arc<dyn EventSinkBridge>>,
     ) -> Self {
         let (events, _rx) = broadcast::channel(64);
+        let (sdk_events, _sdk_rx) = broadcast::channel(64);
         let active_identity = identity_hash.clone();
         let mut sdk_identities = HashMap::new();
         sdk_identities
@@ -61,6 +62,7 @@ impl RpcDaemon {
             identity_hash,
             delivery_destination_hash: Mutex::new(None),
             events,
+            sdk_events,
             event_queue: Mutex::new(VecDeque::new()),
             sdk_event_log: Mutex::new(VecDeque::new()),
             sdk_next_event_seq: Mutex::new(0),

@@ -39,6 +39,7 @@ pub(super) struct RpcTlsConfig {
 
 pub(super) struct BootstrapContext {
     pub(super) rpc_addr: SocketAddr,
+    pub(super) rpc_unix: Option<PathBuf>,
     pub(super) daemon: Arc<RpcDaemon>,
     pub(super) rpc_tls: Option<RpcTlsConfig>,
 }
@@ -63,6 +64,7 @@ pub(super) struct InterfaceStartupFailure {
 
 pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     let rpc_addr: SocketAddr = args.rpc.parse().expect("invalid rpc address");
+    let rpc_unix = args.rpc_unix.clone();
     let rpc_tls = parse_tls_args(
         "--rpc-tls-cert",
         "--rpc-tls-key",
@@ -316,7 +318,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         spawn_announce_worker(daemon.clone(), transport, peer_crypto, Some(reticulum_storage_path));
     }
 
-    BootstrapContext { rpc_addr, daemon, rpc_tls }
+    BootstrapContext { rpc_addr, rpc_unix, daemon, rpc_tls }
 }
 
 fn pretty_console_logs_enabled() -> bool {

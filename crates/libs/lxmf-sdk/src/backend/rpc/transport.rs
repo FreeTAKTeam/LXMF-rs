@@ -1,6 +1,8 @@
 use super::*;
 use hmac::{Hmac, Mac};
 use rns_rpc::e2e_harness::{build_rpc_frame, parse_http_response_body, parse_rpc_frame};
+#[cfg(feature = "sdk-async")]
+use rns_rpc::rpc::codec;
 use rns_rpc::RpcError;
 use rustls::pki_types::ServerName;
 use rustls::{ClientConfig, RootCertStore};
@@ -9,9 +11,34 @@ use sha2::Sha256;
 use std::fs::File;
 use std::io::{self, BufReader, Read, Write};
 use std::net::{IpAddr, Shutdown, TcpStream};
+#[cfg(unix)]
+use std::os::unix::net::UnixStream as StdUnixStream;
 use std::path::Path;
 use std::sync::Arc;
+#[cfg(feature = "sdk-async")]
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+#[cfg(feature = "sdk-async")]
+use tokio::sync::mpsc;
+#[cfg(feature = "sdk-async")]
+use tokio_rustls::TlsConnector;
+#[cfg(feature = "sdk-async")]
+use tokio_stream::wrappers::ReceiverStream;
 use zeroize::{Zeroize, Zeroizing};
+
+#[derive(Clone, Copy)]
+enum RpcEndpoint<'a> {
+    Tcp(&'a str),
+    Unix(&'a str),
+}
+
+impl RpcEndpoint<'_> {
+    fn host_header(&self) -> &str {
+        match self {
+            Self::Tcp(authority) => authority,
+            Self::Unix(_) => "localhost",
+        }
+    }
+}
 
 impl RpcBackendClient {
     pub(super) fn call_rpc(
@@ -37,22 +64,103 @@ impl RpcBackendClient {
         let frame = build_rpc_frame(request_id, method, params).map_err(|err| {
             SdkError::new(code::INTERNAL, ErrorCategory::Internal, err.to_string())
         })?;
-        let authority = Self::endpoint_authority(&self.endpoint)?;
-        let mut request =
-            Self::build_http_post_with_headers("/rpc", authority, &frame, headers.as_slice());
-        let response_result = match mtls_auth {
-            Some(mtls_auth) => self.send_mtls_request(
+        let endpoint = Self::parse_endpoint(&self.endpoint)?;
+        let mut request = Self::build_http_post_with_headers(
+            "/rpc",
+            endpoint.host_header(),
+            &frame,
+            headers.as_slice(),
+        );
+        let response_result = match (endpoint, mtls_auth) {
+            (RpcEndpoint::Tcp(authority), Some(mtls_auth)) => self.send_mtls_request(
                 authority,
                 request.as_slice(),
                 mtls_auth.ca_bundle_path.as_str(),
                 mtls_auth.client_cert_path.as_deref(),
                 mtls_auth.client_key_path.as_deref(),
             ),
-            None => self.send_plain_request(authority, request.as_slice()),
+            (RpcEndpoint::Tcp(authority), None) => {
+                self.send_plain_request(authority, request.as_slice())
+            }
+            (RpcEndpoint::Unix(_), Some(_)) => Err(SdkError::new(
+                code::VALIDATION_INVALID_ARGUMENT,
+                ErrorCategory::Validation,
+                "mTLS transport auth is not supported over unix RPC endpoints",
+            )),
+            (RpcEndpoint::Unix(path), None) => Self::send_unix_request(path, request.as_slice()),
         };
         request.zeroize();
         Self::zeroize_header_values(headers.as_mut_slice());
         let mut response = response_result?;
+        let body = parse_http_response_body(response.as_mut_slice()).map_err(|err| {
+            SdkError::new(code::INTERNAL, ErrorCategory::Transport, err.to_string())
+        })?;
+        let rpc_response = parse_rpc_frame(&body).map_err(|err| {
+            SdkError::new(code::INTERNAL, ErrorCategory::Transport, err.to_string())
+        })?;
+        if let Some(error) = rpc_response.error {
+            return Err(Self::map_rpc_error(error));
+        }
+        Ok(rpc_response.result.unwrap_or(JsonValue::Null))
+    }
+
+    #[cfg(feature = "sdk-async")]
+    pub(super) async fn call_rpc_async(
+        &self,
+        method: &str,
+        params: Option<JsonValue>,
+    ) -> Result<JsonValue, SdkError> {
+        let (headers, mtls_auth) = {
+            let auth_guard = self.session_auth.read().expect("session_auth rwlock poisoned");
+            (self.headers_for_session_auth(&auth_guard), Self::mtls_for_session_auth(&auth_guard))
+        };
+        self.call_rpc_async_with_headers(method, params, mtls_auth.as_ref(), headers).await
+    }
+
+    #[cfg(feature = "sdk-async")]
+    pub(super) async fn call_rpc_async_with_headers(
+        &self,
+        method: &str,
+        params: Option<JsonValue>,
+        mtls_auth: Option<&MtlsRequestAuth>,
+        mut headers: Vec<(String, String)>,
+    ) -> Result<JsonValue, SdkError> {
+        let request_id = self.next_request_id();
+        let frame = build_rpc_frame(request_id, method, params).map_err(|err| {
+            SdkError::new(code::INTERNAL, ErrorCategory::Internal, err.to_string())
+        })?;
+        let endpoint = Self::parse_endpoint(&self.endpoint)?;
+        let mut request = Self::build_http_post_with_headers(
+            "/rpc",
+            endpoint.host_header(),
+            &frame,
+            headers.as_slice(),
+        );
+        let mut response = match (endpoint, mtls_auth) {
+            (RpcEndpoint::Tcp(authority), Some(mtls_auth)) => {
+                Self::send_mtls_request_async(
+                    authority,
+                    request.as_slice(),
+                    mtls_auth.ca_bundle_path.as_str(),
+                    mtls_auth.client_cert_path.as_deref(),
+                    mtls_auth.client_key_path.as_deref(),
+                )
+                .await
+            }
+            (RpcEndpoint::Tcp(authority), None) => {
+                Self::send_plain_request_async(authority, request.as_slice()).await
+            }
+            (RpcEndpoint::Unix(_path), Some(_)) => Err(SdkError::new(
+                code::VALIDATION_INVALID_ARGUMENT,
+                ErrorCategory::Validation,
+                "mTLS transport auth is not supported over unix RPC endpoints",
+            )),
+            (RpcEndpoint::Unix(path), None) => {
+                Self::send_unix_request_async(path, request.as_slice()).await
+            }
+        }?;
+        request.zeroize();
+        Self::zeroize_header_values(headers.as_mut_slice());
         let body = parse_http_response_body(response.as_mut_slice()).map_err(|err| {
             SdkError::new(code::INTERNAL, ErrorCategory::Transport, err.to_string())
         })?;
@@ -80,6 +188,33 @@ impl RpcBackendClient {
             SdkError::new(code::INTERNAL, ErrorCategory::Transport, err.to_string())
         })?;
         Ok(response)
+    }
+
+    #[cfg(unix)]
+    fn send_unix_request(path: &str, request: &[u8]) -> Result<Vec<u8>, SdkError> {
+        let mut stream = StdUnixStream::connect(path).map_err(|err| {
+            SdkError::new(code::INTERNAL, ErrorCategory::Transport, err.to_string())
+        })?;
+        stream.write_all(request).map_err(|err| {
+            SdkError::new(code::INTERNAL, ErrorCategory::Transport, err.to_string())
+        })?;
+        stream.shutdown(Shutdown::Write).map_err(|err| {
+            SdkError::new(code::INTERNAL, ErrorCategory::Transport, err.to_string())
+        })?;
+        let mut response = Vec::new();
+        stream.read_to_end(&mut response).map_err(|err| {
+            SdkError::new(code::INTERNAL, ErrorCategory::Transport, err.to_string())
+        })?;
+        Ok(response)
+    }
+
+    #[cfg(not(unix))]
+    fn send_unix_request(_path: &str, _request: &[u8]) -> Result<Vec<u8>, SdkError> {
+        Err(SdkError::new(
+            code::VALIDATION_INVALID_ARGUMENT,
+            ErrorCategory::Validation,
+            "unix RPC endpoints are not supported on this platform",
+        ))
     }
 
     fn send_mtls_request(
@@ -137,6 +272,113 @@ impl RpcBackendClient {
             SdkError::new(code::INTERNAL, ErrorCategory::Transport, err.to_string())
         })?;
         Ok(response)
+    }
+
+    #[cfg(feature = "sdk-async")]
+    async fn send_plain_request_async(
+        authority: &str,
+        request: &[u8],
+    ) -> Result<Vec<u8>, SdkError> {
+        let mut stream = tokio::net::TcpStream::connect(authority).await.map_err(|err| {
+            SdkError::new(code::INTERNAL, ErrorCategory::Transport, err.to_string())
+        })?;
+        stream.write_all(request).await.map_err(|err| {
+            SdkError::new(code::INTERNAL, ErrorCategory::Transport, err.to_string())
+        })?;
+        let mut response = Vec::new();
+        stream.read_to_end(&mut response).await.map_err(|err| {
+            SdkError::new(code::INTERNAL, ErrorCategory::Transport, err.to_string())
+        })?;
+        Ok(response)
+    }
+
+    #[cfg(all(feature = "sdk-async", unix))]
+    async fn send_unix_request_async(path: &str, request: &[u8]) -> Result<Vec<u8>, SdkError> {
+        let mut stream = tokio::net::UnixStream::connect(path).await.map_err(|err| {
+            SdkError::new(code::INTERNAL, ErrorCategory::Transport, err.to_string())
+        })?;
+        stream.write_all(request).await.map_err(|err| {
+            SdkError::new(code::INTERNAL, ErrorCategory::Transport, err.to_string())
+        })?;
+        let mut response = Vec::new();
+        stream.read_to_end(&mut response).await.map_err(|err| {
+            SdkError::new(code::INTERNAL, ErrorCategory::Transport, err.to_string())
+        })?;
+        Ok(response)
+    }
+
+    #[cfg(all(feature = "sdk-async", not(unix)))]
+    async fn send_unix_request_async(_path: &str, _request: &[u8]) -> Result<Vec<u8>, SdkError> {
+        Err(SdkError::new(
+            code::VALIDATION_INVALID_ARGUMENT,
+            ErrorCategory::Validation,
+            "unix RPC endpoints are not supported on this platform",
+        ))
+    }
+
+    #[cfg(feature = "sdk-async")]
+    async fn send_mtls_request_async(
+        authority: &str,
+        request: &[u8],
+        ca_bundle_path: &str,
+        client_cert_path: Option<&str>,
+        client_key_path: Option<&str>,
+    ) -> Result<Vec<u8>, SdkError> {
+        let roots = Self::load_root_store(Path::new(ca_bundle_path))?;
+        let builder = ClientConfig::builder().with_root_certificates(roots);
+        let client_config = match (client_cert_path, client_key_path) {
+            (Some(cert_path), Some(key_path)) => {
+                let cert_chain = Self::load_cert_chain(Path::new(cert_path))?;
+                let private_key = Self::load_private_key(Path::new(key_path))?;
+                builder.with_client_auth_cert(cert_chain, private_key).map_err(|err| {
+                    SdkError::new(
+                        code::INTERNAL,
+                        ErrorCategory::Transport,
+                        format!("invalid mtls client certificate/key configuration: {}", err),
+                    )
+                })?
+            }
+            (None, None) => builder.with_no_client_auth(),
+            _ => {
+                return Err(SdkError::new(
+                    code::SECURITY_AUTH_REQUIRED,
+                    ErrorCategory::Security,
+                    "mtls client certificate and key paths must be configured together",
+                ))
+            }
+        };
+        let server_name = Self::server_name_for_authority(authority)?;
+        let connector = TlsConnector::from(Arc::new(client_config));
+        let stream = tokio::net::TcpStream::connect(authority).await.map_err(|err| {
+            SdkError::new(code::INTERNAL, ErrorCategory::Transport, err.to_string())
+        })?;
+        let mut stream = connector.connect(server_name, stream).await.map_err(|err| {
+            SdkError::new(
+                code::INTERNAL,
+                ErrorCategory::Transport,
+                format!("failed to start tls client connection: {}", err),
+            )
+        })?;
+        stream.write_all(request).await.map_err(|err| {
+            SdkError::new(code::INTERNAL, ErrorCategory::Transport, err.to_string())
+        })?;
+        let mut response = Vec::new();
+        stream.read_to_end(&mut response).await.map_err(|err| {
+            SdkError::new(code::INTERNAL, ErrorCategory::Transport, err.to_string())
+        })?;
+        Ok(response)
+    }
+
+    fn parse_endpoint(endpoint: &str) -> Result<RpcEndpoint<'_>, SdkError> {
+        if let Some(path) = endpoint
+            .strip_prefix("unix://")
+            .or_else(|| endpoint.strip_prefix("unix:"))
+            .map(str::trim)
+            .filter(|path| !path.is_empty())
+        {
+            return Ok(RpcEndpoint::Unix(path));
+        }
+        Self::endpoint_authority(endpoint).map(RpcEndpoint::Tcp)
     }
 
     fn endpoint_authority(endpoint: &str) -> Result<&str, SdkError> {
@@ -284,6 +526,48 @@ impl RpcBackendClient {
         request.extend_from_slice(format!("Content-Length: {}\r\n", body.len()).as_bytes());
         request.extend_from_slice(b"\r\n");
         request.extend_from_slice(body);
+        request
+    }
+
+    #[cfg(feature = "sdk-async")]
+    pub(super) fn open_event_stream_impl(
+        &self,
+        subscription: &EventSubscription,
+    ) -> Result<Option<SdkEventStream>, SdkError> {
+        let (headers, mtls_auth) = {
+            let auth_guard = self.session_auth.read().expect("session_auth rwlock poisoned");
+            (self.headers_for_session_auth(&auth_guard), Self::mtls_for_session_auth(&auth_guard))
+        };
+        let handle = tokio::runtime::Handle::try_current().map_err(|_| {
+            SdkError::new(
+                code::INTERNAL,
+                ErrorCategory::Runtime,
+                "rpc event stream requires an active Tokio runtime",
+            )
+        })?;
+        let (tx, rx) = mpsc::channel(256);
+        let endpoint = self.endpoint.clone();
+        let cursor = subscription.cursor.clone();
+        handle.spawn(async move {
+            run_rpc_http_event_stream(endpoint, headers, mtls_auth, cursor, tx).await;
+        });
+        Ok(Some(Box::pin(ReceiverStream::new(rx))))
+    }
+
+    #[cfg(feature = "sdk-async")]
+    fn build_http_get_with_headers(
+        path: &str,
+        host: &str,
+        headers: &[(String, String)],
+    ) -> Vec<u8> {
+        let mut request = Vec::new();
+        request.extend_from_slice(format!("GET {path} HTTP/1.1\r\n").as_bytes());
+        request.extend_from_slice(format!("Host: {host}\r\n").as_bytes());
+        request.extend_from_slice(b"Accept: application/msgpack\r\n");
+        for (name, value) in headers {
+            request.extend_from_slice(format!("{name}: {value}\r\n").as_bytes());
+        }
+        request.extend_from_slice(b"\r\n");
         request
     }
 
@@ -541,9 +825,590 @@ impl RpcBackendClient {
     }
 }
 
+#[cfg(feature = "sdk-async")]
+trait RpcEventStreamIo: AsyncRead + AsyncWrite + Unpin + Send {}
+
+#[cfg(feature = "sdk-async")]
+impl<T> RpcEventStreamIo for T where T: AsyncRead + AsyncWrite + Unpin + Send {}
+
+#[cfg(feature = "sdk-async")]
+async fn run_rpc_http_event_stream(
+    endpoint: String,
+    headers: Vec<(String, String)>,
+    mtls_auth: Option<MtlsRequestAuth>,
+    mut cursor: Option<EventCursor>,
+    tx: mpsc::Sender<Result<SdkEvent, SdkError>>,
+) {
+    loop {
+        let parsed_endpoint = match RpcBackendClient::parse_endpoint(&endpoint) {
+            Ok(endpoint) => endpoint.to_owned(),
+            Err(err) => {
+                let _ = tx.send(Err(err)).await;
+                return;
+            }
+        };
+        let mut stream = match connect_rpc_http_event_stream(
+            parsed_endpoint.as_ref(),
+            &headers,
+            cursor.as_ref(),
+            mtls_auth.as_ref(),
+        )
+        .await
+        {
+            Ok(stream) => stream,
+            Err(err) => {
+                let _ = tx.send(Err(err)).await;
+                return;
+            }
+        };
+        loop {
+            match read_rpc_http_event_frame(&mut stream).await {
+                Ok(event) => {
+                    cursor = Some(EventCursor(format!(
+                        "v2:{}:{}:{}",
+                        event.runtime_id, event.stream_id, event.seq_no
+                    )));
+                    if tx.send(Ok(event)).await.is_err() {
+                        return;
+                    }
+                }
+                Err(_) => {
+                    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                    break;
+                }
+            }
+        }
+    }
+}
+
+#[cfg(feature = "sdk-async")]
+enum OwnedRpcEndpoint {
+    Tcp(String),
+    Unix(String),
+}
+
+#[cfg(feature = "sdk-async")]
+impl<'a> RpcEndpoint<'a> {
+    fn to_owned(self) -> OwnedRpcEndpoint {
+        match self {
+            Self::Tcp(authority) => OwnedRpcEndpoint::Tcp(authority.to_string()),
+            Self::Unix(path) => OwnedRpcEndpoint::Unix(path.to_string()),
+        }
+    }
+}
+
+#[cfg(feature = "sdk-async")]
+impl OwnedRpcEndpoint {
+    fn as_ref(&self) -> RpcEndpoint<'_> {
+        match self {
+            Self::Tcp(authority) => RpcEndpoint::Tcp(authority.as_str()),
+            Self::Unix(path) => RpcEndpoint::Unix(path.as_str()),
+        }
+    }
+}
+
+#[cfg(feature = "sdk-async")]
+async fn connect_rpc_http_event_stream(
+    endpoint: RpcEndpoint<'_>,
+    headers: &[(String, String)],
+    cursor: Option<&EventCursor>,
+    mtls_auth: Option<&MtlsRequestAuth>,
+) -> Result<Box<dyn RpcEventStreamIo>, SdkError> {
+    let path = match cursor {
+        Some(cursor) => format!("/events/stream?cursor={}", cursor.0),
+        None => "/events/stream".to_string(),
+    };
+    let request = RpcBackendClient::build_http_get_with_headers(
+        path.as_str(),
+        endpoint.host_header(),
+        headers,
+    );
+    match endpoint {
+        RpcEndpoint::Tcp(authority) => {
+            connect_tcp_rpc_http_event_stream(authority, request.as_slice(), mtls_auth).await
+        }
+        RpcEndpoint::Unix(_) if mtls_auth.is_some() => Err(SdkError::new(
+            code::VALIDATION_INVALID_ARGUMENT,
+            ErrorCategory::Validation,
+            "mTLS transport auth is not supported over unix RPC endpoints",
+        )),
+        RpcEndpoint::Unix(path) => {
+            connect_unix_rpc_http_event_stream(path, request.as_slice()).await
+        }
+    }
+}
+
+#[cfg(feature = "sdk-async")]
+async fn connect_tcp_rpc_http_event_stream(
+    authority: &str,
+    request: &[u8],
+    mtls_auth: Option<&MtlsRequestAuth>,
+) -> Result<Box<dyn RpcEventStreamIo>, SdkError> {
+    let mut stream = tokio::net::TcpStream::connect(authority)
+        .await
+        .map_err(|err| SdkError::new(code::INTERNAL, ErrorCategory::Transport, err.to_string()))?;
+    if let Some(mtls_auth) = mtls_auth {
+        let roots =
+            RpcBackendClient::load_root_store(Path::new(mtls_auth.ca_bundle_path.as_str()))?;
+        let builder = ClientConfig::builder().with_root_certificates(roots);
+        let client_config =
+            match (mtls_auth.client_cert_path.as_deref(), mtls_auth.client_key_path.as_deref()) {
+                (Some(cert_path), Some(key_path)) => {
+                    let cert_chain = RpcBackendClient::load_cert_chain(Path::new(cert_path))?;
+                    let private_key = RpcBackendClient::load_private_key(Path::new(key_path))?;
+                    builder.with_client_auth_cert(cert_chain, private_key).map_err(|err| {
+                        SdkError::new(
+                            code::INTERNAL,
+                            ErrorCategory::Transport,
+                            format!("invalid mtls client certificate/key configuration: {}", err),
+                        )
+                    })?
+                }
+                (None, None) => builder.with_no_client_auth(),
+                _ => {
+                    return Err(SdkError::new(
+                        code::SECURITY_AUTH_REQUIRED,
+                        ErrorCategory::Security,
+                        "mtls client certificate and key paths must be configured together",
+                    ))
+                }
+            };
+        let server_name = RpcBackendClient::server_name_for_authority(authority)?;
+        let connector = TlsConnector::from(Arc::new(client_config));
+        let mut stream = connector.connect(server_name, stream).await.map_err(|err| {
+            SdkError::new(
+                code::INTERNAL,
+                ErrorCategory::Transport,
+                format!("failed to start event stream tls connection: {}", err),
+            )
+        })?;
+        stream.write_all(request).await.map_err(|err| {
+            SdkError::new(code::INTERNAL, ErrorCategory::Transport, err.to_string())
+        })?;
+        read_rpc_http_event_header(&mut stream).await?;
+        return Ok(Box::new(stream));
+    }
+    stream
+        .write_all(request)
+        .await
+        .map_err(|err| SdkError::new(code::INTERNAL, ErrorCategory::Transport, err.to_string()))?;
+    read_rpc_http_event_header(&mut stream).await?;
+    Ok(Box::new(stream))
+}
+
+#[cfg(all(feature = "sdk-async", unix))]
+async fn connect_unix_rpc_http_event_stream(
+    path: &str,
+    request: &[u8],
+) -> Result<Box<dyn RpcEventStreamIo>, SdkError> {
+    let mut stream = tokio::net::UnixStream::connect(path)
+        .await
+        .map_err(|err| SdkError::new(code::INTERNAL, ErrorCategory::Transport, err.to_string()))?;
+    stream
+        .write_all(request)
+        .await
+        .map_err(|err| SdkError::new(code::INTERNAL, ErrorCategory::Transport, err.to_string()))?;
+    read_rpc_http_event_header(&mut stream).await?;
+    Ok(Box::new(stream))
+}
+
+#[cfg(all(feature = "sdk-async", not(unix)))]
+async fn connect_unix_rpc_http_event_stream(
+    _path: &str,
+    _request: &[u8],
+) -> Result<Box<dyn RpcEventStreamIo>, SdkError> {
+    Err(SdkError::new(
+        code::VALIDATION_INVALID_ARGUMENT,
+        ErrorCategory::Validation,
+        "unix RPC endpoints are not supported on this platform",
+    ))
+}
+
+#[cfg(feature = "sdk-async")]
+async fn read_rpc_http_event_header<S>(stream: &mut S) -> Result<(), SdkError>
+where
+    S: AsyncRead + Unpin + ?Sized,
+{
+    let mut header = Vec::with_capacity(512);
+    let mut byte = [0_u8; 1];
+    while !header.ends_with(b"\r\n\r\n") {
+        stream.read_exact(&mut byte).await.map_err(|err| {
+            SdkError::new(code::INTERNAL, ErrorCategory::Transport, err.to_string())
+        })?;
+        header.push(byte[0]);
+        if header.len() > 16 * 1024 {
+            return Err(SdkError::new(
+                code::INTERNAL,
+                ErrorCategory::Transport,
+                "event stream response header exceeded 16 KiB",
+            ));
+        }
+    }
+    if !header.starts_with(b"HTTP/1.1 200") {
+        return Err(SdkError::new(
+            code::INTERNAL,
+            ErrorCategory::Transport,
+            "event stream request was rejected",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(feature = "sdk-async")]
+async fn read_rpc_http_event_frame<S>(stream: &mut S) -> Result<SdkEvent, SdkError>
+where
+    S: AsyncRead + Unpin + ?Sized,
+{
+    let mut frame_len = [0_u8; 4];
+    stream
+        .read_exact(&mut frame_len)
+        .await
+        .map_err(|err| SdkError::new(code::INTERNAL, ErrorCategory::Transport, err.to_string()))?;
+    let len = u32::from_be_bytes(frame_len) as usize;
+    let mut frame = Vec::with_capacity(4 + len);
+    frame.extend_from_slice(&frame_len);
+    frame.resize(4 + len, 0);
+    stream
+        .read_exact(&mut frame[4..])
+        .await
+        .map_err(|err| SdkError::new(code::INTERNAL, ErrorCategory::Transport, err.to_string()))?;
+    codec::decode_frame::<SdkEvent>(&frame)
+        .map_err(|err| SdkError::new(code::INTERNAL, ErrorCategory::Transport, err.to_string()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "sdk-async")]
+    fn test_sdk_event(seq_no: u64) -> SdkEvent {
+        SdkEvent {
+            event_id: format!("evt-{seq_no}"),
+            runtime_id: "rt-test".to_string(),
+            stream_id: "sdk-events-v2".to_string(),
+            seq_no,
+            contract_version: 2,
+            ts_ms: seq_no,
+            event_type: "RuntimeStateChanged".to_string(),
+            severity: Severity::Info,
+            source_component: "transport-test".to_string(),
+            operation_id: None,
+            message_id: None,
+            peer_id: None,
+            correlation_id: None,
+            trace_id: None,
+            payload: serde_json::json!({ "to": "running" }),
+            extensions: BTreeMap::new(),
+        }
+    }
+
+    #[cfg(feature = "sdk-async")]
+    async fn read_event_stream_request(socket: &mut tokio::net::TcpStream) -> String {
+        use tokio::io::AsyncReadExt as _;
+
+        let mut request = Vec::new();
+        let mut byte = [0_u8; 1];
+        while !request.ends_with(b"\r\n\r\n") {
+            socket.read_exact(&mut byte).await.expect("read event stream request");
+            request.push(byte[0]);
+        }
+        String::from_utf8(request).expect("request should be valid utf8")
+    }
+
+    #[cfg(feature = "sdk-async")]
+    async fn accept_event_stream_request(
+        listener: &tokio::net::TcpListener,
+        event: SdkEvent,
+    ) -> String {
+        use tokio::io::AsyncWriteExt as _;
+
+        let (mut socket, _) = listener.accept().await.expect("accept event stream client");
+        let request = read_event_stream_request(&mut socket).await;
+        socket
+            .write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/msgpack\r\n\r\n")
+            .await
+            .expect("write response header");
+        let frame = codec::encode_frame(&event).expect("encode event frame");
+        socket.write_all(&frame).await.expect("write event frame");
+        request
+    }
+
+    #[cfg(feature = "sdk-async")]
+    async fn accept_event_stream_request_with_events(
+        listener: &tokio::net::TcpListener,
+        events: impl IntoIterator<Item = SdkEvent>,
+    ) -> String {
+        use tokio::io::AsyncWriteExt as _;
+
+        let (mut socket, _) = listener.accept().await.expect("accept event stream client");
+        let request = read_event_stream_request(&mut socket).await;
+        socket
+            .write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/msgpack\r\n\r\n")
+            .await
+            .expect("write response header");
+        for event in events {
+            let frame = codec::encode_frame(&event).expect("encode event frame");
+            socket.write_all(&frame).await.expect("write event frame");
+        }
+        request
+    }
+
+    #[cfg(feature = "sdk-async")]
+    #[tokio::test]
+    async fn call_rpc_async_uses_async_http_post_transport() {
+        use rns_rpc::rpc::{RpcRequest, RpcResponse};
+        use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind listener");
+        let authority = listener.local_addr().expect("listener address").to_string();
+
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.expect("accept async rpc client");
+            let mut request = Vec::new();
+            let mut byte = [0_u8; 1];
+            while !request.ends_with(b"\r\n\r\n") {
+                socket.read_exact(&mut byte).await.expect("read header byte");
+                request.push(byte[0]);
+            }
+            let headers = String::from_utf8(request.clone()).expect("headers utf8");
+            assert!(headers.starts_with("POST /rpc HTTP/1.1"));
+            let content_length = headers
+                .lines()
+                .find_map(|line| line.strip_prefix("Content-Length: "))
+                .and_then(|value| value.trim().parse::<usize>().ok())
+                .expect("content length");
+            let mut body = vec![0_u8; content_length];
+            socket.read_exact(&mut body).await.expect("read rpc body");
+            let rpc_request =
+                codec::decode_frame::<RpcRequest>(&body).expect("decode async rpc request");
+            assert_eq!(rpc_request.method, "probe_async");
+
+            let response = RpcResponse {
+                id: rpc_request.id,
+                result: Some(serde_json::json!({ "ok": true })),
+                error: None,
+            };
+            let response_frame = codec::encode_frame(&response).expect("encode response");
+            let http_response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/msgpack\r\nContent-Length: {}\r\n\r\n",
+                response_frame.len()
+            );
+            socket.write_all(http_response.as_bytes()).await.expect("write response header");
+            socket.write_all(&response_frame).await.expect("write response body");
+            socket.shutdown().await.expect("shutdown server response");
+        });
+
+        let client = RpcBackendClient::new(authority);
+        let result = client
+            .call_rpc_async("probe_async", Some(serde_json::json!({ "value": 7 })))
+            .await
+            .expect("async rpc call");
+        assert_eq!(result.get("ok").and_then(JsonValue::as_bool), Some(true));
+        server.await.expect("server task");
+    }
+
+    #[cfg(all(feature = "sdk-async", unix))]
+    fn test_unix_socket_path(label: &str) -> std::path::PathBuf {
+        let mut path = std::env::temp_dir();
+        path.push(format!(
+            "lxmf-sdk-{label}-{}-{}.sock",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("unix epoch")
+                .as_nanos()
+        ));
+        path
+    }
+
+    #[cfg(all(feature = "sdk-async", unix))]
+    #[tokio::test]
+    async fn call_rpc_async_supports_unix_socket_endpoint() {
+        use rns_rpc::rpc::{RpcRequest, RpcResponse};
+        use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+        let path = test_unix_socket_path("rpc");
+        let listener = tokio::net::UnixListener::bind(&path).expect("bind unix listener");
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.expect("accept unix rpc client");
+            let mut request = Vec::new();
+            let mut byte = [0_u8; 1];
+            while !request.ends_with(b"\r\n\r\n") {
+                socket.read_exact(&mut byte).await.expect("read header byte");
+                request.push(byte[0]);
+            }
+            let headers = String::from_utf8(request.clone()).expect("headers utf8");
+            assert!(headers.starts_with("POST /rpc HTTP/1.1"));
+            assert!(headers.contains("Host: localhost\r\n"));
+            let content_length = headers
+                .lines()
+                .find_map(|line| line.strip_prefix("Content-Length: "))
+                .and_then(|value| value.trim().parse::<usize>().ok())
+                .expect("content length");
+            let mut body = vec![0_u8; content_length];
+            socket.read_exact(&mut body).await.expect("read rpc body");
+            let rpc_request =
+                codec::decode_frame::<RpcRequest>(&body).expect("decode async rpc request");
+            assert_eq!(rpc_request.method, "probe_unix_async");
+
+            let response = RpcResponse {
+                id: rpc_request.id,
+                result: Some(serde_json::json!({ "ok": true })),
+                error: None,
+            };
+            let response_frame = codec::encode_frame(&response).expect("encode response");
+            let http_response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/msgpack\r\nContent-Length: {}\r\n\r\n",
+                response_frame.len()
+            );
+            socket.write_all(http_response.as_bytes()).await.expect("write response header");
+            socket.write_all(&response_frame).await.expect("write response body");
+            socket.shutdown().await.expect("shutdown server response");
+        });
+
+        let client = RpcBackendClient::new(format!("unix:{}", path.display()));
+        let result = client
+            .call_rpc_async("probe_unix_async", Some(serde_json::json!({ "value": 7 })))
+            .await
+            .expect("async unix rpc call");
+        assert_eq!(result.get("ok").and_then(JsonValue::as_bool), Some(true));
+        server.await.expect("server task");
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[cfg(all(feature = "sdk-async", unix))]
+    #[tokio::test]
+    async fn native_event_stream_supports_unix_socket_endpoint() {
+        use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+        let path = test_unix_socket_path("events");
+        let listener = tokio::net::UnixListener::bind(&path).expect("bind unix listener");
+        let (tx, mut rx) = mpsc::channel::<Result<SdkEvent, SdkError>>(4);
+        let endpoint = format!("unix:{}", path.display());
+        let client_task = tokio::spawn(async move {
+            run_rpc_http_event_stream(endpoint, Vec::new(), None, None, tx).await;
+        });
+
+        let (mut socket, _) = listener.accept().await.expect("accept unix event stream client");
+        let mut request = Vec::new();
+        let mut byte = [0_u8; 1];
+        while !request.ends_with(b"\r\n\r\n") {
+            socket.read_exact(&mut byte).await.expect("read event stream request");
+            request.push(byte[0]);
+        }
+        let request = String::from_utf8(request).expect("event stream request utf8");
+        assert!(request.starts_with("GET /events/stream HTTP/1.1"));
+        assert!(request.contains("Host: localhost\r\n"));
+        socket
+            .write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/msgpack\r\n\r\n")
+            .await
+            .expect("write response header");
+        let frame = codec::encode_frame(&test_sdk_event(1)).expect("encode event frame");
+        socket.write_all(&frame).await.expect("write event frame");
+
+        let event = tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv())
+            .await
+            .expect("unix event stream should deliver event")
+            .expect("stream should stay open")
+            .expect("event should decode");
+        assert_eq!(event.seq_no, 1);
+
+        client_task.abort();
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[cfg(feature = "sdk-async")]
+    #[tokio::test]
+    async fn native_event_stream_reconnects_with_last_event_cursor() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind listener");
+        let authority = listener.local_addr().expect("listener address").to_string();
+
+        let (tx, mut rx) = mpsc::channel::<Result<SdkEvent, SdkError>>(4);
+        let endpoint = authority.clone();
+        let client_task = tokio::spawn(async move {
+            run_rpc_http_event_stream(endpoint, Vec::new(), None, None, tx).await;
+        });
+
+        let first_request = accept_event_stream_request(&listener, test_sdk_event(1)).await;
+        assert!(first_request.starts_with("GET /events/stream HTTP/1.1"));
+
+        let first = tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv())
+            .await
+            .expect("first event should arrive")
+            .expect("stream should stay open")
+            .expect("first event should decode");
+        assert_eq!(first.seq_no, 1);
+
+        let second_request = accept_event_stream_request(&listener, test_sdk_event(2)).await;
+        assert!(second_request
+            .starts_with("GET /events/stream?cursor=v2:rt-test:sdk-events-v2:1 HTTP/1.1"));
+
+        let second = tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv())
+            .await
+            .expect("second event should arrive")
+            .expect("stream should stay open")
+            .expect("second event should decode");
+        assert_eq!(second.seq_no, 2);
+
+        client_task.abort();
+    }
+
+    #[cfg(feature = "sdk-async")]
+    #[tokio::test]
+    async fn native_event_stream_backpressures_when_consumer_is_slow() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind listener");
+        let authority = listener.local_addr().expect("listener address").to_string();
+
+        let (tx, mut rx) = mpsc::channel::<Result<SdkEvent, SdkError>>(1);
+        let endpoint = authority.clone();
+        let client_task = tokio::spawn(async move {
+            run_rpc_http_event_stream(endpoint, Vec::new(), None, None, tx).await;
+        });
+
+        let first_request = accept_event_stream_request_with_events(
+            &listener,
+            [test_sdk_event(1), test_sdk_event(2), test_sdk_event(3)],
+        )
+        .await;
+        assert!(first_request.starts_with("GET /events/stream HTTP/1.1"));
+
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(150), listener.accept())
+                .await
+                .is_err(),
+            "bounded channel should stall the reader before it reconnects"
+        );
+
+        let first = rx.recv().await.expect("first queued event").expect("first event");
+        assert_eq!(first.seq_no, 1);
+        let second = rx.recv().await.expect("second queued event").expect("second event");
+        assert_eq!(second.seq_no, 2);
+
+        client_task.abort();
+    }
+
+    #[cfg(feature = "sdk-async")]
+    #[tokio::test]
+    async fn open_event_stream_uses_native_stream_for_mtls_auth() {
+        let client = RpcBackendClient::new("127.0.0.1:9");
+        {
+            let mut auth = client.session_auth.write().expect("session auth");
+            *auth = SessionAuth::Mtls {
+                ca_bundle_path: "/definitely/missing/ca.pem".to_string(),
+                client_cert_path: None,
+                client_key_path: None,
+            };
+        }
+
+        let stream = client
+            .open_event_stream_impl(&EventSubscription {
+                start: SubscriptionStart::Head,
+                cursor: None,
+            })
+            .expect("stream creation should not fall back for mtls");
+
+        assert!(stream.is_some(), "mTLS sessions should use the native stream connector");
+    }
 
     #[test]
     fn zeroize_header_values_clears_sensitive_header_contents() {

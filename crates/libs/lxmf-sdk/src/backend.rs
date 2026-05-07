@@ -17,12 +17,18 @@ use crate::domain::{
 use crate::error::{code, ErrorCategory, SdkError};
 use crate::event::{EventBatch, EventCursor};
 #[cfg(feature = "sdk-async")]
-use crate::event::{EventSubscription, SubscriptionStart};
+use crate::event::{EventSubscription, SdkEvent, SubscriptionStart};
 use crate::types::{
     Ack, CancelResult, ConfigPatch, DeliverySnapshot, MessageId, RuntimeSnapshot, SendRequest,
     ShutdownMode, TickBudget, TickResult,
 };
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "sdk-async")]
+use std::future::Future;
+#[cfg(feature = "sdk-async")]
+use std::pin::Pin;
+#[cfg(feature = "sdk-async")]
+use tokio_stream::Stream;
 
 const CAP_KEY_MANAGEMENT: &str = "sdk.capability.key_management";
 
@@ -332,8 +338,34 @@ pub trait SdkBackendKeyManagement: SdkBackend {
 }
 
 #[cfg(feature = "sdk-async")]
+pub type SdkEventStream = Pin<Box<dyn Stream<Item = Result<SdkEvent, SdkError>> + Send>>;
+
+#[cfg(feature = "sdk-async")]
+pub type SdkBoxFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, SdkError>> + Send + 'a>>;
+
+#[cfg(feature = "sdk-async")]
+pub trait SdkBackendAsyncOps: SdkBackend {
+    fn negotiate_async(&self, req: NegotiationRequest) -> SdkBoxFuture<'_, NegotiationResponse>;
+
+    fn send_async(&self, req: SendRequest) -> SdkBoxFuture<'_, MessageId>;
+
+    fn status_async(&self, id: MessageId) -> SdkBoxFuture<'_, Option<DeliverySnapshot>>;
+
+    fn snapshot_async(&self) -> SdkBoxFuture<'_, RuntimeSnapshot>;
+
+    fn shutdown_async(&self, mode: ShutdownMode) -> SdkBoxFuture<'_, Ack>;
+}
+
+#[cfg(feature = "sdk-async")]
 pub trait SdkBackendAsyncEvents: SdkBackend {
     fn subscribe_events(&self, start: SubscriptionStart) -> Result<EventSubscription, SdkError>;
+
+    fn open_event_stream(
+        &self,
+        _subscription: &EventSubscription,
+    ) -> Result<Option<SdkEventStream>, SdkError> {
+        Ok(None)
+    }
 }
 
 #[cfg(not(feature = "sdk-async"))]

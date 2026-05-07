@@ -1,8 +1,8 @@
 use super::{Client, Envelope};
 use crate::app::DeliveryOptions;
 use crate::app::{
-    Config, DeliveryState, EnvelopeKind, OperationEntry, OperationKind, Profile, RunState,
-    SendRequest, SubscriptionStart, TransportVariant,
+    Config, DeliveryState, EnvelopeKind, EventKind, OperationEntry, OperationKind, Profile,
+    RunState, SendRequest, SubscriptionStart, TransportVariant,
 };
 use crate::domain::TrustLevel;
 use crate::error::{code, ErrorCategory as SdkErrorCategory, SdkError};
@@ -12,7 +12,8 @@ use crate::event::{
 use crate::{
     Ack, CancelResult, DeliverySnapshot, DeliveryState as RawDeliveryState, EffectiveLimits,
     NegotiationRequest, NegotiationResponse, Profile as CoreProfile, RuntimeSnapshot, RuntimeState,
-    SdkBackend, SdkBackendAsyncEvents, SendRequest as RawSendRequest, ShutdownMode,
+    SdkBackend, SdkBackendAsyncEvents, SdkBackendAsyncOps, SendRequest as RawSendRequest,
+    ShutdownMode,
 };
 use serde_json::json;
 use std::collections::{BTreeMap, VecDeque};
@@ -24,6 +25,7 @@ struct MockBackend {
     send_seq: AtomicUsize,
     paginate_discovery: bool,
     poll_batches: Mutex<VecDeque<RawEventBatch>>,
+    live_events: Mutex<VecDeque<Result<SdkEvent, SdkError>>>,
     send_results: Mutex<VecDeque<Result<crate::MessageId, SdkError>>>,
     shutdown_calls: AtomicUsize,
     shutdown_results: Mutex<VecDeque<Result<Ack, SdkError>>>,
@@ -41,6 +43,7 @@ impl MockBackend {
             send_seq: AtomicUsize::new(1),
             paginate_discovery: false,
             poll_batches: Mutex::new(VecDeque::new()),
+            live_events: Mutex::new(VecDeque::new()),
             send_results: Mutex::new(VecDeque::new()),
             shutdown_calls: AtomicUsize::new(0),
             shutdown_results: Mutex::new(VecDeque::new()),
@@ -58,6 +61,10 @@ impl MockBackend {
 
     fn queue_batch(&self, batch: RawEventBatch) {
         self.poll_batches.lock().expect("poll batches").push_back(batch);
+    }
+
+    fn queue_live_event(&self, event: SdkEvent) {
+        self.live_events.lock().expect("live events").push_back(Ok(event));
     }
 
     fn queue_shutdown_result(&self, result: Result<Ack, SdkError>) {
@@ -697,6 +704,45 @@ impl SdkBackendAsyncEvents for MockBackend {
             start: crate::SubscriptionStart::Head,
             cursor: Some(EventCursor("cursor-1".to_owned())),
         })
+    }
+
+    fn open_event_stream(
+        &self,
+        _subscription: &EventSubscription,
+    ) -> Result<Option<crate::SdkEventStream>, SdkError> {
+        let events = self.live_events.lock().expect("live events").drain(..).collect::<Vec<_>>();
+        if events.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(Box::pin(tokio_stream::iter(events))))
+    }
+}
+
+impl SdkBackendAsyncOps for MockBackend {
+    fn negotiate_async(
+        &self,
+        req: NegotiationRequest,
+    ) -> crate::SdkBoxFuture<'_, NegotiationResponse> {
+        Box::pin(async move { self.negotiate(req) })
+    }
+
+    fn send_async(&self, req: RawSendRequest) -> crate::SdkBoxFuture<'_, crate::MessageId> {
+        Box::pin(async move { self.send(req) })
+    }
+
+    fn status_async(
+        &self,
+        id: crate::MessageId,
+    ) -> crate::SdkBoxFuture<'_, Option<DeliverySnapshot>> {
+        Box::pin(async move { self.status(id) })
+    }
+
+    fn snapshot_async(&self) -> crate::SdkBoxFuture<'_, RuntimeSnapshot> {
+        Box::pin(async move { self.snapshot() })
+    }
+
+    fn shutdown_async(&self, mode: ShutdownMode) -> crate::SdkBoxFuture<'_, Ack> {
+        Box::pin(async move { self.shutdown(mode) })
     }
 }
 
@@ -1439,6 +1485,101 @@ fn client_status_reports_degraded_after_gap_event() {
 
     let status = app.status().expect("status");
     assert_eq!(status.state, RunState::Degraded);
+}
+
+#[tokio::test]
+async fn client_event_stream_yields_typed_events() {
+    use tokio_stream::StreamExt;
+
+    let backend = MockBackend::new();
+    backend.queue_batch(RawEventBatch {
+        events: vec![runtime_started_event()],
+        next_cursor: EventCursor("cursor-2".to_owned()),
+        dropped_count: 0,
+        snapshot_high_watermark_seq_no: None,
+        extensions: BTreeMap::new(),
+    });
+
+    let app = Client::new(backend);
+    app.runtime().start(Config::desktop_default()).expect("start");
+    let mut stream = app.events().subscribe(SubscriptionStart::Head).expect("subscribe");
+
+    let event = stream.next().await.expect("stream item").expect("event");
+    assert_eq!(event.kind, EventKind::RuntimeStarted);
+}
+
+#[tokio::test]
+async fn client_event_stream_prefers_native_live_stream() {
+    use tokio_stream::StreamExt;
+
+    let backend = MockBackend::new();
+    backend.queue_live_event(runtime_started_event());
+
+    let app = Client::new(backend);
+    app.runtime().start(Config::desktop_default()).expect("start");
+    let mut stream = app.events().subscribe(SubscriptionStart::Head).expect("subscribe");
+
+    let event = stream.next().await.expect("stream item").expect("event");
+    assert_eq!(event.kind, EventKind::RuntimeStarted);
+}
+
+#[tokio::test]
+async fn client_event_stream_dedupes_native_replayed_sequence_numbers() {
+    use tokio_stream::StreamExt;
+
+    let backend = MockBackend::new();
+    backend.queue_live_event(runtime_started_event());
+    backend.queue_live_event(runtime_started_event());
+    backend.queue_live_event(stream_gap_event());
+
+    let app = Client::new(backend);
+    app.runtime().start(Config::desktop_default()).expect("start");
+    let mut stream = app.events().subscribe(SubscriptionStart::Head).expect("subscribe");
+
+    let first = stream.next().await.expect("first item").expect("first event");
+    let second = stream.next().await.expect("second item").expect("second event");
+
+    assert_eq!(first.metadata.seq_no, 1);
+    assert_eq!(second.metadata.seq_no, 2);
+    assert_eq!(first.kind, EventKind::RuntimeStarted);
+    assert!(matches!(second.kind, EventKind::StreamGapDetected(_)));
+}
+
+#[tokio::test]
+async fn client_domain_async_methods_share_runtime_state() {
+    let app = Client::new(MockBackend::new());
+    let handle = app.runtime().start_async(Config::desktop_default()).await.expect("async start");
+    assert_eq!(handle.profile, Profile::DesktopDefault);
+
+    let receipt = app
+        .messages()
+        .send_async(SendRequest::new("src", "dst", json!({ "body": "hello async" })))
+        .await
+        .expect("async send");
+    assert!(receipt.message_id.starts_with("msg-"));
+
+    let status = app.runtime().status_async().await.expect("async status");
+    assert_eq!(status.state, RunState::Running);
+}
+
+#[test]
+fn client_domain_handles_delegate_to_core_app_surface() {
+    let app = Client::new(MockBackend::new());
+    let handle = app.runtime().start(Config::desktop_default()).expect("start");
+    assert_eq!(handle.profile, Profile::DesktopDefault);
+
+    let receipt = app
+        .messages()
+        .send(SendRequest::new("src", "dst", json!({ "body": "domain" })))
+        .expect("send through messages domain");
+    assert_eq!(receipt.profile, Profile::DesktopDefault);
+
+    let status =
+        app.messages().status(receipt.message_id.clone()).expect("message status").expect("status");
+    assert_eq!(status.message_id, receipt.message_id);
+
+    let runtime = app.runtime().status().expect("runtime status");
+    assert_eq!(runtime.state, RunState::Running);
 }
 
 #[test]

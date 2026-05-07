@@ -5,8 +5,14 @@ other operator-facing integrations rely on over the JSON-RPC/MessagePack daemon
 surface.
 
 Scope:
-- Transport: HTTP `POST /rpc` with framed MessagePack payloads.
+- Transport: HTTP `POST /rpc` with framed MessagePack payloads over Unix sockets, TCP, or TLS/mTLS.
 - Event stream: HTTP `GET /events` with framed MessagePack events.
+- Live event stream: HTTP `GET /events/stream` keeps the connection open and writes framed SDK
+  event objects until the client disconnects. Frames use the same 4-byte big-endian length prefix
+  as RPC request/response bodies, followed by a MessagePack-encoded SDK event object. `?cursor=...`
+  performs catch-up before live fanout. Broadcast lag is reported as a typed `StreamGap` SDK event
+  instead of silently resetting the cursor. The Rust SDK uses this native stream over Unix sockets,
+  plain TCP, or TLS/mTLS, and falls back to cursor polling only for recovery/manual paths.
 - Stability target: this method set and parameter shapes are considered stable for `0.1.x`.
 - Message field-level payload IDs and structures are documented in `docs/contracts/payload-contract.md`.
 

@@ -173,6 +173,29 @@ pub fn parse_content_length(headers: &[u8]) -> Option<usize> {
     None
 }
 
+pub fn request_method_path_headers(
+    request: &[u8],
+) -> io::Result<(String, String, Vec<(String, String)>)> {
+    let header_end = find_header_end(request)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "missing headers"))?;
+    let headers = &request[..header_end];
+    let parsed_headers = parse_headers(headers);
+    let (method, path) = parse_request_line(headers)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid request line"))?;
+    let (path_only, _) = split_path_and_query(path.as_str());
+    Ok((method, path_only.to_owned(), parsed_headers))
+}
+
+pub fn streaming_event_response_header() -> Vec<u8> {
+    let mut response = Vec::new();
+    response.extend_from_slice(b"HTTP/1.1 200 OK\r\n");
+    response.extend_from_slice(b"Content-Type: application/msgpack\r\n");
+    response.extend_from_slice(b"Cache-Control: no-store\r\n");
+    response.extend_from_slice(b"Connection: close\r\n");
+    response.extend_from_slice(b"\r\n");
+    response
+}
+
 fn parse_request_line(headers: &[u8]) -> Option<(String, String)> {
     let text = String::from_utf8_lossy(headers);
     let mut lines = text.lines();
@@ -313,6 +336,22 @@ mod tests {
             .and_then(|counters| counters.get(key))
             .and_then(serde_json::Value::as_u64)
             .unwrap_or(0)
+    }
+
+    #[test]
+    fn event_stream_request_helpers_parse_live_stream_route() {
+        let request = b"GET /events/stream HTTP/1.1\r\nHost: localhost\r\nX-Test: yes\r\n\r\n";
+        let (method, path, headers) = request_method_path_headers(request).expect("parse request");
+
+        assert_eq!(method, "GET");
+        assert_eq!(path, "/events/stream");
+        assert!(headers.iter().any(|(name, value)| name == "X-Test" && value == "yes"));
+
+        let header = streaming_event_response_header();
+        let header_text = std::str::from_utf8(&header).expect("utf8 header");
+        assert!(header_text.starts_with("HTTP/1.1 200 OK"));
+        assert!(header_text.contains("Content-Type: application/msgpack"));
+        assert!(!header_text.contains("Content-Length"));
     }
 
     #[test]

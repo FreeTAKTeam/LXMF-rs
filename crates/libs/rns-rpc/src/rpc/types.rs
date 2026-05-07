@@ -354,6 +354,7 @@ pub struct RpcDaemon {
     identity_hash: String,
     delivery_destination_hash: Mutex<Option<String>>,
     events: broadcast::Sender<RpcEvent>,
+    sdk_events: broadcast::Sender<SequencedRpcEvent>,
     event_queue: Mutex<VecDeque<RpcEvent>>,
     sdk_event_log: Mutex<VecDeque<SequencedRpcEvent>>,
     sdk_next_event_seq: Mutex<u64>,
@@ -522,9 +523,9 @@ pub struct RpcEvent {
 }
 
 #[derive(Debug, Clone)]
-struct SequencedRpcEvent {
-    seq_no: u64,
-    event: RpcEvent,
+pub struct SequencedRpcEvent {
+    pub seq_no: u64,
+    pub event: RpcEvent,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]

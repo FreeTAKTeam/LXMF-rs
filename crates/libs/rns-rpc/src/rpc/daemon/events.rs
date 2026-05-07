@@ -360,12 +360,16 @@ impl RpcDaemon {
         self.events.subscribe()
     }
 
+    pub fn subscribe_sdk_events(&self) -> broadcast::Receiver<SequencedRpcEvent> {
+        self.sdk_events.subscribe()
+    }
+
     pub fn take_event(&self) -> Option<RpcEvent> {
         let mut guard = self.event_queue.lock().expect("event_queue mutex poisoned");
         guard.pop_front()
     }
 
-    pub fn push_event(&self, event: RpcEvent) -> RpcEvent {
+    fn push_sequenced_event(&self, event: RpcEvent) -> SequencedRpcEvent {
         let event = self.redact_event(event);
         let policy = self.sdk_overflow_policy();
         let block_timeout_ms = self.sdk_block_timeout_ms();
@@ -378,8 +382,9 @@ impl RpcDaemon {
             *seq_guard = seq_guard.saturating_add(1);
             *seq_guard
         };
+        let sequenced_event = SequencedRpcEvent { seq_no, event: event.clone() };
         let inserted = self.push_sdk_event_log_with_policy(
-            SequencedRpcEvent { seq_no, event: event.clone() },
+            sequenced_event.clone(),
             policy.as_str(),
             block_timeout_ms,
         );
@@ -392,12 +397,50 @@ impl RpcDaemon {
             self.metrics_record_event_drop();
         }
         self.dispatch_event_sink_bridges(seq_no, &event);
-        event
+        sequenced_event
+    }
+
+    pub fn push_event(&self, event: RpcEvent) -> RpcEvent {
+        self.push_sequenced_event(event).event
     }
 
     pub fn publish_event(&self, event: RpcEvent) {
-        let event = self.push_event(event);
-        let _ = self.events.send(event);
+        let sequenced_event = self.push_sequenced_event(event);
+        let _ = self.events.send(sequenced_event.event.clone());
+        let _ = self.sdk_events.send(sequenced_event);
+    }
+
+    pub fn sdk_stream_event_frame(&self, sequenced_event: &SequencedRpcEvent) -> JsonValue {
+        json!({
+            "event_id": format!("evt-{}", sequenced_event.seq_no),
+            "runtime_id": self.identity_hash,
+            "stream_id": SDK_STREAM_ID,
+            "seq_no": sequenced_event.seq_no,
+            "contract_version": self.active_contract_version(),
+            "ts_ms": (now_i64().max(0) as u64) * 1000,
+            "event_type": sequenced_event.event.event_type.clone(),
+            "severity": Self::event_severity(sequenced_event.event.event_type.as_str()),
+            "source_component": "rns-rpc",
+            "payload": sequenced_event.event.payload.clone(),
+        })
+    }
+
+    pub fn sdk_stream_gap_frame(&self, seq_no: u64, dropped_count: u64) -> JsonValue {
+        json!({
+            "event_id": format!("gap-{}", seq_no),
+            "runtime_id": self.identity_hash,
+            "stream_id": SDK_STREAM_ID,
+            "seq_no": seq_no,
+            "contract_version": self.active_contract_version(),
+            "ts_ms": (now_i64().max(0) as u64) * 1000,
+            "event_type": "StreamGap",
+            "severity": "warn",
+            "source_component": "rns-rpc",
+            "payload": {
+                "dropped_count": dropped_count,
+                "recovery_required": true,
+            },
+        })
     }
 
     pub fn emit_event(&self, event: RpcEvent) {

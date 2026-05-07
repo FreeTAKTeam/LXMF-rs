@@ -17,6 +17,7 @@ mod operations;
 mod profiles;
 mod runtime;
 mod session;
+mod surfaces;
 mod workflows;
 
 pub use capabilities::CapabilitySummary;
@@ -45,3 +46,6 @@ pub use runtime::{
 };
 #[cfg(feature = "sdk-async")]
 pub use session::EventStream;
+#[cfg(feature = "sdk-async")]
+pub use surfaces::Events;
+pub use surfaces::{Attachments, IdentityDirectory, Messages, Runtime};

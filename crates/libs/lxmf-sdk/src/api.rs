@@ -1,4 +1,6 @@
 use crate::app::{Envelope, EnvelopeResponse, OperationRegistry};
+#[cfg(feature = "sdk-async")]
+use crate::backend::SdkEventStream;
 use crate::domain::{
     AttachmentDownloadChunk, AttachmentDownloadChunkRequest, AttachmentId, AttachmentListRequest,
     AttachmentListResult, AttachmentMeta, AttachmentStoreRequest, AttachmentUploadChunkAck,
@@ -41,6 +43,11 @@ pub trait LxmfSdkManualTick {
 #[cfg(feature = "sdk-async")]
 pub trait LxmfSdkAsync {
     fn subscribe_events(&self, start: SubscriptionStart) -> Result<EventSubscription, SdkError>;
+
+    fn open_event_stream(
+        &self,
+        subscription: &EventSubscription,
+    ) -> Result<Option<SdkEventStream>, SdkError>;
 }
 
 #[cfg(not(feature = "sdk-async"))]

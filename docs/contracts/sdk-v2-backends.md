@@ -177,7 +177,7 @@ Conformance gate:
 
 `RpcBackendConfig`:
 
-- listener and framing limits
+- listener (`host:port` for TCP/TLS or `unix:/path` for local sockets) and framing limits
 - HTTP timeout settings
 - auth mode and token verifier settings
 

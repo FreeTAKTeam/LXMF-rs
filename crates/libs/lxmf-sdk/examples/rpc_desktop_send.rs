@@ -1,21 +1,17 @@
-use lxmf_sdk::{Client, LxmfSdk, RpcBackendClient, SdkConfig, SendRequest, StartRequest};
+use lxmf_sdk::app::{Client, Config, EventKind, SendRequest, SubscriptionStart};
 use serde_json::json;
+use tokio_stream::StreamExt;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main]
+async fn main() -> Result<(), lxmf_sdk::app::Error> {
     let endpoint = std::env::var("LXMF_RPC").unwrap_or_else(|_| "127.0.0.1:4242".to_owned());
     let source = std::env::var("LXMF_SOURCE").unwrap_or_else(|_| "example.desktop".to_owned());
     let destination =
         std::env::var("LXMF_DESTINATION").unwrap_or_else(|_| "example.peer".to_owned());
 
-    let client = Client::new(RpcBackendClient::new(endpoint.clone()));
-    let start_request =
-        StartRequest::new(SdkConfig::desktop_full_default().with_rpc_listen_addr(endpoint))
-            .with_requested_capability("sdk.capability.cursor_replay");
-    let handle = client.start(start_request)?;
-    println!(
-        "started runtime_id={} contract_v{}",
-        handle.runtime_id, handle.active_contract_version
-    );
+    let client = Client::rpc(endpoint);
+    let handle = client.runtime().start_async(Config::desktop_default()).await?;
+    println!("started runtime_id={}", handle.runtime_id);
 
     let send_request = SendRequest::new(
         source,
@@ -27,11 +23,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )
     .with_ttl_ms(30_000)
     .with_correlation_id("example-rpc-desktop-send");
-    let message_id = client.send(send_request)?;
-    println!("queued message_id={}", message_id.0);
+    let receipt = client.messages().send_async(send_request).await?;
+    println!("queued message_id={}", receipt.message_id);
 
-    let batch = client.poll_events(None, 16)?;
-    println!("polled events={} dropped={}", batch.events.len(), batch.dropped_count);
+    let mut events = client.events().subscribe(SubscriptionStart::Tail)?;
+    while let Some(event) = events.next().await.transpose()? {
+        match event.kind {
+            EventKind::MessageDelivered
+            | EventKind::MessageFailed
+            | EventKind::MessageCancelled
+                if event.metadata.message_id.as_deref() == Some(receipt.message_id.as_str()) =>
+            {
+                println!("terminal delivery event={:?}", event.kind);
+                break;
+            }
+            EventKind::StreamGapDetected(gap) => {
+                eprintln!("event stream gap detected: {:?}", gap);
+                break;
+            }
+            _ => {}
+        }
+    }
 
     Ok(())
 }

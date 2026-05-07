@@ -1241,5 +1241,6 @@ fn test_args(
         rpc_tls_cert: None,
         rpc_tls_key: None,
         rpc_tls_client_ca: None,
+        rpc_unix: None,
     }
 }
