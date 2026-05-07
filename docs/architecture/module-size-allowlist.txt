@@ -5,14 +5,11 @@ xtask/src/main.rs
 crates/apps/lxmf-cli/src/main.rs
 crates/apps/rns-tools/src/bin/rnx.rs
 crates/apps/lxmf-cli/src/bin/lxmd.rs
-crates/apps/reticulumd/src/bin/reticulumd/bridge.rs
-crates/apps/reticulumd/src/bin/reticulumd/inbound_worker.rs
 crates/apps/reticulumd/src/bin/reticulumd/rpc_loop.rs
 crates/apps/reticulumd/src/config.rs
 crates/apps/reticulumd/src/inbound_delivery.rs
 crates/libs/lxmf-sdk/src/backend/rpc/transport.rs
 crates/libs/lxmf-core/src/wire_fields.rs
-crates/libs/lxmf-sdk/src/app/node.rs
 crates/libs/lxmf-sdk/src/app/operations.rs
 crates/libs/lxmf-sdk/src/backend/rpc/domains_impl.rs
 crates/libs/lxmf-sdk/src/domain.rs

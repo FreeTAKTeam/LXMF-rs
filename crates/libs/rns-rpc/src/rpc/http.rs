@@ -5,6 +5,9 @@ use crate::rpc::{codec, RpcDaemon, RpcRequest, RpcResponse};
 use serde_json::json;
 
 const HEADER_END: &[u8] = b"\r\n\r\n";
+pub const MAX_HTTP_HEADER_LEN: usize = 64 * 1024;
+pub const MAX_HTTP_HEADER_LINE_LEN: usize = 8 * 1024;
+pub const MAX_HTTP_HEADER_COUNT: usize = 128;
 
 pub type HttpHeaderList = Vec<(String, String)>;
 pub type HttpRequestParts = (String, String, HttpHeaderList);
@@ -40,9 +43,9 @@ pub fn handle_http_request_with_transport_auth(
     transport_auth: Option<TransportAuthContext>,
 ) -> io::Result<Vec<u8>> {
     let response = (|| -> io::Result<Vec<u8>> {
-        let header_end = find_header_end(request)
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "missing headers"))?;
+        let header_end = bounded_header_end(request)?;
         let headers = &request[..header_end];
+        validate_header_block(headers)?;
         let parsed_headers = parse_headers(headers);
         let peer_ip = peer_addr.map(|addr| addr.ip().to_string());
         let body_start = header_end + HEADER_END.len();
@@ -133,10 +136,16 @@ pub fn handle_http_request_with_transport_auth(
                 let content_length = parse_content_length(headers).ok_or_else(|| {
                     io::Error::new(io::ErrorKind::InvalidInput, "missing content-length")
                 })?;
-                if request.len() < body_start + content_length {
+                if content_length > codec::MAX_FRAME_PAYLOAD_LEN + 4 {
+                    return Err(io::Error::new(io::ErrorKind::InvalidData, "body too large"));
+                }
+                let body_end = body_start
+                    .checked_add(content_length)
+                    .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "body too large"))?;
+                if request.len() < body_end {
                     return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "body incomplete"));
                 }
-                let body = &request[body_start..body_start + content_length];
+                let body = &request[body_start..body_end];
                 let rpc_request: RpcRequest = codec::decode_frame(body)?;
                 if let Err(error) = daemon.authorize_http_request_with_transport(
                     &parsed_headers,
@@ -162,24 +171,63 @@ pub fn find_header_end(request: &[u8]) -> Option<usize> {
     request.windows(HEADER_END.len()).position(|window| window == HEADER_END)
 }
 
+fn bounded_header_end(request: &[u8]) -> io::Result<usize> {
+    let search_len = request.len().min(MAX_HTTP_HEADER_LEN + HEADER_END.len());
+    if let Some(header_end) = find_header_end(&request[..search_len]) {
+        if header_end > MAX_HTTP_HEADER_LEN {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "headers too large"));
+        }
+        return Ok(header_end);
+    }
+    if request.len() > MAX_HTTP_HEADER_LEN {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "headers too large"));
+    }
+    Err(io::Error::new(io::ErrorKind::InvalidInput, "missing headers"))
+}
+
+fn validate_header_block(headers: &[u8]) -> io::Result<()> {
+    if headers.len() > MAX_HTTP_HEADER_LEN {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "headers too large"));
+    }
+    let mut header_count = 0usize;
+    for (idx, line) in headers.split(|byte| *byte == b'\n').enumerate() {
+        let line = line.strip_suffix(b"\r").unwrap_or(line);
+        if line.len() > MAX_HTTP_HEADER_LINE_LEN {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "header line too large"));
+        }
+        if idx > 0 && !line.is_empty() {
+            header_count = header_count.saturating_add(1);
+            if header_count > MAX_HTTP_HEADER_COUNT {
+                return Err(io::Error::new(io::ErrorKind::InvalidData, "too many headers"));
+            }
+        }
+    }
+    Ok(())
+}
+
 pub fn parse_content_length(headers: &[u8]) -> Option<usize> {
     let text = String::from_utf8_lossy(headers);
+    let mut parsed = None;
     for line in text.lines() {
         let lower = line.to_ascii_lowercase();
         if let Some(rest) = lower.strip_prefix("content-length:") {
             let value = rest.trim();
-            if let Ok(length) = value.parse::<usize>() {
-                return Some(length);
+            let Ok(length) = value.parse::<usize>() else {
+                return None;
+            };
+            if parsed.is_some_and(|existing| existing != length) {
+                return None;
             }
+            parsed = Some(length);
         }
     }
-    None
+    parsed
 }
 
 pub fn request_method_path_headers(request: &[u8]) -> io::Result<HttpRequestParts> {
-    let header_end = find_header_end(request)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "missing headers"))?;
+    let header_end = bounded_header_end(request)?;
     let headers = &request[..header_end];
+    validate_header_block(headers)?;
     let parsed_headers = parse_headers(headers);
     let (method, path) = parse_request_line(headers)
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid request line"))?;
@@ -305,7 +353,7 @@ fn build_response_with_content_type(
     response
 }
 
-fn build_rpc_error_response(id: u64, error: crate::rpc::RpcError) -> io::Result<Vec<u8>> {
+pub fn build_rpc_error_response(id: u64, error: crate::rpc::RpcError) -> io::Result<Vec<u8>> {
     let response = RpcResponse { id, result: None, error: Some(error) };
     let body = codec::encode_frame(&response).map_err(io::Error::other)?;
     Ok(build_response(StatusCode::Ok, &body))
@@ -462,5 +510,87 @@ mod tests {
                 .unwrap_or(0)
                 >= 1
         );
+    }
+
+    #[test]
+    fn parse_content_length_rejects_invalid_or_conflicting_values() {
+        assert_eq!(parse_content_length(b"Content-Length: 12\r\n"), Some(12));
+        assert_eq!(parse_content_length(b"Content-Length: 12\r\ncontent-length: 12\r\n"), Some(12));
+        assert_eq!(parse_content_length(b"Content-Length: nope\r\n"), None);
+        assert_eq!(parse_content_length(b"Content-Length: 12\r\nContent-Length: 13\r\n"), None);
+    }
+
+    #[test]
+    fn rpc_endpoint_rejects_conflicting_content_length_headers() {
+        let daemon = RpcDaemon::test_instance();
+        let request = b"POST /rpc HTTP/1.1\r\nHost: localhost\r\nContent-Length: 0\r\nContent-Length: 4\r\n\r\n";
+
+        let err = handle_http_request_with_peer(
+            &daemon,
+            request,
+            Some("127.0.0.1:1".parse().expect("socket")),
+        )
+        .expect_err("conflicting content-length should fail");
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert!(err.to_string().contains("missing content-length"));
+    }
+
+    #[test]
+    fn request_parser_rejects_oversized_header_block_before_parsing() {
+        let mut request = b"GET /healthz HTTP/1.1\r\n".to_vec();
+        request.extend_from_slice(b"X-Oversized: ");
+        request.extend(std::iter::repeat_n(b'a', MAX_HTTP_HEADER_LEN));
+        request.extend_from_slice(b"\r\n\r\n");
+
+        let err = request_method_path_headers(&request).expect_err("headers should be capped");
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert!(err.to_string().contains("headers too large"));
+    }
+
+    #[test]
+    fn request_parser_rejects_oversized_header_line() {
+        let mut request = b"GET /healthz HTTP/1.1\r\nX-Long: ".to_vec();
+        request.extend(std::iter::repeat_n(b'a', MAX_HTTP_HEADER_LINE_LEN + 1));
+        request.extend_from_slice(b"\r\n\r\n");
+
+        let err = request_method_path_headers(&request).expect_err("header line should be capped");
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert!(err.to_string().contains("header line too large"));
+    }
+
+    #[test]
+    fn request_parser_rejects_too_many_headers() {
+        let mut request = b"GET /healthz HTTP/1.1\r\n".to_vec();
+        for idx in 0..=MAX_HTTP_HEADER_COUNT {
+            request.extend_from_slice(format!("X-Test-{idx}: yes\r\n").as_bytes());
+        }
+        request.extend_from_slice(b"\r\n");
+
+        let err = request_method_path_headers(&request).expect_err("header count should be capped");
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert!(err.to_string().contains("too many headers"));
+    }
+
+    #[test]
+    fn rpc_endpoint_rejects_oversized_content_length_without_overflow() {
+        let daemon = RpcDaemon::test_instance();
+        let request = format!(
+            "POST /rpc HTTP/1.1\r\nHost: localhost\r\nContent-Length: {}\r\n\r\n",
+            codec::MAX_FRAME_PAYLOAD_LEN + 5
+        );
+
+        let err = handle_http_request_with_peer(
+            &daemon,
+            request.as_bytes(),
+            Some("127.0.0.1:1".parse().expect("socket")),
+        )
+        .expect_err("oversized body should fail");
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert!(err.to_string().contains("body too large"));
     }
 }

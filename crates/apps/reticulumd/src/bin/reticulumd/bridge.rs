@@ -8,6 +8,15 @@ mod announce;
 mod delivery_method;
 #[path = "bridge_delivery_task.rs"]
 mod delivery_task;
+#[path = "bridge_delivery_task_cancel.rs"]
+mod delivery_task_cancel;
+#[path = "bridge_delivery_task_payload.rs"]
+mod delivery_task_payload;
+#[path = "bridge_delivery_task_propagation.rs"]
+mod delivery_task_propagation;
+#[cfg(test)]
+#[path = "bridge_delivery_task_tests.rs"]
+mod delivery_task_tests;
 #[path = "bridge_identity.rs"]
 mod identity_resolver;
 #[path = "bridge_link_send.rs"]
@@ -16,6 +25,8 @@ mod link_send;
 mod outbound;
 #[path = "bridge_paper.rs"]
 mod paper;
+#[path = "bridge_payload.rs"]
+mod payload_builder;
 #[path = "bridge_propagation.rs"]
 mod propagation;
 #[path = "bridge_remote_control.rs"]
@@ -68,7 +79,7 @@ pub(super) struct TransportBridge {
     receipt_map: Arc<Mutex<HashMap<String, String>>>,
     outbound_resource_map: OutboundResourceMap,
     outbound_propagation_link: Arc<tokio::sync::Mutex<Option<CachedPropagationLink>>>,
-    receipt_tx: tokio::sync::mpsc::UnboundedSender<ReceiptEvent>,
+    receipt_tx: tokio::sync::mpsc::Sender<ReceiptEvent>,
 }
 
 #[derive(Clone, Copy)]
@@ -90,7 +101,7 @@ impl TransportBridge {
         peer_crypto: Arc<Mutex<HashMap<String, PeerCrypto>>>,
         receipt_map: Arc<Mutex<HashMap<String, String>>>,
         outbound_resource_map: OutboundResourceMap,
-        receipt_tx: tokio::sync::mpsc::UnboundedSender<ReceiptEvent>,
+        receipt_tx: tokio::sync::mpsc::Sender<ReceiptEvent>,
     ) -> Self {
         Self {
             daemon: Arc::new(Mutex::new(None)),

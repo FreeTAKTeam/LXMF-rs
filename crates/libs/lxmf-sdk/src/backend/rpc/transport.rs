@@ -1,9 +1,8 @@
 use super::*;
 use hmac::{Hmac, Mac};
 use rns_rpc::e2e_harness::{build_rpc_frame, parse_http_response_body, parse_rpc_frame};
-#[cfg(feature = "sdk-async")]
-use rns_rpc::rpc::codec;
-use rns_rpc::RpcError;
+use rns_rpc::rpc::{codec, http};
+use rns_rpc::{RpcError, RpcResponse};
 use rustls::pki_types::ServerName;
 use rustls::{ClientConfig, RootCertStore};
 use rustls_pemfile::private_key;
@@ -35,6 +34,8 @@ use zeroize::{Zeroize, Zeroizing};
 
 #[cfg(feature = "sdk-async")]
 const RPC_EVENT_STREAM_MAX_FRAME_BYTES: usize = 2 * 1024 * 1024;
+const RPC_HTTP_RESPONSE_MAX_BYTES: usize =
+    http::MAX_HTTP_HEADER_LEN + 4 + codec::MAX_FRAME_PAYLOAD_LEN + 4;
 
 #[derive(Clone, Copy)]
 enum RpcEndpoint<'a> {
@@ -194,11 +195,7 @@ impl RpcBackendClient {
         stream.shutdown(Shutdown::Write).map_err(|err| {
             SdkError::new(code::INTERNAL, ErrorCategory::Transport, err.to_string())
         })?;
-        let mut response = Vec::new();
-        stream.read_to_end(&mut response).map_err(|err| {
-            SdkError::new(code::INTERNAL, ErrorCategory::Transport, err.to_string())
-        })?;
-        Ok(response)
+        Self::read_http_response_to_end(&mut stream)
     }
 
     #[cfg(unix)]
@@ -212,11 +209,7 @@ impl RpcBackendClient {
         stream.shutdown(Shutdown::Write).map_err(|err| {
             SdkError::new(code::INTERNAL, ErrorCategory::Transport, err.to_string())
         })?;
-        let mut response = Vec::new();
-        stream.read_to_end(&mut response).map_err(|err| {
-            SdkError::new(code::INTERNAL, ErrorCategory::Transport, err.to_string())
-        })?;
-        Ok(response)
+        Self::read_http_response_to_end(&mut stream)
     }
 
     #[cfg(not(unix))]
@@ -278,11 +271,7 @@ impl RpcBackendClient {
         tls.flush().map_err(|err| {
             SdkError::new(code::INTERNAL, ErrorCategory::Transport, err.to_string())
         })?;
-        let mut response = Vec::new();
-        tls.read_to_end(&mut response).map_err(|err| {
-            SdkError::new(code::INTERNAL, ErrorCategory::Transport, err.to_string())
-        })?;
-        Ok(response)
+        Self::read_http_response_to_end(&mut tls)
     }
 
     #[cfg(feature = "sdk-async")]
@@ -296,11 +285,7 @@ impl RpcBackendClient {
         stream.write_all(request).await.map_err(|err| {
             SdkError::new(code::INTERNAL, ErrorCategory::Transport, err.to_string())
         })?;
-        let mut response = Vec::new();
-        stream.read_to_end(&mut response).await.map_err(|err| {
-            SdkError::new(code::INTERNAL, ErrorCategory::Transport, err.to_string())
-        })?;
-        Ok(response)
+        Self::read_http_response_to_end_async(&mut stream).await
     }
 
     #[cfg(all(feature = "sdk-async", unix))]
@@ -311,11 +296,7 @@ impl RpcBackendClient {
         stream.write_all(request).await.map_err(|err| {
             SdkError::new(code::INTERNAL, ErrorCategory::Transport, err.to_string())
         })?;
-        let mut response = Vec::new();
-        stream.read_to_end(&mut response).await.map_err(|err| {
-            SdkError::new(code::INTERNAL, ErrorCategory::Transport, err.to_string())
-        })?;
-        Ok(response)
+        Self::read_http_response_to_end_async(&mut stream).await
     }
 
     #[cfg(all(feature = "sdk-async", not(unix)))]
@@ -373,10 +354,51 @@ impl RpcBackendClient {
         stream.write_all(request).await.map_err(|err| {
             SdkError::new(code::INTERNAL, ErrorCategory::Transport, err.to_string())
         })?;
+        Self::read_http_response_to_end_async(&mut stream).await
+    }
+
+    fn read_http_response_to_end<R>(reader: &mut R) -> Result<Vec<u8>, SdkError>
+    where
+        R: Read,
+    {
         let mut response = Vec::new();
-        stream.read_to_end(&mut response).await.map_err(|err| {
+        let mut limited = reader.take((RPC_HTTP_RESPONSE_MAX_BYTES + 1) as u64);
+        limited.read_to_end(&mut response).map_err(|err| {
             SdkError::new(code::INTERNAL, ErrorCategory::Transport, err.to_string())
         })?;
+        if response.len() > RPC_HTTP_RESPONSE_MAX_BYTES {
+            return Err(SdkError::new(
+                code::INTERNAL,
+                ErrorCategory::Transport,
+                format!("rpc response exceeded {} bytes", RPC_HTTP_RESPONSE_MAX_BYTES),
+            ));
+        }
+        Ok(response)
+    }
+
+    #[cfg(feature = "sdk-async")]
+    async fn read_http_response_to_end_async<R>(reader: &mut R) -> Result<Vec<u8>, SdkError>
+    where
+        R: AsyncRead + Unpin,
+    {
+        let mut response = Vec::new();
+        let mut chunk = [0_u8; 8192];
+        loop {
+            let read = reader.read(&mut chunk).await.map_err(|err| {
+                SdkError::new(code::INTERNAL, ErrorCategory::Transport, err.to_string())
+            })?;
+            if read == 0 {
+                break;
+            }
+            response.extend_from_slice(&chunk[..read]);
+            if response.len() > RPC_HTTP_RESPONSE_MAX_BYTES {
+                return Err(SdkError::new(
+                    code::INTERNAL,
+                    ErrorCategory::Transport,
+                    format!("rpc response exceeded {} bytes", RPC_HTTP_RESPONSE_MAX_BYTES),
+                ));
+            }
+        }
         Ok(response)
     }
 
@@ -545,9 +567,9 @@ impl RpcBackendClient {
         &self,
         subscription: &EventSubscription,
     ) -> Result<Option<SdkEventStream>, SdkError> {
-        let (headers, mtls_auth) = {
+        let auth = {
             let auth_guard = self.session_auth.read().expect("session_auth rwlock poisoned");
-            (self.headers_for_session_auth(&auth_guard), Self::mtls_for_session_auth(&auth_guard))
+            EventStreamRequestAuth::from_session_auth(&auth_guard, self.next_request_id())
         };
         let handle = tokio::runtime::Handle::try_current().map_err(|_| {
             SdkError::new(
@@ -560,7 +582,7 @@ impl RpcBackendClient {
         let endpoint = self.endpoint.clone();
         let cursor = subscription.cursor.clone();
         let task = handle.spawn(async move {
-            run_rpc_http_event_stream(endpoint, headers, mtls_auth, cursor, tx).await;
+            run_rpc_http_event_stream(endpoint, auth, cursor, tx).await;
         });
         Ok(Some(Box::pin(AbortOnDropStream::new(ReceiverStream::new(rx), task))))
     }
@@ -877,11 +899,12 @@ impl<S> Drop for AbortOnDropStream<S> {
 #[cfg(feature = "sdk-async")]
 async fn run_rpc_http_event_stream(
     endpoint: String,
-    headers: Vec<(String, String)>,
-    mtls_auth: Option<MtlsRequestAuth>,
+    mut auth: EventStreamRequestAuth,
     mut cursor: Option<EventCursor>,
     tx: mpsc::Sender<Result<SdkEvent, SdkError>>,
 ) {
+    let mut last_delivered = cursor.as_ref().and_then(EventStreamPosition::from_cursor);
+    let mut had_connected_stream = false;
     loop {
         let parsed_endpoint = match RpcBackendClient::parse_endpoint(&endpoint) {
             Ok(endpoint) => endpoint.to_owned(),
@@ -892,28 +915,40 @@ async fn run_rpc_http_event_stream(
         };
         let mut stream = match connect_rpc_http_event_stream(
             parsed_endpoint.as_ref(),
-            &headers,
             cursor.as_ref(),
-            mtls_auth.as_ref(),
+            &mut auth,
         )
         .await
         {
             Ok(stream) => stream,
             Err(err) => {
+                if had_connected_stream && err.category == ErrorCategory::Transport {
+                    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                    continue;
+                }
                 let _ = tx.send(Err(err)).await;
                 return;
             }
         };
+        had_connected_stream = true;
         loop {
             match read_rpc_http_event_frame(&mut stream).await {
                 Ok(event) => {
+                    if last_delivered.as_ref().is_some_and(|position| position.covers(&event)) {
+                        continue;
+                    }
                     cursor = Some(EventCursor(format!(
                         "v2:{}:{}:{}",
                         event.runtime_id, event.stream_id, event.seq_no
                     )));
+                    last_delivered = Some(EventStreamPosition::from_event(&event));
                     if tx.send(Ok(event)).await.is_err() {
                         return;
                     }
+                }
+                Err(err) if err.category != ErrorCategory::Transport => {
+                    let _ = tx.send(Err(err)).await;
+                    return;
                 }
                 Err(_) => {
                     tokio::time::sleep(std::time::Duration::from_millis(250)).await;
@@ -921,6 +956,115 @@ async fn run_rpc_http_event_stream(
                 }
             }
         }
+    }
+}
+
+#[cfg(feature = "sdk-async")]
+enum EventStreamRequestAuth {
+    LocalTrusted,
+    Token {
+        issuer: String,
+        audience: String,
+        shared_secret: Zeroizing<String>,
+        ttl_secs: u64,
+        stream_id: u64,
+        next_jti: u64,
+    },
+    Mtls {
+        ca_bundle_path: String,
+        client_cert_path: Option<String>,
+        client_key_path: Option<String>,
+    },
+}
+
+#[cfg(feature = "sdk-async")]
+impl EventStreamRequestAuth {
+    fn from_session_auth(auth: &SessionAuth, stream_id: u64) -> Self {
+        match auth {
+            SessionAuth::LocalTrusted => Self::LocalTrusted,
+            SessionAuth::Token { issuer, audience, shared_secret, ttl_secs } => Self::Token {
+                issuer: issuer.clone(),
+                audience: audience.clone(),
+                shared_secret: Zeroizing::new(shared_secret.as_str().to_string()),
+                ttl_secs: *ttl_secs,
+                stream_id,
+                next_jti: 0,
+            },
+            SessionAuth::Mtls { ca_bundle_path, client_cert_path, client_key_path } => Self::Mtls {
+                ca_bundle_path: ca_bundle_path.clone(),
+                client_cert_path: client_cert_path.clone(),
+                client_key_path: client_key_path.clone(),
+            },
+        }
+    }
+
+    fn headers(&mut self) -> Vec<(String, String)> {
+        match self {
+            Self::LocalTrusted | Self::Mtls { .. } => Vec::new(),
+            Self::Token { issuer, audience, shared_secret, ttl_secs, stream_id, next_jti } => {
+                let jti = format!("sdk-stream-jti-{stream_id}-{next_jti}");
+                *next_jti = next_jti.saturating_add(1);
+                let iat = RpcBackendClient::now_seconds();
+                let exp = iat.saturating_add(*ttl_secs);
+                let payload = Zeroizing::new(format!(
+                    "iss={issuer};aud={audience};jti={jti};sub=sdk-client;iat={iat};exp={exp}"
+                ));
+                let sig = Zeroizing::new(RpcBackendClient::token_signature(
+                    shared_secret.as_str(),
+                    payload.as_str(),
+                ));
+                let token = Zeroizing::new(format!("{};sig={}", payload.as_str(), sig.as_str()));
+                vec![("Authorization".to_owned(), format!("Bearer {}", token.as_str()))]
+            }
+        }
+    }
+
+    fn mtls_auth(&self) -> Option<MtlsRequestAuth> {
+        match self {
+            Self::Mtls { ca_bundle_path, client_cert_path, client_key_path } => {
+                Some(MtlsRequestAuth {
+                    ca_bundle_path: ca_bundle_path.clone(),
+                    client_cert_path: client_cert_path.clone(),
+                    client_key_path: client_key_path.clone(),
+                })
+            }
+            Self::LocalTrusted | Self::Token { .. } => None,
+        }
+    }
+}
+
+#[cfg(feature = "sdk-async")]
+struct EventStreamPosition {
+    runtime_id: String,
+    stream_id: String,
+    seq_no: u64,
+}
+
+#[cfg(feature = "sdk-async")]
+impl EventStreamPosition {
+    fn from_cursor(cursor: &EventCursor) -> Option<Self> {
+        let body = cursor.0.strip_prefix("v2:")?;
+        let (runtime_id, rest) = body.split_once(':')?;
+        let (stream_id, seq_no) = rest.rsplit_once(':')?;
+        Some(Self {
+            runtime_id: runtime_id.to_string(),
+            stream_id: stream_id.to_string(),
+            seq_no: seq_no.parse().ok()?,
+        })
+    }
+
+    fn from_event(event: &SdkEvent) -> Self {
+        Self {
+            runtime_id: event.runtime_id.clone(),
+            stream_id: event.stream_id.clone(),
+            seq_no: event.seq_no,
+        }
+    }
+
+    fn covers(&self, event: &SdkEvent) -> bool {
+        self.runtime_id == event.runtime_id
+            && self.stream_id == event.stream_id
+            && self.seq_no >= event.seq_no
     }
 }
 
@@ -953,22 +1097,25 @@ impl OwnedRpcEndpoint {
 #[cfg(feature = "sdk-async")]
 async fn connect_rpc_http_event_stream(
     endpoint: RpcEndpoint<'_>,
-    headers: &[(String, String)],
     cursor: Option<&EventCursor>,
-    mtls_auth: Option<&MtlsRequestAuth>,
+    auth: &mut EventStreamRequestAuth,
 ) -> Result<Box<dyn RpcEventStreamIo>, SdkError> {
     let path = match cursor {
         Some(cursor) => format!("/events/stream?cursor={}", cursor.0),
         None => "/events/stream".to_string(),
     };
-    let request = RpcBackendClient::build_http_get_with_headers(
+    let mut headers = auth.headers();
+    let mut request = RpcBackendClient::build_http_get_with_headers(
         path.as_str(),
         endpoint.host_header(),
-        headers,
+        &headers,
     );
-    match endpoint {
+    RpcBackendClient::zeroize_header_values(&mut headers);
+    let mtls_auth = auth.mtls_auth();
+    let result = match endpoint {
         RpcEndpoint::Tcp(authority) => {
-            connect_tcp_rpc_http_event_stream(authority, request.as_slice(), mtls_auth).await
+            connect_tcp_rpc_http_event_stream(authority, request.as_slice(), mtls_auth.as_ref())
+                .await
         }
         RpcEndpoint::Unix(_) if mtls_auth.is_some() => Err(SdkError::new(
             code::VALIDATION_INVALID_ARGUMENT,
@@ -978,7 +1125,9 @@ async fn connect_rpc_http_event_stream(
         RpcEndpoint::Unix(path) => {
             connect_unix_rpc_http_event_stream(path, request.as_slice()).await
         }
-    }
+    };
+    request.zeroize();
+    result
 }
 
 #[cfg(feature = "sdk-async")]
@@ -1088,6 +1237,9 @@ where
         }
     }
     if !header.starts_with(b"HTTP/1.1 200") {
+        if let Some(error) = read_event_stream_rejection_error(stream, header.as_slice()).await? {
+            return Err(error);
+        }
         return Err(SdkError::new(
             code::INTERNAL,
             ErrorCategory::Transport,
@@ -1095,6 +1247,41 @@ where
         ));
     }
     Ok(())
+}
+
+#[cfg(feature = "sdk-async")]
+async fn read_event_stream_rejection_error<S>(
+    stream: &mut S,
+    header: &[u8],
+) -> Result<Option<SdkError>, SdkError>
+where
+    S: AsyncRead + Unpin + ?Sized,
+{
+    let Some(content_length) = http::parse_content_length(header) else {
+        return Ok(None);
+    };
+    if content_length == 0 {
+        return Ok(None);
+    }
+    if content_length > RPC_EVENT_STREAM_MAX_FRAME_BYTES {
+        return Err(SdkError::new(
+            code::INTERNAL,
+            ErrorCategory::Transport,
+            format!(
+                "event stream rejection body exceeded {} bytes",
+                RPC_EVENT_STREAM_MAX_FRAME_BYTES
+            ),
+        ));
+    }
+    let mut body = vec![0_u8; content_length];
+    stream
+        .read_exact(&mut body)
+        .await
+        .map_err(|err| SdkError::new(code::INTERNAL, ErrorCategory::Transport, err.to_string()))?;
+    let Ok(rpc_response) = codec::decode_frame::<RpcResponse>(&body) else {
+        return Ok(None);
+    };
+    Ok(rpc_response.error.map(RpcBackendClient::map_rpc_error))
 }
 
 #[cfg(feature = "sdk-async")]
@@ -1122,8 +1309,17 @@ where
         .read_exact(&mut frame[4..])
         .await
         .map_err(|err| SdkError::new(code::INTERNAL, ErrorCategory::Transport, err.to_string()))?;
-    codec::decode_frame::<SdkEvent>(&frame)
-        .map_err(|err| SdkError::new(code::INTERNAL, ErrorCategory::Transport, err.to_string()))
+    match codec::decode_frame::<SdkEvent>(&frame) {
+        Ok(event) => Ok(event),
+        Err(event_err) => match codec::decode_frame::<RpcResponse>(&frame) {
+            Ok(response) if response.error.is_some() => {
+                Err(RpcBackendClient::map_rpc_error(response.error.expect("checked error")))
+            }
+            _ => {
+                Err(SdkError::new(code::INTERNAL, ErrorCategory::Transport, event_err.to_string()))
+            }
+        },
+    }
 }
 
 #[cfg(test)]
@@ -1201,6 +1397,12 @@ mod tests {
             socket.write_all(&frame).await.expect("write event frame");
         }
         request
+    }
+
+    #[cfg(feature = "sdk-async")]
+    fn request_header_value<'a>(request: &'a str, name: &str) -> Option<&'a str> {
+        let prefix = format!("{name}:");
+        request.lines().find_map(|line| line.strip_prefix(prefix.as_str()).map(str::trim))
     }
 
     #[cfg(feature = "sdk-async")]
@@ -1336,7 +1538,8 @@ mod tests {
         let (tx, mut rx) = mpsc::channel::<Result<SdkEvent, SdkError>>(4);
         let endpoint = format!("unix:{}", path.display());
         let client_task = tokio::spawn(async move {
-            run_rpc_http_event_stream(endpoint, Vec::new(), None, None, tx).await;
+            run_rpc_http_event_stream(endpoint, EventStreamRequestAuth::LocalTrusted, None, tx)
+                .await;
         });
 
         let (mut socket, _) = listener.accept().await.expect("accept unix event stream client");
@@ -1376,7 +1579,8 @@ mod tests {
         let (tx, mut rx) = mpsc::channel::<Result<SdkEvent, SdkError>>(4);
         let endpoint = authority.clone();
         let client_task = tokio::spawn(async move {
-            run_rpc_http_event_stream(endpoint, Vec::new(), None, None, tx).await;
+            run_rpc_http_event_stream(endpoint, EventStreamRequestAuth::LocalTrusted, None, tx)
+                .await;
         });
 
         let first_request = accept_event_stream_request(&listener, test_sdk_event(1)).await;
@@ -1405,6 +1609,348 @@ mod tests {
 
     #[cfg(feature = "sdk-async")]
     #[tokio::test]
+    async fn native_event_stream_initial_connect_failure_surfaces_transport_error() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind listener");
+        let authority = listener.local_addr().expect("listener address").to_string();
+        drop(listener);
+
+        let (tx, mut rx) = mpsc::channel::<Result<SdkEvent, SdkError>>(4);
+        let client_task = tokio::spawn(async move {
+            run_rpc_http_event_stream(authority, EventStreamRequestAuth::LocalTrusted, None, tx)
+                .await;
+        });
+
+        let err = tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv())
+            .await
+            .expect("initial connection error should arrive")
+            .expect("stream should emit initial connection error")
+            .expect_err("initial connection failure should be app-facing");
+        assert_eq!(err.category, ErrorCategory::Transport);
+
+        client_task.await.expect("stream task should finish after initial connection failure");
+    }
+
+    #[cfg(feature = "sdk-async")]
+    #[tokio::test]
+    async fn native_event_stream_refreshes_token_auth_on_reconnect() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind listener");
+        let authority = listener.local_addr().expect("listener address").to_string();
+
+        let (tx, mut rx) = mpsc::channel::<Result<SdkEvent, SdkError>>(4);
+        let endpoint = authority.clone();
+        let client_task = tokio::spawn(async move {
+            run_rpc_http_event_stream(
+                endpoint,
+                EventStreamRequestAuth::Token {
+                    issuer: "test-issuer".to_string(),
+                    audience: "test-audience".to_string(),
+                    shared_secret: Zeroizing::new("test-secret".to_string()),
+                    ttl_secs: 60,
+                    stream_id: 42,
+                    next_jti: 0,
+                },
+                None,
+                tx,
+            )
+            .await;
+        });
+
+        let first_request = accept_event_stream_request(&listener, test_sdk_event(1)).await;
+        let first_auth =
+            request_header_value(&first_request, "Authorization").expect("first auth header");
+        assert!(first_auth.contains("jti=sdk-stream-jti-42-0"));
+
+        let first = tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv())
+            .await
+            .expect("first event should arrive")
+            .expect("stream should stay open")
+            .expect("first event should decode");
+        assert_eq!(first.seq_no, 1);
+
+        let second_request = accept_event_stream_request(&listener, test_sdk_event(2)).await;
+        let second_auth =
+            request_header_value(&second_request, "Authorization").expect("second auth header");
+        assert!(second_auth.contains("jti=sdk-stream-jti-42-1"));
+        assert_ne!(first_auth, second_auth, "reconnect must not replay the first token jti");
+
+        let second = tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv())
+            .await
+            .expect("second event should arrive")
+            .expect("stream should stay open")
+            .expect("second event should decode");
+        assert_eq!(second.seq_no, 2);
+
+        client_task.abort();
+    }
+
+    #[cfg(feature = "sdk-async")]
+    #[tokio::test]
+    async fn native_event_stream_reconnects_after_mid_frame_disconnect() {
+        use tokio::io::AsyncWriteExt as _;
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind listener");
+        let authority = listener.local_addr().expect("listener address").to_string();
+
+        let (tx, mut rx) = mpsc::channel::<Result<SdkEvent, SdkError>>(4);
+        let endpoint = authority.clone();
+        let client_task = tokio::spawn(async move {
+            run_rpc_http_event_stream(endpoint, EventStreamRequestAuth::LocalTrusted, None, tx)
+                .await;
+        });
+
+        let (mut first_socket, _) = listener.accept().await.expect("accept first stream");
+        let first_request = read_event_stream_request(&mut first_socket).await;
+        assert!(first_request.starts_with("GET /events/stream HTTP/1.1"));
+        first_socket
+            .write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/msgpack\r\n\r\n")
+            .await
+            .expect("write first response header");
+        let first_frame = codec::encode_frame(&test_sdk_event(1)).expect("encode first event");
+        first_socket.write_all(&first_frame).await.expect("write first event");
+        let partial_second_frame =
+            codec::encode_frame(&test_sdk_event(2)).expect("encode second event");
+        first_socket
+            .write_all(&partial_second_frame[..partial_second_frame.len().min(7)])
+            .await
+            .expect("write partial second event");
+        first_socket.shutdown().await.expect("close mid-frame stream");
+
+        let first = tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv())
+            .await
+            .expect("first event should arrive before reconnect")
+            .expect("stream should stay open")
+            .expect("first event should decode");
+        assert_eq!(first.seq_no, 1);
+
+        let second_request = accept_event_stream_request(&listener, test_sdk_event(2)).await;
+        assert!(second_request
+            .starts_with("GET /events/stream?cursor=v2:rt-test:sdk-events-v2:1 HTTP/1.1"));
+
+        let second = tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv())
+            .await
+            .expect("second event should arrive after reconnect")
+            .expect("stream should stay open")
+            .expect("second event should decode");
+        assert_eq!(second.seq_no, 2);
+
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(100), rx.recv()).await.is_err(),
+            "partial mid-frame event must not be emitted as a duplicate or error"
+        );
+
+        client_task.abort();
+    }
+
+    #[cfg(feature = "sdk-async")]
+    #[tokio::test]
+    async fn native_event_stream_retries_transient_reconnect_failure_after_disconnect() {
+        use tokio::io::AsyncWriteExt as _;
+
+        let first_listener =
+            tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind first listener");
+        let addr = first_listener.local_addr().expect("first listener address");
+        let authority = addr.to_string();
+
+        let (tx, mut rx) = mpsc::channel::<Result<SdkEvent, SdkError>>(4);
+        let endpoint = authority.clone();
+        let client_task = tokio::spawn(async move {
+            run_rpc_http_event_stream(endpoint, EventStreamRequestAuth::LocalTrusted, None, tx)
+                .await;
+        });
+
+        let (mut first_socket, _) = first_listener.accept().await.expect("accept first stream");
+        let first_request = read_event_stream_request(&mut first_socket).await;
+        assert!(first_request.starts_with("GET /events/stream HTTP/1.1"));
+        first_socket
+            .write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/msgpack\r\n\r\n")
+            .await
+            .expect("write first response header");
+        let first_frame = codec::encode_frame(&test_sdk_event(1)).expect("encode first event");
+        first_socket.write_all(&first_frame).await.expect("write first event");
+        first_socket.shutdown().await.expect("close first stream");
+        drop(first_listener);
+
+        let first = tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv())
+            .await
+            .expect("first event should arrive before restart")
+            .expect("stream should stay open")
+            .expect("first event should decode");
+        assert_eq!(first.seq_no, 1);
+
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(100), rx.recv()).await.is_err(),
+            "transient reconnect refusal must not terminate the app stream"
+        );
+
+        let second_listener =
+            tokio::net::TcpListener::bind(addr).await.expect("rebind listener after restart");
+        let second_request = accept_event_stream_request(&second_listener, test_sdk_event(2)).await;
+        assert!(second_request
+            .starts_with("GET /events/stream?cursor=v2:rt-test:sdk-events-v2:1 HTTP/1.1"));
+
+        let second = tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv())
+            .await
+            .expect("second event should arrive after listener returns")
+            .expect("stream should stay open")
+            .expect("second event should decode");
+        assert_eq!(second.seq_no, 2);
+
+        client_task.abort();
+    }
+
+    #[cfg(feature = "sdk-async")]
+    #[tokio::test]
+    async fn native_event_stream_recovers_after_malformed_frame() {
+        use tokio::io::AsyncWriteExt as _;
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind listener");
+        let authority = listener.local_addr().expect("listener address").to_string();
+
+        let (tx, mut rx) = mpsc::channel::<Result<SdkEvent, SdkError>>(4);
+        let endpoint = authority.clone();
+        let client_task = tokio::spawn(async move {
+            run_rpc_http_event_stream(endpoint, EventStreamRequestAuth::LocalTrusted, None, tx)
+                .await;
+        });
+
+        let (mut first_socket, _) = listener.accept().await.expect("accept first stream");
+        let first_request = read_event_stream_request(&mut first_socket).await;
+        assert!(first_request.starts_with("GET /events/stream HTTP/1.1"));
+        first_socket
+            .write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/msgpack\r\n\r\n")
+            .await
+            .expect("write first response header");
+        let first_frame = codec::encode_frame(&test_sdk_event(1)).expect("encode first event");
+        first_socket.write_all(&first_frame).await.expect("write first event");
+        first_socket.write_all(&[0, 0, 0, 1, 0xc1]).await.expect("write malformed event frame");
+        first_socket.shutdown().await.expect("close malformed stream");
+
+        let first = tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv())
+            .await
+            .expect("first event should arrive before malformed frame")
+            .expect("stream should stay open")
+            .expect("first event should decode");
+        assert_eq!(first.seq_no, 1);
+
+        let second_request = accept_event_stream_request(&listener, test_sdk_event(2)).await;
+        assert!(second_request
+            .starts_with("GET /events/stream?cursor=v2:rt-test:sdk-events-v2:1 HTTP/1.1"));
+
+        let second = tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv())
+            .await
+            .expect("second event should arrive after reconnect")
+            .expect("stream should stay open")
+            .expect("second event should decode");
+        assert_eq!(second.seq_no, 2);
+
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(100), rx.recv()).await.is_err(),
+            "malformed frame must not be emitted as an app-facing event or error"
+        );
+
+        client_task.abort();
+    }
+
+    #[cfg(feature = "sdk-async")]
+    #[tokio::test]
+    async fn native_event_stream_deduplicates_replayed_cursor_event() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind listener");
+        let authority = listener.local_addr().expect("listener address").to_string();
+
+        let (tx, mut rx) = mpsc::channel::<Result<SdkEvent, SdkError>>(4);
+        let endpoint = authority.clone();
+        let client_task = tokio::spawn(async move {
+            run_rpc_http_event_stream(endpoint, EventStreamRequestAuth::LocalTrusted, None, tx)
+                .await;
+        });
+
+        let first_request = accept_event_stream_request(&listener, test_sdk_event(1)).await;
+        assert!(first_request.starts_with("GET /events/stream HTTP/1.1"));
+
+        let first = tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv())
+            .await
+            .expect("first event should arrive")
+            .expect("stream should stay open")
+            .expect("first event should decode");
+        assert_eq!(first.seq_no, 1);
+
+        let replay_request = accept_event_stream_request_with_events(
+            &listener,
+            [test_sdk_event(1), test_sdk_event(2)],
+        )
+        .await;
+        assert!(replay_request
+            .starts_with("GET /events/stream?cursor=v2:rt-test:sdk-events-v2:1 HTTP/1.1"));
+
+        let second = tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv())
+            .await
+            .expect("second event should arrive after replay")
+            .expect("stream should stay open")
+            .expect("second event should decode");
+        assert_eq!(second.seq_no, 2);
+
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(100), rx.recv()).await.is_err(),
+            "replayed cursor event must not be delivered twice"
+        );
+
+        client_task.abort();
+    }
+
+    #[cfg(feature = "sdk-async")]
+    #[tokio::test]
+    async fn native_event_stream_surfaces_framed_runtime_error() {
+        use tokio::io::AsyncWriteExt as _;
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind listener");
+        let authority = listener.local_addr().expect("listener address").to_string();
+
+        let (tx, mut rx) = mpsc::channel::<Result<SdkEvent, SdkError>>(4);
+        let endpoint = authority.clone();
+        let client_task = tokio::spawn(async move {
+            run_rpc_http_event_stream(endpoint, EventStreamRequestAuth::LocalTrusted, None, tx)
+                .await;
+        });
+
+        let (mut socket, _) = listener.accept().await.expect("accept stream");
+        let request = read_event_stream_request(&mut socket).await;
+        assert!(request.starts_with("GET /events/stream HTTP/1.1"));
+        socket
+            .write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/msgpack\r\n\r\n")
+            .await
+            .expect("write response header");
+        let rpc_response = RpcResponse {
+            id: 0,
+            result: None,
+            error: Some(RpcError::new(
+                code::RUNTIME_INVALID_CURSOR,
+                "event stream cursor is invalid",
+            )),
+        };
+        let frame = codec::encode_frame(&rpc_response).expect("encode rpc error frame");
+        socket.write_all(&frame).await.expect("write rpc error frame");
+        socket.shutdown().await.expect("close error stream");
+
+        let err = tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv())
+            .await
+            .expect("runtime error should arrive")
+            .expect("stream should emit error")
+            .expect_err("framed rpc error should surface to app");
+        assert_eq!(err.machine_code, code::RUNTIME_INVALID_CURSOR);
+        assert_eq!(err.category, ErrorCategory::Runtime);
+
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(350), listener.accept())
+                .await
+                .is_err(),
+            "terminal framed runtime errors must not reconnect in a tight loop"
+        );
+
+        client_task.abort();
+    }
+
+    #[cfg(feature = "sdk-async")]
+    #[tokio::test]
     async fn native_event_stream_backpressures_when_consumer_is_slow() {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind listener");
         let authority = listener.local_addr().expect("listener address").to_string();
@@ -1412,7 +1958,8 @@ mod tests {
         let (tx, mut rx) = mpsc::channel::<Result<SdkEvent, SdkError>>(1);
         let endpoint = authority.clone();
         let client_task = tokio::spawn(async move {
-            run_rpc_http_event_stream(endpoint, Vec::new(), None, None, tx).await;
+            run_rpc_http_event_stream(endpoint, EventStreamRequestAuth::LocalTrusted, None, tx)
+                .await;
         });
 
         let first_request = accept_event_stream_request_with_events(
@@ -1483,6 +2030,72 @@ mod tests {
 
     #[cfg(feature = "sdk-async")]
     #[tokio::test]
+    async fn native_event_stream_rejection_preserves_typed_rpc_error() {
+        let rpc_response = RpcResponse {
+            id: 0,
+            result: None,
+            error: Some(RpcError::new(
+                "SDK_SECURITY_AUTH_REQUIRED",
+                "event stream requires authentication",
+            )),
+        };
+        let body = codec::encode_frame(&rpc_response).expect("encode rpc error frame");
+        let response_header = format!(
+            "HTTP/1.1 400 Bad Request\r\nContent-Type: application/msgpack\r\nContent-Length: {}\r\n\r\n",
+            body.len()
+        );
+        let mut response = response_header.into_bytes();
+        response.extend_from_slice(&body);
+        let mut stream = &response[..];
+
+        let err = read_rpc_http_event_header(&mut stream)
+            .await
+            .expect_err("event stream rejection should surface typed error");
+        assert_eq!(err.machine_code, code::SECURITY_AUTH_REQUIRED);
+        assert_eq!(err.category, ErrorCategory::Security);
+        assert!(err.is_user_actionable);
+    }
+
+    #[cfg(feature = "sdk-async")]
+    #[tokio::test]
+    async fn native_event_stream_rejection_rejects_oversized_body_before_allocation() {
+        let response_header = format!(
+            "HTTP/1.1 400 Bad Request\r\nContent-Type: application/msgpack\r\nContent-Length: {}\r\n\r\n",
+            RPC_EVENT_STREAM_MAX_FRAME_BYTES + 1
+        );
+        let mut stream = response_header.as_bytes();
+
+        let err = read_rpc_http_event_header(&mut stream)
+            .await
+            .expect_err("oversized rejection body should fail before allocation");
+        assert_eq!(err.category, ErrorCategory::Transport);
+        assert!(err.message.contains("event stream rejection body exceeded"));
+    }
+
+    #[cfg(feature = "sdk-async")]
+    #[tokio::test]
+    async fn native_event_stream_frame_preserves_framed_rpc_error() {
+        let rpc_response = RpcResponse {
+            id: 0,
+            result: None,
+            error: Some(RpcError::new(
+                "SDK_SECURITY_AUTH_REQUIRED",
+                "event stream requires authentication",
+            )),
+        };
+        let frame = codec::encode_frame(&rpc_response).expect("encode rpc error frame");
+        let mut stream = &frame[..];
+
+        let err = read_rpc_http_event_frame(&mut stream)
+            .await
+            .expect_err("framed rpc error should surface typed sdk error");
+        assert_eq!(err.machine_code, code::SECURITY_AUTH_REQUIRED);
+        assert_eq!(err.category, ErrorCategory::Security);
+        assert!(err.is_user_actionable);
+    }
+
+    #[cfg(feature = "sdk-async")]
+    #[tokio::test]
     async fn open_event_stream_uses_native_stream_for_mtls_auth() {
         let client = RpcBackendClient::new("127.0.0.1:9");
         {
@@ -1502,6 +2115,32 @@ mod tests {
             .expect("stream creation should not fall back for mtls");
 
         assert!(stream.is_some(), "mTLS sessions should use the native stream connector");
+    }
+
+    #[test]
+    fn rpc_response_reader_rejects_oversized_sync_response() {
+        let response = vec![0_u8; RPC_HTTP_RESPONSE_MAX_BYTES + 1];
+        let mut cursor = std::io::Cursor::new(response);
+
+        let err = RpcBackendClient::read_http_response_to_end(&mut cursor)
+            .expect_err("oversized response should fail");
+
+        assert_eq!(err.category, ErrorCategory::Transport);
+        assert!(err.message.contains("rpc response exceeded"));
+    }
+
+    #[cfg(feature = "sdk-async")]
+    #[tokio::test]
+    async fn rpc_response_reader_rejects_oversized_async_response() {
+        let response = vec![0_u8; RPC_HTTP_RESPONSE_MAX_BYTES + 1];
+        let mut cursor = std::io::Cursor::new(response);
+
+        let err = RpcBackendClient::read_http_response_to_end_async(&mut cursor)
+            .await
+            .expect_err("oversized response should fail");
+
+        assert_eq!(err.category, ErrorCategory::Transport);
+        assert!(err.message.contains("rpc response exceeded"));
     }
 
     #[test]

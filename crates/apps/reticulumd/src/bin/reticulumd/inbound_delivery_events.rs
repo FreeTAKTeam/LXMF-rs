@@ -3,6 +3,7 @@ use lxmf::{inbound_decode::InboundPayloadMode, WireMessage};
 use reticulum_daemon::inbound_delivery::{
     annotate_inbound_record_stamp_status, decode_inbound_payload,
     decode_inbound_payload_with_diagnostics, evaluate_inbound_stamp_policy,
+    inbound_record_allowed_by_delivery_policy,
 };
 use rns_rpc::{MessageRecord, RpcDaemon};
 use rns_transport::hash::AddressHash;
@@ -43,6 +44,10 @@ pub(super) async fn accept_delivery_resource(
             InboundPayloadMode::FullWire,
         )
         .await;
+        annotate_direct_delivery_transport_metadata(&mut record, 2);
+        if !inbound_record_allowed_by_delivery_policy(daemon, &record) {
+            return;
+        }
         let _ = daemon.accept_inbound_with_raw(record, data);
     }
 }
@@ -103,6 +108,17 @@ pub(super) async fn accept_delivery_packet(
         }
         annotate_inbound_signature_status(transport, &mut record, destination, data, payload_mode)
             .await;
+        let method = match payload_mode {
+            InboundPayloadMode::DestinationStripped => 1,
+            InboundPayloadMode::FullWire => 2,
+        };
+        annotate_direct_delivery_transport_metadata(&mut record, method);
+        if !inbound_record_allowed_by_delivery_policy(daemon, &record) {
+            return;
+        }
+        if matches!(daemon.message_exists(record.id.as_str()), Ok(true)) {
+            return;
+        }
         daemon.record_inbound_peer_activity(&record.source, data.len());
         let _ = daemon.accept_inbound_with_raw(record, data);
     }
@@ -184,6 +200,14 @@ async fn annotate_inbound_signature_status(
         lxmf.insert("signature_checked".to_string(), Value::Bool(checked));
         lxmf.insert("signature_valid".to_string(), Value::Bool(valid));
         lxmf.insert("signature_status".to_string(), Value::String(reason));
+    });
+}
+
+fn annotate_direct_delivery_transport_metadata(record: &mut MessageRecord, method: u8) {
+    annotate_lxmf_metadata(record, |lxmf| {
+        lxmf.insert("method".to_string(), Value::from(method));
+        lxmf.insert("transport_encrypted".to_string(), Value::Bool(true));
+        lxmf.insert("transport_encryption".to_string(), Value::String("Curve25519".to_string()));
     });
 }
 

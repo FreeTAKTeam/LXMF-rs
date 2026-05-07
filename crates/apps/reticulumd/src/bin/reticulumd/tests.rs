@@ -1,6 +1,7 @@
 use crate::bootstrap::{
-    enforce_startup_policy, mark_interface_runtime_fields, mark_interface_startup_status,
-    select_tcp_server_bind, InterfaceStartupFailure,
+    configure_startup_rpc_token_auth, enforce_rpc_bind_security, enforce_startup_policy,
+    mark_interface_runtime_fields, mark_interface_startup_status, select_tcp_server_bind,
+    InterfaceStartupFailure, RpcTlsConfig,
 };
 use crate::bridge::{
     validate_delivery_request, PeerCrypto, RequestedDeliveryMethod, TransportBridge,
@@ -28,6 +29,94 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tempfile::TempDir;
+
+#[test]
+fn cli_defaults_to_local_unix_rpc_without_tcp_bind() {
+    let args = <Args as clap::Parser>::parse_from(["reticulumd"]);
+    assert_eq!(args.rpc, None);
+    assert_eq!(args.rpc_unix, Some(PathBuf::from(crate::DEFAULT_RPC_UNIX_PATH)));
+}
+
+#[test]
+fn rpc_bind_security_allows_loopback_tcp_without_remote_auth() {
+    let daemon = RpcDaemon::test_instance();
+    let addr = "127.0.0.1:4242".parse().expect("loopback addr");
+
+    enforce_rpc_bind_security(Some(&addr), None, &daemon);
+}
+
+#[test]
+#[should_panic(expected = "remote TCP RPC bind")]
+fn rpc_bind_security_rejects_unspecified_tcp_without_remote_auth() {
+    let daemon = RpcDaemon::test_instance();
+    let addr = "0.0.0.0:4242".parse().expect("remote addr");
+
+    enforce_rpc_bind_security(Some(&addr), None, &daemon);
+}
+
+#[test]
+fn rpc_bind_security_allows_remote_tcp_with_mtls_client_ca() {
+    let daemon = RpcDaemon::test_instance();
+    let addr = "0.0.0.0:4242".parse().expect("remote addr");
+    let tls = RpcTlsConfig {
+        cert_chain_path: PathBuf::from("server.pem"),
+        private_key_path: PathBuf::from("server.key"),
+        client_ca_path: Some(PathBuf::from("client-ca.pem")),
+    };
+
+    enforce_rpc_bind_security(Some(&addr), Some(&tls), &daemon);
+}
+
+#[test]
+fn rpc_bind_security_allows_remote_tcp_with_persisted_token_auth() {
+    let daemon = RpcDaemon::test_instance();
+    let response = daemon
+        .handle_rpc(RpcRequest {
+            id: 1,
+            method: "sdk_negotiate_v2".to_string(),
+            params: Some(json!({
+                "supported_contract_versions": [2],
+                "requested_capabilities": [],
+                "config": {
+                    "profile": "desktop-full",
+                    "bind_mode": "remote",
+                    "auth_mode": "token",
+                    "rpc_backend": {
+                        "token_auth": {
+                            "issuer": "test-issuer",
+                            "audience": "test-audience",
+                            "jti_cache_ttl_ms": 30000,
+                            "clock_skew_ms": 0,
+                            "shared_secret": "test-secret"
+                        }
+                    }
+                }
+            })),
+        })
+        .expect("negotiate token auth");
+    assert!(response.error.is_none());
+    let addr = "0.0.0.0:4242".parse().expect("remote addr");
+
+    enforce_rpc_bind_security(Some(&addr), None, &daemon);
+}
+
+#[test]
+fn startup_token_auth_configures_remote_rpc_before_bind_guard() {
+    let daemon = RpcDaemon::test_instance();
+    let secret_env = format!("LXMF_TEST_RPC_SECRET_{}", now_unix_ms_for_test());
+    std::env::set_var(&secret_env, "test-secret");
+    let mut args = test_args(PathBuf::from(":memory:"), None, None, false);
+    args.rpc = Some("0.0.0.0:4242".to_string());
+    args.rpc_token_issuer = Some("test-issuer".to_string());
+    args.rpc_token_audience = Some("test-audience".to_string());
+    args.rpc_token_secret_env = Some(secret_env.clone());
+    let addr = "0.0.0.0:4242".parse().expect("remote addr");
+
+    configure_startup_rpc_token_auth(&args, &daemon);
+    enforce_rpc_bind_security(Some(&addr), None, &daemon);
+
+    std::env::remove_var(secret_env);
+}
 
 #[test]
 fn opportunistic_payload_strips_destination_prefix() {
@@ -110,7 +199,7 @@ async fn test_transport_bridge_fixture_with_peer(
             ),
         },
     );
-    let (receipt_tx, _receipt_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (receipt_tx, _receipt_rx) = tokio::sync::mpsc::channel(16);
 
     let bridge = Arc::new(TransportBridge::new(
         transport,
@@ -153,13 +242,20 @@ async fn transport_bridge_regenerates_propagation_app_data_from_daemon_state() {
                 "target_cost": 22,
                 "stamp_cost_flexibility": 6,
                 "peering_cost": 17,
+                "propagation_limit": 333,
+                "sync_limit": 999,
             })),
         })
         .expect("enable propagation");
 
     let app_data =
         bridge.current_propagation_announce_app_data_for_test().expect("propagation app data");
+    let decoded = rmp_serde::from_slice::<rmpv::Value>(app_data.as_slice())
+        .expect("decode propagation app data");
+    let entries = decoded.as_array().expect("propagation app data array");
 
+    assert_eq!(entries.get(3).and_then(rmpv::Value::as_u64), Some(333));
+    assert_eq!(entries.get(4).and_then(rmpv::Value::as_u64), Some(999));
     assert_eq!(pn_stamp_cost_from_app_data(app_data.as_slice()), Some(22));
     assert_eq!(pn_stamp_cost_flexibility_from_app_data(app_data.as_slice()), Some(6));
     assert_eq!(pn_peering_cost_from_app_data(app_data.as_slice()), Some(17));
@@ -1231,7 +1327,7 @@ fn test_args(
     strict_interface_startup: bool,
 ) -> Args {
     Args {
-        rpc: "127.0.0.1:0".to_string(),
+        rpc: Some("127.0.0.1:0".to_string()),
         db,
         config,
         identity: None,
@@ -1241,6 +1337,11 @@ fn test_args(
         rpc_tls_cert: None,
         rpc_tls_key: None,
         rpc_tls_client_ca: None,
+        rpc_token_issuer: None,
+        rpc_token_audience: None,
+        rpc_token_secret_env: None,
+        rpc_token_jti_ttl_ms: 60_000,
+        rpc_token_clock_skew_ms: 5_000,
         rpc_unix: None,
     }
 }

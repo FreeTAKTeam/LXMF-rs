@@ -47,7 +47,7 @@ pub(super) struct TransportStartupInput<'a> {
     pub(super) configured_interfaces: Vec<InterfaceRecord>,
     pub(super) receipt_map: Arc<Mutex<HashMap<String, String>>>,
     pub(super) receipt_tx:
-        tokio::sync::mpsc::UnboundedSender<reticulum_daemon::receipt_bridge::ReceiptEvent>,
+        tokio::sync::mpsc::Sender<reticulum_daemon::receipt_bridge::ReceiptEvent>,
     pub(super) propagation_control_enabled: bool,
 }
 

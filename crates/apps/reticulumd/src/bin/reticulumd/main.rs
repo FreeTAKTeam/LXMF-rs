@@ -19,11 +19,14 @@ mod tests;
 use clap::Parser;
 use std::path::PathBuf;
 
+const DEFAULT_RPC_UNIX_PATH: &str = "/tmp/lxmf-rpc.sock";
+
 #[derive(Parser, Debug)]
 #[command(name = "reticulumd")]
 struct Args {
-    #[arg(long, default_value = "127.0.0.1:4243")]
-    rpc: String,
+    /// Optional TCP RPC bind address. TCP is opt-in; local Unix RPC is enabled by default.
+    #[arg(long)]
+    rpc: Option<String>,
     #[arg(long, default_value = "reticulum.db")]
     db: PathBuf,
     #[arg(long)]
@@ -43,6 +46,17 @@ struct Args {
     #[arg(long)]
     rpc_tls_client_ca: Option<PathBuf>,
     #[arg(long)]
+    rpc_token_issuer: Option<String>,
+    #[arg(long)]
+    rpc_token_audience: Option<String>,
+    /// Environment variable containing the remote RPC token shared secret.
+    #[arg(long)]
+    rpc_token_secret_env: Option<String>,
+    #[arg(long, default_value_t = 60_000)]
+    rpc_token_jti_ttl_ms: u64,
+    #[arg(long, default_value_t = 5_000)]
+    rpc_token_clock_skew_ms: u64,
+    #[arg(long, default_value = DEFAULT_RPC_UNIX_PATH)]
     rpc_unix: Option<PathBuf>,
 }
 

@@ -34,6 +34,13 @@ RPC request/response bodies are framed as:
 - First 4 bytes: big-endian payload length (`u32`)
 - Remaining bytes: MessagePack-encoded object
 
+Frame payloads are capped at 16 MiB. Decoders must reject larger declared
+lengths before waiting for the remaining body, and HTTP `POST /rpc` bodies must
+reject content lengths larger than the 4-byte prefix plus the maximum payload.
+HTTP request headers are capped at 64 KiB total, 8 KiB per line, and 128 header
+fields. SDK RPC HTTP response reads are bounded to the response header cap plus
+one maximum framed RPC body.
+
 Request object:
 - `id: u64`
 - `method: string`
@@ -57,6 +64,18 @@ All methods below are required for full CLI feature coverage.
 : Params keys: `id`, `source`, `destination`, `title`, `content` (optional: `fields`, `method`, `stamp_cost`, `include_ticket`, `try_propagation_on_fail`, `source_private_key`).
 - `send_message`
 : Compatibility server method with params keys: `id`, `source`, `destination`, `title`, `content` (optional: `fields`, `source_private_key`).
+- `record_receipt`
+: Params keys: `message_id`, `status`.
+- `message_delivery_trace`
+: Params keys: `message_id`.
+- `get_outbound_progress`
+: Params keys: `message_id` or `lxm_hash`; returns current outbound progress or `null` when the message cannot be found.
+- `get_outbound_lxm_stamp_cost`
+: Params keys: `message_id` or `lxm_hash`; returns the normal stamp cost, or `null` when a ticket stamp is being used.
+- `get_outbound_lxm_propagation_stamp_cost`
+: Params keys: `message_id` or `lxm_hash`; returns the propagation stamp target cost when known.
+- `sdk_cancel_message_v2`
+: Params keys: `message_id`.
 
 ### Identity / status
 - `daemon_status_ex` (no params)
@@ -88,6 +107,12 @@ Startup policy notes:
 
 - `reticulumd --strict-interface-startup` makes startup/preflight interface failures fatal.
 - Strict preflight currently includes `tcp_client` connect checks (2s timeout) and serial port open checks.
+- TCP RPC binds on non-loopback addresses fail at startup unless a persisted SDK runtime config
+  has `bind_mode=remote` with `auth_mode=token`/`mtls`, or mTLS client authentication is configured
+  with `--rpc-tls-client-ca`.
+- First-run remote token auth can be configured at daemon startup with `--rpc-token-issuer`,
+  `--rpc-token-audience`, and `--rpc-token-secret-env`. The secret value is read from the named
+  environment variable, not from argv.
 
 ### Interface mutation policy (`set_interfaces` and `reload_config`)
 
@@ -112,11 +137,22 @@ The following contract is mandatory in v1:
 : Params keys: `transient_id`, `payload_hex`
 - `propagation_fetch`
 : Params keys: `transient_id`
+- `propagation_remote_sync`
+: Params keys: `remote`, `peer` (optional: `identity_private_key_hex`, `timeout_secs`).
+  `propagation_status.propagation.sync_state` uses Python `LXMRouter.PR_*`
+  values for remote sync lifecycle: request sent `0x04`, complete `0x07`,
+  failed `0xfe`.
+- `propagation_acknowledge_sync_completion`
+: Optional params keys: `reset_state`, `failure_state`. Mirrors Python
+  `acknowledge_sync_completion`: clears progress, resets completed states to
+  idle, and preserves failure states unless `reset_state` is true.
+- `propagation_remote_unpeer`
+: Params keys: `remote`, `peer` (optional: `identity_private_key_hex`, `timeout_secs`).
 
 ### Stamp / tickets
 - `stamp_policy_get` (no params)
 - `stamp_policy_set`
-: Params keys: `target_cost`, `flexibility`
+: Params keys: `target_cost`, `flexibility`, `enforce`
 - `ticket_generate`
 : Params keys: `destination`, `ttl_secs`
 

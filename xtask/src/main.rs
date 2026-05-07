@@ -48,6 +48,14 @@ const SECURITY_POLICY_DOC_PATH: &str = ".github/SECURITY.md";
 const SECURITY_THREAT_MODEL_PATH: &str = "docs/adr/0004-sdk-v25-threat-model.md";
 const CRYPTO_AGILITY_ADR_PATH: &str = "docs/adr/0007-crypto-agility-roadmap.md";
 const SECURITY_REVIEW_CHECKLIST_PATH: &str = "docs/runbooks/security-review-checklist.md";
+const BLOCKING_SLEEP_SCAN_ROOTS: &[&str] = &[
+    "crates/apps/reticulumd/src",
+    "crates/libs/lxmf-sdk/src",
+    "crates/libs/rns-rpc/src",
+    "crates/libs/rns-transport/src",
+];
+const BLOCKING_SLEEP_ALLOWLIST: &[(&str, &str)] =
+    &[("crates/libs/lxmf-sdk/src/app/control.rs", "std::thread::sleep")];
 const SDK_DOCS_CHECKLIST_PATH: &str = "docs/runbooks/sdk-docs-checklist.md";
 const COMPLIANCE_PROFILES_RUNBOOK_PATH: &str = "docs/runbooks/compliance-profiles.md";
 const REFERENCE_INTEGRATIONS_RUNBOOK_PATH: &str = "docs/runbooks/reference-integrations.md";
@@ -106,20 +114,7 @@ const CANARY_CRITERIA_REPORT_JSON_PATH: &str =
 const GENERATED_MIGRATION_NOTES_PATH: &str =
     "target/release-readiness/generated-migration-notes.md";
 
-const RELEASE_BINARIES: &[&str] = &[
-    "lxmf-cli",
-    "reticulumd",
-    "rncp",
-    "rnid",
-    "rnir",
-    "rnodeconf",
-    "rnpath",
-    "rnpkg",
-    "rnprobe",
-    "rnsd",
-    "rnstatus",
-    "rnx",
-];
+const RELEASE_BINARIES: &[&str] = &["lxmf-cli", "reticulumd", "rnsd", "rnx"];
 
 const GOVERNANCE_REQUIRED_CODEOWNER_PATHS: &[&str] = &[
     "/SECURITY.md",
@@ -225,6 +220,54 @@ const REQUIRED_SDK_DOCS: &[RequiredSdkDoc] = &[
         ],
     },
     RequiredSdkDoc {
+        path: "docs/sdk/polling-to-events-migration.md",
+        headings: &[
+            "# Polling to Events Migration",
+            "## Migration Target",
+            "## Before: Periodic Polling",
+            "## After: Native Event Stream",
+            "## Recovery Fallback",
+            "## Delivery State Changes",
+            "## Shutdown Changes",
+        ],
+    },
+    RequiredSdkDoc {
+        path: "docs/sdk/remote-mtls.md",
+        headings: &[
+            "# SDK Remote mTLS Example",
+            "## When to Use mTLS",
+            "## Certificate Inputs",
+            "## Start `reticulumd`",
+            "## Configure the SDK Client",
+            "## Event Streams",
+            "## Rotation and Recovery",
+        ],
+    },
+    RequiredSdkDoc {
+        path: "docs/sdk/error-handling.md",
+        headings: &[
+            "# SDK Error Handling Guide",
+            "## Error Shape",
+            "## Retry Policy",
+            "## Idempotency",
+            "## Queue Pressure",
+            "## Connectivity and Runtime Failures",
+            "## Security Failures",
+        ],
+    },
+    RequiredSdkDoc {
+        path: "docs/sdk/delivery-states.md",
+        headings: &[
+            "# SDK Delivery State Guide",
+            "## State Model",
+            "## State Meanings",
+            "## Terminality",
+            "## Send Acceptance Versus Delivery",
+            "## Event Ordering",
+            "## Recovery and Reconciliation",
+        ],
+    },
+    RequiredSdkDoc {
         path: "docs/sdk/advanced-embedding.md",
         headings: &[
             "# SDK Advanced Embedding",
@@ -240,6 +283,10 @@ const REQUIRED_SDK_DOC_CHECKLIST_ITEMS: &[&str] = &[
     "- [x] docs/sdk/quickstart.md",
     "- [x] docs/sdk/configuration-profiles.md",
     "- [x] docs/sdk/lifecycle-and-events.md",
+    "- [x] docs/sdk/polling-to-events-migration.md",
+    "- [x] docs/sdk/remote-mtls.md",
+    "- [x] docs/sdk/delivery-states.md",
+    "- [x] docs/sdk/error-handling.md",
     "- [x] docs/sdk/advanced-embedding.md",
     "- [x] README.md includes SDK guide links",
     "- [x] docs/architecture/overview.md links to SDK guide index",
@@ -2214,6 +2261,86 @@ fn run_security_review_check() -> Result<()> {
         bail!(
             "security review checklist requires at least 6 PASS controls in {SECURITY_REVIEW_CHECKLIST_PATH}"
         );
+    }
+    run_no_blocking_sleep_check()?;
+    run_no_unbounded_runtime_channel_check()?;
+    Ok(())
+}
+
+fn run_no_blocking_sleep_check() -> Result<()> {
+    let mut violations = Vec::new();
+    for root in BLOCKING_SLEEP_SCAN_ROOTS {
+        let mut files = Vec::new();
+        collect_files(Path::new(root), &mut files)?;
+        for path in files {
+            if path.extension().and_then(|value| value.to_str()) != Some("rs") {
+                continue;
+            }
+            let path_text = path.to_string_lossy().replace('\\', "/");
+            let contents = fs::read_to_string(path.as_path())
+                .with_context(|| format!("read {}", path.display()))?;
+            let mut in_test_module = false;
+            for (idx, line) in contents.lines().enumerate() {
+                if line.trim_start().starts_with("#[cfg(test)]") {
+                    in_test_module = true;
+                }
+                if in_test_module {
+                    continue;
+                }
+                if !(line.contains("std::thread::sleep") || line.contains("thread::sleep")) {
+                    continue;
+                }
+                if BLOCKING_SLEEP_ALLOWLIST.iter().any(|(allowed_path, marker)| {
+                    path_text == *allowed_path && line.contains(marker)
+                }) {
+                    continue;
+                }
+                violations.push(format!("{}:{}: {}", path_text, idx + 1, line.trim()));
+            }
+        }
+    }
+
+    if !violations.is_empty() {
+        bail!(
+            "blocking thread sleep found in production runtime paths:\n{}",
+            violations.join("\n")
+        );
+    }
+    Ok(())
+}
+
+fn run_no_unbounded_runtime_channel_check() -> Result<()> {
+    let mut violations = Vec::new();
+    for root in BLOCKING_SLEEP_SCAN_ROOTS {
+        let mut files = Vec::new();
+        collect_files(Path::new(root), &mut files)?;
+        for path in files {
+            if path.extension().and_then(|value| value.to_str()) != Some("rs") {
+                continue;
+            }
+            let path_text = path.to_string_lossy().replace('\\', "/");
+            let contents = fs::read_to_string(path.as_path())
+                .with_context(|| format!("read {}", path.display()))?;
+            let mut in_test_module = false;
+            for (idx, line) in contents.lines().enumerate() {
+                if line.trim_start().starts_with("#[cfg(test)]") {
+                    in_test_module = true;
+                }
+                if in_test_module {
+                    continue;
+                }
+                if line.contains("unbounded_channel")
+                    || line.contains("UnboundedSender")
+                    || line.contains("UnboundedReceiver")
+                {
+                    violations.push(format!("{}:{}: {}", path_text, idx + 1, line.trim()));
+                }
+            }
+        }
+    }
+
+    if !violations.is_empty() {
+        bail!("unbounded runtime channel found in production paths:\n{}", violations.join("\n"));
     }
     Ok(())
 }

@@ -8,6 +8,7 @@ struct ResourceReceiver {
     received: usize,
     received_bytes: u64,
     total_bytes: u64,
+    data_size: u64,
     encrypted: bool,
     compressed: bool,
     split: bool,
@@ -41,7 +42,7 @@ enum PartOutcome {
 impl ResourceReceiver {
     fn new(adv: &ResourceAdvertisement, link_id: AddressHash) -> Result<Self, RnsError> {
         let now = Instant::now();
-        let max_parts = adv.transfer_size.max(1);
+        let max_parts = max_advertised_parts(adv.transfer_size)?;
         if adv.parts == 0 || u64::from(adv.parts) > max_parts {
             return Err(RnsError::InvalidArgument);
         }
@@ -55,6 +56,7 @@ impl ResourceReceiver {
             received: 0,
             received_bytes: 0,
             total_bytes: adv.transfer_size,
+            data_size: adv.data_size,
             encrypted: adv.encrypted(),
             compressed: adv.compressed(),
             split: (adv.flags & FLAG_SPLIT) == FLAG_SPLIT,
@@ -169,9 +171,18 @@ impl ResourceReceiver {
             };
 
             if self.compressed {
-                let mut decoder = BzDecoder::new(payload.as_slice());
-                let mut decompressed = Vec::new();
-                if decoder.read_to_end(&mut decompressed).is_err() {
+                let max_decompressed_size = max_decompressed_resource_size(self.data_size);
+                let decompressed = match decompress_resource_payload(
+                    payload.as_slice(),
+                    max_decompressed_size,
+                ) {
+                    Ok(decompressed) => decompressed,
+                    Err(()) => {
+                        self.status = ResourceStatus::Failed;
+                        return PartOutcome::Failed;
+                    }
+                };
+                if decompressed.len() > max_decompressed_size {
                     self.status = ResourceStatus::Failed;
                     return PartOutcome::Failed;
                 }
@@ -280,5 +291,40 @@ impl ResourceReceiver {
             received_parts: self.received,
             total_parts: self.parts.len(),
         }
+    }
+}
+
+fn max_decompressed_resource_size(advertised_data_size: u64) -> usize {
+    usize::try_from(advertised_data_size)
+        .unwrap_or(AUTO_COMPRESS_MAX_SIZE)
+        .min(AUTO_COMPRESS_MAX_SIZE)
+}
+
+fn max_advertised_parts(transfer_size: u64) -> Result<u64, RnsError> {
+    if transfer_size == 0 || transfer_size > MAX_INBOUND_RESOURCE_TRANSFER_SIZE {
+        return Err(RnsError::InvalidArgument);
+    }
+    let packet_mdu = PACKET_MDU as u64;
+    Ok(transfer_size.div_ceil(packet_mdu).max(1))
+}
+
+fn decompress_resource_payload(payload: &[u8], max_size: usize) -> Result<Vec<u8>, ()> {
+    let mut decoder = BzDecoder::new(payload);
+    let mut decompressed = Vec::new();
+    let limit = max_size.checked_add(1).ok_or(())?;
+    let read = decoder
+        .by_ref()
+        .take(limit as u64)
+        .read_to_end(&mut decompressed)
+        .map_err(|_| ())?;
+    if read > max_size || decompressed.len() > max_size {
+        return Err(());
+    }
+
+    let mut trailing = [0u8; 1];
+    match decoder.read(&mut trailing) {
+        Ok(0) => Ok(decompressed),
+        Ok(_) => Err(()),
+        Err(_) => Err(()),
     }
 }

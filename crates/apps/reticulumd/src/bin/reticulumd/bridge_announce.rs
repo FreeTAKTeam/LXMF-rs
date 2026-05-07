@@ -34,6 +34,8 @@ impl TransportBridge {
             PropagationNodeAnnounceConfig {
                 enabled: state.enabled,
                 timebase: now_secs_i64(),
+                transfer_limit_kb: state.propagation_limit,
+                sync_limit_kb: state.sync_limit,
                 stamp_cost: if state.target_cost > 0 {
                     state.target_cost
                 } else {
@@ -43,7 +45,6 @@ impl TransportBridge {
                 peering_cost: state
                     .peering_cost
                     .unwrap_or_else(|| PropagationNodeAnnounceConfig::default().peering_cost),
-                ..PropagationNodeAnnounceConfig::default()
             },
         )
         .or(Some(fallback))

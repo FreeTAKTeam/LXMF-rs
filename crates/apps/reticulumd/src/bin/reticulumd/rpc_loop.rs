@@ -2,7 +2,7 @@ use super::bootstrap::RpcTlsConfig;
 #[path = "rpc_access_log.rs"]
 mod rpc_access_log;
 use rns_rpc::rpc::codec;
-use rns_rpc::{http, RpcDaemon, RpcRequest};
+use rns_rpc::{http, RpcDaemon, RpcError, RpcRequest, RpcResponse};
 use rpc_access_log::{emit_rpc_access_log, parse_request_log_meta};
 use rustls::server::WebPkiClientVerifier;
 use rustls::{RootCertStore, ServerConfig};
@@ -17,6 +17,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 #[cfg(unix)]
 use tokio::net::UnixListener;
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::watch;
 use tokio::time::{timeout, Duration};
 use tokio_rustls::server::TlsStream;
 use tokio_rustls::TlsAcceptor;
@@ -26,91 +27,199 @@ use x509_parser::prelude::{FromDer, GeneralName, X509Certificate};
 const RPC_READ_TIMEOUT: Duration = Duration::from_secs(5);
 const RPC_MAX_HEADER_BYTES: usize = 16 * 1024;
 const RPC_MAX_BODY_BYTES: usize = 1024 * 1024;
+type ShutdownReceiver = watch::Receiver<bool>;
 
 pub(super) async fn run_rpc_loop(
-    addr: SocketAddr,
+    addr: Option<SocketAddr>,
     daemon: Arc<RpcDaemon>,
     tls: Option<RpcTlsConfig>,
     unix_socket: Option<PathBuf>,
 ) {
-    if let Some(path) = unix_socket {
-        let daemon_for_unix = daemon.clone();
-        tokio::spawn(async move {
-            run_unix_rpc_loop(path, daemon_for_unix).await;
-        });
-    }
-    match tls {
-        Some(config) => run_tls_rpc_loop(addr, daemon, config).await,
-        None => run_plain_rpc_loop(addr, daemon).await,
+    let (shutdown_tx, shutdown_rx) = watch::channel(false);
+    tokio::spawn(async move {
+        match tokio::signal::ctrl_c().await {
+            Ok(()) => {
+                println!("[daemon] shutdown signal received");
+                let _ = shutdown_tx.send(true);
+            }
+            Err(err) => {
+                eprintln!("[daemon] failed to install shutdown signal handler: {}", err);
+            }
+        }
+    });
+    run_rpc_loop_until(addr, daemon, tls, unix_socket, shutdown_rx).await;
+}
+
+pub(super) async fn run_rpc_loop_until(
+    addr: Option<SocketAddr>,
+    daemon: Arc<RpcDaemon>,
+    tls: Option<RpcTlsConfig>,
+    unix_socket: Option<PathBuf>,
+    shutdown: ShutdownReceiver,
+) {
+    match (addr, tls, unix_socket) {
+        (Some(addr), tls, unix_socket) => {
+            let unix_handle = if let Some(path) = unix_socket {
+                let daemon_for_unix = daemon.clone();
+                let shutdown_for_unix = shutdown.clone();
+                Some(tokio::spawn(async move {
+                    run_unix_rpc_loop(path, daemon_for_unix, shutdown_for_unix).await;
+                }))
+            } else {
+                None
+            };
+            match tls {
+                Some(config) => run_tls_rpc_loop(addr, daemon, config, shutdown).await,
+                None => run_plain_rpc_loop(addr, daemon, shutdown).await,
+            }
+            if let Some(handle) = unix_handle {
+                let _ = handle.await;
+            }
+        }
+        (None, None, Some(path)) => run_unix_rpc_loop(path, daemon, shutdown).await,
+        (None, Some(_), Some(_)) => {
+            panic!("--rpc is required when TLS RPC options are configured");
+        }
+        (None, _, None) => {
+            panic!("no RPC listener configured; use --rpc-unix or --rpc");
+        }
     }
 }
 
-async fn run_plain_rpc_loop(addr: SocketAddr, daemon: Arc<RpcDaemon>) {
+async fn run_plain_rpc_loop(
+    addr: SocketAddr,
+    daemon: Arc<RpcDaemon>,
+    mut shutdown: ShutdownReceiver,
+) {
     let listener = TcpListener::bind(addr).await.expect("bind rpc listener");
     println!("reticulumd listening on http://{}", addr);
 
     loop {
-        let (stream, peer_addr) = listener.accept().await.expect("accept rpc socket");
-        let daemon = daemon.clone();
-        tokio::spawn(async move {
-            handle_connection(stream, peer_addr, daemon.as_ref(), None).await;
-        });
+        tokio::select! {
+            shutdown_result = shutdown.changed() => {
+                if shutdown_result.is_err() || *shutdown.borrow() {
+                    println!("[daemon] rpc tcp listener shutting down");
+                    break;
+                }
+            }
+            accepted = listener.accept() => {
+                let (stream, peer_addr) = accepted.expect("accept rpc socket");
+                let daemon = daemon.clone();
+                tokio::spawn(async move {
+                    handle_connection(stream, peer_addr, daemon.as_ref(), None).await;
+                });
+            }
+        }
     }
 }
 
 #[cfg(unix)]
-async fn run_unix_rpc_loop(path: PathBuf, daemon: Arc<RpcDaemon>) {
-    if let Ok(metadata) = std::fs::metadata(&path) {
-        use std::os::unix::fs::FileTypeExt;
-        if metadata.file_type().is_socket() {
-            std::fs::remove_file(&path).expect("remove stale rpc unix socket");
-        } else {
-            panic!("refusing to remove non-socket rpc unix path {}", path.display());
-        }
-    }
+async fn run_unix_rpc_loop(path: PathBuf, daemon: Arc<RpcDaemon>, mut shutdown: ShutdownReceiver) {
+    prepare_rpc_unix_socket_path(&path).expect("prepare rpc unix socket path");
     let listener = UnixListener::bind(&path).expect("bind rpc unix socket");
     println!("reticulumd listening on unix:{}", path.display());
     let peer_addr = SocketAddr::from(([127, 0, 0, 1], 0));
 
     loop {
-        let (stream, _) = listener.accept().await.expect("accept rpc unix socket");
-        let daemon = daemon.clone();
-        tokio::spawn(async move {
-            handle_connection(stream, peer_addr, daemon.as_ref(), None).await;
-        });
+        tokio::select! {
+            shutdown_result = shutdown.changed() => {
+                if shutdown_result.is_err() || *shutdown.borrow() {
+                    println!("[daemon] rpc unix listener shutting down");
+                    break;
+                }
+            }
+            accepted = listener.accept() => {
+                let (stream, _) = accepted.expect("accept rpc unix socket");
+                let daemon = daemon.clone();
+                tokio::spawn(async move {
+                    handle_connection(stream, peer_addr, daemon.as_ref(), None).await;
+                });
+            }
+        }
     }
+    cleanup_rpc_unix_socket_path(&path).expect("cleanup rpc unix socket path");
+}
+
+#[cfg(unix)]
+fn prepare_rpc_unix_socket_path(path: &Path) -> io::Result<()> {
+    if let Ok(metadata) = std::fs::metadata(path) {
+        use std::os::unix::fs::FileTypeExt;
+        if metadata.file_type().is_socket() {
+            std::fs::remove_file(path)?;
+        } else {
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                format!("refusing to remove non-socket rpc unix path {}", path.display()),
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn cleanup_rpc_unix_socket_path(path: &Path) -> io::Result<()> {
+    if let Ok(metadata) = std::fs::metadata(path) {
+        use std::os::unix::fs::FileTypeExt;
+        if metadata.file_type().is_socket() {
+            std::fs::remove_file(path)?;
+        }
+    }
+    Ok(())
 }
 
 #[cfg(not(unix))]
-async fn run_unix_rpc_loop(path: PathBuf, _daemon: Arc<RpcDaemon>) {
+async fn run_unix_rpc_loop(path: PathBuf, _daemon: Arc<RpcDaemon>, _shutdown: ShutdownReceiver) {
     eprintln!(
         "[daemon] ignoring --rpc-unix {} because Unix sockets are not supported on this platform",
         path.display()
     );
 }
 
-async fn run_tls_rpc_loop(addr: SocketAddr, daemon: Arc<RpcDaemon>, config: RpcTlsConfig) {
+async fn run_tls_rpc_loop(
+    addr: SocketAddr,
+    daemon: Arc<RpcDaemon>,
+    config: RpcTlsConfig,
+    mut shutdown: ShutdownReceiver,
+) {
     let tls_server = build_tls_server_config(&config).expect("build rpc tls server config");
     let acceptor = TlsAcceptor::from(tls_server);
     let listener = TcpListener::bind(addr).await.expect("bind tls rpc listener");
     println!("reticulumd listening on https://{}", addr);
 
     loop {
-        let (stream, peer_addr) = listener.accept().await.expect("accept tls rpc socket");
-        let daemon = daemon.clone();
-        let acceptor = acceptor.clone();
-        tokio::spawn(async move {
-            match acceptor.accept(stream).await {
-                Ok(tls_stream) => {
-                    let transport_auth = extract_transport_auth(&tls_stream);
-                    handle_connection(tls_stream, peer_addr, daemon.as_ref(), Some(transport_auth))
-                        .await;
-                }
-                Err(err) => {
-                    eprintln!("[daemon] rpc tls handshake failed peer={} err={}", peer_addr, err);
+        tokio::select! {
+            shutdown_result = shutdown.changed() => {
+                if shutdown_result.is_err() || *shutdown.borrow() {
+                    println!("[daemon] rpc tls listener shutting down");
+                    break;
                 }
             }
-        });
+            accepted = listener.accept() => {
+                let (stream, peer_addr) = accepted.expect("accept tls rpc socket");
+                let daemon = daemon.clone();
+                let acceptor = acceptor.clone();
+                tokio::spawn(async move {
+                    match acceptor.accept(stream).await {
+                        Ok(tls_stream) => {
+                            let transport_auth = extract_transport_auth(&tls_stream);
+                            handle_connection(
+                                tls_stream,
+                                peer_addr,
+                                daemon.as_ref(),
+                                Some(transport_auth),
+                            )
+                            .await;
+                        }
+                        Err(err) => {
+                            eprintln!(
+                                "[daemon] rpc tls handshake failed peer={} err={}",
+                                peer_addr, err
+                            );
+                        }
+                    }
+                });
+            }
+        }
     }
 }
 
@@ -181,7 +290,8 @@ async fn handle_event_stream<S>(
         Some(peer_ip.as_str()),
         transport_auth.as_ref(),
     ) {
-        let response = http::build_error_response(&format!("rpc auth error: {}", error.message));
+        let response = http::build_rpc_error_response(0, error)
+            .unwrap_or_else(|err| http::build_error_response(&format!("rpc auth error: {err}")));
         let _ = stream.write_all(&response).await;
         let _ = stream.shutdown().await;
         return;
@@ -192,7 +302,9 @@ async fn handle_event_stream<S>(
     let first_batch = match poll_sdk_event_stream_batch(daemon, cursor.as_deref(), 256) {
         Ok(batch) => batch,
         Err(err) => {
-            let response = http::build_error_response(&format!("event stream error: {err}"));
+            let response = http::build_rpc_error_response(0, *err).unwrap_or_else(|encode_err| {
+                http::build_error_response(&format!("event stream error: {encode_err}"))
+            });
             let _ = stream.write_all(&response).await;
             let _ = stream.shutdown().await;
             return;
@@ -214,7 +326,14 @@ async fn handle_event_stream<S>(
         let batch = match poll_sdk_event_stream_batch(daemon, cursor.as_deref(), 256) {
             Ok(batch) => batch,
             Err(err) => {
-                eprintln!("[daemon] event stream catch-up error peer={} err={}", peer_addr, err);
+                eprintln!(
+                    "[daemon] event stream catch-up error peer={} code={} message={}",
+                    peer_addr, err.code, err.message
+                );
+                let response = RpcResponse { id: 0, result: None, error: Some(*err) };
+                if let Ok(frame) = codec::encode_frame(&response) {
+                    let _ = stream.write_all(&frame).await;
+                }
                 break;
             }
         };
@@ -234,8 +353,9 @@ async fn handle_event_stream<S>(
             Ok(event) if event.seq_no <= last_sent_seq => continue,
             Ok(event) => daemon.sdk_stream_event_frame(&event),
             Err(tokio::sync::broadcast::error::RecvError::Lagged(dropped_count)) => {
-                let seq_no = last_sent_seq.saturating_add(1);
-                daemon.sdk_stream_gap_frame(seq_no, dropped_count)
+                let expected_seq_no = last_sent_seq.saturating_add(1);
+                let observed_seq_no = expected_seq_no.saturating_add(dropped_count);
+                daemon.sdk_stream_gap_frame(expected_seq_no, observed_seq_no, dropped_count)
             }
             Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
         };
@@ -268,16 +388,16 @@ fn poll_sdk_event_stream_batch(
     daemon: &RpcDaemon,
     cursor: Option<&str>,
     max: usize,
-) -> Result<serde_json::Value, String> {
+) -> Result<serde_json::Value, Box<RpcError>> {
     let response = daemon
         .handle_rpc(RpcRequest {
             id: 0,
             method: "sdk_poll_events_v2".to_string(),
             params: Some(json!({ "cursor": cursor, "max": max })),
         })
-        .map_err(|err| err.to_string())?;
+        .map_err(|err| Box::new(RpcError::new("SDK_INTERNAL", err.to_string())))?;
     if let Some(error) = response.error {
-        return Err(format!("{}: {}", error.code, error.message));
+        return Err(Box::new(error));
     }
     Ok(response.result.unwrap_or(serde_json::Value::Null))
 }
@@ -535,7 +655,9 @@ fn parse_subject_alt_names(cert: &X509Certificate<'_>) -> Vec<String> {
 #[cfg(test)]
 mod rpc_loop_tests {
     use super::*;
-    use tokio::io::{duplex, AsyncWriteExt};
+    use tokio::io::{duplex, AsyncReadExt, AsyncWriteExt};
+    #[cfg(unix)]
+    use tokio::net::UnixStream;
 
     #[test]
     fn read_http_request_collects_complete_post_body() {
@@ -575,5 +697,105 @@ mod rpc_loop_tests {
             assert_eq!(err.kind(), io::ErrorKind::InvalidData);
             assert!(err.to_string().contains("maximum size"));
         });
+    }
+
+    #[test]
+    fn event_stream_invalid_cursor_returns_framed_rpc_error() {
+        let runtime =
+            tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+        runtime.block_on(async {
+            let daemon = RpcDaemon::test_instance();
+            let (mut client, server) = duplex(4096);
+            let peer_addr = SocketAddr::from(([127, 0, 0, 1], 4242));
+
+            let server_task = tokio::spawn(async move {
+                handle_event_stream(
+                    server,
+                    peer_addr,
+                    &daemon,
+                    "/events/stream?cursor=bad-cursor".to_string(),
+                    Vec::new(),
+                    None,
+                )
+                .await;
+            });
+
+            let mut response = Vec::new();
+            client.read_to_end(&mut response).await.expect("read stream rejection");
+            server_task.await.expect("event stream task");
+            assert!(response.starts_with(b"HTTP/1.1 200 OK\r\n"));
+            let header_end = http::find_header_end(&response).expect("response header end");
+            let frame = &response[(header_end + 4)..];
+            let rpc_response =
+                codec::decode_frame::<RpcResponse>(frame).expect("decode framed rpc error");
+            let error = rpc_response.error.expect("rpc error");
+            assert_eq!(error.code, "SDK_RUNTIME_INVALID_CURSOR");
+            assert_eq!(error.machine_code.as_deref(), Some("SDK_RUNTIME_INVALID_CURSOR"));
+        });
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn prepare_rpc_unix_socket_path_refuses_regular_file() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join("reticulumd.sock");
+        std::fs::write(&path, b"not a socket").expect("write regular file");
+
+        let err = prepare_rpc_unix_socket_path(&path).expect_err("regular file rejected");
+        assert_eq!(err.kind(), io::ErrorKind::AlreadyExists);
+        assert!(err.to_string().contains("non-socket"));
+        assert!(path.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unix_rpc_loop_removes_stale_socket_and_cleans_up_on_shutdown() {
+        let runtime =
+            tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+        runtime.block_on(async {
+            let temp = tempfile::tempdir().expect("tempdir");
+            let path = temp.path().join("reticulumd.sock");
+            let stale_listener = UnixListener::bind(&path).expect("bind stale socket");
+            drop(stale_listener);
+            assert!(path.exists());
+
+            let daemon = Arc::new(RpcDaemon::test_instance());
+            let (shutdown_tx, shutdown_rx) = watch::channel(false);
+            let task_path = path.clone();
+            let task =
+                tokio::spawn(
+                    async move { run_unix_rpc_loop(task_path, daemon, shutdown_rx).await },
+                );
+
+            assert!(wait_for_unix_connect(&path).await, "unix listener did not become ready");
+            shutdown_tx.send(true).expect("send shutdown");
+            timeout(Duration::from_secs(2), task)
+                .await
+                .expect("unix loop shutdown timeout")
+                .expect("join unix loop");
+            assert!(wait_for_path_removed(&path).await, "unix socket was not cleaned up");
+        });
+    }
+
+    #[cfg(unix)]
+    async fn wait_for_unix_connect(path: &Path) -> bool {
+        for _ in 0..50 {
+            if UnixStream::connect(path).await.is_ok() {
+                return true;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        false
+    }
+
+    #[cfg(unix)]
+    async fn wait_for_path_removed(path: &Path) -> bool {
+        for _ in 0..50 {
+            if !path.exists() {
+                return true;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        false
     }
 }

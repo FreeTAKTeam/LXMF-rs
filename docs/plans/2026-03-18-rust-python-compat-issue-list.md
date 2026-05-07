@@ -34,7 +34,18 @@ Status snapshot as of 2026-03-19:
   - [#113](https://github.com/FreeTAKTeam/LXMF-rs/pull/113): `10`
 - open follow-up on merged `15`:
   - [#111](https://github.com/FreeTAKTeam/LXMF-rs/pull/111): buffer callback parity on top of the merged channel buffer baseline
-- remaining numbered issues not yet under active PR: `25`
+- remaining numbered issues not yet under active PR: see
+  `docs/status/current-roadmap.md`; issue `25` is implemented in active
+  workspace and its body below is newer than this historical snapshot.
+
+Reassessment note as of 2026-05-07:
+
+- Issue `3` is closed by active delivery-mode handling in `reticulumd`; deeper
+  propagation-router behavior remains issue `4`.
+- Issue `34` is closed by active announce stamp-cost parsing, persistence, and
+  outbound send lookup.
+- Treat `docs/status/current-roadmap.md` as the current execution order when
+  this historical issue list disagrees with active evidence.
 ## Priority 1
 
 ### 1. Announce validation accepts destination-hash mismatch
@@ -83,13 +94,16 @@ Impact:
 
 ### 3. Requested LXMF delivery method is ignored
 
+Status: merged baseline in [#114](https://github.com/FreeTAKTeam/LXMF-rs/pull/114);
+deeper propagation-router parity remains tracked under issue `4`.
+
 Area: daemon send path, LXMF compatibility
 
 Rust behavior:
 
-- [`crates/apps/reticulumd/src/bin/reticulumd/bridge.rs`](crates/apps/reticulumd/src/bin/reticulumd/bridge.rs:289) receives `OutboundDeliveryOptions`
-- [`crates/apps/reticulumd/src/bin/reticulumd/bridge.rs`](crates/apps/reticulumd/src/bin/reticulumd/bridge.rs:292) discards them
-- the bridge then always tries direct-link delivery first and opportunistic fallback later
+- Active `reticulumd` bridge tests now cover requested delivery-mode handling.
+- Historical code pointers below are stale for the active workspace and are
+  retained only to explain the original finding.
 
 Python reference:
 
@@ -98,18 +112,30 @@ Python reference:
 
 Impact:
 
-- Rust does not honor client intent
-- propagated delivery is not a real mode
-- parity claims fail at the daemon API boundary
+- The baseline "delivery method ignored" gap is closed.
+- Propagated delivery is still not full Python propagation-node behavior; keep
+  parity claims constrained by issue `4`.
 
 ### 4. Propagated delivery is not implemented as Python propagation-node delivery
+
+Status: partial. Active propagated sends require a selected outbound
+propagation node, use that selected node to resolve/open a propagation link,
+and now expose the selected node through `propagation_status` and
+`daemon_status_ex`. Remote propagation sync calls also update started,
+completed, and failed sync lifecycle fields in propagation status. This is still
+not full Python propagation-node parity: peer sync/fetch/offer lifecycle and
+router side effects remain narrower than `LXMRouter`.
 
 Area: daemon routing, propagation
 
 Rust behavior:
 
-- propagation node selection exists in [`crates/libs/rns-rpc/src/rpc/daemon/dispatch_legacy_propagation.rs`](crates/libs/rns-rpc/src/rpc/daemon/dispatch_legacy_propagation.rs:191)
-- outbound send path in [`crates/apps/reticulumd/src/bin/reticulumd/bridge.rs`](crates/apps/reticulumd/src/bin/reticulumd/bridge.rs:289) never consults that selected node and never opens a propagation link
+- propagation node selection exists in [`crates/libs/rns-rpc/src/rpc/daemon/dispatch_legacy_propagation.rs`](crates/libs/rns-rpc/src/rpc/daemon/dispatch_legacy_propagation.rs) and updates public propagation status snapshots
+- remote propagation sync calls update `sync_state`, `state_name`,
+  `sync_progress`, `last_sync_started`, `last_sync_completed`, and
+  `last_sync_error` in the same public propagation status model
+- outbound propagated sends in [`crates/apps/reticulumd/src/bin/reticulumd/bridge_outbound.rs`](crates/apps/reticulumd/src/bin/reticulumd/bridge_outbound.rs) require the selected node and hand it to delivery tasks
+- propagation delivery tasks in [`crates/apps/reticulumd/src/bin/reticulumd/bridge_delivery_task.rs`](crates/apps/reticulumd/src/bin/reticulumd/bridge_delivery_task.rs) resolve/open the selected propagation link and send the packed payload
 
 Python reference:
 
@@ -118,7 +144,9 @@ Python reference:
 
 Impact:
 
-- Rust cannot truthfully claim propagated LXMF delivery support
+- Rust can no longer be described as ignoring the selected propagation node, but
+  it still cannot truthfully claim full Python propagation-node behavior until
+  peer sync/fetch/offer lifecycle and router side effects are equivalent.
 
 ### 5. Link activation has a proof race
 
@@ -374,29 +402,45 @@ Impact:
 
 ### 18. Inbound resource allocation is unbounded by advertised parts
 
+Status: implemented for active non-split Rust resource receiving. The receiver
+now rejects zero-sized and oversized transfer advertisements, bounds advertised
+part count by the Reticulum packet MDU rather than trusting `adv.parts`, and
+caps compressed payload expansion by the advertised uncompressed size and
+Python's 64 MiB auto-compress ceiling. Split/segmented resource support remains
+unsupported and is still rejected.
+
 Area: resources, daemon resilience
 
-Rust behavior:
+Active Rust behavior:
 
-- [`crates/libs/rns-transport/src/resource/receiver.rs`](crates/libs/rns-transport/src/resource/receiver.rs:35) allocates receive state directly from `adv.parts`
+- [`crates/libs/rns-transport/src/resource/receiver.rs`](crates/libs/rns-transport/src/resource/receiver.rs) validates transfer size, derives the maximum accepted part count from `transfer_size.div_ceil(PACKET_MDU)`, and rejects excessive `adv.parts` before allocating receive vectors
+- compressed payload assembly uses bounded decompression instead of unbounded `read_to_end`
+- tests cover unreasonable advertised parts, MDU-derived part-count bounds, retry cleanup, and bounded decompression
 
 Python reference:
 
 - Python also allocates from advertisement-derived counts, but its transfer model includes stronger watchdog and cancellation behavior in [`Reticulum/RNS/Resource.py`](Reticulum/RNS/Resource.py:608)
 
-Impact:
+Remaining caveat:
 
-- Rust daemon can be forced into excessive allocation with fewer recovery paths
+- Python supports segmented resources; Rust still rejects split advertisements
+  rather than implementing the full segmented transfer model
 
 ### 19. Inbound resource worker assumes every completed resource is LXMF
 
-Status: in progress in [#112](https://github.com/FreeTAKTeam/LXMF-rs/pull/112)
+Status: implemented for active `reticulumd` resource ingestion. The inbound
+worker resolves the resource's link destination first and only decodes completed
+resources for `lxmf.delivery` or `lxmf.propagation`; resources on non-LXMF
+destinations are ignored by the LXMF daemon worker instead of being forced
+through LXMF full-wire decoding.
 
 Area: daemon inbound pipeline
 
-Rust behavior:
+Active Rust behavior:
 
-- [`crates/apps/reticulumd/src/bin/reticulumd/inbound_worker.rs`](crates/apps/reticulumd/src/bin/reticulumd/inbound_worker.rs:46) always decodes completed resource payloads as LXMF full-wire messages
+- [`crates/apps/reticulumd/src/bin/reticulumd/inbound_worker.rs`](crates/apps/reticulumd/src/bin/reticulumd/inbound_worker.rs) calls `resolve_resource_destination()` before decoding resource payloads
+- [`crates/apps/reticulumd/src/bin/reticulumd/inbound_routing.rs`](crates/apps/reticulumd/src/bin/reticulumd/inbound_routing.rs) accepts `lxmf.delivery`, treats `lxmf.propagation` separately, and rejects non-LXMF link destinations
+- tests cover LXMF delivery acceptance, LXMF propagation detection, and non-delivery rejection
 
 Python reference:
 
@@ -404,16 +448,23 @@ Python reference:
 
 Impact:
 
-- Rust daemon will mishandle non-LXMF resource traffic on a shared link
+- The original generic-resource decode bug is closed for the active daemon
+  worker. Broader generic Reticulum resource APIs remain outside the LXMF daemon
+  ingestion path.
 
 ### 20. Path responses drop the original request tag
 
+Status: implemented in active workspace. Local path-request handling now passes
+the decoded request tag into destination path-response generation, and
+destinations cache path-response announce data by tag.
+
 Area: path discovery
 
-Rust behavior:
+Active Rust behavior:
 
-- [`crates/libs/rns-transport/src/transport/path.rs`](crates/libs/rns-transport/src/transport/path.rs:24) answers a path request with `path_response(OsRng, None)`
-- the original request tag is not preserved into the response path
+- [`crates/libs/rns-transport/src/transport/path.rs`](crates/libs/rns-transport/src/transport/path.rs) calls `path_response_with_tag(..., Some(request.tag_bytes.as_slice()))`
+- [`crates/libs/rns-transport/src/destination.rs`](crates/libs/rns-transport/src/destination.rs) caches tagged path-response announce payloads
+- tests cover cached path-response reuse for the same tag
 
 Python reference:
 
@@ -421,17 +472,20 @@ Python reference:
 
 Impact:
 
-- request/response correlation can diverge from Python behavior
-- pathfinding clients that rely on tag continuity can behave differently
+- The original tag-drop gap is closed for active local path responses.
 
 ### 21. Recursive path forwarding regenerates tags instead of preserving them
 
+Status: implemented in active workspace. Recursive path forwarding preserves
+the decoded incoming request tag when generating the forwarded request.
+
 Area: path discovery
 
-Rust behavior:
+Active Rust behavior:
 
-- [`crates/libs/rns-transport/src/transport/path.rs`](crates/libs/rns-transport/src/transport/path.rs:62) calls `generate_recursive(..., None)`
-- [`crates/libs/rns-transport/src/transport/path_requests.rs`](crates/libs/rns-transport/src/transport/path_requests.rs:196) generates a fresh random tag when none is passed
+- [`crates/libs/rns-transport/src/transport/path.rs`](crates/libs/rns-transport/src/transport/path.rs) calls `generate_recursive(..., Some(request.tag_bytes.clone()))`
+- [`crates/libs/rns-transport/src/transport/path_requests.rs`](crates/libs/rns-transport/src/transport/path_requests.rs) keeps supplied recursive tags intact
+- tests cover recursive path-request tag preservation
 
 Python reference:
 
@@ -439,16 +493,19 @@ Python reference:
 
 Impact:
 
-- recursive discovery initiated by Rust can diverge from Python path-request identity and duplicate suppression behavior
+- The original recursive tag regeneration gap is closed for active forwarding.
 
 ### 22. Path-request duplicate suppression has no bounded lifetime
 
+Status: implemented in active workspace. Duplicate `(destination, tag)` entries
+are stored with expiries and pruned before new decode decisions.
+
 Area: path discovery
 
-Rust behavior:
+Active Rust behavior:
 
-- [`crates/libs/rns-transport/src/transport/path_requests.rs`](crates/libs/rns-transport/src/transport/path_requests.rs:72) caches seen `(destination, tag)` pairs
-- [`crates/libs/rns-transport/src/transport/path_requests.rs`](crates/libs/rns-transport/src/transport/path_requests.rs:102) checks duplicates, but the cache is never expired or bounded
+- [`crates/libs/rns-transport/src/transport/path_requests.rs`](crates/libs/rns-transport/src/transport/path_requests.rs) stores seen `(destination, tag)` pairs with request-timeout expiry and queue-backed pruning
+- tests cover duplicate suppression and later acceptance after expiry
 
 Python reference:
 
@@ -456,167 +513,254 @@ Python reference:
 
 Impact:
 
-- Rust can suppress legitimate later path requests that Python would allow again
+- The original unbounded-lifetime duplicate suppression gap is closed.
 
 ### 23. Recursive path throttling is global instead of interface-aware
 
+Status: implemented in active workspace for recursive request caps and pending
+state. Pending recursive requests are counted per ingress interface, with
+expiry releasing per-interface capacity.
+
 Area: path discovery
 
-Rust behavior:
+Active Rust behavior:
 
-- [`crates/libs/rns-transport/src/transport/path_requests.rs`](crates/libs/rns-transport/src/transport/path_requests.rs:149) uses one global pending-destination map plus queue caps
+- [`crates/libs/rns-transport/src/transport/path_requests.rs`](crates/libs/rns-transport/src/transport/path_requests.rs) keys recursive pending state by `(destination, interface)` and tracks pending counts per interface
+- tests cover per-interface recursive suppression, queue caps, announce caps, and expiry-based capacity release
 
 Python reference:
 
 - Python keeps richer request state and interface-sensitive path discovery behavior in [`Reticulum/RNS/Transport.py`](Reticulum/RNS/Transport.py:118) and [`Reticulum/RNS/Transport.py`](Reticulum/RNS/Transport.py:595)
 
-Impact:
+Remaining caveat:
 
-- Rust recursion suppression and retry behavior differ on multi-interface nodes
+- This closes the confirmed global-throttle bug; broader Python announce
+  queueing and interface-mode forwarding behavior remain tracked by issues
+  `24` through `28`.
 
 ### 24. Interface-side announce queueing and pacing are missing
 
+Status: implemented in active workspace for outbound multi-hop announce
+broadcasts. Interfaces now maintain bounded per-interface announce queues,
+pace remote announce retransmission by interface bitrate and announce-cap
+budget, release queued entries on the transport announce maintenance tick, and
+prioritise lower-hop queued announces before farther paths.
+
 Area: announce propagation
 
-Rust behavior:
+Active Rust behavior:
 
-- Rust has only transport-global caps and no per-interface announce queue or bitrate pacing loop
-- [`crates/libs/rns-transport/src/transport/path_requests.rs`](crates/libs/rns-transport/src/transport/path_requests.rs:77) contains queue caps for recursive path requests, not interface announce shaping
+- [`crates/libs/rns-transport/src/iface.rs`](crates/libs/rns-transport/src/iface.rs) stores queued announces on each registered interface, deduplicates by destination, bounds queue length and lifetime, and releases the lowest-hop queued entry first
+- [`crates/libs/rns-transport/src/iface_runtime.rs`](crates/libs/rns-transport/src/iface_runtime.rs) computes Python-style announce pacing from serialized packet size, interface bitrate, and announce-cap percentage
+- [`crates/libs/rns-transport/src/transport/jobs.rs`](crates/libs/rns-transport/src/transport/jobs.rs) drains queued announces from the existing announce maintenance loop
+- tests cover immediate first transmission, later queued remote announces, and lower-hop release priority
 
 Python reference:
 
 - Python queues announces per interface and releases them according to interface bitrate and announce caps in [`Reticulum/RNS/Transport.py`](Reticulum/RNS/Transport.py:1030) and [`Reticulum/RNS/Interfaces/Interface.py`](Reticulum/RNS/Interfaces/Interface.py:246)
 
-Impact:
+Remaining caveat:
 
-- Rust will rebroadcast announces in cases where Python would defer or suppress them
+- Rust currently uses a conservative default interface bitrate/cap for generic
+  interfaces. Per-interface config file exposure and richer status reporting of
+  queued announce depth remain follow-up polish rather than the original
+  broadcast-immediately parity bug.
 
 ### 25. Ingress-limited held-announce release behavior is missing
 
+Status: implemented in active workspace. Ingress announce limiting is
+per-interface, unknown announces can be held instead of dropped, held entries
+are capacity-bounded, and release chooses the lowest-hop candidate after burst
+pressure clears.
+
 Area: announce propagation
 
-Rust behavior:
+Active Rust behavior:
 
-- [`crates/libs/rns-transport/src/transport/announce_limits.rs`](crates/libs/rns-transport/src/transport/announce_limits.rs:67) tracks simple destination-keyed limits
-- there is no held-announce buffer or deferred release path
+- [`crates/libs/rns-transport/src/transport/announce_limits.rs`](crates/libs/rns-transport/src/transport/announce_limits.rs) maintains per-interface held-announce maps, burst state, release timers, and capacity eviction
+- [`crates/libs/rns-transport/src/transport/announce.rs`](crates/libs/rns-transport/src/transport/announce.rs) revalidates and reinjects released held announces
+- tests cover per-interface ingress limiting, lowest-hop release, capacity eviction, known-route bypass, and path-response bypass
 
 Python reference:
 
 - Python can hold announces during ingress pressure and later release the best candidate in [`Reticulum/RNS/Interfaces/Interface.py`](Reticulum/RNS/Interfaces/Interface.py:170) and [`Reticulum/RNS/Interfaces/Interface.py`](Reticulum/RNS/Interfaces/Interface.py:176)
 
-Impact:
+Remaining caveat:
 
-- Rust drops announces that Python would often preserve and process later
+- This closes the confirmed ingress held-announce gap. Outbound announce
+  queueing/pacing is now covered by issue `24`; richer Python-style status and
+  per-interface config exposure can still be improved.
 
 ### 26. Announce forwarding rules are not interface-mode aware
 
+Status: implemented for active announce broadcast dispatch. Interfaces now
+carry Python-style modes, announce broadcasts are filtered through
+mode-aware policy, and path expiry uses receiving-interface mode.
+
 Area: multi-interface routing
 
-Rust behavior:
+Active Rust behavior:
 
-- [`crates/libs/rns-transport/src/transport/announce_table.rs`](crates/libs/rns-transport/src/transport/announce_table.rs:62) chooses simple rebroadcast targets without Python-style interface-mode checks
+- [`crates/libs/rns-transport/src/iface.rs`](crates/libs/rns-transport/src/iface.rs) models full, point-to-point, access-point, roaming, boundary, and gateway modes
+- [`crates/libs/rns-transport/src/iface_runtime.rs`](crates/libs/rns-transport/src/iface_runtime.rs) applies mode-aware announce broadcast policy for local and remote announces
+- [`crates/libs/rns-transport/src/transport/handler.rs`](crates/libs/rns-transport/src/transport/handler.rs) supplies local-destination and next-hop interface mode context when broadcasting announces
+- [`crates/libs/rns-transport/src/transport/path_table.rs`](crates/libs/rns-transport/src/transport/path_table.rs) expires paths according to receiving-interface mode
+- tests cover access-point suppression, roaming/boundary forwarding gates, local announce allowance, mode parsing, virtual interface mode inheritance, and mode-specific path expiry
 
 Python reference:
 
 - Python blocks announce forwarding based on interface mode, next-hop interface mode, and attached-interface rules in [`Reticulum/RNS/Transport.py`](Reticulum/RNS/Transport.py:1030)
 
-Impact:
+Remaining caveat:
 
-- announce spread and route learning can diverge on real mixed-interface networks
+- This closes the confirmed mode-blind broadcast bug. Outbound announce
+  queueing/pacing is now covered by issue `24`; richer Python-style status and
+  per-interface config exposure can still be improved.
 
 ### 27. Announce retransmit timing and completion policy do not match Python
 
+Status: implemented for active announce retransmission timing. Retransmit
+entries use Python's `PATHFINDER_G` 5-second grace, `PATHFINDER_RW` 0.5-second
+random window, retry limit semantics, and shorter path-response dispatch
+window.
+
 Area: announce/pathfinder behavior
 
-Rust behavior:
+Active Rust behavior:
 
-- [`crates/libs/rns-transport/src/transport/announce_table.rs`](crates/libs/rns-transport/src/transport/announce_table.rs:164) and [`crates/libs/rns-transport/src/transport/announce_table.rs`](crates/libs/rns-transport/src/transport/announce_table.rs:180) use a fixed timeout model
-- [`crates/libs/rns-transport/src/transport/jobs.rs`](crates/libs/rns-transport/src/transport/jobs.rs:225) drives retransmit from a polling loop
+- [`crates/libs/rns-transport/src/transport/announce_table.rs`](crates/libs/rns-transport/src/transport/announce_table.rs) applies a 0.5-second randomized initial rebroadcast window and 5-second grace between retries
+- normal announce entries keep Python-style one-extra grace retry behavior before moving to cache
+- path-response entries use a shorter direct-response grace and do not consume the normal broadcast entry
+- tests cover randomized grace timing, retry completion, and path-response completion behavior
 
 Python reference:
 
 - Python pathfinder announce service uses `PATHFINDER_G`, `PATHFINDER_RW`, separate retry ceilings, and held-announce reinsertion in [`Reticulum/RNS/Transport.py`](Reticulum/RNS/Transport.py:518)
 
-Impact:
+Remaining caveat:
 
-- remote nodes can learn paths at different times or not at all relative to Python behavior
+- Rust still drives retransmit checks from the existing async maintenance tick
+  instead of Python's exact thread loop shape, but the externally relevant
+  timing constants and completion behavior now match the confirmed gap.
 
 ### 28. Announce rate limiting is destination-keyed instead of interface-centric
 
+Status: implemented in active workspace. Ingress announce rate state is keyed
+by receiving interface, not by destination, and held announce release remains
+per-interface.
+
 Area: announce control
 
-Rust behavior:
+Active Rust behavior:
 
-- [`crates/libs/rns-transport/src/transport/announce_limits.rs`](crates/libs/rns-transport/src/transport/announce_limits.rs:24) tracks one `last_announce` per destination
+- [`crates/libs/rns-transport/src/transport/announce_limits.rs`](crates/libs/rns-transport/src/transport/announce_limits.rs) stores `AnnounceLimitEntry` values in a map keyed by interface hash
+- each interface tracks incoming announce frequency samples, burst state, held-release timing, and held announce capacity independently
+- path responses and known destinations bypass ingress hold behavior
+- tests cover per-interface limiting, held announce priority, and capacity eviction
 
 Python reference:
 
 - Python tracks incoming announce frequency and ingress state on interfaces in [`Reticulum/RNS/Interfaces/Interface.py`](Reticulum/RNS/Interfaces/Interface.py:202)
 
-Impact:
+Remaining caveat:
 
-- Rust will suppress or admit announce traffic under a different policy than Python
+- This closes the confirmed destination-keyed limiter gap. Config-file exposure
+  for Python's full announce-rate tuning knobs can still be improved.
 
 ### 29. Route restoration from cached announces is weaker than Python
 
+Status: implemented in active workspace. Reticulum path-table persistence saves
+Python-shaped destination and tunnel tables, writes cached announce packets, and
+restores route plus destination identity state from the cached announce data.
+
 Area: startup recovery
 
-Rust behavior:
+Active Rust behavior:
 
-- [`crates/libs/rns-transport/src/transport/announce.rs`](crates/libs/rns-transport/src/transport/announce.rs:53) updates the path table on live announce handling
-- the announce cache in [`crates/libs/rns-transport/src/transport/announce_table.rs`](crates/libs/rns-transport/src/transport/announce_table.rs:69) is used for retransmit and path-response replay only
+- [`crates/libs/rns-transport/src/transport/reticulum_path_store.rs`](crates/libs/rns-transport/src/transport/reticulum_path_store.rs) saves path-table entries together with Python-compatible cached announce files
+- restore maps persisted Python interface hashes back to active Rust interface addresses, validates cached announce identity compatibility, restores destination identity state, and reinserts path-table entries
+- tunnel-path restore is staged until the tunnel reappears, matching Python's tunnel restoration shape
+- tests cover destination-table msgpack shape, cached announce files, route/identity restore, and tunnel path restore after tunnel reappearance
 
 Python reference:
 
 - Python restores cached announce packets into the path table on load in [`Reticulum/RNS/Transport.py`](Reticulum/RNS/Transport.py:276) and [`Reticulum/RNS/Transport.py`](Reticulum/RNS/Transport.py:291)
 
-Impact:
+Remaining caveat:
 
-- Rust startup/restart routing state will not converge the same way as Python
+- This closes the confirmed route/identity restore gap for active persisted
+  path-table support. Broader cache aging and operator status surfaces can still
+  be expanded.
 
 ### 30. Stamp and ticket options are accepted by the API but do not drive wire behavior
 
+Status: implemented for active daemon sends. Send-time stamp cost,
+remembered outbound tickets, and included return tickets now affect LXMF
+payload construction before direct or propagated delivery.
+
 Area: LXMF primitives
 
-Rust behavior:
+Active Rust behavior:
 
-- [`crates/libs/rns-rpc/src/rpc/send_request.rs`](crates/libs/rns-rpc/src/rpc/send_request.rs:85) parses `stamp_cost` and `include_ticket`
-- [`crates/libs/rns-rpc/src/rpc/helpers.rs`](crates/libs/rns-rpc/src/rpc/helpers.rs:26) stores them under `_lxmf`
-- [`crates/apps/reticulumd/src/lxmf_bridge.rs`](crates/apps/reticulumd/src/lxmf_bridge.rs:9) and the LXMF core wire path do not generate stamps or consume tickets
+- [`crates/apps/reticulumd/src/bin/reticulumd/bridge_outbound.rs`](crates/apps/reticulumd/src/bin/reticulumd/bridge_outbound.rs) resolves explicit or learned stamp cost, remembered outbound tickets, and generated include-ticket material for each delivery task
+- [`crates/apps/reticulumd/src/bin/reticulumd/bridge_payload.rs`](crates/apps/reticulumd/src/bin/reticulumd/bridge_payload.rs) passes those options into payload construction under cancellation-aware `spawn_blocking`
+- [`crates/apps/reticulumd/src/lxmf_bridge.rs`](crates/apps/reticulumd/src/lxmf_bridge.rs) adds included ticket field `0x0c`, generates proof-of-work stamps from `stamp_cost`, and generates ticket stamps from outbound tickets
+- tests cover include-ticket field encoding, stamp-cost generation, cancellation during stamp generation, outbound ticket stamp generation, and Rust/Python ticket-stamp interop
 
 Python reference:
 
 - Python wires these into real send behavior in [`LXMF/LXMF/LXMRouter.py`](LXMF/LXMF/LXMRouter.py:1654), [`LXMF/LXMF/LXMRouter.py`](LXMF/LXMF/LXMRouter.py:1663), and [`LXMF/LXMF/LXMessage.py`](LXMF/LXMF/LXMessage.py:299)
 
-Impact:
+Remaining caveat:
 
-- Python clients relying on stamp or ticket semantics will not get equivalent behavior from Rust
+- This closes the confirmed "options parsed but ignored" gap. Broader Python
+  router lifecycle behavior for ticket distribution remains tracked by issue
+  `32`.
 
 ### 31. Inbound stamp enforcement is missing
 
+Status: implemented for active direct and propagation inbound paths. Stamp
+policy includes an `enforce` flag, invalid payloads can be rejected, and
+non-enforcing mode records invalid stamp diagnostics.
+
 Area: LXMF primitives
 
-Rust behavior:
+Active Rust behavior:
 
-- stamp policy can be stored and reported through [`crates/libs/rns-rpc/src/rpc/daemon/dispatch_legacy_misc.rs`](crates/libs/rns-rpc/src/rpc/daemon/dispatch_legacy_misc.rs:49) and [`crates/apps/reticulumd/src/bin/reticulumd/inbound_worker.rs`](crates/apps/reticulumd/src/bin/reticulumd/inbound_worker.rs:401)
-- no audited inbound path validates stamps or rejects invalid stamped messages
+- [`crates/apps/reticulumd/src/inbound_delivery.rs`](crates/apps/reticulumd/src/inbound_delivery.rs) evaluates inbound stamp policy, validates proof-of-work and issued-ticket stamps, rejects invalid enforced payloads, and annotates accepted records with checked/valid/value metadata
+- [`crates/apps/reticulumd/src/bin/reticulumd/inbound_delivery_events.rs`](crates/apps/reticulumd/src/bin/reticulumd/inbound_delivery_events.rs) applies the policy to inbound direct resource and packet delivery
+- [`crates/apps/reticulumd/src/bin/reticulumd/inbound_propagation.rs`](crates/apps/reticulumd/src/bin/reticulumd/inbound_propagation.rs) applies the same policy to propagated LXMF payloads
+- tests cover missing stamp rejection, invalid-stamp observation when enforcement is disabled, valid proof-of-work stamps, issued-ticket stamps, and destination-stripped payloads
 
 Python reference:
 
 - Python validates and can reject inbound stamps in [`LXMF/LXMF/LXMRouter.py`](LXMF/LXMF/LXMRouter.py:1749), [`LXMF/LXMF/LXMRouter.py`](LXMF/LXMF/LXMRouter.py:1761), and [`LXMF/LXMF/LXMessage.py`](LXMF/LXMF/LXMessage.py:278)
 
-Impact:
+Remaining caveat:
 
-- Rust advertises stamp policy without enforcing it
+- This closes the confirmed missing-enforcement gap. Full Python router side
+  effects around peer ticket lifecycle remain tracked by issue `32`.
 
-### 32. `ticket_generate` does not implement Python ticket semantics
+### 32. `ticket_generate` does not implement full Python ticket semantics
+
+Status: partial. Active `reticulumd` persists generated inbound tickets,
+reuses them until the Python renewal window, suppresses repeated ticket
+delivery for the Python interval, remembers signed inbound tickets for outbound
+ticket-stamped replies, and prunes expired outbound tickets plus generated
+inbound tickets after the Python grace window. Broader Python router lifecycle
+semantics are still incomplete.
 
 Area: LXMF primitives
 
 Rust behavior:
 
-- [`crates/libs/rns-rpc/src/rpc/daemon/dispatch_legacy_misc.rs`](crates/libs/rns-rpc/src/rpc/daemon/dispatch_legacy_misc.rs:84) hashes destination plus current time and returns hex
-- the result is cached in memory and not wired into actual send/receive message logic
+- [`crates/libs/rns-rpc/src/rpc/daemon/init.rs`](crates/libs/rns-rpc/src/rpc/daemon/init.rs) stores and reuses generated tickets, tracks recent ticket deliveries, remembers signed inbound tickets, and exposes outbound tickets for send-time ticket stamps
+- [`crates/apps/reticulumd/src/bin/reticulumd/bridge_outbound.rs`](crates/apps/reticulumd/src/bin/reticulumd/bridge_outbound.rs) wires `include_ticket` and remembered outbound tickets into active delivery payload construction
+- [`crates/libs/rns-rpc/src/storage/messages.rs`](crates/libs/rns-rpc/src/storage/messages.rs) prunes expired outbound tickets immediately and generated inbound tickets after the Python grace window
+- tests cover reuse across daemon restarts, regeneration inside the Python
+  renewal window, recent-delivery interval suppression across daemon restarts,
+  signed inbound ticket remembering, unsigned inbound ticket rejection, and
+  delivered include-ticket messages starting the suppression interval
 
 Python reference:
 
@@ -624,16 +768,22 @@ Python reference:
 
 Impact:
 
-- Rust exposes the name of the feature, but not the protocol meaning
+- The original placeholder behavior is gone for active daemon sends, but the
+  full Python router lifecycle around ticket distribution, cleanup cadence, and
+  peer side effects still needs deeper parity review.
 
 ### 33. Propagation stamp validation is missing
+
+Status: implemented in active workspace for RPC/resource propagation ingest;
+test-only seeding helpers remain intentionally raw.
 
 Area: propagated LXMF
 
 Rust behavior:
 
-- propagation status surfaces stamp-related values in [`crates/apps/reticulumd/src/bin/reticulumd/inbound_worker.rs`](crates/apps/reticulumd/src/bin/reticulumd/inbound_worker.rs:374)
-- no audited propagation ingest path validates propagation stamps before accepting traffic
+- [`crates/libs/rns-rpc/src/rpc/daemon/dispatch_legacy_propagation.rs`](crates/libs/rns-rpc/src/rpc/daemon/dispatch_legacy_propagation.rs) canonicalizes propagation payloads and validates trailing propagation stamps when `target_cost` is nonzero.
+- [`crates/apps/reticulumd/src/bin/reticulumd/inbound_propagation.rs`](crates/apps/reticulumd/src/bin/reticulumd/inbound_propagation.rs) calls the canonical propagation payload path before storing remote propagation payloads.
+- Tests cover missing, short, mismatched, and valid propagation-stamp ingest cases.
 
 Python reference:
 
@@ -641,15 +791,21 @@ Python reference:
 
 Impact:
 
-- propagated anti-abuse semantics are missing in Rust
+- The original missing-validation gap is closed for active ingest. Full
+  propagation-node lifecycle parity remains open under issue `4` and issue `36`.
 
 ### 34. Announced inbound stamp cost is discarded
+
+Status: implemented in active workspace; verified by announce ingest/storage
+tests and outbound bridge stamp-cost lookup.
 
 Area: peer capability learning
 
 Rust behavior:
 
-- [`crates/libs/rns-rpc/src/rpc/daemon/init.rs`](crates/libs/rns-rpc/src/rpc/daemon/init.rs:371) explicitly ignores `stamp_cost`
+- [`crates/apps/reticulumd/src/bin/reticulumd/announce_ingest.rs`](crates/apps/reticulumd/src/bin/reticulumd/announce_ingest.rs) parses delivery and propagation stamp-cost app-data shapes.
+- [`crates/libs/rns-rpc/src/rpc/daemon/init.rs`](crates/libs/rns-rpc/src/rpc/daemon/init.rs) persists announce `stamp_cost` and exposes `outbound_stamp_cost_for`.
+- [`crates/apps/reticulumd/src/bin/reticulumd/bridge_outbound.rs`](crates/apps/reticulumd/src/bin/reticulumd/bridge_outbound.rs) uses the learned outbound stamp cost when a send request does not explicitly provide one.
 
 Python reference:
 
@@ -657,15 +813,34 @@ Python reference:
 
 Impact:
 
-- Rust does not learn recipient stamp requirements the way Python nodes do
+- The original discard bug is closed. Deferred/asynchronous stamp work remains
+  separate and is tracked by issue `35`.
 
 ### 35. Deferred stamp generation is not implemented
+
+Status: partial. Outbound `reticulumd` now schedules delivery first and builds
+signed/stamped wire payloads on a blocking worker inside the delivery task.
+Normal and propagation stamp generation are cancellation-aware and check
+persisted `cancelled` state from the delivery task. Normal and propagation
+stamp work now records `_lxmf.stamp_state` / `_lxmf.propagation_stamp_state`
+lifecycle metadata (`generating`, `ready`, `failed`, or `cancelled`) plus
+target-cost/error/value context. A full Python-style deferred stamp queue and
+separate background stamper ownership model is still open.
 
 Area: LXMF sender lifecycle
 
 Rust behavior:
 
-- no audited daemon path includes a deferred-stamp work queue or LXMF stamper integration
+- active outbound delivery no longer performs stamp generation directly in the
+  synchronous RPC scheduling path
+- active normal and propagation stamp proof-of-work can stop when the outbound
+  message becomes `cancelled`
+- [`crates/apps/reticulumd/src/bin/reticulumd/bridge_delivery_task_payload.rs`](crates/apps/reticulumd/src/bin/reticulumd/bridge_delivery_task_payload.rs) records normal stamp/ticket work state and target cost before and after payload construction
+- [`crates/apps/reticulumd/src/bin/reticulumd/bridge_delivery_task_propagation.rs`](crates/apps/reticulumd/src/bin/reticulumd/bridge_delivery_task_propagation.rs) records propagation stamp work state, target cost, generated value, and failure details
+- tests cover normal proof-of-work and ticket-derived stamp lifecycle metadata
+  on the active delivery task
+- no audited daemon path includes a Python-style deferred-stamp work queue,
+  retry lifecycle, or separate background LXMF stamper integration
 
 Python reference:
 
@@ -673,16 +848,30 @@ Python reference:
 
 Impact:
 
-- behavior and throughput diverge once stamp costs matter
+- behavior still diverges once high stamp costs require queueing, progress,
+  retry, and worker ownership semantics, but request-path blocking risk is
+  reduced and cancellation plus lifecycle state are no longer purely
+  status-only for active normal or propagation stamp generation
 
 ### 36. Propagation transient-id lifecycle is incomplete
+
+Status: partial. Core propagation packing derives the Python-style transient ID
+from destination hash plus encrypted payload, and outbound propagated delivery
+now records that ID plus `_lxmf.propagation_packed`,
+`_lxmf.propagation_packed_size`, `_lxmf.propagation_packed_base64`,
+`_lxmf.propagation_target_cost`,
+`_lxmf.propagation_stamp_valid`, and `_lxmf.propagation_stamp_value` metadata
+after payload construction. Broader Python message-object lifecycle state such
+as deferred worker ownership and retry state remains narrower than the
+reference.
 
 Area: propagated LXMF
 
 Rust behavior:
 
-- [`crates/libs/lxmf-core/src/message/wire.rs`](crates/libs/lxmf-core/src/message/wire.rs:190) has helpers for propagation packing
-- the daemon path does not implement the Python-style `propagation_packed` and `transient_id` lifecycle end to end
+- [`crates/libs/lxmf-core/src/message/wire.rs`](crates/libs/lxmf-core/src/message/wire.rs) derives the transient ID from the unstamped propagation payload bytes
+- [`crates/apps/reticulumd/src/bin/reticulumd/bridge_delivery_task.rs`](crates/apps/reticulumd/src/bin/reticulumd/bridge_delivery_task.rs) persists propagated send transient ID, packed state, packed bytes, packed size, target cost, and generated propagation stamp validity/value into outbound message metadata once the payload is built
+- tests cover persistence of the base64-encoded propagation packed payload bytes alongside the lifecycle metadata
 
 Python reference:
 
@@ -690,16 +879,32 @@ Python reference:
 
 Impact:
 
-- propagated LXMF is incomplete even below the router layer
+- propagated LXMF now exposes the outbound transient ID for observability and
+  SDK state, and also exposes the generated propagated payload/stamp lifecycle
+  metadata and packed bytes that Python keeps on `LXMessage`; full Python
+  propagation message lifecycle parity remains incomplete.
 
 ### 37. Inbound daemon decoding drops stamp validity state
+
+Status: partial. Active inbound delivery/resource and locally delivered
+propagation paths evaluate the configured stamp policy and annotate decoded
+message fields with `_lxmf.stamp_checked`, `_lxmf.stamp_valid`, and
+`_lxmf.stamp_value` for accepted stamped messages. The daemon stamp policy now
+also supports Python-style `enforce=false`, where invalid stamped messages are
+accepted and stored with `_lxmf.stamp_checked=true` and
+`_lxmf.stamp_valid=false`. Locally decrypted propagated messages also preserve
+validated propagation-stamp status and value under `_lxmf.propagation_stamp_*`
+metadata. Full negative-state parity remains narrower for paths where
+enforcement is enabled and invalid messages are dropped.
 
 Area: daemon message model
 
 Rust behavior:
 
-- [`crates/libs/lxmf-core/src/message/payload.rs`](crates/libs/lxmf-core/src/message/payload.rs:74) parses an optional raw stamp
-- [`crates/apps/reticulumd/src/inbound_delivery.rs`](crates/apps/reticulumd/src/inbound_delivery.rs:58) stores only title, content, timestamp, and fields
+- [`crates/apps/reticulumd/src/inbound_delivery.rs`](crates/apps/reticulumd/src/inbound_delivery.rs) validates inbound stamps against configured policy, issued tickets, and proof-of-work stamps
+- [`crates/apps/reticulumd/src/bin/reticulumd/inbound_propagation.rs`](crates/apps/reticulumd/src/bin/reticulumd/inbound_propagation.rs) annotates locally delivered propagated messages with validated propagation-stamp metadata before storage
+- accepted stamped messages preserve stamp-check status and value under `_lxmf` metadata in persisted message fields
+- `stamp_policy_set` accepts `enforce=false` to preserve invalid stamp status on accepted messages instead of dropping them
 
 Python reference:
 
@@ -707,74 +912,109 @@ Python reference:
 
 Impact:
 
-- the Rust daemon message model cannot represent Python stamp-validation outcomes
+- accepted inbound messages can now represent Python-style positive
+  stamp-validation outcomes, propagation-stamp outcomes for locally delivered
+  propagated messages, and invalid-but-accepted outcomes when enforcement is
+  disabled, but full negative-state storage parity remains narrower than
+  Python's message object model for enforced drops.
 
 ### 38. Inbound timestamp precision is truncated
 
+Status: implemented for client-visible metadata in active workspace. The
+legacy `MessageRecord.timestamp` sort/index field remains integer seconds, but
+accepted inbound LXMF messages preserve Python's floating payload timestamp in
+`fields._lxmf.timestamp_f64` whenever precision would otherwise be lost.
+
 Area: daemon API compatibility
 
-Rust behavior:
+Active Rust behavior:
 
-- [`crates/libs/lxmf-core/src/inbound_decode.rs`](crates/libs/lxmf-core/src/inbound_decode.rs:48) truncates payload timestamps from `f64` to `i64`
-- [`crates/apps/reticulumd/src/inbound_delivery.rs`](crates/apps/reticulumd/src/inbound_delivery.rs:68) persists the integer form
+- [`crates/libs/lxmf-core/src/inbound_decode.rs`](crates/libs/lxmf-core/src/inbound_decode.rs) decodes payload timestamps as `f64`
+- [`crates/apps/reticulumd/src/inbound_delivery.rs`](crates/apps/reticulumd/src/inbound_delivery.rs) stores `_lxmf.timestamp_f64` metadata for fractional inbound timestamps
+- tests cover fractional inbound timestamps in stored metadata
 
 Python reference:
 
 - Python preserves floating timestamps in payloads and unpacked messages in [`LXMF/LXMF/LXMessage.py`](LXMF/LXMF/LXMessage.py:367) and [`LXMF/LXMF/LXMessage.py`](LXMF/LXMF/LXMessage.py:752)
 
-Impact:
+Remaining caveat:
 
-- ordering and client-visible metadata can drift from Python
+- integer timestamp cursors still order at second granularity; clients that need
+  Python payload precision must read `_lxmf.timestamp_f64`
 
 ### 39. Inbound title/content decoding loses binary fidelity
 
+Status: implemented for accepted inbound messages in active workspace. The
+public title/content fields remain UTF-8 strings, but non-UTF8 title/content
+bytes are preserved as base64 metadata under `_lxmf`.
+
 Area: daemon API compatibility
 
-Rust behavior:
+Active Rust behavior:
 
-- [`crates/libs/lxmf-core/src/inbound_decode.rs`](crates/libs/lxmf-core/src/inbound_decode.rs:46) converts bytes with `String::from_utf8(...).unwrap_or_default()`
+- [`crates/libs/lxmf-core/src/inbound_decode.rs`](crates/libs/lxmf-core/src/inbound_decode.rs) keeps decoded title/content as raw bytes
+- [`crates/apps/reticulumd/src/inbound_delivery.rs`](crates/apps/reticulumd/src/inbound_delivery.rs) stores `_lxmf.title_base64` and `_lxmf.content_base64` when UTF-8 conversion would lose bytes
+- tests cover non-UTF8 title/content metadata preservation
 
 Python reference:
 
 - Python stores raw bytes and only decodes on explicit request in [`LXMF/LXMF/LXMessage.py`](LXMF/LXMF/LXMessage.py:204), [`LXMF/LXMF/LXMessage.py`](LXMF/LXMF/LXMessage.py:213), and [`LXMF/LXMF/LXMessage.py`](LXMF/LXMF/LXMessage.py:792)
 
-Impact:
+Remaining caveat:
 
-- non-UTF8 title/content conventions suffer data loss via the Rust daemon
+- legacy RPC string fields cannot carry arbitrary bytes directly; binary-aware
+  clients must read the `_lxmf` metadata copies
 
 ### 40. Outbound field-shape handling is stricter than Python
 
+Status: implemented for the confirmed attachment alias gap in active workspace.
+Outbound send parsing accepts canonical `attachments`, legacy `files`, and raw
+wire key `5`, rejects only ambiguous mixed aliases, and the wire-field encoder
+normalizes accepted aliases to the Python field id.
+
 Area: wrapper and client compatibility
 
-Rust behavior:
+Active Rust behavior:
 
-- [`crates/libs/rns-rpc/src/rpc/send_request.rs`](crates/libs/rns-rpc/src/rpc/send_request.rs:112) rejects legacy `files` and raw wire key `5`
-- [`crates/libs/lxmf-core/src/wire_fields.rs`](crates/libs/lxmf-core/src/wire_fields.rs:32) normalizes to a stricter `attachments` shape
+- [`crates/libs/rns-rpc/src/rpc/send_request.rs`](crates/libs/rns-rpc/src/rpc/send_request.rs) accepts `attachments`, `files`, or raw `5` attachment fields
+- [`crates/libs/lxmf-core/src/wire_fields.rs`](crates/libs/lxmf-core/src/wire_fields.rs) normalizes public aliases to raw field id `5` and preserves raw numeric field keys
+- tests cover legacy `files`, raw `5`, and mixed-alias rejection
 
 Python reference:
 
 - Python accepts arbitrary field dicts in [`LXMF/LXMF/LXMessage.py`](LXMF/LXMF/LXMessage.py:220)
 
-Impact:
+Remaining caveat:
 
-- wrappers or tools that already speak Python-style raw field maps can break against the Rust daemon API
+- Python accepts arbitrary field dicts beyond the confirmed attachment aliases;
+  newly discovered client-specific field conventions still need case-by-case
+  interop tests
 
 ### 41. Custom storage encoding can break Python `.lxm` interchange
 
+Status: implemented in active workspace. `WireMessage::pack_storage()` now
+emits the Python-style msgpack container with `state`, `lxmf_bytes`,
+`transport_encrypted`, `transport_encryption`, and `method`; `unpack_storage()`
+continues to read Python containers, raw wire bytes, and the older Rust-only
+`LXMFSTR0` format for backward compatibility. Callers that need specific
+Python container metadata can use `WireMessage::pack_storage_container()`.
+
 Area: storage interoperability
 
-Rust behavior:
+Active Rust behavior:
 
-- [`crates/libs/lxmf-core/src/message/container.rs`](crates/libs/lxmf-core/src/message/container.rs:20) can emit a Python-like msgpack map container
-- [`crates/libs/lxmf-core/src/message/wire.rs`](crates/libs/lxmf-core/src/message/wire.rs:78) also defines a custom `LXMFSTR0` binary storage format
+- [`crates/libs/lxmf-core/src/message/container.rs`](crates/libs/lxmf-core/src/message/container.rs) models the Python storage container
+- [`crates/libs/lxmf-core/src/message/wire.rs`](crates/libs/lxmf-core/src/message/wire.rs) emits the Python-compatible container from `pack_storage()`, exposes explicit container metadata via `pack_storage_container()`, and keeps legacy `LXMFSTR0` decoding only
+- tests cover Python-container decode, default Python-container emission, and explicit state/method/transport metadata emission
 
 Python reference:
 
 - Python persists a msgpack map with LXMF metadata in [`LXMF/LXMF/LXMessage.py`](LXMF/LXMF/LXMessage.py:655)
 
-Impact:
+Remaining caveat:
 
-- if Rust ever uses the custom storage encoding for external `.lxm` interchange, it will not be Python-compatible
+- storage emission now matches Python's container shape; broader `.lxm`
+  interoperability still depends on the underlying packed LXMF wire semantics
 
 ## Surface Summary
 
@@ -795,6 +1035,26 @@ Confirmed relatively aligned primitives:
 - identity hashing and announce random-blob layout look intentionally Python-aware
 - basic LXMF wire payload layout `[timestamp, title, content, fields, optional stamp]` is aligned
 - LXMF message-id derivation from destination, source, and payload-without-stamp is aligned
+- peer status now exposes Python-style runtime counters for
+  `last_sync_attempt`, `next_sync_attempt`, `sync_backoff`, `rx_bytes`,
+  `tx_bytes`, `acceptance_rate`, and per-peer message accounting
+  (`offered`, `outgoing`, `incoming`, `unhandled`)
+- peer status now reports Python-style `peering_key` values when the peer and
+  local identity hashes are known and the remote peering cost is known, but full
+  peer transfer and peering behavior is still a major gap
+- Python-style propagation status now prefers per-peer `peering_timebase`,
+  `propagation_transfer_limit`, `propagation_sync_limit`,
+  `propagation_stamp_cost`, `propagation_stamp_cost_flexibility`, and
+  `peering_cost` values when known instead of flattening every peer to the
+  daemon-wide defaults
+- Python-style propagation status reports daemon elapsed uptime instead of Unix
+  epoch seconds
+- Python-style propagation status and propagation-node announce app-data now
+  use configured node transfer limits for `delivery_limit`,
+  `propagation_limit`, and `sync_limit` instead of fixed defaults
+- peer status now matches Python's zero-offer acceptance-rate semantics by
+  reporting `acceptance_rate=0.0` until at least one outbound offer/activity is
+  observed
 
 Confirmed major compatibility gaps:
 

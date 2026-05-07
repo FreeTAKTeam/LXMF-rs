@@ -103,7 +103,7 @@ fn handle_control_request(
     }
     let remote_identity = remote_identity.expect("checked above");
     let remote_hash = hex::encode(remote_identity.address_hash.as_slice());
-    if !control_identity_allowed(control, &remote_hash) {
+    if !propagation_destination && !control_identity_allowed(control, &remote_hash) {
         daemon.record_unpeered_propagation_attempt(payload.len());
         return ControlResponse::Code(ERROR_NO_ACCESS);
     }
@@ -118,6 +118,7 @@ fn handle_control_request(
                 control,
                 remote_identity,
                 data,
+                ERROR_NO_ACCESS,
                 ERROR_INVALID_KEY,
                 ERROR_INVALID_DATA,
             );
@@ -127,12 +128,16 @@ fn handle_control_request(
                 daemon,
                 remote_identity,
                 data,
+                ERROR_NO_ACCESS,
                 ERROR_INVALID_DATA,
             );
         }
         return ControlResponse::Code(ERROR_INVALID_DATA);
     }
     if path_hash == control_path_hash("/pn/get/stats") {
+        if !daemon.current_propagation_state().enabled {
+            return ControlResponse::Value(Value::Null);
+        }
         return ControlResponse::Value(status::compose_python_status(daemon, control));
     }
     if let Some(response) = peer_commands::handle_peer_command(
@@ -185,7 +190,150 @@ fn control_path_hash(path: &str) -> [u8; 16] {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use reticulum_daemon::lxmf_stamps::generate_peering_key;
+    use rns_rpc::MessagesStore;
     use serde_json::json;
+
+    fn test_control_context() -> PropagationControlContext {
+        PropagationControlContext {
+            enabled: true,
+            local_identity_hash: [0u8; 16],
+            propagation_destination_hash_hex: Some("propagation".to_string()),
+            control_destination_hash_hex: Some("control".to_string()),
+            delivery_destination: None,
+            allowed_control_identities: Vec::new(),
+        }
+    }
+
+    fn control_request(path: &str, data: rmpv::Value) -> Vec<u8> {
+        rmp_serde::to_vec_named(&rmpv::Value::Array(vec![
+            rmpv::Value::Nil,
+            rmpv::Value::Binary(control_path_hash(path).to_vec()),
+            data,
+        ]))
+        .expect("encode control request")
+    }
+
+    #[test]
+    fn stats_request_returns_nil_when_propagation_node_is_disabled() {
+        let daemon = RpcDaemon::test_instance();
+        let remote_private =
+            rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let remote_identity = *remote_private.as_identity();
+
+        let response = handle_control_request(
+            &daemon,
+            &test_control_context(),
+            control_request("/pn/get/stats", rmpv::Value::Nil).as_slice(),
+            Some(&remote_identity),
+            false,
+        );
+
+        assert!(matches!(response, ControlResponse::Value(Value::Null)));
+    }
+
+    #[test]
+    fn stats_request_returns_status_when_propagation_node_is_enabled() {
+        let daemon = RpcDaemon::test_instance();
+        daemon
+            .handle_rpc(RpcRequest {
+                id: 1,
+                method: "propagation_enable".to_string(),
+                params: Some(json!({ "enabled": true })),
+            })
+            .expect("enable propagation");
+        let remote_private =
+            rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let remote_identity = *remote_private.as_identity();
+
+        let response = handle_control_request(
+            &daemon,
+            &test_control_context(),
+            control_request("/pn/get/stats", rmpv::Value::Nil).as_slice(),
+            Some(&remote_identity),
+            false,
+        );
+
+        let ControlResponse::Value(status) = response else {
+            panic!("expected status value");
+        };
+        assert_eq!(status["peers"].as_object().map(|peers| peers.len()), Some(0));
+        assert_eq!(status["total_peers"].as_u64(), Some(0));
+    }
+
+    #[test]
+    fn stats_request_rejects_identity_outside_control_allow_list() {
+        let daemon = RpcDaemon::test_instance();
+        daemon
+            .handle_rpc(RpcRequest {
+                id: 1,
+                method: "propagation_enable".to_string(),
+                params: Some(json!({ "enabled": true })),
+            })
+            .expect("enable propagation");
+        let remote_private =
+            rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let remote_identity = *remote_private.as_identity();
+        let mut control = test_control_context();
+        control.allowed_control_identities = vec!["not-the-remote".to_string()];
+
+        let response = handle_control_request(
+            &daemon,
+            &control,
+            control_request("/pn/get/stats", rmpv::Value::Nil).as_slice(),
+            Some(&remote_identity),
+            false,
+        );
+
+        assert!(matches!(response, ControlResponse::Code(0xF1)));
+    }
+
+    #[test]
+    fn propagation_offer_ignores_control_allow_list_like_python() {
+        let daemon = RpcDaemon::test_instance();
+        daemon
+            .handle_rpc(RpcRequest {
+                id: 1,
+                method: "propagation_enable".to_string(),
+                params: Some(json!({
+                    "enabled": true,
+                    "peering_cost": 1,
+                })),
+            })
+            .expect("enable propagation");
+        let local_identity_hash = [0x11; 16];
+        let remote_private =
+            rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let remote_identity = *remote_private.as_identity();
+        let mut peering_id = Vec::with_capacity(32);
+        peering_id.extend_from_slice(local_identity_hash.as_slice());
+        peering_id.extend_from_slice(remote_identity.address_hash.as_slice());
+        let peering_key = generate_peering_key(peering_id.as_slice(), 1).expect("peering key");
+        let control = PropagationControlContext {
+            enabled: true,
+            local_identity_hash,
+            propagation_destination_hash_hex: Some("propagation".to_string()),
+            control_destination_hash_hex: Some("control".to_string()),
+            delivery_destination: None,
+            allowed_control_identities: vec!["not-the-remote".to_string()],
+        };
+        let response = handle_control_request(
+            &daemon,
+            &control,
+            control_request(
+                "/offer",
+                rmpv::Value::Array(vec![
+                    rmpv::Value::Binary(peering_key),
+                    rmpv::Value::Array(Vec::new()),
+                ]),
+            )
+            .as_slice(),
+            Some(&remote_identity),
+            true,
+        );
+
+        assert!(matches!(response, ControlResponse::Bool(false)));
+    }
 
     #[test]
     fn python_status_uses_propagation_stamp_flexibility_not_delivery_stamp_flexibility() {
@@ -226,5 +374,352 @@ mod tests {
         );
 
         assert_eq!(status["stamp_cost_flexibility"].as_u64(), Some(7));
+    }
+
+    #[test]
+    fn python_status_reports_elapsed_uptime_not_epoch_time() {
+        let daemon = RpcDaemon::test_instance();
+
+        let status = status::compose_python_status(
+            &daemon,
+            &PropagationControlContext {
+                enabled: true,
+                local_identity_hash: [0u8; 16],
+                propagation_destination_hash_hex: Some("propagation".to_string()),
+                control_destination_hash_hex: Some("control".to_string()),
+                delivery_destination: None,
+                allowed_control_identities: Vec::new(),
+            },
+        );
+
+        assert!(
+            status["uptime"].as_u64().is_some_and(|value| value < 60),
+            "uptime should be elapsed seconds, not Unix epoch seconds"
+        );
+    }
+
+    #[test]
+    fn python_status_uses_configured_node_transfer_limits() {
+        let daemon = RpcDaemon::test_instance();
+        daemon
+            .handle_rpc(RpcRequest {
+                id: 1,
+                method: "propagation_enable".to_string(),
+                params: Some(json!({
+                    "enabled": true,
+                    "delivery_limit": 321,
+                    "propagation_limit": 654,
+                    "sync_limit": 987,
+                })),
+            })
+            .expect("enable propagation");
+
+        let status = status::compose_python_status(
+            &daemon,
+            &PropagationControlContext {
+                enabled: true,
+                local_identity_hash: [0u8; 16],
+                propagation_destination_hash_hex: Some("propagation".to_string()),
+                control_destination_hash_hex: Some("control".to_string()),
+                delivery_destination: None,
+                allowed_control_identities: Vec::new(),
+            },
+        );
+
+        assert_eq!(status["delivery_limit"].as_u64(), Some(321));
+        assert_eq!(status["propagation_limit"].as_u64(), Some(654));
+        assert_eq!(status["sync_limit"].as_u64(), Some(987));
+    }
+
+    #[test]
+    fn python_status_reports_message_storage_limit_in_decimal_bytes() {
+        let daemon = RpcDaemon::test_instance();
+        daemon
+            .handle_rpc(RpcRequest {
+                id: 1,
+                method: "propagation_enable".to_string(),
+                params: Some(json!({
+                    "enabled": true,
+                    "message_storage_limit_mb": 4,
+                })),
+            })
+            .expect("enable propagation");
+
+        let status = status::compose_python_status(
+            &daemon,
+            &PropagationControlContext {
+                enabled: true,
+                local_identity_hash: [0u8; 16],
+                propagation_destination_hash_hex: Some("propagation".to_string()),
+                control_destination_hash_hex: Some("control".to_string()),
+                delivery_destination: None,
+                allowed_control_identities: Vec::new(),
+            },
+        );
+
+        assert_eq!(status["messagestore"]["limit"].as_u64(), Some(4_000_000));
+    }
+
+    #[test]
+    fn python_status_uses_zero_acceptance_rate_before_offers() {
+        let peer = "peer-zero-acceptance".to_string();
+        let daemon = RpcDaemon::test_instance();
+        daemon
+            .handle_rpc(RpcRequest {
+                id: 1,
+                method: "peer_sync".to_string(),
+                params: Some(json!({ "peer": peer })),
+            })
+            .expect("peer sync");
+
+        let status = status::compose_python_status(
+            &daemon,
+            &PropagationControlContext {
+                enabled: true,
+                local_identity_hash: [0u8; 16],
+                propagation_destination_hash_hex: Some("propagation".to_string()),
+                control_destination_hash_hex: Some("control".to_string()),
+                delivery_destination: None,
+                allowed_control_identities: Vec::new(),
+            },
+        );
+
+        assert_eq!(status["peers"][peer.as_str()]["acceptance_rate"].as_f64(), Some(0.0));
+    }
+
+    #[test]
+    fn python_status_preserves_unknown_peer_propagation_policy_as_null() {
+        let peer = "peer-unknown-policy".to_string();
+        let daemon = RpcDaemon::test_instance();
+        daemon
+            .handle_rpc(RpcRequest {
+                id: 1,
+                method: "propagation_enable".to_string(),
+                params: Some(json!({
+                    "enabled": true,
+                    "target_cost": 16,
+                    "stamp_cost_flexibility": 7,
+                    "peering_cost": 18,
+                    "propagation_limit": 654,
+                    "sync_limit": 987,
+                })),
+            })
+            .expect("enable propagation");
+        daemon
+            .handle_rpc(RpcRequest {
+                id: 2,
+                method: "peer_sync".to_string(),
+                params: Some(json!({ "peer": peer })),
+            })
+            .expect("peer sync");
+
+        let status = status::compose_python_status(
+            &daemon,
+            &PropagationControlContext {
+                enabled: true,
+                local_identity_hash: [0u8; 16],
+                propagation_destination_hash_hex: Some("propagation".to_string()),
+                control_destination_hash_hex: Some("control".to_string()),
+                delivery_destination: None,
+                allowed_control_identities: Vec::new(),
+            },
+        );
+
+        let peer_status = &status["peers"][peer.as_str()];
+        assert_eq!(peer_status["transfer_limit"], Value::Null);
+        assert_eq!(peer_status["sync_limit"], Value::Null);
+        assert_eq!(peer_status["target_stamp_cost"], Value::Null);
+        assert_eq!(peer_status["stamp_cost_flexibility"], Value::Null);
+        assert_eq!(peer_status["peering_cost"], Value::Null);
+    }
+
+    #[test]
+    fn python_status_collapses_internal_peer_types_to_static_or_discovered() {
+        let static_peer = "peer-static".to_string();
+        let auto_peer = "peer-auto".to_string();
+        let manual_peer = "peer-manual".to_string();
+        let daemon = RpcDaemon::test_instance();
+        daemon
+            .handle_rpc(RpcRequest {
+                id: 1,
+                method: "propagation_enable".to_string(),
+                params: Some(json!({
+                    "enabled": true,
+                    "static_peers": [static_peer],
+                    "autopeer": true,
+                })),
+            })
+            .expect("enable propagation");
+        daemon
+            .accept_announce_with_metadata(
+                auto_peer.clone(),
+                1_700_000_800,
+                None,
+                None,
+                None,
+                Some(vec!["propagation".to_string()]),
+                None,
+                None,
+                None,
+                Some(1),
+                Some(Some(1)),
+                Some(Some(1)),
+                None,
+                Some(1),
+                None,
+                None,
+                None,
+                None,
+            )
+            .expect("accept auto peer announce");
+        daemon
+            .handle_rpc(RpcRequest {
+                id: 2,
+                method: "peer_sync".to_string(),
+                params: Some(json!({ "peer": manual_peer })),
+            })
+            .expect("manual peer sync");
+
+        let status = status::compose_python_status(
+            &daemon,
+            &PropagationControlContext {
+                enabled: true,
+                local_identity_hash: [0u8; 16],
+                propagation_destination_hash_hex: Some("propagation".to_string()),
+                control_destination_hash_hex: Some("control".to_string()),
+                delivery_destination: None,
+                allowed_control_identities: Vec::new(),
+            },
+        );
+
+        assert_eq!(status["peers"][static_peer.as_str()]["type"].as_str(), Some("static"));
+        assert_eq!(status["peers"][auto_peer.as_str()]["type"].as_str(), Some("discovered"));
+        assert_eq!(status["peers"][manual_peer.as_str()]["type"].as_str(), Some("discovered"));
+        assert_eq!(status["static_peers"].as_u64(), Some(1));
+        assert_eq!(status["discovered_peers"].as_u64(), Some(2));
+        assert_eq!(status["total_peers"].as_u64(), Some(3));
+    }
+
+    #[test]
+    fn python_status_exposes_peer_peering_key_value() {
+        let local_hash = [2u8; 16];
+        let peer = hex::encode([3u8; 16]);
+        let daemon = RpcDaemon::with_store(
+            MessagesStore::in_memory().expect("store"),
+            hex::encode(local_hash),
+        );
+        daemon
+            .accept_announce_with_metadata(
+                peer.clone(),
+                1_700_000_620,
+                None,
+                None,
+                None,
+                Some(vec!["propagation".to_string()]),
+                None,
+                None,
+                None,
+                Some(1),
+                Some(Some(1)),
+                Some(Some(1)),
+                None,
+                Some(1),
+                None,
+                None,
+                None,
+                None,
+            )
+            .expect("accept propagation peer announce");
+
+        let status = status::compose_python_status(
+            &daemon,
+            &PropagationControlContext {
+                enabled: true,
+                local_identity_hash: local_hash,
+                propagation_destination_hash_hex: Some("propagation".to_string()),
+                control_destination_hash_hex: Some("control".to_string()),
+                delivery_destination: None,
+                allowed_control_identities: Vec::new(),
+            },
+        );
+
+        assert!(status["peers"][peer.as_str()]["peering_key"]
+            .as_u64()
+            .is_some_and(|value| value >= 1));
+    }
+
+    #[test]
+    fn python_status_prefers_peer_propagation_stamp_policy() {
+        let peer = "peer-policy".to_string();
+        let daemon = RpcDaemon::test_instance();
+        daemon
+            .handle_rpc(RpcRequest {
+                id: 1,
+                method: "propagation_enable".to_string(),
+                params: Some(json!({
+                    "enabled": true,
+                    "autopeer": true,
+                    "target_cost": 16,
+                    "stamp_cost_flexibility": 7,
+                    "peering_cost": 18,
+                })),
+            })
+            .expect("enable propagation");
+        let app_data = rmp_serde::to_vec_named(&rmpv::Value::Array(vec![
+            rmpv::Value::Boolean(false),
+            rmpv::Value::from(1_700_000_700),
+            rmpv::Value::Boolean(true),
+            rmpv::Value::from(512),
+            rmpv::Value::from(2048),
+            rmpv::Value::Array(vec![
+                rmpv::Value::from(4),
+                rmpv::Value::from(1),
+                rmpv::Value::from(6),
+            ]),
+            rmpv::Value::Map(Vec::new()),
+        ]))
+        .expect("encode propagation app data");
+        daemon
+            .accept_announce_with_metadata(
+                peer.clone(),
+                1_700_000_700,
+                Some("Peer Policy".to_string()),
+                Some("announce".to_string()),
+                Some(hex::encode(app_data)),
+                Some(vec!["propagation".to_string()]),
+                None,
+                None,
+                None,
+                Some(4),
+                Some(Some(1)),
+                Some(Some(6)),
+                None,
+                Some(1),
+                None,
+                None,
+                None,
+                None,
+            )
+            .expect("accept propagation peer announce");
+
+        let status = status::compose_python_status(
+            &daemon,
+            &PropagationControlContext {
+                enabled: true,
+                local_identity_hash: [0u8; 16],
+                propagation_destination_hash_hex: Some("propagation".to_string()),
+                control_destination_hash_hex: Some("control".to_string()),
+                delivery_destination: None,
+                allowed_control_identities: Vec::new(),
+            },
+        );
+
+        let peer_status = &status["peers"][peer.as_str()];
+        assert_eq!(peer_status["peering_timebase"].as_i64(), Some(1_700_000_700));
+        assert_eq!(peer_status["transfer_limit"].as_u64(), Some(512));
+        assert_eq!(peer_status["sync_limit"].as_u64(), Some(2048));
+        assert_eq!(peer_status["target_stamp_cost"].as_u64(), Some(4));
+        assert_eq!(peer_status["stamp_cost_flexibility"].as_u64(), Some(1));
+        assert_eq!(peer_status["peering_cost"].as_u64(), Some(6));
     }
 }

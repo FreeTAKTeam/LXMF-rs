@@ -1,6 +1,6 @@
 use lxmf::WireMessage;
 use rand_core::OsRng;
-use reticulum_daemon::lxmf_stamps::generate_propagation_stamp;
+use reticulum_daemon::lxmf_stamps::generate_propagation_stamp_with_value_until_cancelled;
 use rns_core::identity::Identity as CoreIdentity;
 use rns_transport::destination::{link::Link, link::LinkStatus, DestinationDesc};
 use rns_transport::hash::AddressHash;
@@ -13,17 +13,24 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 pub(super) const PROPAGATION_INVALID_STAMP_SIGNAL: u8 = 0xF5;
 pub(super) const DEFAULT_PROPAGATION_STAMP_COST: u32 = 13;
 
+pub(super) struct PropagationPayload {
+    pub(super) bytes: Vec<u8>,
+    pub(super) transient_id: [u8; 32],
+    pub(super) stamp_value: u32,
+}
+
 #[derive(Clone)]
 pub(super) struct CachedPropagationLink {
     pub(super) node_hex: String,
     pub(super) link: Arc<tokio::sync::Mutex<Link>>,
 }
 
-pub(super) fn build_propagation_payload(
+pub(super) fn build_propagation_payload_until_cancelled(
     payload: &[u8],
     destination_identity: &Identity,
     propagation_stamp_cost: u32,
-) -> Result<Vec<u8>, std::io::Error> {
+    cancelled: impl FnMut() -> bool,
+) -> Result<PropagationPayload, std::io::Error> {
     let wire = WireMessage::unpack(payload).map_err(std::io::Error::other)?;
     let core_identity = CoreIdentity::new_from_slices(
         destination_identity.public_key_bytes(),
@@ -32,14 +39,19 @@ pub(super) fn build_propagation_payload(
     let (lxmf_data, transient_id) = wire
         .pack_propagation_transient_with_rng(&core_identity, OsRng)
         .map_err(std::io::Error::other)?;
-    let propagation_stamp = generate_propagation_stamp(&transient_id, propagation_stamp_cost)
-        .ok_or_else(|| std::io::Error::other("failed to generate propagation stamp"))?;
-    WireMessage::pack_propagation_envelope(
+    let (propagation_stamp, stamp_value) = generate_propagation_stamp_with_value_until_cancelled(
+        &transient_id,
+        propagation_stamp_cost,
+        cancelled,
+    )
+    .ok_or_else(|| std::io::Error::other("failed to generate propagation stamp"))?;
+    let bytes = WireMessage::pack_propagation_envelope(
         now_secs_f64(),
         &lxmf_data,
         Some(propagation_stamp.as_slice()),
     )
-    .map_err(std::io::Error::other)
+    .map_err(std::io::Error::other)?;
+    Ok(PropagationPayload { bytes, transient_id, stamp_value })
 }
 
 pub(super) async fn cached_propagation_link(

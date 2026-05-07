@@ -5,7 +5,7 @@ use rns_transport::iface::InterfaceManager;
 use std::collections::HashMap;
 use std::io;
 use std::sync::Arc;
-use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
+use tokio::sync::mpsc::{channel, error::TrySendError, Receiver, Sender};
 
 use crate::bootstrap::{
     mark_interface_runtime_fields, mark_interface_runtime_managed, mark_interface_startup_status,
@@ -13,15 +13,17 @@ use crate::bootstrap::{
 
 #[derive(Clone)]
 pub(super) struct TcpInterfaceMutationBridge {
-    tx: UnboundedSender<TcpInterfaceCommand>,
+    tx: Sender<TcpInterfaceCommand>,
 }
+
+const TCP_INTERFACE_MUTATION_QUEUE_CAPACITY: usize = 64;
 
 impl TcpInterfaceMutationBridge {
     pub(super) fn spawn(
         iface_manager: Arc<tokio::sync::Mutex<InterfaceManager>>,
         seeded: Vec<(String, InterfaceRecord, AddressHash)>,
     ) -> Self {
-        let (tx, rx) = unbounded_channel();
+        let (tx, rx) = channel(TCP_INTERFACE_MUTATION_QUEUE_CAPACITY);
         tokio::spawn(run_tcp_interface_mutation_worker(iface_manager, rx, seeded));
         Self { tx }
     }
@@ -44,9 +46,17 @@ impl InterfaceMutationBridge for TcpInterfaceMutationBridge {
                 record
             })
             .collect::<Vec<_>>();
-        self.tx.send(TcpInterfaceCommand::Apply { interfaces }).map_err(|_| {
-            io::Error::new(io::ErrorKind::BrokenPipe, "interface mutation worker is not running")
-        })?;
+        self.tx.try_send(TcpInterfaceCommand::Apply { interfaces }).map_err(
+            |error| match error {
+                TrySendError::Full(_) => {
+                    io::Error::new(io::ErrorKind::WouldBlock, "interface mutation queue is full")
+                }
+                TrySendError::Closed(_) => io::Error::new(
+                    io::ErrorKind::BrokenPipe,
+                    "interface mutation worker is not running",
+                ),
+            },
+        )?;
         Ok(effective)
     }
 }
@@ -63,7 +73,7 @@ struct ManagedTcpInterface {
 
 async fn run_tcp_interface_mutation_worker(
     iface_manager: Arc<tokio::sync::Mutex<InterfaceManager>>,
-    mut rx: UnboundedReceiver<TcpInterfaceCommand>,
+    mut rx: Receiver<TcpInterfaceCommand>,
     seeded: Vec<(String, InterfaceRecord, AddressHash)>,
 ) {
     let mut managed = seeded
@@ -152,6 +162,7 @@ mod tests {
     use super::{
         InterfaceManager, InterfaceMutationBridge, InterfaceRecord, TcpInterfaceMutationBridge,
     };
+    use std::io;
     use std::sync::Arc;
     use tokio::net::TcpListener;
     use tokio::time::{timeout, Duration};
@@ -191,5 +202,21 @@ mod tests {
             .expect("tcp client should connect");
         let (_stream, peer_addr) = accept.expect("accept connection");
         assert!(peer_addr.ip().is_loopback());
+    }
+
+    #[test]
+    fn hot_apply_queue_is_bounded_and_reports_pressure() {
+        let (tx, _rx) = tokio::sync::mpsc::channel(1);
+        let bridge = TcpInterfaceMutationBridge { tx };
+
+        bridge
+            .apply_interfaces(vec![tcp_record("first", "127.0.0.1", 1)])
+            .expect("first command fits bounded queue");
+        let err = bridge
+            .apply_interfaces(vec![tcp_record("second", "127.0.0.1", 2)])
+            .expect_err("second command should hit queue capacity");
+
+        assert_eq!(err.kind(), io::ErrorKind::WouldBlock);
+        assert!(err.to_string().contains("interface mutation queue is full"));
     }
 }

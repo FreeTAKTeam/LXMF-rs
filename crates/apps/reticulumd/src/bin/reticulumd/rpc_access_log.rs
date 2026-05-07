@@ -31,11 +31,19 @@ pub(super) fn parse_request_log_meta(request: &[u8]) -> RpcRequestLogMeta {
     let Some(content_length) = http::parse_content_length(headers) else {
         return meta;
     };
-    let body_start = header_end + 4;
-    if request.len() < body_start.saturating_add(content_length) {
+    if content_length > codec::MAX_FRAME_PAYLOAD_LEN + 4 {
         return meta;
     }
-    let body = &request[body_start..body_start + content_length];
+    let Some(body_start) = header_end.checked_add(4) else {
+        return meta;
+    };
+    let Some(body_end) = body_start.checked_add(content_length) else {
+        return meta;
+    };
+    if request.len() < body_end {
+        return meta;
+    }
+    let body = &request[body_start..body_end];
     let Ok(rpc_request) = codec::decode_frame::<RpcRequest>(body) else {
         return meta;
     };
@@ -202,6 +210,35 @@ mod tests {
         let meta = parse_request_log_meta(raw);
         assert_eq!(meta.http_method, "GET");
         assert_eq!(meta.path, "/healthz");
+        assert!(meta.rpc_method.is_none());
+        assert!(meta.rpc_request_id.is_none());
+        assert!(meta.trace_ref.is_none());
+    }
+
+    #[test]
+    fn parse_request_log_meta_ignores_oversized_rpc_body_length() {
+        let request = format!(
+            "POST /rpc HTTP/1.1\r\nHost: localhost\r\nContent-Length: {}\r\n\r\n",
+            codec::MAX_FRAME_PAYLOAD_LEN + 5
+        );
+
+        let meta = parse_request_log_meta(request.as_bytes());
+
+        assert_eq!(meta.http_method, "POST");
+        assert_eq!(meta.path, "/rpc");
+        assert!(meta.rpc_method.is_none());
+        assert!(meta.rpc_request_id.is_none());
+        assert!(meta.trace_ref.is_none());
+    }
+
+    #[test]
+    fn parse_request_log_meta_ignores_incomplete_rpc_body() {
+        let raw = b"POST /rpc HTTP/1.1\r\nHost: localhost\r\nContent-Length: 8\r\n\r\nshort";
+
+        let meta = parse_request_log_meta(raw);
+
+        assert_eq!(meta.http_method, "POST");
+        assert_eq!(meta.path, "/rpc");
         assert!(meta.rpc_method.is_none());
         assert!(meta.rpc_request_id.is_none());
         assert!(meta.trace_ref.is_none());

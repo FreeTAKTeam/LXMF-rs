@@ -9,6 +9,9 @@ impl DeliveryTask {
         payload: &[u8],
         statuses: LinkModeStatuses,
     ) -> Result<(), std::io::Error> {
+        if self.abort_if_cancelled(trace_stage) {
+            return Ok(());
+        }
         let result = send_via_link(
             self.transport.as_ref(),
             destination_desc,
@@ -44,7 +47,7 @@ impl DeliveryTask {
                     format!("packet_hash={packet_hash}")
                 };
                 log_delivery_trace(&self.message_id, &self.destination_hex, trace_stage, &detail);
-                let _ = self.receipt_tx.send(ReceiptEvent {
+                let _ = self.receipt_tx.try_send(ReceiptEvent {
                     message_id: self.message_id.clone(),
                     status: statuses.packet.to_string(),
                 });
@@ -64,7 +67,7 @@ impl DeliveryTask {
                 );
                 let detail = format!("resource_hash={resource_hash_hex}");
                 log_delivery_trace(&self.message_id, &self.destination_hex, trace_stage, &detail);
-                let _ = self.receipt_tx.send(ReceiptEvent {
+                let _ = self.receipt_tx.try_send(ReceiptEvent {
                     message_id: self.message_id.clone(),
                     status: statuses.resource.to_string(),
                 });
@@ -86,6 +89,9 @@ impl DeliveryTask {
         statuses: LinkModeStatuses,
     ) -> Result<(), std::io::Error> {
         await_link_activation(self.transport.as_ref(), &link, Duration::from_secs(20)).await?;
+        if self.abort_if_cancelled(trace_stage) {
+            return Ok(());
+        }
         let destination_desc = *link.lock().await.destination();
         let link_id = *link.lock().await.id();
         if trace_stage == "propagation" {
@@ -112,7 +118,7 @@ impl DeliveryTask {
                 destination_desc.address_hash
             );
             log_delivery_trace(&self.message_id, &self.destination_hex, trace_stage, &detail);
-            let _ = self.receipt_tx.send(ReceiptEvent {
+            let _ = self.receipt_tx.try_send(ReceiptEvent {
                 message_id: self.message_id.clone(),
                 status: statuses.resource.to_string(),
             });
@@ -151,7 +157,7 @@ impl DeliveryTask {
                     }
                 }
                 self.daemon.record_outbound_peer_activity(activity_peer, payload.len(), true);
-                let _ = self.receipt_tx.send(ReceiptEvent {
+                let _ = self.receipt_tx.try_send(ReceiptEvent {
                     message_id: self.message_id.clone(),
                     status: statuses.packet.to_string(),
                 });
@@ -177,7 +183,7 @@ impl DeliveryTask {
                     destination_desc.address_hash
                 );
                 log_delivery_trace(&self.message_id, &self.destination_hex, trace_stage, &detail);
-                let _ = self.receipt_tx.send(ReceiptEvent {
+                let _ = self.receipt_tx.try_send(ReceiptEvent {
                     message_id: self.message_id.clone(),
                     status: statuses.resource.to_string(),
                 });

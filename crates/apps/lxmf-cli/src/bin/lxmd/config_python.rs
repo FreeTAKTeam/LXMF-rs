@@ -15,7 +15,10 @@ pub(crate) fn apply_python_config_file(
     let sections = parse_python_lxmd_config(&contents);
     let interfaces = parse_python_reticulum_interfaces(&contents);
     if !interfaces.is_empty() {
-        super::write_generated_reticulumd_config(paths.generated_rnsconfig.as_path(), &interfaces)?;
+        super::config::write_generated_reticulumd_config(
+            paths.generated_rnsconfig.as_path(),
+            &interfaces,
+        )?;
         effective.rnsconfig = Some(paths.generated_rnsconfig.clone());
     }
 

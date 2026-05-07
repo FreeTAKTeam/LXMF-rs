@@ -76,6 +76,12 @@ jobs:
         run: cargo check -p reticulumd -p rns-tools
       - name: Boundary policy check
         run: bash tools/scripts/check-boundaries.sh
+      - name: Architecture checks
+        run: cargo run -p xtask -- architecture-checks
+      - name: SDK docs check
+        run: cargo run -p xtask -- sdk-docs-check
+      - name: SDK migration check
+        run: cargo run -p xtask -- sdk-migration-check
 
   security:
     runs-on: ubuntu-latest

@@ -129,7 +129,7 @@ impl TransportHandler {
         } else if self.config.broadcast || packet.header.packet_type == PacketType::Announce {
             let dispatch =
                 self.send(TxMessage { tx_type: TxMessageType::Broadcast(None), packet }).await;
-            let outcome = if dispatch.sent_ifaces > 0 {
+            let outcome = if dispatch.sent_ifaces > 0 || dispatch.queued_ifaces > 0 {
                 SendPacketOutcome::SentBroadcast
             } else {
                 SendPacketOutcome::DroppedNoRoute
@@ -158,13 +158,13 @@ impl TransportHandler {
             && matches!(message.tx_type, TxMessageType::Broadcast(_))
         {
             let next_hop_iface = self.path_table.next_hop_iface(&packet.destination);
-            let mgr = self.iface_manager.lock().await;
+            let mut mgr = self.iface_manager.lock().await;
             let policy = AnnounceBroadcastPolicy {
                 local_destination: self.single_in_destinations.contains_key(&packet.destination),
                 next_hop_iface_mode: next_hop_iface.and_then(|iface| mgr.mode(&iface)),
             };
             let dispatch = mgr.send_with_announce_policy(message, Some(policy)).await;
-            if dispatch.sent_ifaces > 0 {
+            if dispatch.sent_ifaces > 0 || dispatch.queued_ifaces > 0 {
                 self.note_link_packet_sent(&packet).await;
             }
             return dispatch;
@@ -177,7 +177,7 @@ impl TransportHandler {
             .await
             .send_with_announce_policy(message, announce_policy)
             .await;
-        if dispatch.sent_ifaces > 0 {
+        if dispatch.sent_ifaces > 0 || dispatch.queued_ifaces > 0 {
             self.note_link_packet_sent(&packet).await;
         }
         dispatch

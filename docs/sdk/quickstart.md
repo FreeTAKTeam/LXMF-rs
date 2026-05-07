@@ -5,25 +5,47 @@ This quickstart covers a minimal `lxmf-sdk` client using the RPC backend.
 ## Prerequisites
 
 - Rust toolchain matching `rust-toolchain.toml`
-- Running `reticulumd` endpoint (default `127.0.0.1:4242`)
+- Running `reticulumd` endpoint (default `unix:/tmp/lxmf-rpc.sock`)
 - Workspace checked out with `cargo check --workspace` passing
 
 ## Start `reticulumd`
 
 ```bash
-cargo run -p reticulumd --bin reticulumd -- --rpc 127.0.0.1:4242
-```
-
-For local app integration, expose a Unix socket alongside the TCP listener:
-
-```bash
-cargo run -p reticulumd --bin reticulumd -- --rpc 127.0.0.1:4242 --rpc-unix /tmp/lxmf-rpc.sock
+cargo run -p reticulumd --bin reticulumd
 ```
 
 Then connect with `Client::rpc("unix:/tmp/lxmf-rpc.sock")`.
 
-For secured remote bind, use token or mTLS configuration as described in:
+For explicit TCP development, opt in with `--rpc`:
 
+```bash
+cargo run -p reticulumd --bin reticulumd -- --rpc 127.0.0.1:4242
+```
+
+Remote TCP binds (`0.0.0.0`, non-loopback IPv4, or non-loopback IPv6) are refused
+unless remote token auth is already configured in the persisted SDK runtime config or
+mTLS client authentication is configured at startup with `--rpc-tls-client-ca`.
+Use loopback TCP only for local development.
+
+For first-run token-authenticated TCP, put the shared secret in an environment variable
+and point `reticulumd` at the variable name:
+
+```bash
+export LXMF_RPC_TOKEN_SECRET='replace-with-a-generated-secret'
+cargo run -p reticulumd --bin reticulumd -- \
+  --rpc 0.0.0.0:4242 \
+  --rpc-token-issuer example-issuer \
+  --rpc-token-audience example-audience \
+  --rpc-token-secret-env LXMF_RPC_TOKEN_SECRET
+```
+
+Do not pass token secrets directly as command-line arguments. After startup,
+the token settings are validated as SDK runtime config and satisfy the remote
+bind guard.
+
+For secured remote bind details, use token or mTLS configuration as described in:
+
+- `docs/sdk/remote-mtls.md`
 - `docs/contracts/sdk-v2.md`
 - `docs/contracts/sdk-v2-shared-instance-auth.md`
 
@@ -38,7 +60,7 @@ use tokio_stream::StreamExt;
 
 #[tokio::main]
 async fn main() -> Result<(), lxmf_sdk::app::Error> {
-    let client = Client::rpc("127.0.0.1:4242");
+    let client = Client::rpc("unix:/tmp/lxmf-rpc.sock");
     let handle = client.runtime().start_async(Config::desktop_default()).await?;
     println!("runtime_id={}", handle.runtime_id);
 
@@ -91,5 +113,7 @@ direct cursor control.
 ## Next Steps
 
 - Operational config patterns: `docs/sdk/configuration-profiles.md`
+- Remote mTLS example: `docs/sdk/remote-mtls.md`
 - Runtime lifecycle and cursor patterns: `docs/sdk/lifecycle-and-events.md`
+- Polling migration: `docs/sdk/polling-to-events-migration.md`
 - Capability-driven feature use: `docs/sdk/advanced-embedding.md`

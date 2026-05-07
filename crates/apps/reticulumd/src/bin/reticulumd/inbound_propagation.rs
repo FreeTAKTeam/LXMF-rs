@@ -2,7 +2,10 @@ use super::*;
 use lxmf::inbound_decode::InboundPayloadMode;
 use reticulum_daemon::inbound_delivery::{
     annotate_inbound_record_stamp_status, decode_inbound_payload, evaluate_inbound_stamp_policy,
+    inbound_record_allowed_by_delivery_policy,
 };
+use reticulum_daemon::lxmf_stamps::validate_propagation_stamp;
+use serde_json::{Map as JsonMap, Value as JsonValue};
 use x25519_dalek::PublicKey;
 
 pub(super) fn is_lxmf_propagation_destination(
@@ -25,13 +28,19 @@ pub(super) async fn ingest_propagation_envelope(
                 format!("invalid propagation envelope: {err}"),
             )
         })?;
+    let accepted_stamp_cost = daemon.propagation_min_accepted_stamp_cost();
     for message in messages.iter() {
-        let transient_id = daemon.canonical_propagation_payload_bytes(message)?;
+        let transient_id =
+            daemon.canonical_propagation_payload_bytes_at_cost(message, accepted_stamp_cost)?;
         if try_accept_local_propagated_message(daemon, delivery_destination, message).await? {
             daemon.note_client_propagation_messages_received(1);
             continue;
         }
-        daemon.ingest_propagation_payload_bytes(message, Some(transient_id.as_str()))?;
+        daemon.ingest_propagation_payload_bytes_at_cost(
+            message,
+            Some(transient_id.as_str()),
+            accepted_stamp_cost,
+        )?;
     }
     Ok(messages.len())
 }
@@ -77,9 +86,59 @@ async fn try_accept_local_propagated_message(
     };
 
     annotate_inbound_record_stamp_status(&mut record, stamp_status);
+    annotate_inbound_record_propagation_stamp_status(
+        &mut record,
+        transient_payload,
+        daemon.propagation_target_cost(),
+    );
+    if !inbound_record_allowed_by_delivery_policy(daemon, &record) {
+        return Ok(true);
+    }
+    if daemon.message_exists(record.id.as_str())? {
+        return Ok(true);
+    }
     daemon.record_inbound_peer_activity(&record.source, wire.len());
     daemon.accept_inbound_with_raw(record, &wire)?;
     Ok(true)
+}
+
+fn annotate_inbound_record_propagation_stamp_status(
+    record: &mut rns_rpc::MessageRecord,
+    transient_payload: &[u8],
+    target_cost: u32,
+) {
+    if target_cost == 0 {
+        return;
+    }
+    let Some(value) = validate_propagation_stamp(transient_payload, target_cost) else {
+        return;
+    };
+
+    let mut root = match record.fields.take() {
+        Some(JsonValue::Object(map)) => map,
+        Some(other) => {
+            let mut map = JsonMap::new();
+            map.insert("_fields_raw".into(), other);
+            map
+        }
+        None => JsonMap::new(),
+    };
+    let mut lxmf = match root.remove("_lxmf") {
+        Some(JsonValue::Object(map)) => map,
+        _ => JsonMap::new(),
+    };
+    lxmf.insert("propagation_stamp_checked".into(), JsonValue::Bool(true));
+    lxmf.insert("propagation_stamp_valid".into(), JsonValue::Bool(true));
+    lxmf.insert(
+        "propagation_stamp_target_cost".into(),
+        JsonValue::Number(serde_json::Number::from(target_cost)),
+    );
+    lxmf.insert(
+        "propagation_stamp_value".into(),
+        JsonValue::Number(serde_json::Number::from(value)),
+    );
+    root.insert("_lxmf".into(), JsonValue::Object(lxmf));
+    record.fields = Some(JsonValue::Object(root));
 }
 
 fn decrypt_local_propagated_wire(

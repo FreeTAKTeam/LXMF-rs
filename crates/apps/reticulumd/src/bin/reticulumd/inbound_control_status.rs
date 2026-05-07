@@ -1,5 +1,4 @@
 use super::*;
-use std::time::SystemTime;
 
 pub(super) fn compose_python_status(
     daemon: &RpcDaemon,
@@ -31,14 +30,32 @@ pub(super) fn compose_python_status(
             rows.iter()
                 .filter_map(|row| {
                     let peer = row.get("peer")?.as_str()?.to_string();
-                    let peer_type =
-                        row.get("peer_type").and_then(Value::as_str).unwrap_or("discovered");
+                    let peer_type = if propagation
+                        .get("static_peers")
+                        .and_then(Value::as_array)
+                        .is_some_and(|static_peers| {
+                            static_peers
+                                .iter()
+                                .filter_map(Value::as_str)
+                                .any(|static_peer| static_peer.eq_ignore_ascii_case(peer.as_str()))
+                        })
+                    {
+                        "static"
+                    } else {
+                        "discovered"
+                    };
                     let (outgoing, incoming, offered, unhandled) =
                         daemon.peer_message_stats(peer.as_str()).unwrap_or((0, 0, 0, 0));
                     total_peer_count = total_peer_count.saturating_add(1);
-                    if matches!(peer_type, "discovered" | "auto") {
+                    if peer_type == "discovered" {
                         discovered_peer_count = discovered_peer_count.saturating_add(1);
                     }
+                    let target_stamp_cost =
+                        row.get("propagation_stamp_cost").cloned().unwrap_or(Value::Null);
+                    let stamp_cost_flexibility = row
+                        .get("propagation_stamp_cost_flexibility")
+                        .cloned()
+                        .unwrap_or(Value::Null);
                     Some((
                         peer,
                         json!({
@@ -50,19 +67,19 @@ pub(super) fn compose_python_status(
                             "next_sync_attempt": row.get("next_sync_attempt").and_then(Value::as_i64).unwrap_or(0),
                             "last_sync_attempt": row.get("last_sync_attempt").and_then(Value::as_i64).unwrap_or(0),
                             "sync_backoff": row.get("sync_backoff").and_then(Value::as_u64).unwrap_or(0),
-                            "peering_timebase": 0,
+                            "peering_timebase": row.get("peering_timebase").and_then(Value::as_i64).unwrap_or(0),
                             "ler": 0,
                             "str": 0,
-                            "transfer_limit": 256,
-                            "sync_limit": 10240,
-                            "target_stamp_cost": propagation.get("target_cost").and_then(Value::as_u64).unwrap_or(16),
-                            "stamp_cost_flexibility": propagation.get("stamp_cost_flexibility").and_then(Value::as_u64).unwrap_or(3),
-                            "peering_cost": propagation.get("peering_cost").and_then(Value::as_u64).unwrap_or(18),
-                            "peering_key": Value::Null,
+                            "transfer_limit": row.get("propagation_transfer_limit").cloned().unwrap_or(Value::Null),
+                            "sync_limit": row.get("propagation_sync_limit").cloned().unwrap_or(Value::Null),
+                            "target_stamp_cost": target_stamp_cost,
+                            "stamp_cost_flexibility": stamp_cost_flexibility,
+                            "peering_cost": row.get("peering_cost").cloned().unwrap_or(Value::Null),
+                            "peering_key": row.get("peering_key").cloned().unwrap_or(Value::Null),
                             "network_distance": row.get("network_distance").and_then(Value::as_u64).unwrap_or(1),
                             "rx_bytes": row.get("rx_bytes").and_then(Value::as_u64).unwrap_or(0),
                             "tx_bytes": row.get("tx_bytes").and_then(Value::as_u64).unwrap_or(0),
-                            "acceptance_rate": row.get("acceptance_rate").and_then(Value::as_f64).unwrap_or(1.0),
+                            "acceptance_rate": row.get("acceptance_rate").and_then(Value::as_f64).unwrap_or(0.0),
                             "messages": {
                                 "offered": offered,
                                 "outgoing": outgoing,
@@ -78,10 +95,10 @@ pub(super) fn compose_python_status(
     json!({
         "identity_hash": status.get("identity_hash").cloned().unwrap_or(Value::Null),
         "destination_hash": control.propagation_destination_hash_hex.clone().unwrap_or_default(),
-        "uptime": SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_secs(),
-        "delivery_limit": 1000,
-        "propagation_limit": 256,
-        "sync_limit": 10240,
+        "uptime": daemon.uptime_secs(),
+        "delivery_limit": propagation.get("delivery_limit").and_then(Value::as_u64).unwrap_or(1000),
+        "propagation_limit": propagation.get("propagation_limit").and_then(Value::as_u64).unwrap_or(256),
+        "sync_limit": propagation.get("sync_limit").and_then(Value::as_u64).unwrap_or(10240),
         "target_stamp_cost": propagation.get("target_cost").and_then(Value::as_u64).unwrap_or(16),
         "stamp_cost_flexibility": propagation.get("stamp_cost_flexibility").and_then(Value::as_u64).unwrap_or(3),
         "peering_cost": propagation.get("peering_cost").and_then(Value::as_u64).unwrap_or(18),
@@ -91,7 +108,7 @@ pub(super) fn compose_python_status(
         "messagestore": {
             "count": message_count,
             "bytes": message_bytes,
-            "limit": propagation.get("message_storage_limit_mb").and_then(Value::as_u64).map(|value| value * 1024 * 1024),
+            "limit": propagation.get("message_storage_limit_mb").and_then(Value::as_u64).map(|value| value * 1_000_000),
         },
         "clients": {
             "client_propagation_messages_received": propagation.get("client_propagation_messages_received").and_then(Value::as_u64).unwrap_or(0),

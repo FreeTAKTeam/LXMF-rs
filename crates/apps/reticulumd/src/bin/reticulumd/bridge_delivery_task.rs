@@ -1,3 +1,4 @@
+use super::identity_resolver;
 use super::*;
 
 pub(super) struct LinkModeStatuses {
@@ -14,12 +15,19 @@ pub(super) struct DeliveryTask {
     pub(super) receipt_map: Arc<Mutex<HashMap<String, String>>>,
     pub(super) outbound_resource_map: OutboundResourceMap,
     pub(super) outbound_propagation_link: Arc<tokio::sync::Mutex<Option<CachedPropagationLink>>>,
-    pub(super) receipt_tx: tokio::sync::mpsc::UnboundedSender<ReceiptEvent>,
+    pub(super) receipt_tx: tokio::sync::mpsc::Sender<ReceiptEvent>,
     pub(super) message_id: String,
+    pub(super) source_hash: [u8; 16],
     pub(super) destination: [u8; 16],
     pub(super) destination_hash: AddressHash,
     pub(super) destination_hex: String,
-    pub(super) payload: Vec<u8>,
+    pub(super) title: String,
+    pub(super) content: String,
+    pub(super) fields: Option<JsonValue>,
+    pub(super) signer: PrivateIdentity,
+    pub(super) stamp_cost: Option<u32>,
+    pub(super) outbound_ticket: Option<String>,
+    pub(super) include_ticket: Option<(i64, Vec<u8>)>,
     pub(super) peer_identity: Option<Identity>,
     pub(super) propagation_node_identity: Option<Identity>,
     pub(super) requested_method: RequestedDeliveryMethod,
@@ -28,66 +36,55 @@ pub(super) struct DeliveryTask {
 }
 
 impl DeliveryTask {
-    fn cached_identity_candidates(&self) -> Vec<Identity> {
-        let mut candidates = Vec::new();
-
-        let mut push_candidate = |identity: Identity| {
-            let already_present = candidates.iter().any(|existing: &Identity| {
-                existing.public_key_bytes() == identity.public_key_bytes()
-                    && existing.verifying_key_bytes() == identity.verifying_key_bytes()
-            });
-            if !already_present {
-                candidates.push(identity);
-            }
-        };
-
-        if let Some(identity) = self.peer_identity {
-            push_candidate(identity);
-        }
-        if let Some(identity) = self.propagation_node_identity {
-            push_candidate(identity);
-        }
-        if let Ok(peers) = self.peer_crypto.lock() {
-            for info in peers.values() {
-                push_candidate(info.identity);
-            }
-        }
-        if let Ok(identities) = self.outbound_propagation_identities.lock() {
-            for identity in identities.values() {
-                push_candidate(*identity);
-            }
-        }
-
-        candidates
-    }
-
     fn cached_identity_for_destination(&self, destination_hash: AddressHash) -> Option<Identity> {
-        const LXMF_ASPECTS: [&str; 3] = ["delivery", "propagation", "propagation.control"];
-
-        self.cached_identity_candidates().into_iter().find(|identity| {
-            LXMF_ASPECTS.iter().any(|aspect| {
-                SingleOutputDestination::new(*identity, DestinationName::new("lxmf", aspect))
-                    .desc
-                    .address_hash
-                    == destination_hash
-            })
-        })
+        identity_resolver::cached_identity_for_destination(
+            destination_hash,
+            self.peer_identity,
+            self.propagation_node_identity,
+            &self.peer_crypto,
+            &self.outbound_propagation_identities,
+        )
     }
 
     pub(super) async fn run(self) {
         log_delivery_trace(&self.message_id, &self.destination_hex, "start", "delivery requested");
+        if self.abort_if_cancelled("start") {
+            return;
+        }
+        let payload = match self.build_payload().await {
+            Ok(payload) => payload,
+            Err(err) => {
+                if self.abort_if_cancelled("payload") {
+                    return;
+                }
+                let _ = self.receipt_tx.try_send(ReceiptEvent {
+                    message_id: self.message_id,
+                    status: format!("failed: {err}"),
+                });
+                return;
+            }
+        };
+        if self.abort_if_cancelled("payload") {
+            return;
+        }
         match self.requested_method {
-            RequestedDeliveryMethod::Direct => self.run_direct().await,
-            RequestedDeliveryMethod::Opportunistic => self.run_opportunistic().await,
-            RequestedDeliveryMethod::Propagated => self.run_propagated().await,
+            RequestedDeliveryMethod::Direct => self.run_direct(payload).await,
+            RequestedDeliveryMethod::Opportunistic => self.run_opportunistic(payload).await,
+            RequestedDeliveryMethod::Propagated => self.run_propagated(payload).await,
             RequestedDeliveryMethod::Paper => {}
         }
     }
 
-    async fn run_direct(self) {
+    async fn run_direct(self, payload: Vec<u8>) {
+        if self.abort_if_cancelled("link") {
+            return;
+        }
         let Some(identity) = self.resolve_destination_identity().await else {
             return;
         };
+        if self.abort_if_cancelled("link") {
+            return;
+        }
         let destination_desc = DestinationDesc {
             identity,
             address_hash: self.destination_hash,
@@ -99,7 +96,7 @@ impl DeliveryTask {
                 "link",
                 self.destination_hex.as_str(),
                 destination_desc,
-                &self.payload,
+                &payload,
                 LinkModeStatuses {
                     packet: "sent: link",
                     resource: "sending: link resource",
@@ -112,16 +109,16 @@ impl DeliveryTask {
             Err(err) if self.try_propagation_on_fail && self.propagation_node_hex.is_some() => {
                 let detail = format!("direct failed err={err}; trying propagated");
                 log_delivery_trace(&self.message_id, &self.destination_hex, "link", &detail);
-                let _ = self.receipt_tx.send(ReceiptEvent {
+                let _ = self.receipt_tx.try_send(ReceiptEvent {
                     message_id: self.message_id.clone(),
                     status: format!("link failed: {err}; trying propagated"),
                 });
-                self.run_propagated().await;
+                self.run_propagated(payload).await;
             }
             Err(err) => {
                 let detail = format!("direct failed err={err}");
                 log_delivery_trace(&self.message_id, &self.destination_hex, "link", &detail);
-                let _ = self.receipt_tx.send(ReceiptEvent {
+                let _ = self.receipt_tx.try_send(ReceiptEvent {
                     message_id: self.message_id,
                     status: format!("failed: {err}"),
                 });
@@ -129,10 +126,16 @@ impl DeliveryTask {
         }
     }
 
-    async fn run_propagated(self) {
+    async fn run_propagated(self, payload: Vec<u8>) {
+        if self.abort_if_cancelled("propagation") {
+            return;
+        }
         let Some(destination_identity) = self.resolve_destination_identity().await else {
             return;
         };
+        if self.abort_if_cancelled("propagation") {
+            return;
+        }
         log_delivery_trace(
             &self.message_id,
             &self.destination_hex,
@@ -140,7 +143,7 @@ impl DeliveryTask {
             "recipient identity ready",
         );
         let Some(propagation_node_hex) = self.propagation_node_hex.clone() else {
-            let _ = self.receipt_tx.send(ReceiptEvent {
+            let _ = self.receipt_tx.try_send(ReceiptEvent {
                 message_id: self.message_id,
                 status: "failed: no outbound propagation node selected".to_string(),
             });
@@ -150,7 +153,7 @@ impl DeliveryTask {
         let propagation_hash = match parse_destination_hash_required(&propagation_node_hex) {
             Ok(hash) => AddressHash::new(hash),
             Err(err) => {
-                let _ = self.receipt_tx.send(ReceiptEvent {
+                let _ = self.receipt_tx.try_send(ReceiptEvent {
                     message_id: self.message_id,
                     status: format!("failed: {err}"),
                 });
@@ -184,26 +187,54 @@ impl DeliveryTask {
             "propagation",
             "building propagation payload",
         );
-        let payload = match propagation::build_propagation_payload(
-            &self.payload,
+        self.record_propagation_stamp_work_metadata("generating", target_cost, None);
+        if self.abort_if_cancelled("propagation") {
+            self.record_propagation_stamp_work_metadata("cancelled", target_cost, None);
+            return;
+        }
+        let propagation_payload = match propagation::build_propagation_payload_until_cancelled(
+            &payload,
             &destination_identity,
             target_cost,
+            || {
+                let status = self.daemon.message_receipt_status(&self.message_id).ok().flatten();
+                Self::is_cancelled_status(status.as_deref())
+            },
         ) {
             Ok(payload) => payload,
             Err(err) => {
-                let _ = self.receipt_tx.send(ReceiptEvent {
+                if self.abort_if_cancelled("propagation") {
+                    self.record_propagation_stamp_work_metadata("cancelled", target_cost, None);
+                    return;
+                }
+                self.record_propagation_stamp_work_metadata(
+                    "failed",
+                    target_cost,
+                    Some(err.to_string()),
+                );
+                let _ = self.receipt_tx.try_send(ReceiptEvent {
                     message_id: self.message_id,
                     status: format!("failed: {err}"),
                 });
                 return;
             }
         };
+        self.record_propagation_stamp_work_metadata(
+            "ready",
+            target_cost,
+            Some(propagation_payload.stamp_value.to_string()),
+        );
+        self.record_propagation_payload_metadata(&propagation_payload, target_cost);
+        let payload = propagation_payload.bytes;
         log_delivery_trace(
             &self.message_id,
             &self.destination_hex,
             "propagation",
             format!("propagation payload ready bytes={}", payload.len()).as_str(),
         );
+        if self.abort_if_cancelled("propagation") {
+            return;
+        }
 
         log_delivery_trace(
             &self.message_id,
@@ -217,7 +248,7 @@ impl DeliveryTask {
         {
             Ok(link) => link,
             Err(err) => {
-                let _ = self.receipt_tx.send(ReceiptEvent {
+                let _ = self.receipt_tx.try_send(ReceiptEvent {
                     message_id: self.message_id,
                     status: format!("failed: {err}"),
                 });
@@ -230,6 +261,9 @@ impl DeliveryTask {
             "propagation",
             "propagation link ready",
         );
+        if self.abort_if_cancelled("propagation") {
+            return;
+        }
 
         if let Err(err) = self
             .send_via_existing_link_mode(
@@ -247,18 +281,21 @@ impl DeliveryTask {
         {
             let detail = format!("propagated failed err={err}");
             log_delivery_trace(&self.message_id, &self.destination_hex, "propagation", &detail);
-            let _ = self.receipt_tx.send(ReceiptEvent {
+            let _ = self.receipt_tx.try_send(ReceiptEvent {
                 message_id: self.message_id,
                 status: format!("failed: {err}"),
             });
         }
     }
 
-    async fn run_opportunistic(self) {
+    async fn run_opportunistic(self, payload: Vec<u8>) {
+        if self.abort_if_cancelled("opportunistic") {
+            return;
+        }
         // Opportunistic SINGLE packets must carry LXMF wire bytes
         // without the destination prefix. Receivers prepend the
         // packet destination hash before unpacking.
-        let opportunistic_payload = opportunistic_payload(&self.payload, &self.destination);
+        let opportunistic_payload = opportunistic_payload(&payload, &self.destination);
         let mut data = PacketDataBuffer::new();
         if data.write(opportunistic_payload).is_err() {
             log_delivery_trace(
@@ -267,7 +304,7 @@ impl DeliveryTask {
                 "opportunistic",
                 "payload too large",
             );
-            let _ = self.receipt_tx.send(ReceiptEvent {
+            let _ = self.receipt_tx.try_send(ReceiptEvent {
                 message_id: self.message_id,
                 status: "failed: opportunistic payload too large".to_string(),
             });
@@ -312,7 +349,7 @@ impl DeliveryTask {
                 map.remove(&packet_hash);
             }
         }
-        let _ = self.receipt_tx.send(ReceiptEvent {
+        let _ = self.receipt_tx.try_send(ReceiptEvent {
             message_id: self.message_id,
             status: send_outcome_status("opportunistic", outcome),
         });
@@ -333,25 +370,6 @@ impl DeliveryTask {
             peers.insert(self.destination_hex.clone(), PeerCrypto { identity });
         }
         Some(identity)
-    }
-
-    fn propagation_target_cost(&self, propagation_node_hex: &str) -> Option<u32> {
-        let response = self
-            .daemon
-            .handle_rpc(RpcRequest { id: 0, method: "list_peers".to_string(), params: None })
-            .ok()?
-            .result?;
-        response
-            .get("peers")
-            .and_then(|value| value.as_array())
-            .and_then(|rows| {
-                rows.iter().find(|row| {
-                    row.get("peer").and_then(|value| value.as_str()) == Some(propagation_node_hex)
-                })
-            })
-            .and_then(|row| row.get("propagation_stamp_cost"))
-            .and_then(|value| value.as_u64())
-            .and_then(|value| u32::try_from(value).ok())
     }
 
     async fn resolve_or_create_propagation_link(
@@ -443,6 +461,9 @@ impl DeliveryTask {
             log_delivery_trace(&self.message_id, detail, stage, "waiting for announce");
             let deadline = tokio::time::Instant::now() + Duration::from_secs(12);
             while tokio::time::Instant::now() < deadline {
+                if self.abort_if_cancelled(stage) {
+                    return None;
+                }
                 if let Some(found) = self.transport.destination_identity(&destination_hash).await {
                     identity = Some(found);
                     break;
@@ -467,7 +488,7 @@ impl DeliveryTask {
         let Some(identity) = identity else {
             let detail = destination_hex.unwrap_or(self.destination_hex.as_str());
             log_delivery_trace(&self.message_id, detail, stage, "not found");
-            let _ = self.receipt_tx.send(ReceiptEvent {
+            let _ = self.receipt_tx.try_send(ReceiptEvent {
                 message_id: self.message_id.clone(),
                 status: failure_status.to_string(),
             });

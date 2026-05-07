@@ -22,12 +22,13 @@ crates.io names for those crates are `lxmf-wire`, `reticulum-rs-core`,
   - `lxmf-cli`, `reticulumd`, `rns-tools`
 - Add boundary checks and CI jobs that enforce layering and API drift control.
 - Move Python interop harness ownership out of this repository.
-- Keep `lxmf-router` and `lxmf-runtime` as transitional stubs outside the active workspace and
-  outside the stable public contract surface.
+- Keep any router/runtime transition surface outside the active workspace and
+  outside the stable public contract surface. The temporary `lxmf-router` and
+  `lxmf-runtime` stub crates have since been removed.
 
 ## Consequences
 - Immediate hard break in repository structure and crate paths.
 - Faster independent evolution of protocol libraries vs operator binaries.
 - Stronger CI posture for API governance and dependency policy.
-- Reduced public-surface ambiguity by treating router/runtime stubs as non-authoritative during
-  the SDK v2.5 cutover window.
+- Reduced public-surface ambiguity by keeping router/runtime stubs
+  non-authoritative during the SDK v2.5 cutover window, then retiring them.

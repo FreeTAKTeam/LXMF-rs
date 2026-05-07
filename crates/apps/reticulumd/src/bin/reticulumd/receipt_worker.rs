@@ -4,11 +4,11 @@ use reticulum_daemon::receipt_bridge::ReceiptEvent;
 use rns_rpc::RpcDaemon;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::sync::mpsc::Receiver;
 
 pub(super) fn spawn_receipt_worker(
     daemon: Arc<RpcDaemon>,
-    mut receipt_rx: UnboundedReceiver<ReceiptEvent>,
+    mut receipt_rx: Receiver<ReceiptEvent>,
     receipt_map: Arc<Mutex<HashMap<String, String>>>,
     outbound_resource_map: OutboundResourceMap,
 ) {

@@ -7,6 +7,10 @@ Keep all required items checked.
 - [x] docs/sdk/quickstart.md
 - [x] docs/sdk/configuration-profiles.md
 - [x] docs/sdk/lifecycle-and-events.md
+- [x] docs/sdk/polling-to-events-migration.md
+- [x] docs/sdk/remote-mtls.md
+- [x] docs/sdk/delivery-states.md
+- [x] docs/sdk/error-handling.md
 - [x] docs/sdk/advanced-embedding.md
 - [x] README.md includes SDK guide links
 - [x] docs/architecture/overview.md links to SDK guide index

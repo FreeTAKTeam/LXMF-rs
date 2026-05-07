@@ -8,7 +8,11 @@ It complements the formal contracts under `docs/contracts/` with integration-foc
 1. `docs/sdk/quickstart.md`
 2. `docs/sdk/configuration-profiles.md`
 3. `docs/sdk/lifecycle-and-events.md`
-4. `docs/sdk/advanced-embedding.md`
+4. `docs/sdk/polling-to-events-migration.md`
+5. `docs/sdk/remote-mtls.md`
+6. `docs/sdk/delivery-states.md`
+7. `docs/sdk/error-handling.md`
+8. `docs/sdk/advanced-embedding.md`
 
 ## Core Concepts
 

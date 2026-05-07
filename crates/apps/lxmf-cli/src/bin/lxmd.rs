@@ -1,27 +1,37 @@
 use clap::Parser;
 use config::load_effective_args;
-use python_compat::{apply_python_compat_config, emit_compatibility_notes};
-use serde::Deserialize;
+use launch::{launch_supervised, requires_supervised_launch};
+use python_compat::emit_compatibility_notes;
 use serde_json::json;
 use std::env;
 use std::fs;
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, ExitCode};
-use std::thread;
-use std::time::{Duration, Instant};
+use std::process::{Command, ExitCode};
+use std::time::Duration;
 
 #[path = "lxmd/config.rs"]
 mod config;
+#[path = "lxmd/config_python.rs"]
+mod config_python;
 #[path = "lxmd/inbound.rs"]
 mod inbound;
+#[path = "lxmd/launch.rs"]
+mod launch;
 #[path = "lxmd/python_compat.rs"]
 mod python_compat;
 #[path = "lxmd/query.rs"]
 mod query;
 #[path = "lxmd/rpc_client.rs"]
 mod rpc_client;
+#[path = "lxmd/types.rs"]
+mod types;
+
+pub(crate) use types::{
+    EffectiveArgs, LxmdConfigFile, LxmdPaths, PythonCompatConfig, SingleTomlConfigFile,
+    SingleTomlInterface,
+};
 
 const DEFAULT_RPC_ADDR: &str = "127.0.0.1:4243";
 const READY_TIMEOUT: Duration = Duration::from_secs(10);
@@ -132,201 +142,6 @@ struct Args {
     rpc: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, Default)]
-struct LxmdConfigFile {
-    #[serde(default)]
-    lxmd: LxmdConfigSection,
-}
-
-#[derive(Debug, Clone, Deserialize, Default)]
-struct LxmdConfigSection {
-    profile: Option<String>,
-    rpc: Option<String>,
-    rnsconfig: Option<PathBuf>,
-    propagation_node: Option<bool>,
-    on_inbound: Option<String>,
-    quiet: Option<bool>,
-    service: Option<bool>,
-    display_name: Option<String>,
-    db: Option<PathBuf>,
-    identity: Option<PathBuf>,
-    transport: Option<String>,
-    reticulumd: Option<PathBuf>,
-}
-
-#[derive(Debug, Clone)]
-struct EffectiveArgs {
-    profile: String,
-    rpc: String,
-    rnsconfig: Option<PathBuf>,
-    propagation_node: bool,
-    on_inbound: Option<String>,
-    quiet: bool,
-    service: bool,
-    display_name: Option<String>,
-    db: Option<PathBuf>,
-    identity: Option<PathBuf>,
-    transport: Option<String>,
-    reticulumd: Option<PathBuf>,
-    messages_dir: Option<PathBuf>,
-    config_dir: Option<PathBuf>,
-    timeout_secs: f64,
-    status: bool,
-    peers: bool,
-    sync: Option<String>,
-    unpeer: Option<String>,
-    remote: Option<String>,
-    query_identity: Option<PathBuf>,
-    python_compat: PythonCompatConfig,
-}
-
-#[derive(Debug, Clone)]
-struct LxmdPaths {
-    config_dir: PathBuf,
-    config_file: PathBuf,
-    identity_file: PathBuf,
-    storage_dir: PathBuf,
-    messages_dir: PathBuf,
-    generated_rnsconfig: PathBuf,
-}
-
-#[derive(Debug, Clone, Deserialize, Default)]
-struct SingleTomlConfigFile {
-    #[serde(default)]
-    node: SingleTomlNode,
-    #[serde(default)]
-    rpc: SingleTomlRpc,
-    #[serde(default)]
-    transport: SingleTomlTransport,
-    #[serde(default)]
-    storage: SingleTomlStorage,
-    #[serde(default)]
-    propagation: SingleTomlPropagation,
-    #[serde(default)]
-    lxmf: SingleTomlLxmf,
-    #[serde(default)]
-    interfaces: Vec<SingleTomlInterface>,
-}
-
-#[derive(Debug, Clone, Deserialize, Default)]
-struct SingleTomlNode {
-    display_name: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize, Default)]
-struct SingleTomlRpc {
-    listen: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize, Default)]
-struct SingleTomlTransport {
-    listen: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize, Default)]
-struct SingleTomlStorage {
-    db: Option<PathBuf>,
-    identity: Option<PathBuf>,
-}
-
-#[derive(Debug, Clone, Deserialize, Default)]
-struct SingleTomlPropagation {
-    enable: Option<bool>,
-    announce_at_start: Option<bool>,
-    announce_interval: Option<u64>,
-    autopeer: Option<bool>,
-    autopeer_maxdepth: Option<u32>,
-    auth_required: Option<bool>,
-    max_peers: Option<u32>,
-    from_static_only: Option<bool>,
-    message_storage_limit_mb: Option<u64>,
-    peering_cost: Option<u32>,
-    remote_peering_cost_max: Option<u32>,
-    static_peers: Option<Vec<String>>,
-    control_allowed: Option<Vec<String>>,
-    prioritised_destinations: Option<Vec<String>>,
-}
-
-#[derive(Debug, Clone, Deserialize, Default)]
-struct SingleTomlLxmf {
-    announce_at_start: Option<bool>,
-    on_inbound: Option<String>,
-    display_name: Option<String>,
-    delivery_transfer_max_accepted_size: Option<f64>,
-}
-
-#[derive(Debug, Clone, Deserialize, Default)]
-struct SingleTomlInterface {
-    #[serde(rename = "type")]
-    interface_type: String,
-    #[serde(default = "default_true_bool")]
-    enabled: bool,
-    name: Option<String>,
-    host: Option<String>,
-    port: Option<u16>,
-}
-
-fn default_true_bool() -> bool {
-    true
-}
-
-#[derive(Debug, Clone)]
-struct PythonCompatConfig {
-    auth_required: bool,
-    autopeer: bool,
-    autopeer_maxdepth: Option<u32>,
-    allowed_identities: Vec<String>,
-    ignored_destinations: Vec<String>,
-    prioritised_destinations: Vec<String>,
-    control_allowed: Vec<String>,
-    static_peers: Vec<String>,
-    node_name: Option<String>,
-    message_storage_limit_mb: Option<u64>,
-    propagation_message_max_kb: Option<f64>,
-    propagation_sync_max_kb: Option<f64>,
-    propagation_stamp_cost_target: Option<u32>,
-    propagation_stamp_cost_flexibility: Option<u32>,
-    peering_cost: Option<u32>,
-    remote_peering_cost_max: Option<u32>,
-    max_peers: Option<u32>,
-    from_static_only: bool,
-    peer_announce_at_start: bool,
-    node_announce_at_start: bool,
-    peer_announce_interval_min: Option<u64>,
-    node_announce_interval_min: Option<u64>,
-    delivery_transfer_max_kb: Option<f64>,
-}
-
-impl Default for PythonCompatConfig {
-    fn default() -> Self {
-        Self {
-            auth_required: false,
-            autopeer: true,
-            autopeer_maxdepth: Some(6),
-            allowed_identities: Vec::new(),
-            ignored_destinations: Vec::new(),
-            prioritised_destinations: Vec::new(),
-            control_allowed: Vec::new(),
-            static_peers: Vec::new(),
-            node_name: None,
-            message_storage_limit_mb: None,
-            propagation_message_max_kb: None,
-            propagation_sync_max_kb: None,
-            propagation_stamp_cost_target: None,
-            propagation_stamp_cost_flexibility: None,
-            peering_cost: None,
-            remote_peering_cost_max: None,
-            max_peers: None,
-            from_static_only: false,
-            peer_announce_at_start: false,
-            node_announce_at_start: false,
-            peer_announce_interval_min: None,
-            node_announce_interval_min: None,
-            delivery_transfer_max_kb: None,
-        }
-    }
-}
-
 fn main() -> ExitCode {
     let args = Args::parse();
     if args.exampleconfig {
@@ -408,10 +223,6 @@ fn main() -> ExitCode {
             }
         }
     }
-}
-
-fn requires_supervised_launch(args: &EffectiveArgs) -> bool {
-    args.propagation_node || args.on_inbound.is_some()
 }
 
 fn maybe_handle_query_mode(args: &EffectiveArgs) -> Option<ExitCode> {
@@ -502,66 +313,6 @@ fn maybe_handle_query_mode(args: &EffectiveArgs) -> Option<ExitCode> {
     }
 }
 
-fn launch_supervised(
-    mut cmd: Command,
-    reticulumd: PathBuf,
-    rpc_addr: &str,
-    args: &EffectiveArgs,
-) -> ExitCode {
-    let mut child = match cmd.spawn() {
-        Ok(child) => child,
-        Err(err) => {
-            eprintln!("lxmd: failed to launch {}: {}", reticulumd.display(), err);
-            return ExitCode::from(1);
-        }
-    };
-
-    if let Err(err) = wait_until_ready(&mut child, rpc_addr, READY_TIMEOUT) {
-        eprintln!("lxmd: {err}");
-        let _ = child.kill();
-        let _ = child.wait();
-        return ExitCode::from(1);
-    }
-
-    if args.propagation_node {
-        if let Err(err) = enable_propagation_mode(rpc_addr) {
-            eprintln!("lxmd: failed to enable propagation mode: {err}");
-            let _ = child.kill();
-            let _ = child.wait();
-            return ExitCode::from(1);
-        }
-    }
-
-    if let Err(err) = apply_python_compat_config(rpc_addr, args) {
-        eprintln!("lxmd: failed to apply python-style daemon settings: {err}");
-        let _ = child.kill();
-        let _ = child.wait();
-        return ExitCode::from(1);
-    }
-
-    if args.propagation_node {
-        if let Err(err) = rpc_client::rpc_call(rpc_addr, "announce_now", None) {
-            eprintln!("lxmd: failed to announce propagation state: {err}");
-        }
-    }
-
-    if let Some(command) = args.on_inbound.clone() {
-        rpc_client::spawn_on_inbound_watcher(
-            rpc_addr.to_string(),
-            command,
-            args.messages_dir.clone(),
-        );
-    }
-
-    match child.wait() {
-        Ok(status) => ExitCode::from(status.code().unwrap_or(1) as u8),
-        Err(err) => {
-            eprintln!("lxmd: failed waiting for reticulumd: {}", err);
-            ExitCode::from(1)
-        }
-    }
-}
-
 fn example_config() -> &'static str {
     SINGLE_TOML_DEFAULT_CONFIG
 }
@@ -603,56 +354,6 @@ fn reticulumd_binary_name() -> &'static str {
     }
 }
 
-fn wait_until_ready(child: &mut Child, rpc_addr: &str, timeout: Duration) -> Result<(), String> {
-    let deadline = Instant::now() + timeout;
-    loop {
-        match child.try_wait() {
-            Ok(Some(status)) => {
-                return Err(format!("reticulumd exited before becoming ready: {}", status));
-            }
-            Ok(None) => {}
-            Err(err) => return Err(format!("failed to check reticulumd status: {err}")),
-        }
-
-        match http_get_ready(rpc_addr) {
-            Ok(true) => return Ok(()),
-            Ok(false) => {}
-            Err(_) => {}
-        }
-
-        if Instant::now() >= deadline {
-            return Err(format!(
-                "timed out waiting for reticulumd readiness at http://{rpc_addr}/readyz"
-            ));
-        }
-        thread::sleep(READY_POLL_INTERVAL);
-    }
-}
-
-fn enable_propagation_mode(rpc_addr: &str) -> Result<(), String> {
-    let response = rpc_client::rpc_call(
-        rpc_addr,
-        "propagation_enable",
-        Some(json!({
-            "enabled": true,
-        })),
-    )?;
-    if let Some(error) = response.get("error").and_then(|value| value.as_object()) {
-        let message =
-            error.get("message").and_then(|value| value.as_str()).unwrap_or("unknown rpc error");
-        return Err(message.to_string());
-    }
-    Ok(())
-}
-
-fn http_get_ready(rpc_addr: &str) -> Result<bool, String> {
-    let response = rpc_client::http_request_bytes(
-        rpc_addr,
-        format!("GET /readyz HTTP/1.1\r\nHost: {rpc_addr}\r\nConnection: close\r\n\r\n").as_bytes(),
-    )?;
-    Ok(response.starts_with(b"HTTP/1.1 200") || response.starts_with(b"HTTP/1.0 200"))
-}
-
 fn read_identity_private_key_hex(path: Option<&Path>) -> Result<Option<String>, String> {
     let Some(path) = path else {
         return Ok(None);
@@ -665,9 +366,9 @@ fn read_identity_private_key_hex(path: Option<&Path>) -> Result<Option<String>, 
 #[cfg(test)]
 mod tests {
     use super::config::{
-        apply_config_file, is_single_toml_config, load_effective_args, parse_python_lxmd_config,
-        parse_python_reticulum_interfaces, prepare_lxmd_paths,
+        apply_config_file, is_single_toml_config, load_effective_args, prepare_lxmd_paths,
     };
+    use super::config_python::{parse_python_lxmd_config, parse_python_reticulum_interfaces};
     use super::python_compat::compatibility_notes;
     use super::{requires_supervised_launch, EffectiveArgs};
     use clap::Parser;

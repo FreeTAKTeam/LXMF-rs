@@ -39,6 +39,8 @@ const FLAG_RESPONSE: u8 = 0x10;
 const FLAG_METADATA: u8 = 0x20;
 
 const METADATA_MAX_SIZE: usize = 16 * 1024 * 1024 - 1;
+const AUTO_COMPRESS_MAX_SIZE: usize = 64 * 1024 * 1024;
+const MAX_INBOUND_RESOURCE_TRANSFER_SIZE: u64 = AUTO_COMPRESS_MAX_SIZE as u64;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResourceStatus {

@@ -4,7 +4,8 @@ use tokio_stream::StreamExt;
 
 #[tokio::main]
 async fn main() -> Result<(), lxmf_sdk::app::Error> {
-    let endpoint = std::env::var("LXMF_RPC").unwrap_or_else(|_| "127.0.0.1:4242".to_owned());
+    let endpoint =
+        std::env::var("LXMF_RPC").unwrap_or_else(|_| "unix:/tmp/lxmf-rpc.sock".to_owned());
     let source = std::env::var("LXMF_SOURCE").unwrap_or_else(|_| "example.desktop".to_owned());
     let destination =
         std::env::var("LXMF_DESTINATION").unwrap_or_else(|_| "example.peer".to_owned());

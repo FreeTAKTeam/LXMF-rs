@@ -1,5 +1,4 @@
 use super::*;
-use reticulum_daemon::lxmf_bridge::build_wire_message_with_options;
 use rns_rpc::{OutboundBridge, OutboundDeliveryOptions, PaperDecodeOutcome, PaperEncodeEnvelope};
 
 impl OutboundBridge for TransportBridge {
@@ -56,20 +55,6 @@ impl OutboundBridge for TransportBridge {
             }
         };
 
-        let payload = build_wire_message_with_options(
-            self.delivery_source_hash,
-            destination,
-            &record.title,
-            &record.content,
-            record.fields.clone(),
-            &self.signer,
-            stamp_cost,
-            outbound_ticket.as_deref(),
-            include_ticket_bytes
-                .as_ref()
-                .map(|(expires_at, ticket)| (*expires_at, ticket.as_slice())),
-        )
-        .map_err(std::io::Error::other)?;
         let requested_method = RequestedDeliveryMethod::parse(options.method.as_deref())?;
         let propagation_node_hex = daemon.outbound_propagation_node();
         validate_delivery_request(requested_method, propagation_node_hex.as_deref())?;
@@ -116,10 +101,17 @@ impl OutboundBridge for TransportBridge {
             outbound_propagation_link: self.outbound_propagation_link.clone(),
             receipt_tx: self.receipt_tx.clone(),
             message_id: record.id.clone(),
+            source_hash: self.delivery_source_hash,
             destination,
             destination_hash: AddressHash::new(destination),
             destination_hex: record.destination.clone(),
-            payload,
+            title: record.title.clone(),
+            content: record.content.clone(),
+            fields: record.fields.clone(),
+            signer: self.signer.clone(),
+            stamp_cost,
+            outbound_ticket,
+            include_ticket: include_ticket_bytes,
             peer_identity,
             propagation_node_identity,
             requested_method,

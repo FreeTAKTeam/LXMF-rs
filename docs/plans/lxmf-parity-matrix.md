@@ -3,7 +3,7 @@
 Status: historical parity snapshot; check `docs/status/current-roadmap.md` for
 current repo-wide status before relying on this file for active execution order.
 
-Last reassessed: 2026-03-10 (`cargo test -p reticulum-rs-rpc --lib`, `cargo test -p reticulum-rs-transport --lib`, `cargo test -p lxmf-wire --lib`)
+Last reassessed: 2026-05-07 (`cargo run -p xtask -- ci`, `cargo run -p xtask -- architecture-checks`, live local Rust/Python interop gates)
 
 Status legend: `not-started` | `partial` | `done`
 
@@ -20,9 +20,9 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
 | `LXMF/LXMF.py` | `crates/libs/lxmf-core` | partial | Core message and wire-format behavior is present, but the full Python module surface is not fully mirrored. |
 | `LXMF/LXMessage.py` | `crates/libs/lxmf-core` | done | Active workspace supports LXMF message payloads, wire packing, storage packing, signatures, propagation packing, and paper packing. |
 | `LXMF/LXMPeer.py` | `crates/libs/lxmf-sdk` + `crates/libs/rns-rpc` | partial | Peer presence records and SDK event mapping exist, but real peer sync/acceptance/queue behavior is not yet equivalent to the Python reference. |
-| `LXMF/LXMRouter.py` | `crates/libs/rns-rpc` + `crates/apps/reticulumd` | partial | There is a working router/daemon path, but propagation-node behavior, delivery-mode policy handling, and paper/command flows are not full reference parity. |
+| `LXMF/LXMRouter.py` | `crates/libs/rns-rpc` + `crates/apps/reticulumd` | partial | There is a working router/daemon path, but propagation-node behavior and some command/peer side effects are not full reference parity. |
 | `LXMF/Handlers.py` | `crates/apps/reticulumd` + `crates/libs/rns-rpc` | partial | Delivery callbacks and bridge flows exist, but propagation and router side effects are narrower than the Python implementation. |
-| `LXMF/LXStamper.py` | active workspace split across `crates/libs/lxmf-core` payload fields and `crates/libs/rns-rpc` legacy RPC helpers | partial | Stamp bytes can be carried in messages, but active-workspace stamp generation/validation/ticket parity is not complete. |
+| `LXMF/LXStamper.py` | active workspace split across `crates/libs/lxmf-core`, `crates/libs/rns-rpc`, and `crates/apps/reticulumd` | partial | Stamp bytes can be carried in messages, outbound stamp/ticket work is active, cancellation-aware generation is used by delivery tasks, and ticket reuse/renewal semantics are implemented. Full Python deferred-stamp queue/progress parity is still incomplete. |
 
 ## Required Method-Level Checklist
 
@@ -37,14 +37,15 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
 - PARITY_ITEM id=message.object_accessors status=done
 - PARITY_ITEM id=stamper.validate_pn_stamp status=partial
 - PARITY_ITEM id=stamper.generate_stamp status=partial
-- PARITY_ITEM id=stamper.cancel_work status=not-started
-- PARITY_ITEM id=ticket.validity_with_grace status=partial
-- PARITY_ITEM id=ticket.renewal_window status=not-started
-- PARITY_ITEM id=ticket.derived_stamp status=not-started
+- PARITY_ITEM id=stamper.cancel_work status=partial
+- PARITY_ITEM id=stamper.outbound_progress_queries status=partial
+- PARITY_ITEM id=ticket.validity_with_grace status=done
+- PARITY_ITEM id=ticket.renewal_window status=done
+- PARITY_ITEM id=ticket.derived_stamp status=done
 - PARITY_ITEM id=peer.serialize_roundtrip status=partial
-- PARITY_ITEM id=peer.queue_accounting status=not-started
-- PARITY_ITEM id=peer.acceptance_rate status=not-started
-- PARITY_ITEM id=peer.peering_key status=not-started
+- PARITY_ITEM id=peer.queue_accounting status=partial
+- PARITY_ITEM id=peer.acceptance_rate status=partial
+- PARITY_ITEM id=peer.peering_key status=partial
 - PARITY_ITEM id=router.outbound_queue status=partial
 - PARITY_ITEM id=router.handle_outbound_policy status=partial
 - PARITY_ITEM id=router.adapter_transport status=partial
@@ -56,22 +57,72 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
 - PARITY_ITEM id=handlers.delivery_callback status=partial
 - PARITY_ITEM id=handlers.propagation_app_data status=partial
 - PARITY_ITEM id=handlers.router_side_effects status=partial
-- PARITY_ITEM id=interop.python_live_gate status=not-started
+- PARITY_ITEM id=interop.python_live_gate status=done
 
 ## Confirmed Gaps
 
-- Delivery-mode parity baseline note is stale. `reticulumd` delivery-mode
-  handling landed after this snapshot; treat deeper propagation-router behavior
-  as the remaining open area instead of the old "bridge ignores delivery mode"
-  claim.
+- Delivery-mode parity baseline is implemented in active `reticulumd` tests.
+  Treat deeper propagation-router behavior as the remaining open area instead
+  of the old "bridge ignores delivery mode" claim.
 - Propagation-node parity is incomplete. The active RPC propagation flow is mostly a local payload store and metadata layer, not full LXMF peer/node sync behavior.
-- Peer parity is incomplete. Peer records and events exist, but the active workspace does not yet match Python `LXMPeer` behavior.
-- Paper-command parity is incomplete. `lxmf-core` has real paper wire helpers, but the daemon SDK layer still uses a simplified `lxm://{destination}/{message_id}` envelope path.
-- Stamps and tickets are incomplete. The active workspace carries stamp fields and has legacy RPC helpers, but not full reference-grade active stamp/ticket semantics.
+- Peer parity is incomplete. Peer records, configured static peers, events,
+  runtime counters, acceptance-rate/backoff fields, Python-style message
+  accounting, per-peer propagation transfer/sync limits, propagation stamp
+  policy, and peering-key status values are exposed, but the active workspace
+  does not yet match Python `LXMPeer` queueing, transfer, and peering behavior.
+- Paper-command baseline is implemented for bridge-backed `reticulumd`: SDK
+  paper encode/decode uses canonical `lxmf-wire` paper URI helpers and tests
+  reject the old placeholder `lxm://{destination}/{message_id}` path. Broader
+  router command side effects remain partial.
+- Stamps and tickets are still incomplete as a combined lifecycle area. The
+  active workspace carries stamp fields, normal and propagation stamp
+  generation have cancellation-aware delivery-task code paths, ticket
+  issue/reuse follows the Python renewal window, renewed inbound tickets keep
+  older unexpired tickets valid like Python, outbound ticket stamps are
+  generated, signed inbound tickets are remembered for replies, and
+  Python-style expired ticket cleanup is implemented. Python-style outbound
+  progress and stamp-cost queries exist over stored message state. The
+  remaining gap is the full Python deferred-stamp queue, live worker progress,
+  and retry lifecycle.
+- Outbound cancellation is stronger than a status-only marker: spawned
+  `reticulumd` delivery tasks now observe persisted `cancelled` state at
+  scheduling, payload, identity-wait, propagation, and link-send boundaries.
+  It remains partial because already in-flight transport sends are not aborted
+  through a Python-style router work queue.
 - Release B/C SDK domains are broader than Python LXMF, but many are app-domain state machines rather than wire/protocol parity.
 
 ## Reassessment Summary
 
 - `lxmf-wire` is the strongest parity area and should be treated as mostly complete for base message encoding/decoding.
 - `reticulumd` and `reticulum-rs-rpc` expose a large SDK surface, but a meaningful share of that surface is currently local domain logic rather than Python LXMF parity.
-- Full LXMF parity should not be claimed until delivery-mode handling, propagation-node behavior, paper ingest/encode semantics, and stamp/ticket behavior are brought into the active workspace.
+- Full LXMF parity should not be claimed until propagation-node behavior,
+  command/peer side effects, and remaining stamp worker lifecycle behavior are
+  brought into the active workspace.
+
+Recent focused evidence:
+
+- `cargo test -p reticulum-rs-rpc --lib ticket_generate_renews_ticket_inside_renewal_window -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib ticket_renewal_keeps_old_unexpired_ticket_valid_like_python -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib ticket -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib ticket_generate_reuses_persisted_ticket_after_daemon_restart -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib outbound_lxm -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib propagation_remote_sync -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib propagation_acknowledge_sync_completion -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib list_peers_exposes_python_style_message_counters -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib propagation_enable_activates_static_peers_like_python -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib announce_received_parses_propagation_peer_name_from_python_metadata -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib new_peer_acceptance_rate_matches_python_zero_offer_default -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib list_peers_exposes_peering_key_value_when_cost_is_known -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib autopeered_announce_records_propagation_peer_state -- --nocapture`
+- `cargo test -p reticulumd --bin reticulumd python_status_exposes_peer_peering_key_value -- --nocapture`
+- `cargo test -p reticulumd --bin reticulumd python_status_prefers_peer_propagation_stamp_policy -- --nocapture`
+- `cargo test -p reticulumd --bin reticulumd python_status_reports_elapsed_uptime_not_epoch_time -- --nocapture`
+- `cargo test -p reticulumd --bin reticulumd python_status_uses_configured_node_transfer_limits -- --nocapture`
+- `cargo test -p reticulumd --bin reticulumd python_status_uses_zero_acceptance_rate_before_offers -- --nocapture`
+- `cargo test -p reticulumd --bin reticulumd python_status_collapses_internal_peer_types_to_static_or_discovered -- --nocapture`
+- `cargo test -p reticulumd --bin reticulumd propagation_offer_ignores_control_allow_list_like_python -- --nocapture`
+- `cargo test -p reticulumd --bin reticulumd transport_bridge_regenerates_propagation_app_data_from_daemon_state -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib propagation -- --nocapture`
+- `cargo test -p reticulumd --bin reticulumd inbound_propagation_accepts_stamp_within_flexibility_window -- --nocapture`
+- `cargo test -p reticulumd --bin reticulumd inbound_worker::tests -- --nocapture`
+- `cargo test -p reticulumd --test lxmf_bridge_tests stamp -- --nocapture`

@@ -25,9 +25,9 @@ cargo run -p lxmf-cli -- snapshot --include-counts
 2. Capture runtime metrics and health:
 
 ```bash
-curl -sS http://127.0.0.1:4242/healthz
-curl -sS http://127.0.0.1:4242/readyz
-curl -sS http://127.0.0.1:4242/metrics
+curl --unix-socket /tmp/lxmf-rpc.sock http://localhost/healthz
+curl --unix-socket /tmp/lxmf-rpc.sock http://localhost/readyz
+curl --unix-socket /tmp/lxmf-rpc.sock http://localhost/metrics
 ```
 
 3. Preserve evidence before restart:
@@ -60,7 +60,7 @@ cargo run -p lxmf-cli -- snapshot
 2. Confirm endpoint auth path:
 
 ```bash
-curl -i http://127.0.0.1:4242/metrics
+curl -i --unix-socket /tmp/lxmf-rpc.sock http://localhost/metrics
 ```
 
 3. If token mode is enabled, verify clock skew and issuer/audience alignment.
@@ -95,7 +95,7 @@ cargo run -p lxmf-cli -- configure --patch '{"extensions":{"rate_limits":{"per_i
 1. Measure queue pressure and drops:
 
 ```bash
-curl -sS http://127.0.0.1:4242/metrics
+curl --unix-socket /tmp/lxmf-rpc.sock http://localhost/metrics
 ```
 
 2. Force client recovery path:

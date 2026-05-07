@@ -31,6 +31,12 @@ Applications should consume that stream and handle domain events directly:
 
 The stream updates its cursor from each event sequence number. If the connection drops, the SDK
 reconnects with the latest cursor and deduplicates replayed sequence numbers.
+If a framed payload is malformed, the SDK treats that connection as failed,
+does not emit the malformed frame, and reconnects from the latest successfully
+delivered cursor.
+After at least one successful connection, transient reconnect failures during
+daemon restart or network recovery are retried instead of ending the
+subscription.
 
 ## Cursor Polling Pattern
 

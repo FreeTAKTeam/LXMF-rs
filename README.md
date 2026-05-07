@@ -33,8 +33,6 @@ LXMF-rs/
 │   │   ├── lxmf-cli/
 │   │   ├── reticulumd/
 │   │   └── rns-tools/
-│   └── internal/
-│       └── legacy crates kept outside the workspace
 ├── docs/
     ├── adr/
     ├── architecture/
@@ -48,12 +46,11 @@ LXMF-rs/
 ├── tools/
 │   └── scripts/
 ├── scripts/
-├── xtask/
-└── wrappers/
+└── xtask/
 ```
 
-`Cargo.toml` is the source of truth for active workspace members. Some crate
-directories are intentionally present on disk but excluded from the workspace.
+`Cargo.toml` is the source of truth for active workspace members. Retired
+migration-era crates are not kept in the repository surface.
 
 ## Active Libraries
 
@@ -134,6 +131,9 @@ or via `xtask`:
 
 ```bash
 cargo xtask ci
+cargo run -p xtask -- architecture-checks
+cargo run -p xtask -- sdk-docs-check
+cargo run -p xtask -- sdk-migration-check
 cargo xtask release-check
 cargo xtask package-daemon-bundle --version 0.1
 cargo xtask api-diff
@@ -156,7 +156,7 @@ make python-lxmd-smoke
 - `lxmf-cli`
 - `lxmd`
 - `reticulumd`
-- `rncp`, `rnid`, `rnir`, `rnodeconf`, `rnpath`, `rnpkg`, `rnprobe`, `rnsd`, `rnstatus`, `rnx`
+- `rnsd`, `rnx`
 
 Run examples:
 
@@ -181,6 +181,7 @@ cargo run -p rns-tools --bin rnx -- e2e --timeout-secs 20
 - Extension registry: `docs/contracts/extension-registry.md`
 - RPC contract: `docs/contracts/rpc-contract.md`
 - Payload contract: `docs/contracts/payload-contract.md`
+- reticulumd operational deployment: `docs/runbooks/reticulumd-operational-deployment.md`
 - crates.io publish plan: `docs/runbooks/crates-io-publish-plan.md`
 - Release readiness: `docs/runbooks/release-readiness.md`
 
@@ -210,6 +211,9 @@ reticulum-rs-rpc = "0.3.0"
 - Profiles/configuration: `docs/sdk/configuration-profiles.md`
 - Config cookbook: `docs/runbooks/sdk-config-cookbook.md`
 - Lifecycle/events: `docs/sdk/lifecycle-and-events.md`
+- Remote mTLS: `docs/sdk/remote-mtls.md`
+- Delivery states: `docs/sdk/delivery-states.md`
+- Error handling: `docs/sdk/error-handling.md`
 - Advanced embedding: `docs/sdk/advanced-embedding.md`
 
 ## Release Bundles

@@ -1,6 +1,8 @@
 mod capabilities;
 mod config;
 mod control;
+#[cfg(feature = "sdk-async")]
+mod control_async;
 mod delivery;
 mod directory;
 mod discovery;
