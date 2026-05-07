@@ -11,6 +11,12 @@ impl RpcDaemon {
         guard.values().filter(|record| record.peer_type.as_deref() != Some("unpeered")).count()
     }
 
+    pub(super) fn next_announce_seq(&self) -> u64 {
+        let mut guard = self.announce_next_seq.lock().expect("announce_next_seq mutex poisoned");
+        *guard = guard.saturating_add(1);
+        *guard
+    }
+
     pub fn with_store(store: MessagesStore, identity_hash: String) -> Self {
         Self::with_store_and_bridges_and_sinks(store, identity_hash, None, None, Vec::new())
     }
@@ -64,6 +70,7 @@ impl RpcDaemon {
             event_queue: Mutex::new(VecDeque::new()),
             sdk_event_log: Mutex::new(VecDeque::new()),
             sdk_next_event_seq: Mutex::new(0),
+            announce_next_seq: Mutex::new(0),
             sdk_dropped_event_count: Mutex::new(0),
             sdk_active_contract_version: Mutex::new(2),
             sdk_profile: Mutex::new("desktop-full".to_string()),
@@ -614,7 +621,7 @@ impl RpcDaemon {
         };
 
         let announce_record = AnnounceRecord {
-            id: format!("announce-{}-{}-{}", timestamp, record.peer, record.seen_count),
+            id: format!("announce-{}-{}-{}", timestamp, record.peer, self.next_announce_seq()),
             peer: record.peer.clone(),
             timestamp,
             name: record.name.clone(),

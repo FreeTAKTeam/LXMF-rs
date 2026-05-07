@@ -648,6 +648,81 @@ fn stale_announce_does_not_regress_propagation_peer_state() {
 }
 
 #[test]
+fn discovered_announce_bursts_do_not_collapse_in_announce_log() {
+    let daemon = RpcDaemon::test_instance();
+    let timestamp = 1_700_000_250;
+
+    for idx in 0..4 {
+        daemon
+            .accept_announce_with_metadata(
+                "peer-discovered".to_string(),
+                timestamp,
+                Some(format!("Peer Discovered {idx}")),
+                Some("announce".to_string()),
+                None,
+                Some(vec!["propagation".to_string()]),
+                None,
+                None,
+                None,
+                Some(3),
+                Some(Some(1)),
+                Some(Some(4)),
+                None,
+                Some(1),
+                None,
+                None,
+                None,
+                None,
+            )
+            .expect("accept discovered announce");
+    }
+
+    let announces = daemon
+        .handle_rpc(RpcRequest { id: 50, method: "list_announces".to_string(), params: None })
+        .expect("list announces")
+        .result
+        .expect("list announces result");
+    let rows = announces["announces"].as_array().expect("announce rows");
+    let matching = rows
+        .iter()
+        .filter(|row| row["peer"].as_str() == Some("peer-discovered"))
+        .collect::<Vec<_>>();
+    assert_eq!(matching.len(), 4, "same-second discovered announces must remain distinct");
+    let unique_ids = matching
+        .iter()
+        .filter_map(|row| row["id"].as_str())
+        .collect::<std::collections::HashSet<_>>();
+    assert_eq!(unique_ids.len(), 4, "announce log IDs must be unique for burst traffic");
+
+    let legacy_event_ids = std::iter::from_fn(|| daemon.take_event())
+        .filter(|event| event.event_type == "announce_received")
+        .filter_map(|event| event.payload["id"].as_str().map(str::to_string))
+        .collect::<std::collections::HashSet<_>>();
+    assert_eq!(
+        legacy_event_ids.len(),
+        4,
+        "daemon event queue must expose unique announce IDs for burst traffic"
+    );
+
+    let events = daemon
+        .handle_rpc(rpc_request(51, "sdk_poll_events_v2", json!({ "cursor": null, "max": 20 })))
+        .expect("poll sdk events")
+        .result
+        .expect("sdk events result");
+    let event_rows = events["events"].as_array().expect("event rows");
+    let announce_event_ids = event_rows
+        .iter()
+        .filter(|row| row["event_type"].as_str() == Some("announce_received"))
+        .filter_map(|row| row["payload"]["id"].as_str())
+        .collect::<std::collections::HashSet<_>>();
+    assert_eq!(
+        announce_event_ids.len(),
+        4,
+        "SDK announce events must expose unique IDs for burst traffic"
+    );
+}
+
+#[test]
 fn peering_cost_policy_blocks_and_breaks_autopeers() {
     let daemon = RpcDaemon::test_instance();
     daemon

@@ -357,6 +357,7 @@ pub struct RpcDaemon {
     event_queue: Mutex<VecDeque<RpcEvent>>,
     sdk_event_log: Mutex<VecDeque<SequencedRpcEvent>>,
     sdk_next_event_seq: Mutex<u64>,
+    announce_next_seq: Mutex<u64>,
     sdk_dropped_event_count: Mutex<u64>,
     sdk_active_contract_version: Mutex<u16>,
     sdk_profile: Mutex<String>,
