@@ -14,16 +14,27 @@ use std::net::{IpAddr, Shutdown, TcpStream};
 #[cfg(unix)]
 use std::os::unix::net::UnixStream as StdUnixStream;
 use std::path::Path;
+#[cfg(feature = "sdk-async")]
+use std::pin::Pin;
 use std::sync::Arc;
+#[cfg(feature = "sdk-async")]
+use std::task::{Context, Poll};
 #[cfg(feature = "sdk-async")]
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 #[cfg(feature = "sdk-async")]
 use tokio::sync::mpsc;
 #[cfg(feature = "sdk-async")]
+use tokio::task::JoinHandle;
+#[cfg(feature = "sdk-async")]
 use tokio_rustls::TlsConnector;
 #[cfg(feature = "sdk-async")]
 use tokio_stream::wrappers::ReceiverStream;
+#[cfg(feature = "sdk-async")]
+use tokio_stream::Stream;
 use zeroize::{Zeroize, Zeroizing};
+
+#[cfg(feature = "sdk-async")]
+const RPC_EVENT_STREAM_MAX_FRAME_BYTES: usize = 2 * 1024 * 1024;
 
 #[derive(Clone, Copy)]
 enum RpcEndpoint<'a> {
@@ -548,10 +559,10 @@ impl RpcBackendClient {
         let (tx, rx) = mpsc::channel(256);
         let endpoint = self.endpoint.clone();
         let cursor = subscription.cursor.clone();
-        handle.spawn(async move {
+        let task = handle.spawn(async move {
             run_rpc_http_event_stream(endpoint, headers, mtls_auth, cursor, tx).await;
         });
-        Ok(Some(Box::pin(ReceiverStream::new(rx))))
+        Ok(Some(Box::pin(AbortOnDropStream::new(ReceiverStream::new(rx), task))))
     }
 
     #[cfg(feature = "sdk-async")]
@@ -832,6 +843,38 @@ trait RpcEventStreamIo: AsyncRead + AsyncWrite + Unpin + Send {}
 impl<T> RpcEventStreamIo for T where T: AsyncRead + AsyncWrite + Unpin + Send {}
 
 #[cfg(feature = "sdk-async")]
+struct AbortOnDropStream<S> {
+    inner: S,
+    task: JoinHandle<()>,
+}
+
+#[cfg(feature = "sdk-async")]
+impl<S> AbortOnDropStream<S> {
+    fn new(inner: S, task: JoinHandle<()>) -> Self {
+        Self { inner, task }
+    }
+}
+
+#[cfg(feature = "sdk-async")]
+impl<S> Stream for AbortOnDropStream<S>
+where
+    S: Stream<Item = Result<SdkEvent, SdkError>> + Unpin,
+{
+    type Item = Result<SdkEvent, SdkError>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        Pin::new(&mut self.inner).poll_next(cx)
+    }
+}
+
+#[cfg(feature = "sdk-async")]
+impl<S> Drop for AbortOnDropStream<S> {
+    fn drop(&mut self) {
+        self.task.abort();
+    }
+}
+
+#[cfg(feature = "sdk-async")]
 async fn run_rpc_http_event_stream(
     endpoint: String,
     headers: Vec<(String, String)>,
@@ -1065,6 +1108,13 @@ where
         .await
         .map_err(|err| SdkError::new(code::INTERNAL, ErrorCategory::Transport, err.to_string()))?;
     let len = u32::from_be_bytes(frame_len) as usize;
+    if len > RPC_EVENT_STREAM_MAX_FRAME_BYTES {
+        return Err(SdkError::new(
+            code::INTERNAL,
+            ErrorCategory::Transport,
+            format!("event stream frame exceeded {} bytes", RPC_EVENT_STREAM_MAX_FRAME_BYTES),
+        ));
+    }
     let mut frame = Vec::with_capacity(4 + len);
     frame.extend_from_slice(&frame_len);
     frame.resize(4 + len, 0);
@@ -1385,6 +1435,50 @@ mod tests {
         assert_eq!(second.seq_no, 2);
 
         client_task.abort();
+    }
+
+    #[cfg(feature = "sdk-async")]
+    #[tokio::test]
+    async fn native_event_stream_task_aborts_when_receiver_stream_is_dropped() {
+        struct DropNotify(Option<tokio::sync::oneshot::Sender<()>>);
+
+        impl Drop for DropNotify {
+            fn drop(&mut self) {
+                if let Some(tx) = self.0.take() {
+                    let _ = tx.send(());
+                }
+            }
+        }
+
+        let (_tx, rx) = mpsc::channel::<Result<SdkEvent, SdkError>>(1);
+        let (dropped_tx, dropped_rx) = tokio::sync::oneshot::channel();
+        let task = tokio::spawn(async move {
+            let _notify = DropNotify(Some(dropped_tx));
+            std::future::pending::<()>().await;
+        });
+
+        let stream = AbortOnDropStream::new(ReceiverStream::new(rx), task);
+        tokio::task::yield_now().await;
+        drop(stream);
+
+        tokio::time::timeout(std::time::Duration::from_secs(1), dropped_rx)
+            .await
+            .expect("background stream task should abort on drop")
+            .expect("drop notification should be delivered");
+    }
+
+    #[cfg(feature = "sdk-async")]
+    #[tokio::test]
+    async fn native_event_stream_rejects_oversized_frame_before_allocation() {
+        let len = (RPC_EVENT_STREAM_MAX_FRAME_BYTES as u32) + 1;
+        let bytes = len.to_be_bytes();
+        let mut stream = &bytes[..];
+
+        let err = read_rpc_http_event_frame(&mut stream)
+            .await
+            .expect_err("oversized frame should fail before payload allocation");
+        assert_eq!(err.category, ErrorCategory::Transport);
+        assert!(err.message.contains("event stream frame exceeded"));
     }
 
     #[cfg(feature = "sdk-async")]

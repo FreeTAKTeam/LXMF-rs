@@ -34,6 +34,7 @@ struct MockBackend {
     voice_open_results: Mutex<VecDeque<Result<crate::domain::VoiceSessionId, SdkError>>>,
     voice_update_results: Mutex<VecDeque<Result<crate::domain::VoiceSessionState, SdkError>>>,
     voice_close_results: Mutex<VecDeque<Result<Ack, SdkError>>>,
+    async_negotiate_gate: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
 }
 
 impl MockBackend {
@@ -52,6 +53,7 @@ impl MockBackend {
             voice_open_results: Mutex::new(VecDeque::new()),
             voice_update_results: Mutex::new(VecDeque::new()),
             voice_close_results: Mutex::new(VecDeque::new()),
+            async_negotiate_gate: Mutex::new(None),
         }
     }
 
@@ -99,6 +101,12 @@ impl MockBackend {
 
     fn queue_voice_close_result(&self, result: Result<Ack, SdkError>) {
         self.voice_close_results.lock().expect("voice close results").push_back(result);
+    }
+
+    fn delay_next_async_negotiate(&self) -> tokio::sync::oneshot::Sender<()> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        *self.async_negotiate_gate.lock().expect("async negotiate gate") = Some(rx);
+        tx
     }
 }
 
@@ -723,7 +731,13 @@ impl SdkBackendAsyncOps for MockBackend {
         &self,
         req: NegotiationRequest,
     ) -> crate::SdkBoxFuture<'_, NegotiationResponse> {
-        Box::pin(async move { self.negotiate(req) })
+        let gate = self.async_negotiate_gate.lock().expect("async negotiate gate").take();
+        Box::pin(async move {
+            if let Some(gate) = gate {
+                let _ = gate.await;
+            }
+            self.negotiate(req)
+        })
     }
 
     fn send_async(&self, req: RawSendRequest) -> crate::SdkBoxFuture<'_, crate::MessageId> {
@@ -1560,6 +1574,36 @@ async fn client_domain_async_methods_share_runtime_state() {
 
     let status = app.runtime().status_async().await.expect("async status");
     assert_eq!(status.state, RunState::Running);
+}
+
+#[tokio::test]
+async fn stop_during_async_start_does_not_install_stale_runtime() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let backend = MockBackend::new();
+            let release_start = backend.delay_next_async_negotiate();
+            let app = std::sync::Arc::new(Client::new(backend));
+
+            let starting_app = std::sync::Arc::clone(&app);
+            let start_task = tokio::task::spawn_local(async move {
+                starting_app.runtime().start_async(Config::desktop_default()).await
+            });
+
+            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+            let err = app
+                .runtime()
+                .stop(ShutdownMode::Immediate)
+                .expect_err("stop should reject while async start is in progress");
+            assert_eq!(err.code, crate::app::ErrorCode::RuntimeInvalidState);
+
+            release_start.send(()).expect("release async negotiate");
+            let handle = start_task.await.expect("start task").expect("start should complete");
+            assert_eq!(handle.profile, Profile::DesktopDefault);
+
+            let status = app.runtime().status().expect("status");
+            assert_eq!(status.state, RunState::Running);
+        })
+        .await;
 }
 
 #[test]

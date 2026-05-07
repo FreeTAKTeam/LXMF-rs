@@ -136,6 +136,13 @@ impl<B: SdkBackend> Client<B> {
             degraded: false,
         }));
         let mut state = self.state.lock().expect("app client mutex poisoned");
+        if state.lifecycle != RunState::Starting {
+            return Err(Error::from(crate::SdkError::new(
+                crate::error::code::RUNTIME_INVALID_STATE,
+                crate::ErrorCategory::Runtime,
+                "runtime start was interrupted before installation",
+            )));
+        }
         state.client = Some(Arc::clone(&client));
         state.session = Some(session);
         state.lifecycle = RunState::Running;
@@ -445,6 +452,13 @@ impl<B: SdkBackend> Client<B> {
     pub fn stop(&self, mode: ShutdownMode) -> Result<(), Error> {
         let mut state = self.state.lock().expect("app client mutex poisoned");
         let Some(client) = state.client.as_ref().cloned() else {
+            if state.lifecycle == RunState::Starting {
+                return Err(Error::from(crate::SdkError::new(
+                    crate::error::code::RUNTIME_INVALID_STATE,
+                    crate::ErrorCategory::Runtime,
+                    "runtime is still starting",
+                )));
+            }
             state.session = None;
             state.lifecycle = RunState::Stopped;
             return Ok(());
@@ -469,6 +483,13 @@ impl<B: SdkBackend> Client<B> {
         let (client, previous_lifecycle) = {
             let mut state = self.state.lock().expect("app client mutex poisoned");
             let Some(client) = state.client.as_ref().cloned() else {
+                if state.lifecycle == RunState::Starting {
+                    return Err(Error::from(crate::SdkError::new(
+                        crate::error::code::RUNTIME_INVALID_STATE,
+                        crate::ErrorCategory::Runtime,
+                        "runtime is still starting",
+                    )));
+                }
                 state.session = None;
                 state.lifecycle = RunState::Stopped;
                 return Ok(());
