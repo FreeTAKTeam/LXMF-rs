@@ -6,6 +6,9 @@ use serde_json::json;
 
 const HEADER_END: &[u8] = b"\r\n\r\n";
 
+pub type HttpHeaderList = Vec<(String, String)>;
+pub type HttpRequestParts = (String, String, HttpHeaderList);
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct TransportAuthContext {
     pub client_cert_present: bool,
@@ -173,9 +176,7 @@ pub fn parse_content_length(headers: &[u8]) -> Option<usize> {
     None
 }
 
-pub fn request_method_path_headers(
-    request: &[u8],
-) -> io::Result<(String, String, Vec<(String, String)>)> {
+pub fn request_method_path_headers(request: &[u8]) -> io::Result<HttpRequestParts> {
     let header_end = find_header_end(request)
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "missing headers"))?;
     let headers = &request[..header_end];
@@ -206,7 +207,7 @@ fn parse_request_line(headers: &[u8]) -> Option<(String, String)> {
     Some((method, path))
 }
 
-fn parse_headers(headers: &[u8]) -> Vec<(String, String)> {
+fn parse_headers(headers: &[u8]) -> HttpHeaderList {
     String::from_utf8_lossy(headers)
         .lines()
         .skip(1)

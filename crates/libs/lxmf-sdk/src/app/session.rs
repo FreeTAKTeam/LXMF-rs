@@ -26,6 +26,11 @@ use tokio::task::JoinHandle;
 #[cfg(feature = "sdk-async")]
 use tokio_stream::Stream;
 
+#[cfg(feature = "sdk-async")]
+type EventBatchFetchResult = Result<(EventBatch, Option<EventCursor>), Error>;
+#[cfg(feature = "sdk-async")]
+type EventBatchFetchHandle = JoinHandle<EventBatchFetchResult>;
+
 #[derive(Clone)]
 pub(crate) struct SharedBackend<B>(pub(crate) Arc<B>);
 
@@ -153,7 +158,7 @@ pub struct EventStream<B: SdkBackendAsyncEvents> {
     pub(crate) max_batch_size: usize,
     pub(crate) profile: Profile,
     pub(crate) pending_events: VecDeque<Event>,
-    pub(crate) inflight: Option<JoinHandle<Result<(EventBatch, Option<EventCursor>), Error>>>,
+    pub(crate) inflight: Option<EventBatchFetchHandle>,
     pub(crate) live_stream: Option<crate::SdkEventStream>,
     pub(crate) last_seq_no: Option<u64>,
     pub(crate) idle_delay: Duration,
@@ -168,7 +173,7 @@ impl<B: SdkBackendAsyncEvents> EventStream<B> {
         cursor: Option<EventCursor>,
         max_batch_size: usize,
         profile: Profile,
-    ) -> Result<(EventBatch, Option<EventCursor>), Error> {
+    ) -> EventBatchFetchResult {
         let batch = client.poll_events(cursor, max_batch_size).map_err(Error::from)?;
         let next_cursor = Some(batch.next_cursor.clone());
 
@@ -338,10 +343,9 @@ where
                             this.pending_events = batch
                                 .events
                                 .into_iter()
-                                .filter(|event| {
-                                    this.last_seq_no.is_none_or(|last_seq_no| {
-                                        event.metadata.seq_no > last_seq_no
-                                    })
+                                .filter(|event| match this.last_seq_no {
+                                    Some(last_seq_no) => event.metadata.seq_no > last_seq_no,
+                                    None => true,
                                 })
                                 .collect();
                             if let Some(last_seq_no) =
