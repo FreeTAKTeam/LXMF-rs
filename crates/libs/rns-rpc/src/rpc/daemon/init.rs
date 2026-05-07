@@ -13,7 +13,7 @@ impl RpcDaemon {
 
     pub(super) fn next_announce_seq(&self) -> u64 {
         let mut guard = self.announce_next_seq.lock().expect("announce_next_seq mutex poisoned");
-        *guard = guard.saturating_add(1);
+        *guard = guard.wrapping_add(1);
         *guard
     }
 
