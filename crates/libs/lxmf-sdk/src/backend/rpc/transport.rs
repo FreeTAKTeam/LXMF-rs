@@ -34,8 +34,10 @@ use zeroize::{Zeroize, Zeroizing};
 
 #[cfg(feature = "sdk-async")]
 const RPC_EVENT_STREAM_MAX_FRAME_BYTES: usize = 2 * 1024 * 1024;
+const RPC_HTTP_HEADER_MAX_BYTES: usize = 64 * 1024;
+const RPC_FRAME_PAYLOAD_MAX_BYTES: usize = 16 * 1024 * 1024;
 const RPC_HTTP_RESPONSE_MAX_BYTES: usize =
-    http::MAX_HTTP_HEADER_LEN + 4 + codec::MAX_FRAME_PAYLOAD_LEN + 4;
+    RPC_HTTP_HEADER_MAX_BYTES + 4 + RPC_FRAME_PAYLOAD_MAX_BYTES + 4;
 
 #[derive(Clone, Copy)]
 enum RpcEndpoint<'a> {
