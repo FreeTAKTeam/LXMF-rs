@@ -205,23 +205,14 @@ async fn propagation_download_request(
     timeout: Duration,
 ) -> Result<(JsonValue, Identity), std::io::Error> {
     let remote_hash = AddressHash::new(parse_destination_hash_required(remote)?);
-    let mut remote_identity = transport.destination_identity(&remote_hash).await;
-    if remote_identity.is_none() {
-        transport.request_path(&remote_hash, None, None).await;
-        let deadline = tokio::time::Instant::now() + timeout.min(Duration::from_secs(12));
-        while remote_identity.is_none() && tokio::time::Instant::now() < deadline {
-            tokio::time::sleep(Duration::from_millis(250)).await;
-            remote_identity = transport.destination_identity(&remote_hash).await;
-        }
-    }
+    let remote_identity = resolve_remote_identity(transport, &remote_hash, timeout).await?;
     let remote_identity = remote_identity.ok_or_else(|| {
         std::io::Error::new(std::io::ErrorKind::NotFound, "no path known for propagation node")
     })?;
 
     let destination =
         SingleOutputDestination::new(remote_identity, DestinationName::new("lxmf", "propagation"));
-    let link = transport.link(destination.desc).await;
-    await_link_activation(transport, &link, timeout).await?;
+    let link = open_refreshed_remote_link(transport, &remote_hash, destination.desc, timeout).await?;
     let link_id = *link.lock().await.id();
 
     let identify_payload = build_link_identify_payload(request_identity, &link_id);
@@ -445,6 +436,55 @@ fn binary_array_response(response: &rmpv::Value) -> Result<Vec<Vec<u8>>, std::io
     }
 }
 
+async fn resolve_remote_identity(
+    transport: &Transport,
+    remote_hash: &AddressHash,
+    timeout: Duration,
+) -> Result<Option<Identity>, std::io::Error> {
+    transport.request_path(remote_hash, None, None).await;
+    let deadline = tokio::time::Instant::now() + timeout.min(Duration::from_secs(12));
+    let mut remote_identity = transport.destination_identity(remote_hash).await;
+
+    while remote_identity.is_none() && tokio::time::Instant::now() < deadline {
+        tokio::time::sleep(Duration::from_millis(250)).await;
+        remote_identity = transport.destination_identity(remote_hash).await;
+    }
+
+    if remote_identity.is_some() {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+
+    Ok(remote_identity)
+}
+
+async fn open_refreshed_remote_link(
+    transport: &Transport,
+    remote_hash: &AddressHash,
+    destination: DestinationDesc,
+    timeout: Duration,
+) -> Result<Arc<tokio::sync::Mutex<Link>>, std::io::Error> {
+    let link = transport.link(destination).await;
+    match await_link_activation(transport, &link, timeout).await {
+        Ok(()) => Ok(link),
+        Err(err) if err.kind() == std::io::ErrorKind::TimedOut => {
+            link.lock().await.close();
+            transport.request_path(remote_hash, None, None).await;
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            let retry_link = transport.link(destination).await;
+            await_link_activation(transport, &retry_link, timeout).await.map_err(|retry_err| {
+                std::io::Error::new(
+                    retry_err.kind(),
+                    format!(
+                        "{retry_err}; retried after refreshing propagation node path due to {err}"
+                    ),
+                )
+            })?;
+            Ok(retry_link)
+        }
+        Err(err) => Err(err),
+    }
+}
+
 async fn remote_control_request(
     transport: &Transport,
     request_identity: &PrivateIdentity,
@@ -454,15 +494,7 @@ async fn remote_control_request(
     timeout: Duration,
 ) -> Result<(JsonValue, Identity), std::io::Error> {
     let remote_hash = AddressHash::new(parse_destination_hash_required(remote)?);
-    let mut remote_identity = transport.destination_identity(&remote_hash).await;
-    if remote_identity.is_none() {
-        transport.request_path(&remote_hash, None, None).await;
-        let deadline = tokio::time::Instant::now() + timeout.min(Duration::from_secs(12));
-        while remote_identity.is_none() && tokio::time::Instant::now() < deadline {
-            tokio::time::sleep(Duration::from_millis(250)).await;
-            remote_identity = transport.destination_identity(&remote_hash).await;
-        }
-    }
+    let remote_identity = resolve_remote_identity(transport, &remote_hash, timeout).await?;
     let remote_identity = remote_identity.ok_or_else(|| {
         std::io::Error::new(
             std::io::ErrorKind::NotFound,
@@ -474,8 +506,7 @@ async fn remote_control_request(
         remote_identity,
         DestinationName::new("lxmf", "propagation.control"),
     );
-    let link = transport.link(destination.desc).await;
-    await_link_activation(transport, &link, timeout).await?;
+    let link = open_refreshed_remote_link(transport, &remote_hash, destination.desc, timeout).await?;
     let link_id = *link.lock().await.id();
 
     let identify_payload = build_link_identify_payload(request_identity, &link_id);
