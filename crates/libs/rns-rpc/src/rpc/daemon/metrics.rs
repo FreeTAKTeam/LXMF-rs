@@ -131,19 +131,6 @@ impl RpcDaemon {
         metrics.sdk_event_drops_total = metrics.sdk_event_drops_total.saturating_add(1);
     }
 
-    pub(super) fn metrics_record_event_sink_publish(&self, kind: &str) {
-        let mut metrics = self.sdk_metrics.lock().expect("sdk_metrics mutex poisoned");
-        metrics.sdk_event_sink_publish_total =
-            metrics.sdk_event_sink_publish_total.saturating_add(1);
-        Self::metrics_increment(&mut metrics.sdk_event_sink_publish_by_kind, kind);
-    }
-
-    pub(super) fn metrics_record_event_sink_error(&self, kind: &str) {
-        let mut metrics = self.sdk_metrics.lock().expect("sdk_metrics mutex poisoned");
-        metrics.sdk_event_sink_error_total = metrics.sdk_event_sink_error_total.saturating_add(1);
-        Self::metrics_increment(&mut metrics.sdk_event_sink_errors_by_kind, kind);
-    }
-
     pub(super) fn metrics_record_event_sink_skipped(&self) {
         let mut metrics = self.sdk_metrics.lock().expect("sdk_metrics mutex poisoned");
         metrics.sdk_event_sink_skipped_total =

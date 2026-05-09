@@ -1,6 +1,46 @@
 use super::*;
 
+const OUTBOUND_DELIVERY_QUEUE_CAPACITY: usize = 1024;
+
 impl RpcDaemon {
+    pub(super) fn spawn_outbound_delivery_worker(
+        bridge: Option<Arc<dyn OutboundBridge>>,
+        store: Arc<MessagesStore>,
+        delivery_traces: Arc<Mutex<HashMap<String, Vec<DeliveryTraceEntry>>>>,
+        delivery_status_lock: Arc<Mutex<()>>,
+    ) -> Option<mpsc::SyncSender<OutboundDeliveryCommand>> {
+        let bridge = bridge?;
+        let (tx, rx) =
+            mpsc::sync_channel::<OutboundDeliveryCommand>(OUTBOUND_DELIVERY_QUEUE_CAPACITY);
+        std::thread::Builder::new()
+            .name("rpc-outbound-delivery-worker".to_string())
+            .spawn(move || {
+                while let Ok(command) = rx.recv() {
+                    if let Err(err) = bridge.deliver(&command.record, &command.options) {
+                        let status = format!("failed: {err}");
+                        let resolved_status = {
+                            let _status_guard = delivery_status_lock
+                                .lock()
+                                .expect("delivery_status_lock mutex poisoned");
+                            store
+                                .resolve_receipt_status(command.record.id.as_str(), status.as_str())
+                                .unwrap_or_else(|_| Some(status.clone()))
+                                .unwrap_or_else(|| status.clone())
+                        };
+                        if resolved_status == status {
+                            Self::append_delivery_trace_to(
+                                &delivery_traces,
+                                command.record.id.as_str(),
+                                status,
+                            );
+                        }
+                    }
+                }
+            })
+            .expect("spawn rpc outbound delivery worker");
+        Some(tx)
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub(super) fn store_outbound(
         &self,
@@ -56,10 +96,70 @@ impl RpcDaemon {
             }
             record.receipt_status = Some(resolved_status);
         }
+        if self.outbound_bridge.is_some() {
+            let delivery_started = std::time::Instant::now();
+            let schedule_result = self.schedule_bridge_delivery(record.clone(), options);
+            let delivery_elapsed_ns =
+                delivery_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
+            self.metrics_record_sdk_send_delivery_schedule(delivery_elapsed_ns);
+            if let Err(err) = schedule_result {
+                let status = format!("failed: {err}");
+                let resolved_status = {
+                    let _status_guard = self
+                        .delivery_status_lock
+                        .lock()
+                        .expect("delivery_status_lock mutex poisoned");
+                    let resolved_status = self
+                        .store
+                        .resolve_receipt_status(&id, &status)
+                        .map_err(std::io::Error::other)?
+                        .unwrap_or_else(|| status.clone());
+                    if resolved_status == status {
+                        self.append_delivery_trace(&id, status);
+                    }
+                    resolved_status
+                };
+                record.receipt_status = Some(resolved_status.clone());
+                let reason_code = delivery_reason_code(&resolved_status);
+                let event = RpcEvent {
+                    event_type: "outbound".into(),
+                    payload: json!({
+                        "message": record,
+                        "method": method,
+                        "error": err.to_string(),
+                        "reason_code": reason_code,
+                    }),
+                };
+                let publish_started = std::time::Instant::now();
+                self.publish_event(event);
+                let publish_elapsed_ns =
+                    publish_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
+                self.metrics_record_sdk_send_event_publish(publish_elapsed_ns);
+                return Ok(RpcResponse {
+                    id: request_id,
+                    result: None,
+                    error: Some(RpcError::new("DELIVERY_FAILED", err.to_string())),
+                });
+            }
+            let reason_code = record.receipt_status.as_deref().and_then(delivery_reason_code);
+            let event = RpcEvent {
+                event_type: "outbound".into(),
+                payload: json!({
+                    "message": record,
+                    "method": method,
+                    "reason_code": reason_code,
+                }),
+            };
+            self.publish_event(event);
+            return Ok(RpcResponse {
+                id: request_id,
+                result: Some(json!({ "message_id": id })),
+                error: None,
+            });
+        }
+
         let delivery_started = std::time::Instant::now();
-        let deliver_result = if let Some(bridge) = &self.outbound_bridge {
-            bridge.deliver(&record, &options)
-        } else {
+        let deliver_result: Result<(), std::io::Error> = {
             let _delivered = crate::transport::test_bridge::deliver_outbound(&record);
             Ok(())
         };
@@ -103,28 +203,6 @@ impl RpcDaemon {
                 error: Some(RpcError::new("DELIVERY_FAILED", err.to_string())),
             });
         }
-        if self.outbound_bridge.is_some() {
-            record.receipt_status = self
-                .store
-                .get_message(&id)
-                .map_err(std::io::Error::other)?
-                .and_then(|message| message.receipt_status);
-            let reason_code = record.receipt_status.as_deref().and_then(delivery_reason_code);
-            let event = RpcEvent {
-                event_type: "outbound".into(),
-                payload: json!({
-                    "message": record,
-                    "method": method,
-                    "reason_code": reason_code,
-                }),
-            };
-            self.publish_event(event);
-            return Ok(RpcResponse {
-                id: request_id,
-                result: Some(json!({ "message_id": id })),
-                error: None,
-            });
-        }
         let sent_status = format!("sent: {}", method.as_deref().unwrap_or("direct"));
         let resolved_status = {
             let _status_guard =
@@ -155,6 +233,26 @@ impl RpcDaemon {
         self.metrics_record_sdk_send_event_publish(publish_elapsed_ns);
 
         Ok(RpcResponse { id: request_id, result: Some(json!({ "message_id": id })), error: None })
+    }
+
+    fn schedule_bridge_delivery(
+        &self,
+        record: MessageRecord,
+        options: OutboundDeliveryOptions,
+    ) -> Result<(), std::io::Error> {
+        let Some(tx) = &self.outbound_delivery_tx else {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::BrokenPipe,
+                "outbound delivery worker unavailable",
+            ));
+        };
+        tx.try_send(OutboundDeliveryCommand { record, options }).map_err(|err| {
+            let message = match err {
+                mpsc::TrySendError::Full(_) => "outbound delivery queue full",
+                mpsc::TrySendError::Disconnected(_) => "outbound delivery worker disconnected",
+            };
+            std::io::Error::new(std::io::ErrorKind::WouldBlock, message)
+        })
     }
 
     pub(super) fn local_delivery_hash(&self) -> String {
@@ -242,6 +340,7 @@ impl RpcDaemon {
             "get_outbound_propagation_node",
             "set_outbound_propagation_node",
             "list_propagation_nodes",
+            "propagation_remote_download",
             "paper_ingest_uri",
             "stamp_policy_get",
             "stamp_policy_set",

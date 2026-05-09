@@ -72,6 +72,18 @@ impl RpcDaemon {
         let (events, _rx) = broadcast::channel(64);
         let (sdk_events, _sdk_rx) = broadcast::channel(64);
         let active_identity = identity_hash.clone();
+        let store = Arc::new(store);
+        let sdk_metrics = Arc::new(Mutex::new(RpcMetrics::default()));
+        let delivery_traces = Arc::new(Mutex::new(HashMap::new()));
+        let delivery_status_lock = Arc::new(Mutex::new(()));
+        let outbound_delivery_tx = Self::spawn_outbound_delivery_worker(
+            outbound_bridge.clone(),
+            Arc::clone(&store),
+            Arc::clone(&delivery_traces),
+            Arc::clone(&delivery_status_lock),
+        );
+        let event_sink_tx =
+            Self::spawn_event_sink_worker(!event_sink_bridges.is_empty(), Arc::clone(&sdk_metrics));
         let mut sdk_identities = HashMap::new();
         sdk_identities
             .insert(identity_hash.clone(), Self::default_sdk_identity(identity_hash.as_str()));
@@ -126,13 +138,15 @@ impl RpcDaemon {
             stamp_policy: Mutex::new(StampPolicy::default()),
             ticket_cache: Mutex::new(HashMap::new()),
             ticket_last_deliveries: Mutex::new(HashMap::new()),
-            delivery_traces: Mutex::new(HashMap::new()),
+            delivery_traces,
             daemon_status_snapshot: std::sync::RwLock::new(DaemonStatusSnapshot::default()),
-            delivery_status_lock: Mutex::new(()),
-            sdk_metrics: Mutex::new(RpcMetrics::default()),
+            delivery_status_lock,
+            sdk_metrics,
             outbound_bridge,
+            outbound_delivery_tx,
             announce_bridge,
             event_sink_bridges,
+            event_sink_tx,
             interface_mutation_bridge: Mutex::new(None),
             remote_control_bridge: Mutex::new(None),
             started_at: std::time::Instant::now(),
@@ -551,19 +565,9 @@ impl RpcDaemon {
             .message_storage_limit_mb
             .map(|value| value.saturating_mul(1_000_000));
         if let Some(limit_bytes) = storage_limit_bytes {
-            let pruned_ids = self
-                .store
-                .prune_messages_to_limit_bytes(limit_bytes)
+            self.store
+                .schedule_prune_messages_to_limit_bytes(limit_bytes)
                 .map_err(std::io::Error::other)?;
-            if !pruned_ids.is_empty() {
-                self.publish_event(RpcEvent {
-                    event_type: "propagation_store_pruned".into(),
-                    payload: json!({
-                        "limit_bytes": limit_bytes,
-                        "pruned_ids": pruned_ids,
-                    }),
-                });
-            }
         }
         let mut payload = json!({ "message": record });
         if let Some(raw_lxmf_bytes) = raw_lxmf_bytes {

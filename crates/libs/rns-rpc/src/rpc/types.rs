@@ -370,8 +370,25 @@ struct RpcMetrics {
     sdk_poll_event_log_lock_ops_total: u64,
 }
 
+enum EventSinkCommand {
+    Publish {
+        sink: Arc<dyn EventSinkBridge>,
+        sink_kind: String,
+        envelope: RpcEventSinkEnvelope,
+    },
+    #[cfg(test)]
+    Flush {
+        reply: mpsc::Sender<()>,
+    },
+}
+
+struct OutboundDeliveryCommand {
+    record: MessageRecord,
+    options: OutboundDeliveryOptions,
+}
+
 pub struct RpcDaemon {
-    store: MessagesStore,
+    store: Arc<MessagesStore>,
     identity_hash: String,
     delivery_destination_hash: Mutex<Option<String>>,
     events: broadcast::Sender<RpcEvent>,
@@ -421,13 +438,15 @@ pub struct RpcDaemon {
     stamp_policy: Mutex<StampPolicy>,
     ticket_cache: Mutex<HashMap<String, TicketRecord>>,
     ticket_last_deliveries: Mutex<HashMap<String, i64>>,
-    delivery_traces: Mutex<HashMap<String, Vec<DeliveryTraceEntry>>>,
+    delivery_traces: Arc<Mutex<HashMap<String, Vec<DeliveryTraceEntry>>>>,
     daemon_status_snapshot: std::sync::RwLock<DaemonStatusSnapshot>,
-    delivery_status_lock: Mutex<()>,
-    sdk_metrics: Mutex<RpcMetrics>,
+    delivery_status_lock: Arc<Mutex<()>>,
+    sdk_metrics: Arc<Mutex<RpcMetrics>>,
     outbound_bridge: Option<Arc<dyn OutboundBridge>>,
+    outbound_delivery_tx: Option<mpsc::SyncSender<OutboundDeliveryCommand>>,
     announce_bridge: Option<Arc<dyn AnnounceBridge>>,
     event_sink_bridges: Vec<Arc<dyn EventSinkBridge>>,
+    event_sink_tx: Option<mpsc::SyncSender<EventSinkCommand>>,
     interface_mutation_bridge: Mutex<Option<Arc<dyn InterfaceMutationBridge>>>,
     remote_control_bridge: Mutex<Option<Arc<dyn RemoteControlBridge>>>,
     started_at: std::time::Instant,
@@ -478,6 +497,13 @@ pub trait RemoteControlBridge: Send + Sync {
         &self,
         remote: &str,
         peer: &str,
+        identity_private_key_hex: Option<&str>,
+        timeout_secs: f64,
+    ) -> Result<JsonValue, std::io::Error>;
+
+    fn propagation_remote_download(
+        &self,
+        remote: &str,
         identity_private_key_hex: Option<&str>,
         timeout_secs: f64,
     ) -> Result<JsonValue, std::io::Error>;
