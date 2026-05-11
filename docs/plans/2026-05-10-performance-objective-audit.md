@@ -280,6 +280,13 @@ direct evidence that the requested behavior, gate, or benchmark exists.
      propagated delivery modes through `rnx e2e`. The latest local run passed
      all three delivery modes after destination readiness metadata was exposed
      on stdout for the harness.
+   - `rnx e2e` now converges peer discovery by repeatedly announcing both
+     local daemons until each side sees the other destination or the existing
+     timeout expires. This removes a startup/link-settling race from the
+     compatibility harness without masking real discovery failures. The latest
+     `cargo xtask ci --stage release-scorecard-check` run completed the soak
+     burst with `total_failures: 0`, `e2e_failures: 0`, and
+     `mesh_failures: 0`.
    - `cargo xtask ci --stage sdk-conformance` now passes 47 SDK conformance
      tests covering app-mode lifecycle/events, auth modes, crypto agility,
      key-management fallback, release B/C domain RPC adapters, delivery modes,

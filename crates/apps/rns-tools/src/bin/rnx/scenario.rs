@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::io;
 use std::path::PathBuf;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::{harness, DeliveryMode};
 use harness::{
@@ -120,33 +120,32 @@ pub(crate) fn run_e2e(
     );
 
     let mut req_id = 1u64;
-    rpc_call(&b_rpc, req_id, "announce_now", None)?;
-    req_id = req_id.wrapping_add(1);
     let b_delivery_hash = b_ready
         .delivery_hash
         .clone()
         .ok_or_else(|| io::Error::other("daemon B did not report delivery destination hash"))?;
-    let a_sees_b = poll_for_peer(&a_rpc, &b_delivery_hash, timeout, req_id)?;
-    if !a_sees_b {
-        cleanup_child(&mut a_child, keep);
-        cleanup_child(&mut b_child, keep);
-        return Err(io::Error::new(io::ErrorKind::TimedOut, "daemon A did not discover daemon B"));
-    }
-    req_id = req_id.wrapping_add(1);
-
-    rpc_call(&a_rpc, req_id, "announce_now", None)?;
-    req_id = req_id.wrapping_add(1);
     let a_delivery_hash = a_ready
         .delivery_hash
         .clone()
         .ok_or_else(|| io::Error::other("daemon A did not report delivery destination hash"))?;
-    let b_sees_a = poll_for_peer(&b_rpc, &a_delivery_hash, timeout, req_id)?;
-    if !b_sees_a {
+    let discovery = converge_peer_discovery(
+        &a_rpc,
+        &b_rpc,
+        &a_delivery_hash,
+        &b_delivery_hash,
+        timeout,
+        &mut req_id,
+    )?;
+    if !discovery.a_sees_b {
+        cleanup_child(&mut a_child, keep);
+        cleanup_child(&mut b_child, keep);
+        return Err(io::Error::new(io::ErrorKind::TimedOut, "daemon A did not discover daemon B"));
+    }
+    if !discovery.b_sees_a {
         cleanup_child(&mut a_child, keep);
         cleanup_child(&mut b_child, keep);
         return Err(io::Error::new(io::ErrorKind::TimedOut, "daemon B did not discover daemon A"));
     }
-    req_id = req_id.wrapping_add(1);
     std::thread::sleep(Duration::from_millis(1500));
 
     if propagation_enabled {
@@ -251,6 +250,54 @@ fn mode_label(mode: DeliveryMode) -> &'static str {
         DeliveryMode::Opportunistic => "opportunistic",
         DeliveryMode::Propagated => "propagated",
         DeliveryMode::Paper => "paper",
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct DiscoveryConvergence {
+    a_sees_b: bool,
+    b_sees_a: bool,
+}
+
+fn converge_peer_discovery(
+    a_rpc: &str,
+    b_rpc: &str,
+    a_delivery_hash: &str,
+    b_delivery_hash: &str,
+    timeout: Duration,
+    request_id: &mut u64,
+) -> io::Result<DiscoveryConvergence> {
+    let deadline = Instant::now() + timeout;
+    let mut convergence = DiscoveryConvergence::default();
+    loop {
+        rpc_call(a_rpc, *request_id, "announce_now", None)?;
+        *request_id = (*request_id).wrapping_add(1);
+        rpc_call(b_rpc, *request_id, "announce_now", None)?;
+        *request_id = (*request_id).wrapping_add(1);
+
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Ok(convergence);
+        }
+        let poll_timeout = remaining.min(Duration::from_millis(1000));
+        if !convergence.a_sees_b {
+            convergence.a_sees_b =
+                poll_for_peer(a_rpc, b_delivery_hash, poll_timeout, *request_id)?;
+            *request_id = (*request_id).wrapping_add(16);
+        }
+        if !convergence.b_sees_a {
+            convergence.b_sees_a =
+                poll_for_peer(b_rpc, a_delivery_hash, poll_timeout, *request_id)?;
+            *request_id = (*request_id).wrapping_add(16);
+        }
+        if convergence.a_sees_b && convergence.b_sees_a {
+            return Ok(convergence);
+        }
+
+        if Instant::now() >= deadline {
+            return Ok(convergence);
+        }
+        std::thread::sleep(Duration::from_millis(250));
     }
 }
 
