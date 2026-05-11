@@ -287,6 +287,11 @@ direct evidence that the requested behavior, gate, or benchmark exists.
      `cargo xtask ci --stage release-scorecard-check` run completed the soak
      burst with `total_failures: 0`, `e2e_failures: 0`, and
      `mesh_failures: 0`.
+   - Release scorecard, canary criteria, and leader-readiness gates now enforce
+     zero tolerated soak failures, matching the release-readiness rollback
+     criteria instead of allowing a passing release scorecard with a tolerated
+     E2E or mesh failure. The latest generated scorecard reports
+     `max_soak_failures: 0`.
    - `cargo xtask ci --stage sdk-conformance` now passes 47 SDK conformance
      tests covering app-mode lifecycle/events, auth modes, crypto agility,
      key-management fallback, release B/C domain RPC adapters, delivery modes,
