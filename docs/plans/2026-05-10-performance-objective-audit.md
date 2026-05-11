@@ -439,6 +439,10 @@ direct evidence that the requested behavior, gate, or benchmark exists.
      exists behind `--worker-process-unix-socket` on Unix targets. Tests cover
      the in-memory non-child stream plus real loopback TCP and Unix-socket
      worker supervisors accepting framed worker requests.
+   - Bootstrap coverage now verifies a configured `--worker-process-tcp`
+     endpoint is used to create the daemon worker backend and is reported
+     through `daemon_status_ex.worker_processes` as an enabled, idle external
+     worker pool.
    - Daemon status exposes `worker_processes`.
    - Transport routes announce validation, outbound encrypt, single-destination
      decrypt, and resource completion through the configured worker backend

@@ -1116,6 +1116,49 @@ time.sleep(30)
     assert_eq!(status["worker_processes"]["idle_workers"].as_u64(), Some(1));
 }
 
+#[test]
+fn bootstrap_uses_configured_external_worker_tcp_endpoint() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    runtime.block_on(async {
+        let listener =
+            tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind worker supervisor");
+        let addr = listener.local_addr().expect("worker supervisor address");
+        let server = tokio::spawn(async move {
+            let (_stream, _) = listener.accept().await.expect("accept worker process connection");
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        });
+
+        let mut args = test_args(db_path, None, None, false);
+        args.worker_process_count = 1;
+        args.worker_process_timeout_ms = 2_000;
+        args.worker_process_tcp = Some(addr);
+
+        let context = bootstrap::bootstrap(args).await;
+
+        assert!(context.worker_process_runtime.enabled);
+        assert_eq!(context.worker_process_runtime.worker_count, 1);
+        assert!(context.worker_process_backend.is_some());
+        let status = context
+            .daemon
+            .handle_rpc(RpcRequest {
+                id: 101,
+                method: "daemon_status_ex".to_string(),
+                params: None,
+            })
+            .expect("daemon status")
+            .result
+            .expect("daemon status result");
+        assert_eq!(status["worker_processes"]["enabled"].as_bool(), Some(true));
+        assert_eq!(status["worker_processes"]["worker_count"].as_u64(), Some(1));
+        assert_eq!(status["worker_processes"]["idle_workers"].as_u64(), Some(1));
+        server.await.expect("worker supervisor task");
+    });
+}
+
 #[cfg(unix)]
 #[test]
 fn bootstrap_registers_configured_interface_worker_process() {
