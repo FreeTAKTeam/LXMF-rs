@@ -292,6 +292,11 @@ direct evidence that the requested behavior, gate, or benchmark exists.
      `target/release-readiness/certification-report.json`. The latest generated
      report marks Bronze, Silver, and Gold compatibility tiers as `PASS` using
      `docs/contracts/compatibility-matrix.md` as the source.
+   - `cargo xtask ci --stage key-management-check` now passes 8
+     `reticulum-rs-core` key-manager tests plus 4 SDK conformance
+     key-management tests, covering in-memory/file round trips, invalid key-id
+     rejection, OS-keystore/HSM hook adapters, and primary-to-secondary fallback
+     reads, writes, and id listing.
    - `target/criterion/bench-budget-report.txt` currently reports `Status:
      PASS` and includes storage writer-lane insertion plus local-vs-process
      resource completion and outbound encryption budgets for

@@ -83,6 +83,8 @@ Current local compatibility evidence:
 - `cargo xtask ci --stage certification-report-check` writes
   `target/release-readiness/certification-report.{md,json}` with Bronze,
   Silver, and Gold tiers marked `PASS`.
+- `cargo xtask ci --stage key-management-check` passes 8 core key-manager tests
+  and 4 SDK conformance key-management tests.
 
 ## 5. Local release checks
 
