@@ -55,6 +55,9 @@ deleted or folded into a newer source-of-truth doc.
 - `docs/contracts/support-policy.md`: support and lifecycle guarantees
 - `docs/architecture/overview.md`: architecture entry point
 - `docs/architecture/json-lxmf-fields.md`: JSON-to-MessagePack and field-id details
+- `docs/plans/2026-05-10-performance-objective-audit.md`: current audit of the
+  Rust/Python performance, async isolation, worker-pool, perf-CI, and
+  multi-process-scaling objective
 
 ## Retention Rules
 
