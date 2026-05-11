@@ -1,9 +1,12 @@
 use super::announce_worker::spawn_announce_worker;
 use super::bridge::TransportBridge;
+use super::control_router_mode;
 use super::inbound_worker::spawn_inbound_worker;
 use super::interface_hot_apply::TcpInterfaceMutationBridge;
+use super::interface_worker_mode::InterfaceWorkerBridgeHandle;
 use super::outbound_resources::OutboundResourceMap;
 use super::receipt_worker::spawn_receipt_worker;
+use super::worker_mode;
 use super::Args;
 #[path = "bootstrap_transport.rs"]
 mod transport_startup;
@@ -15,16 +18,18 @@ use reticulum_daemon::announce_names::{
 use reticulum_daemon::config::{DaemonConfig, InterfaceConfig};
 use reticulum_daemon::identity_store::load_or_create_identity;
 use rns_rpc::{
-    AnnounceBridge, InterfaceRecord, MessagesStore, OutboundBridge, RemoteControlBridge, RpcDaemon,
+    AnnounceBridge, ControlRouterProcessStatus, InterfaceRecord, InterfaceWorkerProcessStatus,
+    MessagesStore, OutboundBridge, RemoteControlBridge, RpcDaemon, WorkerProcessStatus,
 };
 use rns_transport::destination::SingleInputDestination;
-use rns_transport::transport::Transport;
+use rns_transport::transport::{worker_boundary::WorkerBackend, Transport};
 use serde_json::{Map as JsonMap, Value as JsonValue};
 use std::collections::HashMap;
+use std::ffi::OsString;
 use std::io::IsTerminal;
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Weak};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::channel;
 use tokio::time::{timeout, Duration};
@@ -42,6 +47,286 @@ pub(super) struct BootstrapContext {
     pub(super) rpc_unix: Option<PathBuf>,
     pub(super) daemon: Arc<RpcDaemon>,
     pub(super) rpc_tls: Option<RpcTlsConfig>,
+    #[allow(dead_code)]
+    pub(super) worker_process_backend: Option<Arc<worker_mode::WorkerStdioPoolBackend>>,
+    #[allow(dead_code)]
+    pub(super) worker_process_runtime: WorkerProcessRuntimeStatus,
+    #[allow(dead_code)]
+    pub(super) control_router_process_pool:
+        Option<Arc<control_router_mode::ControlRouterStdioPool>>,
+    #[allow(dead_code)]
+    pub(super) control_router_process_runtime: ControlRouterProcessRuntimeStatus,
+    #[allow(dead_code)]
+    pub(super) interface_worker_bridges: Arc<Vec<InterfaceWorkerBridgeHandle>>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct WorkerProcessRuntimeStatus {
+    pub(super) enabled: bool,
+    pub(super) worker_count: usize,
+    pub(super) timeout_ms: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[allow(dead_code)]
+pub(super) struct ControlRouterProcessRuntimeStatus {
+    pub(super) enabled: bool,
+    pub(super) worker_count: usize,
+    pub(super) timeout_ms: u64,
+}
+
+pub(super) fn worker_process_status_from_runtime(
+    runtime: &WorkerProcessRuntimeStatus,
+    backend: Option<&Arc<worker_mode::WorkerStdioPoolBackend>>,
+) -> WorkerProcessStatus {
+    let Some(backend) = backend else {
+        return WorkerProcessStatus {
+            enabled: runtime.enabled,
+            worker_count: runtime.worker_count,
+            timeout_ms: runtime.timeout_ms,
+            ..WorkerProcessStatus::default()
+        };
+    };
+    let snapshot = backend.snapshot();
+    WorkerProcessStatus {
+        enabled: runtime.enabled,
+        worker_count: snapshot.worker_count,
+        timeout_ms: runtime.timeout_ms,
+        idle_workers: snapshot.idle_workers,
+        busy_workers: snapshot.busy_workers,
+        request_timeouts: snapshot.request_timeouts,
+        child_replacements: snapshot.child_replacements,
+    }
+}
+
+pub(super) fn interface_worker_process_status_from_bridges(
+    configured_count: usize,
+    shutdown_timeout_ms: u64,
+    restart_backoff_ms: u64,
+    bridges: &[InterfaceWorkerBridgeHandle],
+) -> InterfaceWorkerProcessStatus {
+    let stopped_workers = bridges.iter().filter(|bridge| bridge.is_finished()).count();
+    let child_restarts = bridges.iter().map(InterfaceWorkerBridgeHandle::child_restarts).sum();
+    let child_errors = bridges.iter().map(InterfaceWorkerBridgeHandle::child_errors).sum();
+    InterfaceWorkerProcessStatus {
+        enabled: configured_count > 0,
+        worker_count: configured_count,
+        shutdown_timeout_ms,
+        restart_backoff_ms,
+        live_workers: bridges.len().saturating_sub(stopped_workers),
+        stopped_workers,
+        child_restarts,
+        child_errors,
+    }
+}
+
+#[allow(dead_code)]
+pub(super) fn control_router_process_status_from_runtime(
+    runtime: &ControlRouterProcessRuntimeStatus,
+    pool: Option<&control_router_mode::ControlRouterStdioPool>,
+) -> ControlRouterProcessStatus {
+    let Some(pool) = pool else {
+        return ControlRouterProcessStatus {
+            enabled: runtime.enabled,
+            worker_count: runtime.worker_count,
+            timeout_ms: runtime.timeout_ms,
+            ..ControlRouterProcessStatus::default()
+        };
+    };
+    let snapshot = pool.snapshot();
+    ControlRouterProcessStatus {
+        enabled: runtime.enabled,
+        worker_count: snapshot.worker_count,
+        timeout_ms: runtime.timeout_ms,
+        idle_workers: snapshot.idle_workers,
+        busy_workers: snapshot.busy_workers,
+        request_timeouts: snapshot.request_timeouts,
+        child_replacements: snapshot.child_replacements,
+    }
+}
+
+#[allow(dead_code)]
+pub(super) fn refresh_control_router_process_status(
+    daemon: &RpcDaemon,
+    runtime: &ControlRouterProcessRuntimeStatus,
+    pool: Option<&control_router_mode::ControlRouterStdioPool>,
+) {
+    daemon.set_control_router_process_status(control_router_process_status_from_runtime(
+        runtime, pool,
+    ));
+}
+
+pub(super) fn refresh_interface_worker_process_status(
+    daemon: &RpcDaemon,
+    configured_count: usize,
+    shutdown_timeout_ms: u64,
+    restart_backoff_ms: u64,
+    bridges: &[InterfaceWorkerBridgeHandle],
+) {
+    daemon.set_interface_worker_process_status(interface_worker_process_status_from_bridges(
+        configured_count,
+        shutdown_timeout_ms,
+        restart_backoff_ms,
+        bridges,
+    ));
+}
+
+pub(super) fn refresh_worker_process_status(
+    daemon: &RpcDaemon,
+    runtime: &WorkerProcessRuntimeStatus,
+    backend: Option<&Arc<worker_mode::WorkerStdioPoolBackend>>,
+) {
+    daemon.set_worker_process_status(worker_process_status_from_runtime(runtime, backend));
+}
+
+pub(super) fn spawn_worker_process_status_publisher_with_interval(
+    daemon: Arc<RpcDaemon>,
+    runtime: WorkerProcessRuntimeStatus,
+    backend: Option<Arc<worker_mode::WorkerStdioPoolBackend>>,
+    interval: Duration,
+) -> Option<tokio::task::JoinHandle<()>> {
+    let Some(backend) = backend else {
+        return None;
+    };
+    let interval = interval.max(Duration::from_millis(1));
+    Some(tokio::spawn(async move {
+        loop {
+            refresh_worker_process_status(&daemon, &runtime, Some(&backend));
+            tokio::time::sleep(interval).await;
+        }
+    }))
+}
+
+fn spawn_worker_process_status_publisher(
+    daemon: Arc<RpcDaemon>,
+    runtime: WorkerProcessRuntimeStatus,
+    backend: Option<Arc<worker_mode::WorkerStdioPoolBackend>>,
+) {
+    let _ = spawn_worker_process_status_publisher_with_interval(
+        daemon,
+        runtime,
+        backend,
+        Duration::from_secs(1),
+    );
+}
+
+pub(super) fn spawn_control_router_process_status_publisher_with_interval(
+    daemon: Arc<RpcDaemon>,
+    runtime: ControlRouterProcessRuntimeStatus,
+    pool: Option<Arc<control_router_mode::ControlRouterStdioPool>>,
+    interval: Duration,
+) -> Option<tokio::task::JoinHandle<()>> {
+    let Some(pool) = pool else {
+        return None;
+    };
+    let interval = interval.max(Duration::from_millis(1));
+    Some(tokio::spawn(async move {
+        loop {
+            refresh_control_router_process_status(&daemon, &runtime, Some(pool.as_ref()));
+            tokio::time::sleep(interval).await;
+        }
+    }))
+}
+
+fn spawn_control_router_process_status_publisher(
+    daemon: Arc<RpcDaemon>,
+    runtime: ControlRouterProcessRuntimeStatus,
+    pool: Option<Arc<control_router_mode::ControlRouterStdioPool>>,
+) {
+    let _ = spawn_control_router_process_status_publisher_with_interval(
+        daemon,
+        runtime,
+        pool,
+        Duration::from_secs(1),
+    );
+}
+
+pub(super) fn spawn_interface_worker_process_status_publisher_with_interval(
+    daemon: Arc<RpcDaemon>,
+    configured_count: usize,
+    shutdown_timeout_ms: u64,
+    restart_backoff_ms: u64,
+    bridges: Weak<Vec<InterfaceWorkerBridgeHandle>>,
+    interval: Duration,
+) -> tokio::task::JoinHandle<()> {
+    let interval = interval.max(Duration::from_millis(1));
+    tokio::spawn(async move {
+        while let Some(bridges) = bridges.upgrade() {
+            refresh_interface_worker_process_status(
+                daemon.as_ref(),
+                configured_count,
+                shutdown_timeout_ms,
+                restart_backoff_ms,
+                bridges.as_slice(),
+            );
+            tokio::time::sleep(interval).await;
+        }
+    })
+}
+
+fn spawn_interface_worker_process_status_publisher(
+    daemon: Arc<RpcDaemon>,
+    configured_count: usize,
+    shutdown_timeout_ms: u64,
+    restart_backoff_ms: u64,
+    bridges: &Arc<Vec<InterfaceWorkerBridgeHandle>>,
+) {
+    let _ = spawn_interface_worker_process_status_publisher_with_interval(
+        daemon,
+        configured_count,
+        shutdown_timeout_ms,
+        restart_backoff_ms,
+        Arc::downgrade(bridges),
+        Duration::from_secs(1),
+    );
+}
+
+pub(super) fn worker_process_executable_path(args: &Args) -> PathBuf {
+    args.worker_process_command
+        .clone()
+        .unwrap_or_else(|| std::env::current_exe().expect("current executable path"))
+}
+
+pub(super) fn worker_process_endpoint(args: &Args) -> worker_mode::WorkerProcessEndpoint {
+    #[cfg(unix)]
+    if let Some(path) = args.worker_process_unix_socket.clone() {
+        return worker_mode::WorkerProcessEndpoint::UnixSocket { path };
+    }
+
+    if let Some(addr) = args.worker_process_tcp {
+        return worker_mode::WorkerProcessEndpoint::Tcp { addr };
+    }
+
+    worker_mode::WorkerProcessEndpoint::Spawn { executable: worker_process_executable_path(args) }
+}
+
+pub(super) fn interface_worker_process_executable_path(args: &Args) -> PathBuf {
+    args.interface_worker_process_command
+        .clone()
+        .unwrap_or_else(|| std::env::current_exe().expect("current executable path"))
+}
+
+pub(super) fn control_router_process_executable_path(args: &Args) -> PathBuf {
+    args.control_router_process_command
+        .clone()
+        .unwrap_or_else(|| std::env::current_exe().expect("current executable path"))
+}
+
+pub(super) fn control_router_process_child_args(args: &Args) -> Vec<OsString> {
+    let mut child_args = vec![OsString::from("--db"), args.db.clone().into_os_string()];
+    if let Some(config) = args.config.as_ref() {
+        child_args.push(OsString::from("--config"));
+        child_args.push(config.clone().into_os_string());
+    }
+    if let Some(identity) = args.identity.as_ref() {
+        child_args.push(OsString::from("--identity"));
+        child_args.push(identity.clone().into_os_string());
+    }
+    if let Some(transport) = args.transport.as_ref() {
+        child_args.push(OsString::from("--transport"));
+        child_args.push(OsString::from(transport.as_str()));
+    }
+    child_args
 }
 
 const RECEIPT_EVENT_QUEUE_CAPACITY: usize = 1024;
@@ -67,7 +352,41 @@ pub(super) struct InterfaceStartupFailure {
 pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     let rpc_addr: Option<SocketAddr> =
         args.rpc.as_ref().map(|addr| addr.parse().expect("invalid rpc address"));
-    let rpc_unix = args.rpc_unix.clone();
+    let rpc_unix = if args.no_rpc_unix { None } else { args.rpc_unix.clone() };
+    let worker_process_runtime = WorkerProcessRuntimeStatus {
+        enabled: args.worker_process_count > 0,
+        worker_count: args.worker_process_count,
+        timeout_ms: args.worker_process_timeout_ms,
+    };
+    let worker_process_backend = if args.worker_process_count > 0 {
+        Some(
+            worker_mode::spawn_worker_process_backend_from_endpoint(
+                worker_process_endpoint(&args),
+                args.worker_process_count,
+                args.worker_process_timeout_ms,
+            )
+            .expect("spawn worker process pool"),
+        )
+    } else {
+        None
+    };
+    let control_router_process_runtime = ControlRouterProcessRuntimeStatus {
+        enabled: args.control_router_process_count > 0,
+        worker_count: args.control_router_process_count,
+        timeout_ms: args.control_router_process_timeout_ms,
+    };
+    let control_router_process_pool = if args.control_router_process_count > 0 {
+        Some(Arc::new(
+            control_router_mode::ControlRouterStdioPool::spawn_with_args(
+                control_router_process_executable_path(&args),
+                control_router_process_child_args(&args),
+                args.control_router_process_count,
+            )
+            .expect("spawn control router process pool"),
+        ))
+    } else {
+        None
+    };
     let rpc_tls = parse_tls_args(
         "--rpc-tls-cert",
         "--rpc-tls-key",
@@ -124,6 +443,9 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         receipt_map: receipt_map.clone(),
         receipt_tx: receipt_tx.clone(),
         propagation_control_enabled,
+        worker_process_backend: worker_process_backend
+            .clone()
+            .map(|backend| backend as Arc<dyn WorkerBackend>),
     })
     .await;
 
@@ -141,6 +463,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     let startup_failures = startup.startup_failures;
     let seeded_tcp_interfaces = startup.seeded_tcp_interfaces;
     let selected_tcp_server = startup.selected_tcp_server;
+    let interface_worker_bridges = Arc::new(startup.interface_worker_bridges);
 
     if !startup_failures.is_empty() {
         eprintln!(
@@ -168,7 +491,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     } else {
         "disabled".to_string()
     };
-    println!(
+    eprintln!(
         "{}",
         pretty_boot_line(
             "startup",
@@ -215,6 +538,40 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         outbound_bridge,
         announce_bridge,
     ));
+    refresh_worker_process_status(
+        daemon.as_ref(),
+        &worker_process_runtime,
+        worker_process_backend.as_ref(),
+    );
+    refresh_control_router_process_status(
+        daemon.as_ref(),
+        &control_router_process_runtime,
+        control_router_process_pool.as_deref(),
+    );
+    refresh_interface_worker_process_status(
+        daemon.as_ref(),
+        args.interface_worker_process_count,
+        args.interface_worker_process_shutdown_ms,
+        args.interface_worker_process_restart_backoff_ms,
+        interface_worker_bridges.as_slice(),
+    );
+    spawn_interface_worker_process_status_publisher(
+        daemon.clone(),
+        args.interface_worker_process_count,
+        args.interface_worker_process_shutdown_ms,
+        args.interface_worker_process_restart_backoff_ms,
+        &interface_worker_bridges,
+    );
+    spawn_worker_process_status_publisher(
+        daemon.clone(),
+        worker_process_runtime.clone(),
+        worker_process_backend.clone(),
+    );
+    spawn_control_router_process_status_publisher(
+        daemon.clone(),
+        control_router_process_runtime.clone(),
+        control_router_process_pool.clone(),
+    );
     configure_startup_rpc_token_auth(&args, daemon.as_ref());
     enforce_rpc_bind_security(rpc_addr.as_ref(), rpc_tls.as_ref(), daemon.as_ref());
     if let Some(transport) = transport.as_ref() {
@@ -323,7 +680,17 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         spawn_announce_worker(daemon.clone(), transport, peer_crypto, Some(reticulum_storage_path));
     }
 
-    BootstrapContext { rpc_addr, rpc_unix, daemon, rpc_tls }
+    BootstrapContext {
+        rpc_addr,
+        rpc_unix,
+        daemon,
+        rpc_tls,
+        worker_process_backend,
+        worker_process_runtime,
+        control_router_process_pool,
+        control_router_process_runtime,
+        interface_worker_bridges,
+    }
 }
 
 fn pretty_console_logs_enabled() -> bool {

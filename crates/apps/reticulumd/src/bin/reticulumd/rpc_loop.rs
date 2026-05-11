@@ -1,4 +1,5 @@
 use super::bootstrap::RpcTlsConfig;
+use super::control_router_mode::{ControlRouterProcessError, ControlRouterStdioPool};
 #[path = "rpc_access_log.rs"]
 mod rpc_access_log;
 use rns_rpc::rpc::codec;
@@ -29,11 +30,41 @@ const RPC_MAX_HEADER_BYTES: usize = 16 * 1024;
 const RPC_MAX_BODY_BYTES: usize = 1024 * 1024;
 type ShutdownReceiver = watch::Receiver<bool>;
 
+#[derive(Clone)]
+pub(super) struct RpcRouteContext {
+    daemon: Arc<RpcDaemon>,
+    control_router_process_pool: Option<Arc<ControlRouterStdioPool>>,
+    control_router_process_timeout: Duration,
+}
+
+impl RpcRouteContext {
+    pub(super) fn new(
+        daemon: Arc<RpcDaemon>,
+        control_router_process_pool: Option<Arc<ControlRouterStdioPool>>,
+        control_router_process_timeout_ms: u64,
+    ) -> Self {
+        Self {
+            daemon,
+            control_router_process_pool,
+            control_router_process_timeout: Duration::from_millis(
+                control_router_process_timeout_ms,
+            ),
+        }
+    }
+
+    #[cfg(test)]
+    fn local(daemon: Arc<RpcDaemon>) -> Self {
+        Self::new(daemon, None, 0)
+    }
+}
+
 pub(super) async fn run_rpc_loop(
     addr: Option<SocketAddr>,
     daemon: Arc<RpcDaemon>,
     tls: Option<RpcTlsConfig>,
     unix_socket: Option<PathBuf>,
+    control_router_process_pool: Option<Arc<ControlRouterStdioPool>>,
+    control_router_process_timeout_ms: u64,
 ) {
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
     tokio::spawn(async move {
@@ -47,12 +78,17 @@ pub(super) async fn run_rpc_loop(
             }
         }
     });
-    run_rpc_loop_until(addr, daemon, tls, unix_socket, shutdown_rx).await;
+    let route_context = RpcRouteContext::new(
+        daemon,
+        control_router_process_pool,
+        control_router_process_timeout_ms,
+    );
+    run_rpc_loop_until(addr, route_context, tls, unix_socket, shutdown_rx).await;
 }
 
 pub(super) async fn run_rpc_loop_until(
     addr: Option<SocketAddr>,
-    daemon: Arc<RpcDaemon>,
+    route_context: RpcRouteContext,
     tls: Option<RpcTlsConfig>,
     unix_socket: Option<PathBuf>,
     shutdown: ShutdownReceiver,
@@ -60,23 +96,23 @@ pub(super) async fn run_rpc_loop_until(
     match (addr, tls, unix_socket) {
         (Some(addr), tls, unix_socket) => {
             let unix_handle = if let Some(path) = unix_socket {
-                let daemon_for_unix = daemon.clone();
+                let route_context_for_unix = route_context.clone();
                 let shutdown_for_unix = shutdown.clone();
                 Some(tokio::spawn(async move {
-                    run_unix_rpc_loop(path, daemon_for_unix, shutdown_for_unix).await;
+                    run_unix_rpc_loop(path, route_context_for_unix, shutdown_for_unix).await;
                 }))
             } else {
                 None
             };
             match tls {
-                Some(config) => run_tls_rpc_loop(addr, daemon, config, shutdown).await,
-                None => run_plain_rpc_loop(addr, daemon, shutdown).await,
+                Some(config) => run_tls_rpc_loop(addr, route_context, config, shutdown).await,
+                None => run_plain_rpc_loop(addr, route_context, shutdown).await,
             }
             if let Some(handle) = unix_handle {
                 let _ = handle.await;
             }
         }
-        (None, None, Some(path)) => run_unix_rpc_loop(path, daemon, shutdown).await,
+        (None, None, Some(path)) => run_unix_rpc_loop(path, route_context, shutdown).await,
         (None, Some(_), Some(_)) => {
             panic!("--rpc is required when TLS RPC options are configured");
         }
@@ -88,7 +124,7 @@ pub(super) async fn run_rpc_loop_until(
 
 async fn run_plain_rpc_loop(
     addr: SocketAddr,
-    daemon: Arc<RpcDaemon>,
+    route_context: RpcRouteContext,
     mut shutdown: ShutdownReceiver,
 ) {
     let listener = TcpListener::bind(addr).await.expect("bind rpc listener");
@@ -104,9 +140,9 @@ async fn run_plain_rpc_loop(
             }
             accepted = listener.accept() => {
                 let (stream, peer_addr) = accepted.expect("accept rpc socket");
-                let daemon = daemon.clone();
+                let route_context = route_context.clone();
                 tokio::spawn(async move {
-                    handle_connection(stream, peer_addr, daemon.as_ref(), None).await;
+                    handle_connection(stream, peer_addr, route_context, None).await;
                 });
             }
         }
@@ -114,7 +150,11 @@ async fn run_plain_rpc_loop(
 }
 
 #[cfg(unix)]
-async fn run_unix_rpc_loop(path: PathBuf, daemon: Arc<RpcDaemon>, mut shutdown: ShutdownReceiver) {
+async fn run_unix_rpc_loop(
+    path: PathBuf,
+    route_context: RpcRouteContext,
+    mut shutdown: ShutdownReceiver,
+) {
     prepare_rpc_unix_socket_path(&path).expect("prepare rpc unix socket path");
     let listener = UnixListener::bind(&path).expect("bind rpc unix socket");
     println!("reticulumd listening on unix:{}", path.display());
@@ -130,9 +170,9 @@ async fn run_unix_rpc_loop(path: PathBuf, daemon: Arc<RpcDaemon>, mut shutdown: 
             }
             accepted = listener.accept() => {
                 let (stream, _) = accepted.expect("accept rpc unix socket");
-                let daemon = daemon.clone();
+                let route_context = route_context.clone();
                 tokio::spawn(async move {
-                    handle_connection(stream, peer_addr, daemon.as_ref(), None).await;
+                    handle_connection(stream, peer_addr, route_context, None).await;
                 });
             }
         }
@@ -168,7 +208,11 @@ fn cleanup_rpc_unix_socket_path(path: &Path) -> io::Result<()> {
 }
 
 #[cfg(not(unix))]
-async fn run_unix_rpc_loop(path: PathBuf, _daemon: Arc<RpcDaemon>, _shutdown: ShutdownReceiver) {
+async fn run_unix_rpc_loop(
+    path: PathBuf,
+    _route_context: RpcRouteContext,
+    _shutdown: ShutdownReceiver,
+) {
     eprintln!(
         "[daemon] ignoring --rpc-unix {} because Unix sockets are not supported on this platform",
         path.display()
@@ -177,7 +221,7 @@ async fn run_unix_rpc_loop(path: PathBuf, _daemon: Arc<RpcDaemon>, _shutdown: Sh
 
 async fn run_tls_rpc_loop(
     addr: SocketAddr,
-    daemon: Arc<RpcDaemon>,
+    route_context: RpcRouteContext,
     config: RpcTlsConfig,
     mut shutdown: ShutdownReceiver,
 ) {
@@ -196,7 +240,7 @@ async fn run_tls_rpc_loop(
             }
             accepted = listener.accept() => {
                 let (stream, peer_addr) = accepted.expect("accept tls rpc socket");
-                let daemon = daemon.clone();
+                let route_context = route_context.clone();
                 let acceptor = acceptor.clone();
                 tokio::spawn(async move {
                     match acceptor.accept(stream).await {
@@ -205,7 +249,7 @@ async fn run_tls_rpc_loop(
                             handle_connection(
                                 tls_stream,
                                 peer_addr,
-                                daemon.as_ref(),
+                                route_context,
                                 Some(transport_auth),
                             )
                             .await;
@@ -226,7 +270,7 @@ async fn run_tls_rpc_loop(
 async fn handle_connection<S>(
     mut stream: S,
     peer_addr: SocketAddr,
-    daemon: &RpcDaemon,
+    route_context: RpcRouteContext,
     transport_auth: Option<http::TransportAuthContext>,
 ) where
     S: AsyncRead + AsyncWrite + Unpin,
@@ -248,19 +292,24 @@ async fn handle_connection<S>(
 
     if let Ok((method, path, headers)) = http::request_method_path_headers(&buffer) {
         if method == "GET" && path.split('?').next() == Some("/events/stream") {
-            handle_event_stream(stream, peer_addr, daemon, path, headers, transport_auth).await;
+            handle_event_stream(
+                stream,
+                peer_addr,
+                route_context.daemon.as_ref(),
+                path,
+                headers,
+                transport_auth,
+            )
+            .await;
             return;
         }
     }
 
     let request_meta = parse_request_log_meta(&buffer);
     let started_at = std::time::Instant::now();
-    let response_result = http::handle_http_request_with_transport_auth(
-        daemon,
-        &buffer,
-        Some(peer_addr),
-        transport_auth,
-    );
+    let response_result =
+        handle_http_request_with_route_context(&route_context, &buffer, peer_addr, transport_auth)
+            .await;
     let elapsed_ms = started_at.elapsed().as_millis() as u64;
     let (response, error_text) = match response_result {
         Ok(response) => (response, None),
@@ -272,6 +321,99 @@ async fn handle_connection<S>(
     emit_rpc_access_log(peer_addr, &request_meta, &response, elapsed_ms, error_text.as_deref());
     let _ = stream.write_all(&response).await;
     let _ = stream.shutdown().await;
+}
+
+async fn handle_http_request_with_route_context(
+    route_context: &RpcRouteContext,
+    buffer: &[u8],
+    peer_addr: SocketAddr,
+    transport_auth: Option<http::TransportAuthContext>,
+) -> io::Result<Vec<u8>> {
+    if let Some(response) =
+        try_route_control_router_rpc(route_context, buffer, peer_addr, transport_auth.as_ref())
+            .await?
+    {
+        return Ok(response);
+    }
+    http::handle_http_request_with_transport_auth(
+        route_context.daemon.as_ref(),
+        buffer,
+        Some(peer_addr),
+        transport_auth,
+    )
+}
+
+async fn try_route_control_router_rpc(
+    route_context: &RpcRouteContext,
+    buffer: &[u8],
+    peer_addr: SocketAddr,
+    transport_auth: Option<&http::TransportAuthContext>,
+) -> io::Result<Option<Vec<u8>>> {
+    let Some(pool) = route_context.control_router_process_pool.as_ref() else {
+        return Ok(None);
+    };
+    let (method, path, headers) = http::request_method_path_headers(buffer)?;
+    if method != "POST" || path != "/rpc" {
+        return Ok(None);
+    }
+    let header_end = http::find_header_end(buffer)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "missing headers"))?;
+    let headers_raw = &buffer[..header_end];
+    let content_length = http::parse_content_length(headers_raw)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "missing content-length"))?;
+    if content_length > codec::MAX_FRAME_PAYLOAD_LEN + 4 {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "body too large"));
+    }
+    let body_start = header_end + 4;
+    let body_end = body_start
+        .checked_add(content_length)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "body too large"))?;
+    if buffer.len() < body_end {
+        return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "body incomplete"));
+    }
+    let body = &buffer[body_start..body_end];
+    let rpc_request: RpcRequest = codec::decode_frame(body)?;
+    if !control_router_process_route_allowed(rpc_request.method.as_str()) {
+        return Ok(None);
+    }
+    if let Err(error) = route_context.daemon.authorize_http_request_with_transport(
+        &headers,
+        Some(peer_addr.ip().to_string().as_str()),
+        transport_auth,
+    ) {
+        return http::build_rpc_error_response(rpc_request.id, error).map(Some);
+    }
+    let request_id = rpc_request.id;
+    let rpc_response =
+        match pool.request(rpc_request, route_context.control_router_process_timeout).await {
+            Ok(response) => response,
+            Err(err) => control_router_rpc_error_response(request_id, err),
+        };
+    let response_body = codec::encode_frame(&rpc_response).map_err(io::Error::other)?;
+    Ok(Some(build_msgpack_ok_response(&response_body)))
+}
+
+fn control_router_process_route_allowed(method: &str) -> bool {
+    matches!(method, "status")
+}
+
+fn control_router_rpc_error_response(id: u64, err: ControlRouterProcessError) -> RpcResponse {
+    RpcResponse {
+        id,
+        result: None,
+        error: Some(RpcError::new(
+            "CONTROL_ROUTER_PROCESS_UNAVAILABLE",
+            format!("control router process request failed: {err:?}"),
+        )),
+    }
+}
+
+fn build_msgpack_ok_response(body: &[u8]) -> Vec<u8> {
+    let mut response = Vec::new();
+    response.extend_from_slice(b"HTTP/1.1 200 OK\r\nContent-Type: application/msgpack\r\n");
+    response.extend_from_slice(format!("Content-Length: {}\r\n\r\n", body.len()).as_bytes());
+    response.extend_from_slice(body);
+    response
 }
 
 async fn handle_event_stream<S>(
@@ -655,6 +797,9 @@ fn parse_subject_alt_names(cert: &X509Certificate<'_>) -> Vec<String> {
 #[cfg(test)]
 mod rpc_loop_tests {
     use super::*;
+    use std::fs;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
     use tokio::io::{duplex, AsyncReadExt, AsyncWriteExt};
     #[cfg(unix)]
     use tokio::net::UnixStream;
@@ -679,6 +824,156 @@ mod rpc_loop_tests {
             writer.await.expect("join writer");
             assert!(raw.ends_with(body));
         });
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn control_router_rpc_route_handles_status_request_via_pool() {
+        let runtime =
+            tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+        runtime.block_on(async {
+            let temp = tempfile::tempdir().expect("tempdir");
+            let script = temp.path().join("control-router-rpc-route.py");
+            let routed_response = rns_rpc::rpc::control_boundary::ControlEnvelope::response(
+                1,
+                RpcResponse { id: 77, result: Some(json!({"routed": true})), error: None },
+            )
+            .encode_frame()
+            .expect("control response frame");
+            fs::write(
+                &script,
+                format!(
+                    r#"#!/usr/bin/env python3
+import struct
+import sys
+
+header = sys.stdin.buffer.read(4)
+if len(header) != 4:
+    sys.exit(2)
+length = struct.unpack(">I", header)[0]
+payload = sys.stdin.buffer.read(length)
+if len(payload) != length:
+    sys.exit(3)
+sys.stdout.buffer.write(bytes.fromhex({response_hex:?}))
+sys.stdout.buffer.flush()
+"#,
+                    response_hex = hex::encode(routed_response),
+                ),
+            )
+            .expect("write route worker");
+            let mut permissions = fs::metadata(&script).expect("script metadata").permissions();
+            permissions.set_mode(0o755);
+            fs::set_permissions(&script, permissions).expect("script permissions");
+
+            let pool = Arc::new(ControlRouterStdioPool::spawn(&script, 1).expect("spawn pool"));
+            let route_context =
+                RpcRouteContext::new(Arc::new(RpcDaemon::test_instance()), Some(pool), 2_000);
+            let request = RpcRequest { id: 77, method: "status".to_string(), params: None };
+            let request_body = codec::encode_frame(&request).expect("request frame");
+            let http_request = build_test_rpc_post(&request_body);
+            let response = handle_http_request_with_route_context(
+                &route_context,
+                &http_request,
+                SocketAddr::from(([127, 0, 0, 1], 4242)),
+                None,
+            )
+            .await
+            .expect("routed http response");
+            let rpc_response = decode_test_http_rpc_response(&response);
+            assert_eq!(rpc_response.id, 77);
+            assert_eq!(rpc_response.result, Some(json!({"routed": true})));
+        });
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn stalled_control_router_route_does_not_block_local_rpc() {
+        let runtime =
+            tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+        runtime.block_on(async {
+            let temp = tempfile::tempdir().expect("tempdir");
+            let script = temp.path().join("control-router-stalled-route.py");
+            fs::write(
+                &script,
+                r#"#!/usr/bin/env python3
+import struct
+import sys
+import time
+
+header = sys.stdin.buffer.read(4)
+if len(header) == 4:
+    length = struct.unpack(">I", header)[0]
+    sys.stdin.buffer.read(length)
+time.sleep(60)
+"#,
+            )
+            .expect("write stalled route worker");
+            let mut permissions = fs::metadata(&script).expect("script metadata").permissions();
+            permissions.set_mode(0o755);
+            fs::set_permissions(&script, permissions).expect("script permissions");
+
+            let pool = Arc::new(ControlRouterStdioPool::spawn(&script, 1).expect("spawn pool"));
+            let route_context =
+                RpcRouteContext::new(Arc::new(RpcDaemon::test_instance()), Some(pool), 50);
+            let status_body = codec::encode_frame(&RpcRequest {
+                id: 91,
+                method: "status".to_string(),
+                params: None,
+            })
+            .expect("status request frame");
+            let status_request = build_test_rpc_post(&status_body);
+            let status_context = route_context.clone();
+            let status_task = tokio::spawn(async move {
+                handle_http_request_with_route_context(
+                    &status_context,
+                    &status_request,
+                    SocketAddr::from(([127, 0, 0, 1], 4242)),
+                    None,
+                )
+                .await
+            });
+
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            let local_body = codec::encode_frame(&RpcRequest {
+                id: 92,
+                method: "list_interfaces".to_string(),
+                params: None,
+            })
+            .expect("local request frame");
+            let local_request = build_test_rpc_post(&local_body);
+            let local_response = timeout(
+                Duration::from_millis(100),
+                handle_http_request_with_route_context(
+                    &route_context,
+                    &local_request,
+                    SocketAddr::from(([127, 0, 0, 1], 4242)),
+                    None,
+                ),
+            )
+            .await
+            .expect("local rpc should not wait for stalled control router")
+            .expect("local rpc response");
+            let local_rpc_response = decode_test_http_rpc_response(&local_response);
+            assert_eq!(local_rpc_response.id, 92);
+            assert!(local_rpc_response.error.is_none());
+
+            let status_response =
+                status_task.await.expect("status route task").expect("status response");
+            let status_rpc_response = decode_test_http_rpc_response(&status_response);
+            assert_eq!(status_rpc_response.id, 91);
+            assert_eq!(
+                status_rpc_response.error.expect("status route error").code,
+                "CONTROL_ROUTER_PROCESS_UNAVAILABLE"
+            );
+        });
+    }
+
+    #[test]
+    fn control_router_process_route_rejects_mutating_methods() {
+        assert!(control_router_process_route_allowed("status"));
+        assert!(!control_router_process_route_allowed("daemon_status_ex"));
+        assert!(!control_router_process_route_allowed("send_message"));
+        assert!(!control_router_process_route_allowed("sdk_send_v2"));
     }
 
     #[test]
@@ -760,12 +1055,12 @@ mod rpc_loop_tests {
             assert!(path.exists());
 
             let daemon = Arc::new(RpcDaemon::test_instance());
+            let route_context = RpcRouteContext::local(daemon);
             let (shutdown_tx, shutdown_rx) = watch::channel(false);
             let task_path = path.clone();
-            let task =
-                tokio::spawn(
-                    async move { run_unix_rpc_loop(task_path, daemon, shutdown_rx).await },
-                );
+            let task = tokio::spawn(async move {
+                run_unix_rpc_loop(task_path, route_context, shutdown_rx).await
+            });
 
             assert!(wait_for_unix_connect(&path).await, "unix listener did not become ready");
             shutdown_tx.send(true).expect("send shutdown");
@@ -797,5 +1092,21 @@ mod rpc_loop_tests {
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
         false
+    }
+
+    fn build_test_rpc_post(body: &[u8]) -> Vec<u8> {
+        let mut request = Vec::new();
+        request.extend_from_slice(b"POST /rpc HTTP/1.1\r\nHost: localhost\r\nContent-Length: ");
+        request.extend_from_slice(body.len().to_string().as_bytes());
+        request.extend_from_slice(b"\r\n\r\n");
+        request.extend_from_slice(body);
+        request
+    }
+
+    fn decode_test_http_rpc_response(response: &[u8]) -> RpcResponse {
+        assert!(response.starts_with(b"HTTP/1.1 200 OK\r\n"));
+        let header_end = http::find_header_end(response).expect("response header end");
+        codec::decode_frame::<RpcResponse>(&response[(header_end + 4)..])
+            .expect("decode rpc response")
     }
 }

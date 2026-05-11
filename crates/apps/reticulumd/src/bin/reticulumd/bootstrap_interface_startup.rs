@@ -1,8 +1,10 @@
 use super::super::{
-    mark_interface_runtime_fields, mark_interface_startup_status, strict_tcp_client_preflight,
+    interface_worker_process_executable_path, mark_interface_runtime_fields,
+    mark_interface_runtime_managed, mark_interface_startup_status, strict_tcp_client_preflight,
 };
 use super::{InterfaceStartupFailure, TcpServerSelection};
 use crate::interface_hot_apply::tcp_interface_key;
+use crate::interface_worker_mode::{self, InterfaceWorkerBridgeHandle};
 use crate::interfaces::{ble, common::interface_label, lora, serial, udp};
 use crate::Args;
 use reticulum_daemon::config::{DaemonConfig, InterfaceConfig};
@@ -12,12 +14,15 @@ use rns_transport::iface::tcp_client::TcpClient;
 use rns_transport::iface::udp::UdpInterface;
 use rns_transport::iface::{IfaceRole, InterfaceMode};
 use std::sync::Arc;
+use tokio::time::Duration;
+use tokio_util::sync::CancellationToken;
 
 pub(super) struct InterfaceStartupBatch {
     pub(super) startup_successes: usize,
     pub(super) startup_failures: Vec<InterfaceStartupFailure>,
     pub(super) seeded_tcp_interfaces: Vec<(String, InterfaceRecord, AddressHash)>,
     pub(super) tunnel_synth_ifaces: Vec<AddressHash>,
+    pub(super) interface_worker_bridges: Vec<InterfaceWorkerBridgeHandle>,
 }
 
 pub(super) async fn startup_configured_interfaces(
@@ -32,6 +37,7 @@ pub(super) async fn startup_configured_interfaces(
     let mut startup_failures = Vec::new();
     let mut seeded_tcp_interfaces = Vec::new();
     let mut tunnel_synth_ifaces = Vec::new();
+    let mut interface_worker_bridges = Vec::new();
 
     for (index, iface) in config.interfaces.iter().enumerate() {
         if !iface.enabled() {
@@ -65,6 +71,7 @@ pub(super) async fn startup_configured_interfaces(
                     &mut configured_interfaces[index],
                     &mut startup_failures,
                     &mut seeded_tcp_interfaces,
+                    &mut interface_worker_bridges,
                 )
                 .await
                 {
@@ -80,6 +87,7 @@ pub(super) async fn startup_configured_interfaces(
                     iface_manager,
                     &mut configured_interfaces[index],
                     &mut startup_failures,
+                    &mut interface_worker_bridges,
                 )
                 .await
                 {
@@ -94,6 +102,7 @@ pub(super) async fn startup_configured_interfaces(
                     iface_manager,
                     &mut configured_interfaces[index],
                     &mut startup_failures,
+                    &mut interface_worker_bridges,
                 )
                 .await
                 {
@@ -102,11 +111,13 @@ pub(super) async fn startup_configured_interfaces(
             }
             "ble_gatt" => {
                 if startup_ble(
+                    args,
                     iface,
                     &label,
                     iface_manager,
                     &mut configured_interfaces[index],
                     &mut startup_failures,
+                    &mut interface_worker_bridges,
                 )
                 .await
                 {
@@ -138,6 +149,7 @@ pub(super) async fn startup_configured_interfaces(
         startup_failures,
         seeded_tcp_interfaces,
         tunnel_synth_ifaces,
+        interface_worker_bridges,
     }
 }
 
@@ -201,6 +213,7 @@ async fn startup_tcp_client(
     record: &mut InterfaceRecord,
     startup_failures: &mut Vec<InterfaceStartupFailure>,
     seeded_tcp_interfaces: &mut Vec<(String, InterfaceRecord, AddressHash)>,
+    interface_worker_bridges: &mut Vec<InterfaceWorkerBridgeHandle>,
 ) -> Option<AddressHash> {
     let (Some(host), Some(port)) = (iface.host.as_ref(), iface.port) else {
         record_startup_failure(
@@ -228,6 +241,57 @@ async fn startup_tcp_client(
     }
 
     let mode = iface.interface_mode().unwrap_or(InterfaceMode::Full);
+    if args.interface_worker_process_count > 0 {
+        let executable = interface_worker_process_executable_path(args);
+        let child_args = vec!["--interface-worker-tcp-connect".to_string(), endpoint.clone()];
+        match interface_worker_mode::spawn_interface_worker_bridge_with_args(
+            iface_manager.clone(),
+            executable.clone(),
+            child_args,
+            IfaceRole::Unicast,
+            mode,
+            Duration::from_millis(args.interface_worker_process_shutdown_ms),
+            Duration::from_millis(args.interface_worker_process_restart_backoff_ms),
+            CancellationToken::new(),
+        )
+        .await
+        {
+            Ok(handle) => {
+                eprintln!(
+                    "[daemon] tcp_client interface worker enabled iface={} name={} endpoint={} command={}",
+                    handle.address,
+                    label,
+                    endpoint,
+                    executable.display(),
+                );
+                let client_iface = handle.address;
+                let runtime_iface = client_iface.to_string();
+                mark_interface_startup_status(
+                    record,
+                    "spawned_process",
+                    None,
+                    Some(runtime_iface.as_str()),
+                );
+                mark_interface_runtime_managed(record, "interface_worker_process");
+                if let Some(key) = tcp_interface_key(record) {
+                    seeded_tcp_interfaces.push((key, record.clone(), client_iface));
+                }
+                interface_worker_bridges.push(handle);
+                return Some(client_iface);
+            }
+            Err(err) => {
+                record_startup_failure(
+                    record,
+                    startup_failures,
+                    label.to_string(),
+                    iface.kind.clone(),
+                    format!("{err:?}"),
+                );
+                return None;
+            }
+        }
+    }
+
     let client_iface = iface_manager.lock().await.spawn_as_with_mode(
         TcpClient::new(endpoint),
         TcpClient::spawn,
@@ -253,6 +317,7 @@ async fn startup_udp(
     iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
     record: &mut InterfaceRecord,
     startup_failures: &mut Vec<InterfaceStartupFailure>,
+    interface_worker_bridges: &mut Vec<InterfaceWorkerBridgeHandle>,
 ) -> bool {
     let (bind_addr, forward_addr) = match udp::bind_and_forward_addr(iface) {
         Ok(addrs) => addrs,
@@ -282,6 +347,58 @@ async fn startup_udp(
     }
 
     let mode = iface.interface_mode().unwrap_or(InterfaceMode::Full);
+    if args.interface_worker_process_count > 0 {
+        let executable = interface_worker_process_executable_path(args);
+        let mut child_args = vec!["--interface-worker-udp-bind".to_string(), bind_addr.clone()];
+        if let Some(forward_addr) = forward_addr.clone() {
+            child_args.push("--interface-worker-udp-forward".to_string());
+            child_args.push(forward_addr);
+        }
+        match interface_worker_mode::spawn_interface_worker_bridge_with_args(
+            iface_manager.clone(),
+            executable.clone(),
+            child_args,
+            IfaceRole::Unicast,
+            mode,
+            Duration::from_millis(args.interface_worker_process_shutdown_ms),
+            Duration::from_millis(args.interface_worker_process_restart_backoff_ms),
+            CancellationToken::new(),
+        )
+        .await
+        {
+            Ok(handle) => {
+                eprintln!(
+                    "[daemon] udp interface worker enabled iface={} name={} bind={} forward={} command={}",
+                    handle.address,
+                    label,
+                    bind_addr,
+                    forward_addr.as_deref().unwrap_or("<none>"),
+                    executable.display(),
+                );
+                let runtime_iface = handle.address.to_string();
+                mark_interface_startup_status(
+                    record,
+                    "spawned_process",
+                    None,
+                    Some(runtime_iface.as_str()),
+                );
+                mark_interface_runtime_managed(record, "interface_worker_process");
+                interface_worker_bridges.push(handle);
+                return true;
+            }
+            Err(err) => {
+                record_startup_failure(
+                    record,
+                    startup_failures,
+                    label.to_string(),
+                    iface.kind.clone(),
+                    format!("{err:?}"),
+                );
+                return false;
+            }
+        }
+    }
+
     let udp_iface = iface_manager.lock().await.spawn_as_with_mode(
         UdpInterface::new(bind_addr.clone(), forward_addr.clone()),
         UdpInterface::spawn,
@@ -307,6 +424,7 @@ async fn startup_serial(
     iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
     record: &mut InterfaceRecord,
     startup_failures: &mut Vec<InterfaceStartupFailure>,
+    interface_worker_bridges: &mut Vec<InterfaceWorkerBridgeHandle>,
 ) -> bool {
     let adapter = match serial::build_adapter(iface) {
         Ok(adapter) => adapter,
@@ -336,6 +454,54 @@ async fn startup_serial(
     }
 
     let mode = iface.interface_mode().unwrap_or(InterfaceMode::Full);
+    if args.interface_worker_process_count > 0 {
+        let executable = interface_worker_process_executable_path(args);
+        let child_args = serial_interface_child_args(iface);
+        match interface_worker_mode::spawn_interface_worker_bridge_with_args(
+            iface_manager.clone(),
+            executable.clone(),
+            child_args,
+            IfaceRole::Unicast,
+            mode,
+            Duration::from_millis(args.interface_worker_process_shutdown_ms),
+            Duration::from_millis(args.interface_worker_process_restart_backoff_ms),
+            CancellationToken::new(),
+        )
+        .await
+        {
+            Ok(handle) => {
+                eprintln!(
+                    "[daemon] serial interface worker enabled iface={} name={} device={} baud_rate={} command={}",
+                    handle.address,
+                    label,
+                    iface.device.as_deref().unwrap_or("<unset>"),
+                    iface.baud_rate.unwrap_or_default(),
+                    executable.display(),
+                );
+                let runtime_iface = handle.address.to_string();
+                mark_interface_startup_status(
+                    record,
+                    "spawned_process",
+                    None,
+                    Some(runtime_iface.as_str()),
+                );
+                mark_interface_runtime_managed(record, "interface_worker_process");
+                interface_worker_bridges.push(handle);
+                return true;
+            }
+            Err(err) => {
+                record_startup_failure(
+                    record,
+                    startup_failures,
+                    label.to_string(),
+                    iface.kind.clone(),
+                    format!("{err:?}"),
+                );
+                return false;
+            }
+        }
+    }
+
     let serial_iface = iface_manager.lock().await.spawn_as_with_mode(
         adapter,
         |context| async move { rns_transport::iface::serial::SerialInterface::spawn(context).await },
@@ -354,16 +520,108 @@ async fn startup_serial(
     true
 }
 
+fn serial_interface_child_args(iface: &InterfaceConfig) -> Vec<String> {
+    let mut child_args = Vec::new();
+    if let Some(device) = iface.device.as_ref() {
+        child_args.push("--interface-worker-serial-device".to_string());
+        child_args.push(device.clone());
+    }
+    if let Some(baud_rate) = iface.baud_rate {
+        child_args.push("--interface-worker-serial-baud-rate".to_string());
+        child_args.push(baud_rate.to_string());
+    }
+    if let Some(data_bits) = iface.data_bits {
+        child_args.push("--interface-worker-serial-data-bits".to_string());
+        child_args.push(data_bits.to_string());
+    }
+    if let Some(stop_bits) = iface.stop_bits {
+        child_args.push("--interface-worker-serial-stop-bits".to_string());
+        child_args.push(stop_bits.to_string());
+    }
+    if let Some(parity) = iface.parity.as_ref() {
+        child_args.push("--interface-worker-serial-parity".to_string());
+        child_args.push(parity.clone());
+    }
+    if let Some(flow_control) = iface.flow_control.as_ref() {
+        child_args.push("--interface-worker-serial-flow-control".to_string());
+        child_args.push(flow_control.clone());
+    }
+    if let Some(mtu) = iface.mtu {
+        child_args.push("--interface-worker-serial-mtu".to_string());
+        child_args.push(mtu.to_string());
+    }
+    if let Some(reconnect_backoff_ms) = iface.reconnect_backoff_ms {
+        child_args.push("--interface-worker-serial-reconnect-backoff-ms".to_string());
+        child_args.push(reconnect_backoff_ms.to_string());
+    }
+    if let Some(max_reconnect_backoff_ms) = iface.max_reconnect_backoff_ms {
+        child_args.push("--interface-worker-serial-max-reconnect-backoff-ms".to_string());
+        child_args.push(max_reconnect_backoff_ms.to_string());
+    }
+    child_args
+}
+
 async fn startup_ble(
+    args: &Args,
     iface: &InterfaceConfig,
     label: &str,
     iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
     record: &mut InterfaceRecord,
     startup_failures: &mut Vec<InterfaceStartupFailure>,
+    interface_worker_bridges: &mut Vec<InterfaceWorkerBridgeHandle>,
 ) -> bool {
+    let mode = iface.interface_mode().unwrap_or(InterfaceMode::Full);
+    if args.interface_worker_process_count > 0 {
+        let executable = interface_worker_process_executable_path(args);
+        let child_args = ble_interface_child_args(iface);
+        match interface_worker_mode::spawn_interface_worker_bridge_with_args(
+            iface_manager.clone(),
+            executable.clone(),
+            child_args,
+            IfaceRole::Unicast,
+            mode,
+            Duration::from_millis(args.interface_worker_process_shutdown_ms),
+            Duration::from_millis(args.interface_worker_process_restart_backoff_ms),
+            CancellationToken::new(),
+        )
+        .await
+        {
+            Ok(handle) => {
+                eprintln!(
+                    "[daemon] ble_gatt interface worker enabled iface={} name={} peripheral_id={} command={}",
+                    handle.address,
+                    label,
+                    iface.peripheral_id.as_deref().unwrap_or("<unset>"),
+                    executable.display(),
+                );
+                let runtime_iface = handle.address.to_string();
+                mark_interface_startup_status(
+                    record,
+                    "spawned_process",
+                    None,
+                    Some(runtime_iface.as_str()),
+                );
+                mark_interface_runtime_managed(record, "interface_worker_process");
+                mark_interface_runtime_fields(record, "running", 0);
+                interface_worker_bridges.push(handle);
+                return true;
+            }
+            Err(err) => {
+                record_startup_failure(
+                    record,
+                    startup_failures,
+                    label.to_string(),
+                    iface.kind.clone(),
+                    format!("{err:?}"),
+                );
+                mark_interface_runtime_fields(record, "degraded", 0);
+                return false;
+            }
+        }
+    }
+
     match ble::spawn(iface_manager.clone(), iface).await {
         Ok(ble_iface) => {
-            let mode = iface.interface_mode().unwrap_or(InterfaceMode::Full);
             iface_manager.lock().await.set_mode(ble_iface, mode);
             eprintln!(
                 "[daemon] ble_gatt enabled iface={} name={} peripheral_id={}",
@@ -388,6 +646,51 @@ async fn startup_ble(
             false
         }
     }
+}
+
+fn ble_interface_child_args(iface: &InterfaceConfig) -> Vec<String> {
+    let mut child_args = Vec::new();
+    if let Some(adapter) = iface.adapter.as_ref() {
+        child_args.push("--interface-worker-ble-adapter".to_string());
+        child_args.push(adapter.clone());
+    }
+    if let Some(peripheral_id) = iface.peripheral_id.as_ref() {
+        child_args.push("--interface-worker-ble-peripheral-id".to_string());
+        child_args.push(peripheral_id.clone());
+    }
+    if let Some(service_uuid) = iface.service_uuid.as_ref() {
+        child_args.push("--interface-worker-ble-service-uuid".to_string());
+        child_args.push(service_uuid.clone());
+    }
+    if let Some(write_char_uuid) = iface.write_char_uuid.as_ref() {
+        child_args.push("--interface-worker-ble-write-char-uuid".to_string());
+        child_args.push(write_char_uuid.clone());
+    }
+    if let Some(notify_char_uuid) = iface.notify_char_uuid.as_ref() {
+        child_args.push("--interface-worker-ble-notify-char-uuid".to_string());
+        child_args.push(notify_char_uuid.clone());
+    }
+    if let Some(mtu) = iface.mtu {
+        child_args.push("--interface-worker-ble-mtu".to_string());
+        child_args.push(mtu.to_string());
+    }
+    if let Some(scan_timeout_ms) = iface.scan_timeout_ms {
+        child_args.push("--interface-worker-ble-scan-timeout-ms".to_string());
+        child_args.push(scan_timeout_ms.to_string());
+    }
+    if let Some(connect_timeout_ms) = iface.connect_timeout_ms {
+        child_args.push("--interface-worker-ble-connect-timeout-ms".to_string());
+        child_args.push(connect_timeout_ms.to_string());
+    }
+    if let Some(reconnect_backoff_ms) = iface.reconnect_backoff_ms {
+        child_args.push("--interface-worker-ble-reconnect-backoff-ms".to_string());
+        child_args.push(reconnect_backoff_ms.to_string());
+    }
+    if let Some(max_reconnect_backoff_ms) = iface.max_reconnect_backoff_ms {
+        child_args.push("--interface-worker-ble-max-reconnect-backoff-ms".to_string());
+        child_args.push(max_reconnect_backoff_ms.to_string());
+    }
+    child_args
 }
 
 fn startup_lora(

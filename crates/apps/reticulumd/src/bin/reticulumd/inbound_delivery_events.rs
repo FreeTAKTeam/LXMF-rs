@@ -48,7 +48,7 @@ pub(super) async fn accept_delivery_resource(
         if !inbound_record_allowed_by_delivery_policy(daemon, &record) {
             return;
         }
-        let _ = daemon.accept_inbound_with_raw(record, data);
+        let _ = daemon.accept_inbound_with_raw_queued(record, data);
     }
 }
 
@@ -120,7 +120,7 @@ pub(super) async fn accept_delivery_packet(
             return;
         }
         daemon.record_inbound_peer_activity(&record.source, data.len());
-        let _ = daemon.accept_inbound_with_raw(record, data);
+        let _ = daemon.accept_inbound_with_raw_queued(record, data);
     }
 }
 

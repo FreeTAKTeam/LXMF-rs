@@ -1,12 +1,14 @@
 use crate::bootstrap::{
-    configure_startup_rpc_token_auth, enforce_rpc_bind_security, enforce_startup_policy,
-    mark_interface_runtime_fields, mark_interface_startup_status, select_tcp_server_bind,
+    configure_startup_rpc_token_auth, control_router_process_status_from_runtime,
+    enforce_rpc_bind_security, enforce_startup_policy, mark_interface_runtime_fields,
+    mark_interface_startup_status, select_tcp_server_bind, ControlRouterProcessRuntimeStatus,
     InterfaceStartupFailure, RpcTlsConfig,
 };
 use crate::bridge::{
     validate_delivery_request, PeerCrypto, RequestedDeliveryMethod, TransportBridge,
 };
 use crate::bridge_helpers::opportunistic_payload;
+use crate::interface_worker_mode;
 use crate::interfaces::{lora, serial};
 use crate::{bootstrap, Args};
 use futures::FutureExt;
@@ -25,6 +27,8 @@ use rns_transport::transport::{Transport, TransportConfig};
 use serde_json::json;
 use std::collections::HashMap;
 use std::fs;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -35,6 +39,343 @@ fn cli_defaults_to_local_unix_rpc_without_tcp_bind() {
     let args = <Args as clap::Parser>::parse_from(["reticulumd"]);
     assert_eq!(args.rpc, None);
     assert_eq!(args.rpc_unix, Some(PathBuf::from(crate::DEFAULT_RPC_UNIX_PATH)));
+    assert!(!args.no_rpc_unix);
+    assert_eq!(args.worker_process_count, 0);
+    assert_eq!(args.worker_process_timeout_ms, 1_000);
+    assert_eq!(args.worker_process_command, None);
+    #[cfg(unix)]
+    assert_eq!(args.worker_process_unix_socket, None);
+    assert_eq!(args.worker_process_tcp, None);
+    assert!(!args.interface_worker_stdio);
+    assert!(!args.control_router_stdio);
+    assert_eq!(args.interface_worker_udp_bind, None);
+    assert_eq!(args.interface_worker_udp_forward, None);
+    assert_eq!(args.interface_worker_tcp_connect, None);
+    assert_eq!(args.interface_worker_tcp_listen, None);
+    assert_eq!(args.interface_worker_address, None);
+    assert_eq!(args.interface_worker_serial_device, None);
+    assert_eq!(args.interface_worker_serial_baud_rate, None);
+    assert_eq!(args.interface_worker_ble_adapter, None);
+    assert_eq!(args.interface_worker_ble_peripheral_id, None);
+    assert_eq!(args.interface_worker_ble_service_uuid, None);
+    assert_eq!(args.interface_worker_ble_write_char_uuid, None);
+    assert_eq!(args.interface_worker_ble_notify_char_uuid, None);
+    assert_eq!(args.interface_worker_process_count, 0);
+    assert_eq!(args.interface_worker_process_command, None);
+    assert_eq!(args.interface_worker_process_shutdown_ms, 1_000);
+    assert_eq!(
+        args.interface_worker_process_restart_backoff_ms,
+        interface_worker_mode::DEFAULT_INTERFACE_WORKER_RESTART_BACKOFF_MS
+    );
+    assert_eq!(args.control_router_process_count, 0);
+    assert_eq!(args.control_router_process_timeout_ms, 1_000);
+    assert_eq!(args.control_router_process_command, None);
+}
+
+#[test]
+fn cli_parses_hidden_no_rpc_unix_option() {
+    let args =
+        <Args as clap::Parser>::parse_from(["reticulumd", "--rpc", "127.0.0.1:0", "--no-rpc-unix"]);
+    assert_eq!(args.rpc.as_deref(), Some("127.0.0.1:0"));
+    assert!(args.no_rpc_unix);
+}
+
+#[test]
+fn control_router_process_status_defaults_when_pool_disabled() {
+    let runtime =
+        ControlRouterProcessRuntimeStatus { enabled: false, worker_count: 0, timeout_ms: 0 };
+    let status = control_router_process_status_from_runtime(&runtime, None);
+    assert!(!status.enabled);
+    assert_eq!(status.worker_count, 0);
+    assert_eq!(status.timeout_ms, 0);
+    assert_eq!(status.idle_workers, 0);
+    assert_eq!(status.busy_workers, 0);
+    assert_eq!(status.request_timeouts, 0);
+    assert_eq!(status.child_replacements, 0);
+}
+
+#[test]
+fn cli_parses_hidden_control_router_stdio_option() {
+    let args = <Args as clap::Parser>::parse_from(["reticulumd", "--control-router-stdio"]);
+    assert!(args.control_router_stdio);
+    assert!(!args.worker_stdio);
+    assert!(!args.interface_worker_stdio);
+}
+
+#[test]
+fn cli_parses_hidden_control_router_process_pool_options() {
+    let args = <Args as clap::Parser>::parse_from([
+        "reticulumd",
+        "--control-router-process-count",
+        "3",
+        "--control-router-process-timeout-ms",
+        "2500",
+        "--control-router-process-command",
+        "/opt/reticulumd-control-router",
+    ]);
+    assert_eq!(args.control_router_process_count, 3);
+    assert_eq!(args.control_router_process_timeout_ms, 2_500);
+    assert_eq!(
+        args.control_router_process_command,
+        Some(PathBuf::from("/opt/reticulumd-control-router"))
+    );
+    assert_eq!(
+        bootstrap::control_router_process_executable_path(&args),
+        PathBuf::from("/opt/reticulumd-control-router")
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn bootstrap_spawns_configured_control_router_process_pool_status() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let worker = temp.path().join("configured-control-router.py");
+    fs::write(
+        &worker,
+        r#"#!/usr/bin/env python3
+import struct
+import sys
+
+while True:
+    header = sys.stdin.buffer.read(4)
+    if len(header) != 4:
+        break
+    length = struct.unpack(">I", header)[0]
+    sys.stdin.buffer.read(length)
+"#,
+    )
+    .expect("write configured control router worker");
+    let mut permissions = fs::metadata(&worker).expect("worker metadata").permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&worker, permissions).expect("worker permissions");
+
+    let mut args = test_args(db_path.clone(), None, None, false);
+    args.control_router_process_count = 1;
+    args.control_router_process_timeout_ms = 750;
+    args.control_router_process_command = Some(worker);
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    let context = runtime.block_on(async { bootstrap::bootstrap(args).await });
+    let status = context
+        .daemon
+        .handle_rpc(RpcRequest { id: 5102, method: "daemon_status_ex".to_string(), params: None })
+        .expect("daemon status")
+        .result
+        .expect("daemon status result");
+    assert_eq!(status["control_router_processes"]["enabled"].as_bool(), Some(true));
+    assert_eq!(status["control_router_processes"]["worker_count"].as_u64(), Some(1));
+    assert_eq!(status["control_router_processes"]["timeout_ms"].as_u64(), Some(750));
+    assert_eq!(status["control_router_processes"]["idle_workers"].as_u64(), Some(1));
+    assert_eq!(status["control_router_processes"]["busy_workers"].as_u64(), Some(0));
+    let child_args =
+        context.control_router_process_pool.as_ref().expect("control router pool").child_args();
+    assert!(child_args.iter().any(|arg| arg.as_os_str() == std::ffi::OsStr::new("--db")));
+    assert!(child_args.iter().any(|arg| arg.as_os_str() == db_path.as_os_str()));
+}
+
+#[test]
+fn cli_parses_hidden_worker_process_pool_options() {
+    let args = <Args as clap::Parser>::parse_from([
+        "reticulumd",
+        "--worker-process-count",
+        "2",
+        "--worker-process-timeout-ms",
+        "2500",
+        "--worker-process-command",
+        "/opt/reticulumd-worker",
+    ]);
+    assert_eq!(args.worker_process_count, 2);
+    assert_eq!(args.worker_process_timeout_ms, 2_500);
+    assert_eq!(args.worker_process_command, Some(PathBuf::from("/opt/reticulumd-worker")));
+    assert_eq!(
+        bootstrap::worker_process_executable_path(&args),
+        PathBuf::from("/opt/reticulumd-worker")
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn cli_parses_hidden_external_worker_socket_option() {
+    let args = <Args as clap::Parser>::parse_from([
+        "reticulumd",
+        "--worker-process-count",
+        "2",
+        "--worker-process-unix-socket",
+        "/tmp/reticulumd-worker.sock",
+    ]);
+    assert_eq!(args.worker_process_count, 2);
+    assert_eq!(args.worker_process_unix_socket, Some(PathBuf::from("/tmp/reticulumd-worker.sock")));
+    assert!(matches!(
+        bootstrap::worker_process_endpoint(&args),
+        crate::worker_mode::WorkerProcessEndpoint::UnixSocket { path }
+            if path == PathBuf::from("/tmp/reticulumd-worker.sock")
+    ));
+}
+
+#[test]
+fn cli_parses_hidden_external_worker_tcp_option() {
+    let args = <Args as clap::Parser>::parse_from([
+        "reticulumd",
+        "--worker-process-count",
+        "2",
+        "--worker-process-tcp",
+        "127.0.0.1:7001",
+    ]);
+    let addr = "127.0.0.1:7001".parse().expect("socket addr");
+    assert_eq!(args.worker_process_count, 2);
+    assert_eq!(args.worker_process_tcp, Some(addr));
+    assert!(matches!(
+        bootstrap::worker_process_endpoint(&args),
+        crate::worker_mode::WorkerProcessEndpoint::Tcp { addr: parsed } if parsed == addr
+    ));
+}
+
+#[test]
+fn cli_parses_hidden_interface_worker_process_options() {
+    let args = <Args as clap::Parser>::parse_from([
+        "reticulumd",
+        "--interface-worker-process-count",
+        "2",
+        "--interface-worker-process-command",
+        "/opt/reticulumd-interface-worker",
+        "--interface-worker-process-shutdown-ms",
+        "2500",
+        "--interface-worker-process-restart-backoff-ms",
+        "750",
+    ]);
+    assert_eq!(args.interface_worker_process_count, 2);
+    assert_eq!(
+        args.interface_worker_process_command,
+        Some(PathBuf::from("/opt/reticulumd-interface-worker"))
+    );
+    assert_eq!(args.interface_worker_process_shutdown_ms, 2_500);
+    assert_eq!(args.interface_worker_process_restart_backoff_ms, 750);
+    assert_eq!(
+        bootstrap::interface_worker_process_executable_path(&args),
+        PathBuf::from("/opt/reticulumd-interface-worker")
+    );
+}
+
+#[test]
+fn cli_parses_hidden_udp_interface_worker_child_options() {
+    let args = <Args as clap::Parser>::parse_from([
+        "reticulumd",
+        "--interface-worker-stdio",
+        "--interface-worker-udp-bind",
+        "127.0.0.1:4242",
+        "--interface-worker-udp-forward",
+        "127.0.0.1:4243",
+        "--interface-worker-address",
+        "00112233445566778899aabbccddeeff",
+    ]);
+    assert!(args.interface_worker_stdio);
+    assert_eq!(args.interface_worker_udp_bind.as_deref(), Some("127.0.0.1:4242"));
+    assert_eq!(args.interface_worker_udp_forward.as_deref(), Some("127.0.0.1:4243"));
+    assert_eq!(args.interface_worker_address.as_deref(), Some("00112233445566778899aabbccddeeff"));
+}
+
+#[test]
+fn cli_parses_hidden_tcp_client_interface_worker_child_options() {
+    let args = <Args as clap::Parser>::parse_from([
+        "reticulumd",
+        "--interface-worker-stdio",
+        "--interface-worker-tcp-connect",
+        "127.0.0.1:4242",
+        "--interface-worker-address",
+        "00112233445566778899aabbccddeeff",
+    ]);
+    assert!(args.interface_worker_stdio);
+    assert_eq!(args.interface_worker_tcp_connect.as_deref(), Some("127.0.0.1:4242"));
+    assert_eq!(args.interface_worker_address.as_deref(), Some("00112233445566778899aabbccddeeff"));
+}
+
+#[test]
+fn cli_parses_hidden_tcp_server_interface_worker_child_options() {
+    let args = <Args as clap::Parser>::parse_from([
+        "reticulumd",
+        "--interface-worker-stdio",
+        "--interface-worker-tcp-listen",
+        "127.0.0.1:4242",
+        "--interface-worker-address",
+        "00112233445566778899aabbccddeeff",
+    ]);
+    assert!(args.interface_worker_stdio);
+    assert_eq!(args.interface_worker_tcp_listen.as_deref(), Some("127.0.0.1:4242"));
+    assert_eq!(args.interface_worker_address.as_deref(), Some("00112233445566778899aabbccddeeff"));
+}
+
+#[test]
+fn cli_parses_hidden_ble_interface_worker_child_options() {
+    let args = <Args as clap::Parser>::parse_from([
+        "reticulumd",
+        "--interface-worker-stdio",
+        "--interface-worker-ble-adapter",
+        "hci0",
+        "--interface-worker-ble-peripheral-id",
+        "AA:BB:CC:DD:EE:FF",
+        "--interface-worker-ble-service-uuid",
+        "12345678-1234-1234-1234-1234567890ab",
+        "--interface-worker-ble-write-char-uuid",
+        "2A37",
+        "--interface-worker-ble-notify-char-uuid",
+        "2A38",
+        "--interface-worker-ble-mtu",
+        "247",
+        "--interface-worker-ble-scan-timeout-ms",
+        "5000",
+        "--interface-worker-ble-connect-timeout-ms",
+        "10000",
+        "--interface-worker-ble-reconnect-backoff-ms",
+        "500",
+        "--interface-worker-ble-max-reconnect-backoff-ms",
+        "5000",
+    ]);
+    assert!(args.interface_worker_stdio);
+    assert_eq!(args.interface_worker_ble_adapter.as_deref(), Some("hci0"));
+    assert_eq!(args.interface_worker_ble_peripheral_id.as_deref(), Some("AA:BB:CC:DD:EE:FF"));
+    assert_eq!(
+        args.interface_worker_ble_service_uuid.as_deref(),
+        Some("12345678-1234-1234-1234-1234567890ab")
+    );
+    assert_eq!(args.interface_worker_ble_write_char_uuid.as_deref(), Some("2A37"));
+    assert_eq!(args.interface_worker_ble_notify_char_uuid.as_deref(), Some("2A38"));
+    assert_eq!(args.interface_worker_ble_mtu, Some(247));
+    assert_eq!(args.interface_worker_ble_scan_timeout_ms, Some(5_000));
+    assert_eq!(args.interface_worker_ble_connect_timeout_ms, Some(10_000));
+    assert_eq!(args.interface_worker_ble_reconnect_backoff_ms, Some(500));
+    assert_eq!(args.interface_worker_ble_max_reconnect_backoff_ms, Some(5_000));
+}
+
+#[test]
+fn cli_parses_hidden_serial_interface_worker_child_options() {
+    let args = <Args as clap::Parser>::parse_from([
+        "reticulumd",
+        "--interface-worker-stdio",
+        "--interface-worker-serial-device",
+        "/dev/ttyUSB0",
+        "--interface-worker-serial-baud-rate",
+        "115200",
+        "--interface-worker-serial-data-bits",
+        "8",
+        "--interface-worker-serial-stop-bits",
+        "1",
+        "--interface-worker-serial-parity",
+        "none",
+        "--interface-worker-serial-flow-control",
+        "none",
+        "--interface-worker-serial-mtu",
+        "2048",
+    ]);
+    assert!(args.interface_worker_stdio);
+    assert_eq!(args.interface_worker_serial_device.as_deref(), Some("/dev/ttyUSB0"));
+    assert_eq!(args.interface_worker_serial_baud_rate, Some(115_200));
+    assert_eq!(args.interface_worker_serial_data_bits, Some(8));
+    assert_eq!(args.interface_worker_serial_stop_bits, Some(1));
+    assert_eq!(args.interface_worker_serial_parity.as_deref(), Some("none"));
+    assert_eq!(args.interface_worker_serial_flow_control.as_deref(), Some("none"));
+    assert_eq!(args.interface_worker_serial_mtu, Some(2048));
 }
 
 #[test]
@@ -684,6 +1025,33 @@ interfaces = [
         bootstrap::bootstrap(test_args(db_path.clone(), Some(config_path.clone()), None, false))
             .await
     });
+    assert!(!context.worker_process_runtime.enabled);
+    assert_eq!(context.worker_process_runtime.worker_count, 0);
+    assert_eq!(context.worker_process_runtime.timeout_ms, 1_000);
+    let status = context
+        .daemon
+        .handle_rpc(RpcRequest { id: 99, method: "daemon_status_ex".to_string(), params: None })
+        .expect("daemon status")
+        .result
+        .expect("daemon status result");
+    assert_eq!(status["worker_processes"]["enabled"].as_bool(), Some(false));
+    assert_eq!(status["worker_processes"]["worker_count"].as_u64(), Some(0));
+    assert_eq!(status["worker_processes"]["timeout_ms"].as_u64(), Some(1_000));
+    assert_eq!(status["worker_processes"]["idle_workers"].as_u64(), Some(0));
+    assert_eq!(status["worker_processes"]["busy_workers"].as_u64(), Some(0));
+    assert_eq!(status["worker_processes"]["request_timeouts"].as_u64(), Some(0));
+    assert_eq!(status["worker_processes"]["child_replacements"].as_u64(), Some(0));
+    assert_eq!(status["interface_worker_processes"]["enabled"].as_bool(), Some(false));
+    assert_eq!(status["interface_worker_processes"]["worker_count"].as_u64(), Some(0));
+    assert_eq!(status["interface_worker_processes"]["shutdown_timeout_ms"].as_u64(), Some(1_000));
+    assert_eq!(
+        status["interface_worker_processes"]["restart_backoff_ms"].as_u64(),
+        Some(interface_worker_mode::DEFAULT_INTERFACE_WORKER_RESTART_BACKOFF_MS)
+    );
+    assert_eq!(status["interface_worker_processes"]["live_workers"].as_u64(), Some(0));
+    assert_eq!(status["interface_worker_processes"]["stopped_workers"].as_u64(), Some(0));
+    assert_eq!(status["interface_worker_processes"]["child_restarts"].as_u64(), Some(0));
+    assert_eq!(status["interface_worker_processes"]["child_errors"].as_u64(), Some(0));
     let response = context
         .daemon
         .handle_rpc(RpcRequest { id: 1, method: "list_interfaces".to_string(), params: None })
@@ -703,6 +1071,618 @@ interfaces = [
             .and_then(|value| value.get("startup_status"))
             .and_then(|value| value.as_str()),
         Some("spawned")
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn bootstrap_uses_configured_worker_process_command() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let worker = temp.path().join("custom-worker.py");
+    fs::write(
+        &worker,
+        r#"#!/usr/bin/env python3
+import time
+time.sleep(30)
+"#,
+    )
+    .expect("write custom worker");
+    let mut permissions = fs::metadata(&worker).expect("worker metadata").permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&worker, permissions).expect("worker permissions");
+
+    let mut args = test_args(db_path, None, None, false);
+    args.worker_process_count = 1;
+    args.worker_process_timeout_ms = 2_000;
+    args.worker_process_command = Some(worker.clone());
+    assert_eq!(bootstrap::worker_process_executable_path(&args), worker);
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    let context = runtime.block_on(async { bootstrap::bootstrap(args).await });
+
+    assert!(context.worker_process_runtime.enabled);
+    assert_eq!(context.worker_process_runtime.worker_count, 1);
+    assert!(context.worker_process_backend.is_some());
+    let status = context
+        .daemon
+        .handle_rpc(RpcRequest { id: 100, method: "daemon_status_ex".to_string(), params: None })
+        .expect("daemon status")
+        .result
+        .expect("daemon status result");
+    assert_eq!(status["worker_processes"]["enabled"].as_bool(), Some(true));
+    assert_eq!(status["worker_processes"]["worker_count"].as_u64(), Some(1));
+    assert_eq!(status["worker_processes"]["idle_workers"].as_u64(), Some(1));
+}
+
+#[cfg(unix)]
+#[test]
+fn bootstrap_registers_configured_interface_worker_process() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let worker = temp.path().join("custom-interface-worker.py");
+    fs::write(
+        &worker,
+        r#"#!/usr/bin/env python3
+import struct
+import sys
+
+header = sys.stdin.buffer.read(4)
+if len(header) == 4:
+    length = struct.unpack(">I", header)[0]
+    sys.stdin.buffer.read(length)
+"#,
+    )
+    .expect("write custom interface worker");
+    let mut permissions = fs::metadata(&worker).expect("worker metadata").permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&worker, permissions).expect("worker permissions");
+
+    let mut args = test_args(db_path, None, None, false);
+    args.interface_worker_process_count = 1;
+    args.interface_worker_process_command = Some(worker.clone());
+    args.interface_worker_process_shutdown_ms = 2_000;
+    assert_eq!(bootstrap::interface_worker_process_executable_path(&args), worker);
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    let context = runtime.block_on(async { bootstrap::bootstrap(args).await });
+
+    assert_eq!(context.interface_worker_bridges.len(), 1);
+    let bridge_address = context.interface_worker_bridges[0].address.to_string();
+    let status = context
+        .daemon
+        .handle_rpc(RpcRequest { id: 102, method: "daemon_status_ex".to_string(), params: None })
+        .expect("daemon status")
+        .result
+        .expect("daemon status result");
+    assert_eq!(status["interface_worker_processes"]["enabled"].as_bool(), Some(true));
+    assert_eq!(status["interface_worker_processes"]["worker_count"].as_u64(), Some(1));
+    assert_eq!(status["interface_worker_processes"]["shutdown_timeout_ms"].as_u64(), Some(2_000));
+    assert_eq!(
+        status["interface_worker_processes"]["restart_backoff_ms"].as_u64(),
+        Some(interface_worker_mode::DEFAULT_INTERFACE_WORKER_RESTART_BACKOFF_MS)
+    );
+    assert_eq!(status["interface_worker_processes"]["live_workers"].as_u64(), Some(1));
+    assert_eq!(status["interface_worker_processes"]["stopped_workers"].as_u64(), Some(0));
+    assert_eq!(status["interface_worker_processes"]["child_restarts"].as_u64(), Some(0));
+    assert_eq!(status["interface_worker_processes"]["child_errors"].as_u64(), Some(0));
+    let response = context
+        .daemon
+        .handle_rpc(RpcRequest { id: 101, method: "list_interfaces".to_string(), params: None })
+        .expect("list_interfaces");
+    let interfaces = response
+        .result
+        .expect("result")
+        .get("interfaces")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .expect("interfaces array");
+    let interface_worker = interfaces
+        .iter()
+        .find(|entry| {
+            entry.get("type").and_then(|value| value.as_str()) == Some("interface_worker_process")
+        })
+        .expect("interface worker process entry");
+    assert_eq!(
+        interface_worker
+            .get("settings")
+            .and_then(|value| value.get("_runtime"))
+            .and_then(|value| value.get("iface"))
+            .and_then(|value| value.as_str()),
+        Some(bridge_address.as_str())
+    );
+    assert_eq!(
+        interface_worker
+            .get("settings")
+            .and_then(|value| value.get("_runtime"))
+            .and_then(|value| value.get("managed_by"))
+            .and_then(|value| value.as_str()),
+        Some("interface_worker_process")
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn interface_worker_process_status_publisher_reports_restarted_child_live() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let worker = temp.path().join("exiting-interface-worker.py");
+    fs::write(
+        &worker,
+        r#"#!/usr/bin/env python3
+import sys
+sys.exit(0)
+"#,
+    )
+    .expect("write exiting interface worker");
+    let mut permissions = fs::metadata(&worker).expect("worker metadata").permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&worker, permissions).expect("worker permissions");
+
+    let mut args = test_args(db_path, None, None, false);
+    args.interface_worker_process_count = 1;
+    args.interface_worker_process_command = Some(worker);
+    args.interface_worker_process_shutdown_ms = 500;
+    args.interface_worker_process_restart_backoff_ms = 25;
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    runtime.block_on(async {
+        let context = bootstrap::bootstrap(args).await;
+        for _ in 0..40 {
+            let status = context
+                .daemon
+                .handle_rpc(RpcRequest {
+                    id: 103,
+                    method: "daemon_status_ex".to_string(),
+                    params: None,
+                })
+                .expect("daemon status")
+                .result
+                .expect("daemon status result");
+            if status["interface_worker_processes"]["live_workers"].as_u64() == Some(1)
+                && status["interface_worker_processes"]["child_restarts"].as_u64().unwrap_or(0) >= 1
+            {
+                assert_eq!(
+                    status["interface_worker_processes"]["stopped_workers"].as_u64(),
+                    Some(0)
+                );
+                assert_eq!(status["interface_worker_processes"]["child_errors"].as_u64(), Some(0));
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        panic!("interface worker process status did not report restarted child as live");
+    });
+}
+
+#[cfg(unix)]
+#[test]
+fn interface_worker_restart_preserves_configured_interface_state() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let config_path = temp.path().join("daemon.toml");
+    fs::write(
+        &config_path,
+        r#"
+interfaces = [
+  { type = "udp", enabled = true, name = "udp-restart", host = "127.0.0.1", port = 0 }
+]
+"#,
+    )
+    .expect("write config");
+    let worker = temp.path().join("restarting-configured-interface-worker.py");
+    let counter = temp.path().join("restart-count");
+    fs::write(
+        &worker,
+        format!(
+            r#"#!/usr/bin/env python3
+import pathlib
+import struct
+import sys
+
+counter = pathlib.Path({counter:?})
+count = int(counter.read_text()) if counter.exists() else 0
+counter.write_text(str(count + 1))
+if count == 0:
+    sys.exit(0)
+
+while True:
+    header = sys.stdin.buffer.read(4)
+    if len(header) != 4:
+        break
+    length = struct.unpack(">I", header)[0]
+    payload = sys.stdin.buffer.read(length)
+    if len(payload) != length:
+        break
+"#,
+            counter = counter.to_string_lossy(),
+        ),
+    )
+    .expect("write restarting interface worker");
+    let mut permissions = fs::metadata(&worker).expect("worker metadata").permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&worker, permissions).expect("worker permissions");
+
+    let mut args = test_args(db_path, Some(config_path), None, false);
+    args.interface_worker_process_count = 1;
+    args.interface_worker_process_command = Some(worker);
+    args.interface_worker_process_shutdown_ms = 500;
+    args.interface_worker_process_restart_backoff_ms = 25;
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    runtime.block_on(async {
+        let context = bootstrap::bootstrap(args).await;
+        let bridge_address = context.interface_worker_bridges[0].address.to_string();
+
+        for _ in 0..80 {
+            let restart_count = fs::read_to_string(&counter)
+                .ok()
+                .and_then(|value| value.parse::<usize>().ok())
+                .unwrap_or_default();
+            let status = context
+                .daemon
+                .handle_rpc(RpcRequest {
+                    id: 109,
+                    method: "daemon_status_ex".to_string(),
+                    params: None,
+                })
+                .expect("daemon status")
+                .result
+                .expect("daemon status result");
+            if restart_count >= 2
+                && status["interface_worker_processes"]["child_restarts"]
+                    .as_u64()
+                    .unwrap_or_default()
+                    >= 1
+            {
+                assert_eq!(status["interface_worker_processes"]["live_workers"].as_u64(), Some(1));
+                assert_eq!(
+                    status["interface_worker_processes"]["stopped_workers"].as_u64(),
+                    Some(0)
+                );
+                assert_eq!(status["interface_worker_processes"]["child_errors"].as_u64(), Some(0));
+                let response = context
+                    .daemon
+                    .handle_rpc(RpcRequest {
+                        id: 110,
+                        method: "list_interfaces".to_string(),
+                        params: None,
+                    })
+                    .expect("list_interfaces");
+                let interfaces = response
+                    .result
+                    .expect("result")
+                    .get("interfaces")
+                    .and_then(|value| value.as_array())
+                    .cloned()
+                    .expect("interfaces array");
+                assert_eq!(interfaces.len(), 1);
+                let udp = &interfaces[0];
+                assert_eq!(udp.get("type").and_then(|value| value.as_str()), Some("udp"));
+                assert_eq!(
+                    udp.get("settings")
+                        .and_then(|value| value.get("_runtime"))
+                        .and_then(|value| value.get("iface"))
+                        .and_then(|value| value.as_str()),
+                    Some(bridge_address.as_str())
+                );
+                assert_eq!(
+                    udp.get("settings")
+                        .and_then(|value| value.get("_runtime"))
+                        .and_then(|value| value.get("startup_status"))
+                        .and_then(|value| value.as_str()),
+                    Some("spawned_process")
+                );
+                assert_eq!(
+                    udp.get("settings")
+                        .and_then(|value| value.get("_runtime"))
+                        .and_then(|value| value.get("managed_by"))
+                        .and_then(|value| value.as_str()),
+                    Some("interface_worker_process")
+                );
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        panic!("interface worker restart did not preserve configured interface state");
+    });
+}
+
+#[cfg(unix)]
+#[test]
+fn bootstrap_uses_interface_worker_process_for_configured_udp() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let config_path = temp.path().join("daemon.toml");
+    fs::write(
+        &config_path,
+        r#"
+interfaces = [
+  { type = "udp", enabled = true, name = "udp-process", host = "127.0.0.1", port = 0 }
+]
+"#,
+    )
+    .expect("write config");
+    let worker = temp.path().join("configured-udp-worker.py");
+    fs::write(
+        &worker,
+        r#"#!/usr/bin/env python3
+import struct
+import sys
+
+header = sys.stdin.buffer.read(4)
+if len(header) == 4:
+    length = struct.unpack(">I", header)[0]
+    sys.stdin.buffer.read(length)
+"#,
+    )
+    .expect("write configured udp worker");
+    let mut permissions = fs::metadata(&worker).expect("worker metadata").permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&worker, permissions).expect("worker permissions");
+
+    let mut args = test_args(db_path, Some(config_path), None, false);
+    args.interface_worker_process_count = 1;
+    args.interface_worker_process_command = Some(worker);
+    args.interface_worker_process_shutdown_ms = 2_000;
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    let context = runtime.block_on(async { bootstrap::bootstrap(args).await });
+
+    assert_eq!(context.interface_worker_bridges.len(), 1);
+    let response = context
+        .daemon
+        .handle_rpc(RpcRequest { id: 104, method: "list_interfaces".to_string(), params: None })
+        .expect("list_interfaces");
+    let interfaces = response
+        .result
+        .expect("result")
+        .get("interfaces")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .expect("interfaces array");
+    assert_eq!(interfaces.len(), 1);
+    let udp = &interfaces[0];
+    assert_eq!(udp.get("type").and_then(|value| value.as_str()), Some("udp"));
+    assert_eq!(
+        udp.get("settings")
+            .and_then(|value| value.get("_runtime"))
+            .and_then(|value| value.get("startup_status"))
+            .and_then(|value| value.as_str()),
+        Some("spawned_process")
+    );
+    assert_eq!(
+        udp.get("settings")
+            .and_then(|value| value.get("_runtime"))
+            .and_then(|value| value.get("managed_by"))
+            .and_then(|value| value.as_str()),
+        Some("interface_worker_process")
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn bootstrap_uses_interface_worker_process_for_configured_serial() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let config_path = temp.path().join("daemon.toml");
+    fs::write(
+        &config_path,
+        r#"
+interfaces = [
+  { type = "serial", enabled = true, name = "serial-process", device = "/dev/not-real", baud_rate = 115200 }
+]
+"#,
+    )
+    .expect("write config");
+    let worker = temp.path().join("configured-serial-worker.py");
+    fs::write(
+        &worker,
+        r#"#!/usr/bin/env python3
+import struct
+import sys
+
+header = sys.stdin.buffer.read(4)
+if len(header) == 4:
+    length = struct.unpack(">I", header)[0]
+    sys.stdin.buffer.read(length)
+"#,
+    )
+    .expect("write configured serial worker");
+    let mut permissions = fs::metadata(&worker).expect("worker metadata").permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&worker, permissions).expect("worker permissions");
+
+    let mut args = test_args(db_path, Some(config_path), None, false);
+    args.interface_worker_process_count = 1;
+    args.interface_worker_process_command = Some(worker);
+    args.interface_worker_process_shutdown_ms = 2_000;
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    let context = runtime.block_on(async { bootstrap::bootstrap(args).await });
+
+    assert_eq!(context.interface_worker_bridges.len(), 1);
+    let response = context
+        .daemon
+        .handle_rpc(RpcRequest { id: 105, method: "list_interfaces".to_string(), params: None })
+        .expect("list_interfaces");
+    let interfaces = response
+        .result
+        .expect("result")
+        .get("interfaces")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .expect("interfaces array");
+    assert_eq!(interfaces.len(), 1);
+    let serial = &interfaces[0];
+    assert_eq!(serial.get("type").and_then(|value| value.as_str()), Some("serial"));
+    assert_eq!(
+        serial
+            .get("settings")
+            .and_then(|value| value.get("_runtime"))
+            .and_then(|value| value.get("startup_status"))
+            .and_then(|value| value.as_str()),
+        Some("spawned_process")
+    );
+    assert_eq!(
+        serial
+            .get("settings")
+            .and_then(|value| value.get("_runtime"))
+            .and_then(|value| value.get("managed_by"))
+            .and_then(|value| value.as_str()),
+        Some("interface_worker_process")
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn bootstrap_uses_interface_worker_process_for_configured_ble() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let config_path = temp.path().join("daemon.toml");
+    fs::write(
+        &config_path,
+        r#"
+interfaces = [
+  { type = "ble_gatt", enabled = true, name = "ble-process", adapter = "disabled", peripheral_id = "AA:BB:CC:DD:EE:FF", service_uuid = "12345678-1234-1234-1234-1234567890ab", write_char_uuid = "2A37", notify_char_uuid = "2A38" }
+]
+"#,
+    )
+    .expect("write config");
+    let worker = temp.path().join("configured-ble-worker.py");
+    fs::write(
+        &worker,
+        r#"#!/usr/bin/env python3
+import struct
+import sys
+
+header = sys.stdin.buffer.read(4)
+if len(header) == 4:
+    length = struct.unpack(">I", header)[0]
+    sys.stdin.buffer.read(length)
+"#,
+    )
+    .expect("write configured ble worker");
+    let mut permissions = fs::metadata(&worker).expect("worker metadata").permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&worker, permissions).expect("worker permissions");
+
+    let mut args = test_args(db_path, Some(config_path), None, false);
+    args.interface_worker_process_count = 1;
+    args.interface_worker_process_command = Some(worker);
+    args.interface_worker_process_shutdown_ms = 2_000;
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    let context = runtime.block_on(async { bootstrap::bootstrap(args).await });
+
+    assert_eq!(context.interface_worker_bridges.len(), 1);
+    let response = context
+        .daemon
+        .handle_rpc(RpcRequest { id: 107, method: "list_interfaces".to_string(), params: None })
+        .expect("list_interfaces");
+    let interfaces = response
+        .result
+        .expect("result")
+        .get("interfaces")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .expect("interfaces array");
+    assert_eq!(interfaces.len(), 1);
+    let ble = &interfaces[0];
+    assert_eq!(ble.get("type").and_then(|value| value.as_str()), Some("ble_gatt"));
+    assert_eq!(
+        ble.get("settings")
+            .and_then(|value| value.get("_runtime"))
+            .and_then(|value| value.get("startup_status"))
+            .and_then(|value| value.as_str()),
+        Some("spawned_process")
+    );
+    assert_eq!(
+        ble.get("settings")
+            .and_then(|value| value.get("_runtime"))
+            .and_then(|value| value.get("managed_by"))
+            .and_then(|value| value.as_str()),
+        Some("interface_worker_process")
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn bootstrap_uses_interface_worker_process_for_configured_tcp_client() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let config_path = temp.path().join("daemon.toml");
+    fs::write(
+        &config_path,
+        r#"
+interfaces = [
+  { type = "tcp_client", enabled = true, name = "tcp-process", host = "127.0.0.1", port = 4242 }
+]
+"#,
+    )
+    .expect("write config");
+    let worker = temp.path().join("configured-tcp-worker.py");
+    fs::write(
+        &worker,
+        r#"#!/usr/bin/env python3
+import struct
+import sys
+
+header = sys.stdin.buffer.read(4)
+if len(header) == 4:
+    length = struct.unpack(">I", header)[0]
+    sys.stdin.buffer.read(length)
+"#,
+    )
+    .expect("write configured tcp worker");
+    let mut permissions = fs::metadata(&worker).expect("worker metadata").permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&worker, permissions).expect("worker permissions");
+
+    let mut args = test_args(db_path, Some(config_path), None, false);
+    args.interface_worker_process_count = 1;
+    args.interface_worker_process_command = Some(worker);
+    args.interface_worker_process_shutdown_ms = 2_000;
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    let context = runtime.block_on(async { bootstrap::bootstrap(args).await });
+
+    assert_eq!(context.interface_worker_bridges.len(), 1);
+    let response = context
+        .daemon
+        .handle_rpc(RpcRequest { id: 106, method: "list_interfaces".to_string(), params: None })
+        .expect("list_interfaces");
+    let interfaces = response
+        .result
+        .expect("result")
+        .get("interfaces")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .expect("interfaces array");
+    assert_eq!(interfaces.len(), 1);
+    let tcp = &interfaces[0];
+    assert_eq!(tcp.get("type").and_then(|value| value.as_str()), Some("tcp_client"));
+    assert_eq!(
+        tcp.get("settings")
+            .and_then(|value| value.get("_runtime"))
+            .and_then(|value| value.get("startup_status"))
+            .and_then(|value| value.as_str()),
+        Some("spawned_process")
+    );
+    assert_eq!(
+        tcp.get("settings")
+            .and_then(|value| value.get("_runtime"))
+            .and_then(|value| value.get("managed_by"))
+            .and_then(|value| value.as_str()),
+        Some("interface_worker_process")
     );
 }
 
@@ -739,6 +1719,74 @@ interfaces = [
         .cloned()
         .expect("interfaces array");
 
+    let tcp_server = interfaces
+        .iter()
+        .find(|entry| entry.get("type").and_then(|value| value.as_str()) == Some("tcp_server"))
+        .expect("tcp_server entry");
+    assert_eq!(
+        tcp_server
+            .get("settings")
+            .and_then(|value| value.get("_runtime"))
+            .and_then(|value| value.get("startup_status"))
+            .and_then(|value| value.as_str()),
+        Some("active")
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn bootstrap_uses_interface_worker_process_for_configured_tcp_server() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let config_path = temp.path().join("daemon.toml");
+    fs::write(
+        &config_path,
+        r#"
+interfaces = [
+  { type = "tcp_server", enabled = true, name = "server-process", host = "127.0.0.1", port = 0 }
+]
+"#,
+    )
+    .expect("write config");
+    let worker = temp.path().join("configured-tcp-server-worker.py");
+    fs::write(
+        &worker,
+        r#"#!/usr/bin/env python3
+import struct
+import sys
+
+header = sys.stdin.buffer.read(4)
+if len(header) == 4:
+    length = struct.unpack(">I", header)[0]
+    sys.stdin.buffer.read(length)
+"#,
+    )
+    .expect("write configured tcp server worker");
+    let mut permissions = fs::metadata(&worker).expect("worker metadata").permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&worker, permissions).expect("worker permissions");
+
+    let mut args = test_args(db_path, Some(config_path), None, false);
+    args.interface_worker_process_count = 1;
+    args.interface_worker_process_command = Some(worker);
+    args.interface_worker_process_shutdown_ms = 2_000;
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    let context = runtime.block_on(async { bootstrap::bootstrap(args).await });
+
+    assert_eq!(context.interface_worker_bridges.len(), 1);
+    let response = context
+        .daemon
+        .handle_rpc(RpcRequest { id: 108, method: "list_interfaces".to_string(), params: None })
+        .expect("list_interfaces");
+    let interfaces = response
+        .result
+        .expect("result")
+        .get("interfaces")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .expect("interfaces array");
     let tcp_server = interfaces
         .iter()
         .find(|entry| entry.get("type").and_then(|value| value.as_str()) == Some("tcp_server"))
@@ -1343,5 +2391,47 @@ fn test_args(
         rpc_token_jti_ttl_ms: 60_000,
         rpc_token_clock_skew_ms: 5_000,
         rpc_unix: None,
+        no_rpc_unix: false,
+        worker_stdio: false,
+        interface_worker_stdio: false,
+        control_router_stdio: false,
+        interface_worker_udp_bind: None,
+        interface_worker_udp_forward: None,
+        interface_worker_tcp_connect: None,
+        interface_worker_tcp_listen: None,
+        interface_worker_address: None,
+        interface_worker_serial_device: None,
+        interface_worker_serial_baud_rate: None,
+        interface_worker_serial_data_bits: None,
+        interface_worker_serial_stop_bits: None,
+        interface_worker_serial_parity: None,
+        interface_worker_serial_flow_control: None,
+        interface_worker_serial_mtu: None,
+        interface_worker_serial_reconnect_backoff_ms: None,
+        interface_worker_serial_max_reconnect_backoff_ms: None,
+        interface_worker_ble_adapter: None,
+        interface_worker_ble_peripheral_id: None,
+        interface_worker_ble_service_uuid: None,
+        interface_worker_ble_write_char_uuid: None,
+        interface_worker_ble_notify_char_uuid: None,
+        interface_worker_ble_mtu: None,
+        interface_worker_ble_scan_timeout_ms: None,
+        interface_worker_ble_connect_timeout_ms: None,
+        interface_worker_ble_reconnect_backoff_ms: None,
+        interface_worker_ble_max_reconnect_backoff_ms: None,
+        worker_process_count: 0,
+        worker_process_timeout_ms: 1_000,
+        worker_process_command: None,
+        #[cfg(unix)]
+        worker_process_unix_socket: None,
+        worker_process_tcp: None,
+        interface_worker_process_count: 0,
+        interface_worker_process_command: None,
+        interface_worker_process_shutdown_ms: 1_000,
+        interface_worker_process_restart_backoff_ms:
+            interface_worker_mode::DEFAULT_INTERFACE_WORKER_RESTART_BACKOFF_MS,
+        control_router_process_count: 0,
+        control_router_process_timeout_ms: 1_000,
+        control_router_process_command: None,
     }
 }

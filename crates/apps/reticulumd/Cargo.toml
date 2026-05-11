@@ -21,7 +21,9 @@ rand_core = { workspace = true, features = ["getrandom"] }
 x25519-dalek = { workspace = true }
 ed25519-dalek = { workspace = true }
 tokio = { workspace = true }
+tokio-util = { workspace = true }
 serde_json = { workspace = true }
+serde_bytes = { workspace = true }
 rmpv = { workspace = true }
 rmp-serde = { workspace = true }
 sha2 = { workspace = true }
@@ -35,6 +37,7 @@ rustls-pemfile = { workspace = true }
 x509-parser = { workspace = true }
 
 [dev-dependencies]
+criterion = { workspace = true }
 tempfile = { workspace = true }
 
 [[bin]]
@@ -44,6 +47,10 @@ path = "src/bin/reticulumd/main.rs"
 [[bin]]
 name = "lxm-interchange"
 path = "src/bin/lxm-interchange.rs"
+
+[[bench]]
+name = "worker_process"
+harness = false
 
 [target.'cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))'.dependencies]
 btleplug = "0.11.8"
