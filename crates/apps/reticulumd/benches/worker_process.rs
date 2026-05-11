@@ -13,8 +13,9 @@ use rns_transport::identity::PrivateIdentity;
 use rns_transport::packet::{DestinationType, Header, Packet, PacketDataBuffer, PacketType};
 use rns_transport::ratchets::encrypt_for_public_key_bytes;
 use rns_transport::transport::worker_boundary::{
-    read_worker_frame, write_worker_frame, WorkerJob, WorkerJobKind, WorkerRequest, WorkerResponse,
-    MAX_WORKER_REQUEST_BYTES, MAX_WORKER_RESPONSE_BYTES,
+    read_worker_frame, write_worker_frame, OutboundEncryptBatchItem, WorkerJob, WorkerJobKind,
+    WorkerRequest, WorkerResponse, WorkerResultKind, MAX_WORKER_REQUEST_BYTES,
+    MAX_WORKER_RESPONSE_BYTES,
 };
 use serde_json::json;
 use sha2::Digest;
@@ -78,6 +79,34 @@ fn outbound_encrypt_job(id: u64, payload: &[u8]) -> WorkerJob {
     }
 }
 
+fn outbound_encrypt_batch_job(id: u64, payload: &[u8], count: usize) -> WorkerJob {
+    let remote_identity = PrivateIdentity::new_from_rand(OsRng);
+    let destination =
+        SingleInputDestination::new(remote_identity, DestinationName::new("lxmf", "delivery"));
+    let mut salt = [0u8; rns_transport::hash::ADDRESS_HASH_SIZE];
+    salt.copy_from_slice(destination.desc.identity.address_hash.as_slice());
+    let items = (0..count)
+        .map(|_| {
+            let packet = Packet {
+                header: Header {
+                    destination_type: DestinationType::Single,
+                    packet_type: PacketType::Data,
+                    ..Default::default()
+                },
+                destination: destination.desc.address_hash,
+                data: PacketDataBuffer::new_from_slice(payload),
+                ..Default::default()
+            };
+            OutboundEncryptBatchItem {
+                packet_wire: packet.to_bytes().expect("packet wire"),
+                public_key: *destination.desc.identity.public_key.as_bytes(),
+                salt,
+            }
+        })
+        .collect();
+    WorkerJob { id, kind: WorkerJobKind::OutboundEncryptBatch { items } }
+}
+
 fn complete_outbound_encrypt_locally(kind: &WorkerJobKind) -> Vec<u8> {
     let WorkerJobKind::OutboundEncrypt { packet_wire, public_key, salt } = kind else {
         panic!("expected outbound encrypt job");
@@ -89,6 +118,23 @@ fn complete_outbound_encrypt_locally(kind: &WorkerJobKind) -> Vec<u8> {
     buffer.write(&ciphertext).expect("encrypted packet fits");
     packet.data = buffer;
     packet.to_bytes().expect("encode encrypted packet")
+}
+
+fn complete_outbound_encrypt_batch_locally(kind: &WorkerJobKind) -> usize {
+    let WorkerJobKind::OutboundEncryptBatch { items } = kind else {
+        panic!("expected outbound encrypt batch job");
+    };
+    items
+        .iter()
+        .map(|item| {
+            let kind = WorkerJobKind::OutboundEncrypt {
+                packet_wire: item.packet_wire.clone(),
+                public_key: item.public_key,
+                salt: item.salt,
+            };
+            complete_outbound_encrypt_locally(&kind).len()
+        })
+        .sum()
 }
 
 fn worker_executable() -> String {
@@ -344,6 +390,45 @@ fn bench_worker_stdio_outbound_encrypt_round_trip(c: &mut Criterion) {
     runtime.block_on(worker.shutdown());
 }
 
+fn bench_worker_local_outbound_encrypt_batch_64(c: &mut Criterion) {
+    let payload = vec![0x42; 256];
+    let job = outbound_encrypt_batch_job(13, &payload, 64);
+    c.bench_function("reticulumd/worker_local_outbound_encrypt_batch_64", |b| {
+        b.iter(|| {
+            let total = complete_outbound_encrypt_batch_locally(black_box(&job.kind));
+            black_box(total);
+        });
+    });
+}
+
+fn bench_worker_stdio_outbound_encrypt_batch_64_round_trip(c: &mut Criterion) {
+    let runtime = Runtime::new().expect("tokio runtime");
+    let payload = vec![0x42; 256];
+    let request = WorkerRequest::new(outbound_encrypt_batch_job(14, &payload, 64), 5_000)
+        .encode()
+        .expect("request");
+    let mut worker = runtime.block_on(WorkerChild::spawn());
+
+    c.bench_function("reticulumd/worker_stdio_outbound_encrypt_batch_64_round_trip", |b| {
+        b.iter_custom(|iters| {
+            runtime.block_on(async {
+                let started = Instant::now();
+                for _ in 0..iters {
+                    let response = worker.submit(black_box(&request)).await;
+                    let result = response.outcome.expect("worker response");
+                    let WorkerResultKind::PacketWireBatch { items } = result.kind else {
+                        panic!("expected packet wire batch response");
+                    };
+                    black_box(items.len());
+                }
+                started.elapsed()
+            })
+        });
+    });
+
+    runtime.block_on(worker.shutdown());
+}
+
 fn bench_worker_stdio_resource_complete_round_trip(c: &mut Criterion) {
     let runtime = Runtime::new().expect("tokio runtime");
     let payload = vec![0x5a; 4096];
@@ -419,6 +504,8 @@ criterion_group!(
     bench_worker_local_outbound_encrypt,
     bench_worker_stdio_resource_complete_round_trip,
     bench_worker_stdio_outbound_encrypt_round_trip,
+    bench_worker_local_outbound_encrypt_batch_64,
+    bench_worker_stdio_outbound_encrypt_batch_64_round_trip,
     bench_control_router_stdio_status_round_trip,
     bench_control_router_http_status_routed_round_trip
 );

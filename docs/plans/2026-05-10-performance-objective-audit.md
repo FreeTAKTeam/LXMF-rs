@@ -99,6 +99,12 @@ direct evidence that the requested behavior, gate, or benchmark exists.
      `reticulumd --worker-stdio` child handles both batch job kinds, and
      `cargo test -p reticulumd --test worker_stdio_process` covers batch
      encrypt/decrypt through a spawned framed worker process.
+   - The stdio worker processes batch crypto items in parallel inside the
+     child. `crates/apps/reticulumd/benches/worker_process.rs` now compares
+     serial local outbound encryption batch-64 against a reused child-process
+     batch round trip. The latest SDK perf budget report shows p50
+     3907203.12 ns locally and p50 980125.00 ns through the stdio batch worker,
+     with overall `Status: PASS`.
 
    Status: partially covered.
 

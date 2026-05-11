@@ -949,7 +949,12 @@ themselves.
    encryption and single-destination decrypt jobs. The stdio child handles both
    batch forms, and the real spawned-child integration test proves batch
    encrypt/decrypt traffic can cross the framed worker protocol before runtime
-   paths start coalescing jobs automatically.
+   paths start coalescing jobs automatically. The stdio child now maps batch
+   items across local worker threads, and the SDK perf budget includes the
+   end-to-end batch process comparison: `reticulumd_worker_local_outbound_encrypt_batch_64`
+   currently measures about 3.91 ms p50 for serial local batch completion,
+   while `reticulumd_worker_stdio_outbound_encrypt_batch_64_round_trip`
+   measures about 0.98 ms p50 through one framed child batch request.
 
 5. Optional process isolation
 

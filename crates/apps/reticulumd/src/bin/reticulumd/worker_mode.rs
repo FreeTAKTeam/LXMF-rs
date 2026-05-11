@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::{ExitStatus, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::thread;
 use std::time::Duration;
 
 use rand_core::OsRng;
@@ -539,19 +540,15 @@ fn outbound_encrypt_batch_job(
     job_id: u64,
     items: Vec<rns_transport::transport::worker_boundary::OutboundEncryptBatchItem>,
 ) -> Result<WorkerResult, WorkerError> {
-    let items = items
-        .into_iter()
-        .map(|item| {
-            let result =
-                outbound_encrypt_job(job_id, item.packet_wire, item.public_key, item.salt)?;
-            let WorkerResultKind::PacketWire { packet_wire } = result.kind else {
-                return Err(WorkerError::InvalidJob {
-                    message: "outbound encrypt item returned unexpected result".to_string(),
-                });
-            };
-            Ok(PacketWireBatchItem { packet_wire })
-        })
-        .collect::<Result<Vec<_>, _>>()?;
+    let items = parallel_map_worker_items(items, |item| {
+        let result = outbound_encrypt_job(job_id, item.packet_wire, item.public_key, item.salt)?;
+        let WorkerResultKind::PacketWire { packet_wire } = result.kind else {
+            return Err(WorkerError::InvalidJob {
+                message: "outbound encrypt item returned unexpected result".to_string(),
+            });
+        };
+        Ok(PacketWireBatchItem { packet_wire })
+    })?;
     Ok(WorkerResult { id: job_id, kind: WorkerResultKind::PacketWireBatch { items } })
 }
 
@@ -595,25 +592,61 @@ fn single_destination_decrypt_batch_job(
     job_id: u64,
     items: Vec<rns_transport::transport::worker_boundary::SingleDestinationDecryptBatchItem>,
 ) -> Result<WorkerResult, WorkerError> {
-    let items = items
-        .into_iter()
-        .map(|item| {
-            let result = single_destination_decrypt_job(
-                job_id,
-                item.packet_wire,
-                item.destination,
-                item.private_key,
-            )?;
-            let WorkerResultKind::DestinationPayload { payload, ratchet_used } = result.kind else {
-                return Err(WorkerError::InvalidJob {
-                    message: "single destination decrypt item returned unexpected result"
-                        .to_string(),
-                });
-            };
-            Ok(DestinationPayloadBatchItem { payload, ratchet_used })
-        })
-        .collect::<Result<Vec<_>, _>>()?;
+    let items = parallel_map_worker_items(items, |item| {
+        let result = single_destination_decrypt_job(
+            job_id,
+            item.packet_wire,
+            item.destination,
+            item.private_key,
+        )?;
+        let WorkerResultKind::DestinationPayload { payload, ratchet_used } = result.kind else {
+            return Err(WorkerError::InvalidJob {
+                message: "single destination decrypt item returned unexpected result".to_string(),
+            });
+        };
+        Ok(DestinationPayloadBatchItem { payload, ratchet_used })
+    })?;
     Ok(WorkerResult { id: job_id, kind: WorkerResultKind::DestinationPayloadBatch { items } })
+}
+
+fn parallel_map_worker_items<I, O, F>(items: Vec<I>, map: F) -> Result<Vec<O>, WorkerError>
+where
+    I: Send,
+    O: Send,
+    F: Fn(I) -> Result<O, WorkerError> + Sync,
+{
+    if items.len() <= 1 {
+        return items.into_iter().map(map).collect();
+    }
+
+    let workers = thread::available_parallelism().map_or(1, usize::from).clamp(1, items.len());
+    let mut chunks = (0..workers).map(|_| Vec::new()).collect::<Vec<_>>();
+    for (index, item) in items.into_iter().enumerate() {
+        chunks[index % workers].push((index, item));
+    }
+    let mut mapped = thread::scope(|scope| {
+        let mut handles = Vec::new();
+        for chunk in chunks {
+            let map = &map;
+            handles.push(scope.spawn(move || {
+                let mut mapped = Vec::with_capacity(chunk.len());
+                for (index, item) in chunk {
+                    mapped.push((index, map(item)?));
+                }
+                Ok::<_, WorkerError>(mapped)
+            }));
+        }
+
+        let mut mapped = Vec::new();
+        for handle in handles {
+            mapped.extend(handle.join().map_err(|_| WorkerError::BackendUnavailable {
+                message: "batch worker thread panicked".to_string(),
+            })??);
+        }
+        Ok::<_, WorkerError>(mapped)
+    })?;
+    mapped.sort_by_key(|(index, _)| *index);
+    Ok(mapped.into_iter().map(|(_, item)| item).collect())
 }
 
 fn resource_complete_job(job_id: u64, kind: WorkerJobKind) -> Result<WorkerResult, WorkerError> {
