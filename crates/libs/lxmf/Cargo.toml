@@ -19,6 +19,7 @@ lxmf-sdk = { workspace = true, optional = true }
 default = ["sdk", "wire"]
 sdk = ["dep:lxmf-sdk"]
 wire = ["dep:lxmf-core"]
+fernet-aes128 = ["lxmf-core?/fernet-aes128"]
 
 [lints]
 workspace = true

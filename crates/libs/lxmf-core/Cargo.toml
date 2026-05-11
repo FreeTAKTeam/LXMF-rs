@@ -33,6 +33,7 @@ x25519-dalek.workspace = true
 default = ["std"]
 std = ["dep:serde_json", "serde_json/std"]
 alloc = []
+fernet-aes128 = ["rns-core/fernet-aes128"]
 
 [dev-dependencies]
 criterion.workspace = true

@@ -21,6 +21,7 @@ default = ["core", "transport"]
 core = ["dep:rns-core"]
 transport = ["dep:rns-transport", "core"]
 rpc = ["dep:rns-rpc"]
+fernet-aes128 = ["rns-core/fernet-aes128", "rns-transport?/fernet-aes128"]
 
 [lints]
 workspace = true

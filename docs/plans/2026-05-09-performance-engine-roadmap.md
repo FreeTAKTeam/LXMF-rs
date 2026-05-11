@@ -933,7 +933,13 @@ themselves.
    the latest SDK perf budget report measures `rns_core_identity_ephemeral_keypair`
    at 13.44 us p50, `rns_core_identity_x25519_exchange` at 35.76 us p50, and
    `rns_core_identity_hkdf_sha256` at 1.91 us p50. That makes X25519 curve work,
-   not HKDF, the dominant key-schedule floor. The matching decrypt split is now budgeted
+   not HKDF, the dominant key-schedule floor. `x25519-dalek` already resolves
+   with precomputed tables, so there is no obvious curve dependency feature left
+   to flip. A controlled `fernet-aes128` probe measured 2 KiB Fernet encrypt at
+   about 42.67 us versus 54.27 us by default, and decrypt at about 16.21 us
+   versus 19.42 us; the feature now propagates through the public crate graph
+   but remains opt-in until the compatibility/security decision is made. The
+   matching decrypt split is now budgeted
    too: `rns_core_identity_decrypt` measures about 57.43 us p50, with
    `rns_core_identity_decrypt_key_schedule` at 37.55 us and
    `rns_core_identity_fernet_decrypt_only` at 19.66 us in the latest SDK perf

@@ -88,6 +88,14 @@ direct evidence that the requested behavior, gate, or benchmark exists.
      `rns_core_identity_x25519_exchange` at p50 35756.81 ns, and
      `rns_core_identity_hkdf_sha256` at p50 1909.25 ns. That shows the
      remaining key-schedule floor is curve work rather than HKDF expansion.
+   - `x25519-dalek` already resolves with `precomputed-tables`, so there is no
+     obvious missing dependency feature for the curve path. The opt-in
+     `fernet-aes128` feature now propagates through `lxmf-wire`,
+     `reticulum-rs-transport`, `lxmf`, and `reticulum-rs`. A controlled
+     Criterion run measured 2 KiB core Fernet encrypt at about 42.67 us with
+     AES-128 versus 54.27 us by default, and decrypt at about 16.21 us versus
+     19.42 us. This remains opt-in until wire-compatibility and security
+     posture are explicitly decided.
    - The same benchmark and SDK budget now split identity decrypt. The latest
      SDK perf budget report shows full identity decrypt at p50 57426.30 ns,
      key schedule at p50 37549.40 ns, and Fernet verify/decrypt at p50

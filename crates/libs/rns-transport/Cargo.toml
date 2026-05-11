@@ -42,7 +42,7 @@ rns-core.workspace = true
 
 [features]
 default = []
-fernet-aes128 = []
+fernet-aes128 = ["rns-core/fernet-aes128"]
 
 [dev-dependencies]
 criterion.workspace = true
