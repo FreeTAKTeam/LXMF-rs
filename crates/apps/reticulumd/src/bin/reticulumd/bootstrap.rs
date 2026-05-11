@@ -185,9 +185,7 @@ pub(super) fn spawn_worker_process_status_publisher_with_interval(
     backend: Option<Arc<worker_mode::WorkerStdioPoolBackend>>,
     interval: Duration,
 ) -> Option<tokio::task::JoinHandle<()>> {
-    let Some(backend) = backend else {
-        return None;
-    };
+    let backend = backend?;
     let interval = interval.max(Duration::from_millis(1));
     Some(tokio::spawn(async move {
         loop {
@@ -216,9 +214,7 @@ pub(super) fn spawn_control_router_process_status_publisher_with_interval(
     pool: Option<Arc<control_router_mode::ControlRouterStdioPool>>,
     interval: Duration,
 ) -> Option<tokio::task::JoinHandle<()>> {
-    let Some(pool) = pool else {
-        return None;
-    };
+    let pool = pool?;
     let interval = interval.max(Duration::from_millis(1));
     Some(tokio::spawn(async move {
         loop {
@@ -271,14 +267,14 @@ fn spawn_interface_worker_process_status_publisher(
     restart_backoff_ms: u64,
     bridges: &Arc<Vec<InterfaceWorkerBridgeHandle>>,
 ) {
-    let _ = spawn_interface_worker_process_status_publisher_with_interval(
+    drop(spawn_interface_worker_process_status_publisher_with_interval(
         daemon,
         configured_count,
         shutdown_timeout_ms,
         restart_backoff_ms,
         Arc::downgrade(bridges),
         Duration::from_secs(1),
-    );
+    ));
 }
 
 pub(super) fn worker_process_executable_path(args: &Args) -> PathBuf {

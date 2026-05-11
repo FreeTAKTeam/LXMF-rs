@@ -205,6 +205,7 @@ fn startup_tcp_server_record(
     mark_interface_startup_status(record, "active", None, runtime_iface.as_deref());
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn startup_tcp_client(
     args: &Args,
     iface: &InterfaceConfig,

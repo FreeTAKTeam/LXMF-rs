@@ -143,8 +143,10 @@ fn worker_resource_complete_fixture() -> (WorkerRequest, WorkerResponse) {
 }
 
 fn interface_worker_packet(payload: &[u8]) -> Packet {
-    let mut packet = Packet::default();
-    packet.destination = AddressHash::new([0xAB; rns_transport::hash::ADDRESS_HASH_SIZE]);
+    let mut packet = Packet {
+        destination: AddressHash::new([0xAB; rns_transport::hash::ADDRESS_HASH_SIZE]),
+        ..Default::default()
+    };
     packet.header.destination_type = DestinationType::Single;
     packet.header.packet_type = PacketType::Data;
     packet.context = PacketContext::None;

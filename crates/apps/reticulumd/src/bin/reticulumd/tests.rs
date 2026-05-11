@@ -210,7 +210,7 @@ fn cli_parses_hidden_external_worker_socket_option() {
     assert!(matches!(
         bootstrap::worker_process_endpoint(&args),
         crate::worker_mode::WorkerProcessEndpoint::UnixSocket { path }
-            if path == PathBuf::from("/tmp/reticulumd-worker.sock")
+            if path.as_path() == std::path::Path::new("/tmp/reticulumd-worker.sock")
     ));
 }
 

@@ -163,11 +163,11 @@ pub(crate) fn try_decrypt_with_ratchets(
     None
 }
 
-pub(crate) fn try_decrypt_with_ratchets_into<'a>(
+pub(crate) fn try_decrypt_with_ratchets_into(
     state: &RatchetState,
     salt: &[u8],
     ciphertext: &[u8],
-    out: &'a mut [u8],
+    out: &mut [u8],
 ) -> Option<usize> {
     for ratchet in &state.ratchets {
         let secret = StaticSecret::from(*ratchet);

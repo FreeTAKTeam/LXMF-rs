@@ -282,11 +282,9 @@ mod tests {
                             kind: WorkerResultKind::DestinationPayloadBatch { items },
                         })
                     }
-                    _ => {
-                        return Err(WorkerError::InvalidJob {
-                            message: "expected batch crypto job".to_string(),
-                        });
-                    }
+                    _ => Err(WorkerError::InvalidJob {
+                        message: "expected batch crypto job".to_string(),
+                    }),
                 }
             })
         }

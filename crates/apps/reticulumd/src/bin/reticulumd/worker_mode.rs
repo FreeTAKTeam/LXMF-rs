@@ -106,12 +106,9 @@ impl WorkerStdioProcess {
                 executable: executable.to_path_buf(),
                 message: err.to_string(),
             })?;
-        let stdin =
-            child.stdin.take().ok_or_else(|| WorkerProcessError::MissingPipe { name: "stdin" })?;
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| WorkerProcessError::MissingPipe { name: "stdout" })?;
+        let stdin = child.stdin.take().ok_or(WorkerProcessError::MissingPipe { name: "stdin" })?;
+        let stdout =
+            child.stdout.take().ok_or(WorkerProcessError::MissingPipe { name: "stdout" })?;
         Ok(Self { io: WorkerProcessIo::Child { child, stdin: Some(stdin), stdout: Some(stdout) } })
     }
 

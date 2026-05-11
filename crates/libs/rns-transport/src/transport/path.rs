@@ -140,6 +140,7 @@ pub(super) fn message_to_next_hop<'a>(
     }
 }
 
+#[allow(clippy::large_enum_variant)]
 enum PathRequestAction {
     LocalResponse {
         destination: Arc<Mutex<SingleInputDestination>>,
@@ -158,9 +159,7 @@ pub(super) async fn handle_path_request_unlocked(
 ) -> Option<TxMessage> {
     let action = {
         let mut handler = handler_arc.lock().await;
-        let Some(request) = handler.path_requests.decode(packet.data.as_slice()) else {
-            return None;
-        };
+        let request = handler.path_requests.decode(packet.data.as_slice())?;
 
         if let Some(destination) = handler.single_in_destinations.get(&request.destination).cloned()
         {
@@ -343,17 +342,19 @@ async fn handle_link_request_as_destination(
 
     let should_send = {
         let mut handler = handler_arc.lock().await;
-        if handler.in_links.contains_key(&stored_link_id) {
-            false
-        } else {
+        if let std::collections::hash_map::Entry::Vacant(entry) =
+            handler.in_links.entry(stored_link_id)
+        {
             log::debug!(
                 "tp({}): save input link {} for destination {}",
                 config_name,
                 stored_link_id,
                 destination_hash
             );
-            handler.in_links.insert(stored_link_id, Arc::new(Mutex::new(link)));
+            entry.insert(Arc::new(Mutex::new(link)));
             true
+        } else {
+            false
         }
     };
 

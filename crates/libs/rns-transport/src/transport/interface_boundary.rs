@@ -424,8 +424,10 @@ mod tests {
     use crate::packet::{DestinationType, PacketContext, PacketDataBuffer, PacketType};
 
     fn packet(payload: &[u8]) -> Packet {
-        let mut packet = Packet::default();
-        packet.destination = AddressHash::new([0xAB; ADDRESS_HASH_SIZE]);
+        let mut packet = Packet {
+            destination: AddressHash::new([0xAB; ADDRESS_HASH_SIZE]),
+            ..Default::default()
+        };
         packet.header.destination_type = DestinationType::Single;
         packet.header.packet_type = PacketType::Data;
         packet.context = PacketContext::None;
@@ -669,7 +671,7 @@ mod tests {
             packet: packet(b"existing"),
             source: IfaceSource::None,
         };
-        rx_sender.try_send(existing.clone()).expect("prefill rx channel");
+        rx_sender.try_send(existing).expect("prefill rx channel");
 
         let (mut worker, mut router) = tokio::io::duplex(512);
         let inbound = RxMessage {

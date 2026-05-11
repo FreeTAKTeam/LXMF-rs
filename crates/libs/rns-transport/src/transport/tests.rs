@@ -2901,9 +2901,9 @@ async fn resource_lane_skips_packet_when_manager_queue_is_full() {
     };
 
     let _first = resource_lane
-        .try_enqueue_link_packet_for_test(packet.clone(), link.clone())
+        .try_enqueue_link_packet_for_test(packet, link.clone())
         .expect("first resource packet should enqueue");
-    let _second = resource_lane.try_enqueue_link_packet_for_test(packet.clone(), link.clone());
+    let _second = resource_lane.try_enqueue_link_packet_for_test(packet, link.clone());
 
     let result =
         timeout(Duration::from_millis(50), resource_lane.handle_link_packet(packet, link.clone()))
@@ -2941,7 +2941,7 @@ async fn resource_lane_retry_poll_skips_when_manager_queue_is_full() {
     };
 
     let _first = resource_lane
-        .try_enqueue_link_packet_for_test(packet.clone(), link.clone())
+        .try_enqueue_link_packet_for_test(packet, link.clone())
         .expect("first resource packet should enqueue");
     let _second = resource_lane.try_enqueue_link_packet_for_test(packet, link);
 
@@ -2980,7 +2980,7 @@ async fn resource_lane_remove_links_defers_when_manager_queue_is_full() {
     };
 
     let _first = resource_lane
-        .try_enqueue_link_packet_for_test(packet.clone(), link.clone())
+        .try_enqueue_link_packet_for_test(packet, link.clone())
         .expect("first resource packet should enqueue");
     let _second = resource_lane.try_enqueue_link_packet_for_test(packet, link);
 
@@ -3024,7 +3024,7 @@ async fn resource_lane_commit_prepared_send_fails_when_manager_queue_is_full() {
     };
 
     let _first = resource_lane
-        .try_enqueue_link_packet_for_test(packet.clone(), link.clone())
+        .try_enqueue_link_packet_for_test(packet, link.clone())
         .expect("first resource packet should enqueue");
     let _second = resource_lane.try_enqueue_link_packet_for_test(packet, link);
 
@@ -3060,7 +3060,7 @@ async fn resource_lane_confirm_dispatch_returns_when_manager_queue_is_full() {
     };
 
     let _first = resource_lane
-        .try_enqueue_link_packet_for_test(packet.clone(), link.clone())
+        .try_enqueue_link_packet_for_test(packet, link.clone())
         .expect("first resource packet should enqueue");
     let _second = resource_lane.try_enqueue_link_packet_for_test(packet, link);
 

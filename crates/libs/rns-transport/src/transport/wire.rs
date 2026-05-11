@@ -860,7 +860,7 @@ pub(super) async fn handle_data<'a>(
 
         let direct_messages = link_packets
             .into_iter()
-            .chain(proof_packets.into_iter())
+            .chain(proof_packets)
             .map(|packet| TxMessage { tx_type: TxMessageType::Direct(iface), packet })
             .collect::<Vec<_>>();
 
@@ -905,7 +905,6 @@ pub(super) async fn handle_data<'a>(
                 packet.header.destination_type as u8,
                 packet.context as u8,
             );
-            return;
         } else {
             let next_hop_message = message_to_next_hop(packet, &handler, None);
             let data_handled = next_hop_message.is_some();
@@ -926,7 +925,6 @@ pub(super) async fn handle_data<'a>(
                     context as u8,
                 );
             }
-            return;
         }
     }
 }

@@ -270,7 +270,7 @@ pub(super) async fn spawn_interface_worker_bridge(
     .await
 }
 
-#[allow(dead_code)]
+#[allow(dead_code, clippy::too_many_arguments)]
 pub(super) async fn spawn_interface_worker_bridge_with_args(
     iface_manager: Arc<tokio::sync::Mutex<InterfaceManager>>,
     executable: impl AsRef<Path>,
@@ -316,6 +316,7 @@ pub(super) async fn spawn_interface_worker_bridge_with_args(
     Ok(InterfaceWorkerBridgeHandle { address, cancellation, metrics, task: Some(task) })
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_supervised_interface_worker_bridge(
     mut worker: InterfaceWorkerStdioProcess,
     executable: PathBuf,
@@ -399,7 +400,7 @@ impl Drop for InterfaceWorkerBridgeHandle {
 
 impl InterfaceWorkerBridgeHandle {
     pub(super) fn is_finished(&self) -> bool {
-        self.task.as_ref().is_none_or(JoinHandle::is_finished)
+        self.task.as_ref().map_or(true, JoinHandle::is_finished)
     }
 
     pub(super) fn child_restarts(&self) -> usize {
@@ -1504,7 +1505,7 @@ read_frame()
                 ..Default::default()
             },
         };
-        tx_sender.try_send(existing.clone()).expect("prefill tx channel");
+        tx_sender.try_send(existing).expect("prefill tx channel");
         let cancellation = CancellationToken::new();
         let bridge_cancellation = cancellation.clone();
 

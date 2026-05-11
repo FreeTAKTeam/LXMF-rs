@@ -11,6 +11,7 @@ pub(super) struct ResourceManagerLane {
     tx: mpsc::Sender<ResourceManagerCommand>,
 }
 
+#[allow(clippy::large_enum_variant)]
 enum ResourceManagerCommand {
     HandleLinkPacket {
         packet: Packet,
@@ -32,6 +33,7 @@ enum ResourceManagerCommand {
     },
     RetryPoll {
         now: Instant,
+        #[allow(clippy::type_complexity)]
         reply: oneshot::Sender<(Vec<(AddressHash, ResourceRequest)>, Vec<(AddressHash, Packet)>)>,
     },
     RemoveLinks {
@@ -171,19 +173,19 @@ impl ResourceManagerLane {
                 if let Ok(result) = rx.await {
                     return result;
                 }
-                return ResourcePacketResult {
+                ResourcePacketResult {
                     completion_job: None,
                     responses: Vec::new(),
                     events: Vec::new(),
-                };
+                }
             }
             Err(mpsc::error::TrySendError::Full(_)) => {
                 log::debug!("resource: skipping packet while manager lane is full");
-                return ResourcePacketResult {
+                ResourcePacketResult {
                     completion_job: None,
                     responses: Vec::new(),
                     events: Vec::new(),
-                };
+                }
             }
             Err(mpsc::error::TrySendError::Closed(command)) => {
                 let ResourceManagerCommand::HandleLinkPacket { packet, link, .. } = command else {
@@ -198,7 +200,7 @@ impl ResourceManagerLane {
                     None
                 };
                 let events = manager.drain_events();
-                return ResourcePacketResult { completion_job, responses, events };
+                ResourcePacketResult { completion_job, responses, events }
             }
         }
     }
