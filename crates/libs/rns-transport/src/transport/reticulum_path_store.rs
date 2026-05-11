@@ -13,11 +13,18 @@ impl Transport {
         let storage_path = storage_path.as_ref().to_path_buf();
         let now = std::time::Instant::now();
         let now_unix_secs = now_unix_secs();
+        let iface_metadata = {
+            let iface_manager = self.iface_manager.lock().await;
+            iface_manager
+                .path_metadata()
+                .into_iter()
+                .map(|(address, mode, full_hash)| (address, (mode, full_hash)))
+                .collect::<HashMap<_, _>>()
+        };
         let (entries, tunnel_entries, packets) = {
             let handler = self.handler.lock().await;
-            let iface_manager = self.iface_manager.lock().await;
             let entries = handler.path_table.export_python_entries(now, now_unix_secs, |iface| {
-                Some((iface_manager.mode(iface)?, iface_manager.full_hash(iface)?))
+                iface_metadata.get(iface).copied()
             });
             let mut kept_entries = Vec::new();
             let mut packets = Vec::new();
@@ -31,7 +38,7 @@ impl Transport {
             }
             let mut tunnel_entries =
                 handler.tunnel_table.export_python_entries(now, now_unix_secs, |iface| {
-                    iface_manager.full_hash(iface)
+                    iface_metadata.get(iface).map(|(_, hash)| *hash)
                 });
             for tunnel in &mut tunnel_entries {
                 tunnel.paths.retain(|path| {

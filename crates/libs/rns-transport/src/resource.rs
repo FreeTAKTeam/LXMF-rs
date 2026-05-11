@@ -9,7 +9,7 @@ use serde_bytes::ByteBuf;
 use sha2::Digest;
 
 use crate::crypt::fernet::{FERNET_MAX_PADDING_SIZE, FERNET_OVERHEAD_SIZE};
-use crate::destination::link::Link;
+use crate::destination::link::{Link, LinkId, LinkPacketContext};
 use crate::error::RnsError;
 use crate::hash::{AddressHash, Hash, ADDRESS_HASH_SIZE, HASH_SIZE};
 use crate::packet::DestinationType;
@@ -247,6 +247,51 @@ impl ResourceRequest {
             offset += MAPHASH_LEN;
         }
         Ok(Self { hashmap_exhausted, last_map_hash, resource_hash, requested_hashes })
+    }
+}
+
+struct ResourceRequestRef<'a> {
+    hashmap_exhausted: bool,
+    last_map_hash: Option<[u8; MAPHASH_LEN]>,
+    resource_hash: Hash,
+    requested_hashes: &'a [u8],
+}
+
+impl<'a> ResourceRequestRef<'a> {
+    fn decode(data: &'a [u8]) -> Result<Self, RnsError> {
+        if data.len() < 1 + HASH_SIZE {
+            return Err(RnsError::PacketError);
+        }
+        let hashmap_exhausted = data[0] == 0xFF;
+        let mut offset = 1;
+        let last_map_hash = if hashmap_exhausted {
+            if data.len() < 1 + MAPHASH_LEN + HASH_SIZE {
+                return Err(RnsError::PacketError);
+            }
+            let mut last = [0u8; MAPHASH_LEN];
+            last.copy_from_slice(&data[offset..offset + MAPHASH_LEN]);
+            offset += MAPHASH_LEN;
+            Some(last)
+        } else {
+            None
+        };
+        let resource_hash = Hash::new(copy_hash(&data[offset..offset + HASH_SIZE])?);
+        offset += HASH_SIZE;
+        let requested_len = ((data.len() - offset) / MAPHASH_LEN) * MAPHASH_LEN;
+        Ok(Self {
+            hashmap_exhausted,
+            last_map_hash,
+            resource_hash,
+            requested_hashes: &data[offset..offset + requested_len],
+        })
+    }
+
+    fn requested_hashes(&self) -> impl Iterator<Item = [u8; MAPHASH_LEN]> + '_ {
+        self.requested_hashes.chunks_exact(MAPHASH_LEN).map(|chunk| {
+            let mut hash = [0u8; MAPHASH_LEN];
+            hash.copy_from_slice(chunk);
+            hash
+        })
     }
 }
 

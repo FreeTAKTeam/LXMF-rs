@@ -5,6 +5,15 @@ pub fn build_link_packet(
     context: PacketContext,
     payload: &[u8],
 ) -> Result<Packet, RnsError> {
+    build_link_packet_for(link, packet_type, context, payload)
+}
+
+pub(crate) fn build_link_packet_for<L: ResourcePacketLink + ?Sized>(
+    link: &L,
+    packet_type: PacketType,
+    context: PacketContext,
+    payload: &[u8],
+) -> Result<Packet, RnsError> {
     let mut packet_data = PacketDataBuffer::new();
     fill_link_packet_data(link, packet_type, context, payload, &mut packet_data)?;
     Ok(Packet {
@@ -14,7 +23,7 @@ pub fn build_link_packet(
             ..Default::default()
         },
         ifac: None,
-        destination: *link.id(),
+        destination: *link.resource_link_id(),
         transport: None,
         context,
         data: packet_data,
@@ -29,13 +38,23 @@ pub fn build_link_packet_into(
     payload: &[u8],
     packet: &mut Packet,
 ) -> Result<(), RnsError> {
+    build_link_packet_into_for(link, packet_type, context, payload, packet)
+}
+
+pub(crate) fn build_link_packet_into_for<L: ResourcePacketLink + ?Sized>(
+    link: &L,
+    packet_type: PacketType,
+    context: PacketContext,
+    payload: &[u8],
+    packet: &mut Packet,
+) -> Result<(), RnsError> {
     packet.header = Header {
         destination_type: DestinationType::Link,
         packet_type,
         ..Default::default()
     };
     packet.ifac = None;
-    packet.destination = *link.id();
+    packet.destination = *link.resource_link_id();
     packet.transport = None;
     packet.context = context;
     fill_link_packet_data(link, packet_type, context, payload, &mut packet.data)
@@ -48,7 +67,7 @@ pub fn build_resource_request_packet(link: &Link, request: &ResourceRequest) -> 
 }
 
 fn fill_link_packet_data(
-    link: &Link,
+    link: &(impl ResourcePacketLink + ?Sized),
     packet_type: PacketType,
     context: PacketContext,
     payload: &[u8],
@@ -59,7 +78,7 @@ fn fill_link_packet_data(
         && !(packet_type == PacketType::Proof && context == PacketContext::ResourceProof);
     if should_encrypt {
         let cipher_text_len = {
-            let cipher_text = link.encrypt(payload, packet_data.accuire_buf_max())?;
+            let cipher_text = link.resource_encrypt(payload, packet_data.accuire_buf_max())?;
             cipher_text.len()
         };
         packet_data.resize(cipher_text_len);
@@ -67,6 +86,58 @@ fn fill_link_packet_data(
         packet_data.write(payload)?;
     }
     Ok(())
+}
+
+pub(crate) trait ResourcePacketLink {
+    fn resource_link_id(&self) -> &LinkId;
+    fn resource_encrypt<'a>(&self, text: &[u8], out_buf: &'a mut [u8])
+        -> Result<&'a [u8], RnsError>;
+    fn resource_decrypt<'a>(&self, text: &[u8], out_buf: &'a mut [u8])
+        -> Result<&'a [u8], RnsError>;
+}
+
+impl ResourcePacketLink for Link {
+    fn resource_link_id(&self) -> &LinkId {
+        self.id()
+    }
+
+    fn resource_encrypt<'a>(
+        &self,
+        text: &[u8],
+        out_buf: &'a mut [u8],
+    ) -> Result<&'a [u8], RnsError> {
+        self.encrypt(text, out_buf)
+    }
+
+    fn resource_decrypt<'a>(
+        &self,
+        text: &[u8],
+        out_buf: &'a mut [u8],
+    ) -> Result<&'a [u8], RnsError> {
+        self.decrypt(text, out_buf)
+    }
+}
+
+impl ResourcePacketLink for LinkPacketContext {
+    fn resource_link_id(&self) -> &LinkId {
+        self.id()
+    }
+
+    fn resource_encrypt<'a>(
+        &self,
+        text: &[u8],
+        out_buf: &'a mut [u8],
+    ) -> Result<&'a [u8], RnsError> {
+        self.encrypt(text, out_buf)
+    }
+
+    fn resource_decrypt<'a>(
+        &self,
+        text: &[u8],
+        out_buf: &'a mut [u8],
+    ) -> Result<&'a [u8], RnsError> {
+        self.decrypt(text, out_buf)
+    }
 }
 
 fn slice_hashmap_segment(hashes: &[[u8; MAPHASH_LEN]], segment: usize) -> Vec<u8> {

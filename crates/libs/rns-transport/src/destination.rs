@@ -8,7 +8,7 @@ use crate::{
         self, ContextFlag, DestinationType, Header, HeaderType, IfacFlag, Packet, PacketContext,
         PacketDataBuffer, PacketType, PropagationType,
     },
-    ratchets::{decrypt_with_identity, now_secs},
+    ratchets::{decrypt_with_identity, decrypt_with_identity_into, now_secs},
 };
 use core::{fmt, marker::PhantomData};
 use ed25519_dalek::{Signature, SigningKey, VerifyingKey, SIGNATURE_LENGTH};
@@ -31,7 +31,7 @@ pub use primitives::{
     group_decrypt, group_encrypt, Direction, Group, Input, Output, Plain, Single, Type,
 };
 pub use ratchet::RATCHET_LENGTH;
-use ratchet::{try_decrypt_with_ratchets, RatchetState};
+use ratchet::{try_decrypt_with_ratchets, try_decrypt_with_ratchets_into, RatchetState};
 
 pub const NAME_HASH_LENGTH: usize = 10;
 pub const RAND_HASH_LENGTH: usize = 10;
@@ -331,6 +331,36 @@ impl Destination<PrivateIdentity, Input, Single> {
 
         let plaintext = decrypt_with_identity(&self.identity, salt, ciphertext)?;
         Ok((plaintext, false))
+    }
+
+    pub fn decrypt_with_ratchets_into<'a>(
+        &mut self,
+        ciphertext: &[u8],
+        out: &'a mut [u8],
+    ) -> Result<(&'a [u8], bool), RnsError> {
+        let salt = self.identity.as_identity().address_hash.as_slice();
+        if self.ratchet_state.enabled && !self.ratchet_state.ratchets.is_empty() {
+            if let Some(plain_len) =
+                try_decrypt_with_ratchets_into(&self.ratchet_state, salt, ciphertext, out)
+            {
+                return Ok((&out[..plain_len], true));
+            }
+            if let Some(path) = self.ratchet_state.ratchets_path.clone() {
+                if self.ratchet_state.reload(&self.identity, &path).is_ok() {
+                    if let Some(plain_len) =
+                        try_decrypt_with_ratchets_into(&self.ratchet_state, salt, ciphertext, out)
+                    {
+                        return Ok((&out[..plain_len], true));
+                    }
+                }
+            }
+            if self.ratchet_state.enforce_ratchets {
+                return Err(RnsError::CryptoError);
+            }
+        }
+
+        let plain_len = decrypt_with_identity_into(&self.identity, salt, ciphertext, out)?.len();
+        Ok((&out[..plain_len], false))
     }
 
     pub fn announce<R: CryptoRngCore + Copy>(

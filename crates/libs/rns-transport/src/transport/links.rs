@@ -1,25 +1,99 @@
 use super::*;
 
+pub(super) const MAX_RESOURCE_PREPARE_WORKERS: usize = 4;
+
+static RESOURCE_PREPARE_PERMITS: std::sync::OnceLock<Arc<tokio::sync::Semaphore>> =
+    std::sync::OnceLock::new();
+
+pub(super) fn resource_prepare_permits() -> Arc<tokio::sync::Semaphore> {
+    RESOURCE_PREPARE_PERMITS
+        .get_or_init(|| Arc::new(tokio::sync::Semaphore::new(MAX_RESOURCE_PREPARE_WORKERS)))
+        .clone()
+}
+
+fn collect_ready_link_packets<F>(
+    links: Vec<Arc<Mutex<Link>>>,
+    destination: Option<&AddressHash>,
+    payload: &[u8],
+    packet_builder: F,
+) -> Vec<Packet>
+where
+    F: Fn(&Link, &[u8]) -> Result<Packet, RnsError>,
+{
+    let mut packets = Vec::new();
+    for link in links {
+        let Ok(link) = link.try_lock() else {
+            log::debug!("tp: skipping busy link during public link fanout");
+            continue;
+        };
+        if destination.is_some_and(|destination| link.destination().address_hash != *destination) {
+            continue;
+        }
+        if link.status() == LinkStatus::Active {
+            if let Ok(packet) = packet_builder(&link, payload) {
+                packets.push(packet);
+            }
+        }
+    }
+    packets
+}
+
+fn find_ready_out_link_candidate(
+    links: Vec<Arc<Mutex<Link>>>,
+    link_id: &AddressHash,
+) -> Option<Arc<Mutex<Link>>> {
+    for link in links {
+        let Ok(link_guard) = link.try_lock() else {
+            log::debug!("tp: skipping busy output link during link-id lookup");
+            continue;
+        };
+        if *link_guard.id() == *link_id {
+            drop(link_guard);
+            return Some(link);
+        }
+    }
+    None
+}
+
 impl Transport {
     pub(crate) async fn send_link_packet_on_bound_iface(
         &self,
         link: &Arc<Mutex<Link>>,
         packet: Packet,
     ) -> SendPacketOutcome {
-        let Some(iface) = link.lock().await.ingress_iface() else {
+        let Ok(link_guard) = link.try_lock() else {
+            log::debug!("tp: dropping link-bound packet dispatch for busy link");
             return SendPacketOutcome::DroppedNoRoute;
         };
-        let dispatch = self
-            .handler
-            .lock()
-            .await
-            .send(TxMessage { tx_type: TxMessageType::Direct(iface), packet })
-            .await;
+        let Some(iface) = link_guard.ingress_iface() else {
+            return SendPacketOutcome::DroppedNoRoute;
+        };
+        drop(link_guard);
+        let dispatch = TransportHandler::send_message_unlocked(
+            self.handler.clone(),
+            TxMessage { tx_type: TxMessageType::Direct(iface), packet },
+        )
+        .await;
         if dispatch.sent_ifaces > 0 {
             SendPacketOutcome::SentDirect
         } else {
             SendPacketOutcome::DroppedNoRoute
         }
+    }
+
+    async fn resource_lane(&self) -> resource_lane::ResourceManagerLane {
+        self.handler.lock().await.resource_lane.clone()
+    }
+
+    async fn commit_prepared_resource_send(
+        &self,
+        prepared: PreparedResourceSend,
+    ) -> Result<(Hash, Packet), RnsError> {
+        self.resource_lane().await.commit_prepared_send(prepared).await
+    }
+
+    async fn confirm_resource_dispatch(&self, resource_hash: Hash, sent: bool) {
+        self.resource_lane().await.confirm_outbound_dispatch(resource_hash, sent).await;
     }
 
     async fn find_any_link(&self, link_id: &AddressHash) -> Option<Arc<Mutex<Link>>> {
@@ -35,83 +109,80 @@ impl Transport {
             return Some(link);
         }
 
-        for link in out_links {
-            if *link.lock().await.id() == *link_id {
-                return Some(link);
-            }
-        }
+        find_ready_out_link_candidate(out_links, link_id)
+    }
 
-        None
+    async fn prepare_resource_send_on_worker(
+        link: Arc<Mutex<Link>>,
+        data: Vec<u8>,
+        metadata: Option<Vec<u8>>,
+        request_id: Option<Vec<u8>>,
+        is_response: bool,
+    ) -> Result<PreparedResourceSend, RnsError> {
+        let link_context = match link.try_lock() {
+            Ok(link) => link.packet_context(),
+            Err(_) => {
+                log::debug!("resource: skipping send preparation for busy link");
+                return Err(RnsError::ConnectionError);
+            }
+        };
+        let permit = resource_prepare_permits().try_acquire_owned().map_err(|_| {
+            log::debug!("resource: skipping send preparation while worker lane is saturated");
+            RnsError::ConnectionError
+        })?;
+        tokio::task::spawn_blocking(move || {
+            let _permit = permit;
+            if request_id.is_none() && !is_response {
+                ResourceManager::prepare_send_for(&link_context, data, metadata)
+            } else {
+                ResourceManager::prepare_send_for_with_options(
+                    &link_context,
+                    data,
+                    metadata,
+                    request_id,
+                    is_response,
+                )
+            }
+        })
+        .await
+        .map_err(|_| RnsError::ConnectionError)?
     }
 
     pub async fn send_to_all_out_links(&self, payload: &[u8]) {
-        let packets = {
-            let handler = self.handler.lock().await;
-            let mut packets = Vec::new();
-            for link in handler.out_links.values() {
-                let link = link.lock().await;
-                if link.status() == LinkStatus::Active {
-                    if let Ok(packet) = link.data_packet(payload) {
-                        packets.push(packet);
-                    }
-                }
-            }
-            packets
-        };
+        let links = { self.handler.lock().await.out_links.values().cloned().collect::<Vec<_>>() };
+        let packets = collect_ready_link_packets(links, None, payload, Link::data_packet);
         if packets.is_empty() {
             return;
         }
-        let mut handler = self.handler.lock().await;
         for packet in packets {
-            handler.send_packet(packet).await;
+            let _ = TransportHandler::send_packet_with_trace_unlocked(self.handler.clone(), packet)
+                .await;
         }
     }
 
     pub async fn send_channel_to_all_out_links(&self, payload: &[u8]) {
-        let packets = {
-            let handler = self.handler.lock().await;
-            let mut packets = Vec::new();
-            for link in handler.out_links.values() {
-                let link = link.lock().await;
-                if link.status() == LinkStatus::Active {
-                    if let Ok(packet) = link.channel_packet(payload) {
-                        packets.push(packet);
-                    }
-                }
-            }
-            packets
-        };
+        let links = { self.handler.lock().await.out_links.values().cloned().collect::<Vec<_>>() };
+        let packets = collect_ready_link_packets(links, None, payload, Link::channel_packet);
         if packets.is_empty() {
             return;
         }
-        let mut handler = self.handler.lock().await;
         for packet in packets {
-            handler.send_packet(packet).await;
+            let _ = TransportHandler::send_packet_with_trace_unlocked(self.handler.clone(), packet)
+                .await;
         }
     }
 
     pub async fn send_to_out_links(&self, destination: &AddressHash, payload: &[u8]) {
         let mut count = 0usize;
-        let packets = {
-            let handler = self.handler.lock().await;
-            let mut packets = Vec::new();
-            for link in handler.out_links.values() {
-                let link = link.lock().await;
-                if link.destination().address_hash == *destination
-                    && link.status() == LinkStatus::Active
-                {
-                    if let Ok(packet) = link.data_packet(payload) {
-                        packets.push(packet);
-                    }
-                }
-            }
-            packets
-        };
+        let links = { self.handler.lock().await.out_links.values().cloned().collect::<Vec<_>>() };
+        let packets =
+            collect_ready_link_packets(links, Some(destination), payload, Link::data_packet);
         if !packets.is_empty() {
-            let mut handler = self.handler.lock().await;
+            count = packets.len();
             for packet in packets {
-                handler.send_packet(packet).await;
-                count += 1;
+                let _ =
+                    TransportHandler::send_packet_with_trace_unlocked(self.handler.clone(), packet)
+                        .await;
             }
         }
 
@@ -122,26 +193,15 @@ impl Transport {
 
     pub async fn send_channel_to_out_links(&self, destination: &AddressHash, payload: &[u8]) {
         let mut count = 0usize;
-        let packets = {
-            let handler = self.handler.lock().await;
-            let mut packets = Vec::new();
-            for link in handler.out_links.values() {
-                let link = link.lock().await;
-                if link.destination().address_hash == *destination
-                    && link.status() == LinkStatus::Active
-                {
-                    if let Ok(packet) = link.channel_packet(payload) {
-                        packets.push(packet);
-                    }
-                }
-            }
-            packets
-        };
+        let links = { self.handler.lock().await.out_links.values().cloned().collect::<Vec<_>>() };
+        let packets =
+            collect_ready_link_packets(links, Some(destination), payload, Link::channel_packet);
         if !packets.is_empty() {
-            let mut handler = self.handler.lock().await;
+            count = packets.len();
             for packet in packets {
-                handler.send_packet(packet).await;
-                count += 1;
+                let _ =
+                    TransportHandler::send_packet_with_trace_unlocked(self.handler.clone(), packet)
+                        .await;
             }
         }
 
@@ -152,27 +212,15 @@ impl Transport {
 
     pub async fn send_to_in_links(&self, destination: &AddressHash, payload: &[u8]) {
         let mut count = 0usize;
-        let packets = {
-            let handler = self.handler.lock().await;
-            let mut packets = Vec::new();
-            for link in handler.in_links.values() {
-                let link = link.lock().await;
-
-                if link.destination().address_hash == *destination
-                    && link.status() == LinkStatus::Active
-                {
-                    if let Ok(packet) = link.data_packet(payload) {
-                        packets.push(packet);
-                    }
-                }
-            }
-            packets
-        };
+        let links = { self.handler.lock().await.in_links.values().cloned().collect::<Vec<_>>() };
+        let packets =
+            collect_ready_link_packets(links, Some(destination), payload, Link::data_packet);
         if !packets.is_empty() {
-            let mut handler = self.handler.lock().await;
+            count = packets.len();
             for packet in packets {
-                handler.send_packet(packet).await;
-                count += 1;
+                let _ =
+                    TransportHandler::send_packet_with_trace_unlocked(self.handler.clone(), packet)
+                        .await;
             }
         }
 
@@ -183,27 +231,15 @@ impl Transport {
 
     pub async fn send_channel_to_in_links(&self, destination: &AddressHash, payload: &[u8]) {
         let mut count = 0usize;
-        let packets = {
-            let handler = self.handler.lock().await;
-            let mut packets = Vec::new();
-            for link in handler.in_links.values() {
-                let link = link.lock().await;
-
-                if link.destination().address_hash == *destination
-                    && link.status() == LinkStatus::Active
-                {
-                    if let Ok(packet) = link.channel_packet(payload) {
-                        packets.push(packet);
-                    }
-                }
-            }
-            packets
-        };
+        let links = { self.handler.lock().await.in_links.values().cloned().collect::<Vec<_>>() };
+        let packets =
+            collect_ready_link_packets(links, Some(destination), payload, Link::channel_packet);
         if !packets.is_empty() {
-            let mut handler = self.handler.lock().await;
+            count = packets.len();
             for packet in packets {
-                handler.send_packet(packet).await;
-                count += 1;
+                let _ =
+                    TransportHandler::send_packet_with_trace_unlocked(self.handler.clone(), packet)
+                        .await;
             }
         }
 
@@ -219,17 +255,14 @@ impl Transport {
         metadata: Option<Vec<u8>>,
     ) -> Result<Hash, RnsError> {
         let link = self.find_any_link(link_id).await.ok_or(RnsError::InvalidArgument)?;
-        let mut handler = self.handler.lock().await;
-        let link_guard = link.lock().await;
-        let (resource_hash, packet) =
-            handler.resource_manager.start_send(&link_guard, data, metadata)?;
-        drop(link_guard);
-        drop(handler);
+        let prepared =
+            Self::prepare_resource_send_on_worker(Arc::clone(&link), data, metadata, None, false)
+                .await?;
+        let (resource_hash, packet) = self.commit_prepared_resource_send(prepared).await?;
         let outcome = self.send_link_packet_on_bound_iface(&link, packet).await;
-        let mut handler = self.handler.lock().await;
         let sent =
             matches!(outcome, SendPacketOutcome::SentDirect | SendPacketOutcome::SentBroadcast);
-        handler.resource_manager.confirm_outbound_dispatch(resource_hash, sent);
+        self.confirm_resource_dispatch(resource_hash, sent).await;
         if sent {
             Ok(resource_hash)
         } else {
@@ -245,22 +278,19 @@ impl Transport {
         metadata: Option<Vec<u8>>,
     ) -> Result<Hash, RnsError> {
         let link = self.find_any_link(link_id).await.ok_or(RnsError::InvalidArgument)?;
-        let mut handler = self.handler.lock().await;
-        let link_guard = link.lock().await;
-        let (resource_hash, packet) = handler.resource_manager.start_send_with_options(
-            &link_guard,
+        let prepared = Self::prepare_resource_send_on_worker(
+            Arc::clone(&link),
             data,
             metadata,
             Some(request_id),
             true,
-        )?;
-        drop(link_guard);
-        drop(handler);
+        )
+        .await?;
+        let (resource_hash, packet) = self.commit_prepared_resource_send(prepared).await?;
         let outcome = self.send_link_packet_on_bound_iface(&link, packet).await;
-        let mut handler = self.handler.lock().await;
         let sent =
             matches!(outcome, SendPacketOutcome::SentDirect | SendPacketOutcome::SentBroadcast);
-        handler.resource_manager.confirm_outbound_dispatch(resource_hash, sent);
+        self.confirm_resource_dispatch(resource_hash, sent).await;
         if sent {
             Ok(resource_hash)
         } else {
@@ -276,22 +306,19 @@ impl Transport {
         metadata: Option<Vec<u8>>,
     ) -> Result<Hash, RnsError> {
         let link = self.find_any_link(link_id).await.ok_or(RnsError::InvalidArgument)?;
-        let mut handler = self.handler.lock().await;
-        let link_guard = link.lock().await;
-        let (resource_hash, packet) = handler.resource_manager.start_send_with_options(
-            &link_guard,
+        let prepared = Self::prepare_resource_send_on_worker(
+            Arc::clone(&link),
             data,
             metadata,
             Some(request_id),
             false,
-        )?;
-        drop(link_guard);
-        drop(handler);
+        )
+        .await?;
+        let (resource_hash, packet) = self.commit_prepared_resource_send(prepared).await?;
         let outcome = self.send_link_packet_on_bound_iface(&link, packet).await;
-        let mut handler = self.handler.lock().await;
         let sent =
             matches!(outcome, SendPacketOutcome::SentDirect | SendPacketOutcome::SentBroadcast);
-        handler.resource_manager.confirm_outbound_dispatch(resource_hash, sent);
+        self.confirm_resource_dispatch(resource_hash, sent).await;
         if sent {
             Ok(resource_hash)
         } else {
@@ -315,12 +342,11 @@ impl Transport {
             (sequence, iface, packet)
         };
 
-        let dispatch = self
-            .handler
-            .lock()
-            .await
-            .send(TxMessage { tx_type: TxMessageType::Direct(iface), packet })
-            .await;
+        let dispatch = TransportHandler::send_message_unlocked(
+            self.handler.clone(),
+            TxMessage { tx_type: TxMessageType::Direct(iface), packet },
+        )
+        .await;
         if dispatch.sent_ifaces == 0 {
             link.lock().await.mark_channel_failed(sequence);
             return Err(crate::channel::ChannelError::LinkNotReady);
@@ -394,19 +420,17 @@ impl Transport {
         metadata: Option<Vec<u8>>,
     ) -> Result<Hash, RnsError> {
         let link = self.find_in_link(link_id).await.ok_or(RnsError::InvalidArgument)?;
-        let (resource_hash, packet) = {
-            let mut handler = self.handler.lock().await;
-            let link_guard = link.lock().await;
-            handler.resource_manager.start_send(&link_guard, data, metadata)?
-        };
-        let dispatch = self
-            .handler
-            .lock()
-            .await
-            .send(TxMessage { tx_type: TxMessageType::Direct(iface), packet })
-            .await;
+        let prepared =
+            Self::prepare_resource_send_on_worker(Arc::clone(&link), data, metadata, None, false)
+                .await?;
+        let (resource_hash, packet) = self.commit_prepared_resource_send(prepared).await?;
+        let dispatch = TransportHandler::send_message_unlocked(
+            self.handler.clone(),
+            TxMessage { tx_type: TxMessageType::Direct(iface), packet },
+        )
+        .await;
         let sent = dispatch.sent_ifaces > 0;
-        self.handler.lock().await.resource_manager.confirm_outbound_dispatch(resource_hash, sent);
+        self.confirm_resource_dispatch(resource_hash, sent).await;
         if sent {
             Ok(resource_hash)
         } else {
@@ -419,12 +443,7 @@ impl Transport {
             let handler = self.handler.lock().await;
             handler.out_links.values().cloned().collect::<Vec<_>>()
         };
-        for link in links {
-            if *link.lock().await.id() == *link_id {
-                return Some(link);
-            }
-        }
-        None
+        find_ready_out_link_candidate(links, link_id)
     }
 
     pub async fn find_in_link(&self, link_id: &AddressHash) -> Option<Arc<Mutex<Link>>> {
@@ -435,10 +454,19 @@ impl Transport {
         let link = self.handler.lock().await.out_links.get(&destination.address_hash).cloned();
 
         if let Some(link) = link {
-            if link.lock().await.status() != LinkStatus::Closed {
+            let should_reuse = match link.try_lock() {
+                Ok(link_guard) if link_guard.status() == LinkStatus::Closed => {
+                    log::warn!("tp({}): link was closed", self.name);
+                    false
+                }
+                Ok(_) => true,
+                Err(_) => {
+                    log::debug!("tp({}): reusing busy output link for {}", self.name, destination);
+                    true
+                }
+            };
+            if should_reuse {
                 return link;
-            } else {
-                log::warn!("tp({}): link was closed", self.name);
             }
         }
 
@@ -468,7 +496,15 @@ impl Transport {
         on_iface: Option<AddressHash>,
         tag: Option<TagBytes>,
     ) {
-        self.handler.lock().await.request_path(destination, on_iface, tag).await
+        let packet = {
+            let mut handler = self.handler.lock().await;
+            handler.path_requests.generate(destination, tag)
+        };
+        let _ = TransportHandler::send_message_unlocked(
+            self.handler.clone(),
+            TxMessage { tx_type: TxMessageType::Broadcast(on_iface), packet },
+        )
+        .await;
     }
 
     pub fn out_link_events(&self) -> broadcast::Receiver<LinkEventData> {
@@ -540,13 +576,7 @@ impl TransportChannel {
             return Some(link);
         }
 
-        for link in out_links {
-            if *link.lock().await.id() == self.link_id {
-                return Some(link);
-            }
-        }
-
-        None
+        find_ready_out_link_candidate(out_links, &self.link_id)
     }
 
     pub fn link_id(&self) -> AddressHash {
@@ -567,12 +597,11 @@ impl TransportChannel {
             (sequence, iface, packet)
         };
 
-        let dispatch = self
-            .handler
-            .lock()
-            .await
-            .send(TxMessage { tx_type: TxMessageType::Direct(iface), packet })
-            .await;
+        let dispatch = TransportHandler::send_message_unlocked(
+            self.handler.clone(),
+            TxMessage { tx_type: TxMessageType::Direct(iface), packet },
+        )
+        .await;
         if dispatch.sent_ifaces == 0 {
             link.lock().await.mark_channel_failed(sequence);
             return Err(crate::channel::ChannelError::LinkNotReady);
@@ -662,5 +691,83 @@ impl TransportChannel {
 impl Drop for Transport {
     fn drop(&mut self) {
         self.cancel.cancel();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn out_link_lookup_skips_busy_nonmatching_candidates() {
+        let identity = PrivateIdentity::new_from_rand(OsRng);
+        let destination = DestinationDesc {
+            identity: *identity.as_identity(),
+            address_hash: identity.as_identity().address_hash,
+            name: DestinationName::new("lxmf", "delivery"),
+        };
+        let (events, _) = tokio::sync::broadcast::channel(8);
+
+        let busy = Arc::new(Mutex::new(Link::new(destination, events.clone())));
+        let _busy_guard = busy.lock().await;
+
+        let mut ready = Link::new(destination, events);
+        let _request = ready.request();
+        let ready_id = *ready.id();
+        let ready = Arc::new(Mutex::new(ready));
+
+        let found = find_ready_out_link_candidate(vec![busy.clone(), ready.clone()], &ready_id)
+            .expect("ready output link should be found");
+
+        assert!(Arc::ptr_eq(&found, &ready));
+    }
+
+    #[tokio::test]
+    async fn link_bound_dispatch_skips_busy_link_instead_of_waiting_for_iface() {
+        let identity = PrivateIdentity::new_from_rand(OsRng);
+        let transport = Transport::new(TransportConfig::new("test", &identity, true));
+        let destination = DestinationDesc {
+            identity: *identity.as_identity(),
+            address_hash: identity.as_identity().address_hash,
+            name: DestinationName::new("lxmf", "delivery"),
+        };
+        let (events, _) = tokio::sync::broadcast::channel(8);
+        let link = Arc::new(Mutex::new(Link::new(destination, events)));
+        let _busy_guard = link.lock().await;
+
+        let outcome = tokio::time::timeout(
+            Duration::from_millis(200),
+            transport.send_link_packet_on_bound_iface(&link, Packet::default()),
+        )
+        .await
+        .expect("link-bound dispatch should not wait for a busy link");
+
+        assert_eq!(outcome, SendPacketOutcome::DroppedNoRoute);
+    }
+
+    #[tokio::test]
+    async fn link_reuse_skips_busy_existing_out_link_status_check() {
+        let identity = PrivateIdentity::new_from_rand(OsRng);
+        let transport = Transport::new(TransportConfig::new("test", &identity, true));
+        let destination = DestinationDesc {
+            identity: *identity.as_identity(),
+            address_hash: identity.as_identity().address_hash,
+            name: DestinationName::new("lxmf", "delivery"),
+        };
+        let (events, _) = tokio::sync::broadcast::channel(8);
+        let link = Arc::new(Mutex::new(Link::new(destination, events)));
+        transport
+            .get_handler()
+            .lock()
+            .await
+            .out_links
+            .insert(destination.address_hash, link.clone());
+
+        let _busy_guard = link.lock().await;
+        let reused = tokio::time::timeout(Duration::from_millis(200), transport.link(destination))
+            .await
+            .expect("link reuse should not wait for a busy existing out link");
+
+        assert!(Arc::ptr_eq(&reused, &link));
     }
 }

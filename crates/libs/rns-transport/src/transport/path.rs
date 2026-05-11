@@ -106,11 +106,11 @@ pub(super) fn route_outbound_packet(
     }
 }
 
-pub(super) async fn send_to_next_hop<'a>(
+pub(super) fn message_to_next_hop<'a>(
     packet: &Packet,
     handler: &MutexGuard<'a, TransportHandler>,
     lookup: Option<AddressHash>,
-) -> bool {
+) -> Option<TxMessage> {
     let decision = route_inbound_packet(&handler.path_table, packet, lookup);
     let packet = decision.packet;
     let maybe_iface = decision.next_iface;
@@ -126,7 +126,7 @@ pub(super) async fn send_to_next_hop<'a>(
                 iface
             );
         }
-        handler.send(TxMessage { tx_type: TxMessageType::Direct(iface), packet }).await;
+        Some(TxMessage { tx_type: TxMessageType::Direct(iface), packet })
     } else if diag::enabled() {
         log::info!(
             "[tp-diag] forward_next_hop_miss node={} dst={} lookup={}",
@@ -134,18 +134,36 @@ pub(super) async fn send_to_next_hop<'a>(
             packet.destination,
             lookup.map(|value| value.to_string()).unwrap_or_else(|| "-".to_string())
         );
+        None
+    } else {
+        None
     }
-
-    maybe_iface.is_some()
 }
 
-pub(super) async fn handle_path_request<'a>(
+enum PathRequestAction {
+    LocalResponse {
+        destination: Arc<Mutex<SingleInputDestination>>,
+        app_data: Option<Vec<u8>>,
+        tag_bytes: Vec<u8>,
+        config_name: String,
+    },
+    Message(TxMessage),
+    None,
+}
+
+pub(super) async fn handle_path_request_unlocked(
     packet: &Packet,
-    handler: &mut MutexGuard<'a, TransportHandler>,
+    handler_arc: Arc<Mutex<TransportHandler>>,
     iface: AddressHash,
-) {
-    if let Some(request) = handler.path_requests.decode(packet.data.as_slice()) {
-        if let Some(dest) = handler.single_in_destinations.get(&request.destination).cloned() {
+) -> Option<TxMessage> {
+    let action = {
+        let mut handler = handler_arc.lock().await;
+        let Some(request) = handler.path_requests.decode(packet.data.as_slice()) else {
+            return None;
+        };
+
+        if let Some(destination) = handler.single_in_destinations.get(&request.destination).cloned()
+        {
             let app_data =
                 handler.single_in_destination_app_data.get(&request.destination).cloned();
             if !handler.path_requests.allow_local_response(
@@ -160,29 +178,16 @@ pub(super) async fn handle_path_request<'a>(
                     request.destination,
                     iface
                 );
-                return;
+                return None;
             }
 
-            let response = dest
-                .lock()
-                .await
-                .path_response_with_tag(
-                    OsRng,
-                    app_data.as_deref(),
-                    Some(request.tag_bytes.as_slice()),
-                )
-                .expect("valid path response");
-
-            handler
-                .send(TxMessage { tx_type: TxMessageType::Direct(iface), packet: response })
-                .await;
-
-            log::trace!("tp({}): send direct path response over {}", handler.config.name, iface);
-
-            return;
-        }
-
-        if handler.config.retransmit {
+            PathRequestAction::LocalResponse {
+                destination,
+                app_data,
+                tag_bytes: request.tag_bytes,
+                config_name: handler.config.name.clone(),
+            }
+        } else if handler.config.retransmit {
             if let Some(entry) = handler.path_table.get(&request.destination) {
                 if let Some(requestor_id) = request.requesting_transport {
                     if requestor_id == entry.received_from {
@@ -191,7 +196,7 @@ pub(super) async fn handle_path_request<'a>(
                             handler.config.name,
                             request.destination
                         );
-                        return;
+                        return None;
                     }
                 }
 
@@ -207,88 +212,153 @@ pub(super) async fn handle_path_request<'a>(
                     iface
                 );
 
-                return;
-            }
-        }
-
-        if handler.config.retransmit {
-            if let Some(packet) = handler.path_requests.generate_recursive(
+                PathRequestAction::None
+            } else if let Some(packet) = handler.path_requests.generate_recursive(
                 &request.destination,
                 Some(iface),
-                Some(request.tag_bytes.clone()),
+                Some(request.tag_bytes),
             ) {
-                handler
-                    .send(TxMessage { tx_type: TxMessageType::Broadcast(Some(iface)), packet })
-                    .await;
+                PathRequestAction::Message(TxMessage {
+                    tx_type: TxMessageType::Broadcast(Some(iface)),
+                    packet,
+                })
+            } else {
+                PathRequestAction::None
             }
+        } else {
+            PathRequestAction::None
         }
+    };
+
+    match action {
+        PathRequestAction::LocalResponse { destination, app_data, tag_bytes, config_name } => {
+            let response = match destination.try_lock() {
+                Ok(mut destination) => destination
+                    .path_response_with_tag(OsRng, app_data.as_deref(), Some(tag_bytes.as_slice()))
+                    .expect("valid path response"),
+                Err(_) => {
+                    log::debug!(
+                        "tp({}): skipping path response while destination is busy",
+                        config_name
+                    );
+                    return None;
+                }
+            };
+
+            log::trace!("tp({}): send direct path response over {}", config_name, iface);
+
+            Some(TxMessage { tx_type: TxMessageType::Direct(iface), packet: response })
+        }
+        PathRequestAction::Message(message) => Some(message),
+        PathRequestAction::None => None,
     }
 }
 
-pub(super) async fn handle_fixed_destinations<'a>(
+pub(super) async fn handle_fixed_destinations_unlocked(
     packet: &Packet,
-    handler: &mut MutexGuard<'a, TransportHandler>,
+    handler_arc: Arc<Mutex<TransportHandler>>,
     iface: AddressHash,
-) -> bool {
-    if packet.destination == handler.fixed_dest_path_requests {
-        handle_path_request(packet, handler, iface).await;
-        true
-    } else if packet.destination == handler.fixed_dest_tunnel_synthesize {
-        super::tunnels::handle_tunnel_synthesize_packet(packet, handler, iface).await;
-        true
-    } else {
-        false
+) -> (bool, Option<TxMessage>) {
+    enum FixedDestination {
+        PathRequest,
+        TunnelSynthesize,
+        None,
+    }
+
+    let destination = {
+        let handler = handler_arc.lock().await;
+        if packet.destination == handler.fixed_dest_path_requests {
+            FixedDestination::PathRequest
+        } else if packet.destination == handler.fixed_dest_tunnel_synthesize {
+            FixedDestination::TunnelSynthesize
+        } else {
+            FixedDestination::None
+        }
+    };
+
+    match destination {
+        FixedDestination::PathRequest => {
+            let message = handle_path_request_unlocked(packet, handler_arc, iface).await;
+            (true, message)
+        }
+        FixedDestination::TunnelSynthesize => {
+            let mut handler = handler_arc.lock().await;
+            super::tunnels::handle_tunnel_synthesize_packet(packet, &mut handler, iface);
+            (true, None)
+        }
+        FixedDestination::None => (false, None),
     }
 }
 
-pub(super) async fn handle_link_request_as_destination<'a>(
+async fn handle_link_request_as_destination(
     destination: Arc<Mutex<SingleInputDestination>>,
     packet: &Packet,
     iface: AddressHash,
-    mut handler: MutexGuard<'a, TransportHandler>,
+    handler_arc: Arc<Mutex<TransportHandler>>,
+    config_name: String,
 ) {
-    let mut destination = destination.lock().await;
-    match destination.handle_packet(packet) {
-        DestinationHandleStatus::LinkProof => {
-            let link_id = LinkId::from(packet);
-            if !handler.in_links.contains_key(&link_id) {
-                log::trace!("tp({}): send proof to {}", handler.config.name, packet.destination);
-
-                let link = Link::new_from_request(
-                    packet,
-                    destination.sign_key().clone(),
-                    destination.desc,
-                    handler.link_in_event_tx.clone(),
-                );
-
-                if let Ok(mut link) = link {
-                    link.set_ingress_iface(iface);
-                    log::trace!(
-                        "[tp] link_proof_tx dst={} link_id={}",
-                        packet.destination,
-                        link.id()
-                    );
-                    // Link-request proofs must go back over the interface that delivered
-                    // the request so multi-hop requestors can activate the link.
-                    handler
-                        .send(TxMessage {
-                            tx_type: TxMessageType::Direct(iface),
-                            packet: link.prove(),
-                        })
-                        .await;
-
-                    log::debug!(
-                        "tp({}): save input link {} for destination {}",
-                        handler.config.name,
-                        link.id(),
-                        link.destination().address_hash
-                    );
-
-                    handler.in_links.insert(*link.id(), Arc::new(Mutex::new(link)));
-                }
+    let proof_material = match destination.try_lock() {
+        Ok(mut destination) => match destination.handle_packet(packet) {
+            DestinationHandleStatus::LinkProof => {
+                Some((destination.sign_key().clone(), destination.desc))
             }
+            DestinationHandleStatus::None => None,
+        },
+        Err(_) => {
+            log::debug!(
+                "tp({}): skipping link request while local destination is busy",
+                config_name
+            );
+            None
         }
-        DestinationHandleStatus::None => {}
+    };
+
+    let Some((sign_key, destination_desc)) = proof_material else {
+        return;
+    };
+
+    let link_id = LinkId::from(packet);
+    let link_in_event_tx = {
+        let handler = handler_arc.lock().await;
+        if handler.in_links.contains_key(&link_id) {
+            return;
+        }
+        handler.link_in_event_tx.clone()
+    };
+
+    log::trace!("tp({}): send proof to {}", config_name, packet.destination);
+
+    let Ok(mut link) = Link::new_from_request(packet, sign_key, destination_desc, link_in_event_tx)
+    else {
+        return;
+    };
+
+    link.set_ingress_iface(iface);
+    log::trace!("[tp] link_proof_tx dst={} link_id={}", packet.destination, link.id());
+    // Link-request proofs must go back over the interface that delivered
+    // the request so multi-hop requestors can activate the link.
+    let proof_message = TxMessage { tx_type: TxMessageType::Direct(iface), packet: link.prove() };
+    let stored_link_id = *link.id();
+    let destination_hash = link.destination().address_hash;
+
+    let should_send = {
+        let mut handler = handler_arc.lock().await;
+        if handler.in_links.contains_key(&stored_link_id) {
+            false
+        } else {
+            log::debug!(
+                "tp({}): save input link {} for destination {}",
+                config_name,
+                stored_link_id,
+                destination_hash
+            );
+            handler.in_links.insert(stored_link_id, Arc::new(Mutex::new(link)));
+            true
+        }
+    };
+
+    if should_send {
+        let _ = TransportHandler::send_message_unlocked(handler_arc, proof_message).await;
     }
 }
 
@@ -297,6 +367,7 @@ pub(super) async fn handle_link_request_as_intermediate<'a>(
     next_hop: AddressHash,
     next_hop_iface: AddressHash,
     packet: &Packet,
+    handler_arc: Arc<Mutex<TransportHandler>>,
     mut handler: MutexGuard<'a, TransportHandler>,
 ) {
     if diag::enabled() {
@@ -312,13 +383,17 @@ pub(super) async fn handle_link_request_as_intermediate<'a>(
     }
     handler.link_table.add(packet, packet.destination, received_from, next_hop, next_hop_iface);
 
-    send_to_next_hop(packet, &handler, None).await;
+    let message = message_to_next_hop(packet, &handler, None);
+    drop(handler);
+    if let Some(message) = message {
+        let _ = TransportHandler::send_message_unlocked(handler_arc, message).await;
+    }
 }
 
-pub(super) async fn handle_link_request<'a>(
+pub(super) async fn handle_link_request_unlocked(
     packet: &Packet,
     iface: AddressHash,
-    handler: MutexGuard<'a, TransportHandler>,
+    handler_arc: Arc<Mutex<TransportHandler>>,
 ) {
     log::trace!(
         "[tp] link_request dst={} ctx={:02x} hops={}",
@@ -326,25 +401,67 @@ pub(super) async fn handle_link_request<'a>(
         packet.context as u8,
         packet.header.hops
     );
-    if let Some(destination) = handler.single_in_destinations.get(&packet.destination).cloned() {
-        log::trace!("tp({}): handle link request for {}", handler.config.name, packet.destination);
 
-        handle_link_request_as_destination(destination, packet, iface, handler).await;
-    } else if let Some(entry) = handler.path_table.next_hop_full(&packet.destination) {
-        log::trace!(
-            "tp({}): handle link request for remote destination {}",
-            handler.config.name,
-            packet.destination
-        );
+    enum LinkRequestAction {
+        Local { destination: Arc<Mutex<SingleInputDestination>>, config_name: String },
+        Intermediate { next_hop: AddressHash, next_iface: AddressHash },
+        Unknown { config_name: String },
+    }
 
-        let (next_hop, next_iface) = entry;
-        handle_link_request_as_intermediate(iface, next_hop, next_iface, packet, handler).await;
-    } else {
-        log::trace!(
-            "tp({}): dropping link request to unknown destination {}",
-            handler.config.name,
-            packet.destination
-        );
+    let action = {
+        let handler = handler_arc.lock().await;
+        if let Some(destination) = handler.single_in_destinations.get(&packet.destination).cloned()
+        {
+            log::trace!(
+                "tp({}): handle link request for {}",
+                handler.config.name,
+                packet.destination
+            );
+            LinkRequestAction::Local { destination, config_name: handler.config.name.clone() }
+        } else if let Some((next_hop, next_iface)) =
+            handler.path_table.next_hop_full(&packet.destination)
+        {
+            log::trace!(
+                "tp({}): handle link request for remote destination {}",
+                handler.config.name,
+                packet.destination
+            );
+            LinkRequestAction::Intermediate { next_hop, next_iface }
+        } else {
+            LinkRequestAction::Unknown { config_name: handler.config.name.clone() }
+        }
+    };
+
+    match action {
+        LinkRequestAction::Local { destination, config_name } => {
+            handle_link_request_as_destination(
+                destination,
+                packet,
+                iface,
+                handler_arc,
+                config_name,
+            )
+            .await;
+        }
+        LinkRequestAction::Intermediate { next_hop, next_iface } => {
+            let handler = handler_arc.lock().await;
+            handle_link_request_as_intermediate(
+                iface,
+                next_hop,
+                next_iface,
+                packet,
+                handler_arc.clone(),
+                handler,
+            )
+            .await;
+        }
+        LinkRequestAction::Unknown { config_name } => {
+            log::trace!(
+                "tp({}): dropping link request to unknown destination {}",
+                config_name,
+                packet.destination
+            );
+        }
     }
 }
 

@@ -278,11 +278,11 @@ impl UdpInterface {
                                                     iface_address, attributed_iface, in_addr, packet
                                                 );
                                             }
-                                            let _ = rx_channel.send(RxMessage {
+                                            let _ = rx_channel.try_send(RxMessage {
                                                 address: attributed_iface,
                                                 packet,
                                                 source: IfaceSource::Udp(in_addr),
-                                            }).await;
+                                            });
                                         } else {
                                             log::warn!("udp_interface: couldn't decode packet");
                                         }

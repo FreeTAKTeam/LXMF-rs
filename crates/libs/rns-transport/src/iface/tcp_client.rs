@@ -158,13 +158,11 @@ impl TcpClient {
                                                                 packet.header.hops
                                                             );
                                                         }
-                                                        let _ = rx_channel
-                                                            .send(RxMessage {
-                                                                address: iface_address,
-                                                                packet,
-                                                                source: IfaceSource::None,
-                                                            })
-                                                            .await;
+                                                        let _ = rx_channel.try_send(RxMessage {
+                                                            address: iface_address,
+                                                            packet,
+                                                            source: IfaceSource::None,
+                                                        });
                                                     } else {
                                                         log::warn!("tcp_client: couldn't decode packet");
                                                     }

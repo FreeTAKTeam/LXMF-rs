@@ -42,6 +42,12 @@ pub struct TxDispatchTrace {
     pub failed_ifaces: usize,
 }
 
+pub(crate) struct InterfaceTxWork {
+    address: AddressHash,
+    tx_send: InterfaceTxSender,
+    message: TxMessage,
+}
+
 #[derive(Debug, Default, PartialEq, Eq, Copy, Clone)]
 pub enum InterfaceMode {
     #[default]
@@ -331,6 +337,10 @@ impl InterfaceManager {
         self.ifaces.iter().find(|i| i.address == *address).map(|i| i.full_hash)
     }
 
+    pub fn path_metadata(&self) -> Vec<(AddressHash, InterfaceMode, Hash)> {
+        self.ifaces.iter().map(|i| (i.address, i.mode, i.full_hash)).collect()
+    }
+
     pub fn address_for_full_hash(&self, full_hash: &Hash) -> Option<AddressHash> {
         self.ifaces.iter().find(|i| i.full_hash == *full_hash).map(|i| i.address)
     }
@@ -398,6 +408,49 @@ impl InterfaceManager {
         Some(address)
     }
 
+    /// Register a child/process-owned interface address that shares the
+    /// parent-side host bridge tx channel. This lets a process-backed listener
+    /// surface dynamically accepted child interfaces without the parent
+    /// inventing a different address for routing state.
+    pub fn register_remote_iface_alias(
+        &mut self,
+        host: AddressHash,
+        remote: AddressHash,
+        role: IfaceRole,
+        mode: InterfaceMode,
+    ) -> Option<AddressHash> {
+        if self.ifaces.iter().any(|iface| iface.address == remote) {
+            return Some(remote);
+        }
+        let host_iface = self.ifaces.iter().find(|i| i.address == host)?;
+        let host_tx = host_iface.tx_send.clone();
+        let full_hash = Hash::new_from_slice(remote.as_slice());
+        let stop = CancellationToken::new();
+
+        log::debug!(
+            "iface: register remote iface alias {} on host {} role={:?} mode={:?}",
+            remote,
+            host,
+            role,
+            mode
+        );
+
+        self.ifaces.push(LocalInterface {
+            address: remote,
+            full_hash,
+            tx_send: host_tx,
+            stop,
+            role,
+            mode,
+            announce_queue: VecDeque::new(),
+            announce_allowed_at: Instant::now(),
+            announce_bitrate_bps: host_iface.announce_bitrate_bps,
+            announce_cap_percent: host_iface.announce_cap_percent,
+        });
+
+        Some(remote)
+    }
+
     pub fn receiver(&self) -> Arc<tokio::sync::Mutex<InterfaceRxReceiver>> {
         self.rx_recv.clone()
     }
@@ -430,46 +483,29 @@ impl InterfaceManager {
         self.ifaces.iter().any(|i| i.role == role)
     }
 
-    async fn send_to_iface(iface: &LocalInterface, message: TxMessage) -> bool {
-        match iface.tx_send.try_send(message) {
+    fn tx_work_for_iface(iface: &LocalInterface, message: TxMessage) -> InterfaceTxWork {
+        InterfaceTxWork { address: iface.address, tx_send: iface.tx_send.clone(), message }
+    }
+
+    async fn send_to_work(work: InterfaceTxWork) -> bool {
+        match work.tx_send.try_send(work.message) {
             Ok(()) => true,
             Err(mpsc::error::TrySendError::Full(_)) => {
-                match tokio::time::timeout(
-                    Duration::from_millis(IFACE_TX_ENQUEUE_TIMEOUT_MS),
-                    iface.tx_send.send(message),
-                )
-                .await
-                {
-                    Ok(Ok(())) => {
-                        if tx_diag_enabled() {
-                            log::warn!(
-                                "iface: recovered from full tx queue on {} for {:?}",
-                                iface.address,
-                                message.tx_type
-                            );
-                        }
-                        true
-                    }
-                    Ok(Err(_)) => {
-                        log::warn!(
-                            "iface: tx queue closed on {} for {:?}",
-                            iface.address,
-                            message.tx_type
-                        );
-                        false
-                    }
-                    Err(_) => {
-                        log::warn!(
-                            "iface: tx queue full timeout on {} for {:?}",
-                            iface.address,
-                            message.tx_type
-                        );
-                        false
-                    }
+                if tx_diag_enabled() {
+                    log::warn!(
+                        "iface: tx queue full on {} for {:?}",
+                        work.address,
+                        work.message.tx_type
+                    );
                 }
+                false
             }
             Err(mpsc::error::TrySendError::Closed(_)) => {
-                log::warn!("iface: tx queue closed on {} for {:?}", iface.address, message.tx_type);
+                log::warn!(
+                    "iface: tx queue closed on {} for {:?}",
+                    work.address,
+                    work.message.tx_type
+                );
                 false
             }
         }
@@ -520,8 +556,11 @@ impl InterfaceManager {
         iface.announce_queue.remove(index).map(|entry| entry.message)
     }
 
-    pub async fn release_queued_announces(&mut self) -> TxDispatchTrace {
+    pub(crate) fn plan_release_queued_announces(
+        &mut self,
+    ) -> (TxDispatchTrace, Vec<InterfaceTxWork>) {
         let mut trace = TxDispatchTrace::default();
+        let mut work = Vec::new();
         let now = Instant::now();
 
         for iface in &mut self.ifaces {
@@ -543,13 +582,23 @@ impl InterfaceManager {
                     iface.announce_bitrate_bps,
                     iface.announce_cap_percent,
                 );
-            if Self::send_to_iface(iface, message).await {
+            work.push(Self::tx_work_for_iface(iface, message));
+        }
+
+        (trace, work)
+    }
+
+    pub(crate) async fn dispatch_tx_work(
+        mut trace: TxDispatchTrace,
+        work: Vec<InterfaceTxWork>,
+    ) -> TxDispatchTrace {
+        for item in work {
+            if Self::send_to_work(item).await {
                 trace.sent_ifaces += 1;
             } else {
                 trace.failed_ifaces += 1;
             }
         }
-
         trace
     }
 
@@ -557,12 +606,29 @@ impl InterfaceManager {
         self.send_with_announce_policy(message, None).await
     }
 
-    pub async fn send_with_announce_policy(
+    pub async fn send_from_shared(
+        manager: &Arc<tokio::sync::Mutex<Self>>,
+        message: TxMessage,
+    ) -> TxDispatchTrace {
+        let (trace, work) = {
+            let mut manager = manager.lock().await;
+            manager.plan_send_with_announce_policy(message, None)
+        };
+        Self::dispatch_tx_work(trace, work).await
+    }
+
+    pub async fn release_queued_announces(&mut self) -> TxDispatchTrace {
+        let (trace, work) = self.plan_release_queued_announces();
+        Self::dispatch_tx_work(trace, work).await
+    }
+
+    pub(crate) fn plan_send_with_announce_policy(
         &mut self,
         message: TxMessage,
         announce_policy: Option<AnnounceBroadcastPolicy>,
-    ) -> TxDispatchTrace {
+    ) -> (TxDispatchTrace, Vec<InterfaceTxWork>) {
         let mut trace = TxDispatchTrace::default();
+        let mut work = Vec::new();
         for iface in &mut self.ifaces {
             let should_send = match message.tx_type {
                 TxMessageType::Broadcast(address) => {
@@ -616,15 +682,20 @@ impl InterfaceManager {
                         );
                 }
 
-                if Self::send_to_iface(iface, message).await {
-                    trace.sent_ifaces += 1;
-                } else {
-                    trace.failed_ifaces += 1;
-                }
+                work.push(Self::tx_work_for_iface(iface, message));
             }
         }
 
-        trace
+        (trace, work)
+    }
+
+    pub async fn send_with_announce_policy(
+        &mut self,
+        message: TxMessage,
+        announce_policy: Option<AnnounceBroadcastPolicy>,
+    ) -> TxDispatchTrace {
+        let (trace, work) = self.plan_send_with_announce_policy(message, announce_policy);
+        Self::dispatch_tx_work(trace, work).await
     }
 }
 

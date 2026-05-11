@@ -54,19 +54,26 @@ use crate::packet::Packet;
 use crate::packet::PacketContext;
 use crate::packet::PacketDataBuffer;
 use crate::packet::PacketType;
-use crate::ratchets::{encrypt_for_public_key, now_secs, RatchetStore};
-use crate::resource::{build_resource_request_packet, ResourceEvent, ResourceManager};
+use crate::ratchets::{encrypt_for_public_key_bytes, now_secs, RatchetStore};
+use crate::resource::{
+    build_resource_proof_packet, build_resource_request_packet, complete_resource_job,
+    PreparedResourceSend, ResourceCompletion, ResourceCompletionJob, ResourceEvent,
+    ResourceManager,
+};
 
 mod announce_limits;
 mod announce_table;
 mod diag;
+pub mod interface_boundary;
 mod link_table;
 mod packet_cache;
 mod path_requests;
 mod path_table;
+mod resource_lane;
 mod reticulum_announce_cache;
 mod reticulum_path_store;
 mod tunnels;
+pub mod worker_boundary;
 
 pub mod test_bridge {
     use std::cell::RefCell;
@@ -171,6 +178,10 @@ pub struct TransportConfig {
     resource_retry_interval_secs: u64,
     resource_retry_limit: u8,
     ratchet_store_path: Option<PathBuf>,
+    announce_worker_backend: Option<Arc<dyn worker_boundary::WorkerBackend>>,
+    outbound_worker_backend: Option<Arc<dyn worker_boundary::WorkerBackend>>,
+    single_destination_worker_backend: Option<Arc<dyn worker_boundary::WorkerBackend>>,
+    resource_worker_backend: Option<Arc<dyn worker_boundary::WorkerBackend>>,
 }
 
 pub struct DeliveryReceipt {
@@ -214,7 +225,7 @@ pub(crate) struct TransportHandler {
     out_links: HashMap<AddressHash, Arc<Mutex<Link>>>,
     in_links: HashMap<AddressHash, Arc<Mutex<Link>>>,
 
-    packet_cache: Mutex<PacketCache>,
+    packet_cache: Arc<Mutex<PacketCache>>,
 
     path_requests: PathRequests,
 
@@ -222,9 +233,12 @@ pub(crate) struct TransportHandler {
     received_data_tx: broadcast::Sender<ReceivedData>,
     ratchet_store: Option<RatchetStore>,
 
-    resource_manager: ResourceManager,
-    resource_response_packets: Vec<Packet>,
+    resource_lane: resource_lane::ResourceManagerLane,
     resource_events_tx: broadcast::Sender<ResourceEvent>,
+    announce_worker_backend: Option<Arc<dyn worker_boundary::WorkerBackend>>,
+    outbound_worker_backend: Option<Arc<dyn worker_boundary::WorkerBackend>>,
+    single_destination_worker_backend: Option<Arc<dyn worker_boundary::WorkerBackend>>,
+    resource_worker_backend: Option<Arc<dyn worker_boundary::WorkerBackend>>,
 
     fixed_dest_path_requests: AddressHash,
     fixed_dest_tunnel_synthesize: AddressHash,

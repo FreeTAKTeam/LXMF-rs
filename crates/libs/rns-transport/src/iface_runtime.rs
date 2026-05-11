@@ -3,7 +3,6 @@ use std::sync::OnceLock;
 use crate::packet::PacketType;
 
 const DEFAULT_IFACE_TX_QUEUE_CAPACITY: usize = 128;
-const IFACE_TX_ENQUEUE_TIMEOUT_MS: u64 = 200;
 const DEFAULT_IFACE_BITRATE_BPS: u64 = 62_500;
 const DEFAULT_ANNOUNCE_CAP_PERCENT: u64 = 2;
 const MAX_QUEUED_ANNOUNCES_PER_IFACE: usize = 16_384;

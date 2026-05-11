@@ -17,6 +17,10 @@ impl TransportConfig {
             resource_retry_interval_secs: 2,
             resource_retry_limit: 5,
             ratchet_store_path: None,
+            announce_worker_backend: None,
+            outbound_worker_backend: None,
+            single_destination_worker_backend: None,
+            resource_worker_backend: None,
         }
     }
 
@@ -67,6 +71,34 @@ impl TransportConfig {
     pub fn set_ratchet_store_path(&mut self, path: PathBuf) {
         self.ratchet_store_path = Some(path);
     }
+
+    pub fn set_announce_worker_backend(
+        &mut self,
+        backend: Arc<dyn worker_boundary::WorkerBackend>,
+    ) {
+        self.announce_worker_backend = Some(backend);
+    }
+
+    pub fn set_outbound_worker_backend(
+        &mut self,
+        backend: Arc<dyn worker_boundary::WorkerBackend>,
+    ) {
+        self.outbound_worker_backend = Some(backend);
+    }
+
+    pub fn set_single_destination_worker_backend(
+        &mut self,
+        backend: Arc<dyn worker_boundary::WorkerBackend>,
+    ) {
+        self.single_destination_worker_backend = Some(backend);
+    }
+
+    pub fn set_resource_worker_backend(
+        &mut self,
+        backend: Arc<dyn worker_boundary::WorkerBackend>,
+    ) {
+        self.resource_worker_backend = Some(backend);
+    }
 }
 
 impl Default for TransportConfig {
@@ -86,6 +118,10 @@ impl Default for TransportConfig {
             resource_retry_interval_secs: 2,
             resource_retry_limit: 5,
             ratchet_store_path: None,
+            announce_worker_backend: None,
+            outbound_worker_backend: None,
+            single_destination_worker_backend: None,
+            resource_worker_backend: None,
         }
     }
 }

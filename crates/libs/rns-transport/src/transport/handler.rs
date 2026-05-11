@@ -1,50 +1,269 @@
 use super::diag;
 use super::wire::should_encrypt_packet;
+use super::worker_boundary::{WorkerBackend, WorkerJob, WorkerJobKind, WorkerResultKind};
 use super::*;
 
-impl TransportHandler {
-    async fn note_link_packet_sent(&self, packet: &Packet) {
-        let link = if packet.header.packet_type == PacketType::LinkRequest {
-            let requested_id = crate::destination::link::LinkId::from(packet);
-            let mut matched = None;
-            for candidate in self.out_links.values() {
-                if *candidate.lock().await.id() == requested_id {
-                    matched = Some(candidate.clone());
-                    break;
-                }
-            }
-            matched
-        } else if packet.header.destination_type == DestinationType::Link {
-            if let Some(link) = self.in_links.get(&packet.destination).cloned() {
-                Some(link)
-            } else {
-                let mut matched = None;
-                for candidate in self.out_links.values() {
-                    if *candidate.lock().await.id() == packet.destination {
-                        matched = Some(candidate.clone());
-                        break;
-                    }
-                }
-                matched
-            }
-        } else {
-            None
-        };
+pub(super) const MAX_OUTBOUND_ENCRYPTION_WORKERS: usize = 4;
 
-        if let Some(link) = link {
-            link.lock().await.note_outbound(packet.context);
+static OUTBOUND_ENCRYPTION_PERMITS: std::sync::OnceLock<Arc<tokio::sync::Semaphore>> =
+    std::sync::OnceLock::new();
+
+pub(super) fn outbound_encryption_permits() -> Arc<tokio::sync::Semaphore> {
+    OUTBOUND_ENCRYPTION_PERMITS
+        .get_or_init(|| Arc::new(tokio::sync::Semaphore::new(MAX_OUTBOUND_ENCRYPTION_WORKERS)))
+        .clone()
+}
+
+struct OutboundEncryptionContext {
+    public_key: [u8; crate::identity::PUBLIC_KEY_LENGTH],
+    salt: AddressHash,
+    config_name: String,
+    remote_backend: Option<Arc<dyn WorkerBackend>>,
+}
+
+struct UnlockedDispatchContext {
+    packet_cache: Arc<Mutex<PacketCache>>,
+    iface_manager: Arc<Mutex<InterfaceManager>>,
+    link_candidates: Vec<Arc<Mutex<Link>>>,
+}
+
+fn send_packet_trace(outcome: SendPacketOutcome) -> SendPacketTrace {
+    SendPacketTrace {
+        outcome,
+        direct_iface: None,
+        broadcast: false,
+        dispatch: TxDispatchTrace::default(),
+    }
+}
+
+fn link_candidates_for_packet(
+    handler: &TransportHandler,
+    packet: &Packet,
+) -> Vec<Arc<Mutex<Link>>> {
+    if packet.header.packet_type == PacketType::LinkRequest {
+        return handler.out_links.values().cloned().collect();
+    }
+
+    if packet.header.destination_type != DestinationType::Link {
+        return Vec::new();
+    }
+
+    if let Some(link) = handler.in_links.get(&packet.destination).cloned() {
+        return vec![link];
+    }
+
+    handler.out_links.values().cloned().collect()
+}
+
+async fn note_link_packet_sent_from_candidates(packet: &Packet, candidates: Vec<Arc<Mutex<Link>>>) {
+    if candidates.is_empty() {
+        return;
+    }
+
+    let requested_id = if packet.header.packet_type == PacketType::LinkRequest {
+        Some(crate::destination::link::LinkId::from(packet))
+    } else {
+        None
+    };
+
+    for candidate in candidates {
+        let Ok(mut link) = candidate.try_lock() else {
+            log::debug!("tp: skipping busy link while noting outbound packet dispatch");
+            continue;
+        };
+        let matches_packet = if let Some(requested_id) = requested_id {
+            *link.id() == requested_id
+        } else {
+            *link.id() == packet.destination
+        };
+        if matches_packet {
+            link.note_outbound(packet.context);
+            break;
+        }
+    }
+}
+
+async fn dispatch_message_unlocked(
+    message: TxMessage,
+    context: UnlockedDispatchContext,
+    announce_policy: Option<AnnounceBroadcastPolicy>,
+) -> TxDispatchTrace {
+    let packet = message.packet;
+    context.packet_cache.lock().await.update(&packet);
+    let (trace, work) = {
+        context.iface_manager.lock().await.plan_send_with_announce_policy(message, announce_policy)
+    };
+    let dispatch = InterfaceManager::dispatch_tx_work(trace, work).await;
+    if dispatch.sent_ifaces > 0 || dispatch.queued_ifaces > 0 {
+        note_link_packet_sent_from_candidates(&packet, context.link_candidates).await;
+    }
+    dispatch
+}
+
+async fn encrypt_packet_on_worker(
+    packet: Packet,
+    context: OutboundEncryptionContext,
+) -> Result<Packet, SendPacketTrace> {
+    if let Some(remote_backend) = context.remote_backend.clone() {
+        match encrypt_packet_on_remote_worker(&packet, &context, remote_backend).await {
+            Ok(packet) => return Ok(packet),
+            Err(trace) => {
+                log::debug!(
+                    "tp({}): remote outbound encryption worker unavailable, falling back locally",
+                    context.config_name
+                );
+                if trace.outcome != SendPacketOutcome::DroppedEncryptFailed {
+                    return Err(trace);
+                }
+            }
         }
     }
 
-    pub(super) async fn send_packet(&mut self, packet: Packet) {
-        let _ = self.send_packet_with_trace(packet).await;
+    encrypt_packet_on_local_worker(packet, context).await
+}
+
+async fn encrypt_packet_on_local_worker(
+    mut packet: Packet,
+    context: OutboundEncryptionContext,
+) -> Result<Packet, SendPacketTrace> {
+    let permit = outbound_encryption_permits()
+        .try_acquire_owned()
+        .map_err(|_| send_packet_trace(SendPacketOutcome::DroppedEncryptFailed))?;
+    let plaintext = packet.data;
+    let public_key = context.public_key;
+    let salt = context.salt;
+    let ciphertext = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        encrypt_for_public_key_bytes(&public_key, salt.as_slice(), plaintext.as_slice(), OsRng)
+    })
+    .await
+    .map_err(|_| send_packet_trace(SendPacketOutcome::DroppedEncryptFailed))?;
+
+    match ciphertext {
+        Ok(ciphertext) => {
+            let mut buffer = PacketDataBuffer::new();
+            if buffer.write(&ciphertext).is_err() {
+                log::warn!(
+                    "tp({}): ciphertext too large for packet to {}",
+                    context.config_name,
+                    packet.destination
+                );
+                return Err(send_packet_trace(SendPacketOutcome::DroppedCiphertextTooLarge));
+            }
+            packet.data = buffer;
+            Ok(packet)
+        }
+        Err(err) => {
+            log::warn!(
+                "tp({}): encrypt failed for {}: {:?}",
+                context.config_name,
+                packet.destination,
+                err
+            );
+            Err(send_packet_trace(SendPacketOutcome::DroppedEncryptFailed))
+        }
+    }
+}
+
+async fn encrypt_packet_on_remote_worker(
+    packet: &Packet,
+    context: &OutboundEncryptionContext,
+    backend: Arc<dyn WorkerBackend>,
+) -> Result<Packet, SendPacketTrace> {
+    let packet_wire = packet
+        .to_bytes()
+        .map_err(|_| send_packet_trace(SendPacketOutcome::DroppedEncryptFailed))?;
+    let response = backend
+        .submit(WorkerJob {
+            id: u64::from_be_bytes(packet.hash().as_slice()[..8].try_into().unwrap_or([0; 8])),
+            kind: WorkerJobKind::OutboundEncrypt {
+                packet_wire,
+                public_key: context.public_key,
+                salt: {
+                    let mut salt = [0u8; crate::hash::ADDRESS_HASH_SIZE];
+                    salt.copy_from_slice(context.salt.as_slice());
+                    salt
+                },
+            },
+        })
+        .await
+        .map_err(|err| {
+            log::debug!(
+                "tp({}): remote outbound encryption failed: {:?}",
+                context.config_name,
+                err
+            );
+            send_packet_trace(SendPacketOutcome::DroppedEncryptFailed)
+        })?;
+
+    let WorkerResultKind::PacketWire { packet_wire } = response.kind else {
+        log::debug!(
+            "tp({}): remote outbound encryption returned unexpected result",
+            context.config_name
+        );
+        return Err(send_packet_trace(SendPacketOutcome::DroppedEncryptFailed));
+    };
+    Packet::from_bytes(packet_wire.as_slice()).map_err(|err| {
+        log::debug!(
+            "tp({}): remote outbound encryption returned invalid packet: {:?}",
+            context.config_name,
+            err
+        );
+        send_packet_trace(SendPacketOutcome::DroppedEncryptFailed)
+    })
+}
+
+impl TransportHandler {
+    async fn outbound_encryption_context_unlocked(
+        handler: Arc<Mutex<TransportHandler>>,
+        packet: &Packet,
+    ) -> Result<Option<OutboundEncryptionContext>, SendPacketTrace> {
+        if !should_encrypt_packet(packet) {
+            return Ok(None);
+        }
+
+        let (destination, config_name, remote_backend) = {
+            let handler = handler.lock().await;
+            (
+                handler.single_out_destinations.get(&packet.destination).cloned(),
+                handler.config.name.clone(),
+                handler.outbound_worker_backend.clone(),
+            )
+        };
+        let Some(destination) = destination else {
+            log::warn!(
+                "tp({}): missing destination identity for {}",
+                config_name,
+                packet.destination
+            );
+            return Err(send_packet_trace(SendPacketOutcome::DroppedMissingDestinationIdentity));
+        };
+        let identity = match destination.try_lock() {
+            Ok(destination) => destination.identity,
+            Err(_) => {
+                log::debug!(
+                    "tp({}): skipping outbound encryption for busy destination {}",
+                    config_name,
+                    packet.destination
+                );
+                return Err(send_packet_trace(SendPacketOutcome::DroppedEncryptFailed));
+            }
+        };
+        let salt = identity.address_hash;
+        let ratchet = {
+            let mut handler = handler.lock().await;
+            handler.ratchet_store.as_mut().and_then(|store| store.get(&packet.destination))
+        };
+        let public_key = ratchet
+            .map(|ratchet| *PublicKey::from(ratchet).as_bytes())
+            .unwrap_or(*identity.public_key.as_bytes());
+        Ok(Some(OutboundEncryptionContext { public_key, salt, config_name, remote_backend }))
     }
 
-    pub(super) async fn send_packet_with_outcome(&mut self, packet: Packet) -> SendPacketOutcome {
-        self.send_packet_with_trace(packet).await.outcome
-    }
-
-    pub(super) async fn send_packet_with_trace(&mut self, mut packet: Packet) -> SendPacketTrace {
+    pub(super) async fn send_packet_with_trace_unlocked(
+        handler: Arc<Mutex<TransportHandler>>,
+        packet: Packet,
+    ) -> SendPacketTrace {
         if packet.header.packet_type == PacketType::Proof {
             log::trace!(
                 "[tp] send_proof dst={} ctx={:02x}",
@@ -57,68 +276,48 @@ impl TransportHandler {
                 }
             }
         }
-        if should_encrypt_packet(&packet) {
-            let destination = self.single_out_destinations.get(&packet.destination).cloned();
-            let Some(destination) = destination else {
-                log::warn!(
-                    "tp({}): missing destination identity for {}",
-                    self.config.name,
-                    packet.destination
-                );
-                return SendPacketTrace {
-                    outcome: SendPacketOutcome::DroppedMissingDestinationIdentity,
-                    direct_iface: None,
-                    broadcast: false,
-                    dispatch: TxDispatchTrace::default(),
-                };
-            };
-            let identity = destination.lock().await.identity;
-            let salt = identity.address_hash.as_slice();
-            let ratchet =
-                self.ratchet_store.as_mut().and_then(|store| store.get(&packet.destination));
-            let public_key = ratchet.map(PublicKey::from).unwrap_or(identity.public_key);
-            match encrypt_for_public_key(&public_key, salt, packet.data.as_slice(), OsRng) {
-                Ok(ciphertext) => {
-                    let mut buffer = PacketDataBuffer::new();
-                    if buffer.write(&ciphertext).is_err() {
-                        log::warn!(
-                            "tp({}): ciphertext too large for packet to {}",
-                            self.config.name,
-                            packet.destination
-                        );
-                        return SendPacketTrace {
-                            outcome: SendPacketOutcome::DroppedCiphertextTooLarge,
-                            direct_iface: None,
-                            broadcast: false,
-                            dispatch: TxDispatchTrace::default(),
-                        };
-                    }
-                    packet.data = buffer;
-                }
-                Err(err) => {
-                    log::warn!(
-                        "tp({}): encrypt failed for {}: {:?}",
-                        self.config.name,
-                        packet.destination,
-                        err
-                    );
-                    return SendPacketTrace {
-                        outcome: SendPacketOutcome::DroppedEncryptFailed,
-                        direct_iface: None,
-                        broadcast: false,
-                        dispatch: TxDispatchTrace::default(),
-                    };
-                }
+
+        let encryption_context = {
+            match Self::outbound_encryption_context_unlocked(handler.clone(), &packet).await {
+                Ok(result) => result,
+                Err(trace) => return trace,
             }
-        }
+        };
+        let packet = if let Some(context) = encryption_context {
+            match encrypt_packet_on_worker(packet, context).await {
+                Ok(packet) => packet,
+                Err(trace) => return trace,
+            }
+        } else {
+            packet
+        };
 
-        diag::log_route_lookup(&self.path_table, &packet.destination);
+        let (config_name, route, broadcast, local_destination, dispatch_context) = {
+            let handler = handler.lock().await;
+            diag::log_route_lookup(&handler.path_table, &packet.destination);
+            let route = super::path::route_outbound_packet(&handler.path_table, &packet);
+            let dispatch_context = UnlockedDispatchContext {
+                packet_cache: handler.packet_cache.clone(),
+                iface_manager: handler.iface_manager.clone(),
+                link_candidates: link_candidates_for_packet(&handler, &route.packet),
+            };
+            (
+                handler.config.name.clone(),
+                route,
+                handler.config.broadcast,
+                handler.single_in_destinations.contains_key(&route.packet.destination),
+                dispatch_context,
+            )
+        };
 
-        let route = super::path::route_outbound_packet(&self.path_table, &packet);
         let packet = route.packet;
         if let Some(iface) = route.next_iface {
-            let dispatch =
-                self.send(TxMessage { tx_type: TxMessageType::Direct(iface), packet }).await;
+            let dispatch = dispatch_message_unlocked(
+                TxMessage { tx_type: TxMessageType::Direct(iface), packet },
+                dispatch_context,
+                None,
+            )
+            .await;
             let outcome = if dispatch.sent_ifaces > 0 {
                 SendPacketOutcome::SentDirect
             } else {
@@ -126,9 +325,27 @@ impl TransportHandler {
             };
             diag::log_direct_send(iface, outcome, &dispatch);
             SendPacketTrace { outcome, direct_iface: Some(iface), broadcast: false, dispatch }
-        } else if self.config.broadcast || packet.header.packet_type == PacketType::Announce {
-            let dispatch =
-                self.send(TxMessage { tx_type: TxMessageType::Broadcast(None), packet }).await;
+        } else if broadcast || packet.header.packet_type == PacketType::Announce {
+            let next_hop_iface = {
+                let handler = handler.lock().await;
+                handler.path_table.next_hop_iface(&packet.destination)
+            };
+            let next_hop_iface_mode = if let Some(iface) = next_hop_iface {
+                dispatch_context.iface_manager.lock().await.mode(&iface)
+            } else {
+                None
+            };
+            let announce_policy = if packet.header.packet_type == PacketType::Announce {
+                Some(AnnounceBroadcastPolicy { local_destination, next_hop_iface_mode })
+            } else {
+                None
+            };
+            let dispatch = dispatch_message_unlocked(
+                TxMessage { tx_type: TxMessageType::Broadcast(None), packet },
+                dispatch_context,
+                announce_policy,
+            )
+            .await;
             let outcome = if dispatch.sent_ifaces > 0 || dispatch.queued_ifaces > 0 {
                 SendPacketOutcome::SentBroadcast
             } else {
@@ -139,48 +356,50 @@ impl TransportHandler {
         } else {
             log::trace!(
                 "tp({}): no route for outbound packet dst={}",
-                self.config.name,
+                config_name,
                 packet.destination
             );
-            SendPacketTrace {
-                outcome: SendPacketOutcome::DroppedNoRoute,
-                direct_iface: None,
-                broadcast: false,
-                dispatch: TxDispatchTrace::default(),
-            }
+            send_packet_trace(SendPacketOutcome::DroppedNoRoute)
         }
     }
 
-    pub(super) async fn send(&self, message: TxMessage) -> TxDispatchTrace {
+    pub(super) async fn send_message_unlocked(
+        handler: Arc<Mutex<TransportHandler>>,
+        message: TxMessage,
+    ) -> TxDispatchTrace {
         let packet = message.packet;
-        self.packet_cache.lock().await.update(&packet);
-        let announce_policy = if packet.header.packet_type == PacketType::Announce
+        let (dispatch_context, local_destination, next_hop_iface) = {
+            let handler = handler.lock().await;
+            (
+                UnlockedDispatchContext {
+                    packet_cache: handler.packet_cache.clone(),
+                    iface_manager: handler.iface_manager.clone(),
+                    link_candidates: link_candidates_for_packet(&handler, &packet),
+                },
+                handler.single_in_destinations.contains_key(&packet.destination),
+                handler.path_table.next_hop_iface(&packet.destination),
+            )
+        };
+        let next_hop_iface_mode = if packet.header.packet_type == PacketType::Announce
             && matches!(message.tx_type, TxMessageType::Broadcast(_))
         {
-            let next_hop_iface = self.path_table.next_hop_iface(&packet.destination);
-            let mut mgr = self.iface_manager.lock().await;
-            let policy = AnnounceBroadcastPolicy {
-                local_destination: self.single_in_destinations.contains_key(&packet.destination),
-                next_hop_iface_mode: next_hop_iface.and_then(|iface| mgr.mode(&iface)),
-            };
-            let dispatch = mgr.send_with_announce_policy(message, Some(policy)).await;
-            if dispatch.sent_ifaces > 0 || dispatch.queued_ifaces > 0 {
-                self.note_link_packet_sent(&packet).await;
+            if let Some(iface) = next_hop_iface {
+                dispatch_context.iface_manager.lock().await.mode(&iface)
+            } else {
+                None
             }
-            return dispatch;
         } else {
             None
         };
-        let dispatch = self
-            .iface_manager
-            .lock()
-            .await
-            .send_with_announce_policy(message, announce_policy)
-            .await;
-        if dispatch.sent_ifaces > 0 || dispatch.queued_ifaces > 0 {
-            self.note_link_packet_sent(&packet).await;
-        }
-        dispatch
+        let announce_policy = if packet.header.packet_type == PacketType::Announce
+            && matches!(message.tx_type, TxMessageType::Broadcast(_))
+        {
+            Some(AnnounceBroadcastPolicy { local_destination, next_hop_iface_mode })
+        } else {
+            None
+        };
+
+        dispatch_message_unlocked(message, dispatch_context, announce_policy).await
     }
 
     pub(super) fn has_destination(&self, address: &AddressHash) -> bool {
@@ -191,6 +410,53 @@ impl TransportHandler {
         self.single_out_destinations.contains_key(address)
     }
 
+    pub(super) async fn filter_duplicate_packets_unlocked(
+        handler: Arc<Mutex<TransportHandler>>,
+        packet: &Packet,
+    ) -> bool {
+        if packet.header.packet_type == PacketType::Announce {
+            return true;
+        }
+
+        let (packet_cache, in_link) = {
+            let handler = handler.lock().await;
+            let in_link = if packet.header.packet_type == PacketType::Proof
+                && packet.context == PacketContext::LinkRequestProof
+            {
+                handler.in_links.get(&packet.destination).cloned()
+            } else {
+                None
+            };
+            (handler.packet_cache.clone(), in_link)
+        };
+
+        let mut allow_duplicate = matches!(
+            (packet.header.packet_type, packet.context),
+            (PacketType::LinkRequest, _)
+                | (PacketType::Data, PacketContext::KeepAlive | PacketContext::LinkClose)
+        );
+
+        if let Some(link) = in_link {
+            match link.try_lock() {
+                Ok(link) if link.status().not_yet_active() => {
+                    allow_duplicate = true;
+                }
+                Ok(_) => {}
+                Err(_) => {
+                    log::debug!(
+                        "tp: allowing link-request-proof duplicate while inbound link is busy"
+                    );
+                    allow_duplicate = true;
+                }
+            }
+        }
+
+        let is_new = packet_cache.lock().await.update(packet);
+
+        is_new || allow_duplicate
+    }
+
+    #[cfg(test)]
     pub(super) async fn filter_duplicate_packets(&self, packet: &Packet) -> bool {
         let mut allow_duplicate = false;
 
@@ -221,15 +487,58 @@ impl TransportHandler {
         is_new || allow_duplicate
     }
 
-    pub(super) async fn request_path(
-        &mut self,
-        address: &AddressHash,
-        on_iface: Option<AddressHash>,
-        tag: Option<TagBytes>,
-    ) {
-        let packet = self.path_requests.generate(address, tag);
+    pub(super) async fn gc_unicast_ifaces_unlocked(handler: Arc<Mutex<TransportHandler>>) {
+        let now = Instant::now();
+        let (stale_ifaces, routing_maps, iface_manager, config_name) = {
+            let mut handler = handler.lock().await;
+            let stale: Vec<std::net::SocketAddr> = handler
+                .unicast_udp_ifaces
+                .iter()
+                .filter(|(_, (_, last_seen))| {
+                    now.duration_since(*last_seen) > UNICAST_IFACE_IDLE_TIMEOUT
+                })
+                .map(|(peer, _)| *peer)
+                .collect();
 
-        self.send(TxMessage { tx_type: TxMessageType::Broadcast(on_iface), packet }).await;
+            if stale.is_empty() {
+                return;
+            }
+
+            let stale_ifaces: Vec<_> = stale
+                .into_iter()
+                .filter_map(|peer| {
+                    handler
+                        .unicast_udp_ifaces
+                        .remove(&peer)
+                        .map(|(iface_hash, _)| (peer, iface_hash))
+                })
+                .collect();
+
+            (
+                stale_ifaces,
+                handler.multicast_peer_routings.values().cloned().collect::<Vec<_>>(),
+                handler.iface_manager.clone(),
+                handler.config.name.clone(),
+            )
+        };
+
+        for (peer, iface_hash) in stale_ifaces {
+            let mut removed_from_routing = false;
+            for routing in &routing_maps {
+                if routing.lock().await.remove_by_hash(&iface_hash).is_some() {
+                    removed_from_routing = true;
+                    break;
+                }
+            }
+            let _ = removed_from_routing;
+            iface_manager.lock().await.stop_interface(iface_hash);
+            log::debug!(
+                "tp({}): GC'd idle virtual UDP iface {} for peer {}",
+                config_name,
+                iface_hash,
+                peer
+            );
+        }
     }
 
     /// Register (or refresh) the *virtual* unicast iface that the
@@ -248,6 +557,7 @@ impl TransportHandler {
     /// on the host multicast socket) get re-attributed to this same
     /// virtual iface by the host's rx task. That symmetry is what
     /// makes `Link::iface_matches` succeed on the proof/keepalive.
+    #[cfg(test)]
     pub(super) async fn unicast_iface_for_source(
         &mut self,
         rx_iface: AddressHash,
@@ -287,6 +597,65 @@ impl TransportHandler {
         Some(virtual_hash)
     }
 
+    pub(super) async fn unicast_iface_for_source_unlocked(
+        handler: Arc<Mutex<TransportHandler>>,
+        rx_iface: AddressHash,
+        source: IfaceSource,
+    ) -> Option<AddressHash> {
+        let peer = match source {
+            IfaceSource::Udp(addr) => addr,
+            IfaceSource::None => return None,
+        };
+
+        let (iface_manager, peer_routing, config_name) = {
+            let mut handler = handler.lock().await;
+            if let Some(entry) = handler.unicast_udp_ifaces.get_mut(&peer) {
+                entry.1 = Instant::now();
+                return Some(entry.0);
+            }
+
+            (
+                handler.iface_manager.clone(),
+                handler.multicast_peer_routings.get(&rx_iface).cloned(),
+                handler.config.name.clone(),
+            )
+        };
+
+        if iface_manager.lock().await.role(&rx_iface) != Some(IfaceRole::Multicast) {
+            return None;
+        }
+
+        let peer_routing = peer_routing?;
+
+        {
+            let mut handler = handler.lock().await;
+            if let Some(entry) = handler.unicast_udp_ifaces.get_mut(&peer) {
+                entry.1 = Instant::now();
+                return Some(entry.0);
+            }
+        }
+
+        let virtual_hash = {
+            let mut mgr = iface_manager.lock().await;
+            mgr.register_virtual_iface(rx_iface, IfaceRole::VirtualUnicast)?
+        };
+        peer_routing.lock().await.insert(peer, virtual_hash);
+
+        {
+            let mut handler = handler.lock().await;
+            handler.unicast_udp_ifaces.insert(peer, (virtual_hash, Instant::now()));
+        }
+
+        log::debug!(
+            "tp({}): registered virtual UDP iface {} for peer {} on host {}",
+            config_name,
+            virtual_hash,
+            peer,
+            rx_iface,
+        );
+        Some(virtual_hash)
+    }
+
     /// Register a `PeerRouting` map for a multicast iface at
     /// construction time. Called by
     /// `Transport::add_multicast_udp_interface`.
@@ -305,6 +674,7 @@ impl TransportHandler {
     /// to the multicast iface (re-triggering a fresh virtual iface
     /// registration if the peer reappears). Called from
     /// `handle_cleanup`.
+    #[cfg(test)]
     pub(super) async fn gc_unicast_ifaces(&mut self) {
         let now = Instant::now();
         let stale: Vec<std::net::SocketAddr> = self

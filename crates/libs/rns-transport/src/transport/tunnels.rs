@@ -301,7 +301,7 @@ struct TunnelRestorePath {
     packet_hash: Hash,
 }
 
-pub(super) async fn handle_tunnel_synthesize_packet<'a>(
+pub(super) fn handle_tunnel_synthesize_packet<'a>(
     packet: &Packet,
     handler: &mut MutexGuard<'a, TransportHandler>,
     iface: AddressHash,

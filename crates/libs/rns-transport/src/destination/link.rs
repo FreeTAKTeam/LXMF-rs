@@ -7,6 +7,8 @@ use std::{
 
 use ed25519_dalek::{Signature, SigningKey, PUBLIC_KEY_LENGTH, SIGNATURE_LENGTH};
 use rand_core::OsRng;
+use serde::{Deserialize, Serialize};
+use serde_bytes::ByteBuf;
 use sha2::Digest;
 use x25519_dalek::StaticSecret;
 
@@ -20,6 +22,7 @@ use crate::{
     error::RnsError,
     hash::{AddressHash, Hash, ADDRESS_HASH_SIZE, HASH_SIZE},
     identity::{DecryptIdentity, DerivedKey, EncryptIdentity, Identity, PrivateIdentity},
+    identity::{DERIVED_KEY_LENGTH, PRIVATE_KEY_LENGTH},
     packet::{
         DestinationType, Header, Packet, PacketContext, PacketDataBuffer, PacketType, PACKET_MDU,
     },
@@ -163,6 +166,96 @@ pub struct Link {
     channel_fast_rate_rounds: u8,
     channel_medium_rate_rounds: u8,
     event_tx: tokio::sync::broadcast::Sender<LinkEventData>,
+}
+
+#[derive(Clone)]
+pub(crate) struct LinkPacketContext {
+    id: LinkId,
+    priv_identity: PrivateIdentity,
+    derived_key: DerivedKey,
+    session_cipher: Option<CachedFernet>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LinkPacketContextSnapshot {
+    pub id: [u8; ADDRESS_HASH_SIZE],
+    pub private_key: ByteBuf,
+    pub derived_key: ByteBuf,
+    pub session_cipher: Option<LinkSessionCipherSnapshot>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LinkSessionCipherSnapshot {
+    pub sign_key: ByteBuf,
+    pub enc_key: ByteBuf,
+}
+
+impl LinkPacketContext {
+    pub(crate) fn id(&self) -> &LinkId {
+        &self.id
+    }
+
+    pub(crate) fn encrypt<'a>(
+        &self,
+        text: &[u8],
+        out_buf: &'a mut [u8],
+    ) -> Result<&'a [u8], RnsError> {
+        if let Some(session_cipher) = &self.session_cipher {
+            let token = session_cipher.encrypt(OsRng, PlainText::from(text), out_buf)?;
+            Ok(token.as_bytes())
+        } else {
+            self.priv_identity.encrypt(OsRng, text, &self.derived_key, out_buf)
+        }
+    }
+
+    pub(crate) fn decrypt<'a>(
+        &self,
+        text: &[u8],
+        out_buf: &'a mut [u8],
+    ) -> Result<&'a [u8], RnsError> {
+        if let Some(session_cipher) = &self.session_cipher {
+            let verified = session_cipher.verify(Token::from(text))?;
+            let plain_text = session_cipher.decrypt(verified, out_buf)?;
+            Ok(plain_text.as_bytes())
+        } else {
+            self.priv_identity.decrypt(OsRng, text, &self.derived_key, out_buf)
+        }
+    }
+
+    pub(crate) fn to_snapshot(&self) -> LinkPacketContextSnapshot {
+        let mut id = [0u8; ADDRESS_HASH_SIZE];
+        id.copy_from_slice(self.id.as_slice());
+        LinkPacketContextSnapshot {
+            id,
+            private_key: ByteBuf::from(self.priv_identity.to_private_key_bytes().to_vec()),
+            derived_key: ByteBuf::from(self.derived_key.as_bytes().to_vec()),
+            session_cipher: self.session_cipher.as_ref().map(|cipher| {
+                let (sign_key, enc_key) = cipher.to_key_bytes();
+                LinkSessionCipherSnapshot {
+                    sign_key: ByteBuf::from(sign_key),
+                    enc_key: ByteBuf::from(enc_key),
+                }
+            }),
+        }
+    }
+
+    pub(crate) fn from_snapshot(snapshot: LinkPacketContextSnapshot) -> Result<Self, RnsError> {
+        if snapshot.private_key.len() != PRIVATE_KEY_LENGTH
+            || snapshot.derived_key.len() != DERIVED_KEY_LENGTH
+        {
+            return Err(RnsError::InvalidArgument);
+        }
+        let mut derived_key = [0u8; DERIVED_KEY_LENGTH];
+        derived_key.copy_from_slice(snapshot.derived_key.as_ref());
+        Ok(Self {
+            id: AddressHash::new(snapshot.id),
+            priv_identity: PrivateIdentity::from_private_key_bytes(&snapshot.private_key)?,
+            derived_key: DerivedKey::from_bytes(derived_key),
+            session_cipher: snapshot.session_cipher.map(|cipher| {
+                CachedFernet::new_from_slices(cipher.sign_key.as_ref(), cipher.enc_key.as_ref())
+            }),
+        })
+    }
 }
 
 impl Link {
@@ -1202,6 +1295,15 @@ impl Link {
         &self.id
     }
 
+    pub(crate) fn packet_context(&self) -> LinkPacketContext {
+        LinkPacketContext {
+            id: self.id,
+            priv_identity: self.priv_identity.clone(),
+            derived_key: self.derived_key.clone(),
+            session_cipher: self.session_cipher.clone(),
+        }
+    }
+
     pub(crate) fn validate_packet_proof(&self, packet: &Packet) -> Result<Hash, RnsError> {
         validate_link_packet_proof(&self.peer_identity, &self.id, packet)
     }
@@ -1369,6 +1471,39 @@ mod tests {
 
         let mut plain_buf = [0u8; PACKET_MDU];
         let decrypted = inbound.decrypt(ciphertext, &mut plain_buf).expect("decrypt");
+        assert_eq!(decrypted, plaintext);
+    }
+
+    #[test]
+    fn link_packet_context_snapshot_round_trips_session_decrypt() {
+        let signer = PrivateIdentity::new_from_rand(OsRng);
+        let identity = *signer.as_identity();
+        let destination = DestinationDesc {
+            identity,
+            address_hash: identity.address_hash,
+            name: DestinationName::new("lxmf", "delivery"),
+        };
+        let (tx, _) = tokio::sync::broadcast::channel(4);
+
+        let mut outbound = Link::new(destination, tx.clone());
+        let request = outbound.request();
+        let mut inbound =
+            Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
+                .expect("link request should parse");
+        let proof = inbound.prove();
+        let proof_iface = AddressHash::new_from_rand(OsRng);
+        assert!(matches!(outbound.handle_packet(&proof, proof_iface), LinkHandleResult::Activated));
+
+        let plaintext = b"snapshot-session-link-payload";
+        let mut cipher_buf = [0u8; PACKET_MDU];
+        let ciphertext = outbound.encrypt(plaintext, &mut cipher_buf).expect("encrypt");
+
+        let snapshot = inbound.packet_context().to_snapshot();
+        let restored =
+            LinkPacketContext::from_snapshot(snapshot).expect("restore link packet context");
+        let mut plain_buf = [0u8; PACKET_MDU];
+        let decrypted = restored.decrypt(ciphertext, &mut plain_buf).expect("decrypt");
+
         assert_eq!(decrypted, plaintext);
     }
 

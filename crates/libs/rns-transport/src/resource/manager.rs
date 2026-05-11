@@ -8,6 +8,17 @@ pub struct ResourceManager {
     retry_limit: u8,
 }
 
+pub struct PreparedResourceSend {
+    sender: ResourceSender,
+}
+
+pub(crate) struct ResourceCompletion {
+    pub(crate) hash: Hash,
+    pub(crate) link_id: AddressHash,
+    pub(crate) proof_packet: Packet,
+    pub(crate) payload: ResourcePayload,
+}
+
 impl ResourceManager {
     pub fn new() -> Self {
         Self::new_with_config(Duration::from_secs(2), 5)
@@ -30,11 +41,8 @@ impl ResourceManager {
         data: Vec<u8>,
         metadata: Option<Vec<u8>>,
     ) -> Result<(Hash, Packet), RnsError> {
-        let sender = ResourceSender::new(link, data, metadata)?;
-        let resource_hash = sender.resource_hash;
-        let packet = sender.advertisement_packet();
-        self.pending_outgoing.insert(resource_hash, sender);
-        Ok((resource_hash, packet))
+        let prepared = Self::prepare_send(link, data, metadata)?;
+        Ok(self.commit_prepared_send(prepared))
     }
 
     pub fn start_send_with_options(
@@ -45,11 +53,56 @@ impl ResourceManager {
         request_id: Option<Vec<u8>>,
         is_response: bool,
     ) -> Result<(Hash, Packet), RnsError> {
+        let prepared = Self::prepare_send_with_options(link, data, metadata, request_id, is_response)?;
+        Ok(self.commit_prepared_send(prepared))
+    }
+
+    pub fn prepare_send(
+        link: &Link,
+        data: Vec<u8>,
+        metadata: Option<Vec<u8>>,
+    ) -> Result<PreparedResourceSend, RnsError> {
+        let sender = ResourceSender::new(link, data, metadata)?;
+        Ok(PreparedResourceSend { sender })
+    }
+
+    pub fn prepare_send_with_options(
+        link: &Link,
+        data: Vec<u8>,
+        metadata: Option<Vec<u8>>,
+        request_id: Option<Vec<u8>>,
+        is_response: bool,
+    ) -> Result<PreparedResourceSend, RnsError> {
         let sender = ResourceSender::new_with_options(link, data, metadata, request_id, is_response)?;
+        Ok(PreparedResourceSend { sender })
+    }
+
+    pub(crate) fn prepare_send_for(
+        link: &(impl ResourcePacketLink + ?Sized),
+        data: Vec<u8>,
+        metadata: Option<Vec<u8>>,
+    ) -> Result<PreparedResourceSend, RnsError> {
+        let sender = ResourceSender::new_for(link, data, metadata, None, false)?;
+        Ok(PreparedResourceSend { sender })
+    }
+
+    pub(crate) fn prepare_send_for_with_options(
+        link: &(impl ResourcePacketLink + ?Sized),
+        data: Vec<u8>,
+        metadata: Option<Vec<u8>>,
+        request_id: Option<Vec<u8>>,
+        is_response: bool,
+    ) -> Result<PreparedResourceSend, RnsError> {
+        let sender = ResourceSender::new_for(link, data, metadata, request_id, is_response)?;
+        Ok(PreparedResourceSend { sender })
+    }
+
+    pub fn commit_prepared_send(&mut self, prepared: PreparedResourceSend) -> (Hash, Packet) {
+        let sender = prepared.sender;
         let resource_hash = sender.resource_hash;
         let packet = sender.advertisement_packet();
         self.pending_outgoing.insert(resource_hash, sender);
-        Ok((resource_hash, packet))
+        (resource_hash, packet)
     }
 
     pub fn confirm_outbound_dispatch(&mut self, resource_hash: Hash, sent: bool) {
@@ -76,6 +129,11 @@ impl ResourceManager {
     #[cfg(test)]
     pub(crate) fn has_no_outbound_state(&self) -> bool {
         self.pending_outgoing.is_empty() && self.outgoing.is_empty()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn has_no_receiver_state(&self) -> bool {
+        self.incoming.is_empty()
     }
 
     pub fn retry_requests(&mut self, now: Instant) -> Vec<(AddressHash, ResourceRequest)> {
@@ -132,6 +190,20 @@ impl ResourceManager {
         link: &mut Link,
         responses: &mut Vec<Packet>,
     ) {
+        if packet.context == PacketContext::Resource {
+            responses.clear();
+            self.handle_resource_part_into(packet, link, responses);
+            return;
+        }
+        self.handle_packet_with_context(packet, link, responses);
+    }
+
+    pub(crate) fn handle_packet_with_context(
+        &mut self,
+        packet: &Packet,
+        link: &(impl ResourcePacketLink + ?Sized),
+        responses: &mut Vec<Packet>,
+    ) {
         responses.clear();
         match packet.context {
             PacketContext::ResourceAdvrtisement => {
@@ -141,7 +213,7 @@ impl ResourceManager {
             PacketContext::ResourceHashUpdate => {
                 self.handle_hash_update_into(packet, link, responses)
             }
-            PacketContext::Resource => self.handle_resource_part_into(packet, link, responses),
+            PacketContext::Resource => {}
             PacketContext::ResourceProof => self.handle_proof_into(packet, responses),
             PacketContext::ResourceInitiatorCancel | PacketContext::ResourceReceiverCancel => {
                 self.cancel_into(packet, responses)
@@ -153,7 +225,7 @@ impl ResourceManager {
     fn handle_advertisement_into(
         &mut self,
         packet: &Packet,
-        link: &mut Link,
+        link: &(impl ResourcePacketLink + ?Sized),
         responses: &mut Vec<Packet>,
     ) {
         let Ok(advertisement) = ResourceAdvertisement::unpack(packet.data.as_slice()) else {
@@ -162,7 +234,7 @@ impl ResourceManager {
         };
         resource_diag(&format!(
             "advertisement link={} hash={} parts={} flags=0x{:02x} request={} response={} metadata={} compressed={} encrypted={}",
-            link.id(),
+            link.resource_link_id(),
             advertisement.hash,
             advertisement.parts,
             advertisement.flags,
@@ -185,7 +257,8 @@ impl ResourceManager {
             resource_diag(&format!("advertisement_duplicate hash={resource_hash}"));
             return;
         }
-        let Ok(mut receiver) = ResourceReceiver::new(&advertisement, *link.id()) else {
+        let Ok(mut receiver) = ResourceReceiver::new(&advertisement, *link.resource_link_id())
+        else {
             log::warn!("resource: rejecting unreasonable advertisement");
             resource_diag("reject_advertisement unreasonable");
             return;
@@ -199,7 +272,7 @@ impl ResourceManager {
         ));
         receiver.mark_request();
         self.incoming.insert(resource_hash, receiver);
-        match build_link_packet(
+        match build_link_packet_for(
             link,
             PacketType::Data,
             PacketContext::ResourceRequest,
@@ -215,21 +288,21 @@ impl ResourceManager {
     fn handle_request_into(
         &mut self,
         packet: &Packet,
-        link: &mut Link,
+        link: &(impl ResourcePacketLink + ?Sized),
         responses: &mut Vec<Packet>,
     ) {
-        let Ok(request) = ResourceRequest::decode(packet.data.as_slice()) else {
+        let Ok(request) = ResourceRequestRef::decode(packet.data.as_slice()) else {
             return;
         };
         if let Some(sender) = self.outgoing.get_mut(&request.resource_hash) {
-            sender.handle_request_into(&request, link, responses);
+            sender.handle_request_ref_into(&request, link, responses);
         }
     }
 
     fn handle_hash_update_into(
         &mut self,
         packet: &Packet,
-        link: &mut Link,
+        link: &(impl ResourcePacketLink + ?Sized),
         responses: &mut Vec<Packet>,
     ) {
         let Ok(update) = ResourceHashUpdate::decode(packet.data.as_slice()) else {
@@ -238,7 +311,7 @@ impl ResourceManager {
         if let Some(receiver) = self.incoming.get_mut(&update.resource_hash) {
             receiver.handle_hash_update(&update);
             let request = receiver.build_request();
-            match build_link_packet(
+            match build_link_packet_for(
                 link,
                 PacketType::Data,
                 PacketContext::ResourceRequest,
@@ -265,7 +338,7 @@ impl ResourceManager {
         let mut failed: Option<Hash> = None;
         for (hash, receiver) in self.incoming.iter_mut() {
             let before_received = receiver.received;
-            match receiver.handle_part(packet.data.as_slice(), link) {
+                    match receiver.handle_part(packet.data.as_slice(), link) {
                 PartOutcome::NoMatch => continue,
                 PartOutcome::Failed => {
                     failed = Some(*hash);
@@ -342,6 +415,97 @@ impl ResourceManager {
         } else if let Some(packet) = request_packet {
             responses.push(packet);
         }
+    }
+
+    pub(crate) fn take_completion_job_for_part(
+        &mut self,
+        packet: &Packet,
+        link: &(impl ResourcePacketLink + ?Sized),
+        responses: &mut Vec<Packet>,
+    ) -> Option<ResourceCompletionJob> {
+        let mut completion_job: Option<(Hash, ResourceCompletionJob)> = None;
+        let mut request_packet: Option<Packet> = None;
+        let mut failed: Option<Hash> = None;
+
+        for (hash, receiver) in self.incoming.iter_mut() {
+            let before_received = receiver.received;
+            match receiver.accept_part(packet.data.as_slice()) {
+                PartAcceptOutcome::NoMatch => continue,
+                PartAcceptOutcome::Failed => {
+                    failed = Some(*hash);
+                    break;
+                }
+                PartAcceptOutcome::Complete(job) => {
+                    completion_job = Some((*hash, job));
+                    break;
+                }
+                PartAcceptOutcome::Incomplete => {
+                    let request = receiver.build_request();
+                    receiver.mark_request();
+                    request_packet = match build_link_packet_for(
+                        link,
+                        PacketType::Data,
+                        PacketContext::ResourceRequest,
+                        &request.encode(),
+                    ) {
+                        Ok(packet) => Some(packet),
+                        Err(_) => {
+                            log::warn!("resource: failed to build request packet");
+                            None
+                        }
+                    };
+                    if receiver.received > before_received {
+                        resource_diag(&format!(
+                            "progress hash={} received={}/{} bytes={}/{}",
+                            hash,
+                            receiver.received,
+                            receiver.parts.len(),
+                            receiver.received_bytes,
+                            receiver.total_bytes
+                        ));
+                        self.events.push(ResourceEvent {
+                            hash: *hash,
+                            link_id: receiver.link_id,
+                            kind: ResourceEventKind::Progress(receiver.progress()),
+                        });
+                    }
+                    break;
+                }
+            }
+        }
+
+        if let Some(hash) = failed {
+            self.incoming.remove(&hash);
+            return None;
+        }
+        if let Some((hash, job)) = completion_job {
+            self.incoming.remove(&hash);
+            return Some(job);
+        }
+        if let Some(packet) = request_packet {
+            responses.push(packet);
+        }
+        None
+    }
+
+    pub(crate) fn finish_resource_completion(&mut self, completion: ResourceCompletion) {
+        resource_diag(&format!(
+            "complete hash={} len={} metadata={}",
+            completion.hash,
+            completion.payload.data.len(),
+            completion.payload.metadata.as_ref().map(|data| data.len()).unwrap_or(0)
+        ));
+        self.events.push(ResourceEvent {
+            hash: completion.hash,
+            link_id: completion.link_id,
+            kind: ResourceEventKind::Complete(ResourceComplete {
+                data: completion.payload.data,
+                metadata: completion.payload.metadata,
+                request_id: completion.payload.request_id,
+                is_request: completion.payload.is_request,
+                is_response: completion.payload.is_response,
+            }),
+        });
     }
 
     fn handle_proof_into(&mut self, packet: &Packet, _responses: &mut Vec<Packet>) {

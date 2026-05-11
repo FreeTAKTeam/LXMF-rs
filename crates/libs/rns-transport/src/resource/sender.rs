@@ -25,11 +25,21 @@ enum OutboundResourcePoll {
 
 impl ResourceSender {
     fn new(link: &Link, data: Vec<u8>, metadata: Option<Vec<u8>>) -> Result<Self, RnsError> {
-        Self::new_with_options(link, data, metadata, None, false)
+        Self::new_for(link, data, metadata, None, false)
     }
 
     pub(super) fn new_with_options(
         link: &Link,
+        data: Vec<u8>,
+        metadata: Option<Vec<u8>>,
+        request_id: Option<Vec<u8>>,
+        is_response: bool,
+    ) -> Result<Self, RnsError> {
+        Self::new_for(link, data, metadata, request_id, is_response)
+    }
+
+    pub(super) fn new_for(
+        link: &(impl ResourcePacketLink + ?Sized),
         data: Vec<u8>,
         metadata: Option<Vec<u8>>,
         request_id: Option<Vec<u8>>,
@@ -68,7 +78,9 @@ impl ResourceSender {
         prefix.extend_from_slice(&combined);
 
         let mut cipher_buf = vec![0u8; prefix.len() + 128];
-        let cipher = link.encrypt(&prefix, &mut cipher_buf).map_err(|_| RnsError::CryptoError)?;
+        let cipher = link
+            .resource_encrypt(&prefix, &mut cipher_buf)
+            .map_err(|_| RnsError::CryptoError)?;
         let cipher_text = cipher.to_vec();
 
         let mut parts = Vec::new();
@@ -103,7 +115,7 @@ impl ResourceSender {
             },
             hashmap: slice_hashmap_segment(&map_hashes, 0),
         };
-        let advertisement_packet = build_link_packet(
+        let advertisement_packet = build_link_packet_for(
             link,
             PacketType::Data,
             PacketContext::ResourceAdvrtisement,
@@ -112,7 +124,7 @@ impl ResourceSender {
         let now = Instant::now();
 
         Ok(Self {
-            link_id: *link.id(),
+            link_id: *link.resource_link_id(),
             resource_hash,
             parts,
             sent_parts: vec![false; map_hashes.len()],
@@ -182,22 +194,42 @@ impl ResourceSender {
         }
     }
 
-    fn handle_request_into(
+    fn handle_request_ref_into(
         &mut self,
-        request: &ResourceRequest,
-        link: &Link,
+        request: &ResourceRequestRef<'_>,
+        link: &(impl ResourcePacketLink + ?Sized),
         packets: &mut Vec<Packet>,
     ) {
-        if request.resource_hash != self.resource_hash {
+        self.handle_request_parts_into(
+            request.resource_hash,
+            request.requested_hashes(),
+            request.hashmap_exhausted,
+            request.last_map_hash,
+            link,
+            packets,
+        )
+    }
+
+    fn handle_request_parts_into<I>(
+        &mut self,
+        resource_hash: Hash,
+        requested_hashes: I,
+        hashmap_exhausted: bool,
+        last_map_hash: Option<[u8; MAPHASH_LEN]>,
+        link: &(impl ResourcePacketLink + ?Sized),
+        packets: &mut Vec<Packet>,
+    ) where
+        I: IntoIterator<Item = [u8; MAPHASH_LEN]>,
+    {
+        if resource_hash != self.resource_hash {
             return;
         }
-
         let mut sent_any = false;
         let mut scratch_packet = Packet::default();
-        for hash in &request.requested_hashes {
-            if let Some(index) = self.map_hashes.iter().position(|entry| entry == hash) {
+        for hash in requested_hashes {
+            if let Some(index) = self.map_hashes.iter().position(|entry| *entry == hash) {
                 if let Some(part) = self.parts.get(index) {
-                    if build_link_packet_into(
+                    if build_link_packet_into_for(
                         link,
                         PacketType::Data,
                         PacketContext::Resource,
@@ -216,8 +248,8 @@ impl ResourceSender {
             }
         }
 
-        if request.hashmap_exhausted {
-            if let Some(last_hash) = request.last_map_hash {
+        if hashmap_exhausted {
+            if let Some(last_hash) = last_map_hash {
                 if let Some(last_index) =
                     self.map_hashes.iter().position(|entry| *entry == last_hash)
                 {
@@ -229,7 +261,7 @@ impl ResourceSender {
                             hashmap: slice_hashmap_segment(&self.map_hashes, next_segment),
                         };
                         if let Ok(payload) = update.encode() {
-                            if let Ok(packet) = build_link_packet(
+                            if let Ok(packet) = build_link_packet_for(
                                 link,
                                 PacketType::Data,
                                 PacketContext::ResourceHashUpdate,

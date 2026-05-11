@@ -110,6 +110,75 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn remote_iface_alias_routes_direct_tx_through_host_bridge() {
+        let mut mgr = InterfaceManager::new(16);
+        let mut host_channel =
+            mgr.new_channel_with_role_and_mode(16, IfaceRole::Unicast, InterfaceMode::Full);
+        let host = *host_channel.address();
+        let remote = AddressHash::new([0x77; crate::hash::ADDRESS_HASH_SIZE]);
+
+        assert_eq!(
+            mgr.register_remote_iface_alias(
+                host,
+                remote,
+                IfaceRole::Unicast,
+                InterfaceMode::PointToPoint,
+            ),
+            Some(remote)
+        );
+        assert_eq!(mgr.role(&remote), Some(IfaceRole::Unicast));
+        assert_eq!(mgr.mode(&remote), Some(InterfaceMode::PointToPoint));
+        assert_eq!(mgr.iface_count(), 2);
+        assert_eq!(
+            mgr.register_remote_iface_alias(
+                host,
+                remote,
+                IfaceRole::Unicast,
+                InterfaceMode::PointToPoint,
+            ),
+            Some(remote)
+        );
+        assert_eq!(mgr.iface_count(), 2);
+
+        let packet = Packet { destination: remote, ..Default::default() };
+        let trace = mgr.send(TxMessage { tx_type: TxMessageType::Direct(remote), packet }).await;
+        assert_eq!(trace.matched_ifaces, 1);
+        assert_eq!(trace.sent_ifaces, 1);
+        let delivered = host_channel.tx_channel.try_recv().expect("host bridge tx");
+        assert_eq!(delivered.tx_type, TxMessageType::Direct(remote));
+        assert_eq!(delivered.packet.destination, remote);
+    }
+
+    #[tokio::test]
+    async fn full_interface_tx_queue_returns_without_waiting() {
+        let mut mgr = InterfaceManager::new(16);
+        let channel = mgr.new_channel(1);
+        let address = *channel.address();
+
+        let first_trace = mgr
+            .send(TxMessage {
+                tx_type: TxMessageType::Direct(address),
+                packet: Packet { destination: address, ..Default::default() },
+            })
+            .await;
+        assert_eq!(first_trace.sent_ifaces, 1);
+
+        let second = tokio::time::timeout(
+            std::time::Duration::from_millis(50),
+            mgr.send(TxMessage {
+                tx_type: TxMessageType::Direct(address),
+                packet: Packet { destination: address, ..Default::default() },
+            }),
+        )
+        .await
+        .expect("full interface tx queue should not stall sender");
+
+        assert_eq!(second.matched_ifaces, 1);
+        assert_eq!(second.sent_ifaces, 0);
+        assert_eq!(second.failed_ifaces, 1);
+    }
+
+    #[tokio::test]
     async fn access_point_blocks_remote_announce_broadcasts() {
         let mut mgr = InterfaceManager::new(16);
         let mut rx = mgr

@@ -1,24 +1,43 @@
-use super::announce::{handle_announce, release_held_announces};
+use super::announce::{
+    handle_announce, handle_validated_announce_unlocked, release_held_announces,
+    validate_announce_on_worker, ValidatedAnnounce,
+};
 use super::announce_limits::{AnnounceLimits, AnnounceRateLimit};
-use super::path::handle_link_request_as_intermediate;
-use super::wire::{handle_data, handle_proof};
+use super::path::{
+    handle_link_request_as_intermediate, handle_link_request_unlocked, handle_path_request_unlocked,
+};
+use super::wire::{
+    collect_ready_link_activation_rtts, collect_ready_outbound_link_proofs,
+    complete_link_resource_on_worker, find_ready_outbound_link_candidate, handle_data,
+    handle_link_resource_data, handle_local_single_destination_data, handle_proof,
+    validated_receipt_hash_unlocked,
+};
 use super::*;
 
 use crate::channel::{
     ChannelError, MessageState as ChannelMessageState, SystemMessageTypes, TypedMessage,
 };
 use crate::destination::link::{Link, LinkEvent, LinkEventData, LinkPayload};
-use crate::destination::{DestinationName, SingleInputDestination};
+use crate::destination::{DestinationName, SingleInputDestination, SingleOutputDestination};
 use crate::error::RnsError;
 use crate::identity::PrivateIdentity;
 use crate::packet::{Header, HeaderType, PacketContext};
+use crate::resource::{ResourceCompletionJob, ResourceEventKind, ResourceManager};
+use crate::transport::worker_boundary::{
+    WorkerBackend, WorkerError, WorkerJob, WorkerJobFuture, WorkerJobKind, WorkerResult,
+    WorkerResultKind,
+};
 use rand_core::OsRng;
+use serde_bytes::ByteBuf;
 use std::sync::Mutex as StdMutex;
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc,
 };
 use tokio::time::{timeout, Duration};
+
+static RESOURCE_PREPARE_TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+static WIRE_WORKER_PERMIT_TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 #[tokio::test]
 async fn link_in_payload_is_forwarded_to_received_data() {
@@ -127,6 +146,281 @@ async fn drop_duplicates() {
 }
 
 #[tokio::test]
+async fn duplicate_filter_skips_busy_inbound_link_proof_status_check() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let transport = Transport::new(TransportConfig::new("test", &identity, true));
+    let handler = transport.get_handler();
+
+    let destination = crate::destination::DestinationDesc {
+        identity: *identity.as_identity(),
+        address_hash: identity.as_identity().address_hash,
+        name: DestinationName::new("lxmf", "delivery"),
+    };
+    let (events, _) = tokio::sync::broadcast::channel(8);
+    let link_id = AddressHash::new_from_rand(OsRng);
+    let link = Arc::new(Mutex::new(Link::new(destination, events)));
+    handler.lock().await.in_links.insert(link_id, link.clone());
+    let _busy_guard = link.lock().await;
+
+    let packet = Packet {
+        header: Header { packet_type: PacketType::Proof, ..Default::default() },
+        context: PacketContext::LinkRequestProof,
+        destination: link_id,
+        data: PacketDataBuffer::new_from_slice(b"proof"),
+        ..Default::default()
+    };
+
+    let accepted = timeout(
+        Duration::from_millis(200),
+        TransportHandler::filter_duplicate_packets_unlocked(handler, &packet),
+    )
+    .await
+    .expect("duplicate filter should not wait for a busy inbound link");
+
+    assert!(accepted);
+}
+
+#[tokio::test]
+async fn link_data_handling_skips_busy_inbound_link() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let transport = Transport::new(TransportConfig::new("test", &identity, true));
+    let handler = transport.get_handler();
+
+    let destination = crate::destination::DestinationDesc {
+        identity: *identity.as_identity(),
+        address_hash: identity.as_identity().address_hash,
+        name: DestinationName::new("lxmf", "delivery"),
+    };
+    let (events, _) = tokio::sync::broadcast::channel(8);
+    let link_id = AddressHash::new_from_rand(OsRng);
+    let link = Arc::new(Mutex::new(Link::new(destination, events)));
+    handler.lock().await.in_links.insert(link_id, link.clone());
+    let _busy_guard = link.lock().await;
+
+    let packet = Packet {
+        header: Header { destination_type: DestinationType::Link, ..Default::default() },
+        destination: link_id,
+        data: PacketDataBuffer::new_from_slice(b"link-data"),
+        ..Default::default()
+    };
+
+    timeout(
+        Duration::from_millis(200),
+        handle_data(
+            &packet,
+            AddressHash::new_from_rand(OsRng),
+            handler.clone(),
+            handler.lock().await,
+        ),
+    )
+    .await
+    .expect("link data handling should not wait for a busy inbound link");
+}
+
+#[tokio::test]
+async fn unlocked_dispatch_does_not_hold_shared_locks_while_iface_queue_waits() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let config = TransportConfig::new("test", &identity, false);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+    let channel = transport.iface_manager().lock().await.new_channel(1);
+    let iface = *channel.address();
+
+    let first = TxMessage {
+        tx_type: TxMessageType::Direct(iface),
+        packet: Packet { data: PacketDataBuffer::new_from_slice(b"first"), ..Default::default() },
+    };
+    let second = TxMessage {
+        tx_type: TxMessageType::Direct(iface),
+        packet: Packet { data: PacketDataBuffer::new_from_slice(b"second"), ..Default::default() },
+    };
+
+    let first_trace = TransportHandler::send_message_unlocked(handler.clone(), first).await;
+    assert_eq!(first_trace.sent_ifaces, 1);
+
+    let pending_send =
+        tokio::spawn(TransportHandler::send_message_unlocked(handler.clone(), second));
+    tokio::time::sleep(Duration::from_millis(10)).await;
+
+    let guard = timeout(Duration::from_millis(20), handler.lock())
+        .await
+        .expect("slow interface dispatch must not hold transport handler lock");
+    drop(guard);
+
+    let iface_manager = transport.iface_manager();
+    let iface_guard = timeout(Duration::from_millis(20), iface_manager.lock())
+        .await
+        .expect("slow interface dispatch must not hold interface manager lock");
+    drop(iface_guard);
+
+    let second_trace = pending_send.await.expect("send task");
+    assert_eq!(second_trace.failed_ifaces, 1);
+}
+
+#[tokio::test]
+async fn cleanup_does_not_hold_iface_manager_while_waiting_for_handler() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let config = TransportConfig::new("test", &identity, true);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+    let iface_manager = transport.iface_manager();
+    let handler_guard = handler.lock().await;
+
+    let cleanup = tokio::spawn(super::jobs::cleanup_path_state_unlocked(
+        handler.clone(),
+        iface_manager.clone(),
+    ));
+    tokio::task::yield_now().await;
+
+    let iface_guard = timeout(Duration::from_millis(20), iface_manager.lock())
+        .await
+        .expect("cleanup must not hold interface manager while waiting for transport handler");
+    drop(iface_guard);
+
+    drop(handler_guard);
+    timeout(Duration::from_millis(200), cleanup)
+        .await
+        .expect("cleanup should finish after handler is released")
+        .expect("cleanup task should not panic");
+}
+
+#[tokio::test]
+async fn link_fanout_does_not_hold_handler_while_waiting_for_link() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let config = TransportConfig::new("test", &identity, true);
+    let transport = Arc::new(Transport::new(config));
+    let handler = transport.get_handler();
+
+    let destination = crate::destination::DestinationDesc {
+        identity: *identity.as_identity(),
+        address_hash: identity.as_identity().address_hash,
+        name: DestinationName::new("lxmf", "delivery"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(8);
+    let link = Arc::new(Mutex::new(Link::new(destination, tx)));
+    handler.lock().await.out_links.insert(destination.address_hash, link.clone());
+
+    let link_guard = link.lock().await;
+    let fanout = tokio::spawn({
+        let transport = Arc::clone(&transport);
+        async move {
+            transport.send_to_all_out_links(b"blocked-link").await;
+        }
+    });
+    tokio::task::yield_now().await;
+
+    let handler_guard = timeout(Duration::from_millis(20), handler.lock())
+        .await
+        .expect("link fanout must not hold transport handler while waiting for a link lock");
+    drop(handler_guard);
+
+    drop(link_guard);
+    timeout(Duration::from_millis(200), fanout)
+        .await
+        .expect("fanout should finish after link is released")
+        .expect("fanout task should not panic");
+}
+
+#[tokio::test]
+async fn link_fanout_skips_busy_links_instead_of_waiting() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let config = TransportConfig::new("test", &identity, true);
+    let transport = Arc::new(Transport::new(config));
+    let handler = transport.get_handler();
+
+    let destination = crate::destination::DestinationDesc {
+        identity: *identity.as_identity(),
+        address_hash: identity.as_identity().address_hash,
+        name: DestinationName::new("lxmf", "delivery"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(8);
+    let link = Arc::new(Mutex::new(Link::new(destination, tx)));
+    handler.lock().await.out_links.insert(destination.address_hash, link.clone());
+
+    let _link_guard = link.lock().await;
+    timeout(Duration::from_millis(200), transport.send_to_all_out_links(b"busy-link"))
+        .await
+        .expect("public link fanout should skip busy links instead of waiting");
+}
+
+#[tokio::test]
+async fn outbound_encryption_skips_busy_destination() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let config = TransportConfig::new("test", &identity, false);
+    let transport = Arc::new(Transport::new(config));
+    let handler = transport.get_handler();
+
+    let remote_identity = PrivateIdentity::new_from_rand(OsRng);
+    let destination = Arc::new(Mutex::new(SingleOutputDestination::new(
+        *remote_identity.as_identity(),
+        DestinationName::new("lxmf", "delivery"),
+    )));
+    let destination_hash = destination.lock().await.desc.address_hash;
+    handler.lock().await.single_out_destinations.insert(destination_hash, destination.clone());
+
+    let _destination_guard = destination.lock().await;
+    let send = transport.send_packet_with_outcome(Packet {
+        header: Header {
+            destination_type: DestinationType::Single,
+            packet_type: PacketType::Data,
+            ..Default::default()
+        },
+        destination: destination_hash,
+        data: PacketDataBuffer::new_from_slice(b"encrypted"),
+        ..Default::default()
+    });
+
+    let handler_guard = timeout(Duration::from_millis(20), handler.lock())
+        .await
+        .expect("outbound encryption must not hold handler before checking destination lock");
+    drop(handler_guard);
+
+    let outcome = timeout(Duration::from_millis(200), send)
+        .await
+        .expect("outbound encryption should not wait for a busy destination");
+    assert_eq!(outcome, SendPacketOutcome::DroppedEncryptFailed);
+}
+
+#[tokio::test]
+async fn outbound_encryption_saturation_returns_without_waiting() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let config = TransportConfig::new("test", &identity, false);
+    let transport = Arc::new(Transport::new(config));
+    let handler = transport.get_handler();
+
+    let remote_identity = PrivateIdentity::new_from_rand(OsRng);
+    let destination = Arc::new(Mutex::new(SingleOutputDestination::new(
+        *remote_identity.as_identity(),
+        DestinationName::new("lxmf", "delivery"),
+    )));
+    let destination_hash = destination.lock().await.desc.address_hash;
+    handler.lock().await.single_out_destinations.insert(destination_hash, destination);
+
+    let permits = super::handler::outbound_encryption_permits();
+    let _held_permits = (0..super::handler::MAX_OUTBOUND_ENCRYPTION_WORKERS)
+        .map(|_| permits.clone().try_acquire_owned().expect("permit available"))
+        .collect::<Vec<_>>();
+
+    let outcome = timeout(
+        Duration::from_millis(50),
+        transport.send_packet_with_outcome(Packet {
+            header: Header {
+                destination_type: DestinationType::Single,
+                packet_type: PacketType::Data,
+                ..Default::default()
+            },
+            destination: destination_hash,
+            data: PacketDataBuffer::new_from_slice(b"encrypted"),
+            ..Default::default()
+        }),
+    )
+    .await
+    .expect("saturated outbound encryption lane should return immediately");
+
+    assert_eq!(outcome, SendPacketOutcome::DroppedEncryptFailed);
+}
+
+#[tokio::test]
 async fn announce_lookup_key_uses_destination_hash() {
     let local_identity = PrivateIdentity::new_from_rand(OsRng);
     let mut config = TransportConfig::new("test", &local_identity, true);
@@ -154,6 +448,465 @@ async fn announce_lookup_key_uses_destination_hash() {
     assert!(keyed_by_destination.is_some(), "announce lookup should be keyed by destination hash");
     let keyed_by_identity = guard.announce_table.packet_for_destination(&announced_identity);
     assert!(keyed_by_identity.is_none(), "identity hash must not be used as announce lookup key");
+}
+
+#[test]
+fn validated_announce_rebuilds_from_worker_result() {
+    let remote_identity = PrivateIdentity::new_from_rand(OsRng);
+    let destination = SingleOutputDestination::new(
+        *remote_identity.as_identity(),
+        DestinationName::new("lxmf", "delivery"),
+    );
+    let name_hash = {
+        let mut bytes = [0u8; crate::destination::NAME_HASH_LENGTH];
+        bytes.copy_from_slice(destination.desc.name.as_name_hash_slice());
+        bytes
+    };
+    let result = WorkerResultKind::AnnounceValidated {
+        destination: {
+            let mut bytes = [0u8; crate::hash::ADDRESS_HASH_SIZE];
+            bytes.copy_from_slice(destination.desc.address_hash.as_slice());
+            bytes
+        },
+        public_key: *destination.desc.identity.public_key.as_bytes(),
+        verifying_key: *destination.desc.identity.verifying_key.as_bytes(),
+        name_hash,
+        app_data: ByteBuf::from(b"announce app data".to_vec()),
+        ratchet: None,
+    };
+
+    let announce = ValidatedAnnounce::from_worker_result(result).expect("worker announce result");
+
+    assert_eq!(announce.destination.desc.address_hash, destination.desc.address_hash);
+    assert_eq!(announce.destination.desc.identity.public_key, destination.desc.identity.public_key);
+    assert_eq!(
+        announce.destination.desc.identity.verifying_key,
+        destination.desc.identity.verifying_key
+    );
+    assert_eq!(announce.destination.desc.name.as_name_hash_slice(), name_hash);
+    assert_eq!(announce.app_data.as_slice(), b"announce app data");
+    assert!(announce.ratchet.is_none());
+}
+
+#[test]
+fn validated_announce_rejects_worker_result_hash_mismatch() {
+    let remote_identity = PrivateIdentity::new_from_rand(OsRng);
+    let destination = SingleOutputDestination::new(
+        *remote_identity.as_identity(),
+        DestinationName::new("lxmf", "delivery"),
+    );
+    let mut name_hash = [0u8; crate::destination::NAME_HASH_LENGTH];
+    name_hash.copy_from_slice(destination.desc.name.as_name_hash_slice());
+    let result = WorkerResultKind::AnnounceValidated {
+        destination: [0x55; crate::hash::ADDRESS_HASH_SIZE],
+        public_key: *destination.desc.identity.public_key.as_bytes(),
+        verifying_key: *destination.desc.identity.verifying_key.as_bytes(),
+        name_hash,
+        app_data: ByteBuf::new(),
+        ratchet: None,
+    };
+
+    let Err(err) = ValidatedAnnounce::from_worker_result(result) else {
+        panic!("hash mismatch must fail");
+    };
+
+    assert!(matches!(err, WorkerError::InvalidJob { .. }));
+}
+
+struct ValidatingAnnounceBackend {
+    calls: Arc<AtomicUsize>,
+}
+
+impl WorkerBackend for ValidatingAnnounceBackend {
+    fn submit(&self, job: WorkerJob) -> WorkerJobFuture<'_> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        Box::pin(async move {
+            let WorkerJobKind::ValidateAnnounce { packet_wire } = job.kind else {
+                return Err(WorkerError::InvalidJob {
+                    message: "expected validate announce job".to_string(),
+                });
+            };
+            let packet = Packet::from_bytes(&packet_wire).map_err(|err| WorkerError::Packet {
+                message: format!("packet decode failed: {err:?}"),
+            })?;
+            let announce = super::announce::validate_announce(&packet).map_err(|err| {
+                WorkerError::Packet { message: format!("announce validate failed: {err:?}") }
+            })?;
+            let mut destination = [0u8; crate::hash::ADDRESS_HASH_SIZE];
+            destination.copy_from_slice(announce.destination.desc.address_hash.as_slice());
+            let mut name_hash = [0u8; crate::destination::NAME_HASH_LENGTH];
+            name_hash.copy_from_slice(announce.destination.desc.name.as_name_hash_slice());
+            Ok(WorkerResult {
+                id: job.id,
+                kind: WorkerResultKind::AnnounceValidated {
+                    destination,
+                    public_key: *announce.destination.desc.identity.public_key.as_bytes(),
+                    verifying_key: *announce.destination.desc.identity.verifying_key.as_bytes(),
+                    name_hash,
+                    app_data: ByteBuf::from(announce.app_data.as_slice().to_vec()),
+                    ratchet: announce.ratchet.map(|ratchet| ByteBuf::from(ratchet.to_vec())),
+                },
+            })
+        })
+    }
+}
+
+struct FailingAnnounceBackend {
+    calls: Arc<AtomicUsize>,
+}
+
+impl WorkerBackend for FailingAnnounceBackend {
+    fn submit(&self, _job: WorkerJob) -> WorkerJobFuture<'_> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        Box::pin(async {
+            Err(WorkerError::BackendUnavailable {
+                message: "worker process unavailable".to_string(),
+            })
+        })
+    }
+}
+
+struct BlockingAnnounceBackend {
+    started: Arc<tokio::sync::Notify>,
+    release: Arc<tokio::sync::Notify>,
+}
+
+impl WorkerBackend for BlockingAnnounceBackend {
+    fn submit(&self, job: WorkerJob) -> WorkerJobFuture<'_> {
+        let started = self.started.clone();
+        let release = self.release.clone();
+        Box::pin(async move {
+            let WorkerJobKind::ValidateAnnounce { .. } = job.kind else {
+                return Err(WorkerError::InvalidJob {
+                    message: "expected validate announce job".to_string(),
+                });
+            };
+            started.notify_one();
+            release.notified().await;
+            Err(WorkerError::BackendUnavailable {
+                message: "announce worker intentionally blocked".to_string(),
+            })
+        })
+    }
+}
+
+struct OutboundEncryptBackend {
+    calls: Arc<AtomicUsize>,
+}
+
+impl WorkerBackend for OutboundEncryptBackend {
+    fn submit(&self, job: WorkerJob) -> WorkerJobFuture<'_> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        Box::pin(async move {
+            let WorkerJobKind::OutboundEncrypt { packet_wire, .. } = job.kind else {
+                return Err(WorkerError::InvalidJob {
+                    message: "expected outbound encrypt job".to_string(),
+                });
+            };
+            let mut packet = Packet::from_bytes(&packet_wire).map_err(|err| {
+                WorkerError::Packet { message: format!("packet decode failed: {err:?}") }
+            })?;
+            packet.data = PacketDataBuffer::new_from_slice(b"remote encrypted");
+            let packet_wire = packet.to_bytes().map_err(|err| WorkerError::Packet {
+                message: format!("packet encode failed: {err:?}"),
+            })?;
+            Ok(WorkerResult { id: job.id, kind: WorkerResultKind::PacketWire { packet_wire } })
+        })
+    }
+}
+
+struct SingleDestinationDecryptBackend {
+    calls: Arc<AtomicUsize>,
+}
+
+impl WorkerBackend for SingleDestinationDecryptBackend {
+    fn submit(&self, job: WorkerJob) -> WorkerJobFuture<'_> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        Box::pin(async move {
+            let WorkerJobKind::SingleDestinationDecrypt { .. } = job.kind else {
+                return Err(WorkerError::InvalidJob {
+                    message: "expected single destination decrypt job".to_string(),
+                });
+            };
+            Ok(WorkerResult {
+                id: job.id,
+                kind: WorkerResultKind::DestinationPayload {
+                    payload: ByteBuf::from(b"remote decrypted".to_vec()),
+                    ratchet_used: false,
+                },
+            })
+        })
+    }
+}
+
+struct ResourceCompleteBackend {
+    calls: Arc<AtomicUsize>,
+}
+
+impl WorkerBackend for ResourceCompleteBackend {
+    fn submit(&self, job: WorkerJob) -> WorkerJobFuture<'_> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        Box::pin(async move {
+            let WorkerJobKind::ResourceComplete { resource_hash, .. } = job.kind else {
+                return Err(WorkerError::InvalidJob {
+                    message: "expected resource complete job".to_string(),
+                });
+            };
+            Ok(WorkerResult {
+                id: job.id,
+                kind: WorkerResultKind::ResourceCompleted {
+                    resource_hash,
+                    proof: [0x77; crate::hash::HASH_SIZE],
+                    data: ByteBuf::from(b"remote completed".to_vec()),
+                    metadata: None,
+                    request_id: None,
+                    is_request: false,
+                    is_response: false,
+                },
+            })
+        })
+    }
+}
+
+#[tokio::test]
+async fn announce_validation_uses_configured_worker_backend() {
+    let remote_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut remote_destination =
+        SingleInputDestination::new(remote_identity, DestinationName::new("lxmf", "delivery"));
+    let packet =
+        remote_destination.announce(OsRng, Some(b"worker-backed announce")).expect("announce");
+    let calls = Arc::new(AtomicUsize::new(0));
+    let backend = Arc::new(ValidatingAnnounceBackend { calls: calls.clone() });
+
+    let announce = validate_announce_on_worker(packet, Some(backend)).await.expect("announce");
+
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert_eq!(announce.app_data.as_slice(), b"worker-backed announce");
+    assert_eq!(announce.destination.desc.address_hash, remote_destination.desc.address_hash);
+}
+
+#[tokio::test]
+async fn outbound_encryption_uses_configured_worker_backend() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let calls = Arc::new(AtomicUsize::new(0));
+    let mut config = TransportConfig::new("test", &local_identity, false);
+    config.set_outbound_worker_backend(Arc::new(OutboundEncryptBackend { calls: calls.clone() }));
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+
+    let remote_identity = PrivateIdentity::new_from_rand(OsRng);
+    let destination = Arc::new(Mutex::new(SingleOutputDestination::new(
+        *remote_identity.as_identity(),
+        DestinationName::new("lxmf", "delivery"),
+    )));
+    let destination_hash = destination.lock().await.desc.address_hash;
+    handler.lock().await.single_out_destinations.insert(destination_hash, destination);
+
+    let trace = TransportHandler::send_packet_with_trace_unlocked(
+        handler,
+        Packet {
+            header: Header {
+                destination_type: DestinationType::Single,
+                packet_type: PacketType::Data,
+                ..Default::default()
+            },
+            destination: destination_hash,
+            data: PacketDataBuffer::new_from_slice(b"plain"),
+            ..Default::default()
+        },
+    )
+    .await;
+
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert_eq!(trace.outcome, SendPacketOutcome::DroppedNoRoute);
+}
+
+#[tokio::test]
+async fn single_destination_decrypt_uses_configured_worker_backend() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let destination = Arc::new(Mutex::new(SingleInputDestination::new(
+        local_identity,
+        DestinationName::new("lxmf", "delivery"),
+    )));
+    let destination_hash = destination.lock().await.desc.address_hash;
+    let packet = Packet {
+        header: Header {
+            destination_type: DestinationType::Single,
+            packet_type: PacketType::Data,
+            ..Default::default()
+        },
+        destination: destination_hash,
+        data: PacketDataBuffer::new_from_slice(b"ciphertext"),
+        ..Default::default()
+    };
+    let (received_tx, mut received_rx) = tokio::sync::broadcast::channel(4);
+    let calls = Arc::new(AtomicUsize::new(0));
+    let backend = Arc::new(SingleDestinationDecryptBackend { calls: calls.clone() });
+
+    assert!(
+        handle_local_single_destination_data(
+            &packet,
+            destination,
+            received_tx,
+            "test",
+            Some(backend),
+        )
+        .await
+    );
+
+    let received = received_rx.recv().await.expect("received data");
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert_eq!(received.data.as_slice(), b"remote decrypted");
+}
+
+#[tokio::test]
+async fn single_destination_decrypt_falls_back_when_worker_backend_fails() {
+    let _worker_permit_guard = WIRE_WORKER_PERMIT_TEST_LOCK.lock().await;
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let destination = Arc::new(Mutex::new(SingleInputDestination::new(
+        local_identity,
+        DestinationName::new("lxmf", "delivery"),
+    )));
+    let destination_hash = destination.lock().await.desc.address_hash;
+    let public_key = *destination.lock().await.desc.identity.public_key.as_bytes();
+    let salt = {
+        let destination = destination.lock().await;
+        let mut salt = [0u8; crate::hash::ADDRESS_HASH_SIZE];
+        salt.copy_from_slice(destination.identity.as_identity().address_hash.as_slice());
+        salt
+    };
+    let ciphertext = crate::ratchets::encrypt_for_public_key_bytes(
+        &public_key,
+        &salt,
+        b"local decrypted",
+        OsRng,
+    )
+    .expect("encrypt payload");
+    let packet = Packet {
+        header: Header {
+            destination_type: DestinationType::Single,
+            packet_type: PacketType::Data,
+            ..Default::default()
+        },
+        destination: destination_hash,
+        data: PacketDataBuffer::new_from_slice(&ciphertext),
+        ..Default::default()
+    };
+    let (received_tx, mut received_rx) = tokio::sync::broadcast::channel(4);
+    let calls = Arc::new(AtomicUsize::new(0));
+    let backend = Arc::new(FailingAnnounceBackend { calls: calls.clone() });
+
+    assert!(
+        handle_local_single_destination_data(
+            &packet,
+            destination,
+            received_tx,
+            "test",
+            Some(backend),
+        )
+        .await
+    );
+
+    let received = received_rx.recv().await.expect("received data");
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert_eq!(received.data.as_slice(), b"local decrypted");
+}
+
+#[tokio::test]
+async fn outbound_encryption_falls_back_when_worker_backend_fails() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let calls = Arc::new(AtomicUsize::new(0));
+    let mut config = TransportConfig::new("test", &local_identity, false);
+    config.set_outbound_worker_backend(Arc::new(FailingAnnounceBackend { calls: calls.clone() }));
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+
+    let remote_identity = PrivateIdentity::new_from_rand(OsRng);
+    let destination = Arc::new(Mutex::new(SingleOutputDestination::new(
+        *remote_identity.as_identity(),
+        DestinationName::new("lxmf", "delivery"),
+    )));
+    let destination_hash = destination.lock().await.desc.address_hash;
+    handler.lock().await.single_out_destinations.insert(destination_hash, destination);
+
+    let trace = TransportHandler::send_packet_with_trace_unlocked(
+        handler,
+        Packet {
+            header: Header {
+                destination_type: DestinationType::Single,
+                packet_type: PacketType::Data,
+                ..Default::default()
+            },
+            destination: destination_hash,
+            data: PacketDataBuffer::new_from_slice(b"plain"),
+            ..Default::default()
+        },
+    )
+    .await;
+
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert_eq!(trace.outcome, SendPacketOutcome::DroppedNoRoute);
+}
+
+#[tokio::test]
+async fn announce_validation_falls_back_when_worker_backend_fails() {
+    let remote_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut remote_destination =
+        SingleInputDestination::new(remote_identity, DestinationName::new("lxmf", "delivery"));
+    let packet =
+        remote_destination.announce(OsRng, Some(b"local fallback announce")).expect("announce");
+    let calls = Arc::new(AtomicUsize::new(0));
+    let backend = Arc::new(FailingAnnounceBackend { calls: calls.clone() });
+
+    let announce = validate_announce_on_worker(packet, Some(backend)).await.expect("announce");
+
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert_eq!(announce.app_data.as_slice(), b"local fallback announce");
+    assert_eq!(announce.destination.desc.address_hash, remote_destination.desc.address_hash);
+}
+
+#[tokio::test]
+async fn announce_processing_skips_busy_existing_destination() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let transport = Transport::new(TransportConfig::new("test", &local_identity, true));
+    let handler = transport.get_handler();
+
+    let remote_identity = PrivateIdentity::new_from_rand(OsRng);
+    let existing = Arc::new(Mutex::new(SingleOutputDestination::new(
+        *remote_identity.as_identity(),
+        DestinationName::new("lxmf", "delivery"),
+    )));
+    let destination_hash = existing.lock().await.desc.address_hash;
+    handler.lock().await.single_out_destinations.insert(destination_hash, existing.clone());
+    let _busy_guard = existing.lock().await;
+
+    let announce = ValidatedAnnounce {
+        destination: SingleOutputDestination::new(
+            *remote_identity.as_identity(),
+            DestinationName::new("lxmf", "delivery"),
+        ),
+        app_data: PacketDataBuffer::new(),
+        ratchet: None,
+    };
+    let packet = Packet {
+        header: Header { packet_type: PacketType::Announce, ..Default::default() },
+        destination: destination_hash,
+        data: PacketDataBuffer::new_from_slice(b"announce"),
+        ..Default::default()
+    };
+
+    timeout(
+        Duration::from_millis(200),
+        handle_validated_announce_unlocked(
+            &packet,
+            handler,
+            AddressHash::new_from_rand(OsRng),
+            crate::iface::IfaceSource::None,
+            announce,
+        ),
+    )
+    .await
+    .expect("announce processing should not wait for a busy existing destination");
 }
 
 #[tokio::test]
@@ -229,7 +982,7 @@ async fn reticulum_tunnel_table_persistence_restores_tunnel_paths_after_reappear
     {
         let handler = transport.get_handler();
         let mut handler = handler.lock().await;
-        super::tunnels::handle_tunnel_synthesize_packet(&tunnel_synth, &mut handler, iface).await;
+        super::tunnels::handle_tunnel_synthesize_packet(&tunnel_synth, &mut handler, iface);
     }
 
     let remote_identity = PrivateIdentity::new_from_rand(OsRng);
@@ -272,8 +1025,7 @@ async fn reticulum_tunnel_table_persistence_restores_tunnel_paths_after_reappear
             &tunnel_synth,
             &mut handler,
             restored_iface,
-        )
-        .await;
+        );
     }
 
     assert!(
@@ -281,6 +1033,128 @@ async fn reticulum_tunnel_table_persistence_restores_tunnel_paths_after_reappear
         "tunnel reappearance should restore the persisted tunnel path"
     );
     assert!(restored.destination_identity(&destination).await.is_some());
+}
+
+#[tokio::test]
+async fn tunnel_synthesis_does_not_hold_handler_while_waiting_for_iface_manager() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let config = TransportConfig::new("test", &identity, true);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+    let iface_manager = transport.iface_manager();
+    let iface = {
+        let mut manager = iface_manager.lock().await;
+        *manager.new_channel(16).address()
+    };
+
+    let iface_guard = iface_manager.lock().await;
+    let synthesis =
+        tokio::spawn(async move { transport.synthesize_tunnel_on_interface(iface).await });
+    tokio::task::yield_now().await;
+
+    let handler_guard = timeout(Duration::from_millis(50), handler.lock())
+        .await
+        .expect("tunnel synthesis should not hold the handler while blocked on iface manager");
+    drop(handler_guard);
+    drop(iface_guard);
+
+    assert!(
+        synthesis.await.expect("synthesis task should not panic"),
+        "registered interface should synthesize a tunnel packet"
+    );
+}
+
+#[tokio::test]
+async fn packet_receive_drops_iface_receiver_before_transport_processing() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let config = TransportConfig::new("test", &identity, true);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+    let iface_manager = transport.iface_manager();
+    let channel = iface_manager.lock().await.new_channel(16);
+    let receiver = iface_manager.lock().await.receiver();
+    let mut received = transport.iface_rx();
+    tokio::task::yield_now().await;
+
+    let handler_guard = handler.lock().await;
+    channel
+        .rx_channel
+        .send(RxMessage {
+            address: *channel.address(),
+            packet: Packet {
+                data: PacketDataBuffer::new_from_slice(b"blocked"),
+                ..Default::default()
+            },
+            source: crate::iface::IfaceSource::None,
+        })
+        .await
+        .expect("rx channel should accept packet");
+
+    timeout(Duration::from_millis(200), received.recv())
+        .await
+        .expect("packet task should receive and fan out packet")
+        .expect("iface rx broadcast should remain open");
+
+    let receiver_guard = timeout(Duration::from_millis(50), receiver.lock())
+        .await
+        .expect("packet processing must not hold iface receiver while waiting for handler");
+    drop(receiver_guard);
+    drop(handler_guard);
+}
+
+#[tokio::test]
+async fn packet_receive_continues_while_announce_worker_is_stalled() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let started = Arc::new(tokio::sync::Notify::new());
+    let release = Arc::new(tokio::sync::Notify::new());
+    let mut config = TransportConfig::new("test", &identity, true);
+    config.set_announce_worker_backend(Arc::new(BlockingAnnounceBackend {
+        started: started.clone(),
+        release: release.clone(),
+    }));
+    let transport = Transport::new(config);
+    let iface_manager = transport.iface_manager();
+    let channel = iface_manager.lock().await.new_channel(16);
+    tokio::task::yield_now().await;
+
+    let remote_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut remote_destination =
+        SingleInputDestination::new(remote_identity, DestinationName::new("lxmf", "delivery"));
+    let announce = remote_destination.announce(OsRng, Some(b"blocked announce")).expect("announce");
+    channel
+        .rx_channel
+        .send(RxMessage {
+            address: *channel.address(),
+            packet: announce,
+            source: crate::iface::IfaceSource::None,
+        })
+        .await
+        .expect("rx channel should accept announce");
+
+    timeout(Duration::from_millis(200), started.notified())
+        .await
+        .expect("announce worker should receive the first packet");
+
+    let mut received = transport.iface_rx();
+    let second_packet =
+        Packet { data: PacketDataBuffer::new_from_slice(b"second packet"), ..Default::default() };
+    channel
+        .rx_channel
+        .send(RxMessage {
+            address: *channel.address(),
+            packet: second_packet,
+            source: crate::iface::IfaceSource::None,
+        })
+        .await
+        .expect("rx channel should accept second packet");
+
+    let received = timeout(Duration::from_millis(200), received.recv())
+        .await
+        .expect("packet task should keep receiving while announce validation is stalled")
+        .expect("iface rx broadcast should remain open");
+
+    assert_eq!(received.packet.data.as_slice(), b"second packet");
+    release.notify_waiters();
 }
 
 #[tokio::test]
@@ -476,6 +1350,32 @@ async fn path_response_announces_are_not_held_by_rate_limits() {
         .expect("path response announce should emit immediately")
         .expect("broadcast receive");
     assert_eq!(received.destination.lock().await.desc.address_hash, announce.destination);
+}
+
+#[tokio::test]
+async fn path_request_skips_busy_local_destination_response() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut transport = Transport::new(TransportConfig::new("test", &local_identity, true));
+    let handler = transport.get_handler();
+
+    let remote_identity = PrivateIdentity::new_from_rand(OsRng);
+    let destination =
+        transport.add_destination(remote_identity, DestinationName::new("lxmf", "delivery")).await;
+    let destination_hash = destination.lock().await.desc.address_hash;
+    let request = {
+        let mut handler = handler.lock().await;
+        handler.path_requests.generate(&destination_hash, None)
+    };
+
+    let _busy_guard = destination.lock().await;
+    let response = timeout(
+        Duration::from_millis(200),
+        handle_path_request_unlocked(&request, handler, AddressHash::new_from_rand(OsRng)),
+    )
+    .await
+    .expect("path request handling should not wait for a busy local destination");
+
+    assert!(response.is_none());
 }
 
 #[tokio::test]
@@ -678,6 +1578,7 @@ async fn routed_link_request_proof_requires_matching_iface_and_signature() {
         next_hop,
         next_hop_iface,
         &request,
+        handler.clone(),
         handler.lock().await,
     )
     .await;
@@ -720,6 +1621,295 @@ async fn routed_link_request_proof_requires_matching_iface_and_signature() {
             Some(request.destination)
         );
     }
+}
+
+#[tokio::test]
+async fn link_request_proof_forwarding_skips_busy_destination_validation() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut config = TransportConfig::new("test", &local_identity, true);
+    config.set_retransmit(true);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+
+    let remote_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut remote_destination =
+        SingleInputDestination::new(remote_identity, DestinationName::new("lxmf", "delivery"));
+    let announce = remote_destination.announce(OsRng, None).expect("valid announce packet");
+    handle_announce(
+        &announce,
+        handler.lock().await,
+        AddressHash::new_from_rand(OsRng),
+        crate::iface::IfaceSource::None,
+    )
+    .await;
+
+    let received_from = AddressHash::new_from_slice(&[1u8; 16]);
+    let next_hop = AddressHash::new_from_slice(&[2u8; 16]);
+    let next_hop_iface = AddressHash::new_from_slice(&[3u8; 16]);
+
+    let (tx, _) = tokio::sync::broadcast::channel(4);
+    let mut outbound_link = Link::new(remote_destination.desc, tx.clone());
+    let request = outbound_link.request();
+    handle_link_request_as_intermediate(
+        received_from,
+        next_hop,
+        next_hop_iface,
+        &request,
+        handler.clone(),
+        handler.lock().await,
+    )
+    .await;
+
+    let destination = {
+        let handler = handler.lock().await;
+        handler
+            .single_out_destinations
+            .get(&request.destination)
+            .cloned()
+            .expect("learned destination")
+    };
+    let _destination_guard = destination.lock().await;
+
+    let mut inbound = Link::new_from_request(
+        &request,
+        remote_destination.sign_key().clone(),
+        remote_destination.desc,
+        tx,
+    )
+    .expect("link request should parse");
+    let proof = inbound.prove();
+
+    timeout(Duration::from_millis(200), handle_proof(proof, handler.clone(), next_hop_iface))
+        .await
+        .expect("proof forwarding should not wait for a busy destination");
+
+    let handler = handler.lock().await;
+    assert!(
+        handler.link_table.original_destination(outbound_link.id()).is_none(),
+        "busy destination validation should skip proof forwarding"
+    );
+}
+
+#[tokio::test]
+async fn receipt_proof_validation_skips_busy_link() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let transport = Transport::new(TransportConfig::new("test", &identity, true));
+    let handler = transport.get_handler();
+
+    let destination = crate::destination::DestinationDesc {
+        identity: *identity.as_identity(),
+        address_hash: identity.as_identity().address_hash,
+        name: DestinationName::new("lxmf", "delivery"),
+    };
+    let (events, _) = tokio::sync::broadcast::channel(8);
+    let link_id = AddressHash::new_from_rand(OsRng);
+    let link = Arc::new(Mutex::new(Link::new(destination, events)));
+    handler.lock().await.in_links.insert(link_id, link.clone());
+    let _busy_guard = link.lock().await;
+
+    let packet = Packet {
+        header: Header {
+            destination_type: DestinationType::Link,
+            packet_type: PacketType::Proof,
+            ..Default::default()
+        },
+        context: PacketContext::LinkProof,
+        destination: link_id,
+        data: PacketDataBuffer::new_from_slice(b"proof"),
+        ..Default::default()
+    };
+
+    let result =
+        timeout(Duration::from_millis(200), validated_receipt_hash_unlocked(handler, &packet))
+            .await
+            .expect("receipt proof validation should not wait for a busy link");
+
+    assert!(result.is_none());
+}
+
+#[tokio::test]
+async fn receipt_proof_validation_skips_busy_output_destination() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let transport = Transport::new(TransportConfig::new("test", &identity, true));
+    let handler = transport.get_handler();
+
+    let remote_identity = PrivateIdentity::new_from_rand(OsRng);
+    let destination = Arc::new(Mutex::new(SingleOutputDestination::new(
+        *remote_identity.as_identity(),
+        DestinationName::new("lxmf", "delivery"),
+    )));
+    let destination_hash = destination.lock().await.desc.address_hash;
+    handler.lock().await.single_out_destinations.insert(destination_hash, destination.clone());
+    let _busy_guard = destination.lock().await;
+
+    let packet = Packet {
+        header: Header {
+            destination_type: DestinationType::Single,
+            packet_type: PacketType::Proof,
+            ..Default::default()
+        },
+        destination: destination_hash,
+        data: PacketDataBuffer::new_from_slice(b"proof"),
+        ..Default::default()
+    };
+
+    let result =
+        timeout(Duration::from_millis(200), validated_receipt_hash_unlocked(handler, &packet))
+            .await
+            .expect("receipt proof validation should not wait for a busy output destination");
+
+    assert!(result.is_none());
+}
+
+#[tokio::test]
+async fn receipt_proof_validation_skips_busy_input_destination() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let transport = Transport::new(TransportConfig::new("test", &identity, true));
+    let handler = transport.get_handler();
+
+    let remote_identity = PrivateIdentity::new_from_rand(OsRng);
+    let destination = Arc::new(Mutex::new(SingleInputDestination::new(
+        remote_identity,
+        DestinationName::new("lxmf", "delivery"),
+    )));
+    let destination_hash = destination.lock().await.desc.address_hash;
+    handler.lock().await.single_in_destinations.insert(destination_hash, destination.clone());
+    let _busy_guard = destination.lock().await;
+
+    let packet = Packet {
+        header: Header {
+            destination_type: DestinationType::Single,
+            packet_type: PacketType::Proof,
+            ..Default::default()
+        },
+        destination: destination_hash,
+        data: PacketDataBuffer::new_from_slice(b"proof"),
+        ..Default::default()
+    };
+
+    let result =
+        timeout(Duration::from_millis(200), validated_receipt_hash_unlocked(handler, &packet))
+            .await
+            .expect("receipt proof validation should not wait for a busy input destination");
+
+    assert!(result.is_none());
+}
+
+#[tokio::test]
+async fn local_single_destination_decrypt_skips_busy_destination() {
+    let _worker_permit_guard = WIRE_WORKER_PERMIT_TEST_LOCK.lock().await;
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let destination = Arc::new(Mutex::new(SingleInputDestination::new(
+        identity,
+        DestinationName::new("lxmf", "delivery"),
+    )));
+    let destination_hash = destination.lock().await.desc.address_hash;
+    let _busy_guard = destination.lock().await;
+    let (received_tx, mut received_rx) = tokio::sync::broadcast::channel(8);
+
+    let packet = Packet {
+        header: Header {
+            packet_type: PacketType::Data,
+            destination_type: DestinationType::Single,
+            ..Default::default()
+        },
+        destination: destination_hash,
+        context: PacketContext::None,
+        data: PacketDataBuffer::new_from_slice(b"ciphertext"),
+        ..Default::default()
+    };
+
+    let handled = timeout(
+        Duration::from_millis(200),
+        handle_local_single_destination_data(
+            &packet,
+            destination.clone(),
+            received_tx,
+            "test",
+            None,
+        ),
+    )
+    .await
+    .expect("single-destination decrypt should not wait for a busy destination");
+
+    assert!(handled);
+    assert!(
+        received_rx.try_recv().is_err(),
+        "busy destination decrypt should not emit received data"
+    );
+}
+
+#[tokio::test]
+async fn local_single_destination_decrypt_returns_when_workers_are_saturated() {
+    let _worker_permit_guard = WIRE_WORKER_PERMIT_TEST_LOCK.lock().await;
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let destination = Arc::new(Mutex::new(SingleInputDestination::new(
+        identity,
+        DestinationName::new("lxmf", "delivery"),
+    )));
+    let destination_hash = destination.lock().await.desc.address_hash;
+    let (received_tx, mut received_rx) = tokio::sync::broadcast::channel(8);
+    let permits = super::wire::single_destination_decrypt_permits();
+    let _held_permits = (0..super::wire::MAX_SINGLE_DESTINATION_DECRYPT_WORKERS)
+        .map(|_| permits.clone().try_acquire_owned().expect("permit available"))
+        .collect::<Vec<_>>();
+
+    let packet = Packet {
+        header: Header {
+            packet_type: PacketType::Data,
+            destination_type: DestinationType::Single,
+            ..Default::default()
+        },
+        destination: destination_hash,
+        context: PacketContext::None,
+        data: PacketDataBuffer::new_from_slice(b"ciphertext"),
+        ..Default::default()
+    };
+
+    let handled = timeout(
+        Duration::from_millis(50),
+        handle_local_single_destination_data(&packet, destination, received_tx, "test", None),
+    )
+    .await
+    .expect("saturated single-destination decrypt workers should not stall handling");
+
+    assert!(handled);
+    assert!(
+        received_rx.try_recv().is_err(),
+        "saturated destination decrypt should not emit received data"
+    );
+}
+
+#[tokio::test]
+async fn link_request_skips_busy_local_destination() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut transport = Transport::new(TransportConfig::new("test", &local_identity, true));
+    let handler = transport.get_handler();
+
+    let remote_identity = PrivateIdentity::new_from_rand(OsRng);
+    let destination =
+        transport.add_destination(remote_identity, DestinationName::new("lxmf", "delivery")).await;
+    let destination_hash = destination.lock().await.desc.address_hash;
+
+    let signer = PrivateIdentity::new_from_rand(OsRng);
+    let destination_desc = crate::destination::DestinationDesc {
+        identity: *signer.as_identity(),
+        address_hash: destination_hash,
+        name: DestinationName::new("lxmf", "delivery"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(4);
+    let mut outbound = Link::new(destination_desc, tx);
+    let request = outbound.request();
+
+    let _busy_guard = destination.lock().await;
+    timeout(
+        Duration::from_millis(200),
+        handle_link_request_unlocked(&request, AddressHash::new_from_rand(OsRng), handler.clone()),
+    )
+    .await
+    .expect("link request handling should not wait for a busy local destination");
+
+    assert!(handler.lock().await.in_links.is_empty());
 }
 
 #[test]
@@ -820,7 +2010,7 @@ async fn transport_register_channel_handler_dispatches_inbound_channel_message()
     let (_sequence, packet) = inbound
         .send_channel_message(0x4444, b"transport-channel".to_vec())
         .expect("channel message");
-    handle_data(&packet, iface, handler.lock().await).await;
+    handle_data(&packet, iface, handler.clone(), handler.lock().await).await;
 
     let seen = seen.lock().expect("lock");
     assert_eq!(seen.len(), 1);
@@ -943,7 +2133,7 @@ async fn transport_channel_handle_supports_typed_messages() {
     let (_sequence, packet) = inbound
         .send_channel_message(TestTypedMessage::MSG_TYPE, message.encode())
         .expect("typed channel packet");
-    handle_data(&packet, iface, handler.lock().await).await;
+    handle_data(&packet, iface, handler.clone(), handler.lock().await).await;
 
     let seen = seen.lock().expect("lock");
     assert_eq!(seen.as_slice(), &[message]);
@@ -992,7 +2182,7 @@ async fn transport_channel_handle_can_remove_handlers() {
 
     let (_sequence, packet) =
         inbound.send_channel_message(0x7777, b"removed".to_vec()).expect("channel message");
-    handle_data(&packet, iface, handler.lock().await).await;
+    handle_data(&packet, iface, handler.clone(), handler.lock().await).await;
 
     assert!(seen.lock().expect("lock").is_empty());
 }
@@ -1051,6 +2241,7 @@ async fn transport_channel_handle_can_open_channel_without_handlers() {
 
 #[tokio::test]
 async fn send_resource_returns_error_when_advertisement_dispatch_drops() {
+    let _resource_prepare_guard = RESOURCE_PREPARE_TEST_LOCK.lock().await;
     let local_identity = PrivateIdentity::new_from_rand(OsRng);
     let config = TransportConfig::new("test", &local_identity, true);
     let transport = Transport::new(config);
@@ -1080,8 +2271,739 @@ async fn send_resource_returns_error_when_advertisement_dispatch_drops() {
     let result = transport.send_resource(&link_id, b"resource".to_vec(), None).await;
     assert!(matches!(result, Err(RnsError::ConnectionError)));
 
-    let guard = handler.lock().await;
-    assert!(guard.resource_manager.has_no_outbound_state());
+    let resource_manager = { handler.lock().await.resource_lane.manager_handle() };
+    assert!(resource_manager.lock().await.has_no_outbound_state());
+}
+
+#[tokio::test]
+async fn send_resource_skips_busy_link_preparation() {
+    let _resource_prepare_guard = RESOURCE_PREPARE_TEST_LOCK.lock().await;
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let config = TransportConfig::new("test", &local_identity, true);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+
+    let signer = PrivateIdentity::new_from_rand(OsRng);
+    let identity = *signer.as_identity();
+    let destination = crate::destination::DestinationDesc {
+        identity,
+        address_hash: identity.address_hash,
+        name: DestinationName::new("lxmf", "delivery"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(8);
+    let mut outbound = Link::new(destination, tx.clone());
+    let request = outbound.request();
+    let mut inbound = Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
+        .expect("link request should parse");
+    let iface = AddressHash::new_from_rand(OsRng);
+    assert!(matches!(
+        outbound.handle_packet(&inbound.prove(), iface),
+        crate::destination::link::LinkHandleResult::Activated
+    ));
+
+    let link_id = *outbound.id();
+    let outbound = Arc::new(Mutex::new(outbound));
+    handler.lock().await.in_links.insert(link_id, outbound.clone());
+    let _busy_guard = outbound.lock().await;
+
+    let result = timeout(
+        Duration::from_millis(200),
+        transport.send_resource(&link_id, b"resource".to_vec(), None),
+    )
+    .await
+    .expect("resource send should not wait for a busy link during preparation");
+    assert!(matches!(result, Err(RnsError::ConnectionError)));
+
+    let resource_manager = { handler.lock().await.resource_lane.manager_handle() };
+    assert!(resource_manager.lock().await.has_no_outbound_state());
+}
+
+#[tokio::test]
+async fn send_resource_returns_when_prepare_workers_are_saturated() {
+    let _resource_prepare_guard = RESOURCE_PREPARE_TEST_LOCK.lock().await;
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let config = TransportConfig::new("test", &local_identity, true);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+
+    let signer = PrivateIdentity::new_from_rand(OsRng);
+    let identity = *signer.as_identity();
+    let destination = crate::destination::DestinationDesc {
+        identity,
+        address_hash: identity.address_hash,
+        name: DestinationName::new("lxmf", "delivery"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(8);
+    let mut outbound = Link::new(destination, tx.clone());
+    let request = outbound.request();
+    let mut inbound = Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
+        .expect("link request should parse");
+    let iface = AddressHash::new_from_rand(OsRng);
+    assert!(matches!(
+        outbound.handle_packet(&inbound.prove(), iface),
+        crate::destination::link::LinkHandleResult::Activated
+    ));
+
+    let link_id = *outbound.id();
+    handler.lock().await.in_links.insert(link_id, Arc::new(Mutex::new(outbound)));
+
+    let permits = super::links::resource_prepare_permits();
+    let _held_permits = (0..super::links::MAX_RESOURCE_PREPARE_WORKERS)
+        .map(|_| permits.clone().try_acquire_owned().expect("permit available"))
+        .collect::<Vec<_>>();
+
+    let result = timeout(
+        Duration::from_millis(50),
+        transport.send_resource(&link_id, b"resource".to_vec(), None),
+    )
+    .await
+    .expect("saturated resource prepare workers should not stall send_resource");
+    assert!(matches!(result, Err(RnsError::ConnectionError)));
+
+    let resource_manager = { handler.lock().await.resource_lane.manager_handle() };
+    assert!(resource_manager.lock().await.has_no_outbound_state());
+}
+
+fn decrypt_resource_packet_for_test(link: &Link, packet: &Packet) -> Packet {
+    let mut plain_packet = *packet;
+    let mut buffer = PacketDataBuffer::new();
+    let plain_len = {
+        let plaintext = link
+            .decrypt(packet.data.as_slice(), buffer.accuire_buf_max())
+            .expect("decrypt should succeed");
+        plaintext.len()
+    };
+    buffer.resize(plain_len);
+    plain_packet.data = buffer;
+    plain_packet
+}
+
+fn active_resource_completion_link_for_test() -> Arc<Mutex<Link>> {
+    let signer = PrivateIdentity::new_from_rand(OsRng);
+    let identity = *signer.as_identity();
+    let destination = crate::destination::DestinationDesc {
+        identity,
+        address_hash: identity.address_hash,
+        name: DestinationName::new("lxmf", "delivery"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(8);
+    let mut sender_link = Link::new(destination, tx.clone());
+    let request = sender_link.request();
+    let mut receiver_link =
+        Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
+            .expect("link request should parse");
+    let iface = AddressHash::new_from_rand(OsRng);
+    assert!(matches!(
+        sender_link.handle_packet(&receiver_link.prove(), iface),
+        crate::destination::link::LinkHandleResult::Activated
+    ));
+    Arc::new(Mutex::new(receiver_link))
+}
+
+#[tokio::test]
+async fn inbound_resource_completion_runs_through_transport_worker() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let config = TransportConfig::new("test", &local_identity, true);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+    let mut resource_rx = transport.resource_events();
+
+    let signer = PrivateIdentity::new_from_rand(OsRng);
+    let identity = *signer.as_identity();
+    let destination = crate::destination::DestinationDesc {
+        identity,
+        address_hash: identity.address_hash,
+        name: DestinationName::new("lxmf", "delivery"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(8);
+    let mut sender_link = Link::new(destination, tx.clone());
+    let request = sender_link.request();
+    let mut receiver_link =
+        Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
+            .expect("link request should parse");
+    let iface = AddressHash::new_from_rand(OsRng);
+    assert!(matches!(
+        sender_link.handle_packet(&receiver_link.prove(), iface),
+        crate::destination::link::LinkHandleResult::Activated
+    ));
+    let link_id = *sender_link.id();
+    let receiver_link = Arc::new(Mutex::new(receiver_link));
+    handler.lock().await.in_links.insert(link_id, receiver_link.clone());
+
+    let mut sender_manager = ResourceManager::new();
+    let payload = vec![0x5a; crate::packet::PACKET_MDU * 2 + 17];
+    let (resource_hash, advertisement) =
+        sender_manager.start_send(&sender_link, payload.clone(), None).expect("start send");
+    sender_manager.confirm_outbound_dispatch(resource_hash, true);
+
+    let plain_advertisement = {
+        let receiver = receiver_link.lock().await;
+        decrypt_resource_packet_for_test(&receiver, &advertisement)
+    };
+    let request_packet = {
+        let mut receiver = receiver_link.lock().await;
+        let resource_manager = { handler.lock().await.resource_lane.manager_handle() };
+        let mut resource_manager = resource_manager.lock().await;
+        let mut responses = Vec::new();
+        resource_manager.handle_packet_into(&plain_advertisement, &mut receiver, &mut responses);
+        responses.pop().expect("resource request")
+    };
+    let plain_request = decrypt_resource_packet_for_test(&sender_link, &request_packet);
+    let resource_parts = {
+        let mut responses = Vec::new();
+        sender_manager.handle_packet_into(&plain_request, &mut sender_link, &mut responses);
+        responses
+    };
+
+    for packet in resource_parts {
+        assert!(handle_link_resource_data(packet, handler.clone()).await);
+    }
+
+    for _ in 0..4 {
+        let event = timeout(Duration::from_secs(1), resource_rx.recv())
+            .await
+            .expect("resource completion event")
+            .expect("broadcast receive");
+        if let ResourceEventKind::Complete(complete) = event.kind {
+            assert_eq!(event.hash, resource_hash);
+            assert_eq!(complete.data, payload);
+            return;
+        }
+    }
+    panic!("expected resource completion event");
+}
+
+#[tokio::test]
+async fn resource_completion_uses_configured_worker_backend() {
+    let link = active_resource_completion_link_for_test();
+    let link_id = *link.lock().await.id();
+    let completion_job = ResourceCompletionJob::unencrypted_for_test(link_id, b"local payload");
+    let calls = Arc::new(AtomicUsize::new(0));
+    let backend = Arc::new(ResourceCompleteBackend { calls: calls.clone() });
+
+    let completion = complete_link_resource_on_worker(completion_job, link, Some(backend))
+        .await
+        .expect("resource completion");
+
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert_eq!(completion.payload.data, b"remote completed");
+}
+
+#[tokio::test]
+async fn resource_completion_falls_back_when_worker_backend_fails() {
+    let _worker_permit_guard = WIRE_WORKER_PERMIT_TEST_LOCK.lock().await;
+    let link = active_resource_completion_link_for_test();
+    let link_id = *link.lock().await.id();
+    let completion_job = ResourceCompletionJob::unencrypted_for_test(link_id, b"local completed");
+    let calls = Arc::new(AtomicUsize::new(0));
+    let backend = Arc::new(FailingAnnounceBackend { calls: calls.clone() });
+
+    let completion = complete_link_resource_on_worker(completion_job, link, Some(backend))
+        .await
+        .expect("resource completion fallback");
+
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert_eq!(completion.payload.data, b"local completed");
+}
+
+#[tokio::test]
+async fn resource_completion_worker_skips_busy_link() {
+    let _worker_permit_guard = WIRE_WORKER_PERMIT_TEST_LOCK.lock().await;
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let destination = crate::destination::DestinationDesc {
+        identity: *identity.as_identity(),
+        address_hash: identity.as_identity().address_hash,
+        name: DestinationName::new("lxmf", "delivery"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(8);
+    let link = Arc::new(Mutex::new(Link::new(destination, tx)));
+    let link_id = *link.lock().await.id();
+    let completion_job = ResourceCompletionJob::unencrypted_for_test(link_id, b"complete payload");
+    let _busy_guard = link.lock().await;
+
+    let result = timeout(
+        Duration::from_millis(200),
+        complete_link_resource_on_worker(completion_job, link.clone(), None),
+    )
+    .await
+    .expect("resource completion should not wait for a busy link");
+
+    assert!(matches!(result, Err(RnsError::ConnectionError)));
+    assert_eq!(link_id, *_busy_guard.id());
+}
+
+#[tokio::test]
+async fn resource_completion_returns_when_workers_are_saturated() {
+    let _worker_permit_guard = WIRE_WORKER_PERMIT_TEST_LOCK.lock().await;
+    let link = active_resource_completion_link_for_test();
+    let link_id = *link.lock().await.id();
+    let completion_job = ResourceCompletionJob::unencrypted_for_test(link_id, b"complete payload");
+    let permits = super::wire::resource_completion_permits();
+    let _held_permits = (0..super::wire::MAX_RESOURCE_COMPLETION_WORKERS)
+        .map(|_| permits.clone().try_acquire_owned().expect("permit available"))
+        .collect::<Vec<_>>();
+
+    let result = timeout(
+        Duration::from_millis(50),
+        complete_link_resource_on_worker(completion_job, link, None),
+    )
+    .await
+    .expect("saturated resource completion workers should not stall completion");
+
+    assert!(matches!(result, Err(RnsError::ConnectionError)));
+}
+
+#[tokio::test]
+async fn link_resource_decrypt_skips_busy_link() {
+    let _worker_permit_guard = WIRE_WORKER_PERMIT_TEST_LOCK.lock().await;
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let config = TransportConfig::new("test", &identity, true);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+
+    let destination = crate::destination::DestinationDesc {
+        identity: *identity.as_identity(),
+        address_hash: identity.as_identity().address_hash,
+        name: DestinationName::new("lxmf", "delivery"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(8);
+    let link = Arc::new(Mutex::new(Link::new(destination, tx)));
+    let link_id = *link.lock().await.id();
+    handler.lock().await.in_links.insert(link_id, link.clone());
+    let _busy_guard = link.lock().await;
+
+    let packet = Packet {
+        header: Header {
+            packet_type: PacketType::Data,
+            destination_type: DestinationType::Link,
+            ..Default::default()
+        },
+        context: PacketContext::ResourceRequest,
+        destination: link_id,
+        data: PacketDataBuffer::new_from_slice(b"ciphertext"),
+        ..Default::default()
+    };
+
+    let handled =
+        timeout(Duration::from_millis(200), handle_link_resource_data(packet, handler.clone()))
+            .await
+            .expect("resource decrypt should not wait for a busy link");
+
+    assert!(handled);
+    let resource_manager = { handler.lock().await.resource_lane.manager_handle() };
+    assert!(resource_manager.lock().await.has_no_receiver_state());
+}
+
+#[tokio::test]
+async fn link_resource_decrypt_returns_when_workers_are_saturated() {
+    let _worker_permit_guard = WIRE_WORKER_PERMIT_TEST_LOCK.lock().await;
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let config = TransportConfig::new("test", &identity, true);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+
+    let destination = crate::destination::DestinationDesc {
+        identity: *identity.as_identity(),
+        address_hash: identity.as_identity().address_hash,
+        name: DestinationName::new("lxmf", "delivery"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(8);
+    let link = Arc::new(Mutex::new(Link::new(destination, tx)));
+    let link_id = *link.lock().await.id();
+    handler.lock().await.in_links.insert(link_id, link);
+    let permits = super::wire::resource_decrypt_permits();
+    let _held_permits = (0..super::wire::MAX_RESOURCE_DECRYPT_WORKERS)
+        .map(|_| permits.clone().try_acquire_owned().expect("permit available"))
+        .collect::<Vec<_>>();
+
+    let packet = Packet {
+        header: Header {
+            packet_type: PacketType::Data,
+            destination_type: DestinationType::Link,
+            ..Default::default()
+        },
+        context: PacketContext::ResourceRequest,
+        destination: link_id,
+        data: PacketDataBuffer::new_from_slice(b"ciphertext"),
+        ..Default::default()
+    };
+
+    let handled =
+        timeout(Duration::from_millis(50), handle_link_resource_data(packet, handler.clone()))
+            .await
+            .expect("saturated resource decrypt workers should not stall packet handling");
+
+    assert!(handled);
+    let resource_manager = { handler.lock().await.resource_lane.manager_handle() };
+    assert!(resource_manager.lock().await.has_no_receiver_state());
+}
+
+#[tokio::test]
+async fn proof_activation_skips_busy_outbound_links_without_blocking_ready_links() {
+    let signer = PrivateIdentity::new_from_rand(OsRng);
+    let identity = *signer.as_identity();
+    let destination = crate::destination::DestinationDesc {
+        identity,
+        address_hash: identity.address_hash,
+        name: DestinationName::new("lxmf", "delivery"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(8);
+    let busy_link = Arc::new(Mutex::new(Link::new(destination, tx.clone())));
+    let busy_guard = busy_link.lock().await;
+
+    let mut ready_link = Link::new(destination, tx.clone());
+    let request = ready_link.request();
+    let mut inbound_link =
+        Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
+            .expect("link request should parse");
+    let proof = inbound_link.prove();
+    let iface = AddressHash::new_from_rand(OsRng);
+    let ready_link = Arc::new(Mutex::new(ready_link));
+
+    let rtt_messages =
+        collect_ready_link_activation_rtts(&proof, iface, vec![busy_link.clone(), ready_link]);
+
+    assert_eq!(rtt_messages.len(), 1);
+    assert!(matches!(rtt_messages[0].tx_type, TxMessageType::Direct(target) if target == iface));
+    assert_eq!(rtt_messages[0].packet.context, PacketContext::LinkRTT);
+    drop(busy_guard);
+}
+
+#[tokio::test]
+async fn link_data_proof_generation_skips_busy_outbound_links_without_blocking_ready_links() {
+    let signer = PrivateIdentity::new_from_rand(OsRng);
+    let identity = *signer.as_identity();
+    let destination = crate::destination::DestinationDesc {
+        identity,
+        address_hash: identity.address_hash,
+        name: DestinationName::new("lxmf", "delivery"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(8);
+    let busy_link = Arc::new(Mutex::new(Link::new(destination, tx.clone())));
+    let busy_guard = busy_link.lock().await;
+
+    let mut ready_link = Link::new(destination, tx.clone());
+    let request = ready_link.request();
+    let mut inbound_link =
+        Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
+            .expect("link request should parse");
+    let iface = AddressHash::new_from_rand(OsRng);
+    assert!(matches!(
+        ready_link.handle_packet(&inbound_link.prove(), iface),
+        crate::destination::link::LinkHandleResult::Activated
+    ));
+    let packet = inbound_link.data_packet(b"ready").expect("data packet");
+    let ready_link = Arc::new(Mutex::new(ready_link));
+
+    let proof_packets =
+        collect_ready_outbound_link_proofs(&packet, iface, vec![busy_link.clone(), ready_link]);
+
+    assert_eq!(proof_packets.len(), 1);
+    assert_eq!(proof_packets[0].context, PacketContext::LinkProof);
+    drop(busy_guard);
+}
+
+#[tokio::test]
+async fn outbound_link_destination_lookup_skips_busy_nonmatching_candidates() {
+    let signer = PrivateIdentity::new_from_rand(OsRng);
+    let identity = *signer.as_identity();
+    let destination = crate::destination::DestinationDesc {
+        identity,
+        address_hash: identity.address_hash,
+        name: DestinationName::new("lxmf", "delivery"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(8);
+
+    let mut busy = Link::new(destination, tx.clone());
+    let _busy_request = busy.request();
+    let busy = Arc::new(Mutex::new(busy));
+    let busy_guard = busy.lock().await;
+
+    let mut ready = Link::new(destination, tx);
+    let _ready_request = ready.request();
+    let ready_id = *ready.id();
+    let ready = Arc::new(Mutex::new(ready));
+
+    let found = find_ready_outbound_link_candidate(vec![busy.clone(), ready.clone()], &ready_id)
+        .expect("ready candidate should still be found");
+
+    assert!(Arc::ptr_eq(&found, &ready));
+    drop(busy_guard);
+}
+
+#[tokio::test]
+async fn resource_lane_waiting_for_link_context_does_not_block_other_commands() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let config = TransportConfig::new("test", &identity, true);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+    let resource_lane = { handler.lock().await.resource_lane.clone() };
+
+    let destination = crate::destination::DestinationDesc {
+        identity: *identity.as_identity(),
+        address_hash: identity.as_identity().address_hash,
+        name: DestinationName::new("lxmf", "delivery"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(8);
+    let link = Arc::new(Mutex::new(Link::new(destination, tx)));
+    let link_guard = link.lock().await;
+
+    let blocked_lane = resource_lane.clone();
+    let blocked_link = link.clone();
+    let packet = Packet {
+        context: PacketContext::ResourceProof,
+        destination: *link_guard.id(),
+        ..Default::default()
+    };
+    let blocked = tokio::spawn(async move {
+        let _ = blocked_lane.handle_link_packet(packet, blocked_link).await;
+    });
+
+    tokio::task::yield_now().await;
+    timeout(
+        Duration::from_millis(200),
+        resource_lane.remove_link_state(vec![AddressHash::new_from_slice(&[0x7a; 32])]),
+    )
+    .await
+    .expect("resource lane command should not wait behind blocked link context");
+
+    drop(link_guard);
+    timeout(Duration::from_millis(200), blocked)
+        .await
+        .expect("blocked resource packet should finish after link is released")
+        .expect("blocked task should not panic");
+}
+
+#[tokio::test]
+async fn resource_lane_skips_busy_link_context() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let config = TransportConfig::new("test", &identity, true);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+    let resource_lane = { handler.lock().await.resource_lane.clone() };
+
+    let destination = crate::destination::DestinationDesc {
+        identity: *identity.as_identity(),
+        address_hash: identity.as_identity().address_hash,
+        name: DestinationName::new("lxmf", "delivery"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(8);
+    let link = Arc::new(Mutex::new(Link::new(destination, tx)));
+    let _busy_guard = link.lock().await;
+
+    let packet = Packet {
+        header: Header { destination_type: DestinationType::Link, ..Default::default() },
+        context: PacketContext::ResourceRequest,
+        destination: AddressHash::new_from_rand(OsRng),
+        data: PacketDataBuffer::new_from_slice(b"resource"),
+        ..Default::default()
+    };
+
+    let result =
+        timeout(Duration::from_millis(200), resource_lane.handle_link_packet(packet, link.clone()))
+            .await
+            .expect("resource lane should not wait for a busy link context");
+
+    assert!(result.completion_job.is_none());
+    assert!(result.responses.is_empty());
+    assert!(result.events.is_empty());
+}
+
+#[tokio::test]
+async fn resource_lane_skips_packet_when_manager_queue_is_full() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let manager = Arc::new(Mutex::new(ResourceManager::new()));
+    let resource_lane =
+        super::resource_lane::ResourceManagerLane::spawn_with_capacity(manager.clone(), 1);
+    let manager_guard = manager.lock().await;
+
+    let destination = crate::destination::DestinationDesc {
+        identity: *identity.as_identity(),
+        address_hash: identity.as_identity().address_hash,
+        name: DestinationName::new("lxmf", "delivery"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(8);
+    let link = Arc::new(Mutex::new(Link::new(destination, tx)));
+    let packet = Packet {
+        header: Header { destination_type: DestinationType::Link, ..Default::default() },
+        context: PacketContext::ResourceRequest,
+        destination: AddressHash::new_from_rand(OsRng),
+        data: PacketDataBuffer::new_from_slice(b"resource"),
+        ..Default::default()
+    };
+
+    let _first = resource_lane
+        .try_enqueue_link_packet_for_test(packet.clone(), link.clone())
+        .expect("first resource packet should enqueue");
+    let _second = resource_lane.try_enqueue_link_packet_for_test(packet.clone(), link.clone());
+
+    let result =
+        timeout(Duration::from_millis(50), resource_lane.handle_link_packet(packet, link.clone()))
+            .await
+            .expect("full resource manager queue should not stall packet handling");
+
+    assert!(result.completion_job.is_none());
+    assert!(result.responses.is_empty());
+    assert!(result.events.is_empty());
+
+    drop(manager_guard);
+}
+
+#[tokio::test]
+async fn resource_lane_retry_poll_skips_when_manager_queue_is_full() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let manager = Arc::new(Mutex::new(ResourceManager::new()));
+    let resource_lane =
+        super::resource_lane::ResourceManagerLane::spawn_with_capacity(manager.clone(), 1);
+    let manager_guard = manager.lock().await;
+
+    let destination = crate::destination::DestinationDesc {
+        identity: *identity.as_identity(),
+        address_hash: identity.as_identity().address_hash,
+        name: DestinationName::new("lxmf", "delivery"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(8);
+    let link = Arc::new(Mutex::new(Link::new(destination, tx)));
+    let packet = Packet {
+        header: Header { destination_type: DestinationType::Link, ..Default::default() },
+        context: PacketContext::ResourceRequest,
+        destination: AddressHash::new_from_rand(OsRng),
+        data: PacketDataBuffer::new_from_slice(b"resource"),
+        ..Default::default()
+    };
+
+    let _first = resource_lane
+        .try_enqueue_link_packet_for_test(packet.clone(), link.clone())
+        .expect("first resource packet should enqueue");
+    let _second = resource_lane.try_enqueue_link_packet_for_test(packet, link);
+
+    let (requests, advertisements) =
+        timeout(Duration::from_millis(50), resource_lane.retry_poll(Instant::now()))
+            .await
+            .expect("full resource manager queue should not stall retry polling");
+
+    assert!(requests.is_empty());
+    assert!(advertisements.is_empty());
+
+    drop(manager_guard);
+}
+
+#[tokio::test]
+async fn resource_lane_remove_links_defers_when_manager_queue_is_full() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let manager = Arc::new(Mutex::new(ResourceManager::new()));
+    let resource_lane =
+        super::resource_lane::ResourceManagerLane::spawn_with_capacity(manager.clone(), 1);
+    let manager_guard = manager.lock().await;
+
+    let destination = crate::destination::DestinationDesc {
+        identity: *identity.as_identity(),
+        address_hash: identity.as_identity().address_hash,
+        name: DestinationName::new("lxmf", "delivery"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(8);
+    let link = Arc::new(Mutex::new(Link::new(destination, tx)));
+    let packet = Packet {
+        header: Header { destination_type: DestinationType::Link, ..Default::default() },
+        context: PacketContext::ResourceRequest,
+        destination: AddressHash::new_from_rand(OsRng),
+        data: PacketDataBuffer::new_from_slice(b"resource"),
+        ..Default::default()
+    };
+
+    let _first = resource_lane
+        .try_enqueue_link_packet_for_test(packet.clone(), link.clone())
+        .expect("first resource packet should enqueue");
+    let _second = resource_lane.try_enqueue_link_packet_for_test(packet, link);
+
+    timeout(
+        Duration::from_millis(50),
+        resource_lane.remove_link_state(vec![AddressHash::new_from_slice(&[0x7a; 32])]),
+    )
+    .await
+    .expect("full resource manager queue should not stall link cleanup");
+
+    drop(manager_guard);
+}
+
+#[tokio::test]
+async fn resource_lane_commit_prepared_send_fails_when_manager_queue_is_full() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let manager = Arc::new(Mutex::new(ResourceManager::new()));
+    let resource_lane =
+        super::resource_lane::ResourceManagerLane::spawn_with_capacity(manager.clone(), 1);
+    let manager_guard = manager.lock().await;
+
+    let destination = crate::destination::DestinationDesc {
+        identity: *identity.as_identity(),
+        address_hash: identity.as_identity().address_hash,
+        name: DestinationName::new("lxmf", "delivery"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(8);
+    let link = Arc::new(Mutex::new(Link::new(destination, tx)));
+    let packet = Packet {
+        header: Header { destination_type: DestinationType::Link, ..Default::default() },
+        context: PacketContext::ResourceRequest,
+        destination: AddressHash::new_from_rand(OsRng),
+        data: PacketDataBuffer::new_from_slice(b"resource"),
+        ..Default::default()
+    };
+    let prepared = {
+        let link = link.lock().await;
+        let context = link.packet_context();
+        ResourceManager::prepare_send_for(&context, b"resource-payload".to_vec(), None)
+            .expect("prepared resource send")
+    };
+
+    let _first = resource_lane
+        .try_enqueue_link_packet_for_test(packet.clone(), link.clone())
+        .expect("first resource packet should enqueue");
+    let _second = resource_lane.try_enqueue_link_packet_for_test(packet, link);
+
+    let result = timeout(Duration::from_millis(50), resource_lane.commit_prepared_send(prepared))
+        .await
+        .expect("full resource manager queue should not stall prepared-send commit");
+    assert!(matches!(result, Err(RnsError::ConnectionError)));
+
+    drop(manager_guard);
+}
+
+#[tokio::test]
+async fn resource_lane_confirm_dispatch_returns_when_manager_queue_is_full() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let manager = Arc::new(Mutex::new(ResourceManager::new()));
+    let resource_lane =
+        super::resource_lane::ResourceManagerLane::spawn_with_capacity(manager.clone(), 1);
+    let manager_guard = manager.lock().await;
+
+    let destination = crate::destination::DestinationDesc {
+        identity: *identity.as_identity(),
+        address_hash: identity.as_identity().address_hash,
+        name: DestinationName::new("lxmf", "delivery"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(8);
+    let link = Arc::new(Mutex::new(Link::new(destination, tx)));
+    let packet = Packet {
+        header: Header { destination_type: DestinationType::Link, ..Default::default() },
+        context: PacketContext::ResourceRequest,
+        destination: AddressHash::new_from_rand(OsRng),
+        data: PacketDataBuffer::new_from_slice(b"resource"),
+        ..Default::default()
+    };
+
+    let _first = resource_lane
+        .try_enqueue_link_packet_for_test(packet.clone(), link.clone())
+        .expect("first resource packet should enqueue");
+    let _second = resource_lane.try_enqueue_link_packet_for_test(packet, link);
+
+    timeout(
+        Duration::from_millis(50),
+        resource_lane.confirm_outbound_dispatch(Hash::new_from_slice(b"resource-hash"), true),
+    )
+    .await
+    .expect("full resource manager queue should not stall dispatch confirmation");
+
+    drop(manager_guard);
 }
 
 // ---------------------------------------------------------------------

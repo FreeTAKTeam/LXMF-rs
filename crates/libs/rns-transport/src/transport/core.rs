@@ -32,6 +32,10 @@ impl Transport {
         let link_idle_timeout_secs = config.link_idle_timeout_secs;
         let resource_retry_interval_secs = config.resource_retry_interval_secs;
         let resource_retry_limit = config.resource_retry_limit;
+        let announce_worker_backend = config.announce_worker_backend.clone();
+        let outbound_worker_backend = config.outbound_worker_backend.clone();
+        let single_destination_worker_backend = config.single_destination_worker_backend.clone();
+        let resource_worker_backend = config.resource_worker_backend.clone();
         let ratchet_store = config.ratchet_store_path.as_ref().map(|path| {
             let mut store = RatchetStore::new(path.clone());
             store.clean_expired(now_secs());
@@ -53,6 +57,12 @@ impl Transport {
 
         let cancel = CancellationToken::new();
         let name = config.name.clone();
+        let resource_manager = Arc::new(Mutex::new(ResourceManager::new_with_config(
+            Duration::from_secs(resource_retry_interval_secs),
+            resource_retry_limit,
+        )));
+        let resource_lane = resource_lane::ResourceManagerLane::spawn(resource_manager.clone());
+
         let handler = Arc::new(Mutex::new(TransportHandler {
             config,
             iface_manager: iface_manager.clone(),
@@ -68,18 +78,18 @@ impl Transport {
             announce_limits: AnnounceLimits::new(),
             out_links: HashMap::new(),
             in_links: HashMap::new(),
-            packet_cache: Mutex::new(PacketCache::new()),
+            packet_cache: Arc::new(Mutex::new(PacketCache::new())),
             path_requests,
             announce_tx,
             link_in_event_tx: link_in_event_tx.clone(),
             received_data_tx: received_data_tx.clone(),
             ratchet_store,
-            resource_manager: ResourceManager::new_with_config(
-                Duration::from_secs(resource_retry_interval_secs),
-                resource_retry_limit,
-            ),
-            resource_response_packets: Vec::new(),
+            resource_lane,
             resource_events_tx: resource_events_tx.clone(),
+            announce_worker_backend,
+            outbound_worker_backend,
+            single_destination_worker_backend,
+            resource_worker_backend,
             fixed_dest_path_requests: path_request_dest,
             fixed_dest_tunnel_synthesize: tunnel_synthesize_dest,
             tunnel_table: TunnelTable::new(),
@@ -167,9 +177,13 @@ impl Transport {
             log::trace!("Sent outbound packet to {}", iface);
         }
         if maybe_iface.is_none() {
-            let handler = self.handler.lock().await;
-            if handler.config.broadcast {
-                handler.send(TxMessage { tx_type: TxMessageType::Broadcast(None), packet }).await;
+            let broadcast = { self.handler.lock().await.config.broadcast };
+            if broadcast {
+                let _ = TransportHandler::send_message_unlocked(
+                    self.handler.clone(),
+                    TxMessage { tx_type: TxMessageType::Broadcast(None), packet },
+                )
+                .await;
             } else {
                 log::trace!(
                     "tp({}): no route for outbound packet dst={}",
@@ -228,18 +242,18 @@ impl Transport {
     }
 
     pub async fn send_packet(&self, packet: Packet) {
-        let mut handler = self.handler.lock().await;
-        handler.send_packet(packet).await;
+        let _ =
+            TransportHandler::send_packet_with_trace_unlocked(self.handler.clone(), packet).await;
     }
 
     pub async fn send_packet_with_outcome(&self, packet: Packet) -> SendPacketOutcome {
-        let mut handler = self.handler.lock().await;
-        handler.send_packet_with_outcome(packet).await
+        TransportHandler::send_packet_with_trace_unlocked(self.handler.clone(), packet)
+            .await
+            .outcome
     }
 
     pub async fn send_packet_with_trace(&self, packet: Packet) -> SendPacketTrace {
-        let mut handler = self.handler.lock().await;
-        handler.send_packet_with_trace(packet).await
+        TransportHandler::send_packet_with_trace_unlocked(self.handler.clone(), packet).await
     }
 
     pub async fn send_announce(
@@ -254,8 +268,8 @@ impl Transport {
             app_data.map(|value| value.len()).unwrap_or(0)
         );
         let packet = destination.announce(OsRng, app_data).expect("valid announce packet");
-        let mut handler = self.handler.lock().await;
-        handler.send_packet(packet).await;
+        let _ =
+            TransportHandler::send_packet_with_trace_unlocked(self.handler.clone(), packet).await;
     }
 
     pub async fn set_destination_announce_app_data(
@@ -286,14 +300,10 @@ impl Transport {
     }
 
     pub async fn handle_inbound_for_test(&self, packet: Packet) {
-        let (receipt, receipt_handler) = {
-            let handler = self.handler.lock().await;
-            let receipt = super::wire::validated_receipt_hash(&packet, &handler)
-                .await
-                .map(DeliveryReceipt::new);
-            let receipt_handler = handler.receipt_handler.clone();
-            (receipt, receipt_handler)
-        };
+        let receipt = super::wire::validated_receipt_hash_unlocked(self.handler.clone(), &packet)
+            .await
+            .map(DeliveryReceipt::new);
+        let receipt_handler = { self.handler.lock().await.receipt_handler.clone() };
 
         if let (Some(receipt), Some(handler)) = (receipt, receipt_handler) {
             handler.on_receipt(&receipt);
@@ -301,30 +311,31 @@ impl Transport {
     }
 
     pub async fn send_broadcast(&self, packet: Packet, from_iface: Option<AddressHash>) {
-        self.handler
-            .lock()
-            .await
-            .send(TxMessage { tx_type: TxMessageType::Broadcast(from_iface), packet })
-            .await;
+        let _ = TransportHandler::send_message_unlocked(
+            self.handler.clone(),
+            TxMessage { tx_type: TxMessageType::Broadcast(from_iface), packet },
+        )
+        .await;
     }
 
     pub async fn send_direct(&self, addr: AddressHash, packet: Packet) {
-        self.handler
-            .lock()
-            .await
-            .send(TxMessage { tx_type: TxMessageType::Direct(addr), packet })
-            .await;
+        let _ = TransportHandler::send_message_unlocked(
+            self.handler.clone(),
+            TxMessage { tx_type: TxMessageType::Direct(addr), packet },
+        )
+        .await;
     }
 
     pub async fn synthesize_tunnel_on_interface(&self, iface: AddressHash) -> bool {
-        let packet = {
-            let handler = self.handler.lock().await;
-            let iface_manager = handler.iface_manager.lock().await;
+        let interface_hash = {
+            let iface_manager = self.iface_manager.lock().await;
             let Some(interface_hash) = iface_manager.full_hash(&iface) else {
                 return false;
             };
-            super::tunnels::synthesize_tunnel_packet(&handler.config.identity, interface_hash)
+            interface_hash
         };
+        let identity = { self.handler.lock().await.config.identity.clone() };
+        let packet = super::tunnels::synthesize_tunnel_packet(&identity, interface_hash);
 
         self.send_direct(iface, packet).await;
         true
