@@ -945,6 +945,11 @@ themselves.
    implementation pass concrete evidence that a bounded parallel crypto
    scheduler can improve batch throughput without making process IPC the
    default path.
+   The worker process contract now has batch crypto envelopes for outbound
+   encryption and single-destination decrypt jobs. The stdio child handles both
+   batch forms, and the real spawned-child integration test proves batch
+   encrypt/decrypt traffic can cross the framed worker protocol before runtime
+   paths start coalescing jobs automatically.
 
 5. Optional process isolation
 

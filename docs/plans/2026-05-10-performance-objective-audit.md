@@ -93,6 +93,12 @@ direct evidence that the requested behavior, gate, or benchmark exists.
      serial and 0.84 ms parallel. `xtask/src/main.rs` carries SDK perf budgets
      for all four batch probes, so crypto batch scheduling has a regression
      guard before being promoted into runtime behavior.
+   - `crates/libs/rns-transport/src/transport/worker_boundary.rs` now defines
+     batch worker envelopes for outbound encryption and single-destination
+     decrypt jobs, plus matching batch result variants. The real
+     `reticulumd --worker-stdio` child handles both batch job kinds, and
+     `cargo test -p reticulumd --test worker_stdio_process` covers batch
+     encrypt/decrypt through a spawned framed worker process.
 
    Status: partially covered.
 
@@ -201,9 +207,10 @@ direct evidence that the requested behavior, gate, or benchmark exists.
    - `WorkerStdioPool` owns multiple child processes, selects idle children
      before waiting on a busy slot, and replaces timed-out children.
    - `reticulumd --worker-stdio` handles announce validation, outbound encrypt,
-     single-destination decrypt, and resource completion jobs.
+     single-destination decrypt, resource completion, outbound encrypt batches,
+     and single-destination decrypt batches.
    - `worker_stdio_process.rs` proves one child can serve multiple framed jobs
-     before EOF.
+     before EOF and can process batch crypto jobs over the same worker protocol.
 
    Status: covered for current crypto/resource process workers.
 
