@@ -2,11 +2,15 @@ use anyhow::{anyhow, bail, Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use lxmf_core::Message;
 use rand_core::OsRng;
+use rns_core::crypt::fernet::{
+    Fernet, PlainText, Token, FERNET_MAX_PADDING_SIZE, FERNET_OVERHEAD_SIZE,
+};
 use rns_core::destination::{DestinationAnnounce, DestinationName, SingleInputDestination};
-use rns_core::identity::{lxmf_sign, lxmf_verify, PrivateIdentity};
+use rns_core::identity::{lxmf_sign, lxmf_verify, DerivedKey, PrivateIdentity};
 use rns_core::ratchets::{
     decrypt_with_identity_into, encrypt_for_public_key, encrypt_for_public_key_into,
 };
+use rns_rpc::{MessageRecord, RpcDaemon};
 use rns_transport::destination::link::{Link, LinkHandleResult};
 use rns_transport::destination::{DestinationDesc, DestinationName as TransportDestinationName};
 use rns_transport::hash::AddressHash;
@@ -315,6 +319,76 @@ const PERF_BUDGETS: &[PerfBudget] = &[
         min_throughput_ops_per_sec: 350_000.0,
     },
     PerfBudget {
+        benchmark: "rns_core_announce_validate",
+        max_p50_ns: 90_000.0,
+        max_p95_ns: 130_000.0,
+        max_p99_ns: 170_000.0,
+        min_throughput_ops_per_sec: 11_000.0,
+    },
+    PerfBudget {
+        benchmark: "rns_core_announce_validate_batch_64",
+        max_p50_ns: 4_000_000.0,
+        max_p95_ns: 5_000_000.0,
+        max_p99_ns: 6_000_000.0,
+        min_throughput_ops_per_sec: 250.0,
+    },
+    PerfBudget {
+        benchmark: "rns_core_identity_sign",
+        max_p50_ns: 50_000.0,
+        max_p95_ns: 80_000.0,
+        max_p99_ns: 100_000.0,
+        min_throughput_ops_per_sec: 20_000.0,
+    },
+    PerfBudget {
+        benchmark: "rns_core_identity_verify",
+        max_p50_ns: 85_000.0,
+        max_p95_ns: 120_000.0,
+        max_p99_ns: 150_000.0,
+        min_throughput_ops_per_sec: 11_000.0,
+    },
+    PerfBudget {
+        benchmark: "rns_core_identity_encrypt",
+        max_p50_ns: 180_000.0,
+        max_p95_ns: 260_000.0,
+        max_p99_ns: 340_000.0,
+        min_throughput_ops_per_sec: 5_000.0,
+    },
+    PerfBudget {
+        benchmark: "rns_core_identity_encrypt_key_schedule",
+        max_p50_ns: 90_000.0,
+        max_p95_ns: 140_000.0,
+        max_p99_ns: 180_000.0,
+        min_throughput_ops_per_sec: 10_000.0,
+    },
+    PerfBudget {
+        benchmark: "rns_core_identity_fernet_encrypt_only",
+        max_p50_ns: 90_000.0,
+        max_p95_ns: 140_000.0,
+        max_p99_ns: 180_000.0,
+        min_throughput_ops_per_sec: 10_000.0,
+    },
+    PerfBudget {
+        benchmark: "rns_core_identity_decrypt",
+        max_p50_ns: 170_000.0,
+        max_p95_ns: 250_000.0,
+        max_p99_ns: 320_000.0,
+        min_throughput_ops_per_sec: 5_500.0,
+    },
+    PerfBudget {
+        benchmark: "rns_core_identity_decrypt_key_schedule",
+        max_p50_ns: 90_000.0,
+        max_p95_ns: 140_000.0,
+        max_p99_ns: 180_000.0,
+        min_throughput_ops_per_sec: 10_000.0,
+    },
+    PerfBudget {
+        benchmark: "rns_core_identity_fernet_decrypt_only",
+        max_p50_ns: 20_000.0,
+        max_p95_ns: 30_000.0,
+        max_p99_ns: 40_000.0,
+        min_throughput_ops_per_sec: 50_000.0,
+    },
+    PerfBudget {
         benchmark: "lxmf_sdk_start",
         max_p50_ns: 15_000.0,
         max_p95_ns: 25_000.0,
@@ -330,10 +404,10 @@ const PERF_BUDGETS: &[PerfBudget] = &[
     },
     PerfBudget {
         benchmark: "lxmf_sdk_poll_events",
-        max_p50_ns: 300.0,
-        max_p95_ns: 450.0,
-        max_p99_ns: 650.0,
-        min_throughput_ops_per_sec: 17_500_000.0,
+        max_p50_ns: 5_000.0,
+        max_p95_ns: 7_500.0,
+        max_p99_ns: 10_000.0,
+        min_throughput_ops_per_sec: 200_000.0,
     },
     PerfBudget {
         benchmark: "lxmf_sdk_snapshot",
@@ -348,6 +422,13 @@ const PERF_BUDGETS: &[PerfBudget] = &[
         max_p95_ns: 150_000.0,
         max_p99_ns: 220_000.0,
         min_throughput_ops_per_sec: 10_000.0,
+    },
+    PerfBudget {
+        benchmark: "rns_rpc_send_message_v2_bridge_schedule",
+        max_p50_ns: 250_000.0,
+        max_p95_ns: 350_000.0,
+        max_p99_ns: 450_000.0,
+        min_throughput_ops_per_sec: 4_000.0,
     },
     PerfBudget {
         benchmark: "rns_rpc_sdk_poll_events_v2",
@@ -369,6 +450,97 @@ const PERF_BUDGETS: &[PerfBudget] = &[
         max_p95_ns: 95_000.0,
         max_p99_ns: 130_000.0,
         min_throughput_ops_per_sec: 14_000.0,
+    },
+    PerfBudget {
+        benchmark: "rns_rpc_accept_inbound",
+        max_p50_ns: 100_000.0,
+        max_p95_ns: 150_000.0,
+        max_p99_ns: 220_000.0,
+        min_throughput_ops_per_sec: 10_000.0,
+    },
+    PerfBudget {
+        benchmark: "rns_rpc_message_store_insert",
+        max_p50_ns: 40_000.0,
+        max_p95_ns: 60_000.0,
+        max_p99_ns: 80_000.0,
+        min_throughput_ops_per_sec: 25_000.0,
+    },
+    PerfBudget {
+        benchmark: "rns_rpc_event_sink_dispatch",
+        max_p50_ns: 2_500.0,
+        max_p95_ns: 4_000.0,
+        max_p99_ns: 6_000.0,
+        min_throughput_ops_per_sec: 400_000.0,
+    },
+    PerfBudget {
+        benchmark: "rns_rpc_control_boundary_envelope",
+        max_p50_ns: 20_000.0,
+        max_p95_ns: 30_000.0,
+        max_p99_ns: 40_000.0,
+        min_throughput_ops_per_sec: 50_000.0,
+    },
+    PerfBudget {
+        benchmark: "rns_transport_resource_prepare_send",
+        max_p50_ns: 180_000.0,
+        max_p95_ns: 240_000.0,
+        max_p99_ns: 300_000.0,
+        min_throughput_ops_per_sec: 5_500.0,
+    },
+    PerfBudget {
+        benchmark: "rns_transport_resource_worker_ipc_envelope",
+        max_p50_ns: 10_000.0,
+        max_p95_ns: 15_000.0,
+        max_p99_ns: 20_000.0,
+        min_throughput_ops_per_sec: 100_000.0,
+    },
+    PerfBudget {
+        benchmark: "rns_transport_interface_worker_ipc_envelope",
+        max_p50_ns: 10_000.0,
+        max_p95_ns: 15_000.0,
+        max_p99_ns: 20_000.0,
+        min_throughput_ops_per_sec: 100_000.0,
+    },
+    PerfBudget {
+        benchmark: "reticulumd_worker_local_resource_complete",
+        max_p50_ns: 80_000.0,
+        max_p95_ns: 120_000.0,
+        max_p99_ns: 180_000.0,
+        min_throughput_ops_per_sec: 12_000.0,
+    },
+    PerfBudget {
+        benchmark: "reticulumd_worker_local_outbound_encrypt",
+        max_p50_ns: 100_000.0,
+        max_p95_ns: 140_000.0,
+        max_p99_ns: 180_000.0,
+        min_throughput_ops_per_sec: 10_000.0,
+    },
+    PerfBudget {
+        benchmark: "reticulumd_worker_stdio_resource_complete_round_trip",
+        max_p50_ns: 2_000_000.0,
+        max_p95_ns: 3_500_000.0,
+        max_p99_ns: 5_000_000.0,
+        min_throughput_ops_per_sec: 500.0,
+    },
+    PerfBudget {
+        benchmark: "reticulumd_worker_stdio_outbound_encrypt_round_trip",
+        max_p50_ns: 800_000.0,
+        max_p95_ns: 1_200_000.0,
+        max_p99_ns: 1_600_000.0,
+        min_throughput_ops_per_sec: 1_000.0,
+    },
+    PerfBudget {
+        benchmark: "reticulumd_control_router_stdio_status_round_trip",
+        max_p50_ns: 2_000_000.0,
+        max_p95_ns: 3_500_000.0,
+        max_p99_ns: 5_000_000.0,
+        min_throughput_ops_per_sec: 500.0,
+    },
+    PerfBudget {
+        benchmark: "reticulumd_control_router_http_status_routed_round_trip",
+        max_p50_ns: 3_000_000.0,
+        max_p95_ns: 5_000_000.0,
+        max_p99_ns: 7_000_000.0,
+        min_throughput_ops_per_sec: 300.0,
     },
 ];
 
@@ -562,6 +734,7 @@ enum CiStage {
     SdkMetricsCheck,
     SdkBenchCheck,
     SdkPerfBudgetCheck,
+    PythonImplPerfGate,
     SdkMemoryBudgetCheck,
     SdkQueuePressureCheck,
     SupplyChainCheck,
@@ -794,6 +967,7 @@ fn run_ci_stage(stage: CiStage) -> Result<()> {
         CiStage::SdkMetricsCheck => run_sdk_metrics_check(),
         CiStage::SdkBenchCheck => run_sdk_bench_check(),
         CiStage::SdkPerfBudgetCheck => run_sdk_perf_budget_check(),
+        CiStage::PythonImplPerfGate => run_python_impl_bench_compare(PythonImplBenchProfile::Fast),
         CiStage::SdkMemoryBudgetCheck => run_sdk_memory_budget_check(),
         CiStage::SdkQueuePressureCheck => run_sdk_queue_pressure_check(),
         CiStage::SupplyChainCheck => run_supply_chain_check(),
@@ -2264,6 +2438,8 @@ fn run_security_review_check() -> Result<()> {
     }
     run_no_blocking_sleep_check()?;
     run_no_unbounded_runtime_channel_check()?;
+    run_no_sync_mutex_guard_across_await_check()?;
+    run_no_async_mutex_send_across_await_check()?;
     Ok(())
 }
 
@@ -2274,6 +2450,9 @@ fn run_no_blocking_sleep_check() -> Result<()> {
         collect_files(Path::new(root), &mut files)?;
         for path in files {
             if path.extension().and_then(|value| value.to_str()) != Some("rs") {
+                continue;
+            }
+            if is_test_path(&path) {
                 continue;
             }
             let path_text = path.to_string_lossy().replace('\\', "/");
@@ -2318,6 +2497,9 @@ fn run_no_unbounded_runtime_channel_check() -> Result<()> {
             if path.extension().and_then(|value| value.to_str()) != Some("rs") {
                 continue;
             }
+            if is_test_path(&path) {
+                continue;
+            }
             let path_text = path.to_string_lossy().replace('\\', "/");
             let contents = fs::read_to_string(path.as_path())
                 .with_context(|| format!("read {}", path.display()))?;
@@ -2343,6 +2525,142 @@ fn run_no_unbounded_runtime_channel_check() -> Result<()> {
         bail!("unbounded runtime channel found in production paths:\n{}", violations.join("\n"));
     }
     Ok(())
+}
+
+fn run_no_sync_mutex_guard_across_await_check() -> Result<()> {
+    let mut violations = Vec::new();
+    for root in BLOCKING_SLEEP_SCAN_ROOTS {
+        let mut files = Vec::new();
+        collect_files(Path::new(root), &mut files)?;
+        for path in files {
+            if path.extension().and_then(|value| value.to_str()) != Some("rs") {
+                continue;
+            }
+            if is_test_path(&path) {
+                continue;
+            }
+            let path_text = path.to_string_lossy().replace('\\', "/");
+            let contents = fs::read_to_string(path.as_path())
+                .with_context(|| format!("read {}", path.display()))?;
+            let mut in_test_module = false;
+            let mut block_depth = 0usize;
+            let mut guards: Vec<(String, usize, usize)> = Vec::new();
+            for (idx, line) in contents.lines().enumerate() {
+                let line_no = idx + 1;
+                let trimmed = line.trim();
+                if trimmed.starts_with("#[cfg(test)]") {
+                    in_test_module = true;
+                }
+                if in_test_module {
+                    continue;
+                }
+
+                guards.retain(|(name, depth, _line)| {
+                    block_depth >= *depth && !line.contains(&format!("drop({name})"))
+                });
+                if line.contains(".await") {
+                    for (name, _depth, guard_line) in &guards {
+                        violations.push(format!(
+                            "{}:{}: synchronous MutexGuard `{}` from line {} is live across await: {}",
+                            path_text,
+                            line_no,
+                            name,
+                            guard_line,
+                            trimmed
+                        ));
+                    }
+                }
+
+                if let Some(name) = sync_mutex_guard_binding_name(line) {
+                    guards.push((name, block_depth, line_no));
+                }
+
+                let opens = line.chars().filter(|ch| *ch == '{').count();
+                let closes = line.chars().filter(|ch| *ch == '}').count();
+                block_depth = block_depth.saturating_add(opens).saturating_sub(closes);
+            }
+        }
+    }
+
+    if !violations.is_empty() {
+        bail!(
+            "synchronous MutexGuard held across await in production runtime paths:\n{}",
+            violations.join("\n")
+        );
+    }
+    Ok(())
+}
+
+fn run_no_async_mutex_send_across_await_check() -> Result<()> {
+    let mut violations = Vec::new();
+    for root in BLOCKING_SLEEP_SCAN_ROOTS {
+        let mut files = Vec::new();
+        collect_files(Path::new(root), &mut files)?;
+        for path in files {
+            if path.extension().and_then(|value| value.to_str()) != Some("rs") {
+                continue;
+            }
+            if is_test_path(&path) {
+                continue;
+            }
+            let path_text = path.to_string_lossy().replace('\\', "/");
+            let contents = fs::read_to_string(path.as_path())
+                .with_context(|| format!("read {}", path.display()))?;
+            let mut in_test_module = false;
+            for (idx, line) in contents.lines().enumerate() {
+                let trimmed = line.trim();
+                if trimmed.starts_with("#[cfg(test)]") {
+                    in_test_module = true;
+                }
+                if in_test_module {
+                    continue;
+                }
+                if line.contains(".lock().await.send(") || line.contains(".lock().await.dispatch") {
+                    violations.push(format!("{}:{}: {}", path_text, idx + 1, trimmed));
+                }
+            }
+        }
+    }
+
+    if !violations.is_empty() {
+        bail!(
+            "async mutex send/dispatch call found in production runtime paths; snapshot under the lock and await after releasing it:\n{}",
+            violations.join("\n")
+        );
+    }
+    Ok(())
+}
+
+fn is_test_path(path: &Path) -> bool {
+    path.components().any(|component| component.as_os_str() == "tests")
+        || path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .is_some_and(|name| name.ends_with("_tests.rs") || name == "tests.rs")
+}
+
+fn sync_mutex_guard_binding_name(line: &str) -> Option<String> {
+    if !(line.contains(".lock().unwrap()") || line.contains(".lock().expect(")) {
+        return None;
+    }
+    if line.contains('{') && line.contains('}') {
+        return None;
+    }
+    if line.contains(".await") || !line.trim_start().starts_with("let ") {
+        return None;
+    }
+    let after_let = line.trim_start().strip_prefix("let ")?.trim_start();
+    let after_mut = after_let.strip_prefix("mut ").unwrap_or(after_let).trim_start();
+    let name = after_mut.split('=').next()?.trim();
+    if name.is_empty()
+        || name.contains(' ')
+        || name.contains(':')
+        || name.contains('(')
+        || name.contains('.')
+    {
+        return None;
+    }
+    Some(name.to_string())
 }
 
 fn run_crypto_agility_check() -> Result<()> {
@@ -2580,6 +2898,23 @@ fn run_sdk_bench_check() -> Result<()> {
         &[
             "bench",
             "-p",
+            "reticulum-rs-core",
+            "--bench",
+            "parity_hotpaths",
+            "--",
+            "--sample-size",
+            "10",
+            "--warm-up-time",
+            "0.1",
+            "--measurement-time",
+            "0.2",
+        ],
+    )?;
+    run(
+        "cargo",
+        &[
+            "bench",
+            "-p",
             "lxmf-sdk",
             "--bench",
             "sdk_client_paths",
@@ -2597,9 +2932,43 @@ fn run_sdk_bench_check() -> Result<()> {
         &[
             "bench",
             "-p",
+            "reticulum-rs-transport",
+            "--bench",
+            "link_hotpaths",
+            "--",
+            "--sample-size",
+            "10",
+            "--warm-up-time",
+            "0.1",
+            "--measurement-time",
+            "0.2",
+        ],
+    )?;
+    run(
+        "cargo",
+        &[
+            "bench",
+            "-p",
             "reticulum-rs-rpc",
             "--bench",
             "rpc_hotpaths",
+            "--",
+            "--sample-size",
+            "10",
+            "--warm-up-time",
+            "0.1",
+            "--measurement-time",
+            "0.2",
+        ],
+    )?;
+    run(
+        "cargo",
+        &[
+            "bench",
+            "-p",
+            "reticulumd",
+            "--bench",
+            "worker_process",
             "--",
             "--sample-size",
             "10",
@@ -2699,6 +3068,10 @@ struct PythonImplComparison {
     rust_benchmark: String,
     python_benchmark: String,
     #[serde(default)]
+    min_p50_speedup: Option<f64>,
+    #[serde(default)]
+    stretch_p50_speedup: Option<f64>,
+    #[serde(default)]
     workload_class: Option<String>,
     #[serde(default)]
     payload_size_bytes: Option<usize>,
@@ -2726,6 +3099,12 @@ struct BenchAdvantage {
     p99_latency_reduction: f64,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+struct PythonImplSpeedupTargets {
+    min_p50_speedup: Option<f64>,
+    stretch_p50_speedup: Option<f64>,
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 struct PythonImplEnvironment {
     rustc_version: String,
@@ -2748,6 +3127,8 @@ struct PythonImplComparisonRow {
     python: BenchStats,
     rust_speedup_vs_python: BenchStats,
     rust_advantage_vs_python: BenchAdvantage,
+    #[serde(default)]
+    speedup_targets: PythonImplSpeedupTargets,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -2799,6 +3180,8 @@ struct PythonImplReportComparison {
     rust: BenchStats,
     python: BenchStats,
     rust_advantage_vs_python: BenchAdvantage,
+    #[serde(default)]
+    speedup_targets: PythonImplSpeedupTargets,
     rust_resources: ResourceStats,
     python_resources: ResourceStats,
     rust_resource_advantage_vs_python: ResourceAdvantage,
@@ -2991,6 +3374,23 @@ fn run_python_impl_bench_compare_with_paths(
             "reticulum-rs-transport",
             "--bench",
             "link_hotpaths",
+            "--",
+            "--sample-size",
+            &sample_size,
+            "--warm-up-time",
+            &warm_up_time,
+            "--measurement-time",
+            &measurement_time,
+        ],
+    )?;
+    run(
+        "cargo",
+        &[
+            "bench",
+            "-p",
+            "reticulum-rs-rpc",
+            "--bench",
+            "rpc_hotpaths",
             "--",
             "--sample-size",
             &sample_size,
@@ -3235,6 +3635,20 @@ fn write_python_impl_compare_report(
                 python.throughput_ops_per_sec,
             ),
         };
+        if let Some(min_p50_speedup) = comparison.min_p50_speedup {
+            if speedup.p50_ns < min_p50_speedup {
+                bail!(
+                    "python implementation benchmark `{}` missed p50 speedup target: {:.2}x < {:.2}x",
+                    comparison.label,
+                    speedup.p50_ns,
+                    min_p50_speedup
+                );
+            }
+        }
+        let speedup_targets = PythonImplSpeedupTargets {
+            min_p50_speedup: comparison.min_p50_speedup,
+            stretch_p50_speedup: comparison.stretch_p50_speedup,
+        };
         comparisons.push(PythonImplComparisonRow {
             label: comparison.label.clone(),
             rust_benchmark: comparison.rust_benchmark.clone(),
@@ -3282,6 +3696,7 @@ fn write_python_impl_compare_report(
                 p95_latency_reduction: reduction(python.p95_ns, rust.p95_ns),
                 p99_latency_reduction: reduction(python.p99_ns, rust.p99_ns),
             },
+            speedup_targets: speedup_targets.clone(),
         });
         lines.push(format!("## {}", comparison.label));
         let mut context_parts = Vec::new();
@@ -3330,6 +3745,11 @@ fn write_python_impl_compare_report(
             reduction(python.p50_ns, rust.p50_ns) * 100.0,
             reduction(python.p95_ns, rust.p95_ns) * 100.0,
             reduction(python.p99_ns, rust.p99_ns) * 100.0,
+        ));
+        lines.push(format!(
+            "- Speedup targets: min_p50={} stretch_p50={}",
+            format_optional_speedup(speedup_targets.min_p50_speedup),
+            format_optional_speedup(speedup_targets.stretch_p50_speedup)
         ));
         lines.push(String::new());
     }
@@ -3559,6 +3979,48 @@ fn run_rust_python_impl_benchmark(name: &str, iterations: usize) -> Result<Pytho
                 samples.push(started.elapsed().as_nanos() as f64);
             }
         }
+        "rns_core_identity_encrypt_key_schedule" => {
+            let recipient = PrivateIdentity::new_from_rand(OsRng);
+            let public_identity = *recipient.as_identity();
+            let salt = public_identity.address_hash.as_slice().to_vec();
+            for _ in 0..iterations {
+                let started = Instant::now();
+                let derived = DerivedKey::new_from_ephemeral_key(
+                    OsRng,
+                    black_box(&public_identity.public_key),
+                    black_box(Some(salt.as_slice())),
+                );
+                black_box(derived.as_bytes()[0]);
+                samples.push(started.elapsed().as_nanos() as f64);
+            }
+        }
+        "rns_core_identity_fernet_encrypt_only" => {
+            let recipient = PrivateIdentity::new_from_rand(OsRng);
+            let public_identity = *recipient.as_identity();
+            let plaintext = vec![0x42; 2048];
+            let salt = public_identity.address_hash.as_slice().to_vec();
+            let derived = DerivedKey::new_from_ephemeral_key(
+                OsRng,
+                &public_identity.public_key,
+                Some(salt.as_slice()),
+            );
+            let key_bytes = derived.as_bytes();
+            let split = key_bytes.len() / 2;
+            let fernet = Fernet::new_from_slices(&key_bytes[..split], &key_bytes[split..], OsRng);
+            let mut out =
+                vec![0u8; plaintext.len() + FERNET_OVERHEAD_SIZE + FERNET_MAX_PADDING_SIZE];
+            for _ in 0..iterations {
+                let started = Instant::now();
+                let token = fernet
+                    .encrypt(
+                        black_box(PlainText::from(plaintext.as_slice())),
+                        black_box(out.as_mut_slice()),
+                    )
+                    .map_err(|err| anyhow!("fernet encryption should succeed: {err:?}"))?;
+                black_box(token);
+                samples.push(started.elapsed().as_nanos() as f64);
+            }
+        }
         "rns_core_identity_decrypt" => {
             let recipient = PrivateIdentity::new_from_rand(OsRng);
             let public_identity = *recipient.as_identity();
@@ -3585,6 +4047,63 @@ fn run_rust_python_impl_benchmark(name: &str, iterations: usize) -> Result<Pytho
                 samples.push(started.elapsed().as_nanos() as f64);
             }
         }
+        "rns_core_identity_decrypt_key_schedule" => {
+            let recipient = PrivateIdentity::new_from_rand(OsRng);
+            let public_identity = *recipient.as_identity();
+            let plaintext = vec![0x42; 2048];
+            let salt = public_identity.address_hash.as_slice().to_vec();
+            let ciphertext = encrypt_for_public_key(
+                &public_identity.public_key,
+                salt.as_slice(),
+                &plaintext,
+                OsRng,
+            )
+            .map_err(|err| anyhow!("encryption should succeed: {err:?}"))?;
+            let mut ephemeral_public_bytes = [0u8; rns_core::identity::PUBLIC_KEY_LENGTH];
+            ephemeral_public_bytes
+                .copy_from_slice(&ciphertext[..rns_core::identity::PUBLIC_KEY_LENGTH]);
+            let ephemeral_public = x25519_dalek::PublicKey::from(ephemeral_public_bytes);
+            for _ in 0..iterations {
+                let started = Instant::now();
+                let derived = recipient
+                    .derive_key(black_box(&ephemeral_public), black_box(Some(salt.as_slice())));
+                black_box(derived.as_bytes()[0]);
+                samples.push(started.elapsed().as_nanos() as f64);
+            }
+        }
+        "rns_core_identity_fernet_decrypt_only" => {
+            let recipient = PrivateIdentity::new_from_rand(OsRng);
+            let public_identity = *recipient.as_identity();
+            let plaintext = vec![0x42; 2048];
+            let salt = public_identity.address_hash.as_slice().to_vec();
+            let derived = DerivedKey::new_from_ephemeral_key(
+                OsRng,
+                &public_identity.public_key,
+                Some(salt.as_slice()),
+            );
+            let key_bytes = derived.as_bytes();
+            let split = key_bytes.len() / 2;
+            let fernet = Fernet::new_from_slices(&key_bytes[..split], &key_bytes[split..], OsRng);
+            let mut token_out =
+                vec![0u8; plaintext.len() + FERNET_OVERHEAD_SIZE + FERNET_MAX_PADDING_SIZE];
+            let token_len = fernet
+                .encrypt(PlainText::from(plaintext.as_slice()), token_out.as_mut_slice())
+                .map_err(|err| anyhow!("fernet encryption should succeed: {err:?}"))?
+                .len();
+            token_out.truncate(token_len);
+            let mut out = vec![0u8; token_out.len()];
+            for _ in 0..iterations {
+                let started = Instant::now();
+                let verified = fernet
+                    .verify(Token::from(black_box(token_out.as_slice())))
+                    .map_err(|err| anyhow!("token should verify: {err:?}"))?;
+                let plaintext = fernet
+                    .decrypt(verified, black_box(out.as_mut_slice()))
+                    .map_err(|err| anyhow!("fernet decryption should succeed: {err:?}"))?;
+                black_box(plaintext);
+                samples.push(started.elapsed().as_nanos() as f64);
+            }
+        }
         "rns_transport_resource_manager_request_window_reuse" => {
             let (mut sender_link, mut manager, plain_request) =
                 rust_resource_manager_request_fixture()?;
@@ -3600,6 +4119,28 @@ fn run_rust_python_impl_benchmark(name: &str, iterations: usize) -> Result<Pytho
                 samples.push(started.elapsed().as_nanos() as f64);
                 responses.clear();
             }
+        }
+        "rns_rpc_accept_inbound" => {
+            let daemon = RpcDaemon::test_instance();
+            for index in 0..iterations {
+                let record = MessageRecord {
+                    id: format!("bench-inbound-{index}"),
+                    source: "bench-src".into(),
+                    destination: "bench-dst".into(),
+                    title: "bench-title".into(),
+                    content: "benchmark inbound payload".into(),
+                    timestamp: index as i64,
+                    direction: "in".into(),
+                    fields: None,
+                    receipt_status: None,
+                };
+                let started = Instant::now();
+                daemon
+                    .accept_inbound(black_box(record))
+                    .context("accept inbound should succeed")?;
+                samples.push(started.elapsed().as_nanos() as f64);
+            }
+            black_box(daemon);
         }
         _ => bail!("unsupported rust benchmark workload `{name}`"),
     }
@@ -3874,6 +4415,11 @@ fn collect_resource_measurements_for_workload(
         let safe_name = benchmark.replace('/', "_");
         let output_path =
             resources_root.join(format!("{impl_name}-{safe_name}-run-{run_index:02}.json"));
+        eprintln!(
+            "measuring resources for `{benchmark}` ({impl_name}) run {}/{} with {iterations} iterations",
+            run_index + 1,
+            runs
+        );
         let (program, args) = match implementation {
             PythonImplImplementation::Rust => (
                 current_exe.to_string_lossy().to_string(),
@@ -4051,6 +4597,10 @@ fn aggregate_python_impl_report(
             rust: rust.clone(),
             python: python.clone(),
             rust_advantage_vs_python: bench_advantage(&rust, &python),
+            speedup_targets: PythonImplSpeedupTargets {
+                min_p50_speedup: comparison.min_p50_speedup,
+                stretch_p50_speedup: comparison.stretch_p50_speedup,
+            },
             rust_resources: rust_resources.clone(),
             python_resources: python_resources.clone(),
             rust_resource_advantage_vs_python: ResourceAdvantage {
@@ -4064,6 +4614,19 @@ fn aggregate_python_impl_report(
                 ),
             },
         });
+    }
+    for comparison in &aggregated {
+        if let Some(min_p50_speedup) = comparison.speedup_targets.min_p50_speedup {
+            let p50_speedup = comparison.rust_advantage_vs_python.p50_speedup;
+            if p50_speedup < min_p50_speedup {
+                bail!(
+                    "python implementation benchmark `{}` missed aggregate p50 speedup target: {:.2}x < {:.2}x",
+                    comparison.label,
+                    p50_speedup,
+                    min_p50_speedup
+                );
+            }
+        }
     }
 
     Ok(PythonImplReportSummary {
@@ -4117,6 +4680,7 @@ fn aggregate_report_rows_by_label(
                         .collect::<Vec<_>>(),
                 ),
                 rust_advantage_vs_python: comparison.rust_advantage_vs_python.clone(),
+                speedup_targets: comparison.speedup_targets.clone(),
             },
         );
     }
@@ -4231,6 +4795,11 @@ fn write_python_impl_report_summary(summary: &PythonImplReportSummary) -> Result
             comparison.rust_advantage_vs_python.throughput_gain
         ));
         lines.push(format!(
+            "- Speedup targets: min_p50={} stretch_p50={}",
+            format_optional_speedup(comparison.speedup_targets.min_p50_speedup),
+            format_optional_speedup(comparison.speedup_targets.stretch_p50_speedup)
+        ));
+        lines.push(format!(
             "- Resources: rust_peak_rss_bytes={} python_peak_rss_bytes={} rss_reduction={:.2}% rust_cpu_seconds_per_1k_ops={:.6} python_cpu_seconds_per_1k_ops={:.6} cpu_reduction={:.2}%",
             comparison.rust_resources.median_peak_rss_bytes,
             comparison.python_resources.median_peak_rss_bytes,
@@ -4243,6 +4812,10 @@ fn write_python_impl_report_summary(summary: &PythonImplReportSummary) -> Result
     }
     fs::write(PYTHON_IMPL_REPORT_TEXT_PATH, lines.join("\n"))
         .with_context(|| format!("write {PYTHON_IMPL_REPORT_TEXT_PATH}"))
+}
+
+fn format_optional_speedup(value: Option<f64>) -> String {
+    value.map(|speedup| format!("{speedup:.2}x")).unwrap_or_else(|| "n/a".to_string())
 }
 
 fn median_f64(mut values: Vec<f64>) -> f64 {

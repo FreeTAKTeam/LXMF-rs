@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion};
 use rand_core::OsRng;
 use rns_core::identity::PrivateIdentity as CorePrivateIdentity;
 use rns_transport::crypt::fernet::{CachedFernet, Fernet, PlainText, Token};
@@ -6,9 +6,20 @@ use rns_transport::destination::link::{Link, LinkHandleResult};
 use rns_transport::destination::{DestinationDesc, DestinationName};
 use rns_transport::hash::{AddressHash, Hash};
 use rns_transport::identity_bridge::to_transport_private_identity;
-use rns_transport::packet::{Packet, PacketDataBuffer, PACKET_MDU};
+use rns_transport::iface::{IfaceSource, RxMessage, TxMessage, TxMessageType};
+use rns_transport::packet::{
+    DestinationType, Packet, PacketContext, PacketDataBuffer, PacketType, PACKET_MDU,
+};
 use rns_transport::resource::{
     build_link_packet, build_link_packet_into, ResourceManager, ResourceRequest,
+};
+use rns_transport::transport::interface_boundary::{
+    InterfaceWorkerEnvelope, MAX_INTERFACE_WORKER_EVENT_BYTES,
+};
+use rns_transport::transport::worker_boundary::{
+    decode_worker_frame, encode_worker_frame, WorkerJob, WorkerJobKind, WorkerRequest,
+    WorkerResponse, WorkerResult, WorkerResultKind, MAX_WORKER_REQUEST_BYTES,
+    MAX_WORKER_RESPONSE_BYTES,
 };
 
 const BURST_ITERS: usize = 64;
@@ -76,9 +87,10 @@ fn resource_manager_request_fixture() -> (Link, ResourceManager, Packet) {
     let mut receiver_manager = ResourceManager::new();
     let resource_data = vec![0x5a; PACKET_MDU * 6];
 
-    let (_, advertisement_packet) = sender_manager
+    let (resource_hash, advertisement_packet) = sender_manager
         .start_send(&sender_link, resource_data, None)
         .expect("resource send should succeed");
+    sender_manager.confirm_outbound_dispatch(resource_hash, true);
     let plain_advertisement = decrypt_resource_packet(&receiver_link, &advertisement_packet);
 
     let mut responses = Vec::new();
@@ -87,6 +99,77 @@ fn resource_manager_request_fixture() -> (Link, ResourceManager, Packet) {
     let plain_request = decrypt_resource_packet(&sender_link, &request_packet);
 
     (sender_link, sender_manager, plain_request)
+}
+
+fn worker_resource_complete_fixture() -> (WorkerRequest, WorkerResponse) {
+    let resource_hash = [0x22; rns_transport::hash::HASH_SIZE];
+    let proof = [0x33; rns_transport::hash::HASH_SIZE];
+    let payload = vec![0x5a; PACKET_MDU * 6];
+    let mut stream = vec![0x5a; rns_transport::resource::RANDOM_HASH_SIZE];
+    stream.extend_from_slice(&payload);
+    let request = WorkerRequest::new(
+        WorkerJob {
+            id: 0xfeed_beef,
+            kind: WorkerJobKind::ResourceComplete {
+                link_id: [0x11; rns_transport::hash::ADDRESS_HASH_SIZE],
+                link_context: None,
+                resource_hash,
+                random_hash: [0x5a; rns_transport::resource::RANDOM_HASH_SIZE],
+                encrypted: false,
+                compressed: false,
+                has_metadata: false,
+                data_size: payload.len() as u64,
+                request_id: None,
+                is_request: false,
+                is_response: false,
+                stream: serde_bytes::ByteBuf::from(stream),
+            },
+        },
+        1_000,
+    );
+    let response = WorkerResponse::success(WorkerResult {
+        id: 0xfeed_beef,
+        kind: WorkerResultKind::ResourceCompleted {
+            resource_hash,
+            proof,
+            data: serde_bytes::ByteBuf::from(payload),
+            metadata: None,
+            request_id: None,
+            is_request: false,
+            is_response: false,
+        },
+    });
+    (request, response)
+}
+
+fn interface_worker_packet(payload: &[u8]) -> Packet {
+    let mut packet = Packet::default();
+    packet.destination = AddressHash::new([0xAB; rns_transport::hash::ADDRESS_HASH_SIZE]);
+    packet.header.destination_type = DestinationType::Single;
+    packet.header.packet_type = PacketType::Data;
+    packet.context = PacketContext::None;
+    packet.data = PacketDataBuffer::new_from_slice(payload);
+    packet
+}
+
+fn interface_worker_envelope_fixture() -> (InterfaceWorkerEnvelope, InterfaceWorkerEnvelope) {
+    let inbound = RxMessage {
+        address: AddressHash::new([0x11; rns_transport::hash::ADDRESS_HASH_SIZE]),
+        packet: interface_worker_packet(&vec![0x5a; 256]),
+        source: IfaceSource::None,
+    };
+    let outbound = TxMessage {
+        tx_type: TxMessageType::Direct(AddressHash::new(
+            [0x22; rns_transport::hash::ADDRESS_HASH_SIZE],
+        )),
+        packet: interface_worker_packet(&vec![0xa5; 256]),
+    };
+    (
+        InterfaceWorkerEnvelope::inbound_from_rx_message(1, &inbound)
+            .expect("inbound interface envelope"),
+        InterfaceWorkerEnvelope::outbound_from_tx_message(2, &outbound)
+            .expect("outbound interface envelope"),
+    )
 }
 
 fn bench_link_encrypt(c: &mut Criterion) {
@@ -307,6 +390,84 @@ fn bench_resource_manager_request_window_reuse(c: &mut Criterion) {
     });
 }
 
+fn bench_resource_prepare_send(c: &mut Criterion) {
+    let (link, _, _) = active_link_pair();
+    let resource_data = vec![0x5a; PACKET_MDU * 6];
+    c.bench_function("rns_transport/resource_prepare_send", |b| {
+        b.iter_batched(
+            || resource_data.clone(),
+            |data| {
+                let prepared = ResourceManager::prepare_send(
+                    black_box(&link),
+                    black_box(data),
+                    black_box(None),
+                )
+                .expect("resource prepare should succeed");
+                black_box(prepared);
+            },
+            BatchSize::SmallInput,
+        );
+    });
+}
+
+fn bench_resource_worker_ipc_envelope(c: &mut Criterion) {
+    let (request, response) = worker_resource_complete_fixture();
+    let request_bytes = request.encode().expect("encode worker request");
+    let response_bytes = response.encode().expect("encode worker response");
+    let request_frame =
+        encode_worker_frame(&request_bytes, MAX_WORKER_REQUEST_BYTES).expect("request frame");
+    let response_frame =
+        encode_worker_frame(&response_bytes, MAX_WORKER_RESPONSE_BYTES).expect("response frame");
+
+    c.bench_function("rns_transport/resource_worker_ipc_envelope", |b| {
+        b.iter(|| {
+            let request_payload =
+                decode_worker_frame(black_box(&request_frame), MAX_WORKER_REQUEST_BYTES)
+                    .expect("decode request frame");
+            let request =
+                WorkerRequest::decode(black_box(request_payload)).expect("decode worker request");
+            let encoded_request = request.encode().expect("re-encode worker request");
+            let response_payload =
+                decode_worker_frame(black_box(&response_frame), MAX_WORKER_RESPONSE_BYTES)
+                    .expect("decode response frame");
+            let response = WorkerResponse::decode(black_box(response_payload))
+                .expect("decode worker response");
+            let encoded_response = response.encode().expect("re-encode worker response");
+            black_box((encoded_request.len(), encoded_response.len()));
+        });
+    });
+}
+
+fn bench_interface_worker_ipc_envelope(c: &mut Criterion) {
+    let (inbound, outbound) = interface_worker_envelope_fixture();
+    let inbound_bytes = inbound.encode().expect("encode inbound interface envelope");
+    let outbound_bytes = outbound.encode().expect("encode outbound interface envelope");
+    let inbound_frame = encode_worker_frame(&inbound_bytes, MAX_INTERFACE_WORKER_EVENT_BYTES)
+        .expect("inbound interface frame");
+    let outbound_frame = encode_worker_frame(&outbound_bytes, MAX_INTERFACE_WORKER_EVENT_BYTES)
+        .expect("outbound interface frame");
+
+    c.bench_function("rns_transport/interface_worker_ipc_envelope", |b| {
+        b.iter(|| {
+            let inbound_payload =
+                decode_worker_frame(black_box(&inbound_frame), MAX_INTERFACE_WORKER_EVENT_BYTES)
+                    .expect("decode inbound frame");
+            let inbound = InterfaceWorkerEnvelope::decode(black_box(inbound_payload))
+                .expect("decode inbound envelope");
+            let encoded_inbound = inbound.encode().expect("re-encode inbound envelope");
+
+            let outbound_payload =
+                decode_worker_frame(black_box(&outbound_frame), MAX_INTERFACE_WORKER_EVENT_BYTES)
+                    .expect("decode outbound frame");
+            let outbound = InterfaceWorkerEnvelope::decode(black_box(outbound_payload))
+                .expect("decode outbound envelope");
+            let encoded_outbound = outbound.encode().expect("re-encode outbound envelope");
+
+            black_box((encoded_inbound.len(), encoded_outbound.len()));
+        });
+    });
+}
+
 fn bench_fernet_encrypt_uncached(c: &mut Criterion) {
     let (sign_key, enc_key, payload) = fernet_material();
     let mut out = vec![0u8; PACKET_MDU];
@@ -405,6 +566,9 @@ criterion_group!(
     bench_resource_part_packet_into_burst,
     bench_resource_manager_request_window,
     bench_resource_manager_request_window_reuse,
+    bench_resource_prepare_send,
+    bench_resource_worker_ipc_envelope,
+    bench_interface_worker_ipc_envelope,
     bench_fernet_encrypt_uncached,
     bench_fernet_encrypt_cached,
     bench_fernet_decrypt_uncached,

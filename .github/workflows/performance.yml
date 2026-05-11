@@ -1,0 +1,190 @@
+name: Performance gates
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: performance-gates-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  PYTHON_RETICULUM_REF: 15320e4d2cfabb143c1db20ca887e275fd521585
+  PYTHON_LXMF_REF: 727830cefda83d9c6e3982b48675425f3f988f9c
+
+jobs:
+  sdk-perf-budgets:
+    name: SDK latency/throughput budgets
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout LXMF-rs PR
+        uses: actions/checkout@v4
+        with:
+          path: lxmf-rs
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: lxmf-rs -> target
+          cache-targets: true
+          cache-on-failure: false
+
+      - name: SDK latency/throughput budget gate
+        working-directory: lxmf-rs
+        run: cargo xtask ci --stage sdk-perf-budget-check
+
+      - name: Upload SDK perf budget reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-perf-budget-reports
+          path: |
+            lxmf-rs/target/criterion/bench-summary.txt
+            lxmf-rs/target/criterion/bench-budget-report.txt
+          if-no-files-found: ignore
+
+  python-impl-speedup:
+    name: Rust/Python speedup floors
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout LXMF-rs PR
+        uses: actions/checkout@v4
+        with:
+          path: lxmf-rs
+
+      - name: Checkout Python Reticulum
+        uses: actions/checkout@v4
+        with:
+          repository: markqvist/Reticulum
+          ref: ${{ env.PYTHON_RETICULUM_REF }}
+          path: Reticulum
+
+      - name: Checkout Python LXMF
+        uses: actions/checkout@v4
+        with:
+          repository: markqvist/LXMF
+          ref: ${{ env.PYTHON_LXMF_REF }}
+          path: LXMF
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python benchmark dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'cryptography>=3.4.7' 'pyserial>=3.5' 'qrcode>=7.4.2'
+
+      - name: Install Linux BLE build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libdbus-1-dev
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: lxmf-rs -> target
+          cache-targets: true
+          cache-on-failure: false
+
+      - name: Rust/Python implementation speedup gate
+        working-directory: lxmf-rs
+        env:
+          PYTHONPATH: ${{ github.workspace }}/Reticulum:${{ github.workspace }}/LXMF
+        run: cargo xtask ci --stage python-impl-perf-gate
+
+      - name: Upload speedup reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-impl-speedup-reports
+          path: |
+            lxmf-rs/target/criterion/python-impl-benchmarks.json
+            lxmf-rs/target/criterion/python-impl-environment.json
+            lxmf-rs/target/criterion/python-impl-compare.json
+            lxmf-rs/target/criterion/python-impl-compare.txt
+          if-no-files-found: ignore
+
+  python-impl-report:
+    name: Rust/Python aggregated report
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout LXMF-rs PR
+        uses: actions/checkout@v4
+        with:
+          path: lxmf-rs
+
+      - name: Checkout Python Reticulum
+        uses: actions/checkout@v4
+        with:
+          repository: markqvist/Reticulum
+          ref: ${{ env.PYTHON_RETICULUM_REF }}
+          path: Reticulum
+
+      - name: Checkout Python LXMF
+        uses: actions/checkout@v4
+        with:
+          repository: markqvist/LXMF
+          ref: ${{ env.PYTHON_LXMF_REF }}
+          path: LXMF
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python benchmark dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'cryptography>=3.4.7' 'pyserial>=3.5' 'qrcode>=7.4.2'
+
+      - name: Install Linux BLE build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libdbus-1-dev
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: lxmf-rs -> target
+          cache-targets: true
+          cache-on-failure: false
+
+      - name: Rust/Python aggregated benchmark report
+        working-directory: lxmf-rs
+        env:
+          PYTHONPATH: ${{ github.workspace }}/Reticulum:${{ github.workspace }}/LXMF
+        run: cargo xtask python-impl-bench-report
+
+      - name: Upload aggregated speedup report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-impl-aggregated-report
+          path: |
+            lxmf-rs/target/criterion/python-impl-report/report.json
+            lxmf-rs/target/criterion/python-impl-report/report.txt
+            lxmf-rs/target/criterion/python-impl-report/runs/**
+            lxmf-rs/target/criterion/python-impl-report/resources/**
+          if-no-files-found: ignore

@@ -100,3 +100,5 @@ jobs:
         run: cargo deny check bans licenses sources
       - name: Advisory audit
         run: cargo audit --ignore RUSTSEC-2024-0421 --ignore RUSTSEC-2024-0436 --ignore RUSTSEC-2026-0009 --ignore RUSTSEC-2025-0134
+      - name: Security review gates
+        run: cargo xtask ci --stage security-review-check

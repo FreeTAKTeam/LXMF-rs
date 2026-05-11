@@ -56,7 +56,7 @@ def run_benchmark(name: str, iterations: int, func):
 
 def build_lxmf_fixtures():
     import RNS
-    from LXMF import LXMessage
+    from LXMF import LXMessage, LXMRouter
 
     source_identity = RNS.Identity()
     destination_identity = RNS.Identity()
@@ -93,7 +93,22 @@ def build_lxmf_fixtures():
         return message
 
     packed_large_message = pack_large_message().packed
-    return pack_message, packed_message, pack_large_message, packed_large_message
+
+    router = LXMRouter(
+        identity=destination_identity,
+        storagepath=tempfile.mkdtemp(prefix="lxmf-python-router-bench-"),
+        autopeer=False,
+    )
+    router.register_delivery_identity(destination_identity)
+
+    def daemon_delivery():
+        return router.lxmf_delivery(
+            packed_message,
+            destination_type=RNS.Destination.SINGLE,
+            allow_duplicate=True,
+        )
+
+    return pack_message, packed_message, pack_large_message, packed_large_message, daemon_delivery
 
 
 def build_rns_fixtures():
@@ -281,6 +296,7 @@ def main() -> int:
                 packed_message,
                 pack_large_message,
                 packed_large_message,
+                daemon_delivery,
             ) = build_lxmf_fixtures()
             benchmark_factories = {
                 "python_lxmf/message_to_wire": lambda: run_benchmark(
@@ -298,6 +314,9 @@ def main() -> int:
                     "python_lxmf/large_message_from_wire",
                     args.iterations,
                     lambda: LXMessage.unpack_from_bytes(packed_large_message),
+                ),
+                "python_lxmf/daemon_delivery": lambda: run_benchmark(
+                    "python_lxmf/daemon_delivery", args.iterations, daemon_delivery
                 ),
             }
         elif args.benchmark.startswith("python_rns/"):
@@ -355,6 +374,7 @@ def main() -> int:
             packed_message,
             pack_large_message,
             packed_large_message,
+            daemon_delivery,
         ) = build_lxmf_fixtures()
         (
             announce_create,
@@ -382,6 +402,9 @@ def main() -> int:
                 "python_lxmf/large_message_from_wire",
                 args.iterations,
                 lambda: LXMessage.unpack_from_bytes(packed_large_message),
+            ),
+            "python_lxmf/daemon_delivery": lambda: run_benchmark(
+                "python_lxmf/daemon_delivery", args.iterations, daemon_delivery
             ),
             "python_rns/announce_create": lambda: run_benchmark(
                 "python_rns/announce_create", args.iterations, announce_create

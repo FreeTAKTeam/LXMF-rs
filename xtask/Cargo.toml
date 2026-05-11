@@ -16,12 +16,14 @@ jsonschema = { version = "=0.17.0", default-features = false, features = ["draft
 lxmf-core.workspace = true
 rand_core.workspace = true
 rns-core.workspace = true
+rns-rpc.workspace = true
 rns-transport.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 sha2.workspace = true
 tokio.workspace = true
 toml.workspace = true
+x25519-dalek.workspace = true
 
 [package.metadata.cargo-udeps]
 ignore = { normal = ["globset", "jsonschema"] }

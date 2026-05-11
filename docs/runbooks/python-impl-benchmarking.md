@@ -6,7 +6,8 @@ implementations.
 
 ## Scope
 
-Use this suite for protocol-core and transport-hotpath comparisons only:
+Use this suite for protocol-core, transport-hotpath, and narrowly scoped daemon
+delivery comparisons only:
 
 - LXMF message encode/decode
 - LXMF large-message encode/decode
@@ -14,8 +15,9 @@ Use this suite for protocol-core and transport-hotpath comparisons only:
 - Reticulum identity sign/verify
 - Reticulum identity encrypt/decrypt
 - Reticulum resource request window handling
+- Daemon inbound delivery accept against Python `LXMRouter.lxmf_delivery`
 
-Do not use this suite for SDK, RPC, daemon startup, or full end-to-end product
+Do not use this suite for SDK, daemon startup, or full end-to-end product
 performance claims. Those surfaces require separate workload harnesses.
 
 ## Profiles
@@ -28,6 +30,7 @@ That file is the source of truth for:
 - Quick developer runs in the `fast` profile
 - Publishable runs in the `report` profile
 - Rust/Python workload pairings
+- Minimum p50 speedup gates and stretch p50 speedup goals
 - Repeated-run and resource-measurement counts
 
 ## Commands
@@ -36,6 +39,12 @@ Quick comparison:
 
 ```bash
 cargo xtask python-impl-bench-compare
+```
+
+CI speedup gate:
+
+```bash
+cargo xtask ci --stage python-impl-perf-gate
 ```
 
 Stricter single comparison pass:
@@ -84,6 +93,15 @@ Interpretation:
   long enough to produce non-zero CPU measurements
 - Rust resource measurements are executed via a prebuilt `target/release/xtask`
   workload runner so they are not distorted by debug-build overhead
+- `min_p50_speedup` is a failing floor. Keep it conservative enough for noisy
+  developer and CI machines.
+- `stretch_p50_speedup` is a non-failing goal. Use it to steer optimization
+  work without turning aspirational targets into flaky gates.
+- `.github/workflows/performance.yml` runs the fast Rust/Python speedup gate on
+  pull requests and uploads the generated comparison artifacts.
+- The same workflow exposes a manual `workflow_dispatch` aggregated report job.
+  Use it when we need repeated-run `report.json`/`report.txt` artifacts from CI
+  without making every pull request pay the full report cost.
 
 ## Operating Rules
 
