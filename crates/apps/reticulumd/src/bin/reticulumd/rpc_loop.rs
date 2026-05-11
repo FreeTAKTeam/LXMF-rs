@@ -893,19 +893,45 @@ sys.stdout.buffer.flush()
         runtime.block_on(async {
             let temp = tempfile::tempdir().expect("tempdir");
             let script = temp.path().join("control-router-stalled-route.py");
+            let stall_token = temp.path().join("control-router-stalled-once");
+            let replacement_response = rns_rpc::rpc::control_boundary::ControlEnvelope::response(
+                1,
+                RpcResponse { id: 93, result: Some(json!({"replacement": true})), error: None },
+            )
+            .encode_frame()
+            .expect("replacement response frame");
             fs::write(
                 &script,
-                r#"#!/usr/bin/env python3
+                format!(
+                    r#"#!/usr/bin/env python3
 import struct
 import sys
 import time
 
+stall_token = {stall_token_path:?}
+try:
+    token = open(stall_token, "x")
+    token.write("stalled")
+    token.close()
+    should_stall = True
+except FileExistsError:
+    should_stall = False
 header = sys.stdin.buffer.read(4)
-if len(header) == 4:
-    length = struct.unpack(">I", header)[0]
-    sys.stdin.buffer.read(length)
-time.sleep(60)
+if len(header) != 4:
+    sys.exit(2)
+length = struct.unpack(">I", header)[0]
+payload = sys.stdin.buffer.read(length)
+if len(payload) != length:
+    sys.exit(3)
+if should_stall:
+    time.sleep(60)
+else:
+    sys.stdout.buffer.write(bytes.fromhex({response_hex:?}))
+    sys.stdout.buffer.flush()
 "#,
+                    stall_token_path = stall_token.to_string_lossy(),
+                    response_hex = hex::encode(replacement_response),
+                ),
             )
             .expect("write stalled route worker");
             let mut permissions = fs::metadata(&script).expect("script metadata").permissions();
@@ -914,7 +940,7 @@ time.sleep(60)
 
             let pool = Arc::new(ControlRouterStdioPool::spawn(&script, 1).expect("spawn pool"));
             let route_context =
-                RpcRouteContext::new(Arc::new(RpcDaemon::test_instance()), Some(pool), 50);
+                RpcRouteContext::new(Arc::new(RpcDaemon::test_instance()), Some(pool), 500);
             let status_body = codec::encode_frame(&RpcRequest {
                 id: 91,
                 method: "status".to_string(),
@@ -957,6 +983,35 @@ time.sleep(60)
             assert_eq!(local_rpc_response.id, 92);
             assert!(local_rpc_response.error.is_none());
 
+            let configure_body = codec::encode_frame(&RpcRequest {
+                id: 94,
+                method: "sdk_configure_v2".to_string(),
+                params: Some(json!({
+                    "expected_revision": 0,
+                    "patch": { "event_stream": { "max_poll_events": 64 } }
+                })),
+            })
+            .expect("configure request frame");
+            let configure_request = build_test_rpc_post(&configure_body);
+            let configure_response = timeout(
+                Duration::from_millis(100),
+                handle_http_request_with_route_context(
+                    &route_context,
+                    &configure_request,
+                    SocketAddr::from(([127, 0, 0, 1], 4242)),
+                    None,
+                ),
+            )
+            .await
+            .expect("local config rpc should not wait for stalled control router")
+            .expect("local config rpc response");
+            let configure_rpc_response = decode_test_http_rpc_response(&configure_response);
+            assert_eq!(configure_rpc_response.id, 94);
+            assert_eq!(
+                configure_rpc_response.result.expect("configure result")["revision"],
+                json!(1)
+            );
+
             let status_response =
                 status_task.await.expect("status route task").expect("status response");
             let status_rpc_response = decode_test_http_rpc_response(&status_response);
@@ -964,6 +1019,53 @@ time.sleep(60)
             assert_eq!(
                 status_rpc_response.error.expect("status route error").code,
                 "CONTROL_ROUTER_PROCESS_UNAVAILABLE"
+            );
+
+            let replacement_body = codec::encode_frame(&RpcRequest {
+                id: 93,
+                method: "status".to_string(),
+                params: None,
+            })
+            .expect("replacement status request frame");
+            let replacement_request = build_test_rpc_post(&replacement_body);
+            let replacement_response = handle_http_request_with_route_context(
+                &route_context,
+                &replacement_request,
+                SocketAddr::from(([127, 0, 0, 1], 4242)),
+                None,
+            )
+            .await
+            .expect("replacement routed response");
+            let replacement_rpc_response = decode_test_http_rpc_response(&replacement_response);
+            assert_eq!(replacement_rpc_response.id, 93);
+            if let Some(error) = replacement_rpc_response.error.as_ref() {
+                panic!("replacement routed status failed: {error:?}");
+            }
+            assert_eq!(
+                replacement_rpc_response.result.expect("replacement result"),
+                json!({"replacement": true})
+            );
+
+            let snapshot_body = codec::encode_frame(&RpcRequest {
+                id: 95,
+                method: "sdk_snapshot_v2".to_string(),
+                params: Some(json!({ "include_counts": true })),
+            })
+            .expect("snapshot request frame");
+            let snapshot_request = build_test_rpc_post(&snapshot_body);
+            let snapshot_response = handle_http_request_with_route_context(
+                &route_context,
+                &snapshot_request,
+                SocketAddr::from(([127, 0, 0, 1], 4242)),
+                None,
+            )
+            .await
+            .expect("local snapshot response");
+            let snapshot_rpc_response = decode_test_http_rpc_response(&snapshot_response);
+            assert_eq!(snapshot_rpc_response.id, 95);
+            assert_eq!(
+                snapshot_rpc_response.result.expect("snapshot result")["config_revision"],
+                json!(1)
             );
         });
     }

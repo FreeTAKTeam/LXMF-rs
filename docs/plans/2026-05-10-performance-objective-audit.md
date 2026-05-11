@@ -429,6 +429,12 @@ direct evidence that the requested behavior, gate, or benchmark exists.
      `reticulumd_control_router_http_status_routed_round_trip`; the latest
      report shows p50 182017.97 ns, p95/p99 188971.88 ns, throughput 5493.96
      ops/sec, and overall `Status: PASS`.
+   - `stalled_control_router_route_does_not_block_local_rpc` now also proves
+     local SDK configuration state can be updated while a routed control-router
+     child is stalled, then verifies the timed-out child is replaced and the
+     replacement child serves the next routed status request. A follow-up local
+     `sdk_snapshot_v2` confirms the SDK config revision survived the routed
+     child timeout/replacement.
    - Hidden `--worker-process-count`, `--worker-process-timeout-ms`, and
      `--worker-process-command` options configure the process pool. The default
      still spawns the current daemon executable, while the command override
