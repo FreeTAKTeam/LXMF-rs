@@ -25,6 +25,7 @@ use std::hint::black_box;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
+use x25519_dalek::{EphemeralSecret, PublicKey};
 
 mod client_codegen;
 
@@ -359,6 +360,27 @@ const PERF_BUDGETS: &[PerfBudget] = &[
         max_p95_ns: 140_000.0,
         max_p99_ns: 180_000.0,
         min_throughput_ops_per_sec: 10_000.0,
+    },
+    PerfBudget {
+        benchmark: "rns_core_identity_ephemeral_keypair",
+        max_p50_ns: 60_000.0,
+        max_p95_ns: 90_000.0,
+        max_p99_ns: 120_000.0,
+        min_throughput_ops_per_sec: 15_000.0,
+    },
+    PerfBudget {
+        benchmark: "rns_core_identity_x25519_exchange",
+        max_p50_ns: 60_000.0,
+        max_p95_ns: 90_000.0,
+        max_p99_ns: 120_000.0,
+        min_throughput_ops_per_sec: 15_000.0,
+    },
+    PerfBudget {
+        benchmark: "rns_core_identity_hkdf_sha256",
+        max_p50_ns: 20_000.0,
+        max_p95_ns: 35_000.0,
+        max_p99_ns: 50_000.0,
+        min_throughput_ops_per_sec: 50_000.0,
     },
     PerfBudget {
         benchmark: "rns_core_identity_fernet_encrypt_only",
@@ -4046,6 +4068,44 @@ fn run_rust_python_impl_benchmark(name: &str, iterations: usize) -> Result<Pytho
                     black_box(&public_identity.public_key),
                     black_box(Some(salt.as_slice())),
                 );
+                black_box(derived.as_bytes()[0]);
+                samples.push(started.elapsed().as_nanos() as f64);
+            }
+        }
+        "rns_core_identity_ephemeral_keypair" => {
+            let mut public_key_out = [0u8; rns_core::identity::PUBLIC_KEY_LENGTH];
+            for _ in 0..iterations {
+                let started = Instant::now();
+                let secret = EphemeralSecret::random_from_rng(OsRng);
+                let ephemeral_public = PublicKey::from(&secret);
+                public_key_out.copy_from_slice(ephemeral_public.as_bytes());
+                black_box(public_key_out);
+                samples.push(started.elapsed().as_nanos() as f64);
+            }
+        }
+        "rns_core_identity_x25519_exchange" => {
+            let recipient = PrivateIdentity::new_from_rand(OsRng);
+            let public_identity = *recipient.as_identity();
+            let secret = EphemeralSecret::random_from_rng(OsRng);
+            let ephemeral_public = PublicKey::from(&secret);
+            for _ in 0..iterations {
+                let started = Instant::now();
+                let shared = recipient.exchange(black_box(&ephemeral_public));
+                black_box(shared.as_bytes()[0]);
+                black_box(public_identity.public_key.as_bytes()[0]);
+                samples.push(started.elapsed().as_nanos() as f64);
+            }
+        }
+        "rns_core_identity_hkdf_sha256" => {
+            let recipient = PrivateIdentity::new_from_rand(OsRng);
+            let public_identity = *recipient.as_identity();
+            let salt = public_identity.address_hash.as_slice().to_vec();
+            let secret = EphemeralSecret::random_from_rng(OsRng);
+            let ephemeral_public = PublicKey::from(&secret);
+            let shared = recipient.exchange(&ephemeral_public);
+            for _ in 0..iterations {
+                let started = Instant::now();
+                let derived = DerivedKey::new(black_box(&shared), black_box(Some(salt.as_slice())));
                 black_box(derived.as_bytes()[0]);
                 samples.push(started.elapsed().as_nanos() as f64);
             }

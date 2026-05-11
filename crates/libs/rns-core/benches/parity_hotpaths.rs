@@ -147,6 +147,47 @@ fn bench_identity_encrypt_key_schedule(c: &mut Criterion) {
     });
 }
 
+fn bench_identity_ephemeral_keypair(c: &mut Criterion) {
+    let mut public_key_out = [0u8; PUBLIC_KEY_LENGTH];
+    c.bench_function("rns_core/identity_ephemeral_keypair", |b| {
+        b.iter(|| {
+            let secret = EphemeralSecret::random_from_rng(OsRng);
+            let ephemeral_public = PublicKey::from(&secret);
+            public_key_out.copy_from_slice(ephemeral_public.as_bytes());
+            black_box(public_key_out);
+        });
+    });
+}
+
+fn bench_identity_x25519_exchange(c: &mut Criterion) {
+    let recipient = PrivateIdentity::new_from_rand(OsRng);
+    let public_identity = *recipient.as_identity();
+    let secret = EphemeralSecret::random_from_rng(OsRng);
+    let ephemeral_public = PublicKey::from(&secret);
+    c.bench_function("rns_core/identity_x25519_exchange", |b| {
+        b.iter(|| {
+            let shared = recipient.exchange(black_box(&ephemeral_public));
+            black_box(shared.as_bytes()[0]);
+            black_box(public_identity.public_key.as_bytes()[0]);
+        });
+    });
+}
+
+fn bench_identity_hkdf_sha256(c: &mut Criterion) {
+    let recipient = PrivateIdentity::new_from_rand(OsRng);
+    let public_identity = *recipient.as_identity();
+    let salt = public_identity.address_hash.as_slice().to_vec();
+    let secret = EphemeralSecret::random_from_rng(OsRng);
+    let ephemeral_public = PublicKey::from(&secret);
+    let shared = recipient.exchange(&ephemeral_public);
+    c.bench_function("rns_core/identity_hkdf_sha256", |b| {
+        b.iter(|| {
+            let derived = DerivedKey::new(black_box(&shared), black_box(Some(salt.as_slice())));
+            black_box(derived.as_bytes()[0]);
+        });
+    });
+}
+
 fn bench_identity_fernet_encrypt_only(c: &mut Criterion) {
     let recipient = PrivateIdentity::new_from_rand(OsRng);
     let public_identity = *recipient.as_identity();
@@ -408,6 +449,9 @@ criterion_group!(
     bench_identity_verify,
     bench_identity_encrypt,
     bench_identity_encrypt_key_schedule,
+    bench_identity_ephemeral_keypair,
+    bench_identity_x25519_exchange,
+    bench_identity_hkdf_sha256,
     bench_identity_fernet_encrypt_only,
     bench_identity_decrypt,
     bench_identity_decrypt_key_schedule,

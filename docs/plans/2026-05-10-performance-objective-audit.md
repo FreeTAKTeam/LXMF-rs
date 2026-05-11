@@ -81,6 +81,13 @@ direct evidence that the requested behavior, gate, or benchmark exists.
      next encrypt pass at both X25519/HKDF cost and Fernet encryption rather
      than a single dominant clone/allocation issue. The SDK perf budget runner
      now includes matching diagnostic budgets for both split probes.
+   - The key-schedule diagnostics are now split further and enforced in the SDK
+     perf budget gate. The latest budget report measures
+     `rns_core_identity_encrypt_key_schedule` at p50 51039.74 ns,
+     `rns_core_identity_ephemeral_keypair` at p50 13444.83 ns,
+     `rns_core_identity_x25519_exchange` at p50 35756.81 ns, and
+     `rns_core_identity_hkdf_sha256` at p50 1909.25 ns. That shows the
+     remaining key-schedule floor is curve work rather than HKDF expansion.
    - The same benchmark and SDK budget now split identity decrypt. The latest
      SDK perf budget report shows full identity decrypt at p50 57426.30 ns,
      key schedule at p50 37549.40 ns, and Fernet verify/decrypt at p50

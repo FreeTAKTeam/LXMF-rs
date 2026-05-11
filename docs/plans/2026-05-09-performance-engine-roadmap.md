@@ -929,7 +929,11 @@ themselves.
    `rns_core/identity_fernet_encrypt_only` at about 54.69 us, so the remaining
    encrypt cost is roughly half asymmetric key schedule and half Fernet payload
    encryption. The SDK perf budget runner now carries matching diagnostic
-   budgets for both split probes. The matching decrypt split is now budgeted
+   budgets for both split probes. The key-schedule side is now split further:
+   the latest SDK perf budget report measures `rns_core_identity_ephemeral_keypair`
+   at 13.44 us p50, `rns_core_identity_x25519_exchange` at 35.76 us p50, and
+   `rns_core_identity_hkdf_sha256` at 1.91 us p50. That makes X25519 curve work,
+   not HKDF, the dominant key-schedule floor. The matching decrypt split is now budgeted
    too: `rns_core_identity_decrypt` measures about 57.43 us p50, with
    `rns_core_identity_decrypt_key_schedule` at 37.55 us and
    `rns_core_identity_fernet_decrypt_only` at 19.66 us in the latest SDK perf
