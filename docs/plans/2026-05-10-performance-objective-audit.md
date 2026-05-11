@@ -287,6 +287,11 @@ direct evidence that the requested behavior, gate, or benchmark exists.
      RPC methods, zero missing smoke vectors, Go compile `PASS`, Python compile
      `PASS`, and JavaScript compile intentionally `SKIP` because TypeScript
      checking is not configured.
+   - `cargo xtask ci --stage certification-report-check` now passes and writes
+     `target/release-readiness/certification-report.md` plus
+     `target/release-readiness/certification-report.json`. The latest generated
+     report marks Bronze, Silver, and Gold compatibility tiers as `PASS` using
+     `docs/contracts/compatibility-matrix.md` as the source.
    - `target/criterion/bench-budget-report.txt` currently reports `Status:
      PASS` and includes storage writer-lane insertion plus local-vs-process
      resource completion and outbound encryption budgets for

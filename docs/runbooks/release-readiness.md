@@ -80,6 +80,9 @@ Current local compatibility evidence:
   `target/interop/schema-client-smoke-report.txt`.
 - `cargo xtask ci --stage e2e-compatibility` passes direct, opportunistic, and
   propagated local delivery modes through `rnx e2e`.
+- `cargo xtask ci --stage certification-report-check` writes
+  `target/release-readiness/certification-report.{md,json}` with Bronze,
+  Silver, and Gold tiers marked `PASS`.
 
 ## 5. Local release checks
 
