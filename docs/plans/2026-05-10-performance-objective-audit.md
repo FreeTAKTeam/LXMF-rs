@@ -252,12 +252,20 @@ direct evidence that the requested behavior, gate, or benchmark exists.
      and single-destination decrypt batches.
    - `worker_stdio_process.rs` proves one child can serve multiple framed jobs
      before EOF and can process batch crypto jobs over the same worker protocol.
+   - Storage intentionally remains on a bounded single-writer lane rather than
+     a separate process-worker transport. SQLite serializes writes at the
+     database boundary, and current evidence shows the in-process writer lane is
+     bounded, non-blocking on admission, directly budgeted, and isolated from
+     request-path locks. Promoting storage to IPC is deferred until measurement
+     shows the isolation benefit outweighs added round-trip and state
+     consistency cost.
 
    Status: covered for current crypto/resource process workers.
 
-   Remaining gap:
-   - Storage is still a lane/queue model, not a separate process-worker
-     transport.
+   Placement note:
+   - The explicit storage placement decision is a bounded lane/queue, not a
+     separate worker process. Revisit only with a benchmarked multi-process
+     storage design and clear fault-isolation requirement.
 
 6. Add perf CI.
 
