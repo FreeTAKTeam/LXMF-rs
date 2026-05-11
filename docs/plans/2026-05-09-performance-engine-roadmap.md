@@ -965,6 +965,10 @@ themselves.
    now use bounded crypto batch lanes that coalesce queued requests into the
    measured batch worker paths with non-blocking admission and ordered
    per-packet replies.
+   Local outbound encryption also writes directly into the packet's fixed
+   `PacketDataBuffer` through `ratchets::encrypt_for_public_key_into`, removing
+   the previous temporary heap ciphertext and copy back into packet storage on
+   the local worker path.
 
 5. Optional process isolation
 

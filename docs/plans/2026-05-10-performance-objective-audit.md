@@ -116,6 +116,12 @@ direct evidence that the requested behavior, gate, or benchmark exists.
      instead of submitting one worker job per packet. Focused tests cover
      queue-full rejection, queued-job coalescing, batch error fanout, and the
      existing configured outbound/inbound worker paths.
+   - Local outbound encryption now uses
+     `ratchets::encrypt_for_public_key_into` to write ciphertext directly into
+     the packet's fixed `PacketDataBuffer` inside the blocking worker. This
+     removes the previous heap `Vec` ciphertext plus copy back into packet
+     storage on the local worker path. Unit tests cover the in-place helper and
+     full `reticulum-rs-transport` tests cover the outbound encryption path.
 
    Status: partially covered.
 
