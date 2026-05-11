@@ -132,17 +132,30 @@ async fn encrypt_packet_on_local_worker(
     let plaintext = packet.data;
     let public_key = context.public_key;
     let salt = context.salt;
-    let ciphertext = tokio::task::spawn_blocking(move || {
+    let encrypted = tokio::task::spawn_blocking(move || {
         let _permit = permit;
-        encrypt_for_public_key_bytes(&public_key, salt.as_slice(), plaintext.as_slice(), OsRng)
+        let mut buffer = PacketDataBuffer::new();
+        let ciphertext_len = encrypt_for_public_key_into(
+            &x25519_dalek::PublicKey::from(public_key),
+            salt.as_slice(),
+            plaintext.as_slice(),
+            buffer.accuire_buf_max(),
+            OsRng,
+        )?
+        .len();
+        buffer.resize(ciphertext_len);
+        Ok::<PacketDataBuffer, RnsError>(buffer)
     })
     .await
     .map_err(|_| send_packet_trace(SendPacketOutcome::DroppedEncryptFailed))?;
 
-    match ciphertext {
-        Ok(ciphertext) => {
-            let mut buffer = PacketDataBuffer::new();
-            if buffer.write(&ciphertext).is_err() {
+    match encrypted {
+        Ok(buffer) => {
+            packet.data = buffer;
+            Ok(packet)
+        }
+        Err(err) => {
+            if matches!(err, RnsError::InvalidArgument) {
                 log::warn!(
                     "tp({}): ciphertext too large for packet to {}",
                     context.config_name,
@@ -150,10 +163,6 @@ async fn encrypt_packet_on_local_worker(
                 );
                 return Err(send_packet_trace(SendPacketOutcome::DroppedCiphertextTooLarge));
             }
-            packet.data = buffer;
-            Ok(packet)
-        }
-        Err(err) => {
             log::warn!(
                 "tp({}): encrypt failed for {}: {:?}",
                 context.config_name,

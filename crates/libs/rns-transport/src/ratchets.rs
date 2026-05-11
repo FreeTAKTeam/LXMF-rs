@@ -128,6 +128,32 @@ pub fn encrypt_for_public_key<R: CryptoRngCore + Copy>(
     plaintext: &[u8],
     rng: R,
 ) -> Result<Vec<u8>, RnsError> {
+    let mut out =
+        vec![
+            0u8;
+            PUBLIC_KEY_LENGTH + plaintext.len() + FERNET_OVERHEAD_SIZE + FERNET_MAX_PADDING_SIZE
+        ];
+    let total = encrypt_for_public_key_into(public_key, salt, plaintext, &mut out, rng)?.len();
+    out.truncate(total);
+    Ok(out)
+}
+
+pub fn encrypt_for_public_key_into<'a, R: CryptoRngCore + Copy>(
+    public_key: &PublicKey,
+    salt: &[u8],
+    plaintext: &[u8],
+    out: &'a mut [u8],
+    rng: R,
+) -> Result<&'a [u8], RnsError> {
+    let required_len = PUBLIC_KEY_LENGTH
+        .checked_add(plaintext.len())
+        .and_then(|len| len.checked_add(FERNET_OVERHEAD_SIZE))
+        .and_then(|len| len.checked_add(FERNET_MAX_PADDING_SIZE))
+        .ok_or(RnsError::InvalidArgument)?;
+    if out.len() < required_len {
+        return Err(RnsError::InvalidArgument);
+    }
+
     let secret = EphemeralSecret::random_from_rng(rng);
     let ephemeral_public = PublicKey::from(&secret);
     let shared = secret.diffie_hellman(public_key);
@@ -136,18 +162,12 @@ pub fn encrypt_for_public_key<R: CryptoRngCore + Copy>(
     let split = key_bytes.len() / 2;
 
     let fernet = Fernet::new_from_slices(&key_bytes[..split], &key_bytes[split..], rng);
-    let mut out =
-        vec![
-            0u8;
-            PUBLIC_KEY_LENGTH + plaintext.len() + FERNET_OVERHEAD_SIZE + FERNET_MAX_PADDING_SIZE
-        ];
     out[..PUBLIC_KEY_LENGTH].copy_from_slice(ephemeral_public.as_bytes());
     let token = fernet
         .encrypt(PlainText::from(plaintext), &mut out[PUBLIC_KEY_LENGTH..])
         .map_err(|_| RnsError::CryptoError)?;
     let total = PUBLIC_KEY_LENGTH + token.len();
-    out.truncate(total);
-    Ok(out)
+    Ok(&out[..total])
 }
 
 pub fn encrypt_for_public_key_bytes<R: CryptoRngCore + Copy>(
@@ -272,5 +292,46 @@ mod tests {
         fs::write(temp.path().join(dest.to_hex_string()), encoded).expect("write");
         let ratchet = store.get(&dest);
         assert!(ratchet.is_none(), "expired ratchet should be ignored");
+    }
+
+    #[test]
+    fn encrypt_for_public_key_into_matches_allocating_helper() {
+        let recipient = PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let public_key = recipient.as_identity().public_key;
+        let salt = recipient.address_hash().as_slice();
+        let plaintext = b"packet payload";
+
+        let allocating = encrypt_for_public_key(&public_key, salt, plaintext, rand_core::OsRng)
+            .expect("encrypt");
+        let mut out = [0u8; 256];
+        let in_place =
+            encrypt_for_public_key_into(&public_key, salt, plaintext, &mut out, rand_core::OsRng)
+                .expect("encrypt into");
+
+        assert_ne!(allocating, in_place, "ephemeral encryption should use fresh randomness");
+
+        let mut plain = [0u8; 64];
+        let decrypted = decrypt_with_identity_into(&recipient, salt, in_place, &mut plain)
+            .expect("decrypt in-place ciphertext");
+        assert_eq!(decrypted, plaintext);
+    }
+
+    #[test]
+    fn encrypt_for_public_key_into_rejects_small_output_buffer() {
+        let recipient = PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let public_key = recipient.as_identity().public_key;
+        let salt = recipient.address_hash().as_slice();
+        let mut out = [0u8; PUBLIC_KEY_LENGTH - 1];
+
+        let err = encrypt_for_public_key_into(
+            &public_key,
+            salt,
+            b"packet payload",
+            &mut out,
+            rand_core::OsRng,
+        )
+        .expect_err("short output buffer should fail");
+
+        assert!(matches!(err, RnsError::InvalidArgument));
     }
 }

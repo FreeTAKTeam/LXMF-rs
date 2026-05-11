@@ -54,7 +54,7 @@ use crate::packet::Packet;
 use crate::packet::PacketContext;
 use crate::packet::PacketDataBuffer;
 use crate::packet::PacketType;
-use crate::ratchets::{encrypt_for_public_key_bytes, now_secs, RatchetStore};
+use crate::ratchets::{encrypt_for_public_key_into, now_secs, RatchetStore};
 use crate::resource::{
     build_resource_proof_packet, build_resource_request_packet, complete_resource_job,
     PreparedResourceSend, ResourceCompletion, ResourceCompletionJob, ResourceEvent,
