@@ -1129,6 +1129,54 @@ mod tests {
         server.await.expect("server task");
     }
 
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn worker_process_pool_can_use_unix_socket_worker_supervisor() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let socket_path = temp.path().join("worker-supervisor.sock");
+        let listener =
+            tokio::net::UnixListener::bind(&socket_path).expect("bind unix worker supervisor");
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.expect("accept worker client");
+            let frame = read_worker_frame(&mut stream, MAX_WORKER_REQUEST_BYTES)
+                .await
+                .expect("read worker request");
+            let request = WorkerRequest::decode(&frame).expect("decode worker request");
+            let response = WorkerResponse::success(WorkerResult {
+                id: request.job.id,
+                kind: WorkerResultKind::PacketWire { packet_wire: vec![7, 8, 9] },
+            })
+            .encode()
+            .expect("encode worker response");
+            write_worker_frame(&mut stream, &response, MAX_WORKER_RESPONSE_BYTES)
+                .await
+                .expect("write worker response");
+        });
+
+        let pool =
+            WorkerStdioPool::connect(WorkerProcessEndpoint::UnixSocket { path: socket_path }, 1)
+                .expect("connect unix socket worker pool");
+        let request = WorkerRequest::new(
+            WorkerJob { id: 46, kind: WorkerJobKind::ValidateAnnounce { packet_wire: Vec::new() } },
+            1_000,
+        )
+        .encode()
+        .expect("encode worker request");
+
+        let response = pool
+            .submit_encoded(&request, Duration::from_millis(1_000))
+            .await
+            .expect("submit worker request");
+        let response = WorkerResponse::decode(&response).expect("decode worker response");
+        assert_eq!(response.job_id, 46);
+        let result = response.outcome.expect("worker success");
+        assert!(matches!(
+            result.kind,
+            WorkerResultKind::PacketWire { packet_wire } if packet_wire == vec![7, 8, 9]
+        ));
+        server.await.expect("server task");
+    }
+
     #[test]
     fn worker_process_options_allow_disabled_pool_with_zero_timeout() {
         validate_worker_process_options(0, 0).expect("disabled worker pool should ignore timeout");

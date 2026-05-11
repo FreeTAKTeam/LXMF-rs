@@ -437,8 +437,8 @@ direct evidence that the requested behavior, gate, or benchmark exists.
      to an externally managed worker supervisor over TCP instead of only
      spawning daemon-owned child processes. Unix-socket endpoint plumbing also
      exists behind `--worker-process-unix-socket` on Unix targets. Tests cover
-     both the in-memory non-child stream and a real loopback TCP worker
-     supervisor accepting framed worker requests.
+     the in-memory non-child stream plus real loopback TCP and Unix-socket
+     worker supervisors accepting framed worker requests.
    - Daemon status exposes `worker_processes`.
    - Transport routes announce validation, outbound encrypt, single-destination
      decrypt, and resource completion through the configured worker backend
