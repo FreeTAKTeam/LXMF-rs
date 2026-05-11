@@ -279,7 +279,7 @@ fn converge_peer_discovery(
         if remaining.is_zero() {
             return Ok(convergence);
         }
-        let poll_timeout = remaining.min(Duration::from_millis(1000));
+        let poll_timeout = remaining.min(Duration::from_millis(500));
         if !convergence.a_sees_b {
             convergence.a_sees_b =
                 poll_for_peer(a_rpc, b_delivery_hash, poll_timeout, *request_id)?;
