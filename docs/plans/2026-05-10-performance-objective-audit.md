@@ -45,17 +45,17 @@ direct evidence that the requested behavior, gate, or benchmark exists.
      preparation work.
    - `rns_transport/resource_worker_ipc_envelope` isolates worker frame plus
      msgpack request/response overhead for representative resource completion
-     payloads; the latest budget report shows p50 3504.29 ns and p95/p99
-     3521.53 ns.
+     payloads; the latest budget report shows p50 3527.92 ns and p95/p99
+     3540.79 ns.
    - `reticulumd/worker_local_resource_complete` and
      `reticulumd/worker_stdio_resource_complete_round_trip` compare the same
      resource completion workload on the local path and through a reused real
      `reticulumd --worker-stdio` child. The latest budget report shows
-     24294.40 ns p50 local completion and 64417.00 ns p50 process round-trip.
+     24257.39 ns p50 local completion and 88333.00 ns p50 process round-trip.
    - `reticulumd/worker_local_outbound_encrypt` and
      `reticulumd/worker_stdio_outbound_encrypt_round_trip` compare the same
      outbound crypto workload locally and through a reused child. The latest
-     budget report shows 60562.07 ns p50 local encryption and 103178.91 ns p50
+     budget report shows 60493.06 ns p50 local encryption and 102948.53 ns p50
      process round-trip, so process mode is measured as an isolation boundary
      rather than assumed to be a latency win.
    - `CachedFernet::encrypt` now uses the cached signing/encryption key
@@ -83,10 +83,10 @@ direct evidence that the requested behavior, gate, or benchmark exists.
      now includes matching diagnostic budgets for both split probes.
    - The key-schedule diagnostics are now split further and enforced in the SDK
      perf budget gate. The latest budget report measures
-     `rns_core_identity_encrypt_key_schedule` at p50 51039.74 ns,
-     `rns_core_identity_ephemeral_keypair` at p50 13444.83 ns,
-     `rns_core_identity_x25519_exchange` at p50 35756.81 ns, and
-     `rns_core_identity_hkdf_sha256` at p50 1909.25 ns. That shows the
+     `rns_core_identity_encrypt_key_schedule` at p50 50236.31 ns,
+     `rns_core_identity_ephemeral_keypair` at p50 13328.15 ns,
+     `rns_core_identity_x25519_exchange` at p50 35394.06 ns, and
+     `rns_core_identity_hkdf_sha256` at p50 1891.23 ns. That shows the
      remaining key-schedule floor is curve work rather than HKDF expansion.
    - `x25519-dalek` already resolves with `precomputed-tables`, so there is no
      obvious missing dependency feature for the curve path. The opt-in
@@ -97,15 +97,15 @@ direct evidence that the requested behavior, gate, or benchmark exists.
      19.42 us. This remains opt-in until wire-compatibility and security
      posture are explicitly decided.
    - The same benchmark and SDK budget now split identity decrypt. The latest
-     SDK perf budget report shows full identity decrypt at p50 57426.30 ns,
-     key schedule at p50 37549.40 ns, and Fernet verify/decrypt at p50
-     19657.29 ns. That narrows the decrypt optimization target to
+     SDK perf budget report shows full identity decrypt at p50 57481.75 ns,
+     key schedule at p50 37575.92 ns, and Fernet verify/decrypt at p50
+     19602.12 ns. That narrows the decrypt optimization target to
      asymmetric/HKDF work first, then Fernet verification/decrypt throughput.
    - `crates/libs/rns-core/benches/parity_hotpaths.rs` now includes batch-64
      identity encrypt/decrypt probes in both serial and parallel forms. The
-     latest SDK perf budget report measured encrypt batch-64 at about 6.79 ms
-     serial and 1.38 ms parallel; decrypt batch-64 measured about 3.68 ms
-     serial and 0.82 ms parallel. `xtask/src/main.rs` carries SDK perf budgets
+     latest SDK perf budget report measured encrypt batch-64 at about 6.75 ms
+     serial and 1.43 ms parallel; decrypt batch-64 measured about 3.68 ms
+     serial and 0.80 ms parallel. `xtask/src/main.rs` carries SDK perf budgets
      for all four batch probes, so crypto batch scheduling has a regression
      guard before being promoted into runtime behavior.
    - `crates/libs/rns-transport/src/transport/worker_boundary.rs` now defines
@@ -118,7 +118,7 @@ direct evidence that the requested behavior, gate, or benchmark exists.
      child. `crates/apps/reticulumd/benches/worker_process.rs` now compares
      serial local outbound encryption batch-64 against a reused child-process
      batch round trip. The latest SDK perf budget report shows p50
-     3901555.50 ns locally and p50 958669.80 ns through the stdio batch worker,
+     3887933.20 ns locally and p50 974229.25 ns through the stdio batch worker,
      with overall `Status: PASS`.
    - `crates/libs/rns-transport/src/transport/crypto_batch_lane.rs` now adds
      bounded outbound and inbound crypto batch lanes. They accept outbound
@@ -175,8 +175,8 @@ direct evidence that the requested behavior, gate, or benchmark exists.
      `WouldBlock` error instead of blocking on queue admission.
    - Storage writer-lane cost is now directly budgeted by
      `rns_rpc/message_store_insert`. The latest SDK perf budget report measures
-     the synchronous in-memory writer-lane insert path at p50 11413.54 ns,
-     p95/p99 11691.64 ns, and 87615.22 ops/sec.
+     the synchronous in-memory writer-lane insert path at p50 11399.97 ns,
+     p95/p99 11748.44 ns, and 87719.49 ops/sec.
    - Resource send preparation now uses immediate bounded backpressure for the
      local CPU worker lane. `send_resource_returns_when_prepare_workers_are_saturated`
      holds every resource-prepare permit and verifies `send_resource` returns
@@ -282,14 +282,14 @@ direct evidence that the requested behavior, gate, or benchmark exists.
      batch budgets, plus the router/control child-process round-trip budget for
      `reticulumd_control_router_stdio_status_round_trip`.
    - The latest SDK perf budget report measures outbound encryption at p50
-     60562.07 ns in-process and p50 103178.91 ns through a reused
+     60493.06 ns in-process and p50 102948.53 ns through a reused
      `reticulumd --worker-stdio` child. This makes the crypto process-boundary
      overhead visible before promoting process mode as a default.
    - The focused worker-process Criterion run for decrypt batching measures
      `reticulumd/worker_local_inbound_decrypt_batch_64` at about
-     4.31 ms p50 and
+     4.32 ms p50 and
      `reticulumd/worker_stdio_inbound_decrypt_batch_64_round_trip`
-     at about 1.01 ms p50 for 64 items, matching the outbound batch evidence
+     at about 1.04 ms p50 for 64 items, matching the outbound batch evidence
      with an inbound decrypt budget gate.
 
    Status: covered.
@@ -311,7 +311,7 @@ direct evidence that the requested behavior, gate, or benchmark exists.
      envelope frame plus msgpack encode/decode overhead for representative
      `daemon_status_ex` request/response traffic. The SDK perf budget now
      enforces `rns_rpc_control_boundary_envelope`; the latest report shows p50
-     12582.94 ns, p95/p99 12616.24 ns, throughput 79472.70 ops/sec, and overall
+     13157.76 ns, p95/p99 13269.77 ns, throughput 76000.78 ops/sec, and overall
      `Status: PASS`.
    - Hidden `reticulumd --control-router-stdio` now exposes the same
      router/control boundary as a real spawned-process runtime. It bootstraps
@@ -362,15 +362,15 @@ direct evidence that the requested behavior, gate, or benchmark exists.
      spawned child-process router/control path for `daemon_status_ex`, reusing a
      `reticulumd --control-router-stdio` child across iterations. The SDK perf
      budget enforces `reticulumd_control_router_stdio_status_round_trip`; the
-     latest report shows p50 53907.16 ns, p95/p99 56715.63 ns, throughput
-     18550.41 ops/sec, and overall `Status: PASS`.
+     latest report shows p50 52177.08 ns, p95/p99 54849.05 ns, throughput
+     19165.50 ops/sec, and overall `Status: PASS`.
    - `reticulumd/control_router_http_status_routed_round_trip` now measures the
      production-facing routed path: a real parent daemon accepts HTTP `/rpc`
      over loopback TCP, routes allowed `status` traffic through the
      control-router child pool, and returns the framed RPC response. The SDK
      perf budget enforces
      `reticulumd_control_router_http_status_routed_round_trip`; the latest
-     report shows p50 177613.42 ns, p95/p99 187550.00 ns, throughput 5630.21
+     report shows p50 182017.97 ns, p95/p99 188971.88 ns, throughput 5493.96
      ops/sec, and overall `Status: PASS`.
    - Hidden `--worker-process-count`, `--worker-process-timeout-ms`, and
      `--worker-process-command` options configure the process pool. The default
@@ -445,7 +445,7 @@ direct evidence that the requested behavior, gate, or benchmark exists.
    - `rns_transport/interface_worker_ipc_envelope` measures the interface
      worker frame plus msgpack encode/decode overhead for representative
      inbound/outbound packet events. The current SDK perf budget report shows
-     p50 1173.75 ns, p95/p99 1189.07 ns, throughput 851969.45 ops/sec, and
+     p50 1166.34 ns, p95/p99 1176.03 ns, throughput 857382.54 ops/sec, and
      overall `Status: PASS`.
    - Hidden `reticulumd --interface-worker-stdio` consumes framed interface
      envelopes in a real child process until shutdown/EOF. The integration test

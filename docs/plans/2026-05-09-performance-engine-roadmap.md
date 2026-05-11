@@ -102,12 +102,12 @@ themselves.
    stalled children timing out without blocking unrelated local RPC handling.
    `reticulumd/control_router_stdio_status_round_trip` now measures a reused
    real `reticulumd --control-router-stdio` child serving `daemon_status_ex`;
-   the latest SDK perf budget report measured p50 53907.16 ns, p95/p99
-   56715.63 ns, throughput 18550.41 ops/sec, and passed. The budget also covers
+   the latest SDK perf budget report measured p50 52177.08 ns, p95/p99
+   54849.05 ns, throughput 19165.50 ops/sec, and passed. The budget also covers
    `reticulumd/control_router_http_status_routed_round_trip`, which starts a
    real parent daemon, routes external HTTP `/rpc` `status` through the child
-   pool, and currently measures p50 177613.42 ns, p95/p99 187550.00 ns,
-   throughput 5630.21 ops/sec.
+   pool, and currently measures p50 182017.97 ns, p95/p99 188971.88 ns,
+   throughput 5493.96 ops/sec.
 
 1. Crypto and identity workers
 
@@ -161,7 +161,7 @@ themselves.
    Storage budget slice landed: the SDK perf budget gate now includes
    `rns_rpc/message_store_insert`, a focused synchronous writer-lane round trip
    against the in-memory message store. The latest report measures
-   `rns_rpc_message_store_insert` at 11.41 us p50, making storage lane cost
+   `rns_rpc_message_store_insert` at 11.40 us p50, making storage lane cost
    explicit instead of only inferring it from daemon inbound delivery.
 
    Tenth slice landed: outbound resource preparation now runs through a
@@ -181,13 +181,13 @@ themselves.
    reused real `reticulumd --worker-stdio` child process. The SDK perf budget
    gate includes both `reticulumd_worker_local_resource_complete` and
    `reticulumd_worker_stdio_resource_complete_round_trip`; the latest report
-   measured about 24.28 us p50 for local completion and 64.21 us p50 for the
+   measured about 24.26 us p50 for local completion and 88.33 us p50 for the
    process round-trip.
    The process-worker comparison now also covers outbound packet encryption:
    `reticulumd_worker_local_outbound_encrypt` and
    `reticulumd_worker_stdio_outbound_encrypt_round_trip` use the same
    `WorkerJobKind::OutboundEncrypt` shape. The current SDK perf budget report
-   measures about 64.24 us p50 locally and 107.04 us p50 through the reused
+   measures about 60.49 us p50 locally and 102.95 us p50 through the reused
    stdio child, making the crypto process-boundary overhead explicit before
    any production routing decision.
 
@@ -630,8 +630,8 @@ themselves.
    `rns_transport_resource_prepare_send` at 107.58 us p50. A later run also
    covers worker-process local/stdio comparisons for resource completion and
    outbound encryption, including `reticulumd_worker_local_outbound_encrypt`
-   at 64.24 us p50 and
-   `reticulumd_worker_stdio_outbound_encrypt_round_trip` at 107.04 us p50.
+   at 60.49 us p50 and
+   `reticulumd_worker_stdio_outbound_encrypt_round_trip` at 102.95 us p50.
    This confirms the active perf CI budget covers the async-isolation surfaces
    we are optimizing: inbound accept, bridge scheduling, event-sink dispatch,
    resource preparation, and process-boundary overhead for representative
@@ -797,7 +797,7 @@ themselves.
    that bridge the existing interface TX/RX MPSC channels to the framed
    interface-worker stream. The benchmark suite now includes
    `rns_transport/interface_worker_ipc_envelope`; the latest budget report
-   measured p50 1173.75 ns and keeps interface IPC overhead inside CI gates.
+   measured p50 1166.34 ns and keeps interface IPC overhead inside CI gates.
    `reticulumd --interface-worker-stdio` is now a hidden child-process
    entrypoint that consumes framed interface envelopes until shutdown/EOF, with
    integration coverage against a real spawned daemon child. A parent-side
@@ -931,8 +931,8 @@ themselves.
    encryption. The SDK perf budget runner now carries matching diagnostic
    budgets for both split probes. The key-schedule side is now split further:
    the latest SDK perf budget report measures `rns_core_identity_ephemeral_keypair`
-   at 13.44 us p50, `rns_core_identity_x25519_exchange` at 35.76 us p50, and
-   `rns_core_identity_hkdf_sha256` at 1.91 us p50. That makes X25519 curve work,
+   at 13.33 us p50, `rns_core_identity_x25519_exchange` at 35.39 us p50, and
+   `rns_core_identity_hkdf_sha256` at 1.89 us p50. That makes X25519 curve work,
    not HKDF, the dominant key-schedule floor. `x25519-dalek` already resolves
    with precomputed tables, so there is no obvious curve dependency feature left
    to flip. A controlled `fernet-aes128` probe measured 2 KiB Fernet encrypt at
