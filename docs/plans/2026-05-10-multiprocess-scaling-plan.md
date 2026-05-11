@@ -64,13 +64,13 @@ goal is production-scale isolation, not per-packet IPC.
    unrelated in-process RPCs keep completing.
    `reticulumd/control_router_stdio_status_round_trip` measures the same path
    through a reused real child process; the latest SDK perf budget report
-   measured p50 52691.29 ns, p95/p99 56141.06 ns, throughput 18978.47 ops/sec,
+   measured p50 53907.16 ns, p95/p99 56715.63 ns, throughput 18550.41 ops/sec,
    and passed. The routed production-facing HTTP path is now budgeted separately as
    `reticulumd/control_router_http_status_routed_round_trip`; it starts a real
    parent daemon, sends external HTTP `/rpc` status calls over loopback TCP, and
    measures the parent HTTP parse/auth/route work plus the child control-router
-   pool hop. The latest report measured p50 183932.89 ns, p95/p99 195243.42 ns,
-   throughput 5436.77 ops/sec, and passed.
+   pool hop. The latest report measured p50 177613.42 ns, p95/p99 187550.00 ns,
+   throughput 5630.21 ops/sec, and passed.
 
 2. Interface worker processes
 
@@ -153,7 +153,7 @@ cost dominates, evaluate shared-memory IPC instead of a message-queue library.
    current in-process interface plumbing without changing transport semantics.
    `rns_transport/interface_worker_ipc_envelope` now budgets the frame plus
    msgpack overhead for representative interface events; the latest report
-   measured p50 1150.77 ns and passed the SDK perf budget. `reticulumd` now has
+   measured p50 1173.75 ns and passed the SDK perf budget. `reticulumd` now has
    a hidden `--interface-worker-stdio` child-process entrypoint that consumes
    framed interface envelopes until shutdown or EOF, giving the interface
    protocol a real spawned-process lifecycle before physical interface drivers
@@ -350,18 +350,18 @@ cost dominates, evaluate shared-memory IPC instead of a message-queue library.
   `reticulumd/worker_stdio_resource_complete_round_trip` now compare the same
   unencrypted resource completion payload locally and through a reused real
   `reticulumd --worker-stdio` child process. The latest SDK perf budget report
-  measured 24300.00 ns p50 for local completion and 74250.00 ns p50 for the
+  measured 24294.40 ns p50 for local completion and 64417.00 ns p50 for the
   process round-trip. Outbound encryption is measured the same way:
-  `reticulumd_worker_local_outbound_encrypt` reports 60491.00 ns p50, while
-  `reticulumd_worker_stdio_outbound_encrypt_round_trip` reports 97051.50 ns
+  `reticulumd_worker_local_outbound_encrypt` reports 60562.07 ns p50, while
+  `reticulumd_worker_stdio_outbound_encrypt_round_trip` reports 103178.91 ns
   p50 through the reused child.
 - IPC overhead is reported separately from crypto/resource/storage work.
   `rns_transport/resource_worker_ipc_envelope` is the first dedicated IPC
   envelope budget, covering frame plus msgpack decode/encode for representative
   resource completion request/response payloads. The latest SDK perf budget
-  report measured 3575.71 ns p50 for that envelope.
+  report measured 3504.29 ns p50 for that envelope.
   `rns_transport/interface_worker_ipc_envelope` separately measures interface
-  worker frame plus msgpack overhead at 1150.77 ns p50.
+  worker frame plus msgpack overhead at 1173.75 ns p50.
 - Integration tests show one stalled worker process does not block unrelated
   packet receive, RPC status, event-sink dispatch, or outbound delivery lanes.
   Current pool tests prove a timed-out child process is killed and replaced

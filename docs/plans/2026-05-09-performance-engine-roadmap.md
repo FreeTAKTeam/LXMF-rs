@@ -102,12 +102,12 @@ themselves.
    stalled children timing out without blocking unrelated local RPC handling.
    `reticulumd/control_router_stdio_status_round_trip` now measures a reused
    real `reticulumd --control-router-stdio` child serving `daemon_status_ex`;
-   the latest SDK perf budget report measured p50 52691.29 ns, p95/p99
-   56141.06 ns, throughput 18978.47 ops/sec, and passed. The budget also covers
+   the latest SDK perf budget report measured p50 53907.16 ns, p95/p99
+   56715.63 ns, throughput 18550.41 ops/sec, and passed. The budget also covers
    `reticulumd/control_router_http_status_routed_round_trip`, which starts a
    real parent daemon, routes external HTTP `/rpc` `status` through the child
-   pool, and currently measures p50 183932.89 ns, p95/p99 195243.42 ns,
-   throughput 5436.77 ops/sec.
+   pool, and currently measures p50 177613.42 ns, p95/p99 187550.00 ns,
+   throughput 5630.21 ops/sec.
 
 1. Crypto and identity workers
 
@@ -797,7 +797,7 @@ themselves.
    that bridge the existing interface TX/RX MPSC channels to the framed
    interface-worker stream. The benchmark suite now includes
    `rns_transport/interface_worker_ipc_envelope`; the latest budget report
-   measured p50 1150.77 ns and keeps interface IPC overhead inside CI gates.
+   measured p50 1173.75 ns and keeps interface IPC overhead inside CI gates.
    `reticulumd --interface-worker-stdio` is now a hidden child-process
    entrypoint that consumes framed interface envelopes until shutdown/EOF, with
    integration coverage against a real spawned daemon child. A parent-side
@@ -952,9 +952,9 @@ themselves.
    paths start coalescing jobs automatically. The stdio child now maps batch
    items across local worker threads, and the SDK perf budget includes the
    end-to-end batch process comparison: `reticulumd_worker_local_outbound_encrypt_batch_64`
-   currently measures about 3.86 ms p50 for serial local batch completion,
+   currently measures about 3.90 ms p50 for serial local batch completion,
    while `reticulumd_worker_stdio_outbound_encrypt_batch_64_round_trip`
-   measures about 0.97 ms p50 through one framed child batch request.
+   measures about 0.96 ms p50 through one framed child batch request.
    The inbound decrypt side now has the same daemon-worker evidence:
    `reticulumd_worker_local_inbound_decrypt_batch_64` measures
    about 4.31 ms p50 for 64 serial decryptions, while
