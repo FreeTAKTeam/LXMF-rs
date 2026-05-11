@@ -277,6 +277,16 @@ direct evidence that the requested behavior, gate, or benchmark exists.
      propagated delivery modes through `rnx e2e`. The latest local run passed
      all three delivery modes after destination readiness metadata was exposed
      on stdout for the harness.
+   - `cargo xtask ci --stage sdk-conformance` now passes 47 SDK conformance
+     tests covering app-mode lifecycle/events, auth modes, crypto agility,
+     key-management fallback, release B/C domain RPC adapters, delivery modes,
+     idempotency, cursor semantics, gap reporting, cancellation, and queue
+     pressure.
+   - `cargo xtask ci --stage schema-client-check` now passes with
+     `target/interop/schema-client-smoke-report.txt` reporting eight generated
+     RPC methods, zero missing smoke vectors, Go compile `PASS`, Python compile
+     `PASS`, and JavaScript compile intentionally `SKIP` because TypeScript
+     checking is not configured.
    - `target/criterion/bench-budget-report.txt` currently reports `Status:
      PASS` and includes storage writer-lane insertion plus local-vs-process
      resource completion and outbound encryption budgets for

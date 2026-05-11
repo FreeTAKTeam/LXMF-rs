@@ -72,6 +72,15 @@ The commands below remain useful release checks, but they are not currently
 enforced by pull-request CI unless and until `.github/workflows/ci.yml` is
 expanded.
 
+Current local compatibility evidence:
+
+- `cargo xtask ci --stage sdk-conformance` passes 47 SDK conformance tests.
+- `cargo xtask ci --stage schema-client-check` reports 8 generated RPC methods,
+  0 missing smoke vectors, Go compile `PASS`, and Python compile `PASS` in
+  `target/interop/schema-client-smoke-report.txt`.
+- `cargo xtask ci --stage e2e-compatibility` passes direct, opportunistic, and
+  propagated local delivery modes through `rnx e2e`.
+
 ## 5. Local release checks
 
 Current high-signal local checks:
