@@ -83,6 +83,8 @@ jobs:
           cargo check -p reticulum-rs-transport --features fernet-aes128 --tests
           cargo check -p lxmf-wire --features fernet-aes128 --tests
           cargo check -p reticulum-rs --features fernet-aes128
+      - name: Delivery E2E compatibility
+        run: cargo xtask ci --stage e2e-compatibility
       - name: SDK docs check
         run: cargo run -p xtask -- sdk-docs-check
       - name: SDK migration check
