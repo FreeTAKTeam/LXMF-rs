@@ -27,19 +27,19 @@ Current p50 speedups over Python from the report profile:
 
 | Workload | Rust speedup |
 | --- | ---: |
-| LXMF message decode | 1483.40x |
-| LXMF message encode | 1083.16x |
-| LXMF large message decode | 1028.80x |
-| LXMF large message encode | 562.51x |
-| Reticulum announce create | 6.69x |
-| Reticulum announce validate | 5.24x |
-| Reticulum announce validate batch 64 | 5.23x |
-| Reticulum identity sign | 4.52x |
-| Reticulum identity verify | 5.04x |
+| LXMF message decode | 1482.91x |
+| LXMF message encode | 1081.38x |
+| LXMF large message decode | 1023.13x |
+| LXMF large message encode | 560.41x |
+| Reticulum announce create | 6.66x |
+| Reticulum announce validate | 5.19x |
+| Reticulum announce validate batch 64 | 5.21x |
+| Reticulum identity sign | 4.35x |
+| Reticulum identity verify | 4.97x |
 | Reticulum identity encrypt | 2.60x |
-| Reticulum identity decrypt | 3.13x |
-| Reticulum resource request window | 18.96x |
-| Daemon inbound delivery accept | 11.00x |
+| Reticulum identity decrypt | 3.14x |
+| Reticulum resource request window | 18.95x |
+| Daemon inbound delivery accept | 10.87x |
 
 ## Performance Targets
 
@@ -102,12 +102,12 @@ themselves.
    stalled children timing out without blocking unrelated local RPC handling.
    `reticulumd/control_router_stdio_status_round_trip` now measures a reused
    real `reticulumd --control-router-stdio` child serving `daemon_status_ex`;
-   the latest SDK perf budget report measured p50 52088.44 ns, p95/p99
-   56837.36 ns, throughput 19198.12 ops/sec, and passed. The budget also covers
+   the latest SDK perf budget report measured p50 52691.29 ns, p95/p99
+   56141.06 ns, throughput 18978.47 ops/sec, and passed. The budget also covers
    `reticulumd/control_router_http_status_routed_round_trip`, which starts a
    real parent daemon, routes external HTTP `/rpc` `status` through the child
-   pool, and currently measures p50 182573.24 ns, p95/p99 185726.61 ns,
-   throughput 5477.25 ops/sec.
+   pool, and currently measures p50 183932.89 ns, p95/p99 195243.42 ns,
+   throughput 5436.77 ops/sec.
 
 1. Crypto and identity workers
 
@@ -797,7 +797,7 @@ themselves.
    that bridge the existing interface TX/RX MPSC channels to the framed
    interface-worker stream. The benchmark suite now includes
    `rns_transport/interface_worker_ipc_envelope`; the latest budget report
-   measured p50 1166.25 ns and keeps interface IPC overhead inside CI gates.
+   measured p50 1150.77 ns and keeps interface IPC overhead inside CI gates.
    `reticulumd --interface-worker-stdio` is now a hidden child-process
    entrypoint that consumes framed interface envelopes until shutdown/EOF, with
    integration coverage against a real spawned daemon child. A parent-side
@@ -912,35 +912,35 @@ themselves.
 
    Current report-profile gaps from `cargo run -p xtask --
    python-impl-bench-report`: identity encrypt/decrypt are still the weakest
-   timing wins at 2.60x and 3.13x, announce create/validate and identity
-   sign/verify sit around 4.52x-6.69x, and daemon inbound delivery clears its
-   raised 10x stretch in the full report profile at 11.00x. The corrected
-   borrowed resource-request fixture now reports 18.96x over Python in the full
+   timing wins at 2.60x and 3.14x, announce create/validate and identity
+   sign/verify sit around 4.35x-6.66x, and daemon inbound delivery clears its
+   raised 10x stretch in the full report profile at 10.87x. The corrected
+   borrowed resource-request fixture now reports 18.95x over Python in the full
    report profile, so the resource stretch target is held at 20x while further
    work looks for real reusable sender-state wins. After the no-fields
    MessagePack encode fast path, the full report profile clears the raised
-   encode stretch targets at 1083.16x for small-message encode and 562.51x for
+   encode stretch targets at 1081.38x for small-message encode and 560.41x for
    large-message encode. Core Fernet decrypt now uses the same padding-helper
    path as transport Fernet, moving report-profile identity decrypt from 1.92x
-   to 3.13x over Python while the SDK perf budget keeps the new p50 under
+   to 3.14x over Python while the SDK perf budget keeps the new p50 under
    budget. The core identity encrypt Criterion split now measures
-   `rns_core/identity_encrypt` at about 104.44 us total, with
-   `rns_core/identity_encrypt_key_schedule` at about 50.51 us and
-   `rns_core/identity_fernet_encrypt_only` at about 53.88 us, so the remaining
+   `rns_core/identity_encrypt` at about 106.26 us total, with
+   `rns_core/identity_encrypt_key_schedule` at about 58.39 us and
+   `rns_core/identity_fernet_encrypt_only` at about 54.69 us, so the remaining
    encrypt cost is roughly half asymmetric key schedule and half Fernet payload
    encryption. The SDK perf budget runner now carries matching diagnostic
    budgets for both split probes. The matching decrypt split is now budgeted
-   too: `rns_core_identity_decrypt` measures about 56.97 us p50, with
-   `rns_core_identity_decrypt_key_schedule` at 37.30 us and
-   `rns_core_identity_fernet_decrypt_only` at 19.69 us in the latest SDK perf
+   too: `rns_core_identity_decrypt` measures about 57.43 us p50, with
+   `rns_core_identity_decrypt_key_schedule` at 37.55 us and
+   `rns_core_identity_fernet_decrypt_only` at 19.66 us in the latest SDK perf
    budget report. Decrypt is therefore mostly asymmetric/HKDF work, while
    Fernet verify/decrypt remains a meaningful secondary cost.
    The next crypto-throughput probe now measures batch scheduling directly:
-   `rns_core/identity_encrypt_batch_64` reports about 6.73 ms for 64 serial
+   `rns_core/identity_encrypt_batch_64` reports about 6.79 ms for 64 serial
    encryptions, while `rns_core/identity_encrypt_batch_64_parallel` reports
-   about 1.41 ms on the current machine. Decrypt shows the same shape:
-   `rns_core/identity_decrypt_batch_64` reports about 3.63 ms serial and
-   `rns_core/identity_decrypt_batch_64_parallel` about 0.84 ms. Those probes
+   about 1.38 ms on the current machine. Decrypt shows the same shape:
+   `rns_core/identity_decrypt_batch_64` reports about 3.68 ms serial and
+   `rns_core/identity_decrypt_batch_64_parallel` about 0.82 ms. Those probes
    are now in the SDK perf budget table as throughput guards, giving the next
    implementation pass concrete evidence that a bounded parallel crypto
    scheduler can improve batch throughput without making process IPC the
@@ -952,9 +952,9 @@ themselves.
    paths start coalescing jobs automatically. The stdio child now maps batch
    items across local worker threads, and the SDK perf budget includes the
    end-to-end batch process comparison: `reticulumd_worker_local_outbound_encrypt_batch_64`
-   currently measures about 3.91 ms p50 for serial local batch completion,
+   currently measures about 3.86 ms p50 for serial local batch completion,
    while `reticulumd_worker_stdio_outbound_encrypt_batch_64_round_trip`
-   measures about 0.98 ms p50 through one framed child batch request.
+   measures about 0.97 ms p50 through one framed child batch request.
    The inbound decrypt side now has the same daemon-worker evidence:
    `reticulumd_worker_local_inbound_decrypt_batch_64` measures
    about 4.31 ms p50 for 64 serial decryptions, while
