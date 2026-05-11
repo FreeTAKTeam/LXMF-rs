@@ -291,7 +291,13 @@ direct evidence that the requested behavior, gate, or benchmark exists.
      zero tolerated soak failures, matching the release-readiness rollback
      criteria instead of allowing a passing release scorecard with a tolerated
      E2E or mesh failure. The latest generated scorecard reports
-     `max_soak_failures: 0`.
+     `max_soak_failures: 0` and `max_mesh_failures: 0`.
+   - Propagated delivery now sends large propagation payload resources through
+     the already-resolved active propagation link handle instead of re-looking
+     the link up by id. This removes an intermittent burst-soak failure where a
+     briefly busy link could make propagation resource dispatch fail with
+     `InvalidArgument`. The latest zero-failure release scorecard run passed
+     both burst E2E rounds and the mesh chaos round.
    - `cargo xtask ci --stage canary-criteria-check` now passes on top of the
      zero-failure scorecard. The generated canary report has `status: "PASS"`,
      `max_soak_failures: 0`, `max_mesh_failures: 0`, and an empty

@@ -95,10 +95,11 @@ impl DeliveryTask {
         let destination_desc = *link.lock().await.destination();
         let link_id = *link.lock().await.id();
         if trace_stage == "propagation" {
-            let resource_hash =
-                self.transport.send_resource(&link_id, payload.to_vec(), None).await.map_err(
-                    |err| std::io::Error::other(format!("link resource not sent: {err:?}")),
-                )?;
+            let resource_hash = self
+                .transport
+                .send_resource_on_link(Arc::clone(&link), payload.to_vec(), None)
+                .await
+                .map_err(|err| std::io::Error::other(format!("link resource not sent: {err:?}")))?;
             let resource_hash_hex = hex::encode(resource_hash.to_bytes());
             track_outbound_resource(
                 &self.outbound_resource_map,

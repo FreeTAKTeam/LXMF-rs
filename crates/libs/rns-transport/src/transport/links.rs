@@ -255,6 +255,15 @@ impl Transport {
         metadata: Option<Vec<u8>>,
     ) -> Result<Hash, RnsError> {
         let link = self.find_any_link(link_id).await.ok_or(RnsError::InvalidArgument)?;
+        self.send_resource_on_link(link, data, metadata).await
+    }
+
+    pub async fn send_resource_on_link(
+        &self,
+        link: Arc<Mutex<Link>>,
+        data: Vec<u8>,
+        metadata: Option<Vec<u8>>,
+    ) -> Result<Hash, RnsError> {
         let prepared =
             Self::prepare_resource_send_on_worker(Arc::clone(&link), data, metadata, None, false)
                 .await?;

@@ -2236,7 +2236,13 @@ fn run_release_scorecard_check() -> Result<()> {
             bail!("generated scorecard missing marker '{marker}' in {markdown_path}");
         }
     }
-    for marker in ["\"overall_status\"", "\"performance_status\"", "\"soak_status\""] {
+    for marker in [
+        "\"overall_status\"",
+        "\"performance_status\"",
+        "\"soak_status\"",
+        "\"max_soak_failures\": 0",
+        "\"max_mesh_failures\": 0",
+    ] {
         if !json.contains(marker) {
             bail!("generated scorecard json missing marker '{marker}' in {json_path}");
         }
