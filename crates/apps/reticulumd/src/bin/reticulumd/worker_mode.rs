@@ -1084,6 +1084,51 @@ mod tests {
         server.await.expect("server task");
     }
 
+    #[tokio::test]
+    async fn worker_process_pool_can_use_tcp_worker_supervisor() {
+        let listener =
+            tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind tcp worker supervisor");
+        let addr = listener.local_addr().expect("tcp worker supervisor address");
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.expect("accept worker client");
+            let frame = read_worker_frame(&mut stream, MAX_WORKER_REQUEST_BYTES)
+                .await
+                .expect("read worker request");
+            let request = WorkerRequest::decode(&frame).expect("decode worker request");
+            let response = WorkerResponse::success(WorkerResult {
+                id: request.job.id,
+                kind: WorkerResultKind::PacketWire { packet_wire: vec![4, 5, 6] },
+            })
+            .encode()
+            .expect("encode worker response");
+            write_worker_frame(&mut stream, &response, MAX_WORKER_RESPONSE_BYTES)
+                .await
+                .expect("write worker response");
+        });
+
+        let pool = WorkerStdioPool::connect(WorkerProcessEndpoint::Tcp { addr }, 1)
+            .expect("connect tcp worker pool");
+        let request = WorkerRequest::new(
+            WorkerJob { id: 45, kind: WorkerJobKind::ValidateAnnounce { packet_wire: Vec::new() } },
+            1_000,
+        )
+        .encode()
+        .expect("encode worker request");
+
+        let response = pool
+            .submit_encoded(&request, Duration::from_millis(1_000))
+            .await
+            .expect("submit worker request");
+        let response = WorkerResponse::decode(&response).expect("decode worker response");
+        assert_eq!(response.job_id, 45);
+        let result = response.outcome.expect("worker success");
+        assert!(matches!(
+            result.kind,
+            WorkerResultKind::PacketWire { packet_wire } if packet_wire == vec![4, 5, 6]
+        ));
+        server.await.expect("server task");
+    }
+
     #[test]
     fn worker_process_options_allow_disabled_pool_with_zero_timeout() {
         validate_worker_process_options(0, 0).expect("disabled worker pool should ignore timeout");
