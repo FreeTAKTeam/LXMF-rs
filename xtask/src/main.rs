@@ -550,6 +550,13 @@ const PERF_BUDGETS: &[PerfBudget] = &[
         min_throughput_ops_per_sec: 100.0,
     },
     PerfBudget {
+        benchmark: "reticulumd_worker_local_inbound_decrypt_batch_64",
+        max_p50_ns: 8_000_000.0,
+        max_p95_ns: 10_000_000.0,
+        max_p99_ns: 12_000_000.0,
+        min_throughput_ops_per_sec: 100.0,
+    },
+    PerfBudget {
         benchmark: "reticulumd_worker_stdio_resource_complete_round_trip",
         max_p50_ns: 2_000_000.0,
         max_p95_ns: 3_500_000.0,
@@ -565,6 +572,13 @@ const PERF_BUDGETS: &[PerfBudget] = &[
     },
     PerfBudget {
         benchmark: "reticulumd_worker_stdio_outbound_encrypt_batch_64_round_trip",
+        max_p50_ns: 3_000_000.0,
+        max_p95_ns: 4_500_000.0,
+        max_p99_ns: 6_000_000.0,
+        min_throughput_ops_per_sec: 300.0,
+    },
+    PerfBudget {
+        benchmark: "reticulumd_worker_stdio_inbound_decrypt_batch_64_round_trip",
         max_p50_ns: 3_000_000.0,
         max_p95_ns: 4_500_000.0,
         max_p99_ns: 6_000_000.0,

@@ -955,6 +955,13 @@ themselves.
    currently measures about 3.91 ms p50 for serial local batch completion,
    while `reticulumd_worker_stdio_outbound_encrypt_batch_64_round_trip`
    measures about 0.98 ms p50 through one framed child batch request.
+   The inbound decrypt side now has the same daemon-worker evidence:
+   `reticulumd_worker_local_inbound_decrypt_batch_64` measures
+   about 4.31 ms p50 for 64 serial decryptions, while
+   `reticulumd_worker_stdio_inbound_decrypt_batch_64_round_trip`
+   measures about 1.01 ms p50 through one framed child batch request. Both
+   batch encrypt and decrypt worker paths are now protected by SDK perf
+   budgets before runtime coalescing starts depending on them.
 
 5. Optional process isolation
 

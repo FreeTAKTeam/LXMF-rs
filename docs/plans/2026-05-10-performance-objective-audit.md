@@ -241,13 +241,20 @@ direct evidence that the requested behavior, gate, or benchmark exists.
      `reticulumd_worker_local_resource_complete` and
      `reticulumd_worker_stdio_resource_complete_round_trip`,
      `reticulumd_worker_local_outbound_encrypt`, and
-     `reticulumd_worker_stdio_outbound_encrypt_round_trip`, plus the
-     router/control child-process round-trip budget for
+     `reticulumd_worker_stdio_outbound_encrypt_round_trip`, the 64-item
+     outbound encrypt batch budgets, and the 64-item single-destination decrypt
+     batch budgets, plus the router/control child-process round-trip budget for
      `reticulumd_control_router_stdio_status_round_trip`.
    - The latest SDK perf budget report measures outbound encryption at p50
      64237.15 ns in-process and p50 107042.88 ns through a reused
      `reticulumd --worker-stdio` child. This makes the crypto process-boundary
      overhead visible before promoting process mode as a default.
+   - The focused worker-process Criterion run for decrypt batching measures
+     `reticulumd/worker_local_inbound_decrypt_batch_64` at about
+     4.31 ms p50 and
+     `reticulumd/worker_stdio_inbound_decrypt_batch_64_round_trip`
+     at about 1.01 ms p50 for 64 items, matching the outbound batch evidence
+     with an inbound decrypt budget gate.
 
    Status: covered.
 

@@ -11,11 +11,11 @@ use rns_rpc::RpcRequest;
 use rns_transport::destination::{DestinationName, SingleInputDestination};
 use rns_transport::identity::PrivateIdentity;
 use rns_transport::packet::{DestinationType, Header, Packet, PacketDataBuffer, PacketType};
-use rns_transport::ratchets::encrypt_for_public_key_bytes;
+use rns_transport::ratchets::{decrypt_with_identity, encrypt_for_public_key_bytes};
 use rns_transport::transport::worker_boundary::{
-    read_worker_frame, write_worker_frame, OutboundEncryptBatchItem, WorkerJob, WorkerJobKind,
-    WorkerRequest, WorkerResponse, WorkerResultKind, MAX_WORKER_REQUEST_BYTES,
-    MAX_WORKER_RESPONSE_BYTES,
+    read_worker_frame, write_worker_frame, OutboundEncryptBatchItem,
+    SingleDestinationDecryptBatchItem, WorkerJob, WorkerJobKind, WorkerRequest, WorkerResponse,
+    WorkerResultKind, MAX_WORKER_REQUEST_BYTES, MAX_WORKER_RESPONSE_BYTES,
 };
 use serde_json::json;
 use sha2::Digest;
@@ -107,6 +107,44 @@ fn outbound_encrypt_batch_job(id: u64, payload: &[u8], count: usize) -> WorkerJo
     WorkerJob { id, kind: WorkerJobKind::OutboundEncryptBatch { items } }
 }
 
+fn single_destination_decrypt_batch_job(id: u64, payload: &[u8], count: usize) -> WorkerJob {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let destination =
+        SingleInputDestination::new(local_identity, DestinationName::new("lxmf", "delivery"));
+    let salt = destination.identity.as_identity().address_hash;
+    let private_key =
+        serde_bytes::ByteBuf::from(destination.identity.to_private_key_bytes().to_vec());
+    let items = (0..count)
+        .map(|_| {
+            let ciphertext = encrypt_for_public_key_bytes(
+                destination.desc.identity.public_key.as_bytes(),
+                salt.as_slice(),
+                payload,
+                OsRng,
+            )
+            .expect("encrypt inbound");
+            let packet = Packet {
+                header: Header {
+                    destination_type: DestinationType::Single,
+                    packet_type: PacketType::Data,
+                    ..Default::default()
+                },
+                destination: destination.desc.address_hash,
+                data: PacketDataBuffer::new_from_slice(&ciphertext),
+                ..Default::default()
+            };
+            let mut destination_hash = [0u8; rns_transport::hash::ADDRESS_HASH_SIZE];
+            destination_hash.copy_from_slice(destination.desc.address_hash.as_slice());
+            SingleDestinationDecryptBatchItem {
+                packet_wire: packet.to_bytes().expect("packet wire"),
+                destination: destination_hash,
+                private_key: private_key.clone(),
+            }
+        })
+        .collect();
+    WorkerJob { id, kind: WorkerJobKind::SingleDestinationDecryptBatch { items } }
+}
+
 fn complete_outbound_encrypt_locally(kind: &WorkerJobKind) -> Vec<u8> {
     let WorkerJobKind::OutboundEncrypt { packet_wire, public_key, salt } = kind else {
         panic!("expected outbound encrypt job");
@@ -133,6 +171,24 @@ fn complete_outbound_encrypt_batch_locally(kind: &WorkerJobKind) -> usize {
                 salt: item.salt,
             };
             complete_outbound_encrypt_locally(&kind).len()
+        })
+        .sum()
+}
+
+fn complete_single_destination_decrypt_batch_locally(kind: &WorkerJobKind) -> usize {
+    let WorkerJobKind::SingleDestinationDecryptBatch { items } = kind else {
+        panic!("expected single destination decrypt batch job");
+    };
+    items
+        .iter()
+        .map(|item| {
+            let packet = Packet::from_bytes(&item.packet_wire).expect("decode packet");
+            let identity = PrivateIdentity::from_private_key_bytes(&item.private_key)
+                .expect("private identity");
+            let salt = identity.as_identity().address_hash;
+            decrypt_with_identity(&identity, salt.as_slice(), packet.data.as_slice())
+                .expect("decrypt inbound")
+                .len()
         })
         .sum()
 }
@@ -429,6 +485,45 @@ fn bench_worker_stdio_outbound_encrypt_batch_64_round_trip(c: &mut Criterion) {
     runtime.block_on(worker.shutdown());
 }
 
+fn bench_worker_local_single_destination_decrypt_batch_64(c: &mut Criterion) {
+    let payload = vec![0x42; 256];
+    let job = single_destination_decrypt_batch_job(15, &payload, 64);
+    c.bench_function("reticulumd/worker_local_inbound_decrypt_batch_64", |b| {
+        b.iter(|| {
+            let total = complete_single_destination_decrypt_batch_locally(black_box(&job.kind));
+            black_box(total);
+        });
+    });
+}
+
+fn bench_worker_stdio_single_destination_decrypt_batch_64_round_trip(c: &mut Criterion) {
+    let runtime = Runtime::new().expect("tokio runtime");
+    let payload = vec![0x42; 256];
+    let request = WorkerRequest::new(single_destination_decrypt_batch_job(16, &payload, 64), 5_000)
+        .encode()
+        .expect("request");
+    let mut worker = runtime.block_on(WorkerChild::spawn());
+
+    c.bench_function("reticulumd/worker_stdio_inbound_decrypt_batch_64_round_trip", |b| {
+        b.iter_custom(|iters| {
+            runtime.block_on(async {
+                let started = Instant::now();
+                for _ in 0..iters {
+                    let response = worker.submit(black_box(&request)).await;
+                    let result = response.outcome.expect("worker response");
+                    let WorkerResultKind::DestinationPayloadBatch { items } = result.kind else {
+                        panic!("expected decrypted packet batch response");
+                    };
+                    black_box(items.len());
+                }
+                started.elapsed()
+            })
+        });
+    });
+
+    runtime.block_on(worker.shutdown());
+}
+
 fn bench_worker_stdio_resource_complete_round_trip(c: &mut Criterion) {
     let runtime = Runtime::new().expect("tokio runtime");
     let payload = vec![0x5a; 4096];
@@ -506,6 +601,8 @@ criterion_group!(
     bench_worker_stdio_outbound_encrypt_round_trip,
     bench_worker_local_outbound_encrypt_batch_64,
     bench_worker_stdio_outbound_encrypt_batch_64_round_trip,
+    bench_worker_local_single_destination_decrypt_batch_64,
+    bench_worker_stdio_single_destination_decrypt_batch_64_round_trip,
     bench_control_router_stdio_status_round_trip,
     bench_control_router_http_status_routed_round_trip
 );
