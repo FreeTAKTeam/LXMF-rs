@@ -232,6 +232,11 @@ direct evidence that the requested behavior, gate, or benchmark exists.
    - `cargo xtask ci --stage security-review-check` passes against the current
      tree, validating the security checklist and the runtime hygiene scans used
      by regular CI.
+   - A fresh `cargo xtask ci --stage security-review-check` pass after the
+     external-worker and control-router robustness updates confirms the current
+     branch still clears the runtime hygiene scans for blocking sleeps,
+     unbounded channels, synchronous guard-across-await patterns, and async
+     mutex send/dispatch calls.
 
    Status: covered for current single-process async lanes.
 
