@@ -164,11 +164,17 @@ pub enum WorkerJobKind {
         public_key: [u8; 32],
         salt: [u8; ADDRESS_HASH_SIZE],
     },
+    OutboundEncryptBatch {
+        items: Vec<OutboundEncryptBatchItem>,
+    },
     SingleDestinationDecrypt {
         #[serde(with = "serde_bytes")]
         packet_wire: Vec<u8>,
         destination: [u8; ADDRESS_HASH_SIZE],
         private_key: ByteBuf,
+    },
+    SingleDestinationDecryptBatch {
+        items: Vec<SingleDestinationDecryptBatchItem>,
     },
     ResourcePrepare {
         link_id: [u8; ADDRESS_HASH_SIZE],
@@ -192,6 +198,22 @@ pub enum WorkerJobKind {
         is_response: bool,
         stream: ByteBuf,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OutboundEncryptBatchItem {
+    #[serde(with = "serde_bytes")]
+    pub packet_wire: Vec<u8>,
+    pub public_key: [u8; 32],
+    pub salt: [u8; ADDRESS_HASH_SIZE],
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SingleDestinationDecryptBatchItem {
+    #[serde(with = "serde_bytes")]
+    pub packet_wire: Vec<u8>,
+    pub destination: [u8; ADDRESS_HASH_SIZE],
+    pub private_key: ByteBuf,
 }
 
 impl WorkerJobKind {
@@ -331,9 +353,15 @@ pub enum WorkerResultKind {
         #[serde(with = "serde_bytes")]
         packet_wire: Vec<u8>,
     },
+    PacketWireBatch {
+        items: Vec<PacketWireBatchItem>,
+    },
     DestinationPayload {
         payload: ByteBuf,
         ratchet_used: bool,
+    },
+    DestinationPayloadBatch {
+        items: Vec<DestinationPayloadBatchItem>,
     },
     ResourcePrepared {
         resource_hash: [u8; HASH_SIZE],
@@ -349,6 +377,18 @@ pub enum WorkerResultKind {
         is_request: bool,
         is_response: bool,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PacketWireBatchItem {
+    #[serde(with = "serde_bytes")]
+    pub packet_wire: Vec<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DestinationPayloadBatchItem {
+    pub payload: ByteBuf,
+    pub ratchet_used: bool,
 }
 
 impl WorkerResultKind {
@@ -684,6 +724,44 @@ mod tests {
     }
 
     #[test]
+    fn worker_batch_crypto_jobs_round_trip_through_msgpack() {
+        let encrypt = WorkerJob {
+            id: 70,
+            kind: WorkerJobKind::OutboundEncryptBatch {
+                items: vec![
+                    OutboundEncryptBatchItem {
+                        packet_wire: b"packet-a".to_vec(),
+                        public_key: [0x11; PUBLIC_KEY_LENGTH],
+                        salt: [0x22; ADDRESS_HASH_SIZE],
+                    },
+                    OutboundEncryptBatchItem {
+                        packet_wire: b"packet-b".to_vec(),
+                        public_key: [0x33; PUBLIC_KEY_LENGTH],
+                        salt: [0x44; ADDRESS_HASH_SIZE],
+                    },
+                ],
+            },
+        };
+        let decrypt = WorkerJob {
+            id: 71,
+            kind: WorkerJobKind::SingleDestinationDecryptBatch {
+                items: vec![SingleDestinationDecryptBatchItem {
+                    packet_wire: b"ciphertext".to_vec(),
+                    destination: [0x55; ADDRESS_HASH_SIZE],
+                    private_key: ByteBuf::from(vec![0x66; PUBLIC_KEY_LENGTH * 2]),
+                }],
+            },
+        };
+
+        for job in [encrypt, decrypt] {
+            let packed = rmp_serde::to_vec_named(&job).expect("pack batch worker job");
+            let decoded: WorkerJob = rmp_serde::from_slice(&packed).expect("decode batch job");
+
+            assert_eq!(decoded, job);
+        }
+    }
+
+    #[test]
     fn worker_resource_complete_job_round_trips_completion_snapshot() {
         let snapshot = ResourceCompletionSnapshot {
             link_id: [0x11; ADDRESS_HASH_SIZE],
@@ -848,6 +926,36 @@ mod tests {
         let decoded: WorkerResult = rmp_serde::from_slice(&packed).expect("decode worker result");
 
         assert_eq!(decoded, result);
+    }
+
+    #[test]
+    fn worker_batch_crypto_results_round_trip_through_msgpack() {
+        let packet_result = WorkerResult {
+            id: 80,
+            kind: WorkerResultKind::PacketWireBatch {
+                items: vec![
+                    PacketWireBatchItem { packet_wire: b"packet-a".to_vec() },
+                    PacketWireBatchItem { packet_wire: b"packet-b".to_vec() },
+                ],
+            },
+        };
+        let payload_result = WorkerResult {
+            id: 81,
+            kind: WorkerResultKind::DestinationPayloadBatch {
+                items: vec![DestinationPayloadBatchItem {
+                    payload: ByteBuf::from(b"plain".to_vec()),
+                    ratchet_used: false,
+                }],
+            },
+        };
+
+        for result in [packet_result, payload_result] {
+            let packed = rmp_serde::to_vec_named(&result).expect("pack batch worker result");
+            let decoded: WorkerResult =
+                rmp_serde::from_slice(&packed).expect("decode batch worker result");
+
+            assert_eq!(decoded, result);
+        }
     }
 
     #[test]

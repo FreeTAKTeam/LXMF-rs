@@ -14,7 +14,8 @@ use rns_transport::transport::interface_boundary::{
     write_interface_worker_envelope, InterfaceWorkerEnvelope, InterfaceWorkerEvent,
 };
 use rns_transport::transport::worker_boundary::{
-    read_worker_frame, write_worker_frame, WorkerJob, WorkerJobKind, WorkerRequest, WorkerResponse,
+    read_worker_frame, write_worker_frame, OutboundEncryptBatchItem,
+    SingleDestinationDecryptBatchItem, WorkerJob, WorkerJobKind, WorkerRequest, WorkerResponse,
     WorkerResultKind, MAX_WORKER_REQUEST_BYTES, MAX_WORKER_RESPONSE_BYTES,
 };
 use sha2::Digest;
@@ -207,6 +208,101 @@ async fn reticulumd_worker_stdio_decrypts_single_destination_in_child_process() 
     };
     assert_eq!(payload.as_ref(), b"process inbound");
     assert!(!ratchet_used);
+}
+
+#[tokio::test]
+async fn reticulumd_worker_stdio_encrypts_outbound_batch_in_child_process() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let destination =
+        SingleInputDestination::new(identity, DestinationName::new("lxmf", "delivery"));
+    let packet = Packet {
+        header: Header {
+            destination_type: DestinationType::Single,
+            packet_type: PacketType::Data,
+            ..Default::default()
+        },
+        destination: destination.desc.address_hash,
+        data: PacketDataBuffer::new_from_slice(b"process outbound batch"),
+        ..Default::default()
+    };
+    let item = OutboundEncryptBatchItem {
+        packet_wire: packet.to_bytes().expect("packet wire"),
+        public_key: *destination.desc.identity.public_key.as_bytes(),
+        salt: address_hash_bytes(&destination.desc.identity.address_hash),
+    };
+
+    let response = submit_worker_request(WorkerRequest::new(
+        WorkerJob {
+            id: 46,
+            kind: WorkerJobKind::OutboundEncryptBatch { items: vec![item.clone(), item] },
+        },
+        1_000,
+    ))
+    .await;
+
+    assert_eq!(response.job_id, 46);
+    let result = response.outcome.expect("worker outbound batch encryption");
+    let WorkerResultKind::PacketWireBatch { items } = result.kind else {
+        panic!("unexpected worker result kind");
+    };
+    assert_eq!(items.len(), 2);
+    for item in items {
+        let encrypted = Packet::from_bytes(&item.packet_wire).expect("encrypted packet");
+        assert_eq!(encrypted.destination, packet.destination);
+        assert_ne!(encrypted.data.as_slice(), b"process outbound batch");
+    }
+}
+
+#[tokio::test]
+async fn reticulumd_worker_stdio_decrypts_single_destination_batch_in_child_process() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let destination =
+        SingleInputDestination::new(identity, DestinationName::new("lxmf", "delivery"));
+    let salt = destination.identity.as_identity().address_hash;
+    let ciphertext = encrypt_for_public_key_bytes(
+        destination.desc.identity.public_key.as_bytes(),
+        salt.as_slice(),
+        b"process inbound batch",
+        OsRng,
+    )
+    .expect("encrypt inbound");
+    let packet = Packet {
+        header: Header {
+            destination_type: DestinationType::Single,
+            packet_type: PacketType::Data,
+            ..Default::default()
+        },
+        destination: destination.desc.address_hash,
+        data: PacketDataBuffer::new_from_slice(&ciphertext),
+        ..Default::default()
+    };
+    let item = SingleDestinationDecryptBatchItem {
+        packet_wire: packet.to_bytes().expect("packet wire"),
+        destination: address_hash_bytes(&destination.desc.address_hash),
+        private_key: serde_bytes::ByteBuf::from(
+            destination.identity.to_private_key_bytes().to_vec(),
+        ),
+    };
+
+    let response = submit_worker_request(WorkerRequest::new(
+        WorkerJob {
+            id: 47,
+            kind: WorkerJobKind::SingleDestinationDecryptBatch { items: vec![item.clone(), item] },
+        },
+        1_000,
+    ))
+    .await;
+
+    assert_eq!(response.job_id, 47);
+    let result = response.outcome.expect("worker single destination batch decrypt");
+    let WorkerResultKind::DestinationPayloadBatch { items } = result.kind else {
+        panic!("unexpected worker result kind");
+    };
+    assert_eq!(items.len(), 2);
+    for item in items {
+        assert_eq!(item.payload.as_ref(), b"process inbound batch");
+        assert!(!item.ratchet_used);
+    }
 }
 
 #[tokio::test]

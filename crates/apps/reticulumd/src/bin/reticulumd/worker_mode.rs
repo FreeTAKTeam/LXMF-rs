@@ -13,9 +13,10 @@ use rns_transport::hash::AddressHash;
 use rns_transport::packet::{Packet, PacketDataBuffer};
 use rns_transport::ratchets::encrypt_for_public_key_bytes;
 use rns_transport::transport::worker_boundary::{
-    read_worker_frame, write_worker_frame, WorkerBackend, WorkerClient, WorkerCodecError,
-    WorkerError, WorkerJob, WorkerJobFuture, WorkerJobKind, WorkerRequest, WorkerResponse,
-    WorkerResult, WorkerResultKind, MAX_WORKER_REQUEST_BYTES, MAX_WORKER_RESPONSE_BYTES,
+    read_worker_frame, write_worker_frame, DestinationPayloadBatchItem, PacketWireBatchItem,
+    WorkerBackend, WorkerClient, WorkerCodecError, WorkerError, WorkerJob, WorkerJobFuture,
+    WorkerJobKind, WorkerRequest, WorkerResponse, WorkerResult, WorkerResultKind,
+    MAX_WORKER_REQUEST_BYTES, MAX_WORKER_RESPONSE_BYTES,
 };
 #[cfg(test)]
 use tokio::io::DuplexStream;
@@ -485,11 +486,17 @@ impl WorkerBackend for StdioWorkerBackend {
                 WorkerJobKind::OutboundEncrypt { packet_wire, public_key, salt } => {
                     outbound_encrypt_job(job.id, packet_wire, public_key, salt)
                 }
+                WorkerJobKind::OutboundEncryptBatch { items } => {
+                    outbound_encrypt_batch_job(job.id, items)
+                }
                 WorkerJobKind::SingleDestinationDecrypt {
                     packet_wire,
                     destination,
                     private_key,
                 } => single_destination_decrypt_job(job.id, packet_wire, destination, private_key),
+                WorkerJobKind::SingleDestinationDecryptBatch { items } => {
+                    single_destination_decrypt_batch_job(job.id, items)
+                }
                 kind @ WorkerJobKind::ResourceComplete { .. } => {
                     resource_complete_job(job.id, kind)
                 }
@@ -528,6 +535,26 @@ fn outbound_encrypt_job(
     Ok(WorkerResult { id: job_id, kind: WorkerResultKind::PacketWire { packet_wire } })
 }
 
+fn outbound_encrypt_batch_job(
+    job_id: u64,
+    items: Vec<rns_transport::transport::worker_boundary::OutboundEncryptBatchItem>,
+) -> Result<WorkerResult, WorkerError> {
+    let items = items
+        .into_iter()
+        .map(|item| {
+            let result =
+                outbound_encrypt_job(job_id, item.packet_wire, item.public_key, item.salt)?;
+            let WorkerResultKind::PacketWire { packet_wire } = result.kind else {
+                return Err(WorkerError::InvalidJob {
+                    message: "outbound encrypt item returned unexpected result".to_string(),
+                });
+            };
+            Ok(PacketWireBatchItem { packet_wire })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(WorkerResult { id: job_id, kind: WorkerResultKind::PacketWireBatch { items } })
+}
+
 fn single_destination_decrypt_job(
     job_id: u64,
     packet_wire: Vec<u8>,
@@ -562,6 +589,31 @@ fn single_destination_decrypt_job(
             ratchet_used: false,
         },
     })
+}
+
+fn single_destination_decrypt_batch_job(
+    job_id: u64,
+    items: Vec<rns_transport::transport::worker_boundary::SingleDestinationDecryptBatchItem>,
+) -> Result<WorkerResult, WorkerError> {
+    let items = items
+        .into_iter()
+        .map(|item| {
+            let result = single_destination_decrypt_job(
+                job_id,
+                item.packet_wire,
+                item.destination,
+                item.private_key,
+            )?;
+            let WorkerResultKind::DestinationPayload { payload, ratchet_used } = result.kind else {
+                return Err(WorkerError::InvalidJob {
+                    message: "single destination decrypt item returned unexpected result"
+                        .to_string(),
+                });
+            };
+            Ok(DestinationPayloadBatchItem { payload, ratchet_used })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(WorkerResult { id: job_id, kind: WorkerResultKind::DestinationPayloadBatch { items } })
 }
 
 fn resource_complete_job(job_id: u64, kind: WorkerJobKind) -> Result<WorkerResult, WorkerError> {
