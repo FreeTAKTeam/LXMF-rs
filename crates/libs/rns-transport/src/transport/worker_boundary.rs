@@ -26,6 +26,60 @@ pub trait WorkerBackend: Send + Sync {
     fn submit(&self, job: WorkerJob) -> WorkerJobFuture<'_>;
 }
 
+pub async fn submit_outbound_encrypt_batch(
+    backend: &dyn WorkerBackend,
+    job_id: u64,
+    items: Vec<OutboundEncryptBatchItem>,
+) -> Result<Vec<PacketWireBatchItem>, WorkerError> {
+    let expected_items = items.len();
+    let result = backend
+        .submit(WorkerJob { id: job_id, kind: WorkerJobKind::OutboundEncryptBatch { items } })
+        .await?;
+    let WorkerResultKind::PacketWireBatch { items } = result.kind else {
+        return Err(WorkerError::InvalidJob {
+            message: "worker returned non-packet batch for outbound encrypt batch".to_string(),
+        });
+    };
+    if items.len() != expected_items {
+        return Err(WorkerError::InvalidJob {
+            message: format!(
+                "worker returned {} packet batch items, expected {expected_items}",
+                items.len()
+            ),
+        });
+    }
+    Ok(items)
+}
+
+pub async fn submit_single_destination_decrypt_batch(
+    backend: &dyn WorkerBackend,
+    job_id: u64,
+    items: Vec<SingleDestinationDecryptBatchItem>,
+) -> Result<Vec<DestinationPayloadBatchItem>, WorkerError> {
+    let expected_items = items.len();
+    let result = backend
+        .submit(WorkerJob {
+            id: job_id,
+            kind: WorkerJobKind::SingleDestinationDecryptBatch { items },
+        })
+        .await?;
+    let WorkerResultKind::DestinationPayloadBatch { items } = result.kind else {
+        return Err(WorkerError::InvalidJob {
+            message: "worker returned non-payload batch for single destination decrypt batch"
+                .to_string(),
+        });
+    };
+    if items.len() != expected_items {
+        return Err(WorkerError::InvalidJob {
+            message: format!(
+                "worker returned {} payload batch items, expected {expected_items}",
+                items.len()
+            ),
+        });
+    }
+    Ok(items)
+}
+
 #[derive(Clone)]
 pub struct WorkerClient {
     backend: Arc<dyn WorkerBackend>,
@@ -694,6 +748,48 @@ mod tests {
         }
     }
 
+    struct BatchEchoBackend {
+        expected_items: Option<usize>,
+    }
+
+    impl WorkerBackend for BatchEchoBackend {
+        fn submit(&self, job: WorkerJob) -> WorkerJobFuture<'_> {
+            let expected_items = self.expected_items;
+            Box::pin(async move {
+                match job.kind {
+                    WorkerJobKind::OutboundEncryptBatch { items } => {
+                        let items = items
+                            .into_iter()
+                            .take(expected_items.unwrap_or(usize::MAX))
+                            .map(|item| PacketWireBatchItem { packet_wire: item.packet_wire })
+                            .collect();
+                        Ok(WorkerResult {
+                            id: job.id,
+                            kind: WorkerResultKind::PacketWireBatch { items },
+                        })
+                    }
+                    WorkerJobKind::SingleDestinationDecryptBatch { items } => {
+                        let items = items
+                            .into_iter()
+                            .take(expected_items.unwrap_or(usize::MAX))
+                            .map(|item| DestinationPayloadBatchItem {
+                                payload: item.private_key,
+                                ratchet_used: false,
+                            })
+                            .collect();
+                        Ok(WorkerResult {
+                            id: job.id,
+                            kind: WorkerResultKind::DestinationPayloadBatch { items },
+                        })
+                    }
+                    _ => Err(WorkerError::InvalidJob {
+                        message: "expected batch crypto job".to_string(),
+                    }),
+                }
+            })
+        }
+    }
+
     fn announce_request(id: u64, timeout_ms: u64) -> WorkerRequest {
         WorkerRequest::new(
             WorkerJob {
@@ -956,6 +1052,85 @@ mod tests {
 
             assert_eq!(decoded, result);
         }
+    }
+
+    #[tokio::test]
+    async fn submit_outbound_encrypt_batch_returns_ordered_packet_items() {
+        let backend = BatchEchoBackend { expected_items: None };
+        let items = submit_outbound_encrypt_batch(
+            &backend,
+            90,
+            vec![
+                OutboundEncryptBatchItem {
+                    packet_wire: b"packet-a".to_vec(),
+                    public_key: [0x11; PUBLIC_KEY_LENGTH],
+                    salt: [0x22; ADDRESS_HASH_SIZE],
+                },
+                OutboundEncryptBatchItem {
+                    packet_wire: b"packet-b".to_vec(),
+                    public_key: [0x33; PUBLIC_KEY_LENGTH],
+                    salt: [0x44; ADDRESS_HASH_SIZE],
+                },
+            ],
+        )
+        .await
+        .expect("packet batch");
+
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].packet_wire, b"packet-a");
+        assert_eq!(items[1].packet_wire, b"packet-b");
+    }
+
+    #[tokio::test]
+    async fn submit_single_destination_decrypt_batch_returns_ordered_payload_items() {
+        let backend = BatchEchoBackend { expected_items: None };
+        let items = submit_single_destination_decrypt_batch(
+            &backend,
+            91,
+            vec![
+                SingleDestinationDecryptBatchItem {
+                    packet_wire: b"cipher-a".to_vec(),
+                    destination: [0x11; ADDRESS_HASH_SIZE],
+                    private_key: ByteBuf::from(b"payload-a".to_vec()),
+                },
+                SingleDestinationDecryptBatchItem {
+                    packet_wire: b"cipher-b".to_vec(),
+                    destination: [0x22; ADDRESS_HASH_SIZE],
+                    private_key: ByteBuf::from(b"payload-b".to_vec()),
+                },
+            ],
+        )
+        .await
+        .expect("payload batch");
+
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].payload.as_ref(), b"payload-a");
+        assert_eq!(items[1].payload.as_ref(), b"payload-b");
+    }
+
+    #[tokio::test]
+    async fn submit_batch_helpers_reject_short_worker_results() {
+        let backend = BatchEchoBackend { expected_items: Some(1) };
+        let error = submit_outbound_encrypt_batch(
+            &backend,
+            92,
+            vec![
+                OutboundEncryptBatchItem {
+                    packet_wire: b"packet-a".to_vec(),
+                    public_key: [0x11; PUBLIC_KEY_LENGTH],
+                    salt: [0x22; ADDRESS_HASH_SIZE],
+                },
+                OutboundEncryptBatchItem {
+                    packet_wire: b"packet-b".to_vec(),
+                    public_key: [0x33; PUBLIC_KEY_LENGTH],
+                    salt: [0x44; ADDRESS_HASH_SIZE],
+                },
+            ],
+        )
+        .await
+        .expect_err("short batch should fail");
+
+        assert!(matches!(error, WorkerError::InvalidJob { .. }));
     }
 
     #[test]
