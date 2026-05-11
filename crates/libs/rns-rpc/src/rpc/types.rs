@@ -234,6 +234,43 @@ struct DaemonStatusSnapshot {
     delivery_policy: DeliveryPolicy,
     propagation: PropagationState,
     stamp_policy: StampPolicy,
+    worker_processes: WorkerProcessStatus,
+    interface_worker_processes: InterfaceWorkerProcessStatus,
+    control_router_processes: ControlRouterProcessStatus,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+pub struct WorkerProcessStatus {
+    pub enabled: bool,
+    pub worker_count: usize,
+    pub timeout_ms: u64,
+    pub idle_workers: usize,
+    pub busy_workers: usize,
+    pub request_timeouts: usize,
+    pub child_replacements: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+pub struct InterfaceWorkerProcessStatus {
+    pub enabled: bool,
+    pub worker_count: usize,
+    pub shutdown_timeout_ms: u64,
+    pub restart_backoff_ms: u64,
+    pub live_workers: usize,
+    pub stopped_workers: usize,
+    pub child_restarts: usize,
+    pub child_errors: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+pub struct ControlRouterProcessStatus {
+    pub enabled: bool,
+    pub worker_count: usize,
+    pub timeout_ms: u64,
+    pub idle_workers: usize,
+    pub busy_workers: usize,
+    pub request_timeouts: usize,
+    pub child_replacements: usize,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -370,8 +407,25 @@ struct RpcMetrics {
     sdk_poll_event_log_lock_ops_total: u64,
 }
 
+enum EventSinkCommand {
+    Publish {
+        sink: Arc<dyn EventSinkBridge>,
+        sink_kind: String,
+        envelope: RpcEventSinkEnvelope,
+    },
+    #[cfg(test)]
+    Flush {
+        reply: mpsc::Sender<()>,
+    },
+}
+
+struct OutboundDeliveryCommand {
+    record: MessageRecord,
+    options: OutboundDeliveryOptions,
+}
+
 pub struct RpcDaemon {
-    store: MessagesStore,
+    store: Arc<MessagesStore>,
     identity_hash: String,
     delivery_destination_hash: Mutex<Option<String>>,
     events: broadcast::Sender<RpcEvent>,
@@ -421,13 +475,15 @@ pub struct RpcDaemon {
     stamp_policy: Mutex<StampPolicy>,
     ticket_cache: Mutex<HashMap<String, TicketRecord>>,
     ticket_last_deliveries: Mutex<HashMap<String, i64>>,
-    delivery_traces: Mutex<HashMap<String, Vec<DeliveryTraceEntry>>>,
+    delivery_traces: Arc<Mutex<HashMap<String, Vec<DeliveryTraceEntry>>>>,
     daemon_status_snapshot: std::sync::RwLock<DaemonStatusSnapshot>,
-    delivery_status_lock: Mutex<()>,
-    sdk_metrics: Mutex<RpcMetrics>,
+    delivery_status_lock: Arc<Mutex<()>>,
+    sdk_metrics: Arc<Mutex<RpcMetrics>>,
     outbound_bridge: Option<Arc<dyn OutboundBridge>>,
+    outbound_delivery_tx: Option<mpsc::SyncSender<OutboundDeliveryCommand>>,
     announce_bridge: Option<Arc<dyn AnnounceBridge>>,
     event_sink_bridges: Vec<Arc<dyn EventSinkBridge>>,
+    event_sink_tx: Option<mpsc::SyncSender<EventSinkCommand>>,
     interface_mutation_bridge: Mutex<Option<Arc<dyn InterfaceMutationBridge>>>,
     remote_control_bridge: Mutex<Option<Arc<dyn RemoteControlBridge>>>,
     started_at: std::time::Instant,
@@ -478,6 +534,13 @@ pub trait RemoteControlBridge: Send + Sync {
         &self,
         remote: &str,
         peer: &str,
+        identity_private_key_hex: Option<&str>,
+        timeout_secs: f64,
+    ) -> Result<JsonValue, std::io::Error>;
+
+    fn propagation_remote_download(
+        &self,
+        remote: &str,
         identity_private_key_hex: Option<&str>,
         timeout_secs: f64,
     ) -> Result<JsonValue, std::io::Error>;

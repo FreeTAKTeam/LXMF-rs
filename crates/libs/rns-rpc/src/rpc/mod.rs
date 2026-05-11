@@ -1,6 +1,7 @@
 #![allow(clippy::items_after_test_module)]
 
 pub mod codec;
+pub mod control_boundary;
 mod daemon;
 pub mod event_sink;
 pub mod http;
@@ -14,10 +15,11 @@ use serde_json::{json, Map as JsonMap, Value as JsonValue};
 use crate::storage::messages::{AnnounceRecord, MessageRecord, MessagesStore};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
-use std::sync::{Arc, Mutex};
+use std::sync::{mpsc, Arc, Condvar, Mutex};
 use tokio::sync::broadcast;
 use tokio::time::Duration;
 
+pub use control_boundary::{ControlEnvelope, ControlMessage, ControlRole};
 use send_request::parse_outbound_send_request;
 
 include!("types.rs");

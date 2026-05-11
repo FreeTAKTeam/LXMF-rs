@@ -72,6 +72,18 @@ impl RpcDaemon {
         let (events, _rx) = broadcast::channel(64);
         let (sdk_events, _sdk_rx) = broadcast::channel(64);
         let active_identity = identity_hash.clone();
+        let store = Arc::new(store);
+        let sdk_metrics = Arc::new(Mutex::new(RpcMetrics::default()));
+        let delivery_traces = Arc::new(Mutex::new(HashMap::new()));
+        let delivery_status_lock = Arc::new(Mutex::new(()));
+        let outbound_delivery_tx = Self::spawn_outbound_delivery_worker(
+            outbound_bridge.clone(),
+            Arc::clone(&store),
+            Arc::clone(&delivery_traces),
+            Arc::clone(&delivery_status_lock),
+        );
+        let event_sink_tx =
+            Self::spawn_event_sink_worker(!event_sink_bridges.is_empty(), Arc::clone(&sdk_metrics));
         let mut sdk_identities = HashMap::new();
         sdk_identities
             .insert(identity_hash.clone(), Self::default_sdk_identity(identity_hash.as_str()));
@@ -126,13 +138,15 @@ impl RpcDaemon {
             stamp_policy: Mutex::new(StampPolicy::default()),
             ticket_cache: Mutex::new(HashMap::new()),
             ticket_last_deliveries: Mutex::new(HashMap::new()),
-            delivery_traces: Mutex::new(HashMap::new()),
+            delivery_traces,
             daemon_status_snapshot: std::sync::RwLock::new(DaemonStatusSnapshot::default()),
-            delivery_status_lock: Mutex::new(()),
-            sdk_metrics: Mutex::new(RpcMetrics::default()),
+            delivery_status_lock,
+            sdk_metrics,
             outbound_bridge,
+            outbound_delivery_tx,
             announce_bridge,
             event_sink_bridges,
+            event_sink_tx,
             interface_mutation_bridge: Mutex::new(None),
             remote_control_bridge: Mutex::new(None),
             started_at: std::time::Instant::now(),
@@ -441,6 +455,24 @@ impl RpcDaemon {
         });
     }
 
+    pub fn set_worker_process_status(&self, status: WorkerProcessStatus) {
+        self.update_daemon_status_snapshot(|snapshot| {
+            snapshot.worker_processes = status;
+        });
+    }
+
+    pub fn set_interface_worker_process_status(&self, status: InterfaceWorkerProcessStatus) {
+        self.update_daemon_status_snapshot(|snapshot| {
+            snapshot.interface_worker_processes = status;
+        });
+    }
+
+    pub fn set_control_router_process_status(&self, status: ControlRouterProcessStatus) {
+        self.update_daemon_status_snapshot(|snapshot| {
+            snapshot.control_router_processes = status;
+        });
+    }
+
     pub fn outbound_propagation_node(&self) -> Option<String> {
         self.outbound_propagation_node.lock().expect("propagation node mutex poisoned").clone()
     }
@@ -540,10 +572,10 @@ impl RpcDaemon {
 
     pub(super) fn store_inbound_record(
         &self,
-        record: MessageRecord,
+        record: &MessageRecord,
         raw_lxmf_bytes: Option<&[u8]>,
     ) -> Result<(), std::io::Error> {
-        self.store.insert_message(&record).map_err(std::io::Error::other)?;
+        self.store.insert_message(record).map_err(std::io::Error::other)?;
         let storage_limit_bytes = self
             .propagation_state
             .lock()
@@ -551,19 +583,9 @@ impl RpcDaemon {
             .message_storage_limit_mb
             .map(|value| value.saturating_mul(1_000_000));
         if let Some(limit_bytes) = storage_limit_bytes {
-            let pruned_ids = self
-                .store
-                .prune_messages_to_limit_bytes(limit_bytes)
+            self.store
+                .schedule_prune_messages_to_limit_bytes(limit_bytes)
                 .map_err(std::io::Error::other)?;
-            if !pruned_ids.is_empty() {
-                self.publish_event(RpcEvent {
-                    event_type: "propagation_store_pruned".into(),
-                    payload: json!({
-                        "limit_bytes": limit_bytes,
-                        "pruned_ids": pruned_ids,
-                    }),
-                });
-            }
         }
         let mut payload = json!({ "message": record });
         if let Some(raw_lxmf_bytes) = raw_lxmf_bytes {
@@ -574,12 +596,37 @@ impl RpcDaemon {
         Ok(())
     }
 
+    pub fn accept_inbound_with_raw_queued(
+        &self,
+        record: MessageRecord,
+        raw_lxmf_bytes: &[u8],
+    ) -> Result<(), std::io::Error> {
+        self.remember_outbound_ticket_from_inbound(&record)?;
+        let mut payload = json!({ "message": &record });
+        payload["lxmf_bytes_hex"] = json!(hex::encode(raw_lxmf_bytes));
+        self.store.schedule_insert_message(record.clone()).map_err(std::io::Error::other)?;
+        let storage_limit_bytes = self
+            .propagation_state
+            .lock()
+            .expect("propagation mutex poisoned")
+            .message_storage_limit_mb
+            .map(|value| value.saturating_mul(1_000_000));
+        if let Some(limit_bytes) = storage_limit_bytes {
+            self.store
+                .schedule_prune_messages_to_limit_bytes(limit_bytes)
+                .map_err(std::io::Error::other)?;
+        }
+        self.publish_event(RpcEvent { event_type: "inbound".into(), payload });
+        let _ = self.correlate_inbound_sdk_command(&record)?;
+        Ok(())
+    }
+
     pub fn accept_inbound(&self, record: MessageRecord) -> Result<(), std::io::Error> {
         self.remember_outbound_ticket_from_inbound(&record)?;
         if self.message_exists(record.id.as_str())? {
             return Ok(());
         }
-        self.store_inbound_record(record.clone(), None)?;
+        self.store_inbound_record(&record, None)?;
         let _ = self.correlate_inbound_sdk_command(&record)?;
         Ok(())
     }
@@ -593,7 +640,7 @@ impl RpcDaemon {
         if self.message_exists(record.id.as_str())? {
             return Ok(());
         }
-        self.store_inbound_record(record.clone(), Some(raw_lxmf_bytes))?;
+        self.store_inbound_record(&record, Some(raw_lxmf_bytes))?;
         let _ = self.correlate_inbound_sdk_command(&record)?;
         Ok(())
     }

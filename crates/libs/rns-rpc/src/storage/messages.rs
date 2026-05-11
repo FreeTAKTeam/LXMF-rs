@@ -3,6 +3,8 @@ use serde_json::Value as JsonValue;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 
+const OUTBOUND_WRITE_QUEUE_CAPACITY: usize = 1024;
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct MessageRecord {
     pub id: String,
@@ -38,7 +40,7 @@ pub struct AnnounceRecord {
 
 pub struct MessagesStore {
     write_state: Arc<WriteState>,
-    outbound_write_tx: mpsc::Sender<OutboundWriteCommand>,
+    outbound_write_tx: mpsc::SyncSender<OutboundWriteCommand>,
     read_conn: Option<Mutex<Connection>>,
     read_lock_wait_ns_total: AtomicU64,
     read_ops_total: AtomicU64,
@@ -54,12 +56,52 @@ struct WriteState {
 enum OutboundWriteCommand {
     InsertMessage {
         record: MessageRecord,
-        reply: mpsc::Sender<rusqlite::Result<()>>,
+        reply: Option<mpsc::Sender<rusqlite::Result<()>>>,
     },
     ResolveReceiptStatus {
         message_id: String,
         candidate_status: String,
         reply: mpsc::Sender<rusqlite::Result<Option<String>>>,
+    },
+    UpdateReceiptStatus {
+        message_id: String,
+        status: String,
+        reply: mpsc::Sender<rusqlite::Result<()>>,
+    },
+    UpdateMessageFields {
+        message_id: String,
+        fields_json: Option<String>,
+        reply: mpsc::Sender<rusqlite::Result<()>>,
+    },
+    InsertAnnounce {
+        record: AnnounceRecord,
+        reply: mpsc::Sender<rusqlite::Result<()>>,
+    },
+    UpsertTicket {
+        destination: String,
+        ticket: String,
+        expires_at: i64,
+        reply: mpsc::Sender<rusqlite::Result<()>>,
+    },
+    PruneExpiredTickets {
+        now: i64,
+        inbound_grace_secs: i64,
+        reply: mpsc::Sender<rusqlite::Result<()>>,
+    },
+    UpsertOutboundTicket {
+        destination: String,
+        ticket: String,
+        expires_at: i64,
+        reply: mpsc::Sender<rusqlite::Result<()>>,
+    },
+    UpsertTicketLastDelivery {
+        destination: String,
+        delivered_at: i64,
+        reply: mpsc::Sender<rusqlite::Result<()>>,
+    },
+    PruneMessagesToLimitBytes {
+        limit_bytes: u64,
+        reply: Option<mpsc::Sender<rusqlite::Result<Vec<String>>>>,
     },
 }
 
@@ -94,6 +136,16 @@ impl MessagesStore {
             || matches!(normalized.as_str(), "cancelled" | "delivered" | "expired" | "rejected")
     }
 
+    fn should_preserve_receipt_status(existing_status: &str, candidate_status: &str) -> bool {
+        if Self::is_terminal_receipt_status(existing_status) {
+            return true;
+        }
+
+        let existing = existing_status.trim().to_ascii_lowercase();
+        let candidate = candidate_status.trim().to_ascii_lowercase();
+        existing.starts_with("sent") && candidate.starts_with("sending")
+    }
+
     pub fn in_memory() -> rusqlite::Result<Self> {
         let conn = Connection::open_in_memory()?;
         let write_state = Arc::new(WriteState {
@@ -102,7 +154,8 @@ impl MessagesStore {
             write_lock_wait_ns_total: AtomicU64::new(0),
             write_ops_total: AtomicU64::new(0),
         });
-        let (outbound_write_tx, outbound_write_rx) = mpsc::channel();
+        let (outbound_write_tx, outbound_write_rx) =
+            mpsc::sync_channel(OUTBOUND_WRITE_QUEUE_CAPACITY);
         let store = Self {
             write_state: write_state.clone(),
             outbound_write_tx,
@@ -129,7 +182,8 @@ impl MessagesStore {
             write_lock_wait_ns_total: AtomicU64::new(0),
             write_ops_total: AtomicU64::new(0),
         });
-        let (outbound_write_tx, outbound_write_rx) = mpsc::channel();
+        let (outbound_write_tx, outbound_write_rx) =
+            mpsc::sync_channel(OUTBOUND_WRITE_QUEUE_CAPACITY);
         let store = Self {
             write_state: write_state.clone(),
             outbound_write_tx,
@@ -141,6 +195,30 @@ impl MessagesStore {
         store.init_schema()?;
         store.refresh_message_count_cache()?;
         Self::spawn_outbound_write_worker(write_state, outbound_write_rx);
+        Ok(store)
+    }
+
+    #[cfg(test)]
+    fn in_memory_with_stalled_writer(capacity: usize) -> rusqlite::Result<Self> {
+        let conn = Connection::open_in_memory()?;
+        let write_state = Arc::new(WriteState {
+            conn: Mutex::new(conn),
+            message_count_cache: AtomicU64::new(0),
+            write_lock_wait_ns_total: AtomicU64::new(0),
+            write_ops_total: AtomicU64::new(0),
+        });
+        let (outbound_write_tx, outbound_write_rx) = mpsc::sync_channel(capacity);
+        std::mem::forget(outbound_write_rx);
+        let store = Self {
+            write_state: write_state.clone(),
+            outbound_write_tx,
+            read_conn: None,
+            read_lock_wait_ns_total: AtomicU64::new(0),
+            read_ops_total: AtomicU64::new(0),
+        };
+        store.configure_connection()?;
+        store.init_schema()?;
+        store.refresh_message_count_cache()?;
         Ok(store)
     }
 
@@ -162,8 +240,10 @@ impl MessagesStore {
                 while let Ok(command) = rx.recv() {
                     match command {
                         OutboundWriteCommand::InsertMessage { record, reply } => {
-                            let _ = reply
-                                .send(Self::insert_message_direct(write_state.as_ref(), &record));
+                            let result = Self::insert_message_direct(write_state.as_ref(), &record);
+                            if let Some(reply) = reply {
+                                let _ = reply.send(result);
+                            }
                         }
                         OutboundWriteCommand::ResolveReceiptStatus {
                             message_id,
@@ -176,10 +256,106 @@ impl MessagesStore {
                                 candidate_status.as_str(),
                             ));
                         }
+                        OutboundWriteCommand::PruneMessagesToLimitBytes { limit_bytes, reply } => {
+                            let result = Self::prune_messages_to_limit_bytes_direct(
+                                write_state.as_ref(),
+                                limit_bytes,
+                            );
+                            if let Some(reply) = reply {
+                                let _ = reply.send(result);
+                            }
+                        }
+                        OutboundWriteCommand::UpdateReceiptStatus { message_id, status, reply } => {
+                            let _ = reply.send(Self::update_receipt_status_direct(
+                                write_state.as_ref(),
+                                message_id.as_str(),
+                                status.as_str(),
+                            ));
+                        }
+                        OutboundWriteCommand::UpdateMessageFields {
+                            message_id,
+                            fields_json,
+                            reply,
+                        } => {
+                            let _ = reply.send(Self::update_message_fields_direct(
+                                write_state.as_ref(),
+                                message_id.as_str(),
+                                fields_json.as_deref(),
+                            ));
+                        }
+                        OutboundWriteCommand::InsertAnnounce { record, reply } => {
+                            let _ = reply
+                                .send(Self::insert_announce_direct(write_state.as_ref(), &record));
+                        }
+                        OutboundWriteCommand::UpsertTicket {
+                            destination,
+                            ticket,
+                            expires_at,
+                            reply,
+                        } => {
+                            let _ = reply.send(Self::upsert_ticket_direct(
+                                write_state.as_ref(),
+                                destination.as_str(),
+                                ticket.as_str(),
+                                expires_at,
+                            ));
+                        }
+                        OutboundWriteCommand::PruneExpiredTickets {
+                            now,
+                            inbound_grace_secs,
+                            reply,
+                        } => {
+                            let _ = reply.send(Self::prune_expired_tickets_direct(
+                                write_state.as_ref(),
+                                now,
+                                inbound_grace_secs,
+                            ));
+                        }
+                        OutboundWriteCommand::UpsertOutboundTicket {
+                            destination,
+                            ticket,
+                            expires_at,
+                            reply,
+                        } => {
+                            let _ = reply.send(Self::upsert_outbound_ticket_direct(
+                                write_state.as_ref(),
+                                destination.as_str(),
+                                ticket.as_str(),
+                                expires_at,
+                            ));
+                        }
+                        OutboundWriteCommand::UpsertTicketLastDelivery {
+                            destination,
+                            delivered_at,
+                            reply,
+                        } => {
+                            let _ = reply.send(Self::upsert_ticket_last_delivery_direct(
+                                write_state.as_ref(),
+                                destination.as_str(),
+                                delivered_at,
+                            ));
+                        }
                     }
                 }
             })
             .expect("spawn messages outbound writer");
+    }
+
+    fn writer_queue_error(kind: std::io::ErrorKind, message: &'static str) -> rusqlite::Error {
+        rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::new(kind, message)))
+    }
+
+    fn try_schedule_write(&self, command: OutboundWriteCommand) -> rusqlite::Result<()> {
+        self.outbound_write_tx.try_send(command).map_err(|err| match err {
+            mpsc::TrySendError::Full(_) => Self::writer_queue_error(
+                std::io::ErrorKind::WouldBlock,
+                "message storage writer queue full",
+            ),
+            mpsc::TrySendError::Disconnected(_) => Self::writer_queue_error(
+                std::io::ErrorKind::BrokenPipe,
+                "message storage writer disconnected",
+            ),
+        })
     }
 
     fn with_write_conn<T>(
@@ -303,7 +479,8 @@ impl MessagesStore {
                 .optional()?
                 .flatten();
             if let Some(existing_status) = existing_status {
-                if Self::is_terminal_receipt_status(existing_status.as_str()) {
+                if Self::should_preserve_receipt_status(existing_status.as_str(), candidate_status)
+                {
                     return Ok(Some(existing_status));
                 }
             }
@@ -315,12 +492,135 @@ impl MessagesStore {
         })
     }
 
+    fn update_receipt_status_direct(
+        write_state: &WriteState,
+        message_id: &str,
+        status: &str,
+    ) -> rusqlite::Result<()> {
+        Self::write_lock_and_run(write_state, |conn| {
+            conn.execute(
+                "UPDATE messages SET receipt_status = ?1 WHERE id = ?2",
+                params![status, message_id],
+            )?;
+            Ok(())
+        })
+    }
+
+    fn update_message_fields_direct(
+        write_state: &WriteState,
+        message_id: &str,
+        fields_json: Option<&str>,
+    ) -> rusqlite::Result<()> {
+        Self::write_lock_and_run(write_state, |conn| {
+            conn.execute(
+                "UPDATE messages SET fields = ?1 WHERE id = ?2",
+                params![fields_json, message_id],
+            )?;
+            Ok(())
+        })
+    }
+
+    fn insert_announce_direct(
+        write_state: &WriteState,
+        record: &AnnounceRecord,
+    ) -> rusqlite::Result<()> {
+        let capabilities_json = serde_json::to_string(&record.capabilities).unwrap_or_default();
+        Self::write_lock_and_run(write_state, |conn| {
+            conn.execute(
+                "INSERT OR REPLACE INTO announces (id, peer, timestamp, name, name_source, first_seen, seen_count, app_data_hex, capabilities, rssi, snr, q, stamp_cost, stamp_cost_flexibility, peering_cost) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+                params![
+                    &record.id,
+                    &record.peer,
+                    record.timestamp,
+                    &record.name,
+                    &record.name_source,
+                    record.first_seen,
+                    record.seen_count as i64,
+                    &record.app_data_hex,
+                    capabilities_json,
+                    record.rssi,
+                    record.snr,
+                    record.q,
+                    record.stamp_cost,
+                    record.stamp_cost_flexibility,
+                    record.peering_cost,
+                ],
+            )?;
+            Ok(())
+        })
+    }
+
+    fn upsert_ticket_direct(
+        write_state: &WriteState,
+        destination: &str,
+        ticket: &str,
+        expires_at: i64,
+    ) -> rusqlite::Result<()> {
+        Self::write_lock_and_run(write_state, |conn| {
+            conn.execute(
+                "INSERT INTO tickets (destination, ticket, expires_at) VALUES (?1, ?2, ?3)
+                 ON CONFLICT(destination, ticket) DO UPDATE SET expires_at = excluded.expires_at",
+                params![destination, ticket, expires_at],
+            )?;
+            Ok(())
+        })
+    }
+
+    fn prune_expired_tickets_direct(
+        write_state: &WriteState,
+        now: i64,
+        inbound_grace_secs: i64,
+    ) -> rusqlite::Result<()> {
+        let inbound_cutoff = now.saturating_sub(inbound_grace_secs.max(0));
+        Self::write_lock_and_run(write_state, |conn| {
+            conn.execute("DELETE FROM outbound_tickets WHERE expires_at <= ?1", params![now])?;
+            conn.execute("DELETE FROM tickets WHERE expires_at < ?1", params![inbound_cutoff])?;
+            Ok(())
+        })
+    }
+
+    fn upsert_outbound_ticket_direct(
+        write_state: &WriteState,
+        destination: &str,
+        ticket: &str,
+        expires_at: i64,
+    ) -> rusqlite::Result<()> {
+        Self::write_lock_and_run(write_state, |conn| {
+            conn.execute(
+                "INSERT INTO outbound_tickets (destination, ticket, expires_at) VALUES (?1, ?2, ?3)
+                 ON CONFLICT(destination) DO UPDATE SET ticket = excluded.ticket, expires_at = excluded.expires_at",
+                params![destination, ticket, expires_at],
+            )?;
+            Ok(())
+        })
+    }
+
+    fn upsert_ticket_last_delivery_direct(
+        write_state: &WriteState,
+        destination: &str,
+        delivered_at: i64,
+    ) -> rusqlite::Result<()> {
+        Self::write_lock_and_run(write_state, |conn| {
+            conn.execute(
+                "INSERT INTO ticket_deliveries (destination, delivered_at) VALUES (?1, ?2)
+                 ON CONFLICT(destination) DO UPDATE SET delivered_at = excluded.delivered_at",
+                params![destination, delivered_at],
+            )?;
+            Ok(())
+        })
+    }
+
     pub fn insert_message(&self, record: &MessageRecord) -> rusqlite::Result<()> {
         let (reply_tx, reply_rx) = mpsc::channel();
-        self.outbound_write_tx
-            .send(OutboundWriteCommand::InsertMessage { record: record.clone(), reply: reply_tx })
-            .map_err(|err| rusqlite::Error::ToSqlConversionFailure(Box::new(err)))?;
+        self.try_schedule_write(OutboundWriteCommand::InsertMessage {
+            record: record.clone(),
+            reply: Some(reply_tx),
+        })?;
         reply_rx.recv().map_err(|err| rusqlite::Error::ToSqlConversionFailure(Box::new(err)))?
+    }
+
+    pub fn schedule_insert_message(&self, record: MessageRecord) -> rusqlite::Result<()> {
+        self.try_schedule_write(OutboundWriteCommand::InsertMessage { record, reply: None })
     }
 
     pub fn list_messages(
@@ -619,8 +919,11 @@ impl MessagesStore {
         })
     }
 
-    pub fn prune_messages_to_limit_bytes(&self, limit_bytes: u64) -> rusqlite::Result<Vec<String>> {
-        self.with_write_conn(|conn| {
+    fn prune_messages_to_limit_bytes_direct(
+        write_state: &WriteState,
+        limit_bytes: u64,
+    ) -> rusqlite::Result<Vec<String>> {
+        Self::write_lock_and_run(write_state, |conn| {
             let current_bytes: i64 = conn.query_row(
                 "SELECT COALESCE(SUM(
                     LENGTH(id) +
@@ -671,7 +974,7 @@ impl MessagesStore {
                 conn.execute("DELETE FROM messages WHERE id = ?1", params![message_id])?;
             }
             if !ids.is_empty() {
-                self.write_state
+                write_state
                     .message_count_cache
                     .fetch_sub(ids.len().min(u64::MAX as usize) as u64, Ordering::Relaxed);
             }
@@ -679,14 +982,30 @@ impl MessagesStore {
         })
     }
 
-    pub fn update_receipt_status(&self, message_id: &str, status: &str) -> rusqlite::Result<()> {
-        self.with_write_conn(|conn| {
-            conn.execute(
-                "UPDATE messages SET receipt_status = ?1 WHERE id = ?2",
-                params![status, message_id],
-            )?;
-            Ok(())
+    pub fn prune_messages_to_limit_bytes(&self, limit_bytes: u64) -> rusqlite::Result<Vec<String>> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.try_schedule_write(OutboundWriteCommand::PruneMessagesToLimitBytes {
+            limit_bytes,
+            reply: Some(reply_tx),
+        })?;
+        reply_rx.recv().map_err(|err| rusqlite::Error::ToSqlConversionFailure(Box::new(err)))?
+    }
+
+    pub fn schedule_prune_messages_to_limit_bytes(&self, limit_bytes: u64) -> rusqlite::Result<()> {
+        self.try_schedule_write(OutboundWriteCommand::PruneMessagesToLimitBytes {
+            limit_bytes,
+            reply: None,
         })
+    }
+
+    pub fn update_receipt_status(&self, message_id: &str, status: &str) -> rusqlite::Result<()> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.try_schedule_write(OutboundWriteCommand::UpdateReceiptStatus {
+            message_id: message_id.to_string(),
+            status: status.to_string(),
+            reply: reply_tx,
+        })?;
+        reply_rx.recv().map_err(|err| rusqlite::Error::ToSqlConversionFailure(Box::new(err)))?
     }
 
     pub fn update_message_fields(
@@ -698,13 +1017,13 @@ impl MessagesStore {
             .map(serde_json::to_string)
             .transpose()
             .map_err(|err| rusqlite::Error::ToSqlConversionFailure(Box::new(err)))?;
-        self.with_write_conn(|conn| {
-            conn.execute(
-                "UPDATE messages SET fields = ?1 WHERE id = ?2",
-                params![fields_json, message_id],
-            )?;
-            Ok(())
-        })
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.try_schedule_write(OutboundWriteCommand::UpdateMessageFields {
+            message_id: message_id.to_string(),
+            fields_json,
+            reply: reply_tx,
+        })?;
+        reply_rx.recv().map_err(|err| rusqlite::Error::ToSqlConversionFailure(Box::new(err)))?
     }
 
     pub fn resolve_receipt_status(
@@ -713,13 +1032,11 @@ impl MessagesStore {
         candidate_status: &str,
     ) -> rusqlite::Result<Option<String>> {
         let (reply_tx, reply_rx) = mpsc::channel();
-        self.outbound_write_tx
-            .send(OutboundWriteCommand::ResolveReceiptStatus {
-                message_id: message_id.to_string(),
-                candidate_status: candidate_status.to_string(),
-                reply: reply_tx,
-            })
-            .map_err(|err| rusqlite::Error::ToSqlConversionFailure(Box::new(err)))?;
+        self.try_schedule_write(OutboundWriteCommand::ResolveReceiptStatus {
+            message_id: message_id.to_string(),
+            candidate_status: candidate_status.to_string(),
+            reply: reply_tx,
+        })?;
         reply_rx.recv().map_err(|err| rusqlite::Error::ToSqlConversionFailure(Box::new(err)))?
     }
 
@@ -732,30 +1049,12 @@ impl MessagesStore {
     }
 
     pub fn insert_announce(&self, record: &AnnounceRecord) -> rusqlite::Result<()> {
-        let capabilities_json = serde_json::to_string(&record.capabilities).unwrap_or_default();
-        self.with_write_conn(|conn| {
-            conn.execute(
-                "INSERT OR REPLACE INTO announces (id, peer, timestamp, name, name_source, first_seen, seen_count, app_data_hex, capabilities, rssi, snr, q, stamp_cost, stamp_cost_flexibility, peering_cost) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
-                params![
-                    &record.id,
-                    &record.peer,
-                    record.timestamp,
-                    &record.name,
-                    &record.name_source,
-                    record.first_seen,
-                    record.seen_count as i64,
-                    &record.app_data_hex,
-                    capabilities_json,
-                    record.rssi,
-                    record.snr,
-                    record.q,
-                    record.stamp_cost,
-                    record.stamp_cost_flexibility,
-                    record.peering_cost,
-                ],
-            )?;
-            Ok(())
-        })
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.try_schedule_write(OutboundWriteCommand::InsertAnnounce {
+            record: record.clone(),
+            reply: reply_tx,
+        })?;
+        reply_rx.recv().map_err(|err| rusqlite::Error::ToSqlConversionFailure(Box::new(err)))?
     }
 
     pub fn list_announces(
@@ -861,23 +1160,24 @@ impl MessagesStore {
         ticket: &str,
         expires_at: i64,
     ) -> rusqlite::Result<()> {
-        self.with_write_conn(|conn| {
-            conn.execute(
-                "INSERT INTO tickets (destination, ticket, expires_at) VALUES (?1, ?2, ?3)
-                 ON CONFLICT(destination, ticket) DO UPDATE SET expires_at = excluded.expires_at",
-                params![destination, ticket, expires_at],
-            )?;
-            Ok(())
-        })
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.try_schedule_write(OutboundWriteCommand::UpsertTicket {
+            destination: destination.to_string(),
+            ticket: ticket.to_string(),
+            expires_at,
+            reply: reply_tx,
+        })?;
+        reply_rx.recv().map_err(|err| rusqlite::Error::ToSqlConversionFailure(Box::new(err)))?
     }
 
     pub fn prune_expired_tickets(&self, now: i64, inbound_grace_secs: i64) -> rusqlite::Result<()> {
-        let inbound_cutoff = now.saturating_sub(inbound_grace_secs.max(0));
-        self.with_write_conn(|conn| {
-            conn.execute("DELETE FROM outbound_tickets WHERE expires_at <= ?1", params![now])?;
-            conn.execute("DELETE FROM tickets WHERE expires_at < ?1", params![inbound_cutoff])?;
-            Ok(())
-        })
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.try_schedule_write(OutboundWriteCommand::PruneExpiredTickets {
+            now,
+            inbound_grace_secs,
+            reply: reply_tx,
+        })?;
+        reply_rx.recv().map_err(|err| rusqlite::Error::ToSqlConversionFailure(Box::new(err)))?
     }
 
     pub fn get_outbound_ticket(
@@ -900,14 +1200,14 @@ impl MessagesStore {
         ticket: &str,
         expires_at: i64,
     ) -> rusqlite::Result<()> {
-        self.with_write_conn(|conn| {
-            conn.execute(
-                "INSERT INTO outbound_tickets (destination, ticket, expires_at) VALUES (?1, ?2, ?3)
-                 ON CONFLICT(destination) DO UPDATE SET ticket = excluded.ticket, expires_at = excluded.expires_at",
-                params![destination, ticket, expires_at],
-            )?;
-            Ok(())
-        })
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.try_schedule_write(OutboundWriteCommand::UpsertOutboundTicket {
+            destination: destination.to_string(),
+            ticket: ticket.to_string(),
+            expires_at,
+            reply: reply_tx,
+        })?;
+        reply_rx.recv().map_err(|err| rusqlite::Error::ToSqlConversionFailure(Box::new(err)))?
     }
 
     pub fn get_ticket_last_delivery(&self, destination: &str) -> rusqlite::Result<Option<i64>> {
@@ -926,14 +1226,13 @@ impl MessagesStore {
         destination: &str,
         delivered_at: i64,
     ) -> rusqlite::Result<()> {
-        self.with_write_conn(|conn| {
-            conn.execute(
-                "INSERT INTO ticket_deliveries (destination, delivered_at) VALUES (?1, ?2)
-                 ON CONFLICT(destination) DO UPDATE SET delivered_at = excluded.delivered_at",
-                params![destination, delivered_at],
-            )?;
-            Ok(())
-        })
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.try_schedule_write(OutboundWriteCommand::UpsertTicketLastDelivery {
+            destination: destination.to_string(),
+            delivered_at,
+            reply: reply_tx,
+        })?;
+        reply_rx.recv().map_err(|err| rusqlite::Error::ToSqlConversionFailure(Box::new(err)))?
     }
 
     pub fn clear_announces(&self) -> rusqlite::Result<()> {
@@ -1218,6 +1517,44 @@ mod tests {
     }
 
     #[test]
+    fn announce_and_ticket_writes_run_on_writer_lane() {
+        let store = MessagesStore::in_memory().expect("in-memory store");
+        store
+            .insert_announce(&AnnounceRecord {
+                id: "ann-1".to_string(),
+                peer: "peer-a".to_string(),
+                timestamp: 100,
+                name: Some("Peer A".to_string()),
+                name_source: Some("app_data".to_string()),
+                first_seen: 90,
+                seen_count: 2,
+                app_data_hex: Some("0102".to_string()),
+                capabilities: vec!["lxmf.delivery".to_string()],
+                rssi: Some(-42.0),
+                snr: Some(7.0),
+                q: Some(0.9),
+                stamp_cost: Some(4),
+                stamp_cost_flexibility: Some(1),
+                peering_cost: Some(2),
+            })
+            .expect("insert announce");
+        store.upsert_ticket("peer-a", "22", 200).expect("upsert inbound ticket");
+        store.upsert_outbound_ticket("peer-a", "33", 210).expect("upsert outbound ticket");
+        store.upsert_ticket_last_delivery("peer-a", 110).expect("upsert last delivery");
+
+        let announces = store.list_announces(10, None, None).expect("list announces");
+        assert_eq!(announces.len(), 1);
+        assert_eq!(announces[0].peer, "peer-a");
+        assert_eq!(announces[0].capabilities, vec!["lxmf.delivery".to_string()]);
+        assert_eq!(store.get_ticket("peer-a").expect("inbound ticket"), Some(("22".into(), 200)));
+        assert_eq!(
+            store.get_outbound_ticket("peer-a").expect("outbound ticket"),
+            Some(("33".into(), 210))
+        );
+        assert_eq!(store.get_ticket_last_delivery("peer-a").expect("last delivery"), Some(110));
+    }
+
+    #[test]
     fn inbound_tickets_keep_multiple_generated_tickets_per_destination() {
         let store = MessagesStore::in_memory().expect("in-memory store");
         store.upsert_ticket("peer", "22", 200).expect("insert first ticket");
@@ -1387,6 +1724,83 @@ mod tests {
     }
 
     #[test]
+    fn scheduled_prune_messages_to_limit_bytes_runs_on_writer_lane() {
+        let store = MessagesStore::in_memory().expect("in-memory store");
+        let mut first = outbound_message("msg-1", 1, None);
+        first.content = "a".repeat(128);
+        let mut second = outbound_message("msg-2", 2, None);
+        second.content = "b".repeat(128);
+        store.insert_message(&first).expect("insert first");
+        store.insert_message(&second).expect("insert second");
+
+        let before = store.message_storage_stats().expect("stats before");
+        store
+            .schedule_prune_messages_to_limit_bytes(before.bytes.saturating_sub(64))
+            .expect("schedule prune");
+        store
+            .insert_message(&outbound_message("flush-after-scheduled-prune", 3, Some("sent")))
+            .expect("flush writer lane");
+
+        let remaining = store.list_messages(10, None).expect("remaining");
+        assert_eq!(remaining.len(), 2);
+        assert!(remaining.iter().any(|record| record.id == "msg-2"));
+        assert!(remaining.iter().any(|record| record.id == "flush-after-scheduled-prune"));
+        assert!(
+            remaining.iter().all(|record| record.id != "msg-1"),
+            "scheduled prune should remove the oldest oversized record before later writes"
+        );
+    }
+
+    #[test]
+    fn scheduled_insert_message_runs_on_writer_lane() {
+        let store = MessagesStore::in_memory().expect("in-memory store");
+        store
+            .schedule_insert_message(outbound_message("queued-message", 1, Some("sent")))
+            .expect("schedule insert");
+        store
+            .insert_message(&outbound_message("flush-after-scheduled-insert", 2, Some("sent")))
+            .expect("flush writer lane");
+
+        let messages = store.list_messages(10, None).expect("list messages");
+        assert!(messages.iter().any(|record| record.id == "queued-message"));
+        assert!(messages.iter().any(|record| record.id == "flush-after-scheduled-insert"));
+    }
+
+    #[test]
+    fn scheduled_writer_lane_returns_would_block_when_queue_is_full() {
+        let store = MessagesStore::in_memory_with_stalled_writer(1).expect("stalled store");
+        store
+            .schedule_insert_message(outbound_message("queued-message", 1, Some("sent")))
+            .expect("first scheduled insert should fill the queue");
+
+        let err = store
+            .schedule_insert_message(outbound_message("overflow-message", 2, Some("sent")))
+            .expect_err("second scheduled insert should not block on a full queue");
+        let rusqlite::Error::ToSqlConversionFailure(err) = err else {
+            panic!("expected queued writer error, got {err:?}");
+        };
+        let io_err = err.downcast_ref::<std::io::Error>().expect("io error");
+        assert_eq!(io_err.kind(), std::io::ErrorKind::WouldBlock);
+    }
+
+    #[test]
+    fn synchronous_writer_lane_returns_would_block_when_queue_is_full() {
+        let store = MessagesStore::in_memory_with_stalled_writer(1).expect("stalled store");
+        store
+            .schedule_insert_message(outbound_message("queued-message", 1, Some("sent")))
+            .expect("first scheduled insert should fill the queue");
+
+        let err = store
+            .update_receipt_status("queued-message", "sent")
+            .expect_err("synchronous write should not block on a full writer queue");
+        let rusqlite::Error::ToSqlConversionFailure(err) = err else {
+            panic!("expected queued writer error, got {err:?}");
+        };
+        let io_err = err.downcast_ref::<std::io::Error>().expect("io error");
+        assert_eq!(io_err.kind(), std::io::ErrorKind::WouldBlock);
+    }
+
+    #[test]
     fn peer_message_stats_reports_incoming_and_outgoing_counts() {
         let store = MessagesStore::in_memory().expect("in-memory store");
         let mut outbound = outbound_message("msg-out", 1, None);
@@ -1449,6 +1863,21 @@ mod tests {
     }
 
     #[test]
+    fn receipt_and_field_updates_run_on_writer_lane_in_order() {
+        let store = MessagesStore::in_memory().expect("in-memory store");
+        store.insert_message(&outbound_message("msg-1", 1, None)).expect("insert message");
+
+        store.update_receipt_status("msg-1", "sending").expect("update status");
+        store
+            .update_message_fields("msg-1", Some(&json!({"_lxmf": {"stage": "queued"}})))
+            .expect("update fields");
+
+        let message = store.get_message("msg-1").expect("load message").expect("message exists");
+        assert_eq!(message.receipt_status.as_deref(), Some("sending"));
+        assert_eq!(message.fields.expect("fields")["_lxmf"]["stage"], json!("queued"));
+    }
+
+    #[test]
     fn resolve_receipt_status_preserves_terminal_status() {
         let store = MessagesStore::in_memory().expect("in-memory store");
         store
@@ -1467,6 +1896,29 @@ mod tests {
                 .receipt_status
                 .as_deref(),
             Some("delivered")
+        );
+    }
+
+    #[test]
+    fn resolve_receipt_status_preserves_sent_over_sending_regression() {
+        let store = MessagesStore::in_memory().expect("in-memory store");
+        store
+            .insert_message(&outbound_message("msg-1", 1, Some("sent: propagated resource")))
+            .expect("insert sent message");
+
+        let resolved = store
+            .resolve_receipt_status("msg-1", "sending: propagated resource")
+            .expect("resolve status");
+
+        assert_eq!(resolved.as_deref(), Some("sent: propagated resource"));
+        assert_eq!(
+            store
+                .get_message("msg-1")
+                .expect("load message")
+                .expect("message exists")
+                .receipt_status
+                .as_deref(),
+            Some("sent: propagated resource")
         );
     }
 }

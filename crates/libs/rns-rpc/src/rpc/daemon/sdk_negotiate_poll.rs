@@ -351,8 +351,8 @@ impl RpcDaemon {
                 "idempotency_ttl_ms": limits.get("idempotency_ttl_ms").and_then(JsonValue::as_u64).unwrap_or(86_400_000_u64),
                 "extensions": {
                     "rate_limits": {
-                        "per_ip_per_minute": 120,
-                        "per_principal_per_minute": 120,
+                        "per_ip_per_minute": 1200,
+                        "per_principal_per_minute": 1200,
                     }
                 }
             });

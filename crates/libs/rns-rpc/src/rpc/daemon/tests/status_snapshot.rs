@@ -68,6 +68,114 @@ fn daemon_status_ex_reads_cached_status_snapshot() {
     assert_eq!(result["stamp_policy"]["target_cost"].as_u64(), Some(11));
     assert_eq!(result["stamp_policy"]["flexibility"].as_u64(), Some(3));
     assert_eq!(result["stamp_policy"]["enforce"].as_bool(), Some(true));
+    assert_eq!(result["worker_processes"]["enabled"].as_bool(), Some(false));
+    assert_eq!(result["worker_processes"]["worker_count"].as_u64(), Some(0));
+    assert_eq!(result["worker_processes"]["timeout_ms"].as_u64(), Some(0));
+    assert_eq!(result["worker_processes"]["idle_workers"].as_u64(), Some(0));
+    assert_eq!(result["worker_processes"]["busy_workers"].as_u64(), Some(0));
+    assert_eq!(result["worker_processes"]["request_timeouts"].as_u64(), Some(0));
+    assert_eq!(result["worker_processes"]["child_replacements"].as_u64(), Some(0));
+    assert_eq!(result["interface_worker_processes"]["enabled"].as_bool(), Some(false));
+    assert_eq!(result["interface_worker_processes"]["worker_count"].as_u64(), Some(0));
+    assert_eq!(result["interface_worker_processes"]["shutdown_timeout_ms"].as_u64(), Some(0));
+    assert_eq!(result["interface_worker_processes"]["restart_backoff_ms"].as_u64(), Some(0));
+    assert_eq!(result["interface_worker_processes"]["live_workers"].as_u64(), Some(0));
+    assert_eq!(result["interface_worker_processes"]["stopped_workers"].as_u64(), Some(0));
+    assert_eq!(result["interface_worker_processes"]["child_restarts"].as_u64(), Some(0));
+    assert_eq!(result["interface_worker_processes"]["child_errors"].as_u64(), Some(0));
+    assert_eq!(result["control_router_processes"]["enabled"].as_bool(), Some(false));
+    assert_eq!(result["control_router_processes"]["worker_count"].as_u64(), Some(0));
+    assert_eq!(result["control_router_processes"]["timeout_ms"].as_u64(), Some(0));
+    assert_eq!(result["control_router_processes"]["idle_workers"].as_u64(), Some(0));
+    assert_eq!(result["control_router_processes"]["busy_workers"].as_u64(), Some(0));
+    assert_eq!(result["control_router_processes"]["request_timeouts"].as_u64(), Some(0));
+    assert_eq!(result["control_router_processes"]["child_replacements"].as_u64(), Some(0));
+}
+
+#[test]
+fn daemon_status_ex_reports_worker_process_runtime() {
+    let daemon = RpcDaemon::test_instance();
+    daemon.set_worker_process_status(WorkerProcessStatus {
+        enabled: true,
+        worker_count: 3,
+        timeout_ms: 2_500,
+        idle_workers: 2,
+        busy_workers: 1,
+        request_timeouts: 4,
+        child_replacements: 5,
+    });
+
+    let response = daemon
+        .handle_rpc(RpcRequest { id: 14, method: "daemon_status_ex".to_string(), params: None })
+        .expect("daemon status");
+    let result = response.result.expect("daemon status result");
+
+    assert_eq!(result["worker_processes"]["enabled"].as_bool(), Some(true));
+    assert_eq!(result["worker_processes"]["worker_count"].as_u64(), Some(3));
+    assert_eq!(result["worker_processes"]["timeout_ms"].as_u64(), Some(2_500));
+    assert_eq!(result["worker_processes"]["idle_workers"].as_u64(), Some(2));
+    assert_eq!(result["worker_processes"]["busy_workers"].as_u64(), Some(1));
+    assert_eq!(result["worker_processes"]["request_timeouts"].as_u64(), Some(4));
+    assert_eq!(result["worker_processes"]["child_replacements"].as_u64(), Some(5));
+}
+
+#[test]
+fn daemon_status_ex_reports_interface_worker_process_runtime() {
+    let daemon = RpcDaemon::test_instance();
+    daemon.set_interface_worker_process_status(InterfaceWorkerProcessStatus {
+        enabled: true,
+        worker_count: 3,
+        shutdown_timeout_ms: 2_500,
+        restart_backoff_ms: 750,
+        live_workers: 2,
+        stopped_workers: 1,
+        child_restarts: 4,
+        child_errors: 5,
+    });
+
+    let response = daemon
+        .handle_rpc(RpcRequest { id: 15, method: "daemon_status_ex".to_string(), params: None })
+        .expect("daemon status");
+    let result = response.result.expect("daemon status result");
+
+    assert_eq!(result["interface_worker_processes"]["enabled"].as_bool(), Some(true));
+    assert_eq!(result["interface_worker_processes"]["worker_count"].as_u64(), Some(3));
+    assert_eq!(
+        result["interface_worker_processes"]["shutdown_timeout_ms"].as_u64(),
+        Some(2_500)
+    );
+    assert_eq!(result["interface_worker_processes"]["restart_backoff_ms"].as_u64(), Some(750));
+    assert_eq!(result["interface_worker_processes"]["live_workers"].as_u64(), Some(2));
+    assert_eq!(result["interface_worker_processes"]["stopped_workers"].as_u64(), Some(1));
+    assert_eq!(result["interface_worker_processes"]["child_restarts"].as_u64(), Some(4));
+    assert_eq!(result["interface_worker_processes"]["child_errors"].as_u64(), Some(5));
+}
+
+#[test]
+fn daemon_status_ex_reports_control_router_process_runtime() {
+    let daemon = RpcDaemon::test_instance();
+    daemon.set_control_router_process_status(ControlRouterProcessStatus {
+        enabled: true,
+        worker_count: 4,
+        timeout_ms: 1_750,
+        idle_workers: 3,
+        busy_workers: 1,
+        request_timeouts: 6,
+        child_replacements: 7,
+    });
+
+    let response = daemon
+        .handle_rpc(RpcRequest { id: 16, method: "daemon_status_ex".to_string(), params: None })
+        .expect("daemon status");
+    let result = response.result.expect("daemon status result");
+
+    assert_eq!(result["control_router_processes"]["enabled"].as_bool(), Some(true));
+    assert_eq!(result["control_router_processes"]["worker_count"].as_u64(), Some(4));
+    assert_eq!(result["control_router_processes"]["timeout_ms"].as_u64(), Some(1_750));
+    assert_eq!(result["control_router_processes"]["idle_workers"].as_u64(), Some(3));
+    assert_eq!(result["control_router_processes"]["busy_workers"].as_u64(), Some(1));
+    assert_eq!(result["control_router_processes"]["request_timeouts"].as_u64(), Some(6));
+    assert_eq!(result["control_router_processes"]["child_replacements"].as_u64(), Some(7));
 }
 
 #[test]
@@ -1627,6 +1735,18 @@ impl RemoteControlBridge for TestRemoteControlBridge {
             result["peer"] = json!(peer);
             result
         }).map_err(|kind| std::io::Error::new(kind, "remote sync failed"))
+    }
+
+    fn propagation_remote_download(
+        &self,
+        remote: &str,
+        _identity_private_key_hex: Option<&str>,
+        _timeout_secs: f64,
+    ) -> Result<JsonValue, std::io::Error> {
+        self.result.clone().map(|mut result| {
+            result["remote"] = json!(remote);
+            result
+        }).map_err(|kind| std::io::Error::new(kind, "remote download failed"))
     }
 
     fn propagation_remote_unpeer(

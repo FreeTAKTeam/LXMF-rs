@@ -7,9 +7,11 @@ mod transport;
 
 pub use rpc::http;
 pub use rpc::{
-    AnnounceBridge, DeliveryPolicy, DeliveryTraceEntry, InterfaceMutationBridge, InterfaceRecord,
-    OutboundBridge, OutboundDeliveryOptions, PaperDecodeOutcome, PaperEncodeEnvelope, PeerRecord,
-    PropagationState, RemoteControlBridge, RpcDaemon, RpcError, RpcEvent, RpcRequest, RpcResponse,
-    StampPolicy, TicketRecord,
+    AnnounceBridge, ControlEnvelope, ControlMessage, ControlRole, ControlRouterProcessStatus,
+    DeliveryPolicy, DeliveryTraceEntry, EventSinkBridge, InterfaceMutationBridge, InterfaceRecord,
+    InterfaceWorkerProcessStatus, OutboundBridge, OutboundDeliveryOptions, PaperDecodeOutcome,
+    PaperEncodeEnvelope, PeerRecord, PropagationState, RemoteControlBridge, RpcDaemon, RpcError,
+    RpcEvent, RpcEventSinkEnvelope, RpcRequest, RpcResponse, StampPolicy, TicketRecord,
+    WorkerProcessStatus,
 };
 pub use storage::messages::{AnnounceRecord, MessageRecord, MessagesStore};

@@ -1,5 +1,8 @@
 use super::*;
 
+const DEFAULT_SDK_PER_IP_RATE_LIMIT_PER_MINUTE: u32 = 1_200;
+const DEFAULT_SDK_PER_PRINCIPAL_RATE_LIMIT_PER_MINUTE: u32 = 1_200;
+
 impl RpcDaemon {
     pub(super) fn sdk_rate_limits(&self) -> (u32, u32) {
         let config =
@@ -10,14 +13,14 @@ impl RpcDaemon {
             .and_then(|value| value.get("per_ip_per_minute"))
             .and_then(JsonValue::as_u64)
             .and_then(|value| u32::try_from(value).ok())
-            .unwrap_or(120);
+            .unwrap_or(DEFAULT_SDK_PER_IP_RATE_LIMIT_PER_MINUTE);
         let per_principal = config
             .get("extensions")
             .and_then(|value| value.get("rate_limits"))
             .and_then(|value| value.get("per_principal_per_minute"))
             .and_then(JsonValue::as_u64)
             .and_then(|value| u32::try_from(value).ok())
-            .unwrap_or(120);
+            .unwrap_or(DEFAULT_SDK_PER_PRINCIPAL_RATE_LIMIT_PER_MINUTE);
         (per_ip, per_principal)
     }
 
@@ -94,6 +97,15 @@ impl RpcDaemon {
         let normalized = status.trim().to_ascii_lowercase();
         normalized.starts_with("failed")
             || matches!(normalized.as_str(), "cancelled" | "delivered" | "expired" | "rejected")
+    }
+
+    pub(super) fn is_receipt_status_regression(
+        existing_status: &str,
+        requested_status: &str,
+    ) -> bool {
+        let existing = existing_status.trim().to_ascii_lowercase();
+        let requested = requested_status.trim().to_ascii_lowercase();
+        existing.starts_with("sent") && requested.starts_with("sending")
     }
 
     pub(super) fn active_contract_version(&self) -> u16 {

@@ -58,6 +58,9 @@ impl RpcDaemon {
                         "delivery_policy": snapshot.delivery_policy,
                         "propagation": snapshot.propagation,
                         "stamp_policy": snapshot.stamp_policy,
+                        "worker_processes": snapshot.worker_processes,
+                        "interface_worker_processes": snapshot.interface_worker_processes,
+                        "control_router_processes": snapshot.control_router_processes,
                         "capabilities": Self::capabilities(),
                     })),
                     error: None,
@@ -195,13 +198,17 @@ impl RpcDaemon {
             }
         }
     }
-    pub(super) fn append_delivery_trace(&self, message_id: &str, status: String) {
+    pub(super) fn append_delivery_trace_to(
+        traces: &Mutex<HashMap<String, Vec<DeliveryTraceEntry>>>,
+        message_id: &str,
+        status: String,
+    ) {
         const MAX_DELIVERY_TRACE_ENTRIES: usize = 32;
         const MAX_TRACKED_MESSAGE_TRACES: usize = 2048;
 
         let timestamp = now_i64();
         let reason_code = delivery_reason_code(&status).map(ToOwned::to_owned);
-        let mut guard = self.delivery_traces.lock().expect("delivery traces mutex poisoned");
+        let mut guard = traces.lock().expect("delivery traces mutex poisoned");
         let entry = guard.entry(message_id.to_string()).or_default();
         entry.push(DeliveryTraceEntry { status, timestamp, reason_code });
         if entry.len() > MAX_DELIVERY_TRACE_ENTRIES {
@@ -235,5 +242,9 @@ impl RpcDaemon {
                 }
             }
         }
+    }
+
+    pub(super) fn append_delivery_trace(&self, message_id: &str, status: String) {
+        Self::append_delivery_trace_to(&self.delivery_traces, message_id, status);
     }
 }
