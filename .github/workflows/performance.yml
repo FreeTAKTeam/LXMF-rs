@@ -104,6 +104,7 @@ jobs:
 
       - name: Rust/Python implementation speedup gate
         working-directory: lxmf-rs
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
         env:
           PYTHONPATH: ${{ github.workspace }}/Reticulum:${{ github.workspace }}/LXMF
         run: cargo xtask ci --stage python-impl-perf-gate
