@@ -86,15 +86,22 @@ direct evidence that the requested behavior, gate, or benchmark exists.
      key schedule at p50 37303.26 ns, and Fernet verify/decrypt at p50
      19687.75 ns. That narrows the decrypt optimization target to
      asymmetric/HKDF work first, then Fernet verification/decrypt throughput.
+   - `crates/libs/rns-core/benches/parity_hotpaths.rs` now includes batch-64
+     identity encrypt/decrypt probes in both serial and parallel forms. The
+     latest focused Criterion run measured encrypt batch-64 at about 6.73 ms
+     serial and 1.41 ms parallel; decrypt batch-64 measured about 3.63 ms
+     serial and 0.84 ms parallel. `xtask/src/main.rs` carries SDK perf budgets
+     for all four batch probes, so crypto batch scheduling has a regression
+     guard before being promoted into runtime behavior.
 
    Status: partially covered.
 
    Remaining gap:
    - The report still shows identity encrypt/decrypt below stretch targets, so
-     deeper crypto work remains worthwhile. The next useful pass should focus
-     on identity encrypt/decrypt batching or parallel scheduling, lower-level
-     asymmetric crypto costs, and Fernet encrypt/verify/decrypt throughput
-     rather than repeating derived-key slice caching.
+     deeper crypto work remains worthwhile. Batch probes now show parallel
+     scheduling is promising; the next implementation pass should move that
+     evidence into bounded runtime scheduling where batches naturally exist,
+     while lower-level asymmetric crypto and Fernet throughput remain open.
 
 4. Make async non-blocking.
 

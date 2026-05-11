@@ -935,6 +935,16 @@ themselves.
    `rns_core_identity_fernet_decrypt_only` at 19.69 us in the latest SDK perf
    budget report. Decrypt is therefore mostly asymmetric/HKDF work, while
    Fernet verify/decrypt remains a meaningful secondary cost.
+   The next crypto-throughput probe now measures batch scheduling directly:
+   `rns_core/identity_encrypt_batch_64` reports about 6.73 ms for 64 serial
+   encryptions, while `rns_core/identity_encrypt_batch_64_parallel` reports
+   about 1.41 ms on the current machine. Decrypt shows the same shape:
+   `rns_core/identity_decrypt_batch_64` reports about 3.63 ms serial and
+   `rns_core/identity_decrypt_batch_64_parallel` about 0.84 ms. Those probes
+   are now in the SDK perf budget table as throughput guards, giving the next
+   implementation pass concrete evidence that a bounded parallel crypto
+   scheduler can improve batch throughput without making process IPC the
+   default path.
 
 5. Optional process isolation
 

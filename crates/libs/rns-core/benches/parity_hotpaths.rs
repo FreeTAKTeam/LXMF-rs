@@ -8,9 +8,11 @@ use rns_core::identity::{lxmf_sign, lxmf_verify, DerivedKey, PrivateIdentity, PU
 use rns_core::ratchets::{
     decrypt_with_identity_into, encrypt_for_public_key, encrypt_for_public_key_into,
 };
+use std::thread;
 use x25519_dalek::{EphemeralSecret, PublicKey};
 
 const ANNOUNCE_BATCH_SIZE: usize = 64;
+const IDENTITY_CRYPTO_BATCH_SIZE: usize = 64;
 
 fn sample_destination() -> SingleInputDestination {
     let identity = PrivateIdentity::new_from_rand(OsRng);
@@ -248,6 +250,155 @@ fn bench_identity_fernet_decrypt_only(c: &mut Criterion) {
     });
 }
 
+fn identity_encrypt_fixture() -> (PrivateIdentity, Vec<u8>, Vec<u8>) {
+    let recipient = PrivateIdentity::new_from_rand(OsRng);
+    let public_identity = *recipient.as_identity();
+    let plaintext = vec![0x42; 2048];
+    let salt = public_identity.address_hash.as_slice().to_vec();
+    (recipient, plaintext, salt)
+}
+
+fn identity_decrypt_fixture() -> (PrivateIdentity, Vec<Vec<u8>>, Vec<u8>) {
+    let (recipient, plaintext, salt) = identity_encrypt_fixture();
+    let public_identity = *recipient.as_identity();
+    let ciphertexts = (0..IDENTITY_CRYPTO_BATCH_SIZE)
+        .map(|_| {
+            encrypt_for_public_key(&public_identity.public_key, salt.as_slice(), &plaintext, OsRng)
+                .expect("encryption should succeed")
+        })
+        .collect();
+    (recipient, ciphertexts, salt)
+}
+
+fn parallel_chunks(total: usize) -> usize {
+    thread::available_parallelism().map_or(1, usize::from).clamp(1, total)
+}
+
+fn bench_identity_encrypt_batch_64(c: &mut Criterion) {
+    let (recipient, plaintext, salt) = identity_encrypt_fixture();
+    let public_identity = *recipient.as_identity();
+    let mut outputs = vec![vec![0u8; 32 + plaintext.len() + 128]; IDENTITY_CRYPTO_BATCH_SIZE];
+    c.bench_function("rns_core/identity_encrypt_batch_64", |b| {
+        b.iter(|| {
+            let mut total = 0usize;
+            for out in &mut outputs {
+                let ciphertext = encrypt_for_public_key_into(
+                    black_box(&public_identity.public_key),
+                    black_box(salt.as_slice()),
+                    black_box(&plaintext),
+                    black_box(out.as_mut_slice()),
+                    OsRng,
+                )
+                .expect("encryption should succeed");
+                total += ciphertext.len();
+            }
+            black_box(total);
+        });
+    });
+}
+
+fn bench_identity_encrypt_batch_64_parallel(c: &mut Criterion) {
+    let (recipient, plaintext, salt) = identity_encrypt_fixture();
+    let public_identity = *recipient.as_identity();
+    let workers = parallel_chunks(IDENTITY_CRYPTO_BATCH_SIZE);
+    let chunk_size = IDENTITY_CRYPTO_BATCH_SIZE.div_ceil(workers);
+    let mut outputs = vec![vec![0u8; 32 + plaintext.len() + 128]; IDENTITY_CRYPTO_BATCH_SIZE];
+    c.bench_function("rns_core/identity_encrypt_batch_64_parallel", |b| {
+        b.iter(|| {
+            let total = thread::scope(|scope| {
+                let mut handles = Vec::new();
+                for out_chunk in outputs.chunks_mut(chunk_size) {
+                    let public_key = public_identity.public_key;
+                    let salt = salt.as_slice();
+                    let plaintext = plaintext.as_slice();
+                    handles.push(scope.spawn(move || {
+                        let mut total = 0usize;
+                        for out in out_chunk {
+                            let ciphertext = encrypt_for_public_key_into(
+                                black_box(&public_key),
+                                black_box(salt),
+                                black_box(plaintext),
+                                black_box(out.as_mut_slice()),
+                                OsRng,
+                            )
+                            .expect("encryption should succeed");
+                            total += ciphertext.len();
+                        }
+                        total
+                    }));
+                }
+                handles
+                    .into_iter()
+                    .map(|handle| handle.join().expect("identity encrypt worker should finish"))
+                    .sum::<usize>()
+            });
+            black_box(total);
+        });
+    });
+}
+
+fn bench_identity_decrypt_batch_64(c: &mut Criterion) {
+    let (recipient, ciphertexts, salt) = identity_decrypt_fixture();
+    let mut outputs =
+        ciphertexts.iter().map(|ciphertext| vec![0u8; ciphertext.len()]).collect::<Vec<_>>();
+    c.bench_function("rns_core/identity_decrypt_batch_64", |b| {
+        b.iter(|| {
+            let mut total = 0usize;
+            for (ciphertext, out) in ciphertexts.iter().zip(outputs.iter_mut()) {
+                let plaintext = decrypt_with_identity_into(
+                    black_box(&recipient),
+                    black_box(salt.as_slice()),
+                    black_box(ciphertext),
+                    black_box(out.as_mut_slice()),
+                )
+                .expect("decryption should succeed");
+                total += plaintext.len();
+            }
+            black_box(total);
+        });
+    });
+}
+
+fn bench_identity_decrypt_batch_64_parallel(c: &mut Criterion) {
+    let (recipient, ciphertexts, salt) = identity_decrypt_fixture();
+    let workers = parallel_chunks(IDENTITY_CRYPTO_BATCH_SIZE);
+    let chunk_size = IDENTITY_CRYPTO_BATCH_SIZE.div_ceil(workers);
+    let mut outputs =
+        ciphertexts.iter().map(|ciphertext| vec![0u8; ciphertext.len()]).collect::<Vec<_>>();
+    c.bench_function("rns_core/identity_decrypt_batch_64_parallel", |b| {
+        b.iter(|| {
+            let total = thread::scope(|scope| {
+                let mut handles = Vec::new();
+                for (ciphertexts, outputs) in
+                    ciphertexts.chunks(chunk_size).zip(outputs.chunks_mut(chunk_size))
+                {
+                    let recipient = recipient.clone();
+                    let salt = salt.as_slice();
+                    handles.push(scope.spawn(move || {
+                        let mut total = 0usize;
+                        for (ciphertext, out) in ciphertexts.iter().zip(outputs.iter_mut()) {
+                            let plaintext = decrypt_with_identity_into(
+                                black_box(&recipient),
+                                black_box(salt),
+                                black_box(ciphertext),
+                                black_box(out.as_mut_slice()),
+                            )
+                            .expect("decryption should succeed");
+                            total += plaintext.len();
+                        }
+                        total
+                    }));
+                }
+                handles
+                    .into_iter()
+                    .map(|handle| handle.join().expect("identity decrypt worker should finish"))
+                    .sum::<usize>()
+            });
+            black_box(total);
+        });
+    });
+}
+
 criterion_group!(
     benches,
     bench_announce_create,
@@ -260,6 +411,10 @@ criterion_group!(
     bench_identity_fernet_encrypt_only,
     bench_identity_decrypt,
     bench_identity_decrypt_key_schedule,
-    bench_identity_fernet_decrypt_only
+    bench_identity_fernet_decrypt_only,
+    bench_identity_encrypt_batch_64,
+    bench_identity_encrypt_batch_64_parallel,
+    bench_identity_decrypt_batch_64,
+    bench_identity_decrypt_batch_64_parallel
 );
 criterion_main!(benches);
