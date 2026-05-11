@@ -1,6 +1,8 @@
 use super::diag;
 use super::path::message_to_next_hop;
-use super::worker_boundary::{WorkerBackend, WorkerJob, WorkerJobKind, WorkerResultKind};
+use super::worker_boundary::{
+    SingleDestinationDecryptBatchItem, WorkerBackend, WorkerJob, WorkerJobKind,
+};
 use super::*;
 use crate::destination::link::LinkPacketContext;
 use crate::resource::{
@@ -585,17 +587,17 @@ async fn complete_link_resource_on_remote_worker(
 async fn decrypt_single_destination_payload(
     destination: Arc<Mutex<SingleInputDestination>>,
     packet: Packet,
-    remote_backend: Option<Arc<dyn WorkerBackend>>,
+    remote_batch_lane: Option<crypto_batch_lane::InboundCryptoBatchLane>,
 ) -> Result<(PacketDataBuffer, bool), RnsError> {
     if !should_encrypt_packet(&packet) {
         return Ok((packet.data, false));
     }
 
-    if let Some(remote_backend) = remote_backend {
+    if let Some(remote_batch_lane) = remote_batch_lane {
         match decrypt_single_destination_payload_on_remote_worker(
             destination.clone(),
             &packet,
-            remote_backend,
+            remote_batch_lane,
         )
         .await
         {
@@ -640,7 +642,7 @@ async fn decrypt_single_destination_payload_on_local_worker(
 async fn decrypt_single_destination_payload_on_remote_worker(
     destination: Arc<Mutex<SingleInputDestination>>,
     packet: &Packet,
-    backend: Arc<dyn WorkerBackend>,
+    batch_lane: crypto_batch_lane::InboundCryptoBatchLane,
 ) -> Result<(PacketDataBuffer, bool), RnsError> {
     let private_key = {
         let Ok(destination) = destination.try_lock() else {
@@ -652,14 +654,11 @@ async fn decrypt_single_destination_payload_on_remote_worker(
     let packet_wire = packet.to_bytes()?;
     let mut destination_hash = [0u8; crate::hash::ADDRESS_HASH_SIZE];
     destination_hash.copy_from_slice(packet.destination.as_slice());
-    let response = backend
-        .submit(WorkerJob {
-            id: u64::from_be_bytes(packet.hash().as_slice()[..8].try_into().unwrap_or([0; 8])),
-            kind: WorkerJobKind::SingleDestinationDecrypt {
-                packet_wire,
-                destination: destination_hash,
-                private_key: serde_bytes::ByteBuf::from(private_key.to_vec()),
-            },
+    let result = batch_lane
+        .decrypt(SingleDestinationDecryptBatchItem {
+            packet_wire,
+            destination: destination_hash,
+            private_key: serde_bytes::ByteBuf::from(private_key.to_vec()),
         })
         .await
         .map_err(|err| {
@@ -667,12 +666,7 @@ async fn decrypt_single_destination_payload_on_remote_worker(
             RnsError::ConnectionError
         })?;
 
-    let WorkerResultKind::DestinationPayload { payload, ratchet_used } = response.kind else {
-        log::debug!("tp: remote single-destination decrypt returned unexpected result");
-        return Err(RnsError::ConnectionError);
-    };
-
-    Ok((PacketDataBuffer::new_from_slice(payload.as_ref()), ratchet_used))
+    Ok((PacketDataBuffer::new_from_slice(result.payload.as_ref()), result.ratchet_used))
 }
 
 pub(super) async fn handle_local_single_destination_data(
@@ -680,10 +674,10 @@ pub(super) async fn handle_local_single_destination_data(
     destination: Arc<Mutex<SingleInputDestination>>,
     received_data_tx: broadcast::Sender<ReceivedData>,
     config_name: &str,
-    remote_backend: Option<Arc<dyn WorkerBackend>>,
+    remote_batch_lane: Option<crypto_batch_lane::InboundCryptoBatchLane>,
 ) -> bool {
     let (buffer, ratchet_used) =
-        match decrypt_single_destination_payload(destination, *packet, remote_backend).await {
+        match decrypt_single_destination_payload(destination, *packet, remote_batch_lane).await {
             Ok(result) => result,
             Err(err) => {
                 log::warn!(
@@ -894,15 +888,14 @@ pub(super) async fn handle_data<'a>(
         {
             let received_data_tx = handler.received_data_tx.clone();
             let config_name = handler.config.name.clone();
-            let single_destination_worker_backend =
-                handler.single_destination_worker_backend.clone();
+            let inbound_crypto_batch_lane = handler.inbound_crypto_batch_lane.clone();
             drop(handler);
             handle_local_single_destination_data(
                 packet,
                 destination,
                 received_data_tx,
                 &config_name,
-                single_destination_worker_backend,
+                inbound_crypto_batch_lane,
             )
             .await;
             log::trace!(

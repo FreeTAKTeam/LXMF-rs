@@ -37,6 +37,9 @@ impl Transport {
         let outbound_crypto_batch_lane =
             outbound_worker_backend.clone().map(crypto_batch_lane::OutboundCryptoBatchLane::spawn);
         let single_destination_worker_backend = config.single_destination_worker_backend.clone();
+        let inbound_crypto_batch_lane = single_destination_worker_backend
+            .clone()
+            .map(crypto_batch_lane::InboundCryptoBatchLane::spawn);
         let resource_worker_backend = config.resource_worker_backend.clone();
         let ratchet_store = config.ratchet_store_path.as_ref().map(|path| {
             let mut store = RatchetStore::new(path.clone());
@@ -90,7 +93,7 @@ impl Transport {
             resource_events_tx: resource_events_tx.clone(),
             announce_worker_backend,
             outbound_crypto_batch_lane,
-            single_destination_worker_backend,
+            inbound_crypto_batch_lane,
             resource_worker_backend,
             fixed_dest_path_requests: path_request_dest,
             fixed_dest_tunnel_synthesize: tunnel_synthesize_dest,

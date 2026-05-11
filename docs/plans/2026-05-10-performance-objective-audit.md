@@ -105,24 +105,25 @@ direct evidence that the requested behavior, gate, or benchmark exists.
      batch round trip. The latest SDK perf budget report shows p50
      3907203.12 ns locally and p50 980125.00 ns through the stdio batch worker,
      with overall `Status: PASS`.
-   - `crates/libs/rns-transport/src/transport/crypto_batch_lane.rs` now adds a
-     bounded outbound crypto batch lane. It accepts outbound encrypt work with
-     non-blocking `try_send`, coalesces queued work up to 64 items, submits one
-     batch worker job, and fans ordered results or worker errors back through
-     per-packet one-shot replies. Transport startup wraps configured outbound
-     worker backends in this lane, so live outbound encryption now reaches the
-     measured batch worker path instead of submitting one worker job per packet.
-     Focused tests cover queue-full rejection, queued-job coalescing, batch
-     error fanout, and the existing configured outbound worker path.
+   - `crates/libs/rns-transport/src/transport/crypto_batch_lane.rs` now adds
+     bounded outbound and inbound crypto batch lanes. They accept outbound
+     encrypt and single-destination decrypt work with non-blocking `try_send`,
+     coalesce queued work up to 64 items, submit one batch worker job, and fan
+     ordered results or worker errors back through per-packet one-shot replies.
+     Transport startup wraps configured outbound and single-destination worker
+     backends in these lanes, so live outbound encryption and inbound
+     single-destination decrypt now reach the measured batch worker paths
+     instead of submitting one worker job per packet. Focused tests cover
+     queue-full rejection, queued-job coalescing, batch error fanout, and the
+     existing configured outbound/inbound worker paths.
 
    Status: partially covered.
 
    Remaining gap:
    - The report still shows identity encrypt/decrypt below stretch targets, so
-     deeper crypto work remains worthwhile. Runtime outbound encryption now has
-     bounded batch coalescing; inbound single-destination decrypt still uses
-     per-packet remote worker submission, and lower-level asymmetric crypto and
-     Fernet throughput remain open.
+     deeper crypto work remains worthwhile. Runtime outbound encryption and
+     inbound single-destination decrypt now have bounded batch coalescing, while
+     lower-level asymmetric crypto and Fernet throughput remain open.
 
 4. Make async non-blocking.
 

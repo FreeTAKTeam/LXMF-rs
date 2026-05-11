@@ -238,7 +238,7 @@ pub(crate) struct TransportHandler {
     resource_events_tx: broadcast::Sender<ResourceEvent>,
     announce_worker_backend: Option<Arc<dyn worker_boundary::WorkerBackend>>,
     outbound_crypto_batch_lane: Option<crypto_batch_lane::OutboundCryptoBatchLane>,
-    single_destination_worker_backend: Option<Arc<dyn worker_boundary::WorkerBackend>>,
+    inbound_crypto_batch_lane: Option<crypto_batch_lane::InboundCryptoBatchLane>,
     resource_worker_backend: Option<Arc<dyn worker_boundary::WorkerBackend>>,
 
     fixed_dest_path_requests: AddressHash,

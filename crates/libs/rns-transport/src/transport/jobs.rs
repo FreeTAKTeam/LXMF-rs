@@ -384,15 +384,15 @@ pub(super) async fn manage_transport(
                         if let Some(destination) = local_destination {
                             let received_data_tx = handler.received_data_tx.clone();
                             let config_name = handler.config.name.clone();
-                            let single_destination_worker_backend =
-                                handler.single_destination_worker_backend.clone();
+                            let inbound_crypto_batch_lane =
+                                handler.inbound_crypto_batch_lane.clone();
                             drop(handler);
                             handle_local_single_destination_data(
                                 &packet,
                                 destination,
                                 received_data_tx,
                                 &config_name,
-                                single_destination_worker_backend,
+                                inbound_crypto_batch_lane,
                             )
                             .await;
                             log::trace!(

@@ -642,18 +642,30 @@ impl WorkerBackend for SingleDestinationDecryptBackend {
     fn submit(&self, job: WorkerJob) -> WorkerJobFuture<'_> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         Box::pin(async move {
-            let WorkerJobKind::SingleDestinationDecrypt { .. } = job.kind else {
-                return Err(WorkerError::InvalidJob {
+            match job.kind {
+                WorkerJobKind::SingleDestinationDecrypt { .. } => Ok(WorkerResult {
+                    id: job.id,
+                    kind: WorkerResultKind::DestinationPayload {
+                        payload: ByteBuf::from(b"remote decrypted".to_vec()),
+                        ratchet_used: false,
+                    },
+                }),
+                WorkerJobKind::SingleDestinationDecryptBatch { items } => Ok(WorkerResult {
+                    id: job.id,
+                    kind: WorkerResultKind::DestinationPayloadBatch {
+                        items: items
+                            .into_iter()
+                            .map(|_| super::worker_boundary::DestinationPayloadBatchItem {
+                                payload: ByteBuf::from(b"remote decrypted".to_vec()),
+                                ratchet_used: false,
+                            })
+                            .collect(),
+                    },
+                }),
+                _ => Err(WorkerError::InvalidJob {
                     message: "expected single destination decrypt job".to_string(),
-                });
-            };
-            Ok(WorkerResult {
-                id: job.id,
-                kind: WorkerResultKind::DestinationPayload {
-                    payload: ByteBuf::from(b"remote decrypted".to_vec()),
-                    ratchet_used: false,
-                },
-            })
+                }),
+            }
         })
     }
 }
@@ -761,6 +773,7 @@ async fn single_destination_decrypt_uses_configured_worker_backend() {
     let (received_tx, mut received_rx) = tokio::sync::broadcast::channel(4);
     let calls = Arc::new(AtomicUsize::new(0));
     let backend = Arc::new(SingleDestinationDecryptBackend { calls: calls.clone() });
+    let batch_lane = super::crypto_batch_lane::InboundCryptoBatchLane::spawn(backend);
 
     assert!(
         handle_local_single_destination_data(
@@ -768,7 +781,7 @@ async fn single_destination_decrypt_uses_configured_worker_backend() {
             destination,
             received_tx,
             "test",
-            Some(backend),
+            Some(batch_lane),
         )
         .await
     );
@@ -814,6 +827,7 @@ async fn single_destination_decrypt_falls_back_when_worker_backend_fails() {
     let (received_tx, mut received_rx) = tokio::sync::broadcast::channel(4);
     let calls = Arc::new(AtomicUsize::new(0));
     let backend = Arc::new(FailingAnnounceBackend { calls: calls.clone() });
+    let batch_lane = super::crypto_batch_lane::InboundCryptoBatchLane::spawn(backend);
 
     assert!(
         handle_local_single_destination_data(
@@ -821,7 +835,7 @@ async fn single_destination_decrypt_falls_back_when_worker_backend_fails() {
             destination,
             received_tx,
             "test",
-            Some(backend),
+            Some(batch_lane),
         )
         .await
     );
