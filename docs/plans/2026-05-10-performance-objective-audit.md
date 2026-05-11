@@ -237,6 +237,14 @@ direct evidence that the requested behavior, gate, or benchmark exists.
      branch still clears the runtime hygiene scans for blocking sleeps,
      unbounded channels, synchronous guard-across-await patterns, and async
      mutex send/dispatch calls.
+   - A focused production lock-boundary review after the e2e burst hardening
+     found no daemon-wide handler or interface-manager lock held across send,
+     dispatch, or receive awaits. The remaining `.recv().await` cases under an
+     async mutex are per-interface TX receiver ownership points used by
+     reconnect/rebind loops to keep a single `mpsc::Receiver` alive across
+     connection attempts, not shared global runtime locks. The
+     `cargo xtask ci --stage security-review-check` gate still passes with the
+     runtime hygiene scans enabled.
 
    Status: covered for current single-process async lanes.
 
