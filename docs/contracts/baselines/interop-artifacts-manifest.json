@@ -33,8 +33,8 @@
     },
     {
       "path": "docs/contracts/compatibility-matrix.md",
-      "bytes": 5576,
-      "sha256": "5f94b5a06c1fc971e720079224dbf587ab8ded8088fcb9bc5384d59e208c01a9"
+      "bytes": 5731,
+      "sha256": "99b07a333ee28c7d5e8b97a1db56eeeff568c740bd877b41c9b490423d717a77"
     },
     {
       "path": "docs/contracts/extension-registry.md",
@@ -228,8 +228,8 @@
     },
     {
       "path": "docs/contracts/third-party-compatibility-kit.md",
-      "bytes": 1554,
-      "sha256": "553560b96e53ba723db44fc5d654ffdbf451a3fdf6350fc1bfb7740b1e61b606"
+      "bytes": 1565,
+      "sha256": "3bb36f849f4bfc4a210536977487c7200d7edda8a356cb6cbd2b12bc68c2c032"
     },
     {
       "path": "docs/fixtures/contract-v2/README.md",

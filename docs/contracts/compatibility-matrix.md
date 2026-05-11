@@ -43,6 +43,7 @@ Legend: `required`, `optional`, `planned`, `n/a`.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `lxmf-sdk` (Rust) | `N, N+1, N+2` | required | required | required | required | required | required | optional | required |
 | `reticulumd` (Rust daemon) | `N, N+1, N+2` | required | required | required | required | required | required | optional | required |
+| `MeshChatX` (external client track) | `Pinned interop baseline` | required | required | required | optional | planned | required | optional | required |
 | `Sideband` (external client track) | `Pinned interop baseline` | required | required | required | optional | planned | required | optional | required |
 | `RCH` (external client track) | `Pinned interop baseline` | required | required | required | optional | planned | required | optional | required |
 | `Columba` (external client track) | `Pinned interop baseline` | required | required | required | optional | planned | required | optional | required |

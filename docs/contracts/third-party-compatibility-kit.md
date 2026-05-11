@@ -1,7 +1,7 @@
 # Third-Party Compatibility Test Kit
 
 ## Purpose
-This kit provides a stable, versioned contract + fixture pack for external clients (Sideband, RCH, Columba, and other SDK/RPC consumers) to validate protocol compatibility without coupling to in-repo Rust internals.
+This kit provides a stable, versioned contract + fixture pack for external clients (MeshChatX, Sideband, RCH, Columba, and other SDK/RPC consumers) to validate protocol compatibility without coupling to in-repo Rust internals.
 
 ## Kit Contents
 - `contracts/compatibility-contract.md`

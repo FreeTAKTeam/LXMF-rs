@@ -47,6 +47,17 @@ chmod +x /path/to/lxmd-daemon-<version>-macos-arm64/reticulumd
 - Keep this release page focused on the daemon bundle unless there is a
   user-facing reason to call out additional binaries.
 
+## Interop Claims
+
+- Do not claim MeshChatX, Sideband, or Columba interoperability unless the
+  matching external-client gate emitted `status: "pass"` for this release
+  candidate:
+  - `tools/scripts/external-client-interop-gate.sh meshchatx /path/to/MeshChatX`
+  - `tools/scripts/external-client-interop-gate.sh sideband /path/to/Sideband`
+  - `tools/scripts/external-client-interop-gate.sh columba /path/to/columba`
+- Link or attach `target/interop/external-client-gate/<client>/gate-summary.json`
+  for every external-client interoperability claim.
+
 ## crates.io
 
 - If this release train also ships library crates, list them here with exact versions.
