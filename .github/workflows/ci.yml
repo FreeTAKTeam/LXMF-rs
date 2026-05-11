@@ -78,6 +78,11 @@ jobs:
         run: bash tools/scripts/check-boundaries.sh
       - name: Architecture checks
         run: cargo run -p xtask -- architecture-checks
+      - name: Optional AES-128 Fernet feature graph
+        run: |
+          cargo check -p reticulum-rs-transport --features fernet-aes128 --tests
+          cargo check -p lxmf-wire --features fernet-aes128 --tests
+          cargo check -p reticulum-rs --features fernet-aes128
       - name: SDK docs check
         run: cargo run -p xtask -- sdk-docs-check
       - name: SDK migration check

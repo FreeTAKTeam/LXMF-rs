@@ -265,6 +265,10 @@ direct evidence that the requested behavior, gate, or benchmark exists.
      security-review-check` in the regular security job, so the async runtime
      hygiene scans for blocking sleeps, unbounded channels, and synchronous
      mutex guards across `.await` run on ordinary PRs.
+   - `.github/workflows/ci.yml` now checks the optional `fernet-aes128` feature
+     graph for `reticulum-rs-transport`, `lxmf-wire`, and `reticulum-rs`, so
+     the measured opt-in Fernet throughput path cannot drift out of downstream
+     crate compatibility unnoticed.
    - `target/criterion/bench-budget-report.txt` currently reports `Status:
      PASS` and includes storage writer-lane insertion plus local-vs-process
      resource completion and outbound encryption budgets for
