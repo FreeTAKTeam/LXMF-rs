@@ -20,6 +20,7 @@ use rns_transport::resource::ResourceManager;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
+use std::env;
 use std::fs;
 use std::hint::black_box;
 use std::path::{Path, PathBuf};
@@ -5750,7 +5751,19 @@ fn run_compat_kit_check() -> Result<()> {
 
 fn run_e2e_compatibility() -> Result<()> {
     run("cargo", &["build", "-p", "reticulumd", "--bin", "reticulumd"])?;
-    run("cargo", &["run", "-p", "rns-tools", "--bin", "rnx", "--", "e2e", "--timeout-secs", "20"])
+    let rounds = env::var("E2E_COMPAT_ROUNDS")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(2)
+        .max(1);
+    for round in 1..=rounds {
+        println!("== e2e compatibility round {round}/{rounds} ==");
+        run(
+            "cargo",
+            &["run", "-p", "rns-tools", "--bin", "rnx", "--", "e2e", "--timeout-secs", "20"],
+        )?;
+    }
+    Ok(())
 }
 
 fn run_mesh_sim() -> Result<()> {

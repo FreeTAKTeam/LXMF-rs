@@ -295,11 +295,19 @@ direct evidence that the requested behavior, gate, or benchmark exists.
      on stdout for the harness.
    - `rnx e2e` now converges peer discovery by repeatedly announcing both
      local daemons until each side sees the other destination or the existing
-     timeout expires. This removes a startup/link-settling race from the
-     compatibility harness without masking real discovery failures. The latest
+     timeout expires, and the polling loop now interleaves short checks for
+     both directions so one slow side cannot consume almost the whole timeout
+     before the other side is checked. This removes a startup/link-settling
+     race from the compatibility harness without masking real discovery
+     failures. The latest `cargo xtask ci --stage e2e-compatibility` run passed
+     both default compatibility rounds, and the latest
      `cargo xtask ci --stage release-scorecard-check` run completed the soak
      burst with `total_failures: 0`, `e2e_failures: 0`, and
      `mesh_failures: 0`.
+   - The regular `e2e-compatibility` CI stage now runs a small default
+     two-round burst, configurable with `E2E_COMPAT_ROUNDS`, so ordinary
+     contract CI has a better chance of catching peer discovery and delivery
+     flakes before the heavier release scorecard/mesh campaign runs.
    - Release scorecard, canary criteria, and leader-readiness gates now enforce
      zero tolerated soak failures, matching the release-readiness rollback
      criteria instead of allowing a passing release scorecard with a tolerated
