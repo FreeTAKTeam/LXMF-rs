@@ -2309,6 +2309,41 @@ async fn send_resource_returns_error_when_advertisement_dispatch_drops() {
 }
 
 #[tokio::test]
+async fn send_resource_on_link_uses_existing_handle_without_link_id_lookup() {
+    let _resource_prepare_guard = RESOURCE_PREPARE_TEST_LOCK.lock().await;
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let config = TransportConfig::new("test", &local_identity, true);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+
+    let signer = PrivateIdentity::new_from_rand(OsRng);
+    let identity = *signer.as_identity();
+    let destination = crate::destination::DestinationDesc {
+        identity,
+        address_hash: identity.address_hash,
+        name: DestinationName::new("lxmf", "delivery"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(8);
+    let mut outbound = Link::new(destination, tx.clone());
+    let request = outbound.request();
+    let mut inbound = Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
+        .expect("link request should parse");
+    let iface = AddressHash::new_from_rand(OsRng);
+    assert!(matches!(
+        outbound.handle_packet(&inbound.prove(), iface),
+        crate::destination::link::LinkHandleResult::Activated
+    ));
+
+    let outbound = Arc::new(Mutex::new(outbound));
+
+    let result = transport.send_resource_on_link(outbound, b"resource".to_vec(), None).await;
+    assert!(matches!(result, Err(RnsError::ConnectionError)));
+
+    let resource_manager = { handler.lock().await.resource_lane.manager_handle() };
+    assert!(resource_manager.lock().await.has_no_outbound_state());
+}
+
+#[tokio::test]
 async fn send_resource_skips_busy_link_preparation() {
     let _resource_prepare_guard = RESOURCE_PREPARE_TEST_LOCK.lock().await;
     let local_identity = PrivateIdentity::new_from_rand(OsRng);
