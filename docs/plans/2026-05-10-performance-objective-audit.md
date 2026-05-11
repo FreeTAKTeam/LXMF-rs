@@ -123,14 +123,15 @@ direct evidence that the requested behavior, gate, or benchmark exists.
    - `crates/libs/rns-transport/src/transport/crypto_batch_lane.rs` now adds
      bounded outbound and inbound crypto batch lanes. They accept outbound
      encrypt and single-destination decrypt work with non-blocking `try_send`,
-     coalesce queued work up to 64 items, submit one batch worker job, and fan
-     ordered results or worker errors back through per-packet one-shot replies.
-     Transport startup wraps configured outbound and single-destination worker
-     backends in these lanes, so live outbound encryption and inbound
-     single-destination decrypt now reach the measured batch worker paths
-     instead of submitting one worker job per packet. Focused tests cover
-     queue-full rejection, queued-job coalescing, batch error fanout, and the
-     existing configured outbound/inbound worker paths.
+     yield once to let same-tick submissions collect, coalesce queued work up
+     to 64 items, submit one batch worker job, and fan ordered results or
+     worker errors back through per-packet one-shot replies. Transport startup
+     wraps configured outbound and single-destination worker backends in these
+     lanes, so live outbound encryption and inbound single-destination decrypt
+     now reach the measured batch worker paths instead of submitting one worker
+     job per packet. Focused tests cover queue-full rejection, queued-job
+     coalescing, batch error fanout, and the existing configured
+     outbound/inbound worker paths.
    - Local outbound encryption now uses
      `ratchets::encrypt_for_public_key_into` to write ciphertext directly into
      the packet's fixed `PacketDataBuffer` inside the blocking worker. This

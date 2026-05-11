@@ -65,6 +65,7 @@ impl OutboundCryptoBatchLane {
             while let Some(first) = rx.recv().await {
                 let mut batch = Vec::with_capacity(max_batch_items.max(1));
                 batch.push(first);
+                tokio::task::yield_now().await;
                 while batch.len() < max_batch_items.max(1) {
                     match rx.try_recv() {
                         Ok(command) => batch.push(command),
@@ -134,6 +135,7 @@ impl InboundCryptoBatchLane {
             while let Some(first) = rx.recv().await {
                 let mut batch = Vec::with_capacity(max_batch_items.max(1));
                 batch.push(first);
+                tokio::task::yield_now().await;
                 while batch.len() < max_batch_items.max(1) {
                     match rx.try_recv() {
                         Ok(command) => batch.push(command),
