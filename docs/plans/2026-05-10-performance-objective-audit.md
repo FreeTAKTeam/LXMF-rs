@@ -302,6 +302,11 @@ direct evidence that the requested behavior, gate, or benchmark exists.
      zero-failure scorecard. The generated canary report has `status: "PASS"`,
      `max_soak_failures: 0`, `max_mesh_failures: 0`, and an empty
      `rollback_triggers` array after the propagated-resource race fix.
+   - `leader-readiness-check` now rejects scorecards that relax either
+     zero-failure threshold and records the enforced scorecard thresholds plus
+     the observed soak and mesh failure counts in the generated readiness
+     report. The latest targeted release-scorecard run passed with zero E2E
+     and mesh failures.
    - `cargo xtask ci --stage sdk-conformance` now passes 47 SDK conformance
      tests covering app-mode lifecycle/events, auth modes, crypto agility,
      key-management fallback, release B/C domain RPC adapters, delivery modes,
