@@ -270,6 +270,13 @@ direct evidence that the requested behavior, gate, or benchmark exists.
      graph for `reticulum-rs-transport`, `lxmf-wire`, and `reticulum-rs`, so
      the measured opt-in Fernet throughput path cannot drift out of downstream
      crate compatibility unnoticed.
+   - `.github/workflows/ci.yml` now runs
+     `cargo xtask ci --stage e2e-compatibility` in the regular contracts job.
+     The gate starts two local `reticulumd` instances, verifies destination
+     readiness metadata, peer discovery, and direct, opportunistic, and
+     propagated delivery modes through `rnx e2e`. The latest local run passed
+     all three delivery modes after destination readiness metadata was exposed
+     on stdout for the harness.
    - `target/criterion/bench-budget-report.txt` currently reports `Status:
      PASS` and includes storage writer-lane insertion plus local-vs-process
      resource completion and outbound encryption budgets for

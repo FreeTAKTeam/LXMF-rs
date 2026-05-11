@@ -51,6 +51,7 @@ Current GitHub PR CI in `.github/workflows/ci.yml` enforces these jobs:
   - `cargo check -p reticulumd -p rns-tools`
   - `bash tools/scripts/check-boundaries.sh`
   - `cargo run -p xtask -- architecture-checks`
+  - `cargo xtask ci --stage e2e-compatibility`
   - `cargo run -p xtask -- sdk-docs-check`
   - `cargo run -p xtask -- sdk-migration-check`
 - `security`
