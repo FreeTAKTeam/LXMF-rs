@@ -1,10 +1,11 @@
 use core::cmp;
 use core::convert::From;
 
+use aes::cipher::block_padding::Pkcs7;
 use aes::cipher::Key;
 use aes::cipher::Unsigned;
-use aes::cipher::{BlockDecryptMut, BlockEncryptMut, BlockSizeUser};
-use aes::Block;
+use aes::cipher::{BlockDecryptMut, BlockSizeUser};
+use cbc::cipher::BlockEncryptMut;
 use cbc::cipher::KeyIvInit;
 use crypto_common::{IvSizeUser, KeySizeUser, OutputSizeUser};
 use hmac::{Hmac, Mac};
@@ -144,21 +145,12 @@ impl<R: CryptoRngCore + Copy> Fernet<R> {
 
         out_len += iv.len();
 
-        let cipher_buf = &mut out_buf[out_len..out_len + padded_cipher_len];
-        cipher_buf[..text.0.len()].copy_from_slice(text.0);
-        let pad_len = padded_cipher_len - text.0.len();
-        for byte in &mut cipher_buf[text.0.len()..] {
-            *byte = pad_len as u8;
-        }
+        let cipher_len = AesCbcEnc::new(&self.enc_key, &iv)
+            .encrypt_padded_b2b_mut::<Pkcs7>(text.0, &mut out_buf[out_len..])
+            .map_err(|_| RnsError::InvalidArgument)?
+            .len();
 
-        let mut cipher = AesCbcEnc::new(&self.enc_key, &iv);
-        for chunk in cipher_buf.chunks_exact_mut(AES_BLOCK_SIZE) {
-            cipher.encrypt_block_mut(Block::from_mut_slice(chunk));
-        }
-
-        let chiper_len = cipher_buf.len();
-
-        out_len += chiper_len;
+        out_len += cipher_len;
 
         let mut hmac = <HmacSha256 as Mac>::new_from_slice(&self.sign_key)
             .map_err(|_| RnsError::InvalidArgument)?;
@@ -187,21 +179,8 @@ impl<R: CryptoRngCore + Copy> Fernet<R> {
 
         hmac.update(&token_data[..token_data.len() - HMAC_OUT_SIZE]);
 
-        let actual_tag = hmac.finalize().into_bytes();
-
-        let valid = expected_tag
-            .iter()
-            .zip(actual_tag.as_slice())
-            .map(|(x, y)| x.cmp(y))
-            .find(|&ord| ord != cmp::Ordering::Equal)
-            .unwrap_or(actual_tag.len().cmp(&expected_tag.len()))
-            == cmp::Ordering::Equal;
-
-        if valid {
-            Ok(VerifiedToken(token_data))
-        } else {
-            Err(RnsError::IncorrectSignature)
-        }
+        hmac.verify_slice(expected_tag).map_err(|_| RnsError::IncorrectSignature)?;
+        Ok(VerifiedToken(token_data))
     }
 
     pub fn decrypt<'a, 'b>(
@@ -221,30 +200,15 @@ impl<R: CryptoRngCore + Copy> Fernet<R> {
             token_data[..IV_KEY_SIZE].try_into().map_err(|_| RnsError::InvalidArgument)?;
 
         let ciphertext = &token_data[IV_KEY_SIZE..tag_start_index];
-        if ciphertext.is_empty()
-            || ciphertext.len() % AES_BLOCK_SIZE != 0
-            || out_buf.len() < ciphertext.len()
-        {
+        if ciphertext.is_empty() || ciphertext.len() % AES_BLOCK_SIZE != 0 {
             return Err(RnsError::CryptoError);
         }
 
-        let plain_buf = &mut out_buf[..ciphertext.len()];
-        plain_buf.copy_from_slice(ciphertext);
+        let msg = AesCbcDec::new(&self.enc_key, &iv.into())
+            .decrypt_padded_b2b_mut::<Pkcs7>(ciphertext, out_buf)
+            .map_err(|_| RnsError::CryptoError)?;
 
-        let mut cipher = AesCbcDec::new(&self.enc_key, &iv.into());
-        for chunk in plain_buf.chunks_exact_mut(AES_BLOCK_SIZE) {
-            cipher.decrypt_block_mut(Block::from_mut_slice(chunk));
-        }
-
-        let pad_len = usize::from(*plain_buf.last().ok_or(RnsError::CryptoError)?);
-        if pad_len == 0 || pad_len > AES_BLOCK_SIZE || pad_len > plain_buf.len() {
-            return Err(RnsError::CryptoError);
-        }
-        if plain_buf[plain_buf.len() - pad_len..].iter().any(|byte| usize::from(*byte) != pad_len) {
-            return Err(RnsError::CryptoError);
-        }
-
-        Ok(PlainText(&plain_buf[..plain_buf.len() - pad_len]))
+        Ok(PlainText(msg))
     }
 }
 

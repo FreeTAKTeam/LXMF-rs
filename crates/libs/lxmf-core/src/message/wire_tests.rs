@@ -1,5 +1,5 @@
 use super::WireMessage;
-use crate::message::{MessageContainer, MessageState, Payload, TransportMethod};
+use crate::message::{Message, MessageContainer, MessageState, Payload, TransportMethod};
 use rand_core::OsRng;
 use rns_core::identity::{DecryptIdentity, PrivateIdentity, PUBLIC_KEY_LENGTH};
 use serde_bytes::ByteBuf;
@@ -10,6 +10,88 @@ fn address_hash_bytes(identity: &PrivateIdentity) -> [u8; 16] {
     let mut out = [0u8; 16];
     out.copy_from_slice(identity.address_hash().as_slice());
     out
+}
+
+#[test]
+fn message_to_wire_preserves_precomputed_signature_pack_format() {
+    let mut message = Message::new();
+    message.destination_hash = Some([0x11; 16]);
+    message.source_hash = Some([0x22; 16]);
+    message.signature = Some([0x33; 64]);
+    message.timestamp = Some(1_774_001_000.25);
+    message.set_title_from_string("borrowed-title");
+    message.set_content_from_string("borrowed-content");
+    message.set_stamp_from_bytes(&[0x44; 8]);
+
+    let payload = Payload::new(
+        message.timestamp.expect("timestamp"),
+        Some(message.content.clone()),
+        Some(message.title.clone()),
+        None,
+        message.stamp.clone(),
+    );
+    let mut wire = WireMessage::new(
+        message.destination_hash.expect("destination"),
+        message.source_hash.expect("source"),
+        payload,
+    );
+    wire.signature = message.signature;
+
+    assert_eq!(message.to_wire(None).expect("message wire"), wire.pack().expect("wire pack"));
+}
+
+#[test]
+fn message_to_wire_signer_branch_emits_verifiable_signature() {
+    let sender = PrivateIdentity::new_from_name("message-to-wire-signer");
+    let receiver = PrivateIdentity::new_from_name("message-to-wire-receiver");
+    let mut message = Message::new();
+    message.destination_hash = Some(address_hash_bytes(&receiver));
+    message.source_hash = Some(address_hash_bytes(&sender));
+    message.timestamp = Some(1_774_001_100.5);
+    message.set_title_from_string("signed-title");
+    message.set_content_from_string("signed-content");
+
+    let packed = message.to_wire(Some(&sender)).expect("signed message wire");
+    let wire = WireMessage::unpack(&packed).expect("unpack signed message");
+
+    assert_eq!(wire.destination, message.destination_hash.expect("destination"));
+    assert_eq!(wire.source, message.source_hash.expect("source"));
+    assert!(wire.verify(sender.as_identity()).expect("verify signature"));
+}
+
+#[test]
+fn payload_from_msgpack_fast_path_decodes_binary_fields_and_stamp() {
+    let payload = Payload::new(
+        1_774_001_200.75,
+        Some(b"binary-content".to_vec()),
+        Some(b"binary-title".to_vec()),
+        None,
+        Some(vec![0x55; 16]),
+    );
+    let encoded = payload.to_msgpack().expect("encode payload");
+    let decoded = Payload::from_msgpack(&encoded).expect("decode payload");
+
+    assert_eq!(decoded, payload);
+}
+
+#[test]
+fn payload_from_msgpack_keeps_string_compatibility_fallback() {
+    let encoded = rmp_serde::to_vec(&(
+        1_774_001_300.125,
+        "string-title",
+        "string-content",
+        rmpv::Value::Nil,
+    ))
+    .expect("encode string payload");
+    let decoded = Payload::from_msgpack(&encoded).expect("decode string payload");
+
+    assert_eq!(decoded.title.as_ref().map(|value| value.as_ref()), Some(&b"string-title"[..]));
+    assert_eq!(
+        decoded.content.as_ref().map(|value| value.as_ref()),
+        Some(&b"string-content"[..])
+    );
+    assert_eq!(decoded.fields, None);
+    assert_eq!(decoded.stamp, None);
 }
 
 #[test]

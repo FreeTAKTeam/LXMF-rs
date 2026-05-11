@@ -400,7 +400,6 @@ impl DecryptIdentity for PrivateIdentity {
         );
 
         let token = Token::from(data);
-
         let token = fernet.verify(token)?;
 
         let plain_text = fernet.decrypt(token, out_buf)?;
@@ -439,6 +438,7 @@ pub fn verify(pubkey: [u8; 32], data: &[u8], signature: &[u8]) -> bool {
 
 pub struct GroupIdentity {}
 
+#[derive(Clone)]
 pub struct DerivedKey {
     key: [u8; DERIVED_KEY_LENGTH],
 }
@@ -454,6 +454,10 @@ impl DerivedKey {
 
     pub fn new_empty() -> Self {
         Self { key: [0u8; DERIVED_KEY_LENGTH] }
+    }
+
+    pub(crate) fn from_bytes(bytes: [u8; DERIVED_KEY_LENGTH]) -> Self {
+        Self { key: bytes }
     }
 
     pub fn new_from_private_key(

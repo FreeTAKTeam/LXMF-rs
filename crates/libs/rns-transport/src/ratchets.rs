@@ -150,11 +150,32 @@ pub fn encrypt_for_public_key<R: CryptoRngCore + Copy>(
     Ok(out)
 }
 
+pub fn encrypt_for_public_key_bytes<R: CryptoRngCore + Copy>(
+    public_key: &[u8; PUBLIC_KEY_LENGTH],
+    salt: &[u8],
+    plaintext: &[u8],
+    rng: R,
+) -> Result<Vec<u8>, RnsError> {
+    encrypt_for_public_key(&PublicKey::from(*public_key), salt, plaintext, rng)
+}
+
 pub fn decrypt_with_private_key(
     private_key: &StaticSecret,
     salt: &[u8],
     ciphertext: &[u8],
 ) -> Result<Vec<u8>, RnsError> {
+    let mut out = vec![0u8; ciphertext.len()];
+    let plain_len = decrypt_with_private_key_into(private_key, salt, ciphertext, &mut out)?.len();
+    out.truncate(plain_len);
+    Ok(out)
+}
+
+pub fn decrypt_with_private_key_into<'a>(
+    private_key: &StaticSecret,
+    salt: &[u8],
+    ciphertext: &[u8],
+    out: &'a mut [u8],
+) -> Result<&'a [u8], RnsError> {
     if ciphertext.len() <= PUBLIC_KEY_LENGTH {
         return Err(RnsError::InvalidArgument);
     }
@@ -170,9 +191,8 @@ pub fn decrypt_with_private_key(
         Fernet::new_from_slices(&key_bytes[..split], &key_bytes[split..], rand_core::OsRng);
     let token = Token::from(&ciphertext[PUBLIC_KEY_LENGTH..]);
     let verified = fernet.verify(token).map_err(|_| RnsError::CryptoError)?;
-    let mut out = vec![0u8; ciphertext.len()];
-    let plain = fernet.decrypt(verified, &mut out).map_err(|_| RnsError::CryptoError)?;
-    Ok(plain.as_bytes().to_vec())
+    let plain = fernet.decrypt(verified, out).map_err(|_| RnsError::CryptoError)?;
+    Ok(plain.as_bytes())
 }
 
 pub fn decrypt_with_identity(
@@ -180,6 +200,18 @@ pub fn decrypt_with_identity(
     salt: &[u8],
     ciphertext: &[u8],
 ) -> Result<Vec<u8>, RnsError> {
+    let mut out = vec![0u8; ciphertext.len()];
+    let plain_len = decrypt_with_identity_into(identity, salt, ciphertext, &mut out)?.len();
+    out.truncate(plain_len);
+    Ok(out)
+}
+
+pub fn decrypt_with_identity_into<'a>(
+    identity: &PrivateIdentity,
+    salt: &[u8],
+    ciphertext: &[u8],
+    out: &'a mut [u8],
+) -> Result<&'a [u8], RnsError> {
     if ciphertext.len() <= PUBLIC_KEY_LENGTH {
         return Err(RnsError::InvalidArgument);
     }
@@ -194,9 +226,8 @@ pub fn decrypt_with_identity(
         Fernet::new_from_slices(&key_bytes[..split], &key_bytes[split..], rand_core::OsRng);
     let token = Token::from(&ciphertext[PUBLIC_KEY_LENGTH..]);
     let verified = fernet.verify(token).map_err(|_| RnsError::CryptoError)?;
-    let mut out = vec![0u8; ciphertext.len()];
-    let plain = fernet.decrypt(verified, &mut out).map_err(|_| RnsError::CryptoError)?;
-    Ok(plain.as_bytes().to_vec())
+    let plain = fernet.decrypt(verified, out).map_err(|_| RnsError::CryptoError)?;
+    Ok(plain.as_bytes())
 }
 
 pub(crate) fn now_secs() -> f64 {

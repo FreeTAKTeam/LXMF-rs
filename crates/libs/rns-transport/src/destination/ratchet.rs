@@ -1,7 +1,7 @@
 use crate::{
     error::RnsError,
     identity::{PrivateIdentity, PUBLIC_KEY_LENGTH},
-    ratchets::decrypt_with_private_key,
+    ratchets::{decrypt_with_private_key, decrypt_with_private_key_into},
 };
 use ed25519_dalek::Signature;
 use rand_core::OsRng;
@@ -158,6 +158,21 @@ pub(crate) fn try_decrypt_with_ratchets(
         let secret = StaticSecret::from(*ratchet);
         if let Ok(plaintext) = decrypt_with_private_key(&secret, salt, ciphertext) {
             return Some(plaintext);
+        }
+    }
+    None
+}
+
+pub(crate) fn try_decrypt_with_ratchets_into<'a>(
+    state: &RatchetState,
+    salt: &[u8],
+    ciphertext: &[u8],
+    out: &'a mut [u8],
+) -> Option<usize> {
+    for ratchet in &state.ratchets {
+        let secret = StaticSecret::from(*ratchet);
+        if let Ok(plaintext) = decrypt_with_private_key_into(&secret, salt, ciphertext, out) {
+            return Some(plaintext.len());
         }
     }
     None

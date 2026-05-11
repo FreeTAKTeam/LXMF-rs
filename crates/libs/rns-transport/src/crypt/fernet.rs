@@ -187,21 +187,8 @@ impl<R: CryptoRngCore + Copy> Fernet<R> {
 
         hmac.update(&token_data[..token_data.len() - HMAC_OUT_SIZE]);
 
-        let actual_tag = hmac.finalize().into_bytes();
-
-        let valid = expected_tag
-            .iter()
-            .zip(actual_tag.as_slice())
-            .map(|(x, y)| x.cmp(y))
-            .find(|&ord| ord != cmp::Ordering::Equal)
-            .unwrap_or(actual_tag.len().cmp(&expected_tag.len()))
-            == cmp::Ordering::Equal;
-
-        if valid {
-            Ok(VerifiedToken(token_data))
-        } else {
-            Err(RnsError::IncorrectSignature)
-        }
+        hmac.verify_slice(expected_tag).map_err(|_| RnsError::IncorrectSignature)?;
+        Ok(VerifiedToken(token_data))
     }
 
     pub fn decrypt<'a, 'b>(
@@ -242,13 +229,51 @@ impl CachedFernet {
         Self { sign_key: sign_key_bytes, enc_key: enc_key_bytes.into() }
     }
 
+    pub(crate) fn to_key_bytes(&self) -> (Vec<u8>, Vec<u8>) {
+        (self.sign_key.to_vec(), self.enc_key.as_slice().to_vec())
+    }
+
     pub fn encrypt<'a, R: CryptoRngCore + Copy>(
         &self,
         rng: R,
         text: PlainText,
         out_buf: &'a mut [u8],
     ) -> Result<Token<'a>, RnsError> {
-        Fernet::new(self.sign_key, self.enc_key, rng).encrypt(text, out_buf)
+        let block_count = text
+            .0
+            .len()
+            .checked_div(AES_BLOCK_SIZE)
+            .and_then(|blocks| blocks.checked_add(1))
+            .ok_or(RnsError::InvalidArgument)?;
+        let padded_cipher_len =
+            block_count.checked_mul(AES_BLOCK_SIZE).ok_or(RnsError::InvalidArgument)?;
+        let required_len =
+            FERNET_OVERHEAD_SIZE.checked_add(padded_cipher_len).ok_or(RnsError::InvalidArgument)?;
+
+        if out_buf.len() < required_len {
+            return Err(RnsError::InvalidArgument);
+        }
+
+        let mut out_len = 0;
+        let iv = AesCbcEnc::generate_iv(rng);
+        out_buf[..iv.len()].copy_from_slice(iv.as_slice());
+        out_len += iv.len();
+
+        let cipher_len = AesCbcEnc::new(&self.enc_key, &iv)
+            .encrypt_padded_b2b_mut::<Pkcs7>(text.0, &mut out_buf[out_len..])
+            .map_err(|_| RnsError::InvalidArgument)?
+            .len();
+        out_len += cipher_len;
+
+        let mut hmac = <HmacSha256 as Mac>::new_from_slice(&self.sign_key)
+            .map_err(|_| RnsError::InvalidArgument)?;
+        hmac.update(&out_buf[..out_len]);
+        let tag = hmac.finalize().into_bytes();
+
+        out_buf[out_len..out_len + tag.len()].copy_from_slice(tag.as_slice());
+        out_len += tag.len();
+
+        Ok(Token(&out_buf[..out_len]))
     }
 
     pub fn verify<'a>(&self, token: Token<'a>) -> Result<VerifiedToken<'a>, RnsError> {
@@ -265,21 +290,8 @@ impl CachedFernet {
 
         hmac.update(&token_data[..token_data.len() - HMAC_OUT_SIZE]);
 
-        let actual_tag = hmac.finalize().into_bytes();
-
-        let valid = expected_tag
-            .iter()
-            .zip(actual_tag.as_slice())
-            .map(|(x, y)| x.cmp(y))
-            .find(|&ord| ord != cmp::Ordering::Equal)
-            .unwrap_or(actual_tag.len().cmp(&expected_tag.len()))
-            == cmp::Ordering::Equal;
-
-        if valid {
-            Ok(VerifiedToken(token_data))
-        } else {
-            Err(RnsError::IncorrectSignature)
-        }
+        hmac.verify_slice(expected_tag).map_err(|_| RnsError::IncorrectSignature)?;
+        Ok(VerifiedToken(token_data))
     }
 
     pub fn decrypt<'a, 'b>(

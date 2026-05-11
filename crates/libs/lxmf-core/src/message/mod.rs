@@ -16,6 +16,7 @@ use crate::error::LxmfError;
 use alloc::string::String;
 use alloc::vec::Vec;
 use rns_core::identity::PrivateIdentity;
+use sha2::{Digest, Sha256};
 
 #[cfg(feature = "std")]
 fn now_secs_f64() -> f64 {
@@ -120,24 +121,47 @@ impl Message {
 
         let timestamp = self.timestamp.unwrap_or_else(now_secs_f64);
 
-        let payload = Payload::new(
-            timestamp,
-            Some(self.content.clone()),
-            Some(self.title.clone()),
-            self.fields.clone(),
-            self.stamp.clone(),
-        );
-
-        let mut wire = WireMessage::new(destination, source, payload);
-        if let Some(signature) = self.signature {
-            wire.signature = Some(signature);
+        let signature = if let Some(signature) = self.signature {
+            signature
         } else if let Some(signer) = signer {
-            wire.sign(signer)?;
+            let payload = payload::encode_msgpack_parts(
+                timestamp,
+                Some(&self.title),
+                Some(&self.content),
+                self.fields.as_ref(),
+                None,
+            )?;
+            let mut hasher = Sha256::new();
+            hasher.update(destination);
+            hasher.update(source);
+            hasher.update(&payload);
+            let message_id = hasher.finalize();
+
+            let mut data = Vec::with_capacity(16 + 16 + payload.len() + message_id.len());
+            data.extend_from_slice(&destination);
+            data.extend_from_slice(&source);
+            data.extend_from_slice(&payload);
+            data.extend_from_slice(&message_id);
+
+            signer.sign(&data).to_bytes()
         } else {
             return Err(LxmfError::Encode("missing signature".into()));
-        }
+        };
 
-        wire.pack()
+        let payload = payload::encode_msgpack_parts(
+            timestamp,
+            Some(&self.title),
+            Some(&self.content),
+            self.fields.as_ref(),
+            self.stamp.as_deref(),
+        )?;
+
+        let mut out = Vec::with_capacity(16 + 16 + wire::SIGNATURE_LENGTH + payload.len());
+        out.extend_from_slice(&destination);
+        out.extend_from_slice(&source);
+        out.extend_from_slice(&signature);
+        out.extend_from_slice(&payload);
+        Ok(out)
     }
 }
 
