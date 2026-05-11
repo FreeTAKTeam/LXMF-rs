@@ -1,6 +1,6 @@
 use super::diag;
 use super::wire::should_encrypt_packet;
-use super::worker_boundary::{WorkerBackend, WorkerJob, WorkerJobKind, WorkerResultKind};
+use super::worker_boundary::OutboundEncryptBatchItem;
 use super::*;
 
 pub(super) const MAX_OUTBOUND_ENCRYPTION_WORKERS: usize = 4;
@@ -18,7 +18,7 @@ struct OutboundEncryptionContext {
     public_key: [u8; crate::identity::PUBLIC_KEY_LENGTH],
     salt: AddressHash,
     config_name: String,
-    remote_backend: Option<Arc<dyn WorkerBackend>>,
+    remote_batch_lane: Option<crypto_batch_lane::OutboundCryptoBatchLane>,
 }
 
 struct UnlockedDispatchContext {
@@ -104,8 +104,8 @@ async fn encrypt_packet_on_worker(
     packet: Packet,
     context: OutboundEncryptionContext,
 ) -> Result<Packet, SendPacketTrace> {
-    if let Some(remote_backend) = context.remote_backend.clone() {
-        match encrypt_packet_on_remote_worker(&packet, &context, remote_backend).await {
+    if let Some(remote_batch_lane) = context.remote_batch_lane.clone() {
+        match encrypt_packet_on_remote_worker(&packet, &context, remote_batch_lane).await {
             Ok(packet) => return Ok(packet),
             Err(trace) => {
                 log::debug!(
@@ -168,22 +168,19 @@ async fn encrypt_packet_on_local_worker(
 async fn encrypt_packet_on_remote_worker(
     packet: &Packet,
     context: &OutboundEncryptionContext,
-    backend: Arc<dyn WorkerBackend>,
+    batch_lane: crypto_batch_lane::OutboundCryptoBatchLane,
 ) -> Result<Packet, SendPacketTrace> {
     let packet_wire = packet
         .to_bytes()
         .map_err(|_| send_packet_trace(SendPacketOutcome::DroppedEncryptFailed))?;
-    let response = backend
-        .submit(WorkerJob {
-            id: u64::from_be_bytes(packet.hash().as_slice()[..8].try_into().unwrap_or([0; 8])),
-            kind: WorkerJobKind::OutboundEncrypt {
-                packet_wire,
-                public_key: context.public_key,
-                salt: {
-                    let mut salt = [0u8; crate::hash::ADDRESS_HASH_SIZE];
-                    salt.copy_from_slice(context.salt.as_slice());
-                    salt
-                },
+    let packet_wire = batch_lane
+        .encrypt(OutboundEncryptBatchItem {
+            packet_wire,
+            public_key: context.public_key,
+            salt: {
+                let mut salt = [0u8; crate::hash::ADDRESS_HASH_SIZE];
+                salt.copy_from_slice(context.salt.as_slice());
+                salt
             },
         })
         .await
@@ -194,15 +191,8 @@ async fn encrypt_packet_on_remote_worker(
                 err
             );
             send_packet_trace(SendPacketOutcome::DroppedEncryptFailed)
-        })?;
-
-    let WorkerResultKind::PacketWire { packet_wire } = response.kind else {
-        log::debug!(
-            "tp({}): remote outbound encryption returned unexpected result",
-            context.config_name
-        );
-        return Err(send_packet_trace(SendPacketOutcome::DroppedEncryptFailed));
-    };
+        })?
+        .packet_wire;
     Packet::from_bytes(packet_wire.as_slice()).map_err(|err| {
         log::debug!(
             "tp({}): remote outbound encryption returned invalid packet: {:?}",
@@ -222,12 +212,12 @@ impl TransportHandler {
             return Ok(None);
         }
 
-        let (destination, config_name, remote_backend) = {
+        let (destination, config_name, remote_batch_lane) = {
             let handler = handler.lock().await;
             (
                 handler.single_out_destinations.get(&packet.destination).cloned(),
                 handler.config.name.clone(),
-                handler.outbound_worker_backend.clone(),
+                handler.outbound_crypto_batch_lane.clone(),
             )
         };
         let Some(destination) = destination else {
@@ -257,7 +247,7 @@ impl TransportHandler {
         let public_key = ratchet
             .map(|ratchet| *PublicKey::from(ratchet).as_bytes())
             .unwrap_or(*identity.public_key.as_bytes());
-        Ok(Some(OutboundEncryptionContext { public_key, salt, config_name, remote_backend }))
+        Ok(Some(OutboundEncryptionContext { public_key, salt, config_name, remote_batch_lane }))
     }
 
     pub(super) async fn send_packet_with_trace_unlocked(

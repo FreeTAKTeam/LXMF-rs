@@ -397,9 +397,10 @@ async fn outbound_encryption_saturation_returns_without_waiting() {
     handler.lock().await.single_out_destinations.insert(destination_hash, destination);
 
     let permits = super::handler::outbound_encryption_permits();
-    let _held_permits = (0..super::handler::MAX_OUTBOUND_ENCRYPTION_WORKERS)
-        .map(|_| permits.clone().try_acquire_owned().expect("permit available"))
-        .collect::<Vec<_>>();
+    let _held_permits = permits
+        .acquire_many_owned(super::handler::MAX_OUTBOUND_ENCRYPTION_WORKERS as u32)
+        .await
+        .expect("outbound encryption semaphore is open");
 
     let outcome = timeout(
         Duration::from_millis(50),
@@ -598,19 +599,37 @@ impl WorkerBackend for OutboundEncryptBackend {
     fn submit(&self, job: WorkerJob) -> WorkerJobFuture<'_> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         Box::pin(async move {
-            let WorkerJobKind::OutboundEncrypt { packet_wire, .. } = job.kind else {
-                return Err(WorkerError::InvalidJob {
-                    message: "expected outbound encrypt job".to_string(),
-                });
+            let (packet_wires, batch) = match job.kind {
+                WorkerJobKind::OutboundEncrypt { packet_wire, .. } => (vec![packet_wire], false),
+                WorkerJobKind::OutboundEncryptBatch { items } => {
+                    (items.into_iter().map(|item| item.packet_wire).collect(), true)
+                }
+                _ => {
+                    return Err(WorkerError::InvalidJob {
+                        message: "expected outbound encrypt job".to_string(),
+                    });
+                }
             };
-            let mut packet = Packet::from_bytes(&packet_wire).map_err(|err| {
-                WorkerError::Packet { message: format!("packet decode failed: {err:?}") }
-            })?;
-            packet.data = PacketDataBuffer::new_from_slice(b"remote encrypted");
-            let packet_wire = packet.to_bytes().map_err(|err| WorkerError::Packet {
-                message: format!("packet encode failed: {err:?}"),
-            })?;
-            Ok(WorkerResult { id: job.id, kind: WorkerResultKind::PacketWire { packet_wire } })
+            let mut encrypted = Vec::with_capacity(packet_wires.len());
+            for packet_wire in packet_wires {
+                let mut packet = Packet::from_bytes(&packet_wire).map_err(|err| {
+                    WorkerError::Packet { message: format!("packet decode failed: {err:?}") }
+                })?;
+                packet.data = PacketDataBuffer::new_from_slice(b"remote encrypted");
+                let packet_wire = packet.to_bytes().map_err(|err| WorkerError::Packet {
+                    message: format!("packet encode failed: {err:?}"),
+                })?;
+                encrypted.push(super::worker_boundary::PacketWireBatchItem { packet_wire });
+            }
+            if !batch && encrypted.len() == 1 {
+                let packet_wire = encrypted.remove(0).packet_wire;
+                Ok(WorkerResult { id: job.id, kind: WorkerResultKind::PacketWire { packet_wire } })
+            } else {
+                Ok(WorkerResult {
+                    id: job.id,
+                    kind: WorkerResultKind::PacketWireBatch { items: encrypted },
+                })
+            }
         })
     }
 }

@@ -961,7 +961,10 @@ themselves.
    `reticulumd_worker_stdio_inbound_decrypt_batch_64_round_trip`
    measures about 1.01 ms p50 through one framed child batch request. Both
    batch encrypt and decrypt worker paths are now protected by SDK perf
-   budgets before runtime coalescing starts depending on them.
+   budgets. Runtime outbound encryption now uses a bounded crypto batch lane
+   that coalesces queued outbound encrypt requests into the measured batch
+   worker path with non-blocking admission and ordered per-packet replies. The
+   matching inbound decrypt runtime lane remains a next step.
 
 5. Optional process isolation
 

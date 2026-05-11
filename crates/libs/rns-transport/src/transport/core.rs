@@ -34,6 +34,8 @@ impl Transport {
         let resource_retry_limit = config.resource_retry_limit;
         let announce_worker_backend = config.announce_worker_backend.clone();
         let outbound_worker_backend = config.outbound_worker_backend.clone();
+        let outbound_crypto_batch_lane =
+            outbound_worker_backend.clone().map(crypto_batch_lane::OutboundCryptoBatchLane::spawn);
         let single_destination_worker_backend = config.single_destination_worker_backend.clone();
         let resource_worker_backend = config.resource_worker_backend.clone();
         let ratchet_store = config.ratchet_store_path.as_ref().map(|path| {
@@ -87,7 +89,7 @@ impl Transport {
             resource_lane,
             resource_events_tx: resource_events_tx.clone(),
             announce_worker_backend,
-            outbound_worker_backend,
+            outbound_crypto_batch_lane,
             single_destination_worker_backend,
             resource_worker_backend,
             fixed_dest_path_requests: path_request_dest,

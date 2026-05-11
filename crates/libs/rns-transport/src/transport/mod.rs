@@ -63,6 +63,7 @@ use crate::resource::{
 
 mod announce_limits;
 mod announce_table;
+mod crypto_batch_lane;
 mod diag;
 pub mod interface_boundary;
 mod link_table;
@@ -236,7 +237,7 @@ pub(crate) struct TransportHandler {
     resource_lane: resource_lane::ResourceManagerLane,
     resource_events_tx: broadcast::Sender<ResourceEvent>,
     announce_worker_backend: Option<Arc<dyn worker_boundary::WorkerBackend>>,
-    outbound_worker_backend: Option<Arc<dyn worker_boundary::WorkerBackend>>,
+    outbound_crypto_batch_lane: Option<crypto_batch_lane::OutboundCryptoBatchLane>,
     single_destination_worker_backend: Option<Arc<dyn worker_boundary::WorkerBackend>>,
     resource_worker_backend: Option<Arc<dyn worker_boundary::WorkerBackend>>,
 
