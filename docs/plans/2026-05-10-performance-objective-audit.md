@@ -630,14 +630,20 @@ direct evidence that the requested behavior, gate, or benchmark exists.
    Remaining gaps:
    - UDP, serial, TCP client, TCP server/listener, and BLE GATT have
      process-backed configured-interface paths. Router/control now has a framed
-     boundary and hidden stdio child runtime, but a full parent/supervisor
-     router-control process split, independently managed workers, and broader
-     router-process restart-state-corruption tests are still future work.
+     boundary, retained parent-side pool, hidden stdio child runtime, routed
+     read-only status path, timeout replacement, and state-preservation
+     coverage across a routed child replacement. Broader router/control routing
+     remains intentionally narrow until parent/child state ownership is
+     expanded beyond read-only `status`.
    - Stalled worker isolation is proven at the pool level, for packet receive,
      RPC status, event-sink dispatch, outbound delivery, and message/receipt
      plus SDK and announce/discovery state across worker replacement.
      Configured-interface state is now covered across interface-worker child
-     restart. Independently managed worker evidence is not complete.
+     restart. Independently managed worker evidence now covers low-level
+     in-memory, TCP, and Unix-socket framed worker supervisors plus bootstrap
+     wiring/status for TCP and Unix-socket endpoints. Remaining production-scale
+     work is supervisor lifecycle policy outside this daemon rather than the
+     daemon's framed endpoint plumbing.
 
 ## Current Conclusion
 
@@ -652,6 +658,6 @@ fault isolation and CPU partitioning.
 
 The overall objective is not complete yet. The remaining work is measurement
 and production-scale isolation: audit remaining hot-path lock boundaries,
-deepen identity encrypt/decrypt optimization, and extend independently managed
-multi-process coverage beyond the current supervised child-pool paths only if
-the measurements show it is justified.
+deepen identity encrypt/decrypt optimization, and expand router/control or
+independently managed worker behavior only when ownership and measurements
+justify widening those process boundaries.
