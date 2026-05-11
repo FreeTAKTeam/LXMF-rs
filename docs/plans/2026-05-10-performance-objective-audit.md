@@ -229,6 +229,9 @@ direct evidence that the requested behavior, gate, or benchmark exists.
      `.lock().await.send(...)`. The guard scan intentionally ignores test
      modules and one-line snapshot blocks so it catches high-risk production
      patterns without flagging short state snapshots.
+   - `cargo xtask ci --stage security-review-check` passes against the current
+     tree, validating the security checklist and the runtime hygiene scans used
+     by regular CI.
 
    Status: covered for current single-process async lanes.
 

@@ -85,6 +85,8 @@ Current local compatibility evidence:
   Silver, and Gold tiers marked `PASS`.
 - `cargo xtask ci --stage key-management-check` passes 8 core key-manager tests
   and 4 SDK conformance key-management tests.
+- `cargo xtask ci --stage security-review-check` passes the security checklist
+  and executable runtime hygiene scans.
 
 ## 5. Local release checks
 
