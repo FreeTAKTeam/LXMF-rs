@@ -1,6 +1,41 @@
 use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
+use core::fmt;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AnnounceSlot {
+    pub id: u8,
+    pub value: Vec<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AnnounceParseError(&'static str);
+
+impl fmt::Display for AnnounceParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.0)
+    }
+}
+
+pub fn parse_announce_slots(data: &[u8]) -> Result<Vec<AnnounceSlot>, AnnounceParseError> {
+    let mut out = Vec::new();
+    let mut i = 0usize;
+    while i < data.len() {
+        if i + 2 > data.len() {
+            return Err(AnnounceParseError("truncated announce slot header"));
+        }
+        let id = data[i];
+        let len = data[i + 1] as usize;
+        i += 2;
+        if i + len > data.len() {
+            return Err(AnnounceParseError("announce slot length exceeds payload"));
+        }
+        out.push(AnnounceSlot { id, value: data[i..i + len].to_vec() });
+        i += len;
+    }
+    Ok(out)
+}
 
 pub fn normalize_display_name(value: &str) -> Option<String> {
     let trimmed = value.trim();
