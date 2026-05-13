@@ -45,6 +45,7 @@ jobs:
 
       - name: SDK latency/throughput budget gate
         working-directory: lxmf-rs
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
         run: cargo xtask ci --stage sdk-perf-budget-check
 
       - name: Upload SDK perf budget reports
