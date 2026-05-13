@@ -94,13 +94,12 @@ struct MockHub {
 fn route_message(hub: &mut MockHub, method: TransportMethod, stamp: Option<&[u8]>) {
     match method {
         TransportMethod::Direct => hub.accepted = true,
-        TransportMethod::Propagated => {
-            if stamp.is_some() {
-                hub.accepted = true;
-                hub.queued = true;
-                hub.retried = true;
-            }
+        TransportMethod::Propagated if stamp.is_some() => {
+            hub.accepted = true;
+            hub.queued = true;
+            hub.retried = true;
         }
+        TransportMethod::Propagated => {}
         _ => {}
     }
 }
@@ -119,7 +118,7 @@ fn propagation_message_with_valid_stamp_is_queued() {
     let wire = deterministic_wire(Some(vec![0x44; 32]), None);
     let _ = wire
         .pack_propagation_with_options_and_rng(
-            &rns_core::identity::PrivateIdentity::new_from_name("rx").as_identity(),
+            rns_core::identity::PrivateIdentity::new_from_name("rx").as_identity(),
             1_773_999_001.5,
             Some(&[0x55; 32]),
             rand_core::OsRng,
@@ -170,7 +169,7 @@ fn regenerate_fixtures_when_env_set() {
         .expect("interop test invariant failed");
     let (propagation, _) = deterministic_wire(Some(vec![0x44; 32]), None)
         .pack_propagation_with_options_and_rng(
-            &rns_core::identity::PrivateIdentity::new_from_name("rx").as_identity(),
+            rns_core::identity::PrivateIdentity::new_from_name("rx").as_identity(),
             1_773_999_001.5,
             Some(&[0x55; 32]),
             rand_core::OsRng,
