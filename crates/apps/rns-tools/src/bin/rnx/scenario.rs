@@ -83,7 +83,19 @@ pub(crate) fn run_e2e(
 
     drop(a_rpc_listener);
     drop(a_transport_listener);
+    drop(b_rpc_listener);
+    drop(b_transport_listener);
+
     let mut a_child = spawn_daemon(&a_rpc, &a_db, &a_transport, &a_config, propagation_enabled)?;
+    let mut b_child =
+        match spawn_daemon(&b_rpc, &b_db, &b_transport, &b_config, propagation_enabled) {
+            Ok(child) => child,
+            Err(err) => {
+                cleanup_child(&mut a_child, keep);
+                return Err(err);
+            }
+        };
+
     let a_ready = wait_for_ready(
         a_child.stdout.take().ok_or_else(|| io::Error::other("missing daemon stdout"))?,
         timeout,
@@ -96,9 +108,6 @@ pub(crate) fn run_e2e(
         }
     };
 
-    drop(b_rpc_listener);
-    drop(b_transport_listener);
-    let mut b_child = spawn_daemon(&b_rpc, &b_db, &b_transport, &b_config, propagation_enabled)?;
     let b_ready = wait_for_ready(
         b_child.stdout.take().ok_or_else(|| io::Error::other("missing daemon stdout"))?,
         timeout,
@@ -118,6 +127,8 @@ pub(crate) fn run_e2e(
         b_ready.delivery_hash,
         b_ready.propagation_hash
     );
+    // TcpClient retries every 5s after an initial refused/closed connection.
+    std::thread::sleep(Duration::from_millis(5500));
 
     let mut req_id = 1u64;
     let b_delivery_hash = b_ready
