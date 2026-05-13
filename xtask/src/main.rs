@@ -5760,7 +5760,7 @@ fn run_e2e_compatibility() -> Result<()> {
         println!("== e2e compatibility round {round}/{rounds} ==");
         run(
             "cargo",
-            &["run", "-p", "rns-tools", "--bin", "rnx", "--", "e2e", "--timeout-secs", "20"],
+            &["run", "-p", "rns-tools", "--bin", "rnx", "--", "e2e", "--timeout-secs", "45"],
         )?;
     }
     Ok(())

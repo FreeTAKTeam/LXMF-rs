@@ -562,6 +562,7 @@ mod tests {
             ReceivedPayloadMode::FullWire,
         )
         .await;
+        wait_for_message_count(&daemon, 1).await;
         let after_first = peer_row(&daemon, source_hex.as_str(), 45);
         assert_eq!(after_first["rx_bytes"].as_u64(), Some(wire.len() as u64));
         assert_eq!(after_first["messages"]["incoming"].as_u64(), Some(1));
@@ -685,6 +686,25 @@ mod tests {
             .find(|row| row["peer"].as_str() == Some(peer))
             .cloned()
             .expect("peer row")
+    }
+
+    async fn wait_for_message_count(daemon: &RpcDaemon, expected: usize) {
+        for attempt in 0..50 {
+            let messages = daemon
+                .handle_rpc(RpcRequest {
+                    id: 10_000 + attempt,
+                    method: "list_messages".to_string(),
+                    params: None,
+                })
+                .expect("list messages while waiting for storage writer")
+                .result
+                .expect("list messages result while waiting for storage writer");
+            if messages["messages"].as_array().map(Vec::len) == Some(expected) {
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        panic!("timed out waiting for {expected} stored messages");
     }
 
     fn stamped_propagation_payload(lxm_data: &[u8], target_cost: u32) -> Vec<u8> {

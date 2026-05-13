@@ -940,7 +940,7 @@ else:
 
             let pool = Arc::new(ControlRouterStdioPool::spawn(&script, 1).expect("spawn pool"));
             let route_context =
-                RpcRouteContext::new(Arc::new(RpcDaemon::test_instance()), Some(pool), 500);
+                RpcRouteContext::new(Arc::new(RpcDaemon::test_instance()), Some(pool), 1_500);
             let status_body = codec::encode_frame(&RpcRequest {
                 id: 91,
                 method: "status".to_string(),

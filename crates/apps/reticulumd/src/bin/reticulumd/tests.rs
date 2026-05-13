@@ -707,7 +707,7 @@ async fn sdk_paper_encode_uses_real_lxm_uri_when_peer_identity_is_known() {
 }
 
 #[tokio::test]
-async fn transport_bridge_rejects_propagated_send_without_selected_node() {
+async fn transport_bridge_marks_propagated_send_failed_without_selected_node() {
     let (daemon, _bridge) = test_transport_bridge_fixture().await;
 
     let send = daemon
@@ -724,13 +724,41 @@ async fn transport_bridge_rejects_propagated_send_without_selected_node() {
             })),
         })
         .expect("send");
-    let error = send.error.expect("propagated send should fail without node");
-    assert_eq!(error.code, "DELIVERY_FAILED");
+    assert!(send.error.is_none(), "propagated send should be queued for bridge delivery");
+
+    let receipt_status = wait_for_receipt_status(&daemon, "propagated-bridge-1", |status| {
+        status.starts_with("failed:")
+    })
+    .await;
     assert!(
-        error.message.contains("no outbound propagation node selected"),
-        "unexpected error: {}",
-        error.message
+        receipt_status.contains("no outbound propagation node selected"),
+        "unexpected receipt status: {receipt_status}"
     );
+}
+
+async fn wait_for_receipt_status(
+    daemon: &RpcDaemon,
+    message_id: &str,
+    predicate: impl Fn(&str) -> bool,
+) -> String {
+    for attempt in 0..50 {
+        let status = daemon
+            .handle_rpc(RpcRequest {
+                id: 20_000 + attempt,
+                method: "sdk_status_v2".into(),
+                params: Some(json!({ "message_id": message_id })),
+            })
+            .expect("status while waiting for receipt");
+        if let Some(receipt_status) =
+            status.result.as_ref().and_then(|result| result["message"]["receipt_status"].as_str())
+        {
+            if predicate(receipt_status) {
+                return receipt_status.to_string();
+            }
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    panic!("timed out waiting for receipt status for {message_id}");
 }
 
 #[tokio::test]
