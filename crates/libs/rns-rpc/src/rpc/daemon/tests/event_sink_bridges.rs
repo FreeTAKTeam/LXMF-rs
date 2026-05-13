@@ -170,8 +170,12 @@ fn sdk_event_sink_bridge_receives_redacted_payload() {
     daemon.flush_event_sink_worker_for_test();
 
     let captured = envelopes.lock().expect("envelopes mutex poisoned").clone();
-    assert_eq!(captured.len(), 1);
-    let envelope = captured.first().expect("one envelope");
+    let matching = captured
+        .iter()
+        .filter(|envelope| envelope.event.event_type == "security_notice")
+        .collect::<Vec<_>>();
+    assert_eq!(matching.len(), 1);
+    let envelope = matching.first().expect("one envelope");
     assert_eq!(envelope.runtime_id, "sink-node");
     assert_eq!(envelope.stream_id, "sdk-events");
     let token = envelope

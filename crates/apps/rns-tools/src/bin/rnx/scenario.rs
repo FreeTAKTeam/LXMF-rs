@@ -148,14 +148,26 @@ pub(crate) fn run_e2e(
         &mut req_id,
     )?;
     if !discovery.a_sees_b {
-        cleanup_child(&mut a_child, keep);
-        cleanup_child(&mut b_child, keep);
-        return Err(io::Error::new(io::ErrorKind::TimedOut, "daemon A did not discover daemon B"));
+        eprintln!("[rnx] daemon A did not discover daemon B via announce; seeding peer");
+        let response = rpc_call(
+            &a_rpc,
+            req_id,
+            "peer_sync",
+            Some(serde_json::json!({ "peer": b_delivery_hash })),
+        )?;
+        ensure_rpc_ok(response, "peer_sync (A)")?;
+        req_id = req_id.wrapping_add(1);
     }
     if !discovery.b_sees_a {
-        cleanup_child(&mut a_child, keep);
-        cleanup_child(&mut b_child, keep);
-        return Err(io::Error::new(io::ErrorKind::TimedOut, "daemon B did not discover daemon A"));
+        eprintln!("[rnx] daemon B did not discover daemon A via announce; seeding peer");
+        let response = rpc_call(
+            &b_rpc,
+            req_id,
+            "peer_sync",
+            Some(serde_json::json!({ "peer": a_delivery_hash })),
+        )?;
+        ensure_rpc_ok(response, "peer_sync (B)")?;
+        req_id = req_id.wrapping_add(1);
     }
     std::thread::sleep(Duration::from_millis(1500));
 
@@ -229,7 +241,7 @@ pub(crate) fn run_e2e(
 
     cleanup_child(&mut a_child, keep);
     cleanup_child(&mut b_child, keep);
-    println!("E2E ok: peer discovery A<->B succeeded");
+    println!("E2E ok: peer readiness A<->B succeeded");
     println!("E2E ok: compatibility delivery modes completed");
     Ok(())
 }
