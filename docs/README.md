@@ -49,6 +49,8 @@ deleted or folded into a newer source-of-truth doc.
 - `docs/lxmf-rs-api.md`: API surface and stability summary
 - `docs/lxmf-cli.md`: operator CLI quick reference
 - `docs/runbooks/release-readiness.md`: release gate checklist
+- `docs/runbooks/reticulumd-operational-deployment.md`: daemon deployment,
+  probes, shutdown, and service manager examples
 - `docs/runbooks/crates-io-publish-plan.md`: crates.io naming, versioning, and publish order
 - `docs/contracts/support-policy.md`: support and lifecycle guarantees
 - `docs/architecture/overview.md`: architecture entry point

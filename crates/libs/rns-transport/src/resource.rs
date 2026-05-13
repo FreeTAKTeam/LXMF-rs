@@ -39,6 +39,8 @@ const FLAG_RESPONSE: u8 = 0x10;
 const FLAG_METADATA: u8 = 0x20;
 
 const METADATA_MAX_SIZE: usize = 16 * 1024 * 1024 - 1;
+const AUTO_COMPRESS_MAX_SIZE: usize = 64 * 1024 * 1024;
+const MAX_INBOUND_RESOURCE_TRANSFER_SIZE: u64 = AUTO_COMPRESS_MAX_SIZE as u64;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResourceStatus {
@@ -48,6 +50,16 @@ pub enum ResourceStatus {
     AwaitingProof,
     Complete,
     Failed,
+}
+
+impl ResourceStatus {
+    pub fn is_terminal(self) -> bool {
+        matches!(self, Self::Complete | Self::Failed)
+    }
+
+    fn accepts_transfer_activity(self) -> bool {
+        matches!(self, Self::Advertised | Self::Transferring | Self::AwaitingProof)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

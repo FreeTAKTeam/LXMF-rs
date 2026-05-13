@@ -24,6 +24,9 @@
 ## SDK Integration Guide
 - Guide index: `docs/sdk/README.md`
 - Lifecycle/event operations: `docs/sdk/lifecycle-and-events.md`
+- Remote mTLS: `docs/sdk/remote-mtls.md`
+- Delivery states: `docs/sdk/delivery-states.md`
+- Error handling: `docs/sdk/error-handling.md`
 - Profile/security configuration: `docs/sdk/configuration-profiles.md`
 - JSON and wire-field mapping details: `docs/architecture/json-lxmf-fields.md`
 

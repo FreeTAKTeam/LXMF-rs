@@ -21,7 +21,10 @@ impl RpcDaemon {
             | "receive_message"
             | "record_receipt"
             | "sdk_cancel_message_v2"
-            | "message_delivery_trace" => self.handle_rpc_legacy_messages(request),
+            | "message_delivery_trace"
+            | "get_outbound_progress"
+            | "get_outbound_lxm_stamp_cost"
+            | "get_outbound_lxm_propagation_stamp_cost" => self.handle_rpc_legacy_messages(request),
             "get_delivery_policy"
             | "set_delivery_policy"
             | "propagation_status"
@@ -33,6 +36,7 @@ impl RpcDaemon {
             | "list_propagation_nodes"
             | "propagation_remote_status"
             | "propagation_remote_sync"
+            | "propagation_acknowledge_sync_completion"
             | "propagation_remote_unpeer" => self.handle_rpc_legacy_propagation(request),
             "paper_ingest_uri" | "stamp_policy_get" | "stamp_policy_set" | "ticket_generate"
             | "announce_now" | "announce_received" => self.handle_rpc_legacy_misc(request),

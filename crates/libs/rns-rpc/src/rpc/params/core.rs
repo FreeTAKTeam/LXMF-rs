@@ -84,6 +84,12 @@ struct PropagationEnableParams {
     #[serde(default)]
     message_storage_limit_mb: Option<u64>,
     #[serde(default)]
+    delivery_limit: Option<u32>,
+    #[serde(default)]
+    propagation_limit: Option<u32>,
+    #[serde(default)]
+    sync_limit: Option<u32>,
+    #[serde(default)]
     autopeer: Option<bool>,
     #[serde(default)]
     autopeer_maxdepth: Option<u32>,
@@ -123,6 +129,8 @@ struct StampPolicySetParams {
     target_cost: Option<u32>,
     #[serde(default)]
     flexibility: Option<u32>,
+    #[serde(default)]
+    enforce: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -167,7 +175,23 @@ struct PropagationRemotePeerParams {
     timeout_secs: Option<f64>,
 }
 
+#[derive(Debug, Deserialize, Default)]
+struct PropagationAcknowledgeSyncParams {
+    #[serde(default)]
+    reset_state: bool,
+    #[serde(default)]
+    failure_state: Option<u32>,
+}
+
 #[derive(Debug, Deserialize)]
 struct MessageDeliveryTraceParams {
     message_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct OutboundLxmQueryParams {
+    #[serde(default)]
+    message_id: Option<String>,
+    #[serde(default)]
+    lxm_hash: Option<String>,
 }

@@ -32,11 +32,22 @@ pub fn ticket_stamp(ticket: &[u8], message_id: &[u8; 32]) -> Vec<u8> {
 }
 
 pub fn generate_stamp(message_id: &[u8; 32], stamp_cost: u32) -> Option<Vec<u8>> {
+    generate_stamp_until_cancelled(message_id, stamp_cost, || false)
+}
+
+pub fn generate_stamp_until_cancelled(
+    message_id: &[u8; 32],
+    stamp_cost: u32,
+    mut cancelled: impl FnMut() -> bool,
+) -> Option<Vec<u8>> {
     let workblock = stamp_workblock(message_id, WORKBLOCK_EXPAND_ROUNDS);
     let mut workblock_hasher = Sha256::new();
     workblock_hasher.update(&workblock);
     let mut nonce = 0u64;
     loop {
+        if nonce & 0x3ff == 0 && cancelled() {
+            return None;
+        }
         let stamp = nonce.to_le_bytes().to_vec();
         if stamp_value_with_prefix(&workblock_hasher, &stamp) >= stamp_cost {
             return Some(stamp);
@@ -49,6 +60,23 @@ pub fn generate_stamp(message_id: &[u8; 32], stamp_cost: u32) -> Option<Vec<u8>>
 }
 
 pub fn generate_propagation_stamp(transient_id: &[u8; 32], stamp_cost: u32) -> Option<Vec<u8>> {
+    generate_propagation_stamp_until_cancelled(transient_id, stamp_cost, || false)
+}
+
+pub fn generate_propagation_stamp_until_cancelled(
+    transient_id: &[u8; 32],
+    stamp_cost: u32,
+    mut cancelled: impl FnMut() -> bool,
+) -> Option<Vec<u8>> {
+    generate_propagation_stamp_with_value_until_cancelled(transient_id, stamp_cost, &mut cancelled)
+        .map(|(stamp, _value)| stamp)
+}
+
+pub fn generate_propagation_stamp_with_value_until_cancelled(
+    transient_id: &[u8; 32],
+    stamp_cost: u32,
+    mut cancelled: impl FnMut() -> bool,
+) -> Option<(Vec<u8>, u32)> {
     let workblock = stamp_workblock(transient_id, PROPAGATION_WORKBLOCK_EXPAND_ROUNDS);
     let mut workblock_hasher = Sha256::new();
     workblock_hasher.update(&workblock);
@@ -56,9 +84,13 @@ pub fn generate_propagation_stamp(transient_id: &[u8; 32], stamp_cost: u32) -> O
     let mut nonce = 0u64;
 
     loop {
+        if nonce & 0x3ff == 0 && cancelled() {
+            return None;
+        }
         stamp[..8].copy_from_slice(&nonce.to_le_bytes());
-        if stamp_value_with_prefix(&workblock_hasher, &stamp) >= stamp_cost {
-            return Some(stamp);
+        let value = stamp_value_with_prefix(&workblock_hasher, &stamp);
+        if value >= stamp_cost {
+            return Some((stamp, value));
         }
         nonce = nonce.wrapping_add(1);
         if nonce == 0 {
@@ -130,7 +162,7 @@ pub fn validate_stamp(
     let stamp = stamp?;
 
     for ticket in tickets {
-        if target_cost <= COST_TICKET && ticket_stamp(ticket.as_slice(), message_id) == stamp {
+        if ticket_stamp(ticket.as_slice(), message_id) == stamp {
             return Some(COST_TICKET);
         }
     }
@@ -141,6 +173,12 @@ pub fn validate_stamp(
     } else {
         None
     }
+}
+
+pub fn invalid_stamp_value(stamp: Option<&[u8]>, message_id: &[u8; 32]) -> Option<u32> {
+    let stamp = stamp?;
+    let workblock = stamp_workblock(message_id, WORKBLOCK_EXPAND_ROUNDS);
+    Some(stamp_value(&workblock, stamp))
 }
 
 pub fn stamp_workblock(material: &[u8], expand_rounds: usize) -> Vec<u8> {
@@ -192,8 +230,11 @@ fn stamp_value_from_hash(hash: &[u8]) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::{
-        generate_peering_key, generate_propagation_stamp, validate_peering_key,
-        validate_propagation_stamp, PROPAGATION_STAMP_SIZE,
+        generate_peering_key, generate_propagation_stamp,
+        generate_propagation_stamp_until_cancelled,
+        generate_propagation_stamp_with_value_until_cancelled, generate_stamp_until_cancelled,
+        invalid_stamp_value, validate_peering_key, validate_propagation_stamp,
+        PROPAGATION_STAMP_SIZE,
     };
     use sha2::{Digest, Sha256};
 
@@ -233,6 +274,43 @@ mod tests {
         assert!(value >= 1);
 
         assert!(validate_peering_key(&peering_id, &key, value + 1).is_none());
+    }
+
+    #[test]
+    fn cancellable_stamp_generation_stops_before_work_loop() {
+        let message_id = [0x22u8; 32];
+
+        assert!(generate_stamp_until_cancelled(&message_id, 1, || true).is_none());
+    }
+
+    #[test]
+    fn cancellable_propagation_stamp_generation_stops_before_work_loop() {
+        let transient_id = [0x44u8; 32];
+
+        assert!(generate_propagation_stamp_until_cancelled(&transient_id, 1, || true).is_none());
+    }
+
+    #[test]
+    fn propagation_stamp_generation_reports_value() {
+        let transient_id = [0x55u8; 32];
+        let (stamp, value) =
+            generate_propagation_stamp_with_value_until_cancelled(&transient_id, 1, || false)
+                .expect("stamp");
+
+        let workblock =
+            super::stamp_workblock(&transient_id, super::PROPAGATION_WORKBLOCK_EXPAND_ROUNDS);
+        assert_eq!(value, super::stamp_value(&workblock, &stamp));
+        assert!(value >= 1);
+    }
+
+    #[test]
+    fn invalid_stamp_value_reports_pow_value_below_policy() {
+        let message_id = [0x66u8; 32];
+        let stamp = vec![0u8; 8];
+        let value = invalid_stamp_value(Some(&stamp), &message_id).expect("value");
+        let workblock = super::stamp_workblock(&message_id, super::WORKBLOCK_EXPAND_ROUNDS);
+
+        assert_eq!(value, super::stamp_value(&workblock, &stamp));
     }
 
     fn sha256_array(data: &[u8]) -> [u8; 32] {

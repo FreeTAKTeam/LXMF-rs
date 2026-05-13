@@ -43,6 +43,33 @@ pub fn build_wire_message_with_options(
     outbound_ticket_hex: Option<&str>,
     include_ticket: Option<(i64, &[u8])>,
 ) -> Result<Vec<u8>, LxmfError> {
+    build_wire_message_with_options_and_cancel(
+        source,
+        destination,
+        title,
+        content,
+        fields,
+        signer,
+        stamp_cost,
+        outbound_ticket_hex,
+        include_ticket,
+        || false,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn build_wire_message_with_options_and_cancel(
+    source: [u8; 16],
+    destination: [u8; 16],
+    title: &str,
+    content: &str,
+    fields: Option<JsonValue>,
+    signer: &PrivateIdentity,
+    stamp_cost: Option<u32>,
+    outbound_ticket_hex: Option<&str>,
+    include_ticket: Option<(i64, &[u8])>,
+    mut cancelled: impl FnMut() -> bool,
+) -> Result<Vec<u8>, LxmfError> {
     let mut message = Message::new();
     message.destination_hash = Some(destination);
     message.source_hash = Some(source);
@@ -72,7 +99,7 @@ pub fn build_wire_message_with_options(
         let stamp = ticket_stamp(&ticket, &message_id);
         message.set_stamp_from_bytes(&stamp);
     } else if let Some(cost) = stamp_cost {
-        let stamp = generate_stamp(&message_id, cost)
+        let stamp = generate_stamp(&message_id, cost, &mut cancelled)
             .ok_or_else(|| LxmfError::Encode("failed to generate LXMF stamp".into()))?;
         message.set_stamp_from_bytes(&stamp);
     }
@@ -125,8 +152,12 @@ fn current_time_secs_f64() -> f64 {
         .as_secs_f64()
 }
 
-fn generate_stamp(message_id: &[u8; 32], stamp_cost: u32) -> Option<Vec<u8>> {
-    crate::lxmf_stamps::generate_stamp(message_id, stamp_cost)
+fn generate_stamp(
+    message_id: &[u8; 32],
+    stamp_cost: u32,
+    cancelled: &mut impl FnMut() -> bool,
+) -> Option<Vec<u8>> {
+    crate::lxmf_stamps::generate_stamp_until_cancelled(message_id, stamp_cost, cancelled)
 }
 
 pub fn decode_wire_message(bytes: &[u8]) -> Result<Message, LxmfError> {

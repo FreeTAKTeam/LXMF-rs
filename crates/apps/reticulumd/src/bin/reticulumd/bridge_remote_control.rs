@@ -1,4 +1,6 @@
 use super::*;
+use reticulum_daemon::lxmf_bridge::rmpv_to_json;
+use rns_rpc::RemoteControlBridge;
 
 impl TransportBridge {
     pub(super) fn run_remote_control(
@@ -67,6 +69,55 @@ impl TransportBridge {
 pub(super) fn remote_peer_value(peer: &str) -> Result<rmpv::Value, std::io::Error> {
     let peer_hash = parse_destination_hash_required(peer)?;
     Ok(rmpv::Value::Binary(peer_hash.to_vec()))
+}
+
+impl RemoteControlBridge for TransportBridge {
+    fn propagation_remote_status(
+        &self,
+        remote: &str,
+        identity_private_key_hex: Option<&str>,
+        timeout_secs: f64,
+    ) -> Result<JsonValue, std::io::Error> {
+        self.run_remote_control(
+            remote,
+            identity_private_key_hex,
+            timeout_secs,
+            "/pn/get/stats",
+            rmpv::Value::Nil,
+        )
+    }
+
+    fn propagation_remote_sync(
+        &self,
+        remote: &str,
+        peer: &str,
+        identity_private_key_hex: Option<&str>,
+        timeout_secs: f64,
+    ) -> Result<JsonValue, std::io::Error> {
+        self.run_remote_control(
+            remote,
+            identity_private_key_hex,
+            timeout_secs,
+            "/pn/peer/sync",
+            remote_peer_value(peer)?,
+        )
+    }
+
+    fn propagation_remote_unpeer(
+        &self,
+        remote: &str,
+        peer: &str,
+        identity_private_key_hex: Option<&str>,
+        timeout_secs: f64,
+    ) -> Result<JsonValue, std::io::Error> {
+        self.run_remote_control(
+            remote,
+            identity_private_key_hex,
+            timeout_secs,
+            "/pn/peer/unpeer",
+            remote_peer_value(peer)?,
+        )
+    }
 }
 
 async fn remote_control_request(

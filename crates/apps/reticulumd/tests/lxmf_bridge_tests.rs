@@ -1,7 +1,7 @@
 use lxmf::WireMessage;
 use reticulum_daemon::lxmf_bridge::{
-    build_wire_message, build_wire_message_with_options, decode_wire_message, json_to_rmpv,
-    rmpv_to_json,
+    build_wire_message, build_wire_message_with_options,
+    build_wire_message_with_options_and_cancel, decode_wire_message, json_to_rmpv, rmpv_to_json,
 };
 use reticulum_daemon::lxmf_stamps::ticket_stamp;
 use rns_core::identity::PrivateIdentity;
@@ -247,6 +247,30 @@ fn build_wire_message_with_stamp_cost_generates_stamp() {
     let message = decode_wire_message(&wire).expect("decode");
 
     assert_eq!(message.stamp.as_ref().map(Vec::len), Some(8));
+}
+
+#[test]
+fn build_wire_message_with_stamp_cost_honors_cancellation() {
+    let identity = PrivateIdentity::new_from_name("cancel-stamp-cost");
+    let mut source = [0u8; 16];
+    source.copy_from_slice(identity.address_hash().as_slice());
+    let destination = [0x67u8; 16];
+
+    let err = build_wire_message_with_options_and_cancel(
+        source,
+        destination,
+        "title",
+        "content",
+        None,
+        &identity,
+        Some(1),
+        None,
+        None,
+        || true,
+    )
+    .expect_err("cancelled stamp generation should fail payload build");
+
+    assert!(err.to_string().contains("failed to generate LXMF stamp"));
 }
 
 #[test]

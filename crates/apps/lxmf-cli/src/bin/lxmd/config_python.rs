@@ -15,7 +15,10 @@ pub(crate) fn apply_python_config_file(
     let sections = parse_python_lxmd_config(&contents);
     let interfaces = parse_python_reticulum_interfaces(&contents);
     if !interfaces.is_empty() {
-        super::write_generated_reticulumd_config(paths.generated_rnsconfig.as_path(), &interfaces)?;
+        super::config::write_generated_reticulumd_config(
+            paths.generated_rnsconfig.as_path(),
+            &interfaces,
+        )?;
         effective.rnsconfig = Some(paths.generated_rnsconfig.clone());
     }
 
@@ -220,10 +223,8 @@ pub(crate) fn parse_python_reticulum_interfaces(input: &str) -> Vec<crate::Singl
             "target_port" | "listen_port" | "port" => {
                 current.port = value.parse::<u16>().ok();
             }
-            "listen_ip" => {
-                if !value.is_empty() {
-                    current.host = Some(value.to_string());
-                }
+            "listen_ip" if !value.is_empty() => {
+                current.host = Some(value.to_string());
             }
             _ => {}
         }

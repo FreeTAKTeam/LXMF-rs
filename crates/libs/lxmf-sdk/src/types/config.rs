@@ -161,7 +161,7 @@ pub struct SdkConfig {
     pub extensions: BTreeMap<String, JsonValue>,
 }
 
-const DEFAULT_RPC_LISTEN_ADDR: &str = "127.0.0.1:4242";
+const DEFAULT_RPC_LISTEN_ADDR: &str = "unix:/tmp/lxmf-rpc.sock";
 
 fn default_event_stream(profile: &Profile) -> EventStreamConfig {
     match profile {

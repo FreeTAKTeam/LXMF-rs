@@ -245,10 +245,7 @@ impl ResourceSender {
             }
         }
 
-        if self.status == ResourceStatus::Advertised
-            || self.status == ResourceStatus::Transferring
-            || self.status == ResourceStatus::AwaitingProof
-        {
+        if self.status.accepts_transfer_activity() {
             let now = Instant::now();
             self.last_activity = now;
             self.retries_left = self.max_retries;

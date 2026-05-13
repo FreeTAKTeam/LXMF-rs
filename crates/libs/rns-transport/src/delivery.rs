@@ -137,3 +137,31 @@ pub async fn await_link_activation(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn send_outcome_status_maps_success() {
+        assert_eq!(
+            send_outcome_status("opportunistic", SendPacketOutcome::SentDirect),
+            "sent: opportunistic"
+        );
+    }
+
+    #[test]
+    fn send_outcome_status_maps_failures() {
+        assert_eq!(
+            send_outcome_status(
+                "opportunistic",
+                SendPacketOutcome::DroppedMissingDestinationIdentity,
+            ),
+            "failed: opportunistic missing destination identity"
+        );
+        assert_eq!(
+            send_outcome_status("opportunistic", SendPacketOutcome::DroppedNoRoute),
+            "failed: opportunistic no route"
+        );
+    }
+}

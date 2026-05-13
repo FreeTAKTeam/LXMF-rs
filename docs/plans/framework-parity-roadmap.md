@@ -19,7 +19,8 @@ it refers to `lxmf-core` and `rns-rpc`, the current published package names are
 
 Focus:
 
-- Make the live daemon honor outbound delivery modes instead of ignoring `OutboundDeliveryOptions`.
+- Preserve live daemon outbound delivery-mode handling and keep extending the
+  propagation-specific behavior behind it.
 - Replace simplified paper-command behavior with real `lxmf-wire` paper encode/decode flow.
 - Move stamp and ticket behavior out of legacy-style RPC placeholders into active-workspace implementations.
 - Tighten the parity docs and test suite around what is actually implemented.
@@ -29,7 +30,7 @@ Deliverables:
 - `reticulumd` delivery bridge respects `direct`, `opportunistic`, `propagated`, and `paper`.
 - Active stamp generation/validation and ticket derivation APIs exist outside migration-only crates.
 - SDK paper encode/decode uses canonical wire helpers from `lxmf-wire`.
-- New tests fail if the daemon silently falls back to a different delivery mode than requested.
+- Tests fail if the daemon silently falls back to a different delivery mode than requested.
 
 Exit criteria:
 
@@ -83,12 +84,15 @@ Exit criteria:
 
 Focus:
 
-- Replace placeholder binaries in `rns-tools` with working utilities.
+- Implement retired Python-style utility binaries in `rns-tools` as real
+  utilities before adding them back to the release surface.
 - Bring the operator experience closer to Python Reticulum/LXMF tooling.
 
 Deliverables:
 
-- Real implementations for `rncp`, `rnid`, `rnir`, `rnodeconf`, `rnpath`, `rnpkg`, `rnprobe`, `rnsd`, and `rnstatus`.
+- Real implementations for `rncp`, `rnid`, `rnir`, `rnodeconf`, `rnpath`,
+  `rnpkg`, `rnprobe`, and `rnstatus`; `rnsd` remains the active
+  `reticulumd` delegate.
 - Clear overlap boundaries between `reticulumd`, `lxmf-cli`, and `rns-tools`.
 - Operator docs that map Rust commands to Python command equivalents.
 
@@ -112,7 +116,8 @@ Deliverables:
 
 Exit criteria:
 
-- `interop.python_live_gate` becomes `done`.
+- `interop.python_live_gate` stays `done` with pinned Reticulum/LXMF commits and
+  live ignored tests enabled in CI.
 - Parity documents are release-grade rather than aspirational.
 - Future regressions are caught by active interop tests instead of manual review.
 
@@ -124,4 +129,7 @@ Exit criteria:
 4. Wave 4
 5. Wave 5
 
-Wave 1 should land first because the current docs overstate parity and the daemon still ignores important delivery-mode behavior. Wave 5 should land last because it depends on the earlier waves being behaviorally meaningful enough to test against the Python reference.
+Wave 1 landed its baseline delivery-mode handling, but propagation-specific
+router behavior still needs to come before broader parity claims. Wave 5 should
+stay last because it depends on the earlier waves being behaviorally meaningful
+enough to test against the Python reference.

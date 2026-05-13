@@ -44,14 +44,25 @@ pub fn build_http_post(path: &str, host: &str, body: &[u8]) -> Vec<u8> {
 pub fn parse_http_response_body(response: &[u8]) -> io::Result<Vec<u8>> {
     let header_end = crate::rpc::http::find_header_end(response)
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing headers"))?;
+    if header_end > crate::rpc::http::MAX_HTTP_HEADER_LEN {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "headers too large"));
+    }
     let headers = &response[..header_end];
-    let body_start = header_end + b"\r\n\r\n".len();
+    let body_start = header_end
+        .checked_add(b"\r\n\r\n".len())
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "response too large"))?;
     let content_length = crate::rpc::http::parse_content_length(headers)
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing content length"))?;
-    if response.len() < body_start + content_length {
+    if content_length > crate::rpc::codec::MAX_FRAME_PAYLOAD_LEN + 4 {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "body too large"));
+    }
+    let body_end = body_start
+        .checked_add(content_length)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "response too large"))?;
+    if response.len() < body_end {
         return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "response body incomplete"));
     }
-    Ok(response[body_start..body_start + content_length].to_vec())
+    Ok(response[body_start..body_end].to_vec())
 }
 
 pub fn build_daemon_args(
@@ -132,4 +143,56 @@ pub fn peer_present(response: &crate::rpc::RpcResponse, peer: &str) -> bool {
         return false;
     };
     peers.iter().any(|entry| entry.get("peer").and_then(|value| value.as_str()) == Some(peer))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_http_response_body_rejects_oversized_header_block() {
+        let mut response = b"HTTP/1.1 200 OK\r\n".to_vec();
+        response.extend(std::iter::repeat_n(b'a', crate::rpc::http::MAX_HTTP_HEADER_LEN));
+        response.extend_from_slice(b"\r\nContent-Length: 0\r\n\r\n");
+
+        let err = parse_http_response_body(&response).expect_err("headers should be capped");
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert!(err.to_string().contains("headers too large"));
+    }
+
+    #[test]
+    fn parse_http_response_body_rejects_oversized_declared_body_before_waiting() {
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n",
+            crate::rpc::codec::MAX_FRAME_PAYLOAD_LEN + 5
+        );
+
+        let err = parse_http_response_body(response.as_bytes())
+            .expect_err("oversized declared body should fail");
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert!(err.to_string().contains("body too large"));
+    }
+
+    #[test]
+    fn parse_http_response_body_reports_incomplete_bounded_body() {
+        let response = b"HTTP/1.1 200 OK\r\nContent-Length: 8\r\n\r\nshort";
+
+        let err = parse_http_response_body(response).expect_err("short body should fail");
+
+        assert_eq!(err.kind(), io::ErrorKind::UnexpectedEof);
+        assert!(err.to_string().contains("response body incomplete"));
+    }
+
+    #[test]
+    fn parse_http_response_body_rejects_conflicting_content_lengths() {
+        let response = b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nContent-Length: 4\r\n\r\nbody";
+
+        let err = parse_http_response_body(response)
+            .expect_err("conflicting content-length headers should fail");
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert!(err.to_string().contains("missing content length"));
+    }
 }

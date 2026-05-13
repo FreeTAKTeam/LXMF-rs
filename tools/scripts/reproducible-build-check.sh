@@ -11,15 +11,7 @@ BUILD_B_DIR="target/reproducible/build-b"
 BINARIES=(
   "lxmf-cli"
   "reticulumd"
-  "rncp"
-  "rnid"
-  "rnir"
-  "rnodeconf"
-  "rnpath"
-  "rnpkg"
-  "rnprobe"
   "rnsd"
-  "rnstatus"
   "rnx"
 )
 

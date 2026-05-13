@@ -152,6 +152,35 @@ impl SdkBackend for MockBackend {
     }
 }
 
+#[cfg(feature = "sdk-async")]
+impl SdkBackendAsyncOps for MockBackend {
+    fn negotiate_async(
+        &self,
+        req: NegotiationRequest,
+    ) -> crate::SdkBoxFuture<'_, NegotiationResponse> {
+        Box::pin(async move { self.negotiate(req) })
+    }
+
+    fn send_async(&self, req: SendRequest) -> crate::SdkBoxFuture<'_, MessageId> {
+        Box::pin(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            self.send(req)
+        })
+    }
+
+    fn status_async(&self, id: MessageId) -> crate::SdkBoxFuture<'_, Option<DeliverySnapshot>> {
+        Box::pin(async move { self.status(id) })
+    }
+
+    fn snapshot_async(&self) -> crate::SdkBoxFuture<'_, RuntimeSnapshot> {
+        Box::pin(async move { self.snapshot() })
+    }
+
+    fn shutdown_async(&self, mode: ShutdownMode) -> crate::SdkBoxFuture<'_, Ack> {
+        Box::pin(async move { self.shutdown(mode) })
+    }
+}
+
 fn sample_start_request() -> StartRequest {
     StartRequest {
         supported_contract_versions: vec![2],
@@ -347,6 +376,74 @@ fn race_idempotency_conflict_parallel_payloads_return_conflict() {
         client.backend().send_calls.load(Ordering::Relaxed),
         1,
         "idempotency conflict races must not duplicate backend sends"
+    );
+}
+
+#[cfg(feature = "sdk-async")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn race_idempotent_send_async_parallel_calls_dedupe_to_single_backend_send() {
+    let backend = MockBackend::new(vec![successful_negotiation()]);
+    let client = Arc::new(Client::new(backend));
+    client.start_async(sample_start_request()).await.expect("start");
+
+    let mut workers = Vec::new();
+    for _ in 0..24 {
+        let client = Arc::clone(&client);
+        workers.push(tokio::spawn(async move {
+            client.send_async(sample_send_request("payload-race", Some("idem-race"))).await
+        }));
+    }
+
+    let mut first: Option<MessageId> = None;
+    for worker in workers {
+        let result = worker.await.expect("worker panicked").expect("send result");
+        match &first {
+            Some(expected) => assert_eq!(&result, expected, "all idempotent sends must reuse id"),
+            None => first = Some(result),
+        }
+    }
+
+    assert_eq!(
+        client.backend().send_calls.load(Ordering::Relaxed),
+        1,
+        "parallel async idempotent sends must issue a single backend send"
+    );
+}
+
+#[cfg(feature = "sdk-async")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn race_idempotency_conflict_async_parallel_payloads_return_conflict() {
+    let backend = MockBackend::new(vec![successful_negotiation()]);
+    let client = Arc::new(Client::new(backend));
+    client.start_async(sample_start_request()).await.expect("start");
+
+    let mut workers = Vec::new();
+    for idx in 0..24 {
+        let client = Arc::clone(&client);
+        workers.push(tokio::spawn(async move {
+            let payload = if idx % 2 == 0 { "payload-a" } else { "payload-b" };
+            client.send_async(sample_send_request(payload, Some("idem-conflict"))).await
+        }));
+    }
+
+    let mut success = 0_usize;
+    let mut conflicts = 0_usize;
+    for worker in workers {
+        match worker.await.expect("worker panicked") {
+            Ok(_) => success = success.saturating_add(1),
+            Err(err) if err.machine_code == code::VALIDATION_IDEMPOTENCY_CONFLICT => {
+                conflicts = conflicts.saturating_add(1);
+            }
+            Err(err) => panic!("unexpected send error: {err:?}"),
+        }
+    }
+
+    assert!(success > 0, "at least one send must succeed");
+    assert!(conflicts > 0, "conflicting payloads must produce idempotency conflicts");
+    assert_eq!(
+        client.backend().send_calls.load(Ordering::Relaxed),
+        1,
+        "async idempotency conflict races must not duplicate backend sends"
     );
 }
 

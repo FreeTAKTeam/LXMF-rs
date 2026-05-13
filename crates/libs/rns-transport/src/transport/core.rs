@@ -155,7 +155,12 @@ impl Transport {
     }
 
     pub async fn outbound(&self, packet: &Packet) {
-        let (packet, maybe_iface) = self.handler.lock().await.path_table.handle_packet(packet);
+        let decision = {
+            let handler = self.handler.lock().await;
+            super::path::route_outbound_packet(&handler.path_table, packet)
+        };
+        let packet = decision.packet;
+        let maybe_iface = decision.next_iface;
 
         if let Some(iface) = maybe_iface {
             self.send_direct(iface, packet).await;

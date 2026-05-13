@@ -353,9 +353,11 @@ pub(super) async fn manage_transport(
                             retransmit_announces(guard).await;
                         } else {
                             release_held_announces(guard).await;
+                            handler.lock().await.iface_manager.lock().await.release_queued_announces().await;
                             continue;
                         }
                         release_held_announces(handler.lock().await).await;
+                        handler.lock().await.iface_manager.lock().await.release_queued_announces().await;
                     }
                 }
             }

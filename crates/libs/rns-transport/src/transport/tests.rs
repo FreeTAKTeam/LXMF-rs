@@ -127,7 +127,7 @@ async fn drop_duplicates() {
 }
 
 #[tokio::test]
-async fn announce_retransmit_key_uses_destination_hash() {
+async fn announce_lookup_key_uses_destination_hash() {
     let local_identity = PrivateIdentity::new_from_rand(OsRng);
     let mut config = TransportConfig::new("test", &local_identity, true);
     config.set_retransmit(true);
@@ -148,21 +148,12 @@ async fn announce_retransmit_key_uses_destination_hash() {
 
     let iface = AddressHash::new_from_rand(OsRng);
     handle_announce(&announce, handler.lock().await, iface, crate::iface::IfaceSource::None).await;
-    tokio::time::sleep(Duration::from_millis(550)).await;
 
-    let mut guard = handler.lock().await;
-    let transport_id = *guard.config.identity.address_hash();
-    let keyed_by_destination =
-        guard.announce_table.new_packet(&announced_destination, &transport_id);
-    assert!(
-        keyed_by_destination.is_some(),
-        "announce retransmit should be keyed by destination hash"
-    );
-    let keyed_by_identity = guard.announce_table.new_packet(&announced_identity, &transport_id);
-    assert!(
-        keyed_by_identity.is_none(),
-        "identity hash must not be used as announce retransmit key"
-    );
+    let guard = handler.lock().await;
+    let keyed_by_destination = guard.announce_table.packet_for_destination(&announced_destination);
+    assert!(keyed_by_destination.is_some(), "announce lookup should be keyed by destination hash");
+    let keyed_by_identity = guard.announce_table.packet_for_destination(&announced_identity);
+    assert!(keyed_by_identity.is_none(), "identity hash must not be used as announce lookup key");
 }
 
 #[tokio::test]
@@ -220,10 +211,7 @@ async fn reticulum_path_table_persistence_restores_route_and_identity_from_cache
     let restored_identity = restored.destination_identity(&destination).await.expect("identity");
     assert_eq!(restored_identity.public_key_bytes(), expected_identity.public_key_bytes());
     assert_eq!(restored_identity.verifying_key_bytes(), expected_identity.verifying_key_bytes());
-    assert!(
-        restored.get_handler().lock().await.path_table.get(&destination).is_some(),
-        "path table entry should be restored"
-    );
+    assert!(restored.has_path(&destination).await, "path table entry should be restored");
 }
 
 #[tokio::test]
@@ -271,7 +259,7 @@ async fn reticulum_tunnel_table_persistence_restores_tunnel_paths_after_reappear
 
     assert_eq!(restored.restore_reticulum_path_table(temp.path()).await.expect("restore"), 0);
     assert!(
-        restored.get_handler().lock().await.path_table.get(&destination).is_none(),
+        !restored.has_path(&destination).await,
         "tunnel table load should not restore active path before tunnel reappears"
     );
 
@@ -289,7 +277,7 @@ async fn reticulum_tunnel_table_persistence_restores_tunnel_paths_after_reappear
     }
 
     assert!(
-        restored.get_handler().lock().await.path_table.get(&destination).is_some(),
+        restored.has_path(&destination).await,
         "tunnel reappearance should restore the persisted tunnel path"
     );
     assert!(restored.destination_identity(&destination).await.is_some());

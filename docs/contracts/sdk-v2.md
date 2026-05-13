@@ -332,6 +332,7 @@ Validated deployment templates are maintained in:
 `SdkCoreConfig` is backend-neutral.  
 `RpcBackendConfig` contains RPC-specific controls:
 
+- listener address, including `host:port` TCP/TLS endpoints or `unix:/path` local sockets
 - header/body limits
 - read/write timeouts
 - auth mode and token verifier config

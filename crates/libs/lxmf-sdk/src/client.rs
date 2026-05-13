@@ -7,7 +7,7 @@ use crate::api::{
 };
 use crate::backend::SdkBackend;
 #[cfg(feature = "sdk-async")]
-use crate::backend::SdkBackendAsyncEvents;
+use crate::backend::{SdkBackendAsyncEvents, SdkBackendAsyncOps};
 use crate::capability::{NegotiationRequest, NegotiationResponse};
 use crate::error::{code, ErrorCategory, SdkError};
 use crate::event::{EventBatch, EventCursor};
@@ -22,8 +22,12 @@ use crate::types::{
 };
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
+#[cfg(feature = "sdk-async")]
+use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Instant;
+
+type IdempotencyCacheKey = (String, String, String);
 
 struct IdempotencyRecord {
     payload_hash: u64,
@@ -35,11 +39,17 @@ pub struct Client<B: SdkBackend> {
     backend: B,
     lifecycle: Mutex<Lifecycle>,
     handle: Mutex<Option<ClientHandle>>,
-    idempotency_cache: Mutex<HashMap<(String, String, String), IdempotencyRecord>>,
+    idempotency_cache: Mutex<HashMap<IdempotencyCacheKey, IdempotencyRecord>>,
+    #[cfg(feature = "sdk-async")]
+    idempotency_inflight: Mutex<HashMap<IdempotencyCacheKey, Arc<tokio::sync::Mutex<()>>>>,
 }
 
+#[path = "client/async_ops.rs"]
+mod async_ops;
 #[path = "client/domains.rs"]
 mod domains;
+#[path = "client/group.rs"]
+mod group;
 
 impl<B: SdkBackend> Client<B> {
     pub fn new(backend: B) -> Self {
@@ -48,6 +58,8 @@ impl<B: SdkBackend> Client<B> {
             lifecycle: Mutex::new(Lifecycle::default()),
             handle: Mutex::new(None),
             idempotency_cache: Mutex::new(HashMap::new()),
+            #[cfg(feature = "sdk-async")]
+            idempotency_inflight: Mutex::new(HashMap::new()),
         }
     }
 
@@ -340,94 +352,6 @@ impl<B: SdkBackend> LxmfSdkManualTick for Client<B> {
     }
 }
 
-impl<B: SdkBackend> LxmfSdkGroupDelivery for Client<B> {
-    fn send_group(&self, req: GroupSendRequest) -> Result<GroupSendResult, SdkError> {
-        {
-            let lifecycle = self.lifecycle.lock().expect("lifecycle mutex poisoned");
-            lifecycle.ensure_method_legal(SdkMethod::Send)?;
-        }
-
-        let source = req.source.trim();
-        if source.is_empty() {
-            return Err(SdkError::new(
-                code::VALIDATION_INVALID_ARGUMENT,
-                ErrorCategory::Validation,
-                "group send source must not be empty",
-            )
-            .with_user_actionable(true));
-        }
-        if req.destinations.is_empty() {
-            return Err(SdkError::new(
-                code::VALIDATION_INVALID_ARGUMENT,
-                ErrorCategory::Validation,
-                "group send requires at least one destination",
-            )
-            .with_user_actionable(true));
-        }
-
-        let mut outcomes = Vec::with_capacity(req.destinations.len());
-        for destination in req.destinations {
-            let trimmed_destination = destination.trim().to_owned();
-            if trimmed_destination.is_empty() {
-                outcomes.push(GroupSendOutcome {
-                    destination,
-                    state: GroupRecipientState::Failed,
-                    message_id: None,
-                    retryable: false,
-                    reason_code: Some(code::VALIDATION_INVALID_ARGUMENT.to_owned()),
-                });
-                continue;
-            }
-
-            let send_request = SendRequest {
-                source: source.to_owned(),
-                destination: trimmed_destination.clone(),
-                payload: req.payload.clone(),
-                idempotency_key: req.idempotency_key.clone(),
-                ttl_ms: req.ttl_ms,
-                correlation_id: req.correlation_id.clone(),
-                extensions: req.extensions.clone(),
-            };
-            match self.send(send_request) {
-                Ok(message_id) => outcomes.push(GroupSendOutcome {
-                    destination: trimmed_destination,
-                    state: GroupRecipientState::Accepted,
-                    message_id: Some(message_id),
-                    retryable: false,
-                    reason_code: None,
-                }),
-                Err(err) => {
-                    let state = if err.is_retryable() {
-                        GroupRecipientState::Deferred
-                    } else {
-                        GroupRecipientState::Failed
-                    };
-                    outcomes.push(GroupSendOutcome {
-                        destination: trimmed_destination,
-                        state,
-                        message_id: None,
-                        retryable: err.is_retryable(),
-                        reason_code: Some(err.machine_code),
-                    });
-                }
-            }
-        }
-
-        let accepted_count = outcomes
-            .iter()
-            .filter(|outcome| outcome.state == GroupRecipientState::Accepted)
-            .count();
-        let deferred_count = outcomes
-            .iter()
-            .filter(|outcome| outcome.state == GroupRecipientState::Deferred)
-            .count();
-        let failed_count =
-            outcomes.iter().filter(|outcome| outcome.state == GroupRecipientState::Failed).count();
-
-        Ok(GroupSendResult { outcomes, accepted_count, deferred_count, failed_count })
-    }
-}
-
 #[cfg(feature = "sdk-async")]
 impl<B: SdkBackendAsyncEvents> LxmfSdkAsync for Client<B> {
     fn subscribe_events(&self, start: SubscriptionStart) -> Result<EventSubscription, SdkError> {
@@ -436,6 +360,17 @@ impl<B: SdkBackendAsyncEvents> LxmfSdkAsync for Client<B> {
             lifecycle.ensure_method_legal(SdkMethod::SubscribeEvents)?;
         }
         self.backend.subscribe_events(start)
+    }
+
+    fn open_event_stream(
+        &self,
+        subscription: &EventSubscription,
+    ) -> Result<Option<crate::SdkEventStream>, SdkError> {
+        {
+            let lifecycle = self.lifecycle.lock().expect("lifecycle mutex poisoned");
+            lifecycle.ensure_method_legal(SdkMethod::SubscribeEvents)?;
+        }
+        self.backend.open_event_stream(subscription)
     }
 }
 

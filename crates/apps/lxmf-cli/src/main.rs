@@ -13,7 +13,7 @@ use std::process::ExitCode;
 #[derive(Parser, Debug)]
 #[command(name = "lxmf", about = "LXMF operator CLI", version)]
 struct Cli {
-    #[arg(long, default_value = "127.0.0.1:4242")]
+    #[arg(long, default_value = "unix:/tmp/lxmf-rpc.sock")]
     rpc: String,
 
     #[arg(long, value_enum, default_value_t = ProfileArg::DesktopFull)]
@@ -708,6 +708,7 @@ mod tests {
     #[test]
     fn start_request_defaults_are_valid() {
         let cli = parse_cli(&["lxmf-cli", "start"]);
+        assert_eq!(cli.rpc, "unix:/tmp/lxmf-rpc.sock");
         let request = build_start_request(&cli).expect("default start request should be valid");
         assert_eq!(request.supported_contract_versions, vec![2]);
     }

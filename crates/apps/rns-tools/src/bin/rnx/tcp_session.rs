@@ -12,13 +12,13 @@ use rns_embedded_runtime::{
 };
 use rns_rpc::e2e_harness::timestamp_millis;
 
-pub(super) struct TcpSessionOutcome {
-    pub(super) responses: usize,
-    pub(super) lxmf_reply_body: Option<Vec<u8>>,
-    pub(super) capture_bytes: Option<Vec<u8>>,
+pub(crate) struct TcpSessionOutcome {
+    pub(crate) responses: usize,
+    pub(crate) lxmf_reply_body: Option<Vec<u8>>,
+    pub(crate) capture_bytes: Option<Vec<u8>>,
 }
 
-pub(super) fn handle_tcp_native_session(
+pub(crate) fn handle_tcp_native_session(
     label: &str,
     peer_addr: std::net::SocketAddr,
     transport: &mut TcpEmbeddedTransport,

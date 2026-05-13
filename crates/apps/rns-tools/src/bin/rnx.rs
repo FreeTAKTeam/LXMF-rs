@@ -11,12 +11,22 @@ use std::path::PathBuf;
 
 #[path = "rnx/ble.rs"]
 mod ble;
+#[path = "rnx/ble_camera.rs"]
+mod ble_camera;
+#[path = "rnx/ble_native.rs"]
+mod ble_native;
 #[path = "rnx/harness.rs"]
 mod harness;
+#[path = "rnx/ble_helpers.rs"]
+mod helpers;
 #[path = "rnx/scenario.rs"]
 mod scenario;
+#[path = "rnx/scenario_mesh.rs"]
+mod scenario_mesh;
 #[path = "rnx/tcp.rs"]
 mod tcp;
+#[path = "rnx/tcp_session.rs"]
+mod tcp_session;
 
 #[derive(Parser, Debug)]
 #[command(name = "rnx")]
@@ -287,7 +297,7 @@ fn run(cli: Cli) -> io::Result<()> {
             scenario::run_e2e(a_port, b_port, timeout_secs, keep, modes)
         }
         Command::MeshSim { nodes, base_rpc_port, timeout_secs, keep, modes } => {
-            scenario::run_mesh_sim(nodes, base_rpc_port, timeout_secs, keep, modes)
+            scenario_mesh::run_mesh_sim(nodes, base_rpc_port, timeout_secs, keep, modes)
         }
         Command::Replay { trace, capture_out, identity_hash } => {
             scenario::run_replay(trace, capture_out, identity_hash)

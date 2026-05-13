@@ -10,7 +10,7 @@ use crate::harness::{
 };
 use crate::DeliveryMode;
 
-use super::{run_delivery_mode, run_paper_workflow, selected_mesh_delivery_modes};
+use crate::scenario::{run_delivery_mode, run_paper_workflow, selected_mesh_delivery_modes};
 
 struct MeshNodeProcess {
     rpc: String,

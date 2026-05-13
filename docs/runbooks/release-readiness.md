@@ -11,8 +11,9 @@ active branch.
   are historical parity snapshots, not the primary release gate.
 - If a parity matrix disagrees with `docs/status/current-roadmap.md`, treat the
   matrix as stale until it is refreshed in the same change.
-- Rust/Python live interop is still partial and is not yet a required CI gate.
-  Do not mark parity complete until non-ignored evidence exists.
+- Rust/Python live interop is enforced by `.github/workflows/python-interop.yml`
+  on pull requests for the pinned Python Reticulum/LXMF references. Do not mark
+  parity complete until non-ignored evidence exists for the specific matrix row.
 
 ## 2. Contract and schema gates
 
@@ -49,9 +50,22 @@ Current GitHub PR CI in `.github/workflows/ci.yml` enforces these jobs:
   - `cargo xtask publish-crates --wave all --dry-run --allow-dirty`
   - `cargo check -p reticulumd -p rns-tools`
   - `bash tools/scripts/check-boundaries.sh`
+  - `cargo run -p xtask -- architecture-checks`
+  - `cargo run -p xtask -- sdk-docs-check`
+  - `cargo run -p xtask -- sdk-migration-check`
 - `security`
   - `cargo deny check bans licenses sources`
   - `cargo audit --ignore RUSTSEC-2024-0421 --ignore RUSTSEC-2024-0436 --ignore RUSTSEC-2026-0009 --ignore RUSTSEC-2025-0134`
+
+`.github/workflows/python-interop.yml` is also a pull-request gate for pinned
+reference compatibility. It runs:
+
+- Python reference conformance baseline against pinned Reticulum/LXMF commits.
+- `cargo xtask ci --stage interop-artifacts`
+- `cargo xtask ci --stage sdk-conformance`
+- `cargo xtask ci --stage e2e-compatibility`
+- ignored live Rust/Python channel, paper, compatibility-matrix, and LXMD
+  remote-relay interop tests with the pinned checkouts.
 
 The commands below remain useful release checks, but they are not currently
 enforced by pull-request CI unless and until `.github/workflows/ci.yml` is
@@ -71,6 +85,8 @@ cargo xtask ci --stage sdk-schema-check
 cargo xtask publish-crates --wave all --dry-run --allow-dirty
 bash tools/scripts/check-boundaries.sh
 cargo run -p xtask -- architecture-checks
+cargo run -p xtask -- sdk-docs-check
+cargo run -p xtask -- sdk-migration-check
 ```
 
 Extended/manual release checks:

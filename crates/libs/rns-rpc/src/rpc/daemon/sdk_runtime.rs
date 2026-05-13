@@ -48,10 +48,7 @@ impl RpcDaemon {
             let normalized = status.trim().to_ascii_lowercase();
             if normalized.starts_with("sent") {
                 cancel_result = "TooLateToCancel";
-            } else if matches!(
-                normalized.as_str(),
-                "cancelled" | "delivered" | "failed" | "expired" | "rejected"
-            ) {
+            } else if Self::is_terminal_receipt_status(status) {
                 cancel_result = "AlreadyTerminal";
             }
         }
@@ -65,10 +62,7 @@ impl RpcDaemon {
                 cancel_result = "TooLateToCancel";
                 break;
             }
-            if matches!(
-                normalized.as_str(),
-                "cancelled" | "delivered" | "failed" | "expired" | "rejected"
-            ) {
+            if Self::is_terminal_receipt_status(transition.status.as_str()) {
                 cancel_result = "AlreadyTerminal";
                 break;
             }

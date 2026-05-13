@@ -131,6 +131,12 @@ pub struct PropagationState {
     pub stamp_cost_flexibility: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub message_storage_limit_mb: Option<u64>,
+    #[serde(default = "default_delivery_transfer_limit")]
+    pub delivery_limit: u32,
+    #[serde(default = "default_propagation_transfer_limit")]
+    pub propagation_limit: u32,
+    #[serde(default = "default_propagation_sync_limit")]
+    pub sync_limit: u32,
     #[serde(default = "default_true")]
     pub autopeer: bool,
     #[serde(default = "default_autopeer_maxdepth")]
@@ -174,6 +180,9 @@ impl Default for PropagationState {
             target_cost: 0,
             stamp_cost_flexibility: default_propagation_stamp_cost_flexibility(),
             message_storage_limit_mb: None,
+            delivery_limit: default_delivery_transfer_limit(),
+            propagation_limit: default_propagation_transfer_limit(),
+            sync_limit: default_propagation_sync_limit(),
             autopeer: default_true(),
             autopeer_maxdepth: default_autopeer_maxdepth(),
             static_peers: Vec::new(),
@@ -200,10 +209,22 @@ impl Default for PropagationState {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct StampPolicy {
     pub target_cost: u32,
     pub flexibility: u32,
+    #[serde(default = "default_stamp_enforce")]
+    pub enforce: bool,
+}
+
+impl Default for StampPolicy {
+    fn default() -> Self {
+        Self { target_cost: 0, flexibility: 0, enforce: default_stamp_enforce() }
+    }
+}
+
+fn default_stamp_enforce() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -354,9 +375,11 @@ pub struct RpcDaemon {
     identity_hash: String,
     delivery_destination_hash: Mutex<Option<String>>,
     events: broadcast::Sender<RpcEvent>,
+    sdk_events: broadcast::Sender<SequencedRpcEvent>,
     event_queue: Mutex<VecDeque<RpcEvent>>,
     sdk_event_log: Mutex<VecDeque<SequencedRpcEvent>>,
     sdk_next_event_seq: Mutex<u64>,
+    announce_next_seq: Mutex<u64>,
     sdk_dropped_event_count: Mutex<u64>,
     sdk_active_contract_version: Mutex<u16>,
     sdk_profile: Mutex<String>,
@@ -407,6 +430,7 @@ pub struct RpcDaemon {
     event_sink_bridges: Vec<Arc<dyn EventSinkBridge>>,
     interface_mutation_bridge: Mutex<Option<Arc<dyn InterfaceMutationBridge>>>,
     remote_control_bridge: Mutex<Option<Arc<dyn RemoteControlBridge>>>,
+    started_at: std::time::Instant,
 }
 
 pub trait OutboundBridge: Send + Sync {
@@ -522,9 +546,9 @@ pub struct RpcEvent {
 }
 
 #[derive(Debug, Clone)]
-struct SequencedRpcEvent {
-    seq_no: u64,
-    event: RpcEvent,
+pub struct SequencedRpcEvent {
+    pub seq_no: u64,
+    pub event: RpcEvent,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -562,6 +586,10 @@ pub struct PeerRecord {
     #[serde(default)]
     pub peering_timebase: i64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub propagation_transfer_limit: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub propagation_sync_limit: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub propagation_stamp_cost: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub propagation_stamp_cost_flexibility: Option<u32>,
@@ -581,10 +609,22 @@ fn default_propagation_stamp_cost_flexibility() -> u32 {
     3
 }
 
+fn default_delivery_transfer_limit() -> u32 {
+    1000
+}
+
+fn default_propagation_transfer_limit() -> u32 {
+    256
+}
+
+fn default_propagation_sync_limit() -> u32 {
+    10240
+}
+
 fn default_network_distance() -> u32 {
     1
 }
 
 fn default_acceptance_rate() -> f64 {
-    1.0
+    0.0
 }

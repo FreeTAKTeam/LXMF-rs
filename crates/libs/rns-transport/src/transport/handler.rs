@@ -112,30 +112,11 @@ impl TransportHandler {
             }
         }
 
-        if diag::enabled() {
-            if let Some(entry) = self.path_table.get(&packet.destination) {
-                log::trace!(
-                    "[tp-diag] route_lookup dst={} hops={} via_next_hop={} via_iface={}",
-                    packet.destination,
-                    entry.hops,
-                    entry.received_from,
-                    entry.iface
-                );
-                log::info!(
-                    "[tp-diag] route_lookup dst={} hops={} via_next_hop={} via_iface={}",
-                    packet.destination,
-                    entry.hops,
-                    entry.received_from,
-                    entry.iface
-                );
-            } else {
-                log::trace!("[tp-diag] route_lookup dst={} missing", packet.destination);
-                log::info!("[tp-diag] route_lookup dst={} missing", packet.destination);
-            }
-        }
+        diag::log_route_lookup(&self.path_table, &packet.destination);
 
-        let (packet, maybe_iface) = self.path_table.handle_packet(&packet);
-        if let Some(iface) = maybe_iface {
+        let route = super::path::route_outbound_packet(&self.path_table, &packet);
+        let packet = route.packet;
+        if let Some(iface) = route.next_iface {
             let dispatch =
                 self.send(TxMessage { tx_type: TxMessageType::Direct(iface), packet }).await;
             let outcome = if dispatch.sent_ifaces > 0 {
@@ -143,49 +124,17 @@ impl TransportHandler {
             } else {
                 SendPacketOutcome::DroppedNoRoute
             };
-            if diag::enabled() {
-                log::trace!(
-                    "[tp-diag] direct_send iface={} outcome={:?} matched={} sent={} failed={}",
-                    iface,
-                    outcome,
-                    dispatch.matched_ifaces,
-                    dispatch.sent_ifaces,
-                    dispatch.failed_ifaces
-                );
-                log::info!(
-                    "[tp-diag] direct_send iface={} outcome={:?} matched={} sent={} failed={}",
-                    iface,
-                    outcome,
-                    dispatch.matched_ifaces,
-                    dispatch.sent_ifaces,
-                    dispatch.failed_ifaces
-                );
-            }
+            diag::log_direct_send(iface, outcome, &dispatch);
             SendPacketTrace { outcome, direct_iface: Some(iface), broadcast: false, dispatch }
         } else if self.config.broadcast || packet.header.packet_type == PacketType::Announce {
             let dispatch =
                 self.send(TxMessage { tx_type: TxMessageType::Broadcast(None), packet }).await;
-            let outcome = if dispatch.sent_ifaces > 0 {
+            let outcome = if dispatch.sent_ifaces > 0 || dispatch.queued_ifaces > 0 {
                 SendPacketOutcome::SentBroadcast
             } else {
                 SendPacketOutcome::DroppedNoRoute
             };
-            if diag::enabled() {
-                log::trace!(
-                    "[tp-diag] broadcast_send outcome={:?} matched={} sent={} failed={}",
-                    outcome,
-                    dispatch.matched_ifaces,
-                    dispatch.sent_ifaces,
-                    dispatch.failed_ifaces
-                );
-                log::info!(
-                    "[tp-diag] broadcast_send outcome={:?} matched={} sent={} failed={}",
-                    outcome,
-                    dispatch.matched_ifaces,
-                    dispatch.sent_ifaces,
-                    dispatch.failed_ifaces
-                );
-            }
+            diag::log_broadcast_send(outcome, &dispatch);
             SendPacketTrace { outcome, direct_iface: None, broadcast: true, dispatch }
         } else {
             log::trace!(
@@ -209,13 +158,13 @@ impl TransportHandler {
             && matches!(message.tx_type, TxMessageType::Broadcast(_))
         {
             let next_hop_iface = self.path_table.next_hop_iface(&packet.destination);
-            let mgr = self.iface_manager.lock().await;
+            let mut mgr = self.iface_manager.lock().await;
             let policy = AnnounceBroadcastPolicy {
                 local_destination: self.single_in_destinations.contains_key(&packet.destination),
                 next_hop_iface_mode: next_hop_iface.and_then(|iface| mgr.mode(&iface)),
             };
             let dispatch = mgr.send_with_announce_policy(message, Some(policy)).await;
-            if dispatch.sent_ifaces > 0 {
+            if dispatch.sent_ifaces > 0 || dispatch.queued_ifaces > 0 {
                 self.note_link_packet_sent(&packet).await;
             }
             return dispatch;
@@ -228,7 +177,7 @@ impl TransportHandler {
             .await
             .send_with_announce_policy(message, announce_policy)
             .await;
-        if dispatch.sent_ifaces > 0 {
+        if dispatch.sent_ifaces > 0 || dispatch.queued_ifaces > 0 {
             self.note_link_packet_sent(&packet).await;
         }
         dispatch

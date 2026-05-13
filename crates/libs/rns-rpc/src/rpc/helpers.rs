@@ -19,7 +19,15 @@ fn merge_fields_with_options(
         None => JsonMap::new(),
     };
 
-    let mut lxmf = JsonMap::new();
+    let mut lxmf = match root.remove("_lxmf") {
+        Some(JsonValue::Object(map)) => map,
+        Some(other) => {
+            let mut map = JsonMap::new();
+            map.insert("_raw".into(), other);
+            map
+        }
+        None => JsonMap::new(),
+    };
     if let Some(value) = method {
         lxmf.insert("method".into(), JsonValue::String(value));
     }
@@ -260,6 +268,54 @@ fn parse_fuzzy_u32(value: &MsgPackValue) -> Option<u32> {
 
 fn parse_announce_costs_from_app_data_hex(
     app_data_hex: Option<&str>,
+) -> (Option<u32>, Option<u32>, Option<u32>) {
+    let Some(raw_hex) = app_data_hex.map(str::trim).filter(|value| !value.is_empty()) else {
+        return (None, None, None);
+    };
+    let Ok(app_data) = hex::decode(raw_hex) else {
+        return (None, None, None);
+    };
+    let Ok(value) = rmp_serde::from_slice::<MsgPackValue>(&app_data) else {
+        return (None, None, None);
+    };
+    let Some(entries) = value.as_array() else {
+        return (None, None, None);
+    };
+    let Some(costs) = entries.get(5) else {
+        return (None, None, None);
+    };
+    if let MsgPackValue::Array(values) = costs {
+        return (
+            values.first().and_then(parse_fuzzy_u32),
+            values.get(1).and_then(parse_fuzzy_u32),
+            values.get(2).and_then(parse_fuzzy_u32),
+        );
+    }
+    let MsgPackValue::Map(entries) = costs else {
+        return (None, None, None);
+    };
+    let mut stamp_cost = None;
+    let mut stamp_cost_flexibility = None;
+    let mut peering_cost = None;
+    for (key, value) in entries {
+        let Some(key) = msgpack_key_to_string(key) else {
+            continue;
+        };
+        if key == "stamp_cost" {
+            stamp_cost = parse_fuzzy_u32(value);
+        }
+        if key == "stamp_cost_flexibility" {
+            stamp_cost_flexibility = parse_fuzzy_u32(value);
+        }
+        if key == "peering_cost" {
+            peering_cost = parse_fuzzy_u32(value);
+        }
+    }
+    (stamp_cost, stamp_cost_flexibility, peering_cost)
+}
+
+fn parse_propagation_limits_from_app_data_hex(
+    app_data_hex: Option<&str>,
 ) -> (Option<u32>, Option<u32>) {
     let Some(raw_hex) = app_data_hex.map(str::trim).filter(|value| !value.is_empty()) else {
         return (None, None);
@@ -273,29 +329,63 @@ fn parse_announce_costs_from_app_data_hex(
     let Some(entries) = value.as_array() else {
         return (None, None);
     };
-    let Some(costs) = entries.get(5) else {
-        return (None, None);
-    };
-    if let MsgPackValue::Array(values) = costs {
-        return (values.get(1).and_then(parse_fuzzy_u32), values.get(2).and_then(parse_fuzzy_u32));
+
+    (entries.get(3).and_then(parse_fuzzy_u32), entries.get(4).and_then(parse_fuzzy_u32))
+}
+
+fn parse_peer_name_from_app_data_hex(app_data_hex: Option<&str>) -> Option<(String, &'static str)> {
+    let raw_hex = app_data_hex.map(str::trim).filter(|value| !value.is_empty())?;
+    let app_data = hex::decode(raw_hex).ok()?;
+    let value = rmp_serde::from_slice::<MsgPackValue>(&app_data).ok()?;
+    let entries = value.as_array()?;
+
+    if let Some(name) = entries.get(6).and_then(parse_pn_metadata_name) {
+        return Some((name, "pn_meta"));
     }
-    let MsgPackValue::Map(entries) = costs else {
-        return (None, None);
+    if let Some(name) = entries.first().and_then(msgpack_value_to_clean_name) {
+        return Some((name, "delivery_app_data"));
+    }
+    None
+}
+
+fn parse_pn_metadata_name(value: &MsgPackValue) -> Option<String> {
+    let MsgPackValue::Map(entries) = value else {
+        return None;
     };
-    let mut stamp_cost_flexibility = None;
-    let mut peering_cost = None;
+
     for (key, value) in entries {
-        let Some(key) = msgpack_key_to_string(key) else {
-            continue;
-        };
-        if key == "stamp_cost_flexibility" {
-            stamp_cost_flexibility = parse_fuzzy_u32(value);
-        }
-        if key == "peering_cost" {
-            peering_cost = parse_fuzzy_u32(value);
+        if is_pn_name_metadata_key(key) {
+            return msgpack_value_to_clean_name(value);
         }
     }
-    (stamp_cost_flexibility, peering_cost)
+    None
+}
+
+fn is_pn_name_metadata_key(key: &MsgPackValue) -> bool {
+    const PN_META_NAME: u64 = 1;
+    match key {
+        MsgPackValue::Integer(value) => value.as_u64() == Some(PN_META_NAME),
+        MsgPackValue::String(text) => text
+            .as_str()
+            .is_some_and(|value| matches!(value.trim(), "name" | "n" | "display_name")),
+        MsgPackValue::Binary(bytes) => std::str::from_utf8(bytes)
+            .ok()
+            .is_some_and(|value| matches!(value.trim(), "name" | "n" | "display_name")),
+        _ => false,
+    }
+}
+
+fn msgpack_value_to_clean_name(value: &MsgPackValue) -> Option<String> {
+    let name = match value {
+        MsgPackValue::Binary(bytes) => String::from_utf8(bytes.clone()).ok()?,
+        MsgPackValue::String(text) => text.as_str()?.to_string(),
+        _ => return None,
+    };
+    let name = clean_optional_text(Some(name))?;
+    if name.chars().any(char::is_control) {
+        return None;
+    }
+    first_n_chars(name.as_str(), 64).or(Some(name))
 }
 
 fn parse_delivery_stamp_cost_from_app_data_hex(app_data_hex: Option<&str>) -> Option<u32> {
@@ -303,7 +393,7 @@ fn parse_delivery_stamp_cost_from_app_data_hex(app_data_hex: Option<&str>) -> Op
     let app_data = hex::decode(raw_hex).ok()?;
     let value = rmp_serde::from_slice::<MsgPackValue>(&app_data).ok()?;
     let entries = value.as_array()?;
-    entries.get(1).and_then(parse_fuzzy_u32)
+    entries.get(1).and_then(parse_fuzzy_u32).filter(|cost| (1..255).contains(cost))
 }
 
 fn is_lxmf_delivery_aspect(aspect: Option<&str>) -> bool {
@@ -329,18 +419,23 @@ fn inbound_ticket_from_record(record: &MessageRecord) -> Option<(i64, String)> {
 }
 
 fn json_value_to_i64(value: &JsonValue) -> Option<i64> {
-    value.as_i64().or_else(|| value.as_u64().and_then(|value| i64::try_from(value).ok()))
+    value
+        .as_i64()
+        .or_else(|| value.as_u64().and_then(|value| i64::try_from(value).ok()))
+        .or_else(|| {
+            let value = value.as_f64()?;
+            if !value.is_finite() {
+                return None;
+            }
+            let rounded = value.ceil();
+            if rounded < i64::MIN as f64 || rounded > i64::MAX as f64 {
+                return None;
+            }
+            Some(rounded as i64)
+        })
 }
 
 fn json_ticket_to_hex(value: &JsonValue) -> Option<String> {
-    if let Some(text) = value.as_str() {
-        let trimmed = text.trim();
-        if trimmed.len() == 32 && hex::decode(trimmed).ok()?.len() == 16 {
-            return Some(trimmed.to_ascii_lowercase());
-        }
-        return None;
-    }
-
     let bytes = value
         .as_array()?
         .iter()
@@ -480,69 +575,5 @@ const SDK_STREAM_ID: &str = "sdk-events";
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
-    #[test]
-    fn parses_capabilities_from_utf8_json_app_data() {
-        let hex = hex::encode(r#"{"capabilities":["propagation","telemetry_relay"]}"#);
-        let capabilities = parse_capabilities_from_app_data_hex(Some(hex.as_str()));
-        assert_eq!(capabilities, vec!["propagation".to_string(), "telemetry_relay".to_string()]);
-    }
-
-    #[test]
-    fn parses_capabilities_from_tagged_utf8_text_app_data() {
-        let hex = hex::encode("node metadata; caps=propagation, telemetry_relay");
-        let capabilities = parse_capabilities_from_app_data_hex(Some(hex.as_str()));
-        assert_eq!(capabilities, vec!["propagation".to_string(), "telemetry_relay".to_string()]);
-    }
-
-    #[test]
-    fn parses_rch_capabilities_from_msgpack_third_slot() {
-        let capability_payload = rmp_serde::to_vec_named(&serde_json::json!({
-            "app": "rch",
-            "schema": 1,
-            "caps": ["telemetry_relay", "topic_broker"],
-        }))
-        .expect("encode capability payload");
-        let announce = rmp_serde::to_vec_named(&rmpv::Value::Array(vec![
-            rmpv::Value::String("Reticulum Community Hub".into()),
-            rmpv::Value::from(0),
-            rmpv::Value::Binary(capability_payload),
-        ]))
-        .expect("encode announce payload");
-        let capabilities = parse_capabilities_from_app_data_hex(Some(hex::encode(announce).as_str()));
-        assert_eq!(capabilities, vec!["telemetry_relay".to_string(), "topic_broker".to_string()]);
-    }
-
-    #[test]
-    fn parses_rch_capabilities_from_cbor_third_slot() {
-        let capability_payload = serde_cbor::to_vec(&serde_json::json!({
-            "app": "rch",
-            "schema": 1,
-            "caps": ["telemetry_relay", "tak_bridge"],
-        }))
-        .expect("encode cbor capability payload");
-        let announce = rmp_serde::to_vec_named(&rmpv::Value::Array(vec![
-            rmpv::Value::String("Reticulum Community Hub".into()),
-            rmpv::Value::from(0),
-            rmpv::Value::Binary(capability_payload),
-        ]))
-        .expect("encode announce payload");
-        let capabilities = parse_capabilities_from_app_data_hex(Some(hex::encode(announce).as_str()));
-        assert_eq!(capabilities, vec!["telemetry_relay".to_string(), "tak_bridge".to_string()]);
-    }
-
-    #[test]
-    fn parses_delivery_stamp_cost_from_python_peer_data_slot() {
-        let app_data = rmp_serde::to_vec_named(&MsgPackValue::Array(vec![
-            MsgPackValue::Binary(b"Peer Name".to_vec()),
-            MsgPackValue::from(23),
-        ]))
-        .expect("encode app data");
-
-        assert_eq!(
-            parse_delivery_stamp_cost_from_app_data_hex(Some(hex::encode(app_data).as_str())),
-            Some(23)
-        );
-    }
+    include!("helpers_tests.rs");
 }

@@ -134,7 +134,7 @@ pub fn delivery_stamp_cost_from_app_data(data: &[u8]) -> Option<u32> {
         rmpv::Value::Array(entries) => entries,
         _ => return None,
     };
-    entries.get(1).and_then(rmp_value_to_u32)
+    entries.get(1).and_then(rmp_value_to_u32).filter(|cost| (1..255).contains(cost))
 }
 
 pub fn pn_stamp_cost_flexibility_from_app_data(data: &[u8]) -> Option<u32> {
@@ -338,6 +338,19 @@ mod tests {
 
         assert_eq!(delivery_stamp_cost_from_app_data(app_data.as_slice()), Some(19));
         assert_eq!(pn_stamp_cost_from_app_data(app_data.as_slice()), None);
+    }
+
+    #[test]
+    fn rejects_python_invalid_delivery_stamp_costs_from_second_app_data_slot() {
+        for invalid_cost in [0, 255, 256] {
+            let app_data = rmp_serde::to_vec_named(&rmpv::Value::Array(vec![
+                rmpv::Value::Binary(b"Peer Name".to_vec()),
+                rmpv::Value::from(invalid_cost),
+            ]))
+            .expect("encode app data");
+
+            assert_eq!(delivery_stamp_cost_from_app_data(app_data.as_slice()), None);
+        }
     }
 
     #[test]

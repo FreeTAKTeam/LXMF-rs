@@ -1,7 +1,8 @@
 use super::announce_worker::spawn_announce_worker;
 use super::bridge::TransportBridge;
-use super::inbound_worker::{spawn_inbound_worker, OutboundResourceTracking};
-use super::interface_hot_apply::LegacyTcpInterfaceMutationBridge;
+use super::inbound_worker::spawn_inbound_worker;
+use super::interface_hot_apply::TcpInterfaceMutationBridge;
+use super::outbound_resources::OutboundResourceMap;
 use super::receipt_worker::spawn_receipt_worker;
 use super::Args;
 #[path = "bootstrap_transport.rs"]
@@ -25,7 +26,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tokio::net::TcpStream;
-use tokio::sync::mpsc::unbounded_channel;
+use tokio::sync::mpsc::channel;
 use tokio::time::{timeout, Duration};
 use transport_startup::{start_transport_and_interfaces, TransportStartupInput};
 
@@ -37,10 +38,13 @@ pub(super) struct RpcTlsConfig {
 }
 
 pub(super) struct BootstrapContext {
-    pub(super) rpc_addr: SocketAddr,
+    pub(super) rpc_addr: Option<SocketAddr>,
+    pub(super) rpc_unix: Option<PathBuf>,
     pub(super) daemon: Arc<RpcDaemon>,
     pub(super) rpc_tls: Option<RpcTlsConfig>,
 }
+
+const RECEIPT_EVENT_QUEUE_CAPACITY: usize = 1024;
 
 #[derive(Clone)]
 pub(super) struct PropagationControlContext {
@@ -61,7 +65,9 @@ pub(super) struct InterfaceStartupFailure {
 }
 
 pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
-    let rpc_addr: SocketAddr = args.rpc.parse().expect("invalid rpc address");
+    let rpc_addr: Option<SocketAddr> =
+        args.rpc.as_ref().map(|addr| addr.parse().expect("invalid rpc address"));
+    let rpc_unix = args.rpc_unix.clone();
     let rpc_tls = parse_tls_args(
         "--rpc-tls-cert",
         "--rpc-tls-key",
@@ -99,9 +105,8 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         })
         .unwrap_or_default();
     let receipt_map: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
-    let outbound_resource_map: Arc<Mutex<HashMap<String, OutboundResourceTracking>>> =
-        Arc::new(Mutex::new(HashMap::new()));
-    let (receipt_tx, receipt_rx) = unbounded_channel();
+    let outbound_resource_map: OutboundResourceMap = Arc::new(Mutex::new(HashMap::new()));
+    let (receipt_tx, receipt_rx) = channel(RECEIPT_EVENT_QUEUE_CAPACITY);
     let propagation_control_enabled = env_flag("LXMD_PROPAGATION_NODE");
     let configured_control_identities = parse_hex_list_env("LXMD_CONTROL_ALLOWED");
     let peer_announce_at_start = env_flag("LXMD_PEER_ANNOUNCE_AT_START");
@@ -134,7 +139,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     configured_interfaces = startup.configured_interfaces;
     let startup_successes = startup.startup_successes;
     let startup_failures = startup.startup_failures;
-    let hot_apply_seeded_tcp = startup.hot_apply_seeded_tcp;
+    let seeded_tcp_interfaces = startup.seeded_tcp_interfaces;
     let selected_tcp_server = startup.selected_tcp_server;
 
     if !startup_failures.is_empty() {
@@ -169,7 +174,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
             "startup",
             &format!(
                 "reticulumd startup summary: rpc={} transport={} interfaces={} identity={}",
-                rpc_addr,
+                rpc_addr.map(|addr| addr.to_string()).unwrap_or_else(|| "disabled".to_owned()),
                 transport_summary,
                 configured_interfaces.len(),
                 identity_hash
@@ -210,10 +215,12 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         outbound_bridge,
         announce_bridge,
     ));
+    configure_startup_rpc_token_auth(&args, daemon.as_ref());
+    enforce_rpc_bind_security(rpc_addr.as_ref(), rpc_tls.as_ref(), daemon.as_ref());
     if let Some(transport) = transport.as_ref() {
-        daemon.set_interface_mutation_bridge(Arc::new(LegacyTcpInterfaceMutationBridge::spawn(
+        daemon.set_interface_mutation_bridge(Arc::new(TcpInterfaceMutationBridge::spawn(
             transport.iface_manager(),
-            hot_apply_seeded_tcp,
+            seeded_tcp_interfaces,
         )));
     }
     if let Some(bridge) = bridge.as_ref() {
@@ -316,7 +323,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         spawn_announce_worker(daemon.clone(), transport, peer_crypto, Some(reticulum_storage_path));
     }
 
-    BootstrapContext { rpc_addr, daemon, rpc_tls }
+    BootstrapContext { rpc_addr, rpc_unix, daemon, rpc_tls }
 }
 
 fn pretty_console_logs_enabled() -> bool {
@@ -389,6 +396,81 @@ fn parse_tls_args(
         }
         _ => panic!("{cert_flag} and {key_flag} must be provided together"),
     }
+}
+
+pub(super) fn enforce_rpc_bind_security(
+    rpc_addr: Option<&SocketAddr>,
+    rpc_tls: Option<&RpcTlsConfig>,
+    daemon: &RpcDaemon,
+) {
+    let Some(addr) = rpc_addr else {
+        return;
+    };
+    if is_local_rpc_bind(addr) {
+        return;
+    }
+    if rpc_tls.and_then(|config| config.client_ca_path.as_ref()).is_some() {
+        return;
+    }
+    if daemon.remote_rpc_auth_configured() {
+        return;
+    }
+    panic!(
+        "remote TCP RPC bind {} requires token auth or mTLS; bind to loopback, use --rpc-unix, configure persisted remote token auth, or provide --rpc-tls-client-ca",
+        addr
+    );
+}
+
+fn is_local_rpc_bind(addr: &SocketAddr) -> bool {
+    let ip = addr.ip();
+    ip.is_loopback() && !ip.is_unspecified()
+}
+
+pub(super) fn configure_startup_rpc_token_auth(args: &Args, daemon: &RpcDaemon) {
+    let token_args = [
+        args.rpc_token_issuer.as_ref().map(|_| "--rpc-token-issuer"),
+        args.rpc_token_audience.as_ref().map(|_| "--rpc-token-audience"),
+        args.rpc_token_secret_env.as_ref().map(|_| "--rpc-token-secret-env"),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>();
+    if token_args.is_empty() {
+        return;
+    }
+    let issuer = args
+        .rpc_token_issuer
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| panic!("--rpc-token-issuer is required for startup token auth"));
+    let audience = args
+        .rpc_token_audience
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| panic!("--rpc-token-audience is required for startup token auth"));
+    let secret_env = args
+        .rpc_token_secret_env
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| panic!("--rpc-token-secret-env is required for startup token auth"));
+    let shared_secret = std::env::var(secret_env)
+        .unwrap_or_else(|_| panic!("startup token auth secret env var {secret_env} is not set"));
+    if shared_secret.trim().is_empty() {
+        panic!("startup token auth secret env var {secret_env} is empty");
+    }
+
+    daemon
+        .configure_remote_token_auth_for_startup(
+            issuer,
+            audience,
+            shared_secret,
+            args.rpc_token_jti_ttl_ms,
+            args.rpc_token_clock_skew_ms,
+        )
+        .unwrap_or_else(|err| panic!("invalid startup token auth configuration: {}", err.message));
 }
 
 fn interface_record_from_config(iface: &InterfaceConfig) -> InterfaceRecord {
