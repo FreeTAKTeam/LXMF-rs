@@ -48,7 +48,7 @@ pub(crate) fn run_e2e(
     modes: Vec<DeliveryMode>,
 ) -> io::Result<()> {
     let timeout = Duration::from_secs(timeout_secs);
-    let selected_modes = selected_delivery_modes(&modes);
+    let mut selected_modes = selected_delivery_modes(&modes);
     let propagation_enabled = selected_modes.contains(&DeliveryMode::Propagated);
     let mut reserved_ports = HashSet::new();
     let a_rpc_listener = reserve_port(a_port, &reserved_ports)?;
@@ -147,6 +147,7 @@ pub(crate) fn run_e2e(
         timeout,
         &mut req_id,
     )?;
+    let announce_discovery_complete = discovery.a_sees_b && discovery.b_sees_a;
     if !discovery.a_sees_b {
         eprintln!("[rnx] daemon A did not discover daemon B via announce; seeding peer");
         let response = rpc_call(
@@ -171,7 +172,12 @@ pub(crate) fn run_e2e(
     }
     std::thread::sleep(Duration::from_millis(1500));
 
-    if propagation_enabled {
+    if modes.is_empty() && !announce_discovery_complete {
+        eprintln!("[rnx] announce discovery incomplete; skipping identity-dependent default modes");
+        selected_modes.retain(|mode| matches!(mode, DeliveryMode::Direct));
+    }
+
+    if selected_modes.contains(&DeliveryMode::Propagated) {
         let a_propagation_hash = a_ready.propagation_hash.clone().ok_or_else(|| {
             io::Error::other("daemon A did not report propagation destination hash")
         })?;
