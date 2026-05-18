@@ -109,12 +109,13 @@ impl<
         bytes.resize_default(message.encoded_len()?).map_err(|_| MiniError::CapacityExceeded)?;
         let written = message.encode(&mut bytes)?;
         bytes.truncate(written);
+        let queued_bytes = bytes.len();
         self.outbound
             .push_back(OutboundFrame { sequence, bytes })
             .map_err(|_| MiniError::Backpressure)?;
         self.next_sequence = self.next_sequence.saturating_add(1);
         self.stats.queued = self.stats.queued.saturating_add(1);
-        self.push_event(MiniEvent::MessageQueued { sequence, bytes: content.len() })?;
+        self.push_event(MiniEvent::MessageQueued { sequence, bytes: queued_bytes })?;
         Ok(sequence)
     }
 
