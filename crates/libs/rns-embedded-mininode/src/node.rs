@@ -298,13 +298,6 @@ impl<S: MiniNodeStore> MiniNode<S> {
             if processed >= 8 {
                 break;
             }
-        let mut remaining = 8;
-        while remaining > 0 {
-            let Some(frame) = link.poll_frame()? else {
-                break;
-            };
-            self.handle_frame(now_ms, &frame)?;
-            remaining -= 1;
         }
         Ok(())
     }
