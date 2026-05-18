@@ -257,8 +257,28 @@ pub(super) async fn manage_transport(
         })
     };
 
-    // Disabled for the R3AKT/REM live test runtime: the link maintenance sweep can hold the
-    // transport handler while awaiting link work, which blocks opportunistic command packets.
+    {
+        let handler = handler_arc.clone();
+        let cancel = cancel.clone();
+
+        tokio::spawn(async move {
+            loop {
+                if cancel.is_cancelled() {
+                    break;
+                }
+
+                let delay = next_link_check_delay(&handler).await;
+                tokio::select! {
+                    _ = cancel.cancelled() => {
+                        break;
+                    },
+                    _ = time::sleep(delay) => {
+                        handle_check_links(handler.lock().await).await;
+                    }
+                }
+            }
+        });
+    }
 
     {
         let handler = handler_arc.clone();

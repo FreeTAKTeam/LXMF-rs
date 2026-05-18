@@ -221,17 +221,6 @@ impl TransportHandler {
         is_new || allow_duplicate
     }
 
-    pub(super) async fn request_path(
-        &mut self,
-        address: &AddressHash,
-        on_iface: Option<AddressHash>,
-        tag: Option<TagBytes>,
-    ) {
-        let packet = self.path_requests.generate(address, tag);
-
-        self.send(TxMessage { tx_type: TxMessageType::Broadcast(on_iface), packet }).await;
-    }
-
     /// Register (or refresh) the *virtual* unicast iface that the
     /// transport uses to route point-to-point traffic for the peer
     /// that delivered this packet. Only acts when:

@@ -1638,6 +1638,20 @@ impl RemoteControlBridge for TestRemoteControlBridge {
     ) -> Result<JsonValue, std::io::Error> {
         Ok(json!({"unpeered": true}))
     }
+
+    fn propagation_remote_fetch(
+        &self,
+        _remote: &str,
+        _identity_private_key_hex: Option<&str>,
+        _timeout_secs: f64,
+        _transfer_limit_kb: Option<f64>,
+    ) -> Result<JsonValue, std::io::Error> {
+        Ok(json!({
+            "available_count": 0,
+            "fetched_count": 0,
+            "imported_count": 0,
+        }))
+    }
 }
 
 #[test]
