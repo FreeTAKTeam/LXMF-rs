@@ -453,6 +453,14 @@ pub struct RpcDaemon {
 }
 
 pub trait OutboundBridge: Send + Sync {
+    fn validate_delivery(
+        &self,
+        _record: &MessageRecord,
+        _options: &OutboundDeliveryOptions,
+    ) -> Result<(), std::io::Error> {
+        Ok(())
+    }
+
     fn deliver(
         &self,
         record: &MessageRecord,

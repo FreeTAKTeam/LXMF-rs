@@ -96,7 +96,46 @@ impl RpcDaemon {
             }
             record.receipt_status = Some(resolved_status);
         }
-        if self.outbound_bridge.is_some() {
+        if let Some(bridge) = &self.outbound_bridge {
+            if let Err(err) = bridge.validate_delivery(&record, &options) {
+                let status = format!("failed: {err}");
+                let resolved_status = {
+                    let _status_guard = self
+                        .delivery_status_lock
+                        .lock()
+                        .expect("delivery_status_lock mutex poisoned");
+                    let resolved_status = self
+                        .store
+                        .resolve_receipt_status(&id, &status)
+                        .map_err(std::io::Error::other)?
+                        .unwrap_or_else(|| status.clone());
+                    if resolved_status == status {
+                        self.append_delivery_trace(&id, status);
+                    }
+                    resolved_status
+                };
+                record.receipt_status = Some(resolved_status.clone());
+                let reason_code = delivery_reason_code(&resolved_status);
+                let event = RpcEvent {
+                    event_type: "outbound".into(),
+                    payload: json!({
+                        "message": record,
+                        "method": method,
+                        "error": err.to_string(),
+                        "reason_code": reason_code,
+                    }),
+                };
+                let publish_started = std::time::Instant::now();
+                self.publish_event(event);
+                let publish_elapsed_ns =
+                    publish_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
+                self.metrics_record_sdk_send_event_publish(publish_elapsed_ns);
+                return Ok(RpcResponse {
+                    id: request_id,
+                    result: None,
+                    error: Some(RpcError::new("DELIVERY_FAILED", err.to_string())),
+                });
+            }
             let delivery_started = std::time::Instant::now();
             let schedule_result = self.schedule_bridge_delivery(record.clone(), options);
             let delivery_elapsed_ns =
