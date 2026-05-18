@@ -90,12 +90,13 @@ Keep these unpublished:
 - `crates/apps/rns-tools`
 - `crates/libs/test-support`
 - `xtask`
-- `crates/internal/*`
-- transitional stubs such as `lxmf-router` and `lxmf-runtime` unless they are
-  intentionally revived as supported public APIs
 
 These are distributed through GitHub releases, used only for local tooling, or
 are not intended to carry a public support commitment.
+
+Retired migration-era crates such as `crates/internal/*`, `lxmf-router`, and
+`lxmf-runtime` are not part of the publish plan. If any of those names are
+revived, they need a fresh support-policy decision before publication.
 
 ## 6. Versioning Policy
 

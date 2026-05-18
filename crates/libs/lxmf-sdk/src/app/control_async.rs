@@ -1,0 +1,311 @@
+use super::capabilities::CapabilitySummary;
+use super::delivery::{
+    AttemptDecision, AttemptDisposition, DeliveryAttempt, DeliveryOptions, SendReport,
+};
+use super::errors::Error;
+use super::events::{subscription_cursor, SubscriptionStart};
+use super::node::Client;
+use super::runtime::{map_delivery_snapshot, map_runtime_state, Config, DeliveryStatus, Handle};
+use super::runtime::{RunState, RuntimeStatus, SendReceipt, SendRequest};
+use super::session::EventStream;
+use super::session::SessionState;
+use crate::{Client as CoreClient, LxmfSdkAsync, SdkBackend};
+use crate::{SdkBackendAsyncEvents, SdkBackendAsyncOps, ShutdownMode};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
+impl<B: SdkBackend> Client<B> {
+    pub async fn start_async(&self, config: Config) -> Result<Handle, Error>
+    where
+        B: SdkBackendAsyncOps,
+    {
+        {
+            let mut state = self.state.lock().expect("app client mutex poisoned");
+            if state.client.is_none() && state.session.is_some() {
+                state.session = None;
+                state.lifecycle = RunState::Stopped;
+            }
+            if state.lifecycle == RunState::Starting {
+                return Err(Error::from(crate::SdkError::new(
+                    crate::error::code::RUNTIME_INVALID_STATE,
+                    crate::ErrorCategory::Runtime,
+                    "runtime is already starting",
+                )));
+            }
+            if let Some(session) = state.session.as_ref() {
+                let session = session.lock().expect("app session mutex poisoned");
+                return if session.config == config {
+                    Ok(Handle {
+                        runtime_id: session.handle.runtime_id.clone(),
+                        profile: session.config.profile.clone(),
+                        capabilities: CapabilitySummary::from(&session.handle),
+                    })
+                } else {
+                    Err(Error::already_running_different_config())
+                };
+            }
+            state.lifecycle = RunState::Starting;
+        }
+
+        let client =
+            Arc::new(CoreClient::new(super::session::SharedBackend(Arc::clone(&self.backend))));
+        let handle = match client.start_async(config.start_request()).await {
+            Ok(handle) => handle,
+            Err(err) => {
+                let mut state = self.state.lock().expect("app client mutex poisoned");
+                state.lifecycle = RunState::New;
+                return Err(Error::from(err));
+            }
+        };
+        let session = Arc::new(Mutex::new(SessionState {
+            handle: handle.clone(),
+            config: config.clone(),
+            degraded: false,
+        }));
+        let mut state = self.state.lock().expect("app client mutex poisoned");
+        if state.lifecycle != RunState::Starting {
+            return Err(Error::from(crate::SdkError::new(
+                crate::error::code::RUNTIME_INVALID_STATE,
+                crate::ErrorCategory::Runtime,
+                "runtime start was interrupted before installation",
+            )));
+        }
+        state.client = Some(Arc::clone(&client));
+        state.session = Some(session);
+        state.lifecycle = RunState::Running;
+
+        Ok(Handle {
+            runtime_id: handle.runtime_id.clone(),
+            profile: config.profile,
+            capabilities: CapabilitySummary::from(&handle),
+        })
+    }
+
+    pub async fn send_async(&self, request: SendRequest) -> Result<SendReceipt, Error>
+    where
+        B: SdkBackendAsyncOps,
+    {
+        let (client, session) = {
+            let state = self.state.lock().expect("app client mutex poisoned");
+            let Some(client) = state.client.as_ref() else {
+                return Err(Error::not_started());
+            };
+            let Some(session) = state.session.as_ref() else {
+                return Err(Error::not_started());
+            };
+            (Arc::clone(client), Arc::clone(session))
+        };
+        let (runtime_id, profile) = {
+            let session = session.lock().expect("app session mutex poisoned");
+            (session.handle.runtime_id.clone(), session.config.profile.clone())
+        };
+        let correlation_id = request.correlation_id.clone();
+        let message_id = client.send_async(request.into_raw()).await.map_err(Error::from)?;
+        Ok(SendReceipt { runtime_id, message_id: message_id.0, profile, correlation_id })
+    }
+
+    pub async fn send_with_profile_defaults_async(
+        &self,
+        request: SendRequest,
+    ) -> Result<SendReport, Error>
+    where
+        B: SdkBackendAsyncOps,
+    {
+        self.send_with_options_async(request, DeliveryOptions::default()).await
+    }
+
+    pub async fn send_with_options_async(
+        &self,
+        request: SendRequest,
+        options: DeliveryOptions,
+    ) -> Result<SendReport, Error>
+    where
+        B: SdkBackendAsyncOps,
+    {
+        let plan = self.delivery_plan()?;
+        let resolved = plan.resolve(&options);
+        let started = Instant::now();
+        let mut attempts: Vec<DeliveryAttempt> = Vec::new();
+        let mut request = request;
+
+        loop {
+            let attempt_no = attempts.len() as u32 + 1;
+            match self.send_async(request.clone()).await {
+                Ok(receipt) => {
+                    let total_delay_ms = attempts
+                        .iter()
+                        .filter_map(|attempt: &DeliveryAttempt| attempt.scheduled_delay_ms)
+                        .sum::<u64>();
+                    return Ok(SendReport { receipt, attempts, total_delay_ms, plan });
+                }
+                Err(err) => match resolved.classify_failure(
+                    attempt_no,
+                    &err,
+                    started.elapsed().as_millis() as u64,
+                ) {
+                    AttemptDecision::Retry(delay_ms) => {
+                        attempts.push(DeliveryAttempt {
+                            attempt: attempt_no,
+                            disposition: AttemptDisposition::Retried,
+                            error_code: err.code.as_str().to_owned(),
+                            retryable: err.retryable,
+                            queue_pressure: matches!(
+                                err.code,
+                                super::errors::ErrorCode::DeliveryQueuePressure
+                            ),
+                            scheduled_delay_ms: Some(delay_ms),
+                        });
+                        if delay_ms > 0 {
+                            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+                        }
+                        request = request.clone();
+                    }
+                    AttemptDecision::Stop(stop_err) | AttemptDecision::Timeout(stop_err) => {
+                        attempts.push(DeliveryAttempt {
+                            attempt: attempt_no,
+                            disposition: AttemptDisposition::Failed,
+                            error_code: err.code.as_str().to_owned(),
+                            retryable: err.retryable,
+                            queue_pressure: matches!(
+                                err.code,
+                                super::errors::ErrorCode::DeliveryQueuePressure
+                            ),
+                            scheduled_delay_ms: None,
+                        });
+                        return Err(stop_err);
+                    }
+                },
+            }
+        }
+    }
+
+    pub async fn delivery_status_async(
+        &self,
+        message_id: impl Into<crate::MessageId>,
+    ) -> Result<Option<DeliveryStatus>, Error>
+    where
+        B: SdkBackendAsyncOps,
+    {
+        let client = {
+            let state = self.state.lock().expect("app client mutex poisoned");
+            let Some(client) = state.client.as_ref() else {
+                return Err(Error::not_started());
+            };
+            Arc::clone(client)
+        };
+        let snapshot = client.status_async(message_id.into()).await.map_err(Error::from)?;
+        Ok(snapshot.map(map_delivery_snapshot))
+    }
+
+    pub async fn status_async(&self) -> Result<RuntimeStatus, Error>
+    where
+        B: SdkBackendAsyncOps,
+    {
+        let (client, session, lifecycle) = {
+            let state = self.state.lock().expect("app client mutex poisoned");
+            let Some(client) = state.client.as_ref() else {
+                return Ok(RuntimeStatus {
+                    runtime_id: None,
+                    state: state.lifecycle.clone(),
+                    profile: None,
+                    capabilities: None,
+                    queued_messages: 0,
+                    in_flight_messages: 0,
+                    event_stream_position: 0,
+                    config_revision: 0,
+                });
+            };
+            let Some(session) = state.session.as_ref() else {
+                return Err(Error::not_started());
+            };
+            (Arc::clone(client), Arc::clone(session), state.lifecycle.clone())
+        };
+        let snapshot = client.snapshot_async().await.map_err(Error::from)?;
+        let session = session.lock().expect("app session mutex poisoned");
+        Ok(RuntimeStatus {
+            runtime_id: Some(snapshot.runtime_id.clone()),
+            state: if lifecycle == RunState::Stopping {
+                RunState::Stopping
+            } else {
+                map_runtime_state(snapshot.state, session.degraded)
+            },
+            profile: Some(session.config.profile.clone()),
+            capabilities: Some(CapabilitySummary::from(&session.handle)),
+            queued_messages: snapshot.queued_messages,
+            in_flight_messages: snapshot.in_flight_messages,
+            event_stream_position: snapshot.event_stream_position,
+            config_revision: snapshot.config_revision,
+        })
+    }
+
+    pub async fn stop_async(&self, mode: ShutdownMode) -> Result<(), Error>
+    where
+        B: SdkBackendAsyncOps,
+    {
+        let (client, previous_lifecycle) = {
+            let mut state = self.state.lock().expect("app client mutex poisoned");
+            let Some(client) = state.client.as_ref().cloned() else {
+                if state.lifecycle == RunState::Starting {
+                    return Err(Error::from(crate::SdkError::new(
+                        crate::error::code::RUNTIME_INVALID_STATE,
+                        crate::ErrorCategory::Runtime,
+                        "runtime is still starting",
+                    )));
+                }
+                state.session = None;
+                state.lifecycle = RunState::Stopped;
+                return Ok(());
+            };
+            let previous_lifecycle = state.lifecycle.clone();
+            state.lifecycle = RunState::Stopping;
+            (client, previous_lifecycle)
+        };
+        if let Err(err) = client.shutdown_async(mode).await {
+            let mut state = self.state.lock().expect("app client mutex poisoned");
+            state.lifecycle = previous_lifecycle;
+            return Err(Error::from(err));
+        }
+        let mut state = self.state.lock().expect("app client mutex poisoned");
+        state.client = None;
+        state.session = None;
+        state.lifecycle = RunState::Stopped;
+        Ok(())
+    }
+
+    pub fn subscribe_events(&self, start: SubscriptionStart) -> Result<EventStream<B>, Error>
+    where
+        B: SdkBackendAsyncEvents,
+    {
+        let state = self.state.lock().expect("app client mutex poisoned");
+        let Some(client) = state.client.as_ref() else {
+            return Err(Error::not_started());
+        };
+        let Some(session) = state.session.as_ref() else {
+            return Err(Error::not_started());
+        };
+        let subscription = client.subscribe_events(start.into()).map_err(Error::from)?;
+        let session_guard = session.lock().expect("app session mutex poisoned");
+        let max_batch_size = session_guard
+            .config
+            .event_batch_size
+            .unwrap_or(session_guard.handle.effective_limits.max_poll_events)
+            .min(session_guard.handle.effective_limits.max_poll_events)
+            .max(1);
+        let profile = session_guard.config.profile.clone();
+        drop(session_guard);
+        let live_stream = client.open_event_stream(&subscription).map_err(Error::from)?;
+        Ok(EventStream {
+            client: Arc::clone(client),
+            session: Arc::clone(session),
+            cursor: subscription_cursor(&subscription),
+            max_batch_size,
+            profile,
+            pending_events: Default::default(),
+            inflight: None,
+            live_stream,
+            last_seq_no: None,
+            idle_delay: Duration::from_millis(250),
+            idle_sleep: None,
+        })
+    }
+}

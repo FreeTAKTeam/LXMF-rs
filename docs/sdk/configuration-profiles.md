@@ -66,6 +66,7 @@ Operational tuning guidance:
 
 - `docs/runbooks/queue-pressure-tuning.md`
 - `docs/runbooks/sdk-config-cookbook.md`
+- `docs/sdk/remote-mtls.md`
 
 ## Mutable vs Immutable Config Fields
 

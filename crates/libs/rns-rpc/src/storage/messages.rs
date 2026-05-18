@@ -444,6 +444,7 @@ impl MessagesStore {
                             OR TRIM(receipt_status) = ''
                             OR (
                                 LOWER(receipt_status) NOT LIKE 'sent%'
+                                AND LOWER(receipt_status) NOT LIKE 'failed%'
                                 AND LOWER(receipt_status) NOT IN ('cancelled', 'delivered', 'failed', 'expired', 'rejected')
                             )
                          )
@@ -476,6 +477,7 @@ impl MessagesStore {
                         WHEN receipt_status IS NOT NULL
                             AND TRIM(receipt_status) <> ''
                             AND LOWER(receipt_status) NOT LIKE 'sent%'
+                            AND LOWER(receipt_status) NOT LIKE 'failed%'
                             AND LOWER(receipt_status) NOT IN ('cancelled', 'delivered', 'failed', 'expired', 'rejected')
                         THEN 1
                         ELSE 0
@@ -508,6 +510,7 @@ impl MessagesStore {
                         OR TRIM(receipt_status) = ''
                         OR (
                             LOWER(receipt_status) NOT LIKE 'sent%'
+                            AND LOWER(receipt_status) NOT LIKE 'failed%'
                             AND LOWER(receipt_status) NOT IN ('cancelled', 'delivered', 'failed', 'expired', 'rejected')
                         )
                    )
@@ -562,6 +565,7 @@ impl MessagesStore {
                        AND TRIM(receipt_status) <> ''
                        AND (
                             LOWER(receipt_status) LIKE 'sent%'
+                            OR LOWER(receipt_status) LIKE 'failed%'
                             OR LOWER(receipt_status) IN ('cancelled', 'delivered', 'failed', 'expired', 'rejected')
                        )
                      ORDER BY timestamp ASC, id ASC
@@ -579,6 +583,7 @@ impl MessagesStore {
                                 OR TRIM(receipt_status) = ''
                                 OR (
                                     LOWER(receipt_status) NOT LIKE 'sent%'
+                                    AND LOWER(receipt_status) NOT LIKE 'failed%'
                                     AND LOWER(receipt_status) NOT IN ('cancelled', 'delivered', 'failed', 'expired', 'rejected')
                                 )
                            )
@@ -679,6 +684,24 @@ impl MessagesStore {
             conn.execute(
                 "UPDATE messages SET receipt_status = ?1 WHERE id = ?2",
                 params![status, message_id],
+            )?;
+            Ok(())
+        })
+    }
+
+    pub fn update_message_fields(
+        &self,
+        message_id: &str,
+        fields: Option<&JsonValue>,
+    ) -> rusqlite::Result<()> {
+        let fields_json = fields
+            .map(serde_json::to_string)
+            .transpose()
+            .map_err(|err| rusqlite::Error::ToSqlConversionFailure(Box::new(err)))?;
+        self.with_write_conn(|conn| {
+            conn.execute(
+                "UPDATE messages SET fields = ?1 WHERE id = ?2",
+                params![fields_json, message_id],
             )?;
             Ok(())
         })
@@ -811,11 +834,24 @@ impl MessagesStore {
     pub fn get_ticket(&self, destination: &str) -> rusqlite::Result<Option<(String, i64)>> {
         self.with_read_conn(|conn| {
             conn.query_row(
-                "SELECT ticket, expires_at FROM tickets WHERE destination = ?1",
+                "SELECT ticket, expires_at FROM tickets WHERE destination = ?1 ORDER BY expires_at DESC, ticket DESC LIMIT 1",
                 params![destination],
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .optional()
+        })
+    }
+
+    pub fn get_tickets_for_destination(
+        &self,
+        destination: &str,
+    ) -> rusqlite::Result<Vec<(String, i64)>> {
+        self.with_read_conn(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT ticket, expires_at FROM tickets WHERE destination = ?1 ORDER BY expires_at DESC, ticket DESC",
+            )?;
+            let rows = stmt.query_map(params![destination], |row| Ok((row.get(0)?, row.get(1)?)))?;
+            rows.collect()
         })
     }
 
@@ -828,9 +864,18 @@ impl MessagesStore {
         self.with_write_conn(|conn| {
             conn.execute(
                 "INSERT INTO tickets (destination, ticket, expires_at) VALUES (?1, ?2, ?3)
-                 ON CONFLICT(destination) DO UPDATE SET ticket = excluded.ticket, expires_at = excluded.expires_at",
+                 ON CONFLICT(destination, ticket) DO UPDATE SET expires_at = excluded.expires_at",
                 params![destination, ticket, expires_at],
             )?;
+            Ok(())
+        })
+    }
+
+    pub fn prune_expired_tickets(&self, now: i64, inbound_grace_secs: i64) -> rusqlite::Result<()> {
+        let inbound_cutoff = now.saturating_sub(inbound_grace_secs.max(0));
+        self.with_write_conn(|conn| {
+            conn.execute("DELETE FROM outbound_tickets WHERE expires_at <= ?1", params![now])?;
+            conn.execute("DELETE FROM tickets WHERE expires_at < ?1", params![inbound_cutoff])?;
             Ok(())
         })
     }
@@ -996,9 +1041,10 @@ impl MessagesStore {
                     state_json TEXT NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS tickets (
-                    destination TEXT PRIMARY KEY,
+                    destination TEXT NOT NULL,
                     ticket TEXT NOT NULL,
-                    expires_at INTEGER NOT NULL
+                    expires_at INTEGER NOT NULL,
+                    PRIMARY KEY(destination, ticket)
                 );
                 CREATE TABLE IF NOT EXISTS outbound_tickets (
                     destination TEXT PRIMARY KEY,
@@ -1017,6 +1063,12 @@ impl MessagesStore {
                     ON messages(receipt_status);
                 CREATE INDEX IF NOT EXISTS idx_announces_timestamp_id_desc
                     ON announces(timestamp DESC, id DESC);",
+            )?;
+            Self::ensure_multi_ticket_schema(conn)?;
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_tickets_destination_expires
+                    ON tickets(destination, expires_at DESC)",
+                [],
             )?;
             let _ = conn.execute("ALTER TABLE messages ADD COLUMN title TEXT", []);
             let _ = conn.execute("UPDATE messages SET title = '' WHERE title IS NULL", []);
@@ -1037,6 +1089,39 @@ impl MessagesStore {
             let _ = conn.execute("ALTER TABLE announces ADD COLUMN peering_cost INTEGER", []);
             Ok(())
         })
+    }
+
+    fn ensure_multi_ticket_schema(conn: &Connection) -> rusqlite::Result<()> {
+        let mut stmt = conn.prepare("PRAGMA table_info(tickets)")?;
+        let mut rows = stmt.query([])?;
+        let mut primary_key_columns = Vec::new();
+        while let Some(row) = rows.next()? {
+            let name: String = row.get(1)?;
+            let pk_order: i64 = row.get(5)?;
+            if pk_order > 0 {
+                primary_key_columns.push((pk_order, name));
+            }
+        }
+        primary_key_columns.sort_by_key(|(pk_order, _)| *pk_order);
+        let primary_key_columns: Vec<String> =
+            primary_key_columns.into_iter().map(|(_, name)| name).collect();
+
+        if primary_key_columns != ["destination"] {
+            return Ok(());
+        }
+
+        conn.execute_batch(
+            "ALTER TABLE tickets RENAME TO tickets_single_destination;
+             CREATE TABLE tickets (
+                destination TEXT NOT NULL,
+                ticket TEXT NOT NULL,
+                expires_at INTEGER NOT NULL,
+                PRIMARY KEY(destination, ticket)
+             );
+             INSERT OR IGNORE INTO tickets (destination, ticket, expires_at)
+                SELECT destination, ticket, expires_at FROM tickets_single_destination;
+             DROP TABLE tickets_single_destination;",
+        )
     }
 }
 
@@ -1117,6 +1202,59 @@ mod tests {
     }
 
     #[test]
+    fn prune_expired_tickets_matches_python_available_ticket_cleanup() {
+        let store = MessagesStore::in_memory().expect("in-memory store");
+        store.upsert_outbound_ticket("expired-outbound", "00", 90).expect("outbound expired");
+        store.upsert_outbound_ticket("valid-outbound", "11", 110).expect("outbound valid");
+        store.upsert_ticket("inbound-grace", "22", 90).expect("inbound grace");
+        store.upsert_ticket("inbound-expired", "33", 89).expect("inbound expired");
+
+        store.prune_expired_tickets(100, 10).expect("prune tickets");
+
+        assert!(store.get_outbound_ticket("expired-outbound").expect("expired outbound").is_none());
+        assert!(store.get_outbound_ticket("valid-outbound").expect("valid outbound").is_some());
+        assert!(store.get_ticket("inbound-grace").expect("inbound grace").is_some());
+        assert!(store.get_ticket("inbound-expired").expect("inbound expired").is_none());
+    }
+
+    #[test]
+    fn inbound_tickets_keep_multiple_generated_tickets_per_destination() {
+        let store = MessagesStore::in_memory().expect("in-memory store");
+        store.upsert_ticket("peer", "22", 200).expect("insert first ticket");
+        store.upsert_ticket("peer", "33", 300).expect("insert second ticket");
+
+        let tickets = store.get_tickets_for_destination("peer").expect("load tickets");
+
+        assert_eq!(tickets, vec![("33".to_string(), 300), ("22".to_string(), 200)]);
+        assert_eq!(store.get_ticket("peer").expect("load latest"), Some(("33".to_string(), 300)));
+    }
+
+    #[test]
+    fn opening_old_single_ticket_schema_migrates_to_multi_ticket_schema() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let db_path = temp.path().join("single-ticket-schema.sqlite");
+        {
+            let conn = Connection::open(db_path.as_path()).expect("open raw sqlite");
+            conn.execute_batch(
+                "CREATE TABLE tickets (
+                    destination TEXT PRIMARY KEY,
+                    ticket TEXT NOT NULL,
+                    expires_at INTEGER NOT NULL
+                );
+                INSERT INTO tickets (destination, ticket, expires_at)
+                    VALUES ('peer', '22', 200);",
+            )
+            .expect("seed old schema");
+        }
+
+        let store = MessagesStore::open(db_path.as_path()).expect("open migrated store");
+        store.upsert_ticket("peer", "33", 300).expect("insert second ticket");
+
+        let tickets = store.get_tickets_for_destination("peer").expect("load tickets");
+        assert_eq!(tickets, vec![("33".to_string(), 300), ("22".to_string(), 200)]);
+    }
+
+    #[test]
     fn expire_outbound_messages_marks_non_terminal_records() {
         let store = MessagesStore::in_memory().expect("in-memory store");
         store
@@ -1135,6 +1273,27 @@ mod tests {
         let terminal =
             store.get_message("out-terminal").expect("load terminal").expect("terminal exists");
         assert_eq!(terminal.receipt_status.as_deref(), Some("delivered"));
+    }
+
+    #[test]
+    fn detailed_failed_status_is_terminal_for_expiry_and_buckets() {
+        let store = MessagesStore::in_memory().expect("in-memory store");
+        store
+            .insert_message(&outbound_message("out-failed-detail", 10, Some("failed: no path")))
+            .expect("insert detailed failure");
+        store
+            .insert_message(&outbound_message("out-sending", 11, Some("sending")))
+            .expect("insert sending");
+
+        let expired = store.expire_outbound_messages_before(12).expect("expire outbound");
+        assert_eq!(expired, vec!["out-sending".to_string()]);
+        let failed =
+            store.get_message("out-failed-detail").expect("load failed").expect("failed exists");
+        assert_eq!(failed.receipt_status.as_deref(), Some("failed: no path"));
+
+        let (queued, in_flight) = store.count_message_buckets().expect("message buckets");
+        assert_eq!(queued, 0);
+        assert_eq!(in_flight, 0);
     }
 
     #[test]
@@ -1159,6 +1318,39 @@ mod tests {
             "non-terminal record should remain when terminal records satisfy prune count"
         );
         assert_eq!(store.message_count().expect("count after prune"), 1);
+    }
+
+    #[test]
+    fn prune_outbound_messages_terminal_first_treats_detailed_failed_status_as_terminal() {
+        let store = MessagesStore::in_memory().expect("in-memory store");
+        store
+            .insert_message(&outbound_message("msg-failed-detail", 1, Some("failed: no path")))
+            .expect("insert detailed failure");
+        store
+            .insert_message(&outbound_message("msg-sending", 2, Some("sending")))
+            .expect("insert sending");
+
+        let pruned = store.prune_outbound_messages(1, "terminal_first").expect("prune outbound");
+        assert_eq!(pruned, vec!["msg-failed-detail".to_string()]);
+        assert!(
+            store.get_message("msg-sending").expect("load sending").is_some(),
+            "sending record should remain when detailed failure satisfies prune count"
+        );
+    }
+
+    #[test]
+    fn peer_message_stats_treats_detailed_failed_status_as_terminal() {
+        let store = MessagesStore::in_memory().expect("in-memory store");
+        let mut failed = outbound_message("peer-failed-detail", 1, Some("failed: no path"));
+        failed.destination = "peer-a".to_string();
+        let mut sending = outbound_message("peer-sending", 2, Some("sending"));
+        sending.destination = "peer-a".to_string();
+        store.insert_message(&failed).expect("insert detailed failure");
+        store.insert_message(&sending).expect("insert sending");
+
+        let stats = store.peer_message_stats("peer-a").expect("peer stats");
+        assert_eq!(stats.outgoing, 2);
+        assert_eq!(stats.offered, 1);
     }
 
     #[test]
@@ -1238,6 +1430,22 @@ mod tests {
                 .as_deref(),
             Some("sent: direct")
         );
+    }
+
+    #[test]
+    fn update_message_fields_preserves_receipt_status() {
+        let store = MessagesStore::in_memory().expect("in-memory store");
+        store
+            .insert_message(&outbound_message("msg-1", 1, Some("sending")))
+            .expect("insert message");
+
+        store
+            .update_message_fields("msg-1", Some(&json!({"_lxmf": {"transient_id": "abcd"}})))
+            .expect("update fields");
+
+        let message = store.get_message("msg-1").expect("load message").expect("message exists");
+        assert_eq!(message.receipt_status.as_deref(), Some("sending"));
+        assert_eq!(message.fields.expect("fields")["_lxmf"]["transient_id"], json!("abcd"));
     }
 
     #[test]

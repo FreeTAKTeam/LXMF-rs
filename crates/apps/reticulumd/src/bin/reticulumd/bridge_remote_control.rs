@@ -1,4 +1,11 @@
 use super::*;
+use lxmf::inbound_decode::InboundPayloadMode;
+use reticulum_daemon::inbound_delivery::{
+    annotate_inbound_record_stamp_status, decode_inbound_payload, evaluate_inbound_stamp_policy,
+};
+use reticulum_daemon::lxmf_bridge::rmpv_to_json;
+use rns_rpc::RemoteControlBridge;
+use rns_transport::identity::DecryptIdentity;
 
 impl TransportBridge {
     pub(super) fn run_remote_control_raw(
@@ -129,6 +136,264 @@ impl TransportBridge {
 pub(super) fn remote_peer_value(peer: &str) -> Result<rmpv::Value, std::io::Error> {
     let peer_hash = parse_destination_hash_required(peer)?;
     Ok(rmpv::Value::Binary(peer_hash.to_vec()))
+}
+
+impl RemoteControlBridge for TransportBridge {
+    fn propagation_remote_status(
+        &self,
+        remote: &str,
+        identity_private_key_hex: Option<&str>,
+        timeout_secs: f64,
+    ) -> Result<JsonValue, std::io::Error> {
+        self.run_remote_control(
+            remote,
+            identity_private_key_hex,
+            timeout_secs,
+            "/pn/get/stats",
+            rmpv::Value::Nil,
+        )
+    }
+
+    fn propagation_remote_sync(
+        &self,
+        remote: &str,
+        peer: &str,
+        identity_private_key_hex: Option<&str>,
+        timeout_secs: f64,
+    ) -> Result<JsonValue, std::io::Error> {
+        self.run_remote_control(
+            remote,
+            identity_private_key_hex,
+            timeout_secs,
+            "/pn/peer/sync",
+            remote_peer_value(peer)?,
+        )
+    }
+
+    fn propagation_remote_fetch(
+        &self,
+        remote: &str,
+        identity_private_key_hex: Option<&str>,
+        timeout_secs: f64,
+        transfer_limit_kb: Option<f64>,
+    ) -> Result<JsonValue, std::io::Error> {
+        let available = self.run_remote_control_raw(
+            remote,
+            identity_private_key_hex,
+            timeout_secs,
+            "/get",
+            rmpv::Value::Array(vec![rmpv::Value::Nil, rmpv::Value::Nil]),
+        )?;
+        let transient_ids = rmpv_binary_array(&available)?;
+        if transient_ids.is_empty() {
+            return Ok(json!({
+                "available_count": 0,
+                "fetched_count": 0,
+                "imported_count": 0,
+            }));
+        }
+
+        let fetched = self.run_remote_control_raw(
+            remote,
+            identity_private_key_hex,
+            timeout_secs,
+            "/get",
+            rmpv::Value::Array(vec![
+                rmpv::Value::Array(
+                    transient_ids.iter().cloned().map(rmpv::Value::Binary).collect(),
+                ),
+                rmpv::Value::Nil,
+                transfer_limit_kb
+                    .map(rmpv::Value::F64)
+                    .unwrap_or_else(|| rmpv::Value::from(10_240u64)),
+            ]),
+        )?;
+        let payloads = rmpv_binary_array(&fetched)?;
+        let daemon = self
+            .daemon
+            .lock()
+            .ok()
+            .and_then(|guard| guard.clone())
+            .ok_or_else(|| std::io::Error::other("daemon unavailable"))?;
+
+        let mut imported_count = 0usize;
+        for payload in &payloads {
+            self.accept_local_propagated_payload(daemon.clone(), payload.clone())?;
+            imported_count = imported_count.saturating_add(1);
+        }
+
+        Ok(json!({
+            "available_count": transient_ids.len(),
+            "fetched_count": payloads.len(),
+            "imported_count": imported_count,
+        }))
+    }
+
+    fn propagation_remote_unpeer(
+        &self,
+        remote: &str,
+        peer: &str,
+        identity_private_key_hex: Option<&str>,
+        timeout_secs: f64,
+    ) -> Result<JsonValue, std::io::Error> {
+        self.run_remote_control(
+            remote,
+            identity_private_key_hex,
+            timeout_secs,
+            "/pn/peer/unpeer",
+            remote_peer_value(peer)?,
+        )
+    }
+}
+
+fn rmpv_binary_array(value: &rmpv::Value) -> Result<Vec<Vec<u8>>, std::io::Error> {
+    let rmpv::Value::Array(values) = value else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "propagation node returned non-array payload",
+        ));
+    };
+    values
+        .iter()
+        .map(|value| match value {
+            rmpv::Value::Binary(bytes) => Ok(bytes.clone()),
+            _ => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "propagation node returned non-binary item",
+            )),
+        })
+        .collect()
+}
+
+impl TransportBridge {
+    fn accept_local_propagated_payload(
+        &self,
+        daemon: Arc<RpcDaemon>,
+        transient_payload: Vec<u8>,
+    ) -> Result<(), std::io::Error> {
+        let destination = self.announce_destination.clone();
+        std::thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|err| {
+                    std::io::Error::other(format!(
+                        "failed to build propagation import runtime: {err}"
+                    ))
+                })?;
+            runtime.block_on(async move {
+                accept_local_propagated_payload_inner(
+                    daemon.as_ref(),
+                    destination,
+                    transient_payload.as_slice(),
+                )
+                .await
+            })
+        })
+        .join()
+        .map_err(|_| std::io::Error::other("propagation import helper thread panicked"))?
+    }
+}
+
+async fn accept_local_propagated_payload_inner(
+    daemon: &RpcDaemon,
+    delivery_destination: Arc<tokio::sync::Mutex<SingleInputDestination>>,
+    transient_payload: &[u8],
+) -> Result<(), std::io::Error> {
+    if transient_payload.len() <= 16 + 32 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "propagated LXMF payload too short",
+        ));
+    }
+
+    let (destination_hash, wire) = {
+        let destination = delivery_destination.lock().await;
+        if &transient_payload[..16] != destination.desc.address_hash.as_slice() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "propagated LXMF payload is not addressed to the local delivery destination",
+            ));
+        }
+        let wire = decrypt_local_propagated_wire(&destination, transient_payload)?;
+        let mut destination_hash = [0u8; 16];
+        destination_hash.copy_from_slice(destination.desc.address_hash.as_slice());
+        (destination_hash, wire)
+    };
+
+    let stamp_status = evaluate_inbound_stamp_policy(
+        daemon,
+        destination_hash,
+        &wire,
+        InboundPayloadMode::FullWire,
+    )
+    .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
+
+    let Some(mut record) =
+        decode_inbound_payload(destination_hash, &wire, InboundPayloadMode::FullWire)
+    else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "failed to decode fetched propagated LXMF payload",
+        ));
+    };
+
+    annotate_inbound_record_stamp_status(&mut record, stamp_status);
+    daemon.record_inbound_peer_activity(&record.source, wire.len());
+    daemon.accept_inbound_with_raw(record, &wire)?;
+    Ok(())
+}
+
+fn decrypt_local_propagated_wire(
+    destination: &SingleInputDestination,
+    transient_payload: &[u8],
+) -> Result<Vec<u8>, std::io::Error> {
+    if transient_payload.len() <= 16 + 32 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "propagated LXMF payload too short",
+        ));
+    }
+
+    for strip_stamp in [false, true] {
+        let payload = if strip_stamp {
+            if transient_payload.len() <= 16 + 32 + 32 {
+                continue;
+            }
+            &transient_payload[..transient_payload.len() - 32]
+        } else {
+            transient_payload
+        };
+
+        let ciphertext = &payload[16..];
+        if ciphertext.len() <= 32 {
+            continue;
+        }
+        let Ok(ephemeral_key) = <[u8; 32]>::try_from(&ciphertext[..32]) else {
+            continue;
+        };
+        let public_key = x25519_dalek::PublicKey::from(ephemeral_key);
+        let derived_key = destination
+            .identity
+            .derive_key(&public_key, Some(destination.identity.address_hash().as_slice()));
+        let token = &ciphertext[32..];
+        let mut plaintext = vec![0u8; token.len()];
+        let Ok(decrypted) =
+            destination.identity.decrypt(rand_core::OsRng, token, &derived_key, &mut plaintext)
+        else {
+            continue;
+        };
+
+        let mut wire = Vec::with_capacity(16 + decrypted.len());
+        wire.extend_from_slice(destination.desc.address_hash.as_slice());
+        wire.extend_from_slice(decrypted);
+        return Ok(wire);
+    }
+
+    Err(std::io::Error::new(
+        std::io::ErrorKind::InvalidData,
+        "failed to decrypt propagated LXMF payload for local delivery",
+    ))
 }
 
 async fn remote_control_request(

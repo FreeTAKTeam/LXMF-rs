@@ -15,7 +15,7 @@ cargo run -p lxmf-cli --bin lxmd -- --help
 
 ## Global Flags
 
-- `--rpc <addr>`: RPC endpoint (default `127.0.0.1:4242`)
+- `--rpc <addr>`: RPC endpoint (default `unix:/tmp/lxmf-rpc.sock`)
 - `--profile <desktop-full|desktop-local-runtime|embedded-alloc>`
 - `--bind-mode <local_only|remote>`
 - `--auth-mode <local_trusted|token|mtls>`

@@ -422,6 +422,114 @@ impl RpcDaemon {
         Ok(())
     }
 
+    pub fn remote_rpc_auth_configured(&self) -> bool {
+        let config = self.sdk_runtime_config.lock().expect("sdk_runtime_config mutex poisoned");
+        let bind_mode = config
+            .get("bind_mode")
+            .and_then(JsonValue::as_str)
+            .unwrap_or("local_only")
+            .trim()
+            .to_ascii_lowercase();
+        let auth_mode = config
+            .get("auth_mode")
+            .and_then(JsonValue::as_str)
+            .unwrap_or("local_trusted")
+            .trim()
+            .to_ascii_lowercase();
+
+        bind_mode == "remote"
+            && matches!(auth_mode.as_str(), "token" | "mtls")
+            && self.validate_sdk_runtime_config(&config).is_ok()
+    }
+
+    #[allow(clippy::result_large_err)]
+    pub fn configure_remote_token_auth_for_startup(
+        &self,
+        issuer: impl Into<String>,
+        audience: impl Into<String>,
+        shared_secret: impl Into<String>,
+        jti_cache_ttl_ms: u64,
+        clock_skew_ms: u64,
+    ) -> Result<(), RpcError> {
+        let profile = "desktop-full";
+        let limits = Self::sdk_effective_limits_for_profile(profile);
+        let store_forward = Self::default_store_forward_policy_for_profile(profile);
+        let config = json!({
+            "profile": profile,
+            "bind_mode": "remote",
+            "auth_mode": "token",
+            "overflow_policy": "reject",
+            "block_timeout_ms": JsonValue::Null,
+            "store_forward": {
+                "max_messages": store_forward.max_messages,
+                "max_message_age_ms": store_forward.max_message_age_ms,
+                "capacity_policy": store_forward.capacity_policy,
+                "eviction_priority": store_forward.eviction_priority,
+            },
+            "rpc_backend": {
+                "kind": "rpc",
+                "listen_addr": JsonValue::Null,
+                "connect_timeout_ms": 2_000,
+                "request_timeout_ms": 5_000,
+                "max_header_bytes": 8_192,
+                "max_body_bytes": 1_048_576,
+                "token_auth": {
+                    "issuer": issuer.into(),
+                    "audience": audience.into(),
+                    "jti_cache_ttl_ms": jti_cache_ttl_ms,
+                    "clock_skew_ms": clock_skew_ms,
+                    "shared_secret": shared_secret.into(),
+                },
+                "mtls_auth": JsonValue::Null,
+            },
+            "event_stream": {
+                "max_poll_events": limits.get("max_poll_events").and_then(JsonValue::as_u64).unwrap_or(256),
+                "max_event_bytes": limits.get("max_event_bytes").and_then(JsonValue::as_u64).unwrap_or(65_536),
+                "max_batch_bytes": limits.get("max_batch_bytes").and_then(JsonValue::as_u64).unwrap_or(1_048_576),
+                "max_extension_keys": limits.get("max_extension_keys").and_then(JsonValue::as_u64).unwrap_or(32),
+            },
+            "event_sink": Self::default_event_sink_config_for_profile(profile),
+            "idempotency_ttl_ms": limits.get("idempotency_ttl_ms").and_then(JsonValue::as_u64).unwrap_or(86_400_000_u64),
+            "extensions": {
+                "rate_limits": {
+                    "per_ip_per_minute": 120,
+                    "per_principal_per_minute": 120,
+                }
+            }
+        });
+        self.validate_sdk_runtime_config(&config)?;
+
+        {
+            let mut config_guard =
+                self.sdk_runtime_config.lock().expect("sdk_runtime_config mutex poisoned");
+            *config_guard = config;
+        }
+        {
+            let mut revision_guard =
+                self.sdk_config_revision.lock().expect("sdk_config_revision mutex poisoned");
+            *revision_guard = revision_guard.saturating_add(1);
+        }
+        {
+            self.sdk_seen_jti.lock().expect("sdk_seen_jti mutex poisoned").clear();
+            *self
+                .sdk_rate_window_started_ms
+                .lock()
+                .expect("sdk_rate_window_started_ms mutex poisoned") = 0;
+            self.sdk_rate_ip_counts.lock().expect("sdk_rate_ip_counts mutex poisoned").clear();
+            self.sdk_rate_principal_counts
+                .lock()
+                .expect("sdk_rate_principal_counts mutex poisoned")
+                .clear();
+        }
+        self.persist_sdk_domain_snapshot().map_err(|err| {
+            RpcError::new(
+                "SDK_CONFIG_PERSIST_FAILED".to_string(),
+                format!("failed to persist startup token auth config: {err}"),
+            )
+        })?;
+        Ok(())
+    }
+
     pub(super) fn default_store_forward_policy_for_profile(profile: &str) -> SdkStoreForwardPolicy {
         match profile {
             "embedded-alloc" => SdkStoreForwardPolicy {

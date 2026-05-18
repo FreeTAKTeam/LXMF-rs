@@ -1422,6 +1422,9 @@ dependencies = [
  "serde_json",
  "sha2",
  "thiserror 1.0.69",
+ "tokio",
+ "tokio-rustls",
+ "tokio-stream",
  "zeroize",
 ]
 
@@ -2495,8 +2498,11 @@ dependencies = [
  "lxmf-sdk",
  "reticulum-rs-core",
  "reticulum-rs-rpc",
+ "serde",
  "serde_json",
  "tempfile",
+ "tokio",
+ "tokio-stream",
 ]
 
 [[package]]

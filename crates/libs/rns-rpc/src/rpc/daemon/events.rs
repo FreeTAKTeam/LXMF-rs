@@ -164,191 +164,6 @@ impl RpcDaemon {
         }
     }
 
-    pub(super) fn redaction_enabled(&self) -> bool {
-        self.sdk_runtime_config
-            .lock()
-            .expect("sdk_runtime_config mutex poisoned")
-            .get("redaction")
-            .and_then(|value| value.get("enabled"))
-            .and_then(JsonValue::as_bool)
-            .unwrap_or(true)
-    }
-
-    pub(super) fn redaction_transform(&self) -> &'static str {
-        match self
-            .sdk_runtime_config
-            .lock()
-            .expect("sdk_runtime_config mutex poisoned")
-            .get("redaction")
-            .and_then(|value| value.get("sensitive_transform"))
-            .and_then(JsonValue::as_str)
-            .unwrap_or("hash")
-            .trim()
-            .to_ascii_lowercase()
-            .as_str()
-        {
-            "truncate" => "truncate",
-            "redact" => "redact",
-            _ => "hash",
-        }
-    }
-
-    pub(super) fn sdk_event_sink_enabled(&self) -> bool {
-        self.sdk_runtime_config
-            .lock()
-            .expect("sdk_runtime_config mutex poisoned")
-            .get("event_sink")
-            .and_then(|value| value.get("enabled"))
-            .and_then(JsonValue::as_bool)
-            .unwrap_or(false)
-    }
-
-    pub(super) fn sdk_event_sink_max_event_bytes(&self) -> usize {
-        self.sdk_runtime_config
-            .lock()
-            .expect("sdk_runtime_config mutex poisoned")
-            .get("event_sink")
-            .and_then(|value| value.get("max_event_bytes"))
-            .and_then(JsonValue::as_u64)
-            .and_then(|value| usize::try_from(value).ok())
-            .filter(|value| *value >= 256)
-            .unwrap_or(65_536)
-    }
-
-    pub(super) fn sdk_event_sink_allowed_kinds(&self) -> Option<HashSet<String>> {
-        let config = self.sdk_runtime_config.lock().expect("sdk_runtime_config mutex poisoned");
-        let kinds = config
-            .get("event_sink")
-            .and_then(|value| value.get("allow_kinds"))
-            .and_then(JsonValue::as_array)?;
-        let mut allowed = HashSet::new();
-        for kind in kinds {
-            if let Some(normalized) = kind
-                .as_str()
-                .map(str::trim)
-                .map(str::to_ascii_lowercase)
-                .filter(|value| !value.is_empty())
-            {
-                allowed.insert(normalized);
-            }
-        }
-        if allowed.is_empty() {
-            None
-        } else {
-            Some(allowed)
-        }
-    }
-
-    pub(super) fn dispatch_event_sink_bridges(&self, seq_no: u64, event: &RpcEvent) {
-        if self.event_sink_bridges.is_empty() || !self.sdk_event_sink_enabled() {
-            return;
-        }
-
-        let envelope = RpcEventSinkEnvelope {
-            contract_release: "v2.5".to_string(),
-            runtime_id: self.identity_hash.clone(),
-            stream_id: SDK_STREAM_ID.to_string(),
-            seq_no,
-            emitted_at_ms: now_i64(),
-            event: event.clone(),
-        };
-        let max_event_bytes = self.sdk_event_sink_max_event_bytes();
-        let event_bytes =
-            serde_json::to_vec(&envelope).map(|payload| payload.len()).unwrap_or(usize::MAX);
-        if event_bytes > max_event_bytes {
-            self.metrics_record_event_sink_skipped();
-            return;
-        }
-        let allowed_kinds = self.sdk_event_sink_allowed_kinds();
-
-        for sink in &self.event_sink_bridges {
-            let sink_kind = sink.sink_kind().trim().to_ascii_lowercase();
-            if let Some(allowed) = allowed_kinds.as_ref() {
-                if !allowed.contains(&sink_kind) {
-                    self.metrics_record_event_sink_skipped();
-                    continue;
-                }
-            }
-            match sink.publish(&envelope) {
-                Ok(()) => self.metrics_record_event_sink_publish(sink_kind.as_str()),
-                Err(_) => self.metrics_record_event_sink_error(sink_kind.as_str()),
-            }
-        }
-    }
-
-    pub(super) fn is_sensitive_key(key: &str) -> bool {
-        matches!(
-            key.to_ascii_lowercase().as_str(),
-            "peer_id"
-                | "destination_hash"
-                | "correlation_id"
-                | "trace_id"
-                | "source_ip"
-                | "principal"
-                | "shared_secret"
-                | "authorization"
-                | "token"
-                | "passphrase"
-        )
-    }
-
-    pub(super) fn redact_scalar(value: &str, transform: &str) -> String {
-        match transform {
-            "truncate" => {
-                let preview = value.chars().take(8).collect::<String>();
-                if value.chars().count() <= 8 {
-                    preview
-                } else {
-                    format!("{preview}...")
-                }
-            }
-            "redact" => "[redacted]".to_string(),
-            _ => {
-                let mut hasher = Sha256::new();
-                hasher.update(value.as_bytes());
-                let digest = hex::encode(hasher.finalize());
-                format!("sha256:{}", &digest[..16])
-            }
-        }
-    }
-
-    pub(super) fn redact_sensitive_value(value: &mut JsonValue, transform: &str) {
-        let replacement = match value {
-            JsonValue::String(current) => Self::redact_scalar(current, transform),
-            _ => Self::redact_scalar(value.to_string().as_str(), transform),
-        };
-        *value = JsonValue::String(replacement);
-    }
-
-    pub(super) fn redact_json_value(value: &mut JsonValue, transform: &str) {
-        match value {
-            JsonValue::Object(map) => {
-                for (key, inner) in map.iter_mut() {
-                    if Self::is_sensitive_key(key) {
-                        Self::redact_sensitive_value(inner, transform);
-                    } else {
-                        Self::redact_json_value(inner, transform);
-                    }
-                }
-            }
-            JsonValue::Array(items) => {
-                for item in items.iter_mut() {
-                    Self::redact_json_value(item, transform);
-                }
-            }
-            _ => {}
-        }
-    }
-
-    pub(super) fn redact_event(&self, mut event: RpcEvent) -> RpcEvent {
-        if !self.redaction_enabled() {
-            return event;
-        }
-        let transform = self.redaction_transform();
-        Self::redact_json_value(&mut event.payload, transform);
-        event
-    }
-
     pub fn handle_framed_request(&self, bytes: &[u8]) -> Result<Vec<u8>, std::io::Error> {
         let request: RpcRequest = codec::decode_frame(bytes)
             .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
@@ -360,12 +175,16 @@ impl RpcDaemon {
         self.events.subscribe()
     }
 
+    pub fn subscribe_sdk_events(&self) -> broadcast::Receiver<SequencedRpcEvent> {
+        self.sdk_events.subscribe()
+    }
+
     pub fn take_event(&self) -> Option<RpcEvent> {
         let mut guard = self.event_queue.lock().expect("event_queue mutex poisoned");
         guard.pop_front()
     }
 
-    pub fn push_event(&self, event: RpcEvent) -> RpcEvent {
+    fn push_sequenced_event(&self, event: RpcEvent) -> SequencedRpcEvent {
         let event = self.redact_event(event);
         let policy = self.sdk_overflow_policy();
         let block_timeout_ms = self.sdk_block_timeout_ms();
@@ -378,8 +197,9 @@ impl RpcDaemon {
             *seq_guard = seq_guard.saturating_add(1);
             *seq_guard
         };
+        let sequenced_event = SequencedRpcEvent { seq_no, event: event.clone() };
         let inserted = self.push_sdk_event_log_with_policy(
-            SequencedRpcEvent { seq_no, event: event.clone() },
+            sequenced_event.clone(),
             policy.as_str(),
             block_timeout_ms,
         );
@@ -392,12 +212,58 @@ impl RpcDaemon {
             self.metrics_record_event_drop();
         }
         self.dispatch_event_sink_bridges(seq_no, &event);
-        event
+        sequenced_event
+    }
+
+    pub fn push_event(&self, event: RpcEvent) -> RpcEvent {
+        self.push_sequenced_event(event).event
     }
 
     pub fn publish_event(&self, event: RpcEvent) {
-        let event = self.push_event(event);
-        let _ = self.events.send(event);
+        let sequenced_event = self.push_sequenced_event(event);
+        let _ = self.events.send(sequenced_event.event.clone());
+        let _ = self.sdk_events.send(sequenced_event);
+    }
+
+    pub fn sdk_stream_event_frame(&self, sequenced_event: &SequencedRpcEvent) -> JsonValue {
+        json!({
+            "event_id": format!("evt-{}", sequenced_event.seq_no),
+            "runtime_id": self.identity_hash,
+            "stream_id": SDK_STREAM_ID,
+            "seq_no": sequenced_event.seq_no,
+            "contract_version": self.active_contract_version(),
+            "ts_ms": (now_i64().max(0) as u64) * 1000,
+            "event_type": sequenced_event.event.event_type.clone(),
+            "severity": Self::event_severity(sequenced_event.event.event_type.as_str()),
+            "source_component": "rns-rpc",
+            "payload": sequenced_event.event.payload.clone(),
+        })
+    }
+
+    pub fn sdk_stream_gap_frame(
+        &self,
+        expected_seq_no: u64,
+        observed_seq_no: u64,
+        dropped_count: u64,
+    ) -> JsonValue {
+        let gap_seq_no = observed_seq_no.saturating_sub(1);
+        json!({
+            "event_id": format!("gap-{}", gap_seq_no),
+            "runtime_id": self.identity_hash,
+            "stream_id": SDK_STREAM_ID,
+            "seq_no": gap_seq_no,
+            "contract_version": self.active_contract_version(),
+            "ts_ms": (now_i64().max(0) as u64) * 1000,
+            "event_type": "StreamGap",
+            "severity": "warn",
+            "source_component": "rns-rpc",
+            "payload": {
+                "expected_seq_no": expected_seq_no,
+                "observed_seq_no": observed_seq_no,
+                "dropped_count": dropped_count,
+                "recovery_required": true,
+            },
+        })
     }
 
     pub fn emit_event(&self, event: RpcEvent) {

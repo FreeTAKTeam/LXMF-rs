@@ -57,7 +57,9 @@ jobs:
 
       - name: Install Python conformance dependencies
         working-directory: reticulum-conformance
-        run: python -m pip install -r requirements.txt
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install 'cryptography>=3.4.7' 'pyserial>=3.5' 'qrcode>=7.4.2'
 
       - name: Install Linux BLE build dependencies
         run: |
@@ -98,3 +100,35 @@ jobs:
       - name: Rust E2E compatibility gate
         working-directory: lxmf-rs
         run: cargo xtask ci --stage e2e-compatibility
+
+      - name: Rust/Python Reticulum channel interop
+        working-directory: lxmf-rs
+        env:
+          LXMF_PYTHON_BIN: python
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum
+        run: cargo test -p reticulumd --test python_channel_interop -- --ignored --nocapture
+
+      - name: Rust/Python LXMF paper interop
+        working-directory: lxmf-rs
+        env:
+          LXMF_PYTHON_BIN: python
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum
+          LXMF_PY_REPO: ${{ github.workspace }}/LXMF
+        run: cargo test -p reticulumd --test python_paper_interop -- --ignored --nocapture
+
+      - name: Rust/Python LXMD compatibility matrix
+        working-directory: lxmf-rs
+        env:
+          LXMF_PYTHON_BIN: python
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum
+          LXMF_PY_REPO: ${{ github.workspace }}/LXMF
+          LXMF_PY_COMPAT_HARNESS: ${{ github.workspace }}/lxmf-rs/tools/scripts/python_compat_harness.py
+        run: cargo test -p reticulumd --test python_compat_matrix -- --ignored --nocapture
+
+      - name: Rust/Python LXMD remote relay interop
+        working-directory: lxmf-rs
+        env:
+          LXMF_PYTHON_BIN: python
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum
+          LXMF_PY_REPO: ${{ github.workspace }}/LXMF
+        run: cargo test -p lxmf-cli --test python_lxmd_remote_relay -- --ignored --nocapture

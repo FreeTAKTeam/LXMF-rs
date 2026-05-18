@@ -3,7 +3,8 @@ use lxmf_sdk::{
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let endpoint = std::env::var("LXMF_RPC").unwrap_or_else(|_| "127.0.0.1:4242".to_owned());
+    let endpoint =
+        std::env::var("LXMF_RPC").unwrap_or_else(|_| "unix:/tmp/lxmf-rpc.sock".to_owned());
     let client = Client::new(RpcBackendClient::new(endpoint.clone()));
 
     let start_request =

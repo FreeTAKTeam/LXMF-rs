@@ -28,13 +28,15 @@ clarity. The corresponding published crate names are `reticulum-rs-core`,
 | `RNS/Buffer.py` | `crates/libs/rns-core` + `crates/libs/rns-transport` | done | Buffer and packet buffer handling are implemented in the active crates. |
 | `RNS/Discovery.py` | `crates/libs/rns-transport` + `crates/apps/reticulumd` | partial | Announce/path discovery exists, but full bootstrap and public-interface discovery parity is not complete. |
 | `RNS/Resolver.py` | `crates/libs/rns-transport` | partial | Resolver utilities exist, but parity with the Python resolver/discovery surface is incomplete. |
-| `RNS/Utilities/*` | `crates/apps/rns-tools` | partial | `rnx` is substantial; `rncp`, `rnid`, `rnir`, `rnodeconf`, `rnpath`, `rnpkg`, `rnprobe`, `rnsd`, and `rnstatus` are currently argument-parser stubs. |
+| `RNS/Utilities/*` | `crates/apps/rns-tools` | partial | `rnx` is substantial and `rnsd` delegates to `reticulumd`; parser-only utility placeholders such as `rncp`, `rnid`, `rnir`, `rnodeconf`, `rnpath`, `rnpkg`, `rnprobe`, and `rnstatus` have been retired until real equivalents exist. |
 | `CRNS/*` | `crates/apps/rns-tools` | partial | The command surface is not yet equivalent to the Python utility/tooling ecosystem. |
 
 ## Confirmed Gaps
 
 - Interface parity is incomplete. The Python reference includes more built-in interface types than the active Rust daemon starts or validates.
-- Utility parity is incomplete. Most `rns-tools` binaries are placeholders while the Python repo ships working utilities.
+- Utility parity is incomplete. Unsupported Python-style utility binaries are no
+  longer shipped as no-op placeholders; real Rust equivalents still need to be
+  implemented before claiming Python utility parity.
 - Runtime/config parity is incomplete. The Rust daemon has a narrower set of supported live mutations and startup semantics than the Python reference.
 - `lxmd` TCP server parity is partial. Python-style interface-driven `tcp_server` startup now works from config without Rust-only transport overrides, but broader launcher/runtime parity is still incomplete.
 - Discovery/bootstrap parity is incomplete. Core announce/path logic exists, but the higher-level interface/discovery story is still narrower than the Python implementation.

@@ -18,6 +18,9 @@ rustls-pemfile = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 thiserror.workspace = true
+tokio = { workspace = true, optional = true }
+tokio-rustls = { workspace = true, optional = true }
+tokio-stream = { workspace = true, optional = true }
 hmac.workspace = true
 sha2.workspace = true
 hex.workspace = true
@@ -26,8 +29,8 @@ zeroize.workspace = true
 [features]
 default = ["std", "sdk-async", "rpc-backend"]
 std = []
-sdk-async = []
-rpc-backend = ["std", "dep:rns-rpc", "dep:rustls", "dep:rustls-pemfile"]
+sdk-async = ["dep:tokio", "dep:tokio-stream"]
+rpc-backend = ["std", "dep:rns-rpc", "dep:rustls", "dep:rustls-pemfile", "dep:tokio-rustls"]
 embedded-alloc = []
 loom-tests = []
 

@@ -22,10 +22,10 @@ Classification values:
 | SDK RPC events | `rns_rpc::sdk_poll_events_v2` | `reticulum-rs-rpc` | keep | `lxmf-sdk::poll_events` | `n/a` | Cursor and stream-gap semantics are authoritative in this path |
 | Legacy events queue-pop | `rns_rpc::events` | `reticulum-rs-rpc` | wrap | `rns_rpc::sdk_poll_events_v2` | `N+1` | Legacy queue-pop behind migration switch in `N` only |
 | SDK RPC cancel | `rns_rpc::sdk_cancel_message_v2` | `reticulum-rs-rpc` | keep | `lxmf-sdk::cancel` | `n/a` | Deterministic `CancelResult` enum is required |
-| RPC cancel legacy bridge | `lxmf-legacy::router::outbound::cancel_outbound` | `reticulum-rs-rpc` | wrap | `rns_rpc::sdk_cancel_message_v2` | `N+1` | Remove legacy bridge after SDK cancel parity gates pass |
+| RPC cancel legacy bridge | retired `lxmf-legacy::router::outbound::cancel_outbound` path | `reticulum-rs-rpc` | deprecate | `rns_rpc::sdk_cancel_message_v2` | `N` | Legacy crate bridge is removed; active clients must use SDK/RPC cancel |
 | Runtime snapshot | runtime-specific snapshot path | runtime team | wrap | `rns_rpc::sdk_snapshot_v2` | `N+1` | Snapshot response must include watermark and capability metadata |
-| Direct runtime embedding API | `lxmf-runtime` direct surfaces | `sdk` | deprecate | `lxmf-sdk` facade | `N` | Removed from active topology in hard-break cycle |
-| Transitional router/runtime crates | `crates/libs/lxmf-router`, `crates/libs/lxmf-runtime` | `architecture` | deprecate | `lxmf-wire`, `lxmf-sdk`, `reticulum-rs-core`, `reticulum-rs-transport`, `reticulum-rs-rpc` | `N` | Transitional stubs are not part of active workspace contract graph |
+| Direct runtime embedding API | retired `lxmf-runtime` direct surfaces | `sdk` | deprecate | `lxmf-sdk` facade | `N` | Removed from active topology in hard-break cycle |
+| Transitional router/runtime crates | retired `crates/libs/lxmf-router`, `crates/libs/lxmf-runtime` | `architecture` | deprecate | `lxmf-wire`, `lxmf-sdk`, `reticulum-rs-core`, `reticulum-rs-transport`, `reticulum-rs-rpc` | `N` | Transitional stubs are removed from the repository |
 | LXMF CLI client integration | `crates/apps/lxmf-cli/src/main.rs` | `lxmf-cli` | keep | `lxmf-sdk::Client<RpcBackendClient>` | `n/a` | CLI must remain SDK-first with no direct legacy runtime embedding |
 | RNS tools compatibility harness | `crates/apps/rns-tools/src/bin/rnx.rs` | `rns-tools` | wrap | `sdk_*_v2` method set for send/cancel/events paths | `N+1` | Tooling still exercises legacy methods for compatibility evidence |
 | Conformance harness integration | `crates/libs/test-support/src/sdk_conformance/mod.rs` | `test-support` | keep | `lxmf-sdk` + `reticulum-rs-rpc` conformance path | `n/a` | Source of truth for migration regression coverage |

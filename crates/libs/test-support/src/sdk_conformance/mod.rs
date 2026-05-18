@@ -1,16 +1,21 @@
 use lxmf_sdk::{
-    CancelResult, Client, ConfigPatch, EventCursor, GroupSendRequest, LxmfSdk, LxmfSdkAsync,
-    LxmfSdkGroupDelivery, MessageId, RpcBackendClient, SendRequest, StartRequest,
-    SubscriptionStart,
+    required_capabilities, Ack, CancelResult, Client, ConfigPatch, DeliverySnapshot, DeliveryState,
+    EventBatch, EventCursor, EventSubscription, GroupSendRequest, LxmfSdk, LxmfSdkAsync,
+    LxmfSdkGroupDelivery, MessageId, NegotiationRequest, NegotiationResponse, OverflowPolicy,
+    Profile, RpcBackendClient, RuntimeSnapshot, RuntimeState, SdkBackend, SdkBackendAsyncEvents,
+    SdkError, SdkEvent, SdkEventStream, SendRequest, Severity, ShutdownMode, StartRequest,
+    SubscriptionStart, TickBudget, TickResult,
 };
 use rns_rpc::e2e_harness::{
     build_http_post, build_rpc_frame, parse_http_response_body, parse_rpc_frame, timestamp_millis,
 };
-use rns_rpc::{http, MessagesStore, RpcDaemon, RpcEvent, RpcResponse};
+use rns_rpc::rpc::codec;
+use rns_rpc::{http, MessagesStore, RpcDaemon, RpcEvent, RpcRequest, RpcResponse};
 use serde_json::{json, Value as JsonValue};
+use std::collections::VecDeque;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
@@ -84,6 +89,313 @@ fn read_http_request(stream: &mut TcpStream) -> std::io::Result<Vec<u8>> {
     Ok(request)
 }
 
+fn query_cursor(path: &str) -> Option<String> {
+    let query = path.split_once('?')?.1;
+    query.split('&').find_map(|part| {
+        let (name, value) = part.split_once('=')?;
+        (name == "cursor" && !value.is_empty()).then(|| value.to_string())
+    })
+}
+
+fn sdk_from_json<T: serde::de::DeserializeOwned>(value: JsonValue) -> T {
+    serde_json::from_value(value).expect("conformance fixture json must decode")
+}
+
+fn sdk_event(seq_no: u64, event_type: &str) -> SdkEvent {
+    sdk_from_json(json!({
+        "event_id": format!("conformance-event-{seq_no}"),
+        "runtime_id": "conformance-runtime",
+        "stream_id": "sdk-events-v2",
+        "seq_no": seq_no,
+        "contract_version": 2,
+        "ts_ms": seq_no,
+        "event_type": event_type,
+        "severity": Severity::Info,
+        "source_component": "sdk-conformance",
+        "operation_id": null,
+        "message_id": null,
+        "peer_id": null,
+        "correlation_id": null,
+        "trace_id": null,
+        "payload": { "idx": seq_no },
+        "extensions": {}
+    }))
+}
+
+fn conformance_negotiation() -> NegotiationResponse {
+    let mut effective_capabilities = required_capabilities(Profile::DesktopFull)
+        .iter()
+        .map(|capability| (*capability).to_owned())
+        .collect::<Vec<_>>();
+    effective_capabilities.push("sdk.capability.cursor_replay".to_owned());
+    effective_capabilities.push("sdk.capability.async_events".to_owned());
+    effective_capabilities.sort();
+    effective_capabilities.dedup();
+    sdk_from_json(json!({
+        "runtime_id": "conformance-runtime",
+        "active_contract_version": 2,
+        "effective_capabilities": effective_capabilities,
+        "effective_limits": {
+            "max_poll_events": 256,
+            "max_event_bytes": 65_536,
+            "max_batch_bytes": 1_048_576,
+            "max_extension_keys": 32,
+            "idempotency_ttl_ms": 86_400_000
+        },
+        "contract_release": "v2.5",
+        "schema_namespace": "v2"
+    }))
+}
+
+struct AppStreamState {
+    live_events: Mutex<VecDeque<SdkEvent>>,
+    catchup_events: Mutex<VecDeque<SdkEvent>>,
+    poll_cursors: Mutex<Vec<Option<EventCursor>>>,
+}
+
+#[derive(Clone)]
+struct AppStreamConformanceBackend {
+    state: Arc<AppStreamState>,
+}
+
+impl AppStreamConformanceBackend {
+    fn new(live_events: Vec<SdkEvent>, catchup_events: Vec<SdkEvent>) -> Self {
+        Self {
+            state: Arc::new(AppStreamState {
+                live_events: Mutex::new(VecDeque::from(live_events)),
+                catchup_events: Mutex::new(VecDeque::from(catchup_events)),
+                poll_cursors: Mutex::new(Vec::new()),
+            }),
+        }
+    }
+}
+
+struct SlowConsumerStats {
+    attempted_sends: AtomicUsize,
+    completed_sends: AtomicUsize,
+}
+
+#[derive(Clone)]
+struct SlowConsumerConformanceBackend {
+    event_count: u64,
+    stats: Arc<SlowConsumerStats>,
+}
+
+impl SlowConsumerConformanceBackend {
+    fn new(event_count: u64, stats: Arc<SlowConsumerStats>) -> Self {
+        Self { event_count, stats }
+    }
+}
+
+fn event_batch(events: Vec<SdkEvent>, cursor_seq: u64) -> EventBatch {
+    sdk_from_json(json!({
+        "events": events,
+        "next_cursor": format!("v2:conformance-runtime:sdk-events-v2:{cursor_seq}"),
+        "dropped_count": 0,
+        "snapshot_high_watermark_seq_no": null,
+        "extensions": {}
+    }))
+}
+
+macro_rules! impl_conformance_backend_base {
+    ($backend:ty) => {
+        impl SdkBackend for $backend {
+            fn negotiate(&self, _req: NegotiationRequest) -> Result<NegotiationResponse, SdkError> {
+                Ok(conformance_negotiation())
+            }
+
+            fn send(&self, _req: SendRequest) -> Result<MessageId, SdkError> {
+                Ok(MessageId("conformance-message".to_owned()))
+            }
+
+            fn cancel(&self, _id: MessageId) -> Result<CancelResult, SdkError> {
+                Ok(CancelResult::Accepted)
+            }
+
+            fn status(&self, id: MessageId) -> Result<Option<DeliverySnapshot>, SdkError> {
+                Ok(Some(sdk_from_json(json!({
+                    "message_id": id,
+                    "state": DeliveryState::Sent,
+                    "terminal": false,
+                    "last_updated_ms": 0,
+                    "attempts": 1,
+                    "reason_code": null
+                }))))
+            }
+
+            fn configure(
+                &self,
+                _expected_revision: u64,
+                _patch: ConfigPatch,
+            ) -> Result<Ack, SdkError> {
+                Ok(sdk_from_json(json!({ "accepted": true, "revision": 1 })))
+            }
+
+            fn poll_events(
+                &self,
+                _cursor: Option<EventCursor>,
+                _max: usize,
+            ) -> Result<EventBatch, SdkError> {
+                Ok(event_batch(Vec::new(), 0))
+            }
+
+            fn snapshot(&self) -> Result<RuntimeSnapshot, SdkError> {
+                Ok(sdk_from_json(json!({
+                    "runtime_id": "conformance-runtime",
+                    "state": RuntimeState::Running,
+                    "active_contract_version": 2,
+                    "event_stream_position": 0,
+                    "config_revision": 0,
+                    "queued_messages": 0,
+                    "in_flight_messages": 0
+                })))
+            }
+
+            fn shutdown(&self, _mode: ShutdownMode) -> Result<Ack, SdkError> {
+                Ok(sdk_from_json(json!({ "accepted": true, "revision": null })))
+            }
+
+            fn tick(&self, _budget: TickBudget) -> Result<TickResult, SdkError> {
+                Ok(sdk_from_json(json!({
+                    "processed_items": 0,
+                    "yielded": false,
+                    "next_recommended_delay_ms": null
+                })))
+            }
+        }
+    };
+}
+
+impl_conformance_backend_base!(SlowConsumerConformanceBackend);
+
+impl SdkBackend for AppStreamConformanceBackend {
+    fn negotiate(&self, _req: NegotiationRequest) -> Result<NegotiationResponse, SdkError> {
+        Ok(conformance_negotiation())
+    }
+
+    fn send(&self, _req: SendRequest) -> Result<MessageId, SdkError> {
+        Ok(MessageId("conformance-message".to_owned()))
+    }
+
+    fn cancel(&self, _id: MessageId) -> Result<CancelResult, SdkError> {
+        Ok(CancelResult::Accepted)
+    }
+
+    fn status(&self, id: MessageId) -> Result<Option<DeliverySnapshot>, SdkError> {
+        Ok(Some(sdk_from_json(json!({
+            "message_id": id,
+            "state": DeliveryState::Sent,
+            "terminal": false,
+            "last_updated_ms": 0,
+            "attempts": 1,
+            "reason_code": null
+        }))))
+    }
+
+    fn configure(&self, _expected_revision: u64, _patch: ConfigPatch) -> Result<Ack, SdkError> {
+        Ok(sdk_from_json(json!({ "accepted": true, "revision": 1 })))
+    }
+
+    fn poll_events(&self, cursor: Option<EventCursor>, max: usize) -> Result<EventBatch, SdkError> {
+        self.state.poll_cursors.lock().expect("poll cursors mutex").push(cursor);
+        let mut catchup_events = self.state.catchup_events.lock().expect("catchup events mutex");
+        let events = (0..max).filter_map(|_| catchup_events.pop_front()).collect::<Vec<_>>();
+        let next_seq = events.last().map_or(0, |event| event.seq_no);
+        Ok(event_batch(events, next_seq))
+    }
+
+    fn snapshot(&self) -> Result<RuntimeSnapshot, SdkError> {
+        Ok(sdk_from_json(json!({
+            "runtime_id": "conformance-runtime",
+            "state": RuntimeState::Running,
+            "active_contract_version": 2,
+            "event_stream_position": 0,
+            "config_revision": 0,
+            "queued_messages": 0,
+            "in_flight_messages": 0
+        })))
+    }
+
+    fn shutdown(&self, _mode: ShutdownMode) -> Result<Ack, SdkError> {
+        Ok(sdk_from_json(json!({ "accepted": true, "revision": null })))
+    }
+
+    fn tick(&self, _budget: TickBudget) -> Result<TickResult, SdkError> {
+        Ok(sdk_from_json(json!({
+            "processed_items": 0,
+            "yielded": false,
+            "next_recommended_delay_ms": null
+        })))
+    }
+}
+
+impl SdkBackendAsyncEvents for AppStreamConformanceBackend {
+    fn subscribe_events(&self, start: SubscriptionStart) -> Result<EventSubscription, SdkError> {
+        Ok(sdk_from_json(json!({ "start": start, "cursor": null })))
+    }
+
+    fn open_event_stream(
+        &self,
+        _subscription: &EventSubscription,
+    ) -> Result<Option<SdkEventStream>, SdkError> {
+        let events =
+            self.state.live_events.lock().expect("live events mutex").drain(..).collect::<Vec<_>>();
+        Ok(Some(Box::pin(tokio_stream::iter(events.into_iter().map(Ok)))))
+    }
+}
+
+impl SdkBackendAsyncEvents for SlowConsumerConformanceBackend {
+    fn subscribe_events(&self, start: SubscriptionStart) -> Result<EventSubscription, SdkError> {
+        Ok(sdk_from_json(json!({ "start": start, "cursor": null })))
+    }
+
+    fn open_event_stream(
+        &self,
+        _subscription: &EventSubscription,
+    ) -> Result<Option<SdkEventStream>, SdkError> {
+        let stats = Arc::clone(&self.stats);
+        let event_count = self.event_count;
+        let (tx, rx) = tokio::sync::mpsc::channel::<Result<SdkEvent, SdkError>>(1);
+        tokio::spawn(async move {
+            for seq in 1..=event_count {
+                stats.attempted_sends.fetch_add(1, Ordering::Relaxed);
+                if tx.send(Ok(sdk_event(seq, "slow_consumer_probe"))).await.is_err() {
+                    break;
+                }
+                stats.completed_sends.fetch_add(1, Ordering::Relaxed);
+            }
+        });
+        Ok(Some(Box::pin(tokio_stream::wrappers::ReceiverStream::new(rx))))
+    }
+}
+
+fn handle_event_stream_once(daemon: &RpcDaemon, request: &[u8]) -> std::io::Result<Vec<u8>> {
+    let (_method, path, _headers) = http::request_method_path_headers(request)?;
+    let cursor = query_cursor(path.as_str());
+    let response = daemon.handle_rpc(RpcRequest {
+        id: 0,
+        method: "sdk_poll_events_v2".to_string(),
+        params: Some(json!({ "cursor": cursor, "max": 256 })),
+    })?;
+    if response.error.is_some() {
+        return Ok(b"HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n".to_vec());
+    }
+
+    let mut http_response =
+        b"HTTP/1.1 200 OK\r\nContent-Type: application/msgpack\r\n\r\n".to_vec();
+    if let Some(events) = response
+        .result
+        .as_ref()
+        .and_then(|result| result.get("events"))
+        .and_then(JsonValue::as_array)
+    {
+        for event in events {
+            http_response.extend(codec::encode_frame(event)?);
+        }
+    }
+    Ok(http_response)
+}
+
 struct RpcHarness {
     _serial_guard: MutexGuard<'static, ()>,
     endpoint: String,
@@ -128,7 +440,19 @@ impl RpcHarness {
                         let response = {
                             let guard =
                                 daemon_for_thread.lock().unwrap_or_else(|err| err.into_inner());
-                            http::handle_http_request_with_peer(&guard, &request, Some(addr))
+                            match http::request_method_path_headers(&request) {
+                                Ok((method, path, _headers))
+                                    if method == "GET"
+                                        && path.split('?').next() == Some("/events/stream") =>
+                                {
+                                    handle_event_stream_once(&guard, &request)
+                                }
+                                _ => http::handle_http_request_with_peer(
+                                    &guard,
+                                    &request,
+                                    Some(addr),
+                                ),
+                            }
                         }
                         .unwrap_or_else(|_| {
                             b"HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n".to_vec()
@@ -481,6 +805,45 @@ fn sdk_conformance_idempotency_conflict_is_rejected() {
     assert_eq!(err.machine_code, "SDK_VALIDATION_IDEMPOTENCY_CONFLICT");
 }
 
+#[tokio::test]
+async fn sdk_conformance_async_rpc_command_path_matches_sync_contract() {
+    let harness = RpcHarness::new();
+    let client = harness.client();
+    let handle =
+        client.start_async(base_start_request()).await.expect("async start should negotiate");
+    assert_eq!(handle.active_contract_version, 2);
+
+    let message_id = client
+        .send_async(send_request("async-payload", Some("async-idem-key")))
+        .await
+        .expect("async send");
+    let deduped = client
+        .send_async(send_request("async-payload", Some("async-idem-key")))
+        .await
+        .expect("async idempotent send");
+    assert_eq!(message_id, deduped, "async idempotency must match sync behavior");
+
+    let status = client.status_async(message_id.clone()).await.expect("async status");
+    assert!(status.is_some(), "async status should resolve the sent message");
+    let snapshot = client.snapshot_async().await.expect("async snapshot");
+    assert_eq!(snapshot.active_contract_version, 2);
+
+    let shutdown =
+        client.shutdown_async(lxmf_sdk::ShutdownMode::Graceful).await.expect("async shutdown");
+    assert!(shutdown.accepted);
+    let second_shutdown = client
+        .shutdown_async(lxmf_sdk::ShutdownMode::Graceful)
+        .await
+        .expect("async shutdown idempotency");
+    assert!(second_shutdown.accepted);
+
+    let err = client
+        .send_async(send_request("after-stop", None))
+        .await
+        .expect_err("async send after shutdown must be illegal");
+    assert_eq!(err.machine_code, "SDK_RUNTIME_INVALID_STATE");
+}
+
 #[test]
 fn sdk_conformance_group_send_partial_outcomes() {
     let harness = RpcHarness::new();
@@ -533,6 +896,41 @@ fn sdk_conformance_poll_cursor_monotonicity_and_invalid_cursor() {
 }
 
 #[test]
+fn sdk_conformance_expired_cursor_requires_reset_and_reports_gap() {
+    let harness = RpcHarness::new();
+    let client = harness.client();
+    let mut start_request = base_start_request();
+    start_request.config.overflow_policy = OverflowPolicy::DropOldest;
+    client.start(start_request).expect("start");
+
+    harness.emit_event("seed_event", json!({ "idx": 1 }));
+    let first = client.poll_events(None, 1).expect("initial poll");
+    assert_eq!(first.events.len(), 1);
+    let stale_cursor = first.next_cursor;
+
+    for idx in 0..EVENT_LOG_OVERFLOW_TRIGGER {
+        harness.emit_event("overflow_event", json!({ "idx": idx }));
+    }
+
+    let expired = client
+        .poll_events(Some(stale_cursor), 1)
+        .expect_err("stale cursor outside retained window must expire");
+    assert_eq!(expired.machine_code, "SDK_RUNTIME_CURSOR_EXPIRED");
+
+    let degraded = client
+        .poll_events(Some(EventCursor("v2:sdk-test-runtime:sdk-events-v2:999999".to_owned())), 1)
+        .expect_err("cursored poll after expiry must remain degraded until reset");
+    assert_eq!(degraded.machine_code, "SDK_RUNTIME_STREAM_DEGRADED");
+
+    let reset = client.poll_events(None, 8).expect("explicit reset");
+    assert!(
+        reset.events.iter().any(|event| event.event_type == "StreamGap"),
+        "reset after cursor expiry must surface a StreamGap event"
+    );
+    assert!(reset.dropped_count > 0, "reset should report dropped events");
+}
+
+#[test]
 fn sdk_conformance_stream_gap_is_emitted_after_log_overflow() {
     let harness = RpcHarness::new();
     let client = harness.client();
@@ -575,6 +973,177 @@ fn sdk_conformance_subscribe_events_tail_starts_from_current_end() {
         second.events.iter().any(|event| event.event_type == "live_event"),
         "tail cursor should include events emitted after subscription"
     );
+}
+
+#[test]
+fn sdk_conformance_duplicate_delivery_replay_preserves_event_identity() {
+    let harness = RpcHarness::new();
+    let client = harness.client();
+    client.start(base_start_request()).expect("start");
+
+    let subscription =
+        client.subscribe_events(SubscriptionStart::Head).expect("subscribe from head");
+    harness.emit_event("duplicate_probe", json!({ "idx": 1 }));
+
+    let first = client.poll_events(subscription.cursor.clone(), 1).expect("first delivery");
+    let replay = client.poll_events(subscription.cursor, 1).expect("replayed delivery");
+
+    assert_eq!(first.events.len(), 1);
+    assert_eq!(replay.events.len(), 1);
+    assert_eq!(
+        first.events[0].event_id, replay.events[0].event_id,
+        "at-least-once replay must preserve the event identity for consumer dedupe"
+    );
+    assert_eq!(
+        first.events[0].seq_no, replay.events[0].seq_no,
+        "at-least-once replay must preserve event ordering metadata"
+    );
+}
+
+#[tokio::test]
+async fn sdk_conformance_app_native_event_stream_catches_up_after_stream_close() {
+    use tokio_stream::StreamExt;
+
+    let backend = AppStreamConformanceBackend::new(
+        vec![sdk_event(1, "live_probe"), sdk_event(2, "live_probe")],
+        vec![sdk_event(3, "catchup_probe")],
+    );
+    let state = Arc::clone(&backend.state);
+    let app = lxmf_sdk::app::Client::new(backend);
+    app.runtime().start(lxmf_sdk::app::Config::desktop_default()).expect("start");
+
+    let mut events = app
+        .events()
+        .subscribe(lxmf_sdk::app::SubscriptionStart::Head)
+        .expect("subscribe app event stream");
+    let first = tokio::time::timeout(Duration::from_secs(1), events.next())
+        .await
+        .expect("first event should arrive")
+        .expect("stream should remain open")
+        .expect("first event should decode");
+    let second = tokio::time::timeout(Duration::from_secs(1), events.next())
+        .await
+        .expect("second event should arrive")
+        .expect("stream should remain open")
+        .expect("second event should decode");
+    let catchup = tokio::time::timeout(Duration::from_secs(1), events.next())
+        .await
+        .expect("catch-up event should arrive")
+        .expect("stream should remain open")
+        .expect("catch-up event should decode");
+
+    assert_eq!((first.metadata.seq_no, second.metadata.seq_no, catchup.metadata.seq_no), (1, 2, 3));
+    let cursors = state.poll_cursors.lock().expect("poll cursors mutex");
+    assert_eq!(
+        cursors.first().and_then(|cursor| cursor.as_ref()).map(|cursor| cursor.0.as_str()),
+        Some("v2:conformance-runtime:sdk-events-v2:2"),
+        "catch-up poll must resume from the last delivered native event cursor"
+    );
+}
+
+#[tokio::test]
+async fn sdk_conformance_app_native_event_stream_backpressures_slow_consumers() {
+    use tokio_stream::StreamExt;
+
+    let stats = Arc::new(SlowConsumerStats {
+        attempted_sends: AtomicUsize::new(0),
+        completed_sends: AtomicUsize::new(0),
+    });
+    let backend = SlowConsumerConformanceBackend::new(3, Arc::clone(&stats));
+    let app = lxmf_sdk::app::Client::new(backend);
+    app.runtime().start(lxmf_sdk::app::Config::desktop_default()).expect("start");
+
+    let mut events = app
+        .events()
+        .subscribe(lxmf_sdk::app::SubscriptionStart::Head)
+        .expect("subscribe app event stream");
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(
+        stats.completed_sends.load(Ordering::Relaxed) <= 1,
+        "bounded stream should not complete all sends before the consumer starts draining"
+    );
+    assert!(
+        stats.attempted_sends.load(Ordering::Relaxed) >= 2,
+        "producer should be blocked on a later send, not idle"
+    );
+
+    let first = tokio::time::timeout(Duration::from_secs(1), events.next())
+        .await
+        .expect("first event should arrive")
+        .expect("stream should remain open")
+        .expect("first event should decode");
+    assert_eq!(first.metadata.seq_no, 1);
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(
+        stats.completed_sends.load(Ordering::Relaxed) >= 2,
+        "draining one event should release producer progress"
+    );
+}
+
+#[tokio::test]
+async fn sdk_conformance_app_native_event_stream_delivers_ordered_typed_events() {
+    use tokio_stream::StreamExt;
+
+    let harness = RpcHarness::new();
+    let app = lxmf_sdk::app::Client::rpc(harness.endpoint.clone());
+    app.runtime().start(lxmf_sdk::app::Config::desktop_default()).expect("start");
+
+    harness.emit_event("conformance_event", json!({ "idx": 1 }));
+    harness.emit_event("conformance_event", json!({ "idx": 2 }));
+
+    let mut events = app
+        .events()
+        .subscribe(lxmf_sdk::app::SubscriptionStart::Head)
+        .expect("subscribe app event stream");
+    let mut observed = Vec::new();
+    while observed.len() < 2 {
+        let event = tokio::time::timeout(Duration::from_secs(2), events.next())
+            .await
+            .expect("event stream should make progress")
+            .expect("event stream should remain open")
+            .expect("event should decode");
+        if event.raw_event_type == "conformance_event" {
+            observed.push((
+                event.metadata.seq_no,
+                event.details.get("idx").and_then(JsonValue::as_u64).expect("idx"),
+            ));
+        }
+    }
+
+    assert_eq!(observed[0].1, 1);
+    assert_eq!(observed[1].1, 2);
+    assert!(observed[1].0 > observed[0].0, "app event stream must preserve SDK event ordering");
+}
+
+#[tokio::test]
+async fn sdk_conformance_app_native_event_stream_reports_gap_as_typed_event() {
+    use tokio_stream::StreamExt;
+
+    let harness = RpcHarness::new();
+    let app = lxmf_sdk::app::Client::rpc(harness.endpoint.clone());
+    app.runtime().start(lxmf_sdk::app::Config::desktop_default()).expect("start");
+
+    for idx in 0..EVENT_LOG_OVERFLOW_TRIGGER {
+        harness.emit_event("flood", json!({ "idx": idx }));
+    }
+
+    let mut events = app
+        .events()
+        .subscribe(lxmf_sdk::app::SubscriptionStart::Head)
+        .expect("subscribe app event stream");
+    let event = tokio::time::timeout(Duration::from_secs(2), events.next())
+        .await
+        .expect("event stream should report overflow")
+        .expect("event stream should remain open")
+        .expect("event should decode");
+
+    assert!(
+        matches!(event.kind, lxmf_sdk::app::EventKind::StreamGapDetected(_)),
+        "app event stream must surface stream gaps as typed events"
+    );
+    let status = app.runtime().status().expect("runtime status");
+    assert_eq!(status.state, lxmf_sdk::app::RunState::Degraded);
 }
 
 #[test]

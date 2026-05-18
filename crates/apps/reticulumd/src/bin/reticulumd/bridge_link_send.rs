@@ -1,4 +1,5 @@
 use super::*;
+use crate::outbound_resources;
 
 impl DeliveryTask {
     pub(super) async fn send_via_link_mode(
@@ -9,6 +10,9 @@ impl DeliveryTask {
         payload: &[u8],
         statuses: LinkModeStatuses,
     ) -> Result<(), std::io::Error> {
+        if self.abort_if_cancelled(trace_stage) {
+            return Ok(());
+        }
         if diagnostics_enabled() {
             log_delivery_trace(
                 &self.message_id,
@@ -53,7 +57,7 @@ impl DeliveryTask {
                     format!("packet_hash={packet_hash}")
                 };
                 log_delivery_trace(&self.message_id, &self.destination_hex, trace_stage, &detail);
-                let _ = self.receipt_tx.send(ReceiptEvent {
+                let _ = self.receipt_tx.try_send(ReceiptEvent {
                     message_id: self.message_id.clone(),
                     status: statuses.packet.to_string(),
                 });
@@ -73,7 +77,7 @@ impl DeliveryTask {
                 );
                 let detail = format!("resource_hash={resource_hash_hex}");
                 log_delivery_trace(&self.message_id, &self.destination_hex, trace_stage, &detail);
-                let _ = self.receipt_tx.send(ReceiptEvent {
+                let _ = self.receipt_tx.try_send(ReceiptEvent {
                     message_id: self.message_id.clone(),
                     status: statuses.resource.to_string(),
                 });
@@ -95,6 +99,9 @@ impl DeliveryTask {
         statuses: LinkModeStatuses,
     ) -> Result<(), std::io::Error> {
         await_link_activation(self.transport.as_ref(), &link, Duration::from_secs(20)).await?;
+        if self.abort_if_cancelled(trace_stage) {
+            return Ok(());
+        }
         let destination_desc = *link.lock().await.destination();
         let link_id = *link.lock().await.id();
         if trace_stage == "propagation" {
@@ -122,7 +129,7 @@ impl DeliveryTask {
                 destination_desc.address_hash
             );
             log_delivery_trace(&self.message_id, &self.destination_hex, trace_stage, &detail);
-            let _ = self.receipt_tx.send(ReceiptEvent {
+            let _ = self.receipt_tx.try_send(ReceiptEvent {
                 message_id: self.message_id.clone(),
                 status: statuses.resource.to_string(),
             });
@@ -147,11 +154,14 @@ impl DeliveryTask {
                 let detail = format!("packet_hash={packet_hash}");
                 log_delivery_trace(&self.message_id, &self.destination_hex, trace_stage, &detail);
                 if let Some(ref mut signal_rx) = propagation_signal_rx {
-                    if let Some(signal) =
-                        wait_for_propagation_signal(signal_rx, link_id, Duration::from_millis(1500))
-                            .await
+                    if let Some(signal) = propagation::wait_for_propagation_signal(
+                        signal_rx,
+                        link_id,
+                        Duration::from_millis(1500),
+                    )
+                    .await
                     {
-                        if signal == PROPAGATION_INVALID_STAMP_SIGNAL {
+                        if signal == propagation::PROPAGATION_INVALID_STAMP_SIGNAL {
                             return Err(std::io::Error::other(
                                 "propagation node rejected message: invalid stamp",
                             ));
@@ -166,7 +176,7 @@ impl DeliveryTask {
                     }
                 }
                 self.daemon.record_outbound_peer_activity(activity_peer, payload.len(), true);
-                let _ = self.receipt_tx.send(ReceiptEvent {
+                let _ = self.receipt_tx.try_send(ReceiptEvent {
                     message_id: self.message_id.clone(),
                     status: statuses.packet.to_string(),
                 });
@@ -192,7 +202,7 @@ impl DeliveryTask {
                     destination_desc.address_hash
                 );
                 log_delivery_trace(&self.message_id, &self.destination_hex, trace_stage, &detail);
-                let _ = self.receipt_tx.send(ReceiptEvent {
+                let _ = self.receipt_tx.try_send(ReceiptEvent {
                     message_id: self.message_id.clone(),
                     status: statuses.resource.to_string(),
                 });
@@ -208,22 +218,29 @@ fn spawn_propagation_resource_signal_monitor(
     link_id: AddressHash,
     message_id: String,
     destination_hex: String,
-    outbound_resource_map: Arc<Mutex<HashMap<String, OutboundResourceTracking>>>,
-    receipt_tx: tokio::sync::mpsc::UnboundedSender<ReceiptEvent>,
+    outbound_resource_map: OutboundResourceMap,
+    receipt_tx: tokio::sync::mpsc::Sender<ReceiptEvent>,
 ) {
     tokio::spawn(async move {
-        let Some(signal) =
-            wait_for_propagation_signal(&mut signal_rx, link_id, Duration::from_secs(30)).await
+        let Some(signal) = propagation::wait_for_propagation_signal(
+            &mut signal_rx,
+            link_id,
+            Duration::from_secs(30),
+        )
+        .await
         else {
             return;
         };
         let detail = format!("resource_signal=0x{signal:02x}");
         log_delivery_trace(&message_id, &destination_hex, "propagation", &detail);
-        if signal != PROPAGATION_INVALID_STAMP_SIGNAL {
+        if signal != propagation::PROPAGATION_INVALID_STAMP_SIGNAL {
             return;
         }
-        prune_outbound_resource_mappings_for_message(&outbound_resource_map, &message_id);
-        let _ = receipt_tx.send(ReceiptEvent {
+        outbound_resources::prune_outbound_resource_mappings_for_message(
+            &outbound_resource_map,
+            &message_id,
+        );
+        let _ = receipt_tx.try_send(ReceiptEvent {
             message_id,
             status: "failed: propagation node rejected message: invalid stamp".to_string(),
         });

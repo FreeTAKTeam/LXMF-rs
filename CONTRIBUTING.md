@@ -34,13 +34,10 @@ Active workspace members are defined in `Cargo.toml`.
 - Workspace tooling:
   - `xtask`
 
-These directories exist but are not active workspace members:
-
-- `crates/internal/*`: retained legacy crates
-- `crates/libs/lxmf-router`
-- `crates/libs/lxmf-runtime`
-
-Do not assume every crate directory is live just because it exists on disk.
+The active workspace is intentionally the supported crate surface. Retired
+migration-era crates such as `crates/internal/*`, `lxmf-router`, and
+`lxmf-runtime` should not be reintroduced without a new architecture decision
+and boundary gate update.
 
 ## Bootstrap
 

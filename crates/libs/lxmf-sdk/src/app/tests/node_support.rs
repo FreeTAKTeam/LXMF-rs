@@ -14,7 +14,8 @@ pub(super) use crate::event::{
 pub(super) use crate::{
     Ack, CancelResult, DeliverySnapshot, DeliveryState as RawDeliveryState, EffectiveLimits,
     NegotiationRequest, NegotiationResponse, Profile as CoreProfile, RuntimeSnapshot, RuntimeState,
-    SdkBackend, SdkBackendAsyncEvents, SendRequest as RawSendRequest, ShutdownMode,
+    SdkBackend, SdkBackendAsyncEvents, SdkBackendAsyncOps, SendRequest as RawSendRequest,
+    ShutdownMode,
 };
 pub(super) use serde_json::json;
 pub(super) use std::collections::{BTreeMap, VecDeque};
@@ -26,6 +27,7 @@ pub(super) struct MockBackend {
     send_seq: AtomicUsize,
     paginate_discovery: bool,
     poll_batches: Mutex<VecDeque<RawEventBatch>>,
+    live_events: Mutex<VecDeque<Result<SdkEvent, SdkError>>>,
     send_results: Mutex<VecDeque<Result<crate::MessageId, SdkError>>>,
     shutdown_calls: AtomicUsize,
     shutdown_results: Mutex<VecDeque<Result<Ack, SdkError>>>,
@@ -43,6 +45,7 @@ impl MockBackend {
             send_seq: AtomicUsize::new(1),
             paginate_discovery: false,
             poll_batches: Mutex::new(VecDeque::new()),
+            live_events: Mutex::new(VecDeque::new()),
             send_results: Mutex::new(VecDeque::new()),
             shutdown_calls: AtomicUsize::new(0),
             shutdown_results: Mutex::new(VecDeque::new()),
@@ -60,6 +63,10 @@ impl MockBackend {
 
     pub(super) fn queue_batch(&self, batch: RawEventBatch) {
         self.poll_batches.lock().expect("poll batches").push_back(batch);
+    }
+
+    pub(super) fn queue_live_event(&self, event: SdkEvent) {
+        self.live_events.lock().expect("live events").push_back(Ok(event));
     }
 
     pub(super) fn queue_shutdown_result(&self, result: Result<Ack, SdkError>) {
@@ -705,6 +712,50 @@ impl SdkBackendAsyncEvents for MockBackend {
             start: crate::SubscriptionStart::Head,
             cursor: Some(EventCursor("cursor-1".to_owned())),
         })
+    }
+
+    fn open_event_stream(
+        &self,
+        _subscription: &EventSubscription,
+    ) -> Result<Option<crate::SdkEventStream>, SdkError> {
+        let events = self
+            .live_events
+            .lock()
+            .expect("live events")
+            .drain(..)
+            .collect::<Vec<_>>();
+        if events.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(Box::pin(tokio_stream::iter(events))))
+    }
+}
+
+impl SdkBackendAsyncOps for MockBackend {
+    fn negotiate_async(
+        &self,
+        req: NegotiationRequest,
+    ) -> crate::SdkBoxFuture<'_, NegotiationResponse> {
+        Box::pin(async move { self.negotiate(req) })
+    }
+
+    fn send_async(&self, req: RawSendRequest) -> crate::SdkBoxFuture<'_, crate::MessageId> {
+        Box::pin(async move { self.send(req) })
+    }
+
+    fn status_async(
+        &self,
+        id: crate::MessageId,
+    ) -> crate::SdkBoxFuture<'_, Option<DeliverySnapshot>> {
+        Box::pin(async move { self.status(id) })
+    }
+
+    fn snapshot_async(&self) -> crate::SdkBoxFuture<'_, RuntimeSnapshot> {
+        Box::pin(async move { self.snapshot() })
+    }
+
+    fn shutdown_async(&self, mode: ShutdownMode) -> crate::SdkBoxFuture<'_, Ack> {
+        Box::pin(async move { self.shutdown(mode) })
     }
 }
 
