@@ -3,7 +3,8 @@ use crate::bootstrap::{
     select_tcp_server_bind, InterfaceStartupFailure,
 };
 use crate::bridge::{
-    validate_delivery_request, PeerCrypto, RequestedDeliveryMethod, TransportBridge,
+    validate_delivery_request, wait_for_propagation_signal, PeerCrypto, RequestedDeliveryMethod,
+    TransportBridge,
 };
 use crate::bridge_helpers::opportunistic_payload;
 use crate::inbound_worker::{
@@ -25,13 +26,17 @@ use rns_rpc::{InterfaceRecord, MessagesStore, OutboundBridge, RpcDaemon, RpcRequ
 use rns_transport::delivery::send_outcome_status;
 use rns_transport::destination::{link::LinkStatus, DestinationDesc, DestinationName};
 use rns_transport::destination_hash::parse_destination_hash_required;
-use rns_transport::transport::{SendPacketOutcome, Transport, TransportConfig};
+use rns_transport::hash::AddressHash;
+use rns_transport::packet::{PacketContext, PacketDataBuffer};
+use rns_transport::transport::{
+    ReceivedData, ReceivedPayloadMode, SendPacketOutcome, Transport, TransportConfig,
+};
 use serde_json::json;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tempfile::TempDir;
 
 #[test]
@@ -146,6 +151,44 @@ fn propagated_delivery_requires_selected_node() {
         .expect("selected node should satisfy propagated delivery");
 }
 
+#[tokio::test]
+async fn propagation_signal_waiter_detects_invalid_stamp_rejection() {
+    let (tx, mut rx) = tokio::sync::broadcast::channel(4);
+    let link_id = AddressHash::new_from_slice(&[0x11; 16]);
+    let other_link_id = AddressHash::new_from_slice(&[0x22; 16]);
+    let signal_payload = rmp_serde::to_vec(&vec![0xf5u8]).expect("signal msgpack");
+
+    assert!(tx
+        .send(ReceivedData {
+            destination: other_link_id,
+            data: PacketDataBuffer::new_from_slice(&signal_payload),
+            payload_mode: ReceivedPayloadMode::FullWire,
+            ratchet_used: false,
+            context: Some(PacketContext::None),
+            request_id: None,
+            hops: None,
+            interface: None,
+        })
+        .is_ok());
+    assert!(tx
+        .send(ReceivedData {
+            destination: link_id,
+            data: PacketDataBuffer::new_from_slice(&signal_payload),
+            payload_mode: ReceivedPayloadMode::FullWire,
+            ratchet_used: false,
+            context: Some(PacketContext::None),
+            request_id: None,
+            hops: None,
+            interface: None,
+        })
+        .is_ok());
+
+    assert_eq!(
+        wait_for_propagation_signal(&mut rx, link_id, Duration::from_millis(200)).await,
+        Some(0xf5)
+    );
+}
+
 async fn test_transport_bridge_fixture() -> (Arc<RpcDaemon>, Arc<TransportBridge>) {
     let (daemon, bridge, _, _) = test_transport_bridge_fixture_with_peer().await;
     (daemon, bridge)
@@ -182,6 +225,7 @@ async fn test_transport_bridge_fixture_with_peer(
         [0u8; 16],
         announce_destination,
         None,
+        Vec::new(),
         None,
         encode_propagation_node_app_data(
             Some("Bridge Node"),
@@ -361,7 +405,7 @@ async fn transport_bridge_rejects_propagated_send_without_selected_node() {
 }
 
 #[tokio::test]
-async fn propagation_link_cache_reuses_same_selected_node() {
+async fn propagation_link_cache_reuses_fresh_pending_link_for_same_selected_node() {
     let (_daemon, bridge) = test_transport_bridge_fixture().await;
     let signer = PrivateIdentity::new_from_rand(rand_core::OsRng);
     let identity = rns_transport::identity_bridge::to_transport_private_identity(&signer);
@@ -564,6 +608,8 @@ fn strict_startup_policy_rejects_interface_failures() {
 fn select_tcp_server_bind_uses_single_enabled_interface_when_transport_not_set() {
     let args = test_args(PathBuf::from("/tmp/db"), None, None, false);
     let config = reticulum_daemon::config::DaemonConfig {
+        display_name: None,
+        announce_capabilities: Vec::new(),
         interfaces: vec![InterfaceConfig {
             kind: "tcp_server".to_string(),
             enabled: Some(true),
@@ -582,6 +628,8 @@ fn select_tcp_server_bind_uses_single_enabled_interface_when_transport_not_set()
 fn select_tcp_server_bind_prefers_transport_override() {
     let args = test_args(PathBuf::from("/tmp/db"), None, Some("127.0.0.1:4333".to_string()), false);
     let config = reticulum_daemon::config::DaemonConfig {
+        display_name: None,
+        announce_capabilities: Vec::new(),
         interfaces: vec![
             InterfaceConfig {
                 kind: "tcp_server".to_string(),
@@ -609,6 +657,8 @@ fn select_tcp_server_bind_prefers_transport_override() {
 fn select_tcp_server_bind_rejects_multiple_enabled_servers_without_override() {
     let args = test_args(PathBuf::from("/tmp/db"), None, None, false);
     let config = reticulum_daemon::config::DaemonConfig {
+        display_name: None,
+        announce_capabilities: Vec::new(),
         interfaces: vec![
             InterfaceConfig {
                 kind: "tcp_server".to_string(),

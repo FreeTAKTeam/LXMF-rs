@@ -29,7 +29,7 @@ pub(super) fn parse_delivery_method(method: Option<&str>) -> DeliveryMethod {
 }
 
 pub(super) fn can_send_opportunistic(fields: Option<&Value>, payload_len: usize) -> bool {
-    const MAX_OPPORTUNISTIC_BYTES: usize = 295;
+    const MAX_OPPORTUNISTIC_BYTES: usize = 4096;
     payload_len <= MAX_OPPORTUNISTIC_BYTES && !fields_contain_attachments(fields)
 }
 

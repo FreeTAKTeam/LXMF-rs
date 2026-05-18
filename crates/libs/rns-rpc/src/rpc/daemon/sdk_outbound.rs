@@ -242,6 +242,7 @@ impl RpcDaemon {
             "get_outbound_propagation_node",
             "set_outbound_propagation_node",
             "list_propagation_nodes",
+            "propagation_remote_fetch",
             "paper_ingest_uri",
             "stamp_policy_get",
             "stamp_policy_set",

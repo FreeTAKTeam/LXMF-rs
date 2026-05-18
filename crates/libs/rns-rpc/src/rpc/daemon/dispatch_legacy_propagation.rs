@@ -589,6 +589,34 @@ impl RpcDaemon {
                     error: None,
                 })
             }
+            "propagation_remote_fetch" => {
+                let params = request.params.ok_or_else(|| {
+                    std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing params")
+                })?;
+                let parsed: PropagationRemoteFetchParams = serde_json::from_value(params)
+                    .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
+                let bridge = self
+                    .remote_control_bridge
+                    .lock()
+                    .expect("remote_control_bridge mutex poisoned")
+                    .clone()
+                    .ok_or_else(|| std::io::Error::other("remote control bridge unavailable"))?;
+                let timeout_secs = parsed.timeout_secs.unwrap_or(8.0).max(0.1);
+                let result = bridge.propagation_remote_fetch(
+                    parsed.remote.as_str(),
+                    parsed.identity_private_key_hex.as_deref(),
+                    timeout_secs,
+                    parsed.transfer_limit_kb,
+                )?;
+                Ok(RpcResponse {
+                    id: request.id,
+                    result: Some(json!({
+                        "remote": parsed.remote,
+                        "result": result,
+                    })),
+                    error: None,
+                })
+            }
             "propagation_remote_unpeer" => {
                 let params = request.params.ok_or_else(|| {
                     std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing params")

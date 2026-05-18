@@ -8,7 +8,7 @@ use crate::bridge::PeerCrypto;
 use crate::interface_hot_apply::legacy_tcp_interface_key;
 use crate::interfaces::{ble, common::interface_label, lora, serial, udp};
 use crate::Args;
-use reticulum_daemon::announce_names::encode_delivery_display_name_app_data;
+use reticulum_daemon::announce_names::encode_delivery_announce_app_data_with_capabilities;
 use reticulum_daemon::config::{DaemonConfig, InterfaceConfig};
 use reticulum_daemon::receipt_bridge::ReceiptBridge;
 use rns_core::identity::PrivateIdentity;
@@ -46,6 +46,7 @@ pub(super) struct TransportStartupInput<'a> {
     pub(super) identity: &'a PrivateIdentity,
     pub(super) reticulum_storage_path: &'a std::path::Path,
     pub(super) local_display_name: Option<&'a str>,
+    pub(super) local_announce_capabilities: &'a [String],
     pub(super) configured_interfaces: Vec<InterfaceRecord>,
     pub(super) receipt_map: Arc<Mutex<HashMap<String, String>>>,
     pub(super) receipt_tx:
@@ -62,6 +63,7 @@ pub(super) async fn start_transport_and_interfaces(
         identity,
         reticulum_storage_path,
         local_display_name,
+        local_announce_capabilities,
         mut configured_interfaces,
         receipt_map,
         receipt_tx,
@@ -199,7 +201,13 @@ pub(super) async fn start_transport_and_interfaces(
         transport_instance
             .set_destination_announce_app_data(
                 announce_destination.as_ref().expect("delivery destination"),
-                local_display_name.and_then(encode_delivery_display_name_app_data),
+                local_display_name.and_then(|display_name| {
+                    encode_delivery_announce_app_data_with_capabilities(
+                        display_name,
+                        None,
+                        local_announce_capabilities,
+                    )
+                }),
             )
             .await;
 

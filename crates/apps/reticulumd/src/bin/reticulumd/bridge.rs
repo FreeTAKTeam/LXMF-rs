@@ -7,14 +7,19 @@ mod link_send;
 #[path = "bridge_remote_control.rs"]
 mod remote_control;
 use super::inbound_worker::{
-    track_outbound_resource, OutboundResourceTracking, OUTBOUND_RESOURCE_SENT_STATUS,
+    prune_outbound_resource_mappings_for_message, track_outbound_resource,
+    OutboundResourceTracking, OUTBOUND_RESOURCE_SENT_STATUS,
 };
+use lxmf::inbound_decode::InboundPayloadMode;
 use lxmf::WireMessage;
 use rand_core::OsRng;
 use reticulum_daemon::announce_names::{
-    encode_delivery_announce_app_data,
+    encode_delivery_announce_app_data_with_capabilities,
     encode_propagation_node_app_data as encode_python_propagation_node_app_data,
     parse_peer_name_from_app_data, PropagationNodeAnnounceConfig,
+};
+use reticulum_daemon::inbound_delivery::{
+    annotate_inbound_record_stamp_status, decode_inbound_payload, evaluate_inbound_stamp_policy,
 };
 use reticulum_daemon::lxmf_bridge::build_wire_message_with_options;
 use reticulum_daemon::lxmf_bridge::rmpv_to_json;
@@ -35,24 +40,28 @@ use rns_transport::destination::{
 };
 use rns_transport::destination_hash::parse_destination_hash_required;
 use rns_transport::hash::{address_hash, AddressHash};
-use rns_transport::identity::Identity;
+use rns_transport::identity::{DecryptIdentity, Identity};
 use rns_transport::packet::{
     ContextFlag, DestinationType, Header, HeaderType, IfacFlag, Packet, PacketContext,
     PacketDataBuffer, PacketType, PropagationType,
 };
+use rns_transport::ratchets::encrypt_for_public_key;
 use rns_transport::transport::Transport;
 use serde_json::{json, Value as JsonValue};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const PROPAGATION_INVALID_STAMP_SIGNAL: u8 = 0xF5;
 const DEFAULT_PROPAGATION_STAMP_COST: u32 = 13;
+const PATH_REQUEST_TIMEOUT: Duration = Duration::from_secs(2);
+const PROPAGATION_LINK_ACTIVATION_GRACE: Duration = Duration::from_secs(25);
 
 #[derive(Clone)]
 struct CachedPropagationLink {
     node_hex: String,
     link: Arc<tokio::sync::Mutex<Link>>,
+    created_at: Instant,
 }
 
 pub(super) struct TransportBridge {
@@ -62,6 +71,7 @@ pub(super) struct TransportBridge {
     delivery_source_hash: [u8; 16],
     announce_destination: Arc<tokio::sync::Mutex<SingleInputDestination>>,
     announce_app_data: Option<Vec<u8>>,
+    announce_capabilities: Vec<String>,
     propagation_announce_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>>,
     propagation_announce_app_data: Option<Vec<u8>>,
     control_announce_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>>,
@@ -86,6 +96,7 @@ impl TransportBridge {
         delivery_source_hash: [u8; 16],
         announce_destination: Arc<tokio::sync::Mutex<SingleInputDestination>>,
         announce_app_data: Option<Vec<u8>>,
+        announce_capabilities: Vec<String>,
         propagation_announce_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>>,
         propagation_announce_app_data: Option<Vec<u8>>,
         control_announce_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>>,
@@ -101,6 +112,7 @@ impl TransportBridge {
             delivery_source_hash,
             announce_destination,
             announce_app_data,
+            announce_capabilities,
             propagation_announce_destination,
             propagation_announce_app_data,
             control_announce_destination,
@@ -124,8 +136,12 @@ impl TransportBridge {
         let Some((display_name, _)) = parse_peer_name_from_app_data(app_data.as_slice()) else {
             return Some(app_data);
         };
-        encode_delivery_announce_app_data(display_name.as_str(), self.current_inbound_stamp_cost())
-            .or(Some(app_data))
+        encode_delivery_announce_app_data_with_capabilities(
+            display_name.as_str(),
+            self.current_inbound_stamp_cost(),
+            &self.announce_capabilities,
+        )
+        .or(Some(app_data))
     }
 
     fn current_inbound_stamp_cost(&self) -> Option<u32> {
@@ -307,11 +323,16 @@ impl DeliveryTask {
     }
 
     fn cached_identity_for_destination(&self, destination_hash: AddressHash) -> Option<Identity> {
-        const LXMF_ASPECTS: [&str; 3] = ["delivery", "propagation", "propagation.control"];
+        const DESTINATION_NAMES: [(&str, &str); 4] = [
+            ("lxmf", "delivery"),
+            ("lxmf", "propagation"),
+            ("lxmf", "propagation.control"),
+            ("r3akt", "emergency"),
+        ];
 
         self.cached_identity_candidates().into_iter().find(|identity| {
-            LXMF_ASPECTS.iter().any(|aspect| {
-                SingleOutputDestination::new(*identity, DestinationName::new("lxmf", aspect))
+            DESTINATION_NAMES.iter().any(|(app, aspect)| {
+                SingleOutputDestination::new(*identity, DestinationName::new(app, aspect))
                     .desc
                     .address_hash
                     == destination_hash
@@ -497,6 +518,10 @@ impl DeliveryTask {
     }
 
     async fn run_opportunistic(self) {
+        let Some(identity) = self.resolve_destination_identity().await else {
+            return;
+        };
+
         // Opportunistic SINGLE packets must carry LXMF wire bytes
         // without the destination prefix. Receivers prepend the
         // packet destination hash before unpacking.
@@ -516,7 +541,7 @@ impl DeliveryTask {
             return;
         }
 
-        let packet = Packet {
+        let mut packet = Packet {
             header: Header {
                 ifac_flag: IfacFlag::Open,
                 header_type: HeaderType::Type1,
@@ -532,6 +557,42 @@ impl DeliveryTask {
             context: PacketContext::None,
             data,
         };
+        let ciphertext = match encrypt_for_public_key(
+            &identity.public_key,
+            identity.address_hash.as_slice(),
+            packet.data.as_slice(),
+            OsRng,
+        ) {
+            Ok(ciphertext) => ciphertext,
+            Err(err) => {
+                log_delivery_trace(
+                    &self.message_id,
+                    &self.destination_hex,
+                    "opportunistic",
+                    &format!("encrypt failed: {err:?}"),
+                );
+                let _ = self.receipt_tx.send(ReceiptEvent {
+                    message_id: self.message_id,
+                    status: "failed: opportunistic encrypt failed".to_string(),
+                });
+                return;
+            }
+        };
+        let mut encrypted_data = PacketDataBuffer::new();
+        if encrypted_data.write(ciphertext.as_slice()).is_err() {
+            log_delivery_trace(
+                &self.message_id,
+                &self.destination_hex,
+                "opportunistic",
+                "ciphertext too large",
+            );
+            let _ = self.receipt_tx.send(ReceiptEvent {
+                message_id: self.message_id,
+                status: "failed: opportunistic ciphertext too large".to_string(),
+            });
+            return;
+        }
+        packet.data = encrypted_data;
         let packet_hash = hex::encode(packet.hash().to_bytes());
         track_receipt_mapping(&self.receipt_map, &packet_hash, &self.message_id);
         if diagnostics_enabled() {
@@ -545,7 +606,7 @@ impl DeliveryTask {
         } else {
             log_delivery_trace(&self.message_id, &self.destination_hex, "opportunistic", "sending");
         }
-        let trace = self.transport.send_packet_with_trace(packet).await;
+        let trace = self.transport.send_prepared_packet_broadcast_with_trace(packet).await;
         let trace_detail = send_trace_detail(trace);
         log_delivery_trace(&self.message_id, &self.destination_hex, "opportunistic", &trace_detail);
         let outcome = trace.outcome;
@@ -607,21 +668,12 @@ impl DeliveryTask {
             return Ok(link);
         }
 
-        let cached_identity = self
-            .propagation_node_identity
-            .or_else(|| {
-                self.outbound_propagation_identities
-                    .lock()
-                    .ok()
-                    .and_then(|guard| guard.get(propagation_node_hex).cloned())
-            })
-            .or_else(|| {
-                resolve_destination_identity_blocking(
-                    self.transport.clone(),
-                    propagation_hash,
-                    Duration::from_secs(12),
-                )
-            });
+        let cached_identity = self.propagation_node_identity.or_else(|| {
+            self.outbound_propagation_identities
+                .lock()
+                .ok()
+                .and_then(|guard| guard.get(propagation_node_hex).cloned())
+        });
         let Some(propagation_identity) = self
             .resolve_identity(
                 Some(propagation_node_hex),
@@ -663,10 +715,25 @@ impl DeliveryTask {
         stage: &str,
         failure_status: &str,
     ) -> Option<Identity> {
-        let mut identity =
-            cached.or_else(|| self.cached_identity_for_destination(destination_hash));
+        let detail = destination_hex.unwrap_or(self.destination_hex.as_str());
+        log_delivery_trace(&self.message_id, detail, stage, "resolve start");
+        let mut identity = cached;
+        if identity.is_none() {
+            identity =
+                destination_identity_with_timeout(self.transport.as_ref(), &destination_hash).await;
+            if identity.is_some() {
+                log_delivery_trace(
+                    &self.message_id,
+                    detail,
+                    stage,
+                    "resolved from transport identity",
+                );
+            }
+        }
+        if identity.is_none() {
+            identity = self.cached_identity_for_destination(destination_hash);
+        }
         if identity.is_some() {
-            let detail = destination_hex.unwrap_or(self.destination_hex.as_str());
             log_delivery_trace(
                 &self.message_id,
                 detail,
@@ -676,13 +743,28 @@ impl DeliveryTask {
         }
 
         if identity.is_none() {
-            self.transport.request_path(&destination_hash, None, None).await;
-            log_delivery_trace(&self.message_id, &self.destination_hex, stage, "path-requested");
-            let detail = destination_hex.unwrap_or(self.destination_hex.as_str());
+            if request_path_with_timeout(self.transport.as_ref(), &destination_hash).await {
+                log_delivery_trace(
+                    &self.message_id,
+                    &self.destination_hex,
+                    stage,
+                    "path-requested",
+                );
+            } else {
+                log_delivery_trace(
+                    &self.message_id,
+                    &self.destination_hex,
+                    stage,
+                    "path-request timed out",
+                );
+            }
             log_delivery_trace(&self.message_id, detail, stage, "waiting for announce");
             let deadline = tokio::time::Instant::now() + Duration::from_secs(12);
             while tokio::time::Instant::now() < deadline {
-                if let Some(found) = self.transport.destination_identity(&destination_hash).await {
+                if let Some(found) =
+                    destination_identity_with_timeout(self.transport.as_ref(), &destination_hash)
+                        .await
+                {
                     identity = Some(found);
                     break;
                 }
@@ -693,7 +775,6 @@ impl DeliveryTask {
         if identity.is_none() {
             identity = self.cached_identity_for_destination(destination_hash);
             if identity.is_some() {
-                let detail = destination_hex.unwrap_or(self.destination_hex.as_str());
                 log_delivery_trace(
                     &self.message_id,
                     detail,
@@ -704,7 +785,6 @@ impl DeliveryTask {
         }
 
         let Some(identity) = identity else {
-            let detail = destination_hex.unwrap_or(self.destination_hex.as_str());
             log_delivery_trace(&self.message_id, detail, stage, "not found");
             let _ = self.receipt_tx.send(ReceiptEvent {
                 message_id: self.message_id.clone(),
@@ -713,7 +793,6 @@ impl DeliveryTask {
             return None;
         };
 
-        let detail = destination_hex.unwrap_or(self.destination_hex.as_str());
         log_delivery_trace(&self.message_id, detail, stage, "resolved");
         Some(identity)
     }
@@ -731,12 +810,32 @@ async fn cached_propagation_link(
         return None;
     }
 
-    if cached.link.lock().await.status() == LinkStatus::Closed {
-        *guard = None;
-        return None;
+    let status = cached.link.lock().await.status();
+    if status == LinkStatus::Active
+        || (status.not_yet_active()
+            && cached.created_at.elapsed() <= PROPAGATION_LINK_ACTIVATION_GRACE)
+    {
+        return Some(cached.link);
     }
 
-    Some(cached.link)
+    *guard = None;
+    None
+}
+
+async fn request_path_with_timeout(transport: &Transport, destination_hash: &AddressHash) -> bool {
+    tokio::time::timeout(PATH_REQUEST_TIMEOUT, transport.request_path(destination_hash, None, None))
+        .await
+        .is_ok()
+}
+
+async fn destination_identity_with_timeout(
+    transport: &Transport,
+    destination_hash: &AddressHash,
+) -> Option<Identity> {
+    tokio::time::timeout(PATH_REQUEST_TIMEOUT, transport.destination_identity(destination_hash))
+        .await
+        .ok()
+        .flatten()
 }
 
 async fn propagation_link_for_node(
@@ -749,9 +848,14 @@ async fn propagation_link_for_node(
         return link;
     }
 
+    transport.reset_out_link(&destination.address_hash).await;
     let link = transport.link(destination).await;
     let mut guard = state.lock().await;
-    *guard = Some(CachedPropagationLink { node_hex: node_hex.to_string(), link: link.clone() });
+    *guard = Some(CachedPropagationLink {
+        node_hex: node_hex.to_string(),
+        link: link.clone(),
+        created_at: Instant::now(),
+    });
     link
 }
 
@@ -763,13 +867,16 @@ fn resolve_destination_identity_blocking(
     std::thread::spawn(move || {
         let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
         runtime.block_on(async move {
-            let mut identity = transport.destination_identity(&destination_hash).await;
+            let mut identity =
+                destination_identity_with_timeout(transport.as_ref(), &destination_hash).await;
             if identity.is_none() {
-                transport.request_path(&destination_hash, None, None).await;
+                let _ = request_path_with_timeout(transport.as_ref(), &destination_hash).await;
                 let deadline = tokio::time::Instant::now() + timeout;
                 while identity.is_none() && tokio::time::Instant::now() < deadline {
                     tokio::time::sleep(Duration::from_millis(250)).await;
-                    identity = transport.destination_identity(&destination_hash).await;
+                    identity =
+                        destination_identity_with_timeout(transport.as_ref(), &destination_hash)
+                            .await;
                 }
             }
             identity
@@ -931,19 +1038,6 @@ impl OutboundBridge for TransportBridge {
                     .lock()
                     .ok()
                     .and_then(|guard| guard.get(node_hex).cloned())
-                    .or_else(|| {
-                        let hash = parse_destination_hash_required(node_hex).ok()?;
-                        let hash = AddressHash::new(hash);
-                        let identity = resolve_destination_identity_blocking(
-                            self.transport.clone(),
-                            hash,
-                            Duration::from_secs(12),
-                        )?;
-                        if let Ok(mut guard) = self.outbound_propagation_identities.lock() {
-                            guard.insert(node_hex.to_string(), identity);
-                        }
-                        Some(identity)
-                    })
             })
         } else {
             None
@@ -1072,6 +1166,65 @@ impl RemoteControlBridge for TransportBridge {
         )
     }
 
+    fn propagation_remote_fetch(
+        &self,
+        remote: &str,
+        identity_private_key_hex: Option<&str>,
+        timeout_secs: f64,
+        transfer_limit_kb: Option<f64>,
+    ) -> Result<JsonValue, std::io::Error> {
+        let available = self.run_remote_control_raw(
+            remote,
+            identity_private_key_hex,
+            timeout_secs,
+            "/get",
+            rmpv::Value::Array(vec![rmpv::Value::Nil, rmpv::Value::Nil]),
+        )?;
+        let transient_ids = rmpv_binary_array(&available)?;
+        if transient_ids.is_empty() {
+            return Ok(json!({
+                "available_count": 0,
+                "fetched_count": 0,
+                "imported_count": 0,
+            }));
+        }
+
+        let fetched = self.run_remote_control_raw(
+            remote,
+            identity_private_key_hex,
+            timeout_secs,
+            "/get",
+            rmpv::Value::Array(vec![
+                rmpv::Value::Array(
+                    transient_ids.iter().cloned().map(rmpv::Value::Binary).collect(),
+                ),
+                rmpv::Value::Nil,
+                transfer_limit_kb
+                    .map(rmpv::Value::F64)
+                    .unwrap_or_else(|| rmpv::Value::from(10_240u64)),
+            ]),
+        )?;
+        let payloads = rmpv_binary_array(&fetched)?;
+        let daemon = self
+            .daemon
+            .lock()
+            .ok()
+            .and_then(|guard| guard.clone())
+            .ok_or_else(|| std::io::Error::other("daemon unavailable"))?;
+
+        let mut imported_count = 0usize;
+        for payload in &payloads {
+            self.accept_local_propagated_payload(daemon.clone(), payload.clone())?;
+            imported_count = imported_count.saturating_add(1);
+        }
+
+        Ok(json!({
+            "available_count": transient_ids.len(),
+            "fetched_count": payloads.len(),
+            "imported_count": imported_count,
+        }))
+    }
+
     fn propagation_remote_unpeer(
         &self,
         remote: &str,
@@ -1089,7 +1242,157 @@ impl RemoteControlBridge for TransportBridge {
     }
 }
 
-async fn wait_for_propagation_signal(
+fn rmpv_binary_array(value: &rmpv::Value) -> Result<Vec<Vec<u8>>, std::io::Error> {
+    let rmpv::Value::Array(values) = value else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "propagation node returned non-array payload",
+        ));
+    };
+    values
+        .iter()
+        .map(|value| match value {
+            rmpv::Value::Binary(bytes) => Ok(bytes.clone()),
+            _ => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "propagation node returned non-binary item",
+            )),
+        })
+        .collect()
+}
+
+impl TransportBridge {
+    fn accept_local_propagated_payload(
+        &self,
+        daemon: Arc<RpcDaemon>,
+        transient_payload: Vec<u8>,
+    ) -> Result<(), std::io::Error> {
+        let destination = self.announce_destination.clone();
+        std::thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|err| {
+                    std::io::Error::other(format!(
+                        "failed to build propagation import runtime: {err}"
+                    ))
+                })?;
+            runtime.block_on(async move {
+                accept_local_propagated_payload_inner(
+                    daemon.as_ref(),
+                    destination,
+                    transient_payload.as_slice(),
+                )
+                .await
+            })
+        })
+        .join()
+        .map_err(|_| std::io::Error::other("propagation import helper thread panicked"))?
+    }
+}
+
+async fn accept_local_propagated_payload_inner(
+    daemon: &RpcDaemon,
+    delivery_destination: Arc<tokio::sync::Mutex<SingleInputDestination>>,
+    transient_payload: &[u8],
+) -> Result<(), std::io::Error> {
+    if transient_payload.len() <= 16 + 32 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "propagated LXMF payload too short",
+        ));
+    }
+
+    let (destination_hash, wire) = {
+        let destination = delivery_destination.lock().await;
+        if &transient_payload[..16] != destination.desc.address_hash.as_slice() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "propagated LXMF payload is not addressed to the local delivery destination",
+            ));
+        }
+        let wire = decrypt_local_propagated_wire(&destination, transient_payload)?;
+        let mut destination_hash = [0u8; 16];
+        destination_hash.copy_from_slice(destination.desc.address_hash.as_slice());
+        (destination_hash, wire)
+    };
+
+    let stamp_status = evaluate_inbound_stamp_policy(
+        daemon,
+        destination_hash,
+        &wire,
+        InboundPayloadMode::FullWire,
+    )
+    .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
+
+    let Some(mut record) =
+        decode_inbound_payload(destination_hash, &wire, InboundPayloadMode::FullWire)
+    else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "failed to decode fetched propagated LXMF payload",
+        ));
+    };
+
+    annotate_inbound_record_stamp_status(&mut record, stamp_status);
+    daemon.record_inbound_peer_activity(&record.source, wire.len());
+    daemon.accept_inbound_with_raw(record, &wire)?;
+    Ok(())
+}
+
+fn decrypt_local_propagated_wire(
+    destination: &SingleInputDestination,
+    transient_payload: &[u8],
+) -> Result<Vec<u8>, std::io::Error> {
+    if transient_payload.len() <= 16 + 32 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "propagated LXMF payload too short",
+        ));
+    }
+
+    for strip_stamp in [false, true] {
+        let payload = if strip_stamp {
+            if transient_payload.len() <= 16 + 32 + 32 {
+                continue;
+            }
+            &transient_payload[..transient_payload.len() - 32]
+        } else {
+            transient_payload
+        };
+
+        let ciphertext = &payload[16..];
+        if ciphertext.len() <= 32 {
+            continue;
+        }
+        let Ok(ephemeral_key) = <[u8; 32]>::try_from(&ciphertext[..32]) else {
+            continue;
+        };
+        let public_key = x25519_dalek::PublicKey::from(ephemeral_key);
+        let derived_key = destination
+            .identity
+            .derive_key(&public_key, Some(destination.identity.address_hash().as_slice()));
+        let token = &ciphertext[32..];
+        let mut plaintext = vec![0u8; token.len()];
+        let Ok(decrypted) =
+            destination.identity.decrypt(rand_core::OsRng, token, &derived_key, &mut plaintext)
+        else {
+            continue;
+        };
+
+        let mut wire = Vec::with_capacity(16 + decrypted.len());
+        wire.extend_from_slice(destination.desc.address_hash.as_slice());
+        wire.extend_from_slice(decrypted);
+        return Ok(wire);
+    }
+
+    Err(std::io::Error::new(
+        std::io::ErrorKind::InvalidData,
+        "failed to decrypt propagated LXMF payload for local delivery",
+    ))
+}
+
+pub(super) async fn wait_for_propagation_signal(
     rx: &mut tokio::sync::broadcast::Receiver<rns_transport::transport::ReceivedData>,
     link_id: AddressHash,
     timeout: Duration,

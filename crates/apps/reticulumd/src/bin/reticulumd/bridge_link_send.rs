@@ -9,6 +9,15 @@ impl DeliveryTask {
         payload: &[u8],
         statuses: LinkModeStatuses,
     ) -> Result<(), std::io::Error> {
+        if diagnostics_enabled() {
+            log_delivery_trace(
+                &self.message_id,
+                &self.destination_hex,
+                trace_stage,
+                "opening link",
+            );
+        }
+        self.transport.reset_out_link(&destination_desc.address_hash).await;
         let result = send_via_link(
             self.transport.as_ref(),
             destination_desc,
@@ -89,6 +98,7 @@ impl DeliveryTask {
         let destination_desc = *link.lock().await.destination();
         let link_id = *link.lock().await.id();
         if trace_stage == "propagation" {
+            let propagation_signal_rx = self.transport.received_data_events();
             let resource_hash =
                 self.transport.send_resource(&link_id, payload.to_vec(), None).await.map_err(
                     |err| std::io::Error::other(format!("link resource not sent: {err:?}")),
@@ -116,6 +126,14 @@ impl DeliveryTask {
                 message_id: self.message_id.clone(),
                 status: statuses.resource.to_string(),
             });
+            spawn_propagation_resource_signal_monitor(
+                propagation_signal_rx,
+                link_id,
+                self.message_id.clone(),
+                self.destination_hex.clone(),
+                self.outbound_resource_map.clone(),
+                self.receipt_tx.clone(),
+            );
             return Ok(());
         }
 
@@ -183,4 +201,31 @@ impl DeliveryTask {
             Err(err) => Err(err),
         }
     }
+}
+
+fn spawn_propagation_resource_signal_monitor(
+    mut signal_rx: tokio::sync::broadcast::Receiver<rns_transport::transport::ReceivedData>,
+    link_id: AddressHash,
+    message_id: String,
+    destination_hex: String,
+    outbound_resource_map: Arc<Mutex<HashMap<String, OutboundResourceTracking>>>,
+    receipt_tx: tokio::sync::mpsc::UnboundedSender<ReceiptEvent>,
+) {
+    tokio::spawn(async move {
+        let Some(signal) =
+            wait_for_propagation_signal(&mut signal_rx, link_id, Duration::from_secs(30)).await
+        else {
+            return;
+        };
+        let detail = format!("resource_signal=0x{signal:02x}");
+        log_delivery_trace(&message_id, &destination_hex, "propagation", &detail);
+        if signal != PROPAGATION_INVALID_STAMP_SIGNAL {
+            return;
+        }
+        prune_outbound_resource_mappings_for_message(&outbound_resource_map, &message_id);
+        let _ = receipt_tx.send(ReceiptEvent {
+            message_id,
+            status: "failed: propagation node rejected message: invalid stamp".to_string(),
+        });
+    });
 }
