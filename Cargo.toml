@@ -61,6 +61,7 @@ allowed_library_edges = [
   "rns-embedded-runtime->rns-embedded-core",
   "reticulum-rs-transport->reticulum-rs-core",
   "test-support->lxmf-sdk",
+  "test-support->lxmf-wire",
   "test-support->reticulum-rs-core",
   "test-support->reticulum-rs-rpc",
 ]

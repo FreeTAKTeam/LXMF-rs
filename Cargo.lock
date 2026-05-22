@@ -2496,6 +2496,7 @@ dependencies = [
  "base64 0.22.1",
  "jsonschema",
  "lxmf-sdk",
+ "lxmf-wire",
  "reticulum-rs-core",
  "reticulum-rs-rpc",
  "serde",
