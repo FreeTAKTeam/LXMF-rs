@@ -31,6 +31,10 @@ mod payload_builder;
 mod propagation;
 #[path = "bridge_remote_control.rs"]
 mod remote_control;
+#[path = "bridge_remote_control_download.rs"]
+mod remote_control_download;
+#[path = "bridge_remote_control_link.rs"]
+mod remote_control_link;
 use super::outbound_resources::{
     track_outbound_resource, OutboundResourceMap, OutboundResourceTracking,
     OUTBOUND_RESOURCE_SENT_STATUS,
