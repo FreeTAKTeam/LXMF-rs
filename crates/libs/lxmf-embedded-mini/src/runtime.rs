@@ -95,6 +95,7 @@ impl<
         if self.outbound.len() >= OUTBOUND {
             return Err(MiniError::Backpressure);
         }
+        self.ensure_event_capacity()?;
 
         let sequence = self.next_sequence;
         let message = MiniMessage::<TITLE, CONTENT>::new(
@@ -184,10 +185,8 @@ impl<
             return Ok(());
         }
 
-        loop {
-            let Some(frame) = self.outbound.front() else {
-                break;
-            };
+        while let Some(frame) = self.outbound.front() {
+            let sequence = frame.sequence;
             match transport.send_frame(&frame.bytes) {
                 Ok(()) => {
                     let sent = self.outbound.pop_front().ok_or(MiniError::InvalidInput)?;
@@ -199,7 +198,7 @@ impl<
                 }
                 Err(error @ (MiniError::Backpressure | MiniError::Disconnected)) => {
                     self.stats.deferred = self.stats.deferred.saturating_add(1);
-                    self.push_event(MiniEvent::FrameDeferred { sequence: frame.sequence, error })?;
+                    self.push_event(MiniEvent::FrameDeferred { sequence, error })?;
                     break;
                 }
                 Err(error) => {
@@ -215,11 +214,16 @@ impl<
         Ok(())
     }
 
-    fn push_event(&mut self, event: MiniEvent) -> MiniResult<()> {
+    fn ensure_event_capacity(&mut self) -> MiniResult<()> {
         if self.events.len() >= EVENTS {
             self.stats.event_overflows = self.stats.event_overflows.saturating_add(1);
             return Err(MiniError::EventOverflow);
         }
+        Ok(())
+    }
+
+    fn push_event(&mut self, event: MiniEvent) -> MiniResult<()> {
+        self.ensure_event_capacity()?;
         self.events.push_back(event).map_err(|_| MiniError::EventOverflow)
     }
 }

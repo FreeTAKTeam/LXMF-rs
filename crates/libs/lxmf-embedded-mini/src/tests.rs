@@ -207,4 +207,14 @@ fn runtime_reports_event_overflow() {
 
     assert_eq!(err, MiniError::EventOverflow);
     assert_eq!(runtime.status().stats.event_overflows, 1);
+    assert_eq!(runtime.status().outbound_len, 0);
+    assert_eq!(runtime.status().stats.queued, 0);
+
+    runtime.poll_event().expect("drain bootstrap event");
+    let sequence =
+        runtime.queue_message([0x11; 16], b"title", b"content", signature(), 1.0).expect("queue");
+
+    assert_eq!(sequence, 1);
+    assert_eq!(runtime.status().outbound_len, 1);
+    assert_eq!(runtime.status().stats.queued, 1);
 }
