@@ -206,7 +206,7 @@ Required behavior:
 Feature gates:
 
 - SDK: `lxmf-sdk/zmq-pipeline-backend`
-- Daemon loop scaffold: `reticulumd/zmq-pipeline-rpc`
+- Daemon loop: `reticulumd/zmq-pipeline-rpc` with `--zmq-rpc-command <endpoint>`
 
 Non-RPC backends may ignore RPC-specific config without violating contract.
 

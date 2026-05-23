@@ -2,9 +2,11 @@
 #![allow(clippy::result_large_err)]
 
 use lxmf_sdk::{
-    EventCursor, LxmfSdk, RpcBackendClient, SdkBackend, SdkConfig, SdkError, StartRequest,
-    ZmqEndpointRole, ZmqPipelineBackendClient, ZmqPipelineBackendConfig, ZmqPipelineTokenAuth,
+    ConfigPatch, EventCursor, LxmfSdk, RpcBackendClient, SdkBackend, SdkConfig, SdkError,
+    StartRequest, ZmqEndpointRole, ZmqPipelineBackendClient, ZmqPipelineBackendConfig,
+    ZmqPipelineTokenAuth,
 };
+use serde_json::json;
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone)]
@@ -25,47 +27,65 @@ impl StressStats {
 }
 
 #[test]
-#[ignore = "requires live HTTP and ZeroMQ daemon endpoints"]
-fn compare_http_and_zmq_sdk_snapshot_stress() -> Result<(), SdkError> {
-    let iterations = stress_iterations();
-    let http = RpcBackendClient::new(http_endpoint());
-    let zmq = ZmqPipelineBackendClient::new(zmq_config())?;
+fn formats_terse_transport_stress_report_line() {
+    let http = StressStats { label: "http", iterations: 100, elapsed: Duration::from_millis(50) };
+    let zmq = StressStats { label: "zmq", iterations: 100, elapsed: Duration::from_millis(25) };
 
-    warm_up_backend("http", &http)?;
-    warm_up_backend("zmq", &zmq)?;
+    let line = format_comparison("snapshot", &http, &zmq);
 
-    let http_stats = stress_snapshot("http", &http, iterations)?;
-    let zmq_stats = stress_snapshot("zmq", &zmq, iterations)?;
-
-    print_comparison(&http_stats, &zmq_stats);
-    Ok(())
+    assert_eq!(
+        line,
+        "transport_stress op=snapshot iterations=100 http_ms=50 http_avg_us=500.00 http_ops=2000.00 zmq_ms=25 zmq_avg_us=250.00 zmq_ops=4000.00 zmq_http_ratio=2.000"
+    );
 }
 
 #[test]
 #[ignore = "requires live HTTP and ZeroMQ daemon endpoints"]
-fn compare_http_and_zmq_sdk_poll_events_stress() -> Result<(), SdkError> {
+fn compare_http_and_zmq_sdk_transport_stress() -> Result<(), SdkError> {
     let iterations = stress_iterations();
     let http = RpcBackendClient::new(http_endpoint());
     let zmq = ZmqPipelineBackendClient::new(zmq_config())?;
 
-    warm_up_backend("http", &http)?;
-    warm_up_backend("zmq", &zmq)?;
+    warm_up_backend(&http)?;
+    warm_up_backend(&zmq)?;
+    configure_stress_rate_limits(&http, iterations)?;
+
+    let http_stats = stress_snapshot("http", &http, iterations)?;
+    let zmq_stats = stress_snapshot("zmq", &zmq, iterations)?;
+
+    println!("{}", format_comparison("snapshot", &http_stats, &zmq_stats));
 
     let http_stats = stress_poll_events("http", &http, iterations)?;
     let zmq_stats = stress_poll_events("zmq", &zmq, iterations)?;
 
-    print_comparison(&http_stats, &zmq_stats);
+    println!("{}", format_comparison("poll_events", &http_stats, &zmq_stats));
     Ok(())
 }
 
-fn warm_up_backend<B>(label: &'static str, backend: &B) -> Result<(), SdkError>
+fn configure_stress_rate_limits<B>(backend: &B, iterations: usize) -> Result<(), SdkError>
+where
+    B: SdkBackend,
+{
+    let snapshot = backend.snapshot()?;
+    let limit = u64::try_from(iterations).unwrap_or(u64::MAX / 4).saturating_mul(4).max(1_000);
+    let patch = ConfigPatch::new().with_extension(
+        "rate_limits",
+        json!({
+            "per_ip_per_minute": limit,
+            "per_principal_per_minute": limit,
+        }),
+    );
+    let _ = backend.configure(snapshot.config_revision, patch)?;
+    Ok(())
+}
+
+fn warm_up_backend<B>(backend: &B) -> Result<(), SdkError>
 where
     B: SdkBackend,
 {
     let client = lxmf_sdk::Client::new(backend_ref(backend));
     let _ = client.start(StartRequest::new(SdkConfig::desktop_local_default()))?;
     let _ = backend.snapshot()?;
-    println!("{label} warmup complete");
     Ok(())
 }
 
@@ -101,33 +121,27 @@ where
     Ok(StressStats { label, iterations, elapsed: started.elapsed() })
 }
 
-fn print_comparison(http: &StressStats, zmq: &StressStats) {
-    println!(
-        "{}: iterations={} elapsed_ms={} ops_per_sec={:.2} avg_us={:.2}",
-        http.label,
+fn format_comparison(op: &str, http: &StressStats, zmq: &StressStats) -> String {
+    debug_assert_eq!(http.label, "http");
+    debug_assert_eq!(zmq.label, "zmq");
+    format!(
+        "transport_stress op={} iterations={} http_ms={} http_avg_us={:.2} http_ops={:.2} zmq_ms={} zmq_avg_us={:.2} zmq_ops={:.2} zmq_http_ratio={:.3}",
+        op,
         http.iterations,
         http.elapsed.as_millis(),
+        http.avg_latency_us(),
         http.ops_per_second(),
-        http.avg_latency_us()
-    );
-    println!(
-        "{}: iterations={} elapsed_ms={} ops_per_sec={:.2} avg_us={:.2}",
-        zmq.label,
-        zmq.iterations,
         zmq.elapsed.as_millis(),
+        zmq.avg_latency_us(),
         zmq.ops_per_second(),
-        zmq.avg_latency_us()
-    );
-    println!(
-        "zmq/http throughput ratio={:.3}",
         zmq.ops_per_second() / http.ops_per_second().max(f64::EPSILON)
-    );
+    )
 }
 
 fn http_endpoint() -> String {
     std::env::var("LXMF_STRESS_HTTP_RPC")
         .or_else(|_| std::env::var("LXMF_RPC"))
-        .unwrap_or_else(|_| "unix:/tmp/lxmf-rpc.sock".to_owned())
+        .unwrap_or_else(|_| "127.0.0.1:4242".to_owned())
 }
 
 fn zmq_config() -> ZmqPipelineBackendConfig {

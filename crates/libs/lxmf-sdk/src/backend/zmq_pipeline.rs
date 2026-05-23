@@ -33,12 +33,27 @@ pub struct ZmqPipelineBackendClient {
     config: ZmqPipelineBackendConfig,
     session_id: String,
     next_request_id: AtomicU64,
+    runtime: Runtime,
+    transport: tokio::sync::Mutex<Option<ZmqPipelineTransport>>,
+}
+
+struct ZmqPipelineTransport {
+    command: PushSocket,
+    responses: PullSocket,
 }
 
 impl ZmqPipelineBackendClient {
     pub fn new(config: ZmqPipelineBackendConfig) -> Result<Self, SdkError> {
         config.validate()?;
-        Ok(Self { config, session_id: new_session_id(), next_request_id: AtomicU64::new(1) })
+        let runtime =
+            Runtime::new().map_err(|err| sdk_error(ErrorCategory::Internal, err.to_string()))?;
+        Ok(Self {
+            config,
+            session_id: new_session_id(),
+            next_request_id: AtomicU64::new(1),
+            runtime,
+            transport: tokio::sync::Mutex::new(None),
+        })
     }
 
     pub fn session_id(&self) -> &str {
@@ -69,9 +84,7 @@ impl ZmqPipelineBackendClient {
             ));
         }
 
-        let runtime =
-            Runtime::new().map_err(|err| sdk_error(ErrorCategory::Internal, err.to_string()))?;
-        let response = runtime.block_on(self.send_and_recv(encoded, request_id))?;
+        let response = self.runtime.block_on(self.send_and_recv(encoded, request_id))?;
         let rpc_response = parse_rpc_frame(&response.payload)
             .map_err(|err| sdk_error(ErrorCategory::Transport, err.to_string()))?;
         if let Some(error) = rpc_response.error {
@@ -85,13 +98,16 @@ impl ZmqPipelineBackendClient {
         encoded: Vec<u8>,
         request_id: u64,
     ) -> Result<ZmqRpcEnvelope, SdkError> {
-        let mut command = PushSocket::new();
-        apply_role(&mut command, self.config.command_role, &self.config.command_endpoint).await?;
-        let mut responses = PullSocket::new();
-        apply_role(&mut responses, self.config.response_role, &self.config.response_endpoint)
-            .await?;
+        let mut transport = self.transport.lock().await;
+        if transport.is_none() {
+            *transport = Some(ZmqPipelineTransport::connect(&self.config).await?);
+        }
+        let transport = transport
+            .as_mut()
+            .ok_or_else(|| sdk_error(ErrorCategory::Internal, "missing zmq transport"))?;
 
-        command
+        transport
+            .command
             .send(ZmqMessage::from(encoded))
             .await
             .map_err(|err| sdk_error(ErrorCategory::Transport, err.to_string()))?;
@@ -107,7 +123,7 @@ impl ZmqPipelineBackendClient {
                         "zmq rpc request timed out waiting for correlated response",
                     ));
                 }
-                message = responses.recv() => {
+                message = transport.responses.recv() => {
                     let bytes = Vec::<u8>::try_from(message.map_err(|err| {
                         sdk_error(ErrorCategory::Transport, err.to_string())
                     })?)
@@ -145,6 +161,17 @@ impl ZmqPipelineBackendClient {
             scheme: "bearer".to_string(),
             value: format!("{};sig={}", payload, sig),
         })
+    }
+}
+
+impl ZmqPipelineTransport {
+    async fn connect(config: &ZmqPipelineBackendConfig) -> Result<Self, SdkError> {
+        let mut command = PushSocket::new();
+        apply_role(&mut command, config.command_role, &config.command_endpoint).await?;
+        let mut responses = PullSocket::new();
+        apply_role(&mut responses, config.response_role, &config.response_endpoint).await?;
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        Ok(Self { command, responses })
     }
 }
 

@@ -2,6 +2,7 @@
 
 use rns_rpc::rpc::zmq::{self, ZmqRpcEnvelope, ZmqRpcEnvelopeKind};
 use rns_rpc::{RpcDaemon, RpcError, RpcResponse};
+use std::collections::HashMap;
 use std::io;
 use std::sync::Arc;
 use tokio::sync::watch;
@@ -10,7 +11,6 @@ use zeromq::{PullSocket, PushSocket, Socket, SocketRecv, SocketSend, ZmqMessage}
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct ZmqRpcLoopConfig {
     pub command_endpoint: String,
-    pub response_endpoint: String,
     pub require_auth_for_remote: bool,
 }
 
@@ -22,8 +22,8 @@ pub(super) async fn run_zmq_rpc_loop_until(
     validate_zmq_loop_config(&config)?;
     let mut commands = PullSocket::new();
     commands.bind(config.command_endpoint.as_str()).await.map_err(zmq_io_error)?;
-    let mut responses = PushSocket::new();
-    responses.bind(config.response_endpoint.as_str()).await.map_err(zmq_io_error)?;
+    let mut responses: HashMap<String, PushSocket> = HashMap::new();
+    println!("reticulumd listening on zmq {}", config.command_endpoint);
 
     loop {
         tokio::select! {
@@ -36,8 +36,7 @@ pub(super) async fn run_zmq_rpc_loop_until(
                 let response =
                     handle_zmq_command_message(daemon.as_ref(), message.map_err(zmq_io_error)?);
                 if let Some(response) = response {
-                    let encoded = zmq::encode_envelope(&response)?;
-                    responses.send(ZmqMessage::from(encoded)).await.map_err(zmq_io_error)?;
+                    send_zmq_response(&mut responses, response).await?;
                 }
             }
         }
@@ -45,29 +44,54 @@ pub(super) async fn run_zmq_rpc_loop_until(
     Ok(())
 }
 
-fn handle_zmq_command_message(daemon: &RpcDaemon, message: ZmqMessage) -> Option<ZmqRpcEnvelope> {
+struct ZmqOutboundResponse {
+    endpoint: String,
+    envelope: ZmqRpcEnvelope,
+}
+
+async fn send_zmq_response(
+    responses: &mut HashMap<String, PushSocket>,
+    response: ZmqOutboundResponse,
+) -> io::Result<()> {
+    if !responses.contains_key(&response.endpoint) {
+        let mut socket = PushSocket::new();
+        socket.connect(response.endpoint.as_str()).await.map_err(zmq_io_error)?;
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        responses.insert(response.endpoint.clone(), socket);
+    }
+    let socket = responses
+        .get_mut(&response.endpoint)
+        .ok_or_else(|| io::Error::other("missing zmq response socket"))?;
+    let encoded = zmq::encode_envelope(&response.envelope)?;
+    socket.send(ZmqMessage::from(encoded)).await.map_err(zmq_io_error)
+}
+
+fn handle_zmq_command_message(
+    daemon: &RpcDaemon,
+    message: ZmqMessage,
+) -> Option<ZmqOutboundResponse> {
     let bytes = match Vec::<u8>::try_from(message) {
         Ok(bytes) => bytes,
-        Err(err) => return Some(error_envelope("", 0, "SDK_TRANSPORT_ZMQ_INVALID_MESSAGE", err)),
+        Err(_) => return None,
     };
     let envelope = match zmq::decode_envelope(&bytes) {
         Ok(envelope) => envelope,
-        Err(err) => {
-            return Some(error_envelope(
-                "",
-                0,
-                "SDK_TRANSPORT_ZMQ_INVALID_ENVELOPE",
-                err.to_string(),
-            ))
-        }
+        Err(_) => return None,
     };
+    let response_endpoint = envelope.response_endpoint.clone()?;
+    if validate_zmq_response_endpoint(response_endpoint.as_str()).is_err() {
+        return None;
+    }
     if envelope.kind != ZmqRpcEnvelopeKind::Request {
-        return Some(error_envelope(
-            envelope.session_id,
-            envelope.request_id,
-            "SDK_TRANSPORT_ZMQ_INVALID_KIND",
-            "zmq command ingress accepts request envelopes only",
-        ));
+        return Some(ZmqOutboundResponse {
+            endpoint: response_endpoint,
+            envelope: error_envelope(
+                envelope.session_id,
+                envelope.request_id,
+                "SDK_TRANSPORT_ZMQ_INVALID_KIND",
+                "zmq command ingress accepts request envelopes only",
+            ),
+        });
     }
     let response_payload =
         daemon.handle_framed_request(envelope.payload.as_slice()).unwrap_or_else(|err| {
@@ -78,7 +102,14 @@ fn handle_zmq_command_message(daemon: &RpcDaemon, message: ZmqMessage) -> Option
             };
             rns_rpc::rpc::codec::encode_frame(&response).unwrap_or_default()
         });
-    Some(ZmqRpcEnvelope::response(envelope.session_id, envelope.request_id, response_payload))
+    Some(ZmqOutboundResponse {
+        endpoint: response_endpoint,
+        envelope: ZmqRpcEnvelope::response(
+            envelope.session_id,
+            envelope.request_id,
+            response_payload,
+        ),
+    })
 }
 
 fn error_envelope(
@@ -100,16 +131,23 @@ fn error_envelope(
 }
 
 fn validate_zmq_loop_config(config: &ZmqRpcLoopConfig) -> io::Result<()> {
-    if config.require_auth_for_remote
-        && (!is_local_zmq_endpoint(&config.command_endpoint)
-            || !is_local_zmq_endpoint(&config.response_endpoint))
-    {
+    if config.require_auth_for_remote && !is_local_zmq_endpoint(&config.command_endpoint) {
         return Err(io::Error::new(
             io::ErrorKind::PermissionDenied,
             "remote zmq endpoints require explicit authentication",
         ));
     }
     Ok(())
+}
+
+fn validate_zmq_response_endpoint(endpoint: &str) -> io::Result<()> {
+    if is_local_zmq_endpoint(endpoint) {
+        return Ok(());
+    }
+    Err(io::Error::new(
+        io::ErrorKind::PermissionDenied,
+        "remote zmq response endpoints require explicit authentication",
+    ))
 }
 
 fn is_local_zmq_endpoint(endpoint: &str) -> bool {
@@ -131,11 +169,30 @@ mod tests {
     fn config_rejects_remote_without_auth_gate() {
         let config = ZmqRpcLoopConfig {
             command_endpoint: "tcp://0.0.0.0:9100".to_string(),
-            response_endpoint: "tcp://127.0.0.1:9101".to_string(),
             require_auth_for_remote: true,
         };
 
         let err = validate_zmq_loop_config(&config).expect_err("remote bind rejected");
+
+        assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
+    }
+
+    #[test]
+    fn config_rejects_remote_command_endpoint() {
+        let config = ZmqRpcLoopConfig {
+            command_endpoint: "tcp://192.0.2.10:9100".to_string(),
+            require_auth_for_remote: true,
+        };
+
+        let err = validate_zmq_loop_config(&config).expect_err("remote command endpoint rejected");
+
+        assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
+    }
+
+    #[test]
+    fn response_endpoint_rejects_remote_endpoint() {
+        let err = validate_zmq_response_endpoint("tcp://192.0.2.10:9101")
+            .expect_err("remote response endpoint rejected");
 
         assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
     }

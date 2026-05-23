@@ -34,9 +34,9 @@ impl ZmqPipelineBackendConfig {
         response_endpoint: impl Into<String>,
     ) -> Self {
         Self {
-            command_endpoint: command_endpoint.into(),
+            command_endpoint: normalize_loopback_endpoint(command_endpoint.into()),
             command_role: ZmqEndpointRole::Connect,
-            response_endpoint: response_endpoint.into(),
+            response_endpoint: normalize_loopback_endpoint(response_endpoint.into()),
             response_role: ZmqEndpointRole::Bind,
             request_timeout: Duration::from_secs(5),
             max_envelope_bytes: zmq::ZMQ_RPC_MAX_ENVELOPE_BYTES,
@@ -56,6 +56,13 @@ impl ZmqPipelineBackendConfig {
         }
         Ok(())
     }
+}
+
+fn normalize_loopback_endpoint(endpoint: String) -> String {
+    endpoint
+        .strip_prefix("tcp://127.0.0.1:")
+        .map(|port| format!("tcp://localhost:{port}"))
+        .unwrap_or(endpoint)
 }
 
 fn validate_endpoint_security(endpoint: &str, has_auth: bool) -> Result<(), SdkError> {

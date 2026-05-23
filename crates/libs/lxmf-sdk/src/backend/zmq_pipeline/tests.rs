@@ -20,6 +20,15 @@ fn config_accepts_loopback_without_auth() {
 }
 
 #[test]
+fn config_normalizes_ipv4_loopback_for_windows_tcp_bind() {
+    let config =
+        ZmqPipelineBackendConfig::local_tcp("tcp://127.0.0.1:9000", "tcp://127.0.0.1:9001");
+
+    assert_eq!(config.command_endpoint, "tcp://localhost:9000");
+    assert_eq!(config.response_endpoint, "tcp://localhost:9001");
+}
+
+#[test]
 fn response_filter_requires_session_and_request_match() {
     let session = "session-a".to_string();
     let envelope = ZmqRpcEnvelope::response(session.clone(), 4, Vec::new());
