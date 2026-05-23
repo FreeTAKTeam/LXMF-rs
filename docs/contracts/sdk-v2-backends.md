@@ -181,6 +181,33 @@ Conformance gate:
 - HTTP timeout settings
 - auth mode and token verifier settings
 
+## Experimental ZeroMQ Pipeline Backend
+
+`ZmqPipelineBackendClient` is a parallel SDK backend behind the `zmq-pipeline-backend` feature. It
+does not replace `RpcBackendClient`, and HTTP remains the default backend.
+
+Initial config surface:
+
+- command endpoint and role (`bind` or `connect`)
+- response endpoint and role (`bind` or `connect`)
+- request timeout
+- maximum envelope size
+- optional token auth metadata for non-local endpoints
+
+Required behavior:
+
+1. Use the existing framed MessagePack RPC request/response payloads unchanged.
+2. Wrap payloads in `ZmqRpcEnvelope` with protocol version, session ID, request ID, kind, auth
+   metadata, and response endpoint.
+3. Resolve responses only when both session and request identifiers match.
+4. Reject remote endpoints without explicit auth.
+5. Keep `poll_events` cursor behavior authoritative; pushed events are not a replacement contract.
+
+Feature gates:
+
+- SDK: `lxmf-sdk/zmq-pipeline-backend`
+- Daemon loop scaffold: `reticulumd/zmq-pipeline-rpc`
+
 Non-RPC backends may ignore RPC-specific config without violating contract.
 
 ## Security Controls at Backend Boundary

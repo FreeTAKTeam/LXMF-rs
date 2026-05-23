@@ -16,6 +16,8 @@ cargo run -p reticulumd --bin reticulumd
 
 Then connect with `Client::rpc("unix:/tmp/lxmf-rpc.sock")`.
 
+HTTP/Unix RPC is still the default SDK path.
+
 For explicit TCP development, opt in with `--rpc`:
 
 ```bash
@@ -26,6 +28,46 @@ Remote TCP binds (`0.0.0.0`, non-loopback IPv4, or non-loopback IPv6) are refuse
 unless remote token auth is already configured in the persisted SDK runtime config or
 mTLS client authentication is configured at startup with `--rpc-tls-client-ca`.
 Use loopback TCP only for local development.
+
+## Experimental ZeroMQ Backend
+
+The ZeroMQ backend is parallel and opt-in:
+
+```toml
+lxmf-sdk = { path = "crates/libs/lxmf-sdk", features = ["zmq-pipeline-backend"] }
+```
+
+```rust
+use lxmf_sdk::{Client, ZmqPipelineBackendClient, ZmqPipelineBackendConfig};
+
+let backend = ZmqPipelineBackendClient::new(ZmqPipelineBackendConfig::local_tcp(
+    "tcp://127.0.0.1:9100",
+    "tcp://127.0.0.1:9101",
+))?;
+let client = Client::new(backend);
+```
+
+Use loopback endpoints for local testing. Remote ZeroMQ endpoints require explicit token auth; the
+backend rejects remote endpoints without it. `poll_events` remains the authoritative event recovery
+API even when ZeroMQ event wakeups are enabled.
+
+Run the example client:
+
+```bash
+LXMF_ZMQ_COMMAND=tcp://127.0.0.1:9100 \
+LXMF_ZMQ_RESPONSE=tcp://127.0.0.1:9101 \
+cargo run -p lxmf-sdk --example zmq_pipeline_send --features zmq-pipeline-backend
+```
+
+Run the ignored HTTP-vs-ZeroMQ stress comparison:
+
+```bash
+LXMF_STRESS_HTTP_RPC=unix:/tmp/lxmf-rpc.sock \
+LXMF_STRESS_ZMQ_COMMAND=tcp://127.0.0.1:9100 \
+LXMF_STRESS_ZMQ_RESPONSE=tcp://127.0.0.1:9101 \
+LXMF_STRESS_ITERATIONS=1000 \
+cargo test -p lxmf-sdk --features zmq-pipeline-backend --test transport_stress -- --ignored --nocapture
+```
 
 For first-run token-authenticated TCP, put the shared secret in an environment variable
 and point `reticulumd` at the variable name:

@@ -5,6 +5,7 @@ mod daemon;
 pub mod event_sink;
 pub mod http;
 pub mod replay;
+pub mod zmq;
 mod send_request;
 
 use rmpv::Value as MsgPackValue;

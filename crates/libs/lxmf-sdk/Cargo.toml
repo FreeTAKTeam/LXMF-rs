@@ -21,6 +21,7 @@ thiserror.workspace = true
 tokio = { workspace = true, optional = true }
 tokio-rustls = { workspace = true, optional = true }
 tokio-stream = { workspace = true, optional = true }
+zeromq = { workspace = true, optional = true }
 hmac.workspace = true
 sha2.workspace = true
 hex.workspace = true
@@ -31,6 +32,7 @@ default = ["std", "sdk-async", "rpc-backend"]
 std = []
 sdk-async = ["dep:tokio", "dep:tokio-stream"]
 rpc-backend = ["std", "dep:rns-rpc", "dep:rustls", "dep:rustls-pemfile", "dep:tokio-rustls"]
+zmq-pipeline-backend = ["std", "sdk-async", "dep:rns-rpc", "dep:zeromq"]
 embedded-alloc = []
 loom-tests = []
 
@@ -44,6 +46,10 @@ ignore = { development = ["loom"] }
 [[bench]]
 name = "sdk_client_paths"
 harness = false
+
+[[example]]
+name = "zmq_pipeline_send"
+required-features = ["zmq-pipeline-backend"]
 
 [lints]
 workspace = true
