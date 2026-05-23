@@ -153,8 +153,8 @@
     },
     {
       "path": "docs/contracts/sdk-v2-backends.md",
-      "bytes": 7860,
-      "sha256": "e56e2e25a601acedaac8e537b63cbf7904db94df38a5406de84bf243a2e1fae5"
+      "bytes": 7887,
+      "sha256": "75428f04c8ab66f89f412791e475b30759af1b3b1bce090adb1da862353e63c3"
     },
     {
       "path": "docs/contracts/sdk-v2-commands.md",
