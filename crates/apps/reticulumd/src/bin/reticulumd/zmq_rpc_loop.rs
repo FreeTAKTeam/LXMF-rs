@@ -37,7 +37,8 @@ pub(super) async fn run_zmq_rpc_loop_until(
                 }
             }
             message = commands.recv() => {
-                let response = handle_zmq_command_message(daemon.as_ref(), message.map_err(zmq_io_error)?);
+                let response =
+                    handle_zmq_command_message(daemon.as_ref(), message.map_err(zmq_io_error)?);
                 if let Some(response) = response {
                     let encoded = zmq::encode_envelope(&response)?;
                     responses.send(ZmqMessage::from(encoded)).await.map_err(zmq_io_error)?;

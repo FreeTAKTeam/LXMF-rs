@@ -45,7 +45,10 @@ pub struct ZmqPipelineBackendConfig {
 }
 
 impl ZmqPipelineBackendConfig {
-    pub fn local_tcp(command_endpoint: impl Into<String>, response_endpoint: impl Into<String>) -> Self {
+    pub fn local_tcp(
+        command_endpoint: impl Into<String>,
+        response_endpoint: impl Into<String>,
+    ) -> Self {
         Self {
             command_endpoint: command_endpoint.into(),
             command_role: ZmqEndpointRole::Connect,
@@ -109,10 +112,14 @@ impl ZmqPipelineBackendClient {
         let encoded = zmq::encode_envelope(&envelope)
             .map_err(|err| sdk_error(ErrorCategory::Transport, err.to_string()))?;
         if encoded.len() > self.config.max_envelope_bytes {
-            return Err(sdk_error(ErrorCategory::Transport, "zmq rpc envelope exceeded configured limit"));
+            return Err(sdk_error(
+                ErrorCategory::Transport,
+                "zmq rpc envelope exceeded configured limit",
+            ));
         }
 
-        let runtime = Runtime::new().map_err(|err| sdk_error(ErrorCategory::Internal, err.to_string()))?;
+        let runtime =
+            Runtime::new().map_err(|err| sdk_error(ErrorCategory::Internal, err.to_string()))?;
         let response = runtime.block_on(self.send_and_recv(encoded, request_id))?;
         let rpc_response = parse_rpc_frame(&response.payload)
             .map_err(|err| sdk_error(ErrorCategory::Transport, err.to_string()))?;
@@ -130,7 +137,8 @@ impl ZmqPipelineBackendClient {
         let mut command = PushSocket::new();
         apply_role(&mut command, self.config.command_role, &self.config.command_endpoint).await?;
         let mut responses = PullSocket::new();
-        apply_role(&mut responses, self.config.response_role, &self.config.response_endpoint).await?;
+        apply_role(&mut responses, self.config.response_role, &self.config.response_endpoint)
+            .await?;
 
         command
             .send(ZmqMessage::from(encoded))
@@ -413,7 +421,8 @@ impl SdkBackend for ZmqPipelineBackendClient {
         if record.is_null() {
             return Ok(None);
         }
-        let state = Self::parse_delivery_state(record.get("receipt_status").and_then(JsonValue::as_str));
+        let state =
+            Self::parse_delivery_state(record.get("receipt_status").and_then(JsonValue::as_str));
         let terminal = matches!(
             state,
             DeliveryState::Delivered
@@ -473,12 +482,30 @@ impl SdkBackend for ZmqPipelineBackendClient {
                                 .and_then(JsonValue::as_str)
                                 .unwrap_or("rns-rpc")
                                 .to_owned(),
-                            operation_id: row.get("operation_id").and_then(JsonValue::as_str).map(str::to_owned),
-                            message_id: row.get("message_id").and_then(JsonValue::as_str).map(str::to_owned),
-                            peer_id: row.get("peer_id").and_then(JsonValue::as_str).map(str::to_owned),
-                            correlation_id: row.get("correlation_id").and_then(JsonValue::as_str).map(str::to_owned),
-                            trace_id: row.get("trace_id").and_then(JsonValue::as_str).map(str::to_owned),
-                            payload: row.get("payload").cloned().unwrap_or(JsonValue::Object(serde_json::Map::new())),
+                            operation_id: row
+                                .get("operation_id")
+                                .and_then(JsonValue::as_str)
+                                .map(str::to_owned),
+                            message_id: row
+                                .get("message_id")
+                                .and_then(JsonValue::as_str)
+                                .map(str::to_owned),
+                            peer_id: row
+                                .get("peer_id")
+                                .and_then(JsonValue::as_str)
+                                .map(str::to_owned),
+                            correlation_id: row
+                                .get("correlation_id")
+                                .and_then(JsonValue::as_str)
+                                .map(str::to_owned),
+                            trace_id: row
+                                .get("trace_id")
+                                .and_then(JsonValue::as_str)
+                                .map(str::to_owned),
+                            payload: row
+                                .get("payload")
+                                .cloned()
+                                .unwrap_or(JsonValue::Object(serde_json::Map::new())),
                             extensions: BTreeMap::new(),
                         })
                     })
@@ -510,7 +537,10 @@ impl SdkBackend for ZmqPipelineBackendClient {
             event_stream_position: Self::parse_required_u64(&result, "event_stream_position")?,
             config_revision: Self::parse_required_u64(&result, "config_revision")?,
             queued_messages: result.get("queued_messages").and_then(JsonValue::as_u64).unwrap_or(0),
-            in_flight_messages: result.get("in_flight_messages").and_then(JsonValue::as_u64).unwrap_or(0),
+            in_flight_messages: result
+                .get("in_flight_messages")
+                .and_then(JsonValue::as_u64)
+                .unwrap_or(0),
         })
     }
 
@@ -527,16 +557,18 @@ impl SdkBackend for ZmqPipelineBackendClient {
     }
 }
 
-async fn apply_role<S>(socket: &mut S, role: ZmqEndpointRole, endpoint: &str) -> Result<(), SdkError>
+async fn apply_role<S>(
+    socket: &mut S,
+    role: ZmqEndpointRole,
+    endpoint: &str,
+) -> Result<(), SdkError>
 where
     S: Socket,
 {
     match role {
-        ZmqEndpointRole::Bind => {
-            socket.bind(endpoint).await.map(|_| ()).map_err(|err| {
-                sdk_error(ErrorCategory::Transport, format!("zmq bind {} failed: {}", endpoint, err))
-            })
-        }
+        ZmqEndpointRole::Bind => socket.bind(endpoint).await.map(|_| ()).map_err(|err| {
+            sdk_error(ErrorCategory::Transport, format!("zmq bind {} failed: {}", endpoint, err))
+        }),
         ZmqEndpointRole::Connect => socket.connect(endpoint).await.map_err(|err| {
             sdk_error(ErrorCategory::Transport, format!("zmq connect {} failed: {}", endpoint, err))
         }),
@@ -614,10 +646,8 @@ mod tests {
 
     #[test]
     fn config_rejects_remote_endpoints_without_auth() {
-        let config = ZmqPipelineBackendConfig::local_tcp(
-            "tcp://192.0.2.10:9000",
-            "tcp://127.0.0.1:9001",
-        );
+        let config =
+            ZmqPipelineBackendConfig::local_tcp("tcp://192.0.2.10:9000", "tcp://127.0.0.1:9001");
 
         let err = config.validate().expect_err("remote without auth rejected");
 
@@ -627,10 +657,8 @@ mod tests {
 
     #[test]
     fn config_accepts_loopback_without_auth() {
-        let config = ZmqPipelineBackendConfig::local_tcp(
-            "tcp://127.0.0.1:9000",
-            "tcp://localhost:9001",
-        );
+        let config =
+            ZmqPipelineBackendConfig::local_tcp("tcp://127.0.0.1:9000", "tcp://localhost:9001");
 
         config.validate().expect("loopback accepted");
     }

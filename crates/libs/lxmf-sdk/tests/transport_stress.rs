@@ -130,12 +130,13 @@ fn http_endpoint() -> String {
 }
 
 fn zmq_config() -> ZmqPipelineBackendConfig {
-    let command_endpoint =
-        std::env::var("LXMF_STRESS_ZMQ_COMMAND").unwrap_or_else(|_| "tcp://127.0.0.1:9100".to_owned());
-    let response_endpoint =
-        std::env::var("LXMF_STRESS_ZMQ_RESPONSE").unwrap_or_else(|_| "tcp://127.0.0.1:9101".to_owned());
+    let command_endpoint = std::env::var("LXMF_STRESS_ZMQ_COMMAND")
+        .unwrap_or_else(|_| "tcp://127.0.0.1:9100".to_owned());
+    let response_endpoint = std::env::var("LXMF_STRESS_ZMQ_RESPONSE")
+        .unwrap_or_else(|_| "tcp://127.0.0.1:9101".to_owned());
     let mut config = ZmqPipelineBackendConfig::local_tcp(command_endpoint, response_endpoint);
-    config.command_role = endpoint_role_from_env("LXMF_STRESS_ZMQ_COMMAND_ROLE", config.command_role);
+    config.command_role =
+        endpoint_role_from_env("LXMF_STRESS_ZMQ_COMMAND_ROLE", config.command_role);
     config.response_role =
         endpoint_role_from_env("LXMF_STRESS_ZMQ_RESPONSE_ROLE", config.response_role);
     config.request_timeout = Duration::from_millis(
