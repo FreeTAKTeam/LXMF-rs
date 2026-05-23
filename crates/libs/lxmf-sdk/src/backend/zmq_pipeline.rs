@@ -1,10 +1,10 @@
 use crate::backend::SdkBackend;
-use crate::capability::{EffectiveLimits, NegotiationRequest, NegotiationResponse};
+use crate::capability::{NegotiationRequest, NegotiationResponse};
 use crate::error::{code, ErrorCategory, SdkError};
 use crate::event::{EventBatch, EventCursor, SdkEvent, Severity};
 use crate::types::{
-    Ack, CancelResult, ConfigPatch, DeliverySnapshot, MessageId, RuntimeSnapshot, SendRequest,
-    ShutdownMode, RuntimeState,
+    Ack, CancelResult, ConfigPatch, DeliverySnapshot, DeliveryState, MessageId, RuntimeSnapshot,
+    RuntimeState, SendRequest, ShutdownMode,
 };
 use hmac::{Hmac, Mac};
 use rns_rpc::e2e_harness::{build_rpc_frame, parse_rpc_frame};
@@ -13,66 +13,21 @@ use rns_rpc::RpcError;
 use serde_json::{json, Value as JsonValue};
 use sha2::Sha256;
 use std::collections::BTreeMap;
-use std::net::IpAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::runtime::Runtime;
 use zeromq::{PullSocket, PushSocket, Socket, SocketRecv, SocketSend, ZmqMessage};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ZmqEndpointRole {
-    Bind,
-    Connect,
-}
+#[path = "zmq_pipeline/config.rs"]
+mod config;
+#[path = "zmq_pipeline/parsing.rs"]
+mod parsing;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ZmqPipelineTokenAuth {
-    pub issuer: String,
-    pub audience: String,
-    pub shared_secret: String,
-    pub ttl_secs: u64,
-}
+#[cfg(test)]
+#[path = "zmq_pipeline/tests.rs"]
+mod tests;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ZmqPipelineBackendConfig {
-    pub command_endpoint: String,
-    pub command_role: ZmqEndpointRole,
-    pub response_endpoint: String,
-    pub response_role: ZmqEndpointRole,
-    pub request_timeout: Duration,
-    pub max_envelope_bytes: usize,
-    pub token_auth: Option<ZmqPipelineTokenAuth>,
-}
-
-impl ZmqPipelineBackendConfig {
-    pub fn local_tcp(
-        command_endpoint: impl Into<String>,
-        response_endpoint: impl Into<String>,
-    ) -> Self {
-        Self {
-            command_endpoint: command_endpoint.into(),
-            command_role: ZmqEndpointRole::Connect,
-            response_endpoint: response_endpoint.into(),
-            response_role: ZmqEndpointRole::Bind,
-            request_timeout: Duration::from_secs(5),
-            max_envelope_bytes: zmq::ZMQ_RPC_MAX_ENVELOPE_BYTES,
-            token_auth: None,
-        }
-    }
-
-    pub fn validate(&self) -> Result<(), SdkError> {
-        validate_endpoint_security(&self.command_endpoint, self.token_auth.is_some())?;
-        validate_endpoint_security(&self.response_endpoint, self.token_auth.is_some())?;
-        if self.max_envelope_bytes > zmq::ZMQ_RPC_MAX_ENVELOPE_BYTES {
-            return Err(SdkError::new(
-                code::VALIDATION_INVALID_ARGUMENT,
-                ErrorCategory::Validation,
-                "zmq max_envelope_bytes exceeds protocol limit",
-            ));
-        }
-        Ok(())
-    }
-}
+pub use config::{ZmqEndpointRole, ZmqPipelineBackendConfig, ZmqPipelineTokenAuth};
 
 pub struct ZmqPipelineBackendClient {
     config: ZmqPipelineBackendConfig,
@@ -83,11 +38,7 @@ pub struct ZmqPipelineBackendClient {
 impl ZmqPipelineBackendClient {
     pub fn new(config: ZmqPipelineBackendConfig) -> Result<Self, SdkError> {
         config.validate()?;
-        Ok(Self {
-            config,
-            session_id: new_session_id(),
-            next_request_id: AtomicU64::new(1),
-        })
+        Ok(Self { config, session_id: new_session_id(), next_request_id: AtomicU64::new(1) })
     }
 
     pub fn session_id(&self) -> &str {
@@ -194,119 +145,6 @@ impl ZmqPipelineBackendClient {
             scheme: "bearer".to_string(),
             value: format!("{};sig={}", payload, sig),
         })
-    }
-
-    fn parse_required_string(value: &JsonValue, key: &'static str) -> Result<String, SdkError> {
-        value.get(key).and_then(JsonValue::as_str).map(str::to_owned).ok_or_else(|| {
-            SdkError::new(
-                code::INTERNAL,
-                ErrorCategory::Internal,
-                format!("rpc response missing string field '{key}'"),
-            )
-        })
-    }
-
-    fn parse_required_u64(value: &JsonValue, key: &'static str) -> Result<u64, SdkError> {
-        value.get(key).and_then(JsonValue::as_u64).ok_or_else(|| {
-            SdkError::new(
-                code::INTERNAL,
-                ErrorCategory::Internal,
-                format!("rpc response missing integer field '{key}'"),
-            )
-        })
-    }
-
-    fn parse_required_u16(value: &JsonValue, key: &'static str) -> Result<u16, SdkError> {
-        let raw = Self::parse_required_u64(value, key)?;
-        u16::try_from(raw).map_err(|_| {
-            SdkError::new(
-                code::INTERNAL,
-                ErrorCategory::Internal,
-                format!("rpc response field '{key}' is out of range"),
-            )
-        })
-    }
-
-    fn parse_effective_limits(value: &JsonValue) -> Result<EffectiveLimits, SdkError> {
-        Ok(EffectiveLimits {
-            max_poll_events: usize::try_from(Self::parse_required_u64(value, "max_poll_events")?)
-                .map_err(|_| sdk_error(ErrorCategory::Internal, "max_poll_events overflow"))?,
-            max_event_bytes: usize::try_from(Self::parse_required_u64(value, "max_event_bytes")?)
-                .map_err(|_| sdk_error(ErrorCategory::Internal, "max_event_bytes overflow"))?,
-            max_batch_bytes: usize::try_from(Self::parse_required_u64(value, "max_batch_bytes")?)
-                .map_err(|_| sdk_error(ErrorCategory::Internal, "max_batch_bytes overflow"))?,
-            max_extension_keys: usize::try_from(Self::parse_required_u64(
-                value,
-                "max_extension_keys",
-            )?)
-            .map_err(|_| sdk_error(ErrorCategory::Internal, "max_extension_keys overflow"))?,
-            idempotency_ttl_ms: Self::parse_required_u64(value, "idempotency_ttl_ms")?,
-        })
-    }
-
-    fn parse_cancel_result(value: &str) -> Result<CancelResult, SdkError> {
-        match value {
-            "Accepted" => Ok(CancelResult::Accepted),
-            "AlreadyTerminal" => Ok(CancelResult::AlreadyTerminal),
-            "NotFound" => Ok(CancelResult::NotFound),
-            "TooLateToCancel" => Ok(CancelResult::TooLateToCancel),
-            _ => Err(SdkError::new(
-                code::INTERNAL,
-                ErrorCategory::Internal,
-                "rpc returned unknown cancel result variant",
-            )),
-        }
-    }
-
-    fn parse_delivery_state(receipt_status: Option<&str>) -> DeliveryState {
-        let Some(raw) = receipt_status else {
-            return DeliveryState::Queued;
-        };
-        let normalized = raw.trim();
-        if normalized.get(..4).is_some_and(|prefix| prefix.eq_ignore_ascii_case("sent")) {
-            return DeliveryState::Sent;
-        }
-        if normalized.get(..6).is_some_and(|prefix| prefix.eq_ignore_ascii_case("failed")) {
-            return DeliveryState::Failed;
-        }
-        match normalized {
-            value if value.eq_ignore_ascii_case("queued") => DeliveryState::Queued,
-            value if value.eq_ignore_ascii_case("dispatching") => DeliveryState::Dispatching,
-            value if value.eq_ignore_ascii_case("in_flight") => DeliveryState::InFlight,
-            value if value.eq_ignore_ascii_case("inflight") => DeliveryState::InFlight,
-            value if value.eq_ignore_ascii_case("cancelled") => DeliveryState::Cancelled,
-            value if value.eq_ignore_ascii_case("delivered") => DeliveryState::Delivered,
-            value if value.eq_ignore_ascii_case("expired") => DeliveryState::Expired,
-            value if value.eq_ignore_ascii_case("rejected") => DeliveryState::Rejected,
-            _ => DeliveryState::Unknown,
-        }
-    }
-
-    fn parse_severity(value: &str) -> Severity {
-        match value {
-            raw if raw.eq_ignore_ascii_case("debug") => Severity::Debug,
-            raw if raw.eq_ignore_ascii_case("info") => Severity::Info,
-            raw if raw.eq_ignore_ascii_case("warn") || raw.eq_ignore_ascii_case("warning") => {
-                Severity::Warn
-            }
-            raw if raw.eq_ignore_ascii_case("error") => Severity::Error,
-            raw if raw.eq_ignore_ascii_case("critical") || raw.eq_ignore_ascii_case("fatal") => {
-                Severity::Critical
-            }
-            _ => Severity::Unknown,
-        }
-    }
-
-    fn parse_runtime_state(value: &str) -> RuntimeState {
-        match value {
-            raw if raw.eq_ignore_ascii_case("new") => RuntimeState::New,
-            raw if raw.eq_ignore_ascii_case("starting") => RuntimeState::Starting,
-            raw if raw.eq_ignore_ascii_case("running") => RuntimeState::Running,
-            raw if raw.eq_ignore_ascii_case("draining") => RuntimeState::Draining,
-            raw if raw.eq_ignore_ascii_case("stopped") => RuntimeState::Stopped,
-            raw if raw.eq_ignore_ascii_case("failed") => RuntimeState::Failed,
-            _ => RuntimeState::Unknown,
-        }
     }
 }
 
@@ -575,33 +413,6 @@ where
     }
 }
 
-fn validate_endpoint_security(endpoint: &str, has_auth: bool) -> Result<(), SdkError> {
-    if is_local_endpoint(endpoint) || has_auth {
-        return Ok(());
-    }
-    Err(SdkError::new(
-        code::SECURITY_AUTH_REQUIRED,
-        ErrorCategory::Security,
-        "remote zmq endpoints require explicit token authentication",
-    ))
-}
-
-fn is_local_endpoint(endpoint: &str) -> bool {
-    if endpoint.starts_with("inproc://") {
-        return true;
-    }
-    let Some(authority) = endpoint.strip_prefix("tcp://") else {
-        return false;
-    };
-    let host = authority
-        .rsplit_once(':')
-        .map(|(host, _)| host)
-        .unwrap_or(authority)
-        .trim_matches(['[', ']']);
-    host.eq_ignore_ascii_case("localhost")
-        || host.parse::<IpAddr>().is_ok_and(|ip| ip.is_loopback())
-}
-
 fn sdk_error(category: ErrorCategory, message: impl Into<String>) -> SdkError {
     SdkError::new(code::INTERNAL, category, message)
 }
@@ -638,38 +449,4 @@ fn map_rpc_error(error: RpcError) -> SdkError {
         category,
         error.message,
     )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn config_rejects_remote_endpoints_without_auth() {
-        let config =
-            ZmqPipelineBackendConfig::local_tcp("tcp://192.0.2.10:9000", "tcp://127.0.0.1:9001");
-
-        let err = config.validate().expect_err("remote without auth rejected");
-
-        assert_eq!(err.category, ErrorCategory::Security);
-        assert_eq!(err.machine_code, code::SECURITY_AUTH_REQUIRED);
-    }
-
-    #[test]
-    fn config_accepts_loopback_without_auth() {
-        let config =
-            ZmqPipelineBackendConfig::local_tcp("tcp://127.0.0.1:9000", "tcp://localhost:9001");
-
-        config.validate().expect("loopback accepted");
-    }
-
-    #[test]
-    fn response_filter_requires_session_and_request_match() {
-        let session = "session-a".to_string();
-        let envelope = ZmqRpcEnvelope::response(session.clone(), 4, Vec::new());
-
-        assert_eq!(envelope.kind, ZmqRpcEnvelopeKind::Response);
-        assert_eq!(envelope.session_id, session);
-        assert_eq!(envelope.request_id, 4);
-    }
 }

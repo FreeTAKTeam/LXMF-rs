@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use rns_rpc::rpc::zmq::{self, ZmqRpcEnvelope, ZmqRpcEnvelopeKind};
 use rns_rpc::{RpcDaemon, RpcError, RpcResponse};
 use std::io;
@@ -19,15 +21,9 @@ pub(super) async fn run_zmq_rpc_loop_until(
 ) -> io::Result<()> {
     validate_zmq_loop_config(&config)?;
     let mut commands = PullSocket::new();
-    commands
-        .bind(config.command_endpoint.as_str())
-        .await
-        .map_err(zmq_io_error)?;
+    commands.bind(config.command_endpoint.as_str()).await.map_err(zmq_io_error)?;
     let mut responses = PushSocket::new();
-    responses
-        .bind(config.response_endpoint.as_str())
-        .await
-        .map_err(zmq_io_error)?;
+    responses.bind(config.response_endpoint.as_str()).await.map_err(zmq_io_error)?;
 
     loop {
         tokio::select! {
@@ -73,9 +69,8 @@ fn handle_zmq_command_message(daemon: &RpcDaemon, message: ZmqMessage) -> Option
             "zmq command ingress accepts request envelopes only",
         ));
     }
-    let response_payload = daemon
-        .handle_framed_request(envelope.payload.as_slice())
-        .unwrap_or_else(|err| {
+    let response_payload =
+        daemon.handle_framed_request(envelope.payload.as_slice()).unwrap_or_else(|err| {
             let response = RpcResponse {
                 id: envelope.request_id,
                 result: None,
@@ -83,11 +78,7 @@ fn handle_zmq_command_message(daemon: &RpcDaemon, message: ZmqMessage) -> Option
             };
             rns_rpc::rpc::codec::encode_frame(&response).unwrap_or_default()
         });
-    Some(ZmqRpcEnvelope::response(
-        envelope.session_id,
-        envelope.request_id,
-        response_payload,
-    ))
+    Some(ZmqRpcEnvelope::response(envelope.session_id, envelope.request_id, response_payload))
 }
 
 fn error_envelope(
@@ -129,7 +120,7 @@ fn is_local_zmq_endpoint(endpoint: &str) -> bool {
 }
 
 fn zmq_io_error(err: impl std::fmt::Display) -> io::Error {
-    io::Error::new(io::ErrorKind::Other, err.to_string())
+    io::Error::other(err.to_string())
 }
 
 #[cfg(test)]

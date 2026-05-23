@@ -1,5 +1,7 @@
+#![allow(clippy::result_large_err)]
+
 use lxmf_sdk::{
-    Client, LxmfSdk, SendRequest, SdkConfig, StartRequest, ZmqEndpointRole,
+    Client, LxmfSdk, SdkConfig, SendRequest, StartRequest, ZmqEndpointRole,
     ZmqPipelineBackendClient, ZmqPipelineBackendConfig, ZmqPipelineTokenAuth,
 };
 use serde_json::json;

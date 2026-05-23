@@ -113,8 +113,8 @@
     },
     {
       "path": "docs/contracts/rpc-contract.md",
-      "bytes": 9234,
-      "sha256": "f0a6bd38b51b24b7ac5c737a9c95073b024fc4d08a890e6c69a0020387545e09"
+      "bytes": 10999,
+      "sha256": "ece1874351d187dd902592d12f8b57477a895f90612c737d0288ce37e7a16641"
     },
     {
       "path": "docs/contracts/schema-driven-clients.md",
@@ -153,8 +153,8 @@
     },
     {
       "path": "docs/contracts/sdk-v2-backends.md",
-      "bytes": 6854,
-      "sha256": "42913ab73666c2778ff2831b9965302e5e7e395c48f10c2546e2d501c73d4562"
+      "bytes": 7860,
+      "sha256": "e56e2e25a601acedaac8e537b63cbf7904db94df38a5406de84bf243a2e1fae5"
     },
     {
       "path": "docs/contracts/sdk-v2-commands.md",

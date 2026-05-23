@@ -13,10 +13,10 @@ mod outbound_resources;
 mod receipt_events;
 mod receipt_worker;
 mod rpc_loop;
-#[cfg(feature = "zmq-pipeline-rpc")]
-mod zmq_rpc_loop;
 #[cfg(test)]
 mod tests;
+#[cfg(feature = "zmq-pipeline-rpc")]
+mod zmq_rpc_loop;
 
 use clap::Parser;
 use std::path::PathBuf;

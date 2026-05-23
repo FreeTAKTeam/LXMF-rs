@@ -1,4 +1,5 @@
 #![cfg(all(feature = "rpc-backend", feature = "zmq-pipeline-backend"))]
+#![allow(clippy::result_large_err)]
 
 use lxmf_sdk::{
     EventCursor, LxmfSdk, RpcBackendClient, SdkBackend, SdkConfig, SdkError, StartRequest,

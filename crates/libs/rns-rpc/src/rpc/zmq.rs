@@ -26,9 +26,9 @@ pub struct ZmqRpcEnvelope {
     pub session_id: String,
     pub request_id: u64,
     pub kind: ZmqRpcEnvelopeKind,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub auth: Option<ZmqRpcAuthMetadata>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub response_endpoint: Option<String>,
     #[serde(with = "serde_bytes")]
     pub payload: Vec<u8>,
