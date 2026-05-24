@@ -119,8 +119,11 @@ pub mod test_bridge {
 const PACKET_TRACE: bool = false;
 pub const PATHFINDER_M: usize = 128; // Max hops
 
+#[allow(dead_code)]
 const INTERVAL_LINKS_CHECK: Duration = Duration::from_secs(1);
+#[allow(dead_code)]
 const INTERVAL_INPUT_LINK_CLEANUP: Duration = Duration::from_secs(20);
+#[allow(dead_code)]
 const INTERVAL_OUTPUT_LINK_REPEAT: Duration = Duration::from_secs(6);
 const INTERVAL_IFACE_CLEANUP: Duration = Duration::from_secs(10);
 const INTERVAL_ANNOUNCES_RETRANSMIT: Duration = Duration::from_secs(1);
@@ -134,6 +137,7 @@ const LOCAL_PATH_RESPONSE_COOLDOWN: Duration = Duration::from_millis(750);
 const UNICAST_IFACE_IDLE_TIMEOUT: Duration = Duration::from_secs(1800);
 
 // Other constants
+#[allow(dead_code)]
 const KEEP_ALIVE_REQUEST: u8 = 0xFF;
 const KEEP_ALIVE_RESPONSE: u8 = 0xFE;
 

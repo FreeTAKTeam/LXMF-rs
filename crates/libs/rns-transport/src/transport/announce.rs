@@ -96,7 +96,7 @@ async fn process_announce<'a>(
 
 pub(super) async fn handle_announce<'a>(
     packet: &Packet,
-    mut handler: MutexGuard<'a, TransportHandler>,
+    handler: MutexGuard<'a, TransportHandler>,
     iface: AddressHash,
     source: IfaceSource,
 ) {
