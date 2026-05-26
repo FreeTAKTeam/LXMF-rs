@@ -2,6 +2,7 @@ use super::*;
 use lxmf::inbound_decode::InboundPayloadMode;
 use reticulum_daemon::inbound_delivery::{
     annotate_inbound_record_stamp_status, decode_inbound_payload, evaluate_inbound_stamp_policy,
+    inbound_record_allowed_by_delivery_policy,
 };
 use rns_transport::identity::DecryptIdentity;
 
@@ -98,6 +99,9 @@ async fn accept_local_propagated_payload_inner(
     };
 
     annotate_inbound_record_stamp_status(&mut record, stamp_status);
+    if !inbound_record_allowed_by_delivery_policy(daemon, &record) {
+        return Ok(());
+    }
     daemon.record_inbound_peer_activity(&record.source, wire.len());
     daemon.accept_inbound_with_raw(record, &wire)?;
     Ok(())

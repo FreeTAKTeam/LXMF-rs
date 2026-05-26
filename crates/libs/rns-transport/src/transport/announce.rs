@@ -77,12 +77,6 @@ async fn process_announce<'a>(
     };
     let interface = route_iface.as_slice().to_vec();
 
-    eprintln!(
-        "[announce-debug] accepted dst={} app_data={}",
-        packet.destination,
-        String::from_utf8_lossy(announce.app_data)
-    );
-
     let _ = handler.announce_tx.send(AnnounceEvent {
         destination,
         app_data: PacketDataBuffer::new_from_slice(announce.app_data),
@@ -104,7 +98,6 @@ pub(super) async fn handle_announce<'a>(
     let announce = match DestinationAnnounce::validate(packet) {
         Ok(result) => result,
         Err(err) => {
-            eprintln!("[announce-debug] validate failed dst={} err={:?}", packet.destination, err);
             log::trace!(
                 "[transport] announce validate failed dst={} err={:?}",
                 packet.destination,
