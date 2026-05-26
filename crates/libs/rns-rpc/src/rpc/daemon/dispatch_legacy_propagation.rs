@@ -704,6 +704,61 @@ impl RpcDaemon {
                     error: None,
                 })
             }
+            "propagation_remote_download" => {
+                let params = request.params.ok_or_else(|| {
+                    std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing params")
+                })?;
+                let parsed: PropagationRemoteStatusParams = serde_json::from_value(params)
+                    .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
+                let bridge = self
+                    .remote_control_bridge
+                    .lock()
+                    .expect("remote control bridge mutex poisoned")
+                    .clone()
+                    .ok_or_else(|| std::io::Error::other("remote control bridge unavailable"))?;
+                let timeout_secs = parsed.timeout_secs.unwrap_or(5.0).max(0.1);
+                self.update_propagation_sync_state(|state| {
+                    state.sync_state = PR_REQUEST_SENT;
+                    state.state_name = "downloading".to_string();
+                    state.sync_progress = 0.0;
+                    state.last_sync_started = Some(now_i64());
+                    state.last_sync_completed = None;
+                    state.last_sync_error = None;
+                });
+                let result = match bridge.propagation_remote_download(
+                    parsed.remote.as_str(),
+                    parsed.identity_private_key_hex.as_deref(),
+                    timeout_secs,
+                ) {
+                    Ok(result) => {
+                        self.update_propagation_sync_state(|state| {
+                            state.sync_state = PR_COMPLETE;
+                            state.state_name = "completed".to_string();
+                            state.sync_progress = 1.0;
+                            state.last_sync_completed = Some(now_i64());
+                            state.last_sync_error = None;
+                        });
+                        result
+                    }
+                    Err(err) => {
+                        self.update_propagation_sync_state(|state| {
+                            state.sync_state = PR_FAILED;
+                            state.state_name = "failed".to_string();
+                            state.sync_progress = 0.0;
+                            state.last_sync_error = Some(err.to_string());
+                        });
+                        return Err(err);
+                    }
+                };
+                Ok(RpcResponse {
+                    id: request.id,
+                    result: Some(json!({
+                        "remote": parsed.remote,
+                        "result": result,
+                    })),
+                    error: None,
+                })
+            }
             "propagation_acknowledge_sync_completion" => {
                 let parsed = request
                     .params

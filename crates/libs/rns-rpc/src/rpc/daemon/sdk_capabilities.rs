@@ -96,6 +96,15 @@ impl RpcDaemon {
             || matches!(normalized.as_str(), "cancelled" | "delivered" | "expired" | "rejected")
     }
 
+    pub(super) fn is_receipt_status_regression(
+        existing_status: &str,
+        requested_status: &str,
+    ) -> bool {
+        let existing = existing_status.trim().to_ascii_lowercase();
+        let requested = requested_status.trim().to_ascii_lowercase();
+        existing.starts_with("sent") && requested.starts_with("sending")
+    }
+
     pub(super) fn active_contract_version(&self) -> u16 {
         *self
             .sdk_active_contract_version

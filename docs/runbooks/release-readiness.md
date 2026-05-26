@@ -89,6 +89,26 @@ cargo run -p xtask -- sdk-docs-check
 cargo run -p xtask -- sdk-migration-check
 ```
 
+ZeroMQ transport readiness checks before considering a default switch:
+
+```bash
+cargo check --workspace --all-targets
+cargo test --workspace
+cargo clippy --workspace --all-targets --all-features --no-deps -- -D warnings
+cargo doc --workspace --no-deps
+bash tools/scripts/check-boundaries.sh
+cargo run -p rns-tools --bin rnx -- replay --trace docs/fixtures/sdk-v2/rpc/replay_known_send_cancel.v1.json
+```
+
+Additional required evidence:
+
+- local TCP SDK plus daemon integration covers start, send, cancel, status, configure, poll events,
+  snapshot, and shutdown
+- multi-client tests prove no cross-session response delivery
+- queue pressure, restart, reconnect, no-peer, oversized-frame, and sustained-event stress cases
+  map to documented SDK errors
+- remote ZeroMQ endpoints fail closed without token auth
+
 Extended/manual release checks:
 
 ```bash
