@@ -3,7 +3,7 @@ use super::*;
 use reticulum_daemon::lxmf_bridge::rmpv_to_json;
 use rns_rpc::RemoteControlBridge;
 
-use super::remote_fetch::rmpv_binary_array;
+use super::remote_fetch::{rmpv_binary_array, LocalPropagationImportOutcome};
 use super::remote_request::remote_control_request;
 
 impl TransportBridge {
@@ -217,8 +217,11 @@ impl RemoteControlBridge for TransportBridge {
 
         let mut imported_count = 0usize;
         for payload in &payloads {
-            self.accept_local_propagated_payload(daemon.clone(), payload.clone())?;
-            imported_count = imported_count.saturating_add(1);
+            if self.accept_local_propagated_payload(daemon.clone(), payload.clone())?
+                == LocalPropagationImportOutcome::Imported
+            {
+                imported_count = imported_count.saturating_add(1);
+            }
         }
 
         Ok(json!({

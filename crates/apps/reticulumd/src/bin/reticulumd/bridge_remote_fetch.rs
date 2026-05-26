@@ -6,6 +6,12 @@ use reticulum_daemon::inbound_delivery::{
 };
 use rns_transport::identity::DecryptIdentity;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum LocalPropagationImportOutcome {
+    Imported,
+    Skipped,
+}
+
 pub(super) fn rmpv_binary_array(value: &rmpv::Value) -> Result<Vec<Vec<u8>>, std::io::Error> {
     let rmpv::Value::Array(values) = value else {
         return Err(std::io::Error::new(
@@ -30,7 +36,7 @@ impl TransportBridge {
         &self,
         daemon: Arc<RpcDaemon>,
         transient_payload: Vec<u8>,
-    ) -> Result<(), std::io::Error> {
+    ) -> Result<LocalPropagationImportOutcome, std::io::Error> {
         let destination = self.announce_destination.clone();
         std::thread::spawn(move || {
             let runtime = tokio::runtime::Builder::new_current_thread()
@@ -59,7 +65,7 @@ async fn accept_local_propagated_payload_inner(
     daemon: &RpcDaemon,
     delivery_destination: Arc<tokio::sync::Mutex<SingleInputDestination>>,
     transient_payload: &[u8],
-) -> Result<(), std::io::Error> {
+) -> Result<LocalPropagationImportOutcome, std::io::Error> {
     if transient_payload.len() <= 16 + 32 {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
@@ -100,11 +106,14 @@ async fn accept_local_propagated_payload_inner(
 
     annotate_inbound_record_stamp_status(&mut record, stamp_status);
     if !inbound_record_allowed_by_delivery_policy(daemon, &record) {
-        return Ok(());
+        return Ok(LocalPropagationImportOutcome::Skipped);
+    }
+    if daemon.message_exists(record.id.as_str())? {
+        return Ok(LocalPropagationImportOutcome::Skipped);
     }
     daemon.record_inbound_peer_activity(&record.source, wire.len());
     daemon.accept_inbound_with_raw(record, &wire)?;
-    Ok(())
+    Ok(LocalPropagationImportOutcome::Imported)
 }
 
 fn decrypt_local_propagated_wire(
