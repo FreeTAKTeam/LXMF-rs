@@ -1,4 +1,8 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    mpsc, Arc, Mutex,
+};
+use std::time::{Duration, Instant};
 
 struct RecordingSink {
     sink_id: String,
@@ -44,6 +48,46 @@ impl EventSinkBridge for RecordingSink {
     }
 }
 
+struct SlowFirstSink {
+    started_tx: Mutex<Option<mpsc::Sender<()>>>,
+    release_rx: Mutex<mpsc::Receiver<()>>,
+    blocked_once: AtomicBool,
+}
+
+impl SlowFirstSink {
+    fn new(started_tx: mpsc::Sender<()>, release_rx: mpsc::Receiver<()>) -> Self {
+        Self {
+            started_tx: Mutex::new(Some(started_tx)),
+            release_rx: Mutex::new(release_rx),
+            blocked_once: AtomicBool::new(false),
+        }
+    }
+}
+
+impl EventSinkBridge for SlowFirstSink {
+    fn sink_id(&self) -> &str {
+        "slow-first"
+    }
+
+    fn sink_kind(&self) -> &'static str {
+        "webhook"
+    }
+
+    fn publish(&self, _envelope: &RpcEventSinkEnvelope) -> Result<(), std::io::Error> {
+        if !self.blocked_once.swap(true, Ordering::SeqCst) {
+            if let Some(started_tx) = self.started_tx.lock().expect("started mutex").take() {
+                let _ = started_tx.send(());
+            }
+            let _ = self
+                .release_rx
+                .lock()
+                .expect("release mutex")
+                .recv_timeout(Duration::from_secs(1));
+        }
+        Ok(())
+    }
+}
+
 #[test]
 fn sdk_event_sink_bridge_receives_redacted_payload() {
     let store = MessagesStore::in_memory().expect("in-memory store");
@@ -83,6 +127,7 @@ fn sdk_event_sink_bridge_receives_redacted_payload() {
         ))
         .expect("configure");
     assert!(configure.error.is_none());
+    daemon.flush_event_sink_worker_for_test();
     envelopes.lock().expect("envelopes mutex poisoned").clear();
 
     daemon.emit_event(RpcEvent {
@@ -93,6 +138,7 @@ fn sdk_event_sink_bridge_receives_redacted_payload() {
             "message": "ok"
         }),
     });
+    daemon.flush_event_sink_worker_for_test();
 
     let captured = envelopes.lock().expect("envelopes mutex poisoned").clone();
     assert_eq!(captured.len(), 1);
@@ -149,6 +195,7 @@ fn sdk_event_sink_bridge_respects_allow_kinds_filter() {
         ))
         .expect("configure");
     assert!(configure.error.is_none());
+    daemon.flush_event_sink_worker_for_test();
     webhook_envelopes
         .lock()
         .expect("webhook envelopes mutex")
@@ -159,6 +206,7 @@ fn sdk_event_sink_bridge_respects_allow_kinds_filter() {
         event_type: "delivery_update".to_string(),
         payload: json!({ "message_id": "m-1" }),
     });
+    daemon.flush_event_sink_worker_for_test();
 
     assert_eq!(webhook_envelopes.lock().expect("webhook envelopes mutex").len(), 0);
     assert_eq!(mqtt_envelopes.lock().expect("mqtt envelopes mutex").len(), 1);
@@ -197,6 +245,7 @@ fn sdk_event_sink_bridge_failures_are_counted_in_metrics() {
         ))
         .expect("configure");
     assert!(configure.error.is_none());
+    daemon.flush_event_sink_worker_for_test();
     let baseline_errors = daemon
         .metrics_snapshot()
         .get("counters")
@@ -208,6 +257,7 @@ fn sdk_event_sink_bridge_failures_are_counted_in_metrics() {
         event_type: "delivery_update".to_string(),
         payload: json!({ "message_id": "m-2" }),
     });
+    daemon.flush_event_sink_worker_for_test();
 
     let snapshot = daemon.metrics_snapshot();
     assert_eq!(
@@ -215,6 +265,60 @@ fn sdk_event_sink_bridge_failures_are_counted_in_metrics() {
         json!(baseline_errors.saturating_add(1)),
         "failed sink delivery should increment error counter"
     );
+}
+
+#[test]
+fn sdk_event_sink_bridge_dispatch_does_not_block_on_slow_sink() {
+    let store = MessagesStore::in_memory().expect("in-memory store");
+    let (started_tx, started_rx) = mpsc::channel();
+    let (release_tx, release_rx) = mpsc::channel();
+    let sink: Arc<dyn EventSinkBridge> = Arc::new(SlowFirstSink::new(started_tx, release_rx));
+    let daemon = RpcDaemon::with_store_and_bridges_and_sinks(
+        store,
+        "sink-node".to_string(),
+        None,
+        None,
+        vec![sink],
+    );
+
+    let configure = daemon
+        .handle_rpc(rpc_request(
+            5004,
+            "sdk_configure_v2",
+            json!({
+                "expected_revision": 0,
+                "patch": {
+                    "event_sink": {
+                        "enabled": true,
+                        "allow_kinds": ["webhook"]
+                    }
+                }
+            }),
+        ))
+        .expect("configure");
+    assert!(configure.error.is_none());
+    daemon.flush_event_sink_worker_for_test();
+
+    daemon.emit_event(RpcEvent {
+        event_type: "delivery_update".to_string(),
+        payload: json!({ "message_id": "m-slow-1" }),
+    });
+    started_rx
+        .recv_timeout(Duration::from_secs(1))
+        .expect("sink worker should start first publish");
+
+    let started = Instant::now();
+    daemon.emit_event(RpcEvent {
+        event_type: "delivery_update".to_string(),
+        payload: json!({ "message_id": "m-slow-2" }),
+    });
+    assert!(
+        started.elapsed() < Duration::from_millis(20),
+        "event publishing should enqueue instead of waiting for the sink worker"
+    );
+
+    release_tx.send(()).expect("release slow sink");
+    daemon.flush_event_sink_worker_for_test();
 }
 
 #[test]

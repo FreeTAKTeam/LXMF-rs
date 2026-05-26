@@ -1247,7 +1247,7 @@ interfaces = [
   {{ type = "lora", enabled = true, name = "lora-main", region = "US915", state_path = "{}" }}
 ]
 "#,
-            state_path.display()
+            state_path.to_string_lossy().replace('\\', "\\\\")
         ),
     )
     .expect("write config");
@@ -1337,7 +1337,7 @@ interfaces = [
   {{ type = "lora", enabled = true, name = "lora-main", region = "US915", state_path = "{}" }}
 ]
 "#,
-            state_path.display()
+            state_path.to_string_lossy().replace('\\', "\\\\")
         ),
     )
     .expect("write config");
@@ -1391,5 +1391,7 @@ fn test_args(
         rpc_token_jti_ttl_ms: 60_000,
         rpc_token_clock_skew_ms: 5_000,
         rpc_unix: None,
+        #[cfg(feature = "zmq-pipeline-rpc")]
+        zmq_rpc_command: None,
     }
 }

@@ -29,6 +29,7 @@ const RPC_MAX_HEADER_BYTES: usize = 16 * 1024;
 const RPC_MAX_BODY_BYTES: usize = 1024 * 1024;
 type ShutdownReceiver = watch::Receiver<bool>;
 
+#[cfg_attr(feature = "zmq-pipeline-rpc", allow(dead_code))]
 pub(super) async fn run_rpc_loop(
     addr: Option<SocketAddr>,
     daemon: Arc<RpcDaemon>,

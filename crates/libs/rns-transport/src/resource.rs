@@ -41,6 +41,9 @@ const FLAG_METADATA: u8 = 0x20;
 const METADATA_MAX_SIZE: usize = 16 * 1024 * 1024 - 1;
 const AUTO_COMPRESS_MAX_SIZE: usize = 64 * 1024 * 1024;
 const MAX_INBOUND_RESOURCE_TRANSFER_SIZE: u64 = AUTO_COMPRESS_MAX_SIZE as u64;
+pub const DEFAULT_RESOURCE_RETRY_INTERVAL_SECS: u64 = 2;
+pub const DEFAULT_RESOURCE_MAX_RETRIES: u8 = 16;
+const DEFAULT_RESOURCE_MAX_ADV_RETRIES: u8 = 4;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResourceStatus {

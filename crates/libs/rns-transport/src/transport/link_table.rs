@@ -103,6 +103,19 @@ impl LinkTable {
         }
     }
 
+    pub fn handle_reverse_link_packet(
+        &mut self,
+        packet: &Packet,
+        received_on: AddressHash,
+    ) -> Option<(Packet, AddressHash)> {
+        let entry = self.entries.get_mut(&packet.destination)?;
+        if !entry.validated || received_on != entry.next_hop_iface {
+            return None;
+        }
+        entry.timestamp = Instant::now();
+        Some(send_backwards(packet, entry))
+    }
+
     pub fn remove_stale(&mut self) {
         let mut stale = vec![];
         let now = Instant::now();

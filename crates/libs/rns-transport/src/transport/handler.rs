@@ -202,8 +202,12 @@ impl TransportHandler {
                 allow_duplicate = true;
             }
             PacketType::Data => {
-                allow_duplicate =
-                    matches!(packet.context, PacketContext::KeepAlive | PacketContext::LinkClose);
+                allow_duplicate = matches!(
+                    packet.context,
+                    PacketContext::KeepAlive
+                        | PacketContext::LinkClose
+                        | PacketContext::ResourceRequest
+                );
             }
             PacketType::Proof => {
                 if packet.context == PacketContext::LinkRequestProof {
@@ -217,6 +221,23 @@ impl TransportHandler {
         }
 
         let is_new = self.packet_cache.lock().await.update(packet);
+        if !is_new
+            && packet.header.destination_type == DestinationType::Link
+            && matches!(
+                packet.context,
+                PacketContext::Resource
+                    | PacketContext::ResourceAdvrtisement
+                    | PacketContext::ResourceRequest
+                    | PacketContext::ResourceHashUpdate
+                    | PacketContext::ResourceProof
+            )
+            && diag::enabled()
+        {
+            eprintln!(
+                "[resource-diag] duplicate_drop_candidate node={} link={} ctx={:02x}",
+                self.config.name, packet.destination, packet.context as u8
+            );
+        }
 
         is_new || allow_duplicate
     }
