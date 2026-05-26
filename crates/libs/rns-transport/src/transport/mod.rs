@@ -304,6 +304,8 @@ mod jobs;
 mod links;
 // path: path request/response forwarding and intermediate handling.
 mod path;
+// resource_wire: link-scoped resource packet handling on inbound wire paths.
+mod resource_wire;
 // wire: inbound packet handlers and wire-level packet logic.
 mod wire;
 

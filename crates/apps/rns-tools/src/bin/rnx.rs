@@ -19,6 +19,8 @@ mod ble_native;
 mod harness;
 #[path = "rnx/ble_helpers.rs"]
 mod helpers;
+#[path = "rnx/resource_repro.rs"]
+mod resource_repro;
 #[path = "rnx/scenario.rs"]
 mod scenario;
 #[path = "rnx/scenario_mesh.rs"]
@@ -320,7 +322,7 @@ fn run(cli: Cli) -> io::Result<()> {
             timeout_secs,
             large_bytes,
             keep,
-        } => scenario::run_resource_repro(
+        } => resource_repro::run_resource_repro(
             a_port,
             b_port,
             server_host,
