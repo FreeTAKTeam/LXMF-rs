@@ -1,3 +1,4 @@
+use super::announce_limits::AnnounceLimitAction;
 use super::*;
 
 async fn process_announce<'a>(
@@ -96,7 +97,7 @@ async fn process_announce<'a>(
 
 pub(super) async fn handle_announce<'a>(
     packet: &Packet,
-    handler: MutexGuard<'a, TransportHandler>,
+    mut handler: MutexGuard<'a, TransportHandler>,
     iface: AddressHash,
     source: IfaceSource,
 ) {
@@ -112,6 +113,20 @@ pub(super) async fn handle_announce<'a>(
             return;
         }
     };
+
+    let destination_known = handler.has_destination(&packet.destination)
+        || handler.knows_destination(&packet.destination);
+    if let AnnounceLimitAction::Hold(delay) =
+        handler.announce_limits.check(iface, packet, destination_known)
+    {
+        log::debug!(
+            "tp({}): holding announce for {} for {:?}",
+            handler.config.name,
+            packet.destination,
+            delay
+        );
+        return;
+    }
 
     let _ = process_announce(packet, handler, iface, source, announce).await;
 }
