@@ -178,6 +178,18 @@ pub(super) async fn handle_proof(
             for event in events {
                 let _ = handler.resource_events_tx.send(event);
             }
+        } else if let Some((packet, target_iface)) =
+            handler.link_table.handle_reverse_link_packet(&packet, iface)
+        {
+            if diag::enabled() {
+                log::info!(
+                    "[tp-diag] resource_proof_reverse_forward node={} link={} iface={}",
+                    handler.config.name,
+                    packet.destination,
+                    target_iface
+                );
+            }
+            handler.send(TxMessage { tx_type: TxMessageType::Direct(target_iface), packet }).await;
         }
         return;
     }
@@ -325,6 +337,15 @@ pub(super) async fn handle_data<'a>(
 
             if let Some(link) = link {
                 let mut link = link.lock().await;
+                if diag::enabled() {
+                    eprintln!(
+                        "[resource-diag] wire_resource_packet node={} link={} ctx={:02x} has_ingress={}",
+                        handler.config.name,
+                        packet.destination,
+                        packet.context as u8,
+                        link.ingress_iface().is_some()
+                    );
+                }
                 let needs_decrypt = matches!(
                     packet.context,
                     PacketContext::ResourceAdvrtisement
@@ -335,14 +356,24 @@ pub(super) async fn handle_data<'a>(
                 );
                 let packet_for_manager = if needs_decrypt {
                     let mut buffer = PacketDataBuffer::new();
-                    let plain_len =
-                        match link.decrypt(packet.data.as_slice(), buffer.accuire_buf_max()) {
-                            Ok(plain) => plain.len(),
-                            Err(err) => {
-                                log::warn!("resource: failed to decrypt packet: {:?}", err);
-                                return;
+                    let plain_len = match link
+                        .decrypt(packet.data.as_slice(), buffer.accuire_buf_max())
+                    {
+                        Ok(plain) => plain.len(),
+                        Err(err) => {
+                            if diag::enabled() {
+                                eprintln!(
+                                        "[resource-diag] wire_resource_decrypt_failed node={} link={} ctx={:02x} err={:?}",
+                                        handler.config.name,
+                                        packet.destination,
+                                        packet.context as u8,
+                                        err
+                                    );
                             }
-                        };
+                            log::warn!("resource: failed to decrypt packet: {:?}", err);
+                            return;
+                        }
+                    };
                     buffer.resize(plain_len);
                     let mut plain_packet = *packet;
                     plain_packet.data = buffer;
@@ -357,15 +388,36 @@ pub(super) async fn handle_data<'a>(
                     &mut responses,
                 );
                 let events = handler.resource_manager.drain_events();
+                let response_iface = link.ingress_iface().unwrap_or(iface);
+                if diag::enabled() && !responses.is_empty() {
+                    eprintln!(
+                        "[resource-diag] wire_resource_responses node={} link={} ctx={:02x} responses={} iface={}",
+                        handler.config.name,
+                        packet.destination,
+                        packet.context as u8,
+                        responses.len(),
+                        response_iface
+                    );
+                }
                 drop(link);
                 for response in responses.drain(..) {
-                    handler.send_packet(response).await;
+                    handler
+                        .send(TxMessage {
+                            tx_type: TxMessageType::Direct(response_iface),
+                            packet: response,
+                        })
+                        .await;
                 }
                 handler.resource_response_packets = responses;
                 for event in events {
                     let _ = handler.resource_events_tx.send(event);
                 }
                 return;
+            } else if diag::enabled() {
+                eprintln!(
+                    "[resource-diag] wire_resource_no_link node={} link={} ctx={:02x}",
+                    handler.config.name, packet.destination, packet.context as u8
+                );
             }
         }
 
@@ -404,6 +456,18 @@ pub(super) async fn handle_data<'a>(
         }
 
         if handle_keepalive_response(packet, &mut handler).await {
+            return;
+        }
+
+        if let Some((packet, iface)) = handler.link_table.handle_reverse_link_packet(packet, iface)
+        {
+            if diag::enabled() {
+                eprintln!(
+                    "[resource-diag] wire_resource_reverse_forward node={} link={} iface={}",
+                    handler.config.name, packet.destination, iface
+                );
+            }
+            handler.send(TxMessage { tx_type: TxMessageType::Direct(iface), packet }).await;
             return;
         }
 

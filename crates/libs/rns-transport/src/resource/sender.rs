@@ -138,7 +138,7 @@ impl ResourceSender {
         self.adv_sent = now;
         self.last_part_sent = now;
         self.max_retries = retry_limit;
-        self.retries_left = retry_limit;
+        self.retries_left = retry_limit.min(DEFAULT_RESOURCE_MAX_ADV_RETRIES);
         self.status = ResourceStatus::Advertised;
     }
 
@@ -213,8 +213,20 @@ impl ResourceSender {
                         log::warn!("resource: failed to build resource packet");
                     }
                 }
+            } else {
+                resource_diag(&format!(
+                    "request_part_miss hash={} requested_map_hash={:02x}{:02x}{:02x}{:02x}",
+                    self.resource_hash, hash[0], hash[1], hash[2], hash[3]
+                ));
             }
         }
+        resource_diag(&format!(
+            "request_parts_built hash={} requested={} built={} sent_any={}",
+            self.resource_hash,
+            request.requested_hashes.len(),
+            packets.len(),
+            sent_any
+        ));
 
         if request.hashmap_exhausted {
             if let Some(last_hash) = request.last_map_hash {

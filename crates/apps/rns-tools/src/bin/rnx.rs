@@ -52,6 +52,22 @@ enum Command {
         #[arg(long = "mode", value_enum)]
         modes: Vec<DeliveryMode>,
     },
+    ResourceRepro {
+        #[arg(long, default_value_t = 4243)]
+        a_port: u16,
+        #[arg(long, default_value_t = 4244)]
+        b_port: u16,
+        #[arg(long, default_value = "134.122.46.48")]
+        server_host: String,
+        #[arg(long, default_value_t = 37428)]
+        server_port: u16,
+        #[arg(long, default_value_t = 90)]
+        timeout_secs: u64,
+        #[arg(long, default_value_t = 4096)]
+        large_bytes: usize,
+        #[arg(long, default_value_t = false)]
+        keep: bool,
+    },
     MeshSim {
         #[arg(long, default_value_t = 5)]
         nodes: usize,
@@ -296,6 +312,23 @@ fn run(cli: Cli) -> io::Result<()> {
         Command::E2e { a_port, b_port, timeout_secs, keep, modes } => {
             scenario::run_e2e(a_port, b_port, timeout_secs, keep, modes)
         }
+        Command::ResourceRepro {
+            a_port,
+            b_port,
+            server_host,
+            server_port,
+            timeout_secs,
+            large_bytes,
+            keep,
+        } => scenario::run_resource_repro(
+            a_port,
+            b_port,
+            server_host,
+            server_port,
+            timeout_secs,
+            large_bytes,
+            keep,
+        ),
         Command::MeshSim { nodes, base_rpc_port, timeout_secs, keep, modes } => {
             scenario_mesh::run_mesh_sim(nodes, base_rpc_port, timeout_secs, keep, modes)
         }
