@@ -183,10 +183,7 @@ impl<
             return Ok(());
         }
 
-        loop {
-            let Some(frame) = self.outbound.front() else {
-                break;
-            };
+        while let Some(frame) = self.outbound.front() {
             match transport.send_frame(&frame.bytes) {
                 Ok(()) => {
                     let sent = self.outbound.pop_front().ok_or(MiniError::InvalidInput)?;
