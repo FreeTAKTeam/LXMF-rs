@@ -124,7 +124,13 @@ fn default_lxmd_config_dir() -> Result<PathBuf, String> {
     }
 
     let home = env::var_os("HOME")
+        .or_else(|| env::var_os("USERPROFILE"))
         .map(PathBuf::from)
+        .or_else(|| {
+            let drive = env::var_os("HOMEDRIVE")?;
+            let path = env::var_os("HOMEPATH")?;
+            Some(PathBuf::from(drive).join(path))
+        })
         .ok_or_else(|| "HOME is not set; specify --config".to_string())?;
     let xdg = home.join(".config").join("lxmd");
     if xdg.join("config").exists() {

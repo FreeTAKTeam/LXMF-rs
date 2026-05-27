@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
   "crates/libs/lxmf",
+  "crates/libs/lxmf-embedded-mini",
   "crates/libs/rns-embedded-mininode",
   "crates/libs/rns-embedded-core",
   "crates/libs/rns-embedded-ffi",
@@ -47,6 +48,7 @@ repository = "https://github.com/FreeTAKTeam/LXMF-rs"
 # Exact workspace-local dependency edges allowed between crates.
 # `tools/scripts/check-boundaries.sh` treats this as a strict allowlist.
 allowed_library_edges = [
+  "lxmf-embedded-mini->lxmf-wire",
   "lxmf->lxmf-sdk",
   "lxmf->lxmf-wire",
   "lxmf-sdk->lxmf-wire",

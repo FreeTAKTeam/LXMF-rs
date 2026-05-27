@@ -291,11 +291,13 @@ impl<S: MiniNodeStore> MiniNode<S> {
         now_ms: u64,
         link: &mut L,
     ) -> Result<(), MiniNodeError> {
-        for _ in 0..8 {
-            let Some(frame) = link.poll_frame()? else {
-                break;
-            };
+        let mut processed = 0;
+        while let Some(frame) = link.poll_frame()? {
             self.handle_frame(now_ms, &frame)?;
+            processed += 1;
+            if processed >= 8 {
+                break;
+            }
         }
         Ok(())
     }

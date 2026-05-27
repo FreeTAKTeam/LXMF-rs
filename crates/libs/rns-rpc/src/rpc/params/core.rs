@@ -175,6 +175,14 @@ struct PropagationRemotePeerParams {
     timeout_secs: Option<f64>,
 }
 
+#[derive(Debug, Deserialize, Default)]
+struct PropagationAcknowledgeSyncParams {
+    #[serde(default)]
+    reset_state: bool,
+    #[serde(default)]
+    failure_state: Option<u32>,
+}
+
 #[derive(Debug, Deserialize)]
 struct PropagationRemoteFetchParams {
     remote: String,
@@ -184,14 +192,6 @@ struct PropagationRemoteFetchParams {
     timeout_secs: Option<f64>,
     #[serde(default)]
     transfer_limit_kb: Option<f64>,
-}
-
-#[derive(Debug, Deserialize, Default)]
-struct PropagationAcknowledgeSyncParams {
-    #[serde(default)]
-    reset_state: bool,
-    #[serde(default)]
-    failure_state: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]

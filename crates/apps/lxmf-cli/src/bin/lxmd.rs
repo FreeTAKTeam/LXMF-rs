@@ -380,16 +380,31 @@ mod tests {
 
     #[test]
     fn compatibility_notes_only_emitted_for_used_flags() {
-        let temp = tempfile::tempdir().expect("tempdir");
-        let config_dir = temp.path().to_str().expect("utf8 path");
-        let args = super::Args::parse_from([
-            "lxmd",
-            "--config",
-            config_dir,
-            "--propagation-node",
-            "--service",
-        ]);
-        let effective = load_effective_args(&args).expect("effective args");
+        let args = super::Args::parse_from(["lxmd", "--propagation-node", "--service"]);
+        let effective = EffectiveArgs {
+            profile: "default".into(),
+            rpc: super::DEFAULT_RPC_ADDR.into(),
+            rnsconfig: None,
+            propagation_node: true,
+            on_inbound: None,
+            quiet: false,
+            service: true,
+            display_name: None,
+            db: None,
+            identity: None,
+            transport: None,
+            reticulumd: None,
+            messages_dir: None,
+            config_dir: None,
+            timeout_secs: 5.0,
+            status: false,
+            peers: false,
+            sync: None,
+            unpeer: None,
+            remote: None,
+            query_identity: None,
+            python_compat: super::PythonCompatConfig::default(),
+        };
         let notes = compatibility_notes(&args, &effective);
         assert!(notes.iter().any(|note| note.contains("--service")));
         assert!(!notes.iter().any(|note| note.contains("--propagation-node")));
@@ -397,10 +412,30 @@ mod tests {
 
     #[test]
     fn propagation_node_uses_supervised_launch() {
-        let temp = tempfile::tempdir().expect("tempdir");
-        let config_dir = temp.path().to_str().expect("utf8 path");
-        let args = super::Args::parse_from(["lxmd", "--config", config_dir, "--propagation-node"]);
-        let effective = load_effective_args(&args).expect("effective args");
+        let effective = EffectiveArgs {
+            profile: "default".into(),
+            rpc: super::DEFAULT_RPC_ADDR.into(),
+            rnsconfig: None,
+            propagation_node: true,
+            on_inbound: None,
+            quiet: false,
+            service: false,
+            display_name: None,
+            db: None,
+            identity: None,
+            transport: None,
+            reticulumd: None,
+            messages_dir: None,
+            config_dir: None,
+            timeout_secs: 5.0,
+            status: false,
+            peers: false,
+            sync: None,
+            unpeer: None,
+            remote: None,
+            query_identity: None,
+            python_compat: super::PythonCompatConfig::default(),
+        };
         assert!(requires_supervised_launch(&effective));
     }
 
