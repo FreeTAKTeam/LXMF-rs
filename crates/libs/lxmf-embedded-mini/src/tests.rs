@@ -194,6 +194,45 @@ fn runtime_rejects_replayed_inbound_message() {
 }
 
 #[test]
+fn runtime_accepts_out_of_order_messages_from_different_peers() {
+    let first = MiniMessage::<TITLE, CONTENT>::new(
+        [0x22; 16],
+        [0x33; 16],
+        signature(),
+        100.0,
+        b"title",
+        b"content-a",
+    )
+    .expect("first message");
+    let second = MiniMessage::<TITLE, CONTENT>::new(
+        [0x22; 16],
+        [0x44; 16],
+        signature(),
+        90.0,
+        b"title",
+        b"content-b",
+    )
+    .expect("second message");
+
+    let mut first_frame = [0u8; FRAME];
+    let first_len = first.encode(&mut first_frame).expect("encode first");
+    let mut second_frame = [0u8; FRAME];
+    let second_len = second.encode(&mut second_frame).expect("encode second");
+
+    let mut runtime = DefaultRuntime::new(config()).expect("runtime");
+    let mut transport = MockTransport::<4, 4>::new();
+    transport.enqueue_inbound(&first_frame[..first_len]);
+    transport.enqueue_inbound(&second_frame[..second_len]);
+    let mut store = RamReplayStore::new();
+    let mut scratch = [0u8; FRAME];
+
+    runtime.tick(&mut transport, &mut store, &mut scratch).expect("tick");
+
+    assert_eq!(runtime.status().stats.received, 2);
+    assert_eq!(runtime.status().stats.replay_rejected, 0);
+}
+
+#[test]
 fn runtime_reports_event_overflow() {
     let mut runtime = TinyEventRuntime::new(config()).expect("runtime");
     let mut transport = MockTransport::<4, 4>::new();

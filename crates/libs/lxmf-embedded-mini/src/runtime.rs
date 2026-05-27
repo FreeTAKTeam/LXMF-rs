@@ -5,6 +5,8 @@ use crate::{
     MiniTransport, HASH_LENGTH,
 };
 
+const RECENT_REPLAY_SOURCES: usize = 8;
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct MiniRuntimeConfig {
     pub local_identity: [u8; HASH_LENGTH],
@@ -44,6 +46,12 @@ struct OutboundFrame<const FRAME: usize> {
     bytes: Vec<u8, FRAME>,
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+struct ReplaySourceFloor {
+    source: [u8; HASH_LENGTH],
+    floor: u64,
+}
+
 #[derive(Debug, Clone)]
 pub struct MiniNodeRuntime<
     const TITLE: usize,
@@ -58,6 +66,7 @@ pub struct MiniNodeRuntime<
     bootstrapped: bool,
     outbound: Deque<OutboundFrame<FRAME>, OUTBOUND>,
     events: Deque<MiniEvent, EVENTS>,
+    replay_source_floors: Vec<ReplaySourceFloor, RECENT_REPLAY_SOURCES>,
     stats: MiniRuntimeStats,
 }
 
@@ -80,6 +89,7 @@ impl<
             bootstrapped: false,
             outbound: Deque::new(),
             events: Deque::new(),
+            replay_source_floors: Vec::new(),
             stats: MiniRuntimeStats::default(),
         })
     }
@@ -159,7 +169,7 @@ impl<
         while let Some(len) = transport.poll_frame(scratch)? {
             let message = MiniMessage::<TITLE, CONTENT>::decode(&scratch[..len])?;
             let sequence = message_sequence(&message);
-            if sequence <= self.replay_floor {
+            if sequence <= self.replay_floor_for(&message.source) {
                 self.stats.replay_rejected = self.stats.replay_rejected.saturating_add(1);
                 self.push_event(MiniEvent::FrameRejected {
                     sequence,
@@ -168,8 +178,13 @@ impl<
                 continue;
             }
 
-            self.replay_floor = sequence;
-            store.save_replay_floor(&self.config.local_identity, self.replay_floor)?;
+            self.note_replay_floor(message.source, sequence);
+            if sequence > self.replay_floor {
+                self.replay_floor = sequence;
+                // Persist a coarse high-water mark for compatibility, while
+                // replay rejection in the live runtime is scoped per source.
+                store.save_replay_floor(&self.config.local_identity, self.replay_floor)?;
+            }
             self.stats.received = self.stats.received.saturating_add(1);
             self.push_event(MiniEvent::MessageReceived {
                 sequence,
@@ -225,6 +240,28 @@ impl<
     fn push_event(&mut self, event: MiniEvent) -> MiniResult<()> {
         self.ensure_event_capacity()?;
         self.events.push_back(event).map_err(|_| MiniError::EventOverflow)
+    }
+
+    fn replay_floor_for(&self, source: &[u8; HASH_LENGTH]) -> u64 {
+        self.replay_source_floors
+            .iter()
+            .find(|entry| &entry.source == source)
+            .map(|entry| entry.floor)
+            .unwrap_or(0)
+    }
+
+    fn note_replay_floor(&mut self, source: [u8; HASH_LENGTH], floor: u64) {
+        if let Some(entry) =
+            self.replay_source_floors.iter_mut().find(|entry| entry.source == source)
+        {
+            entry.floor = floor;
+            return;
+        }
+
+        if self.replay_source_floors.len() >= RECENT_REPLAY_SOURCES {
+            self.replay_source_floors.remove(0);
+        }
+        let _ = self.replay_source_floors.push(ReplaySourceFloor { source, floor });
     }
 }
 
