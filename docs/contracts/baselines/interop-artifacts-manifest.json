@@ -8,8 +8,8 @@
     },
     {
       "path": "docs/contracts/baselines/lxmf-sdk-public-api.txt",
-      "bytes": 227769,
-      "sha256": "5741c6b8e3f1f5849d9b71821c744654a27ed66fb3f5bae3e5eab00aeb8f686a"
+      "bytes": 242441,
+      "sha256": "4b37a4bb332017d9d91fc0333011ddcaba77e2e1866111feaafbb6baf81a8895"
     },
     {
       "path": "docs/contracts/baselines/schema-client-generation-baseline.json",
@@ -43,8 +43,8 @@
     },
     {
       "path": "docs/contracts/external-client-interop-acceptance-v1.md",
-      "bytes": 2763,
-      "sha256": "44eac66035f845d58a8936d8ad22139b876287d56d2f3cb1c6cd31e5fa290632"
+      "bytes": 4322,
+      "sha256": "0a4c2e87d8983840e2504b18705b2cc6f7f299af5fed28fa554d127b8e20e157"
     },
     {
       "path": "docs/contracts/failure-injection-matrix.md",
@@ -113,8 +113,8 @@
     },
     {
       "path": "docs/contracts/rpc-contract.md",
-      "bytes": 6460,
-      "sha256": "8a73953ada7418555195aaba562219662c51b4cb8c9dd5eddb3d7d9f4bf2fcf5"
+      "bytes": 10999,
+      "sha256": "ece1874351d187dd902592d12f8b57477a895f90612c737d0288ce37e7a16641"
     },
     {
       "path": "docs/contracts/schema-driven-clients.md",
@@ -153,8 +153,8 @@
     },
     {
       "path": "docs/contracts/sdk-v2-backends.md",
-      "bytes": 6794,
-      "sha256": "3062c57fdf80e757b8824e5a05c6a2259a2649ec3080c2e68e6591d123bb5391"
+      "bytes": 8092,
+      "sha256": "bd8fc9b3ecdce30959ed643aa514933d8512cfd4424bd59488d3dcd7293a2119"
     },
     {
       "path": "docs/contracts/sdk-v2-commands.md",
@@ -218,8 +218,8 @@
     },
     {
       "path": "docs/contracts/sdk-v2.md",
-      "bytes": 12995,
-      "sha256": "f040af97b951bc587a0bba7a7870e56943f8b0bd4cd658301f4c4aea530835a6"
+      "bytes": 13085,
+      "sha256": "fd3c99517faa8f94dfdb119e4834ff9325508a7819b901978881d66e8f7a1318"
     },
     {
       "path": "docs/contracts/support-policy.md",

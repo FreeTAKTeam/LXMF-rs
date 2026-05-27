@@ -1,13 +1,16 @@
 use super::announce_worker::spawn_announce_worker;
 use super::bridge::TransportBridge;
-use super::inbound_worker::{spawn_inbound_worker, OutboundResourceTracking};
-use super::interface_hot_apply::LegacyTcpInterfaceMutationBridge;
+use super::inbound_worker::spawn_inbound_worker;
+use super::interface_hot_apply::TcpInterfaceMutationBridge;
+use super::outbound_resources::OutboundResourceMap;
 use super::receipt_worker::spawn_receipt_worker;
 use super::Args;
 #[path = "bootstrap_transport.rs"]
 mod transport_startup;
 use reticulum_daemon::announce_names::{
-    encode_delivery_display_name_app_data, normalize_display_name,
+    encode_delivery_announce_app_data_with_capabilities,
+    encode_propagation_node_app_data as encode_python_propagation_node_app_data,
+    normalize_capabilities, normalize_display_name, PropagationNodeAnnounceConfig,
 };
 use reticulum_daemon::config::{DaemonConfig, InterfaceConfig};
 use reticulum_daemon::identity_store::load_or_create_identity;
@@ -23,7 +26,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tokio::net::TcpStream;
-use tokio::sync::mpsc::unbounded_channel;
+use tokio::sync::mpsc::channel;
 use tokio::time::{timeout, Duration};
 use transport_startup::{start_transport_and_interfaces, TransportStartupInput};
 
@@ -35,14 +38,18 @@ pub(super) struct RpcTlsConfig {
 }
 
 pub(super) struct BootstrapContext {
-    pub(super) rpc_addr: SocketAddr,
+    pub(super) rpc_addr: Option<SocketAddr>,
+    pub(super) rpc_unix: Option<PathBuf>,
     pub(super) daemon: Arc<RpcDaemon>,
     pub(super) rpc_tls: Option<RpcTlsConfig>,
 }
 
+const RECEIPT_EVENT_QUEUE_CAPACITY: usize = 1024;
+
 #[derive(Clone)]
 pub(super) struct PropagationControlContext {
     pub(super) enabled: bool,
+    pub(super) local_identity_hash: [u8; 16],
     pub(super) propagation_destination_hash_hex: Option<String>,
     pub(super) control_destination_hash_hex: Option<String>,
     pub(super) delivery_destination:
@@ -58,7 +65,9 @@ pub(super) struct InterfaceStartupFailure {
 }
 
 pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
-    let rpc_addr: SocketAddr = args.rpc.parse().expect("invalid rpc address");
+    let rpc_addr: Option<SocketAddr> =
+        args.rpc.as_ref().map(|addr| addr.parse().expect("invalid rpc address"));
+    let rpc_unix = args.rpc_unix.clone();
     let rpc_tls = parse_tls_args(
         "--rpc-tls-cert",
         "--rpc-tls-key",
@@ -75,9 +84,10 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         path
     });
     let identity = load_or_create_identity(&identity_path).expect("load identity");
-    let identity_hash = hex::encode(identity.address_hash().as_slice());
-    let local_display_name =
-        std::env::var("LXMF_DISPLAY_NAME").ok().and_then(|value| normalize_display_name(&value));
+    let reticulum_storage_path =
+        args.db.parent().map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."));
+    let mut local_identity_hash = [0u8; 16];
+    local_identity_hash.copy_from_slice(identity.address_hash().as_slice());
     let daemon_config = args.config.as_ref().and_then(|path| match DaemonConfig::from_path(path) {
         Ok(config) => Some(config),
         Err(err) => {
@@ -85,6 +95,24 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
             None
         }
     });
+    let identity_hash = hex::encode(identity.address_hash().as_slice());
+    let local_display_name = std::env::var("LXMF_DISPLAY_NAME")
+        .ok()
+        .and_then(|value| normalize_display_name(&value))
+        .or_else(|| {
+            daemon_config
+                .as_ref()
+                .and_then(|config| config.display_name.as_deref())
+                .and_then(normalize_display_name)
+        });
+    let local_announce_capabilities = env_capabilities("LXMF_RCH_ANNOUNCE_CAPABILITIES")
+        .or_else(|| {
+            daemon_config
+                .as_ref()
+                .map(|config| normalize_capabilities(&config.announce_capabilities))
+                .filter(|capabilities| !capabilities.is_empty())
+        })
+        .unwrap_or_default();
     let mut configured_interfaces = daemon_config
         .as_ref()
         .map(|config| {
@@ -92,9 +120,8 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         })
         .unwrap_or_default();
     let receipt_map: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
-    let outbound_resource_map: Arc<Mutex<HashMap<String, OutboundResourceTracking>>> =
-        Arc::new(Mutex::new(HashMap::new()));
-    let (receipt_tx, receipt_rx) = unbounded_channel();
+    let outbound_resource_map: OutboundResourceMap = Arc::new(Mutex::new(HashMap::new()));
+    let (receipt_tx, receipt_rx) = channel(RECEIPT_EVENT_QUEUE_CAPACITY);
     let propagation_control_enabled = env_flag("LXMD_PROPAGATION_NODE");
     let configured_control_identities = parse_hex_list_env("LXMD_CONTROL_ALLOWED");
     let peer_announce_at_start = env_flag("LXMD_PEER_ANNOUNCE_AT_START");
@@ -106,7 +133,9 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         args: &args,
         daemon_config: daemon_config.as_ref(),
         identity: &identity,
+        reticulum_storage_path: reticulum_storage_path.as_path(),
         local_display_name: local_display_name.as_deref(),
+        local_announce_capabilities: &local_announce_capabilities,
         configured_interfaces,
         receipt_map: receipt_map.clone(),
         receipt_tx: receipt_tx.clone(),
@@ -126,7 +155,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     configured_interfaces = startup.configured_interfaces;
     let startup_successes = startup.startup_successes;
     let startup_failures = startup.startup_failures;
-    let hot_apply_seeded_tcp = startup.hot_apply_seeded_tcp;
+    let seeded_tcp_interfaces = startup.seeded_tcp_interfaces;
     let selected_tcp_server = startup.selected_tcp_server;
 
     if !startup_failures.is_empty() {
@@ -150,15 +179,18 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         panic!("{policy_error}");
     }
 
-    let transport_summary =
-        selected_tcp_server.bind_addr.clone().unwrap_or_else(|| "disabled".to_string());
+    let transport_summary = if transport.is_some() {
+        selected_tcp_server.bind_addr.clone().unwrap_or_else(|| "configured interfaces".to_string())
+    } else {
+        "disabled".to_string()
+    };
     println!(
         "{}",
         pretty_boot_line(
             "startup",
             &format!(
                 "reticulumd startup summary: rpc={} transport={} interfaces={} identity={}",
-                rpc_addr,
+                rpc_addr.map(|addr| addr.to_string()).unwrap_or_else(|| "disabled".to_owned()),
                 transport_summary,
                 configured_interfaces.len(),
                 identity_hash
@@ -175,9 +207,14 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
                 identity.clone(),
                 delivery_source_hash,
                 destination.clone(),
-                local_display_name
-                    .as_ref()
-                    .and_then(|display_name| encode_delivery_display_name_app_data(display_name)),
+                local_display_name.as_ref().and_then(|display_name| {
+                    encode_delivery_announce_app_data_with_capabilities(
+                        display_name,
+                        None,
+                        &local_announce_capabilities,
+                    )
+                }),
+                local_announce_capabilities.clone(),
                 propagation_destination.clone(),
                 propagation_app_data,
                 control_destination.clone(),
@@ -199,10 +236,12 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         outbound_bridge,
         announce_bridge,
     ));
+    configure_startup_rpc_token_auth(&args, daemon.as_ref());
+    enforce_rpc_bind_security(rpc_addr.as_ref(), rpc_tls.as_ref(), daemon.as_ref());
     if let Some(transport) = transport.as_ref() {
-        daemon.set_interface_mutation_bridge(Arc::new(LegacyTcpInterfaceMutationBridge::spawn(
+        daemon.set_interface_mutation_bridge(Arc::new(TcpInterfaceMutationBridge::spawn(
             transport.iface_manager(),
-            hot_apply_seeded_tcp,
+            seeded_tcp_interfaces,
         )));
     }
     if let Some(bridge) = bridge.as_ref() {
@@ -219,53 +258,58 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
             let _ = bridge.announce_now();
         }
     }
-    if let Some((transport, destination, interval_secs)) =
-        transport.as_ref().zip(announce_destination.as_ref()).zip(peer_announce_interval_secs).map(
-            |((transport, destination), interval_secs)| (transport, destination, interval_secs),
-        )
-    {
-        spawn_destination_announce_scheduler(
-            transport.clone(),
-            destination.clone(),
-            None,
-            interval_secs,
-        );
+    if let Some(interval_secs) = peer_announce_interval_secs {
+        if let Some(bridge) = bridge.as_ref() {
+            spawn_bridge_announce_scheduler(bridge.clone(), interval_secs);
+        }
     }
 
     if propagation_control_enabled && node_announce_at_start {
-        if let Some((transport, destination)) =
-            transport.as_ref().zip(propagation_destination.as_ref())
-        {
-            let propagation_app_data =
-                encode_propagation_node_app_data(local_display_name.as_deref());
-            transport.send_announce(destination, propagation_app_data.as_deref()).await;
-        }
-        if let Some((transport, destination)) = transport.as_ref().zip(control_destination.as_ref())
-        {
-            transport.send_announce(destination, None).await;
+        if let Some(bridge) = bridge.as_ref() {
+            let _ = bridge.announce_propagation_now();
+        } else {
+            if let Some((transport, destination)) =
+                transport.as_ref().zip(propagation_destination.as_ref())
+            {
+                let propagation_app_data =
+                    encode_propagation_node_app_data(local_display_name.as_deref());
+                transport.send_announce(destination, propagation_app_data.as_deref()).await;
+            }
+            if let Some((transport, destination)) =
+                transport.as_ref().zip(control_destination.as_ref())
+            {
+                transport.send_announce(destination, None).await;
+            }
         }
     }
     if let Some(interval_secs) = node_announce_interval_secs {
-        if let Some((transport, destination)) =
-            transport.as_ref().zip(propagation_destination.as_ref())
-        {
-            let propagation_app_data =
-                encode_propagation_node_app_data(local_display_name.as_deref());
-            spawn_destination_announce_scheduler(
-                transport.clone(),
-                destination.clone(),
-                propagation_app_data,
-                interval_secs,
-            );
-        }
-        if let Some((transport, destination)) = transport.as_ref().zip(control_destination.as_ref())
-        {
-            spawn_destination_announce_scheduler(
-                transport.clone(),
-                destination.clone(),
-                None,
-                interval_secs,
-            );
+        if propagation_control_enabled {
+            if let Some(bridge) = bridge.as_ref() {
+                spawn_bridge_propagation_announce_scheduler(bridge.clone(), interval_secs);
+            } else {
+                if let Some((transport, destination)) =
+                    transport.as_ref().zip(propagation_destination.as_ref())
+                {
+                    let propagation_app_data =
+                        encode_propagation_node_app_data(local_display_name.as_deref());
+                    spawn_destination_announce_scheduler(
+                        transport.clone(),
+                        destination.clone(),
+                        propagation_app_data,
+                        interval_secs,
+                    );
+                }
+                if let Some((transport, destination)) =
+                    transport.as_ref().zip(control_destination.as_ref())
+                {
+                    spawn_destination_announce_scheduler(
+                        transport.clone(),
+                        destination.clone(),
+                        None,
+                        interval_secs,
+                    );
+                }
+            }
         }
     }
 
@@ -288,6 +332,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
             transport.clone(),
             PropagationControlContext {
                 enabled: propagation_control_enabled,
+                local_identity_hash,
                 propagation_destination_hash_hex,
                 control_destination_hash_hex,
                 delivery_destination: announce_destination.clone(),
@@ -296,10 +341,10 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
             receipt_tx.clone(),
             outbound_resource_map,
         );
-        spawn_announce_worker(daemon.clone(), transport, peer_crypto);
+        spawn_announce_worker(daemon.clone(), transport, peer_crypto, Some(reticulum_storage_path));
     }
 
-    BootstrapContext { rpc_addr, daemon, rpc_tls }
+    BootstrapContext { rpc_addr, rpc_unix, daemon, rpc_tls }
 }
 
 fn pretty_console_logs_enabled() -> bool {
@@ -372,6 +417,81 @@ fn parse_tls_args(
         }
         _ => panic!("{cert_flag} and {key_flag} must be provided together"),
     }
+}
+
+pub(super) fn enforce_rpc_bind_security(
+    rpc_addr: Option<&SocketAddr>,
+    rpc_tls: Option<&RpcTlsConfig>,
+    daemon: &RpcDaemon,
+) {
+    let Some(addr) = rpc_addr else {
+        return;
+    };
+    if is_local_rpc_bind(addr) {
+        return;
+    }
+    if rpc_tls.and_then(|config| config.client_ca_path.as_ref()).is_some() {
+        return;
+    }
+    if daemon.remote_rpc_auth_configured() {
+        return;
+    }
+    panic!(
+        "remote TCP RPC bind {} requires token auth or mTLS; bind to loopback, use --rpc-unix, configure persisted remote token auth, or provide --rpc-tls-client-ca",
+        addr
+    );
+}
+
+fn is_local_rpc_bind(addr: &SocketAddr) -> bool {
+    let ip = addr.ip();
+    ip.is_loopback() && !ip.is_unspecified()
+}
+
+pub(super) fn configure_startup_rpc_token_auth(args: &Args, daemon: &RpcDaemon) {
+    let token_args = [
+        args.rpc_token_issuer.as_ref().map(|_| "--rpc-token-issuer"),
+        args.rpc_token_audience.as_ref().map(|_| "--rpc-token-audience"),
+        args.rpc_token_secret_env.as_ref().map(|_| "--rpc-token-secret-env"),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>();
+    if token_args.is_empty() {
+        return;
+    }
+    let issuer = args
+        .rpc_token_issuer
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| panic!("--rpc-token-issuer is required for startup token auth"));
+    let audience = args
+        .rpc_token_audience
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| panic!("--rpc-token-audience is required for startup token auth"));
+    let secret_env = args
+        .rpc_token_secret_env
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| panic!("--rpc-token-secret-env is required for startup token auth"));
+    let shared_secret = std::env::var(secret_env)
+        .unwrap_or_else(|_| panic!("startup token auth secret env var {secret_env} is not set"));
+    if shared_secret.trim().is_empty() {
+        panic!("startup token auth secret env var {secret_env} is empty");
+    }
+
+    daemon
+        .configure_remote_token_auth_for_startup(
+            issuer,
+            audience,
+            shared_secret,
+            args.rpc_token_jti_ttl_ms,
+            args.rpc_token_clock_skew_ms,
+        )
+        .unwrap_or_else(|err| panic!("invalid startup token auth configuration: {}", err.message));
 }
 
 fn interface_record_from_config(iface: &InterfaceConfig) -> InterfaceRecord {
@@ -482,6 +602,21 @@ fn parse_hex_list_env(key: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
+fn env_capabilities(key: &str) -> Option<Vec<String>> {
+    std::env::var(key)
+        .ok()
+        .map(|value| {
+            let values = value
+                .split([',', ';', ' ', '\t', '\r', '\n'])
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToOwned::to_owned)
+                .collect::<Vec<_>>();
+            normalize_capabilities(&values)
+        })
+        .filter(|capabilities| !capabilities.is_empty())
+}
+
 fn env_u64(key: &str) -> Option<u64> {
     std::env::var(key)
         .ok()
@@ -504,30 +639,37 @@ fn spawn_destination_announce_scheduler(
     });
 }
 
+fn spawn_bridge_announce_scheduler(bridge: Arc<TransportBridge>, interval_secs: u64) {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(interval_secs));
+        loop {
+            interval.tick().await;
+            let _ = bridge.announce_now();
+        }
+    });
+}
+
+fn spawn_bridge_propagation_announce_scheduler(bridge: Arc<TransportBridge>, interval_secs: u64) {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(interval_secs));
+        loop {
+            interval.tick().await;
+            let _ = bridge.announce_propagation_now();
+        }
+    });
+}
+
 fn encode_propagation_node_app_data(display_name: Option<&str>) -> Option<Vec<u8>> {
-    let mut metadata = Vec::new();
-    if let Some(name) = display_name {
-        metadata.push((rmpv::Value::from(1_i64), rmpv::Value::Binary(name.as_bytes().to_vec())));
-    }
-    let announce_data = rmpv::Value::Array(vec![
-        rmpv::Value::Boolean(false),
-        rmpv::Value::from(
-            std::time::SystemTime::now()
+    encode_python_propagation_node_app_data(
+        display_name,
+        PropagationNodeAnnounceConfig {
+            timebase: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs() as i64,
-        ),
-        rmpv::Value::Boolean(true),
-        rmpv::Value::from(256_i64),
-        rmpv::Value::from(10240_i64),
-        rmpv::Value::Array(vec![
-            rmpv::Value::from(16_i64),
-            rmpv::Value::from(3_i64),
-            rmpv::Value::from(18_i64),
-        ]),
-        rmpv::Value::Map(metadata),
-    ]);
-    rmp_serde::to_vec(&announce_data).ok()
+            ..PropagationNodeAnnounceConfig::default()
+        },
+    )
 }
 
 pub(super) fn mark_interface_runtime_managed(record: &mut InterfaceRecord, managed_by: &str) {

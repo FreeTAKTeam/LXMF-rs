@@ -1,7 +1,9 @@
 use crate::app::{Envelope, EnvelopeResponse, OperationRegistry};
 use crate::backend::SdkBackend;
 #[cfg(feature = "sdk-async")]
-use crate::backend::SdkBackendAsyncEvents;
+use crate::backend::SdkEventStream;
+#[cfg(feature = "sdk-async")]
+use crate::backend::{SdkBackendAsyncEvents, SdkBackendAsyncOps};
 use crate::capability::{EffectiveLimits, NegotiationRequest, NegotiationResponse};
 use crate::domain::{
     AttachmentDownloadChunk, AttachmentDownloadChunkRequest, AttachmentId, AttachmentListRequest,
@@ -372,8 +374,41 @@ impl SdkBackend for RpcBackendClient {
 }
 
 #[cfg(feature = "sdk-async")]
+impl SdkBackendAsyncOps for RpcBackendClient {
+    fn negotiate_async(
+        &self,
+        req: NegotiationRequest,
+    ) -> crate::SdkBoxFuture<'_, NegotiationResponse> {
+        Box::pin(async move { self.negotiate_async_impl(req).await })
+    }
+
+    fn send_async(&self, req: SendRequest) -> crate::SdkBoxFuture<'_, MessageId> {
+        Box::pin(async move { self.send_async_impl(req).await })
+    }
+
+    fn status_async(&self, id: MessageId) -> crate::SdkBoxFuture<'_, Option<DeliverySnapshot>> {
+        Box::pin(async move { self.status_async_impl(id).await })
+    }
+
+    fn snapshot_async(&self) -> crate::SdkBoxFuture<'_, RuntimeSnapshot> {
+        Box::pin(async move { self.snapshot_async_impl().await })
+    }
+
+    fn shutdown_async(&self, mode: ShutdownMode) -> crate::SdkBoxFuture<'_, Ack> {
+        Box::pin(async move { self.shutdown_async_impl(mode).await })
+    }
+}
+
+#[cfg(feature = "sdk-async")]
 impl SdkBackendAsyncEvents for RpcBackendClient {
     fn subscribe_events(&self, start: SubscriptionStart) -> Result<EventSubscription, SdkError> {
         self.subscribe_events_impl(start)
+    }
+
+    fn open_event_stream(
+        &self,
+        subscription: &EventSubscription,
+    ) -> Result<Option<SdkEventStream>, SdkError> {
+        self.open_event_stream_impl(subscription)
     }
 }

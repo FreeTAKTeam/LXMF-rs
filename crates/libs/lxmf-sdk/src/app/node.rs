@@ -1,12 +1,21 @@
 use super::envelope::{Envelope, EnvelopeResponse};
 use super::session::State;
+#[cfg(feature = "sdk-async")]
+use super::surfaces::Events;
+use super::surfaces::{Attachments, IdentityDirectory, Messages, Runtime};
 use crate::SdkBackend;
 use serde_json::Value as JsonValue;
 use std::sync::{Arc, Mutex};
 
 pub struct Client<B: SdkBackend> {
     pub(crate) backend: Arc<B>,
-    pub(crate) state: Mutex<State<B>>,
+    pub(crate) state: Arc<Mutex<State<B>>>,
+}
+
+impl<B: SdkBackend> Clone for Client<B> {
+    fn clone(&self) -> Self {
+        Self { backend: Arc::clone(&self.backend), state: Arc::clone(&self.state) }
+    }
 }
 
 impl<B: SdkBackend> Client<B> {
@@ -15,7 +24,7 @@ impl<B: SdkBackend> Client<B> {
     }
 
     pub fn from_arc(backend: Arc<B>) -> Self {
-        Self { backend, state: Mutex::new(State::default()) }
+        Self { backend, state: Arc::new(Mutex::new(State::default())) }
     }
 
     pub fn query(
@@ -32,6 +41,30 @@ impl<B: SdkBackend> Client<B> {
         payload: JsonValue,
     ) -> Result<EnvelopeResponse, super::errors::Error> {
         self.execute_envelope(Envelope::command(operation_id, payload))
+    }
+
+    pub fn messages(&self) -> Messages<'_, B> {
+        Messages::new(self)
+    }
+
+    #[cfg(feature = "sdk-async")]
+    pub fn events(&self) -> Events<'_, B>
+    where
+        B: crate::SdkBackendAsyncEvents,
+    {
+        Events::new(self)
+    }
+
+    pub fn identity(&self) -> IdentityDirectory<'_, B> {
+        IdentityDirectory::new(self)
+    }
+
+    pub fn attachments(&self) -> Attachments<'_, B> {
+        Attachments::new(self)
+    }
+
+    pub fn runtime(&self) -> Runtime<'_, B> {
+        Runtime::new(self)
     }
 }
 

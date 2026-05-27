@@ -14,6 +14,8 @@ use std::time::Duration;
 use tokio::time;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
+use tunnels::create_tunnel_synthesize_destination;
+use tunnels::TunnelTable;
 
 use tokio::sync::broadcast;
 use tokio::sync::Mutex;
@@ -37,6 +39,7 @@ use crate::error::RnsError;
 use crate::hash::{AddressHash, Hash, HASH_SIZE};
 use crate::identity::{Identity, PrivateIdentity};
 
+use crate::iface::AnnounceBroadcastPolicy;
 use crate::iface::IfaceRole;
 use crate::iface::IfaceSource;
 use crate::iface::InterfaceManager;
@@ -55,12 +58,15 @@ use crate::ratchets::{encrypt_for_public_key, now_secs, RatchetStore};
 use crate::resource::{build_resource_request_packet, ResourceEvent, ResourceManager};
 
 mod announce_limits;
-pub mod announce_table;
-pub mod discovery;
+mod announce_table;
+mod diag;
 mod link_table;
 mod packet_cache;
 mod path_requests;
-pub mod path_table;
+mod path_table;
+mod reticulum_announce_cache;
+mod reticulum_path_store;
+mod tunnels;
 
 pub mod test_bridge {
     use std::cell::RefCell;
@@ -113,8 +119,11 @@ pub mod test_bridge {
 const PACKET_TRACE: bool = false;
 pub const PATHFINDER_M: usize = 128; // Max hops
 
+#[allow(dead_code)]
 const INTERVAL_LINKS_CHECK: Duration = Duration::from_secs(1);
+#[allow(dead_code)]
 const INTERVAL_INPUT_LINK_CLEANUP: Duration = Duration::from_secs(20);
+#[allow(dead_code)]
 const INTERVAL_OUTPUT_LINK_REPEAT: Duration = Duration::from_secs(6);
 const INTERVAL_IFACE_CLEANUP: Duration = Duration::from_secs(10);
 const INTERVAL_ANNOUNCES_RETRANSMIT: Duration = Duration::from_secs(1);
@@ -128,6 +137,7 @@ const LOCAL_PATH_RESPONSE_COOLDOWN: Duration = Duration::from_millis(750);
 const UNICAST_IFACE_IDLE_TIMEOUT: Duration = Duration::from_secs(1800);
 
 // Other constants
+#[allow(dead_code)]
 const KEEP_ALIVE_REQUEST: u8 = 0xFF;
 const KEEP_ALIVE_RESPONSE: u8 = 0xFE;
 
@@ -221,6 +231,8 @@ pub(crate) struct TransportHandler {
     resource_events_tx: broadcast::Sender<ResourceEvent>,
 
     fixed_dest_path_requests: AddressHash,
+    fixed_dest_tunnel_synthesize: AddressHash,
+    tunnel_table: TunnelTable,
 
     /// Per-peer *virtual* unicast UDP ifaces pinned to a specific
     /// `SocketAddr` when an announce arrives over a multicast iface.
@@ -235,11 +247,10 @@ pub(crate) struct TransportHandler {
     /// `PeerRouting` map (see `multicast_peer_routings`).
     unicast_udp_ifaces: HashMap<std::net::SocketAddr, (AddressHash, Instant)>,
 
-    /// One per registered multicast `UdpInterface`: the shared
-    /// `PeerRouting` that iface's tx/rx tasks consult. Populated by
-    /// `Transport::add_multicast_udp_interface`; consulted by
-    /// `unicast_iface_for_source` to register discovered peers.
-    multicast_peer_routings: HashMap<AddressHash, Arc<Mutex<crate::iface::udp::PeerRouting>>>,
+    /// Host multicast iface hash to the routing table used to map
+    /// virtual per-peer iface hashes back to concrete UDP peer sockets.
+    multicast_peer_routings:
+        HashMap<AddressHash, Arc<Mutex<crate::iface::udp::PeerRouting>>>,
 
     cancel: CancellationToken,
     receipt_handler: Option<Arc<dyn ReceiptHandler>>,
@@ -296,6 +307,8 @@ mod jobs;
 mod links;
 // path: path request/response forwarding and intermediate handling.
 mod path;
+// resource_wire: link-scoped resource packet handling on inbound wire paths.
+mod resource_wire;
 // wire: inbound packet handlers and wire-level packet logic.
 mod wire;
 

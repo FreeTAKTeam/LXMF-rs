@@ -238,6 +238,25 @@ impl RpcDaemon {
                 "message not found",
             ));
         };
+        let envelope = match self.outbound_bridge.as_ref() {
+            Some(bridge) => bridge.encode_paper(&message)?.map(|envelope| {
+                json!({
+                    "uri": envelope.uri,
+                    "transient_id": envelope.transient_id,
+                    "destination_hint": envelope.destination_hint,
+                    "extensions": envelope.extensions,
+                })
+            }),
+            None => None,
+        }
+        .unwrap_or_else(|| {
+            json!({
+                "uri": format!("lxm://{}/{}", message.destination, message.id),
+                "transient_id": format!("paper-{}", message.id),
+                "destination_hint": message.destination,
+                "extensions": JsonMap::<String, JsonValue>::new(),
+            })
+        });
         {
             let paper_status = "sent: paper".to_string();
             let _status_guard =
@@ -258,12 +277,6 @@ impl RpcDaemon {
                 self.append_delivery_trace(message_id.as_str(), paper_status);
             }
         }
-        let envelope = json!({
-            "uri": format!("lxm://{}/{}", message.destination, message.id),
-            "transient_id": format!("paper-{}", message.id),
-            "destination_hint": message.destination,
-            "extensions": JsonMap::<String, JsonValue>::new(),
-        });
         Ok(RpcResponse {
             id: request.id,
             result: Some(json!({ "envelope": envelope })),
@@ -296,11 +309,18 @@ impl RpcDaemon {
                 "paper URI must start with lxm://",
             ));
         }
-        let transient_id = parsed.transient_id.unwrap_or_else(|| {
-            let mut hasher = Sha256::new();
-            hasher.update(parsed.uri.as_bytes());
-            format!("paper-{}", encode_hex(hasher.finalize()))
-        });
+        let bridged_decode = match self.outbound_bridge.as_ref() {
+            Some(bridge) => bridge.decode_paper_uri(parsed.uri.as_str())?,
+            None => None,
+        };
+        let transient_id = parsed
+            .transient_id
+            .or_else(|| bridged_decode.as_ref().map(|outcome| outcome.transient_id.clone()))
+            .unwrap_or_else(|| {
+                let mut hasher = Sha256::new();
+                hasher.update(parsed.uri.as_bytes());
+                format!("paper-{}", encode_hex(hasher.finalize()))
+            });
         let duplicate = {
             let mut guard =
                 self.paper_ingest_seen.lock().expect("paper_ingest_seen mutex poisoned");
@@ -311,13 +331,27 @@ impl RpcDaemon {
                 false
             }
         };
+        if !duplicate {
+            if let Some(outcome) = bridged_decode.as_ref() {
+                if let Some(record) = outcome.record.clone() {
+                    if let Some(raw_lxmf_bytes) = outcome.raw_lxmf_bytes.as_ref() {
+                        self.accept_inbound_with_raw(record, raw_lxmf_bytes)?;
+                    } else {
+                        self.accept_inbound(record)?;
+                    }
+                }
+            }
+        }
+        let destination_hint = parsed
+            .destination_hint
+            .or_else(|| bridged_decode.as_ref().map(|outcome| outcome.destination_hint.clone()));
         Ok(RpcResponse {
             id: request.id,
             result: Some(json!({
                 "accepted": true,
                 "transient_id": transient_id,
                 "duplicate": duplicate,
-                "destination_hint": parsed.destination_hint,
+                "destination_hint": destination_hint,
             })),
             error: None,
         })

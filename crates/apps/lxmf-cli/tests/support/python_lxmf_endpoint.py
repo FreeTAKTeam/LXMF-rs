@@ -3,6 +3,7 @@
 import argparse
 import json
 import socketserver
+import sys
 import threading
 import time
 from pathlib import Path
@@ -42,15 +43,28 @@ class EndpointState:
         self.suppress_keepalive_responses = False
 
     def start(self, config_dir: str) -> None:
+        print("python_lxmf_endpoint: starting Reticulum", file=sys.stderr, flush=True)
         self.reticulum = RNS.Reticulum(configdir=config_dir, loglevel=7)
+        print("python_lxmf_endpoint: creating LXMRouter", file=sys.stderr, flush=True)
         self.router = LXMF.LXMRouter(storagepath=str(self.storage), enforce_stamps=False)
+        print("python_lxmf_endpoint: registering delivery callback", file=sys.stderr, flush=True)
         self.router.register_delivery_callback(self._on_delivery)
         identity = RNS.Identity()
+        print("python_lxmf_endpoint: registering delivery identity", file=sys.stderr, flush=True)
         self.delivery_destination = self.router.register_delivery_identity(
             identity,
             display_name=self.display_name,
         )
-        self.delivery_destination.set_link_established_callback(self._on_link_established)
+        print("python_lxmf_endpoint: installing link callback", file=sys.stderr, flush=True)
+        router_link_established = self.delivery_destination.callbacks.link_established
+
+        def observe_delivery_link(link):
+            if router_link_established is not None:
+                router_link_established(link)
+            self._on_link_established(link)
+
+        self.delivery_destination.set_link_established_callback(observe_delivery_link)
+        print("python_lxmf_endpoint: endpoint state ready", file=sys.stderr, flush=True)
 
     def _on_delivery(self, message) -> None:
         with self.lock:
@@ -280,13 +294,14 @@ class EndpointState:
 
     def wait_link_state(self, state: str, timeout: float = 60.0) -> dict:
         deadline = time.time() + timeout
+        snapshot = self._link_snapshot()
         while time.time() < deadline:
             snapshot = self._link_snapshot()
             if snapshot.get("status_name") == state:
                 return snapshot
             time.sleep(0.1)
 
-        raise RuntimeError(f"timed out waiting for link state {state!r}")
+        raise RuntimeError(f"timed out waiting for link state {state!r}; last snapshot: {snapshot}")
 
     def teardown_link(self) -> dict:
         with self.lock:
@@ -363,9 +378,15 @@ class ControlHandler(socketserver.StreamRequestHandler):
 
             response = {"ok": True, "result": result}
         except Exception as exc:
+            print(
+                f"python_lxmf_endpoint: control error method={method!r}: {exc}",
+                file=sys.stderr,
+                flush=True,
+            )
             response = {"ok": False, "error": str(exc)}
 
         self.wfile.write(json.dumps(response).encode("utf-8"))
+        self.wfile.flush()
 
 
 def main() -> None:
@@ -383,7 +404,9 @@ def main() -> None:
     state = EndpointState(args.display_name, storage)
     state.start(args.rnsconfig)
 
+    print("python_lxmf_endpoint: starting control server", file=sys.stderr, flush=True)
     with ControlServer(("127.0.0.1", args.control_port), ControlHandler, state) as server:
+        print("python_lxmf_endpoint: control server ready", file=sys.stderr, flush=True)
         server.serve_forever(poll_interval=0.1)
 
 

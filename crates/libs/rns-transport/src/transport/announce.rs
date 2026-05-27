@@ -58,6 +58,14 @@ async fn process_announce<'a>(
         handler.announce_table.add(packet, dest_hash, route_iface);
 
         handler.path_table.handle_announce(packet, packet.transport, route_iface);
+        handler.tunnel_table.note_path(
+            route_iface,
+            packet.destination,
+            packet.transport.unwrap_or(packet.destination),
+            packet.header.hops,
+            packet.hash(),
+            std::time::Instant::now(),
+        );
     }
 
     let name_hash = {
@@ -101,18 +109,16 @@ pub(super) async fn handle_announce<'a>(
 
     let destination_known = handler.has_destination(&packet.destination)
         || handler.knows_destination(&packet.destination);
-    match handler.announce_limits.check(iface, packet, destination_known) {
-        AnnounceLimitAction::Allow => {}
-        AnnounceLimitAction::Hold(release_after) => {
-            log::info!(
-                "tp({}): holding announce for {} on iface {} for at least {:?}",
-                handler.config.name,
-                packet.destination,
-                iface,
-                release_after,
-            );
-            return;
-        }
+    if let AnnounceLimitAction::Hold(delay) =
+        handler.announce_limits.check(iface, packet, destination_known)
+    {
+        log::debug!(
+            "tp({}): holding announce for {} for {:?}",
+            handler.config.name,
+            packet.destination,
+            delay
+        );
+        return;
     }
 
     let _ = process_announce(packet, handler, iface, source, announce).await;
@@ -120,7 +126,7 @@ pub(super) async fn handle_announce<'a>(
 
 pub(super) async fn retransmit_announces<'a>(mut handler: MutexGuard<'a, TransportHandler>) {
     let transport_id = *handler.config.identity.address_hash();
-    let messages = handler.announce_table.to_retransmit(&transport_id);
+    let messages = handler.announce_table.drain_retransmissions(&transport_id);
 
     for message in messages {
         handler.send(message).await;

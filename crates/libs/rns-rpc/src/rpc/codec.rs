@@ -3,6 +3,8 @@ use std::io::{self, ErrorKind};
 use rmp_serde::{from_slice, Serializer};
 use serde::{de::DeserializeOwned, Serialize};
 
+pub const MAX_FRAME_PAYLOAD_LEN: usize = 16 * 1024 * 1024;
+
 pub fn encode_frame<T: Serialize>(msg: &T) -> io::Result<Vec<u8>> {
     // Reserve 4 bytes for the length prefix and serialize directly into the output frame
     // to avoid building a temporary payload buffer.
@@ -14,6 +16,9 @@ pub fn encode_frame<T: Serialize>(msg: &T) -> io::Result<Vec<u8>> {
         .len()
         .checked_sub(4)
         .ok_or_else(|| io::Error::new(ErrorKind::InvalidData, "missing frame payload"))?;
+    if payload_len > MAX_FRAME_PAYLOAD_LEN {
+        return Err(io::Error::new(ErrorKind::InvalidData, "frame too large"));
+    }
     let len = u32::try_from(payload_len)
         .map_err(|_| io::Error::new(ErrorKind::InvalidData, "frame too large"))?;
     framed[..4].copy_from_slice(&len.to_be_bytes());
@@ -27,16 +32,22 @@ pub fn decode_frame<T: DeserializeOwned>(bytes: &[u8]) -> io::Result<T> {
     let mut len_buf = [0u8; 4];
     len_buf.copy_from_slice(&bytes[..4]);
     let len = u32::from_be_bytes(len_buf) as usize;
-    if bytes.len() < 4 + len {
+    if len > MAX_FRAME_PAYLOAD_LEN {
+        return Err(io::Error::new(ErrorKind::InvalidData, "frame too large"));
+    }
+    let frame_end = 4usize
+        .checked_add(len)
+        .ok_or_else(|| io::Error::new(ErrorKind::InvalidData, "frame too large"))?;
+    if bytes.len() < frame_end {
         return Err(io::Error::new(ErrorKind::UnexpectedEof, "incomplete frame"));
     }
-    let payload = &bytes[4..4 + len];
+    let payload = &bytes[4..frame_end];
     from_slice(payload).map_err(|err| io::Error::new(ErrorKind::InvalidData, err))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{decode_frame, encode_frame};
+    use super::{decode_frame, encode_frame, MAX_FRAME_PAYLOAD_LEN};
     use crate::rpc::{RpcRequest, RpcResponse};
     use serde::{Deserialize, Serialize};
     use std::io;
@@ -71,6 +82,17 @@ mod tests {
         incomplete.extend_from_slice(&[1, 2, 3, 4]);
         let err = decode_frame::<Probe>(&incomplete).expect_err("incomplete payload should fail");
         assert_eq!(err.kind(), io::ErrorKind::UnexpectedEof);
+    }
+
+    #[test]
+    fn decode_frame_rejects_oversized_payload_length_before_waiting_for_body() {
+        let oversized_len = (MAX_FRAME_PAYLOAD_LEN as u32).saturating_add(1);
+        let bytes = oversized_len.to_be_bytes();
+
+        let err = decode_frame::<Probe>(&bytes).expect_err("oversized frame should fail");
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert!(err.to_string().contains("frame too large"));
     }
 
     #[test]

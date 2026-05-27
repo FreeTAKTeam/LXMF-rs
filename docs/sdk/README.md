@@ -8,14 +8,25 @@ It complements the formal contracts under `docs/contracts/` with integration-foc
 1. `docs/sdk/quickstart.md`
 2. `docs/sdk/configuration-profiles.md`
 3. `docs/sdk/lifecycle-and-events.md`
-4. `docs/sdk/advanced-embedding.md`
+4. `docs/sdk/polling-to-events-migration.md`
+5. `docs/sdk/remote-mtls.md`
+6. `docs/sdk/delivery-states.md`
+7. `docs/sdk/error-handling.md`
+8. `docs/sdk/advanced-embedding.md`
 
 ## Core Concepts
 
 - `Client<RpcBackendClient>` is the primary host-facing entry point.
 - Startup is contract-negotiated (`supported_contract_versions` + capabilities).
 - Runtime behavior is profile-bound (`desktop-full`, `desktop-local-runtime`, `embedded-alloc`).
-- Event ingestion is cursor-based (`poll_events`) and explicitly backpressured.
+- RPC-backed `runtime().start_async(...)`, `messages().send_async(...)`,
+  `messages().status_async(...)`, and `runtime().stop_async(...)` use Tokio-native request/response
+  transport rather than blocking the executor.
+- App-facing event ingestion is stream-first through typed SDK events. The RPC backend opens the
+  daemon's native framed event stream over `unix:/path`, TCP, or TLS/mTLS when configured.
+- Cursor polling remains available for recovery, embedded/manual integrations, and low-level diagnostics.
+- Public app workflows are grouped behind domain handles: `runtime()`, `messages()`,
+  `events()`, `identity()`, and `attachments()`.
 - Domain APIs are capability-gated and must be feature-detected after `start`.
 
 ## Source-of-Truth Contracts

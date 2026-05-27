@@ -7,11 +7,17 @@ use std::path::Path;
 
 #[derive(Debug)]
 pub struct DaemonConfig {
+    pub display_name: Option<String>,
+    pub announce_capabilities: Vec<String>,
     pub interfaces: Vec<InterfaceConfig>,
 }
 
 #[derive(Debug, Deserialize)]
 struct DaemonConfigRaw {
+    #[serde(default)]
+    display_name: Option<String>,
+    #[serde(default)]
+    announce_capabilities: Vec<String>,
     #[serde(default)]
     interfaces: Vec<InterfaceConfig>,
 }
@@ -27,7 +33,11 @@ impl<'de> Deserialize<'de> for DaemonConfig {
             iface.kind = iface.kind.trim().to_string();
             iface.validate(index).map_err(D::Error::custom)?;
         }
-        Ok(Self { interfaces })
+        Ok(Self {
+            display_name: raw.display_name,
+            announce_capabilities: raw.announce_capabilities,
+            interfaces,
+        })
     }
 }
 
@@ -37,6 +47,10 @@ pub struct InterfaceConfig {
     pub kind: String,
     #[serde(default)]
     pub enabled: Option<bool>,
+    #[serde(default)]
+    pub interface_mode: Option<String>,
+    #[serde(default)]
+    pub mode: Option<String>,
     #[serde(default)]
     pub host: Option<String>,
     #[serde(default)]
@@ -164,6 +178,12 @@ impl InterfaceConfig {
 
     pub fn settings_json(&self) -> Option<JsonValue> {
         let mut settings = JsonMap::new();
+        if self.interface_mode_raw().is_some() {
+            if let Ok(mode) = self.interface_mode() {
+                settings
+                    .insert("interface_mode".to_string(), JsonValue::String(mode.as_str().into()));
+            }
+        }
         match self.kind.as_str() {
             "udp" => {
                 insert_opt_string(&mut settings, "target_host", self.target_host.as_ref());
@@ -241,6 +261,7 @@ impl InterfaceConfig {
         if kind.is_empty() {
             return Err(format!("interfaces[{index}].type is required"));
         }
+        self.interface_mode().map_err(|err| format!("interfaces[{index}].{err}"))?;
         match kind {
             "udp" => self.validate_udp(index),
             "serial" => self.validate_serial(index),
@@ -248,6 +269,24 @@ impl InterfaceConfig {
             "lora" => self.validate_lora(index),
             _ => Ok(()),
         }
+    }
+
+    pub fn interface_mode(&self) -> Result<rns_transport::iface::InterfaceMode, String> {
+        let Some((field, value)) = self.interface_mode_raw() else {
+            return Ok(rns_transport::iface::InterfaceMode::Full);
+        };
+        rns_transport::iface::InterfaceMode::parse(value).ok_or_else(|| {
+            format!(
+                "{field} must be one of full, access_point, accesspoint, ap, pointtopoint, ptp, roaming, boundary, gateway, gw"
+            )
+        })
+    }
+
+    fn interface_mode_raw(&self) -> Option<(&'static str, &str)> {
+        self.interface_mode
+            .as_deref()
+            .map(|value| ("interface_mode", value))
+            .or_else(|| self.mode.as_deref().map(|value| ("mode", value)))
     }
 
     fn validate_udp(&self, index: usize) -> Result<(), String> {

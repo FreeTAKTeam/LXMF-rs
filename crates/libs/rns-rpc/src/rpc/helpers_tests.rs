@@ -1,0 +1,119 @@
+use super::*;
+
+#[test]
+fn merge_fields_with_options_preserves_existing_lxmf_metadata() {
+    let fields = json!({
+        "app": "value",
+        "_lxmf": {
+            "existing": true,
+            "method": "direct"
+        },
+    });
+
+    let merged = merge_fields_with_options(
+        Some(fields),
+        Some("propagated".to_string()),
+        Some(7),
+        Some(true),
+    )
+    .expect("merged fields");
+
+    assert_eq!(merged["app"], json!("value"));
+    assert_eq!(merged["_lxmf"]["existing"], json!(true));
+    assert_eq!(merged["_lxmf"]["method"], json!("propagated"));
+    assert_eq!(merged["_lxmf"]["stamp_cost"], json!(7));
+    assert_eq!(merged["_lxmf"]["include_ticket"], json!(true));
+}
+
+#[test]
+fn merge_fields_with_options_preserves_non_object_lxmf_metadata() {
+    let fields = json!({
+        "_lxmf": "legacy-marker",
+    });
+
+    let merged =
+        merge_fields_with_options(Some(fields), None, Some(3), None).expect("merged fields");
+
+    assert_eq!(merged["_lxmf"]["_raw"], json!("legacy-marker"));
+    assert_eq!(merged["_lxmf"]["stamp_cost"], json!(3));
+}
+
+#[test]
+fn parses_capabilities_from_utf8_json_app_data() {
+    let hex = hex::encode(r#"{"capabilities":["propagation","telemetry_relay"]}"#);
+    let capabilities = parse_capabilities_from_app_data_hex(Some(hex.as_str()));
+    assert_eq!(capabilities, vec!["propagation".to_string(), "telemetry_relay".to_string()]);
+}
+
+#[test]
+fn parses_capabilities_from_tagged_utf8_text_app_data() {
+    let hex = hex::encode("node metadata; caps=propagation, telemetry_relay");
+    let capabilities = parse_capabilities_from_app_data_hex(Some(hex.as_str()));
+    assert_eq!(capabilities, vec!["propagation".to_string(), "telemetry_relay".to_string()]);
+}
+
+#[test]
+fn parses_rch_capabilities_from_msgpack_third_slot() {
+    let capability_payload = rmp_serde::to_vec_named(&serde_json::json!({
+        "app": "rch",
+        "schema": 1,
+        "caps": ["telemetry_relay", "topic_broker"],
+    }))
+    .expect("encode capability payload");
+    let announce = rmp_serde::to_vec_named(&rmpv::Value::Array(vec![
+        rmpv::Value::String("Reticulum Community Hub".into()),
+        rmpv::Value::from(0),
+        rmpv::Value::Binary(capability_payload),
+    ]))
+    .expect("encode announce payload");
+    let capabilities = parse_capabilities_from_app_data_hex(Some(hex::encode(announce).as_str()));
+    assert_eq!(capabilities, vec!["telemetry_relay".to_string(), "topic_broker".to_string()]);
+}
+
+#[test]
+fn parses_rch_capabilities_from_cbor_third_slot() {
+    let capability_payload = serde_cbor::to_vec(&serde_json::json!({
+        "app": "rch",
+        "schema": 1,
+        "caps": ["telemetry_relay", "tak_bridge"],
+    }))
+    .expect("encode cbor capability payload");
+    let announce = rmp_serde::to_vec_named(&rmpv::Value::Array(vec![
+        rmpv::Value::String("Reticulum Community Hub".into()),
+        rmpv::Value::from(0),
+        rmpv::Value::Binary(capability_payload),
+    ]))
+    .expect("encode announce payload");
+    let capabilities = parse_capabilities_from_app_data_hex(Some(hex::encode(announce).as_str()));
+    assert_eq!(capabilities, vec!["telemetry_relay".to_string(), "tak_bridge".to_string()]);
+}
+
+#[test]
+fn parses_delivery_stamp_cost_from_python_peer_data_slot() {
+    let app_data = rmp_serde::to_vec_named(&MsgPackValue::Array(vec![
+        MsgPackValue::Binary(b"Peer Name".to_vec()),
+        MsgPackValue::from(23),
+    ]))
+    .expect("encode app data");
+
+    assert_eq!(
+        parse_delivery_stamp_cost_from_app_data_hex(Some(hex::encode(app_data).as_str())),
+        Some(23)
+    );
+}
+
+#[test]
+fn rejects_python_invalid_delivery_stamp_costs_from_peer_data() {
+    for invalid_cost in [0, 255, 256] {
+        let app_data = rmp_serde::to_vec_named(&MsgPackValue::Array(vec![
+            MsgPackValue::Binary(b"Peer Name".to_vec()),
+            MsgPackValue::from(invalid_cost),
+        ]))
+        .expect("encode app data");
+
+        assert_eq!(
+            parse_delivery_stamp_cost_from_app_data_hex(Some(hex::encode(app_data).as_str())),
+            None
+        );
+    }
+}

@@ -8,6 +8,8 @@ pub const COST_TICKET: u32 = 0x100;
 const WORKBLOCK_EXPAND_ROUNDS: usize = 3000;
 pub const PROPAGATION_STAMP_SIZE: usize = 32;
 const PROPAGATION_WORKBLOCK_EXPAND_ROUNDS: usize = 1000;
+const PEERING_WORKBLOCK_EXPAND_ROUNDS: usize = 25;
+const LXMF_OVERHEAD: usize = (2 * 16) + 64 + 8 + 8;
 
 pub fn decode_ticket_hex(ticket_hex: &str) -> Result<Vec<u8>, String> {
     let bytes = hex::decode(ticket_hex.trim())
@@ -30,11 +32,22 @@ pub fn ticket_stamp(ticket: &[u8], message_id: &[u8; 32]) -> Vec<u8> {
 }
 
 pub fn generate_stamp(message_id: &[u8; 32], stamp_cost: u32) -> Option<Vec<u8>> {
+    generate_stamp_until_cancelled(message_id, stamp_cost, || false)
+}
+
+pub fn generate_stamp_until_cancelled(
+    message_id: &[u8; 32],
+    stamp_cost: u32,
+    mut cancelled: impl FnMut() -> bool,
+) -> Option<Vec<u8>> {
     let workblock = stamp_workblock(message_id, WORKBLOCK_EXPAND_ROUNDS);
     let mut workblock_hasher = Sha256::new();
     workblock_hasher.update(&workblock);
     let mut nonce = 0u64;
     loop {
+        if nonce & 0x3ff == 0 && cancelled() {
+            return None;
+        }
         let stamp = nonce.to_le_bytes().to_vec();
         if stamp_value_with_prefix(&workblock_hasher, &stamp) >= stamp_cost {
             return Some(stamp);
@@ -47,6 +60,23 @@ pub fn generate_stamp(message_id: &[u8; 32], stamp_cost: u32) -> Option<Vec<u8>>
 }
 
 pub fn generate_propagation_stamp(transient_id: &[u8; 32], stamp_cost: u32) -> Option<Vec<u8>> {
+    generate_propagation_stamp_until_cancelled(transient_id, stamp_cost, || false)
+}
+
+pub fn generate_propagation_stamp_until_cancelled(
+    transient_id: &[u8; 32],
+    stamp_cost: u32,
+    mut cancelled: impl FnMut() -> bool,
+) -> Option<Vec<u8>> {
+    generate_propagation_stamp_with_value_until_cancelled(transient_id, stamp_cost, &mut cancelled)
+        .map(|(stamp, _value)| stamp)
+}
+
+pub fn generate_propagation_stamp_with_value_until_cancelled(
+    transient_id: &[u8; 32],
+    stamp_cost: u32,
+    mut cancelled: impl FnMut() -> bool,
+) -> Option<(Vec<u8>, u32)> {
     let workblock = stamp_workblock(transient_id, PROPAGATION_WORKBLOCK_EXPAND_ROUNDS);
     let mut workblock_hasher = Sha256::new();
     workblock_hasher.update(&workblock);
@@ -54,7 +84,65 @@ pub fn generate_propagation_stamp(transient_id: &[u8; 32], stamp_cost: u32) -> O
     let mut nonce = 0u64;
 
     loop {
+        if nonce & 0x3ff == 0 && cancelled() {
+            return None;
+        }
         stamp[..8].copy_from_slice(&nonce.to_le_bytes());
+        let value = stamp_value_with_prefix(&workblock_hasher, &stamp);
+        if value >= stamp_cost {
+            return Some((stamp, value));
+        }
+        nonce = nonce.wrapping_add(1);
+        if nonce == 0 {
+            return None;
+        }
+    }
+}
+
+pub fn generate_peering_key(peering_id: &[u8], target_cost: u32) -> Option<Vec<u8>> {
+    generate_stamp_with_rounds(peering_id, target_cost, PEERING_WORKBLOCK_EXPAND_ROUNDS)
+}
+
+pub fn validate_peering_key(
+    peering_id: &[u8],
+    peering_key: &[u8],
+    target_cost: u32,
+) -> Option<u32> {
+    let workblock = stamp_workblock(peering_id, PEERING_WORKBLOCK_EXPAND_ROUNDS);
+    if stamp_valid(peering_key, target_cost, &workblock) {
+        Some(stamp_value(&workblock, peering_key))
+    } else {
+        None
+    }
+}
+
+pub fn validate_propagation_stamp(transient_data: &[u8], target_cost: u32) -> Option<u32> {
+    if transient_data.len() <= LXMF_OVERHEAD + PROPAGATION_STAMP_SIZE {
+        return None;
+    }
+
+    let lxm_data_len = transient_data.len() - PROPAGATION_STAMP_SIZE;
+    let (lxm_data, stamp) = transient_data.split_at(lxm_data_len);
+    let transient_id = Sha256::digest(lxm_data);
+    let workblock = stamp_workblock(transient_id.as_slice(), PROPAGATION_WORKBLOCK_EXPAND_ROUNDS);
+    if stamp_valid(stamp, target_cost, &workblock) {
+        Some(stamp_value(&workblock, stamp))
+    } else {
+        None
+    }
+}
+
+fn generate_stamp_with_rounds(
+    material: &[u8],
+    stamp_cost: u32,
+    expand_rounds: usize,
+) -> Option<Vec<u8>> {
+    let workblock = stamp_workblock(material, expand_rounds);
+    let mut workblock_hasher = Sha256::new();
+    workblock_hasher.update(&workblock);
+    let mut nonce = 0u64;
+    loop {
+        let stamp = nonce.to_le_bytes().to_vec();
         if stamp_value_with_prefix(&workblock_hasher, &stamp) >= stamp_cost {
             return Some(stamp);
         }
@@ -74,7 +162,7 @@ pub fn validate_stamp(
     let stamp = stamp?;
 
     for ticket in tickets {
-        if target_cost <= COST_TICKET && ticket_stamp(ticket.as_slice(), message_id) == stamp {
+        if ticket_stamp(ticket.as_slice(), message_id) == stamp {
             return Some(COST_TICKET);
         }
     }
@@ -85,6 +173,12 @@ pub fn validate_stamp(
     } else {
         None
     }
+}
+
+pub fn invalid_stamp_value(stamp: Option<&[u8]>, message_id: &[u8; 32]) -> Option<u32> {
+    let stamp = stamp?;
+    let workblock = stamp_workblock(message_id, WORKBLOCK_EXPAND_ROUNDS);
+    Some(stamp_value(&workblock, stamp))
 }
 
 pub fn stamp_workblock(material: &[u8], expand_rounds: usize) -> Vec<u8> {
@@ -131,4 +225,98 @@ fn stamp_value_from_hash(hash: &[u8]) -> u32 {
         }
     }
     value
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        generate_peering_key, generate_propagation_stamp,
+        generate_propagation_stamp_until_cancelled,
+        generate_propagation_stamp_with_value_until_cancelled, generate_stamp_until_cancelled,
+        invalid_stamp_value, validate_peering_key, validate_propagation_stamp,
+        PROPAGATION_STAMP_SIZE,
+    };
+    use sha2::{Digest, Sha256};
+
+    #[test]
+    fn propagation_stamp_validator_accepts_generated_transient_stamp() {
+        let lxm_data = vec![0x42u8; 160];
+        let transient_id = sha256_array(&lxm_data);
+        let stamp = generate_propagation_stamp(&transient_id, 1).expect("stamp");
+        let mut transient = lxm_data;
+        transient.extend_from_slice(&stamp);
+
+        let value = validate_propagation_stamp(&transient, 1).expect("valid propagation stamp");
+        assert!(value >= 1);
+    }
+
+    #[test]
+    fn propagation_stamp_validator_rejects_short_or_modified_transient_stamp() {
+        let short = vec![0u8; 64 + PROPAGATION_STAMP_SIZE];
+        assert!(validate_propagation_stamp(&short, 1).is_none());
+
+        let lxm_data = vec![0x33u8; 160];
+        let transient_id = sha256_array(&lxm_data);
+        let stamp = generate_propagation_stamp(&transient_id, 1).expect("stamp");
+        let mut transient = lxm_data;
+        transient.extend_from_slice(&stamp);
+        transient[0] ^= 0x01;
+
+        assert!(validate_propagation_stamp(&transient, 1).is_none());
+    }
+
+    #[test]
+    fn peering_key_validator_accepts_generated_key_and_rejects_above_value() {
+        let peering_id = [0x11u8; 32];
+        let key = generate_peering_key(&peering_id, 1).expect("peering key");
+
+        let value = validate_peering_key(&peering_id, &key, 1).expect("valid peering key");
+        assert!(value >= 1);
+
+        assert!(validate_peering_key(&peering_id, &key, value + 1).is_none());
+    }
+
+    #[test]
+    fn cancellable_stamp_generation_stops_before_work_loop() {
+        let message_id = [0x22u8; 32];
+
+        assert!(generate_stamp_until_cancelled(&message_id, 1, || true).is_none());
+    }
+
+    #[test]
+    fn cancellable_propagation_stamp_generation_stops_before_work_loop() {
+        let transient_id = [0x44u8; 32];
+
+        assert!(generate_propagation_stamp_until_cancelled(&transient_id, 1, || true).is_none());
+    }
+
+    #[test]
+    fn propagation_stamp_generation_reports_value() {
+        let transient_id = [0x55u8; 32];
+        let (stamp, value) =
+            generate_propagation_stamp_with_value_until_cancelled(&transient_id, 1, || false)
+                .expect("stamp");
+
+        let workblock =
+            super::stamp_workblock(&transient_id, super::PROPAGATION_WORKBLOCK_EXPAND_ROUNDS);
+        assert_eq!(value, super::stamp_value(&workblock, &stamp));
+        assert!(value >= 1);
+    }
+
+    #[test]
+    fn invalid_stamp_value_reports_pow_value_below_policy() {
+        let message_id = [0x66u8; 32];
+        let stamp = vec![0u8; 8];
+        let value = invalid_stamp_value(Some(&stamp), &message_id).expect("value");
+        let workblock = super::stamp_workblock(&message_id, super::WORKBLOCK_EXPAND_ROUNDS);
+
+        assert_eq!(value, super::stamp_value(&workblock, &stamp));
+    }
+
+    fn sha256_array(data: &[u8]) -> [u8; 32] {
+        let digest = Sha256::digest(data);
+        let mut out = [0u8; 32];
+        out.copy_from_slice(digest.as_slice());
+        out
+    }
 }

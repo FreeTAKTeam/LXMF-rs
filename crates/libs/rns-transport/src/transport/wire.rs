@@ -1,4 +1,6 @@
+use super::diag;
 use super::path::send_to_next_hop;
+use super::resource_wire;
 use super::*;
 use ed25519_dalek::{Signature, SIGNATURE_LENGTH};
 
@@ -86,24 +88,60 @@ async fn should_forward_link_request_proof(
     let Some((original_destination, expected_iface)) =
         handler.link_table.proof_validation_context(&packet.destination)
     else {
+        if diag::enabled() {
+            log::info!(
+                "[tp-diag] lrproof_forward_skip node={} reason=no_link_table_entry link={} iface={}",
+                handler.config.name,
+                packet.destination,
+                iface
+            );
+        }
         return false;
     };
     if expected_iface != iface {
+        if diag::enabled() {
+            log::info!(
+                "[tp-diag] lrproof_forward_skip node={} reason=wrong_iface link={} expected={} got={}",
+                handler.config.name,
+                packet.destination,
+                expected_iface,
+                iface
+            );
+        }
         return false;
     }
 
     let Some(destination) = handler.single_out_destinations.get(&original_destination).cloned()
     else {
+        if diag::enabled() {
+            log::info!(
+                "[tp-diag] lrproof_forward_skip node={} reason=missing_destination_identity link={} dst={}",
+                handler.config.name,
+                packet.destination,
+                original_destination
+            );
+        }
         return false;
     };
     let destination = destination.lock().await;
 
-    crate::destination::link::validate_link_request_proof_packet(
+    let valid = crate::destination::link::validate_link_request_proof_packet(
         &destination.desc,
         &packet.destination,
         packet,
     )
-    .is_ok()
+    .is_ok();
+    if diag::enabled() {
+        log::info!(
+            "[tp-diag] lrproof_forward_validate node={} link={} dst={} iface={} valid={}",
+            handler.config.name,
+            packet.destination,
+            original_destination,
+            iface,
+            valid
+        );
+    }
+    valid
 }
 
 pub(super) async fn handle_proof(
@@ -111,37 +149,8 @@ pub(super) async fn handle_proof(
     handler: Arc<Mutex<TransportHandler>>,
     iface: AddressHash,
 ) {
-    if packet.context == PacketContext::ResourceProof
-        && packet.header.destination_type == DestinationType::Link
-    {
-        let mut handler = handler.lock().await;
-        let mut link = handler
-            .in_links
-            .get(&packet.destination)
-            .cloned()
-            .or_else(|| handler.out_links.get(&packet.destination).cloned());
-        if link.is_none() {
-            for candidate in handler.out_links.values() {
-                if *candidate.lock().await.id() == packet.destination {
-                    link = Some(candidate.clone());
-                    break;
-                }
-            }
-        }
-        if let Some(link) = link {
-            let mut link = link.lock().await;
-            let mut responses = std::mem::take(&mut handler.resource_response_packets);
-            handler.resource_manager.handle_packet_into(&packet, &mut link, &mut responses);
-            let events = handler.resource_manager.drain_events();
-            drop(link);
-            for response in responses.drain(..) {
-                handler.send_packet(response).await;
-            }
-            handler.resource_response_packets = responses;
-            for event in events {
-                let _ = handler.resource_events_tx.send(event);
-            }
-        }
+    if resource_wire::is_link_resource_proof(&packet) {
+        resource_wire::handle_resource_proof(packet, handler, iface).await;
         return;
     }
     log::trace!("[tp] proof dst={} ctx={:02x}", packet.destination, packet.context as u8);
@@ -164,15 +173,26 @@ pub(super) async fn handle_proof(
 
     let mut handler = handler.lock().await;
 
-    let mut rtt_packets = Vec::new();
+    let mut rtt_messages = Vec::new();
     for link in handler.out_links.values() {
         let mut link = link.lock().await;
         if let LinkHandleResult::Activated = link.handle_packet(&packet, iface) {
-            rtt_packets.push(link.create_rtt());
+            rtt_messages.push(TxMessage {
+                tx_type: TxMessageType::Direct(iface),
+                packet: link.create_rtt(),
+            });
         }
     }
-    for packet in rtt_packets {
-        handler.send_packet(packet).await;
+    for message in rtt_messages {
+        let dispatch = handler.send(message).await;
+        if dispatch.sent_ifaces == 0 {
+            log::warn!(
+                "tp({}): failed to dispatch link RTT packet matched={} failed={}",
+                handler.config.name,
+                dispatch.matched_ifaces,
+                dispatch.failed_ifaces
+            );
+        }
     }
 
     let maybe_packet = if should_forward_link_request_proof(&packet, &handler, iface).await {
@@ -182,7 +202,22 @@ pub(super) async fn handle_proof(
     };
 
     if let Some((packet, iface)) = maybe_packet {
+        if diag::enabled() {
+            log::info!(
+                "[tp-diag] lrproof_forward node={} link={} iface={}",
+                handler.config.name,
+                packet.destination,
+                iface
+            );
+        }
         handler.send(TxMessage { tx_type: TxMessageType::Direct(iface), packet }).await;
+    } else if packet.context == PacketContext::LinkRequestProof && diag::enabled() {
+        log::info!(
+            "[tp-diag] lrproof_not_forwarded node={} link={} ingress_iface={}",
+            handler.config.name,
+            packet.destination,
+            iface
+        );
     }
 }
 
@@ -236,74 +271,10 @@ pub(super) async fn handle_data<'a>(
     let mut data_handled = false;
 
     if packet.header.destination_type == DestinationType::Link {
-        if matches!(
-            packet.context,
-            PacketContext::Resource
-                | PacketContext::ResourceAdvrtisement
-                | PacketContext::ResourceRequest
-                | PacketContext::ResourceHashUpdate
-                | PacketContext::ResourceProof
-                | PacketContext::ResourceInitiatorCancel
-                | PacketContext::ResourceReceiverCancel
-        ) {
-            let mut link = handler
-                .in_links
-                .get(&packet.destination)
-                .cloned()
-                .or_else(|| handler.out_links.get(&packet.destination).cloned());
-            if link.is_none() {
-                for candidate in handler.out_links.values() {
-                    if *candidate.lock().await.id() == packet.destination {
-                        link = Some(candidate.clone());
-                        break;
-                    }
-                }
-            }
-
-            if let Some(link) = link {
-                let mut link = link.lock().await;
-                let needs_decrypt = matches!(
-                    packet.context,
-                    PacketContext::ResourceAdvrtisement
-                        | PacketContext::ResourceRequest
-                        | PacketContext::ResourceHashUpdate
-                        | PacketContext::ResourceInitiatorCancel
-                        | PacketContext::ResourceReceiverCancel
-                );
-                let packet_for_manager = if needs_decrypt {
-                    let mut buffer = PacketDataBuffer::new();
-                    let plain_len =
-                        match link.decrypt(packet.data.as_slice(), buffer.accuire_buf_max()) {
-                            Ok(plain) => plain.len(),
-                            Err(err) => {
-                                log::warn!("resource: failed to decrypt packet: {:?}", err);
-                                return;
-                            }
-                        };
-                    buffer.resize(plain_len);
-                    let mut plain_packet = *packet;
-                    plain_packet.data = buffer;
-                    plain_packet
-                } else {
-                    *packet
-                };
-                let mut responses = std::mem::take(&mut handler.resource_response_packets);
-                handler.resource_manager.handle_packet_into(
-                    &packet_for_manager,
-                    &mut link,
-                    &mut responses,
-                );
-                let events = handler.resource_manager.drain_events();
-                drop(link);
-                for response in responses.drain(..) {
-                    handler.send_packet(response).await;
-                }
-                handler.resource_response_packets = responses;
-                for event in events {
-                    let _ = handler.resource_events_tx.send(event);
-                }
-                return;
-            }
+        if resource_wire::is_link_resource_packet(packet)
+            && resource_wire::handle_link_resource_packet(packet, iface, &mut handler).await
+        {
+            return;
         }
 
         log::trace!(
@@ -341,6 +312,18 @@ pub(super) async fn handle_data<'a>(
         }
 
         if handle_keepalive_response(packet, &mut handler).await {
+            return;
+        }
+
+        if let Some((packet, iface)) = handler.link_table.handle_reverse_link_packet(packet, iface)
+        {
+            if diag::enabled() {
+                eprintln!(
+                    "[resource-diag] wire_resource_reverse_forward node={} link={} iface={}",
+                    handler.config.name, packet.destination, iface
+                );
+            }
+            handler.send(TxMessage { tx_type: TxMessageType::Direct(iface), packet }).await;
             return;
         }
 

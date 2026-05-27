@@ -32,10 +32,16 @@ pub use backend::mobile_ble::{
 };
 #[cfg(all(feature = "rpc-backend", feature = "std"))]
 pub use backend::rpc::RpcBackendClient;
+#[cfg(all(feature = "zmq-pipeline-backend", feature = "std"))]
+pub use backend::zmq_pipeline::{
+    ZmqEndpointRole, ZmqPipelineBackendClient, ZmqPipelineBackendConfig, ZmqPipelineTokenAuth,
+};
 pub use backend::{
     KeyProviderClass, SdkBackend, SdkBackendAsyncEvents, SdkBackendKeyManagement, SdkKeyPurpose,
     SdkStoredKey,
 };
+#[cfg(feature = "sdk-async")]
+pub use backend::{SdkBackendAsyncOps, SdkBoxFuture, SdkEventStream};
 // Stability class: stable
 pub use capability::{
     effective_capabilities_for_profile, negotiate_contract_version, negotiate_plugins,

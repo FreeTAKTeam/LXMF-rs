@@ -127,8 +127,16 @@ pub struct PropagationState {
     pub enabled: bool,
     pub store_root: Option<String>,
     pub target_cost: u32,
+    #[serde(default = "default_propagation_stamp_cost_flexibility")]
+    pub stamp_cost_flexibility: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub message_storage_limit_mb: Option<u64>,
+    #[serde(default = "default_delivery_transfer_limit")]
+    pub delivery_limit: u32,
+    #[serde(default = "default_propagation_transfer_limit")]
+    pub propagation_limit: u32,
+    #[serde(default = "default_propagation_sync_limit")]
+    pub sync_limit: u32,
     #[serde(default = "default_true")]
     pub autopeer: bool,
     #[serde(default = "default_autopeer_maxdepth")]
@@ -170,7 +178,11 @@ impl Default for PropagationState {
             enabled: false,
             store_root: None,
             target_cost: 0,
+            stamp_cost_flexibility: default_propagation_stamp_cost_flexibility(),
             message_storage_limit_mb: None,
+            delivery_limit: default_delivery_transfer_limit(),
+            propagation_limit: default_propagation_transfer_limit(),
+            sync_limit: default_propagation_sync_limit(),
             autopeer: default_true(),
             autopeer_maxdepth: default_autopeer_maxdepth(),
             static_peers: Vec::new(),
@@ -197,10 +209,22 @@ impl Default for PropagationState {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct StampPolicy {
     pub target_cost: u32,
     pub flexibility: u32,
+    #[serde(default = "default_stamp_enforce")]
+    pub enforce: bool,
+}
+
+impl Default for StampPolicy {
+    fn default() -> Self {
+        Self { target_cost: 0, flexibility: 0, enforce: default_stamp_enforce() }
+    }
+}
+
+fn default_stamp_enforce() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -346,14 +370,33 @@ struct RpcMetrics {
     sdk_poll_event_log_lock_ops_total: u64,
 }
 
+enum EventSinkCommand {
+    Publish {
+        sink: Arc<dyn EventSinkBridge>,
+        sink_kind: String,
+        envelope: RpcEventSinkEnvelope,
+    },
+    #[cfg(test)]
+    Flush {
+        reply: mpsc::Sender<()>,
+    },
+}
+
+struct OutboundDeliveryCommand {
+    record: MessageRecord,
+    options: OutboundDeliveryOptions,
+}
+
 pub struct RpcDaemon {
-    store: MessagesStore,
+    store: Arc<MessagesStore>,
     identity_hash: String,
     delivery_destination_hash: Mutex<Option<String>>,
     events: broadcast::Sender<RpcEvent>,
+    sdk_events: broadcast::Sender<SequencedRpcEvent>,
     event_queue: Mutex<VecDeque<RpcEvent>>,
     sdk_event_log: Mutex<VecDeque<SequencedRpcEvent>>,
     sdk_next_event_seq: Mutex<u64>,
+    announce_next_seq: Mutex<u64>,
     sdk_dropped_event_count: Mutex<u64>,
     sdk_active_contract_version: Mutex<u16>,
     sdk_profile: Mutex<String>,
@@ -394,23 +437,46 @@ pub struct RpcDaemon {
     paper_ingest_seen: Mutex<HashSet<String>>,
     stamp_policy: Mutex<StampPolicy>,
     ticket_cache: Mutex<HashMap<String, TicketRecord>>,
-    delivery_traces: Mutex<HashMap<String, Vec<DeliveryTraceEntry>>>,
+    ticket_last_deliveries: Mutex<HashMap<String, i64>>,
+    delivery_traces: Arc<Mutex<HashMap<String, Vec<DeliveryTraceEntry>>>>,
     daemon_status_snapshot: std::sync::RwLock<DaemonStatusSnapshot>,
-    delivery_status_lock: Mutex<()>,
-    sdk_metrics: Mutex<RpcMetrics>,
+    delivery_status_lock: Arc<Mutex<()>>,
+    sdk_metrics: Arc<Mutex<RpcMetrics>>,
     outbound_bridge: Option<Arc<dyn OutboundBridge>>,
+    outbound_delivery_tx: Option<mpsc::SyncSender<OutboundDeliveryCommand>>,
     announce_bridge: Option<Arc<dyn AnnounceBridge>>,
     event_sink_bridges: Vec<Arc<dyn EventSinkBridge>>,
+    event_sink_tx: Option<mpsc::SyncSender<EventSinkCommand>>,
     interface_mutation_bridge: Mutex<Option<Arc<dyn InterfaceMutationBridge>>>,
     remote_control_bridge: Mutex<Option<Arc<dyn RemoteControlBridge>>>,
+    started_at: std::time::Instant,
 }
 
 pub trait OutboundBridge: Send + Sync {
+    fn validate_delivery(
+        &self,
+        _record: &MessageRecord,
+        _options: &OutboundDeliveryOptions,
+    ) -> Result<(), std::io::Error> {
+        Ok(())
+    }
+
     fn deliver(
         &self,
         record: &MessageRecord,
         options: &OutboundDeliveryOptions,
     ) -> Result<(), std::io::Error>;
+
+    fn encode_paper(
+        &self,
+        _record: &MessageRecord,
+    ) -> Result<Option<PaperEncodeEnvelope>, std::io::Error> {
+        Ok(None)
+    }
+
+    fn decode_paper_uri(&self, _uri: &str) -> Result<Option<PaperDecodeOutcome>, std::io::Error> {
+        Ok(None)
+    }
 }
 
 pub trait AnnounceBridge: Send + Sync {
@@ -436,6 +502,21 @@ pub trait RemoteControlBridge: Send + Sync {
         &self,
         remote: &str,
         peer: &str,
+        identity_private_key_hex: Option<&str>,
+        timeout_secs: f64,
+    ) -> Result<JsonValue, std::io::Error>;
+
+    fn propagation_remote_fetch(
+        &self,
+        remote: &str,
+        identity_private_key_hex: Option<&str>,
+        timeout_secs: f64,
+        transfer_limit_kb: Option<f64>,
+    ) -> Result<JsonValue, std::io::Error>;
+
+    fn propagation_remote_download(
+        &self,
+        remote: &str,
         identity_private_key_hex: Option<&str>,
         timeout_secs: f64,
     ) -> Result<JsonValue, std::io::Error>;
@@ -481,6 +562,22 @@ pub struct OutboundDeliveryOptions {
     pub source_private_key: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct PaperEncodeEnvelope {
+    pub uri: String,
+    pub transient_id: String,
+    pub destination_hint: String,
+    pub extensions: JsonMap<String, JsonValue>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PaperDecodeOutcome {
+    pub transient_id: String,
+    pub destination_hint: String,
+    pub record: Option<MessageRecord>,
+    pub raw_lxmf_bytes: Option<Vec<u8>>,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct RpcEvent {
     pub event_type: String,
@@ -488,9 +585,9 @@ pub struct RpcEvent {
 }
 
 #[derive(Debug, Clone)]
-struct SequencedRpcEvent {
-    seq_no: u64,
-    event: RpcEvent,
+pub struct SequencedRpcEvent {
+    pub seq_no: u64,
+    pub event: RpcEvent,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -528,6 +625,10 @@ pub struct PeerRecord {
     #[serde(default)]
     pub peering_timebase: i64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub propagation_transfer_limit: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub propagation_sync_limit: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub propagation_stamp_cost: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub propagation_stamp_cost_flexibility: Option<u32>,
@@ -543,10 +644,26 @@ fn default_autopeer_maxdepth() -> u32 {
     6
 }
 
+fn default_propagation_stamp_cost_flexibility() -> u32 {
+    3
+}
+
+fn default_delivery_transfer_limit() -> u32 {
+    1000
+}
+
+fn default_propagation_transfer_limit() -> u32 {
+    256
+}
+
+fn default_propagation_sync_limit() -> u32 {
+    10240
+}
+
 fn default_network_distance() -> u32 {
     1
 }
 
 fn default_acceptance_rate() -> f64 {
-    1.0
+    0.0
 }

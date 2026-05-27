@@ -683,3 +683,17 @@
             "cursored polls must not inject StreamGap events"
         );
     }
+
+    #[test]
+    fn native_stream_gap_frame_matches_poll_gap_metadata_shape() {
+        let daemon = RpcDaemon::test_instance();
+        let frame = daemon.sdk_stream_gap_frame(42, 47, 5);
+
+        assert_eq!(frame["event_type"].as_str(), Some("StreamGap"));
+        assert_eq!(frame["seq_no"].as_u64(), Some(46));
+        assert_eq!(frame["event_id"].as_str(), Some("gap-46"));
+        assert_eq!(frame["payload"]["expected_seq_no"].as_u64(), Some(42));
+        assert_eq!(frame["payload"]["observed_seq_no"].as_u64(), Some(47));
+        assert_eq!(frame["payload"]["dropped_count"].as_u64(), Some(5));
+        assert_eq!(frame["payload"]["recovery_required"].as_bool(), Some(true));
+    }

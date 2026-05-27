@@ -10,7 +10,9 @@ use crate::hash::AddressHash;
 use crate::packet::{Packet, PacketContext};
 
 pub struct AnnounceRateLimit {
+    #[allow(dead_code)]
     pub incoming_freq_samples: usize,
+    #[allow(dead_code)]
     pub max_held_announces: usize,
     pub new_time: Duration,
     pub burst_freq_new: f64,
@@ -36,6 +38,7 @@ impl Default for AnnounceRateLimit {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum AnnounceLimitAction {
     Allow,
     Hold(Duration),
@@ -57,6 +60,7 @@ struct AnnounceLimitEntry {
 }
 
 impl AnnounceLimitEntry {
+    #[allow(dead_code)]
     pub fn new(now: Instant) -> Self {
         Self {
             created_at: now,
@@ -68,6 +72,7 @@ impl AnnounceLimitEntry {
         }
     }
 
+    #[allow(dead_code)]
     fn record_announce(&mut self, now: Instant, rate_limit: &AnnounceRateLimit) {
         self.incoming.push_back(now);
         while self.incoming.len() > rate_limit.incoming_freq_samples {
@@ -137,6 +142,7 @@ impl AnnounceLimitEntry {
         }
     }
 
+    #[allow(dead_code)]
     fn hold(&mut self, packet: &Packet, now: Instant, rate_limit: &AnnounceRateLimit) -> bool {
         if let Entry::Occupied(mut entry) = self.held_announces.entry(packet.destination) {
             entry.insert(HeldAnnounce { packet: *packet, held_at: now });
@@ -164,6 +170,7 @@ impl AnnounceLimitEntry {
         true
     }
 
+    #[allow(dead_code)]
     fn next_release_delay(&self, now: Instant, rate_limit: &AnnounceRateLimit) -> Duration {
         if self.burst_active {
             let hold_until = self
@@ -218,6 +225,7 @@ impl AnnounceLimits {
         Self { limits: BTreeMap::new(), rate_limit }
     }
 
+    #[allow(dead_code)]
     pub fn check(
         &mut self,
         iface: AddressHash,

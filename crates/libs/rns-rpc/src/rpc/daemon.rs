@@ -15,6 +15,8 @@ mod dispatch_legacy_misc;
 mod dispatch_legacy_propagation;
 mod dispatch_legacy_router;
 mod events;
+mod events_redaction;
+mod events_sink;
 mod init;
 mod metrics;
 mod sdk_attachments;

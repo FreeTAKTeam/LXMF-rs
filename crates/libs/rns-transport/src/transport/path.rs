@@ -1,14 +1,139 @@
+use super::diag;
 use super::*;
+use crate::packet::{DestinationType, Header, HeaderType, PacketType, PropagationType};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct RouteDecision {
+    pub packet: Packet,
+    pub next_iface: Option<AddressHash>,
+}
+
+pub(super) fn route_inbound_packet(
+    path_table: &PathTable,
+    original_packet: &Packet,
+    lookup: Option<AddressHash>,
+) -> RouteDecision {
+    let lookup = lookup.unwrap_or(original_packet.destination);
+
+    let Some(entry) = path_table.get(&lookup) else {
+        return RouteDecision { packet: *original_packet, next_iface: None };
+    };
+
+    let is_direct_hop = entry.hops <= 1 && entry.received_from == lookup;
+    let packet = if is_direct_hop {
+        Packet {
+            header: Header {
+                ifac_flag: original_packet.header.ifac_flag,
+                header_type: HeaderType::Type1,
+                context_flag: original_packet.header.context_flag,
+                propagation_type: PropagationType::Broadcast,
+                destination_type: original_packet.header.destination_type,
+                packet_type: original_packet.header.packet_type,
+                hops: original_packet.header.hops,
+            },
+            ifac: None,
+            destination: original_packet.destination,
+            transport: None,
+            context: original_packet.context,
+            data: original_packet.data,
+        }
+    } else {
+        Packet {
+            header: Header {
+                ifac_flag: original_packet.header.ifac_flag,
+                header_type: HeaderType::Type2,
+                context_flag: original_packet.header.context_flag,
+                propagation_type: PropagationType::Transport,
+                destination_type: original_packet.header.destination_type,
+                packet_type: original_packet.header.packet_type,
+                hops: original_packet.header.hops,
+            },
+            ifac: None,
+            destination: original_packet.destination,
+            transport: Some(entry.received_from),
+            context: original_packet.context,
+            data: original_packet.data,
+        }
+    };
+
+    RouteDecision { packet, next_iface: Some(entry.iface) }
+}
+
+pub(super) fn route_outbound_packet(
+    path_table: &PathTable,
+    original_packet: &Packet,
+) -> RouteDecision {
+    if original_packet.header.header_type == HeaderType::Type2 {
+        return RouteDecision { packet: *original_packet, next_iface: None };
+    }
+
+    if original_packet.header.packet_type == PacketType::Announce {
+        return RouteDecision { packet: *original_packet, next_iface: None };
+    }
+
+    if original_packet.header.destination_type == DestinationType::Plain
+        || original_packet.header.destination_type == DestinationType::Group
+    {
+        return RouteDecision { packet: *original_packet, next_iface: None };
+    }
+
+    let Some(entry) = path_table.get(&original_packet.destination) else {
+        return RouteDecision { packet: *original_packet, next_iface: None };
+    };
+
+    if entry.hops <= 1 && entry.received_from == original_packet.destination {
+        return RouteDecision { packet: *original_packet, next_iface: Some(entry.iface) };
+    }
+
+    RouteDecision {
+        packet: Packet {
+            header: Header {
+                ifac_flag: original_packet.header.ifac_flag,
+                header_type: HeaderType::Type2,
+                context_flag: original_packet.header.context_flag,
+                propagation_type: PropagationType::Transport,
+                destination_type: original_packet.header.destination_type,
+                packet_type: original_packet.header.packet_type,
+                hops: original_packet.header.hops,
+            },
+            ifac: original_packet.ifac,
+            destination: original_packet.destination,
+            transport: Some(entry.received_from),
+            context: original_packet.context,
+            data: original_packet.data,
+        },
+        next_iface: Some(entry.iface),
+    }
+}
 
 pub(super) async fn send_to_next_hop<'a>(
     packet: &Packet,
     handler: &MutexGuard<'a, TransportHandler>,
     lookup: Option<AddressHash>,
 ) -> bool {
-    let (packet, maybe_iface) = handler.path_table.handle_inbound_packet(packet, lookup);
+    let decision = route_inbound_packet(&handler.path_table, packet, lookup);
+    let packet = decision.packet;
+    let maybe_iface = decision.next_iface;
 
     if let Some(iface) = maybe_iface {
+        if diag::enabled() {
+            log::info!(
+                "[tp-diag] forward_next_hop node={} dst={} lookup={} out={} iface={}",
+                handler.config.name,
+                packet.destination,
+                lookup.map(|value| value.to_string()).unwrap_or_else(|| "-".to_string()),
+                packet,
+                iface
+            );
+        }
         handler.send(TxMessage { tx_type: TxMessageType::Direct(iface), packet }).await;
+    } else if diag::enabled() {
+        log::info!(
+            "[tp-diag] forward_next_hop_miss node={} dst={} lookup={}",
+            handler.config.name,
+            packet.destination,
+            lookup.map(|value| value.to_string()).unwrap_or_else(|| "-".to_string())
+        );
     }
 
     maybe_iface.is_some()
@@ -108,6 +233,9 @@ pub(super) async fn handle_fixed_destinations<'a>(
     if packet.destination == handler.fixed_dest_path_requests {
         handle_path_request(packet, handler, iface).await;
         true
+    } else if packet.destination == handler.fixed_dest_tunnel_synthesize {
+        super::tunnels::handle_tunnel_synthesize_packet(packet, handler, iface).await;
+        true
     } else {
         false
     }
@@ -171,6 +299,17 @@ pub(super) async fn handle_link_request_as_intermediate<'a>(
     packet: &Packet,
     mut handler: MutexGuard<'a, TransportHandler>,
 ) {
+    if diag::enabled() {
+        log::info!(
+            "[tp-diag] link_request_intermediate node={} dst={} from_iface={} next_hop={} next_iface={} packet={}",
+            handler.config.name,
+            packet.destination,
+            received_from,
+            next_hop,
+            next_hop_iface,
+            packet
+        );
+    }
     handler.link_table.add(packet, packet.destination, received_from, next_hop, next_hop_iface);
 
     send_to_next_hop(packet, &handler, None).await;
@@ -208,3 +347,5 @@ pub(super) async fn handle_link_request<'a>(
         );
     }
 }
+
+include!("path_tests.rs");

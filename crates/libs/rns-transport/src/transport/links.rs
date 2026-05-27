@@ -1,6 +1,45 @@
 use super::*;
 
 impl Transport {
+    pub async fn reset_out_link(&self, destination: &AddressHash) {
+        let removed = {
+            let mut handler = self.handler.lock().await;
+            handler.out_links.remove(destination)
+        };
+        let Some(link) = removed else {
+            return;
+        };
+
+        let link_id = {
+            let mut link = link.lock().await;
+            let link_id = *link.id();
+            link.close();
+            link_id
+        };
+        self.handler.lock().await.resource_manager.remove_link_state(link_id);
+    }
+
+    pub(crate) async fn send_link_packet_on_bound_iface(
+        &self,
+        link: &Arc<Mutex<Link>>,
+        packet: Packet,
+    ) -> SendPacketOutcome {
+        let Some(iface) = link.lock().await.ingress_iface() else {
+            return SendPacketOutcome::DroppedNoRoute;
+        };
+        let dispatch = self
+            .handler
+            .lock()
+            .await
+            .send(TxMessage { tx_type: TxMessageType::Direct(iface), packet })
+            .await;
+        if dispatch.sent_ifaces > 0 {
+            SendPacketOutcome::SentDirect
+        } else {
+            SendPacketOutcome::DroppedNoRoute
+        }
+    }
+
     async fn find_any_link(&self, link_id: &AddressHash) -> Option<Arc<Mutex<Link>>> {
         let (out_links, in_link) = {
             let handler = self.handler.lock().await;
@@ -203,7 +242,71 @@ impl Transport {
         let (resource_hash, packet) =
             handler.resource_manager.start_send(&link_guard, data, metadata)?;
         drop(link_guard);
-        let outcome = handler.send_packet_with_outcome(packet).await;
+        drop(handler);
+        let outcome = self.send_link_packet_on_bound_iface(&link, packet).await;
+        let mut handler = self.handler.lock().await;
+        let sent =
+            matches!(outcome, SendPacketOutcome::SentDirect | SendPacketOutcome::SentBroadcast);
+        handler.resource_manager.confirm_outbound_dispatch(resource_hash, sent);
+        if sent {
+            Ok(resource_hash)
+        } else {
+            Err(RnsError::ConnectionError)
+        }
+    }
+
+    pub async fn send_response_resource(
+        &self,
+        link_id: &AddressHash,
+        request_id: Vec<u8>,
+        data: Vec<u8>,
+        metadata: Option<Vec<u8>>,
+    ) -> Result<Hash, RnsError> {
+        let link = self.find_any_link(link_id).await.ok_or(RnsError::InvalidArgument)?;
+        let mut handler = self.handler.lock().await;
+        let link_guard = link.lock().await;
+        let (resource_hash, packet) = handler.resource_manager.start_send_with_options(
+            &link_guard,
+            data,
+            metadata,
+            Some(request_id),
+            true,
+        )?;
+        drop(link_guard);
+        drop(handler);
+        let outcome = self.send_link_packet_on_bound_iface(&link, packet).await;
+        let mut handler = self.handler.lock().await;
+        let sent =
+            matches!(outcome, SendPacketOutcome::SentDirect | SendPacketOutcome::SentBroadcast);
+        handler.resource_manager.confirm_outbound_dispatch(resource_hash, sent);
+        if sent {
+            Ok(resource_hash)
+        } else {
+            Err(RnsError::ConnectionError)
+        }
+    }
+
+    pub async fn send_request_resource(
+        &self,
+        link_id: &AddressHash,
+        request_id: Vec<u8>,
+        data: Vec<u8>,
+        metadata: Option<Vec<u8>>,
+    ) -> Result<Hash, RnsError> {
+        let link = self.find_any_link(link_id).await.ok_or(RnsError::InvalidArgument)?;
+        let mut handler = self.handler.lock().await;
+        let link_guard = link.lock().await;
+        let (resource_hash, packet) = handler.resource_manager.start_send_with_options(
+            &link_guard,
+            data,
+            metadata,
+            Some(request_id),
+            false,
+        )?;
+        drop(link_guard);
+        drop(handler);
+        let outcome = self.send_link_packet_on_bound_iface(&link, packet).await;
+        let mut handler = self.handler.lock().await;
         let sent =
             matches!(outcome, SendPacketOutcome::SentDirect | SendPacketOutcome::SentBroadcast);
         handler.resource_manager.confirm_outbound_dispatch(resource_hash, sent);
@@ -350,7 +453,15 @@ impl Transport {
         let link = self.handler.lock().await.out_links.get(&destination.address_hash).cloned();
 
         if let Some(link) = link {
-            if link.lock().await.status() != LinkStatus::Closed {
+            let status = link.lock().await.status();
+            if super::diag::enabled() {
+                log::info!(
+                    "[tp-diag] reuse_out_link destination={} status={:?}",
+                    destination.address_hash,
+                    status
+                );
+            }
+            if status != LinkStatus::Closed {
                 return link;
             } else {
                 log::warn!("tp({}): link was closed", self.name);
@@ -367,6 +478,13 @@ impl Transport {
             link.id(),
             destination
         );
+        if super::diag::enabled() {
+            log::info!(
+                "[tp-diag] create_out_link destination={} link_id={}",
+                destination.address_hash,
+                link.id()
+            );
+        }
 
         let link = Arc::new(Mutex::new(link));
 
@@ -383,7 +501,35 @@ impl Transport {
         on_iface: Option<AddressHash>,
         tag: Option<TagBytes>,
     ) {
-        self.handler.lock().await.request_path(destination, on_iface, tag).await
+        let packet = {
+            let mut handler = self.handler.lock().await;
+            handler.path_requests.generate(destination, tag)
+        };
+        if super::diag::enabled() {
+            log::info!(
+                "[tp-diag] path_request_broadcast dst={} on_iface={}",
+                destination,
+                on_iface.map(|iface| iface.to_string()).unwrap_or_else(|| "-".to_string())
+            );
+        }
+        let dispatch = self
+            .iface_manager
+            .lock()
+            .await
+            .send_with_announce_policy(
+                TxMessage { tx_type: TxMessageType::Broadcast(on_iface), packet },
+                None,
+            )
+            .await;
+        if super::diag::enabled() {
+            log::info!(
+                "[tp-diag] path_request_broadcast_done dst={} matched={} sent={} failed={}",
+                destination,
+                dispatch.matched_ifaces,
+                dispatch.sent_ifaces,
+                dispatch.failed_ifaces
+            );
+        }
     }
 
     pub fn out_link_events(&self) -> broadcast::Receiver<LinkEventData> {
@@ -421,6 +567,10 @@ impl Transport {
 
     pub async fn knows_destination(&self, address: &AddressHash) -> bool {
         self.handler.lock().await.knows_destination(address)
+    }
+
+    pub async fn has_path(&self, address: &AddressHash) -> bool {
+        self.handler.lock().await.path_table.get(address).is_some()
     }
 
     pub async fn destination_identity(&self, address: &AddressHash) -> Option<Identity> {

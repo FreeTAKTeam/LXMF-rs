@@ -28,6 +28,9 @@ use crate::{
 use super::DestinationDesc;
 
 const LINK_MTU_SIZE: usize = 3;
+const LINK_MTU_MASK: u32 = 0x1F_FFFF;
+const LINK_MODE_MASK: u32 = 0xE0_0000;
+const RETICULUM_COMPAT_MTU: u32 = (PACKET_MDU + 2 + 1 + ADDRESS_HASH_SIZE * 2) as u32;
 const KEEPALIVE_MAX_RTT: f32 = 1.75;
 const KEEPALIVE_TIMEOUT_FACTOR: f32 = 4.0;
 const STALE_GRACE_SECS: f32 = 5.0;
@@ -47,13 +50,17 @@ const CHANNEL_RTT_FAST_SECS: f32 = 0.18;
 const CHANNEL_RTT_MEDIUM_SECS: f32 = 0.75;
 const CHANNEL_RTT_SLOW_SECS: f32 = 1.45;
 const CHANNEL_WINDOW_FLEXIBILITY: u8 = 4;
+#[allow(dead_code)]
 const CHANNEL_MAX_TRIES: u8 = 5;
 
 #[derive(Debug, Copy, Clone)]
 struct PendingChannelPacket {
     sequence: u16,
+    #[allow(dead_code)]
     packet: Packet,
+    #[allow(dead_code)]
     tries: u8,
+    #[allow(dead_code)]
     next_retry_at: Instant,
 }
 
@@ -74,6 +81,19 @@ pub enum LinkStatus {
 impl LinkStatus {
     pub fn not_yet_active(&self) -> bool {
         *self == LinkStatus::Pending || *self == LinkStatus::Handshake
+    }
+
+    fn can_exchange_data(self) -> bool {
+        matches!(self, Self::Active)
+    }
+
+    #[allow(dead_code)]
+    fn can_retry_channel_messages(self) -> bool {
+        matches!(self, Self::Active | Self::Stale)
+    }
+
+    fn can_send_teardown(self) -> bool {
+        matches!(self, Self::Active | Self::Stale)
     }
 }
 
@@ -214,7 +234,7 @@ impl Link {
             bytes.copy_from_slice(
                 &data[PUBLIC_KEY_LENGTH * 2..PUBLIC_KEY_LENGTH * 2 + LINK_MTU_SIZE],
             );
-            Some(bytes)
+            Some(clamp_link_signalling(bytes))
         } else {
             None
         };
@@ -443,9 +463,19 @@ impl Link {
             }
             PacketContext::LinkClose => {
                 let mut buffer = [0u8; PACKET_MDU];
-                if let Ok(plain_text) = self.decrypt(packet.data.as_slice(), &mut buffer[..]) {
-                    if plain_text == self.id.as_slice() {
+                match self.decrypt(packet.data.as_slice(), &mut buffer[..]) {
+                    Ok(plain_text) if plain_text == self.id.as_slice() => {
                         self.finalize_local_close();
+                    }
+                    Ok(plain_text) => {
+                        log::warn!(
+                            "link({}): ignored link close with mismatched payload len={}",
+                            self.id,
+                            plain_text.len()
+                        );
+                    }
+                    Err(err) => {
+                        log::warn!("link({}): failed to decrypt link close: {:?}", self.id, err);
                     }
                 }
                 return LinkHandleResult::None;
@@ -643,8 +673,9 @@ impl Link {
         self.channel_states.insert(sequence, ChannelMessageState::Failed);
     }
 
+    #[allow(dead_code)]
     pub(crate) fn poll_channel_timeouts(&mut self, now: Instant) -> Vec<Packet> {
-        if !matches!(self.status, LinkStatus::Active | LinkStatus::Stale) {
+        if !self.status.can_retry_channel_messages() {
             return Vec::new();
         }
 
@@ -689,8 +720,9 @@ impl Link {
         resend_packets
     }
 
+    #[allow(dead_code)]
     pub(crate) fn next_channel_retry_at(&self) -> Option<Instant> {
-        if !matches!(self.status, LinkStatus::Active | LinkStatus::Stale) {
+        if !self.status.can_retry_channel_messages() {
             return None;
         }
 
@@ -702,7 +734,7 @@ impl Link {
     }
 
     pub fn channel_ready_to_send(&self) -> bool {
-        self.status == LinkStatus::Active
+        self.status.can_exchange_data()
             && self.ingress_iface.is_some()
             && self.channel_pending.len() < self.channel_send_window()
     }
@@ -808,7 +840,7 @@ impl Link {
     }
 
     fn packet_with_context(&self, data: &[u8], context: PacketContext) -> Result<Packet, RnsError> {
-        if self.status != LinkStatus::Active {
+        if !self.status.can_exchange_data() {
             log::warn!("link: can't create data packet for closed link");
         }
 
@@ -830,7 +862,7 @@ impl Link {
     }
 
     pub fn data_packet_into(&self, data: &[u8], packet: &mut Packet) -> Result<(), RnsError> {
-        if self.status != LinkStatus::Active {
+        if !self.status.can_exchange_data() {
             log::warn!("link: can't create data packet for closed link");
         }
 
@@ -1118,6 +1150,7 @@ impl Link {
         self.post_event(LinkEvent::Closed);
 
         log::warn!("link: close {}", self.id);
+        eprintln!("link: close {}", self.id);
     }
 
     fn teardown_packet(&self) -> Result<Packet, RnsError> {
@@ -1125,11 +1158,8 @@ impl Link {
     }
 
     pub fn teardown(&mut self) -> Option<Packet> {
-        let packet = if matches!(self.status, LinkStatus::Active | LinkStatus::Stale) {
-            self.teardown_packet().ok()
-        } else {
-            None
-        };
+        let packet =
+            if self.status.can_send_teardown() { self.teardown_packet().ok() } else { None };
         if packet.is_some() {
             self.note_outbound(PacketContext::LinkClose);
         }
@@ -1248,6 +1278,14 @@ impl Link {
     }
 }
 
+fn clamp_link_signalling(bytes: [u8; LINK_MTU_SIZE]) -> [u8; LINK_MTU_SIZE] {
+    let value = ((bytes[0] as u32) << 16) | ((bytes[1] as u32) << 8) | bytes[2] as u32;
+    let mode = value & LINK_MODE_MASK;
+    let mtu = (value & LINK_MTU_MASK).min(RETICULUM_COMPAT_MTU);
+    let value = mode | mtu;
+    [((value >> 16) & 0xFF) as u8, ((value >> 8) & 0xFF) as u8, (value & 0xFF) as u8]
+}
+
 include!("link/proof.rs");
 
 #[cfg(test)]
@@ -1255,6 +1293,61 @@ mod tests {
     use super::*;
     use crate::destination::{DestinationDesc, DestinationName};
     use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn link_status_predicates_make_lifecycle_edges_explicit() {
+        for status in [LinkStatus::Pending, LinkStatus::Handshake] {
+            assert!(status.not_yet_active());
+            assert!(!status.can_exchange_data());
+            assert!(!status.can_retry_channel_messages());
+            assert!(!status.can_send_teardown());
+        }
+        assert!(LinkStatus::Active.can_exchange_data());
+        assert!(LinkStatus::Active.can_retry_channel_messages());
+        assert!(LinkStatus::Active.can_send_teardown());
+        assert!(!LinkStatus::Stale.can_exchange_data());
+        assert!(LinkStatus::Stale.can_retry_channel_messages());
+        assert!(LinkStatus::Stale.can_send_teardown());
+        assert!(!LinkStatus::Closed.can_exchange_data());
+        assert!(!LinkStatus::Closed.can_retry_channel_messages());
+        assert!(!LinkStatus::Closed.can_send_teardown());
+    }
+
+    #[test]
+    fn inbound_link_request_clamps_peer_mtu_to_supported_packet_capacity() {
+        let requester = PrivateIdentity::new_from_rand(OsRng);
+        let signer = PrivateIdentity::new_from_rand(OsRng);
+        let identity = *signer.as_identity();
+        let destination = DestinationDesc {
+            identity,
+            address_hash: identity.address_hash,
+            name: DestinationName::new("lxmf", "delivery"),
+        };
+        let (tx, _) = tokio::sync::broadcast::channel(4);
+        let mut data = PacketDataBuffer::new();
+        data.safe_write(requester.as_identity().public_key.as_bytes());
+        data.safe_write(requester.as_identity().verifying_key.as_bytes());
+        data.safe_write(&[0x20, 0x20, 0x00]);
+        let request = Packet {
+            header: Header { packet_type: PacketType::LinkRequest, ..Default::default() },
+            ifac: None,
+            destination: destination.address_hash,
+            transport: None,
+            context: PacketContext::None,
+            data,
+        };
+
+        let mut inbound =
+            Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
+                .expect("link request should parse");
+        assert_eq!(inbound.signalling, Some([0x20, 0x01, 0xF3]));
+
+        let proof = inbound.prove();
+        assert_eq!(
+            &proof.data.as_slice()[SIGNATURE_LENGTH + PUBLIC_KEY_LENGTH..],
+            &[0x20, 0x01, 0xF3]
+        );
+    }
 
     #[test]
     fn link_handshake_roundtrip_encrypts_and_decrypts() {
@@ -1922,6 +2015,7 @@ mod tests {
             outbound.handle_packet(&inbound.prove(), iface),
             LinkHandleResult::Activated
         ));
+        outbound.rtt = Duration::from_millis(10);
 
         let (sequence, _packet) = outbound
             .send_channel_message(0x7101, b"eventually-fails".to_vec())

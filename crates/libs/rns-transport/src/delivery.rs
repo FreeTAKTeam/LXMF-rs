@@ -77,7 +77,7 @@ pub async fn send_on_link(
 
     match packet {
         Ok(packet) => {
-            let outcome = transport.send_packet_with_outcome(packet).await;
+            let outcome = transport.send_link_packet_on_bound_iface(link, packet).await;
             if !send_outcome_is_sent(outcome) {
                 return Err(io::Error::other(format!(
                     "link packet not sent: {}",
@@ -135,5 +135,33 @@ pub async fn await_link_activation(
             }
             Err(_) => continue,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn send_outcome_status_maps_success() {
+        assert_eq!(
+            send_outcome_status("opportunistic", SendPacketOutcome::SentDirect),
+            "sent: opportunistic"
+        );
+    }
+
+    #[test]
+    fn send_outcome_status_maps_failures() {
+        assert_eq!(
+            send_outcome_status(
+                "opportunistic",
+                SendPacketOutcome::DroppedMissingDestinationIdentity,
+            ),
+            "failed: opportunistic missing destination identity"
+        );
+        assert_eq!(
+            send_outcome_status("opportunistic", SendPacketOutcome::DroppedNoRoute),
+            "failed: opportunistic no route"
+        );
     }
 }

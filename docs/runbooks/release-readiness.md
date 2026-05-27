@@ -11,8 +11,9 @@ active branch.
   are historical parity snapshots, not the primary release gate.
 - If a parity matrix disagrees with `docs/status/current-roadmap.md`, treat the
   matrix as stale until it is refreshed in the same change.
-- Rust/Python live interop is still partial and is not yet a required CI gate.
-  Do not mark parity complete until non-ignored evidence exists.
+- Rust/Python live interop is enforced by `.github/workflows/python-interop.yml`
+  on pull requests for the pinned Python Reticulum/LXMF references. Do not mark
+  parity complete until non-ignored evidence exists for the specific matrix row.
 
 ## 2. Contract and schema gates
 
@@ -49,9 +50,22 @@ Current GitHub PR CI in `.github/workflows/ci.yml` enforces these jobs:
   - `cargo xtask publish-crates --wave all --dry-run --allow-dirty`
   - `cargo check -p reticulumd -p rns-tools`
   - `bash tools/scripts/check-boundaries.sh`
+  - `cargo run -p xtask -- architecture-checks`
+  - `cargo run -p xtask -- sdk-docs-check`
+  - `cargo run -p xtask -- sdk-migration-check`
 - `security`
   - `cargo deny check bans licenses sources`
   - `cargo audit --ignore RUSTSEC-2024-0421 --ignore RUSTSEC-2024-0436 --ignore RUSTSEC-2026-0009 --ignore RUSTSEC-2025-0134`
+
+`.github/workflows/python-interop.yml` is also a pull-request gate for pinned
+reference compatibility. It runs:
+
+- Python reference conformance baseline against pinned Reticulum/LXMF commits.
+- `cargo xtask ci --stage interop-artifacts`
+- `cargo xtask ci --stage sdk-conformance`
+- `cargo xtask ci --stage e2e-compatibility`
+- ignored live Rust/Python channel, paper, compatibility-matrix, and LXMD
+  remote-relay interop tests with the pinned checkouts.
 
 The commands below remain useful release checks, but they are not currently
 enforced by pull-request CI unless and until `.github/workflows/ci.yml` is
@@ -71,7 +85,29 @@ cargo xtask ci --stage sdk-schema-check
 cargo xtask publish-crates --wave all --dry-run --allow-dirty
 bash tools/scripts/check-boundaries.sh
 cargo run -p xtask -- architecture-checks
+cargo run -p xtask -- sdk-docs-check
+cargo run -p xtask -- sdk-migration-check
 ```
+
+ZeroMQ transport readiness checks before considering a default switch:
+
+```bash
+cargo check --workspace --all-targets
+cargo test --workspace
+cargo clippy --workspace --all-targets --all-features --no-deps -- -D warnings
+cargo doc --workspace --no-deps
+bash tools/scripts/check-boundaries.sh
+cargo run -p rns-tools --bin rnx -- replay --trace docs/fixtures/sdk-v2/rpc/replay_known_send_cancel.v1.json
+```
+
+Additional required evidence:
+
+- local TCP SDK plus daemon integration covers start, send, cancel, status, configure, poll events,
+  snapshot, and shutdown
+- multi-client tests prove no cross-session response delivery
+- queue pressure, restart, reconnect, no-peer, oversized-frame, and sustained-event stress cases
+  map to documented SDK errors
+- remote ZeroMQ endpoints fail closed without token auth
 
 Extended/manual release checks:
 
@@ -114,6 +150,19 @@ cargo run -p xtask -- supply-chain-check
 cargo run -p xtask -- reproducible-build-check
 cargo run -p xtask -- leader-readiness-check
 ```
+
+External-client interop release gate:
+
+```bash
+tools/scripts/external-client-interop-gate.sh meshchatx /path/to/MeshChatX
+tools/scripts/external-client-interop-gate.sh sideband /path/to/Sideband
+tools/scripts/external-client-interop-gate.sh columba /path/to/columba
+```
+
+The gate does not download external clients. Provide the source checkout as the
+second argument or set `MESHCHATX_ROOT`, `SIDEBAND_ROOT`, or `COLUMBA_ROOT`.
+Do not claim interoperability for a client unless this gate emits
+`status: "pass"` in its summary artifact for the release candidate.
 
 Optional soak:
 
@@ -165,6 +214,16 @@ Leader-grade readiness certification artifact:
 - `target/release-readiness/leader-grade-readiness.md`
 - `target/release-readiness/certification-report.md`
 - `target/release-readiness/certification-report.json`
+
+External-client interop gate artifacts:
+
+- `target/interop/external-client-gate/<client>/report.json`
+- `target/interop/external-client-gate/<client>/gate-summary.json`
+
+The summary artifact must include the selected external client checkout path,
+Git revision metadata when available, generated client config/state artifacts,
+logs, and destination hashes. Keep this artifact with the release candidate
+evidence before making any external-client interoperability claim.
 
 Embedded footprint report artifact:
 

@@ -25,7 +25,18 @@ enum OutboundResourcePoll {
 
 impl ResourceSender {
     fn new(link: &Link, data: Vec<u8>, metadata: Option<Vec<u8>>) -> Result<Self, RnsError> {
+        Self::new_with_options(link, data, metadata, None, false)
+    }
+
+    pub(super) fn new_with_options(
+        link: &Link,
+        data: Vec<u8>,
+        metadata: Option<Vec<u8>>,
+        request_id: Option<Vec<u8>>,
+        is_response: bool,
+    ) -> Result<Self, RnsError> {
         let has_metadata = metadata.is_some();
+        let has_request_id = request_id.is_some();
         let metadata_prefix = if let Some(payload) = metadata.as_ref() {
             if payload.len() > METADATA_MAX_SIZE {
                 return Err(RnsError::InvalidArgument);
@@ -79,11 +90,14 @@ impl ResourceSender {
             original_hash: resource_hash,
             segment_index: 1,
             total_segments: 1,
-            request_id: None,
+            request_id: request_id.map(ByteBuf::from),
             flags: {
                 let mut flags = FLAG_ENCRYPTED;
                 if has_metadata {
                     flags |= FLAG_METADATA;
+                }
+                if has_request_id {
+                    flags |= if is_response { FLAG_RESPONSE } else { FLAG_REQUEST };
                 }
                 flags
             },
@@ -124,7 +138,7 @@ impl ResourceSender {
         self.adv_sent = now;
         self.last_part_sent = now;
         self.max_retries = retry_limit;
-        self.retries_left = retry_limit;
+        self.retries_left = retry_limit.min(DEFAULT_RESOURCE_MAX_ADV_RETRIES);
         self.status = ResourceStatus::Advertised;
     }
 
@@ -199,8 +213,20 @@ impl ResourceSender {
                         log::warn!("resource: failed to build resource packet");
                     }
                 }
+            } else {
+                resource_diag(&format!(
+                    "request_part_miss hash={} requested_map_hash={:02x}{:02x}{:02x}{:02x}",
+                    self.resource_hash, hash[0], hash[1], hash[2], hash[3]
+                ));
             }
         }
+        resource_diag(&format!(
+            "request_parts_built hash={} requested={} built={} sent_any={}",
+            self.resource_hash,
+            request.requested_hashes.len(),
+            packets.len(),
+            sent_any
+        ));
 
         if request.hashmap_exhausted {
             if let Some(last_hash) = request.last_map_hash {
@@ -231,10 +257,7 @@ impl ResourceSender {
             }
         }
 
-        if self.status == ResourceStatus::Advertised
-            || self.status == ResourceStatus::Transferring
-            || self.status == ResourceStatus::AwaitingProof
-        {
+        if self.status.accepts_transfer_activity() {
             let now = Instant::now();
             self.last_activity = now;
             self.retries_left = self.max_retries;

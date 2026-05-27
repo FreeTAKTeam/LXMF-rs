@@ -5,27 +5,22 @@ pub mod tcp_client;
 pub mod tcp_server;
 pub mod udp;
 
+use std::collections::VecDeque;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::sync::OnceLock;
 use std::time::Duration;
 
 use tokio::sync::mpsc;
 use tokio::task;
+use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 use crate::hash::AddressHash;
 use crate::hash::Hash;
 use crate::packet::Packet;
 
-pub use driver::{InterfaceDriver, InterfaceDriverFactory};
-
-pub type InterfaceTxSender = mpsc::Sender<TxMessage>;
-pub type InterfaceTxReceiver = mpsc::Receiver<TxMessage>;
-
-pub type InterfaceRxSender = mpsc::Sender<RxMessage>;
-pub type InterfaceRxReceiver = mpsc::Receiver<RxMessage>;
+include!("iface_types.rs");
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum TxMessageType {
@@ -43,7 +38,52 @@ pub struct TxMessage {
 pub struct TxDispatchTrace {
     pub matched_ifaces: usize,
     pub sent_ifaces: usize,
+    pub queued_ifaces: usize,
     pub failed_ifaces: usize,
+}
+
+#[derive(Debug, Default, PartialEq, Eq, Copy, Clone)]
+pub enum InterfaceMode {
+    #[default]
+    Full,
+    PointToPoint,
+    AccessPoint,
+    Roaming,
+    Boundary,
+    Gateway,
+}
+
+impl InterfaceMode {
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "full" => Some(Self::Full),
+            "pointtopoint" | "point_to_point" | "point-to-point" | "ptp" => {
+                Some(Self::PointToPoint)
+            }
+            "access_point" | "accesspoint" | "access-point" | "ap" => Some(Self::AccessPoint),
+            "roaming" => Some(Self::Roaming),
+            "boundary" => Some(Self::Boundary),
+            "gateway" | "gw" => Some(Self::Gateway),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Full => "full",
+            Self::PointToPoint => "pointtopoint",
+            Self::AccessPoint => "access_point",
+            Self::Roaming => "roaming",
+            Self::Boundary => "boundary",
+            Self::Gateway => "gateway",
+        }
+    }
+}
+
+#[derive(Debug, Default, PartialEq, Eq, Copy, Clone)]
+pub struct AnnounceBroadcastPolicy {
+    pub local_destination: bool,
+    pub next_hop_iface_mode: Option<InterfaceMode>,
 }
 
 /// Where a received packet came from at the wire level.
@@ -128,9 +168,22 @@ pub trait Interface {
 
 struct LocalInterface {
     address: AddressHash,
+    full_hash: Hash,
     tx_send: InterfaceTxSender,
     stop: CancellationToken,
     role: IfaceRole,
+    mode: InterfaceMode,
+    announce_queue: VecDeque<QueuedAnnounce>,
+    announce_allowed_at: Instant,
+    announce_bitrate_bps: u64,
+    announce_cap_percent: u64,
+}
+
+#[derive(Debug, Copy, Clone)]
+struct QueuedAnnounce {
+    message: TxMessage,
+    queued_at: Instant,
+    emitted: u64,
 }
 
 pub struct InterfaceContext<T: Interface> {
@@ -147,24 +200,7 @@ pub struct InterfaceManager {
     ifaces: Vec<LocalInterface>,
 }
 
-const DEFAULT_IFACE_TX_QUEUE_CAPACITY: usize = 128;
-const IFACE_TX_ENQUEUE_TIMEOUT_MS: u64 = 200;
-
-fn tx_diag_enabled() -> bool {
-    static ENABLED: OnceLock<bool> = OnceLock::new();
-    *ENABLED.get_or_init(|| {
-        std::env::var("RETICULUMD_DIAGNOSTICS")
-            .or_else(|_| std::env::var("RETICULUM_TRANSPORT_DIAGNOSTICS"))
-            .ok()
-            .map(|value| {
-                matches!(
-                    value.trim().to_ascii_lowercase().as_str(),
-                    "1" | "true" | "yes" | "on" | "debug"
-                )
-            })
-            .unwrap_or(false)
-    })
-}
+include!("iface_runtime.rs");
 
 impl InterfaceManager {
     pub fn new(rx_cap: usize) -> Self {
@@ -179,18 +215,39 @@ impl InterfaceManager {
     }
 
     pub fn new_channel_with_role(&mut self, tx_cap: usize, role: IfaceRole) -> InterfaceChannel {
+        self.new_channel_with_role_and_mode(tx_cap, role, InterfaceMode::default())
+    }
+
+    pub fn new_channel_with_role_and_mode(
+        &mut self,
+        tx_cap: usize,
+        role: IfaceRole,
+        mode: InterfaceMode,
+    ) -> InterfaceChannel {
         self.counter += 1;
 
         let counter_bytes = self.counter.to_le_bytes();
-        let address = AddressHash::new_from_hash(&Hash::new_from_slice(&counter_bytes[..]));
+        let full_hash = Hash::new_from_slice(&counter_bytes[..]);
+        let address = AddressHash::new_from_hash(&full_hash);
 
         let (tx_send, tx_recv) = InterfaceChannel::make_tx_channel(tx_cap);
 
-        log::debug!("iface: create channel {} role={:?}", address, role);
+        log::debug!("iface: create channel {} role={:?} mode={:?}", address, role, mode);
 
         let stop = CancellationToken::new();
 
-        self.ifaces.push(LocalInterface { address, tx_send, stop: stop.clone(), role });
+        self.ifaces.push(LocalInterface {
+            address,
+            full_hash,
+            tx_send,
+            stop: stop.clone(),
+            role,
+            mode,
+            announce_queue: VecDeque::new(),
+            announce_allowed_at: Instant::now(),
+            announce_bitrate_bps: DEFAULT_IFACE_BITRATE_BPS,
+            announce_cap_percent: DEFAULT_ANNOUNCE_CAP_PERCENT,
+        });
 
         InterfaceChannel { rx_channel: self.rx_send.clone(), tx_channel: tx_recv, address, stop }
     }
@@ -204,7 +261,17 @@ impl InterfaceManager {
         inner: T,
         role: IfaceRole,
     ) -> InterfaceContext<T> {
-        let channel = self.new_channel_with_role(DEFAULT_IFACE_TX_QUEUE_CAPACITY, role);
+        self.new_context_with_role_and_mode(inner, role, InterfaceMode::default())
+    }
+
+    pub fn new_context_with_role_and_mode<T: Interface>(
+        &mut self,
+        inner: T,
+        role: IfaceRole,
+        mode: InterfaceMode,
+    ) -> InterfaceContext<T> {
+        let channel =
+            self.new_channel_with_role_and_mode(DEFAULT_IFACE_TX_QUEUE_CAPACITY, role, mode);
         let inner = Arc::new(Mutex::new(inner));
         InterfaceContext::<T> { inner: inner.clone(), channel, cancel: self.cancel.clone() }
     }
@@ -229,7 +296,22 @@ impl InterfaceManager {
         R: std::future::Future<Output = ()> + Send + 'static,
         R::Output: Send + 'static,
     {
-        let context = self.new_context_with_role(inner, role);
+        self.spawn_as_with_mode(inner, worker, role, InterfaceMode::default())
+    }
+
+    pub fn spawn_as_with_mode<T: Interface, F, R>(
+        &mut self,
+        inner: T,
+        worker: F,
+        role: IfaceRole,
+        mode: InterfaceMode,
+    ) -> AddressHash
+    where
+        F: FnOnce(InterfaceContext<T>) -> R,
+        R: std::future::Future<Output = ()> + Send + 'static,
+        R::Output: Send + 'static,
+    {
+        let context = self.new_context_with_role_and_mode(inner, role, mode);
         let address = *context.channel.address();
 
         task::spawn(worker(context));
@@ -239,6 +321,27 @@ impl InterfaceManager {
 
     pub fn role(&self, address: &AddressHash) -> Option<IfaceRole> {
         self.ifaces.iter().find(|i| i.address == *address).map(|i| i.role)
+    }
+
+    pub fn mode(&self, address: &AddressHash) -> Option<InterfaceMode> {
+        self.ifaces.iter().find(|i| i.address == *address).map(|i| i.mode)
+    }
+
+    pub fn full_hash(&self, address: &AddressHash) -> Option<Hash> {
+        self.ifaces.iter().find(|i| i.address == *address).map(|i| i.full_hash)
+    }
+
+    pub fn address_for_full_hash(&self, full_hash: &Hash) -> Option<AddressHash> {
+        self.ifaces.iter().find(|i| i.full_hash == *full_hash).map(|i| i.address)
+    }
+
+    pub fn set_mode(&mut self, address: AddressHash, mode: InterfaceMode) -> bool {
+        if let Some(iface) = self.ifaces.iter_mut().find(|i| i.address == address) {
+            iface.mode = mode;
+            true
+        } else {
+            false
+        }
     }
 
     /// Register a virtual iface that shares its tx channel with an
@@ -256,7 +359,9 @@ impl InterfaceManager {
         host: AddressHash,
         role: IfaceRole,
     ) -> Option<AddressHash> {
-        let host_tx = self.ifaces.iter().find(|i| i.address == host).map(|i| i.tx_send.clone())?;
+        let host_iface = self.ifaces.iter().find(|i| i.address == host)?;
+        let host_tx = host_iface.tx_send.clone();
+        let mode = host_iface.mode;
 
         // Virtual iface gets its own CancellationToken so it can be
         // stopped (and GC'd by `cleanup()`) independently of the host.
@@ -266,11 +371,29 @@ impl InterfaceManager {
 
         self.counter += 1;
         let counter_bytes = self.counter.to_le_bytes();
-        let address = AddressHash::new_from_hash(&Hash::new_from_slice(&counter_bytes[..]));
+        let full_hash = Hash::new_from_slice(&counter_bytes[..]);
+        let address = AddressHash::new_from_hash(&full_hash);
 
-        log::debug!("iface: register virtual iface {} on host {} role={:?}", address, host, role);
+        log::debug!(
+            "iface: register virtual iface {} on host {} role={:?} mode={:?}",
+            address,
+            host,
+            role,
+            mode
+        );
 
-        self.ifaces.push(LocalInterface { address, tx_send: host_tx, stop, role });
+        self.ifaces.push(LocalInterface {
+            address,
+            full_hash,
+            tx_send: host_tx,
+            stop,
+            role,
+            mode,
+            announce_queue: VecDeque::new(),
+            announce_allowed_at: Instant::now(),
+            announce_bitrate_bps: host_iface.announce_bitrate_bps,
+            announce_cap_percent: host_iface.announce_cap_percent,
+        });
 
         Some(address)
     }
@@ -307,9 +430,140 @@ impl InterfaceManager {
         self.ifaces.iter().any(|i| i.role == role)
     }
 
-    pub async fn send(&self, message: TxMessage) -> TxDispatchTrace {
+    async fn send_to_iface(iface: &LocalInterface, message: TxMessage) -> bool {
+        match iface.tx_send.try_send(message) {
+            Ok(()) => true,
+            Err(mpsc::error::TrySendError::Full(_)) => {
+                match tokio::time::timeout(
+                    Duration::from_millis(IFACE_TX_ENQUEUE_TIMEOUT_MS),
+                    iface.tx_send.send(message),
+                )
+                .await
+                {
+                    Ok(Ok(())) => {
+                        if tx_diag_enabled() {
+                            log::warn!(
+                                "iface: recovered from full tx queue on {} for {:?}",
+                                iface.address,
+                                message.tx_type
+                            );
+                        }
+                        true
+                    }
+                    Ok(Err(_)) => {
+                        log::warn!(
+                            "iface: tx queue closed on {} for {:?}",
+                            iface.address,
+                            message.tx_type
+                        );
+                        false
+                    }
+                    Err(_) => {
+                        log::warn!(
+                            "iface: tx queue full timeout on {} for {:?}",
+                            iface.address,
+                            message.tx_type
+                        );
+                        false
+                    }
+                }
+            }
+            Err(mpsc::error::TrySendError::Closed(_)) => {
+                log::warn!("iface: tx queue closed on {} for {:?}", iface.address, message.tx_type);
+                false
+            }
+        }
+    }
+
+    fn queue_announce(iface: &mut LocalInterface, message: TxMessage, now: Instant) -> bool {
+        iface
+            .announce_queue
+            .retain(|entry| now.duration_since(entry.queued_at) <= QUEUED_ANNOUNCE_LIFE);
+
+        let emitted = announce_emitted(&message.packet);
+        if let Some(existing) = iface
+            .announce_queue
+            .iter_mut()
+            .find(|entry| entry.message.packet.destination == message.packet.destination)
+        {
+            if emitted > existing.emitted {
+                existing.message = message;
+                existing.queued_at = now;
+                existing.emitted = emitted;
+            }
+            return true;
+        }
+
+        if iface.announce_queue.len() >= MAX_QUEUED_ANNOUNCES_PER_IFACE {
+            log::warn!(
+                "iface: dropping announce for {} on {} because announce queue is full",
+                message.packet.destination,
+                iface.address
+            );
+            return false;
+        }
+
+        iface.announce_queue.push_back(QueuedAnnounce { message, queued_at: now, emitted });
+        true
+    }
+
+    fn pop_next_announce(iface: &mut LocalInterface, now: Instant) -> Option<TxMessage> {
+        iface
+            .announce_queue
+            .retain(|entry| now.duration_since(entry.queued_at) <= QUEUED_ANNOUNCE_LIFE);
+        let index = iface
+            .announce_queue
+            .iter()
+            .enumerate()
+            .min_by_key(|(_, entry)| (entry.message.packet.header.hops, entry.queued_at))
+            .map(|(index, _)| index)?;
+        iface.announce_queue.remove(index).map(|entry| entry.message)
+    }
+
+    pub async fn release_queued_announces(&mut self) -> TxDispatchTrace {
         let mut trace = TxDispatchTrace::default();
-        for iface in &self.ifaces {
+        let now = Instant::now();
+
+        for iface in &mut self.ifaces {
+            if iface.stop.is_cancelled()
+                || iface.announce_queue.is_empty()
+                || now < iface.announce_allowed_at
+            {
+                continue;
+            }
+
+            let Some(message) = Self::pop_next_announce(iface, now) else {
+                continue;
+            };
+
+            trace.matched_ifaces += 1;
+            iface.announce_allowed_at = now
+                + announce_wait(
+                    &message.packet,
+                    iface.announce_bitrate_bps,
+                    iface.announce_cap_percent,
+                );
+            if Self::send_to_iface(iface, message).await {
+                trace.sent_ifaces += 1;
+            } else {
+                trace.failed_ifaces += 1;
+            }
+        }
+
+        trace
+    }
+
+    pub async fn send(&mut self, message: TxMessage) -> TxDispatchTrace {
+        self.send_with_announce_policy(message, None).await
+    }
+
+    pub async fn send_with_announce_policy(
+        &mut self,
+        message: TxMessage,
+        announce_policy: Option<AnnounceBroadcastPolicy>,
+    ) -> TxDispatchTrace {
+        let mut trace = TxDispatchTrace::default();
+        for iface in &mut self.ifaces {
             let should_send = match message.tx_type {
                 TxMessageType::Broadcast(address) => {
                     // VirtualUnicast ifaces share their tx channel with a
@@ -323,6 +577,13 @@ impl InterfaceManager {
                         if let Some(address) = address {
                             should_send = address != iface.address;
                         }
+                        if should_send {
+                            should_send = allows_announce_broadcast(
+                                &message.packet,
+                                iface.mode,
+                                announce_policy,
+                            );
+                        }
                         should_send
                     }
                 }
@@ -331,53 +592,34 @@ impl InterfaceManager {
 
             if should_send && !iface.stop.is_cancelled() {
                 trace.matched_ifaces += 1;
-                match iface.tx_send.try_send(message) {
-                    Ok(()) => {
-                        trace.sent_ifaces += 1;
-                    }
-                    Err(mpsc::error::TrySendError::Full(_)) => {
-                        match tokio::time::timeout(
-                            Duration::from_millis(IFACE_TX_ENQUEUE_TIMEOUT_MS),
-                            iface.tx_send.send(message),
-                        )
-                        .await
-                        {
-                            Ok(Ok(())) => {
-                                trace.sent_ifaces += 1;
-                                if tx_diag_enabled() {
-                                    log::warn!(
-                                        "iface: recovered from full tx queue on {} for {:?}",
-                                        iface.address,
-                                        message.tx_type
-                                    );
-                                }
-                            }
-                            Ok(Err(_)) => {
-                                trace.failed_ifaces += 1;
-                                log::warn!(
-                                    "iface: tx queue closed on {} for {:?}",
-                                    iface.address,
-                                    message.tx_type
-                                );
-                            }
-                            Err(_) => {
-                                trace.failed_ifaces += 1;
-                                log::warn!(
-                                    "iface: tx queue full timeout on {} for {:?}",
-                                    iface.address,
-                                    message.tx_type
-                                );
-                            }
-                        }
-                    }
-                    Err(mpsc::error::TrySendError::Closed(_)) => {
+                let is_paced_announce = message.packet.header.packet_type == PacketType::Announce
+                    && message.packet.header.hops > 0
+                    && matches!(message.tx_type, TxMessageType::Broadcast(_));
+                let now = Instant::now();
+                if is_paced_announce
+                    && (!iface.announce_queue.is_empty() || now < iface.announce_allowed_at)
+                {
+                    if Self::queue_announce(iface, message, now) {
+                        trace.queued_ifaces += 1;
+                    } else {
                         trace.failed_ifaces += 1;
-                        log::warn!(
-                            "iface: tx queue closed on {} for {:?}",
-                            iface.address,
-                            message.tx_type
-                        );
                     }
+                    continue;
+                }
+
+                if is_paced_announce {
+                    iface.announce_allowed_at = now
+                        + announce_wait(
+                            &message.packet,
+                            iface.announce_bitrate_bps,
+                            iface.announce_cap_percent,
+                        );
+                }
+
+                if Self::send_to_iface(iface, message).await {
+                    trace.sent_ifaces += 1;
+                } else {
+                    trace.failed_ifaces += 1;
                 }
             }
         }
@@ -386,69 +628,4 @@ impl InterfaceManager {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // A zero-sized Interface impl for tests that only exercise the
-    // manager's bookkeeping (registration, role tagging, lookup). No
-    // actual worker task is spawned by these tests; we only drive
-    // `new_channel_with_role` and the `role`/`stop_interface`/`cleanup`
-    // helpers.
-
-    #[test]
-    fn new_channel_defaults_to_unicast_role() {
-        let mut mgr = InterfaceManager::new(16);
-        let channel = mgr.new_channel(16);
-        assert_eq!(mgr.role(channel.address()), Some(IfaceRole::Unicast));
-    }
-
-    #[test]
-    fn new_channel_with_role_records_multicast_tag() {
-        let mut mgr = InterfaceManager::new(16);
-        let channel = mgr.new_channel_with_role(16, IfaceRole::Multicast);
-        assert_eq!(mgr.role(channel.address()), Some(IfaceRole::Multicast));
-        assert!(mgr.has_role(IfaceRole::Multicast));
-    }
-
-    #[test]
-    fn role_returns_none_for_unknown_address() {
-        let mgr = InterfaceManager::new(16);
-        let fake = AddressHash::new_from_hash(&Hash::new_from_slice(&[0u8; 32]));
-        assert_eq!(mgr.role(&fake), None);
-    }
-
-    #[test]
-    fn each_new_channel_gets_a_unique_address_hash() {
-        let mut mgr = InterfaceManager::new(16);
-        let a = *mgr.new_channel(16).address();
-        let b = *mgr.new_channel(16).address();
-        let c = *mgr.new_channel_with_role(16, IfaceRole::Multicast).address();
-        assert_ne!(a, b);
-        assert_ne!(a, c);
-        assert_ne!(b, c);
-    }
-
-    #[test]
-    fn stop_interface_marks_iface_stopped_and_cleanup_removes_it() {
-        let mut mgr = InterfaceManager::new(16);
-        let channel = mgr.new_channel_with_role(16, IfaceRole::Multicast);
-        let addr = *channel.address();
-        assert_eq!(mgr.iface_count(), 1);
-        assert!(mgr.stop_interface(addr));
-        // stop_interface also calls cleanup() which prunes cancelled ifaces.
-        assert_eq!(mgr.iface_count(), 0);
-    }
-
-    #[test]
-    fn iface_source_default_is_none() {
-        let src = IfaceSource::default();
-        assert_eq!(src, IfaceSource::None);
-    }
-
-    #[test]
-    fn iface_role_default_is_unicast() {
-        let role = IfaceRole::default();
-        assert_eq!(role, IfaceRole::Unicast);
-    }
-}
+include!("iface_tests.rs");

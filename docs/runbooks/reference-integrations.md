@@ -51,7 +51,7 @@ Intent:
 Baseline smoke commands:
 
 ```bash
-cargo run -p rns-tools --bin rnprobe -- --help
+cargo run -p rns-tools --bin rnsd -- --help
 cargo run -p rns-tools --bin rnx -- --help
 ```
 

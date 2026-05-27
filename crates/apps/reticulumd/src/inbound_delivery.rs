@@ -4,11 +4,11 @@ use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
 use lxmf::inbound_decode::{decode_inbound_message, InboundPayloadMode};
 use lxmf::WireMessage;
-use rns_rpc::{MessageRecord, RpcDaemon};
-use serde_json::{Map as JsonMap, Value as JsonValue};
+use rns_rpc::{MessageRecord, RpcDaemon, RpcRequest};
+use serde_json::{json, Map as JsonMap, Value as JsonValue};
 
 use crate::lxmf_bridge::rmpv_to_json;
-use crate::lxmf_stamps::validate_stamp;
+use crate::lxmf_stamps::{invalid_stamp_value, validate_stamp};
 
 pub fn decode_inbound_payload(
     destination: [u8; 16],
@@ -16,6 +16,24 @@ pub fn decode_inbound_payload(
     mode: InboundPayloadMode,
 ) -> Option<MessageRecord> {
     decode_inbound_payload_with_diagnostics(destination, payload, mode).0
+}
+
+pub fn inbound_record_allowed_by_delivery_policy(
+    daemon: &RpcDaemon,
+    record: &MessageRecord,
+) -> bool {
+    let policy = daemon
+        .handle_rpc(RpcRequest { id: 0, method: "get_delivery_policy".to_string(), params: None })
+        .ok()
+        .and_then(|response| response.result)
+        .and_then(|value| value.get("policy").cloned())
+        .unwrap_or_else(|| json!({}));
+    !policy.get("ignored_destinations").and_then(JsonValue::as_array).is_some_and(|entries| {
+        entries
+            .iter()
+            .filter_map(JsonValue::as_str)
+            .any(|entry| entry.eq_ignore_ascii_case(record.source.as_str()))
+    })
 }
 
 #[derive(Debug, Clone)]
@@ -34,6 +52,7 @@ pub struct InboundDecodeDiagnostics {
 pub struct InboundStampStatus {
     pub checked: bool,
     pub valid: bool,
+    pub value: Option<u32>,
 }
 
 impl InboundDecodeDiagnostics {
@@ -154,6 +173,9 @@ pub fn annotate_inbound_record_stamp_status(
     };
     lxmf.insert("stamp_checked".into(), JsonValue::Bool(true));
     lxmf.insert("stamp_valid".into(), JsonValue::Bool(stamp_status.valid));
+    if let Some(value) = stamp_status.value {
+        lxmf.insert("stamp_value".into(), JsonValue::from(value));
+    }
     root.insert("_lxmf".into(), JsonValue::Object(lxmf));
     record.fields = Some(JsonValue::Object(root));
 }
@@ -175,7 +197,7 @@ pub fn evaluate_inbound_stamp_policy(
 ) -> Result<InboundStampStatus, String> {
     let policy = daemon.current_stamp_policy();
     if policy.target_cost == 0 {
-        return Ok(InboundStampStatus { checked: false, valid: false });
+        return Ok(InboundStampStatus { checked: false, valid: false, value: None });
     }
 
     let wire = match mode {
@@ -192,14 +214,23 @@ pub fn evaluate_inbound_stamp_policy(
     let source_hex = hex::encode(message.source);
     let tickets = daemon.valid_issued_tickets_for(source_hex.as_str());
     let stamp = message.payload.stamp.as_deref().map(|value| value.as_ref());
-    validate_stamp(stamp, &message.message_id(), policy.target_cost, &tickets)
-        .map(|_| InboundStampStatus { checked: true, valid: true })
-        .ok_or_else(|| {
-            format!(
-                "invalid LXMF stamp for source {} and target cost {}",
-                source_hex, policy.target_cost
-            )
-        })
+    if let Some(value) = validate_stamp(stamp, &message.message_id(), policy.target_cost, &tickets)
+    {
+        return Ok(InboundStampStatus { checked: true, valid: true, value: Some(value) });
+    }
+
+    if !policy.enforce {
+        return Ok(InboundStampStatus {
+            checked: true,
+            valid: false,
+            value: invalid_stamp_value(stamp, &message.message_id()),
+        });
+    }
+
+    Err(format!(
+        "invalid LXMF stamp for source {} and target cost {}",
+        source_hex, policy.target_cost
+    ))
 }
 
 fn inbound_mode_label(mode: InboundPayloadMode) -> &'static str {
@@ -213,7 +244,8 @@ fn inbound_mode_label(mode: InboundPayloadMode) -> &'static str {
 mod tests {
     use super::{
         annotate_inbound_record_stamp_status, decode_inbound_payload_with_diagnostics,
-        evaluate_inbound_stamp_policy, inbound_stamp_policy_allows_payload, InboundStampStatus,
+        evaluate_inbound_stamp_policy, inbound_record_allowed_by_delivery_policy,
+        inbound_stamp_policy_allows_payload, InboundStampStatus,
     };
     use lxmf::inbound_decode::InboundPayloadMode;
     use lxmf::{Payload, WireMessage};
@@ -328,6 +360,63 @@ mod tests {
     }
 
     #[test]
+    fn inbound_stamp_policy_reports_invalid_status_when_enforcement_disabled() {
+        let daemon = RpcDaemon::test_instance();
+        daemon
+            .handle_rpc(RpcRequest {
+                id: 11,
+                method: "stamp_policy_set".to_string(),
+                params: Some(serde_json::json!({
+                    "target_cost": 4,
+                    "flexibility": 0,
+                    "enforce": false,
+                })),
+            })
+            .expect("set stamp policy");
+        let identity = PrivateIdentity::new_from_name("inbound-invalid-stamp-observed");
+        let mut source = [0u8; 16];
+        source.copy_from_slice(identity.address_hash().as_slice());
+        let destination = [0x75u8; 16];
+        let wire = build_wire_message_with_options(
+            source,
+            destination,
+            "title",
+            "content",
+            None,
+            &identity,
+            None,
+            None,
+            None,
+        )
+        .expect("wire");
+
+        let status = evaluate_inbound_stamp_policy(
+            &daemon,
+            destination,
+            &wire,
+            InboundPayloadMode::FullWire,
+        )
+        .expect("invalid stamp should be observable when enforcement is disabled");
+
+        assert!(status.checked);
+        assert!(!status.valid);
+        assert!(status.value.is_none());
+
+        let mut record = decode_inbound_payload_with_diagnostics(
+            destination,
+            &wire,
+            InboundPayloadMode::FullWire,
+        )
+        .0
+        .expect("decoded record");
+        annotate_inbound_record_stamp_status(&mut record, status);
+        let fields = record.fields.expect("fields");
+        assert_eq!(fields["_lxmf"]["stamp_checked"], serde_json::json!(true));
+        assert_eq!(fields["_lxmf"]["stamp_valid"], serde_json::json!(false));
+        assert_eq!(fields["_lxmf"].get("stamp_value"), None);
+    }
+
+    #[test]
     fn inbound_stamp_status_annotation_sets_lxmf_flags() {
         let mut record = rns_rpc::MessageRecord {
             id: "msg-1".into(),
@@ -343,12 +432,59 @@ mod tests {
 
         annotate_inbound_record_stamp_status(
             &mut record,
-            InboundStampStatus { checked: true, valid: true },
+            InboundStampStatus { checked: true, valid: true, value: Some(17) },
         );
         let fields = record.fields.expect("fields");
         assert_eq!(fields["meta"], serde_json::json!(1));
         assert_eq!(fields["_lxmf"]["stamp_checked"], serde_json::json!(true));
         assert_eq!(fields["_lxmf"]["stamp_valid"], serde_json::json!(true));
+        assert_eq!(fields["_lxmf"]["stamp_value"], serde_json::json!(17));
+    }
+
+    fn record_from_source(source: &str) -> rns_rpc::MessageRecord {
+        rns_rpc::MessageRecord {
+            id: "msg".to_string(),
+            source: source.to_string(),
+            destination: "dst".to_string(),
+            title: "title".to_string(),
+            content: "content".to_string(),
+            timestamp: 1_700_000_000,
+            direction: "in".to_string(),
+            fields: None,
+            receipt_status: None,
+        }
+    }
+
+    #[test]
+    fn inbound_delivery_policy_rejects_ignored_source_like_python() {
+        let daemon = RpcDaemon::test_instance();
+        daemon
+            .handle_rpc(RpcRequest {
+                id: 1,
+                method: "set_delivery_policy".to_string(),
+                params: Some(serde_json::json!({
+                    "ignored_destinations": ["aabbcc"],
+                })),
+            })
+            .expect("set delivery policy");
+
+        assert!(!inbound_record_allowed_by_delivery_policy(&daemon, &record_from_source("AABBCC")));
+    }
+
+    #[test]
+    fn inbound_delivery_policy_allows_non_ignored_source() {
+        let daemon = RpcDaemon::test_instance();
+        daemon
+            .handle_rpc(RpcRequest {
+                id: 1,
+                method: "set_delivery_policy".to_string(),
+                params: Some(serde_json::json!({
+                    "ignored_destinations": ["aabbcc"],
+                })),
+            })
+            .expect("set delivery policy");
+
+        assert!(inbound_record_allowed_by_delivery_policy(&daemon, &record_from_source("ddeeff")));
     }
 
     #[test]
@@ -385,7 +521,9 @@ mod tests {
             InboundPayloadMode::FullWire,
         )
         .expect("valid stamp status");
-        assert_eq!(status, InboundStampStatus { checked: true, valid: true });
+        assert!(status.checked);
+        assert!(status.valid);
+        assert!(status.value.is_some_and(|value| value >= 1));
     }
 
     #[test]
@@ -460,6 +598,47 @@ mod tests {
             InboundPayloadMode::FullWire,
         )
         .expect("ticket-validated stamp should pass");
+    }
+
+    #[test]
+    fn inbound_stamp_policy_accepts_issued_ticket_stamp_above_ticket_cost_like_python() {
+        let daemon = RpcDaemon::test_instance();
+        daemon
+            .handle_rpc(RpcRequest {
+                id: 4,
+                method: "stamp_policy_set".to_string(),
+                params: Some(serde_json::json!({"target_cost": 257, "flexibility": 0})),
+            })
+            .expect("set stamp policy");
+        let identity = PrivateIdentity::new_from_name("inbound-high-cost-ticket-stamp");
+        let mut source = [0u8; 16];
+        source.copy_from_slice(identity.address_hash().as_slice());
+        let source_hex = hex::encode(source);
+        let ticket = daemon.ensure_ticket(source_hex.as_str(), None).expect("issue ticket");
+        let destination = [0x74u8; 16];
+        let wire = build_wire_message_with_options(
+            source,
+            destination,
+            "title",
+            "content",
+            None,
+            &identity,
+            None,
+            Some(ticket.ticket.as_str()),
+            None,
+        )
+        .expect("wire");
+
+        let status = evaluate_inbound_stamp_policy(
+            &daemon,
+            destination,
+            &wire,
+            InboundPayloadMode::FullWire,
+        )
+        .expect("ticket-validated stamp should pass");
+        assert!(status.checked);
+        assert!(status.valid);
+        assert_eq!(status.value, Some(crate::lxmf_stamps::COST_TICKET));
     }
 
     #[test]

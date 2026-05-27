@@ -3,20 +3,14 @@ use super::delivery::{
     AttemptDecision, AttemptDisposition, DeliveryAttempt, DeliveryOptions, DeliveryPlan, SendReport,
 };
 use super::errors::Error;
-#[cfg(feature = "sdk-async")]
-use super::events::{subscription_cursor, SubscriptionStart};
 use super::node::Client;
 use super::operations::OperationRegistry;
 use super::runtime::{
     map_delivery_snapshot, map_runtime_state, Config, DeliveryStatus, Handle, RunState,
     RuntimeStatus, SendReceipt, SendRequest,
 };
-#[cfg(feature = "sdk-async")]
-use super::session::EventStream;
 use super::session::{SessionState, SharedBackend};
 use crate::{Client as CoreClient, LxmfSdk, SdkBackend, ShutdownMode};
-#[cfg(feature = "sdk-async")]
-use crate::{LxmfSdkAsync, SdkBackendAsyncEvents};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -224,6 +218,13 @@ impl<B: SdkBackend> Client<B> {
     pub fn stop(&self, mode: ShutdownMode) -> Result<(), Error> {
         let mut state = self.state.lock().expect("app client mutex poisoned");
         let Some(client) = state.client.as_ref().cloned() else {
+            if state.lifecycle == RunState::Starting {
+                return Err(Error::from(crate::SdkError::new(
+                    crate::error::code::RUNTIME_INVALID_STATE,
+                    crate::ErrorCategory::Runtime,
+                    "runtime is still starting",
+                )));
+            }
             state.session = None;
             state.lifecycle = RunState::Stopped;
             return Ok(());
@@ -238,36 +239,5 @@ impl<B: SdkBackend> Client<B> {
         state.session = None;
         state.lifecycle = RunState::Stopped;
         Ok(())
-    }
-
-    #[cfg(feature = "sdk-async")]
-    pub fn subscribe_events(&self, start: SubscriptionStart) -> Result<EventStream<B>, Error>
-    where
-        B: SdkBackendAsyncEvents,
-    {
-        let state = self.state.lock().expect("app client mutex poisoned");
-        let Some(client) = state.client.as_ref() else {
-            return Err(Error::not_started());
-        };
-        let Some(session) = state.session.as_ref() else {
-            return Err(Error::not_started());
-        };
-        let subscription = client.subscribe_events(start.into()).map_err(Error::from)?;
-        let session_guard = session.lock().expect("app session mutex poisoned");
-        let max_batch_size = session_guard
-            .config
-            .event_batch_size
-            .unwrap_or(session_guard.handle.effective_limits.max_poll_events)
-            .min(session_guard.handle.effective_limits.max_poll_events)
-            .max(1);
-        let profile = session_guard.config.profile.clone();
-        drop(session_guard);
-        Ok(EventStream {
-            client: Arc::clone(client),
-            session: Arc::clone(session),
-            cursor: subscription_cursor(&subscription),
-            max_batch_size,
-            profile,
-        })
     }
 }

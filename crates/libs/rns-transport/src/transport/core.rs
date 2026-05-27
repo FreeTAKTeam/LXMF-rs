@@ -1,14 +1,21 @@
 use super::jobs::manage_transport;
 use super::*;
 
+const TRANSPORT_EVENT_CHANNEL_CAPACITY: usize = 1024;
+
 impl Transport {
     pub fn new(config: TransportConfig) -> Self {
-        let (announce_tx, _) = tokio::sync::broadcast::channel(16);
-        let (link_in_event_tx, _) = tokio::sync::broadcast::channel(16);
-        let (link_out_event_tx, _) = tokio::sync::broadcast::channel(16);
-        let (received_data_tx, _) = tokio::sync::broadcast::channel(16);
-        let (iface_messages_tx, _) = tokio::sync::broadcast::channel(16);
-        let (resource_events_tx, _) = tokio::sync::broadcast::channel(16);
+        let (announce_tx, _) = tokio::sync::broadcast::channel(TRANSPORT_EVENT_CHANNEL_CAPACITY);
+        let (link_in_event_tx, _) =
+            tokio::sync::broadcast::channel(TRANSPORT_EVENT_CHANNEL_CAPACITY);
+        let (link_out_event_tx, _) =
+            tokio::sync::broadcast::channel(TRANSPORT_EVENT_CHANNEL_CAPACITY);
+        let (received_data_tx, _) =
+            tokio::sync::broadcast::channel(TRANSPORT_EVENT_CHANNEL_CAPACITY);
+        let (iface_messages_tx, _) =
+            tokio::sync::broadcast::channel(TRANSPORT_EVENT_CHANNEL_CAPACITY);
+        let (resource_events_tx, _) =
+            tokio::sync::broadcast::channel(TRANSPORT_EVENT_CHANNEL_CAPACITY);
 
         let iface_manager = InterfaceManager::new(128);
 
@@ -42,6 +49,7 @@ impl Transport {
         );
 
         let path_request_dest = create_path_request_destination().desc.address_hash;
+        let tunnel_synthesize_dest = create_tunnel_synthesize_destination().desc.address_hash;
 
         let cancel = CancellationToken::new();
         let name = config.name.clone();
@@ -73,6 +81,8 @@ impl Transport {
             resource_response_packets: Vec::new(),
             resource_events_tx: resource_events_tx.clone(),
             fixed_dest_path_requests: path_request_dest,
+            fixed_dest_tunnel_synthesize: tunnel_synthesize_dest,
+            tunnel_table: TunnelTable::new(),
             unicast_udp_ifaces: HashMap::new(),
             multicast_peer_routings: HashMap::new(),
             cancel: cancel.clone(),
@@ -145,7 +155,12 @@ impl Transport {
     }
 
     pub async fn outbound(&self, packet: &Packet) {
-        let (packet, maybe_iface) = self.handler.lock().await.path_table.handle_packet(packet);
+        let decision = {
+            let handler = self.handler.lock().await;
+            super::path::route_outbound_packet(&handler.path_table, packet)
+        };
+        let packet = decision.packet;
+        let maybe_iface = decision.next_iface;
 
         if let Some(iface) = maybe_iface {
             self.send_direct(iface, packet).await;
@@ -227,6 +242,30 @@ impl Transport {
         handler.send_packet_with_trace(packet).await
     }
 
+    pub async fn send_prepared_packet_broadcast_with_trace(
+        &self,
+        packet: Packet,
+    ) -> SendPacketTrace {
+        let dispatch = self
+            .iface_manager
+            .lock()
+            .await
+            .send_with_announce_policy(
+                crate::iface::TxMessage {
+                    tx_type: crate::iface::TxMessageType::Broadcast(None),
+                    packet,
+                },
+                None,
+            )
+            .await;
+        let outcome = if dispatch.sent_ifaces > 0 || dispatch.queued_ifaces > 0 {
+            SendPacketOutcome::SentBroadcast
+        } else {
+            SendPacketOutcome::DroppedNoRoute
+        };
+        SendPacketTrace { outcome, direct_iface: None, broadcast: true, dispatch }
+    }
+
     pub async fn send_announce(
         &self,
         destination: &Arc<Mutex<SingleInputDestination>>,
@@ -299,5 +338,19 @@ impl Transport {
             .await
             .send(TxMessage { tx_type: TxMessageType::Direct(addr), packet })
             .await;
+    }
+
+    pub async fn synthesize_tunnel_on_interface(&self, iface: AddressHash) -> bool {
+        let packet = {
+            let handler = self.handler.lock().await;
+            let iface_manager = handler.iface_manager.lock().await;
+            let Some(interface_hash) = iface_manager.full_hash(&iface) else {
+                return false;
+            };
+            super::tunnels::synthesize_tunnel_packet(&handler.config.identity, interface_hash)
+        };
+
+        self.send_direct(iface, packet).await;
+        true
     }
 }

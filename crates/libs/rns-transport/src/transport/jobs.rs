@@ -4,8 +4,10 @@ use super::wire::{handle_data, handle_proof};
 use super::*;
 use crate::destination::link::LinkWatchdogAction;
 
+#[allow(dead_code)]
 const MIN_LINKS_CHECK_DELAY: Duration = Duration::from_millis(10);
 
+#[allow(dead_code)]
 fn link_check_delay_from_deadline(
     now: std::time::Instant,
     earliest_retry: Option<std::time::Instant>,
@@ -21,6 +23,7 @@ fn link_check_delay_from_deadline(
     std::cmp::min(deadline.duration_since(now), INTERVAL_LINKS_CHECK)
 }
 
+#[allow(dead_code)]
 async fn next_link_check_delay(handler_arc: &Arc<Mutex<TransportHandler>>) -> Duration {
     let (in_links, out_links) = {
         let handler = handler_arc.lock().await;
@@ -58,6 +61,7 @@ async fn next_link_check_delay(handler_arc: &Arc<Mutex<TransportHandler>>) -> Du
     link_check_delay_from_deadline(now, earliest_deadline)
 }
 
+#[allow(dead_code)]
 pub(super) async fn handle_check_links<'a>(mut handler: MutexGuard<'a, TransportHandler>) {
     let mut links_to_remove: Vec<AddressHash> = Vec::new();
     let mut closed_link_ids: Vec<AddressHash> = Vec::new();
@@ -166,7 +170,15 @@ pub(super) async fn handle_check_links<'a>(mut handler: MutexGuard<'a, Transport
 
 pub(super) async fn handle_cleanup<'a>(mut handler: MutexGuard<'a, TransportHandler>) {
     handler.gc_unicast_ifaces().await;
-    handler.iface_manager.lock().await.cleanup();
+    {
+        let iface_manager = handler.iface_manager.clone();
+        let mut iface_manager = iface_manager.lock().await;
+        handler
+            .path_table
+            .remove_stale(std::time::Instant::now(), |iface| iface_manager.mode(iface));
+        handler.tunnel_table.remove_stale(std::time::Instant::now());
+        iface_manager.cleanup();
+    }
 }
 
 pub(super) async fn manage_transport(
@@ -259,13 +271,12 @@ pub(super) async fn manage_transport(
                     break;
                 }
 
-                let retry_delay = next_link_check_delay(&handler).await;
-
+                let delay = next_link_check_delay(&handler).await;
                 tokio::select! {
                     _ = cancel.cancelled() => {
                         break;
                     },
-                    _ = time::sleep(retry_delay) => {
+                    _ = time::sleep(delay) => {
                         handle_check_links(handler.lock().await).await;
                     }
                 }
@@ -345,9 +356,11 @@ pub(super) async fn manage_transport(
                             retransmit_announces(guard).await;
                         } else {
                             release_held_announces(guard).await;
+                            handler.lock().await.iface_manager.lock().await.release_queued_announces().await;
                             continue;
                         }
                         release_held_announces(handler.lock().await).await;
+                        handler.lock().await.iface_manager.lock().await.release_queued_announces().await;
                     }
                 }
             }

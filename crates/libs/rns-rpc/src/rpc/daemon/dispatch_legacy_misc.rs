@@ -74,6 +74,9 @@ impl RpcDaemon {
                     if let Some(value) = parsed.flexibility {
                         guard.flexibility = value;
                     }
+                    if let Some(value) = parsed.enforce {
+                        guard.enforce = value;
+                    }
                     guard.clone()
                 };
                 self.update_daemon_status_snapshot(|snapshot| {
@@ -93,7 +96,21 @@ impl RpcDaemon {
                 let parsed: TicketGenerateParams = serde_json::from_value(params)
                     .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
                 let ttl_secs = parsed.ttl_secs.unwrap_or(Self::DEFAULT_TICKET_EXPIRY_SECS);
-                let record = self.ensure_ticket(parsed.destination.as_str(), Some(ttl_secs))?;
+                let record = self.generate_ticket(parsed.destination.as_str(), Some(ttl_secs))?;
+                let Some(record) = record else {
+                    return Ok(RpcResponse {
+                        id: request.id,
+                        result: Some(json!({
+                            "ticket": null,
+                            "destination": parsed.destination,
+                            "expires_at": null,
+                            "ttl_secs": ttl_secs,
+                            "included": false,
+                            "reason": "ticket_interval",
+                        })),
+                        error: None,
+                    });
+                };
 
                 Ok(RpcResponse {
                     id: request.id,
@@ -102,6 +119,7 @@ impl RpcDaemon {
                         "destination": record.destination,
                         "expires_at": record.expires_at,
                         "ttl_secs": ttl_secs,
+                        "included": true,
                     })),
                     error: None,
                 })
@@ -130,25 +148,45 @@ impl RpcDaemon {
                     .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
                 let timestamp = parsed.timestamp.unwrap_or_else(now_i64);
                 let peer = parsed.peer.clone();
-                let (parsed_stamp_cost_flexibility, parsed_peering_cost) =
-                    parse_announce_costs_from_app_data_hex(parsed.app_data_hex.as_deref());
+                let aspect = parsed.aspect.clone();
+                let (
+                    parsed_propagation_stamp_cost,
+                    parsed_stamp_cost_flexibility,
+                    parsed_peering_cost,
+                ) = parse_announce_costs_from_app_data_hex(parsed.app_data_hex.as_deref());
+                let parsed_delivery_stamp_cost = is_lxmf_delivery_aspect(aspect.as_deref())
+                    .then(|| {
+                        parse_delivery_stamp_cost_from_app_data_hex(parsed.app_data_hex.as_deref())
+                    })
+                    .flatten();
+                let stamp_cost = parsed
+                    .stamp_cost
+                    .or(parsed_delivery_stamp_cost)
+                    .or(parsed_propagation_stamp_cost);
                 let stamp_cost_flexibility =
                     parsed.stamp_cost_flexibility.or(parsed_stamp_cost_flexibility);
                 let peering_cost = parsed.peering_cost.or(parsed_peering_cost);
+                let (name, name_source) = if parsed.name.is_none() && parsed.name_source.is_none() {
+                    parse_peer_name_from_app_data_hex(parsed.app_data_hex.as_deref())
+                        .map(|(name, source)| (Some(name), Some(source.to_string())))
+                        .unwrap_or((parsed.name, parsed.name_source))
+                } else {
+                    (parsed.name, parsed.name_source)
+                };
                 self.accept_announce_with_metadata(
                     parsed.peer,
                     timestamp,
-                    parsed.name,
-                    parsed.name_source,
+                    name,
+                    name_source,
                     parsed.app_data_hex,
                     parsed.capabilities,
                     parsed.rssi,
                     parsed.snr,
                     parsed.q,
-                    parsed.stamp_cost,
+                    stamp_cost,
                     Some(stamp_cost_flexibility),
                     Some(peering_cost),
-                    None,
+                    aspect,
                     None,
                     None,
                     None,
