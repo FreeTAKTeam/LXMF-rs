@@ -51,6 +51,7 @@ allowed_library_edges = [
   "lxmf-embedded-mini->lxmf-wire",
   "lxmf->lxmf-sdk",
   "lxmf->lxmf-wire",
+  "lxmf-sdk->lxmf-wire",
   "lxmf-sdk->reticulum-rs-rpc",
   "reticulum-rs->reticulum-rs-core",
   "reticulum-rs->reticulum-rs-rpc",
@@ -63,6 +64,7 @@ allowed_library_edges = [
   "rns-embedded-runtime->rns-embedded-core",
   "reticulum-rs-transport->reticulum-rs-core",
   "test-support->lxmf-sdk",
+  "test-support->lxmf-wire",
   "test-support->reticulum-rs-core",
   "test-support->reticulum-rs-rpc",
 ]
@@ -119,6 +121,7 @@ tokio = { version = "1.44.2", features = ["full"] }
 tokio-rustls = "0.26.2"
 tokio-serial = "5.4.4"
 tokio-stream = "0.1"
+zeromq = { version = "0.6.0", default-features = false, features = ["tokio-runtime", "tcp-transport"] }
 rustls = "0.23.23"
 rustls-pemfile = "2.2.0"
 x509-parser = "0.16.0"

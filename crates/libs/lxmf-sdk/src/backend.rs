@@ -376,6 +376,9 @@ pub mod mobile_ble;
 #[cfg(all(feature = "rpc-backend", feature = "std"))]
 pub mod rpc;
 
+#[cfg(all(feature = "zmq-pipeline-backend", feature = "std"))]
+pub mod zmq_pipeline;
+
 #[cfg(test)]
 mod tests {
     include!("backend_tests.rs");

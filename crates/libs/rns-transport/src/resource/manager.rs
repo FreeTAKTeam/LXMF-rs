@@ -10,7 +10,10 @@ pub struct ResourceManager {
 
 impl ResourceManager {
     pub fn new() -> Self {
-        Self::new_with_config(Duration::from_secs(2), 5)
+        Self::new_with_config(
+            Duration::from_secs(DEFAULT_RESOURCE_RETRY_INTERVAL_SECS),
+            DEFAULT_RESOURCE_MAX_RETRIES,
+        )
     }
 
     pub fn new_with_config(retry_interval: Duration, retry_limit: u8) -> Self {
@@ -219,10 +222,25 @@ impl ResourceManager {
         responses: &mut Vec<Packet>,
     ) {
         let Ok(request) = ResourceRequest::decode(packet.data.as_slice()) else {
+            resource_diag(&format!("request_decode_failed link={}", link.id()));
             return;
         };
+        resource_diag(&format!(
+            "request_received link={} hash={} requested={} exhausted={} sender_present={}",
+            link.id(),
+            request.resource_hash,
+            request.requested_hashes.len(),
+            request.hashmap_exhausted,
+            self.outgoing.contains_key(&request.resource_hash)
+        ));
         if let Some(sender) = self.outgoing.get_mut(&request.resource_hash) {
             sender.handle_request_into(&request, link, responses);
+            resource_diag(&format!(
+                "request_responses link={} hash={} responses={}",
+                link.id(),
+                request.resource_hash,
+                responses.len()
+            ));
         }
     }
 

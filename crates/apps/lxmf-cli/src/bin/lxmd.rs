@@ -165,6 +165,9 @@ fn main() -> ExitCode {
     let mut cmd = Command::new(&reticulumd);
 
     cmd.arg("--rpc").arg(&effective.rpc);
+    if let Some(config_dir) = effective.config_dir.as_ref() {
+        cmd.arg("--rpc-unix").arg(config_dir.join("lxmf-rpc.sock"));
+    }
     if let Some(rnsconfig) = effective.rnsconfig.as_ref() {
         cmd.arg("--config").arg(rnsconfig);
     }
@@ -378,15 +381,60 @@ mod tests {
     #[test]
     fn compatibility_notes_only_emitted_for_used_flags() {
         let args = super::Args::parse_from(["lxmd", "--propagation-node", "--service"]);
-        let effective = load_effective_args(&args).expect("effective args");
+        let effective = EffectiveArgs {
+            profile: "default".into(),
+            rpc: super::DEFAULT_RPC_ADDR.into(),
+            rnsconfig: None,
+            propagation_node: true,
+            on_inbound: None,
+            quiet: false,
+            service: true,
+            display_name: None,
+            db: None,
+            identity: None,
+            transport: None,
+            reticulumd: None,
+            messages_dir: None,
+            config_dir: None,
+            timeout_secs: 5.0,
+            status: false,
+            peers: false,
+            sync: None,
+            unpeer: None,
+            remote: None,
+            query_identity: None,
+            python_compat: super::PythonCompatConfig::default(),
+        };
         let notes = compatibility_notes(&args, &effective);
         assert_eq!(notes.len(), 1);
     }
 
     #[test]
     fn propagation_node_uses_supervised_launch() {
-        let args = super::Args::parse_from(["lxmd", "--propagation-node"]);
-        let effective = load_effective_args(&args).expect("effective args");
+        let effective = EffectiveArgs {
+            profile: "default".into(),
+            rpc: super::DEFAULT_RPC_ADDR.into(),
+            rnsconfig: None,
+            propagation_node: true,
+            on_inbound: None,
+            quiet: false,
+            service: false,
+            display_name: None,
+            db: None,
+            identity: None,
+            transport: None,
+            reticulumd: None,
+            messages_dir: None,
+            config_dir: None,
+            timeout_secs: 5.0,
+            status: false,
+            peers: false,
+            sync: None,
+            unpeer: None,
+            remote: None,
+            query_identity: None,
+            python_compat: super::PythonCompatConfig::default(),
+        };
         assert!(requires_supervised_launch(&effective));
     }
 

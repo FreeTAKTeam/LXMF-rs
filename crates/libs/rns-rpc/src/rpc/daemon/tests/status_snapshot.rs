@@ -1629,6 +1629,18 @@ impl RemoteControlBridge for TestRemoteControlBridge {
         }).map_err(|kind| std::io::Error::new(kind, "remote sync failed"))
     }
 
+    fn propagation_remote_download(
+        &self,
+        remote: &str,
+        _identity_private_key_hex: Option<&str>,
+        _timeout_secs: f64,
+    ) -> Result<JsonValue, std::io::Error> {
+        self.result.clone().map(|mut result| {
+            result["remote"] = json!(remote);
+            result
+        }).map_err(|kind| std::io::Error::new(kind, "remote download failed"))
+    }
+
     fn propagation_remote_unpeer(
         &self,
         _remote: &str,
@@ -1637,6 +1649,20 @@ impl RemoteControlBridge for TestRemoteControlBridge {
         _timeout_secs: f64,
     ) -> Result<JsonValue, std::io::Error> {
         Ok(json!({"unpeered": true}))
+    }
+
+    fn propagation_remote_fetch(
+        &self,
+        _remote: &str,
+        _identity_private_key_hex: Option<&str>,
+        _timeout_secs: f64,
+        _transfer_limit_kb: Option<f64>,
+    ) -> Result<JsonValue, std::io::Error> {
+        Ok(json!({
+            "available_count": 0,
+            "fetched_count": 0,
+            "imported_count": 0,
+        }))
     }
 }
 

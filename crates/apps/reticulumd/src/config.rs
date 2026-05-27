@@ -7,11 +7,17 @@ use std::path::Path;
 
 #[derive(Debug)]
 pub struct DaemonConfig {
+    pub display_name: Option<String>,
+    pub announce_capabilities: Vec<String>,
     pub interfaces: Vec<InterfaceConfig>,
 }
 
 #[derive(Debug, Deserialize)]
 struct DaemonConfigRaw {
+    #[serde(default)]
+    display_name: Option<String>,
+    #[serde(default)]
+    announce_capabilities: Vec<String>,
     #[serde(default)]
     interfaces: Vec<InterfaceConfig>,
 }
@@ -27,7 +33,11 @@ impl<'de> Deserialize<'de> for DaemonConfig {
             iface.kind = iface.kind.trim().to_string();
             iface.validate(index).map_err(D::Error::custom)?;
         }
-        Ok(Self { interfaces })
+        Ok(Self {
+            display_name: raw.display_name,
+            announce_capabilities: raw.announce_capabilities,
+            interfaces,
+        })
     }
 }
 

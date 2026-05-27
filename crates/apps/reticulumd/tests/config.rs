@@ -6,11 +6,14 @@ use tempfile::NamedTempFile;
 #[test]
 fn parses_tcp_client_interface() {
     let input = r#"
+display_name = "RCH Rust Stress Hub"
+
 interfaces = [
   { type = "tcp_client", enabled = true, host = "rmap.world", port = 4242, name = "Public RMap" }
 ]
 "#;
     let cfg = DaemonConfig::from_toml(input).expect("parse");
+    assert_eq!(cfg.display_name.as_deref(), Some("RCH Rust Stress Hub"));
     assert_eq!(cfg.interfaces.len(), 1);
     let iface = &cfg.interfaces[0];
     assert_eq!(iface.name.as_deref(), Some("Public RMap"));
@@ -50,6 +53,8 @@ interfaces = [
 #[test]
 fn filters_enabled_tcp_clients() {
     let cfg = DaemonConfig {
+        display_name: None,
+        announce_capabilities: Vec::new(),
         interfaces: vec![
             InterfaceConfig {
                 kind: "tcp_client".into(),
@@ -76,6 +81,8 @@ fn filters_enabled_tcp_clients() {
 #[test]
 fn filters_enabled_tcp_servers_with_default_host() {
     let cfg = DaemonConfig {
+        display_name: None,
+        announce_capabilities: Vec::new(),
         interfaces: vec![
             InterfaceConfig {
                 kind: "tcp_server".into(),

@@ -242,6 +242,30 @@ impl Transport {
         handler.send_packet_with_trace(packet).await
     }
 
+    pub async fn send_prepared_packet_broadcast_with_trace(
+        &self,
+        packet: Packet,
+    ) -> SendPacketTrace {
+        let dispatch = self
+            .iface_manager
+            .lock()
+            .await
+            .send_with_announce_policy(
+                crate::iface::TxMessage {
+                    tx_type: crate::iface::TxMessageType::Broadcast(None),
+                    packet,
+                },
+                None,
+            )
+            .await;
+        let outcome = if dispatch.sent_ifaces > 0 || dispatch.queued_ifaces > 0 {
+            SendPacketOutcome::SentBroadcast
+        } else {
+            SendPacketOutcome::DroppedNoRoute
+        };
+        SendPacketTrace { outcome, direct_iface: None, broadcast: true, dispatch }
+    }
+
     pub async fn send_announce(
         &self,
         destination: &Arc<Mutex<SingleInputDestination>>,

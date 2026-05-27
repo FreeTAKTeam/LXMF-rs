@@ -8,9 +8,9 @@ use super::Args;
 #[path = "bootstrap_transport.rs"]
 mod transport_startup;
 use reticulum_daemon::announce_names::{
-    encode_delivery_display_name_app_data,
+    encode_delivery_announce_app_data_with_capabilities,
     encode_propagation_node_app_data as encode_python_propagation_node_app_data,
-    normalize_display_name, PropagationNodeAnnounceConfig,
+    normalize_capabilities, normalize_display_name, PropagationNodeAnnounceConfig,
 };
 use reticulum_daemon::config::{DaemonConfig, InterfaceConfig};
 use reticulum_daemon::identity_store::load_or_create_identity;
@@ -88,9 +88,6 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         args.db.parent().map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."));
     let mut local_identity_hash = [0u8; 16];
     local_identity_hash.copy_from_slice(identity.address_hash().as_slice());
-    let identity_hash = hex::encode(identity.address_hash().as_slice());
-    let local_display_name =
-        std::env::var("LXMF_DISPLAY_NAME").ok().and_then(|value| normalize_display_name(&value));
     let daemon_config = args.config.as_ref().and_then(|path| match DaemonConfig::from_path(path) {
         Ok(config) => Some(config),
         Err(err) => {
@@ -98,6 +95,24 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
             None
         }
     });
+    let identity_hash = hex::encode(identity.address_hash().as_slice());
+    let local_display_name = std::env::var("LXMF_DISPLAY_NAME")
+        .ok()
+        .and_then(|value| normalize_display_name(&value))
+        .or_else(|| {
+            daemon_config
+                .as_ref()
+                .and_then(|config| config.display_name.as_deref())
+                .and_then(normalize_display_name)
+        });
+    let local_announce_capabilities = env_capabilities("LXMF_RCH_ANNOUNCE_CAPABILITIES")
+        .or_else(|| {
+            daemon_config
+                .as_ref()
+                .map(|config| normalize_capabilities(&config.announce_capabilities))
+                .filter(|capabilities| !capabilities.is_empty())
+        })
+        .unwrap_or_default();
     let mut configured_interfaces = daemon_config
         .as_ref()
         .map(|config| {
@@ -120,6 +135,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         identity: &identity,
         reticulum_storage_path: reticulum_storage_path.as_path(),
         local_display_name: local_display_name.as_deref(),
+        local_announce_capabilities: &local_announce_capabilities,
         configured_interfaces,
         receipt_map: receipt_map.clone(),
         receipt_tx: receipt_tx.clone(),
@@ -191,9 +207,14 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
                 identity.clone(),
                 delivery_source_hash,
                 destination.clone(),
-                local_display_name
-                    .as_ref()
-                    .and_then(|display_name| encode_delivery_display_name_app_data(display_name)),
+                local_display_name.as_ref().and_then(|display_name| {
+                    encode_delivery_announce_app_data_with_capabilities(
+                        display_name,
+                        None,
+                        &local_announce_capabilities,
+                    )
+                }),
+                local_announce_capabilities.clone(),
                 propagation_destination.clone(),
                 propagation_app_data,
                 control_destination.clone(),
@@ -579,6 +600,21 @@ fn parse_hex_list_env(key: &str) -> Vec<String> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+fn env_capabilities(key: &str) -> Option<Vec<String>> {
+    std::env::var(key)
+        .ok()
+        .map(|value| {
+            let values = value
+                .split([',', ';', ' ', '\t', '\r', '\n'])
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToOwned::to_owned)
+                .collect::<Vec<_>>();
+            normalize_capabilities(&values)
+        })
+        .filter(|capabilities| !capabilities.is_empty())
 }
 
 fn env_u64(key: &str) -> Option<u64> {

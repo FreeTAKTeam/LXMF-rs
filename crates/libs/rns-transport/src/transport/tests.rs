@@ -8,10 +8,13 @@ use crate::channel::{
     ChannelError, MessageState as ChannelMessageState, SystemMessageTypes, TypedMessage,
 };
 use crate::destination::link::{Link, LinkEvent, LinkEventData, LinkPayload};
-use crate::destination::{DestinationName, SingleInputDestination};
+use crate::destination::{DestinationDesc, DestinationName, SingleInputDestination};
 use crate::error::RnsError;
 use crate::identity::PrivateIdentity;
-use crate::packet::{Header, HeaderType, PacketContext};
+use crate::packet::{
+    DestinationType, Header, HeaderType, PacketContext, PacketDataBuffer, PacketType, PACKET_MDU,
+};
+use crate::resource::{ResourceAdvertisement, ResourceProof, ResourceRequest, MAPHASH_LEN};
 use rand_core::OsRng;
 use std::sync::Mutex as StdMutex;
 use std::sync::{
@@ -524,6 +527,150 @@ async fn send_packet_with_outcome_drops_announce_without_route() {
     assert_eq!(outcome, SendPacketOutcome::DroppedNoRoute);
 }
 
+#[tokio::test]
+async fn duplicate_filter_allows_repeated_resource_requests() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let config = TransportConfig::new("test", &identity, false);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+
+    let packet = Packet {
+        header: Header {
+            destination_type: DestinationType::Link,
+            packet_type: PacketType::Data,
+            ..Default::default()
+        },
+        context: PacketContext::ResourceRequest,
+        destination: AddressHash::new_from_rand(OsRng),
+        data: PacketDataBuffer::new_from_slice(b"same resource request"),
+        ..Default::default()
+    };
+
+    assert!(handler.lock().await.filter_duplicate_packets(&packet).await);
+    assert!(handler.lock().await.filter_duplicate_packets(&packet).await);
+}
+
+#[tokio::test]
+async fn resource_request_responses_use_bound_link_iface_without_route_lookup() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let config = TransportConfig::new("test", &local_identity, false);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+    let mut iface_channel = transport.iface_manager.lock().await.new_channel(8);
+    let iface = iface_channel.address;
+
+    let remote_signer = PrivateIdentity::new_from_rand(OsRng);
+    let remote_identity = *remote_signer.as_identity();
+    let destination = DestinationDesc {
+        identity: remote_identity,
+        address_hash: remote_identity.address_hash,
+        name: DestinationName::new("lxmf", "delivery"),
+    };
+    let (link_events, _) = tokio::sync::broadcast::channel(4);
+    let mut outbound = Link::new(destination, link_events.clone());
+    let request_packet = outbound.request();
+    let mut inbound = Link::new_from_request(
+        &request_packet,
+        remote_signer.sign_key().clone(),
+        destination,
+        link_events,
+    )
+    .expect("inbound link");
+    let proof = inbound.prove();
+    let _ = outbound.handle_packet(&proof, iface);
+    let link_id = *outbound.id();
+
+    let advertisement_packet = {
+        let mut guard = handler.lock().await;
+        let link = Arc::new(Mutex::new(outbound));
+        guard.out_links.insert(destination.address_hash, link.clone());
+        let link_guard = link.lock().await;
+        let (resource_hash, packet) = guard
+            .resource_manager
+            .start_send(&link_guard, vec![0x42; PACKET_MDU + 24], None)
+            .expect("start resource");
+        guard.resource_manager.confirm_outbound_dispatch(resource_hash, true);
+        packet
+    };
+
+    let link = handler
+        .lock()
+        .await
+        .out_links
+        .get(&destination.address_hash)
+        .cloned()
+        .expect("outbound link");
+    let link_guard = link.lock().await;
+    let advertisement = decrypt_resource_advertisement(&link_guard, &advertisement_packet);
+    let requested_hashes = advertisement
+        .hashmap
+        .chunks_exact(MAPHASH_LEN)
+        .map(|chunk| {
+            let mut hash = [0u8; MAPHASH_LEN];
+            hash.copy_from_slice(chunk);
+            hash
+        })
+        .collect::<Vec<_>>();
+    let request = ResourceRequest {
+        hashmap_exhausted: false,
+        last_map_hash: None,
+        resource_hash: advertisement.hash,
+        requested_hashes,
+    };
+    let resource_request_packet = encrypted_resource_control_packet(
+        &link_guard,
+        PacketContext::ResourceRequest,
+        &request.encode(),
+    );
+    drop(link_guard);
+
+    handle_data(&resource_request_packet, iface, handler.lock().await).await;
+
+    let sent = timeout(Duration::from_millis(200), iface_channel.tx_channel.recv())
+        .await
+        .expect("resource parts should be sent on bound iface")
+        .expect("tx channel open");
+    assert_eq!(sent.tx_type, TxMessageType::Direct(iface));
+    assert_eq!(sent.packet.destination, link_id);
+    assert_eq!(sent.packet.context, PacketContext::Resource);
+}
+
+fn decrypt_resource_advertisement(link: &Link, packet: &Packet) -> ResourceAdvertisement {
+    let mut buffer = PacketDataBuffer::new();
+    let plain_len = {
+        let plain = link
+            .decrypt(packet.data.as_slice(), buffer.accuire_buf_max())
+            .expect("decrypt resource advertisement");
+        plain.len()
+    };
+    buffer.resize(plain_len);
+    ResourceAdvertisement::unpack(buffer.as_slice()).expect("resource advertisement")
+}
+
+fn encrypted_resource_control_packet(
+    link: &Link,
+    context: PacketContext,
+    payload: &[u8],
+) -> Packet {
+    let mut data = PacketDataBuffer::new();
+    let cipher_len = {
+        let cipher = link.encrypt(payload, data.accuire_buf_max()).expect("encrypt control packet");
+        cipher.len()
+    };
+    data.resize(cipher_len);
+    Packet {
+        header: Header {
+            destination_type: DestinationType::Link,
+            packet_type: PacketType::Data,
+            ..Default::default()
+        },
+        destination: *link.id(),
+        context,
+        data,
+        ..Default::default()
+    }
+}
+
 struct CountingReceiptHandler {
     count: Arc<AtomicUsize>,
 }
@@ -777,6 +924,125 @@ async fn routed_link_request_proof_preserves_wire_shape_when_forwarded_backwards
     assert_eq!(forwarded.transport, None);
     assert_eq!(forwarded.destination, proof.destination);
     assert_eq!(forwarded.header.hops, proof.header.hops);
+}
+
+#[tokio::test]
+async fn routed_link_resource_request_forwards_back_to_link_requester() {
+    let remote_identity = PrivateIdentity::new_from_rand(OsRng);
+    let remote_destination =
+        SingleInputDestination::new(remote_identity, DestinationName::new("lxmf", "delivery"));
+
+    let received_from = AddressHash::new_from_slice(&[1u8; 16]);
+    let next_hop = AddressHash::new_from_slice(&[2u8; 16]);
+    let next_hop_iface = AddressHash::new_from_slice(&[3u8; 16]);
+
+    let mut link_table = LinkTable::new(Duration::from_secs(5), Duration::from_secs(30));
+    let (tx, _) = tokio::sync::broadcast::channel(4);
+    let mut outbound_link = Link::new(remote_destination.desc, tx.clone());
+    let request = outbound_link.request();
+    link_table.add(&request, request.destination, received_from, next_hop, next_hop_iface);
+
+    let mut inbound = Link::new_from_request(
+        &request,
+        remote_destination.sign_key().clone(),
+        remote_destination.desc,
+        tx,
+    )
+    .expect("link from request");
+    let proof = inbound.prove();
+    assert!(link_table.handle_proof(&proof).is_some());
+
+    let resource_request = Packet {
+        header: Header {
+            destination_type: DestinationType::Link,
+            packet_type: PacketType::Data,
+            ..Default::default()
+        },
+        destination: *outbound_link.id(),
+        context: PacketContext::ResourceRequest,
+        data: PacketDataBuffer::new_from_slice(b"resource request"),
+        ..Default::default()
+    };
+
+    let (forwarded, target) = link_table
+        .handle_reverse_link_packet(&resource_request, next_hop_iface)
+        .expect("reverse link packet should forward");
+    assert_eq!(target, received_from);
+    assert_eq!(forwarded.destination, resource_request.destination);
+    assert_eq!(forwarded.context, PacketContext::ResourceRequest);
+
+    assert!(
+        link_table.handle_reverse_link_packet(&resource_request, received_from).is_none(),
+        "requester-side packets should keep using the normal forward path"
+    );
+}
+
+#[tokio::test]
+async fn routed_link_resource_proof_forwards_back_to_link_requester() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let config = TransportConfig::new("test", &local_identity, true);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+    let mut requester_iface = transport.iface_manager.lock().await.new_channel(8);
+    let received_from = requester_iface.address;
+
+    let remote_identity = PrivateIdentity::new_from_rand(OsRng);
+    let remote_destination =
+        SingleInputDestination::new(remote_identity, DestinationName::new("lxmf", "delivery"));
+
+    let next_hop = AddressHash::new_from_slice(&[2u8; 16]);
+    let next_hop_iface = AddressHash::new_from_slice(&[3u8; 16]);
+
+    let (tx, _) = tokio::sync::broadcast::channel(4);
+    let mut outbound_link = Link::new(remote_destination.desc, tx.clone());
+    let request = outbound_link.request();
+    let mut inbound = Link::new_from_request(
+        &request,
+        remote_destination.sign_key().clone(),
+        remote_destination.desc,
+        tx,
+    )
+    .expect("link from request");
+    let link_request_proof = inbound.prove();
+
+    {
+        let mut guard = handler.lock().await;
+        guard.link_table.add(
+            &request,
+            request.destination,
+            received_from,
+            next_hop,
+            next_hop_iface,
+        );
+        assert!(guard.link_table.handle_proof(&link_request_proof).is_some());
+    }
+
+    let proof_payload = ResourceProof {
+        resource_hash: crate::hash::Hash::new_from_slice(&[0x44; 32]),
+        proof: crate::hash::Hash::new_from_slice(&[0x55; 32]),
+    };
+    let resource_proof = Packet {
+        header: Header {
+            destination_type: DestinationType::Link,
+            packet_type: PacketType::Proof,
+            ..Default::default()
+        },
+        destination: *outbound_link.id(),
+        context: PacketContext::ResourceProof,
+        data: PacketDataBuffer::new_from_slice(&proof_payload.encode()),
+        ..Default::default()
+    };
+
+    handle_proof(resource_proof, handler, next_hop_iface).await;
+
+    let sent = timeout(Duration::from_millis(200), requester_iface.tx_channel.recv())
+        .await
+        .expect("resource proof should be forwarded back to requester iface")
+        .expect("tx channel open");
+    assert_eq!(sent.tx_type, TxMessageType::Direct(received_from));
+    assert_eq!(sent.packet.destination, *outbound_link.id());
+    assert_eq!(sent.packet.header.packet_type, PacketType::Proof);
+    assert_eq!(sent.packet.context, PacketContext::ResourceProof);
 }
 
 #[tokio::test]

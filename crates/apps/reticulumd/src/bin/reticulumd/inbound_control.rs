@@ -31,6 +31,24 @@ pub(super) fn spawn_control_worker(
                 control.control_destination_hash_hex.as_deref() == Some(destination_hex.as_str());
             let is_propagation_request = control.propagation_destination_hash_hex.as_deref()
                 == Some(destination_hex.as_str());
+            if std::env::var("RETICULUMD_DIAGNOSTICS").ok().is_some_and(|value| {
+                matches!(
+                    value.trim().to_ascii_lowercase().as_str(),
+                    "1" | "true" | "yes" | "on" | "debug"
+                )
+            }) {
+                eprintln!(
+                    "[daemon-control] link_data link={} destination={} context={:02x} propagation_destination={:?} control_destination={:?} is_propagation={} is_control={} len={}",
+                    event.id,
+                    destination_hex,
+                    payload.context() as u8,
+                    control.propagation_destination_hash_hex,
+                    control.control_destination_hash_hex,
+                    is_propagation_request,
+                    is_control_request,
+                    payload.len(),
+                );
+            }
             if !is_control_request && !is_propagation_request {
                 continue;
             }
@@ -57,13 +75,21 @@ pub(super) fn spawn_control_worker(
                         remote_identity.as_ref(),
                         is_propagation_request,
                     );
-                    let _ = response::send_control_response(
+                    if let Err(err) = response::send_control_response(
                         transport.as_ref(),
                         &event.id,
                         request_id,
                         response,
                     )
-                    .await;
+                    .await
+                    {
+                        eprintln!(
+                            "[daemon-control] failed to send response link={} propagation_request={} error={}",
+                            event.id,
+                            is_propagation_request,
+                            err
+                        );
+                    }
                 }
                 _ => {}
             }

@@ -1050,6 +1050,10 @@ pub lxmf_sdk::messaging::SyncPhase::LinkEstablishing
 pub lxmf_sdk::messaging::SyncPhase::PathRequested
 pub lxmf_sdk::messaging::SyncPhase::Receiving
 pub lxmf_sdk::messaging::SyncPhase::RequestSent
+pub const lxmf_sdk::messaging::DESTINATION_KIND_APP: &str
+pub const lxmf_sdk::messaging::DESTINATION_KIND_LXMF_DELIVERY: &str
+pub const lxmf_sdk::messaging::DESTINATION_KIND_LXMF_PROPAGATION: &str
+pub const lxmf_sdk::messaging::DESTINATION_KIND_OTHER: &str
 pub struct lxmf_sdk::messaging::AnnounceRecord
 pub lxmf_sdk::messaging::AnnounceRecord::app_data: alloc::string::String
 pub lxmf_sdk::messaging::AnnounceRecord::destination_hex: alloc::string::String
@@ -1059,6 +1063,7 @@ pub lxmf_sdk::messaging::AnnounceRecord::hops: u8
 pub lxmf_sdk::messaging::AnnounceRecord::identity_hex: alloc::string::String
 pub lxmf_sdk::messaging::AnnounceRecord::interface_hex: alloc::string::String
 pub lxmf_sdk::messaging::AnnounceRecord::received_at_ms: u64
+pub fn lxmf_sdk::messaging::AnnounceRecord::from_raw(destination_hex: impl core::convert::Into<alloc::string::String>, identity_hex: impl core::convert::Into<alloc::string::String>, destination_kind: impl core::convert::Into<alloc::string::String>, app_data: &[u8], hops: u8, interface_hex: impl core::convert::Into<alloc::string::String>, received_at_ms: u64) -> Self
 pub struct lxmf_sdk::messaging::ConversationRecord
 pub lxmf_sdk::messaging::ConversationRecord::conversation_id: alloc::string::String
 pub lxmf_sdk::messaging::ConversationRecord::last_message_at_ms: u64
@@ -1599,6 +1604,7 @@ pub lxmf_sdk::AnnounceRecord::hops: u8
 pub lxmf_sdk::AnnounceRecord::identity_hex: alloc::string::String
 pub lxmf_sdk::AnnounceRecord::interface_hex: alloc::string::String
 pub lxmf_sdk::AnnounceRecord::received_at_ms: u64
+pub fn lxmf_sdk::AnnounceRecord::from_raw(destination_hex: impl core::convert::Into<alloc::string::String>, identity_hex: impl core::convert::Into<alloc::string::String>, destination_kind: impl core::convert::Into<alloc::string::String>, app_data: &[u8], hops: u8, interface_hex: impl core::convert::Into<alloc::string::String>, received_at_ms: u64) -> Self
 pub struct lxmf_sdk::AttachmentDownloadChunk
 pub lxmf_sdk::AttachmentDownloadChunk::attachment_id: lxmf_sdk::domain::AttachmentId
 pub lxmf_sdk::AttachmentDownloadChunk::bytes_base64: alloc::string::String

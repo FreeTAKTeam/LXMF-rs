@@ -1,6 +1,54 @@
 use super::*;
 
+const EVENT_SINK_QUEUE_CAPACITY: usize = 1024;
+
 impl RpcDaemon {
+    pub(super) fn spawn_event_sink_worker(
+        enabled: bool,
+        metrics: Arc<Mutex<RpcMetrics>>,
+    ) -> Option<mpsc::SyncSender<EventSinkCommand>> {
+        if !enabled {
+            return None;
+        }
+        let (tx, rx) = mpsc::sync_channel::<EventSinkCommand>(EVENT_SINK_QUEUE_CAPACITY);
+        std::thread::Builder::new()
+            .name("rpc-event-sink-worker".to_string())
+            .spawn(move || {
+                while let Ok(command) = rx.recv() {
+                    match command {
+                        EventSinkCommand::Publish { sink, sink_kind, envelope } => {
+                            let result = sink.publish(&envelope);
+                            let mut metrics = metrics.lock().expect("sdk_metrics mutex poisoned");
+                            match result {
+                                Ok(()) => {
+                                    metrics.sdk_event_sink_publish_total =
+                                        metrics.sdk_event_sink_publish_total.saturating_add(1);
+                                    Self::metrics_increment(
+                                        &mut metrics.sdk_event_sink_publish_by_kind,
+                                        sink_kind.as_str(),
+                                    );
+                                }
+                                Err(_) => {
+                                    metrics.sdk_event_sink_error_total =
+                                        metrics.sdk_event_sink_error_total.saturating_add(1);
+                                    Self::metrics_increment(
+                                        &mut metrics.sdk_event_sink_errors_by_kind,
+                                        sink_kind.as_str(),
+                                    );
+                                }
+                            }
+                        }
+                        #[cfg(test)]
+                        EventSinkCommand::Flush { reply } => {
+                            let _ = reply.send(());
+                        }
+                    }
+                }
+            })
+            .expect("spawn rpc event sink worker");
+        Some(tx)
+    }
+
     pub(super) fn sdk_event_sink_enabled(&self) -> bool {
         self.sdk_runtime_config
             .lock()
@@ -51,6 +99,10 @@ impl RpcDaemon {
         if self.event_sink_bridges.is_empty() || !self.sdk_event_sink_enabled() {
             return;
         }
+        let Some(event_sink_tx) = &self.event_sink_tx else {
+            self.metrics_record_event_sink_skipped();
+            return;
+        };
 
         let envelope = RpcEventSinkEnvelope {
             contract_release: "v2.5".to_string(),
@@ -77,10 +129,28 @@ impl RpcDaemon {
                     continue;
                 }
             }
-            match sink.publish(&envelope) {
-                Ok(()) => self.metrics_record_event_sink_publish(sink_kind.as_str()),
-                Err(_) => self.metrics_record_event_sink_error(sink_kind.as_str()),
+            let command = EventSinkCommand::Publish {
+                sink: sink.clone(),
+                sink_kind,
+                envelope: envelope.clone(),
+            };
+            match event_sink_tx.try_send(command) {
+                Ok(()) => {}
+                Err(mpsc::TrySendError::Full(_)) | Err(mpsc::TrySendError::Disconnected(_)) => {
+                    self.metrics_record_event_sink_skipped();
+                }
             }
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) fn flush_event_sink_worker_for_test(&self) {
+        let Some(event_sink_tx) = &self.event_sink_tx else {
+            return;
+        };
+        let (reply_tx, reply_rx) = mpsc::channel();
+        if event_sink_tx.send(EventSinkCommand::Flush { reply: reply_tx }).is_ok() {
+            let _ = reply_rx.recv_timeout(std::time::Duration::from_secs(1));
         }
     }
 }

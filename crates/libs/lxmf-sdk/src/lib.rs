@@ -32,6 +32,10 @@ pub use backend::mobile_ble::{
 };
 #[cfg(all(feature = "rpc-backend", feature = "std"))]
 pub use backend::rpc::RpcBackendClient;
+#[cfg(all(feature = "zmq-pipeline-backend", feature = "std"))]
+pub use backend::zmq_pipeline::{
+    ZmqEndpointRole, ZmqPipelineBackendClient, ZmqPipelineBackendConfig, ZmqPipelineTokenAuth,
+};
 pub use backend::{
     KeyProviderClass, SdkBackend, SdkBackendAsyncEvents, SdkBackendKeyManagement, SdkKeyPurpose,
     SdkStoredKey,

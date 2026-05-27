@@ -50,13 +50,17 @@ const CHANNEL_RTT_FAST_SECS: f32 = 0.18;
 const CHANNEL_RTT_MEDIUM_SECS: f32 = 0.75;
 const CHANNEL_RTT_SLOW_SECS: f32 = 1.45;
 const CHANNEL_WINDOW_FLEXIBILITY: u8 = 4;
+#[allow(dead_code)]
 const CHANNEL_MAX_TRIES: u8 = 5;
 
 #[derive(Debug, Copy, Clone)]
 struct PendingChannelPacket {
     sequence: u16,
+    #[allow(dead_code)]
     packet: Packet,
+    #[allow(dead_code)]
     tries: u8,
+    #[allow(dead_code)]
     next_retry_at: Instant,
 }
 
@@ -83,6 +87,7 @@ impl LinkStatus {
         matches!(self, Self::Active)
     }
 
+    #[allow(dead_code)]
     fn can_retry_channel_messages(self) -> bool {
         matches!(self, Self::Active | Self::Stale)
     }
@@ -668,6 +673,7 @@ impl Link {
         self.channel_states.insert(sequence, ChannelMessageState::Failed);
     }
 
+    #[allow(dead_code)]
     pub(crate) fn poll_channel_timeouts(&mut self, now: Instant) -> Vec<Packet> {
         if !self.status.can_retry_channel_messages() {
             return Vec::new();
@@ -714,6 +720,7 @@ impl Link {
         resend_packets
     }
 
+    #[allow(dead_code)]
     pub(crate) fn next_channel_retry_at(&self) -> Option<Instant> {
         if !self.status.can_retry_channel_messages() {
             return None;
@@ -2008,6 +2015,7 @@ mod tests {
             outbound.handle_packet(&inbound.prove(), iface),
             LinkHandleResult::Activated
         ));
+        outbound.rtt = Duration::from_millis(10);
 
         let (sequence, _packet) = outbound
             .send_channel_message(0x7101, b"eventually-fails".to_vec())

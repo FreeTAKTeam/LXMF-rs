@@ -1,3 +1,5 @@
+use base64::engine::general_purpose::{STANDARD as BASE64_STANDARD, URL_SAFE as BASE64_URL_SAFE};
+use base64::Engine as _;
 use lxmf::identity;
 use lxmf::message::Message;
 use lxmf::LxmfError;
@@ -5,10 +7,13 @@ use lxmf::{Payload, WireMessage};
 use rmpv::Value as RmpValue;
 use rns_core::identity::PrivateIdentity;
 use serde_json::Value as JsonValue;
+use std::io::Cursor;
 
 use crate::lxmf_stamps::FIELD_TICKET;
 
 pub use lxmf::wire_fields::{json_to_rmpv, rmpv_to_json};
+
+const TRANSPORT_FIELDS_MSGPACK_B64_KEY: &str = "_lxmf_fields_msgpack_b64";
 
 pub fn build_wire_message(
     source: [u8; 16],
@@ -76,7 +81,7 @@ pub fn build_wire_message_with_options_and_cancel(
     message.set_title_from_string(title);
     message.set_content_from_string(content);
     if let Some(fields) = fields {
-        message.fields = Some(json_to_rmpv(&fields)?);
+        message.fields = Some(fields_json_to_rmpv(&fields)?);
     }
     if let Some((expires_at, ticket)) = include_ticket {
         let fields = message.fields.get_or_insert_with(|| RmpValue::Map(Vec::new()));
@@ -109,6 +114,27 @@ pub fn build_wire_message_with_options_and_cancel(
     )
     .map_err(|error| LxmfError::Encode(format!("invalid signer key material: {error:?}")))?;
     message.to_wire(Some(&lxmf_signer))
+}
+
+fn fields_json_to_rmpv(fields: &JsonValue) -> Result<RmpValue, LxmfError> {
+    if let Some(encoded) = fields
+        .as_object()
+        .and_then(|object| object.get(TRANSPORT_FIELDS_MSGPACK_B64_KEY))
+        .and_then(JsonValue::as_str)
+    {
+        let bytes = BASE64_STANDARD
+            .decode(encoded)
+            .or_else(|_| BASE64_URL_SAFE.decode(encoded))
+            .map_err(|error| {
+                LxmfError::Decode(format!(
+                    "invalid {TRANSPORT_FIELDS_MSGPACK_B64_KEY} payload: {error}"
+                ))
+            })?;
+        let mut cursor = Cursor::new(bytes);
+        return rmpv::decode::read_value(&mut cursor)
+            .map_err(|error| LxmfError::Decode(error.to_string()));
+    }
+    json_to_rmpv(fields)
 }
 
 fn merge_ticket_field(fields: &mut RmpValue, expires_at: i64, ticket: &[u8]) {

@@ -6,14 +6,54 @@ pub fn encode_delivery_announce_app_data(
     display_name: &str,
     stamp_cost: Option<u32>,
 ) -> Option<Vec<u8>> {
+    encode_delivery_announce_app_data_with_capabilities(display_name, stamp_cost, &[])
+}
+
+pub fn encode_delivery_announce_app_data_with_capabilities(
+    display_name: &str,
+    stamp_cost: Option<u32>,
+    capabilities: &[String],
+) -> Option<Vec<u8>> {
     let normalized = normalize_display_name(display_name)?;
     let stamp_cost = stamp_cost
         .filter(|cost| *cost > 0 && *cost < 255)
         .map(rmpv::Value::from)
         .unwrap_or(rmpv::Value::Nil);
-    let peer_data =
-        rmpv::Value::Array(vec![rmpv::Value::Binary(normalized.into_bytes()), stamp_cost]);
+    let mut peer_data = vec![rmpv::Value::Binary(normalized.into_bytes()), stamp_cost];
+    let capabilities = normalize_capabilities(capabilities);
+    if !capabilities.is_empty() {
+        let caps =
+            rmpv::Value::Array(capabilities.into_iter().map(rmpv::Value::from).collect::<Vec<_>>());
+        let payload = rmpv::Value::Map(vec![
+            (rmpv::Value::from("app"), rmpv::Value::from("rch")),
+            (rmpv::Value::from("schema"), rmpv::Value::from(1)),
+            (rmpv::Value::from("caps"), caps),
+        ]);
+        peer_data.push(rmpv::Value::Binary(rmp_serde::to_vec(&payload).ok()?));
+    }
+    let peer_data = rmpv::Value::Array(peer_data);
     rmp_serde::to_vec(&peer_data).ok()
+}
+
+pub fn normalize_capabilities(capabilities: &[String]) -> Vec<String> {
+    let mut normalized = Vec::new();
+    for capability in capabilities {
+        let capability = capability.trim().to_ascii_lowercase();
+        if capability.is_empty()
+            || capability.chars().any(|ch| {
+                !(ch.is_ascii_lowercase()
+                    || ch.is_ascii_digit()
+                    || ch == '_'
+                    || ch == '-'
+                    || ch == '.')
+            })
+            || normalized.iter().any(|existing| existing == &capability)
+        {
+            continue;
+        }
+        normalized.push(capability);
+    }
+    normalized
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -367,6 +407,43 @@ mod tests {
         let app_data_without_cost =
             encode_delivery_announce_app_data("Peer Name", Some(255)).expect("encode app data");
         assert_eq!(delivery_stamp_cost_from_app_data(app_data_without_cost.as_slice()), None);
+    }
+
+    #[test]
+    fn encodes_delivery_app_data_with_rch_capability_payload() {
+        let app_data = encode_delivery_announce_app_data_with_capabilities(
+            "RCH Rust",
+            Some(17),
+            &["r3akt".to_string(), "topic_broker".to_string(), "telemetry_relay".to_string()],
+        )
+        .expect("encode app data");
+
+        assert_eq!(
+            parse_peer_name_from_app_data(app_data.as_slice()),
+            Some(("RCH Rust".to_string(), "delivery_app_data"))
+        );
+        assert_eq!(delivery_stamp_cost_from_app_data(app_data.as_slice()), Some(17));
+        let rmpv::Value::Array(entries) =
+            rmp_serde::from_slice::<rmpv::Value>(app_data.as_slice()).expect("decode app data")
+        else {
+            panic!("expected app data array");
+        };
+        assert_eq!(entries.len(), 3);
+        let rmpv::Value::Binary(payload) = &entries[2] else {
+            panic!("expected capability payload");
+        };
+        let rmpv::Value::Map(metadata) =
+            rmp_serde::from_slice::<rmpv::Value>(payload).expect("decode capabilities")
+        else {
+            panic!("expected capability metadata");
+        };
+        assert!(metadata
+            .iter()
+            .any(|(key, value)| key.as_str() == Some("app") && value.as_str() == Some("rch")));
+        assert!(metadata.iter().any(|(key, value)| {
+            key.as_str() == Some("caps")
+                && matches!(value, rmpv::Value::Array(items) if items.len() == 3)
+        }));
     }
 
     #[test]

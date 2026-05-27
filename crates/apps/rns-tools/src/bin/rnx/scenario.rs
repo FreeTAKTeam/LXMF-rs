@@ -481,6 +481,8 @@ fn delivery_trace_statuses(
 fn expected_delivery_trace_statuses(expected_mode: &str) -> &'static [&'static str] {
     match expected_mode {
         "direct" => &["sent: direct", "sent: link"],
+        "sent: link" => &["sent: link"],
+        "sent: link resource" => &["sent: link resource"],
         "opportunistic" => &["sent: opportunistic"],
         "propagated" => &["sent: propagated", "sent: propagated resource", "delivered"],
         other => panic!("unsupported delivery mode '{other}'"),

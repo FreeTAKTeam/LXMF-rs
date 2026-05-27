@@ -1,5 +1,6 @@
 use super::diag;
 use super::path::send_to_next_hop;
+use super::resource_wire;
 use super::*;
 use ed25519_dalek::{Signature, SIGNATURE_LENGTH};
 
@@ -148,37 +149,8 @@ pub(super) async fn handle_proof(
     handler: Arc<Mutex<TransportHandler>>,
     iface: AddressHash,
 ) {
-    if packet.context == PacketContext::ResourceProof
-        && packet.header.destination_type == DestinationType::Link
-    {
-        let mut handler = handler.lock().await;
-        let mut link = handler
-            .in_links
-            .get(&packet.destination)
-            .cloned()
-            .or_else(|| handler.out_links.get(&packet.destination).cloned());
-        if link.is_none() {
-            for candidate in handler.out_links.values() {
-                if *candidate.lock().await.id() == packet.destination {
-                    link = Some(candidate.clone());
-                    break;
-                }
-            }
-        }
-        if let Some(link) = link {
-            let mut link = link.lock().await;
-            let mut responses = std::mem::take(&mut handler.resource_response_packets);
-            handler.resource_manager.handle_packet_into(&packet, &mut link, &mut responses);
-            let events = handler.resource_manager.drain_events();
-            drop(link);
-            for response in responses.drain(..) {
-                handler.send_packet(response).await;
-            }
-            handler.resource_response_packets = responses;
-            for event in events {
-                let _ = handler.resource_events_tx.send(event);
-            }
-        }
+    if resource_wire::is_link_resource_proof(&packet) {
+        resource_wire::handle_resource_proof(packet, handler, iface).await;
         return;
     }
     log::trace!("[tp] proof dst={} ctx={:02x}", packet.destination, packet.context as u8);
@@ -299,74 +271,10 @@ pub(super) async fn handle_data<'a>(
     let mut data_handled = false;
 
     if packet.header.destination_type == DestinationType::Link {
-        if matches!(
-            packet.context,
-            PacketContext::Resource
-                | PacketContext::ResourceAdvrtisement
-                | PacketContext::ResourceRequest
-                | PacketContext::ResourceHashUpdate
-                | PacketContext::ResourceProof
-                | PacketContext::ResourceInitiatorCancel
-                | PacketContext::ResourceReceiverCancel
-        ) {
-            let mut link = handler
-                .in_links
-                .get(&packet.destination)
-                .cloned()
-                .or_else(|| handler.out_links.get(&packet.destination).cloned());
-            if link.is_none() {
-                for candidate in handler.out_links.values() {
-                    if *candidate.lock().await.id() == packet.destination {
-                        link = Some(candidate.clone());
-                        break;
-                    }
-                }
-            }
-
-            if let Some(link) = link {
-                let mut link = link.lock().await;
-                let needs_decrypt = matches!(
-                    packet.context,
-                    PacketContext::ResourceAdvrtisement
-                        | PacketContext::ResourceRequest
-                        | PacketContext::ResourceHashUpdate
-                        | PacketContext::ResourceInitiatorCancel
-                        | PacketContext::ResourceReceiverCancel
-                );
-                let packet_for_manager = if needs_decrypt {
-                    let mut buffer = PacketDataBuffer::new();
-                    let plain_len =
-                        match link.decrypt(packet.data.as_slice(), buffer.accuire_buf_max()) {
-                            Ok(plain) => plain.len(),
-                            Err(err) => {
-                                log::warn!("resource: failed to decrypt packet: {:?}", err);
-                                return;
-                            }
-                        };
-                    buffer.resize(plain_len);
-                    let mut plain_packet = *packet;
-                    plain_packet.data = buffer;
-                    plain_packet
-                } else {
-                    *packet
-                };
-                let mut responses = std::mem::take(&mut handler.resource_response_packets);
-                handler.resource_manager.handle_packet_into(
-                    &packet_for_manager,
-                    &mut link,
-                    &mut responses,
-                );
-                let events = handler.resource_manager.drain_events();
-                drop(link);
-                for response in responses.drain(..) {
-                    handler.send_packet(response).await;
-                }
-                handler.resource_response_packets = responses;
-                for event in events {
-                    let _ = handler.resource_events_tx.send(event);
-                }
-                return;
-            }
+        if resource_wire::is_link_resource_packet(packet)
+            && resource_wire::handle_link_resource_packet(packet, iface, &mut handler).await
+        {
+            return;
         }
 
         log::trace!(
@@ -404,6 +312,18 @@ pub(super) async fn handle_data<'a>(
         }
 
         if handle_keepalive_response(packet, &mut handler).await {
+            return;
+        }
+
+        if let Some((packet, iface)) = handler.link_table.handle_reverse_link_packet(packet, iface)
+        {
+            if diag::enabled() {
+                eprintln!(
+                    "[resource-diag] wire_resource_reverse_forward node={} link={} iface={}",
+                    handler.config.name, packet.destination, iface
+                );
+            }
+            handler.send(TxMessage { tx_type: TxMessageType::Direct(iface), packet }).await;
             return;
         }
 

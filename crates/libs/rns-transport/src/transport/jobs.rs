@@ -4,8 +4,10 @@ use super::wire::{handle_data, handle_proof};
 use super::*;
 use crate::destination::link::LinkWatchdogAction;
 
+#[allow(dead_code)]
 const MIN_LINKS_CHECK_DELAY: Duration = Duration::from_millis(10);
 
+#[allow(dead_code)]
 fn link_check_delay_from_deadline(
     now: std::time::Instant,
     earliest_retry: Option<std::time::Instant>,
@@ -21,6 +23,7 @@ fn link_check_delay_from_deadline(
     std::cmp::min(deadline.duration_since(now), INTERVAL_LINKS_CHECK)
 }
 
+#[allow(dead_code)]
 async fn next_link_check_delay(handler_arc: &Arc<Mutex<TransportHandler>>) -> Duration {
     let (in_links, out_links) = {
         let handler = handler_arc.lock().await;
@@ -58,6 +61,7 @@ async fn next_link_check_delay(handler_arc: &Arc<Mutex<TransportHandler>>) -> Du
     link_check_delay_from_deadline(now, earliest_deadline)
 }
 
+#[allow(dead_code)]
 pub(super) async fn handle_check_links<'a>(mut handler: MutexGuard<'a, TransportHandler>) {
     let mut links_to_remove: Vec<AddressHash> = Vec::new();
     let mut closed_link_ids: Vec<AddressHash> = Vec::new();
@@ -267,13 +271,12 @@ pub(super) async fn manage_transport(
                     break;
                 }
 
-                let retry_delay = next_link_check_delay(&handler).await;
-
+                let delay = next_link_check_delay(&handler).await;
                 tokio::select! {
                     _ = cancel.cancelled() => {
                         break;
                     },
-                    _ = time::sleep(retry_delay) => {
+                    _ = time::sleep(delay) => {
                         handle_check_links(handler.lock().await).await;
                     }
                 }
