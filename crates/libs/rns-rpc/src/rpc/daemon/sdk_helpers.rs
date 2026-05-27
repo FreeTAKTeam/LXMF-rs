@@ -442,6 +442,26 @@ impl RpcDaemon {
             && self.validate_sdk_runtime_config(&config).is_ok()
     }
 
+    pub fn remote_rpc_token_auth_configured(&self) -> bool {
+        let config = self.sdk_runtime_config.lock().expect("sdk_runtime_config mutex poisoned");
+        let bind_mode = config
+            .get("bind_mode")
+            .and_then(JsonValue::as_str)
+            .unwrap_or("local_only")
+            .trim()
+            .to_ascii_lowercase();
+        let auth_mode = config
+            .get("auth_mode")
+            .and_then(JsonValue::as_str)
+            .unwrap_or("local_trusted")
+            .trim()
+            .to_ascii_lowercase();
+
+        bind_mode == "remote"
+            && auth_mode == "token"
+            && self.validate_sdk_runtime_config(&config).is_ok()
+    }
+
     #[allow(clippy::result_large_err)]
     pub fn configure_remote_token_auth_for_startup(
         &self,

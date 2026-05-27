@@ -48,6 +48,99 @@ fn response_filter_requires_session_and_request_match() {
 }
 
 #[test]
+fn token_auth_metadata_matches_daemon_bearer_claim_shape() {
+    let mut config =
+        ZmqPipelineBackendConfig::local_tcp("tcp://127.0.0.1:9000", "tcp://127.0.0.1:9001");
+    config.token_auth = Some(ZmqPipelineTokenAuth {
+        issuer: "test-issuer".to_string(),
+        audience: "test-audience".to_string(),
+        shared_secret: "test-secret".to_string(),
+        ttl_secs: 60,
+    });
+    let client = ZmqPipelineBackendClient::new(config).expect("zmq client");
+
+    let auth = client.auth_metadata_for_request(7).expect("auth metadata");
+    let claims = parse_claims(&auth.value);
+    let signed_payload = format!(
+        "iss={};aud={};jti={};sub={};iat={};exp={}",
+        claims.get("iss").expect("issuer"),
+        claims.get("aud").expect("audience"),
+        claims.get("jti").expect("jti"),
+        claims.get("sub").expect("subject"),
+        claims.get("iat").expect("iat"),
+        claims.get("exp").expect("exp")
+    );
+    let expected_sig = token_signature("test-secret", &signed_payload);
+    let expected_jti = format!("{}-7", client.session_id());
+
+    assert_eq!(auth.scheme, "bearer");
+    assert_eq!(claims.get("iss").map(String::as_str), Some("test-issuer"));
+    assert_eq!(claims.get("aud").map(String::as_str), Some("test-audience"));
+    assert_eq!(claims.get("jti").map(String::as_str), Some(expected_jti.as_str()));
+    assert_eq!(claims.get("sub").map(String::as_str), Some("sdk-client"));
+    assert_eq!(claims.get("sig").map(String::as_str), Some(expected_sig.as_str()));
+}
+
+#[test]
+fn negotiate_with_token_auth_preserves_remote_token_runtime_config() {
+    let command_endpoint = unused_loopback_endpoint();
+    let response_endpoint = unused_loopback_endpoint();
+    let captured = Arc::new(Mutex::new(None));
+    let server = spawn_single_response_zmq_server(
+        command_endpoint.clone(),
+        json!({
+            "runtime_id": "runtime-zmq-token",
+            "active_contract_version": 2,
+            "effective_capabilities": [],
+            "effective_limits": {
+                "max_poll_events": 64,
+                "max_event_bytes": 32768,
+                "max_batch_bytes": 1048576,
+                "max_extension_keys": 32,
+                "idempotency_ttl_ms": 60000
+            },
+            "contract_release": "v2",
+            "schema_namespace": "sdk.v2"
+        }),
+        Arc::clone(&captured),
+    );
+    let mut config = ZmqPipelineBackendConfig::local_tcp(command_endpoint, response_endpoint);
+    config.request_timeout = std::time::Duration::from_secs(2);
+    config.token_auth = Some(ZmqPipelineTokenAuth {
+        issuer: "test-issuer".to_string(),
+        audience: "test-audience".to_string(),
+        shared_secret: "test-secret".to_string(),
+        ttl_secs: 60,
+    });
+    let backend = ZmqPipelineBackendClient::new(config).expect("zmq client");
+
+    let response = backend
+        .negotiate(crate::capability::NegotiationRequest {
+            supported_contract_versions: vec![2],
+            requested_capabilities: Vec::new(),
+            profile: crate::types::Profile::DesktopLocalRuntime,
+            bind_mode: crate::types::BindMode::LocalOnly,
+            auth_mode: crate::types::AuthMode::LocalTrusted,
+            overflow_policy: crate::types::OverflowPolicy::Reject,
+            block_timeout_ms: None,
+            rpc_backend: None,
+        })
+        .expect("negotiate");
+
+    assert_eq!(response.runtime_id, "runtime-zmq-token");
+    let captured = captured.lock().expect("captured request");
+    let request = captured.as_ref().expect("zmq request");
+    assert_eq!(request.method, "sdk_negotiate_v2");
+    let config = &request.params.as_ref().expect("params")["config"];
+    assert_eq!(config["bind_mode"], json!("remote"));
+    assert_eq!(config["auth_mode"], json!("token"));
+    assert_eq!(config["rpc_backend"]["token_auth"]["issuer"], json!("test-issuer"));
+    assert_eq!(config["rpc_backend"]["token_auth"]["audience"], json!("test-audience"));
+    assert_eq!(config["rpc_backend"]["token_auth"]["shared_secret"], json!("test-secret"));
+    server.join().expect("server joined");
+}
+
+#[test]
 fn identity_announce_now_uses_zmq_sdk_method() {
     let command_endpoint = unused_loopback_endpoint();
     let response_endpoint = unused_loopback_endpoint();
@@ -117,6 +210,16 @@ fn identity_presence_list_uses_zmq_sdk_method_and_decodes_response() {
     assert_eq!(request.params.as_ref().expect("params")["cursor"], json!("presence:0"));
     assert_eq!(request.params.as_ref().expect("params")["limit"], json!(1));
     server.join().expect("server joined");
+}
+
+fn parse_claims(token: &str) -> BTreeMap<String, String> {
+    token
+        .split(';')
+        .map(|part| {
+            let (key, value) = part.split_once('=').expect("claim key/value");
+            (key.to_string(), value.to_string())
+        })
+        .collect()
 }
 
 fn unused_loopback_endpoint() -> String {

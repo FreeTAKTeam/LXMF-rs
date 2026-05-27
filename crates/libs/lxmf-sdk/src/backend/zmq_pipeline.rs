@@ -21,6 +21,8 @@ use zeromq::{PullSocket, PushSocket, Socket, SocketRecv, SocketSend, ZmqMessage}
 
 #[path = "zmq_pipeline/config.rs"]
 mod config;
+#[path = "zmq_pipeline/negotiation.rs"]
+mod negotiation;
 #[path = "zmq_pipeline/parsing.rs"]
 mod parsing;
 
@@ -74,7 +76,7 @@ impl ZmqPipelineBackendClient {
             request_id,
             self.config.response_endpoint.clone(),
             payload,
-            self.auth_metadata(),
+            self.auth_metadata_for_request(request_id),
         );
         let encoded = zmq::encode_envelope(&envelope)
             .map_err(|err| sdk_error(ErrorCategory::Transport, err.to_string()))?;
@@ -142,20 +144,20 @@ impl ZmqPipelineBackendClient {
         }
     }
 
-    fn auth_metadata(&self) -> Option<ZmqRpcAuthMetadata> {
+    fn auth_metadata_for_request(&self, request_id: u64) -> Option<ZmqRpcAuthMetadata> {
         let auth = self.config.token_auth.as_ref()?;
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|duration| duration.as_secs())
             .unwrap_or(0);
         let payload = format!(
-            "iss={};aud={};iat={};exp={};jti={}-{}",
+            "iss={};aud={};jti={}-{};sub=sdk-client;iat={};exp={}",
             auth.issuer,
             auth.audience,
+            self.session_id,
+            request_id,
             now,
             now.saturating_add(auth.ttl_secs.max(1)),
-            self.session_id,
-            self.next_request_id.load(Ordering::Relaxed)
         );
         let sig = token_signature(auth.shared_secret.as_str(), payload.as_str());
         Some(ZmqRpcAuthMetadata {
@@ -178,6 +180,7 @@ impl ZmqPipelineTransport {
 
 impl SdkBackend for ZmqPipelineBackendClient {
     fn negotiate(&self, req: NegotiationRequest) -> Result<NegotiationResponse, SdkError> {
+        let (bind_mode, auth_mode, rpc_backend) = self.negotiation_security_config(&req);
         let result = self.call_rpc(
             "sdk_negotiate_v2",
             Some(json!({
@@ -185,11 +188,11 @@ impl SdkBackend for ZmqPipelineBackendClient {
                 "requested_capabilities": req.requested_capabilities,
                 "config": {
                     "profile": req.profile,
-                    "bind_mode": req.bind_mode,
-                    "auth_mode": req.auth_mode,
+                    "bind_mode": bind_mode,
+                    "auth_mode": auth_mode,
                     "overflow_policy": req.overflow_policy,
                     "block_timeout_ms": req.block_timeout_ms,
-                    "rpc_backend": req.rpc_backend,
+                    "rpc_backend": rpc_backend,
                 }
             })),
         )?;
