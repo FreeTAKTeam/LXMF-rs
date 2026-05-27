@@ -1,4 +1,5 @@
 use super::*;
+use crate::resource::{DEFAULT_RESOURCE_MAX_RETRIES, DEFAULT_RESOURCE_RETRY_INTERVAL_SECS};
 
 impl TransportConfig {
     pub fn new<T: Into<String>>(name: T, identity: &PrivateIdentity, broadcast: bool) -> Self {
@@ -14,8 +15,8 @@ impl TransportConfig {
             path_request_timeout_secs: 30,
             link_proof_timeout_secs: 600,
             link_idle_timeout_secs: 900,
-            resource_retry_interval_secs: 2,
-            resource_retry_limit: 5,
+            resource_retry_interval_secs: DEFAULT_RESOURCE_RETRY_INTERVAL_SECS,
+            resource_retry_limit: DEFAULT_RESOURCE_MAX_RETRIES,
             ratchet_store_path: None,
         }
     }
@@ -83,9 +84,22 @@ impl Default for TransportConfig {
             path_request_timeout_secs: 30,
             link_proof_timeout_secs: 600,
             link_idle_timeout_secs: 900,
-            resource_retry_interval_secs: 2,
-            resource_retry_limit: 5,
+            resource_retry_interval_secs: DEFAULT_RESOURCE_RETRY_INTERVAL_SECS,
+            resource_retry_limit: DEFAULT_RESOURCE_MAX_RETRIES,
             ratchet_store_path: None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_resource_retry_budget_matches_reference_implementation() {
+        let config = TransportConfig::default();
+
+        assert_eq!(config.resource_retry_interval_secs, 2);
+        assert_eq!(config.resource_retry_limit, 16);
     }
 }

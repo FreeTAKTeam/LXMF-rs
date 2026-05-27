@@ -1,8 +1,9 @@
+use super::remote_control_download::propagation_download_request;
 use super::*;
 use reticulum_daemon::lxmf_bridge::rmpv_to_json;
 use rns_rpc::RemoteControlBridge;
 
-use super::remote_fetch::rmpv_binary_array;
+use super::remote_fetch::{rmpv_binary_array, LocalPropagationImportOutcome};
 use super::remote_request::remote_control_request;
 
 impl TransportBridge {
@@ -216,8 +217,11 @@ impl RemoteControlBridge for TransportBridge {
 
         let mut imported_count = 0usize;
         for payload in &payloads {
-            self.accept_local_propagated_payload(daemon.clone(), payload.clone())?;
-            imported_count = imported_count.saturating_add(1);
+            if self.accept_local_propagated_payload(daemon.clone(), payload.clone())?
+                == LocalPropagationImportOutcome::Imported
+            {
+                imported_count = imported_count.saturating_add(1);
+            }
         }
 
         Ok(json!({
@@ -225,6 +229,74 @@ impl RemoteControlBridge for TransportBridge {
             "fetched_count": payloads.len(),
             "imported_count": imported_count,
         }))
+    }
+
+    fn propagation_remote_download(
+        &self,
+        remote: &str,
+        identity_private_key_hex: Option<&str>,
+        timeout_secs: f64,
+    ) -> Result<JsonValue, std::io::Error> {
+        let remote = remote.trim().to_string();
+        let identity_override = identity_private_key_hex
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| {
+                let bytes = hex::decode(value).map_err(|err| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        format!("identity_private_key_hex must be hex-encoded: {err}"),
+                    )
+                })?;
+                PrivateIdentity::from_private_key_bytes(&bytes).map_err(|err| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        format!("invalid identity private key: {err:?}"),
+                    )
+                })
+            })
+            .transpose()?;
+        let request_identity = identity_override.unwrap_or_else(|| self.signer.clone());
+        let timeout = Duration::from_secs_f64(timeout_secs.max(0.1));
+        let transport = self.transport.clone();
+        let identity_cache = self.outbound_propagation_identities.clone();
+        let daemon = self
+            .daemon
+            .lock()
+            .ok()
+            .and_then(|guard| guard.clone())
+            .ok_or_else(|| std::io::Error::other("rpc daemon unavailable"))?;
+        let delivery_destination = self.announce_destination.clone();
+
+        std::thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|err| {
+                    std::io::Error::other(format!(
+                        "failed to build propagation download runtime: {err}"
+                    ))
+                })?;
+            runtime.block_on(async move {
+                let result = propagation_download_request(
+                    transport.as_ref(),
+                    daemon.as_ref(),
+                    &delivery_destination,
+                    &request_identity,
+                    &remote,
+                    timeout,
+                )
+                .await;
+                if let Ok((_, identity)) = &result {
+                    if let Ok(mut guard) = identity_cache.lock() {
+                        guard.insert(remote.clone(), *identity);
+                    }
+                }
+                result.map(|(json, _)| json)
+            })
+        })
+        .join()
+        .map_err(|_| std::io::Error::other("propagation download helper thread panicked"))?
     }
 
     fn propagation_remote_unpeer(

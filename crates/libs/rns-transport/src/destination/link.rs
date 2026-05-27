@@ -2015,6 +2015,7 @@ mod tests {
             outbound.handle_packet(&inbound.prove(), iface),
             LinkHandleResult::Activated
         ));
+        outbound.rtt = Duration::from_millis(10);
 
         let (sequence, _packet) = outbound
             .send_channel_message(0x7101, b"eventually-fails".to_vec())

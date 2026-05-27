@@ -33,6 +33,11 @@ tokio-rustls = { workspace = true }
 rustls = { workspace = true }
 rustls-pemfile = { workspace = true }
 x509-parser = { workspace = true }
+zeromq = { workspace = true, optional = true }
+
+[features]
+default = []
+zmq-pipeline-rpc = ["dep:zeromq"]
 
 [dev-dependencies]
 tempfile = { workspace = true }

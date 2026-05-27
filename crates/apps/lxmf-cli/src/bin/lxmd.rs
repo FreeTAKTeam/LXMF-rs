@@ -165,6 +165,9 @@ fn main() -> ExitCode {
     let mut cmd = Command::new(&reticulumd);
 
     cmd.arg("--rpc").arg(&effective.rpc);
+    if let Some(config_dir) = effective.config_dir.as_ref() {
+        cmd.arg("--rpc-unix").arg(config_dir.join("lxmf-rpc.sock"));
+    }
     if let Some(rnsconfig) = effective.rnsconfig.as_ref() {
         cmd.arg("--config").arg(rnsconfig);
     }

@@ -483,10 +483,10 @@ impl RpcDaemon {
                         .and_then(|message| message.receipt_status.clone());
                     if existing_message.is_none() {
                         (requested_status, false, None)
-                    } else if existing_status
-                        .as_deref()
-                        .is_some_and(Self::is_terminal_receipt_status)
-                    {
+                    } else if existing_status.as_deref().is_some_and(|status| {
+                        Self::is_terminal_receipt_status(status)
+                            || Self::is_receipt_status_regression(status, &requested_status)
+                    }) {
                         (existing_status.unwrap_or(requested_status), false, None)
                     } else {
                         let delivered_ticket_destination = existing_message

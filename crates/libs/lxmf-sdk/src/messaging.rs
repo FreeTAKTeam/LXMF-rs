@@ -1,6 +1,12 @@
+use lxmf_core::announce::display_name_from_delivery_app_data;
 use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet};
+
+pub const DESTINATION_KIND_APP: &str = "app";
+pub const DESTINATION_KIND_LXMF_DELIVERY: &str = "lxmf_delivery";
+pub const DESTINATION_KIND_LXMF_PROPAGATION: &str = "lxmf_propagation";
+pub const DESTINATION_KIND_OTHER: &str = "other";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PeerState {
@@ -59,6 +65,34 @@ pub struct AnnounceRecord {
     pub hops: u8,
     pub interface_hex: String,
     pub received_at_ms: u64,
+}
+
+impl AnnounceRecord {
+    pub fn from_raw(
+        destination_hex: impl Into<String>,
+        identity_hex: impl Into<String>,
+        destination_kind: impl Into<String>,
+        app_data: &[u8],
+        hops: u8,
+        interface_hex: impl Into<String>,
+        received_at_ms: u64,
+    ) -> Self {
+        let destination_kind = destination_kind.into();
+        let display_name =
+            announce_display_name_from_raw_app_data(destination_kind.as_str(), app_data);
+        let app_data = normalize_announce_app_data(app_data);
+
+        Self {
+            destination_hex: destination_hex.into(),
+            identity_hex: identity_hex.into(),
+            destination_kind,
+            app_data,
+            display_name,
+            hops,
+            interface_hex: interface_hex.into(),
+            received_at_ms,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -177,11 +211,11 @@ impl MessagingStore {
         let mut lxmf_records = HashMap::<String, AnnounceRecord>::new();
 
         for record in self.announce_records.values() {
-            if record.destination_kind == "app" {
+            if record.destination_kind == DESTINATION_KIND_APP {
                 app_dest_by_identity
                     .insert(record.identity_hex.clone(), record.destination_hex.clone());
                 app_records.insert(record.destination_hex.clone(), record.clone());
-            } else if record.destination_kind == "lxmf_delivery" {
+            } else if record.destination_kind == DESTINATION_KIND_LXMF_DELIVERY {
                 lxmf_dest_by_identity
                     .insert(record.identity_hex.clone(), record.destination_hex.clone());
                 lxmf_records.insert(record.destination_hex.clone(), record.clone());
@@ -387,6 +421,21 @@ impl MessagingStore {
     }
 }
 
+fn normalize_announce_app_data(app_data: &[u8]) -> String {
+    String::from_utf8(app_data.to_vec()).unwrap_or_else(|_| hex::encode(app_data))
+}
+
+fn announce_display_name_from_raw_app_data(
+    destination_kind: &str,
+    app_data: &[u8],
+) -> Option<String> {
+    if destination_kind == DESTINATION_KIND_LXMF_DELIVERY {
+        display_name_from_delivery_app_data(app_data)
+    } else {
+        None
+    }
+}
+
 fn message_preview(body_utf8: &str) -> Option<String> {
     let trimmed = body_utf8.trim();
     if trimmed.is_empty() {
@@ -403,82 +452,5 @@ fn peer_display_name_for(peer: &PeerRecord) -> Option<String> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn peer_projection_merges_app_and_lxmf_announces() {
-        let mut store = MessagingStore::default();
-        store.record_announce(AnnounceRecord {
-            destination_hex: "appdest".into(),
-            identity_hex: "identity".into(),
-            destination_kind: "app".into(),
-            app_data: "R3AKT".into(),
-            display_name: None,
-            hops: 1,
-            interface_hex: "iface".into(),
-            received_at_ms: 10,
-        });
-        store.record_announce(AnnounceRecord {
-            destination_hex: "lxmfdest".into(),
-            identity_hex: "identity".into(),
-            destination_kind: "lxmf_delivery".into(),
-            app_data: "chat".into(),
-            display_name: Some("Alice".into()),
-            hops: 1,
-            interface_hex: "iface".into(),
-            received_at_ms: 20,
-        });
-
-        let peers = store.list_peers(["lxmfdest"]);
-        assert_eq!(peers.len(), 1);
-        assert_eq!(peers[0].destination_hex, "appdest");
-        assert_eq!(peers[0].lxmf_destination_hex.as_deref(), Some("lxmfdest"));
-        assert_eq!(peers[0].display_name.as_deref(), Some("Alice"));
-        assert_eq!(peers[0].state, PeerState::Connected);
-    }
-
-    #[test]
-    fn conversation_projection_uses_lxmf_destination_for_peer_lookup() {
-        let mut store = MessagingStore::default();
-        store.record_announce(AnnounceRecord {
-            destination_hex: "appdest".into(),
-            identity_hex: "identity".into(),
-            destination_kind: "app".into(),
-            app_data: "R3AKT".into(),
-            display_name: None,
-            hops: 1,
-            interface_hex: "iface".into(),
-            received_at_ms: 10,
-        });
-        store.record_announce(AnnounceRecord {
-            destination_hex: "lxmfdest".into(),
-            identity_hex: "identity".into(),
-            destination_kind: "lxmf_delivery".into(),
-            app_data: "chat".into(),
-            display_name: Some("Alice".into()),
-            hops: 1,
-            interface_hex: "iface".into(),
-            received_at_ms: 20,
-        });
-        store.upsert_message(MessageRecord {
-            message_id_hex: "msg".into(),
-            conversation_id: "lxmfdest".into(),
-            direction: MessageDirection::Outbound,
-            destination_hex: "lxmfdest".into(),
-            source_hex: None,
-            title: None,
-            body_utf8: "hello".into(),
-            method: MessageMethod::Direct,
-            state: MessageState::Delivered,
-            detail: None,
-            sent_at_ms: Some(30),
-            received_at_ms: None,
-            updated_at_ms: 30,
-        });
-
-        let conversations = store.list_conversations(std::iter::empty::<&str>());
-        assert_eq!(conversations.len(), 1);
-        assert_eq!(conversations[0].peer_display_name.as_deref(), Some("Alice"));
-    }
-}
+#[path = "messaging/tests.rs"]
+mod tests;

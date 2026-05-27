@@ -258,7 +258,7 @@ impl Transport {
                 None,
             )
             .await;
-        let outcome = if dispatch.sent_ifaces > 0 {
+        let outcome = if dispatch.sent_ifaces > 0 || dispatch.queued_ifaces > 0 {
             SendPacketOutcome::SentBroadcast
         } else {
             SendPacketOutcome::DroppedNoRoute

@@ -34,19 +34,44 @@ pub(crate) fn spawn_daemon(
     config: &Path,
     propagation_enabled: bool,
 ) -> io::Result<Child> {
+    spawn_daemon_with_optional_transport(
+        rpc,
+        db_path,
+        Some(transport),
+        config,
+        propagation_enabled,
+        false,
+    )
+}
+
+pub(crate) fn spawn_daemon_with_optional_transport(
+    rpc: &str,
+    db_path: &Path,
+    transport: Option<&str>,
+    config: &Path,
+    propagation_enabled: bool,
+    diagnostics: bool,
+) -> io::Result<Child> {
     let mut cmd = ProcessCommand::new(reticulumd_path()?);
     cmd.args(build_daemon_args(
         rpc,
         &db_path.to_string_lossy(),
         0,
-        Some(transport),
+        transport,
         Some(&config.to_string_lossy()),
     ));
     if propagation_enabled {
         cmd.env("LXMD_PROPAGATION_NODE", "1");
     }
+    if diagnostics {
+        cmd.env("RETICULUMD_DIAGNOSTICS", "1");
+    }
     cmd.stdout(Stdio::piped());
-    cmd.stderr(if stderr_passthrough_enabled() { Stdio::inherit() } else { Stdio::null() });
+    cmd.stderr(if diagnostics || stderr_passthrough_enabled() {
+        Stdio::inherit()
+    } else {
+        Stdio::null()
+    });
     cmd.spawn()
 }
 

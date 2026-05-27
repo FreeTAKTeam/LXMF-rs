@@ -6,6 +6,9 @@ surface.
 
 Scope:
 - Transport: HTTP `POST /rpc` with framed MessagePack payloads over Unix sockets, TCP, or TLS/mTLS.
+- Experimental transport: feature-gated ZeroMQ pipeline RPC uses the same framed MessagePack RPC
+  payload bytes inside an application envelope. HTTP remains the default and authoritative transport
+  until the ZeroMQ release gates below pass.
 - Event stream: HTTP `GET /events` with framed MessagePack events.
 - Live event stream: HTTP `GET /events/stream` keeps the connection open and writes framed SDK
   event objects until the client disconnects. Frames use the same 4-byte big-endian length prefix
@@ -50,6 +53,45 @@ Response object:
 - `id: u64`
 - `result: object | array | scalar | null`
 - `error: { code: string, message: string } | null`
+
+## Experimental ZeroMQ pipeline transport
+
+Status: opt-in, feature-gated, not the default SDK transport.
+
+Crate/API pin:
+
+- Rust crate: `zeromq = 0.6.0`
+- Enabled crate features: `tokio-runtime`, `tcp-transport`
+- Initial socket pattern: paired `PUSH`/`PULL` sockets
+- IPC transport is deferred for the first cross-platform pass.
+
+Envelope:
+
+- `protocol_version: u16`, currently `1`
+- `session_id: string`
+- `request_id: u64`
+- `kind: request | response | event | control`
+- `auth: { scheme, value } | null`
+- `response_endpoint: string | null`
+- `payload: bytes`, containing the existing framed MessagePack RPC request or response
+
+Correlation is mandatory. SDK clients must accept a response only when both `session_id` and
+`request_id` match the pending call. ZeroMQ socket identity, round-robin delivery, and peer ordering
+are not sufficient for request/reply semantics.
+
+Security:
+
+- Loopback TCP endpoints may run in local-trusted mode.
+- Non-local TCP endpoints fail closed unless explicit application-layer auth metadata is configured.
+- The first auth mode is token/HMAC metadata equivalent to the HTTP bearer token semantics.
+- mTLS is not provided by ZeroMQ and must not be inferred from the socket layer.
+- IPC endpoints are deferred until the optional Unix-only transport feature is introduced.
+
+Events:
+
+- `sdk_poll_events_v2` cursor semantics remain authoritative.
+- Pushed event envelopes are a wakeup/optimization path only until they prove identical gap, cursor,
+  overflow, replay, and reset behavior.
 
 ## Stable method set
 

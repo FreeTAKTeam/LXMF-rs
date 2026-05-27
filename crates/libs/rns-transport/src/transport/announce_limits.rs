@@ -10,7 +10,9 @@ use crate::hash::AddressHash;
 use crate::packet::{Packet, PacketContext};
 
 pub struct AnnounceRateLimit {
+    #[allow(dead_code)]
     pub incoming_freq_samples: usize,
+    #[allow(dead_code)]
     pub max_held_announces: usize,
     pub new_time: Duration,
     pub burst_freq_new: f64,
