@@ -79,7 +79,7 @@ impl TcpClient {
             };
 
             if stream.is_err() {
-                log::info!("couldn't connect to <{}>", addr);
+                log::warn!("couldn't connect to <{}>", addr);
                 tokio::select! {
                     _ = context.cancel.cancelled() => break,
                     _ = iface_stop.cancelled() => break,
@@ -228,7 +228,7 @@ impl TcpClient {
                                     log::trace!("tx >> ({}) {}", iface_address, packet);
                                 }
                                 if tx_diag_enabled() {
-                                    log::info!("[tp-diag] tcp_client tx_dequeue iface={} {}", iface_address, packet);
+                                    log::debug!("[tp-diag] tcp_client tx_dequeue iface={} {}", iface_address, packet);
                                 }
                                 let mut output = OutputBuffer::new(&mut tx_buffer);
                                 if packet.serialize(&mut output).is_ok() {
@@ -245,7 +245,7 @@ impl TcpClient {
                                             break;
                                         }
                                         if tx_diag_enabled() {
-                                            log::info!(
+                                            log::debug!(
                                                 "[tp-diag] tcp_client tx_write_ok iface={} wire_len={} raw_len={}",
                                                 iface_address,
                                                 hdlc_output.as_slice().len(),

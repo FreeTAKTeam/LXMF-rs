@@ -42,7 +42,7 @@ pub(super) async fn handle_resource_proof(
         handler.link_table.handle_reverse_link_packet(&packet, iface)
     {
         if diag::enabled() {
-            log::info!(
+            log::debug!(
                 "[tp-diag] resource_proof_reverse_forward node={} link={} iface={}",
                 handler.config.name,
                 packet.destination,

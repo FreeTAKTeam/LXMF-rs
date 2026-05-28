@@ -210,7 +210,7 @@ impl UdpInterface {
                 .map_err(|_| RnsError::ConnectionError);
 
             if socket.is_err() {
-                log::info!("udp_interface: couldn't bind to <{}>", bind_addr);
+                log::warn!("udp_interface: couldn't bind to <{}>", bind_addr);
                 tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                 continue;
             }
