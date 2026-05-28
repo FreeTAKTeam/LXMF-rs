@@ -155,7 +155,7 @@ fn packet_for_resource_manager(packet: &Packet, link: &mut Link) -> Option<Packe
                     err
                 );
             }
-            log::warn!("resource: failed to decrypt packet: {:?}", err);
+            log::warn!("failed to decrypt packet: {:?}", err);
             return None;
         }
     };
