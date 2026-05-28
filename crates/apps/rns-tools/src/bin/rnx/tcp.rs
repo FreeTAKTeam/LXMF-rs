@@ -285,7 +285,9 @@ pub(crate) fn run_tcp_native_bridge(
         };
         log::info!(
             "TCP_NATIVE_BRIDGE ok: peer={} mode={:?} attachment_id={}",
-            peer_addr, mode, attachment_id
+            peer_addr,
+            mode,
+            attachment_id
         );
         if !serve {
             break;

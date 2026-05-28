@@ -2912,7 +2912,10 @@ fn run_python_impl_bench_report(
         resource_iterations,
     )?;
     write_python_impl_report_summary(&summary)?;
-    log::info!("python implementation benchmark report written to {}", PYTHON_IMPL_REPORT_TEXT_PATH);
+    log::info!(
+        "python implementation benchmark report written to {}",
+        PYTHON_IMPL_REPORT_TEXT_PATH
+    );
     Ok(())
 }
 
@@ -3348,7 +3351,10 @@ fn write_python_impl_compare_report(
             .context("serialize python implementation comparison report")?,
     )
     .with_context(|| format!("write {}", paths.compare_json_path.display()))?;
-    log::info!("python implementation comparison written to {}", paths.compare_report_path.display());
+    log::info!(
+        "python implementation comparison written to {}",
+        paths.compare_report_path.display()
+    );
     Ok(())
 }
 

@@ -53,7 +53,9 @@ pub(crate) fn handle_tcp_native_session(
                             transport.send_frame(outbound).map_err(embedded_to_io)?;
                             log::trace!(
                                 "{label} sent request kind=0x{:02x} seq={} mode={}",
-                                outbound.kind, outbound.sequence, mode_name
+                                outbound.kind,
+                                outbound.sequence,
+                                mode_name
                             );
                             outbound_sent = true;
                         }
@@ -161,7 +163,10 @@ pub(crate) fn handle_tcp_native_session(
                     ]);
                     log::trace!(
                         "{label} frame kind=0x{:02x} seq={} total_chunks={} total_bytes={}",
-                        frame.kind, frame.sequence, total_chunks, total_bytes
+                        frame.kind,
+                        frame.sequence,
+                        total_chunks,
+                        total_bytes
                     );
                     if let Some(expected) = capture_total_bytes {
                         if expected != total_bytes {

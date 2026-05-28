@@ -99,7 +99,10 @@ pub(crate) fn run_resource_repro(
         .ok_or_else(|| io::Error::other("daemon B did not report delivery destination hash"))?;
     log::trace!(
         "RESOURCE_REPRO node_ready source_destination={} target_destination={} tcp_server={}:{}",
-        a_delivery_hash, b_delivery_hash, server_host, server_port
+        a_delivery_hash,
+        b_delivery_hash,
+        server_host,
+        server_port
     );
 
     let mut req_id = 1u64;

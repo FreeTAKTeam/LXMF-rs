@@ -35,7 +35,9 @@ pub(crate) fn run_replay(
     }
     log::trace!(
         "REPLAY ok: trace='{}' steps={} digest={}",
-        capture.trace_name, capture.steps_executed, capture.response_digest_sha256
+        capture.trace_name,
+        capture.steps_executed,
+        capture.response_digest_sha256
     );
     Ok(())
 }
