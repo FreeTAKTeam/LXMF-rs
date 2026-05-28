@@ -302,6 +302,7 @@ enum TcpBridgeMode {
 }
 
 fn main() {
+    env_logger::init();
     let cli = Cli::parse();
     if let Err(err) = run(cli) {
         log::error!("rnx error: {}", err);

@@ -230,6 +230,7 @@ enum Command {
 }
 
 fn main() -> ExitCode {
+    env_logger::init();
     let cli = Cli::parse();
     match run(&cli) {
         Ok(output) => {

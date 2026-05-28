@@ -143,6 +143,7 @@ struct Args {
 }
 
 fn main() -> ExitCode {
+    env_logger::init();
     let args = Args::parse();
     if args.exampleconfig {
         print!("{}", example_config());

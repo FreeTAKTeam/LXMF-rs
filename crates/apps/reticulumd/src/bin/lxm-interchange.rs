@@ -11,6 +11,7 @@ struct Args {
 }
 
 fn main() -> ExitCode {
+    env_logger::init();
     let args = Args::parse();
     match decode_storage_file(&args.file) {
         Ok(summary) => match serde_json::to_string(&summary) {
