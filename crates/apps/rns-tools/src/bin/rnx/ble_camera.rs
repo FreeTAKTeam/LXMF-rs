@@ -44,7 +44,7 @@ pub(crate) fn run_camera_capture_upload(
     let name = format!("capture-{}.jpg", timestamp_millis());
     let attachment_id =
         upload_attachment_via_rpc(rpc.as_str(), name, content_type, bytes.as_slice(), chunk_size)?;
-    println!("CAMERA_CAPTURE_UPLOAD ok: bytes={} attachment_id={}", bytes.len(), attachment_id);
+    log::trace!("CAMERA_CAPTURE_UPLOAD ok: bytes={} attachment_id={}", bytes.len(), attachment_id);
     Ok(())
 }
 

@@ -1508,6 +1508,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "clap_complete",
+ "env_logger",
  "hex",
  "log",
  "lxmf-sdk",
@@ -2169,6 +2170,7 @@ dependencies = [
  "btleplug",
  "clap",
  "ed25519-dalek",
+ "env_logger",
  "futures",
  "hex",
  "hkdf",
@@ -2290,6 +2292,7 @@ dependencies = [
  "base64 0.22.1",
  "btleplug",
  "clap",
+ "env_logger",
  "futures",
  "hex",
  "log",

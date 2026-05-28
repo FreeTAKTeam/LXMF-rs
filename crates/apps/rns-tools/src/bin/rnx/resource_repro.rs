@@ -97,7 +97,7 @@ pub(crate) fn run_resource_repro(
         .delivery_hash
         .clone()
         .ok_or_else(|| io::Error::other("daemon B did not report delivery destination hash"))?;
-    println!(
+    log::trace!(
         "RESOURCE_REPRO node_ready source_destination={} target_destination={} tcp_server={}:{}",
         a_delivery_hash, b_delivery_hash, server_host, server_port
     );
@@ -166,7 +166,7 @@ pub(crate) fn run_resource_repro(
 
     cleanup_child(&mut a_child, keep);
     cleanup_child(&mut b_child, keep);
-    println!("RESOURCE_REPRO ok: packet and resource direct-link cases delivered");
+    log::trace!("RESOURCE_REPRO ok: packet and resource direct-link cases delivered");
     Ok(())
 }
 
@@ -245,7 +245,7 @@ fn run_resource_repro_case(
         target_destination,
         &payload.content,
     );
-    println!(
+    log::trace!(
         "RESOURCE_REPRO send_start case={} payload={} source_destination={} target_destination={} message_id={} bytes={} expected={}",
         case_label,
         payload.label,
@@ -295,7 +295,7 @@ fn run_resource_repro_case(
         ));
     }
 
-    println!(
+    log::trace!(
         "RESOURCE_REPRO receiver_import case={} message_id={} outcome=delivered trace_statuses={:?}",
         case_label, message_id, statuses
     );

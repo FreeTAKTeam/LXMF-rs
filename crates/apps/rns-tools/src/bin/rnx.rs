@@ -530,7 +530,7 @@ fn run_camera_upload(
         chunk_size,
     )?;
 
-    println!(
+    log::trace!(
         "CAMERA_UPLOAD ok: file={} bytes={} chunk_size={} attachment_id={}",
         file.display(),
         payload.len(),

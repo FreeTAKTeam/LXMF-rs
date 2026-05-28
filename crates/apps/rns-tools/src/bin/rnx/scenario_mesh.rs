@@ -199,8 +199,8 @@ pub(crate) fn run_mesh_sim(
             }
         }
 
-        println!("MESH ok: nodes={} announce propagation established across mesh", nodes);
-        println!("MESH ok: multi-hop delivery workflows completed");
+        log::trace!("MESH ok: nodes={} announce propagation established across mesh", nodes);
+        log::trace!("MESH ok: multi-hop delivery workflows completed");
         Ok(())
     })();
 
