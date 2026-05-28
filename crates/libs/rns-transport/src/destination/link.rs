@@ -1150,7 +1150,6 @@ impl Link {
         self.post_event(LinkEvent::Closed);
 
         log::warn!("link: close {}", self.id);
-        eprintln!("link: close {}", self.id);
     }
 
     fn teardown_packet(&self) -> Result<Packet, RnsError> {

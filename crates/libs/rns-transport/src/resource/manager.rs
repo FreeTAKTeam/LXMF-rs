@@ -398,6 +398,6 @@ fn resource_diag(message: &str) {
     if std::env::var("RETICULUMD_DIAGNOSTICS").ok().is_some_and(|value| {
         matches!(value.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on" | "debug")
     }) {
-        eprintln!("[resource-diag] {message}");
+        log::debug!("[resource-diag] {message}");
     }
 }

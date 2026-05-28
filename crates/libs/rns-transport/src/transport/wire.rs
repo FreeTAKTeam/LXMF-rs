@@ -318,7 +318,7 @@ pub(super) async fn handle_data<'a>(
         if let Some((packet, iface)) = handler.link_table.handle_reverse_link_packet(packet, iface)
         {
             if diag::enabled() {
-                eprintln!(
+                log::debug!(
                     "[resource-diag] wire_resource_reverse_forward node={} link={} iface={}",
                     handler.config.name, packet.destination, iface
                 );
