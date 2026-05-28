@@ -604,6 +604,7 @@ enum PublishWave {
 }
 
 fn main() -> Result<()> {
+    env_logger::init();
     let xtask = Xtask::parse();
     match xtask.command {
         XtaskCommand::Ci { stage } => run_ci(stage),
@@ -2824,7 +2825,7 @@ struct PythonImplOutputPaths<'a> {
 fn run_sdk_perf_budget_check() -> Result<()> {
     run_sdk_bench_check()?;
     if let Err(first_err) = evaluate_perf_budgets() {
-        eprintln!(
+        log::warn!(
             "initial performance budget evaluation failed ({first_err:#}); retrying benchmarks once"
         );
         run_sdk_bench_check()?;
@@ -5355,6 +5356,6 @@ fn print_cargo_output(output: &std::process::Output) {
         print!("{}", String::from_utf8_lossy(&output.stdout));
     }
     if !output.stderr.is_empty() {
-        eprint!("{}", String::from_utf8_lossy(&output.stderr));
+        log::error!("{}", String::from_utf8_lossy(&output.stderr));
     }
 }
