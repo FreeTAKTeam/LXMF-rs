@@ -98,7 +98,7 @@ pub(super) async fn start_transport_and_interfaces(
 
     if transport_required {
         if let Some(addr) = selected_tcp_server.bind_addr.as_ref() {
-            println!(
+            log::info!(
                 "{}",
                 pretty_boot_line(
                     "transport",
@@ -106,7 +106,7 @@ pub(super) async fn start_transport_and_interfaces(
                 )
             );
         }
-        println!("{}", pretty_daemon_line("transport enabled"));
+        log::info!("{}", pretty_daemon_line("transport enabled"));
         let transport_identity =
             rns_transport::identity_bridge::to_transport_private_identity(identity);
         let mut config = TransportConfig::new("daemon", &transport_identity, true);

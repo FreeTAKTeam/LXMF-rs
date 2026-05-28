@@ -40,7 +40,7 @@ pub(super) async fn run_rpc_loop(
     tokio::spawn(async move {
         match tokio::signal::ctrl_c().await {
             Ok(()) => {
-                println!("[daemon] shutdown signal received");
+                log::info!("[daemon] shutdown signal received");
                 let _ = shutdown_tx.send(true);
             }
             Err(err) => {
@@ -93,13 +93,13 @@ async fn run_plain_rpc_loop(
     mut shutdown: ShutdownReceiver,
 ) {
     let listener = TcpListener::bind(addr).await.expect("bind rpc listener");
-    println!("reticulumd listening on http://{}", addr);
+    log::info!("reticulumd listening on http://{}", addr);
 
     loop {
         tokio::select! {
             shutdown_result = shutdown.changed() => {
                 if shutdown_result.is_err() || *shutdown.borrow() {
-                    println!("[daemon] rpc tcp listener shutting down");
+                    log::info!("[daemon] rpc tcp listener shutting down");
                     break;
                 }
             }
@@ -118,14 +118,14 @@ async fn run_plain_rpc_loop(
 async fn run_unix_rpc_loop(path: PathBuf, daemon: Arc<RpcDaemon>, mut shutdown: ShutdownReceiver) {
     prepare_rpc_unix_socket_path(&path).expect("prepare rpc unix socket path");
     let listener = UnixListener::bind(&path).expect("bind rpc unix socket");
-    println!("reticulumd listening on unix:{}", path.display());
+    log::info!("reticulumd listening on unix:{}", path.display());
     let peer_addr = SocketAddr::from(([127, 0, 0, 1], 0));
 
     loop {
         tokio::select! {
             shutdown_result = shutdown.changed() => {
                 if shutdown_result.is_err() || *shutdown.borrow() {
-                    println!("[daemon] rpc unix listener shutting down");
+                    log::info!("[daemon] rpc unix listener shutting down");
                     break;
                 }
             }
@@ -185,13 +185,13 @@ async fn run_tls_rpc_loop(
     let tls_server = build_tls_server_config(&config).expect("build rpc tls server config");
     let acceptor = TlsAcceptor::from(tls_server);
     let listener = TcpListener::bind(addr).await.expect("bind tls rpc listener");
-    println!("reticulumd listening on https://{}", addr);
+    log::info!("reticulumd listening on https://{}", addr);
 
     loop {
         tokio::select! {
             shutdown_result = shutdown.changed() => {
                 if shutdown_result.is_err() || *shutdown.borrow() {
-                    println!("[daemon] rpc tls listener shutting down");
+                    log::info!("[daemon] rpc tls listener shutting down");
                     break;
                 }
             }

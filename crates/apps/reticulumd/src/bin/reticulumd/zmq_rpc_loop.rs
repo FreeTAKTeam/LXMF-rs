@@ -25,7 +25,7 @@ pub(super) async fn run_zmq_rpc_loop_until(
     let mut commands = PullSocket::new();
     commands.bind(config.command_endpoint.as_str()).await.map_err(zmq_io_error)?;
     let mut responses: HashMap<String, PushSocket> = HashMap::new();
-    println!("reticulumd listening on zmq {}", config.command_endpoint);
+    log::info!("reticulumd listening on zmq {}", config.command_endpoint);
 
     loop {
         tokio::select! {

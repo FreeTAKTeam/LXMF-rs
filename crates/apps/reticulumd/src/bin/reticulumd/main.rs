@@ -88,7 +88,7 @@ async fn run_daemon_loops(context: bootstrap::BootstrapContext, zmq_rpc_command:
     tokio::spawn(async move {
         match tokio::signal::ctrl_c().await {
             Ok(()) => {
-                println!("[daemon] shutdown signal received");
+                log::info!("[daemon] shutdown signal received");
                 let _ = shutdown_tx.send(true);
             }
             Err(err) => {

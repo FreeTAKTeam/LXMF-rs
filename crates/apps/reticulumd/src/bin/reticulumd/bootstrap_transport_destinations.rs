@@ -91,6 +91,6 @@ async fn destination_hash(
     let mut hash = [0u8; 16];
     hash.copy_from_slice(dest.desc.address_hash.as_slice());
     let hash_hex = hex::encode(hash);
-    println!("{}", pretty_daemon_line(&format!("{label} destination hash={hash_hex}")));
+    log::info!("{}", pretty_daemon_line(&format!("{label} destination hash={hash_hex}")));
     (hash, hash_hex)
 }

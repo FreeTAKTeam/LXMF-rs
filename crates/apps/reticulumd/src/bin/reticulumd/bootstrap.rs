@@ -186,7 +186,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     } else {
         "disabled".to_string()
     };
-    println!(
+    log::info!(
         "{}",
         pretty_boot_line(
             "startup",
