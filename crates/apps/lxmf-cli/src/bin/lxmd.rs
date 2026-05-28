@@ -143,7 +143,9 @@ struct Args {
 }
 
 fn main() -> ExitCode {
-    env_logger::init();
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
     let args = Args::parse();
     if args.exampleconfig {
         print!("{}", example_config());

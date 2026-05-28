@@ -224,6 +224,7 @@ async fn run_tls_rpc_loop(
     }
 }
 
+#[tracing::instrument(name = "rpc_conn", skip(stream, daemon, transport_auth))]
 async fn handle_connection<S>(
     mut stream: S,
     peer_addr: SocketAddr,

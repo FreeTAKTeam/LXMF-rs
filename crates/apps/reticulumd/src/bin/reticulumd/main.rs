@@ -67,7 +67,9 @@ struct Args {
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
-    env_logger::init();
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
     let args = Args::parse();
     #[cfg(feature = "zmq-pipeline-rpc")]
     let zmq_rpc_command = args.zmq_rpc_command.clone();

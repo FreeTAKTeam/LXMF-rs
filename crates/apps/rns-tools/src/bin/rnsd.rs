@@ -5,7 +5,9 @@ use std::path::PathBuf;
 use std::process::{Command, ExitCode};
 
 fn main() -> ExitCode {
-    env_logger::init();
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
     let args: Vec<_> = env::args_os().skip(1).collect();
     let reticulumd = resolve_reticulumd_binary();
 

@@ -51,9 +51,11 @@ impl TcpClient {
         Self { addr: addr.into(), stream: Some(stream) }
     }
 
+    #[tracing::instrument(name = "tcp_peer", skip_all, fields(addr = tracing::field::Empty))]
     pub async fn spawn(context: InterfaceContext<TcpClient>) {
         let iface_stop = context.channel.stop.clone();
         let addr = { context.inner.lock().unwrap().addr.clone() };
+        tracing::Span::current().record("addr", addr.as_str());
         let iface_address = context.channel.address;
         let mut stream = { context.inner.lock().unwrap().stream.take() };
 

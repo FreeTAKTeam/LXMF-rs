@@ -11,7 +11,9 @@ struct Args {
 }
 
 fn main() -> ExitCode {
-    env_logger::init();
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
     let args = Args::parse();
     match decode_storage_file(&args.file) {
         Ok(summary) => match serde_json::to_string(&summary) {

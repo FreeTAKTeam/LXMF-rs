@@ -604,7 +604,9 @@ enum PublishWave {
 }
 
 fn main() -> Result<()> {
-    env_logger::init();
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
     let xtask = Xtask::parse();
     match xtask.command {
         XtaskCommand::Ci { stage } => run_ci(stage),
