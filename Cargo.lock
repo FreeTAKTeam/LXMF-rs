@@ -2085,6 +2085,7 @@ dependencies = [
  "futures",
  "hex",
  "hkdf",
+ "log",
  "lxmf-wire",
  "rand_core 0.6.4",
  "reticulum-rs-core",

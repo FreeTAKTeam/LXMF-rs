@@ -44,7 +44,7 @@ pub(super) async fn run_rpc_loop(
                 let _ = shutdown_tx.send(true);
             }
             Err(err) => {
-                eprintln!("[daemon] failed to install shutdown signal handler: {}", err);
+                log::error!("[daemon] failed to install shutdown signal handler: {}", err);
             }
         }
     });
@@ -170,7 +170,7 @@ fn cleanup_rpc_unix_socket_path(path: &Path) -> io::Result<()> {
 
 #[cfg(not(unix))]
 async fn run_unix_rpc_loop(path: PathBuf, _daemon: Arc<RpcDaemon>, _shutdown: ShutdownReceiver) {
-    eprintln!(
+    log::warn!(
         "[daemon] ignoring --rpc-unix {} because Unix sockets are not supported on this platform",
         path.display()
     );
@@ -212,7 +212,7 @@ async fn run_tls_rpc_loop(
                             .await;
                         }
                         Err(err) => {
-                            eprintln!(
+                            log::error!(
                                 "[daemon] rpc tls handshake failed peer={} err={}",
                                 peer_addr, err
                             );
@@ -235,7 +235,7 @@ async fn handle_connection<S>(
     let buffer = match read_http_request(&mut stream).await {
         Ok(buffer) => buffer,
         Err(err) => {
-            eprintln!("[daemon] rpc read error peer={} err={}", peer_addr, err);
+            log::error!("[daemon] rpc read error peer={} err={}", peer_addr, err);
             let _ = stream.write_all(request_read_error_response(&err)).await;
             let _ = stream.shutdown().await;
             return;
@@ -327,7 +327,7 @@ async fn handle_event_stream<S>(
         let batch = match poll_sdk_event_stream_batch(daemon, cursor.as_deref(), 256) {
             Ok(batch) => batch,
             Err(err) => {
-                eprintln!(
+                log::error!(
                     "[daemon] event stream catch-up error peer={} code={} message={}",
                     peer_addr, err.code, err.message
                 );
@@ -366,7 +366,7 @@ async fn handle_event_stream<S>(
         let frame = match codec::encode_frame(&event) {
             Ok(frame) => frame,
             Err(err) => {
-                eprintln!("[daemon] event stream encode error peer={} err={}", peer_addr, err);
+                log::error!("[daemon] event stream encode error peer={} err={}", peer_addr, err);
                 break;
             }
         };

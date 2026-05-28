@@ -92,7 +92,7 @@ async fn run_daemon_loops(context: bootstrap::BootstrapContext, zmq_rpc_command:
                 let _ = shutdown_tx.send(true);
             }
             Err(err) => {
-                eprintln!("[daemon] failed to install shutdown signal handler: {}", err);
+                log::error!("[daemon] failed to install shutdown signal handler: {}", err);
             }
         }
     });
@@ -104,7 +104,7 @@ async fn run_daemon_loops(context: bootstrap::BootstrapContext, zmq_rpc_command:
             let config =
                 zmq_rpc_loop::ZmqRpcLoopConfig { command_endpoint, require_auth_for_remote: true };
             if let Err(err) = zmq_rpc_loop::run_zmq_rpc_loop_until(config, daemon, shutdown).await {
-                eprintln!("[daemon] zmq rpc loop stopped: {}", err);
+                log::error!("[daemon] zmq rpc loop stopped: {}", err);
             }
         });
     }

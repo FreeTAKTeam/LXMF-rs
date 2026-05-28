@@ -19,12 +19,12 @@ fn main() -> ExitCode {
                 ExitCode::SUCCESS
             }
             Err(error) => {
-                eprintln!("failed to encode interchange summary: {error}");
+                log::error!("failed to encode interchange summary: {error}");
                 ExitCode::from(1)
             }
         },
         Err(error) => {
-            eprintln!("failed to decode interchange file {}: {error}", args.file.display());
+            log::error!("failed to decode interchange file {}: {error}", args.file.display());
             ExitCode::from(1)
         }
     }

@@ -68,7 +68,7 @@ pub(super) fn spawn_inbound_worker(
                                     .await
                                     {
                                         if diagnostics_enabled() {
-                                            eprintln!(
+                                            log::debug!(
                                                 "[daemon-rx] dropping inbound propagation resource: {}",
                                                 error
                                             );
@@ -131,7 +131,7 @@ fn spawn_packet_inbound_worker(
                     .await
                     else {
                         if diagnostics_enabled() {
-                            eprintln!(
+                            log::debug!(
                                 "[daemon-rx] skipping unresolved full-wire payload: dst={} len={} ctx={:?}",
                                 raw_destination_hex,
                                 data.len(),
@@ -159,7 +159,7 @@ fn spawn_packet_inbound_worker(
                             .await
                             {
                                 if diagnostics_enabled() {
-                                    eprintln!(
+                                    log::debug!(
                                         "[daemon-rx] dropping inbound propagation payload: dst={} error={}",
                                         raw_destination_hex, error
                                     );
@@ -182,7 +182,7 @@ fn spawn_packet_inbound_worker(
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
                     if diagnostics_enabled() {
-                        eprintln!(
+                        log::debug!(
                             "[daemon-rx] received-data channel lagged; skipped {} events",
                             skipped
                         );

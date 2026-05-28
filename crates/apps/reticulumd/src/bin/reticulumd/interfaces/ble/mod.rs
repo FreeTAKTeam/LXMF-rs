@@ -307,7 +307,7 @@ async fn schedule_retry(attempt: &mut u32, backoff: &mut Duration, max_backoff: 
 
 async fn cleanup_backend<B: BleBackend>(backend: &mut B, settings: &BleRuntimeSettings) {
     if let Err(err) = backend.cleanup(settings).await {
-        eprintln!(
+        log::error!(
             "[daemon] ble_gatt backend={} cleanup err={}",
             backend.backend_name(),
             err.message
@@ -355,7 +355,7 @@ fn stage_result(
                 backoff_ms,
             });
             if will_retry {
-                eprintln!(
+                log::warn!(
                     "[daemon] ble_gatt backend={} phase={} retrying attempt={} backoff_ms={} err={}",
                     backend_name,
                     phase.as_str(),

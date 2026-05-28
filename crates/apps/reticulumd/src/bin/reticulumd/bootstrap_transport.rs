@@ -122,7 +122,7 @@ pub(super) async fn start_transport_and_interfaces(
                 .lock()
                 .await
                 .spawn(TcpServer::new(addr.clone(), iface_manager.clone()), TcpServer::spawn);
-            eprintln!("[daemon] tcp_server enabled iface={} bind={}", active_iface, addr);
+            log::info!("[daemon] tcp_server enabled iface={} bind={}", active_iface, addr);
             startup_successes += 1;
             server_iface = Some(active_iface);
         }
@@ -147,11 +147,11 @@ pub(super) async fn start_transport_and_interfaces(
 
         match transport_instance.restore_reticulum_path_table(reticulum_storage_path).await {
             Ok(restored) if restored > 0 => {
-                eprintln!("[daemon] restored {} Reticulum path table entries", restored);
+                log::info!("[daemon] restored {} Reticulum path table entries", restored);
             }
             Ok(_) => {}
             Err(err) => {
-                eprintln!("[daemon] failed to restore Reticulum path table: {}", err);
+                log::error!("[daemon] failed to restore Reticulum path table: {}", err);
             }
         }
 
@@ -198,7 +198,7 @@ pub(super) async fn start_transport_and_interfaces(
 
         transport = Some(Arc::new(transport_instance));
     } else if let Some(config) = daemon_config {
-        eprintln!(
+        log::warn!(
             "{}",
             pretty_warn_line(
                 "transport disabled; configured interfaces will remain inactive until you start reticulumd with --transport HOST:PORT"

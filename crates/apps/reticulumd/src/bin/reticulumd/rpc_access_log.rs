@@ -62,7 +62,7 @@ pub(super) fn emit_rpc_access_log(
 ) {
     let status_code = parse_status_code(response).unwrap_or(0);
     if pretty_console_logs_enabled() {
-        eprintln!(
+        log::info!(
             "{} {} {} {} {}{}{}",
             pretty_tag("rpc", 34),
             pretty_status(&status_code.to_string(), status_code_color(status_code)),
@@ -90,7 +90,7 @@ pub(super) fn emit_rpc_access_log(
         "ok": error_text.is_none(),
         "error": error_text,
     });
-    eprintln!("{}", payload);
+    log::info!("{}", payload);
 }
 
 fn parse_http_request_line(headers: &[u8]) -> Option<(&str, &str)> {

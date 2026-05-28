@@ -7,7 +7,7 @@ pub(crate) fn opportunistic_payload<'a>(payload: &'a [u8], destination: &[u8; 16
 }
 
 pub(crate) fn log_delivery_trace(message_id: &str, destination: &str, stage: &str, detail: &str) {
-    eprintln!(
+    log::trace!(
         "[delivery-trace] msg_id={} dst={} stage={} {}",
         message_id, destination, stage, detail
     );

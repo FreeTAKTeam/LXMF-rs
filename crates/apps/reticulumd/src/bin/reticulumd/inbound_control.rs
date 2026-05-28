@@ -37,7 +37,7 @@ pub(super) fn spawn_control_worker(
                     "1" | "true" | "yes" | "on" | "debug"
                 )
             }) {
-                eprintln!(
+                log::debug!(
                     "[daemon-control] link_data link={} destination={} context={:02x} propagation_destination={:?} control_destination={:?} is_propagation={} is_control={} len={}",
                     event.id,
                     destination_hex,
@@ -83,7 +83,7 @@ pub(super) fn spawn_control_worker(
                     )
                     .await
                     {
-                        eprintln!(
+                        log::error!(
                             "[daemon-control] failed to send response link={} propagation_request={} error={}",
                             event.id,
                             is_propagation_request,
