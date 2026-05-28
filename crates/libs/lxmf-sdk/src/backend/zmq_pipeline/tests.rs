@@ -212,6 +212,57 @@ fn identity_presence_list_uses_zmq_sdk_method_and_decodes_response() {
     server.join().expect("server joined");
 }
 
+#[test]
+fn send_uses_zmq_sdk_method_and_preserves_delivery_options() {
+    let command_endpoint = unused_loopback_endpoint();
+    let response_endpoint = unused_loopback_endpoint();
+    let captured = Arc::new(Mutex::new(None));
+    let server = spawn_single_response_zmq_server(
+        command_endpoint.clone(),
+        json!({ "message_id": "sdk-zmq-message-1" }),
+        Arc::clone(&captured),
+    );
+    let mut config = ZmqPipelineBackendConfig::local_tcp(command_endpoint, response_endpoint);
+    config.request_timeout = std::time::Duration::from_secs(2);
+    let client = ZmqPipelineBackendClient::new(config).expect("zmq client");
+
+    let message_id = client
+        .send(
+            SendRequest::new(
+                "source-destination",
+                "target-destination",
+                json!({
+                    "title": "RCH",
+                    "content": "hello",
+                    "9": [{
+                        "command_type": "checklist.create.online"
+                    }]
+                }),
+            )
+            .with_delivery_method("direct")
+            .with_try_propagation_on_fail(true)
+            .with_stamp_cost(16)
+            .with_include_ticket(true)
+            .with_correlation_id("corr-1"),
+        )
+        .expect("send");
+
+    assert_eq!(message_id.0, "sdk-zmq-message-1");
+    let captured = captured.lock().expect("captured request");
+    let request = captured.as_ref().expect("zmq request");
+    assert_eq!(request.method, "sdk_send_v2");
+    let params = request.params.as_ref().expect("params");
+    assert_eq!(params["source"], json!("source-destination"));
+    assert_eq!(params["destination"], json!("target-destination"));
+    assert_eq!(params["method"], json!("direct"));
+    assert_eq!(params["try_propagation_on_fail"], json!(true));
+    assert_eq!(params["stamp_cost"], json!(16));
+    assert_eq!(params["include_ticket"], json!(true));
+    assert_eq!(params["fields"]["9"][0]["command_type"], json!("checklist.create.online"));
+    assert_eq!(params["fields"]["_sdk"]["correlation_id"], json!("corr-1"));
+    server.join().expect("server joined");
+}
+
 fn parse_claims(token: &str) -> BTreeMap<String, String> {
     token
         .split(';')

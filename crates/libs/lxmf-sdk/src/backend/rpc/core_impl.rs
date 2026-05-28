@@ -246,6 +246,10 @@ impl RpcBackendClient {
             source,
             destination,
             payload,
+            delivery_method,
+            stamp_cost,
+            include_ticket,
+            try_propagation_on_fail,
             idempotency_key,
             ttl_ms,
             correlation_id,
@@ -291,6 +295,10 @@ impl RpcBackendClient {
             "title": title,
             "content": content,
             "fields": fields,
+            "method": delivery_method,
+            "stamp_cost": stamp_cost,
+            "include_ticket": include_ticket,
+            "try_propagation_on_fail": try_propagation_on_fail,
         }));
         let result = self.call_rpc("sdk_send_v2", params)?;
         let message_id = Self::parse_required_string(&result, "message_id")?;
@@ -303,6 +311,10 @@ impl RpcBackendClient {
             source,
             destination,
             payload,
+            delivery_method,
+            stamp_cost,
+            include_ticket,
+            try_propagation_on_fail,
             idempotency_key,
             ttl_ms,
             correlation_id,
@@ -348,6 +360,10 @@ impl RpcBackendClient {
             "title": title,
             "content": content,
             "fields": fields,
+            "method": delivery_method,
+            "stamp_cost": stamp_cost,
+            "include_ticket": include_ticket,
+            "try_propagation_on_fail": try_propagation_on_fail,
         }));
         let result = self.call_rpc_async("sdk_send_v2", params).await?;
         let message_id = Self::parse_required_string(&result, "message_id")?;

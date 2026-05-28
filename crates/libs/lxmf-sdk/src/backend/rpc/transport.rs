@@ -1612,9 +1612,7 @@ mod tests {
     #[cfg(feature = "sdk-async")]
     #[tokio::test]
     async fn native_event_stream_initial_connect_failure_surfaces_transport_error() {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind listener");
-        let authority = listener.local_addr().expect("listener address").to_string();
-        drop(listener);
+        let authority = "127.0.0.1:0".to_string();
 
         let (tx, mut rx) = mpsc::channel::<Result<SdkEvent, SdkError>>(4);
         let client_task = tokio::spawn(async move {

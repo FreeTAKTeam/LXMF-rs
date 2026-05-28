@@ -226,6 +226,10 @@ impl SdkBackend for ZmqPipelineBackendClient {
             source,
             destination,
             payload,
+            delivery_method,
+            stamp_cost,
+            include_ticket,
+            try_propagation_on_fail,
             idempotency_key,
             ttl_ms,
             correlation_id,
@@ -272,6 +276,10 @@ impl SdkBackend for ZmqPipelineBackendClient {
                 "title": title,
                 "content": content,
                 "fields": fields,
+                "method": delivery_method,
+                "stamp_cost": stamp_cost,
+                "include_ticket": include_ticket,
+                "try_propagation_on_fail": try_propagation_on_fail,
             })),
         )?;
         Ok(MessageId(Self::parse_required_string(&value, "message_id")?))
