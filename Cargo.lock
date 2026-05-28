@@ -2096,6 +2096,7 @@ dependencies = [
  "hex",
  "hkdf",
  "hmac",
+ "log",
  "rand_core 0.6.4",
  "rmp-serde",
  "serde",

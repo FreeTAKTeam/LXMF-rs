@@ -31,6 +31,7 @@ x25519-dalek = { workspace = true, features = ["static_secrets"] }
 
 [dev-dependencies]
 criterion.workspace = true
+log.workspace = true
 tempfile = { workspace = true }
 
 [features]
