@@ -249,8 +249,7 @@ pub(crate) struct TransportHandler {
 
     /// Host multicast iface hash to the routing table used to map
     /// virtual per-peer iface hashes back to concrete UDP peer sockets.
-    multicast_peer_routings:
-        HashMap<AddressHash, Arc<Mutex<crate::iface::udp::PeerRouting>>>,
+    multicast_peer_routings: HashMap<AddressHash, Arc<Mutex<crate::iface::udp::PeerRouting>>>,
 
     cancel: CancellationToken,
     receipt_handler: Option<Arc<dyn ReceiptHandler>>,
