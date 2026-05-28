@@ -150,7 +150,7 @@ pub(super) async fn release_held_announces<'a>(handler: MutexGuard<'a, Transport
             Ok(result) => result,
             Err(err) => {
                 log::warn!(
-                    "tp: dropping held announce for {} after revalidate failure: {:?}",
+                    "dropping held announce for {} after revalidate failure: {:?}",
                     packet.destination,
                     err
                 );

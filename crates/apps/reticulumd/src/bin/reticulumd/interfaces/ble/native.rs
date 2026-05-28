@@ -86,7 +86,7 @@ impl BleGattInterface {
             let mut backend = NativeBleBackend::new(backend_name);
             if let Err(err) = establish_session(&mut backend, &settings).await {
                 log::error!(
-                    "ble_gatt: establish session failed iface={} backend={} err={}",
+                    "establish session failed iface={} backend={} err={}",
                     label,
                     backend_name,
                     err.message
@@ -97,7 +97,7 @@ impl BleGattInterface {
             }
             reconnect_backoff = settings.reconnect_backoff;
             log::info!(
-                "ble_gatt: session established iface={} backend={} addr={}",
+                "session established iface={} backend={} addr={}",
                 label,
                 backend_name,
                 iface_address
@@ -117,17 +117,17 @@ impl BleGattInterface {
                         let packet = message.packet;
                         let mut output = OutputBuffer::new(&mut tx_buffer);
                         if packet.serialize(&mut output).is_err() {
-                            log::error!("ble_gatt: packet serialize failed iface={}", label);
+                            log::error!("packet serialize failed iface={}", label);
                             continue;
                         }
                         let mut hdlc_output = OutputBuffer::new(&mut hdlc_tx_buffer);
                         if Hdlc::encode(output.as_slice(), &mut hdlc_output).is_err() {
-                            log::error!("ble_gatt: hdlc encode failed iface={}", label);
+                            log::error!("hdlc encode failed iface={}", label);
                             continue;
                         }
                         if let Err(err) = send_chunked(&mut backend, hdlc_output.as_slice(), settings.mtu).await {
                             log::error!(
-                                "ble_gatt: write failed iface={} backend={} err={}",
+                                "write failed iface={} backend={} err={}",
                                 label, backend_name, err.message
                             );
                             reconnect_needed = true;
@@ -154,7 +154,7 @@ impl BleGattInterface {
                             }
                             Err(err) => {
                                 log::error!(
-                                    "ble_gatt: read failed iface={} backend={} err={}",
+                                    "read failed iface={} backend={} err={}",
                                     label, backend_name, err.message
                                 );
                                 reconnect_needed = true;

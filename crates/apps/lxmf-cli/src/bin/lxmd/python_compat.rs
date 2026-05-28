@@ -4,7 +4,7 @@ use super::{config, query, rpc_client};
 
 pub(crate) fn emit_compatibility_notes(args: &crate::Args, effective: &crate::EffectiveArgs) {
     for message in compatibility_notes(args, effective) {
-        log::info!("lxmd: {message}");
+        log::info!("{message}");
     }
 }
 

@@ -155,7 +155,7 @@ fn main() -> ExitCode {
     let effective = match load_effective_args(&args) {
         Ok(effective) => effective,
         Err(err) => {
-            log::error!("lxmd: failed to load config: {err}");
+            log::error!("failed to load config: {err}");
             return ExitCode::from(1);
         }
     };
@@ -215,7 +215,7 @@ fn main() -> ExitCode {
     #[cfg(unix)]
     {
         let err = cmd.exec();
-        log::error!("lxmd: failed to exec {}: {}", reticulumd.display(), err);
+        log::error!("failed to exec {}: {}", reticulumd.display(), err);
         ExitCode::from(1)
     }
 
@@ -224,7 +224,7 @@ fn main() -> ExitCode {
         match cmd.status() {
             Ok(status) => ExitCode::from(status.code().unwrap_or(1) as u8),
             Err(err) => {
-                log::error!("lxmd: failed to launch {}: {}", reticulumd.display(), err);
+                log::error!("failed to launch {}: {}", reticulumd.display(), err);
                 ExitCode::from(1)
             }
         }
@@ -239,7 +239,7 @@ fn maybe_handle_query_mode(args: &EffectiveArgs) -> Option<ExitCode> {
     let rpc_addr = match query::resolve_query_rpc_addr(args.remote.as_deref(), &args.rpc) {
         Ok(rpc_addr) => rpc_addr,
         Err(err) => {
-            log::error!("lxmd: {err}");
+            log::error!("{err}");
             return Some(ExitCode::from(2));
         }
     };
@@ -252,7 +252,7 @@ fn maybe_handle_query_mode(args: &EffectiveArgs) -> Option<ExitCode> {
         ) {
             Ok(value) => value,
             Err(err) => {
-                log::error!("lxmd: {err}");
+                log::error!("{err}");
                 return Some(ExitCode::from(2));
             }
         };
@@ -313,7 +313,7 @@ fn maybe_handle_query_mode(args: &EffectiveArgs) -> Option<ExitCode> {
     match result {
         Ok(_) => Some(ExitCode::SUCCESS),
         Err(err) => {
-            log::error!("lxmd: {err}");
+            log::error!("{err}");
             Some(ExitCode::from(1))
         }
     }

@@ -14,7 +14,7 @@ fn main() -> ExitCode {
     #[cfg(unix)]
     {
         let err = Command::new(&reticulumd).args(&args).exec();
-        log::error!("rnsd: failed to exec {}: {}", reticulumd.display(), err);
+        log::error!("failed to exec {}: {}", reticulumd.display(), err);
         ExitCode::from(1)
     }
 
@@ -23,7 +23,7 @@ fn main() -> ExitCode {
         match Command::new(&reticulumd).args(&args).status() {
             Ok(status) => ExitCode::from(status.code().unwrap_or(1) as u8),
             Err(err) => {
-                log::error!("rnsd: failed to launch {}: {}", reticulumd.display(), err);
+                log::error!("failed to launch {}: {}", reticulumd.display(), err);
                 ExitCode::from(1)
             }
         }
