@@ -329,7 +329,9 @@ async fn handle_event_stream<S>(
             Err(err) => {
                 log::error!(
                     "[daemon] event stream catch-up error peer={} code={} message={}",
-                    peer_addr, err.code, err.message
+                    peer_addr,
+                    err.code,
+                    err.message
                 );
                 let response = RpcResponse { id: 0, result: None, error: Some(*err) };
                 if let Ok(frame) = codec::encode_frame(&response) {

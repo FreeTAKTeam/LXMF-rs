@@ -236,7 +236,10 @@ async fn startup_tcp_client(
     );
     log::info!(
         "[daemon] tcp_client enabled iface={} name={} host={} port={}",
-        client_iface, label, host, port
+        client_iface,
+        label,
+        host,
+        port
     );
     let runtime_iface = client_iface.to_string();
     mark_interface_startup_status(record, "spawned", None, Some(runtime_iface.as_str()));

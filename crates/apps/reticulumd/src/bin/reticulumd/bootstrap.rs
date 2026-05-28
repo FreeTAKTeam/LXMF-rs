@@ -168,7 +168,9 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         for failure in &startup_failures {
             log::warn!(
                 "[daemon] interface startup failure name={} kind={} err={}",
-                failure.label, failure.kind, failure.error
+                failure.label,
+                failure.kind,
+                failure.error
             );
         }
     }

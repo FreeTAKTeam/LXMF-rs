@@ -63,7 +63,9 @@ pub(super) async fn handle_link_resource_packet<'a>(
         if diag::enabled() {
             log::debug!(
                 "[resource-diag] wire_resource_no_link node={} link={} ctx={:02x}",
-                handler.config.name, packet.destination, packet.context as u8
+                handler.config.name,
+                packet.destination,
+                packet.context as u8
             );
         }
         return false;
@@ -148,7 +150,9 @@ fn packet_for_resource_manager(packet: &Packet, link: &mut Link) -> Option<Packe
             if diag::enabled() {
                 log::debug!(
                     "[resource-diag] wire_resource_decrypt_failed link={} ctx={:02x} err={:?}",
-                    packet.destination, packet.context as u8, err
+                    packet.destination,
+                    packet.context as u8,
+                    err
                 );
             }
             log::warn!("resource: failed to decrypt packet: {:?}", err);

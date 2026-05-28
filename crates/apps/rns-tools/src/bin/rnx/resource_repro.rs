@@ -51,7 +51,11 @@ pub(crate) fn run_resource_repro(
 
     log::info!(
         "[resource-repro] tcp_server_path={}:{} a_rpc={} b_rpc={} large_bytes={}",
-        server_host, server_port, a_rpc, b_rpc, large_bytes
+        server_host,
+        server_port,
+        a_rpc,
+        b_rpc,
+        large_bytes
     );
 
     drop(a_rpc_listener);

@@ -235,7 +235,9 @@ impl TransportHandler {
         {
             log::debug!(
                 "[resource-diag] duplicate_drop_candidate node={} link={} ctx={:02x}",
-                self.config.name, packet.destination, packet.context as u8
+                self.config.name,
+                packet.destination,
+                packet.context as u8
             );
         }
 

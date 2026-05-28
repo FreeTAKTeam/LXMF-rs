@@ -87,7 +87,9 @@ impl BleGattInterface {
             if let Err(err) = establish_session(&mut backend, &settings).await {
                 log::error!(
                     "ble_gatt: establish session failed iface={} backend={} err={}",
-                    label, backend_name, err.message
+                    label,
+                    backend_name,
+                    err.message
                 );
                 sleep(reconnect_backoff).await;
                 reconnect_backoff = next_backoff(reconnect_backoff, settings.max_reconnect_backoff);
@@ -96,7 +98,9 @@ impl BleGattInterface {
             reconnect_backoff = settings.reconnect_backoff;
             log::info!(
                 "ble_gatt: session established iface={} backend={} addr={}",
-                label, backend_name, iface_address
+                label,
+                backend_name,
+                iface_address
             );
 
             let mut tx_buffer = [0_u8; BLE_RAW_PACKET_BUFFER];

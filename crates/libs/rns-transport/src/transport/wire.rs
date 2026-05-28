@@ -320,7 +320,9 @@ pub(super) async fn handle_data<'a>(
             if diag::enabled() {
                 log::debug!(
                     "[resource-diag] wire_resource_reverse_forward node={} link={} iface={}",
-                    handler.config.name, packet.destination, iface
+                    handler.config.name,
+                    packet.destination,
+                    iface
                 );
             }
             handler.send(TxMessage { tx_type: TxMessageType::Direct(iface), packet }).await;
