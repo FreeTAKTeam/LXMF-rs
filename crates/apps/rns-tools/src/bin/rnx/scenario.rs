@@ -111,7 +111,7 @@ pub(crate) fn run_e2e(
             return Err(err);
         }
     };
-    eprintln!(
+    log::info!(
         "[rnx] ready A delivery={:?} propagation={:?}; B delivery={:?} propagation={:?}",
         a_ready.delivery_hash,
         a_ready.propagation_hash,

@@ -49,7 +49,7 @@ pub(crate) fn run_resource_repro(
     fs::write(&a_config, &shared_config)?;
     fs::write(&b_config, &shared_config)?;
 
-    eprintln!(
+    log::info!(
         "[resource-repro] tcp_server_path={}:{} a_rpc={} b_rpc={} large_bytes={}",
         server_host, server_port, a_rpc, b_rpc, large_bytes
     );

@@ -219,7 +219,7 @@ pub fn spawn_lxmd(
     }
     let stderr_log = config_dir.join("lxmd.stderr.log");
     let child = if live_child_logs_enabled() {
-        eprintln!("[live-logs] spawning rust {}", config_dir.display());
+        log::info!("[live-logs] spawning rust {}", config_dir.display());
         Command::new(lxmd_bin)
             .arg("--config")
             .arg(config_dir.join("lxmd.toml"))
@@ -260,7 +260,7 @@ pub fn spawn_python_lxmd_relay(
     let stderr_log = lxmd_dir.join("python-lxmd.stderr.log");
     let python_path = format!("{reticulum_repo}:{lxmf_repo}");
     let child = if live_child_logs_enabled() {
-        eprintln!("[live-logs] spawning python relay {}", lxmd_dir.display());
+        log::info!("[live-logs] spawning python relay {}", lxmd_dir.display());
         Command::new(python_bin)
             .arg("-u")
             .arg("-m")
@@ -317,7 +317,7 @@ pub fn spawn_python_endpoint(
     let stderr_log = storage_dir.join(format!("{node_name}.stderr.log"));
     let python_path = format!("{reticulum_repo}:{lxmf_repo}");
     let child = if live_child_logs_enabled() {
-        eprintln!("[live-logs] spawning python endpoint {}", storage_dir.display());
+        log::info!("[live-logs] spawning python endpoint {}", storage_dir.display());
         Command::new(python_bin)
             .arg("-u")
             .arg(helper_script)

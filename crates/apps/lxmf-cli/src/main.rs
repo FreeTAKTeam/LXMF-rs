@@ -666,9 +666,9 @@ fn emit_error(cli: &Cli, err: SdkError) {
                 }
             };
             match serialized {
-                Ok(serialized) => eprintln!("{serialized}"),
+                Ok(serialized) => log::error!("{serialized}"),
                 Err(ser_err) => {
-                    eprintln!(
+                    log::error!(
                     "{{\"ok\":false,\"error\":{{\"machine_code\":\"{}\",\"message\":\"{}\",\"serialization\":\"{}\"}}}}",
                         machine_code, message, ser_err
                 );
@@ -678,9 +678,9 @@ fn emit_error(cli: &Cli, err: SdkError) {
         }
     }
 
-    eprintln!("error [{}]: {}", err.machine_code, err.message);
+    log::error!("error [{}]: {}", err.machine_code, err.message);
     if !err.details.is_empty() {
-        eprintln!("details: {}", JsonValue::Object(err.details.into_iter().collect()));
+        log::error!("details: {}", JsonValue::Object(err.details.into_iter().collect()));
     }
 }
 

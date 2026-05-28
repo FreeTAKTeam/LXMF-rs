@@ -176,7 +176,7 @@ pub fn spawn_lxmd(
     let live_logs = live_child_logs_enabled();
     let stderr_log = config_dir.join("lxmd.stderr.log");
     let child = if live_logs {
-        eprintln!(
+        log::info!(
             "[live-logs] spawning {} with config {}",
             config_dir.display(),
             config_dir.join("lxmd.toml").display()

@@ -304,7 +304,7 @@ enum TcpBridgeMode {
 fn main() {
     let cli = Cli::parse();
     if let Err(err) = run(cli) {
-        eprintln!("rnx error: {}", err);
+        log::error!("rnx error: {}", err);
         std::process::exit(1);
     }
 }
