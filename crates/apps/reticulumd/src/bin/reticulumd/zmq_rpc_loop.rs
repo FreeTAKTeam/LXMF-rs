@@ -35,14 +35,24 @@ pub(super) async fn run_zmq_rpc_loop_until(
                 }
             }
             message = commands.recv() => {
+                let message = match message {
+                    Ok(message) => message,
+                    Err(err) if is_recoverable_zmq_transport_error(&err) => {
+                        eprintln!("[daemon] zmq rpc receive dropped client connection: {}", err);
+                        continue;
+                    }
+                    Err(err) => return Err(zmq_io_error(err)),
+                };
                 let response =
                     handle_zmq_command_message(
                         daemon.as_ref(),
-                        message.map_err(zmq_io_error)?,
+                        message,
                         command_endpoint_requires_auth,
                     );
                 if let Some(response) = response {
-                    send_zmq_response(&mut responses, response).await?;
+                    if let Err(err) = send_zmq_response(&mut responses, response).await {
+                        eprintln!("[daemon] zmq rpc response dropped client connection: {}", err);
+                    }
                 }
             }
         }
@@ -223,6 +233,15 @@ fn zmq_io_error(err: impl std::fmt::Display) -> io::Error {
     io::Error::other(err.to_string())
 }
 
+fn is_recoverable_zmq_transport_error(err: &zeromq::ZmqError) -> bool {
+    let text = err.to_string();
+    text.contains("connection was aborted")
+        || text.contains("connection was forcibly closed")
+        || text.contains("connection reset")
+        || text.contains("(os error 10053)")
+        || text.contains("(os error 10054)")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -334,6 +353,23 @@ mod tests {
         let rpc = parse_rpc_frame(&response.envelope.payload).expect("rpc response");
         let error = rpc.error.expect("auth error");
         assert_eq!(error.code, "SDK_SECURITY_AUTH_REQUIRED");
+    }
+
+    #[test]
+    fn recoverable_zmq_transport_error_matches_client_disconnects() {
+        let aborted = zeromq::ZmqError::Network(std::io::Error::new(
+            std::io::ErrorKind::ConnectionAborted,
+            "An established connection was aborted by the software in your host machine. (os error 10053)",
+        ));
+        let reset = zeromq::ZmqError::Network(std::io::Error::new(
+            std::io::ErrorKind::ConnectionReset,
+            "An existing connection was forcibly closed by the remote host. (os error 10054)",
+        ));
+        let invalid = zeromq::ZmqError::Other("invalid endpoint");
+
+        assert!(is_recoverable_zmq_transport_error(&aborted));
+        assert!(is_recoverable_zmq_transport_error(&reset));
+        assert!(!is_recoverable_zmq_transport_error(&invalid));
     }
 
     fn token_auth_daemon() -> RpcDaemon {
