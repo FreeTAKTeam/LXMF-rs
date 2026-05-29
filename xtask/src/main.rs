@@ -384,6 +384,8 @@ enum XtaskCommand {
     Ci {
         #[arg(long)]
         stage: Option<CiStage>,
+        #[arg(long)]
+        timeout_secs: Option<u64>,
     },
     ReleaseCheck,
     PackageDaemonBundle {
@@ -438,7 +440,10 @@ enum XtaskCommand {
         undo: bool,
     },
     CompatKitCheck,
-    E2eCompatibility,
+    E2eCompatibility {
+        #[arg(long)]
+        timeout_secs: Option<u64>,
+    },
     MeshSim,
     SdkProfileBuild,
     SdkExamplesCheck,
@@ -606,7 +611,7 @@ enum PublishWave {
 fn main() -> Result<()> {
     let xtask = Xtask::parse();
     match xtask.command {
-        XtaskCommand::Ci { stage } => run_ci(stage),
+        XtaskCommand::Ci { stage, timeout_secs } => run_ci(stage, timeout_secs),
         XtaskCommand::ReleaseCheck => run_release_check(),
         XtaskCommand::PackageDaemonBundle { version } => run_package_daemon_bundle(version),
         XtaskCommand::ApiDiff => run_api_diff(),
@@ -642,7 +647,7 @@ fn main() -> Result<()> {
             run_yank_crate(&package, &version, undo)
         }
         XtaskCommand::CompatKitCheck => run_compat_kit_check(),
-        XtaskCommand::E2eCompatibility => run_e2e_compatibility(),
+        XtaskCommand::E2eCompatibility { timeout_secs } => run_e2e_compatibility(timeout_secs),
         XtaskCommand::MeshSim => run_mesh_sim(),
         XtaskCommand::SdkProfileBuild => run_sdk_profile_build(),
         XtaskCommand::SdkExamplesCheck => run_sdk_examples_check(),
@@ -698,9 +703,9 @@ fn main() -> Result<()> {
     }
 }
 
-fn run_ci(stage: Option<CiStage>) -> Result<()> {
+fn run_ci(stage: Option<CiStage>, timeout_secs: Option<u64>) -> Result<()> {
     if let Some(stage) = stage {
-        return run_ci_stage(stage);
+        return run_ci_stage(stage, timeout_secs);
     }
 
     run_pr_core_ci()
@@ -733,7 +738,7 @@ fn run_pr_core_ci() -> Result<()> {
     Ok(())
 }
 
-fn run_ci_stage(stage: CiStage) -> Result<()> {
+fn run_ci_stage(stage: CiStage, timeout_secs: Option<u64>) -> Result<()> {
     match stage {
         CiStage::LintFormat => run("cargo", &["fmt", "--all", "--", "--check"]),
         CiStage::BuildMatrix => run("cargo", &["build", "--workspace", "--all-targets"]),
@@ -767,7 +772,7 @@ fn run_ci_stage(stage: CiStage) -> Result<()> {
         CiStage::SchemaClientCheck => run_schema_client_check(),
         CiStage::CompatKitCheck => run_compat_kit_check(),
         CiStage::CertificationReportCheck => run_certification_report_check(),
-        CiStage::E2eCompatibility => run_e2e_compatibility(),
+        CiStage::E2eCompatibility => run_e2e_compatibility(timeout_secs),
         CiStage::SdkProfileBuild => run_sdk_profile_build(),
         CiStage::SdkExamplesCheck => run_sdk_examples_check(),
         CiStage::SdkApiBreak => run_sdk_api_break(),
@@ -851,7 +856,7 @@ fn run_release_check() -> Result<()> {
     run_schema_client_check()?;
     run_compat_kit_check()?;
     run_certification_report_check()?;
-    run_e2e_compatibility()?;
+    run_e2e_compatibility(None)?;
     run_sdk_conformance()?;
     run_sdk_profile_build()?;
     run_sdk_examples_check()?;
@@ -5009,9 +5014,13 @@ fn run_compat_kit_check() -> Result<()> {
     run("bash", &["tools/scripts/compatibility-kit.sh", "--dry-run"])
 }
 
-fn run_e2e_compatibility() -> Result<()> {
+fn run_e2e_compatibility(timeout_secs: Option<u64>) -> Result<()> {
     run("cargo", &["build", "-p", "reticulumd", "--bin", "reticulumd"])?;
-    run("cargo", &["run", "-p", "rns-tools", "--bin", "rnx", "--", "e2e", "--timeout-secs", "20"])
+    let timeout_secs = timeout_secs.unwrap_or(20).to_string();
+    run(
+        "cargo",
+        &["run", "-p", "rns-tools", "--bin", "rnx", "--", "e2e", "--timeout-secs", &timeout_secs],
+    )
 }
 
 fn run_mesh_sim() -> Result<()> {
