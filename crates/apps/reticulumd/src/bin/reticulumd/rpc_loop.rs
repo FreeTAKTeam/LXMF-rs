@@ -29,6 +29,10 @@ const RPC_MAX_HEADER_BYTES: usize = 16 * 1024;
 const RPC_MAX_BODY_BYTES: usize = 1024 * 1024;
 type ShutdownReceiver = watch::Receiver<bool>;
 
+fn rpc_ready_line(scheme: &str, addr: impl std::fmt::Display) -> String {
+    format!("reticulumd listening on {scheme}://{addr}")
+}
+
 #[cfg_attr(feature = "zmq-pipeline-rpc", allow(dead_code))]
 pub(super) async fn run_rpc_loop(
     addr: Option<SocketAddr>,
@@ -93,7 +97,7 @@ async fn run_plain_rpc_loop(
     mut shutdown: ShutdownReceiver,
 ) {
     let listener = TcpListener::bind(addr).await.expect("bind rpc listener");
-    log::info!("reticulumd listening on http://{}", addr);
+    println!("{}", rpc_ready_line("http", addr));
 
     loop {
         tokio::select! {
@@ -185,7 +189,7 @@ async fn run_tls_rpc_loop(
     let tls_server = build_tls_server_config(&config).expect("build rpc tls server config");
     let acceptor = TlsAcceptor::from(tls_server);
     let listener = TcpListener::bind(addr).await.expect("bind tls rpc listener");
-    log::info!("reticulumd listening on https://{}", addr);
+    println!("{}", rpc_ready_line("https", addr));
 
     loop {
         tokio::select! {
@@ -662,6 +666,13 @@ mod rpc_loop_tests {
     use tokio::io::{duplex, AsyncReadExt, AsyncWriteExt};
     #[cfg(unix)]
     use tokio::net::UnixStream;
+
+    #[test]
+    fn rpc_ready_line_matches_e2e_harness_marker() {
+        let line = rpc_ready_line("http", "127.0.0.1:4242");
+
+        assert!(line.contains("listening on http://127.0.0.1:4242"));
+    }
 
     #[test]
     fn read_http_request_collects_complete_post_body() {

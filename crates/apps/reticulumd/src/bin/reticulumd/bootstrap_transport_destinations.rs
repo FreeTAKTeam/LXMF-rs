@@ -91,7 +91,7 @@ async fn destination_hash(
     let mut hash = [0u8; 16];
     hash.copy_from_slice(dest.desc.address_hash.as_slice());
     let hash_hex = hex::encode(hash);
-    eprintln!("{}", daemon_destination_hash_line(label, hash_hex.as_str()));
+    println!("{}", daemon_destination_hash_line(label, hash_hex.as_str()));
     (hash, hash_hex)
 }
 
