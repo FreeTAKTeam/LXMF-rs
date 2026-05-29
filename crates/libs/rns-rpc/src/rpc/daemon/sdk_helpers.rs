@@ -11,6 +11,20 @@ pub(super) struct SdkStoreForwardPolicy {
 
 use super::*;
 
+pub(super) const SDK_VERSION: &str = "0.2.1";
+pub(super) const RETICULUM_CONFORMANCE_REFERENCE_REF: &str =
+    "0319444b20e0815f26c6b9ceeba8fa44de037c9b";
+pub(super) const PYTHON_RETICULUM_REFERENCE_REF: &str = "15320e4d2cfabb143c1db20ca887e275fd521585";
+pub(super) const PYTHON_LXMF_REFERENCE_REF: &str = "727830cefda83d9c6e3982b48675425f3f988f9c";
+
+pub(super) fn python_reference_meta() -> JsonValue {
+    json!({
+        "reticulum_conformance_ref": RETICULUM_CONFORMANCE_REFERENCE_REF,
+        "python_reticulum_ref": PYTHON_RETICULUM_REFERENCE_REF,
+        "python_lxmf_ref": PYTHON_LXMF_REFERENCE_REF,
+    })
+}
+
 impl RpcDaemon {
     pub(super) fn sdk_config_error(code: &str, message: &str) -> RpcError {
         RpcError::new(code, message)

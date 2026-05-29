@@ -1,5 +1,5 @@
 use super::{sdk_error, ZmqPipelineBackendClient};
-use crate::capability::EffectiveLimits;
+use crate::capability::{EffectiveLimits, ParityReference};
 use crate::error::{code, ErrorCategory, SdkError};
 use crate::event::Severity;
 use crate::types::{Ack, CancelResult, DeliveryState, RuntimeState};
@@ -31,6 +31,30 @@ impl ZmqPipelineBackendClient {
                 format!("rpc response missing integer field '{key}'"),
             )
         })
+    }
+
+    pub(super) fn parse_optional_string_or_default(
+        value: &JsonValue,
+        key: &'static str,
+        default: &str,
+    ) -> Result<String, SdkError> {
+        match value.get(key) {
+            None | Some(JsonValue::Null) => Ok(default.to_owned()),
+            Some(raw) => raw.as_str().map(str::to_owned).ok_or_else(|| {
+                SdkError::new(
+                    code::INTERNAL,
+                    ErrorCategory::Internal,
+                    format!("rpc response field '{key}' must be a string"),
+                )
+            }),
+        }
+    }
+
+    pub(super) fn parse_parity_reference(value: &JsonValue) -> Result<ParityReference, SdkError> {
+        match value.get("python_reference") {
+            None | Some(JsonValue::Null) => Ok(ParityReference::default()),
+            Some(raw) => Self::decode_value(raw.clone(), "python reference metadata"),
+        }
     }
 
     pub(super) fn parse_required_u16(

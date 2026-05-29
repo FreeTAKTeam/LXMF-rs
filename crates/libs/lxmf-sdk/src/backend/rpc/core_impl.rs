@@ -107,6 +107,9 @@ impl RpcBackendClient {
             })?)?;
         let contract_release = Self::parse_required_string(&result, "contract_release")?;
         let schema_namespace = Self::parse_required_string(&result, "schema_namespace")?;
+        let sdk_version =
+            Self::parse_optional_string_or_default(&result, "sdk_version", crate::SDK_VERSION)?;
+        let python_reference = Self::parse_parity_reference(&result)?;
         {
             let mut guard = self
                 .negotiated_capabilities
@@ -136,6 +139,8 @@ impl RpcBackendClient {
             effective_limits,
             contract_release,
             schema_namespace,
+            sdk_version,
+            python_reference,
         })
     }
 
@@ -209,6 +214,9 @@ impl RpcBackendClient {
             })?)?;
         let contract_release = Self::parse_required_string(&result, "contract_release")?;
         let schema_namespace = Self::parse_required_string(&result, "schema_namespace")?;
+        let sdk_version =
+            Self::parse_optional_string_or_default(&result, "sdk_version", crate::SDK_VERSION)?;
+        let python_reference = Self::parse_parity_reference(&result)?;
         {
             let mut guard = self
                 .negotiated_capabilities
@@ -238,6 +246,8 @@ impl RpcBackendClient {
             effective_limits,
             contract_release,
             schema_namespace,
+            sdk_version,
+            python_reference,
         })
     }
 

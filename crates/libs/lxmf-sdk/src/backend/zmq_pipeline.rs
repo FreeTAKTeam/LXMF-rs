@@ -218,6 +218,12 @@ impl SdkBackend for ZmqPipelineBackendClient {
             effective_limits,
             contract_release: Self::parse_required_string(&result, "contract_release")?,
             schema_namespace: Self::parse_required_string(&result, "schema_namespace")?,
+            sdk_version: Self::parse_optional_string_or_default(
+                &result,
+                "sdk_version",
+                crate::SDK_VERSION,
+            )?,
+            python_reference: Self::parse_parity_reference(&result)?,
         })
     }
 

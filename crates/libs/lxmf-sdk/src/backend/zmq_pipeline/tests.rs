@@ -100,7 +100,13 @@ fn negotiate_with_token_auth_preserves_remote_token_runtime_config() {
                 "idempotency_ttl_ms": 60000
             },
             "contract_release": "v2",
-            "schema_namespace": "sdk.v2"
+            "schema_namespace": "sdk.v2",
+            "sdk_version": "9.8.7-test",
+            "python_reference": {
+                "reticulum_conformance_ref": "conformance-test-ref",
+                "python_reticulum_ref": "reticulum-test-ref",
+                "python_lxmf_ref": "lxmf-test-ref"
+            }
         }),
         Arc::clone(&captured),
     );
@@ -128,6 +134,8 @@ fn negotiate_with_token_auth_preserves_remote_token_runtime_config() {
         .expect("negotiate");
 
     assert_eq!(response.runtime_id, "runtime-zmq-token");
+    assert_eq!(response.sdk_version, "9.8.7-test");
+    assert_eq!(response.python_reference.python_lxmf_ref, "lxmf-test-ref");
     let captured = captured.lock().expect("captured request");
     let request = captured.as_ref().expect("zmq request");
     assert_eq!(request.method, "sdk_negotiate_v2");
@@ -137,6 +145,54 @@ fn negotiate_with_token_auth_preserves_remote_token_runtime_config() {
     assert_eq!(config["rpc_backend"]["token_auth"]["issuer"], json!("test-issuer"));
     assert_eq!(config["rpc_backend"]["token_auth"]["audience"], json!("test-audience"));
     assert_eq!(config["rpc_backend"]["token_auth"]["shared_secret"], json!("test-secret"));
+    server.join().expect("server joined");
+}
+
+#[test]
+fn negotiate_without_reported_parity_metadata_falls_back_to_local_constants() {
+    let command_endpoint = unused_loopback_endpoint();
+    let response_endpoint = unused_loopback_endpoint();
+    let captured = Arc::new(Mutex::new(None));
+    let server = spawn_single_response_zmq_server(
+        command_endpoint.clone(),
+        json!({
+            "runtime_id": "runtime-zmq-legacy",
+            "active_contract_version": 2,
+            "effective_capabilities": [],
+            "effective_limits": {
+                "max_poll_events": 64,
+                "max_event_bytes": 32768,
+                "max_batch_bytes": 1048576,
+                "max_extension_keys": 32,
+                "idempotency_ttl_ms": 60000
+            },
+            "contract_release": "v2",
+            "schema_namespace": "sdk.v2"
+        }),
+        Arc::clone(&captured),
+    );
+    let mut config = ZmqPipelineBackendConfig::local_tcp(command_endpoint, response_endpoint);
+    config.request_timeout = std::time::Duration::from_secs(2);
+    let backend = ZmqPipelineBackendClient::new(config).expect("zmq client");
+
+    let response = backend
+        .negotiate(crate::capability::NegotiationRequest {
+            supported_contract_versions: vec![2],
+            requested_capabilities: Vec::new(),
+            profile: crate::types::Profile::DesktopLocalRuntime,
+            bind_mode: crate::types::BindMode::LocalOnly,
+            auth_mode: crate::types::AuthMode::LocalTrusted,
+            overflow_policy: crate::types::OverflowPolicy::Reject,
+            block_timeout_ms: None,
+            rpc_backend: None,
+        })
+        .expect("negotiate");
+
+    assert_eq!(response.sdk_version, crate::SDK_VERSION);
+    assert_eq!(
+        response.python_reference.python_reticulum_ref,
+        crate::PYTHON_RETICULUM_REFERENCE_REF
+    );
     server.join().expect("server joined");
 }
 

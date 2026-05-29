@@ -21,7 +21,51 @@
         let result = response.result.expect("result");
         assert_eq!(result["active_contract_version"], json!(2));
         assert_eq!(result["contract_release"], json!("v2.5"));
+        assert_eq!(result["sdk_version"].as_str(), Some(expected_lxmf_sdk_version().as_str()));
+        assert_eq!(
+            result["python_reference"],
+            json!({
+                "reticulum_conformance_ref": expected_python_reference("RETICULUM_CONFORMANCE_REF"),
+                "python_reticulum_ref": expected_python_reference("PYTHON_RETICULUM_REF"),
+                "python_lxmf_ref": expected_python_reference("PYTHON_LXMF_REF"),
+            })
+        );
+        assert_eq!(
+            result["meta"]["python_reference"],
+            result["python_reference"],
+            "response metadata should repeat the parity checkpoint for clients that only inspect meta"
+        );
         assert_eq!(result["effective_limits"]["max_poll_events"], json!(64));
+    }
+
+    fn expected_lxmf_sdk_version() -> String {
+        let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("libs dir")
+            .join("lxmf-sdk")
+            .join("Cargo.toml");
+        let text = std::fs::read_to_string(&manifest).expect("read lxmf-sdk Cargo.toml");
+        text.lines()
+            .find_map(|line| line.trim().strip_prefix("version = "))
+            .map(|value| value.trim_matches('"').to_string())
+            .expect("lxmf-sdk package version")
+    }
+
+    fn expected_python_reference(name: &str) -> String {
+        let workflow = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("repo root")
+            .join(".github")
+            .join("workflows")
+            .join("python-interop.yml");
+        let needle = format!("{name}: ");
+        let text = std::fs::read_to_string(&workflow).expect("read python interop workflow");
+        text.lines()
+            .find_map(|line| line.trim().strip_prefix(&needle))
+            .map(str::trim)
+            .map(str::to_string)
+            .expect("python reference env pin")
     }
 
     #[test]
