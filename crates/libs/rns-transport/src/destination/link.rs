@@ -1149,6 +1149,7 @@ impl Link {
 
         self.post_event(LinkEvent::Closed);
 
+        println!("{}", link_close_line(&self.id));
         log::warn!("close {}", self.id);
     }
 
@@ -1285,6 +1286,10 @@ fn clamp_link_signalling(bytes: [u8; LINK_MTU_SIZE]) -> [u8; LINK_MTU_SIZE] {
     [((value >> 16) & 0xFF) as u8, ((value >> 8) & 0xFF) as u8, (value & 0xFF) as u8]
 }
 
+fn link_close_line(id: &AddressHash) -> String {
+    format!("link: close {id}")
+}
+
 include!("link/proof.rs");
 
 #[cfg(test)]
@@ -1310,6 +1315,13 @@ mod tests {
         assert!(!LinkStatus::Closed.can_exchange_data());
         assert!(!LinkStatus::Closed.can_retry_channel_messages());
         assert!(!LinkStatus::Closed.can_send_teardown());
+    }
+
+    #[test]
+    fn link_close_line_preserves_compatibility_marker() {
+        let line = link_close_line(&AddressHash::new([0x11; 16]));
+
+        assert!(line.contains("link: close"));
     }
 
     #[test]
