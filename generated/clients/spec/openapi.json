@@ -94,6 +94,29 @@
           }
         ]
       },
+      "PythonReference": {
+        "additionalProperties": false,
+        "properties": {
+          "python_lxmf_ref": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "python_reticulum_ref": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "reticulum_conformance_ref": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "python_lxmf_ref",
+          "python_reticulum_ref",
+          "reticulum_conformance_ref"
+        ],
+        "type": "object"
+      },
       "RPCError": {
         "additionalProperties": false,
         "properties": {
@@ -269,6 +292,34 @@
           "id",
           "result"
         ],
+        "type": "object"
+      },
+      "ResponseMeta": {
+        "additionalProperties": true,
+        "properties": {
+          "contract_version": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "profile": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "python_reference": {
+            "$ref": "#/components/schemas/PythonReference"
+          },
+          "rpc_endpoint": {
+            "type": [
+              "object",
+              "string",
+              "null"
+            ]
+          },
+          "sdk_version": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
         "type": "object"
       },
       "SdkCancelMessageV2Params": {
@@ -556,11 +607,21 @@
             "additionalProperties": true,
             "type": "object"
           },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "python_reference": {
+            "$ref": "#/components/schemas/PythonReference"
+          },
           "runtime_id": {
             "minLength": 1,
             "type": "string"
           },
           "schema_namespace": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "sdk_version": {
             "minLength": 1,
             "type": "string"
           }
@@ -570,8 +631,10 @@
           "contract_release",
           "effective_capabilities",
           "effective_limits",
+          "python_reference",
           "runtime_id",
-          "schema_namespace"
+          "schema_namespace",
+          "sdk_version"
         ],
         "type": "object"
       },
@@ -939,6 +1002,9 @@
             "minimum": 0,
             "type": "integer"
           },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
           "profile": {
             "minLength": 1,
             "type": "string"
@@ -1035,6 +1101,9 @@
               "object",
               "null"
             ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
           }
         },
         "required": [

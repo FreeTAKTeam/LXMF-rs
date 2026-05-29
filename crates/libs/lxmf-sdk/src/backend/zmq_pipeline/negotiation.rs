@@ -2,6 +2,15 @@ use super::ZmqPipelineBackendClient;
 use crate::capability::NegotiationRequest;
 use crate::types::{AuthMode, BindMode};
 use serde_json::{json, Value as JsonValue};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+pub(super) fn new_session_id() -> String {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    format!("zmq-sdk-{:032x}", now)
+}
 
 impl ZmqPipelineBackendClient {
     pub(super) fn negotiation_security_config(

@@ -813,6 +813,57 @@
           }
         }
       },
+      "PythonReference": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "reticulum_conformance_ref",
+          "python_reticulum_ref",
+          "python_lxmf_ref"
+        ],
+        "properties": {
+          "reticulum_conformance_ref": {
+            "type": "string",
+            "minLength": 1
+          },
+          "python_reticulum_ref": {
+            "type": "string",
+            "minLength": 1
+          },
+          "python_lxmf_ref": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "ResponseMeta": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "contract_version": {
+            "type": "string",
+            "minLength": 1
+          },
+          "profile": {
+            "type": "string",
+            "minLength": 1
+          },
+          "rpc_endpoint": {
+            "type": [
+              "object",
+              "string",
+              "null"
+            ]
+          },
+          "python_reference": {
+            "$ref": "#/components/schemas/PythonReference"
+          },
+          "sdk_version": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
       "SdkNegotiateV2Params": {
         "type": "object",
         "additionalProperties": true,
@@ -889,7 +940,9 @@
           "effective_capabilities",
           "effective_limits",
           "contract_release",
-          "schema_namespace"
+          "schema_namespace",
+          "python_reference",
+          "sdk_version"
         ],
         "properties": {
           "runtime_id": {
@@ -916,6 +969,16 @@
             "minLength": 1
           },
           "schema_namespace": {
+            "type": "string",
+            "minLength": 1
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "python_reference": {
+            "$ref": "#/components/schemas/PythonReference"
+          },
+          "sdk_version": {
             "type": "string",
             "minLength": 1
           }
@@ -1153,6 +1216,9 @@
               "null"
             ],
             "additionalProperties": true
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
           }
         }
       },
@@ -1598,6 +1664,9 @@
           },
           "counts_included": {
             "type": "boolean"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
           }
         }
       },

@@ -31,6 +31,7 @@ mod parsing;
 mod tests;
 
 pub use config::{ZmqEndpointRole, ZmqPipelineBackendConfig, ZmqPipelineTokenAuth};
+use negotiation::new_session_id;
 
 pub struct ZmqPipelineBackendClient {
     config: ZmqPipelineBackendConfig,
@@ -475,14 +476,6 @@ fn token_signature(secret: &str, payload: &str) -> String {
         .expect("token shared secret must be non-empty");
     mac.update(payload.as_bytes());
     hex::encode(mac.finalize().into_bytes())
-}
-
-fn new_session_id() -> String {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_nanos())
-        .unwrap_or(0);
-    format!("zmq-sdk-{:032x}", now)
 }
 
 fn map_rpc_error(error: RpcError) -> SdkError {
