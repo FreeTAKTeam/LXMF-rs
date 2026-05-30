@@ -141,7 +141,7 @@ mod tests {
 
         packet.serialize(&mut buffer).expect("serialized packet");
 
-        println!("{}", buffer);
+        log::debug!("{}", buffer);
     }
 
     #[test]

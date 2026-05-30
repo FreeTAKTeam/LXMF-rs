@@ -19,7 +19,7 @@ pub(super) fn spawn_path_table_persistence_worker(
             while rx.try_recv().is_ok() {}
             if let Err(err) = transport.save_reticulum_path_table(&path).await {
                 if diagnostics_enabled() {
-                    eprintln!("[daemon] failed to persist Reticulum path table: {err}");
+                    log::error!("[daemon] failed to persist Reticulum path table: {err}");
                 }
             }
         }

@@ -11,6 +11,9 @@ struct Args {
 }
 
 fn main() -> ExitCode {
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
     let args = Args::parse();
     match decode_storage_file(&args.file) {
         Ok(summary) => match serde_json::to_string(&summary) {
@@ -19,12 +22,12 @@ fn main() -> ExitCode {
                 ExitCode::SUCCESS
             }
             Err(error) => {
-                eprintln!("failed to encode interchange summary: {error}");
+                log::error!("failed to encode interchange summary: {error}");
                 ExitCode::from(1)
             }
         },
         Err(error) => {
-            eprintln!("failed to decode interchange file {}: {error}", args.file.display());
+            log::error!("failed to decode interchange file {}: {error}", args.file.display());
             ExitCode::from(1)
         }
     }

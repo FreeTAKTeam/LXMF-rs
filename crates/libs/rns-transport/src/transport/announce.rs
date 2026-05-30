@@ -77,7 +77,7 @@ async fn process_announce<'a>(
     };
     let interface = route_iface.as_slice().to_vec();
 
-    eprintln!(
+    log::debug!(
         "[announce-debug] accepted dst={} app_data_hex={}",
         packet.destination,
         hex::encode(announce.app_data)
@@ -104,7 +104,6 @@ pub(super) async fn handle_announce<'a>(
     let announce = match DestinationAnnounce::validate(packet) {
         Ok(result) => result,
         Err(err) => {
-            eprintln!("[announce-debug] validate failed dst={} err={:?}", packet.destination, err);
             log::trace!(
                 "[transport] announce validate failed dst={} err={:?}",
                 packet.destination,
@@ -151,7 +150,7 @@ pub(super) async fn release_held_announces<'a>(handler: MutexGuard<'a, Transport
             Ok(result) => result,
             Err(err) => {
                 log::warn!(
-                    "tp: dropping held announce for {} after revalidate failure: {:?}",
+                    "dropping held announce for {} after revalidate failure: {:?}",
                     packet.destination,
                     err
                 );

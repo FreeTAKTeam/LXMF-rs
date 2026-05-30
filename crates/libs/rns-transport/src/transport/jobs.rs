@@ -215,7 +215,7 @@ pub(super) async fn manage_transport(
                         let mut handler = handler_arc.lock().await;
 
                         if PACKET_TRACE {
-                            log::debug!("tp: << rx({}) = {} {}", message.address, packet, packet.hash());
+                            log::debug!("<< rx({}) = {} {}", message.address, packet, packet.hash());
                         }
 
                         if handle_fixed_destinations(

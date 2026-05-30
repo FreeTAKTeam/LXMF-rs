@@ -209,7 +209,7 @@ impl SerialInterface {
                 Ok(port) => port,
                 Err(err) => {
                     log::warn!(
-                        "serial: failed to open device={} baud_rate={} data_bits={:?} parity={:?} stop_bits={:?} flow_control={:?} err={}",
+                        "failed to open device={} baud_rate={} data_bits={:?} parity={:?} stop_bits={:?} flow_control={:?} err={}",
                         device,
                         baud_rate,
                         data_bits,
@@ -225,7 +225,7 @@ impl SerialInterface {
             };
 
             log::info!(
-                "serial: opened device={} baud_rate={} data_bits={:?} parity={:?} stop_bits={:?} flow_control={:?} iface={}",
+                "opened device={} baud_rate={} data_bits={:?} parity={:?} stop_bits={:?} flow_control={:?} iface={}",
                 device,
                 baud_rate,
                 data_bits,
@@ -297,7 +297,7 @@ async fn run_serial_stream<IO>(
                         match result {
                             Ok(0) => {
                                 log::warn!(
-                                    "serial: EOF on iface={} device={}",
+                                    "EOF on iface={} device={}",
                                     iface_address,
                                     rx_device
                                 );
@@ -332,7 +332,7 @@ async fn run_serial_stream<IO>(
                             }
                             Err(err) => {
                                 log::warn!(
-                                    "serial: read error iface={} device={} err={}",
+                                    "read error iface={} device={} err={}",
                                     iface_address,
                                     rx_device,
                                     err
@@ -371,7 +371,7 @@ async fn run_serial_stream<IO>(
                             if Hdlc::encode(output.as_slice(), &mut hdlc_output).is_ok() {
                                 if let Err(err) = write_port.write_all(hdlc_output.as_slice()).await {
                                     log::warn!(
-                                        "serial: write error iface={} device={} err={}",
+                                        "write error iface={} device={} err={}",
                                         iface_address,
                                         tx_device,
                                         err
@@ -381,7 +381,7 @@ async fn run_serial_stream<IO>(
                                 }
                                 if let Err(err) = write_port.flush().await {
                                     log::warn!(
-                                        "serial: flush error iface={} device={} err={}",
+                                        "flush error iface={} device={} err={}",
                                         iface_address,
                                         tx_device,
                                         err
@@ -391,7 +391,7 @@ async fn run_serial_stream<IO>(
                                 }
                             } else {
                                 log::warn!(
-                                    "serial: hdlc encode failed iface={} device={} payload_len={}",
+                                    "hdlc encode failed iface={} device={} payload_len={}",
                                     iface_address,
                                     tx_device,
                                     output.as_slice().len()
@@ -399,7 +399,7 @@ async fn run_serial_stream<IO>(
                             }
                         } else {
                             log::warn!(
-                                "serial: packet serialize failed iface={} device={} mtu={}",
+                                "packet serialize failed iface={} device={} mtu={}",
                                 iface_address,
                                 tx_device,
                                 mtu

@@ -240,7 +240,7 @@ impl Link {
         };
 
         let link_id = LinkId::from(packet);
-        log::debug!("link: create from request {}", link_id);
+        log::debug!("create from request {}", link_id);
 
         let mut link = Self {
             id: link_id,
@@ -841,7 +841,7 @@ impl Link {
 
     fn packet_with_context(&self, data: &[u8], context: PacketContext) -> Result<Packet, RnsError> {
         if !self.status.can_exchange_data() {
-            log::warn!("link: can't create data packet for closed link");
+            log::warn!("can't create data packet for closed link");
         }
 
         let mut packet_data = PacketDataBuffer::new();
@@ -863,7 +863,7 @@ impl Link {
 
     pub fn data_packet_into(&self, data: &[u8], packet: &mut Packet) -> Result<(), RnsError> {
         if !self.status.can_exchange_data() {
-            log::warn!("link: can't create data packet for closed link");
+            log::warn!("can't create data packet for closed link");
         }
 
         packet.header = Header {
@@ -952,7 +952,7 @@ impl Link {
 
         packet_data.resize(token_len);
 
-        log::trace!("link: {} create rtt packet = {} sec", self.id, rtt);
+        log::trace!("{} create rtt packet = {} sec", self.id, rtt);
 
         Packet {
             header: Header { destination_type: DestinationType::Link, ..Default::default() },
@@ -1149,8 +1149,8 @@ impl Link {
 
         self.post_event(LinkEvent::Closed);
 
-        log::warn!("link: close {}", self.id);
-        eprintln!("link: close {}", self.id);
+        println!("{}", link_close_line(&self.id));
+        log::warn!("close {}", self.id);
     }
 
     fn teardown_packet(&self) -> Result<Packet, RnsError> {
@@ -1286,6 +1286,10 @@ fn clamp_link_signalling(bytes: [u8; LINK_MTU_SIZE]) -> [u8; LINK_MTU_SIZE] {
     [((value >> 16) & 0xFF) as u8, ((value >> 8) & 0xFF) as u8, (value & 0xFF) as u8]
 }
 
+fn link_close_line(id: &AddressHash) -> String {
+    format!("link: close {id}")
+}
+
 include!("link/proof.rs");
 
 #[cfg(test)]
@@ -1311,6 +1315,13 @@ mod tests {
         assert!(!LinkStatus::Closed.can_exchange_data());
         assert!(!LinkStatus::Closed.can_retry_channel_messages());
         assert!(!LinkStatus::Closed.can_send_teardown());
+    }
+
+    #[test]
+    fn link_close_line_preserves_compatibility_marker() {
+        let line = link_close_line(&AddressHash::new([0x11; 16]));
+
+        assert!(line.contains("link: close"));
     }
 
     #[test]

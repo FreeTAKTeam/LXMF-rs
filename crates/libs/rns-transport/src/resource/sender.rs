@@ -210,7 +210,7 @@ impl ResourceSender {
                         sent_any = true;
                         packets.push(scratch_packet);
                     } else {
-                        log::warn!("resource: failed to build resource packet");
+                        log::warn!("failed to build resource packet");
                     }
                 }
             } else {
@@ -249,7 +249,7 @@ impl ResourceSender {
                             ) {
                                 packets.push(packet);
                             } else {
-                                log::warn!("resource: failed to build hash update packet");
+                                log::warn!("failed to build hash update packet");
                             }
                         }
                     }

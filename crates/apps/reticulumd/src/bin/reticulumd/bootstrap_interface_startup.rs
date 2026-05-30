@@ -170,7 +170,7 @@ fn startup_tcp_server_record(
                 format!("{}:{}", host, port)
             })
             .unwrap_or_else(|| "<missing-port>".to_string());
-        eprintln!(
+        log::warn!(
             "[daemon] tcp_server startup skipped name={} endpoint={} selected={}",
             label,
             endpoint,
@@ -234,9 +234,12 @@ async fn startup_tcp_client(
         IfaceRole::Unicast,
         mode,
     );
-    eprintln!(
+    log::info!(
         "[daemon] tcp_client enabled iface={} name={} host={} port={}",
-        client_iface, label, host, port
+        client_iface,
+        label,
+        host,
+        port
     );
     let runtime_iface = client_iface.to_string();
     mark_interface_startup_status(record, "spawned", None, Some(runtime_iface.as_str()));
@@ -288,7 +291,7 @@ async fn startup_udp(
         IfaceRole::Unicast,
         mode,
     );
-    eprintln!(
+    log::info!(
         "[daemon] udp enabled iface={} name={} bind={} forward={}",
         udp_iface,
         label,
@@ -342,7 +345,7 @@ async fn startup_serial(
         IfaceRole::Unicast,
         mode,
     );
-    eprintln!(
+    log::info!(
         "[daemon] serial enabled iface={} name={} device={} baud_rate={}",
         serial_iface,
         label,
@@ -365,7 +368,7 @@ async fn startup_ble(
         Ok(ble_iface) => {
             let mode = iface.interface_mode().unwrap_or(InterfaceMode::Full);
             iface_manager.lock().await.set_mode(ble_iface, mode);
-            eprintln!(
+            log::info!(
                 "[daemon] ble_gatt enabled iface={} name={} peripheral_id={}",
                 ble_iface,
                 label,
@@ -421,7 +424,7 @@ fn record_startup_failure(
     kind: String,
     error: String,
 ) {
-    eprintln!("[daemon] interface startup rejected name={} err={}", label, error);
+    log::error!("[daemon] interface startup rejected name={} err={}", label, error);
     mark_interface_startup_status(record, "failed", Some(error.as_str()), None);
     startup_failures.push(InterfaceStartupFailure { label, kind, error });
 }

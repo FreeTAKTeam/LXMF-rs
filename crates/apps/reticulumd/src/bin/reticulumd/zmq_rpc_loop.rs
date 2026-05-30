@@ -31,7 +31,7 @@ pub(super) async fn run_zmq_rpc_loop_until(
         mpsc::channel::<ZmqOutboundResponse>(ZMQ_RPC_RESPONSE_QUEUE_CAPACITY);
     let response_writer = tokio::spawn(run_zmq_response_writer(response_rx));
     let rpc_permits = Arc::new(Semaphore::new(ZMQ_RPC_WORKER_CONCURRENCY));
-    println!("reticulumd listening on zmq {}", config.command_endpoint);
+    log::info!("reticulumd listening on zmq {}", config.command_endpoint);
 
     loop {
         tokio::select! {
@@ -44,7 +44,7 @@ pub(super) async fn run_zmq_rpc_loop_until(
                 let message = match message {
                     Ok(message) => message,
                     Err(err) if is_recoverable_zmq_transport_error(&err) => {
-                        eprintln!("[daemon] zmq rpc receive dropped client connection: {}", err);
+                        log::warn!("[daemon] zmq rpc receive dropped client connection: {}", err);
                         continue;
                     }
                     Err(err) => return Err(zmq_io_error(err)),
@@ -61,10 +61,10 @@ pub(super) async fn run_zmq_rpc_loop_until(
                             daemon.as_ref(),
                             message,
                             command_endpoint_requires_auth,
-                        );
+                    );
                     if let Some(response) = response {
                         if response_tx.send(response).await.is_err() {
-                            eprintln!("[daemon] zmq rpc response writer stopped");
+                            log::warn!("[daemon] zmq rpc response writer stopped");
                         }
                     }
                 });
@@ -82,11 +82,18 @@ struct ZmqOutboundResponse {
 }
 
 async fn send_zmq_response(
-    _responses: &mut HashMap<String, PushSocket>,
+    responses: &mut HashMap<String, PushSocket>,
     response: ZmqOutboundResponse,
 ) -> io::Result<()> {
-    let mut socket = PushSocket::new();
-    socket.connect(response.endpoint.as_str()).await.map_err(zmq_io_error)?;
+    if !responses.contains_key(&response.endpoint) {
+        let mut socket = PushSocket::new();
+        socket.connect(response.endpoint.as_str()).await.map_err(zmq_io_error)?;
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        responses.insert(response.endpoint.clone(), socket);
+    }
+    let socket = responses
+        .get_mut(&response.endpoint)
+        .ok_or_else(|| io::Error::other("missing zmq response socket"))?;
     let encoded = zmq::encode_envelope(&response.envelope)?;
     socket.send(ZmqMessage::from(encoded)).await.map_err(zmq_io_error)
 }
@@ -95,7 +102,7 @@ async fn run_zmq_response_writer(mut responses_rx: mpsc::Receiver<ZmqOutboundRes
     let mut responses = HashMap::new();
     while let Some(response) = responses_rx.recv().await {
         if let Err(err) = send_zmq_response(&mut responses, response).await {
-            eprintln!("[daemon] zmq rpc response dropped client connection: {}", err);
+            log::warn!("[daemon] zmq rpc response dropped client connection: {}", err);
         }
     }
 }

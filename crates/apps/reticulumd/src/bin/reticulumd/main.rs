@@ -67,6 +67,9 @@ struct Args {
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
     let args = Args::parse();
     #[cfg(feature = "zmq-pipeline-rpc")]
     let zmq_rpc_command = args.zmq_rpc_command.clone();
@@ -88,11 +91,11 @@ async fn run_daemon_loops(context: bootstrap::BootstrapContext, zmq_rpc_command:
     tokio::spawn(async move {
         match tokio::signal::ctrl_c().await {
             Ok(()) => {
-                println!("[daemon] shutdown signal received");
+                log::info!("[daemon] shutdown signal received");
                 let _ = shutdown_tx.send(true);
             }
             Err(err) => {
-                eprintln!("[daemon] failed to install shutdown signal handler: {}", err);
+                log::error!("[daemon] failed to install shutdown signal handler: {}", err);
             }
         }
     });
@@ -104,7 +107,7 @@ async fn run_daemon_loops(context: bootstrap::BootstrapContext, zmq_rpc_command:
             let config =
                 zmq_rpc_loop::ZmqRpcLoopConfig { command_endpoint, require_auth_for_remote: true };
             if let Err(err) = zmq_rpc_loop::run_zmq_rpc_loop_until(config, daemon, shutdown).await {
-                eprintln!("[daemon] zmq rpc loop stopped: {}", err);
+                log::error!("[daemon] zmq rpc loop stopped: {}", err);
             }
         });
     }

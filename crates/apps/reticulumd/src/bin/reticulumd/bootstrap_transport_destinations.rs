@@ -91,6 +91,22 @@ async fn destination_hash(
     let mut hash = [0u8; 16];
     hash.copy_from_slice(dest.desc.address_hash.as_slice());
     let hash_hex = hex::encode(hash);
-    println!("{}", pretty_daemon_line(&format!("{label} destination hash={hash_hex}")));
+    println!("{}", daemon_destination_hash_line(label, hash_hex.as_str()));
     (hash, hash_hex)
+}
+
+fn daemon_destination_hash_line(label: &str, hash_hex: &str) -> String {
+    pretty_daemon_line(&format!("{label} destination hash={hash_hex}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn destination_hash_line_keeps_smoke_script_marker() {
+        let line = daemon_destination_hash_line("delivery", "0123456789abcdef");
+
+        assert!(line.contains("delivery destination hash=0123456789abcdef"));
+    }
 }

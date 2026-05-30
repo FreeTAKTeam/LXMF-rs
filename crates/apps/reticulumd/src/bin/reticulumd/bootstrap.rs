@@ -91,7 +91,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     let daemon_config = args.config.as_ref().and_then(|path| match DaemonConfig::from_path(path) {
         Ok(config) => Some(config),
         Err(err) => {
-            eprintln!("[daemon] failed to load config {}: {}", path.display(), err);
+            log::error!("[daemon] failed to load config {}: {}", path.display(), err);
             None
         }
     });
@@ -159,16 +159,18 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     let selected_tcp_server = startup.selected_tcp_server;
 
     if !startup_failures.is_empty() {
-        eprintln!(
+        log::warn!(
             "[daemon] interface startup degraded started={} failed={} strict={}",
             startup_successes,
             startup_failures.len(),
             args.strict_interface_startup
         );
         for failure in &startup_failures {
-            eprintln!(
+            log::warn!(
                 "[daemon] interface startup failure name={} kind={} err={}",
-                failure.label, failure.kind, failure.error
+                failure.label,
+                failure.kind,
+                failure.error
             );
         }
     }
@@ -184,7 +186,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     } else {
         "disabled".to_string()
     };
-    println!(
+    log::info!(
         "{}",
         pretty_boot_line(
             "startup",

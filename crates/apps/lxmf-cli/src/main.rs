@@ -230,6 +230,9 @@ enum Command {
 }
 
 fn main() -> ExitCode {
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
     let cli = Cli::parse();
     match run(&cli) {
         Ok(output) => {
@@ -653,35 +656,39 @@ fn emit_error(cli: &Cli, err: SdkError) {
     match output_mode(cli) {
         OutputModeArg::Human => {}
         OutputModeArg::Json | OutputModeArg::JsonPretty => {
-            let machine_code = err.machine_code.clone();
-            let message = err.message.clone();
-            let envelope = json!({
-                "ok": false,
-                "error": err,
-            });
-            let serialized = match output_mode(cli) {
-                OutputModeArg::Json => serde_json::to_string(&envelope),
-                OutputModeArg::JsonPretty | OutputModeArg::Human => {
-                    serde_json::to_string_pretty(&envelope)
-                }
-            };
-            match serialized {
-                Ok(serialized) => eprintln!("{serialized}"),
-                Err(ser_err) => {
-                    eprintln!(
-                    "{{\"ok\":false,\"error\":{{\"machine_code\":\"{}\",\"message\":\"{}\",\"serialization\":\"{}\"}}}}",
-                        machine_code, message, ser_err
-                );
-                }
-            }
+            eprintln!("{}", serialize_error_for_stderr(cli, &err));
             return;
         }
     }
 
-    eprintln!("error [{}]: {}", err.machine_code, err.message);
+    log::error!("error [{}]: {}", err.machine_code, err.message);
     if !err.details.is_empty() {
-        eprintln!("details: {}", JsonValue::Object(err.details.into_iter().collect()));
+        log::error!("details: {}", JsonValue::Object(err.details.into_iter().collect()));
     }
+}
+
+fn serialize_error_for_stderr(cli: &Cli, err: &SdkError) -> String {
+    let envelope = json!({
+        "ok": false,
+        "error": err,
+    });
+    let serialized = match output_mode(cli) {
+        OutputModeArg::Json => serde_json::to_string(&envelope),
+        OutputModeArg::JsonPretty | OutputModeArg::Human => serde_json::to_string_pretty(&envelope),
+    };
+    serialized.unwrap_or_else(|ser_err| {
+        let fallback = json!({
+            "ok": false,
+            "error": {
+                "machine_code": err.machine_code,
+                "message": err.message,
+                "serialization": ser_err.to_string(),
+            },
+        });
+        serde_json::to_string(&fallback).unwrap_or_else(|_| {
+            "{\"ok\":false,\"error\":{\"machine_code\":\"serialization_failed\"}}".to_string()
+        })
+    })
 }
 
 #[cfg(test)]
@@ -741,6 +748,18 @@ mod tests {
     fn legacy_json_flag_maps_to_json_pretty_output() {
         let cli = parse_cli(&["lxmf-cli", "--json", "start"]);
         assert_eq!(output_mode(&cli), OutputModeArg::JsonPretty);
+    }
+
+    #[test]
+    fn json_error_output_is_raw_json_for_stderr() {
+        let cli = parse_cli(&["lxmf-cli", "--output", "json", "start"]);
+        let err = invalid_argument("missing --config");
+
+        let output = serialize_error_for_stderr(&cli, &err);
+
+        let parsed: JsonValue = serde_json::from_str(&output).expect("error output should be JSON");
+        assert_eq!(parsed["ok"], false);
+        assert_eq!(parsed["error"]["machine_code"], error_code::VALIDATION_INVALID_ARGUMENT);
     }
 
     #[test]

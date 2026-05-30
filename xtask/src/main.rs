@@ -609,6 +609,9 @@ enum PublishWave {
 }
 
 fn main() -> Result<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
     let xtask = Xtask::parse();
     match xtask.command {
         XtaskCommand::Ci { stage, timeout_secs } => run_ci(stage, timeout_secs),
@@ -1216,7 +1219,7 @@ fn run_interop_drift_check(update: bool) -> Result<()> {
     let classification = classify_interop_drift(&baseline, &current);
 
     for note in &classification.additive {
-        println!("interop drift additive: {note}");
+        log::info!("interop drift additive: {note}");
     }
     if !classification.breaking.is_empty() {
         let details = classification.breaking.join("; ");
@@ -2829,7 +2832,7 @@ struct PythonImplOutputPaths<'a> {
 fn run_sdk_perf_budget_check() -> Result<()> {
     run_sdk_bench_check()?;
     if let Err(first_err) = evaluate_perf_budgets() {
-        eprintln!(
+        log::warn!(
             "initial performance budget evaluation failed ({first_err:#}); retrying benchmarks once"
         );
         run_sdk_bench_check()?;
@@ -2916,7 +2919,10 @@ fn run_python_impl_bench_report(
         resource_iterations,
     )?;
     write_python_impl_report_summary(&summary)?;
-    println!("python implementation benchmark report written to {}", PYTHON_IMPL_REPORT_TEXT_PATH);
+    log::info!(
+        "python implementation benchmark report written to {}",
+        PYTHON_IMPL_REPORT_TEXT_PATH
+    );
     Ok(())
 }
 
@@ -3095,7 +3101,7 @@ fn evaluate_perf_budgets() -> Result<()> {
     }
     fs::write(PERF_BUDGET_REPORT_PATH, report_lines.join("\n"))
         .with_context(|| format!("write {PERF_BUDGET_REPORT_PATH}"))?;
-    println!("performance budget report written to {PERF_BUDGET_REPORT_PATH}");
+    log::info!("performance budget report written to {PERF_BUDGET_REPORT_PATH}");
 
     if failures.is_empty() {
         Ok(())
@@ -3168,7 +3174,7 @@ fn write_bench_summary() -> Result<()> {
 
     fs::write(BENCH_SUMMARY_PATH, lines.join("\n"))
         .with_context(|| format!("write {BENCH_SUMMARY_PATH}"))?;
-    println!("benchmark summary written to {BENCH_SUMMARY_PATH}");
+    log::info!("benchmark summary written to {BENCH_SUMMARY_PATH}");
     Ok(())
 }
 
@@ -3352,7 +3358,10 @@ fn write_python_impl_compare_report(
             .context("serialize python implementation comparison report")?,
     )
     .with_context(|| format!("write {}", paths.compare_json_path.display()))?;
-    println!("python implementation comparison written to {}", paths.compare_report_path.display());
+    log::info!(
+        "python implementation comparison written to {}",
+        paths.compare_report_path.display()
+    );
     Ok(())
 }
 
@@ -4490,8 +4499,8 @@ fn run_package_daemon_bundle(version: Option<String>) -> Result<()> {
     fs::remove_dir_all(&staging_dir)
         .with_context(|| format!("remove {}", staging_dir.display()))?;
 
-    println!("created {}", archive_path.display());
-    println!("created {}", sha_path.display());
+    log::info!("created {}", archive_path.display());
+    log::info!("created {}", sha_path.display());
     Ok(())
 }
 
@@ -5015,11 +5024,21 @@ fn run_compat_kit_check() -> Result<()> {
 }
 
 fn run_e2e_compatibility(timeout_secs: Option<u64>) -> Result<()> {
-    run("cargo", &["build", "-p", "reticulumd", "--bin", "reticulumd"])?;
     let timeout_secs = timeout_secs.unwrap_or(20).to_string();
+    run("cargo", &["build", "-p", "reticulumd", "--bin", "reticulumd"])?;
     run(
         "cargo",
-        &["run", "-p", "rns-tools", "--bin", "rnx", "--", "e2e", "--timeout-secs", &timeout_secs],
+        &[
+            "run",
+            "-p",
+            "rns-tools",
+            "--bin",
+            "rnx",
+            "--",
+            "e2e",
+            "--timeout-secs",
+            timeout_secs.as_str(),
+        ],
     )
 }
 
@@ -5260,7 +5279,7 @@ fn run(cmd: &str, args: &[&str]) -> Result<()> {
 
 fn run_publish_crates(wave: PublishWave, dry_run: bool, allow_dirty: bool) -> Result<()> {
     for krate in publish_wave_crates(wave) {
-        println!("publishing {} from {}", krate.package, krate.manifest_path);
+        log::info!("publishing {} from {}", krate.package, krate.manifest_path);
         if dry_run {
             run_publish_dry_run_with_fallback(*krate, allow_dirty)?;
         } else {
@@ -5343,7 +5362,7 @@ fn run_publish_dry_run_with_fallback(krate: PublishedCrate, allow_dirty: bool) -
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     if stderr.contains("failed to select a version for the requirement") {
-        println!(
+        log::warn!(
             "dry-run fallback: {} depends on unpublished local versions; validating package contents instead",
             krate.package
         );
@@ -5364,6 +5383,6 @@ fn print_cargo_output(output: &std::process::Output) {
         print!("{}", String::from_utf8_lossy(&output.stdout));
     }
     if !output.stderr.is_empty() {
-        eprint!("{}", String::from_utf8_lossy(&output.stderr));
+        log::error!("{}", String::from_utf8_lossy(&output.stderr));
     }
 }

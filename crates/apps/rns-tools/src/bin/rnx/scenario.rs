@@ -33,9 +33,11 @@ pub(crate) fn run_replay(
             )
         })?;
     }
-    println!(
+    log::trace!(
         "REPLAY ok: trace='{}' steps={} digest={}",
-        capture.trace_name, capture.steps_executed, capture.response_digest_sha256
+        capture.trace_name,
+        capture.steps_executed,
+        capture.response_digest_sha256
     );
     Ok(())
 }
@@ -111,7 +113,7 @@ pub(crate) fn run_e2e(
             return Err(err);
         }
     };
-    eprintln!(
+    log::info!(
         "[rnx] ready A delivery={:?} propagation={:?}; B delivery={:?} propagation={:?}",
         a_ready.delivery_hash,
         a_ready.propagation_hash,
@@ -219,8 +221,8 @@ pub(crate) fn run_e2e(
 
     cleanup_child(&mut a_child, keep);
     cleanup_child(&mut b_child, keep);
-    println!("E2E ok: peer discovery A<->B succeeded");
-    println!("E2E ok: compatibility delivery modes completed");
+    log::trace!("E2E ok: peer discovery A<->B succeeded");
+    log::trace!("E2E ok: compatibility delivery modes completed");
     Ok(())
 }
 
@@ -340,7 +342,7 @@ pub(crate) fn run_delivery_mode(
         }
         *request_id = (*request_id).wrapping_add(1);
 
-        println!("E2E ok: mode={} message {} delivered", label, message_id);
+        log::trace!("E2E ok: mode={} message {} delivered", label, message_id);
         return Ok(());
     }
 
@@ -408,7 +410,7 @@ pub(crate) fn run_paper_workflow(
     }
     *request_id = (*request_id).wrapping_add(1);
 
-    println!("E2E ok: mode=paper message {} encoded/decoded", message_id);
+    log::trace!("E2E ok: mode=paper message {} encoded/decoded", message_id);
     Ok(())
 }
 

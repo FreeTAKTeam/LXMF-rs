@@ -240,7 +240,7 @@ impl ResourceReceiver {
                 ) {
                     Ok(packet) => packet,
                     Err(_) => {
-                        log::warn!("resource: failed to build proof packet");
+                        log::warn!("failed to build proof packet");
                         self.status = ResourceStatus::Failed;
                         return PartOutcome::Failed;
                     }

@@ -6,7 +6,7 @@ use clap::{Parser, ValueEnum};
 use rns_rpc::e2e_harness::timestamp_millis;
 use sha2::{Digest, Sha256};
 use std::fs;
-use std::io::{self};
+use std::io::{self, Write};
 use std::path::PathBuf;
 
 #[path = "rnx/ble.rs"]
@@ -302,9 +302,12 @@ enum TcpBridgeMode {
 }
 
 fn main() {
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
     let cli = Cli::parse();
     if let Err(err) = run(cli) {
-        eprintln!("rnx error: {}", err);
+        log::error!("rnx error: {}", err);
         std::process::exit(1);
     }
 }
@@ -529,7 +532,11 @@ fn run_camera_upload(
         chunk_size,
     )?;
 
-    println!(
+    let stdout = io::stdout();
+    let mut stdout = stdout.lock();
+    emit_camera_upload_success(&mut stdout, attachment_id.as_str())?;
+
+    log::trace!(
         "CAMERA_UPLOAD ok: file={} bytes={} chunk_size={} attachment_id={}",
         file.display(),
         payload.len(),
@@ -537,6 +544,10 @@ fn run_camera_upload(
         attachment_id
     );
     Ok(())
+}
+
+fn emit_camera_upload_success(mut stdout: impl Write, attachment_id: &str) -> io::Result<()> {
+    writeln!(stdout, "{attachment_id}")
 }
 
 fn upload_attachment_via_rpc(
@@ -709,4 +720,18 @@ fn resolve_runtime_seq(explicit: Option<u32>) -> u32 {
         let seq = (timestamp_millis() & 0xffff_ffff) as u32;
         seq.max(1)
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn camera_upload_success_line_keeps_attachment_id_on_stdout() {
+        let mut stdout = Vec::new();
+
+        emit_camera_upload_success(&mut stdout, "att-123").expect("write should succeed");
+
+        assert_eq!(String::from_utf8(stdout).unwrap(), "att-123\n");
+    }
 }

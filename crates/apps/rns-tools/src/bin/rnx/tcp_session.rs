@@ -42,7 +42,7 @@ pub(crate) fn handle_tcp_native_session(
         match transport.poll_frame().map_err(embedded_to_io)? {
             Some(frame) => match frame.kind {
                 FRAME_KIND_ANNOUNCE => {
-                    println!(
+                    log::trace!(
                         "{label} frame kind=0x{:02x} seq={} bytes={} role=announce",
                         frame.kind,
                         frame.sequence,
@@ -51,9 +51,11 @@ pub(crate) fn handle_tcp_native_session(
                     if let Some(outbound) = deferred_outbound {
                         if !outbound_sent || (repeat_until_capture_starts && !capture_started) {
                             transport.send_frame(outbound).map_err(embedded_to_io)?;
-                            println!(
+                            log::trace!(
                                 "{label} sent request kind=0x{:02x} seq={} mode={}",
-                                outbound.kind, outbound.sequence, mode_name
+                                outbound.kind,
+                                outbound.sequence,
+                                mode_name
                             );
                             outbound_sent = true;
                         }
@@ -61,7 +63,7 @@ pub(crate) fn handle_tcp_native_session(
                 }
                 FRAME_KIND_LXMF_MESSAGE => {
                     let envelope = decode_envelope(&frame.payload).map_err(embedded_to_io)?;
-                    println!(
+                    log::trace!(
                         "{label} frame kind=0x{:02x} seq={} body={} source={} destination={}",
                         frame.kind,
                         frame.sequence,
@@ -94,7 +96,7 @@ pub(crate) fn handle_tcp_native_session(
                     capture_total_bytes = Some(total_bytes);
                     capture_started = true;
                     if let Some(effective_profile) = effective_profile {
-                        println!(
+                        log::trace!(
                             "{label} frame kind=0x{:02x} seq={} status={} total_bytes={} chunk_bytes={} width={} height={} profile={}",
                             frame.kind,
                             frame.sequence,
@@ -106,7 +108,7 @@ pub(crate) fn handle_tcp_native_session(
                             effective_profile
                         );
                     } else {
-                        println!(
+                        log::trace!(
                             "{label} frame kind=0x{:02x} seq={} status={} total_bytes={} chunk_bytes={} width={} height={}",
                             frame.kind, frame.sequence, status, total_bytes, chunk_bytes, width, height
                         );
@@ -135,7 +137,7 @@ pub(crate) fn handle_tcp_native_session(
                     }
                     capture_total_chunks = Some(total_chunks);
                     capture_bytes.extend_from_slice(&frame.payload[6..]);
-                    println!(
+                    log::trace!(
                         "{label} frame kind=0x{:02x} seq={} chunk_seq={} total_chunks={} payload_bytes={} collected_bytes={}",
                         frame.kind,
                         frame.sequence,
@@ -159,9 +161,12 @@ pub(crate) fn handle_tcp_native_session(
                         frame.payload[4],
                         frame.payload[5],
                     ]);
-                    println!(
+                    log::trace!(
                         "{label} frame kind=0x{:02x} seq={} total_chunks={} total_bytes={}",
-                        frame.kind, frame.sequence, total_chunks, total_bytes
+                        frame.kind,
+                        frame.sequence,
+                        total_chunks,
+                        total_bytes
                     );
                     if let Some(expected) = capture_total_bytes {
                         if expected != total_bytes {
@@ -197,7 +202,7 @@ pub(crate) fn handle_tcp_native_session(
                         PathBuf::from(format!("capture-{}.jpg", timestamp_millis()))
                     });
                     std::fs::write(&path, &capture_bytes)?;
-                    println!(
+                    log::info!(
                         "{label} capture saved path={} bytes={}",
                         path.display(),
                         capture_bytes.len()
@@ -206,7 +211,7 @@ pub(crate) fn handle_tcp_native_session(
                     break;
                 }
                 _ => {
-                    println!(
+                    log::trace!(
                         "{label} frame kind=0x{:02x} seq={} payload_hex={}",
                         frame.kind,
                         frame.sequence,
@@ -220,7 +225,7 @@ pub(crate) fn handle_tcp_native_session(
     }
 
     if print_summary {
-        println!("{label} ok: peer={} responses={} mode={}", peer_addr, responses, mode_name);
+        log::info!("{label} ok: peer={} responses={} mode={}", peer_addr, responses, mode_name);
     }
     Ok(TcpSessionOutcome {
         responses,

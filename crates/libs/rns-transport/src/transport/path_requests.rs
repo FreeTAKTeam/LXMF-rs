@@ -45,7 +45,7 @@ pub struct PathRequest {
 impl PathRequest {
     fn decode(data: &[u8], transport_name: &str) -> Option<Self> {
         if data.len() <= ADDRESS_HASH_SIZE {
-            log::info!(
+            log::warn!(
                 "tp({}): ignoring malformed path request: no {}",
                 transport_name,
                 if data.len() < ADDRESS_HASH_SIZE { "destination" } else { "tag" }
@@ -168,7 +168,7 @@ impl PathRequests {
             let is_new = self.cache.insert(key.clone(), expires_at).is_none();
 
             if !is_new {
-                log::info!(
+                log::debug!(
                     "tp({}): ignoring duplicate path request for destination {}",
                     self.name,
                     request.destination
@@ -271,7 +271,7 @@ impl PathRequests {
 
         if let Some(timeout) = self.discovery.get(&key) {
             if *timeout >= now {
-                log::info!(
+                log::debug!(
                     "tp({}): rejecting discovery path request for destination {} on iface {:?} as a request is already pending",
                     self.name,
                     destination,
@@ -286,7 +286,7 @@ impl PathRequests {
         let pending_for_iface = self.pending_recursive_count(on_iface);
 
         if self.announce_cap > 0 && pending_for_iface >= self.announce_cap {
-            log::info!(
+            log::debug!(
                 "tp({}): rejecting discovery path request for destination {} on iface {:?} as announce cap reached",
                 self.name,
                 destination,
@@ -296,7 +296,7 @@ impl PathRequests {
         }
 
         if self.announce_queue_len > 0 && pending_for_iface >= self.announce_queue_len {
-            log::info!(
+            log::debug!(
                 "tp({}): rejecting discovery path request for destination {} on iface {:?} as announce queue is full",
                 self.name,
                 destination,
