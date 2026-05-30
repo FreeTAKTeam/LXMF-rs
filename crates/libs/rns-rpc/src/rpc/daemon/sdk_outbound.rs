@@ -1,6 +1,7 @@
 use super::*;
 
 const OUTBOUND_DELIVERY_QUEUE_CAPACITY: usize = 1024;
+const OUTBOUND_DELIVERY_WORKER_LANES: usize = 16;
 
 impl RpcDaemon {
     pub(super) fn spawn_outbound_delivery_worker(
@@ -12,33 +13,57 @@ impl RpcDaemon {
         let bridge = bridge?;
         let (tx, rx) =
             mpsc::sync_channel::<OutboundDeliveryCommand>(OUTBOUND_DELIVERY_QUEUE_CAPACITY);
-        std::thread::Builder::new()
-            .name("rpc-outbound-delivery-worker".to_string())
-            .spawn(move || {
-                while let Ok(command) = rx.recv() {
-                    if let Err(err) = bridge.deliver(&command.record, &command.options) {
-                        let status = format!("failed: {err}");
-                        let resolved_status = {
-                            let _status_guard = delivery_status_lock
-                                .lock()
-                                .expect("delivery_status_lock mutex poisoned");
-                            store
-                                .resolve_receipt_status(command.record.id.as_str(), status.as_str())
-                                .unwrap_or_else(|_| Some(status.clone()))
-                                .unwrap_or_else(|| status.clone())
-                        };
-                        if resolved_status == status {
-                            Self::append_delivery_trace_to(
-                                &delivery_traces,
-                                command.record.id.as_str(),
-                                status,
-                            );
-                        }
-                    }
-                }
-            })
-            .expect("spawn rpc outbound delivery worker");
+        let rx = Arc::new(Mutex::new(rx));
+        for lane in 0..OUTBOUND_DELIVERY_WORKER_LANES {
+            let bridge = Arc::clone(&bridge);
+            let store = Arc::clone(&store);
+            let delivery_traces = Arc::clone(&delivery_traces);
+            let delivery_status_lock = Arc::clone(&delivery_status_lock);
+            let rx = Arc::clone(&rx);
+            std::thread::Builder::new()
+                .name(format!("rpc-outbound-delivery-worker-{lane}"))
+                .spawn(move || loop {
+                    let command = {
+                        let guard = rx.lock().expect("outbound delivery receiver mutex poisoned");
+                        guard.recv()
+                    };
+                    let Ok(command) = command else {
+                        break;
+                    };
+                    Self::process_outbound_delivery_command(
+                        &bridge,
+                        &store,
+                        &delivery_traces,
+                        &delivery_status_lock,
+                        command,
+                    );
+                })
+                .expect("spawn rpc outbound delivery worker");
+        }
         Some(tx)
+    }
+
+    fn process_outbound_delivery_command(
+        bridge: &Arc<dyn OutboundBridge>,
+        store: &Arc<MessagesStore>,
+        delivery_traces: &Arc<Mutex<HashMap<String, Vec<DeliveryTraceEntry>>>>,
+        delivery_status_lock: &Arc<Mutex<()>>,
+        command: OutboundDeliveryCommand,
+    ) {
+        if let Err(err) = bridge.deliver(&command.record, &command.options) {
+            let status = format!("failed: {err}");
+            let resolved_status = {
+                let _status_guard =
+                    delivery_status_lock.lock().expect("delivery_status_lock mutex poisoned");
+                store
+                    .resolve_receipt_status(command.record.id.as_str(), status.as_str())
+                    .unwrap_or_else(|_| Some(status.clone()))
+                    .unwrap_or_else(|| status.clone())
+            };
+            if resolved_status == status {
+                Self::append_delivery_trace_to(delivery_traces, command.record.id.as_str(), status);
+            }
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -274,6 +299,75 @@ impl RpcDaemon {
         Ok(RpcResponse { id: request_id, result: Some(json!({ "message_id": id })), error: None })
     }
 
+    pub(super) fn store_outbound_batch(
+        &self,
+        request_id: u64,
+        parsed: NormalizedSendBatchRequest,
+    ) -> Result<RpcResponse, std::io::Error> {
+        let mut accepted_count = 0_u64;
+        let mut rejected_count = 0_u64;
+        let mut results = Vec::with_capacity(parsed.messages.len());
+        for item in parsed.messages {
+            let item_id = item.id.clone();
+            match self.store_outbound(
+                request_id,
+                item.id,
+                parsed.source.clone(),
+                item.destination,
+                item.title,
+                item.content,
+                item.fields,
+                item.method,
+                item.stamp_cost,
+                item.options,
+                item.include_ticket,
+            ) {
+                Ok(response) => {
+                    if let Some(error) = response.error {
+                        rejected_count = rejected_count.saturating_add(1);
+                        results.push(json!({
+                            "id": item_id,
+                            "accepted": false,
+                            "error": error,
+                        }));
+                    } else {
+                        accepted_count = accepted_count.saturating_add(1);
+                        let message_id = response
+                            .result
+                            .as_ref()
+                            .and_then(|result| result.get("message_id"))
+                            .and_then(JsonValue::as_str)
+                            .unwrap_or(item_id.as_str());
+                        results.push(json!({
+                            "id": item_id,
+                            "message_id": message_id,
+                            "accepted": true,
+                        }));
+                    }
+                }
+                Err(err) => {
+                    rejected_count = rejected_count.saturating_add(1);
+                    results.push(json!({
+                        "id": item_id,
+                        "accepted": false,
+                        "error": RpcError::new("SDK_INTERNAL", err.to_string()),
+                    }));
+                }
+            }
+        }
+
+        Ok(RpcResponse {
+            id: request_id,
+            result: Some(json!({
+                "batch_id": parsed.batch_id,
+                "accepted_count": accepted_count,
+                "rejected_count": rejected_count,
+                "results": results,
+            })),
+            error: None,
+        })
+    }
+
     fn schedule_bridge_delivery(
         &self,
         record: MessageRecord,
@@ -312,6 +406,7 @@ impl RpcDaemon {
             "send_message",
             "send_message_v2",
             "sdk_send_v2",
+            "sdk_send_batch_v2",
             "sdk_negotiate_v2",
             "sdk_status_v2",
             "sdk_configure_v2",

@@ -740,6 +740,7 @@ impl RpcDaemon {
         matches!(
             method,
             "sdk_send_v2"
+                | "sdk_send_batch_v2"
                 | "send_message"
                 | "send_message_v2"
                 | "sdk_cancel_message_v2"
@@ -781,6 +782,27 @@ impl RpcDaemon {
                     details.insert(
                         "message_id".to_string(),
                         JsonValue::String(message_id.to_string()),
+                    );
+                }
+            }
+            "sdk_send_batch_v2" => {
+                if let Some(batch_id) = result.get("batch_id").and_then(JsonValue::as_str) {
+                    details.insert("batch_id".to_string(), JsonValue::String(batch_id.to_string()));
+                }
+                if let Some(accepted_count) =
+                    result.get("accepted_count").and_then(JsonValue::as_u64)
+                {
+                    details.insert(
+                        "accepted_count".to_string(),
+                        JsonValue::Number(serde_json::Number::from(accepted_count)),
+                    );
+                }
+                if let Some(rejected_count) =
+                    result.get("rejected_count").and_then(JsonValue::as_u64)
+                {
+                    details.insert(
+                        "rejected_count".to_string(),
+                        JsonValue::Number(serde_json::Number::from(rejected_count)),
                     );
                 }
             }

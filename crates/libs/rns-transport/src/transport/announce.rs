@@ -78,9 +78,9 @@ async fn process_announce<'a>(
     let interface = route_iface.as_slice().to_vec();
 
     eprintln!(
-        "[announce-debug] accepted dst={} app_data={}",
+        "[announce-debug] accepted dst={} app_data_hex={}",
         packet.destination,
-        String::from_utf8_lossy(announce.app_data)
+        hex::encode(announce.app_data)
     );
 
     let _ = handler.announce_tx.send(AnnounceEvent {

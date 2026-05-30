@@ -344,6 +344,15 @@ fn built_in_entries() -> Vec<OperationEntry> {
         )
         .with_alias("sdk_send_v2"),
         OperationEntry::new(
+            "app.delivery.send_batch",
+            "delivery",
+            OperationKind::Command,
+            TransportVariant::Rpc,
+            "Queue a batch of outbound messages for delivery.",
+        )
+        .with_alias("sdk_send_batch_v2")
+        .with_required_capability("sdk.capability.batch_send"),
+        OperationEntry::new(
             "app.delivery.status",
             "delivery",
             OperationKind::Query,

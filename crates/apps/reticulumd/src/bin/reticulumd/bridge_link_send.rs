@@ -18,10 +18,9 @@ impl DeliveryTask {
                 &self.message_id,
                 &self.destination_hex,
                 trace_stage,
-                "opening link",
+                "opening or reusing link",
             );
         }
-        self.transport.reset_out_link(&destination_desc.address_hash).await;
         let result = send_via_link(
             self.transport.as_ref(),
             destination_desc,

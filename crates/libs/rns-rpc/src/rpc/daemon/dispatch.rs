@@ -58,6 +58,7 @@ impl RpcDaemon {
                         "delivery_policy": snapshot.delivery_policy,
                         "propagation": snapshot.propagation,
                         "stamp_policy": snapshot.stamp_policy,
+                        "delivery_pipeline": self.outbound_bridge.as_ref().and_then(|bridge| bridge.delivery_pipeline_status()),
                         "capabilities": Self::capabilities(),
                     })),
                     error: None,

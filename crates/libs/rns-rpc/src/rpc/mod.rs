@@ -19,7 +19,9 @@ use std::sync::{mpsc, Arc, Mutex};
 use tokio::sync::broadcast;
 use tokio::time::Duration;
 
-use send_request::parse_outbound_send_request;
+use send_request::{
+    parse_outbound_send_batch_request, parse_outbound_send_request, NormalizedSendBatchRequest,
+};
 
 include!("types.rs");
 include!("params.rs");
