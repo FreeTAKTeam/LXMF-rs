@@ -1412,6 +1412,21 @@
       "sha256": "f95fbdb4378ddf3a2c981253396b44da0b0c7d5cbbbc9ec7a4e8587c2bfa0cb4"
     },
     {
+      "path": "docs/fixtures/sdk-v2/rpc/sdk_send_batch_v2.request.invalid.json",
+      "bytes": 134,
+      "sha256": "dee63650c15cfb918f4ef5938aa0f1df43b04b2fcd5f6d317599a33f7f776d1c"
+    },
+    {
+      "path": "docs/fixtures/sdk-v2/rpc/sdk_send_batch_v2.request.valid.json",
+      "bytes": 514,
+      "sha256": "d18c489babc9294f174f5cb5e6b74282e7c5e9dc7591fbba7b15f43e0c7e3749"
+    },
+    {
+      "path": "docs/fixtures/sdk-v2/rpc/sdk_send_batch_v2.response.valid.json",
+      "bytes": 349,
+      "sha256": "8443d08c7c931f4b7d2836975523c15b117633e09d135fa293d42bcfc2acbb58"
+    },
+    {
       "path": "docs/fixtures/sdk-v2/rpc/sdk_send_v2.request.invalid.json",
       "bytes": 147,
       "sha256": "8c53c9de7817ff74acd0166b62fd3baedfc7dc653dc8492941e83565c4f1ba3b"
@@ -1518,8 +1533,8 @@
     },
     {
       "path": "docs/schemas/sdk/v2/clients/smoke-requests.json",
-      "bytes": 1814,
-      "sha256": "1e0cda69fc5548b8b0fb95f8f011ab6efd07e87f0a7227123f37f868c92526d6"
+      "bytes": 2151,
+      "sha256": "8792f0679b06ceb992c60812cc2a4cacc4ab899ab9071b3572d057acb55a3574"
     },
     {
       "path": "docs/schemas/sdk/v2/command-plugin.schema.json",
@@ -1590,6 +1605,11 @@
       "path": "docs/schemas/sdk/v2/rpc/sdk_release_c_methods.schema.json",
       "bytes": 16326,
       "sha256": "2b09ff3873499692277dcba0588b143b047aa30159b45a9cf8a2dfe5f5f5b556"
+    },
+    {
+      "path": "docs/schemas/sdk/v2/rpc/sdk_send_batch_v2.schema.json",
+      "bytes": 5365,
+      "sha256": "67f4052fd719ec38e43b1360265f6ea6eb19fa50575e63c0bfdd59b1596806c8"
     },
     {
       "path": "docs/schemas/sdk/v2/rpc/sdk_send_v2.schema.json",
