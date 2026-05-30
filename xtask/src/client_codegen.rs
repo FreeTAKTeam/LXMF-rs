@@ -792,12 +792,18 @@ fn legacy_projection_extra_components(
 ) -> Result<Vec<(&'static str, &'static str)>> {
     let response_meta_ref = "#/components/schemas/ResponseMeta";
     let python_reference_ref = "#/components/schemas/PythonReference";
+    let send_batch_message_ref = "#/components/schemas/SdkSendBatchV2Message";
+    let send_batch_result_item_ref = "#/components/schemas/SdkSendBatchV2ResultItem";
     let mut needs_response_meta = false;
     let mut needs_python_reference = false;
+    let mut needs_send_batch_message = false;
+    let mut needs_send_batch_result_item = false;
     for component in root_components {
         let schema = component_schema(components, component)?;
         needs_response_meta |= schema_mentions_ref(&schema, response_meta_ref);
         needs_python_reference |= schema_mentions_ref(&schema, python_reference_ref);
+        needs_send_batch_message |= schema_mentions_ref(&schema, send_batch_message_ref);
+        needs_send_batch_result_item |= schema_mentions_ref(&schema, send_batch_result_item_ref);
     }
     if needs_response_meta {
         let response_meta = component_schema(components, "ResponseMeta")?;
@@ -810,6 +816,12 @@ fn legacy_projection_extra_components(
     }
     if needs_response_meta {
         extras.push(("ResponseMeta", "response_meta"));
+    }
+    if needs_send_batch_message {
+        extras.push(("SdkSendBatchV2Message", "send_batch_message"));
+    }
+    if needs_send_batch_result_item {
+        extras.push(("SdkSendBatchV2ResultItem", "send_batch_result_item"));
     }
     Ok(extras)
 }
@@ -3173,7 +3185,7 @@ mod tests {
         let openrpc = serde_json::from_str::<Value>(&fs::read_to_string(openrpc_path)?)?;
         let projected = project_legacy_rpc_schemas(&openrpc)?;
 
-        assert_eq!(projected.len(), 10, "expected 8 core + release B + release C projections");
+        assert_eq!(projected.len(), 11, "expected 9 core + release B + release C projections");
 
         for artifact in projected {
             let committed_path = workspace.join(&artifact.path);

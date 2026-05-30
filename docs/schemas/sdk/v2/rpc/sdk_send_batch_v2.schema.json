@@ -1,63 +1,5 @@
 {
   "$defs": {
-    "message": {
-      "additionalProperties": false,
-      "properties": {
-        "content": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "destination": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "fields": {
-          "additionalProperties": true,
-          "type": [
-            "object",
-            "null"
-          ]
-        },
-        "id": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "include_ticket": {
-          "type": [
-            "boolean",
-            "null"
-          ]
-        },
-        "method": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "stamp_cost": {
-          "minimum": 0,
-          "type": [
-            "integer",
-            "null"
-          ]
-        },
-        "title": {
-          "type": "string"
-        },
-        "try_propagation_on_fail": {
-          "type": [
-            "boolean",
-            "null"
-          ]
-        }
-      },
-      "required": [
-        "content",
-        "destination",
-        "id"
-      ],
-      "type": "object"
-    },
     "params": {
       "additionalProperties": false,
       "properties": {
@@ -67,7 +9,7 @@
         },
         "messages": {
           "items": {
-            "$ref": "#/$defs/message"
+            "$ref": "#/$defs/send_batch_message"
           },
           "minItems": 1,
           "type": "array"
@@ -153,7 +95,7 @@
         },
         "results": {
           "items": {
-            "$ref": "#/$defs/result_item"
+            "$ref": "#/$defs/send_batch_result_item"
           },
           "type": "array"
         }
@@ -163,30 +105,6 @@
         "batch_id",
         "rejected_count",
         "results"
-      ],
-      "type": "object"
-    },
-    "result_item": {
-      "additionalProperties": false,
-      "properties": {
-        "accepted": {
-          "type": "boolean"
-        },
-        "error": {
-          "$ref": "#/$defs/rpc_error"
-        },
-        "id": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "message_id": {
-          "minLength": 1,
-          "type": "string"
-        }
-      },
-      "required": [
-        "accepted",
-        "id"
       ],
       "type": "object"
     },
@@ -245,6 +163,88 @@
           "type": "integer"
         }
       ]
+    },
+    "send_batch_message": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "destination": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "fields": {
+          "additionalProperties": true,
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "include_ticket": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "method": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "stamp_cost": {
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "try_propagation_on_fail": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "content",
+        "destination",
+        "id"
+      ],
+      "type": "object"
+    },
+    "send_batch_result_item": {
+      "additionalProperties": false,
+      "properties": {
+        "accepted": {
+          "type": "boolean"
+        },
+        "error": {
+          "$ref": "#/$defs/rpc_error"
+        },
+        "id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "message_id": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "accepted",
+        "id"
+      ],
+      "type": "object"
     }
   },
   "$id": "https://weft.tak/contracts/sdk/v2/rpc/sdk_send_batch_v2.schema.json",
