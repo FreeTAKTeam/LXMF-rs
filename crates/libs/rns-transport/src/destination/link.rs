@@ -582,6 +582,12 @@ impl Link {
         self.packet_with_context(data, PacketContext::Channel)
     }
 
+    /// Build a link peer identification packet (context = 0xFB LinkIdentify).
+    /// The payload should be built with `build_link_identify_payload`.
+    pub fn identify_packet(&self, payload: &[u8]) -> Result<Packet, RnsError> {
+        self.packet_with_context(payload, PacketContext::LinkIdentify)
+    }
+
     pub fn register_channel_handler<F>(&mut self, msg_type: u16, handler: F) -> HandlerId
     where
         F: FnMut(ChannelEnvelope) -> bool + Send + 'static,
