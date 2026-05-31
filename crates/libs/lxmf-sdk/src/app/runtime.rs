@@ -299,3 +299,24 @@ pub(crate) fn map_delivery_snapshot(snapshot: DeliverySnapshot) -> DeliveryStatu
         reason_code: snapshot.reason_code,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::SendRequest;
+    use serde_json::json;
+
+    #[test]
+    fn app_send_request_preserves_delivery_options_in_raw_request() {
+        let raw = SendRequest::new("source", "destination", json!({ "content": "hello" }))
+            .with_delivery_method("propagated")
+            .with_stamp_cost(8)
+            .with_include_ticket(true)
+            .with_try_propagation_on_fail(true)
+            .into_raw();
+
+        assert_eq!(raw.delivery_method.as_deref(), Some("propagated"));
+        assert_eq!(raw.stamp_cost, Some(8));
+        assert_eq!(raw.include_ticket, Some(true));
+        assert_eq!(raw.try_propagation_on_fail, Some(true));
+    }
+}

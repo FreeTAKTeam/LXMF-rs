@@ -42,7 +42,11 @@ fn main() -> Result<(), lxmf_sdk::SdkError> {
             }),
         )
         .with_ttl_ms(30_000)
-        .with_correlation_id("example-zmq-pipeline-send"),
+        .with_correlation_id("example-zmq-pipeline-send")
+        .with_delivery_method("direct")
+        .with_stamp_cost(8)
+        .with_include_ticket(true)
+        .with_try_propagation_on_fail(true),
     )?;
     println!("queued message_id={message_id}");
 

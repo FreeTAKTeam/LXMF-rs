@@ -131,7 +131,11 @@ async fn main() -> Result<(), lxmf_sdk::app::Error> {
             json!({"title": "hello", "content": "sdk quickstart"}),
         )
         .with_ttl_ms(30_000)
-        .with_correlation_id("quickstart-send"),
+        .with_correlation_id("quickstart-send")
+        .with_delivery_method("direct")
+        .with_stamp_cost(8)
+        .with_include_ticket(true)
+        .with_try_propagation_on_fail(true),
     )
     .await?;
     println!("queued message_id={}", receipt.message_id);
@@ -162,6 +166,13 @@ async fn main() -> Result<(), lxmf_sdk::app::Error> {
 
 `messages().send_async(...)` returns message acceptance. Delivery, retry, inbound, and gap state
 arrives through `events().subscribe(...)`; do not add a one-second app polling loop.
+
+`SendRequest` also carries per-message delivery options for the normal send path:
+
+- `with_delivery_method("direct" | "propagated" | "paper")`
+- `with_stamp_cost(cost)`
+- `with_include_ticket(true)`
+- `with_try_propagation_on_fail(true)`
 
 ### Low-Level Cursor Recovery
 

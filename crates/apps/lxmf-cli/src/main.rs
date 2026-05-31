@@ -191,6 +191,14 @@ enum Command {
         ttl_ms: Option<u64>,
         #[arg(long)]
         correlation_id: Option<String>,
+        #[arg(long)]
+        delivery_method: Option<String>,
+        #[arg(long)]
+        stamp_cost: Option<u32>,
+        #[arg(long)]
+        include_ticket: bool,
+        #[arg(long)]
+        try_propagation_on_fail: bool,
     },
     Cancel {
         #[arg(long)]
@@ -268,6 +276,10 @@ fn run(cli: &Cli) -> Result<JsonValue, SdkError> {
             idempotency_key,
             ttl_ms,
             correlation_id,
+            delivery_method,
+            stamp_cost,
+            include_ticket,
+            try_propagation_on_fail,
         } => {
             ensure_started(&client, cli)?;
             let payload =
@@ -281,6 +293,18 @@ fn run(cli: &Cli) -> Result<JsonValue, SdkError> {
             }
             if let Some(correlation_id) = correlation_id.clone() {
                 req = req.with_correlation_id(correlation_id);
+            }
+            if let Some(delivery_method) = delivery_method.clone() {
+                req = req.with_delivery_method(delivery_method);
+            }
+            if let Some(stamp_cost) = stamp_cost {
+                req = req.with_stamp_cost(*stamp_cost);
+            }
+            if *include_ticket {
+                req = req.with_include_ticket(true);
+            }
+            if *try_propagation_on_fail {
+                req = req.with_try_propagation_on_fail(true);
             }
             let message_id = client.send(req)?;
             Ok(json!({ "message_id": message_id }))
@@ -711,6 +735,42 @@ mod tests {
         assert_eq!(cli.rpc, "unix:/tmp/lxmf-rpc.sock");
         let request = build_start_request(&cli).expect("default start request should be valid");
         assert_eq!(request.supported_contract_versions, vec![2]);
+    }
+
+    #[test]
+    fn send_command_accepts_delivery_option_flags() {
+        let cli = parse_cli(&[
+            "lxmf-cli",
+            "send",
+            "--source",
+            "source.peer",
+            "--destination",
+            "dest.peer",
+            "--content",
+            "hello",
+            "--delivery-method",
+            "propagated",
+            "--stamp-cost",
+            "4",
+            "--include-ticket",
+            "--try-propagation-on-fail",
+        ]);
+
+        let Command::Send {
+            delivery_method,
+            stamp_cost,
+            include_ticket,
+            try_propagation_on_fail,
+            ..
+        } = cli.command
+        else {
+            panic!("expected send command");
+        };
+
+        assert_eq!(delivery_method.as_deref(), Some("propagated"));
+        assert_eq!(stamp_cost, Some(4));
+        assert!(include_ticket);
+        assert!(try_propagation_on_fail);
     }
 
     #[test]

@@ -241,7 +241,7 @@ impl RpcBackendClient {
         })
     }
 
-    pub(super) fn send_impl(&self, req: SendRequest) -> Result<MessageId, SdkError> {
+    fn send_params(&self, req: SendRequest) -> JsonValue {
         let SendRequest {
             source,
             destination,
@@ -288,7 +288,7 @@ impl RpcBackendClient {
             }
         }
 
-        let params = Some(json!({
+        json!({
             "id": rpc_message_id,
             "source": source,
             "destination": destination,
@@ -299,7 +299,11 @@ impl RpcBackendClient {
             "stamp_cost": stamp_cost,
             "include_ticket": include_ticket,
             "try_propagation_on_fail": try_propagation_on_fail,
-        }));
+        })
+    }
+
+    pub(super) fn send_impl(&self, req: SendRequest) -> Result<MessageId, SdkError> {
+        let params = Some(self.send_params(req));
         let result = self.call_rpc("sdk_send_v2", params)?;
         let message_id = Self::parse_required_string(&result, "message_id")?;
         Ok(MessageId(message_id))
@@ -307,64 +311,7 @@ impl RpcBackendClient {
 
     #[cfg(feature = "sdk-async")]
     pub(super) async fn send_async_impl(&self, req: SendRequest) -> Result<MessageId, SdkError> {
-        let SendRequest {
-            source,
-            destination,
-            payload,
-            delivery_method,
-            stamp_cost,
-            include_ticket,
-            try_propagation_on_fail,
-            idempotency_key,
-            ttl_ms,
-            correlation_id,
-            extensions,
-        } = req;
-        let rpc_message_id = format!("sdk-{}", self.next_request_id());
-        let content = payload
-            .get("content")
-            .and_then(JsonValue::as_str)
-            .map(str::to_owned)
-            .unwrap_or_else(|| payload.to_string());
-        let title =
-            payload.get("title").and_then(JsonValue::as_str).map(str::to_owned).unwrap_or_default();
-
-        let mut fields = match payload {
-            JsonValue::Object(map) => JsonValue::Object(map),
-            other => json!({ "payload": other }),
-        };
-        if let JsonValue::Object(map) = &mut fields {
-            let mut sdk_meta = JsonMap::new();
-            if let Some(idempotency_key) = idempotency_key {
-                sdk_meta.insert("idempotency_key".to_string(), JsonValue::String(idempotency_key));
-            }
-            if let Some(ttl_ms) = ttl_ms {
-                sdk_meta.insert("ttl_ms".to_string(), JsonValue::from(ttl_ms));
-            }
-            if let Some(correlation_id) = correlation_id {
-                sdk_meta.insert("correlation_id".to_string(), JsonValue::String(correlation_id));
-            }
-            if !extensions.is_empty() {
-                let extension_map = extensions.into_iter().collect::<JsonMap<String, JsonValue>>();
-                sdk_meta.insert("extensions".to_string(), JsonValue::Object(extension_map));
-            }
-            if !sdk_meta.is_empty() {
-                map.insert("_sdk".to_string(), JsonValue::Object(sdk_meta));
-            }
-        }
-
-        let params = Some(json!({
-            "id": rpc_message_id,
-            "source": source,
-            "destination": destination,
-            "title": title,
-            "content": content,
-            "fields": fields,
-            "method": delivery_method,
-            "stamp_cost": stamp_cost,
-            "include_ticket": include_ticket,
-            "try_propagation_on_fail": try_propagation_on_fail,
-        }));
+        let params = Some(self.send_params(req));
         let result = self.call_rpc_async("sdk_send_v2", params).await?;
         let message_id = Self::parse_required_string(&result, "message_id")?;
         Ok(MessageId(message_id))
@@ -770,7 +717,7 @@ mod tests {
     use super::RpcBackendClient;
     use crate::error::{code, ErrorCategory, SdkError};
     use crate::event::{EventBatch, EventCursor, SdkEvent, Severity};
-    use crate::types::TickBudget;
+    use crate::types::{SendRequest, TickBudget};
     use serde_json::json;
     use std::collections::{BTreeMap, VecDeque};
 
@@ -839,6 +786,31 @@ mod tests {
             err.details.get("cancel_result"),
             Some(&serde_json::Value::String("LegacyUnsupported".to_owned()))
         );
+    }
+
+    #[test]
+    fn send_params_preserve_delivery_options() {
+        let backend = RpcBackendClient::new("127.0.0.1:65530");
+        let params = backend.send_params(
+            SendRequest::new(
+                "source-destination",
+                "target-destination",
+                json!({ "title": "ops", "content": "hello" }),
+            )
+            .with_delivery_method("propagated")
+            .with_stamp_cost(8)
+            .with_include_ticket(true)
+            .with_try_propagation_on_fail(true)
+            .with_correlation_id("corr-rpc"),
+        );
+
+        assert_eq!(params["source"], json!("source-destination"));
+        assert_eq!(params["destination"], json!("target-destination"));
+        assert_eq!(params["method"], json!("propagated"));
+        assert_eq!(params["stamp_cost"], json!(8));
+        assert_eq!(params["include_ticket"], json!(true));
+        assert_eq!(params["try_propagation_on_fail"], json!(true));
+        assert_eq!(params["fields"]["_sdk"]["correlation_id"], json!("corr-rpc"));
     }
 
     #[test]
