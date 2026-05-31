@@ -25,7 +25,7 @@ pub(super) async fn wait_for_link_identify(
                 continue;
             }
             if let LinkEvent::PeerIdentified(identity) = event.event {
-                return identity;
+                return *identity;
             }
         }
     })

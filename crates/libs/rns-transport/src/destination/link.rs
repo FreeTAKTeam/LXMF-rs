@@ -122,7 +122,7 @@ pub enum LinkWatchdogAction {
 pub enum LinkEvent {
     Activated,
     Data(Box<LinkPayload>),
-    PeerIdentified(Identity),
+    PeerIdentified(Box<Identity>),
     Closed,
 }
 
@@ -425,7 +425,7 @@ impl Link {
                 let mut buffer = [0u8; PACKET_MDU];
                 if let Ok(plain_text) = self.decrypt(packet.data.as_slice(), &mut buffer[..]) {
                     if let Some(identity) = parse_link_identify_payload(plain_text, &self.id) {
-                        self.post_event(LinkEvent::PeerIdentified(identity));
+                        self.post_event(LinkEvent::PeerIdentified(Box::new(identity)));
                     } else {
                         log::warn!("link({}): invalid identify payload, dropping", self.id);
                     }
@@ -433,9 +433,7 @@ impl Link {
                     log::error!("link({}): can't decrypt identify packet", self.id);
                 }
             }
-            PacketContext::None
-            | PacketContext::Request
-            | PacketContext::Response => {
+            PacketContext::None | PacketContext::Request | PacketContext::Response => {
                 let mut buffer = [0u8; PACKET_MDU];
                 if let Ok(plain_text) = self.decrypt(packet.data.as_slice(), &mut buffer[..]) {
                     log::trace!("link({}): data {}B", self.id, plain_text.len());
@@ -1312,9 +1310,10 @@ fn parse_link_identify_payload(payload: &[u8], link_id: &AddressHash) -> Option<
         &payload[..PUBLIC_KEY_LENGTH],
         &payload[PUBLIC_KEY_LENGTH..PUBLIC_KEY_LENGTH * 2],
     );
-    let signature =
-        Signature::from_slice(&payload[PUBLIC_KEY_LENGTH * 2..PUBLIC_KEY_LENGTH * 2 + SIGNATURE_LENGTH])
-            .ok()?;
+    let signature = Signature::from_slice(
+        &payload[PUBLIC_KEY_LENGTH * 2..PUBLIC_KEY_LENGTH * 2 + SIGNATURE_LENGTH],
+    )
+    .ok()?;
     let mut signed = Vec::with_capacity(ADDRESS_HASH_SIZE + PUBLIC_KEY_LENGTH * 2);
     signed.extend_from_slice(link_id.as_slice());
     signed.extend_from_slice(&payload[..PUBLIC_KEY_LENGTH * 2]);
@@ -2360,5 +2359,51 @@ mod tests {
 
         assert_eq!(link.check_watchdog(true), LinkWatchdogAction::SendKeepAlive);
         assert_eq!(link.status, LinkStatus::Active);
+    }
+
+    fn build_test_identify_payload(private: &PrivateIdentity, link_id: &AddressHash) -> Vec<u8> {
+        let identity = private.as_identity();
+        let mut payload = Vec::with_capacity(PUBLIC_KEY_LENGTH * 2 + SIGNATURE_LENGTH);
+        payload.extend_from_slice(identity.public_key_bytes());
+        payload.extend_from_slice(identity.verifying_key_bytes());
+        let mut signed = Vec::with_capacity(ADDRESS_HASH_SIZE + PUBLIC_KEY_LENGTH * 2);
+        signed.extend_from_slice(link_id.as_slice());
+        signed.extend_from_slice(identity.public_key_bytes());
+        signed.extend_from_slice(identity.verifying_key_bytes());
+        payload.extend_from_slice(&private.sign(&signed).to_bytes());
+        payload
+    }
+
+    #[test]
+    fn parse_link_identify_accepts_valid_proof() {
+        let link_id = AddressHash::new([0xAB; ADDRESS_HASH_SIZE]);
+        let private = PrivateIdentity::new_from_rand(OsRng);
+        let payload = build_test_identify_payload(&private, &link_id);
+        let result = parse_link_identify_payload(&payload, &link_id);
+        assert_eq!(result.map(|i| i.address_hash), Some(private.as_identity().address_hash));
+    }
+
+    #[test]
+    fn parse_link_identify_rejects_short_payload() {
+        let link_id = AddressHash::new([0x01; ADDRESS_HASH_SIZE]);
+        assert!(parse_link_identify_payload(&[0u8; 64], &link_id).is_none());
+    }
+
+    #[test]
+    fn parse_link_identify_rejects_corrupted_signature() {
+        let link_id = AddressHash::new([0xAB; ADDRESS_HASH_SIZE]);
+        let private = PrivateIdentity::new_from_rand(OsRng);
+        let mut payload = build_test_identify_payload(&private, &link_id);
+        payload[PUBLIC_KEY_LENGTH * 2] ^= 0xFF;
+        assert!(parse_link_identify_payload(&payload, &link_id).is_none());
+    }
+
+    #[test]
+    fn parse_link_identify_rejects_wrong_link_id() {
+        let link_id_a = AddressHash::new([0xAA; ADDRESS_HASH_SIZE]);
+        let link_id_b = AddressHash::new([0xBB; ADDRESS_HASH_SIZE]);
+        let private = PrivateIdentity::new_from_rand(OsRng);
+        let payload = build_test_identify_payload(&private, &link_id_a);
+        assert!(parse_link_identify_payload(&payload, &link_id_b).is_none());
     }
 }

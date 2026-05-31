@@ -32,7 +32,7 @@ pub(super) fn spawn_control_worker(
                 LinkEvent::PeerIdentified(identity) => {
                     if is_control_request || is_propagation_request {
                         if let Ok(mut guard) = identified.lock() {
-                            guard.insert(event.id, identity);
+                            guard.insert(event.id, *identity);
                         }
                     }
                 }
@@ -58,39 +58,34 @@ pub(super) fn spawn_control_worker(
                     if !is_control_request && !is_propagation_request {
                         continue;
                     }
-                    match payload.context() {
-                        PacketContext::Request => {
-                            let Some(request_id) = payload.request_id() else {
-                                continue;
-                            };
-                            let remote_identity = identified
-                                .lock()
-                                .ok()
-                                .and_then(|guard| guard.get(&event.id).cloned());
-                            let response = handle_control_request(
-                                daemon.as_ref(),
-                                &control,
-                                payload.as_slice(),
-                                remote_identity.as_ref(),
+                    if payload.context() == PacketContext::Request {
+                        let Some(request_id) = payload.request_id() else {
+                            continue;
+                        };
+                        let remote_identity =
+                            identified.lock().ok().and_then(|guard| guard.get(&event.id).cloned());
+                        let response = handle_control_request(
+                            daemon.as_ref(),
+                            &control,
+                            payload.as_slice(),
+                            remote_identity.as_ref(),
+                            is_propagation_request,
+                        );
+                        if let Err(err) = response::send_control_response(
+                            transport.as_ref(),
+                            &event.id,
+                            request_id,
+                            response,
+                        )
+                        .await
+                        {
+                            log::error!(
+                                "[daemon-control] failed to send response link={} propagation_request={} error={}",
+                                event.id,
                                 is_propagation_request,
+                                err
                             );
-                            if let Err(err) = response::send_control_response(
-                                transport.as_ref(),
-                                &event.id,
-                                request_id,
-                                response,
-                            )
-                            .await
-                            {
-                                log::error!(
-                                    "[daemon-control] failed to send response link={} propagation_request={} error={}",
-                                    event.id,
-                                    is_propagation_request,
-                                    err
-                                );
-                            }
                         }
-                        _ => {}
                     }
                 }
                 _ => {}
