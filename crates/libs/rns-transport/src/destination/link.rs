@@ -122,6 +122,7 @@ pub enum LinkWatchdogAction {
 pub enum LinkEvent {
     Activated,
     Data(Box<LinkPayload>),
+    PeerIdentified(Identity),
     Closed,
 }
 
@@ -420,10 +421,21 @@ impl Link {
                 }
                 return LinkHandleResult::Proof(proof);
             }
+            PacketContext::LinkIdentify => {
+                let mut buffer = [0u8; PACKET_MDU];
+                if let Ok(plain_text) = self.decrypt(packet.data.as_slice(), &mut buffer[..]) {
+                    if let Some(identity) = parse_link_identify_payload(plain_text, &self.id) {
+                        self.post_event(LinkEvent::PeerIdentified(identity));
+                    } else {
+                        log::warn!("link({}): invalid identify payload, dropping", self.id);
+                    }
+                } else {
+                    log::error!("link({}): can't decrypt identify packet", self.id);
+                }
+            }
             PacketContext::None
             | PacketContext::Request
-            | PacketContext::Response
-            | PacketContext::LinkIdentify => {
+            | PacketContext::Response => {
                 let mut buffer = [0u8; PACKET_MDU];
                 if let Ok(plain_text) = self.decrypt(packet.data.as_slice(), &mut buffer[..]) {
                     log::trace!("link({}): data {}B", self.id, plain_text.len());
@@ -1291,6 +1303,24 @@ fn link_close_line(id: &AddressHash) -> String {
 }
 
 include!("link/proof.rs");
+
+fn parse_link_identify_payload(payload: &[u8], link_id: &AddressHash) -> Option<Identity> {
+    if payload.len() < PUBLIC_KEY_LENGTH * 2 + SIGNATURE_LENGTH {
+        return None;
+    }
+    let identity = Identity::new_from_slices(
+        &payload[..PUBLIC_KEY_LENGTH],
+        &payload[PUBLIC_KEY_LENGTH..PUBLIC_KEY_LENGTH * 2],
+    );
+    let signature =
+        Signature::from_slice(&payload[PUBLIC_KEY_LENGTH * 2..PUBLIC_KEY_LENGTH * 2 + SIGNATURE_LENGTH])
+            .ok()?;
+    let mut signed = Vec::with_capacity(ADDRESS_HASH_SIZE + PUBLIC_KEY_LENGTH * 2);
+    signed.extend_from_slice(link_id.as_slice());
+    signed.extend_from_slice(&payload[..PUBLIC_KEY_LENGTH * 2]);
+    identity.verify(&signed, &signature).ok()?;
+    Some(identity)
+}
 
 #[cfg(test)]
 mod tests {
