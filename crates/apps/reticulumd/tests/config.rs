@@ -823,18 +823,24 @@ interfaces = [
 }
 
 #[test]
-fn rejects_reticulum_rnode_ble_port_until_ble_kiss_backend_exists() {
+fn parses_reticulum_rnode_ble_port_for_native_backend_startup() {
     let input = r#"
 interfaces = [
-  { type = "RNodeInterface", enabled = true, name = "rnode-ble", region = "US915", state_path = "/tmp/lora-state.json", port = "ble://RNode 1234", frequency = 915000000, bandwidth = 125000, spreadingfactor = 9, codingrate = 5, txpower = 17 }
+  { type = "RNodeInterface", enabled = true, name = "rnode-ble", region = "US915", state_path = "/tmp/lora-state.json", port = "ble://RNode 1234", frequency = 915000000, bandwidth = 125000, spreadingfactor = 9, codingrate = 5, txpower = 17, command_timeout_ms = 1500, ble_connect_timeout_ms = 5000 }
 ]
 "#;
-    let err = DaemonConfig::from_toml(input).expect_err("RNode BLE port must not parse as serial");
-    let message = err.to_string();
-    assert!(
-        message.contains("ble:// RNodeInterface ports require a BLE KISS backend"),
-        "unexpected parse error: {message}"
-    );
+    let cfg = DaemonConfig::from_toml(input).expect("parse Reticulum RNode BLE port config");
+    let iface = &cfg.interfaces[0];
+    assert_eq!(iface.kind, "lora");
+    assert_eq!(iface.device.as_deref(), Some("ble://RNode 1234"));
+    assert_eq!(iface.baud_rate, None);
+    assert_eq!(iface.connect_timeout_ms, Some(1_500));
+    assert_eq!(iface.ble_connect_timeout_ms, Some(5_000));
+
+    let settings = iface.settings_json().expect("settings");
+    assert_eq!(settings["device"], "ble://RNode 1234");
+    assert_eq!(settings["connect_timeout_ms"], 1_500);
+    assert_eq!(settings["ble_connect_timeout_ms"], 5_000);
 }
 
 #[test]

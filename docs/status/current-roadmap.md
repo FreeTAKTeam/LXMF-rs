@@ -171,15 +171,32 @@ gap, even though deeper propagation-router parity remains open.
   `KISSInterface` configs that omit `speed` now inherit Python's `9600` baud
   default during alias normalization, and serial Python `RNodeInterface`
   configs that omit an explicit baud rate inherit Python's `115200` baud
-  default while `ble://` RNode ports are rejected clearly instead of being
-  opened as serial devices. The transport layer now exposes Python's generic
+  default while `ble://` RNode ports are accepted as native BLE RNode ports and
+  never opened as serial devices. Without the `rnode-ble` feature, daemon
+  startup records an explicit failed status for those ports. The transport
+  layer now exposes Python's generic
   RNode BLE Nordic UART UUID profile, write-without-response defaults, raw KISS
   notification decoding, startup writes, READY flow-control session state, stale
   partial-notification timeout handling, outbound station-ID beacon writes, and
   oversized-outbound rejection plus max-write-length chunking before backend
-  writes, non-READY command-response preservation for future startup/radio
-  validation, and own station-ID beacon suppression behind a backend-neutral runtime contract as
-  the foundation for a future `ble://` RNode backend. Python `RNodeInterface` aliases now require explicit frequency,
+  writes, non-READY command-response preservation plus exposed RNode monitor
+  state for startup/radio validation, own station-ID beacon suppression, and a feature-gated native
+  `btleplug` RNode BLE backend for scan, connect, Nordic UART characteristic
+  discovery, subscription, write, notification, cleanup, and identifier
+  matching behind a backend-neutral runtime contract. Feature-gated daemon
+  `RNodeInterface` `ble://` startup now builds that native backend, spawns the
+  interface manager task, forwards outbound packets as raw KISS writes, polls
+  BLE notifications into inbound packets, emits RNode station-ID beacons,
+  appends the same RNode detect/radio-configuration command frames as
+  serial/TCP startup, and writes radio-off plus leave-host frames during BLE
+  cleanup. BLE startup and fatal command-response validation now feeds the same
+  RNode protocol state used by serial/TCP startup, but broader RNode management
+  operations over BLE remain incomplete. BLE connect timeout and RNode
+  command-response timeout are kept distinct: native BLE connect defaults to
+  five seconds and uses `ble_connect_timeout_ms` overrides, while RNode startup
+  validation defaults to Python's 1500 ms command deadline and uses
+  `command_timeout_ms` overrides.
+  Python `RNodeInterface` aliases now require explicit frequency,
   bandwidth, spreading-factor, and coding-rate radio parameters instead of
   silently inheriting Rust-native LoRa region defaults. Daemon
   bootstrap status still does not synchronously fail on RNode response

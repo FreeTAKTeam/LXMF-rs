@@ -824,6 +824,79 @@ async fn startup_lora(
         return true;
     }
 
+    if iface.device.as_deref().is_some_and(lora::is_ble_rnode_port) {
+        let config = match lora::build_rnode_ble_config(iface) {
+            Ok(config) => config,
+            Err(err) => {
+                record_startup_failure(
+                    record,
+                    startup_failures,
+                    label.to_string(),
+                    iface.kind.clone(),
+                    err,
+                );
+                return false;
+            }
+        };
+        #[cfg(not(feature = "rnode-ble"))]
+        {
+            let _ = (args, iface_manager);
+            let lora::RnodeBleDaemonConfig {
+                peripheral_id,
+                adapter,
+                lora,
+                transport,
+                startup_response_timeout,
+                reconnect_backoff,
+                max_reconnect_backoff,
+            } = config;
+            let _ = (
+                peripheral_id,
+                adapter,
+                lora,
+                transport,
+                startup_response_timeout,
+                reconnect_backoff,
+                max_reconnect_backoff,
+            );
+            record_startup_failure(
+                record,
+                startup_failures,
+                label.to_string(),
+                iface.kind.clone(),
+                "RNodeInterface ble:// requires reticulumd feature rnode-ble".to_string(),
+            );
+            return false;
+        }
+        #[cfg(feature = "rnode-ble")]
+        {
+            let adapter = lora::build_native_rnode_ble_interface(iface, config);
+            let mode = iface.interface_mode().unwrap_or(InterfaceMode::Full);
+            let rnode_iface = iface_manager.lock().await.spawn_as_with_mode(
+                adapter,
+                |context| async move {
+                    rns_transport::iface::rnode_ble::NativeRnodeBleKissInterface::spawn(context)
+                        .await;
+                },
+                IfaceRole::Unicast,
+                mode,
+            );
+            {
+                let mut manager = iface_manager.lock().await;
+                apply_interface_runtime_config(&mut manager, rnode_iface, iface);
+            }
+            log::info!(
+                "[daemon] rnode_ble enabled iface={} name={} device={}",
+                rnode_iface,
+                label,
+                iface.device.as_deref().unwrap_or("<unset>")
+            );
+            let runtime_iface = rnode_iface.to_string();
+            mark_interface_startup_status(record, "spawned", None, Some(runtime_iface.as_str()));
+            return true;
+        }
+    }
+
     let adapter = match lora::build_adapter(iface) {
         Ok(adapter) => adapter,
         Err(err) => {

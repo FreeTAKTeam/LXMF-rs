@@ -9,8 +9,8 @@ This runbook documents `lora` startup policy, active serial device startup, stat
 - Interface kind: `lora`
 - Reticulum type alias: `RNodeInterface`
 - Startup lifecycle: daemon bootstrap only
-- Active transport: started when `device`/`baud_rate` or a `tcp://` RNode port
-  is configured
+- Active transport: started when `device`/`baud_rate`, a `tcp://` RNode port,
+  or a feature-gated `ble://` RNode port is configured
 - Runtime mutation policy: `set_interfaces`/`reload_config` with `lora` changes require restart
 - Compliance posture: fail-closed on uncertain duty-cycle state
 
@@ -91,36 +91,72 @@ interfaces = [
 ]
 ```
 
-Python-style `RNodeInterface` `ble://...` ports are rejected with an explicit
-configuration error instead of being treated as serial devices. Generic RNode
-BLE KISS would require a dedicated BLE KISS backend in this repository. For
-VT-N76/VR-N76 Bluetooth KISS operation, use the `vrn76_kiss_ble` interface and
-prepare adapter permissions, pairing, bonding, and trust prompts at the host OS
-level.
+Python-style `RNodeInterface` `ble://...` ports are accepted for native
+RNode BLE startup when `reticulumd` is built with the `rnode-ble` feature. The
+daemon records a failed startup status instead of treating the port as serial
+when the feature is disabled:
+
+```toml
+interfaces = [
+  {
+    type = "RNodeInterface",
+    enabled = true,
+    name = "rnode-ble",
+    region = "US915",
+    state_path = "var/reticulumd/lora-state.json",
+    port = "ble://RNode 1234",
+    adapter = "Bluetooth",
+    frequency = 915000000,
+    bandwidth = 125000,
+    spreadingfactor = 9,
+    codingrate = 5,
+    txpower = 17,
+    scan_timeout_ms = 2000,
+    ble_connect_timeout_ms = 5000,
+    command_timeout_ms = 1500,
+    max_write_len = 20
+  }
+]
+```
+
+Adapter discovery, permissions, pairing, bonding, and trust prompts are host OS
+responsibilities outside this repository. For VT-N76/VR-N76 Bluetooth KISS
+operation, use the `vrn76_kiss_ble` interface because those devices use the
+VR-N76 BLE command profile rather than the generic Nordic UART RNode profile.
 The transport layer now exposes the Python RNode BLE Nordic UART profile
 constants and defaults (`6E400001-B5A3-F393-E0A9-E50E24DCCA9E` service,
 `6E400002-B5A3-F393-E0A9-E50E24DCCA9E` write characteristic,
 `6E400003-B5A3-F393-E0A9-E50E24DCCA9E` notify characteristic, write without
 response, two-second scan timeout, five-second connect timeout, and 1250 ms
-read-frame timeout) as the foundation for that future backend. It also exposes
-a raw-KISS BLE session that subscribes before sending KISS setup commands,
-writes raw KISS frames to the UART RX characteristic without response, decodes
-raw notification bytes from the UART TX characteristic, and honors READY-based
-flow control. The BLE session also mirrors the existing KISS/RNode timeout and
-station-ID behavior by discarding stale partial notification frames after the
-Python BLE read timeout and suppressing its own station-ID beacon if it is
-received back from the radio. Outbound RNode BLE station-ID beacons are emitted
-as raw KISS data frames to the UART RX characteristic and queue behind
-READY-based flow control when that mode is enabled. A backend-neutral runtime
-contract now connects, subscribes to notifications, writes startup and outbound
-KISS frames, polls notifications, and flushes pending READY-gated writes through
-the same session state. Outbound BLE packet writes are rejected before backend
-I/O when they exceed the configured RNode BLE MTU, and encoded raw-KISS bytes
-are chunked by the configured maximum BLE write length before they reach the
-backend characteristic writer. The RNode BLE notification path also preserves
-non-READY KISS command responses alongside decoded packet payloads so a future
-daemon `ble://` RNode startup path can feed detect, firmware, radio-state, and
-hardware-error responses into the existing RNode validation helpers.
+read-frame timeout). It also exposes a raw-KISS BLE session that subscribes
+before sending KISS setup commands, writes raw KISS frames to the UART RX
+characteristic without response, decodes raw notification bytes from the UART
+TX characteristic, and honors READY-based flow control. The BLE session also
+mirrors the existing KISS/RNode timeout and station-ID behavior by discarding
+stale partial notification frames after the Python BLE read timeout and
+suppressing its own station-ID beacon if it is received back from the radio.
+Outbound RNode BLE station-ID beacons are emitted as raw KISS data frames to
+the UART RX characteristic and queue behind READY-based flow control when that
+mode is enabled. A backend-neutral runtime contract now connects, subscribes to
+notifications, writes startup and outbound KISS frames, polls notifications,
+and flushes pending READY-gated writes through the same session state. With
+the `rnode-ble` Cargo feature enabled, the transport crate also exposes a
+native `btleplug` backend that scans for a configured peripheral name, address,
+or platform id, connects, discovers the Nordic UART service and
+write/notification characteristics, subscribes to notifications, and writes
+raw KISS payload chunks to the backend characteristic writer. Outbound BLE
+packet writes are rejected before backend I/O when they exceed the configured
+RNode BLE MTU, and encoded raw-KISS bytes are chunked by the configured maximum
+BLE write length before they reach the backend. The RNode BLE notification path
+also preserves non-READY KISS command responses alongside decoded packet
+payloads, and its command monitor exposes retained probe status, radio status,
+non-fatal hardware errors, fatal command error, online state, and reported
+bitrate. Daemon `RNodeInterface` `ble://` startup appends the same RNode
+detect, firmware, platform, MCU, radio configuration, airtime-lock, and
+radio-on command frames used by serial/TCP RNode startup, validates startup and
+fatal command responses through the same RNode protocol state, and shutdown
+writes radio-off plus leave-host frames before BLE cleanup. Broader RNode
+management operations over BLE remain incomplete.
 
 ## Validation Rules
 
@@ -136,14 +172,14 @@ hardware-error responses into the existing RNode validation helpers.
   still use region defaults.
 - `port = "tcp://host:port"` is accepted for RNode Wi-Fi/TCP operation and does
   not require `baud_rate`.
-- `port = "ble://..."` is not accepted for `RNodeInterface` yet. The daemon
-  fails config parsing clearly instead of opening it as a serial path. Use
-  `vrn76_kiss_ble` for VT-N76/VR-N76 Bluetooth KISS devices.
+- `port = "ble://..."` is accepted for `RNodeInterface` and does not require
+  `baud_rate`. Startup requires the `reticulumd` `rnode-ble` feature; without
+  it, the interface remains in failed startup status with an explicit feature
+  error instead of opening as a serial path.
 - Generic RNode BLE profile constants live in `rns-transport::iface::rnode_ble`;
-  the same module also contains the raw-KISS session state and notification
-  event model for packet payloads plus command responses. Daemon startup still
-  needs a native BLE backend before `ble://...` can be enabled for
-  `RNodeInterface`.
+  the same module also contains the raw-KISS session state, notification event
+  model for packet payloads plus command responses, and feature-gated native
+  BLE backend plus daemon startup wiring for `RNodeInterface`.
 - `port` is accepted as a Reticulum-style alias for `device` on `lora` and
   `RNodeInterface`.
 - `frequency_hz` must be in the Python RNode range
@@ -177,11 +213,16 @@ hardware-error responses into the existing RNode validation helpers.
   defaults.
 - `command_timeout_ms` is accepted as the Reticulum-style RNode startup
   response deadline. It defaults to `1500 ms` and must be greater than zero.
+  For `ble://` RNode ports this deadline remains separate from the BLE
+  connection timeout: native BLE connect defaults to five seconds and can be
+  tuned with `ble_connect_timeout_ms`, while RNode command-response validation
+  defaults to 1500 ms unless `command_timeout_ms` is set.
 
 ## Active Device Behavior
 
-When a serial RNode (`device` plus `baud_rate`) or Wi-Fi/TCP RNode (`tcp://`
-port) is active, startup writes RNode-style KISS startup probe frames for device
+When a serial RNode (`device` plus `baud_rate`), Wi-Fi/TCP RNode (`tcp://`
+port), or feature-gated BLE RNode (`ble://` port) is active, startup writes
+RNode-style KISS startup probe frames for device
 detection, firmware version, platform, and MCU metadata before radio
 configuration. It then writes configuration frames for frequency, bandwidth, TX
 power, spreading factor, coding rate, optional short-term and long-term airtime

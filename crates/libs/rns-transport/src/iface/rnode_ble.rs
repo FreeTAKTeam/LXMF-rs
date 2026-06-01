@@ -4,6 +4,14 @@ use std::pin::Pin;
 use std::time::{Duration, Instant};
 
 #[cfg(feature = "rnode-ble")]
+use crate::buffer::{InputBuffer, OutputBuffer};
+#[cfg(feature = "rnode-ble")]
+use crate::iface::{IfaceSource, Interface, InterfaceContext, RxMessage};
+#[cfg(feature = "rnode-ble")]
+use crate::packet::Packet;
+#[cfg(feature = "rnode-ble")]
+use crate::serde::Serialize;
+#[cfg(feature = "rnode-ble")]
 use btleplug::api::{
     Central, CharPropFlags, Characteristic, Manager as _, Peripheral as _, ScanFilter,
     ValueNotification, WriteType,
@@ -13,11 +21,14 @@ use btleplug::platform::{Adapter, Manager, Peripheral};
 #[cfg(feature = "rnode-ble")]
 use futures::{stream::Stream, StreamExt};
 #[cfg(feature = "rnode-ble")]
-use tokio::time::{sleep, timeout};
+use tokio::time::{sleep, timeout, Instant as TokioInstant};
 #[cfg(feature = "rnode-ble")]
 use uuid::Uuid;
 
 use crate::iface::kiss::KissConfig;
+use crate::iface::lora::{
+    LoraConfig, LoraInterface, RNodeHardwareError, RNodeProbeStatus, RNodeRadioStatus,
+};
 use crate::kiss::{encode_data_frame, KissCommand, KissDecodeError, KissFrame, KissStreamDecoder};
 
 pub const RNODE_BLE_SERVICE_UUID: &str = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E";
@@ -41,6 +52,8 @@ pub struct RnodeBleKissConfig {
     pub mtu: usize,
     pub max_write_len: usize,
     pub write_with_response: bool,
+    pub initial_frames: Vec<Vec<u8>>,
+    pub shutdown_frames: Vec<Vec<u8>>,
     pub kiss: KissConfig,
 }
 
@@ -56,6 +69,8 @@ impl Default for RnodeBleKissConfig {
             mtu: 508,
             max_write_len: 20,
             write_with_response: false,
+            initial_frames: Vec::new(),
+            shutdown_frames: Vec::new(),
             kiss: KissConfig::default(),
         }
     }
@@ -66,6 +81,15 @@ pub struct RnodeBleWrite {
     pub characteristic_uuid: &'static str,
     pub with_response: bool,
     pub payload: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RnodeBleKissStatus {
+    pub connected: bool,
+    pub subscribed: bool,
+    pub interface_ready: bool,
+    pub pending_payloads: usize,
+    pub pending_writes: usize,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -210,8 +234,10 @@ impl NativeRnodeBleBackend {
         if let Some(requested) = settings.adapter.as_deref() {
             let requested = requested.trim();
             for adapter in adapters {
-                let adapter_info =
-                    adapter.adapter_info().await.map_err(|err| format!("read adapter info: {err}"))?;
+                let adapter_info = adapter
+                    .adapter_info()
+                    .await
+                    .map_err(|err| format!("read adapter info: {err}"))?;
                 if native_rnode_identifier_matches(requested, &adapter_info) {
                     return Ok(adapter);
                 }
@@ -277,9 +303,7 @@ impl NativeRnodeBleBackend {
         if !write_char.properties.contains(CharPropFlags::WRITE_WITHOUT_RESPONSE)
             && !write_char.properties.contains(CharPropFlags::WRITE)
         {
-            return Err(
-                "RNode BLE write characteristic does not support BLE writes".to_string()
-            );
+            return Err("RNode BLE write characteristic does not support BLE writes".to_string());
         }
         if !notify_char.properties.contains(CharPropFlags::NOTIFY)
             && !notify_char.properties.contains(CharPropFlags::INDICATE)
@@ -326,8 +350,10 @@ impl RnodeBleBackend for NativeRnodeBleBackend {
     async fn subscribe_notifications(&mut self) -> Result<(), String> {
         let peripheral =
             self.peripheral.as_ref().ok_or_else(|| "no connected peripheral".to_string())?;
-        let notify_char =
-            self.notify_char.clone().ok_or_else(|| "notify characteristic not resolved".to_string())?;
+        let notify_char = self
+            .notify_char
+            .clone()
+            .ok_or_else(|| "notify characteristic not resolved".to_string())?;
         let stream =
             peripheral.notifications().await.map_err(|err| format!("open notifications: {err}"))?;
         self.notification_stream = Some(Box::pin(stream));
@@ -339,12 +365,17 @@ impl RnodeBleBackend for NativeRnodeBleBackend {
 
     async fn write(&mut self, write: RnodeBleWrite) -> Result<(), String> {
         if write.characteristic_uuid != RNODE_BLE_WRITE_CHARACTERISTIC_UUID {
-            return Err(format!("unexpected RNode BLE write characteristic {}", write.characteristic_uuid));
+            return Err(format!(
+                "unexpected RNode BLE write characteristic {}",
+                write.characteristic_uuid
+            ));
         }
         let peripheral =
             self.peripheral.as_ref().ok_or_else(|| "no connected peripheral".to_string())?;
-        let write_char =
-            self.write_char.clone().ok_or_else(|| "write characteristic not resolved".to_string())?;
+        let write_char = self
+            .write_char
+            .clone()
+            .ok_or_else(|| "write characteristic not resolved".to_string())?;
         let write_type =
             if write.with_response { WriteType::WithResponse } else { WriteType::WithoutResponse };
         peripheral
@@ -403,8 +434,10 @@ async fn rnode_peripheral_matches(
     if native_rnode_identifier_matches(configured_id, &peripheral.id().to_string()) {
         return Ok(true);
     }
-    let properties =
-        peripheral.properties().await.map_err(|err| format!("read peripheral properties: {err}"))?;
+    let properties = peripheral
+        .properties()
+        .await
+        .map_err(|err| format!("read peripheral properties: {err}"))?;
     if let Some(properties) = properties {
         if native_rnode_identifier_matches(configured_id, &properties.address.to_string()) {
             return Ok(true);
@@ -426,6 +459,7 @@ fn parse_rnode_uuid(value: &str) -> Uuid {
 pub struct RnodeBleKissRuntime<B> {
     backend: B,
     session: RnodeBleKissSession,
+    connected: bool,
 }
 
 impl<B> RnodeBleKissRuntime<B>
@@ -434,7 +468,7 @@ where
 {
     #[must_use]
     pub fn new(backend: B, config: RnodeBleKissConfig) -> Self {
-        Self { backend, session: RnodeBleKissSession::new(config) }
+        Self { backend, session: RnodeBleKissSession::new(config), connected: false }
     }
 
     #[must_use]
@@ -442,7 +476,18 @@ where
         &self.backend
     }
 
+    #[must_use]
+    pub fn into_backend(self) -> B {
+        self.backend
+    }
+
+    #[must_use]
+    pub fn status(&self) -> RnodeBleKissStatus {
+        self.session.status_with_connection(self.connected)
+    }
+
     pub async fn startup(&mut self) -> Result<(), RnodeBleKissError> {
+        self.connected = false;
         self.backend
             .connect()
             .await
@@ -451,7 +496,9 @@ where
             RnodeBleKissError::Backend { operation: "subscribe_notifications", message }
         })?;
         let writes = self.session.startup_frames();
-        self.write_all(writes, "startup_write").await
+        self.write_all(writes, "startup_write").await?;
+        self.connected = true;
+        Ok(())
     }
 
     pub async fn send_packet(&mut self, payload: &[u8]) -> Result<(), RnodeBleKissError> {
@@ -470,6 +517,11 @@ where
         self.write_all(writes, "write_id_beacon").await
     }
 
+    pub async fn shutdown(&mut self) -> Result<(), RnodeBleKissError> {
+        let writes = self.session.shutdown_frames();
+        self.write_all(writes, "shutdown_write").await
+    }
+
     pub async fn poll_notification(&mut self) -> Result<Vec<Vec<u8>>, RnodeBleKissError> {
         Ok(self.poll_notification_events().await?.packets)
     }
@@ -478,6 +530,7 @@ where
         &mut self,
     ) -> Result<RnodeBleNotification, RnodeBleKissError> {
         let Some(payload) = self.backend.next_notification().await.map_err(|message| {
+            self.connected = false;
             RnodeBleKissError::Backend { operation: "next_notification", message }
         })?
         else {
@@ -495,12 +548,326 @@ where
         operation: &'static str,
     ) -> Result<(), RnodeBleKissError> {
         for write in writes {
-            self.backend
-                .write(write)
-                .await
-                .map_err(|message| RnodeBleKissError::Backend { operation, message })?;
+            self.backend.write(write).await.map_err(|message| {
+                self.connected = false;
+                RnodeBleKissError::Backend { operation, message }
+            })?;
         }
         Ok(())
+    }
+}
+
+#[cfg(feature = "rnode-ble")]
+#[derive(Debug, Clone)]
+pub struct NativeRnodeBleKissInterface {
+    label: String,
+    settings: NativeRnodeBleSettings,
+    config: RnodeBleKissConfig,
+    rnode_config: Option<LoraConfig>,
+    startup_response_timeout: Duration,
+    reconnect_backoff: Duration,
+    max_reconnect_backoff: Duration,
+}
+
+#[cfg(feature = "rnode-ble")]
+impl NativeRnodeBleKissInterface {
+    #[must_use]
+    pub fn new(
+        label: impl Into<String>,
+        settings: NativeRnodeBleSettings,
+        config: RnodeBleKissConfig,
+    ) -> Self {
+        Self {
+            label: label.into(),
+            settings,
+            config,
+            rnode_config: None,
+            startup_response_timeout: Duration::from_millis(1_500),
+            reconnect_backoff: Duration::from_millis(500),
+            max_reconnect_backoff: Duration::from_millis(5_000),
+        }
+    }
+
+    #[must_use]
+    pub fn with_rnode_validation(
+        mut self,
+        rnode_config: LoraConfig,
+        startup_response_timeout: Duration,
+    ) -> Self {
+        self.rnode_config = Some(rnode_config);
+        self.startup_response_timeout = startup_response_timeout;
+        self
+    }
+
+    #[must_use]
+    pub fn with_reconnect_backoff(mut self, reconnect_backoff: Duration) -> Self {
+        self.reconnect_backoff = reconnect_backoff;
+        if self.max_reconnect_backoff < self.reconnect_backoff {
+            self.max_reconnect_backoff = self.reconnect_backoff;
+        }
+        self
+    }
+
+    #[must_use]
+    pub fn with_max_reconnect_backoff(mut self, max_reconnect_backoff: Duration) -> Self {
+        self.max_reconnect_backoff = max_reconnect_backoff.max(self.reconnect_backoff);
+        self
+    }
+
+    pub async fn spawn(context: InterfaceContext<Self>) {
+        let iface_stop = context.channel.stop.clone();
+        let iface_address = context.channel.address;
+        let (rx_channel, mut tx_channel) = context.channel.split();
+        let (
+            label,
+            settings,
+            config,
+            rnode_config,
+            startup_response_timeout,
+            reconnect_backoff,
+            max_reconnect_backoff,
+        ) = {
+            let guard = context.inner.lock().expect("RNode BLE interface mutex poisoned");
+            (
+                guard.label.clone(),
+                guard.settings.clone(),
+                guard.config.clone(),
+                guard.rnode_config,
+                guard.startup_response_timeout,
+                guard.reconnect_backoff,
+                guard.max_reconnect_backoff,
+            )
+        };
+        let mut active_backoff = reconnect_backoff;
+
+        loop {
+            if context.cancel.is_cancelled() {
+                break;
+            }
+
+            let backend = NativeRnodeBleBackend::new(settings.clone());
+            let mut runtime = RnodeBleKissRuntime::new(backend, config.clone());
+            if let Err(err) = runtime.startup().await {
+                log::warn!(
+                    "RNode KISS-over-BLE session setup failed iface={} addr={} err={:?}",
+                    label,
+                    iface_address,
+                    err
+                );
+                let mut backend = runtime.into_backend();
+                let _ = backend.cleanup().await;
+                sleep(active_backoff).await;
+                active_backoff = bounded_backoff_next(active_backoff, max_reconnect_backoff);
+                continue;
+            }
+            active_backoff = reconnect_backoff;
+            log::info!(
+                "RNode KISS-over-BLE session established iface={} addr={} peripheral_id={}",
+                label,
+                iface_address,
+                settings.peripheral_id
+            );
+
+            let mut tx_buffer = vec![0_u8; config.mtu];
+            let mut reconnect_needed = false;
+            let mut command_monitor = rnode_config
+                .map(|config| RnodeBleCommandMonitor::new(config, startup_response_timeout));
+            let mut first_tx_at: Option<TokioInstant> = None;
+            while !context.cancel.is_cancelled() && !iface_stop.is_cancelled() {
+                while let Ok(message) = tx_channel.try_recv() {
+                    let mut output = OutputBuffer::new(&mut tx_buffer[..]);
+                    if message.packet.serialize(&mut output).is_err() {
+                        log::warn!("RNode BLE packet serialize failed iface={}", label);
+                        continue;
+                    }
+                    if let Err(err) = runtime.send_packet(output.as_slice()).await {
+                        log::warn!("RNode BLE packet write failed iface={} err={:?}", label, err);
+                        reconnect_needed = true;
+                        break;
+                    }
+                    if first_tx_at.is_none() {
+                        first_tx_at = Some(TokioInstant::now());
+                    }
+                }
+                if reconnect_needed {
+                    break;
+                }
+
+                if let (Some(beacon), Some(first_tx)) =
+                    (config.kiss.id_beacon.as_ref(), first_tx_at)
+                {
+                    if first_tx.elapsed() >= beacon.interval {
+                        if let Err(err) = runtime.send_id_beacon().await {
+                            log::warn!(
+                                "RNode BLE station ID write failed iface={} err={:?}",
+                                label,
+                                err
+                            );
+                            reconnect_needed = true;
+                            break;
+                        }
+                        first_tx_at = None;
+                    }
+                }
+
+                match timeout(Duration::from_millis(100), runtime.poll_notification_events()).await
+                {
+                    Ok(Ok(notification)) => {
+                        if let Some(monitor) = command_monitor.as_mut() {
+                            if let Err(err) = monitor.accept_notification(&notification) {
+                                log::warn!(
+                                    "RNode BLE command response validation failed iface={} err={}",
+                                    label,
+                                    err
+                                );
+                                reconnect_needed = true;
+                                break;
+                            }
+                        }
+                        for payload in notification.packets {
+                            if let Ok(packet) = Packet::deserialize(&mut InputBuffer::new(&payload))
+                            {
+                                let _ = rx_channel
+                                    .send(RxMessage {
+                                        address: iface_address,
+                                        packet,
+                                        source: IfaceSource::None,
+                                    })
+                                    .await;
+                            }
+                        }
+                    }
+                    Err(_) => {}
+                    Ok(Err(err)) => {
+                        log::warn!("RNode BLE packet read failed iface={} err={:?}", label, err);
+                        reconnect_needed = true;
+                        break;
+                    }
+                }
+                if let Some(monitor) = command_monitor.as_mut() {
+                    if let Err(err) = monitor.validate_startup_deadline() {
+                        log::warn!(
+                            "RNode BLE startup response validation failed iface={} err={}",
+                            label,
+                            err
+                        );
+                        reconnect_needed = true;
+                        break;
+                    }
+                }
+            }
+
+            let _ = runtime.shutdown().await;
+            let mut backend = runtime.into_backend();
+            let _ = backend.cleanup().await;
+            if context.cancel.is_cancelled() || iface_stop.is_cancelled() {
+                break;
+            }
+            if reconnect_needed {
+                sleep(active_backoff).await;
+                active_backoff = bounded_backoff_next(active_backoff, max_reconnect_backoff);
+            }
+        }
+
+        iface_stop.cancel();
+    }
+}
+
+#[cfg(feature = "rnode-ble")]
+impl Interface for NativeRnodeBleKissInterface {
+    fn mtu() -> usize {
+        508
+    }
+}
+
+#[cfg(feature = "rnode-ble")]
+fn bounded_backoff_next(current: Duration, max: Duration) -> Duration {
+    let current_ms = current.as_millis() as u64;
+    let max_ms = max.as_millis() as u64;
+    Duration::from_millis(current_ms.saturating_mul(2).min(max_ms))
+}
+
+#[derive(Debug, Clone)]
+pub struct RnodeBleCommandMonitor {
+    lora: LoraInterface,
+    startup_deadline: Option<Instant>,
+}
+
+impl RnodeBleCommandMonitor {
+    #[must_use]
+    pub fn new(config: LoraConfig, startup_response_timeout: Duration) -> Self {
+        let mut lora = LoraInterface::new_tcp("ble://rnode", config);
+        lora.begin_startup_response_collection();
+        Self { lora, startup_deadline: Some(Instant::now() + startup_response_timeout) }
+    }
+
+    pub fn accept_notification(
+        &mut self,
+        notification: &RnodeBleNotification,
+    ) -> Result<(), String> {
+        for (command, payload) in &notification.commands {
+            let result = self.lora.record_command_response(*command, payload);
+            let fatal = match &result {
+                Ok(_) => false,
+                Err(err) => self.lora.last_command_error() == Some(err.as_str()),
+            };
+            match (result, fatal) {
+                (Ok(_), _) => {}
+                (Err(err), true) => return Err(err),
+                (Err(err), false) => {
+                    log::warn!(
+                        "ignored malformed RNode BLE command response command=0x{:02x} err={}",
+                        command,
+                        err
+                    );
+                }
+            }
+        }
+        for _ in &notification.packets {
+            self.lora.record_inbound_data_frame();
+        }
+        Ok(())
+    }
+
+    #[must_use]
+    pub fn probe_status(&self) -> RNodeProbeStatus {
+        self.lora.probe_status()
+    }
+
+    #[must_use]
+    pub fn radio_status(&self) -> RNodeRadioStatus {
+        self.lora.radio_status()
+    }
+
+    #[must_use]
+    pub fn hardware_errors(&self) -> &[RNodeHardwareError] {
+        self.lora.hardware_errors()
+    }
+
+    #[must_use]
+    pub fn last_command_error(&self) -> Option<&str> {
+        self.lora.last_command_error()
+    }
+
+    #[must_use]
+    pub fn online(&self) -> bool {
+        self.lora.online()
+    }
+
+    #[must_use]
+    pub fn reported_bitrate_bps(&self) -> Option<f64> {
+        self.lora.reported_bitrate_bps()
+    }
+
+    pub fn validate_startup_deadline(&mut self) -> Result<(), String> {
+        let Some(deadline) = self.startup_deadline else {
+            return Ok(());
+        };
+        if Instant::now() < deadline {
+            return Ok(());
+        }
+        self.startup_deadline = None;
+        self.lora.validate_startup_responses()
     }
 }
 
@@ -535,6 +902,21 @@ impl RnodeBleKissSession {
     }
 
     #[must_use]
+    pub fn status(&self) -> RnodeBleKissStatus {
+        self.status_with_connection(false)
+    }
+
+    fn status_with_connection(&self, connected: bool) -> RnodeBleKissStatus {
+        RnodeBleKissStatus {
+            connected,
+            subscribed: self.subscribed,
+            interface_ready: self.interface_ready,
+            pending_payloads: self.pending_payloads.len(),
+            pending_writes: self.pending_writes.len(),
+        }
+    }
+
+    #[must_use]
     pub fn pending_payloads(&self) -> usize {
         self.pending_payloads.len()
     }
@@ -551,6 +933,17 @@ impl RnodeBleKissSession {
             .kiss
             .command_frames()
             .into_iter()
+            .chain(self.config.initial_frames.iter().cloned())
+            .flat_map(|frame| self.kiss_writes(frame))
+            .collect()
+    }
+
+    #[must_use]
+    pub fn shutdown_frames(&self) -> Vec<RnodeBleWrite> {
+        self.config
+            .shutdown_frames
+            .iter()
+            .cloned()
             .flat_map(|frame| self.kiss_writes(frame))
             .collect()
     }

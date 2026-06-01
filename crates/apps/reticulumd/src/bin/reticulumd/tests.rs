@@ -23,6 +23,9 @@ use rns_rpc::{InterfaceRecord, MessagesStore, OutboundBridge, RpcDaemon, RpcRequ
 use rns_transport::destination::{link::LinkStatus, DestinationDesc, DestinationName};
 use rns_transport::destination_hash::parse_destination_hash_required;
 use rns_transport::hash::AddressHash;
+use rns_transport::iface::lora::{
+    CMD_DETECT, CMD_LEAVE, CMD_RADIO_STATE, DETECT_REQ, RADIO_STATE_OFF,
+};
 use rns_transport::iface::tcp_client::TcpClient;
 use rns_transport::iface::vrn76_kiss_ble::Vrn76FrameMode;
 use rns_transport::packet::{PacketContext, PacketDataBuffer};
@@ -785,6 +788,84 @@ fn lora_builder_uses_python_rnode_command_timeout() {
 }
 
 #[test]
+fn rnode_ble_builder_uses_native_ble_and_kiss_defaults() {
+    let iface = InterfaceConfig {
+        kind: "lora".to_string(),
+        enabled: Some(true),
+        name: Some("rnode-ble".to_string()),
+        region: Some("US915".to_string()),
+        state_path: Some("/tmp/lora-state.json".to_string()),
+        device: Some("ble://RNode 1234".to_string()),
+        adapter: Some("Bluetooth".to_string()),
+        mtu: Some(512),
+        max_write_len: Some(64),
+        max_payload_bytes: Some(220),
+        scan_timeout_ms: Some(3_000),
+        ble_connect_timeout_ms: Some(7_000),
+        connect_timeout_ms: Some(4_000),
+        preamble_ms: Some(410),
+        tx_tail_ms: Some(30),
+        persistence: Some(80),
+        slot_time_ms: Some(40),
+        flow_control: Some(toml::Value::Boolean(true)),
+        ..InterfaceConfig::default()
+    };
+
+    let config = lora::build_rnode_ble_config(&iface).expect("build rnode BLE config");
+
+    assert_eq!(config.peripheral_id, "RNode 1234");
+    assert_eq!(config.adapter.as_deref(), Some("Bluetooth"));
+    assert_eq!(config.transport.mtu, 220);
+    assert_eq!(config.transport.max_write_len, 64);
+    assert_eq!(config.transport.scan_timeout, Duration::from_millis(3_000));
+    assert_eq!(config.transport.connect_timeout, Duration::from_millis(7_000));
+    assert_eq!(config.startup_response_timeout, Duration::from_millis(4_000));
+    assert_eq!(config.transport.kiss.preamble_ms, 410);
+    assert_eq!(config.transport.kiss.tx_tail_ms, 30);
+    assert_eq!(config.transport.kiss.persistence, 80);
+    assert_eq!(config.transport.kiss.slot_time_ms, 40);
+    assert!(config.transport.kiss.flow_control);
+    assert_eq!(
+        config.transport.initial_frames.first(),
+        Some(&rns_transport::kiss::encode_command_frame(CMD_DETECT, &[DETECT_REQ]))
+    );
+    assert_eq!(
+        config.transport.initial_frames.last(),
+        Some(&rns_transport::kiss::encode_command_frame(CMD_RADIO_STATE, &[1]))
+    );
+    assert_eq!(
+        config.transport.shutdown_frames,
+        vec![
+            rns_transport::kiss::encode_command_frame(CMD_RADIO_STATE, &[RADIO_STATE_OFF]),
+            rns_transport::kiss::encode_command_frame(CMD_LEAVE, &[0xff]),
+        ]
+    );
+}
+
+#[test]
+fn rnode_ble_builder_keeps_ble_connect_timeout_distinct_from_rnode_command_timeout() {
+    let iface = InterfaceConfig {
+        kind: "lora".to_string(),
+        enabled: Some(true),
+        name: Some("rnode-ble".to_string()),
+        region: Some("US915".to_string()),
+        state_path: Some("/tmp/lora-state.json".to_string()),
+        device: Some("ble://RNode 1234".to_string()),
+        frequency_hz: Some(915_000_000),
+        bandwidth_hz: Some(125_000),
+        spreading_factor: Some(9),
+        coding_rate: Some("5".to_string()),
+        tx_power_dbm: Some(17),
+        ..InterfaceConfig::default()
+    };
+
+    let config = lora::build_rnode_ble_config(&iface).expect("build rnode BLE config");
+
+    assert_eq!(config.transport.connect_timeout, Duration::from_millis(5_000));
+    assert_eq!(config.startup_response_timeout, Duration::from_millis(1_500));
+}
+
+#[test]
 fn vrn76_builder_rejects_missing_peripheral_id() {
     let iface = InterfaceConfig {
         kind: "vrn76_kiss_ble".to_string(),
@@ -1244,6 +1325,54 @@ interfaces = [
         .get("startup_error")
         .and_then(|value| value.as_str())
         .is_some_and(|error| error.contains("requires reticulumd feature vrn76-kiss-ble")));
+}
+
+#[cfg(not(feature = "rnode-ble"))]
+#[test]
+fn bootstrap_best_effort_marks_rnode_ble_feature_disabled_as_failed() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let state_path = temp.path().join("lora-state.json");
+    let config_path = temp.path().join("daemon.toml");
+    fs::write(
+        &config_path,
+        format!(
+            r#"
+interfaces = [
+  {{ type = "RNodeInterface", enabled = true, name = "rnode-ble", region = "US915", state_path = "{}", port = "ble://RNode 1234", frequency = 915000000, bandwidth = 125000, spreadingfactor = 9, codingrate = 5, txpower = 17 }}
+]
+"#,
+            state_path.to_string_lossy().replace('\\', "\\\\")
+        ),
+    )
+    .expect("write config");
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    let context = runtime.block_on(async {
+        bootstrap::bootstrap(test_args(db_path.clone(), Some(config_path.clone()), None, false))
+            .await
+    });
+    let response = context
+        .daemon
+        .handle_rpc(RpcRequest { id: 1, method: "list_interfaces".to_string(), params: None })
+        .expect("list_interfaces");
+    let interfaces = response
+        .result
+        .expect("result")
+        .get("interfaces")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .expect("interfaces array");
+    let runtime = interfaces[0]
+        .get("settings")
+        .and_then(|value| value.get("_runtime"))
+        .expect("runtime settings");
+    assert_eq!(runtime.get("startup_status").and_then(|value| value.as_str()), Some("failed"));
+    assert!(runtime
+        .get("startup_error")
+        .and_then(|value| value.as_str())
+        .is_some_and(|error| error.contains("requires reticulumd feature rnode-ble")));
 }
 
 #[test]

@@ -1,11 +1,16 @@
 use std::time::Duration;
 
 use rns_transport::iface::kiss::{KissConfig, KissIdBeaconConfig};
+use rns_transport::iface::lora::{
+    LoraConfig, CMD_BANDWIDTH, CMD_CR, CMD_DETECT, CMD_ERROR, CMD_FREQUENCY, CMD_FW_VERSION,
+    CMD_LEAVE, CMD_MCU, CMD_PLATFORM, CMD_RADIO_STATE, CMD_SF, CMD_TXPOWER, DETECT_REQ,
+    DETECT_RESP, ERROR_MEMORY_LOW, ERROR_TXFAILED, PLATFORM_ESP32, RADIO_STATE_OFF,
+};
 use rns_transport::iface::rnode_ble::{
-    RnodeBleBackend, RnodeBleKissConfig, RnodeBleKissError, RnodeBleKissRuntime,
-    RnodeBleKissSession, RnodeBleWrite, RNODE_BLE_CONNECT_TIMEOUT, RNODE_BLE_READ_FRAME_TIMEOUT,
-    RNODE_BLE_SCAN_TIMEOUT, RNODE_BLE_SERVICE_UUID, RNODE_BLE_TX_CHARACTERISTIC_UUID,
-    RNODE_BLE_WRITE_CHARACTERISTIC_UUID,
+    RnodeBleBackend, RnodeBleCommandMonitor, RnodeBleKissConfig, RnodeBleKissError,
+    RnodeBleKissRuntime, RnodeBleKissSession, RnodeBleNotification, RnodeBleWrite,
+    RNODE_BLE_CONNECT_TIMEOUT, RNODE_BLE_READ_FRAME_TIMEOUT, RNODE_BLE_SCAN_TIMEOUT,
+    RNODE_BLE_SERVICE_UUID, RNODE_BLE_TX_CHARACTERISTIC_UUID, RNODE_BLE_WRITE_CHARACTERISTIC_UUID,
 };
 use rns_transport::kiss::{
     encode_command_frame, encode_data_frame, CMD_DATA, CMD_P, CMD_READY, CMD_SETHARDWARE,
@@ -39,9 +44,14 @@ fn rnode_ble_defaults_match_python_nordic_uart_profile() {
 fn rnode_ble_startup_subscribes_before_raw_kiss_configuration() {
     let mut session = RnodeBleKissSession::new(RnodeBleKissConfig::default());
 
+    assert!(!session.status().connected);
+    assert!(!session.status().subscribed);
+
     let writes = session.startup_frames();
 
     assert!(session.is_subscribed());
+    assert!(session.status().subscribed);
+    assert_eq!(session.status().pending_writes, 0);
     assert_eq!(
         writes,
         vec![
@@ -69,6 +79,60 @@ fn rnode_ble_startup_subscribes_before_raw_kiss_configuration() {
                 characteristic_uuid: RNODE_BLE_WRITE_CHARACTERISTIC_UUID,
                 with_response: false,
                 payload: encode_command_frame(CMD_READY, &[1]),
+            },
+        ]
+    );
+}
+
+#[test]
+fn rnode_ble_startup_appends_lora_rnode_initial_frames() {
+    let lora_config = LoraConfig::us915_default();
+    let mut session = RnodeBleKissSession::new(RnodeBleKissConfig {
+        initial_frames: lora_config.command_frames(),
+        ..Default::default()
+    });
+
+    let writes = session.startup_frames();
+
+    assert_eq!(writes.len(), 5 + lora_config.command_frames().len());
+    assert_eq!(
+        writes[5],
+        RnodeBleWrite {
+            characteristic_uuid: RNODE_BLE_WRITE_CHARACTERISTIC_UUID,
+            with_response: false,
+            payload: encode_command_frame(CMD_DETECT, &[DETECT_REQ]),
+        }
+    );
+    assert_eq!(
+        writes.last(),
+        Some(&RnodeBleWrite {
+            characteristic_uuid: RNODE_BLE_WRITE_CHARACTERISTIC_UUID,
+            with_response: false,
+            payload: encode_command_frame(CMD_RADIO_STATE, &[1]),
+        })
+    );
+}
+
+#[test]
+fn rnode_ble_shutdown_writes_lora_radio_off_and_leave_frames() {
+    let lora_config = LoraConfig::us915_default();
+    let session = RnodeBleKissSession::new(RnodeBleKissConfig {
+        shutdown_frames: lora_config.shutdown_frames(),
+        ..Default::default()
+    });
+
+    assert_eq!(
+        session.shutdown_frames(),
+        vec![
+            RnodeBleWrite {
+                characteristic_uuid: RNODE_BLE_WRITE_CHARACTERISTIC_UUID,
+                with_response: false,
+                payload: encode_command_frame(CMD_RADIO_STATE, &[RADIO_STATE_OFF]),
+            },
+            RnodeBleWrite {
+                characteristic_uuid: RNODE_BLE_WRITE_CHARACTERISTIC_UUID,
+                with_response: false,
+                payload: encode_command_frame(CMD_LEAVE, &[0xff]),
             },
         ]
     );
@@ -281,8 +345,14 @@ async fn rnode_ble_runtime_connects_subscribes_and_writes_startup_frames() {
     let backend = TestRnodeBleBackend::default();
     let mut runtime = RnodeBleKissRuntime::new(backend, RnodeBleKissConfig::default());
 
+    assert!(!runtime.status().connected);
+
     runtime.startup().await.expect("startup");
 
+    assert!(runtime.status().connected);
+    assert!(runtime.status().subscribed);
+    assert_eq!(runtime.status().pending_payloads, 0);
+    assert_eq!(runtime.status().pending_writes, 0);
     let backend = runtime.backend();
     assert_eq!(
         &backend.events[..7],
@@ -375,6 +445,90 @@ async fn rnode_ble_runtime_splits_outbound_kiss_frames_by_ble_write_limit() {
     );
 }
 
+#[tokio::test]
+async fn rnode_ble_runtime_writes_configured_shutdown_frames() {
+    let config = RnodeBleKissConfig {
+        shutdown_frames: vec![encode_command_frame(CMD_RADIO_STATE, &[RADIO_STATE_OFF])],
+        ..Default::default()
+    };
+    let backend = TestRnodeBleBackend::default();
+    let mut runtime = RnodeBleKissRuntime::new(backend, config);
+
+    runtime.startup().await.expect("startup");
+    runtime.shutdown().await.expect("shutdown");
+
+    assert_eq!(
+        runtime.backend().writes.last(),
+        Some(&RnodeBleWrite {
+            characteristic_uuid: RNODE_BLE_WRITE_CHARACTERISTIC_UUID,
+            with_response: false,
+            payload: encode_command_frame(CMD_RADIO_STATE, &[RADIO_STATE_OFF]),
+        })
+    );
+}
+
+#[test]
+fn rnode_ble_command_monitor_accepts_valid_startup_responses() {
+    let config = LoraConfig::us915_default();
+    let mut monitor = RnodeBleCommandMonitor::new(config, Duration::ZERO);
+
+    monitor
+        .accept_notification(&RnodeBleNotification {
+            packets: Vec::new(),
+            commands: valid_startup_commands(config),
+        })
+        .expect("valid command responses");
+
+    monitor.validate_startup_deadline().expect("startup responses validate");
+}
+
+#[test]
+fn rnode_ble_command_monitor_exposes_rnode_protocol_state() {
+    let config = LoraConfig::us915_default();
+    let mut monitor = RnodeBleCommandMonitor::new(config, Duration::ZERO);
+    let mut commands = valid_startup_commands(config);
+    commands.push((CMD_ERROR, vec![ERROR_MEMORY_LOW]));
+
+    monitor
+        .accept_notification(&RnodeBleNotification { packets: vec![vec![0x01, 0x02]], commands })
+        .expect("valid command responses");
+
+    assert_eq!(monitor.probe_status().platform, Some(PLATFORM_ESP32));
+    assert_eq!(monitor.radio_status().bandwidth_hz, Some(config.bandwidth_hz));
+    assert!(monitor.online());
+    assert_eq!(monitor.last_command_error(), None);
+    assert_eq!(monitor.hardware_errors().len(), 1);
+    assert!(!monitor.hardware_errors()[0].fatal);
+    assert!(monitor.reported_bitrate_bps().is_some());
+    assert_eq!(monitor.radio_status().rssi_dbm, None);
+    assert_eq!(monitor.radio_status().snr_db, None);
+}
+
+#[test]
+fn rnode_ble_command_monitor_rejects_missing_startup_responses_after_deadline() {
+    let config = LoraConfig::us915_default();
+    let mut monitor = RnodeBleCommandMonitor::new(config, Duration::ZERO);
+
+    let err = monitor.validate_startup_deadline().expect_err("missing startup responses");
+
+    assert!(err.contains("detect"), "unexpected startup error: {err}");
+}
+
+#[test]
+fn rnode_ble_command_monitor_rejects_fatal_hardware_errors() {
+    let config = LoraConfig::us915_default();
+    let mut monitor = RnodeBleCommandMonitor::new(config, Duration::from_secs(1));
+
+    let err = monitor
+        .accept_notification(&RnodeBleNotification {
+            packets: Vec::new(),
+            commands: vec![(CMD_ERROR, vec![ERROR_TXFAILED])],
+        })
+        .expect_err("fatal hardware error");
+
+    assert_eq!(err, "Hardware transmit failure");
+}
+
 #[cfg(feature = "rnode-ble")]
 #[test]
 fn native_rnode_ble_settings_use_profile_defaults() {
@@ -398,6 +552,27 @@ fn native_rnode_ble_settings_use_profile_defaults() {
     assert_eq!(settings.scan_timeout, RNODE_BLE_SCAN_TIMEOUT);
     assert_eq!(settings.connect_timeout, RNODE_BLE_CONNECT_TIMEOUT);
     assert_eq!(settings.notification_timeout, RNODE_BLE_READ_FRAME_TIMEOUT);
+}
+
+fn valid_startup_commands(config: LoraConfig) -> Vec<(u8, Vec<u8>)> {
+    vec![
+        (CMD_DETECT, vec![DETECT_RESP]),
+        (CMD_FW_VERSION, vec![1, 52]),
+        (CMD_PLATFORM, vec![PLATFORM_ESP32]),
+        (CMD_MCU, vec![0x01]),
+        (
+            CMD_FREQUENCY,
+            u32::try_from(config.frequency_hz)
+                .expect("validated LoRa frequency fits u32")
+                .to_be_bytes()
+                .to_vec(),
+        ),
+        (CMD_BANDWIDTH, config.bandwidth_hz.to_be_bytes().to_vec()),
+        (CMD_TXPOWER, vec![config.tx_power_dbm as u8]),
+        (CMD_SF, vec![config.spreading_factor]),
+        (CMD_CR, vec![config.coding_rate]),
+        (CMD_RADIO_STATE, vec![1]),
+    ]
 }
 
 #[cfg(feature = "rnode-ble")]

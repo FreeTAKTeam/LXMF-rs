@@ -132,6 +132,8 @@ pub struct InterfaceConfig {
     #[serde(default)]
     pub scan_timeout_ms: Option<u64>,
     #[serde(default)]
+    pub ble_connect_timeout_ms: Option<u64>,
+    #[serde(default)]
     pub connect_timeout_ms: Option<u64>,
     #[serde(default)]
     pub region: Option<String>,
@@ -339,6 +341,11 @@ impl InterfaceConfig {
                     self.notify_char_uuid.as_ref(),
                 );
                 insert_opt_u64(&mut settings, "scan_timeout_ms", self.scan_timeout_ms);
+                insert_opt_u64(
+                    &mut settings,
+                    "ble_connect_timeout_ms",
+                    self.ble_connect_timeout_ms,
+                );
                 insert_opt_u64(&mut settings, "connect_timeout_ms", self.connect_timeout_ms);
                 insert_opt_u64(&mut settings, "mtu", self.mtu.map(|v| v as u64));
                 insert_opt_u64(&mut settings, "reconnect_backoff_ms", self.reconnect_backoff_ms);
@@ -377,8 +384,15 @@ impl InterfaceConfig {
                 );
             }
             "lora" => {
+                insert_opt_string(&mut settings, "adapter", self.adapter.as_ref());
                 insert_opt_string(&mut settings, "device", self.device.as_ref());
                 insert_opt_u64(&mut settings, "baud_rate", self.baud_rate.map(u64::from));
+                insert_opt_u64(&mut settings, "mtu", self.mtu.map(|v| v as u64));
+                insert_opt_u64(
+                    &mut settings,
+                    "max_write_len",
+                    self.max_write_len.map(|v| v as u64),
+                );
                 insert_opt_string(&mut settings, "region", self.region.as_ref());
                 insert_opt_u64(&mut settings, "frequency_hz", self.frequency_hz);
                 insert_opt_u64(&mut settings, "bandwidth_hz", self.bandwidth_hz.map(u64::from));
@@ -397,9 +411,21 @@ impl InterfaceConfig {
                 {
                     settings.insert("flow_control".to_string(), JsonValue::Bool(flow_control));
                 }
+                insert_opt_u64(&mut settings, "scan_timeout_ms", self.scan_timeout_ms);
+                insert_opt_u64(
+                    &mut settings,
+                    "ble_connect_timeout_ms",
+                    self.ble_connect_timeout_ms,
+                );
                 insert_opt_u64(&mut settings, "connect_timeout_ms", self.connect_timeout_ms);
                 insert_opt_string(&mut settings, "id_callsign", self.id_callsign.as_ref());
                 insert_opt_u64(&mut settings, "id_interval", self.id_interval);
+                insert_opt_u64(&mut settings, "reconnect_backoff_ms", self.reconnect_backoff_ms);
+                insert_opt_u64(
+                    &mut settings,
+                    "max_reconnect_backoff_ms",
+                    self.max_reconnect_backoff_ms,
+                );
                 insert_opt_f64(&mut settings, "airtime_limit_short", self.airtime_limit_short);
                 insert_opt_f64(&mut settings, "airtime_limit_long", self.airtime_limit_long);
                 insert_opt_u64(&mut settings, "sync_word", self.sync_word.map(u64::from));
@@ -1328,12 +1354,7 @@ impl InterfaceConfig {
             self.device.as_deref().map(str::trim).is_some_and(|value| !value.is_empty());
         let has_tcp_device = self.device.as_deref().is_some_and(is_tcp_lora_port);
         let has_ble_device = self.device.as_deref().is_some_and(is_ble_lora_port);
-        if has_ble_device {
-            return Err(format!(
-                "interfaces[{index}].port ble:// RNodeInterface ports require a BLE KISS backend; use vrn76_kiss_ble for VT-N76/VR-N76 Bluetooth KISS devices"
-            ));
-        }
-        if has_device && !has_tcp_device && self.baud_rate.is_none() {
+        if has_device && !has_tcp_device && !has_ble_device && self.baud_rate.is_none() {
             return Err(format!("interfaces[{index}].baud_rate is required for active lora"));
         }
         if !has_device && self.baud_rate.is_some() {
@@ -1342,12 +1363,40 @@ impl InterfaceConfig {
         if self.baud_rate == Some(0) {
             return Err(format!("interfaces[{index}].baud_rate must be > 0 for lora"));
         }
+        if let Some(adapter) = self.adapter.as_deref() {
+            require_non_empty(
+                Some(adapter),
+                &format!("interfaces[{index}].adapter cannot be empty for lora"),
+            )?;
+        }
         if original_kind == "RNodeInterface" {
             self.validate_rnode_required_radio_parameters(index)?;
+        }
+        if let Some(scan_timeout_ms) = self.scan_timeout_ms {
+            if scan_timeout_ms == 0 {
+                return Err(format!("interfaces[{index}].scan_timeout_ms must be > 0 for lora"));
+            }
         }
         if let Some(connect_timeout_ms) = self.connect_timeout_ms {
             if connect_timeout_ms == 0 {
                 return Err(format!("interfaces[{index}].connect_timeout_ms must be > 0 for lora"));
+            }
+        }
+        if let Some(ble_connect_timeout_ms) = self.ble_connect_timeout_ms {
+            if ble_connect_timeout_ms == 0 {
+                return Err(format!(
+                    "interfaces[{index}].ble_connect_timeout_ms must be > 0 for lora"
+                ));
+            }
+        }
+        if let Some(mtu) = self.mtu {
+            if mtu == 0 {
+                return Err(format!("interfaces[{index}].mtu must be > 0 for lora"));
+            }
+        }
+        if let Some(max_write_len) = self.max_write_len {
+            if max_write_len == 0 {
+                return Err(format!("interfaces[{index}].max_write_len must be > 0 for lora"));
             }
         }
         self.validate_id_beacon(index, "lora")?;
