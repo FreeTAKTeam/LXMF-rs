@@ -60,6 +60,108 @@ fn resource_manager_retries_advertisement_until_budget_exhausted() {
 }
 
 #[test]
+fn resource_manager_emits_outbound_failed_when_advertisement_retry_budget_exhausts() {
+    let signer = PrivateIdentity::new_from_rand(OsRng);
+    let identity = *signer.as_identity();
+    let destination = DestinationDesc {
+        identity,
+        address_hash: identity.address_hash,
+        name: DestinationName::new("lxmf", "resource"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(1);
+    let link = Link::new(destination, tx);
+
+    let mut manager = ResourceManager::new_with_config(Duration::from_secs(1), 1);
+    let (resource_hash, _) =
+        manager.start_send(&link, b"retry me".to_vec(), None).expect("start sender");
+    manager.confirm_outbound_dispatch(resource_hash, true);
+
+    let now = Instant::now() + Duration::from_secs(2);
+    let retry = manager.poll_outgoing(now);
+    assert_eq!(retry.len(), 1);
+    assert!(manager.drain_events().is_empty());
+
+    let exhausted = manager.poll_outgoing(now + Duration::from_secs(2));
+    assert!(exhausted.is_empty());
+    assert!(!manager.outgoing.contains_key(&resource_hash));
+    let events = manager.drain_events();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].hash, resource_hash);
+    assert_eq!(events[0].link_id, *link.id());
+    assert!(matches!(events[0].kind, ResourceEventKind::OutboundFailed));
+}
+
+#[test]
+fn resource_manager_emits_outbound_failed_when_advertisement_dispatch_fails() {
+    let signer = PrivateIdentity::new_from_rand(OsRng);
+    let identity = *signer.as_identity();
+    let destination = DestinationDesc {
+        identity,
+        address_hash: identity.address_hash,
+        name: DestinationName::new("lxmf", "resource"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(1);
+    let link = Link::new(destination, tx);
+
+    let mut manager = ResourceManager::new_with_config(Duration::from_secs(1), 1);
+    let (resource_hash, _) =
+        manager.start_send(&link, b"dispatch fail".to_vec(), None).expect("start sender");
+
+    manager.confirm_outbound_dispatch(resource_hash, false);
+
+    assert!(manager.pending_outgoing.is_empty());
+    assert!(manager.outgoing.is_empty());
+    let events = manager.drain_events();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].hash, resource_hash);
+    assert_eq!(events[0].link_id, *link.id());
+    assert!(matches!(events[0].kind, ResourceEventKind::OutboundFailed));
+}
+
+#[test]
+fn resource_manager_cancel_outgoing_emits_initiator_cancel_packet_and_event() {
+    let signer = PrivateIdentity::new_from_rand(OsRng);
+    let identity = *signer.as_identity();
+    let destination = DestinationDesc {
+        identity,
+        address_hash: identity.address_hash,
+        name: DestinationName::new("lxmf", "resource"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(1);
+    let mut link = Link::new(destination, tx);
+    link.request();
+
+    let mut manager = ResourceManager::new_with_config(Duration::from_secs(1), 2);
+    let (resource_hash, _) =
+        manager.start_send(&link, b"cancel me".to_vec(), None).expect("start sender");
+    manager.confirm_outbound_dispatch(resource_hash, true);
+
+    let cancel_packet = manager
+        .cancel_outgoing(resource_hash, &link)
+        .expect("cancel packet")
+        .expect("active sender cancel frame");
+
+    assert!(!manager.outgoing.contains_key(&resource_hash));
+    assert_eq!(cancel_packet.destination, *link.id());
+    assert_eq!(cancel_packet.context, PacketContext::ResourceInitiatorCancel);
+    let mut decrypted = PacketDataBuffer::new();
+    let plain_len = {
+        let plain = link
+            .decrypt(cancel_packet.data.as_slice(), decrypted.accuire_buf_max())
+            .expect("decrypt cancel packet");
+        plain.len()
+    };
+    decrypted.resize(plain_len);
+    assert_eq!(decrypted.as_slice(), resource_hash.as_slice());
+
+    let events = manager.drain_events();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].hash, resource_hash);
+    assert_eq!(events[0].link_id, *link.id());
+    assert!(matches!(events[0].kind, ResourceEventKind::OutboundCancelled));
+}
+
+#[test]
 fn resource_manager_times_out_transferring_sender_after_retry_budget() {
     let signer = PrivateIdentity::new_from_rand(OsRng);
     let identity = *signer.as_identity();

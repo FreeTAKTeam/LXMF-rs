@@ -14,7 +14,9 @@ use crate::identity::PrivateIdentity;
 use crate::packet::{
     DestinationType, Header, HeaderType, PacketContext, PacketDataBuffer, PacketType, PACKET_MDU,
 };
-use crate::resource::{ResourceAdvertisement, ResourceProof, ResourceRequest, MAPHASH_LEN};
+use crate::resource::{
+    ResourceAdvertisement, ResourceEventKind, ResourceProof, ResourceRequest, MAPHASH_LEN,
+};
 use rand_core::OsRng;
 use std::sync::Mutex as StdMutex;
 use std::sync::{
@@ -1342,12 +1344,100 @@ async fn send_resource_returns_error_when_advertisement_dispatch_drops() {
 
     let link_id = *outbound.id();
     handler.lock().await.out_links.insert(destination.address_hash, Arc::new(Mutex::new(outbound)));
+    let mut resource_events = transport.resource_events();
 
     let result = transport.send_resource(&link_id, b"resource".to_vec(), None).await;
     assert!(matches!(result, Err(RnsError::ConnectionError)));
 
     let guard = handler.lock().await;
     assert!(guard.resource_manager.has_no_outbound_state());
+    drop(guard);
+    let event = timeout(Duration::from_millis(200), resource_events.recv())
+        .await
+        .expect("outbound failed event")
+        .expect("resource event");
+    assert_eq!(event.link_id, link_id);
+    assert!(matches!(event.kind, ResourceEventKind::OutboundFailed));
+}
+
+#[tokio::test]
+async fn cancel_resource_sends_initiator_cancel_and_removes_outbound_state() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let config = TransportConfig::new("test", &local_identity, true);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+    let mut channel = transport
+        .iface_manager()
+        .lock()
+        .await
+        .new_channel_with_role(8, crate::iface::IfaceRole::Unicast);
+    let iface = *channel.address();
+
+    let signer = PrivateIdentity::new_from_rand(OsRng);
+    let identity = *signer.as_identity();
+    let destination = crate::destination::DestinationDesc {
+        identity,
+        address_hash: identity.address_hash,
+        name: DestinationName::new("lxmf", "delivery"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(8);
+    let mut outbound = Link::new(destination, tx.clone());
+    let request = outbound.request();
+    let mut inbound = Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
+        .expect("link request should parse");
+    assert!(matches!(
+        outbound.handle_packet(&inbound.prove(), iface),
+        crate::destination::link::LinkHandleResult::Activated
+    ));
+
+    let link_id = *outbound.id();
+    let outbound = Arc::new(Mutex::new(outbound));
+    handler.lock().await.out_links.insert(destination.address_hash, outbound.clone());
+    let mut resource_events = transport.resource_events();
+
+    let resource_hash =
+        transport.send_resource(&link_id, b"resource".to_vec(), None).await.expect("send resource");
+    let advertised = timeout(Duration::from_millis(200), channel.tx_channel.recv())
+        .await
+        .expect("resource advertisement tx")
+        .expect("resource advertisement message");
+    assert_eq!(advertised.tx_type, TxMessageType::Direct(iface));
+    assert_eq!(advertised.packet.context, PacketContext::ResourceAdvrtisement);
+
+    let cancelled =
+        transport.cancel_resource(&link_id, resource_hash).await.expect("cancel resource");
+    assert!(cancelled);
+
+    let cancel = timeout(Duration::from_millis(200), channel.tx_channel.recv())
+        .await
+        .expect("resource cancel tx")
+        .expect("resource cancel message");
+    assert_eq!(cancel.tx_type, TxMessageType::Direct(iface));
+    assert_eq!(cancel.packet.destination, link_id);
+    assert_eq!(cancel.packet.context, PacketContext::ResourceInitiatorCancel);
+    let mut decrypted = PacketDataBuffer::new();
+    let plain_len = {
+        let outbound = outbound.lock().await;
+        let plain = outbound
+            .decrypt(cancel.packet.data.as_slice(), decrypted.accuire_buf_max())
+            .expect("decrypt cancel packet");
+        plain.len()
+    };
+    decrypted.resize(plain_len);
+    assert_eq!(decrypted.as_slice(), resource_hash.as_slice());
+
+    let mut guard = handler.lock().await;
+    assert!(guard.resource_manager.has_no_outbound_state());
+    let events = guard.resource_manager.drain_events();
+    assert!(events.is_empty());
+    drop(guard);
+    let event = timeout(Duration::from_millis(200), resource_events.recv())
+        .await
+        .expect("cancel event")
+        .expect("resource event");
+    assert_eq!(event.hash, resource_hash);
+    assert_eq!(event.link_id, link_id);
+    assert!(matches!(event.kind, ResourceEventKind::OutboundCancelled));
 }
 
 // ---------------------------------------------------------------------

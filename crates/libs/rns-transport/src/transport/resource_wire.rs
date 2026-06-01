@@ -165,7 +165,7 @@ fn packet_for_resource_manager(packet: &Packet, link: &mut Link) -> Option<Packe
     Some(plain_packet)
 }
 
-fn publish_resource_events(handler: &TransportHandler, events: Vec<ResourceEvent>) {
+pub(super) fn publish_resource_events(handler: &TransportHandler, events: Vec<ResourceEvent>) {
     for event in events {
         let _ = handler.resource_events_tx.send(event);
     }

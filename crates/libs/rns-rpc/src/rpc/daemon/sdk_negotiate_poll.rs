@@ -103,6 +103,19 @@ impl RpcDaemon {
                 "overflow_policy=block requires block_timeout_ms",
             ));
         }
+        let custom_operations = match parsed.config.extensions.get("custom_operations").cloned() {
+            Some(JsonValue::Null) | None => Vec::new(),
+            Some(value) => match serde_json::from_value::<Vec<SdkCustomOperationSpec>>(value) {
+                Ok(operations) => operations,
+                Err(err) => {
+                    return Ok(self.sdk_error_response(
+                        request.id,
+                        "SDK_VALIDATION_INVALID_ARGUMENT",
+                        &format!("config.extensions.custom_operations is invalid: {err}"),
+                    ))
+                }
+            },
+        };
 
         let mut store_forward_policy =
             Self::default_store_forward_policy_for_profile(profile.as_str());
@@ -284,6 +297,7 @@ impl RpcDaemon {
                 .expect("sdk_effective_capabilities mutex poisoned");
             *guard = effective_capabilities.clone();
         }
+        self.set_sdk_custom_operations(custom_operations);
         {
             let rpc_backend =
                 parsed.config.rpc_backend.as_ref().map_or(JsonValue::Null, |backend| {
@@ -328,6 +342,14 @@ impl RpcDaemon {
                     config
                 },
             );
+            let mut runtime_extensions = parsed.config.extensions.clone();
+            runtime_extensions.insert(
+                "rate_limits".to_owned(),
+                json!({
+                    "per_ip_per_minute": 120,
+                    "per_principal_per_minute": 120,
+                }),
+            );
             let next_runtime_config = json!({
                 "profile": profile,
                 "bind_mode": bind_mode,
@@ -349,12 +371,7 @@ impl RpcDaemon {
                 },
                 "event_sink": event_sink,
                 "idempotency_ttl_ms": limits.get("idempotency_ttl_ms").and_then(JsonValue::as_u64).unwrap_or(86_400_000_u64),
-                "extensions": {
-                    "rate_limits": {
-                        "per_ip_per_minute": 120,
-                        "per_principal_per_minute": 120,
-                    }
-                }
+                "extensions": runtime_extensions,
             });
             if let Err(error) = self.validate_sdk_runtime_config(&next_runtime_config) {
                 return Ok(RpcResponse { id: request.id, result: None, error: Some(error) });

@@ -162,6 +162,18 @@ async fn main() -> Result<(), lxmf_sdk::app::Error> {
 }
 ```
 
+## Easy-Mode Golden Paths
+
+For copy-pasteable app starts, use the checked examples:
+
+- Rust managed app: `examples/sdk-easy/rust-managed`
+- Kotlin mobile wrapper shape: `examples/sdk-easy/kotlin-mobile`
+- First-party Kotlin wrapper source: `wrappers/kotlin-mobile`
+
+Both examples are anchored to the SDK app v1 conformance manifest at
+`docs/fixtures/sdk-app-v1/manifest.json`. Low-level integrations should migrate
+through `docs/sdk/migration-to-easy.md` before adding wrapper-specific behavior.
+
 ## Send and Poll Events
 
 `messages().send_async(...)` returns message acceptance. Delivery, retry, inbound, and gap state
@@ -183,6 +195,7 @@ direct cursor control.
 ## Next Steps
 
 - Operational config patterns: `docs/sdk/configuration-profiles.md`
+- Easy-mode migration: `docs/sdk/migration-to-easy.md`
 - Remote mTLS example: `docs/sdk/remote-mtls.md`
 - Runtime lifecycle and cursor patterns: `docs/sdk/lifecycle-and-events.md`
 - Polling migration: `docs/sdk/polling-to-events-migration.md`

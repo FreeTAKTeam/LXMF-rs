@@ -92,6 +92,8 @@ pub enum ResourceEventKind {
     Progress(ResourceProgress),
     Complete(ResourceComplete),
     OutboundComplete,
+    OutboundFailed,
+    OutboundCancelled,
 }
 
 #[derive(Debug, Clone)]

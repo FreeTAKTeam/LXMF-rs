@@ -12,6 +12,61 @@ pub struct RpcResponse {
     pub error: Option<RpcError>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SdkCustomOperationSpec {
+    pub id: String,
+    pub group: String,
+    pub kind: String,
+    pub transport_variant: String,
+    pub description: String,
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    #[serde(default)]
+    pub required_capabilities: Vec<String>,
+}
+
+impl SdkCustomOperationSpec {
+    pub fn new(
+        id: impl Into<String>,
+        group: impl Into<String>,
+        kind: impl Into<String>,
+        transport_variant: impl Into<String>,
+        description: impl Into<String>,
+    ) -> Self {
+        Self {
+            id: Self::trimmed(id),
+            group: Self::trimmed(group),
+            kind: Self::trimmed(kind).to_ascii_lowercase(),
+            transport_variant: Self::trimmed(transport_variant),
+            description: Self::trimmed(description),
+            aliases: Vec::new(),
+            required_capabilities: Vec::new(),
+        }
+    }
+
+    pub fn with_alias(mut self, alias: impl Into<String>) -> Self {
+        let alias = Self::trimmed(alias);
+        if !alias.is_empty() && !self.aliases.iter().any(|current| current == &alias) {
+            self.aliases.push(alias);
+        }
+        self
+    }
+
+    pub fn with_required_capability(mut self, capability: impl Into<String>) -> Self {
+        let capability = Self::trimmed(capability);
+        if !capability.is_empty()
+            && !self.required_capabilities.iter().any(|current| current == &capability)
+        {
+            self.required_capabilities.push(capability);
+        }
+        self
+    }
+
+    fn trimmed(value: impl Into<String>) -> String {
+        value.into().trim().to_owned()
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone, Eq)]
 pub struct SdkCursorHint {
     pub method: String,
@@ -404,6 +459,7 @@ pub struct RpcDaemon {
     sdk_runtime_config: Mutex<JsonValue>,
     sdk_config_apply_lock: Mutex<()>,
     sdk_effective_capabilities: Mutex<Vec<String>>,
+    sdk_custom_operations: Mutex<Vec<SdkCustomOperationSpec>>,
     sdk_stream_degraded: Mutex<bool>,
     sdk_seen_jti: Mutex<HashMap<String, u64>>,
     sdk_rate_window_started_ms: Mutex<u64>,

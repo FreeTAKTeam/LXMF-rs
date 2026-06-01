@@ -82,6 +82,7 @@ impl RpcBackendClient {
                     "overflow_policy": Self::overflow_policy_to_wire(req.overflow_policy),
                     "block_timeout_ms": req.block_timeout_ms,
                     "rpc_backend": rpc_backend,
+                    "extensions": req.extensions,
                 }
             })),
             mtls_auth.as_ref(),
@@ -188,6 +189,7 @@ impl RpcBackendClient {
                         "overflow_policy": Self::overflow_policy_to_wire(req.overflow_policy),
                         "block_timeout_ms": req.block_timeout_ms,
                         "rpc_backend": rpc_backend,
+                        "extensions": req.extensions,
                     }
                 })),
                 mtls_auth.as_ref(),

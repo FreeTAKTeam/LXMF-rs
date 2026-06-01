@@ -130,6 +130,7 @@ fn negotiate_with_token_auth_preserves_remote_token_runtime_config() {
             overflow_policy: crate::types::OverflowPolicy::Reject,
             block_timeout_ms: None,
             rpc_backend: None,
+            extensions: Default::default(),
         })
         .expect("negotiate");
 
@@ -185,6 +186,7 @@ fn negotiate_without_reported_parity_metadata_falls_back_to_local_constants() {
             overflow_policy: crate::types::OverflowPolicy::Reject,
             block_timeout_ms: None,
             rpc_backend: None,
+            extensions: Default::default(),
         })
         .expect("negotiate");
 

@@ -279,6 +279,83 @@ fn duplicate_inbound_message_does_not_replace_existing_record_like_python() {
 }
 
 #[test]
+fn list_messages_cursor_paginates_same_second_records_by_id() {
+    let daemon = RpcDaemon::test_instance();
+    for id in ["msg-a", "msg-c", "msg-b"] {
+        daemon
+            .accept_inbound(MessageRecord {
+                id: id.to_string(),
+                source: "src".to_string(),
+                destination: "dst".to_string(),
+                title: id.to_string(),
+                content: String::new(),
+                timestamp: 1_700_000_100,
+                direction: "in".to_string(),
+                fields: None,
+                receipt_status: None,
+            })
+            .expect("store same-second message");
+    }
+
+    let first = daemon
+        .handle_rpc(rpc_request(36, "list_messages", json!({ "limit": 2 })))
+        .expect("list first page")
+        .result
+        .expect("first page result");
+    let first_messages = first["messages"].as_array().expect("first messages");
+    assert_eq!(
+        first_messages.iter().map(|row| row["id"].as_str().unwrap()).collect::<Vec<_>>(),
+        vec!["msg-c", "msg-b"]
+    );
+    assert_eq!(first["next_cursor"].as_str(), Some("1700000100:msg-b"));
+
+    let second = daemon
+        .handle_rpc(rpc_request(
+            37,
+            "list_messages",
+            json!({ "cursor": first["next_cursor"].as_str().unwrap(), "limit": 2 }),
+        ))
+        .expect("list second page")
+        .result
+        .expect("second page result");
+    let second_messages = second["messages"].as_array().expect("second messages");
+    assert_eq!(
+        second_messages.iter().map(|row| row["id"].as_str().unwrap()).collect::<Vec<_>>(),
+        vec!["msg-a"]
+    );
+    assert_eq!(second["next_cursor"], JsonValue::Null);
+}
+
+#[test]
+fn list_messages_omits_next_cursor_when_exact_limit_is_exhausted() {
+    let daemon = RpcDaemon::test_instance();
+    for id in ["msg-a", "msg-b"] {
+        daemon
+            .accept_inbound(MessageRecord {
+                id: id.to_string(),
+                source: "src".to_string(),
+                destination: "dst".to_string(),
+                title: id.to_string(),
+                content: String::new(),
+                timestamp: 1_700_000_101,
+                direction: "in".to_string(),
+                fields: None,
+                receipt_status: None,
+            })
+            .expect("store exact-limit message");
+    }
+
+    let result = daemon
+        .handle_rpc(rpc_request(38, "list_messages", json!({ "limit": 2 })))
+        .expect("list exact page")
+        .result
+        .expect("exact page result");
+
+    assert_eq!(result["messages"].as_array().map(Vec::len), Some(2));
+    assert_eq!(result["next_cursor"], JsonValue::Null);
+}
+
+#[test]
 fn autopeer_disabled_keeps_announced_peer_unpeered() {
     let daemon = RpcDaemon::test_instance();
     daemon
@@ -360,6 +437,33 @@ fn announce_received_persists_stamp_cost_in_announce_log() {
     assert_eq!(row["timestamp"].as_i64(), Some(1_700_000_011));
     assert_eq!(row["stamp_cost"].as_u64(), Some(21));
     assert_eq!(row["stamp_cost_flexibility"].as_u64(), Some(4));
+}
+
+#[test]
+fn list_announces_omits_next_cursor_when_exact_limit_is_exhausted() {
+    let daemon = RpcDaemon::test_instance();
+    for peer in ["peer-b", "peer-a"] {
+        daemon
+            .handle_rpc(rpc_request(
+                45,
+                "announce_received",
+                json!({
+                    "peer": peer,
+                    "timestamp": 1_700_000_015i64,
+                    "aspect": "lxmf.delivery",
+                }),
+            ))
+            .expect("announce received");
+    }
+
+    let result = daemon
+        .handle_rpc(rpc_request(46, "list_announces", json!({ "limit": 2 })))
+        .expect("list exact announces")
+        .result
+        .expect("exact announces result");
+
+    assert_eq!(result["announces"].as_array().map(Vec::len), Some(2));
+    assert_eq!(result["next_cursor"], JsonValue::Null);
 }
 
 #[test]
@@ -1285,6 +1389,37 @@ fn delivered_peer_activity_updates_last_heard_like_python() {
     assert!(last_seen > 0);
     assert_eq!(row["last_heard"].as_i64(), Some(last_seen));
     assert_eq!(row["last_sync_attempt"].as_i64(), Some(last_seen));
+}
+
+#[test]
+fn sent_peer_activity_does_not_mark_peer_heard_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    daemon
+        .handle_rpc(rpc_request(
+            51,
+            "propagation_enable",
+            json!({
+                "enabled": true,
+                "static_peers": ["peer-sent-only"],
+            }),
+        ))
+        .expect("enable static peer");
+
+    daemon.record_outbound_peer_sent("peer-sent-only", 64);
+
+    let peers = daemon
+        .handle_rpc(RpcRequest { id: 52, method: "list_peers".to_string(), params: None })
+        .expect("list peers")
+        .result
+        .expect("list peers result");
+    let row = peers["peers"].as_array().and_then(|rows| rows.first()).expect("peer row");
+    assert_eq!(row["peer"].as_str(), Some("peer-sent-only"));
+    assert_eq!(row["tx_bytes"].as_u64(), Some(64));
+    assert_eq!(row["alive"].as_bool(), Some(false));
+    assert_eq!(row["last_heard"].as_i64(), Some(0));
+    assert_eq!(row["sync_backoff"].as_u64(), Some(0));
+    assert_eq!(row["acceptance_rate"].as_f64(), Some(0.0));
+    assert!(row["last_sync_attempt"].as_i64().is_some_and(|value| value > 0));
 }
 
 #[test]

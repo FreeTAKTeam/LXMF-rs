@@ -13,7 +13,7 @@ use reticulum_daemon::receipt_bridge::ReceiptEvent;
 use rns_rpc::{RpcDaemon, RpcRequest};
 use rns_transport::destination::link::{Link, LinkEvent};
 use rns_transport::destination::SingleInputDestination;
-use rns_transport::hash::AddressHash;
+use rns_transport::hash::{AddressHash, Hash};
 use rns_transport::identity::{DecryptIdentity, Identity};
 use rns_transport::packet::{
     ContextFlag, DestinationType, Header, HeaderType, IfacFlag, Packet, PacketContext,
@@ -79,27 +79,69 @@ pub(super) fn spawn_inbound_worker(
                         }
                     }
                     ResourceEventKind::OutboundComplete => {
+                        handle_outbound_resource_completion(
+                            daemon.as_ref(),
+                            &outbound_resource_map,
+                            &receipt_tx,
+                            &event.hash,
+                        );
+                    }
+                    ResourceEventKind::OutboundFailed => {
+                        handle_outbound_resource_failure(
+                            daemon.as_ref(),
+                            &outbound_resource_map,
+                            &receipt_tx,
+                            &event.hash,
+                        );
+                    }
+                    ResourceEventKind::OutboundCancelled => {
                         let resource_hash_hex = hex::encode(event.hash.as_slice());
-                        if let Some(tracking) = take_outbound_resource_tracking(
+                        let _ = take_outbound_resource_tracking(
                             &outbound_resource_map,
                             resource_hash_hex.as_str(),
-                        ) {
-                            daemon.record_outbound_peer_activity(
-                                &tracking.peer,
-                                tracking.bytes,
-                                true,
-                            );
-                            let _ = receipt_tx.try_send(ReceiptEvent {
-                                message_id: tracking.message_id,
-                                status: tracking.sent_status,
-                            });
-                        }
+                        );
                     }
                     ResourceEventKind::Progress(_) => {}
                 }
             }
         }
     });
+}
+
+fn handle_outbound_resource_completion(
+    daemon: &RpcDaemon,
+    outbound_resource_map: &OutboundResourceMap,
+    receipt_tx: &tokio::sync::mpsc::Sender<ReceiptEvent>,
+    resource_hash: &Hash,
+) {
+    let resource_hash_hex = hex::encode(resource_hash.as_slice());
+    if let Some(tracking) =
+        take_outbound_resource_tracking(outbound_resource_map, resource_hash_hex.as_str())
+    {
+        daemon.record_outbound_peer_sent(&tracking.peer, tracking.bytes);
+        let _ = receipt_tx.try_send(ReceiptEvent {
+            message_id: tracking.message_id,
+            status: tracking.sent_status,
+        });
+    }
+}
+
+fn handle_outbound_resource_failure(
+    daemon: &RpcDaemon,
+    outbound_resource_map: &OutboundResourceMap,
+    receipt_tx: &tokio::sync::mpsc::Sender<ReceiptEvent>,
+    resource_hash: &Hash,
+) {
+    let resource_hash_hex = hex::encode(resource_hash.as_slice());
+    if let Some(tracking) =
+        take_outbound_resource_tracking(outbound_resource_map, resource_hash_hex.as_str())
+    {
+        daemon.record_outbound_peer_activity(&tracking.peer, tracking.bytes, false);
+        let _ = receipt_tx.try_send(ReceiptEvent {
+            message_id: tracking.message_id,
+            status: "failed: resource transfer timed out".to_string(),
+        });
+    }
 }
 
 fn spawn_packet_inbound_worker(
@@ -206,6 +248,7 @@ mod tests {
     use reticulum_daemon::lxmf_stamps::generate_propagation_stamp;
     use rns_rpc::{RpcDaemon, RpcRequest};
     use rns_transport::destination::{DestinationName, SingleInputDestination};
+    use rns_transport::hash::Hash;
     use rns_transport::identity::PrivateIdentity;
     use rns_transport::identity_bridge::{
         to_core_identity, to_core_private_identity, to_transport_private_identity,
@@ -213,7 +256,8 @@ mod tests {
     use rns_transport::transport::{ReceivedPayloadMode, Transport, TransportConfig};
     use serde_json::json;
     use sha2::{Digest, Sha256};
-    use std::sync::Arc;
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
     use tokio::sync::Mutex as TokioMutex;
 
     #[tokio::test]
@@ -249,6 +293,55 @@ mod tests {
             .result
             .expect("propagation status result");
         assert_eq!(status["propagation"]["client_propagation_messages_received"].as_u64(), Some(1));
+    }
+
+    #[test]
+    fn outbound_resource_failure_event_marks_tracking_failed() {
+        let daemon = RpcDaemon::test_instance();
+        daemon
+            .handle_rpc(RpcRequest {
+                id: 1,
+                method: "propagation_enable".to_string(),
+                params: Some(json!({
+                    "enabled": true,
+                    "static_peers": ["peer-resource-timeout"],
+                })),
+            })
+            .expect("enable static peer");
+        let resource_hash = Hash::new_from_slice(&[0x51; 32]);
+        let resource_hash_hex = hex::encode(resource_hash.as_slice());
+        let map = Arc::new(Mutex::new(HashMap::new()));
+        super::super::outbound_resources::track_outbound_resource(
+            &map,
+            resource_hash_hex.clone(),
+            super::super::outbound_resources::OutboundResourceTracking {
+                message_id: "resource-timeout-message".to_string(),
+                peer: "peer-resource-timeout".to_string(),
+                bytes: 512,
+                sent_status: "sent: link resource".to_string(),
+            },
+        );
+        let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+
+        super::handle_outbound_resource_failure(&daemon, &map, &tx, &resource_hash);
+
+        assert!(super::super::outbound_resources::take_outbound_resource_tracking(
+            &map,
+            resource_hash_hex.as_str()
+        )
+        .is_none());
+        let event = rx.try_recv().expect("failed receipt event");
+        assert_eq!(event.message_id, "resource-timeout-message");
+        assert_eq!(event.status, "failed: resource transfer timed out");
+        let peers = daemon
+            .handle_rpc(RpcRequest { id: 2, method: "list_peers".to_string(), params: None })
+            .expect("list peers")
+            .result
+            .expect("list peers result");
+        let row = peers["peers"].as_array().and_then(|rows| rows.first()).expect("peer row");
+        assert_eq!(row["tx_bytes"].as_u64(), Some(512));
+        assert_eq!(row["alive"].as_bool(), Some(false));
+        assert_eq!(row["sync_backoff"].as_u64(), Some(12 * 60));
     }
 
     #[tokio::test]
@@ -429,6 +522,85 @@ mod tests {
         assert!(items[0]["fields"]["_lxmf"]["propagation_stamp_value"]
             .as_u64()
             .is_some_and(|value| value >= 1));
+    }
+
+    #[tokio::test]
+    async fn local_propagation_payload_records_stamp_inside_flexibility_window() {
+        let daemon = RpcDaemon::test_instance();
+        daemon
+            .handle_rpc(RpcRequest {
+                id: 44,
+                method: "propagation_enable".to_string(),
+                params: Some(serde_json::json!({
+                    "enabled": true,
+                    "target_cost": 3,
+                    "stamp_cost_flexibility": 2,
+                })),
+            })
+            .expect("enable propagation");
+        let delivery_private = PrivateIdentity::new_from_rand(OsRng);
+        let source_private = PrivateIdentity::new_from_rand(OsRng);
+        let delivery_destination = Arc::new(TokioMutex::new(SingleInputDestination::new(
+            delivery_private.clone(),
+            DestinationName::new("lxmf", "delivery"),
+        )));
+        let source_destination = SingleInputDestination::new(
+            source_private.clone(),
+            DestinationName::new("lxmf", "delivery"),
+        );
+        let mut destination_hash = [0u8; 16];
+        {
+            let destination = delivery_destination.lock().await;
+            destination_hash.copy_from_slice(destination.desc.address_hash.as_slice());
+        }
+        daemon.set_delivery_destination_hash(Some(hex::encode(destination_hash)));
+        let mut source_hash = [0u8; 16];
+        source_hash.copy_from_slice(source_destination.desc.address_hash.as_slice());
+
+        let wire = build_wire_message_with_options(
+            source_hash,
+            destination_hash,
+            "flex propagated title",
+            "flex propagated content",
+            None,
+            &to_core_private_identity(&source_private),
+            None,
+            None,
+            None,
+        )
+        .expect("wire");
+        let envelope = {
+            let destination = delivery_destination.lock().await;
+            let message = WireMessage::unpack(&wire).expect("wire unpack");
+            let (transient, _) = message
+                .pack_propagation_transient_with_rng(
+                    &to_core_identity(destination.identity.as_identity()),
+                    OsRng,
+                )
+                .expect("propagation transient");
+            let stamped = stamped_propagation_payload_with_value_range(&transient, 1, 3);
+            rmp_serde::to_vec(&(1.0_f64, vec![stamped])).expect("propagation envelope")
+        };
+
+        let ingested = ingest_propagation_envelope(&daemon, &envelope, Some(&delivery_destination))
+            .await
+            .expect("ingest propagation envelope");
+        assert_eq!(ingested, 1);
+
+        let messages = daemon
+            .handle_rpc(RpcRequest { id: 45, method: "list_messages".to_string(), params: None })
+            .expect("list messages")
+            .result
+            .expect("list messages result");
+        let items = messages["messages"].as_array().expect("message items");
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0]["title"].as_str(), Some("flex propagated title"));
+        assert_eq!(items[0]["fields"]["_lxmf"]["propagation_stamp_checked"], json!(true));
+        assert_eq!(items[0]["fields"]["_lxmf"]["propagation_stamp_valid"], json!(true));
+        assert_eq!(items[0]["fields"]["_lxmf"]["propagation_stamp_target_cost"], json!(1));
+        assert!(items[0]["fields"]["_lxmf"]["propagation_stamp_value"]
+            .as_u64()
+            .is_some_and(|value| (1..3).contains(&value)));
     }
 
     #[tokio::test]

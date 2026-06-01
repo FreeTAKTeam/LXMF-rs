@@ -8,7 +8,7 @@ use crate::bridge::{
     TransportBridge,
 };
 use crate::bridge_helpers::opportunistic_payload;
-use crate::interfaces::{lora, serial};
+use crate::interfaces::{kiss, lora, serial, vrn76_kiss_ble};
 use crate::{bootstrap, Args};
 use futures::FutureExt;
 use lxmf::WireMessage;
@@ -23,6 +23,8 @@ use rns_rpc::{InterfaceRecord, MessagesStore, OutboundBridge, RpcDaemon, RpcRequ
 use rns_transport::destination::{link::LinkStatus, DestinationDesc, DestinationName};
 use rns_transport::destination_hash::parse_destination_hash_required;
 use rns_transport::hash::AddressHash;
+use rns_transport::iface::tcp_client::TcpClient;
+use rns_transport::iface::vrn76_kiss_ble::Vrn76FrameMode;
 use rns_transport::packet::{PacketContext, PacketDataBuffer};
 use rns_transport::transport::{ReceivedData, ReceivedPayloadMode, Transport, TransportConfig};
 use serde_json::json;
@@ -507,6 +509,12 @@ fn parse_destination_hex_required_rejects_invalid_hashes() {
 }
 
 #[test]
+fn tcp_client_adapter_exposes_default_mtu() {
+    let adapter = TcpClient::new("rmap.world:4242");
+    assert_eq!(adapter.mtu_value(), TcpClient::DEFAULT_MTU);
+}
+
+#[test]
 fn serial_builder_rejects_missing_required_fields() {
     let iface = InterfaceConfig {
         kind: "serial".to_string(),
@@ -530,6 +538,355 @@ fn serial_builder_rejects_zero_baud_rate() {
     };
     let err = serial::build_adapter(&iface).err().expect("zero baud rate should fail");
     assert!(err.contains("serial.baud_rate must be > 0"));
+}
+
+#[test]
+fn serial_builder_accepts_python_serial_line_alias_values() {
+    let iface = InterfaceConfig {
+        kind: "serial".to_string(),
+        enabled: Some(true),
+        device: Some("/dev/ttyUSB0".to_string()),
+        baud_rate: Some(19_200),
+        data_bits: Some(7),
+        parity: Some("N".to_string()),
+        stop_bits: Some(2),
+        ..InterfaceConfig::default()
+    };
+
+    let adapter = serial::build_adapter(&iface).expect("build serial adapter");
+    assert_eq!(adapter.device(), "/dev/ttyUSB0");
+    assert_eq!(adapter.baud_rate(), 19_200);
+    assert_eq!(adapter.data_bits_value(), 7);
+    assert_eq!(adapter.parity_name(), "none");
+    assert_eq!(adapter.stop_bits_value(), 2);
+}
+
+#[test]
+fn kiss_builder_rejects_missing_required_fields() {
+    let iface = InterfaceConfig {
+        kind: "kiss".to_string(),
+        enabled: Some(true),
+        ..InterfaceConfig::default()
+    };
+    let result = kiss::build_adapter(&iface);
+    assert!(result.is_err(), "missing device/baud should fail");
+    let err = result.err().unwrap_or_default();
+    assert!(err.contains("kiss.device"));
+}
+
+#[test]
+fn kiss_builder_uses_serial_line_settings() {
+    let iface = InterfaceConfig {
+        kind: "kiss".to_string(),
+        enabled: Some(true),
+        device: Some("/dev/ttyACM0".to_string()),
+        baud_rate: Some(19_200),
+        data_bits: Some(7),
+        parity: Some("E".to_string()),
+        stop_bits: Some(2),
+        ..InterfaceConfig::default()
+    };
+
+    let adapter = kiss::build_adapter(&iface).expect("build kiss adapter");
+    assert_eq!(adapter.device(), "/dev/ttyACM0");
+    assert_eq!(adapter.baud_rate(), 19_200);
+    assert_eq!(adapter.data_bits_value(), 7);
+    assert_eq!(adapter.parity_name(), "even");
+    assert_eq!(adapter.stop_bits_value(), 2);
+}
+
+#[test]
+fn kiss_tcp_client_builder_rejects_missing_required_fields() {
+    let iface = InterfaceConfig {
+        kind: "kiss_tcp_client".to_string(),
+        enabled: Some(true),
+        ..InterfaceConfig::default()
+    };
+    let result = kiss::build_tcp_client_adapter(&iface);
+    assert!(result.is_err(), "missing host/port should fail");
+    let err = result.err().unwrap_or_default();
+    assert!(err.contains("kiss_tcp_client.host"));
+}
+
+#[test]
+fn kiss_tcp_client_builder_uses_endpoint_and_kiss_overrides() {
+    let iface = InterfaceConfig {
+        kind: "kiss_tcp_client".to_string(),
+        enabled: Some(true),
+        host: Some("192.0.2.10".to_string()),
+        port: Some(8001),
+        mtu: Some(512),
+        preamble_ms: Some(410),
+        tx_tail_ms: Some(30),
+        persistence: Some(80),
+        slot_time_ms: Some(40),
+        kiss_flow_control: Some(true),
+        id_callsign: Some("MYCALL-0".to_string()),
+        id_interval: Some(600),
+        reconnect_backoff_ms: Some(100),
+        max_reconnect_backoff_ms: Some(200),
+        ..InterfaceConfig::default()
+    };
+
+    let adapter = kiss::build_tcp_client_adapter(&iface).expect("build kiss tcp client adapter");
+    assert_eq!(adapter.addr(), "192.0.2.10:8001");
+    assert_eq!(adapter.mtu(), 512);
+    assert_eq!(adapter.reconnect_backoff(), Duration::from_millis(100));
+    assert_eq!(adapter.max_reconnect_backoff(), Duration::from_millis(200));
+    assert_eq!(
+        adapter.kiss_config(),
+        rns_transport::iface::kiss::KissConfig {
+            preamble_ms: 410,
+            tx_tail_ms: 30,
+            persistence: 80,
+            slot_time_ms: 40,
+            flow_control: true,
+            id_beacon: Some(rns_transport::iface::kiss::KissIdBeaconConfig {
+                callsign: b"MYCALL-0".to_vec(),
+                interval: Duration::from_secs(600),
+                min_payload_len: 15,
+            }),
+        }
+    );
+}
+
+#[test]
+fn kiss_tcp_client_builder_preserves_python_empty_id_beacon_when_callsign_missing() {
+    let iface = InterfaceConfig {
+        kind: "kiss_tcp_client".to_string(),
+        enabled: Some(true),
+        host: Some("192.0.2.10".to_string()),
+        port: Some(8001),
+        id_interval: Some(600),
+        ..InterfaceConfig::default()
+    };
+
+    let adapter = kiss::build_tcp_client_adapter(&iface).expect("build kiss tcp client adapter");
+
+    assert_eq!(
+        adapter.kiss_config().id_beacon,
+        Some(rns_transport::iface::kiss::KissIdBeaconConfig {
+            callsign: Vec::new(),
+            interval: Duration::from_secs(600),
+            min_payload_len: 15,
+        })
+    );
+}
+
+#[test]
+fn kiss_tcp_client_builder_supports_tcp_client_kiss_framing_alias_output() {
+    let iface = InterfaceConfig {
+        kind: "kiss_tcp_client".to_string(),
+        enabled: Some(true),
+        host: Some("192.0.2.10".to_string()),
+        port: Some(8001),
+        mtu: Some(512),
+        ..InterfaceConfig::default()
+    };
+
+    let adapter = kiss::build_tcp_client_adapter(&iface).expect("build kiss tcp client adapter");
+    assert_eq!(adapter.addr(), "192.0.2.10:8001");
+    assert_eq!(adapter.mtu(), 512);
+}
+
+#[test]
+fn lora_builder_uses_region_defaults_and_config_overrides() {
+    let iface = InterfaceConfig {
+        kind: "lora".to_string(),
+        enabled: Some(true),
+        region: Some("US915".to_string()),
+        device: Some("/dev/ttyACM1".to_string()),
+        baud_rate: Some(115200),
+        bandwidth_hz: Some(250_000),
+        spreading_factor: Some(8),
+        coding_rate: Some("4/6".to_string()),
+        tx_power_dbm: Some(14),
+        airtime_limit_short: Some(33.0),
+        airtime_limit_long: Some(1.5),
+        max_payload_bytes: Some(180),
+        flow_control: Some(toml::Value::Boolean(true)),
+        ..InterfaceConfig::default()
+    };
+
+    let adapter = lora::build_adapter(&iface).expect("build lora adapter");
+    assert_eq!(adapter.config().frequency_hz, 915_000_000);
+    assert_eq!(adapter.config().bandwidth_hz, 250_000);
+    assert_eq!(adapter.config().spreading_factor, 8);
+    assert_eq!(adapter.config().coding_rate, 6);
+    assert_eq!(adapter.config().tx_power_dbm, 14);
+    assert_eq!(adapter.config().airtime_limit_short_hundredths, Some(3_300));
+    assert_eq!(adapter.config().airtime_limit_long_hundredths, Some(150));
+    assert_eq!(adapter.config().max_payload_bytes, 180);
+    assert!(adapter.flow_control());
+}
+
+#[test]
+fn lora_builder_supports_python_rnode_tcp_port() {
+    let iface = InterfaceConfig {
+        kind: "lora".to_string(),
+        enabled: Some(true),
+        region: Some("US915".to_string()),
+        state_path: Some("/tmp/lora-state.json".to_string()),
+        device: Some("tcp://192.0.2.10:8001".to_string()),
+        frequency_hz: Some(915_000_000),
+        bandwidth_hz: Some(125_000),
+        spreading_factor: Some(9),
+        coding_rate: Some("5".to_string()),
+        tx_power_dbm: Some(17),
+        ..InterfaceConfig::default()
+    };
+
+    let adapter = lora::build_adapter(&iface).expect("build tcp rnode adapter");
+
+    assert_eq!(adapter.bearer(), rns_transport::iface::lora::LoraBearer::Tcp);
+    assert_eq!(adapter.endpoint(), "192.0.2.10:8001");
+    assert_eq!(adapter.baud_rate(), None);
+}
+
+#[test]
+fn lora_builder_supports_python_high_bandwidth_rnode_config() {
+    let iface = InterfaceConfig {
+        kind: "lora".to_string(),
+        enabled: Some(true),
+        region: Some("US915".to_string()),
+        state_path: Some("/tmp/lora-state.json".to_string()),
+        device: Some("tcp://192.0.2.10:8001".to_string()),
+        frequency_hz: Some(2_400_000_000),
+        bandwidth_hz: Some(1_625_000),
+        spreading_factor: Some(5),
+        coding_rate: Some("5".to_string()),
+        tx_power_dbm: Some(17),
+        ..InterfaceConfig::default()
+    };
+
+    let adapter = lora::build_adapter(&iface).expect("build high-bandwidth rnode adapter");
+
+    assert_eq!(adapter.config().frequency_hz, 2_400_000_000);
+    assert_eq!(adapter.config().bandwidth_hz, 1_625_000);
+    assert_eq!(adapter.config().spreading_factor, 5);
+}
+
+#[test]
+fn lora_builder_uses_python_rnode_command_timeout() {
+    let iface = InterfaceConfig {
+        kind: "lora".to_string(),
+        enabled: Some(true),
+        region: Some("US915".to_string()),
+        state_path: Some("/tmp/lora-state.json".to_string()),
+        device: Some("/dev/ttyACM1".to_string()),
+        baud_rate: Some(115200),
+        connect_timeout_ms: Some(2_750),
+        ..InterfaceConfig::default()
+    };
+
+    let adapter = lora::build_adapter(&iface).expect("build lora adapter");
+
+    assert_eq!(adapter.startup_response_timeout(), Duration::from_millis(2_750));
+}
+
+#[test]
+fn vrn76_builder_rejects_missing_peripheral_id() {
+    let iface = InterfaceConfig {
+        kind: "vrn76_kiss_ble".to_string(),
+        enabled: Some(true),
+        ..InterfaceConfig::default()
+    };
+    let result = vrn76_kiss_ble::build_config(&iface);
+    assert!(result.is_err(), "missing peripheral_id should fail");
+    let err = result.err().unwrap_or_default();
+    assert!(err.contains("vrn76_kiss_ble.peripheral_id"));
+}
+
+#[test]
+fn vrn76_builder_uses_profile_defaults_and_kiss_overrides() {
+    let iface = InterfaceConfig {
+        kind: "vrn76_kiss_ble".to_string(),
+        enabled: Some(true),
+        peripheral_id: Some("VR-N76".to_string()),
+        adapter: Some("Bluetooth".to_string()),
+        mtu: Some(512),
+        max_write_len: Some(128),
+        preamble_ms: Some(410),
+        tx_tail_ms: Some(30),
+        persistence: Some(80),
+        slot_time_ms: Some(40),
+        kiss_flow_control: Some(true),
+        scan_timeout_ms: Some(11_000),
+        connect_timeout_ms: Some(4_000),
+        ..InterfaceConfig::default()
+    };
+
+    let config = vrn76_kiss_ble::build_config(&iface).expect("build vrn76 config");
+    assert_eq!(config.peripheral_id, "VR-N76");
+    assert_eq!(config.adapter.as_deref(), Some("Bluetooth"));
+    assert_eq!(config.transport.mtu, 512);
+    assert_eq!(config.transport.max_write_len, 128);
+    assert_eq!(config.transport.scan_timeout, Duration::from_millis(11_000));
+    assert_eq!(config.transport.command_timeout, Duration::from_millis(4_000));
+    assert_eq!(config.transport.kiss.preamble_ms, 410);
+    assert_eq!(config.transport.kiss.tx_tail_ms, 30);
+    assert_eq!(config.transport.kiss.persistence, 80);
+    assert_eq!(config.transport.kiss.slot_time_ms, 40);
+    assert!(config.transport.kiss.flow_control);
+}
+
+#[test]
+fn vrn76_builder_carries_python_kiss_id_beacon_settings() {
+    let iface = InterfaceConfig {
+        kind: "vrn76_kiss_ble".to_string(),
+        enabled: Some(true),
+        peripheral_id: Some("VR-N76".to_string()),
+        id_callsign: Some("MYCALL-0".to_string()),
+        id_interval: Some(600),
+        ..InterfaceConfig::default()
+    };
+
+    let config = vrn76_kiss_ble::build_config(&iface).expect("build vrn76 config");
+
+    assert_eq!(
+        config.transport.kiss.id_beacon,
+        Some(rns_transport::iface::kiss::KissIdBeaconConfig {
+            callsign: b"MYCALL-0".to_vec(),
+            interval: Duration::from_secs(600),
+            min_payload_len: 15,
+        })
+    );
+}
+
+#[test]
+fn vrn76_builder_preserves_python_empty_id_beacon_when_callsign_missing() {
+    let iface = InterfaceConfig {
+        kind: "vrn76_kiss_ble".to_string(),
+        enabled: Some(true),
+        peripheral_id: Some("VR-N76".to_string()),
+        id_interval: Some(600),
+        ..InterfaceConfig::default()
+    };
+
+    let config = vrn76_kiss_ble::build_config(&iface).expect("build vrn76 config");
+
+    assert_eq!(
+        config.transport.kiss.id_beacon,
+        Some(rns_transport::iface::kiss::KissIdBeaconConfig {
+            callsign: Vec::new(),
+            interval: Duration::from_secs(600),
+            min_payload_len: 15,
+        })
+    );
+}
+
+#[test]
+fn vrn76_builder_uses_raw_kiss_frame_mode() {
+    let iface = InterfaceConfig {
+        kind: "vrn76_kiss_ble".to_string(),
+        enabled: Some(true),
+        peripheral_id: Some("VR-N76".to_string()),
+        frame_mode: Some("raw_kiss".to_string()),
+        ..InterfaceConfig::default()
+    };
+
+    let config = vrn76_kiss_ble::build_config(&iface).expect("build vrn76 config");
+    assert_eq!(config.transport.frame_mode, Vrn76FrameMode::RawKiss);
 }
 
 #[test]
@@ -755,6 +1112,141 @@ interfaces = [
 }
 
 #[test]
+fn bootstrap_best_effort_starts_kiss_interface_without_transport_flag() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let config_path = temp.path().join("daemon.toml");
+    fs::write(
+        &config_path,
+        r#"
+interfaces = [
+  { type = "kiss", enabled = true, name = "kiss-main", device = "__definitely_not_a_device__", baud_rate = 9600, kiss_flow_control = true }
+]
+"#,
+    )
+    .expect("write config");
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    let context = runtime.block_on(async {
+        bootstrap::bootstrap(test_args(db_path.clone(), Some(config_path.clone()), None, false))
+            .await
+    });
+    let response = context
+        .daemon
+        .handle_rpc(RpcRequest { id: 1, method: "list_interfaces".to_string(), params: None })
+        .expect("list_interfaces");
+    let interfaces = response
+        .result
+        .expect("result")
+        .get("interfaces")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .expect("interfaces array");
+    assert_eq!(interfaces.len(), 1);
+    assert_eq!(
+        interfaces[0]
+            .get("settings")
+            .and_then(|value| value.get("_runtime"))
+            .and_then(|value| value.get("startup_status"))
+            .and_then(|value| value.as_str()),
+        Some("spawned")
+    );
+}
+
+#[test]
+fn bootstrap_best_effort_starts_active_lora_interface_without_transport_flag() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let state_path = temp.path().join("lora-state.json");
+    let config_path = temp.path().join("daemon.toml");
+    fs::write(
+        &config_path,
+        format!(
+            r#"
+interfaces = [
+  {{ type = "lora", enabled = true, name = "lora-main", region = "US915", state_path = "{}", device = "__definitely_not_a_device__", baud_rate = 115200, max_payload_bytes = 220 }}
+]
+"#,
+            state_path.to_string_lossy().replace('\\', "\\\\")
+        ),
+    )
+    .expect("write config");
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    let context = runtime.block_on(async {
+        bootstrap::bootstrap(test_args(db_path.clone(), Some(config_path.clone()), None, false))
+            .await
+    });
+    let response = context
+        .daemon
+        .handle_rpc(RpcRequest { id: 1, method: "list_interfaces".to_string(), params: None })
+        .expect("list_interfaces");
+    let interfaces = response
+        .result
+        .expect("result")
+        .get("interfaces")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .expect("interfaces array");
+    assert_eq!(interfaces.len(), 1);
+    assert_eq!(
+        interfaces[0]
+            .get("settings")
+            .and_then(|value| value.get("_runtime"))
+            .and_then(|value| value.get("startup_status"))
+            .and_then(|value| value.as_str()),
+        Some("spawned")
+    );
+    assert!(state_path.exists(), "active lora startup should still persist compliance state");
+}
+
+#[cfg(not(feature = "vrn76-kiss-ble"))]
+#[test]
+fn bootstrap_best_effort_marks_vrn76_kiss_ble_feature_disabled_as_failed() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let config_path = temp.path().join("daemon.toml");
+    fs::write(
+        &config_path,
+        r#"
+interfaces = [
+  { type = "vrn76_kiss_ble", enabled = true, name = "vrn76-main", peripheral_id = "VR-N76" }
+]
+"#,
+    )
+    .expect("write config");
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    let context = runtime.block_on(async {
+        bootstrap::bootstrap(test_args(db_path.clone(), Some(config_path.clone()), None, false))
+            .await
+    });
+    let response = context
+        .daemon
+        .handle_rpc(RpcRequest { id: 1, method: "list_interfaces".to_string(), params: None })
+        .expect("list_interfaces");
+    let interfaces = response
+        .result
+        .expect("result")
+        .get("interfaces")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .expect("interfaces array");
+    let runtime = interfaces[0]
+        .get("settings")
+        .and_then(|value| value.get("_runtime"))
+        .expect("runtime settings");
+    assert_eq!(runtime.get("startup_status").and_then(|value| value.as_str()), Some("failed"));
+    assert!(runtime
+        .get("startup_error")
+        .and_then(|value| value.as_str())
+        .is_some_and(|error| error.contains("requires reticulumd feature vrn76-kiss-ble")));
+}
+
+#[test]
 fn bootstrap_starts_tcp_server_from_config_without_transport_flag() {
     let temp = TempDir::new().expect("temp dir");
     let db_path = temp.path().join("reticulum.db");
@@ -923,6 +1415,33 @@ fn reticulum_parity_matrix_mentions_config_driven_lxmd_tcp_server_startup() {
 }
 
 #[test]
+fn kiss_docs_document_bearers_and_vtn76_bluetooth() {
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let kiss_runbook =
+        fs::read_to_string(repo_root.join("docs/runbooks/reticulumd-kiss-interface.md"))
+            .expect("read KISS runbook");
+    let vrn76_interface = fs::read_to_string(repo_root.join("docs/interfaces/vrn76-kiss-ble.md"))
+        .expect("read VR-N76 KISS BLE interface doc");
+
+    assert!(
+        kiss_runbook.contains("serial, Bluetooth, Wi-Fi/TCP"),
+        "KISS runbook should document the supported connection bearers"
+    );
+    assert!(
+        vrn76_interface.contains("VT-N76/VR-N76")
+            && vrn76_interface.contains("Bluetooth KISS operation"),
+        "VR-N76 interface doc should state that VT-N76/VR-N76 KISS uses Bluetooth"
+    );
+    assert!(
+        vrn76_interface.contains("Host Bluetooth Boundary")
+            && vrn76_interface.contains("outside this repository")
+            && vrn76_interface.contains("adapter drivers")
+            && vrn76_interface.contains("pairing or bonding"),
+        "VR-N76 interface doc should separate repo-owned KISS/Benshi logic from OS Bluetooth setup"
+    );
+}
+
+#[test]
 fn bootstrap_starts_udp_interface_from_config() {
     let temp = TempDir::new().expect("temp dir");
     let db_path = temp.path().join("reticulum.db");
@@ -984,6 +1503,66 @@ interfaces = [
             .and_then(|value| value.get("startup_status"))
             .and_then(|value| value.as_str()),
         Some("spawned")
+    );
+}
+
+#[test]
+fn bootstrap_reports_auto_interface_as_explicit_runtime_gap() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let config_path = temp.path().join("daemon.toml");
+    fs::write(
+        &config_path,
+        r#"
+interfaces = [
+  { type = "AutoInterface", enabled = true, name = "auto-main" }
+]
+"#,
+    )
+    .expect("write config");
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    let context = runtime.block_on(async {
+        bootstrap::bootstrap(test_args(
+            db_path.clone(),
+            Some(config_path.clone()),
+            Some("127.0.0.1:0".to_string()),
+            false,
+        ))
+        .await
+    });
+    let response = context
+        .daemon
+        .handle_rpc(RpcRequest { id: 1, method: "list_interfaces".to_string(), params: None })
+        .expect("list_interfaces");
+    let interfaces = response
+        .result
+        .expect("result")
+        .get("interfaces")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .expect("interfaces array");
+
+    let auto = interfaces
+        .iter()
+        .find(|entry| entry.get("type").and_then(|value| value.as_str()) == Some("auto"))
+        .expect("auto entry");
+    let runtime =
+        auto.get("settings").and_then(|value| value.get("_runtime")).expect("runtime settings");
+    assert_eq!(
+        auto.get("settings")
+            .and_then(|value| value.get("discovery_multicast_address"))
+            .and_then(|value| value.as_str()),
+        Some("ff12:0:d70b:fb1c:16e4:5e39:485e:31e1")
+    );
+    assert_eq!(runtime.get("startup_status").and_then(|value| value.as_str()), Some("failed"));
+    assert!(
+        runtime
+            .get("startup_error")
+            .and_then(|value| value.as_str())
+            .is_some_and(|value| value.contains("AutoInterface OS interface discovery")),
+        "auto startup error should explain the explicit runtime gap: {runtime:?}"
     );
 }
 

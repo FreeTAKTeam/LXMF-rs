@@ -73,7 +73,15 @@ impl Config {
     }
 
     pub fn start_request(&self) -> StartRequest {
-        StartRequest::new(self.sdk_config.clone())
+        let mut sdk_config = self.sdk_config.clone();
+        if !self.custom_operations.is_empty() {
+            sdk_config.extensions.insert(
+                "custom_operations".to_owned(),
+                serde_json::to_value(&self.custom_operations)
+                    .expect("custom operation registry should serialize"),
+            );
+        }
+        StartRequest::new(sdk_config)
             .with_supported_contract_versions(self.supported_contract_versions.clone())
             .with_requested_capabilities(self.requested_capabilities.clone())
     }

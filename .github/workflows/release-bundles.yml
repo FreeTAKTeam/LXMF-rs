@@ -37,8 +37,26 @@ jobs:
         run: |
           git rev-parse -q --verify "refs/tags/$RELEASE_VERSION"
 
-  build-bundles:
+  sdk-wrapper-parity:
     needs: validate-release-version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux BLE build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libdbus-1-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: SDK wrapper parity gate
+        run: cargo test -p test-support sdk_wrapper_parity_release_gate
+
+  build-bundles:
+    needs: [validate-release-version, sdk-wrapper-parity]
     strategy:
       fail-fast: false
       matrix:

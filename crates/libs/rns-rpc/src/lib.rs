@@ -10,6 +10,7 @@ pub use rpc::{
     AnnounceBridge, DeliveryPolicy, DeliveryTraceEntry, EventSinkBridge, InterfaceMutationBridge,
     InterfaceRecord, OutboundBridge, OutboundDeliveryOptions, PaperDecodeOutcome,
     PaperEncodeEnvelope, PeerRecord, PropagationState, RemoteControlBridge, RpcDaemon, RpcError,
-    RpcEvent, RpcEventSinkEnvelope, RpcRequest, RpcResponse, StampPolicy, TicketRecord,
+    RpcEvent, RpcEventSinkEnvelope, RpcRequest, RpcResponse, SdkCustomOperationSpec, StampPolicy,
+    TicketRecord,
 };
 pub use storage::messages::{AnnounceRecord, MessageRecord, MessagesStore};

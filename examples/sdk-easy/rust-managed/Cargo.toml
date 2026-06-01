@@ -1,0 +1,13 @@
+[package]
+name = "lxmf-sdk-easy-rust-managed"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+lxmf-sdk = { path = "../../../crates/libs/lxmf-sdk", features = ["rpc-backend", "sdk-async", "std"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tokio-stream = "0.1"

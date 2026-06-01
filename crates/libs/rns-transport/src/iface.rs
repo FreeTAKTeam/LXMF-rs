@@ -1,9 +1,14 @@
+pub mod auto;
 pub mod driver;
 pub mod hdlc;
+pub mod kiss;
+pub mod lora;
+pub mod rnode_ble;
 pub mod serial;
 pub mod tcp_client;
 pub mod tcp_server;
 pub mod udp;
+pub mod vrn76_kiss_ble;
 
 use std::collections::VecDeque;
 use std::net::SocketAddr;
@@ -173,6 +178,7 @@ struct LocalInterface {
     stop: CancellationToken,
     role: IfaceRole,
     mode: InterfaceMode,
+    outgoing: bool,
     announce_queue: VecDeque<QueuedAnnounce>,
     announce_allowed_at: Instant,
     announce_bitrate_bps: u64,
@@ -243,6 +249,7 @@ impl InterfaceManager {
             stop: stop.clone(),
             role,
             mode,
+            outgoing: true,
             announce_queue: VecDeque::new(),
             announce_allowed_at: Instant::now(),
             announce_bitrate_bps: DEFAULT_IFACE_BITRATE_BPS,
@@ -327,6 +334,17 @@ impl InterfaceManager {
         self.ifaces.iter().find(|i| i.address == *address).map(|i| i.mode)
     }
 
+    pub fn outgoing(&self, address: &AddressHash) -> Option<bool> {
+        self.ifaces.iter().find(|i| i.address == *address).map(|i| i.outgoing)
+    }
+
+    pub fn announce_pacing(&self, address: &AddressHash) -> Option<(u64, u64)> {
+        self.ifaces
+            .iter()
+            .find(|i| i.address == *address)
+            .map(|i| (i.announce_bitrate_bps, i.announce_cap_percent))
+    }
+
     pub fn full_hash(&self, address: &AddressHash) -> Option<Hash> {
         self.ifaces.iter().find(|i| i.address == *address).map(|i| i.full_hash)
     }
@@ -338,6 +356,30 @@ impl InterfaceManager {
     pub fn set_mode(&mut self, address: AddressHash, mode: InterfaceMode) -> bool {
         if let Some(iface) = self.ifaces.iter_mut().find(|i| i.address == address) {
             iface.mode = mode;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn set_outgoing(&mut self, address: AddressHash, outgoing: bool) -> bool {
+        if let Some(iface) = self.ifaces.iter_mut().find(|i| i.address == address) {
+            iface.outgoing = outgoing;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn set_announce_pacing(
+        &mut self,
+        address: AddressHash,
+        bitrate_bps: u64,
+        cap_percent: u64,
+    ) -> bool {
+        if let Some(iface) = self.ifaces.iter_mut().find(|i| i.address == address) {
+            iface.announce_bitrate_bps = bitrate_bps;
+            iface.announce_cap_percent = cap_percent;
             true
         } else {
             false
@@ -389,6 +431,7 @@ impl InterfaceManager {
             stop,
             role,
             mode,
+            outgoing: host_iface.outgoing,
             announce_queue: VecDeque::new(),
             announce_allowed_at: Instant::now(),
             announce_bitrate_bps: host_iface.announce_bitrate_bps,
@@ -526,6 +569,7 @@ impl InterfaceManager {
 
         for iface in &mut self.ifaces {
             if iface.stop.is_cancelled()
+                || !iface.outgoing
                 || iface.announce_queue.is_empty()
                 || now < iface.announce_allowed_at
             {
@@ -590,7 +634,7 @@ impl InterfaceManager {
                 TxMessageType::Direct(address) => address == iface.address,
             };
 
-            if should_send && !iface.stop.is_cancelled() {
+            if should_send && iface.outgoing && !iface.stop.is_cancelled() {
                 trace.matched_ifaces += 1;
                 let is_paced_announce = message.packet.header.packet_type == PacketType::Announce
                     && message.packet.header.hops > 0

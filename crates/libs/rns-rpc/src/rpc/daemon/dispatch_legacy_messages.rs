@@ -7,11 +7,38 @@ impl RpcDaemon {
     ) -> Result<RpcResponse, std::io::Error> {
         match request.method.as_str() {
             "list_messages" => {
-                let items = self.store.list_messages(100, None).map_err(std::io::Error::other)?;
+                let parsed = request
+                    .params
+                    .map(serde_json::from_value::<ListMessagesParams>)
+                    .transpose()
+                    .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?
+                    .unwrap_or_default();
+                let limit = parsed.limit.unwrap_or(100).clamp(1, 5000);
+                let (before_ts, before_id) = match parsed.before_ts {
+                    Some(timestamp) => (Some(timestamp), None),
+                    None => {
+                        parse_timestamp_id_cursor(parsed.cursor.as_deref()).unwrap_or((None, None))
+                    }
+                };
+                let page_limit = limit.saturating_add(1);
+                let mut items = self
+                    .store
+                    .list_messages_page(page_limit, before_ts, before_id.as_deref())
+                    .map_err(std::io::Error::other)?;
+                let has_more = items.len() > limit;
+                if has_more {
+                    items.truncate(limit);
+                }
+                let next_cursor = if has_more {
+                    items.last().map(|record| format!("{}:{}", record.timestamp, record.id))
+                } else {
+                    None
+                };
                 Ok(RpcResponse {
                     id: request.id,
                     result: Some(json!({
                         "messages": items,
+                        "next_cursor": next_cursor,
                         "meta": self.response_meta(),
                     })),
                     error: None,
@@ -30,11 +57,16 @@ impl RpcDaemon {
                     Some(timestamp) => (Some(timestamp), None),
                     None => parse_announce_cursor(parsed.cursor.as_deref()).unwrap_or((None, None)),
                 };
-                let items = self
+                let page_limit = limit.saturating_add(1);
+                let mut items = self
                     .store
-                    .list_announces(limit, before_ts, before_id.as_deref())
+                    .list_announces(page_limit, before_ts, before_id.as_deref())
                     .map_err(std::io::Error::other)?;
-                let next_cursor = if items.len() >= limit {
+                let has_more = items.len() > limit;
+                if has_more {
+                    items.truncate(limit);
+                }
+                let next_cursor = if has_more {
                     items.last().map(|record| format!("{}:{}", record.timestamp, record.id))
                 } else {
                     None
@@ -651,27 +683,26 @@ impl RpcDaemon {
             }
         }
         let lxmf = Self::message_lxmf(message);
-        if let Some(progress) =
-            lxmf.and_then(|lxmf| lxmf.get("progress")).and_then(JsonValue::as_f64)
-        {
-            return Some(progress.clamp(0.0, 1.0));
-        }
-        match lxmf
+        let stamp_state = lxmf
             .and_then(|lxmf| lxmf.get("stamp_state"))
             .and_then(JsonValue::as_str)
-            .map(|state| state.trim().to_ascii_lowercase())
-            .as_deref()
-        {
+            .map(|state| state.trim().to_ascii_lowercase());
+        let propagation_stamp_state = lxmf
+            .and_then(|lxmf| lxmf.get("propagation_stamp_state"))
+            .and_then(JsonValue::as_str)
+            .map(|state| state.trim().to_ascii_lowercase());
+        let explicit_progress =
+            lxmf.and_then(|lxmf| lxmf.get("progress")).and_then(JsonValue::as_f64);
+
+        match stamp_state.as_deref() {
             Some("failed" | "cancelled") => None,
             Some("generating") => Some(0.0),
-            _ => match lxmf
-                .and_then(|lxmf| lxmf.get("propagation_stamp_state"))
-                .and_then(JsonValue::as_str)
-                .map(|state| state.trim().to_ascii_lowercase())
-                .as_deref()
-            {
+            _ => match propagation_stamp_state.as_deref() {
                 Some("failed" | "cancelled") => None,
                 Some("generating") => Some(0.0),
+                _ if explicit_progress.is_some() => {
+                    explicit_progress.map(|progress| progress.clamp(0.0, 1.0))
+                }
                 _ if message.receipt_status.as_deref().is_some_and(|status| {
                     matches!(status.trim().to_ascii_lowercase().as_str(), "queued" | "sending")
                 }) =>
@@ -691,6 +722,9 @@ impl RpcDaemon {
             return None;
         }
         let lxmf = Self::message_lxmf(message)?;
+        if Self::lxmf_state_is_terminal(lxmf, "stamp_state") {
+            return None;
+        }
         if Self::has_outbound_ticket_marker(lxmf.get("outbound_ticket"))
             || Self::has_outbound_ticket_marker(lxmf.get("stamp_ticket_source"))
             || lxmf.get("stamp_kind").and_then(JsonValue::as_str) == Some("ticket")
@@ -709,8 +743,17 @@ impl RpcDaemon {
             return None;
         }
         let lxmf = Self::message_lxmf(message)?;
+        if Self::lxmf_state_is_terminal(lxmf, "propagation_stamp_state") {
+            return None;
+        }
         Self::json_u32(lxmf.get("propagation_target_cost"))
             .or_else(|| Self::json_u32(lxmf.get("propagation_stamp_target_cost")))
+    }
+
+    fn lxmf_state_is_terminal(lxmf: &serde_json::Map<String, JsonValue>, state_key: &str) -> bool {
+        lxmf.get(state_key).and_then(JsonValue::as_str).is_some_and(|state| {
+            matches!(state.trim().to_ascii_lowercase().as_str(), "failed" | "cancelled")
+        })
     }
 
     fn has_outbound_ticket_marker(value: Option<&JsonValue>) -> bool {

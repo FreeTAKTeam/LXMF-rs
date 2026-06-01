@@ -64,6 +64,10 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
 - Delivery-mode parity baseline is implemented in active `reticulumd` tests.
   Treat deeper propagation-router behavior as the remaining open area instead
   of the old "bridge ignores delivery mode" claim.
+- Daemon status and peer scoring now preserve Python's `sent` vs `delivered`
+  distinction for active send/resource completion and delivery-receipt paths.
+- Tracked outbound resource timeout now propagates as a failed daemon receipt
+  instead of silently dropping transport state.
 - Propagation-node parity is incomplete. The active RPC propagation flow is mostly a local payload store and metadata layer, not full LXMF peer/node sync behavior.
 - Peer parity is incomplete. Peer records, configured static peers, events,
   runtime counters, acceptance-rate/backoff fields, Python-style message
@@ -81,14 +85,18 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
   older unexpired tickets valid like Python, outbound ticket stamps are
   generated, signed inbound tickets are remembered for replies, and
   Python-style expired ticket cleanup is implemented. Python-style outbound
-  progress and stamp-cost queries exist over stored message state. The
+  progress and stamp-cost queries exist over stored message state. Inbound
+  delivery-stamp validation and local propagated-message stamp metadata apply
+  the Python-compatible configured flexibility floors. The
   remaining gap is the full Python deferred-stamp queue, live worker progress,
   and retry lifecycle.
 - Outbound cancellation is stronger than a status-only marker: spawned
   `reticulumd` delivery tasks now observe persisted `cancelled` state at
   scheduling, payload, identity-wait, propagation, and link-send boundaries.
-  It remains partial because already in-flight transport sends are not aborted
-  through a Python-style router work queue.
+  Tracked resource-backed sends now monitor persisted cancel state and abort
+  the active Reticulum resource with `ResourceInitiatorCancel` when the user
+  cancels after the resource has started. It remains partial because the full
+  Python router work queue and retry lifecycle are not yet mirrored.
 - Release B/C SDK domains are broader than Python LXMF, but many are app-domain state machines rather than wire/protocol parity.
 
 ## Reassessment Summary

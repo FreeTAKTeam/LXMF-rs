@@ -2050,11 +2050,13 @@ name = "reticulum-rs-transport"
 version = "0.2.0"
 dependencies = [
  "aes",
+ "btleplug",
  "bzip2",
  "cbc",
  "criterion",
  "crypto-common",
  "ed25519-dalek",
+ "futures",
  "hex",
  "hkdf",
  "hmac",
@@ -2075,6 +2077,7 @@ dependencies = [
  "tokio-serial",
  "tokio-util",
  "tracing",
+ "uuid",
  "x25519-dalek",
 ]
 

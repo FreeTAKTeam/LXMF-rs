@@ -21,6 +21,28 @@ fn config_operation_registry_merges_custom_entries() {
 }
 
 #[test]
+fn config_start_request_carries_custom_operations_for_rpc_daemon() {
+    let request = Config::testing_default()
+        .with_custom_operation(
+            OperationEntry::new(
+                "r3akt.message.send",
+                "r3akt",
+                OperationKind::Command,
+                TransportVariant::Extension,
+                "Send a R3AKT product message through the shared operation runtime.",
+            )
+            .with_alias("R3AKT;EMergencyMessages.send"),
+        )
+        .start_request();
+
+    let operations = request.config.extensions["custom_operations"]
+        .as_array()
+        .expect("custom operations extension");
+    assert_eq!(operations[0]["id"], json!("r3akt.message.send"));
+    assert_eq!(operations[0]["aliases"][0], json!("R3AKT;EMergencyMessages.send"));
+}
+
+#[test]
 fn client_exposes_built_in_registry_before_start() {
     let app = Client::new(MockBackend::new());
     let registry = app.operation_registry().expect("registry");

@@ -26,6 +26,7 @@ mod certification_tests;
 mod crypto_agility_tests;
 mod key_management_tests;
 mod model_tests;
+mod operation_runtime_extraction_tests;
 mod release_bc_tests;
 
 const EVENT_LOG_OVERFLOW_TRIGGER: usize = 1_100;

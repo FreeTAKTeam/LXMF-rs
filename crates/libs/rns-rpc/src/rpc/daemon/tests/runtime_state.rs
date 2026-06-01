@@ -537,6 +537,48 @@ fn outbound_lxm_progress_normalizes_stamp_state_strings() {
 }
 
 #[test]
+fn outbound_lxm_progress_ignores_stale_progress_after_terminal_stamp_state() {
+    let daemon = RpcDaemon::test_instance();
+    for (message_id, lxmf) in [
+        (
+            "failed-stamp-state-with-stale-progress",
+            json!({ "progress": 0.75, "stamp_state": "failed" }),
+        ),
+        (
+            "cancelled-propagation-stamp-state-with-stale-progress",
+            json!({ "progress": 0.5, "propagation_stamp_state": "cancelled" }),
+        ),
+    ] {
+        daemon
+            .accept_inbound(MessageRecord {
+                id: message_id.to_string(),
+                source: "src".to_string(),
+                destination: "dst".to_string(),
+                title: "title".to_string(),
+                content: "content".to_string(),
+                timestamp: 1_700_000_000,
+                direction: "out".to_string(),
+                fields: Some(json!({ "_lxmf": lxmf })),
+                receipt_status: Some("sending".to_string()),
+            })
+            .expect("store outbound");
+
+        let progress = daemon
+            .handle_rpc(rpc_request(
+                21,
+                "get_outbound_progress",
+                json!({ "message_id": message_id }),
+            ))
+            .expect("progress")
+            .result
+            .expect("progress result");
+
+        assert_eq!(progress["message_id"], json!(message_id));
+        assert_eq!(progress["progress"], JsonValue::Null);
+    }
+}
+
+#[test]
 fn outbound_lxm_stamp_cost_is_null_when_ticket_stamp_is_used() {
     let daemon = RpcDaemon::test_instance();
     daemon
@@ -809,6 +851,49 @@ fn outbound_lxm_stamp_cost_queries_are_null_after_terminal_status() {
             .result
             .expect("propagation stamp cost result");
         assert_eq!(propagation_stamp_cost["propagation_stamp_cost"], JsonValue::Null);
+    }
+}
+
+#[test]
+fn outbound_lxm_stamp_cost_queries_ignore_stale_cost_after_terminal_stamp_state() {
+    let daemon = RpcDaemon::test_instance();
+    for (message_id, lxmf, method, result_key) in [
+        (
+            "failed-stamp-state-cost-query",
+            json!({ "stamp_state": " FAILED ", "stamp_target_cost": 7 }),
+            "get_outbound_lxm_stamp_cost",
+            "stamp_cost",
+        ),
+        (
+            "cancelled-propagation-stamp-state-cost-query",
+            json!({
+                "propagation_stamp_state": " cancelled ",
+                "propagation_stamp_target_cost": 9
+            }),
+            "get_outbound_lxm_propagation_stamp_cost",
+            "propagation_stamp_cost",
+        ),
+    ] {
+        daemon
+            .accept_inbound(MessageRecord {
+                id: message_id.to_string(),
+                source: "src".to_string(),
+                destination: "dst".to_string(),
+                title: "title".to_string(),
+                content: "content".to_string(),
+                timestamp: 1_700_000_000,
+                direction: "out".to_string(),
+                fields: Some(json!({ "_lxmf": lxmf })),
+                receipt_status: Some("sending".to_string()),
+            })
+            .expect("store outbound");
+
+        let stamp_cost = daemon
+            .handle_rpc(rpc_request(22, method, json!({ "message_id": message_id })))
+            .expect("stamp cost")
+            .result
+            .expect("stamp cost result");
+        assert_eq!(stamp_cost[result_key], JsonValue::Null);
     }
 }
 

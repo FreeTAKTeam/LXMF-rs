@@ -196,6 +196,7 @@ impl SdkBackend for ZmqPipelineBackendClient {
                     "overflow_policy": req.overflow_policy,
                     "block_timeout_ms": req.block_timeout_ms,
                     "rpc_backend": rpc_backend,
+                    "extensions": req.extensions,
                 }
             })),
         )?;

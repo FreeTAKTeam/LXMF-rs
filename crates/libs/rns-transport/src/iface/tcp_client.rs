@@ -37,24 +37,51 @@ fn tx_diag_enabled() -> bool {
     })
 }
 
+fn tcp_wire_buffer_capacity(mtu: usize) -> usize {
+    // Worst-case HDLC expansion doubles bytes (all escaped) plus frame delimiters.
+    mtu.saturating_mul(2).saturating_add(16)
+}
+
 pub struct TcpClient {
     addr: String,
     stream: Option<TcpStream>,
+    mtu: usize,
 }
 
 impl TcpClient {
+    pub const DEFAULT_MTU: usize = 2048;
+
     pub fn new<T: Into<String>>(addr: T) -> Self {
-        Self { addr: addr.into(), stream: None }
+        Self { addr: addr.into(), stream: None, mtu: Self::DEFAULT_MTU }
     }
 
     pub fn new_from_stream<T: Into<String>>(addr: T, stream: TcpStream) -> Self {
-        Self { addr: addr.into(), stream: Some(stream) }
+        Self { addr: addr.into(), stream: Some(stream), mtu: Self::DEFAULT_MTU }
+    }
+
+    #[must_use]
+    pub fn with_mtu(mut self, mtu: usize) -> Self {
+        self.mtu = mtu.max(256);
+        self
+    }
+
+    #[must_use]
+    pub fn addr(&self) -> &str {
+        &self.addr
+    }
+
+    #[must_use]
+    pub fn mtu_value(&self) -> usize {
+        self.mtu
     }
 
     #[tracing::instrument(name = "tcp_peer", skip_all, fields(addr = tracing::field::Empty))]
     pub async fn spawn(context: InterfaceContext<TcpClient>) {
         let iface_stop = context.channel.stop.clone();
-        let addr = { context.inner.lock().unwrap().addr.clone() };
+        let (addr, mtu) = {
+            let guard = context.inner.lock().unwrap();
+            (guard.addr.clone(), guard.mtu)
+        };
         tracing::Span::current().record("addr", addr.as_str());
         let iface_address = context.channel.address;
         let mut stream = { context.inner.lock().unwrap().stream.take() };
@@ -103,8 +130,6 @@ impl TcpClient {
             // Use protocol MTU-scale buffers, not size_of::<Packet>(), since packet
             // struct size does not reflect serialized wire size and can silently drop
             // larger payloads during serialization.
-            const BUFFER_SIZE: usize = 2048;
-
             // Start receive task
             let rx_task = {
                 let cancel = cancel.clone();
@@ -113,9 +138,9 @@ impl TcpClient {
                 let rx_channel = rx_channel.clone();
 
                 tokio::spawn(async move {
-                    let mut hdlc_rx_buffer = [0u8; BUFFER_SIZE];
-                    let mut frame_buffer: Vec<u8> = Vec::with_capacity(BUFFER_SIZE * 4);
-                    let mut tcp_buffer = [0u8; (BUFFER_SIZE * 16)];
+                    let mut hdlc_rx_buffer = vec![0u8; mtu];
+                    let mut frame_buffer: Vec<u8> = Vec::with_capacity(mtu.saturating_mul(4));
+                    let mut tcp_buffer = vec![0u8; mtu.saturating_mul(16)];
 
                     loop {
                         tokio::select! {
@@ -179,7 +204,7 @@ impl TcpClient {
                                                 frame_buffer.drain(..=end);
                                             }
 
-                                            if frame_buffer.len() > BUFFER_SIZE * 64 {
+                                            if frame_buffer.len() > mtu.saturating_mul(64) {
                                                 // Guard against unbounded growth on malformed
                                                 // streams where no valid frame closes.
                                                 frame_buffer.clear();
@@ -208,8 +233,8 @@ impl TcpClient {
                             break;
                         }
 
-                        let mut hdlc_tx_buffer = [0u8; BUFFER_SIZE];
-                        let mut tx_buffer = [0u8; BUFFER_SIZE];
+                        let mut hdlc_tx_buffer = vec![0u8; tcp_wire_buffer_capacity(mtu)];
+                        let mut tx_buffer = vec![0u8; mtu];
 
                         let mut tx_channel = tx_channel.lock().await;
 
@@ -286,6 +311,31 @@ impl TcpClient {
 
 impl Interface for TcpClient {
     fn mtu() -> usize {
-        2048
+        TcpClient::DEFAULT_MTU
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{tcp_wire_buffer_capacity, TcpClient};
+    use crate::buffer::OutputBuffer;
+    use crate::iface::hdlc::Hdlc;
+
+    #[test]
+    fn tcp_client_default_and_configured_mtu_are_exposed() {
+        assert_eq!(TcpClient::new("rmap.world:4242").mtu_value(), TcpClient::DEFAULT_MTU);
+        assert_eq!(TcpClient::new("rmap.world:4242").with_mtu(4096).mtu_value(), 4096);
+        assert_eq!(TcpClient::new("rmap.world:4242").with_mtu(64).mtu_value(), 256);
+    }
+
+    #[test]
+    fn tcp_wire_capacity_handles_worst_case_hdlc_escape_expansion() {
+        let mtu = 512;
+        let raw = vec![0x7e_u8; mtu];
+        let mut wire = vec![0_u8; tcp_wire_buffer_capacity(mtu)];
+        let mut output = OutputBuffer::new(&mut wire[..]);
+
+        let encoded_len = Hdlc::encode(&raw, &mut output).expect("encode worst-case payload");
+        assert!(encoded_len >= (mtu * 2) + 2, "wire len must cover escaped payload plus flags");
     }
 }

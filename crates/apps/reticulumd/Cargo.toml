@@ -41,6 +41,7 @@ zeromq = { workspace = true, optional = true }
 [features]
 default = []
 zmq-pipeline-rpc = ["dep:zeromq"]
+vrn76-kiss-ble = ["rns_transport/vrn76-kiss-ble"]
 
 [dev-dependencies]
 tempfile = { workspace = true }

@@ -28,6 +28,36 @@ mod tests {
     }
 
     #[test]
+    fn new_channel_defaults_to_outgoing_enabled() {
+        let mut mgr = InterfaceManager::new(16);
+        let channel = mgr.new_channel(16);
+        assert_eq!(mgr.outgoing(channel.address()), Some(true));
+    }
+
+    #[test]
+    fn set_outgoing_updates_registered_iface() {
+        let mut mgr = InterfaceManager::new(16);
+        let channel = mgr.new_channel(16);
+        assert!(mgr.set_outgoing(*channel.address(), false));
+        assert_eq!(mgr.outgoing(channel.address()), Some(false));
+    }
+
+    #[test]
+    fn new_channel_defaults_to_python_style_announce_pacing() {
+        let mut mgr = InterfaceManager::new(16);
+        let channel = mgr.new_channel(16);
+        assert_eq!(mgr.announce_pacing(channel.address()), Some((62_500, 2)));
+    }
+
+    #[test]
+    fn set_announce_pacing_updates_registered_iface() {
+        let mut mgr = InterfaceManager::new(16);
+        let channel = mgr.new_channel(16);
+        assert!(mgr.set_announce_pacing(*channel.address(), 1200, 5));
+        assert_eq!(mgr.announce_pacing(channel.address()), Some((1200, 5)));
+    }
+
+    #[test]
     fn set_mode_updates_registered_iface() {
         let mut mgr = InterfaceManager::new(16);
         let channel = mgr.new_channel(16);
@@ -109,6 +139,18 @@ mod tests {
         assert_eq!(mgr.mode(&virtual_iface), Some(InterfaceMode::Gateway));
     }
 
+    #[test]
+    fn virtual_iface_inherits_host_announce_pacing() {
+        let mut mgr = InterfaceManager::new(16);
+        let host = *mgr
+            .new_channel_with_role_and_mode(16, IfaceRole::Multicast, InterfaceMode::Gateway)
+            .address();
+        assert!(mgr.set_announce_pacing(host, 1200, 5));
+        let virtual_iface =
+            mgr.register_virtual_iface(host, IfaceRole::VirtualUnicast).expect("virtual iface");
+        assert_eq!(mgr.announce_pacing(&virtual_iface), Some((1200, 5)));
+    }
+
     #[tokio::test]
     async fn access_point_blocks_remote_announce_broadcasts() {
         let mut mgr = InterfaceManager::new(16);
@@ -126,6 +168,37 @@ mod tests {
             )
             .await;
         assert_eq!(trace.sent_ifaces, 0);
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn outgoing_disabled_iface_drops_broadcast_tx() {
+        let mut mgr = InterfaceManager::new(16);
+        let mut rx = mgr.new_channel(16).tx_channel;
+        let iface = mgr.ifaces[0].address;
+        assert!(mgr.set_outgoing(iface, false));
+        let packet = Packet::default();
+
+        let trace =
+            mgr.send(TxMessage { tx_type: TxMessageType::Broadcast(None), packet }).await;
+
+        assert_eq!(trace.sent_ifaces, 0);
+        assert_eq!(trace.matched_ifaces, 0);
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn outgoing_disabled_iface_drops_direct_tx() {
+        let mut mgr = InterfaceManager::new(16);
+        let mut rx = mgr.new_channel(16).tx_channel;
+        let iface = mgr.ifaces[0].address;
+        assert!(mgr.set_outgoing(iface, false));
+        let packet = Packet::default();
+
+        let trace = mgr.send(TxMessage { tx_type: TxMessageType::Direct(iface), packet }).await;
+
+        assert_eq!(trace.sent_ifaces, 0);
+        assert_eq!(trace.matched_ifaces, 0);
         assert!(rx.try_recv().is_err());
     }
 

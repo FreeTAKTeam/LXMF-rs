@@ -179,6 +179,7 @@ impl<B: SdkBackend> LxmfSdk for Client<B> {
             overflow_policy: req.config.overflow_policy.clone(),
             block_timeout_ms: req.config.block_timeout_ms,
             rpc_backend: req.config.rpc_backend.clone(),
+            extensions: req.config.extensions.clone(),
         }) {
             Ok(negotiation) => negotiation,
             Err(err) => {

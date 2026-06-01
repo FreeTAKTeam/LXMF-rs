@@ -1,7 +1,8 @@
 use crate::profiles::required_capabilities;
 use crate::types::{AuthMode, BindMode, OverflowPolicy, Profile, RpcBackendConfig};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use serde_json::Value as JsonValue;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -62,6 +63,8 @@ pub struct NegotiationRequest {
     pub overflow_policy: OverflowPolicy,
     pub block_timeout_ms: Option<u64>,
     pub rpc_backend: Option<RpcBackendConfig>,
+    #[serde(default)]
+    pub extensions: BTreeMap<String, JsonValue>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]

@@ -63,7 +63,47 @@ impl ResourceManager {
         if sent {
             sender.mark_advertised(self.retry_limit);
             self.outgoing.insert(resource_hash, sender);
+        } else {
+            self.events.push(ResourceEvent {
+                hash: resource_hash,
+                link_id: sender.link_id,
+                kind: ResourceEventKind::OutboundFailed,
+            });
         }
+    }
+
+    pub fn cancel_outgoing(
+        &mut self,
+        resource_hash: Hash,
+        link: &Link,
+    ) -> Result<Option<Packet>, RnsError> {
+        if self.outgoing.contains_key(&resource_hash) {
+            let packet = build_link_packet(
+                link,
+                PacketType::Data,
+                PacketContext::ResourceInitiatorCancel,
+                resource_hash.as_slice(),
+            )?;
+            let sender = self
+                .outgoing
+                .remove(&resource_hash)
+                .expect("outgoing sender existed before cancel packet");
+            self.events.push(ResourceEvent {
+                hash: resource_hash,
+                link_id: sender.link_id,
+                kind: ResourceEventKind::OutboundCancelled,
+            });
+            return Ok(Some(packet));
+        }
+
+        if let Some(sender) = self.pending_outgoing.remove(&resource_hash) {
+            self.events.push(ResourceEvent {
+                hash: resource_hash,
+                link_id: sender.link_id,
+                kind: ResourceEventKind::OutboundCancelled,
+            });
+        }
+        Ok(None)
     }
 
     pub fn remove_link_state(&mut self, link_id: AddressHash) {
@@ -110,6 +150,11 @@ impl ResourceManager {
                     packets.push((sender.link_id, *packet));
                 }
                 OutboundResourcePoll::Failed => {
+                    self.events.push(ResourceEvent {
+                        hash: *hash,
+                        link_id: sender.link_id,
+                        kind: ResourceEventKind::OutboundFailed,
+                    });
                     failed.push(*hash);
                 }
                 OutboundResourcePoll::None => {}

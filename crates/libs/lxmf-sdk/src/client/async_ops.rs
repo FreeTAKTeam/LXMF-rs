@@ -39,6 +39,7 @@ impl<B: SdkBackendAsyncOps> Client<B> {
                 overflow_policy: req.config.overflow_policy.clone(),
                 block_timeout_ms: req.config.block_timeout_ms,
                 rpc_backend: req.config.rpc_backend.clone(),
+                extensions: req.config.extensions.clone(),
             })
             .await
         {

@@ -1,6 +1,93 @@
 use super::*;
 use crate::outbound_resources;
 
+pub(super) async fn cancel_tracked_resource_if_message_cancelled(
+    daemon: &RpcDaemon,
+    transport: &Transport,
+    outbound_resource_map: &OutboundResourceMap,
+    message_id: &str,
+    link_id: AddressHash,
+    resource_hash: rns_transport::hash::Hash,
+) -> Result<bool, std::io::Error> {
+    let status = daemon.message_receipt_status(message_id).map_err(std::io::Error::other)?;
+    if !DeliveryTask::is_cancelled_status(status.as_deref()) {
+        return Ok(false);
+    }
+
+    let cancelled = transport
+        .cancel_resource(&link_id, resource_hash)
+        .await
+        .map_err(|err| std::io::Error::other(format!("resource cancel not sent: {err:?}")))?;
+    if cancelled {
+        outbound_resources::prune_outbound_resource_mappings_for_message(
+            outbound_resource_map,
+            message_id,
+        );
+    }
+    Ok(cancelled)
+}
+
+pub(super) struct ResourceCancelMonitor {
+    pub(super) daemon: Arc<RpcDaemon>,
+    pub(super) transport: Arc<Transport>,
+    pub(super) outbound_resource_map: OutboundResourceMap,
+    pub(super) message_id: String,
+    pub(super) destination_hex: String,
+    pub(super) trace_stage: String,
+    pub(super) link_id: AddressHash,
+    pub(super) resource_hash: rns_transport::hash::Hash,
+}
+
+pub(super) fn spawn_tracked_resource_cancel_monitor(monitor: ResourceCancelMonitor) {
+    tokio::spawn(async move {
+        let resource_hash_hex = hex::encode(monitor.resource_hash.as_slice());
+        let mut interval = tokio::time::interval(Duration::from_millis(250));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        for _ in 0..(30 * 60 * 4) {
+            interval.tick().await;
+            let still_tracked = monitor
+                .outbound_resource_map
+                .lock()
+                .ok()
+                .is_some_and(|guard| guard.contains_key(&resource_hash_hex));
+            if !still_tracked {
+                return;
+            }
+            match cancel_tracked_resource_if_message_cancelled(
+                monitor.daemon.as_ref(),
+                monitor.transport.as_ref(),
+                &monitor.outbound_resource_map,
+                &monitor.message_id,
+                monitor.link_id,
+                monitor.resource_hash,
+            )
+            .await
+            {
+                Ok(true) => {
+                    log_delivery_trace(
+                        &monitor.message_id,
+                        &monitor.destination_hex,
+                        monitor.trace_stage.as_str(),
+                        format!("resource_cancelled hash={resource_hash_hex}").as_str(),
+                    );
+                    return;
+                }
+                Ok(false) => {}
+                Err(err) => {
+                    log_delivery_trace(
+                        &monitor.message_id,
+                        &monitor.destination_hex,
+                        monitor.trace_stage.as_str(),
+                        format!("resource_cancel_failed hash={resource_hash_hex} err={err}")
+                            .as_str(),
+                    );
+                    return;
+                }
+            }
+        }
+    });
+}
+
 impl DeliveryTask {
     pub(super) async fn send_via_link_mode(
         &self,
@@ -21,13 +108,15 @@ impl DeliveryTask {
                 "opening or reusing link",
             );
         }
-        let result = send_via_link(
-            self.transport.as_ref(),
-            destination_desc,
-            payload,
-            Duration::from_secs(20),
-        )
-        .await;
+        let link = self.transport.link(destination_desc).await;
+        let link_id = *link.lock().await.id();
+        let result =
+            match await_link_activation(self.transport.as_ref(), &link, Duration::from_secs(20))
+                .await
+            {
+                Ok(()) => send_on_link(self.transport.as_ref(), &link, payload).await,
+                Err(err) => Err(err),
+            };
         if diagnostics_enabled() {
             let payload_starts_with_dst =
                 payload.len() >= 16 && payload[..16] == self.destination[..];
@@ -42,7 +131,7 @@ impl DeliveryTask {
 
         match result {
             Ok(LinkSendResult::Packet(packet)) => {
-                self.daemon.record_outbound_peer_activity(activity_peer, payload.len(), true);
+                self.daemon.record_outbound_peer_sent(activity_peer, payload.len());
                 let packet_hash = hex::encode(packet.hash().to_bytes());
                 track_receipt_mapping(&self.receipt_map, &packet_hash, &self.message_id);
                 let detail = if diagnostics_enabled() {
@@ -74,6 +163,16 @@ impl DeliveryTask {
                         sent_status: statuses.resource_sent.to_string(),
                     },
                 );
+                spawn_tracked_resource_cancel_monitor(ResourceCancelMonitor {
+                    daemon: self.daemon.clone(),
+                    transport: self.transport.clone(),
+                    outbound_resource_map: self.outbound_resource_map.clone(),
+                    message_id: self.message_id.clone(),
+                    destination_hex: self.destination_hex.clone(),
+                    trace_stage: trace_stage.to_string(),
+                    link_id,
+                    resource_hash,
+                });
                 let detail = format!("resource_hash={resource_hash_hex}");
                 log_delivery_trace(&self.message_id, &self.destination_hex, trace_stage, &detail);
                 let _ = self.receipt_tx.try_send(ReceiptEvent {
@@ -120,6 +219,16 @@ impl DeliveryTask {
                     sent_status: statuses.resource_sent.to_string(),
                 },
             );
+            spawn_tracked_resource_cancel_monitor(ResourceCancelMonitor {
+                daemon: self.daemon.clone(),
+                transport: self.transport.clone(),
+                outbound_resource_map: self.outbound_resource_map.clone(),
+                message_id: self.message_id.clone(),
+                destination_hex: self.destination_hex.clone(),
+                trace_stage: trace_stage.to_string(),
+                link_id,
+                resource_hash,
+            });
             let detail = format!(
                 "resource_hash={} bytes={} peer={} destination={}",
                 resource_hash_hex,
@@ -174,7 +283,7 @@ impl DeliveryTask {
                         );
                     }
                 }
-                self.daemon.record_outbound_peer_activity(activity_peer, payload.len(), true);
+                self.daemon.record_outbound_peer_sent(activity_peer, payload.len());
                 let _ = self.receipt_tx.try_send(ReceiptEvent {
                     message_id: self.message_id.clone(),
                     status: statuses.packet.to_string(),
@@ -193,6 +302,16 @@ impl DeliveryTask {
                         sent_status: statuses.resource_sent.to_string(),
                     },
                 );
+                spawn_tracked_resource_cancel_monitor(ResourceCancelMonitor {
+                    daemon: self.daemon.clone(),
+                    transport: self.transport.clone(),
+                    outbound_resource_map: self.outbound_resource_map.clone(),
+                    message_id: self.message_id.clone(),
+                    destination_hex: self.destination_hex.clone(),
+                    trace_stage: trace_stage.to_string(),
+                    link_id,
+                    resource_hash,
+                });
                 let detail = format!(
                     "resource_hash={} bytes={} peer={} destination={}",
                     resource_hash_hex,

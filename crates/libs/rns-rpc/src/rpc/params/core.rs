@@ -141,6 +141,16 @@ struct TicketGenerateParams {
 }
 
 #[derive(Debug, Deserialize, Default)]
+struct ListMessagesParams {
+    #[serde(default)]
+    limit: Option<usize>,
+    #[serde(default)]
+    before_ts: Option<i64>,
+    #[serde(default)]
+    cursor: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
 struct ListAnnouncesParams {
     #[serde(default)]
     limit: Option<usize>,

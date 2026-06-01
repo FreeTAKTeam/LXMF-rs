@@ -1139,6 +1139,99 @@ fn sdk_command_events_summarize_large_payloads() {
 }
 
 #[test]
+fn sdk_operation_registry_includes_product_catalog_entries() {
+    let daemon =
+        RpcDaemon::test_instance().with_sdk_custom_operations(vec![SdkCustomOperationSpec::new(
+            "r3akt.message.send",
+            "r3akt",
+            "command",
+            "extension",
+            "Send a R3AKT product message through the shared operation runtime.",
+        )
+        .with_alias("R3AKT;EMergencyMessages.send")]);
+
+    let registry = daemon
+        .handle_rpc(rpc_request(1318, "sdk_operation_registry_v2", json!({})))
+        .expect("operation registry");
+    assert!(registry.error.is_none());
+    let entries = registry.result.expect("registry result")["registry"]["entries"]
+        .as_array()
+        .expect("registry entries")
+        .clone();
+    let custom = entries
+        .iter()
+        .find(|entry| entry["id"] == json!("r3akt.message.send"))
+        .expect("custom operation entry");
+    assert_eq!(custom["group"], json!("r3akt"));
+    assert_eq!(custom["transport_variant"], json!("extension"));
+    assert_eq!(custom["aliases"][0], json!("R3AKT;EMergencyMessages.send"));
+
+    let response = daemon
+        .handle_rpc(rpc_request(
+            1319,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "R3AKT;EMergencyMessages.send",
+                "kind": "command",
+                "target": "node-b",
+                "payload": { "text": "hello" },
+                "extensions": { "product": "r3akt" }
+            }),
+        ))
+        .expect("custom operation envelope");
+    assert!(response.error.is_none());
+    let response = response.result.expect("custom envelope result");
+    assert_eq!(response["response"]["operation_id"], json!("r3akt.message.send"));
+    assert_eq!(response["response"]["payload"]["command"], json!("r3akt.message.send"));
+    assert_eq!(response["response"]["extensions"]["product"], json!("r3akt"));
+}
+
+#[test]
+fn sdk_negotiate_v2_installs_product_catalog_entries() {
+    let daemon = RpcDaemon::test_instance();
+    let negotiated = daemon
+        .handle_rpc(rpc_request(
+            1316,
+            "sdk_negotiate_v2",
+            json!({
+                "supported_contract_versions": [2],
+                "requested_capabilities": [],
+                "config": {
+                    "profile": "desktop-full",
+                    "extensions": {
+                        "custom_operations": [{
+                            "id": "r3akt.message.send",
+                            "group": "r3akt",
+                            "kind": "command",
+                            "transport_variant": "extension",
+                            "description": "Send a R3AKT product message through the shared operation runtime.",
+                            "aliases": ["R3AKT;EMergencyMessages.send"]
+                        }]
+                    }
+                }
+            }),
+        ))
+        .expect("negotiate with custom operation catalog");
+    assert!(negotiated.error.is_none());
+
+    let registry = daemon
+        .handle_rpc(rpc_request(1317, "sdk_operation_registry_v2", json!({})))
+        .expect("operation registry");
+    assert!(registry.error.is_none());
+    let entries = registry.result.expect("registry result")["registry"]["entries"]
+        .as_array()
+        .expect("registry entries")
+        .clone();
+    assert!(
+        entries.iter().any(|entry| {
+            entry["id"] == json!("r3akt.message.send")
+                && entry["aliases"][0] == json!("R3AKT;EMergencyMessages.send")
+        }),
+        "startup product catalog should be visible through the daemon registry"
+    );
+}
+
+#[test]
 fn sdk_operation_registry_roundtrips_topic_family() {
     let daemon = RpcDaemon::test_instance();
 

@@ -132,6 +132,7 @@ pub(super) async fn start_transport_and_interfaces(
                 args,
                 config,
                 &selected_tcp_server,
+                &transport_instance,
                 &iface_manager,
                 server_iface.as_ref(),
                 &mut configured_interfaces,

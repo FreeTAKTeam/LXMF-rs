@@ -576,13 +576,32 @@ impl MessagesStore {
         limit: usize,
         before_ts: Option<i64>,
     ) -> rusqlite::Result<Vec<MessageRecord>> {
+        self.list_messages_page(limit, before_ts, None)
+    }
+
+    pub fn list_messages_page(
+        &self,
+        limit: usize,
+        before_ts: Option<i64>,
+        before_id: Option<&str>,
+    ) -> rusqlite::Result<Vec<MessageRecord>> {
         self.with_read_conn(|conn| {
             let mut records = Vec::new();
             if let Some(ts) = before_ts {
-                let mut stmt = conn.prepare(
-                    "SELECT id, source, destination, title, content, timestamp, direction, fields, receipt_status FROM messages WHERE timestamp < ?1 ORDER BY timestamp DESC LIMIT ?2",
-                )?;
-                let mut rows = stmt.query(params![ts, limit as i64])?;
+                let mut stmt = if before_id.is_some() {
+                    conn.prepare(
+                        "SELECT id, source, destination, title, content, timestamp, direction, fields, receipt_status FROM messages WHERE (timestamp < ?1 OR (timestamp = ?1 AND id < ?2)) ORDER BY timestamp DESC, id DESC LIMIT ?3",
+                    )?
+                } else {
+                    conn.prepare(
+                        "SELECT id, source, destination, title, content, timestamp, direction, fields, receipt_status FROM messages WHERE timestamp < ?1 ORDER BY timestamp DESC, id DESC LIMIT ?2",
+                    )?
+                };
+                let mut rows = if let Some(before_id) = before_id {
+                    stmt.query(params![ts, before_id, limit as i64])?
+                } else {
+                    stmt.query(params![ts, limit as i64])?
+                };
                 while let Some(row) = rows.next()? {
                     let fields_json: Option<String> = row.get(7)?;
                     let fields =
@@ -602,7 +621,7 @@ impl MessagesStore {
                 }
             } else {
                 let mut stmt = conn.prepare(
-                    "SELECT id, source, destination, title, content, timestamp, direction, fields, receipt_status FROM messages ORDER BY timestamp DESC LIMIT ?1",
+                    "SELECT id, source, destination, title, content, timestamp, direction, fields, receipt_status FROM messages ORDER BY timestamp DESC, id DESC LIMIT ?1",
                 )?;
                 let mut rows = stmt.query(params![limit as i64])?;
                 while let Some(row) = rows.next()? {

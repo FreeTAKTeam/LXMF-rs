@@ -34,7 +34,9 @@ pub(super) fn compute_stream_gap(
     Some(StreamGapMeta { gap_seq_no, expected_seq_no, observed_seq_no, dropped_count })
 }
 
-pub(super) fn parse_announce_cursor(cursor: Option<&str>) -> Option<(Option<i64>, Option<String>)> {
+pub(super) fn parse_timestamp_id_cursor(
+    cursor: Option<&str>,
+) -> Option<(Option<i64>, Option<String>)> {
     let raw = cursor?.trim();
     if raw.is_empty() {
         return None;
@@ -45,6 +47,10 @@ pub(super) fn parse_announce_cursor(cursor: Option<&str>) -> Option<(Option<i64>
         return Some((Some(timestamp), before_id));
     }
     raw.parse::<i64>().ok().map(|timestamp| (Some(timestamp), None))
+}
+
+pub(super) fn parse_announce_cursor(cursor: Option<&str>) -> Option<(Option<i64>, Option<String>)> {
+    parse_timestamp_id_cursor(cursor)
 }
 
 pub(super) fn delivery_reason_code(status: &str) -> Option<&'static str> {

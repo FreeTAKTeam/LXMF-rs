@@ -57,6 +57,43 @@ impl SerialInterface {
         self
     }
 
+    #[must_use]
+    pub fn device(&self) -> &str {
+        &self.device
+    }
+
+    #[must_use]
+    pub fn baud_rate(&self) -> u32 {
+        self.baud_rate
+    }
+
+    #[must_use]
+    pub fn data_bits_value(&self) -> u8 {
+        match self.data_bits {
+            DataBits::Five => 5,
+            DataBits::Six => 6,
+            DataBits::Seven => 7,
+            DataBits::Eight => 8,
+        }
+    }
+
+    #[must_use]
+    pub fn parity_name(&self) -> &'static str {
+        match self.parity {
+            Parity::None => "none",
+            Parity::Odd => "odd",
+            Parity::Even => "even",
+        }
+    }
+
+    #[must_use]
+    pub fn stop_bits_value(&self) -> u8 {
+        match self.stop_bits {
+            StopBits::One => 1,
+            StopBits::Two => 2,
+        }
+    }
+
     pub fn with_data_bits_raw(self, data_bits: u8) -> Result<Self, String> {
         let data_bits = match data_bits {
             5 => DataBits::Five,
@@ -79,11 +116,13 @@ impl SerialInterface {
 
     pub fn with_parity_name(self, parity: &str) -> Result<Self, String> {
         let parity = match parity.trim().to_ascii_lowercase().as_str() {
-            "none" => Parity::None,
-            "even" => Parity::Even,
-            "odd" => Parity::Odd,
+            "n" | "none" => Parity::None,
+            "e" | "even" => Parity::Even,
+            "o" | "odd" => Parity::Odd,
             _ => {
-                return Err(format!("serial.parity must be one of: none, even, odd (got {parity})"))
+                return Err(format!(
+                    "serial.parity must be one of: n, none, e, even, o, odd (got {parity})"
+                ))
             }
         };
         Ok(self.with_parity(parity))

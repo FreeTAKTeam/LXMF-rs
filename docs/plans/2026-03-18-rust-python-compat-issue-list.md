@@ -170,14 +170,20 @@ Impact:
 
 ### 6. Resource startup reports success before advertisement send is proven
 
-Status: in progress in [#112](https://github.com/FreeTAKTeam/LXMF-rs/pull/112)
+Status: implemented in active workspace for transport resource send entry
+points.
 
 Area: resources, daemon send path
 
-Rust behavior:
+Active Rust behavior:
 
-- [`crates/libs/rns-transport/src/resource/manager.rs`](crates/libs/rns-transport/src/resource/manager.rs:25) and [`crates/libs/rns-transport/src/resource/manager.rs`](crates/libs/rns-transport/src/resource/manager.rs:41) insert sender state before dispatch outcome is known
-- [`crates/libs/rns-transport/src/transport/links.rs`](crates/libs/rns-transport/src/transport/links.rs:121) and [`crates/libs/rns-transport/src/transport/links.rs`](crates/libs/rns-transport/src/transport/links.rs:144) ignore advertisement dispatch failure and still return success
+- transport resource send methods confirm the advertisement dispatch outcome
+  before returning success
+- failed advertisement dispatch removes pending sender state, emits
+  `OutboundFailed`, publishes that event through `Transport::resource_events`,
+  and returns `ConnectionError`
+- tests cover manager-level dispatch failure and transport-level dropped
+  advertisement dispatch
 
 Python reference:
 
@@ -186,7 +192,9 @@ Python reference:
 
 Impact:
 
-- Rust can report transfer start when nothing was actually sent
+- the original false-success startup path is closed for active transport
+  resource sends; broader resource lifecycle parity remains tracked by the
+  retry, timeout, cancellation, and segmentation items below
 
 ### 7. Outbound resources lack Python-style retry, timeout, and cleanup
 
@@ -198,6 +206,10 @@ Rust behavior:
 
 - [`crates/libs/rns-transport/src/resource/manager.rs`](crates/libs/rns-transport/src/resource/manager.rs:49) only retries inbound receivers
 - outgoing senders are removed only on proof or cancel in [`crates/libs/rns-transport/src/resource/manager.rs`](crates/libs/rns-transport/src/resource/manager.rs:241) and [`crates/libs/rns-transport/src/resource/manager.rs`](crates/libs/rns-transport/src/resource/manager.rs:257)
+- active outbound resources can now be explicitly cancelled through
+  `ResourceManager::cancel_outgoing` or `Transport::cancel_resource`, which
+  removes sender state, emits `OutboundCancelled`, and dispatches a
+  `ResourceInitiatorCancel` packet over the link's bound interface
 
 Python reference:
 
@@ -205,7 +217,9 @@ Python reference:
 
 Impact:
 
-- stalled outbound resources can live forever in Rust
+- explicit caller-driven cancellation no longer leaves active outbound sender
+  state behind, but full Python-style segmented-transfer and watchdog lifecycle
+  parity remains broader work
 
 ### 8. Failed inbound resources can get stuck forever
 
@@ -247,14 +261,21 @@ Impact:
 
 ### 10. Resource proof is treated as final LXMF delivery
 
-Status: in progress in [#113](https://github.com/FreeTAKTeam/LXMF-rs/pull/113), stacked on [#112](https://github.com/FreeTAKTeam/LXMF-rs/pull/112)
+Status: implemented for active `reticulumd` receipt status and peer-activity
+bookkeeping; broader resource retry/lifecycle parity remains tracked by the
+resource issues.
 
 Area: daemon status model
 
-Rust behavior:
+Active Rust behavior:
 
-- [`crates/apps/reticulumd/src/bin/reticulumd/bridge.rs`](crates/apps/reticulumd/src/bin/reticulumd/bridge.rs:198) biases peer activity as successful too early
-- [`crates/apps/reticulumd/src/bin/reticulumd/inbound_worker.rs`](crates/apps/reticulumd/src/bin/reticulumd/inbound_worker.rs:59) upgrades `OutboundComplete` to `"delivered"`
+- `reticulumd` records transport send/resource completion as `sent:*` status,
+  not `delivered`
+- peer activity now separates sent-only transport bookkeeping from actual
+  delivery receipts, so send completion updates tx bytes without marking a peer
+  heard/alive or improving acceptance rate
+- delivery receipts still mark the outbound peer delivered through the stored
+  message destination
 
 Python reference:
 
@@ -262,8 +283,10 @@ Python reference:
 
 Impact:
 
-- daemon observability lies about success
-- retries, UX, and peer scoring are built on the wrong state
+- the original conflation of resource proof/send completion with final LXMF
+  delivery is closed for active daemon status and peer scoring paths
+- lower-level resource retry and segmented transfer parity remains outside this
+  issue
 
 ## Priority 2
 
@@ -406,8 +429,10 @@ Status: implemented for active non-split Rust resource receiving. The receiver
 now rejects zero-sized and oversized transfer advertisements, bounds advertised
 part count by the Reticulum packet MDU rather than trusting `adv.parts`, and
 caps compressed payload expansion by the advertised uncompressed size and
-Python's 64 MiB auto-compress ceiling. Split/segmented resource support remains
-unsupported and is still rejected.
+Python's 64 MiB auto-compress ceiling. Outbound resource retry exhaustion and
+advertisement dispatch failure now emit failure events so daemon-level LXMF
+sends can fail instead of leaving stale resource tracking behind.
+Split/segmented resource support remains unsupported and is still rejected.
 
 Area: resources, daemon resilience
 
@@ -416,6 +441,9 @@ Active Rust behavior:
 - [`crates/libs/rns-transport/src/resource/receiver.rs`](crates/libs/rns-transport/src/resource/receiver.rs) validates transfer size, derives the maximum accepted part count from `transfer_size.div_ceil(PACKET_MDU)`, and rejects excessive `adv.parts` before allocating receive vectors
 - compressed payload assembly uses bounded decompression instead of unbounded `read_to_end`
 - tests cover unreasonable advertised parts, MDU-derived part-count bounds, retry cleanup, and bounded decompression
+- outbound retry exhaustion and failed advertisement dispatch emit
+  `OutboundFailed`; `reticulumd` maps a tracked LXMF resource timeout to a
+  failed receipt plus failed peer activity
 
 Python reference:
 
@@ -425,6 +453,9 @@ Remaining caveat:
 
 - Python supports segmented resources; Rust still rejects split advertisements
   rather than implementing the full segmented transfer model
+- Python has a richer resource cancellation API; Rust now exposes timeout
+  failure to the daemon and explicit outbound resource cancellation through
+  the transport API, but broader cancellation semantics remain partial
 
 ### 19. Inbound resource worker assumes every completed resource is LXMF
 
@@ -783,7 +814,9 @@ Rust behavior:
 
 - [`crates/libs/rns-rpc/src/rpc/daemon/dispatch_legacy_propagation.rs`](crates/libs/rns-rpc/src/rpc/daemon/dispatch_legacy_propagation.rs) canonicalizes propagation payloads and validates trailing propagation stamps when `target_cost` is nonzero.
 - [`crates/apps/reticulumd/src/bin/reticulumd/inbound_propagation.rs`](crates/apps/reticulumd/src/bin/reticulumd/inbound_propagation.rs) calls the canonical propagation payload path before storing remote propagation payloads.
-- Tests cover missing, short, mismatched, and valid propagation-stamp ingest cases.
+- Tests cover missing, short, mismatched, valid propagation-stamp ingest cases,
+  remote ingest through the configured flexibility window, and local
+  propagated-message metadata through the same acceptance floor.
 
 Python reference:
 
@@ -835,10 +868,21 @@ Rust behavior:
   synchronous RPC scheduling path
 - active normal and propagation stamp proof-of-work can stop when the outbound
   message becomes `cancelled`
+- tracked resource-backed direct and propagated sends monitor persisted
+  cancellation after the resource starts and call `Transport::cancel_resource`
+  to send `ResourceInitiatorCancel` plus remove the resource tracking entry
 - [`crates/apps/reticulumd/src/bin/reticulumd/bridge_delivery_task_payload.rs`](crates/apps/reticulumd/src/bin/reticulumd/bridge_delivery_task_payload.rs) records normal stamp/ticket work state and target cost before and after payload construction
 - [`crates/apps/reticulumd/src/bin/reticulumd/bridge_delivery_task_propagation.rs`](crates/apps/reticulumd/src/bin/reticulumd/bridge_delivery_task_propagation.rs) records propagation stamp work state, target cost, generated value, and failure details
+- `get_outbound_progress` treats terminal normal or propagation stamp work
+  states (`failed` or `cancelled`) as authoritative over stale `_lxmf.progress`
+  metadata
+- `get_outbound_lxm_stamp_cost` and
+  `get_outbound_lxm_propagation_stamp_cost` treat terminal normal or
+  propagation stamp work states (`failed` or `cancelled`) as authoritative over
+  stale target-cost metadata
 - tests cover normal proof-of-work and ticket-derived stamp lifecycle metadata
-  on the active delivery task
+  on the active delivery task, terminal stamp-state progress and cost queries,
+  plus active resource cancellation after a late SDK cancel
 - no audited daemon path includes a Python-style deferred-stamp work queue,
   retry lifecycle, or separate background LXMF stamper integration
 
@@ -851,7 +895,8 @@ Impact:
 - behavior still diverges once high stamp costs require queueing, progress,
   retry, and worker ownership semantics, but request-path blocking risk is
   reduced and cancellation plus lifecycle state are no longer purely
-  status-only for active normal or propagation stamp generation
+  status-only for active normal stamp generation, propagation stamp generation,
+  or tracked resource-backed sends
 
 ### 36. Propagation transient-id lifecycle is incomplete
 
@@ -920,10 +965,11 @@ Impact:
 
 ### 38. Inbound timestamp precision is truncated
 
-Status: implemented for client-visible metadata in active workspace. The
-legacy `MessageRecord.timestamp` sort/index field remains integer seconds, but
-accepted inbound LXMF messages preserve Python's floating payload timestamp in
-`fields._lxmf.timestamp_f64` whenever precision would otherwise be lost.
+Status: implemented for client-visible metadata and stable message pagination
+in active workspace. The legacy `MessageRecord.timestamp` field remains integer
+seconds, but accepted inbound LXMF messages preserve Python's floating payload
+timestamp in `fields._lxmf.timestamp_f64` whenever precision would otherwise be
+lost, and RPC message cursors use a deterministic `(timestamp, id)` boundary.
 
 Area: daemon API compatibility
 
@@ -931,7 +977,12 @@ Active Rust behavior:
 
 - [`crates/libs/lxmf-core/src/inbound_decode.rs`](crates/libs/lxmf-core/src/inbound_decode.rs) decodes payload timestamps as `f64`
 - [`crates/apps/reticulumd/src/inbound_delivery.rs`](crates/apps/reticulumd/src/inbound_delivery.rs) stores `_lxmf.timestamp_f64` metadata for fractional inbound timestamps
+- [`crates/libs/rns-rpc/src/storage/messages.rs`](crates/libs/rns-rpc/src/storage/messages.rs) lists messages by `timestamp DESC, id DESC` and supports stable `timestamp:id` cursor pagination for same-second records
+- legacy RPC list handlers fetch one extra record before truncating pages so
+  `next_cursor` is emitted only when another page exists
 - tests cover fractional inbound timestamps in stored metadata
+- RPC tests cover `list_messages` cursor pagination across multiple messages
+  with the same integer timestamp and exact-limit cursor exhaustion
 
 Python reference:
 
@@ -939,8 +990,8 @@ Python reference:
 
 Remaining caveat:
 
-- integer timestamp cursors still order at second granularity; clients that need
-  Python payload precision must read `_lxmf.timestamp_f64`
+- legacy RPC `MessageRecord.timestamp` values still expose integer seconds;
+  clients that need Python payload precision must read `_lxmf.timestamp_f64`
 
 ### 39. Inbound title/content decoding loses binary fidelity
 

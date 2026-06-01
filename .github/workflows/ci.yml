@@ -82,6 +82,22 @@ jobs:
         run: cargo run -p xtask -- sdk-docs-check
       - name: SDK migration check
         run: cargo run -p xtask -- sdk-migration-check
+      - name: SDK wrapper parity gate
+        run: cargo test -p test-support sdk_wrapper_parity_release_gate
+
+  kotlin-wrapper-conformance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.10.2
+      - name: Kotlin wrapper conformance
+        run: gradle -p wrappers/kotlin-mobile test
 
   security:
     runs-on: ubuntu-latest

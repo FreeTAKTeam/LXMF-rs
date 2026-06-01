@@ -104,6 +104,7 @@ impl RpcDaemon {
             sdk_runtime_config: Mutex::new(JsonValue::Object(JsonMap::new())),
             sdk_config_apply_lock: Mutex::new(()),
             sdk_effective_capabilities: Mutex::new(Self::sdk_supported_capabilities()),
+            sdk_custom_operations: Mutex::new(Vec::new()),
             sdk_stream_degraded: Mutex::new(false),
             sdk_seen_jti: Mutex::new(HashMap::new()),
             sdk_rate_window_started_ms: Mutex::new(0),
@@ -183,6 +184,45 @@ impl RpcDaemon {
                 Some(trimmed.to_string())
             }
         });
+    }
+
+    pub fn set_sdk_custom_operations(&self, operations: Vec<SdkCustomOperationSpec>) {
+        let mut guard =
+            self.sdk_custom_operations.lock().expect("sdk_custom_operations mutex poisoned");
+        *guard = operations
+            .into_iter()
+            .map(|mut operation| {
+                operation.id = operation.id.trim().to_owned();
+                operation.group = operation.group.trim().to_owned();
+                operation.kind = operation.kind.trim().to_ascii_lowercase();
+                operation.transport_variant = operation.transport_variant.trim().to_owned();
+                operation.description = operation.description.trim().to_owned();
+                operation.aliases = operation
+                    .aliases
+                    .into_iter()
+                    .map(|alias| alias.trim().to_owned())
+                    .filter(|alias| !alias.is_empty())
+                    .collect();
+                operation.required_capabilities = operation
+                    .required_capabilities
+                    .into_iter()
+                    .map(|capability| capability.trim().to_owned())
+                    .filter(|capability| !capability.is_empty())
+                    .collect();
+                operation
+            })
+            .filter(|operation| {
+                !operation.id.is_empty()
+                    && !operation.group.is_empty()
+                    && matches!(operation.kind.as_str(), "query" | "command")
+                    && !operation.transport_variant.is_empty()
+            })
+            .collect();
+    }
+
+    pub fn with_sdk_custom_operations(self, operations: Vec<SdkCustomOperationSpec>) -> Self {
+        self.set_sdk_custom_operations(operations);
+        self
     }
 
     pub fn ensure_ticket(
@@ -512,6 +552,26 @@ impl RpcDaemon {
                 }
             }
         }
+    }
+
+    pub fn record_outbound_peer_sent(&self, peer: &str, bytes: usize) {
+        if let Ok(mut guard) = self.peers.lock() {
+            if let Some(existing) = guard.get_mut(peer) {
+                existing.tx_bytes = existing.tx_bytes.saturating_add(bytes as u64);
+                existing.last_sync_attempt = now_i64();
+            }
+        }
+    }
+
+    pub fn record_message_delivery_receipt(&self, message_id: &str) -> Result<(), std::io::Error> {
+        let Some(message) = self.store.get_message(message_id).map_err(std::io::Error::other)?
+        else {
+            return Ok(());
+        };
+        if message.direction == "out" {
+            self.record_outbound_peer_activity(message.destination.as_str(), 0, true);
+        }
+        Ok(())
     }
 
     pub fn record_unpeered_propagation_attempt(&self, bytes: usize) {

@@ -90,6 +90,7 @@ async fn try_accept_local_propagated_message(
         &mut record,
         transient_payload,
         daemon.propagation_target_cost(),
+        daemon.propagation_min_accepted_stamp_cost(),
     );
     if !inbound_record_allowed_by_delivery_policy(daemon, &record) {
         return Ok(true);
@@ -106,11 +107,13 @@ fn annotate_inbound_record_propagation_stamp_status(
     record: &mut rns_rpc::MessageRecord,
     transient_payload: &[u8],
     target_cost: u32,
+    accepted_cost: u32,
 ) {
     if target_cost == 0 {
         return;
     }
-    let Some(value) = validate_propagation_stamp(transient_payload, target_cost) else {
+    let validation_cost = if accepted_cost == 0 { target_cost } else { accepted_cost };
+    let Some(value) = validate_propagation_stamp(transient_payload, validation_cost) else {
         return;
     };
 
@@ -131,7 +134,7 @@ fn annotate_inbound_record_propagation_stamp_status(
     lxmf.insert("propagation_stamp_valid".into(), JsonValue::Bool(true));
     lxmf.insert(
         "propagation_stamp_target_cost".into(),
-        JsonValue::Number(serde_json::Number::from(target_cost)),
+        JsonValue::Number(serde_json::Number::from(validation_cost)),
     );
     lxmf.insert(
         "propagation_stamp_value".into(),
