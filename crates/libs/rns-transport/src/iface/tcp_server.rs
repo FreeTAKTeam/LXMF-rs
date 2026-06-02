@@ -38,12 +38,12 @@ impl TcpServer {
                 TcpListener::bind(addr.clone()).await.map_err(|_| RnsError::ConnectionError);
 
             if listener.is_err() {
-                log::warn!("tcp_server: couldn't bind to <{}>", addr);
+                log::warn!("couldn't bind to <{}>", addr);
                 tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                 continue;
             }
 
-            log::info!("tcp_server: listen on <{}>", addr);
+            log::info!("listen on <{}>", addr);
 
             let listener = listener.unwrap();
 
@@ -85,7 +85,7 @@ impl TcpServer {
                     client = listener.accept() => {
                         if let Ok(client) = client {
                             log::info!(
-                                "tcp_server: new client <{}> connected to <{}>",
+                                "new client <{}> connected to <{}>",
                                 client.1,
                                 addr
                             );

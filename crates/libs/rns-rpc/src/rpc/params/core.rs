@@ -34,9 +34,13 @@ struct AnnounceReceivedParams {
     #[serde(default)]
     q: Option<f64>,
     #[serde(default)]
+    stamp_cost: Option<u32>,
+    #[serde(default)]
     stamp_cost_flexibility: Option<u32>,
     #[serde(default)]
     peering_cost: Option<u32>,
+    #[serde(default)]
+    aspect: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -75,6 +79,30 @@ struct PropagationEnableParams {
     store_root: Option<String>,
     #[serde(default)]
     target_cost: Option<u32>,
+    #[serde(default)]
+    stamp_cost_flexibility: Option<u32>,
+    #[serde(default)]
+    message_storage_limit_mb: Option<u64>,
+    #[serde(default)]
+    delivery_limit: Option<u32>,
+    #[serde(default)]
+    propagation_limit: Option<u32>,
+    #[serde(default)]
+    sync_limit: Option<u32>,
+    #[serde(default)]
+    autopeer: Option<bool>,
+    #[serde(default)]
+    autopeer_maxdepth: Option<u32>,
+    #[serde(default)]
+    static_peers: Option<Vec<String>>,
+    #[serde(default)]
+    max_peers: Option<u32>,
+    #[serde(default)]
+    from_static_only: Option<bool>,
+    #[serde(default)]
+    peering_cost: Option<u32>,
+    #[serde(default)]
+    remote_peering_cost_max: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -101,6 +129,8 @@ struct StampPolicySetParams {
     target_cost: Option<u32>,
     #[serde(default)]
     flexibility: Option<u32>,
+    #[serde(default)]
+    enforce: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -108,6 +138,16 @@ struct TicketGenerateParams {
     destination: String,
     #[serde(default)]
     ttl_secs: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct ListMessagesParams {
+    #[serde(default)]
+    limit: Option<usize>,
+    #[serde(default)]
+    before_ts: Option<i64>,
+    #[serde(default)]
+    cursor: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -127,6 +167,52 @@ struct SetOutboundPropagationNodeParams {
 }
 
 #[derive(Debug, Deserialize)]
+struct PropagationRemoteStatusParams {
+    remote: String,
+    #[serde(default)]
+    identity_private_key_hex: Option<String>,
+    #[serde(default)]
+    timeout_secs: Option<f64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PropagationRemotePeerParams {
+    remote: String,
+    peer: String,
+    #[serde(default)]
+    identity_private_key_hex: Option<String>,
+    #[serde(default)]
+    timeout_secs: Option<f64>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct PropagationAcknowledgeSyncParams {
+    #[serde(default)]
+    reset_state: bool,
+    #[serde(default)]
+    failure_state: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PropagationRemoteFetchParams {
+    remote: String,
+    #[serde(default)]
+    identity_private_key_hex: Option<String>,
+    #[serde(default)]
+    timeout_secs: Option<f64>,
+    #[serde(default)]
+    transfer_limit_kb: Option<f64>,
+}
+
+#[derive(Debug, Deserialize)]
 struct MessageDeliveryTraceParams {
     message_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct OutboundLxmQueryParams {
+    #[serde(default)]
+    message_id: Option<String>,
+    #[serde(default)]
+    lxm_hash: Option<String>,
 }

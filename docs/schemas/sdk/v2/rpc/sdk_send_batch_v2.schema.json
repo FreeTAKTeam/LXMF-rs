@@ -1,0 +1,264 @@
+{
+  "$defs": {
+    "params": {
+      "additionalProperties": false,
+      "properties": {
+        "batch_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "messages": {
+          "items": {
+            "$ref": "#/$defs/send_batch_message"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "source": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "batch_id",
+        "messages",
+        "source"
+      ],
+      "type": "object"
+    },
+    "request": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/rpc_id"
+        },
+        "method": {
+          "const": "sdk_send_batch_v2"
+        },
+        "params": {
+          "$ref": "#/$defs/params"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "response_error": {
+      "additionalProperties": false,
+      "properties": {
+        "error": {
+          "$ref": "#/$defs/rpc_error"
+        },
+        "id": {
+          "$ref": "#/$defs/rpc_id"
+        }
+      },
+      "required": [
+        "error",
+        "id"
+      ],
+      "type": "object"
+    },
+    "response_ok": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/rpc_id"
+        },
+        "result": {
+          "$ref": "#/$defs/result"
+        }
+      },
+      "required": [
+        "id",
+        "result"
+      ],
+      "type": "object"
+    },
+    "result": {
+      "additionalProperties": false,
+      "properties": {
+        "accepted_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "batch_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "rejected_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "results": {
+          "items": {
+            "$ref": "#/$defs/send_batch_result_item"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "accepted_count",
+        "batch_id",
+        "rejected_count",
+        "results"
+      ],
+      "type": "object"
+    },
+    "rpc_error": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "cause_code": {
+          "pattern": "^SDK_[A-Z]+_[A-Z0-9_]+$",
+          "type": "string"
+        },
+        "code": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "details": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "extensions": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "is_user_actionable": {
+          "type": "boolean"
+        },
+        "machine_code": {
+          "pattern": "^SDK_[A-Z]+_[A-Z0-9_]+$",
+          "type": "string"
+        },
+        "message": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "retryable": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "type": "object"
+    },
+    "rpc_id": {
+      "oneOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "minimum": 0,
+          "type": "integer"
+        }
+      ]
+    },
+    "send_batch_message": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "destination": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "fields": {
+          "additionalProperties": true,
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "include_ticket": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "method": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "stamp_cost": {
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "try_propagation_on_fail": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "content",
+        "destination",
+        "id"
+      ],
+      "type": "object"
+    },
+    "send_batch_result_item": {
+      "additionalProperties": false,
+      "properties": {
+        "accepted": {
+          "type": "boolean"
+        },
+        "error": {
+          "$ref": "#/$defs/rpc_error"
+        },
+        "id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "message_id": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "accepted",
+        "id"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://weft.tak/contracts/sdk/v2/rpc/sdk_send_batch_v2.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/request"
+    },
+    {
+      "$ref": "#/$defs/response_ok"
+    },
+    {
+      "$ref": "#/$defs/response_error"
+    }
+  ],
+  "title": "LXMF SDK RPC sdk_send_batch_v2 v2"
+}

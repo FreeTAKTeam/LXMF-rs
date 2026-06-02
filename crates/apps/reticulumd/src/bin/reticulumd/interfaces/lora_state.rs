@@ -174,7 +174,7 @@ fn persist_state_atomically(path: &Path, state: &LoraState) -> Result<(), String
         Ok(dir) => {
             if let Err(err) = dir.sync_all() {
                 if should_skip_dir_sync(&err) {
-                    eprintln!(
+                    log::warn!(
                         "[daemon] lora state dir fsync skipped path={} err={}",
                         parent.display(),
                         err
@@ -187,7 +187,7 @@ fn persist_state_atomically(path: &Path, state: &LoraState) -> Result<(), String
         }
         Err(err) => {
             if should_skip_dir_sync(&err) {
-                eprintln!(
+                log::warn!(
                     "[daemon] lora state dir sync open skipped path={} err={}",
                     parent.display(),
                     err

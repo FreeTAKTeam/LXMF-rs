@@ -1,0 +1,23 @@
+{
+  "contract_family": "sdk-app",
+  "contract_release": "v1",
+  "fixture_root": "docs/fixtures/sdk-app-v1",
+  "wrappers": [
+    {
+      "id": "kotlin-mobile",
+      "language": "kotlin",
+      "manifest": "wrappers/kotlin-mobile/conformance-manifest.json",
+      "fixture_root": "docs/fixtures/sdk-app-v1",
+      "status": "source-gated",
+      "scenarios": [
+        "lifecycle.start_stop_restart",
+        "events.delivery_ordering",
+        "timeout.poll_timeout",
+        "delivery.queue_pressure",
+        "connectivity.reconnect_recovery",
+        "errors.typed_mapping",
+        "compatibility.unknown_additive"
+      ]
+    }
+  ]
+}

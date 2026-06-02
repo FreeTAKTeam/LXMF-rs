@@ -169,15 +169,15 @@ if [ -d "lxmf.egg-info" ]; then
 fi
 
 # 1) Core dependency constraints (hard policy).
-check_forbidden_dependency "lxmf-core" "tokio" "clap" "ureq"
-check_forbidden_dependency "rns-core" "tokio" "clap"
-check_forbidden_dependency "rns-transport" "clap"
-check_forbidden_dependency "rns-rpc" "clap"
-check_no_app_dependencies "lxmf-core" "lxmf-cli" "rns-tools" "reticulumd"
+check_forbidden_dependency "lxmf-wire" "tokio" "clap" "ureq"
+check_forbidden_dependency "reticulum-rs-core" "tokio" "clap"
+check_forbidden_dependency "reticulum-rs-transport" "clap"
+check_forbidden_dependency "reticulum-rs-rpc" "clap"
+check_no_app_dependencies "lxmf-wire" "lxmf-cli" "rns-tools" "reticulumd"
 check_no_app_dependencies "lxmf-sdk" "lxmf-cli" "rns-tools" "reticulumd"
-check_no_app_dependencies "rns-core" "lxmf-cli" "rns-tools" "reticulumd"
-check_no_app_dependencies "rns-transport" "lxmf-cli" "rns-tools" "reticulumd"
-check_no_app_dependencies "rns-rpc" "lxmf-cli" "rns-tools" "reticulumd"
+check_no_app_dependencies "reticulum-rs-core" "lxmf-cli" "rns-tools" "reticulumd"
+check_no_app_dependencies "reticulum-rs-transport" "lxmf-cli" "rns-tools" "reticulumd"
+check_no_app_dependencies "reticulum-rs-rpc" "lxmf-cli" "rns-tools" "reticulumd"
 check_no_app_dependencies "test-support" "lxmf-cli" "rns-tools" "reticulumd"
 
 allowed_library_edges="$(load_allowlisted_edges "allowed_library_edges")"
@@ -261,7 +261,11 @@ if (( ENFORCE_RETM_LEGACY_SHIMS == 1 )); then
   if search_text "\\b(legacy_reticulum|reticulum::|reticulum-rs)\\b" crates/libs/rns-transport/src crates/libs/rns-rpc/src >/dev/null; then
     fail "legacy reticulum symbols still referenced in rns transport/rpc source"
   fi
-  if search_text "reticulum-rs|legacy_reticulum" crates/libs/rns-transport/Cargo.toml crates/libs/rns-rpc/Cargo.toml >/dev/null; then
+  # Only flag actual legacy dependency declarations here. Package names and docs.rs
+  # URLs for the active crates also contain `reticulum-rs`, so a raw substring
+  # search would create false positives and break strict mode permanently.
+  if search_text "^reticulum-rs\\s*=\\s*\\{|package\\s*=\\s*\"reticulum-rs\"|legacy_reticulum|crates/internal/(reticulum|lxmf)-legacy" \
+    crates/libs/rns-transport/Cargo.toml crates/libs/rns-rpc/Cargo.toml >/dev/null; then
     fail "rns transport/rpc still depend on legacy reticulum crate"
   fi
 else

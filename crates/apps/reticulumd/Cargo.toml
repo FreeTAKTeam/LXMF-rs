@@ -11,26 +11,39 @@ publish = false
 name = "reticulum_daemon"
 
 [dependencies]
-rns_transport = { package = "rns-transport", path = "../../libs/rns-transport", version = "0.1.0" }
-rns_rpc = { package = "rns-rpc", path = "../../libs/rns-rpc", version = "0.1.0" }
-lxmf = { package = "lxmf-core", path = "../../libs/lxmf-core", version = "0.1.0", default-features = false, features = ["std"] }
-rns_core = { package = "rns-core", path = "../../libs/rns-core", version = "0.1.0" }
+rns_transport = { package = "reticulum-rs-transport", path = "../../libs/rns-transport", version = "0.2.0" }
+rns_rpc = { package = "reticulum-rs-rpc", path = "../../libs/rns-rpc", version = "0.3.0" }
+lxmf = { package = "lxmf-wire", path = "../../libs/lxmf-core", version = "0.2.0", default-features = false, features = ["std"] }
+rns_core = { package = "reticulum-rs-core", path = "../../libs/rns-core", version = "0.2.0" }
 base64 = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 rand_core = { workspace = true, features = ["getrandom"] }
 x25519-dalek = { workspace = true }
+ed25519-dalek = { workspace = true }
 tokio = { workspace = true }
 serde_json = { workspace = true }
 rmpv = { workspace = true }
 rmp-serde = { workspace = true }
 sha2 = { workspace = true }
+hkdf = { workspace = true }
 hex = { workspace = true }
+if-addrs = "0.15.0"
+log = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
 serde = { workspace = true }
 toml = { workspace = true }
 tokio-rustls = { workspace = true }
 rustls = { workspace = true }
 rustls-pemfile = { workspace = true }
 x509-parser = { workspace = true }
+zeromq = { workspace = true, optional = true }
+
+[features]
+default = []
+zmq-pipeline-rpc = ["dep:zeromq"]
+rnode-ble = ["rns_transport/rnode-ble"]
+vrn76-kiss-ble = ["rns_transport/vrn76-kiss-ble"]
 
 [dev-dependencies]
 tempfile = { workspace = true }
@@ -38,6 +51,10 @@ tempfile = { workspace = true }
 [[bin]]
 name = "reticulumd"
 path = "src/bin/reticulumd/main.rs"
+
+[[bin]]
+name = "lxm-interchange"
+path = "src/bin/lxm-interchange.rs"
 
 [target.'cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))'.dependencies]
 btleplug = "0.11.8"

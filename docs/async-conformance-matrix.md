@@ -9,7 +9,7 @@ Status legend: `not-started` | `in-progress` | `done`.
 ## Targets
 
 - Adapter A: Python LXMF adapter (contract wrapper around Python implementation).
-- Adapter B: Rust lxmf-rs adapter (`crates/libs/lxmf-sdk`) backed by `crates/libs/rns-rpc` and `crates/apps/reticulumd`.
+- Adapter B: Rust lxmf-rs adapter (`crates/libs/lxmf-sdk`) backed by `crates/libs/rns-rpc` (published as `reticulum-rs-rpc`) and `crates/apps/reticulumd`.
 
 ## Execution matrix
 

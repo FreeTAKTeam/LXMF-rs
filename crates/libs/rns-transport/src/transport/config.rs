@@ -1,4 +1,5 @@
 use super::*;
+use crate::resource::{DEFAULT_RESOURCE_MAX_RETRIES, DEFAULT_RESOURCE_RETRY_INTERVAL_SECS};
 
 impl TransportConfig {
     pub fn new<T: Into<String>>(name: T, identity: &PrivateIdentity, broadcast: bool) -> Self {
@@ -8,14 +9,14 @@ impl TransportConfig {
             broadcast,
             retransmit: false,
             announce_cache_capacity: 100_000,
-            announce_retry_limit: 5,
+            announce_retry_limit: 1,
             announce_queue_len: 64,
             announce_cap: 128,
             path_request_timeout_secs: 30,
             link_proof_timeout_secs: 600,
             link_idle_timeout_secs: 900,
-            resource_retry_interval_secs: 2,
-            resource_retry_limit: 5,
+            resource_retry_interval_secs: DEFAULT_RESOURCE_RETRY_INTERVAL_SECS,
+            resource_retry_limit: DEFAULT_RESOURCE_MAX_RETRIES,
             ratchet_store_path: None,
         }
     }
@@ -51,6 +52,7 @@ impl TransportConfig {
         self.link_proof_timeout_secs = secs;
     }
 
+    /// Sets propagated LinkTable retention only; direct-link keepalive/stale timing remains per-link RTT-driven.
     pub fn set_link_idle_timeout_secs(&mut self, secs: u64) {
         self.link_idle_timeout_secs = secs;
     }
@@ -76,15 +78,28 @@ impl Default for TransportConfig {
             broadcast: false,
             retransmit: false,
             announce_cache_capacity: 100_000,
-            announce_retry_limit: 5,
+            announce_retry_limit: 1,
             announce_queue_len: 64,
             announce_cap: 128,
             path_request_timeout_secs: 30,
             link_proof_timeout_secs: 600,
             link_idle_timeout_secs: 900,
-            resource_retry_interval_secs: 2,
-            resource_retry_limit: 5,
+            resource_retry_interval_secs: DEFAULT_RESOURCE_RETRY_INTERVAL_SECS,
+            resource_retry_limit: DEFAULT_RESOURCE_MAX_RETRIES,
             ratchet_store_path: None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_resource_retry_budget_matches_reference_implementation() {
+        let config = TransportConfig::default();
+
+        assert_eq!(config.resource_retry_interval_secs, 2);
+        assert_eq!(config.resource_retry_limit, 16);
     }
 }

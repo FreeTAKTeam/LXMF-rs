@@ -1,5 +1,7 @@
+use super::*;
+
 impl RpcDaemon {
-    fn marker_revision_conflict_response(
+    pub(super) fn marker_revision_conflict_response(
         &self,
         request_id: u64,
         marker_id: &str,
@@ -22,7 +24,7 @@ impl RpcDaemon {
         RpcResponse { id: request_id, result: None, error: Some(error) }
     }
 
-    fn handle_sdk_marker_create_v2(
+    pub(super) fn handle_sdk_marker_create_v2(
         &self,
         request: RpcRequest,
     ) -> Result<RpcResponse, std::io::Error> {
@@ -86,7 +88,7 @@ impl RpcDaemon {
         Ok(RpcResponse { id: request.id, result: Some(json!({ "marker": record })), error: None })
     }
 
-    fn handle_sdk_marker_list_v2(
+    pub(super) fn handle_sdk_marker_list_v2(
         &self,
         request: RpcRequest,
     ) -> Result<RpcResponse, std::io::Error> {
@@ -147,7 +149,7 @@ impl RpcDaemon {
         })
     }
 
-    fn handle_sdk_marker_update_position_v2(
+    pub(super) fn handle_sdk_marker_update_position_v2(
         &self,
         request: RpcRequest,
     ) -> Result<RpcResponse, std::io::Error> {
@@ -214,14 +216,10 @@ impl RpcDaemon {
             record.clone()
         };
         self.persist_sdk_domain_snapshot()?;
-        Ok(RpcResponse {
-            id: request.id,
-            result: Some(json!({ "marker": marker })),
-            error: None,
-        })
+        Ok(RpcResponse { id: request.id, result: Some(json!({ "marker": marker })), error: None })
     }
 
-    fn handle_sdk_marker_delete_v2(
+    pub(super) fn handle_sdk_marker_delete_v2(
         &self,
         request: RpcRequest,
     ) -> Result<RpcResponse, std::io::Error> {

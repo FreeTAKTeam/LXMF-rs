@@ -1,5 +1,7 @@
+use super::*;
+
 impl RpcDaemon {
-    fn handle_sdk_cancel_message_v2(
+    pub(super) fn handle_sdk_cancel_message_v2(
         &self,
         request: RpcRequest,
     ) -> Result<RpcResponse, std::io::Error> {
@@ -46,10 +48,7 @@ impl RpcDaemon {
             let normalized = status.trim().to_ascii_lowercase();
             if normalized.starts_with("sent") {
                 cancel_result = "TooLateToCancel";
-            } else if matches!(
-                normalized.as_str(),
-                "cancelled" | "delivered" | "failed" | "expired" | "rejected"
-            ) {
+            } else if Self::is_terminal_receipt_status(status) {
                 cancel_result = "AlreadyTerminal";
             }
         }
@@ -63,10 +62,7 @@ impl RpcDaemon {
                 cancel_result = "TooLateToCancel";
                 break;
             }
-            if matches!(
-                normalized.as_str(),
-                "cancelled" | "delivered" | "failed" | "expired" | "rejected"
-            ) {
+            if Self::is_terminal_receipt_status(transition.status.as_str()) {
                 cancel_result = "AlreadyTerminal";
                 break;
             }
@@ -94,7 +90,10 @@ impl RpcDaemon {
         })
     }
 
-    fn handle_sdk_status_v2(&self, request: RpcRequest) -> Result<RpcResponse, std::io::Error> {
+    pub(super) fn handle_sdk_status_v2(
+        &self,
+        request: RpcRequest,
+    ) -> Result<RpcResponse, std::io::Error> {
         let params = request.params.ok_or_else(|| {
             std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing params")
         })?;
@@ -113,13 +112,17 @@ impl RpcDaemon {
             id: request.id,
             result: Some(json!({
                 "message": message,
+                "delivery_pipeline": self.outbound_bridge.as_ref().and_then(|bridge| bridge.delivery_pipeline_status()),
                 "meta": self.response_meta(),
             })),
             error: None,
         })
     }
 
-    fn handle_sdk_configure_v2(&self, request: RpcRequest) -> Result<RpcResponse, std::io::Error> {
+    pub(super) fn handle_sdk_configure_v2(
+        &self,
+        request: RpcRequest,
+    ) -> Result<RpcResponse, std::io::Error> {
         let params = request.params.ok_or_else(|| {
             std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing params")
         })?;
@@ -160,9 +163,8 @@ impl RpcDaemon {
             ));
         }
 
-        let mut next_config = {
-            self.sdk_runtime_config.lock().expect("sdk_runtime_config mutex poisoned").clone()
-        };
+        let mut next_config =
+            { self.sdk_runtime_config.lock().expect("sdk_runtime_config mutex poisoned").clone() };
         merge_json_patch(&mut next_config, &parsed.patch);
         if let Err(error) = self.validate_sdk_runtime_config(&next_config) {
             return Ok(RpcResponse { id: request.id, result: None, error: Some(error) });
@@ -201,7 +203,10 @@ impl RpcDaemon {
         })
     }
 
-    fn handle_sdk_shutdown_v2(&self, request: RpcRequest) -> Result<RpcResponse, std::io::Error> {
+    pub(super) fn handle_sdk_shutdown_v2(
+        &self,
+        request: RpcRequest,
+    ) -> Result<RpcResponse, std::io::Error> {
         let params = request.params.ok_or_else(|| {
             std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing params")
         })?;
@@ -235,7 +240,10 @@ impl RpcDaemon {
         })
     }
 
-    fn handle_sdk_snapshot_v2(&self, request: RpcRequest) -> Result<RpcResponse, std::io::Error> {
+    pub(super) fn handle_sdk_snapshot_v2(
+        &self,
+        request: RpcRequest,
+    ) -> Result<RpcResponse, std::io::Error> {
         let params = request
             .params
             .map(serde_json::from_value::<SdkSnapshotV2Params>)
@@ -274,11 +282,11 @@ impl RpcDaemon {
                 "effective_capabilities": effective_capabilities,
                 "queued_messages": queued_messages,
                 "in_flight_messages": in_flight_messages,
+                "delivery_pipeline": self.outbound_bridge.as_ref().and_then(|bridge| bridge.delivery_pipeline_status()),
                 "counts_included": params.include_counts,
                 "meta": self.response_meta(),
             })),
             error: None,
         })
     }
-
 }

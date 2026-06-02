@@ -1,10 +1,18 @@
 [package]
-name = "lxmf-core"
-version = "0.1.0"
+name = "lxmf-wire"
+version = "0.2.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "Core LXMF wire format, message primitives, and identity helpers for LXMF-rs."
+readme = "../../../README.md"
+documentation = "https://docs.rs/lxmf-wire"
+keywords = ["lxmf", "wire", "protocol", "reticulum"]
+categories = ["network-programming", "encoding"]
+
+[lib]
+name = "lxmf_core"
 
 
 [dependencies]

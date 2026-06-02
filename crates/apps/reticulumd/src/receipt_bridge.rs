@@ -6,7 +6,7 @@ use rns_transport::receipt::{
 use rns_transport::transport::{DeliveryReceipt, ReceiptHandler};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::mpsc::Sender;
 
 #[derive(Debug, Clone)]
 pub struct ReceiptEvent {
@@ -17,14 +17,11 @@ pub struct ReceiptEvent {
 #[derive(Clone)]
 pub struct ReceiptBridge {
     map: Arc<Mutex<HashMap<String, String>>>,
-    tx: UnboundedSender<ReceiptEvent>,
+    tx: Sender<ReceiptEvent>,
 }
 
 impl ReceiptBridge {
-    pub fn new(
-        map: Arc<Mutex<HashMap<String, String>>>,
-        tx: UnboundedSender<ReceiptEvent>,
-    ) -> Self {
+    pub fn new(map: Arc<Mutex<HashMap<String, String>>>, tx: Sender<ReceiptEvent>) -> Self {
         Self { map, tx }
     }
 }
@@ -33,12 +30,15 @@ impl ReceiptHandler for ReceiptBridge {
     fn on_receipt(&self, receipt: &DeliveryReceipt) {
         let message_id = lookup_receipt_message_id(&self.map, receipt);
         if let Some(message_id) = message_id {
-            let _ = self.tx.send(ReceiptEvent { message_id, status: "delivered".into() });
+            let _ = self.tx.try_send(ReceiptEvent { message_id, status: "delivered".into() });
         }
     }
 }
 
 pub fn handle_receipt_event(daemon: &RpcDaemon, event: ReceiptEvent) -> Result<(), std::io::Error> {
+    if event.status.eq_ignore_ascii_case("delivered") {
+        daemon.record_message_delivery_receipt(event.message_id.as_str())?;
+    }
     record_receipt_status(
         &|message_id: &str, status: &str| {
             let _ = daemon.handle_rpc(rns_rpc::rpc::RpcRequest {

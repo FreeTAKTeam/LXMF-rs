@@ -9,8 +9,29 @@ This runbook defines queue defaults, overflow behavior, and production tuning st
 | Legacy event queue (`event_queue`) | `32` events | hard cap in daemon push path |
 | SDK sequenced event log (`sdk_event_log`) | `1024` events | hard cap in daemon push path |
 | Broadcast channel (`events`) | `64` events | Tokio broadcast channel capacity |
+| Outbound delivery scheduler | `LXMD_DELIVERY_QUEUE_CAPACITY`, default `16384` messages | semaphore-backed admission bound in `reticulumd` |
 
 These queues are intentionally bounded and must never grow unbounded in-process.
+
+## Outbound delivery scheduler
+
+`reticulumd` accepts `sdk_send_v2` into a persistent delivery scheduler instead
+of spawning a new OS thread and Tokio runtime for each message. Direct delivery
+reuses an active per-peer link and defaults to ordered one-at-a-time delivery per
+destination while still allowing concurrency across destinations.
+
+Tune with environment variables before starting `reticulumd`:
+
+| Variable | Default | Effect |
+| --- | --- | --- |
+| `LXMD_DELIVERY_QUEUE_CAPACITY` | `16384` | Maximum accepted delivery work retained in the daemon |
+| `LXMD_DELIVERY_GLOBAL_CONCURRENCY` | `32` | Maximum delivery tasks actively sending at once |
+| `LXMD_DELIVERY_PER_PEER_IN_FLIGHT` | `1` | Maximum active delivery tasks for one destination |
+
+Inspect `delivery_pipeline` in `daemon_status_ex`, `sdk_snapshot_v2`, or
+`sdk_status_v2` for `queued_total`, `queued_by_peer`, `in_flight_total`,
+`in_flight_by_peer`, `accepted_total`, `completed_total`, and
+`rejected_queue_full_total`.
 
 ## Overflow policy semantics
 

@@ -38,29 +38,38 @@ pub fn contains_attachment_aliases(fields: Option<&JsonValue>) -> bool {
 pub fn normalize_attachment_fields_for_wire(
     fields: &mut JsonMap<String, JsonValue>,
 ) -> Result<(), LxmfError> {
-    if fields.contains_key(FIELD_ATTACHMENTS_WIRE_KEY) {
+    let canonical = fields.contains_key(FIELD_ATTACHMENTS_PUBLIC_KEY);
+    let legacy = fields.contains_key(FIELD_ATTACHMENTS_LEGACY_FILES_KEY);
+    let raw_wire = fields.contains_key(FIELD_ATTACHMENTS_WIRE_KEY);
+    let alias_count = usize::from(canonical) + usize::from(legacy) + usize::from(raw_wire);
+
+    if alias_count > 1 {
         return Err(LxmfError::Encode(format!(
-            "public field '{}' is not allowed; use '{}'",
-            FIELD_ATTACHMENTS_WIRE_KEY, FIELD_ATTACHMENTS_PUBLIC_KEY
+            "attachment aliases '{}', '{}', and '{}' cannot be mixed",
+            FIELD_ATTACHMENTS_PUBLIC_KEY,
+            FIELD_ATTACHMENTS_LEGACY_FILES_KEY,
+            FIELD_ATTACHMENTS_WIRE_KEY,
         )));
     }
 
-    if fields.contains_key(FIELD_ATTACHMENTS_LEGACY_FILES_KEY) {
-        return Err(LxmfError::Encode(format!(
-            "legacy field '{}' is not allowed; use '{}'",
-            FIELD_ATTACHMENTS_LEGACY_FILES_KEY, FIELD_ATTACHMENTS_PUBLIC_KEY
-        )));
+    if raw_wire {
+        return Ok(());
     }
 
-    let Some(raw_entries) = fields.remove(FIELD_ATTACHMENTS_PUBLIC_KEY) else {
+    let source_key = if canonical {
+        FIELD_ATTACHMENTS_PUBLIC_KEY
+    } else if legacy {
+        FIELD_ATTACHMENTS_LEGACY_FILES_KEY
+    } else {
+        return Ok(());
+    };
+
+    let Some(raw_entries) = fields.remove(source_key) else {
         return Ok(());
     };
 
     let entries = raw_entries.as_array().ok_or_else(|| {
-        LxmfError::Encode(format!(
-            "field '{}' must be an array of attachment objects",
-            FIELD_ATTACHMENTS_PUBLIC_KEY
-        ))
+        LxmfError::Encode(format!("field '{}' must be an array of attachment objects", source_key))
     })?;
     if entries.is_empty() {
         return Ok(());

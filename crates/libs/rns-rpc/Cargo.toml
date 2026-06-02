@@ -1,10 +1,18 @@
 [package]
-name = "rns-rpc"
-version = "0.1.0"
+name = "reticulum-rs-rpc"
+version = "0.3.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "RPC, HTTP, and daemon bridge contracts for LXMF-rs and the Reticulum stack."
+readme = "../../../README.md"
+documentation = "https://docs.rs/reticulum-rs-rpc"
+keywords = ["reticulum", "rpc", "http", "lxmf"]
+categories = ["network-programming", "api-bindings"]
+
+[lib]
+name = "rns_rpc"
 
 [dependencies]
 rand_core = { workspace = true, features = ["getrandom"] }
@@ -13,8 +21,11 @@ rmpv = { workspace = true, features = ["with-serde"] }
 sha2.workspace = true
 hmac.workspace = true
 hex.workspace = true
+hkdf.workspace = true
 base64.workspace = true
 serde_json.workspace = true
+serde_cbor.workspace = true
+serde_bytes.workspace = true
 rusqlite = { workspace = true }
 serde.workspace = true
 tokio = { workspace = true, features = ["full"] }
@@ -22,6 +33,7 @@ zeroize.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
+tempfile.workspace = true
 
 [[bench]]
 name = "rpc_hotpaths"

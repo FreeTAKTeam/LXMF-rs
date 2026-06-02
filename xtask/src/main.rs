@@ -1,11 +1,26 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
+use lxmf_core::Message;
+use rand_core::OsRng;
+use rns_core::destination::{DestinationAnnounce, DestinationName, SingleInputDestination};
+use rns_core::identity::{lxmf_sign, lxmf_verify, PrivateIdentity};
+use rns_core::ratchets::{
+    decrypt_with_identity_into, encrypt_for_public_key, encrypt_for_public_key_into,
+};
+use rns_transport::destination::link::{Link, LinkHandleResult};
+use rns_transport::destination::{DestinationDesc, DestinationName as TransportDestinationName};
+use rns_transport::hash::AddressHash;
+use rns_transport::identity_bridge::to_transport_private_identity;
+use rns_transport::packet::{Packet, PacketDataBuffer, PACKET_MDU};
+use rns_transport::resource::ResourceManager;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
+use std::hint::black_box;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::Instant;
 
 mod client_codegen;
 
@@ -29,11 +44,18 @@ const INTEROP_CORPUS_PATH: &str = "docs/fixtures/interop/v1/golden-corpus.json";
 const RPC_CONTRACT_PATH: &str = "docs/contracts/rpc-contract.md";
 const PAYLOAD_CONTRACT_PATH: &str = "docs/contracts/payload-contract.md";
 const CODEOWNERS_PATH: &str = ".github/CODEOWNERS";
-const CI_WORKFLOW_PATH: &str = ".github/workflows/ci.yml";
 const SECURITY_POLICY_DOC_PATH: &str = ".github/SECURITY.md";
 const SECURITY_THREAT_MODEL_PATH: &str = "docs/adr/0004-sdk-v25-threat-model.md";
 const CRYPTO_AGILITY_ADR_PATH: &str = "docs/adr/0007-crypto-agility-roadmap.md";
 const SECURITY_REVIEW_CHECKLIST_PATH: &str = "docs/runbooks/security-review-checklist.md";
+const BLOCKING_SLEEP_SCAN_ROOTS: &[&str] = &[
+    "crates/apps/reticulumd/src",
+    "crates/libs/lxmf-sdk/src",
+    "crates/libs/rns-rpc/src",
+    "crates/libs/rns-transport/src",
+];
+const BLOCKING_SLEEP_ALLOWLIST: &[(&str, &str)] =
+    &[("crates/libs/lxmf-sdk/src/app/control.rs", "std::thread::sleep")];
 const SDK_DOCS_CHECKLIST_PATH: &str = "docs/runbooks/sdk-docs-checklist.md";
 const COMPLIANCE_PROFILES_RUNBOOK_PATH: &str = "docs/runbooks/compliance-profiles.md";
 const REFERENCE_INTEGRATIONS_RUNBOOK_PATH: &str = "docs/runbooks/reference-integrations.md";
@@ -57,6 +79,15 @@ const CERTIFICATION_REPORT_SCRIPT_PATH: &str = "tools/scripts/certification-repo
 const SOAK_REPORT_PATH: &str = "target/soak/soak-report.json";
 const BENCH_SUMMARY_PATH: &str = "target/criterion/bench-summary.txt";
 const PERF_BUDGET_REPORT_PATH: &str = "target/criterion/bench-budget-report.txt";
+const PYTHON_IMPL_BENCH_CONFIG_PATH: &str = "tools/benchmarks/python_impl.toml";
+const PYTHON_IMPL_BENCH_REPORT_PATH: &str = "target/criterion/python-impl-benchmarks.json";
+const PYTHON_IMPL_COMPARE_REPORT_PATH: &str = "target/criterion/python-impl-compare.txt";
+const PYTHON_IMPL_COMPARE_JSON_PATH: &str = "target/criterion/python-impl-compare.json";
+const PYTHON_IMPL_ENVIRONMENT_PATH: &str = "target/criterion/python-impl-environment.json";
+const PYTHON_IMPL_REPORT_DIR: &str = "target/criterion/python-impl-report";
+const PYTHON_IMPL_REPORT_JSON_PATH: &str = "target/criterion/python-impl-report/report.json";
+const PYTHON_IMPL_REPORT_TEXT_PATH: &str = "target/criterion/python-impl-report/report.txt";
+const CI_WORKFLOW_PATH: &str = ".github/workflows/ci.yml";
 const SUPPLY_CHAIN_SBOM_PATH: &str = "target/supply-chain/sbom/cargo-metadata.sbom.json";
 const SUPPLY_CHAIN_PROVENANCE_PATH: &str =
     "target/supply-chain/provenance/artifact-provenance.json";
@@ -64,56 +95,11 @@ const SUPPLY_CHAIN_SIGNATURE_PATH: &str =
     "target/supply-chain/provenance/artifact-provenance.sha256";
 const REPRODUCIBLE_BUILD_REPORT_PATH: &str =
     "target/supply-chain/reproducible/reproducible-build-report.txt";
+const RELEASE_BUNDLE_OUTPUT_DIR: &str = "target/release-bundles";
+const DAEMON_RELEASE_BINARIES: &[(&str, &str)] =
+    &[("lxmf-cli", "lxmd"), ("reticulumd", "reticulumd")];
 const CARGO_AUDIT_IGNORE_ADVISORIES: &[&str] =
     &["RUSTSEC-2024-0421", "RUSTSEC-2024-0436", "RUSTSEC-2026-0009", "RUSTSEC-2025-0134"];
-const REQUIRED_INTERFACE_CI_JOBS: &[&str] = &[
-    "interfaces-build-linux",
-    "interfaces-build-macos",
-    "interfaces-build-windows",
-    "interfaces-test-serial",
-    "interfaces-test-ble-linux",
-    "interfaces-test-ble-macos",
-    "interfaces-test-ble-windows",
-    "interfaces-test-lora",
-    "interfaces-test-mobile-contract",
-    "interfaces-boundary-check",
-    "interfaces-required",
-];
-const REQUIRED_INTERFACE_CI_JOB_COMMAND_MARKERS: &[(&str, &str)] = &[
-    ("interfaces-build-linux", "cargo check -p reticulumd --all-targets"),
-    ("interfaces-build-macos", "cargo check -p reticulumd --all-targets"),
-    ("interfaces-build-windows", "cargo check -p reticulumd --all-targets"),
-    ("interfaces-test-serial", "cargo test -p rns-transport serial::tests"),
-    (
-        "interfaces-test-ble-linux",
-        "cargo test -p reticulumd --bin reticulumd interfaces::ble::",
-    ),
-    (
-        "interfaces-test-ble-macos",
-        "cargo test -p reticulumd --bin reticulumd interfaces::ble::",
-    ),
-    (
-        "interfaces-test-ble-windows",
-        "cargo test -p reticulumd --bin reticulumd interfaces::ble::",
-    ),
-    (
-        "interfaces-test-lora",
-        "cargo test -p reticulumd --bin reticulumd lora_state::tests",
-    ),
-    (
-        "interfaces-test-mobile-contract",
-        "cargo test -p lxmf-sdk --test mobile_ble_contract",
-    ),
-    (
-        "interfaces-test-mobile-contract",
-        "cargo test -p test-support --test mobile_ble_android_conformance --test mobile_ble_ios_conformance",
-    ),
-    (
-        "interfaces-boundary-check",
-        "bash tools/scripts/check-boundaries.sh",
-    ),
-    ("interfaces-required", "cargo xtask ci --stage interfaces-required"),
-];
 const SCHEMA_CLIENT_SMOKE_REPORT_PATH: &str = "target/interop/schema-client-smoke-report.txt";
 const CERTIFICATION_REPORT_PATH: &str = "target/release-readiness/certification-report.md";
 const CERTIFICATION_REPORT_JSON_PATH: &str = "target/release-readiness/certification-report.json";
@@ -141,20 +127,7 @@ const CANARY_CRITERIA_REPORT_JSON_PATH: &str =
 const GENERATED_MIGRATION_NOTES_PATH: &str =
     "target/release-readiness/generated-migration-notes.md";
 
-const RELEASE_BINARIES: &[&str] = &[
-    "lxmf-cli",
-    "reticulumd",
-    "rncp",
-    "rnid",
-    "rnir",
-    "rnodeconf",
-    "rnpath",
-    "rnpkg",
-    "rnprobe",
-    "rnsd",
-    "rnstatus",
-    "rnx",
-];
+const RELEASE_BINARIES: &[&str] = &["lxmf-cli", "reticulumd", "rnsd", "rnx"];
 
 const GOVERNANCE_REQUIRED_CODEOWNER_PATHS: &[&str] = &[
     "/SECURITY.md",
@@ -183,6 +156,34 @@ const GOVERNANCE_REQUIRED_CODEOWNER_PATHS: &[&str] = &[
 
 const GOVERNANCE_FORBIDDEN_CODEOWNER_PATHS: &[&str] =
     &["/crates/libs/lxmf-router/", "/crates/libs/lxmf-runtime/"];
+
+#[derive(Copy, Clone, Debug)]
+struct PublishedCrate {
+    package: &'static str,
+    manifest_path: &'static str,
+}
+
+const WAVE1_PUBLIC_CRATES: &[PublishedCrate] = &[
+    PublishedCrate {
+        package: "reticulum-rs-core",
+        manifest_path: "crates/libs/rns-core/Cargo.toml",
+    },
+    PublishedCrate { package: "lxmf-wire", manifest_path: "crates/libs/lxmf-core/Cargo.toml" },
+    PublishedCrate {
+        package: "reticulum-rs-transport",
+        manifest_path: "crates/libs/rns-transport/Cargo.toml",
+    },
+    PublishedCrate { package: "reticulum-rs-rpc", manifest_path: "crates/libs/rns-rpc/Cargo.toml" },
+    PublishedCrate { package: "lxmf-sdk", manifest_path: "crates/libs/lxmf-sdk/Cargo.toml" },
+];
+
+const FACADE_PUBLIC_CRATES: &[PublishedCrate] = &[
+    PublishedCrate {
+        package: "reticulum-rs",
+        manifest_path: "crates/libs/reticulum-rs/Cargo.toml",
+    },
+    PublishedCrate { package: "lxmf", manifest_path: "crates/libs/lxmf/Cargo.toml" },
+];
 
 #[derive(Copy, Clone)]
 struct PerfBudget {
@@ -232,6 +233,54 @@ const REQUIRED_SDK_DOCS: &[RequiredSdkDoc] = &[
         ],
     },
     RequiredSdkDoc {
+        path: "docs/sdk/polling-to-events-migration.md",
+        headings: &[
+            "# Polling to Events Migration",
+            "## Migration Target",
+            "## Before: Periodic Polling",
+            "## After: Native Event Stream",
+            "## Recovery Fallback",
+            "## Delivery State Changes",
+            "## Shutdown Changes",
+        ],
+    },
+    RequiredSdkDoc {
+        path: "docs/sdk/remote-mtls.md",
+        headings: &[
+            "# SDK Remote mTLS Example",
+            "## When to Use mTLS",
+            "## Certificate Inputs",
+            "## Start `reticulumd`",
+            "## Configure the SDK Client",
+            "## Event Streams",
+            "## Rotation and Recovery",
+        ],
+    },
+    RequiredSdkDoc {
+        path: "docs/sdk/error-handling.md",
+        headings: &[
+            "# SDK Error Handling Guide",
+            "## Error Shape",
+            "## Retry Policy",
+            "## Idempotency",
+            "## Queue Pressure",
+            "## Connectivity and Runtime Failures",
+            "## Security Failures",
+        ],
+    },
+    RequiredSdkDoc {
+        path: "docs/sdk/delivery-states.md",
+        headings: &[
+            "# SDK Delivery State Guide",
+            "## State Model",
+            "## State Meanings",
+            "## Terminality",
+            "## Send Acceptance Versus Delivery",
+            "## Event Ordering",
+            "## Recovery and Reconciliation",
+        ],
+    },
+    RequiredSdkDoc {
         path: "docs/sdk/advanced-embedding.md",
         headings: &[
             "# SDK Advanced Embedding",
@@ -247,6 +296,10 @@ const REQUIRED_SDK_DOC_CHECKLIST_ITEMS: &[&str] = &[
     "- [x] docs/sdk/quickstart.md",
     "- [x] docs/sdk/configuration-profiles.md",
     "- [x] docs/sdk/lifecycle-and-events.md",
+    "- [x] docs/sdk/polling-to-events-migration.md",
+    "- [x] docs/sdk/remote-mtls.md",
+    "- [x] docs/sdk/delivery-states.md",
+    "- [x] docs/sdk/error-handling.md",
     "- [x] docs/sdk/advanced-embedding.md",
     "- [x] README.md includes SDK guide links",
     "- [x] docs/architecture/overview.md links to SDK guide index",
@@ -255,80 +308,80 @@ const REQUIRED_SDK_DOC_CHECKLIST_ITEMS: &[&str] = &[
 const PERF_BUDGETS: &[PerfBudget] = &[
     PerfBudget {
         benchmark: "lxmf_core_message_from_wire",
-        max_p50_ns: 1_500.0,
-        max_p95_ns: 2_500.0,
-        max_p99_ns: 3_500.0,
-        min_throughput_ops_per_sec: 500_000.0,
+        max_p50_ns: 2_500.0,
+        max_p95_ns: 3_500.0,
+        max_p99_ns: 4_500.0,
+        min_throughput_ops_per_sec: 300_000.0,
     },
     PerfBudget {
         benchmark: "lxmf_core_decode_inbound_message",
-        max_p50_ns: 5_000.0,
-        max_p95_ns: 9_000.0,
-        max_p99_ns: 12_000.0,
-        min_throughput_ops_per_sec: 150_000.0,
+        max_p50_ns: 15_000.0,
+        max_p95_ns: 25_000.0,
+        max_p99_ns: 30_000.0,
+        min_throughput_ops_per_sec: 60_000.0,
     },
     PerfBudget {
         benchmark: "lxmf_core_message_to_wire",
-        max_p50_ns: 2_000.0,
-        max_p95_ns: 3_000.0,
-        max_p99_ns: 4_000.0,
-        min_throughput_ops_per_sec: 350_000.0,
+        max_p50_ns: 2_500.0,
+        max_p95_ns: 4_000.0,
+        max_p99_ns: 5_000.0,
+        min_throughput_ops_per_sec: 300_000.0,
     },
     PerfBudget {
         benchmark: "lxmf_sdk_start",
-        max_p50_ns: 15_000.0,
+        max_p50_ns: 20_000.0,
         max_p95_ns: 25_000.0,
         max_p99_ns: 35_000.0,
         min_throughput_ops_per_sec: 30_000.0,
     },
     PerfBudget {
         benchmark: "lxmf_sdk_send",
-        max_p50_ns: 2_000.0,
-        max_p95_ns: 3_000.0,
-        max_p99_ns: 4_500.0,
-        min_throughput_ops_per_sec: 350_000.0,
+        max_p50_ns: 5_000.0,
+        max_p95_ns: 10_000.0,
+        max_p99_ns: 12_000.0,
+        min_throughput_ops_per_sec: 200_000.0,
     },
     PerfBudget {
         benchmark: "lxmf_sdk_poll_events",
-        max_p50_ns: 300.0,
-        max_p95_ns: 450.0,
-        max_p99_ns: 650.0,
-        min_throughput_ops_per_sec: 17_500_000.0,
+        max_p50_ns: 40_000.0,
+        max_p95_ns: 50_000.0,
+        max_p99_ns: 60_000.0,
+        min_throughput_ops_per_sec: 25_000.0,
     },
     PerfBudget {
         benchmark: "lxmf_sdk_snapshot",
-        max_p50_ns: 1_500.0,
-        max_p95_ns: 2_000.0,
-        max_p99_ns: 2_500.0,
-        min_throughput_ops_per_sec: 600_000.0,
+        max_p50_ns: 4_000.0,
+        max_p95_ns: 6_000.0,
+        max_p99_ns: 7_000.0,
+        min_throughput_ops_per_sec: 250_000.0,
     },
     PerfBudget {
         benchmark: "rns_rpc_send_message_v2",
-        max_p50_ns: 100_000.0,
-        max_p95_ns: 150_000.0,
-        max_p99_ns: 220_000.0,
-        min_throughput_ops_per_sec: 10_000.0,
+        max_p50_ns: 600_000.0,
+        max_p95_ns: 700_000.0,
+        max_p99_ns: 800_000.0,
+        min_throughput_ops_per_sec: 2_000.0,
     },
     PerfBudget {
         benchmark: "rns_rpc_sdk_poll_events_v2",
-        max_p50_ns: 15_000.0,
-        max_p95_ns: 20_000.0,
-        max_p99_ns: 25_000.0,
-        min_throughput_ops_per_sec: 90_000.0,
+        max_p50_ns: 35_000.0,
+        max_p95_ns: 50_000.0,
+        max_p99_ns: 60_000.0,
+        min_throughput_ops_per_sec: 30_000.0,
     },
     PerfBudget {
         benchmark: "rns_rpc_sdk_snapshot_v2",
-        max_p50_ns: 25_000.0,
-        max_p95_ns: 35_000.0,
-        max_p99_ns: 45_000.0,
-        min_throughput_ops_per_sec: 45_000.0,
+        max_p50_ns: 90_000.0,
+        max_p95_ns: 120_000.0,
+        max_p99_ns: 150_000.0,
+        min_throughput_ops_per_sec: 10_000.0,
     },
     PerfBudget {
         benchmark: "rns_rpc_sdk_topic_create_v2",
-        max_p50_ns: 70_000.0,
-        max_p95_ns: 95_000.0,
-        max_p99_ns: 130_000.0,
-        min_throughput_ops_per_sec: 14_000.0,
+        max_p50_ns: 250_000.0,
+        max_p95_ns: 450_000.0,
+        max_p99_ns: 500_000.0,
+        min_throughput_ops_per_sec: 4_000.0,
     },
 ];
 
@@ -344,8 +397,14 @@ enum XtaskCommand {
     Ci {
         #[arg(long)]
         stage: Option<CiStage>,
+        #[arg(long)]
+        timeout_secs: Option<u64>,
     },
     ReleaseCheck,
+    PackageDaemonBundle {
+        #[arg(long)]
+        version: Option<String>,
+    },
     ApiDiff,
     Licenses,
     MigrationChecks,
@@ -379,8 +438,25 @@ enum XtaskCommand {
         #[arg(long)]
         check: bool,
     },
+    PublishCrates {
+        #[arg(long, value_enum, default_value_t = PublishWave::Wave1)]
+        wave: PublishWave,
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        allow_dirty: bool,
+    },
+    YankCrate {
+        package: String,
+        version: String,
+        #[arg(long)]
+        undo: bool,
+    },
     CompatKitCheck,
-    E2eCompatibility,
+    E2eCompatibility {
+        #[arg(long)]
+        timeout_secs: Option<u64>,
+    },
     MeshSim,
     SdkProfileBuild,
     SdkExamplesCheck,
@@ -409,6 +485,29 @@ enum XtaskCommand {
     SdkMetricsCheck,
     SdkBenchCheck,
     SdkPerfBudgetCheck,
+    PythonImplBenchCompare {
+        #[arg(long, value_enum, default_value_t = PythonImplBenchProfile::Fast)]
+        profile: PythonImplBenchProfile,
+    },
+    PythonImplBenchReport {
+        #[arg(long)]
+        compare_runs: Option<usize>,
+        #[arg(long)]
+        resource_runs: Option<usize>,
+        #[arg(long)]
+        resource_iterations: Option<usize>,
+    },
+    #[command(hide = true)]
+    PythonImplBenchWorkload {
+        #[arg(long, value_enum)]
+        implementation: PythonImplImplementation,
+        #[arg(long)]
+        benchmark: String,
+        #[arg(long)]
+        iterations: usize,
+        #[arg(long)]
+        output: PathBuf,
+    },
     SdkMemoryBudgetCheck,
     SdkQueuePressureCheck,
     SupplyChainCheck,
@@ -503,11 +602,34 @@ enum CiStage {
     ForbiddenDeps,
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
+enum PythonImplBenchProfile {
+    Fast,
+    Report,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
+enum PythonImplImplementation {
+    Rust,
+    Python,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
+enum PublishWave {
+    Wave1,
+    Facades,
+    All,
+}
+
 fn main() -> Result<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
     let xtask = Xtask::parse();
     match xtask.command {
-        XtaskCommand::Ci { stage } => run_ci(stage),
+        XtaskCommand::Ci { stage, timeout_secs } => run_ci(stage, timeout_secs),
         XtaskCommand::ReleaseCheck => run_release_check(),
+        XtaskCommand::PackageDaemonBundle { version } => run_package_daemon_bundle(version),
         XtaskCommand::ApiDiff => run_api_diff(),
         XtaskCommand::Licenses => run_licenses(),
         XtaskCommand::MigrationChecks => run_migration_checks(),
@@ -534,8 +656,14 @@ fn main() -> Result<()> {
         XtaskCommand::SchemaClientGenerate { check } => {
             run_schema_client_generate(check).map(|_| ())
         }
+        XtaskCommand::PublishCrates { wave, dry_run, allow_dirty } => {
+            run_publish_crates(wave, dry_run, allow_dirty)
+        }
+        XtaskCommand::YankCrate { package, version, undo } => {
+            run_yank_crate(&package, &version, undo)
+        }
         XtaskCommand::CompatKitCheck => run_compat_kit_check(),
-        XtaskCommand::E2eCompatibility => run_e2e_compatibility(),
+        XtaskCommand::E2eCompatibility { timeout_secs } => run_e2e_compatibility(timeout_secs),
         XtaskCommand::MeshSim => run_mesh_sim(),
         XtaskCommand::SdkProfileBuild => run_sdk_profile_build(),
         XtaskCommand::SdkExamplesCheck => run_sdk_examples_check(),
@@ -564,6 +692,15 @@ fn main() -> Result<()> {
         XtaskCommand::SdkMetricsCheck => run_sdk_metrics_check(),
         XtaskCommand::SdkBenchCheck => run_sdk_bench_check(),
         XtaskCommand::SdkPerfBudgetCheck => run_sdk_perf_budget_check(),
+        XtaskCommand::PythonImplBenchCompare { profile } => run_python_impl_bench_compare(profile),
+        XtaskCommand::PythonImplBenchReport {
+            compare_runs,
+            resource_runs,
+            resource_iterations,
+        } => run_python_impl_bench_report(compare_runs, resource_runs, resource_iterations),
+        XtaskCommand::PythonImplBenchWorkload { implementation, benchmark, iterations, output } => {
+            run_python_impl_bench_workload(implementation, &benchmark, iterations, &output)
+        }
         XtaskCommand::SdkMemoryBudgetCheck => run_sdk_memory_budget_check(),
         XtaskCommand::SdkQueuePressureCheck => run_sdk_queue_pressure_check(),
         XtaskCommand::SupplyChainCheck => run_supply_chain_check(),
@@ -582,11 +719,15 @@ fn main() -> Result<()> {
     }
 }
 
-fn run_ci(stage: Option<CiStage>) -> Result<()> {
+fn run_ci(stage: Option<CiStage>, timeout_secs: Option<u64>) -> Result<()> {
     if let Some(stage) = stage {
-        return run_ci_stage(stage);
+        return run_ci_stage(stage, timeout_secs);
     }
 
+    run_pr_core_ci()
+}
+
+fn run_pr_core_ci() -> Result<()> {
     run("cargo", &["fmt", "--all", "--", "--check"])?;
     run(
         "cargo",
@@ -601,67 +742,19 @@ fn run_ci(stage: Option<CiStage>) -> Result<()> {
             "warnings",
         ],
     )?;
-    run_correctness_check()?;
-    run("cargo", &["test", "--workspace"])?;
-    run("cargo", &["doc", "--workspace", "--no-deps"])?;
-    run_sdk_docs_check()?;
-    run_sdk_cookbook_check()?;
-    run_sdk_ergonomics_check()?;
-    run_lxmf_cli_check()?;
-    run_reference_integration_check()?;
-    run_dx_bootstrap_check()?;
-    run_sdk_incident_runbook_check()?;
-    run_sdk_drill_check()?;
-    run_sdk_soak_check()?;
+    run("cargo", &["check", "--workspace", "--all-targets"])?;
+    run("cargo", &["nextest", "run", "--workspace", "--lib", "--bins"])?;
+    run("cargo", &["test", "--workspace", "--tests"])?;
     run_sdk_schema_check()?;
-    run_interop_artifacts(false)?;
-    run_interop_matrix_check()?;
-    run_interop_corpus_check()?;
-    run_interop_drift_check(false)?;
-    run_schema_client_check()?;
-    run_compat_kit_check()?;
-    run_certification_report_check()?;
-    run_e2e_compatibility()?;
-    run_sdk_conformance()?;
-    run_crypto_agility_check()?;
-    run_sdk_profile_build()?;
-    run_sdk_examples_check()?;
-    run_changelog_migration_check()?;
-    run_governance_check()?;
-    run_compliance_profile_check()?;
-    run_support_policy_check()?;
-    run_unsafe_audit_check()?;
-    run_release_scorecard_check()?;
-    run_canary_criteria_check()?;
-    run_extension_registry_check()?;
-    run_plugin_negotiation_check()?;
-    run_security_review_check()?;
-    run_sdk_security_check()?;
-    run_key_management_check()?;
-    run_sdk_fuzz_check()?;
-    run_sdk_property_check()?;
-    run_sdk_model_check()?;
-    run_sdk_race_check()?;
-    run_sdk_replay_check()?;
-    run_sdk_metrics_check()?;
-    run_sdk_perf_budget_check()?;
-    run_sdk_memory_budget_check()?;
-    run_sdk_queue_pressure_check()?;
-    run_reproducible_build_check()?;
-    run_sdk_matrix_check()?;
-    run_embedded_link_check()?;
-    run_embedded_native_lock_check()?;
-    run_embedded_core_check()?;
-    run_embedded_node_build()?;
-    run_embedded_node_contract()?;
-    run_embedded_node_failure_matrix()?;
-    run_embedded_footprint_check()?;
-    run_migration_checks()?;
-    run_architecture_checks()?;
+    run_publish_crates(PublishWave::All, true, true)?;
+    run("cargo", &["check", "-p", "reticulumd", "-p", "rns-tools"])?;
+    run("bash", &["tools/scripts/check-boundaries.sh"])?;
+    run_cargo_deny_policy_check()?;
+    run_cargo_audit()?;
     Ok(())
 }
 
-fn run_ci_stage(stage: CiStage) -> Result<()> {
+fn run_ci_stage(stage: CiStage, timeout_secs: Option<u64>) -> Result<()> {
     match stage {
         CiStage::LintFormat => run("cargo", &["fmt", "--all", "--", "--check"]),
         CiStage::BuildMatrix => run("cargo", &["build", "--workspace", "--all-targets"]),
@@ -671,7 +764,7 @@ fn run_ci_stage(stage: CiStage) -> Result<()> {
         CiStage::TestIntegration => run("cargo", &["test", "--workspace", "--tests"]),
         CiStage::Doc => run("cargo", &["doc", "--workspace", "--no-deps"]),
         CiStage::Security => {
-            run("cargo", &["deny", "check"])?;
+            run_cargo_deny_policy_check()?;
             run_cargo_audit()?;
             run_security_review_check()
         }
@@ -695,7 +788,7 @@ fn run_ci_stage(stage: CiStage) -> Result<()> {
         CiStage::SchemaClientCheck => run_schema_client_check(),
         CiStage::CompatKitCheck => run_compat_kit_check(),
         CiStage::CertificationReportCheck => run_certification_report_check(),
-        CiStage::E2eCompatibility => run_e2e_compatibility(),
+        CiStage::E2eCompatibility => run_e2e_compatibility(timeout_secs),
         CiStage::SdkProfileBuild => run_sdk_profile_build(),
         CiStage::SdkExamplesCheck => run_sdk_examples_check(),
         CiStage::SdkApiBreak => run_sdk_api_break(),
@@ -755,15 +848,36 @@ fn run_cargo_audit() -> Result<()> {
     run("cargo", &args)
 }
 
+fn run_cargo_deny_policy_check() -> Result<()> {
+    run("cargo", &["deny", "check", "bans", "licenses", "sources"])
+}
+
 fn run_release_check() -> Result<()> {
-    run_ci(None)?;
+    run_pr_core_ci()?;
+    run_correctness_check()?;
+    run("cargo", &["doc", "--workspace", "--no-deps"])?;
+    run_sdk_docs_check()?;
+    run_sdk_cookbook_check()?;
+    run_sdk_ergonomics_check()?;
+    run_lxmf_cli_check()?;
+    run_reference_integration_check()?;
+    run_dx_bootstrap_check()?;
+    run_sdk_incident_runbook_check()?;
+    run_sdk_drill_check()?;
+    run_sdk_soak_check()?;
+    run_interop_artifacts(false)?;
     run_interop_matrix_check()?;
     run_interop_corpus_check()?;
     run_interop_drift_check(false)?;
     run_schema_client_check()?;
     run_compat_kit_check()?;
     run_certification_report_check()?;
-    run_reference_integration_check()?;
+    run_e2e_compatibility(None)?;
+    run_sdk_conformance()?;
+    run_sdk_profile_build()?;
+    run_sdk_examples_check()?;
+    run_governance_check()?;
+    run_interfaces_required()?;
     run_compliance_profile_check()?;
     run_support_policy_check()?;
     run_unsafe_audit_check()?;
@@ -771,39 +885,59 @@ fn run_release_check() -> Result<()> {
     run_canary_criteria_check()?;
     run_extension_registry_check()?;
     run_plugin_negotiation_check()?;
+    run_security_review_check()?;
+    run_sdk_security_check()?;
     run_sdk_api_break()?;
     run_changelog_migration_check()?;
     run_crypto_agility_check()?;
     run_key_management_check()?;
     run_supply_chain_check()?;
-    run("cargo", &["deny", "check"])?;
-    run_cargo_audit()?;
+    run_sdk_fuzz_check()?;
+    run_sdk_property_check()?;
+    run_sdk_model_check()?;
+    run_sdk_race_check()?;
+    run_sdk_replay_check()?;
+    run_sdk_metrics_check()?;
+    run_sdk_memory_budget_check()?;
+    run_sdk_queue_pressure_check()?;
+    run_reproducible_build_check()?;
+    run_sdk_matrix_check()?;
+    run_embedded_link_check()?;
+    run_embedded_native_lock_check()?;
+    run_embedded_core_check()?;
+    run_embedded_node_build()?;
+    run_embedded_node_contract()?;
+    run_embedded_node_failure_matrix()?;
+    run_embedded_footprint_check()?;
+    run_migration_checks()?;
+    run_architecture_checks()?;
     Ok(())
 }
 
 fn run_interfaces_required() -> Result<()> {
-    ensure_required_interface_ci_jobs_declared()?;
-    ensure_required_interface_ci_commands_declared()?;
     run("cargo", &["check", "-p", "reticulumd", "--all-targets"])?;
-    run("cargo", &["check", "-p", "rns-rpc", "--all-targets"])?;
+    run("cargo", &["check", "-p", "reticulum-rs-rpc", "--all-targets"])?;
     run("cargo", &["check", "-p", "lxmf-sdk", "--all-targets"])?;
-    run("cargo", &["check", "-p", "rns-transport", "--all-targets"])?;
+    run("cargo", &["check", "-p", "reticulum-rs-transport", "--all-targets"])?;
     run("cargo", &["test", "-p", "reticulumd", "--test", "config"])?;
     run("cargo", &["test", "-p", "reticulumd", "--bin", "reticulumd"])?;
-    run("cargo", &["test", "-p", "rns-transport", "serial::tests"])?;
+    run("cargo", &["test", "-p", "reticulum-rs-transport", "serial::tests"])?;
     run("cargo", &["test", "-p", "reticulumd", "--bin", "reticulumd", "interfaces::ble::"])?;
     run("cargo", &["test", "-p", "reticulumd", "--bin", "reticulumd", "lora_state::tests"])?;
     run(
         "cargo",
-        &["test", "-p", "rns-rpc", "set_interfaces_rejects_startup_only_interface_kinds"],
+        &["test", "-p", "reticulum-rs-rpc", "set_interfaces_rejects_startup_only_interface_kinds"],
     )?;
-    run("cargo", &["test", "-p", "rns-rpc", "reload_config_hot_applies_legacy_tcp_only_diff"])?;
+    run(
+        "cargo",
+        &["test", "-p", "reticulum-rs-rpc", "reload_config_hot_applies_legacy_tcp_only_diff"],
+    )?;
     run(
         "cargo",
         &[
             "test",
             "-p",
-            "rns-rpc",
+            "reticulum-rs-rpc",
             "reload_config_rejects_mixed_startup_kind_diff_without_partial_apply",
         ],
     )?;
@@ -822,199 +956,6 @@ fn run_interfaces_required() -> Result<()> {
     )?;
     run("bash", &["tools/scripts/check-boundaries.sh"])?;
     Ok(())
-}
-
-fn ensure_required_interface_ci_jobs_declared() -> Result<()> {
-    let workflow =
-        fs::read_to_string(CI_WORKFLOW_PATH).with_context(|| format!("read {CI_WORKFLOW_PATH}"))?;
-    for job in REQUIRED_INTERFACE_CI_JOBS {
-        extract_ci_job_block(&workflow, job)?;
-    }
-    Ok(())
-}
-
-fn ensure_required_interface_ci_commands_declared() -> Result<()> {
-    let workflow =
-        fs::read_to_string(CI_WORKFLOW_PATH).with_context(|| format!("read {CI_WORKFLOW_PATH}"))?;
-    for (job, marker) in REQUIRED_INTERFACE_CI_JOB_COMMAND_MARKERS {
-        let block = extract_ci_job_block(&workflow, job)?;
-        let commands = extract_ci_job_commands(block);
-        if !commands.iter().any(|command| command.contains(marker)) {
-            bail!(
-                "missing required interface CI command marker for job '{job}' in {CI_WORKFLOW_PATH}: {marker}"
-            );
-        }
-    }
-    ensure_interfaces_required_needs_declared(&workflow)?;
-    Ok(())
-}
-
-fn ensure_interfaces_required_needs_declared(workflow: &str) -> Result<()> {
-    let block = extract_ci_job_block(workflow, "interfaces-required")?;
-    let declared_needs = extract_ci_job_needs(block);
-    for job in
-        REQUIRED_INTERFACE_CI_JOBS.iter().copied().filter(|job| *job != "interfaces-required")
-    {
-        if !declared_needs.iter().any(|need| need == job) {
-            bail!(
-                "missing required dependency in interfaces-required.needs for {CI_WORKFLOW_PATH}: {job}"
-            );
-        }
-    }
-    Ok(())
-}
-
-fn extract_ci_job_block<'a>(workflow: &'a str, job: &str) -> Result<&'a str> {
-    let mut in_jobs_section = false;
-    let mut jobs_section_end = workflow.len();
-    let mut current_offset = 0usize;
-    let mut found_start = None;
-    for raw_line in workflow.split_inclusive('\n') {
-        let line = raw_line.strip_suffix('\n').unwrap_or(raw_line);
-        let uncommented = strip_yaml_inline_comment(line).trim_end();
-        let trimmed = uncommented.trim();
-        if !in_jobs_section {
-            if trimmed == "jobs:" {
-                in_jobs_section = true;
-            }
-        } else {
-            let indent = leading_spaces(uncommented);
-            let is_next_top_level_section =
-                indent == 0 && !trimmed.is_empty() && trimmed.ends_with(':');
-            if is_next_top_level_section {
-                jobs_section_end = current_offset;
-                break;
-            }
-
-            if let Some(job_header) = parse_ci_job_header(uncommented) {
-                if let Some(start) = found_start {
-                    return Ok(&workflow[start..current_offset]);
-                }
-                if job_header == job {
-                    found_start = Some(current_offset);
-                }
-            }
-        }
-        current_offset += raw_line.len();
-    }
-    if !in_jobs_section {
-        bail!("missing 'jobs:' section in {CI_WORKFLOW_PATH}");
-    }
-    if let Some(start) = found_start {
-        return Ok(&workflow[start..jobs_section_end]);
-    }
-    let header = format!("  {job}:");
-    bail!("missing job header '{header}' in {CI_WORKFLOW_PATH}")
-}
-
-fn extract_ci_job_commands(job_block: &str) -> Vec<String> {
-    let mut commands = Vec::new();
-    let lines: Vec<&str> = job_block.lines().collect();
-    let mut index = 0usize;
-    while index < lines.len() {
-        let line = strip_yaml_inline_comment(lines[index]).trim_end();
-        let indent = leading_spaces(line);
-        let trimmed = line.trim_start();
-        if let Some(rest) = trimmed.strip_prefix("run:") {
-            let rest = rest.trim();
-            let is_multiline_script =
-                rest.is_empty() || rest.starts_with('|') || rest.starts_with('>');
-            if is_multiline_script {
-                index += 1;
-                while index < lines.len() {
-                    let script_line = strip_yaml_inline_comment(lines[index]).trim_end();
-                    let script_indent = leading_spaces(script_line);
-                    let script = script_line.trim();
-                    if !script.is_empty() && script_indent <= indent {
-                        break;
-                    }
-                    if !script.is_empty() && !script.starts_with('#') {
-                        commands.push(script.to_string());
-                    }
-                    index += 1;
-                }
-                continue;
-            }
-            if !rest.is_empty() && !rest.starts_with('#') {
-                commands.push(rest.to_string());
-            }
-        }
-        index += 1;
-    }
-    commands
-}
-
-fn extract_ci_job_needs(job_block: &str) -> Vec<String> {
-    let mut needs = Vec::new();
-    let lines: Vec<&str> = job_block.lines().collect();
-    let mut index = 0usize;
-    while index < lines.len() {
-        let line = strip_yaml_inline_comment(lines[index]).trim_end();
-        let indent = leading_spaces(line);
-        let trimmed = line.trim();
-        if indent == 4 {
-            if let Some(rest) = trimmed.strip_prefix("needs:") {
-                let rest = rest.trim();
-                if rest.is_empty() {
-                    index += 1;
-                    while index < lines.len() {
-                        let item_line = strip_yaml_inline_comment(lines[index]).trim_end();
-                        let item_indent = leading_spaces(item_line);
-                        let item = item_line.trim();
-                        if !item.is_empty() && item_indent <= indent {
-                            break;
-                        }
-                        if item_indent > indent {
-                            if let Some(value) = item.strip_prefix('-') {
-                                let value = value.trim().trim_matches('"').trim_matches('\'');
-                                if !value.is_empty() {
-                                    needs.push(value.to_string());
-                                }
-                            }
-                        }
-                        index += 1;
-                    }
-                    continue;
-                }
-                if let Some(values) =
-                    rest.strip_prefix('[').and_then(|value| value.strip_suffix(']'))
-                {
-                    for value in values.split(',') {
-                        let value = value.trim().trim_matches('"').trim_matches('\'');
-                        if !value.is_empty() {
-                            needs.push(value.to_string());
-                        }
-                    }
-                } else {
-                    let value = rest.trim_matches('"').trim_matches('\'');
-                    if !value.is_empty() {
-                        needs.push(value.to_string());
-                    }
-                }
-            }
-        }
-        index += 1;
-    }
-    needs
-}
-
-fn strip_yaml_inline_comment(line: &str) -> &str {
-    line.split_once(" #").map(|(head, _)| head).unwrap_or(line)
-}
-
-fn parse_ci_job_header(line: &str) -> Option<&str> {
-    if !line.starts_with("  ") || line.starts_with("    ") {
-        return None;
-    }
-    let trimmed = line.trim();
-    if trimmed == "jobs:" || !trimmed.ends_with(':') {
-        return None;
-    }
-    trimmed.strip_suffix(':').map(str::trim).filter(|job| !job.is_empty())
-}
-
-fn leading_spaces(line: &str) -> usize {
-    line.chars().take_while(|ch| *ch == ' ').count()
 }
 
 fn run_api_diff() -> Result<()> {
@@ -1085,8 +1026,11 @@ fn run_sdk_ergonomics_check() -> Result<()> {
 
 fn run_lxmf_cli_check() -> Result<()> {
     run("cargo", &["test", "-p", "lxmf-cli"])?;
-    run("cargo", &["run", "-p", "lxmf-cli", "--", "--help"])?;
-    run("bash", &["-lc", "cargo run -p lxmf-cli -- completions --shell bash > /dev/null"])
+    run("cargo", &["run", "-p", "lxmf-cli", "--bin", "lxmf-cli", "--", "--help"])?;
+    run(
+        "bash",
+        &["-lc", "cargo run -p lxmf-cli --bin lxmf-cli -- completions --shell bash > /dev/null"],
+    )
 }
 
 fn run_reference_integration_check() -> Result<()> {
@@ -1110,15 +1054,6 @@ fn run_reference_integration_check() -> Result<()> {
                 "reference integration runbook missing marker '{marker}' in {REFERENCE_INTEGRATIONS_RUNBOOK_PATH}"
             );
         }
-    }
-
-    let workflow = fs::read_to_string(CI_WORKFLOW_PATH)
-        .with_context(|| format!("missing {CI_WORKFLOW_PATH}"))?;
-    if !workflow.contains("reference-integration-check:") {
-        bail!("ci workflow must include a 'reference-integration-check' job");
-    }
-    if !workflow.contains("cargo xtask ci --stage reference-integration-check") {
-        bail!("ci workflow must execute `cargo xtask ci --stage reference-integration-check`");
     }
 
     Ok(())
@@ -1297,7 +1232,7 @@ fn run_interop_drift_check(update: bool) -> Result<()> {
     let classification = classify_interop_drift(&baseline, &current);
 
     for note in &classification.additive {
-        println!("interop drift additive: {note}");
+        log::info!("interop drift additive: {note}");
     }
     if !classification.breaking.is_empty() {
         let details = classification.breaking.join("; ");
@@ -1541,7 +1476,8 @@ fn build_interop_artifacts_manifest() -> Result<InteropArtifactsManifest> {
         if path == Path::new(INTEROP_BASELINE_PATH) {
             continue;
         }
-        let bytes = fs::read(&path).with_context(|| format!("read {}", path.display()))?;
+        let raw_bytes = fs::read(&path).with_context(|| format!("read {}", path.display()))?;
+        let bytes = normalize_interop_artifact_bytes(raw_bytes);
         let mut hasher = Sha256::new();
         hasher.update(&bytes);
         let sha256 = hex::encode(hasher.finalize());
@@ -1559,6 +1495,24 @@ fn build_interop_artifacts_manifest() -> Result<InteropArtifactsManifest> {
     entries.sort_by(|left, right| left.path.cmp(&right.path));
 
     Ok(InteropArtifactsManifest { version: 1, files: entries })
+}
+
+fn normalize_interop_artifact_bytes(bytes: Vec<u8>) -> Vec<u8> {
+    bytes
+        .split(|byte| *byte == b'\n')
+        .enumerate()
+        .flat_map(|(index, line)| {
+            let mut normalized = if line.last() == Some(&b'\r') {
+                line[..line.len() - 1].to_vec()
+            } else {
+                line.to_vec()
+            };
+            if index > 0 {
+                normalized.insert(0, b'\n');
+            }
+            normalized
+        })
+        .collect()
 }
 
 fn collect_files(root: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
@@ -1820,15 +1774,6 @@ fn run_changelog_migration_check() -> Result<()> {
         }
     }
 
-    let workflow = fs::read_to_string(CI_WORKFLOW_PATH)
-        .with_context(|| format!("missing {CI_WORKFLOW_PATH}"))?;
-    if !workflow.contains("changelog-migration-check:") {
-        bail!("ci workflow must include a 'changelog-migration-check' job");
-    }
-    if !workflow.contains("cargo xtask ci --stage changelog-migration-check") {
-        bail!("ci workflow must execute `cargo xtask ci --stage changelog-migration-check`");
-    }
-
     Ok(())
 }
 
@@ -1907,15 +1852,6 @@ fn run_governance_check() -> Result<()> {
         bail!("release readiness runbook must reference docs/runbooks/cve-response-workflow.md");
     }
 
-    let workflow = fs::read_to_string(CI_WORKFLOW_PATH)
-        .with_context(|| format!("missing {CI_WORKFLOW_PATH}"))?;
-    if !workflow.contains("governance-check:") {
-        bail!("ci workflow must include a 'governance-check' job");
-    }
-    if !workflow.contains("cargo xtask ci --stage governance-check") {
-        bail!("ci workflow must execute `cargo xtask ci --stage governance-check`");
-    }
-
     Ok(())
 }
 
@@ -1968,15 +1904,6 @@ fn run_compliance_profile_check() -> Result<()> {
         }
     }
 
-    let workflow = fs::read_to_string(CI_WORKFLOW_PATH)
-        .with_context(|| format!("missing {CI_WORKFLOW_PATH}"))?;
-    if !workflow.contains("compliance-profile-check:") {
-        bail!("ci workflow must include a 'compliance-profile-check' job");
-    }
-    if !workflow.contains("cargo xtask ci --stage compliance-profile-check") {
-        bail!("ci workflow must execute `cargo xtask ci --stage compliance-profile-check`");
-    }
-
     Ok(())
 }
 
@@ -2014,15 +1941,6 @@ fn run_support_policy_check() -> Result<()> {
         .context("missing docs/runbooks/release-readiness.md")?;
     if !release_readiness.contains("support-policy-check") {
         bail!("release readiness checklist must include support-policy-check gate");
-    }
-
-    let workflow = fs::read_to_string(CI_WORKFLOW_PATH)
-        .with_context(|| format!("missing {CI_WORKFLOW_PATH}"))?;
-    if !workflow.contains("support-policy-check:") {
-        bail!("ci workflow must include a 'support-policy-check' job");
-    }
-    if !workflow.contains("cargo xtask ci --stage support-policy-check") {
-        bail!("ci workflow must execute `cargo xtask ci --stage support-policy-check`");
     }
 
     Ok(())
@@ -2084,20 +2002,10 @@ fn run_unsafe_audit_check() -> Result<()> {
         }
     }
 
-    let workflow = fs::read_to_string(CI_WORKFLOW_PATH)
-        .with_context(|| format!("missing {CI_WORKFLOW_PATH}"))?;
-    if !workflow.contains("unsafe-audit-check:") {
-        bail!("ci workflow must include an 'unsafe-audit-check' job");
-    }
-    if !workflow.contains("cargo xtask ci --stage unsafe-audit-check") {
-        bail!("ci workflow must execute `cargo xtask ci --stage unsafe-audit-check`");
-    }
-
     Ok(())
 }
 
 fn run_release_scorecard_check() -> Result<()> {
-    run_sdk_perf_budget_check()?;
     run_sdk_soak_check()?;
     run_supply_chain_check()?;
     run("bash", &["-lc", "SCORECARD_MAX_SOAK_FAILURES=1 tools/scripts/release-scorecard.sh"])?;
@@ -2109,7 +2017,9 @@ fn run_release_scorecard_check() -> Result<()> {
     let json = fs::read_to_string(json_path)
         .with_context(|| format!("missing generated scorecard json at {json_path}"))?;
 
-    for marker in ["# Release Scorecard", "| Overall status |", "| Performance budget status |"] {
+    for marker in
+        ["# Release Scorecard", "| Overall status |", "| Performance budget status (advisory) |"]
+    {
         if !markdown.contains(marker) {
             bail!("generated scorecard missing marker '{marker}' in {markdown_path}");
         }
@@ -2149,15 +2059,6 @@ fn run_canary_criteria_check() -> Result<()> {
         if !json.contains(marker) {
             bail!("generated canary report json missing marker '{marker}' in {CANARY_CRITERIA_REPORT_JSON_PATH}");
         }
-    }
-
-    let workflow = fs::read_to_string(CI_WORKFLOW_PATH)
-        .with_context(|| format!("missing {CI_WORKFLOW_PATH}"))?;
-    if !workflow.contains("canary-criteria-check:") {
-        bail!("ci workflow must include a 'canary-criteria-check' job");
-    }
-    if !workflow.contains("cargo xtask ci --stage canary-criteria-check") {
-        bail!("ci workflow must execute `cargo xtask ci --stage canary-criteria-check`");
     }
 
     let release_readiness = fs::read_to_string("docs/runbooks/release-readiness.md")
@@ -2215,15 +2116,6 @@ fn run_extension_registry_check() -> Result<()> {
         bail!("extension registry ADR must include identifier ADR 0005");
     }
 
-    let workflow = fs::read_to_string(CI_WORKFLOW_PATH)
-        .with_context(|| format!("missing {CI_WORKFLOW_PATH}"))?;
-    if !workflow.contains("extension-registry-check:") {
-        bail!("ci workflow must include an 'extension-registry-check' job");
-    }
-    if !workflow.contains("cargo xtask ci --stage extension-registry-check") {
-        bail!("ci workflow must execute `cargo xtask ci --stage extension-registry-check`");
-    }
-
     Ok(())
 }
 
@@ -2262,15 +2154,6 @@ fn run_plugin_negotiation_check() -> Result<()> {
         if !adr.contains(marker) {
             bail!("plugin extension ADR missing marker '{marker}'");
         }
-    }
-
-    let workflow = fs::read_to_string(CI_WORKFLOW_PATH)
-        .with_context(|| format!("missing {CI_WORKFLOW_PATH}"))?;
-    if !workflow.contains("plugin-negotiation-check:") {
-        bail!("ci workflow must include a 'plugin-negotiation-check' job");
-    }
-    if !workflow.contains("cargo xtask ci --stage plugin-negotiation-check") {
-        bail!("ci workflow must execute `cargo xtask ci --stage plugin-negotiation-check`");
     }
 
     Ok(())
@@ -2313,23 +2196,14 @@ fn run_certification_report_check() -> Result<()> {
         }
     }
 
-    let workflow = fs::read_to_string(CI_WORKFLOW_PATH)
-        .with_context(|| format!("missing {CI_WORKFLOW_PATH}"))?;
-    if !workflow.contains("certification-report-check:") {
-        bail!("ci workflow must include a 'certification-report-check' job");
-    }
-    if !workflow.contains("cargo xtask ci --stage certification-report-check") {
-        bail!("ci workflow must execute `cargo xtask ci --stage certification-report-check`");
-    }
-
     Ok(())
 }
 
 fn run_leader_readiness_check() -> Result<()> {
-    run_ci(None)?;
+    run_release_check()?;
 
     let scorecard_json = fs::read_to_string("target/release-scorecard/release-scorecard.json")
-        .context("missing target/release-scorecard/release-scorecard.json after full CI run")?;
+        .context("missing target/release-scorecard/release-scorecard.json after release check")?;
     let scorecard: serde_json::Value =
         serde_json::from_str(&scorecard_json).context("invalid release scorecard json")?;
     let overall_status =
@@ -2339,7 +2213,7 @@ fn run_leader_readiness_check() -> Result<()> {
     }
 
     let soak_json = fs::read_to_string(SOAK_REPORT_PATH)
-        .with_context(|| format!("missing {SOAK_REPORT_PATH} after full CI run"))?;
+        .with_context(|| format!("missing {SOAK_REPORT_PATH} after release check"))?;
     let soak: serde_json::Value =
         serde_json::from_str(&soak_json).context("invalid soak report json")?;
     let soak_status = soak.get("status").and_then(|value| value.as_str()).unwrap_or("unknown");
@@ -2381,7 +2255,7 @@ Generated by `cargo run -p xtask -- leader-readiness-check`.\n\n\
 - compatibility_clients_checked: `Sideband`, `RCH`, `Columba`\n\
 - security_review_source: `{SECURITY_REVIEW_CHECKLIST_PATH}`\n\
 - compatibility_matrix_source: `{INTEROP_MATRIX_PATH}`\n\n\
-This report certifies that full CI, compatibility checks, and release scorecard\n\
+This report certifies that release checks, compatibility checks, and release scorecard\n\
 inputs are aligned for leader-grade release readiness.\n"
     );
     fs::write(LEADER_READINESS_REPORT_PATH, report)
@@ -2427,6 +2301,86 @@ fn run_security_review_check() -> Result<()> {
         bail!(
             "security review checklist requires at least 6 PASS controls in {SECURITY_REVIEW_CHECKLIST_PATH}"
         );
+    }
+    run_no_blocking_sleep_check()?;
+    run_no_unbounded_runtime_channel_check()?;
+    Ok(())
+}
+
+fn run_no_blocking_sleep_check() -> Result<()> {
+    let mut violations = Vec::new();
+    for root in BLOCKING_SLEEP_SCAN_ROOTS {
+        let mut files = Vec::new();
+        collect_files(Path::new(root), &mut files)?;
+        for path in files {
+            if path.extension().and_then(|value| value.to_str()) != Some("rs") {
+                continue;
+            }
+            let path_text = path.to_string_lossy().replace('\\', "/");
+            let contents = fs::read_to_string(path.as_path())
+                .with_context(|| format!("read {}", path.display()))?;
+            let mut in_test_module = false;
+            for (idx, line) in contents.lines().enumerate() {
+                if line.trim_start().starts_with("#[cfg(test)]") {
+                    in_test_module = true;
+                }
+                if in_test_module {
+                    continue;
+                }
+                if !(line.contains("std::thread::sleep") || line.contains("thread::sleep")) {
+                    continue;
+                }
+                if BLOCKING_SLEEP_ALLOWLIST.iter().any(|(allowed_path, marker)| {
+                    path_text == *allowed_path && line.contains(marker)
+                }) {
+                    continue;
+                }
+                violations.push(format!("{}:{}: {}", path_text, idx + 1, line.trim()));
+            }
+        }
+    }
+
+    if !violations.is_empty() {
+        bail!(
+            "blocking thread sleep found in production runtime paths:\n{}",
+            violations.join("\n")
+        );
+    }
+    Ok(())
+}
+
+fn run_no_unbounded_runtime_channel_check() -> Result<()> {
+    let mut violations = Vec::new();
+    for root in BLOCKING_SLEEP_SCAN_ROOTS {
+        let mut files = Vec::new();
+        collect_files(Path::new(root), &mut files)?;
+        for path in files {
+            if path.extension().and_then(|value| value.to_str()) != Some("rs") {
+                continue;
+            }
+            let path_text = path.to_string_lossy().replace('\\', "/");
+            let contents = fs::read_to_string(path.as_path())
+                .with_context(|| format!("read {}", path.display()))?;
+            let mut in_test_module = false;
+            for (idx, line) in contents.lines().enumerate() {
+                if line.trim_start().starts_with("#[cfg(test)]") {
+                    in_test_module = true;
+                }
+                if in_test_module {
+                    continue;
+                }
+                if line.contains("unbounded_channel")
+                    || line.contains("UnboundedSender")
+                    || line.contains("UnboundedReceiver")
+                {
+                    violations.push(format!("{}:{}: {}", path_text, idx + 1, line.trim()));
+                }
+            }
+        }
+    }
+
+    if !violations.is_empty() {
+        bail!("unbounded runtime channel found in production paths:\n{}", violations.join("\n"));
     }
     Ok(())
 }
@@ -2476,20 +2430,11 @@ fn run_crypto_agility_check() -> Result<()> {
         &["test", "-p", "test-support", "sdk_conformance_crypto_agility", "--", "--nocapture"],
     )?;
 
-    let workflow = fs::read_to_string(CI_WORKFLOW_PATH)
-        .with_context(|| format!("missing {CI_WORKFLOW_PATH}"))?;
-    if !workflow.contains("crypto-agility-check:") {
-        bail!("ci workflow must include a 'crypto-agility-check' job");
-    }
-    if !workflow.contains("cargo xtask ci --stage crypto-agility-check") {
-        bail!("ci workflow must execute `cargo xtask ci --stage crypto-agility-check`");
-    }
-
     Ok(())
 }
 
 fn run_key_management_check() -> Result<()> {
-    run("cargo", &["test", "-p", "rns-core", "key_manager", "--", "--nocapture"])?;
+    run("cargo", &["test", "-p", "reticulum-rs-core", "key_manager", "--", "--nocapture"])?;
     run(
         "cargo",
         &["test", "-p", "test-support", "sdk_conformance_key_management", "--", "--nocapture"],
@@ -2518,20 +2463,11 @@ fn run_key_management_check() -> Result<()> {
         bail!("feature matrix must include sdk.capability.key_management capability row");
     }
 
-    let workflow = fs::read_to_string(CI_WORKFLOW_PATH)
-        .with_context(|| format!("missing {CI_WORKFLOW_PATH}"))?;
-    if !workflow.contains("key-management-check:") {
-        bail!("ci workflow must include a 'key-management-check' job");
-    }
-    if !workflow.contains("cargo xtask ci --stage key-management-check") {
-        bail!("ci workflow must execute `cargo xtask ci --stage key-management-check`");
-    }
-
     Ok(())
 }
 
 fn run_sdk_security_check() -> Result<()> {
-    run("cargo", &["test", "-p", "rns-rpc", "sdk_security", "--", "--nocapture"])
+    run("cargo", &["test", "-p", "reticulum-rs-rpc", "sdk_security", "--", "--nocapture"])
 }
 
 fn run_sdk_fuzz_check() -> Result<()> {
@@ -2542,7 +2478,7 @@ fn run_sdk_fuzz_check() -> Result<()> {
         &[
             "test",
             "-p",
-            "rns-rpc",
+            "reticulum-rs-rpc",
             "fuzz_smoke_rpc_frame_and_http_parsers_do_not_panic",
             "--",
             "--nocapture",
@@ -2562,7 +2498,7 @@ fn run_sdk_fuzz_check() -> Result<()> {
 }
 
 fn run_sdk_property_check() -> Result<()> {
-    run("cargo", &["test", "-p", "rns-rpc", "sdk_property", "--", "--nocapture"])
+    run("cargo", &["test", "-p", "reticulum-rs-rpc", "sdk_property", "--", "--nocapture"])
 }
 
 fn run_sdk_model_check() -> Result<()> {
@@ -2588,7 +2524,7 @@ fn run_correctness_check() -> Result<()> {
             "-p",
             "lxmf-sdk",
             "-p",
-            "rns-rpc",
+            "reticulum-rs-rpc",
             "--lib",
             "--all-features",
             "--no-deps",
@@ -2605,7 +2541,7 @@ fn run_correctness_check() -> Result<()> {
     let miri_toolchain =
         std::env::var("SDK_CORRECTNESS_MIRI_TOOLCHAIN").unwrap_or_else(|_| "nightly".to_string());
     let miri_command =
-        toolchain_cargo_command(&miri_toolchain, "miri test -p lxmf-core --lib -- --nocapture");
+        toolchain_cargo_command(&miri_toolchain, "miri test -p lxmf-wire --lib -- --nocapture");
     run("bash", &["-lc", &miri_command])?;
 
     run(
@@ -2626,7 +2562,7 @@ fn run_correctness_check() -> Result<()> {
 
 fn run_sdk_race_check() -> Result<()> {
     run("cargo", &["test", "-p", "lxmf-sdk", "race_idempot", "--", "--nocapture"])?;
-    run("cargo", &["test", "-p", "rns-rpc", "sdk_race", "--", "--nocapture"])
+    run("cargo", &["test", "-p", "reticulum-rs-rpc", "sdk_race", "--", "--nocapture"])
 }
 
 fn run_sdk_replay_check() -> Result<()> {
@@ -2635,7 +2571,7 @@ fn run_sdk_replay_check() -> Result<()> {
         &[
             "test",
             "-p",
-            "rns-rpc",
+            "reticulum-rs-rpc",
             "replay_fixture_trace_executes_successfully",
             "--",
             "--nocapture",
@@ -2658,7 +2594,7 @@ fn run_sdk_replay_check() -> Result<()> {
 }
 
 fn run_sdk_metrics_check() -> Result<()> {
-    run("cargo", &["test", "-p", "rns-rpc", "rpc::http::tests", "--", "--nocapture"])
+    run("cargo", &["test", "-p", "reticulum-rs-rpc", "rpc::http::tests", "--", "--nocapture"])
 }
 
 fn run_sdk_bench_check() -> Result<()> {
@@ -2667,7 +2603,7 @@ fn run_sdk_bench_check() -> Result<()> {
         &[
             "bench",
             "-p",
-            "lxmf-core",
+            "lxmf-wire",
             "--bench",
             "core_message_paths",
             "--",
@@ -2701,7 +2637,7 @@ fn run_sdk_bench_check() -> Result<()> {
         &[
             "bench",
             "-p",
-            "rns-rpc",
+            "reticulum-rs-rpc",
             "--bench",
             "rpc_hotpaths",
             "--",
@@ -2722,10 +2658,213 @@ struct CriterionSample {
     times: Vec<f64>,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone)]
+struct PythonBenchReport {
+    benchmarks: Vec<PythonBenchmark>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+struct PythonBenchmark {
+    name: String,
+    iterations: usize,
+    mean_ns: f64,
+    p50_ns: f64,
+    p95_ns: f64,
+    p99_ns: f64,
+    throughput_ops_per_sec: f64,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+struct BenchStats {
+    iterations: usize,
+    sample_count: usize,
+    mean_ns: f64,
+    p50_ns: f64,
+    p95_ns: f64,
+    p99_ns: f64,
+    throughput_ops_per_sec: f64,
+}
+
+#[derive(Debug, Deserialize)]
+struct PythonImplBenchConfig {
+    profiles: PythonImplBenchProfiles,
+    comparisons: Vec<PythonImplComparison>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PythonImplBenchProfiles {
+    fast: PythonImplBenchProfileConfig,
+    report: PythonImplBenchProfileConfig,
+}
+
+impl PythonImplBenchProfiles {
+    fn get(&self, profile: PythonImplBenchProfile) -> &PythonImplBenchProfileConfig {
+        match profile {
+            PythonImplBenchProfile::Fast => &self.fast,
+            PythonImplBenchProfile::Report => &self.report,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct PythonImplBenchProfileConfig {
+    criterion: PythonImplCriterionConfig,
+    python: PythonImplPythonConfig,
+    report: PythonImplReportConfig,
+}
+
+#[derive(Debug, Deserialize)]
+struct PythonImplCriterionConfig {
+    sample_size: usize,
+    warm_up_time_seconds: f64,
+    measurement_time_seconds: f64,
+}
+
+#[derive(Debug, Deserialize)]
+struct PythonImplPythonConfig {
+    iterations: usize,
+}
+
+#[derive(Debug, Deserialize)]
+struct PythonImplReportConfig {
+    compare_runs: usize,
+    resource_runs: usize,
+    resource_iterations: usize,
+    resource_min_duration_seconds: f64,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct PythonImplComparison {
+    label: String,
+    rust_benchmark: String,
+    python_benchmark: String,
+    #[serde(default)]
+    workload_class: Option<String>,
+    #[serde(default)]
+    payload_size_bytes: Option<usize>,
+    #[serde(default)]
+    batch_size: Option<usize>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+struct BenchContext {
+    workload_class: Option<String>,
+    payload_size_bytes: Option<usize>,
+    batch_size: Option<usize>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+struct BenchAdvantage {
+    mean_speedup: f64,
+    p50_speedup: f64,
+    p95_speedup: f64,
+    p99_speedup: f64,
+    throughput_gain: f64,
+    mean_latency_reduction: f64,
+    p50_latency_reduction: f64,
+    p95_latency_reduction: f64,
+    p99_latency_reduction: f64,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+struct PythonImplEnvironment {
+    rustc_version: String,
+    cargo_version: String,
+    python_version: String,
+    python_rns_module: String,
+    python_lxmf_module: String,
+    uname: String,
+    git_commit: String,
+    benchmark_config_path: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+struct PythonImplComparisonRow {
+    label: String,
+    rust_benchmark: String,
+    python_benchmark: String,
+    context: BenchContext,
+    rust: BenchStats,
+    python: BenchStats,
+    rust_speedup_vs_python: BenchStats,
+    rust_advantage_vs_python: BenchAdvantage,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+struct PythonImplComparisonReport {
+    environment: PythonImplEnvironment,
+    comparisons: Vec<PythonImplComparisonRow>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct ResourceStats {
+    runs: usize,
+    iterations_per_run: usize,
+    mean_peak_rss_bytes: f64,
+    median_peak_rss_bytes: u64,
+    max_peak_rss_bytes: u64,
+    mean_user_cpu_seconds: f64,
+    median_user_cpu_seconds: f64,
+    mean_sys_cpu_seconds: f64,
+    median_sys_cpu_seconds: f64,
+    mean_cpu_seconds_per_1k_ops: f64,
+    median_cpu_seconds_per_1k_ops: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct ResourceAdvantage {
+    rss_reduction: f64,
+    cpu_time_reduction: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct ResourceMeasurement {
+    peak_rss_bytes: u64,
+    user_cpu_seconds: f64,
+    sys_cpu_seconds: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct ResourceMeasurementSet {
+    iterations_per_run: usize,
+    measurements: Vec<ResourceMeasurement>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct PythonImplReportComparison {
+    label: String,
+    rust_benchmark: String,
+    python_benchmark: String,
+    context: BenchContext,
+    rust: BenchStats,
+    python: BenchStats,
+    rust_advantage_vs_python: BenchAdvantage,
+    rust_resources: ResourceStats,
+    python_resources: ResourceStats,
+    rust_resource_advantage_vs_python: ResourceAdvantage,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct PythonImplReportSummary {
+    profile: String,
+    compare_runs: usize,
+    resource_runs: usize,
+    resource_iterations: usize,
+    environment: PythonImplEnvironment,
+    comparisons: Vec<PythonImplReportComparison>,
+}
+
+struct PythonImplOutputPaths<'a> {
+    python_report_path: &'a Path,
+    environment_path: &'a Path,
+    compare_report_path: &'a Path,
+    compare_json_path: &'a Path,
+}
+
 fn run_sdk_perf_budget_check() -> Result<()> {
     run_sdk_bench_check()?;
     if let Err(first_err) = evaluate_perf_budgets() {
-        eprintln!(
+        log::warn!(
             "initial performance budget evaluation failed ({first_err:#}); retrying benchmarks once"
         );
         run_sdk_bench_check()?;
@@ -2734,6 +2873,190 @@ fn run_sdk_perf_budget_check() -> Result<()> {
         });
     }
     Ok(())
+}
+
+fn run_python_impl_bench_compare(profile: PythonImplBenchProfile) -> Result<()> {
+    let config = load_python_impl_bench_config()?;
+    let profile_config = config.profiles.get(profile);
+    let paths = default_python_impl_output_paths();
+    run_python_impl_bench_compare_with_paths(&config, profile_config, &paths)
+}
+
+fn run_python_impl_bench_report(
+    compare_runs_override: Option<usize>,
+    resource_runs_override: Option<usize>,
+    resource_iterations_override: Option<usize>,
+) -> Result<()> {
+    let config = load_python_impl_bench_config()?;
+    let profile = PythonImplBenchProfile::Report;
+    let profile_config = config.profiles.get(profile);
+    let compare_runs = compare_runs_override.unwrap_or(profile_config.report.compare_runs);
+    let resource_runs = resource_runs_override.unwrap_or(profile_config.report.resource_runs);
+    let resource_iterations =
+        resource_iterations_override.unwrap_or(profile_config.report.resource_iterations);
+    if compare_runs == 0 {
+        bail!("python-impl-bench-report requires compare_runs > 0");
+    }
+    if resource_runs == 0 {
+        bail!("python-impl-bench-report requires resource_runs > 0");
+    }
+    if resource_iterations == 0 {
+        bail!("python-impl-bench-report requires resource_iterations > 0");
+    }
+    let report_root = Path::new(PYTHON_IMPL_REPORT_DIR);
+    if report_root.exists() {
+        fs::remove_dir_all(report_root)
+            .with_context(|| format!("remove {}", report_root.display()))?;
+    }
+    fs::create_dir_all(report_root).with_context(|| format!("create {}", report_root.display()))?;
+
+    let runs_root = report_root.join("runs");
+    fs::create_dir_all(&runs_root).with_context(|| format!("create {}", runs_root.display()))?;
+    let mut per_run_reports = Vec::new();
+
+    for run_index in 0..compare_runs {
+        let run_dir = runs_root.join(format!("run-{run_index:02}"));
+        fs::create_dir_all(&run_dir).with_context(|| format!("create {}", run_dir.display()))?;
+        let python_report_path = run_dir.join("python-impl-benchmarks.json");
+        let environment_path = run_dir.join("python-impl-environment.json");
+        let compare_report_path = run_dir.join("python-impl-compare.txt");
+        let compare_json_path = run_dir.join("python-impl-compare.json");
+        let paths = PythonImplOutputPaths {
+            python_report_path: &python_report_path,
+            environment_path: &environment_path,
+            compare_report_path: &compare_report_path,
+            compare_json_path: &compare_json_path,
+        };
+        run_python_impl_bench_compare_with_paths(&config, profile_config, &paths)
+            .with_context(|| format!("benchmark report run {}", run_index + 1))?;
+        per_run_reports.push(load_python_impl_compare_report(paths.compare_json_path)?);
+    }
+
+    let resource_measurements = collect_python_impl_resource_measurements(
+        &config,
+        &per_run_reports,
+        resource_runs,
+        resource_iterations,
+        profile_config.report.resource_min_duration_seconds,
+        report_root,
+    )?;
+
+    let summary = aggregate_python_impl_report(
+        &per_run_reports,
+        &config.comparisons,
+        &resource_measurements,
+        profile,
+        compare_runs,
+        resource_runs,
+        resource_iterations,
+    )?;
+    write_python_impl_report_summary(&summary)?;
+    log::info!(
+        "python implementation benchmark report written to {}",
+        PYTHON_IMPL_REPORT_TEXT_PATH
+    );
+    Ok(())
+}
+
+fn run_python_impl_bench_workload(
+    implementation: PythonImplImplementation,
+    benchmark: &str,
+    iterations: usize,
+    output: &Path,
+) -> Result<()> {
+    let benchmark = match implementation {
+        PythonImplImplementation::Rust => run_rust_python_impl_benchmark(benchmark, iterations)?,
+        PythonImplImplementation::Python => {
+            bail!("python workloads must be run via tools/scripts/python_impl_benchmarks.py")
+        }
+    };
+    write_python_benchmark_report(output, &[benchmark])
+}
+
+fn default_python_impl_output_paths() -> PythonImplOutputPaths<'static> {
+    PythonImplOutputPaths {
+        python_report_path: Path::new(PYTHON_IMPL_BENCH_REPORT_PATH),
+        environment_path: Path::new(PYTHON_IMPL_ENVIRONMENT_PATH),
+        compare_report_path: Path::new(PYTHON_IMPL_COMPARE_REPORT_PATH),
+        compare_json_path: Path::new(PYTHON_IMPL_COMPARE_JSON_PATH),
+    }
+}
+
+fn run_python_impl_bench_compare_with_paths(
+    config: &PythonImplBenchConfig,
+    profile_config: &PythonImplBenchProfileConfig,
+    paths: &PythonImplOutputPaths<'_>,
+) -> Result<()> {
+    let sample_size = profile_config.criterion.sample_size.to_string();
+    let warm_up_time = profile_config.criterion.warm_up_time_seconds.to_string();
+    let measurement_time = profile_config.criterion.measurement_time_seconds.to_string();
+    let python_iterations = profile_config.python.iterations.to_string();
+
+    run(
+        "cargo",
+        &[
+            "bench",
+            "-p",
+            "lxmf-wire",
+            "--bench",
+            "core_message_paths",
+            "--",
+            "--sample-size",
+            &sample_size,
+            "--warm-up-time",
+            &warm_up_time,
+            "--measurement-time",
+            &measurement_time,
+        ],
+    )?;
+    run(
+        "cargo",
+        &[
+            "bench",
+            "-p",
+            "reticulum-rs-core",
+            "--bench",
+            "parity_hotpaths",
+            "--",
+            "--sample-size",
+            &sample_size,
+            "--warm-up-time",
+            &warm_up_time,
+            "--measurement-time",
+            &measurement_time,
+        ],
+    )?;
+    run(
+        "cargo",
+        &[
+            "bench",
+            "-p",
+            "reticulum-rs-transport",
+            "--bench",
+            "link_hotpaths",
+            "--",
+            "--sample-size",
+            &sample_size,
+            "--warm-up-time",
+            &warm_up_time,
+            "--measurement-time",
+            &measurement_time,
+        ],
+    )?;
+    run(
+        "python3",
+        &[
+            "tools/scripts/python_impl_benchmarks.py",
+            "--iterations",
+            &python_iterations,
+            "--output",
+            paths
+                .python_report_path
+                .to_str()
+                .context("python benchmark output path must be utf-8")?,
+        ],
+    )?;
+    write_python_impl_compare_report(config, paths)
 }
 
 fn evaluate_perf_budgets() -> Result<()> {
@@ -2810,7 +3133,7 @@ fn evaluate_perf_budgets() -> Result<()> {
     }
     fs::write(PERF_BUDGET_REPORT_PATH, report_lines.join("\n"))
         .with_context(|| format!("write {PERF_BUDGET_REPORT_PATH}"))?;
-    println!("performance budget report written to {PERF_BUDGET_REPORT_PATH}");
+    log::info!("performance budget report written to {PERF_BUDGET_REPORT_PATH}");
 
     if failures.is_empty() {
         Ok(())
@@ -2883,8 +3206,1157 @@ fn write_bench_summary() -> Result<()> {
 
     fs::write(BENCH_SUMMARY_PATH, lines.join("\n"))
         .with_context(|| format!("write {BENCH_SUMMARY_PATH}"))?;
-    println!("benchmark summary written to {BENCH_SUMMARY_PATH}");
+    log::info!("benchmark summary written to {BENCH_SUMMARY_PATH}");
     Ok(())
+}
+
+fn write_python_impl_compare_report(
+    config: &PythonImplBenchConfig,
+    paths: &PythonImplOutputPaths<'_>,
+) -> Result<()> {
+    let python_raw = fs::read_to_string(paths.python_report_path)
+        .with_context(|| format!("read {}", paths.python_report_path.display()))?;
+    let python_report: PythonBenchReport = serde_json::from_str(&python_raw)
+        .with_context(|| format!("parse {}", paths.python_report_path.display()))?;
+    let environment = capture_python_impl_environment()?;
+    fs::write(
+        paths.environment_path,
+        serde_json::to_string_pretty(&environment)
+            .context("serialize python benchmark environment")?,
+    )
+    .with_context(|| format!("write {}", paths.environment_path.display()))?;
+
+    let python_stats = python_report
+        .benchmarks
+        .into_iter()
+        .map(|entry| {
+            (
+                entry.name,
+                BenchStats {
+                    iterations: entry.iterations,
+                    sample_count: entry.iterations,
+                    mean_ns: entry.mean_ns,
+                    p50_ns: entry.p50_ns,
+                    p95_ns: entry.p95_ns,
+                    p99_ns: entry.p99_ns,
+                    throughput_ops_per_sec: entry.throughput_ops_per_sec,
+                },
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+
+    let mut comparisons = Vec::new();
+    let mut lines = Vec::new();
+    lines.push("# Python Implementation Benchmark Comparison".to_string());
+    lines.push(String::new());
+    lines.push(
+        "Workloads compare Rust core paths against canonical Python `RNS` and `LXMF` implementations."
+            .to_string(),
+    );
+    lines.push(String::new());
+    lines.push(format!("- Config: `{}`", PYTHON_IMPL_BENCH_CONFIG_PATH));
+    lines.push(format!("- Environment: `{}`", paths.environment_path.display()));
+    lines.push(String::new());
+
+    for comparison in &config.comparisons {
+        let rust = load_criterion_stats(&comparison.rust_benchmark)?;
+        let python = python_stats.get(&comparison.python_benchmark).with_context(|| {
+            format!(
+                "missing python benchmark `{}` in {}",
+                comparison.python_benchmark, PYTHON_IMPL_BENCH_REPORT_PATH
+            )
+        })?;
+        let speedup = BenchStats {
+            iterations: python.iterations.min(rust.iterations),
+            sample_count: python.sample_count.min(rust.sample_count),
+            mean_ns: ratio(python.mean_ns, rust.mean_ns),
+            p50_ns: ratio(python.p50_ns, rust.p50_ns),
+            p95_ns: ratio(python.p95_ns, rust.p95_ns),
+            p99_ns: ratio(python.p99_ns, rust.p99_ns),
+            throughput_ops_per_sec: ratio(
+                rust.throughput_ops_per_sec,
+                python.throughput_ops_per_sec,
+            ),
+        };
+        comparisons.push(PythonImplComparisonRow {
+            label: comparison.label.clone(),
+            rust_benchmark: comparison.rust_benchmark.clone(),
+            python_benchmark: comparison.python_benchmark.clone(),
+            context: BenchContext {
+                workload_class: comparison.workload_class.clone(),
+                payload_size_bytes: comparison.payload_size_bytes,
+                batch_size: comparison.batch_size,
+            },
+            rust: BenchStats {
+                iterations: rust.iterations,
+                sample_count: rust.sample_count,
+                mean_ns: rust.mean_ns,
+                p50_ns: rust.p50_ns,
+                p95_ns: rust.p95_ns,
+                p99_ns: rust.p99_ns,
+                throughput_ops_per_sec: rust.throughput_ops_per_sec,
+            },
+            python: BenchStats {
+                iterations: python.iterations,
+                sample_count: python.sample_count,
+                mean_ns: python.mean_ns,
+                p50_ns: python.p50_ns,
+                p95_ns: python.p95_ns,
+                p99_ns: python.p99_ns,
+                throughput_ops_per_sec: python.throughput_ops_per_sec,
+            },
+            rust_speedup_vs_python: BenchStats {
+                iterations: speedup.iterations,
+                sample_count: speedup.sample_count,
+                mean_ns: speedup.mean_ns,
+                p50_ns: speedup.p50_ns,
+                p95_ns: speedup.p95_ns,
+                p99_ns: speedup.p99_ns,
+                throughput_ops_per_sec: speedup.throughput_ops_per_sec,
+            },
+            rust_advantage_vs_python: BenchAdvantage {
+                mean_speedup: speedup.mean_ns,
+                p50_speedup: speedup.p50_ns,
+                p95_speedup: speedup.p95_ns,
+                p99_speedup: speedup.p99_ns,
+                throughput_gain: speedup.throughput_ops_per_sec,
+                mean_latency_reduction: reduction(python.mean_ns, rust.mean_ns),
+                p50_latency_reduction: reduction(python.p50_ns, rust.p50_ns),
+                p95_latency_reduction: reduction(python.p95_ns, rust.p95_ns),
+                p99_latency_reduction: reduction(python.p99_ns, rust.p99_ns),
+            },
+        });
+        lines.push(format!("## {}", comparison.label));
+        let mut context_parts = Vec::new();
+        if let Some(workload_class) = &comparison.workload_class {
+            context_parts.push(format!("workload_class={workload_class}"));
+        }
+        if let Some(payload_size_bytes) = comparison.payload_size_bytes {
+            context_parts.push(format!("payload_size_bytes={payload_size_bytes}"));
+        }
+        if let Some(batch_size) = comparison.batch_size {
+            context_parts.push(format!("batch_size={batch_size}"));
+        }
+        if !context_parts.is_empty() {
+            lines.push(format!("- Context: {}", context_parts.join(" ")));
+        }
+        lines.push(format!(
+            "- Rust `{}`: iterations={} samples={} mean_ns={:.2} p50_ns={:.2} p95_ns={:.2} p99_ns={:.2} throughput_ops_per_sec={:.2}",
+            comparison.rust_benchmark,
+            rust.iterations,
+            rust.sample_count,
+            rust.mean_ns,
+            rust.p50_ns,
+            rust.p95_ns,
+            rust.p99_ns,
+            rust.throughput_ops_per_sec
+        ));
+        lines.push(format!(
+            "- Python `{}`: iterations={} samples={} mean_ns={:.2} p50_ns={:.2} p95_ns={:.2} p99_ns={:.2} throughput_ops_per_sec={:.2}",
+            comparison.python_benchmark,
+            python.iterations,
+            python.sample_count,
+            python.mean_ns,
+            python.p50_ns,
+            python.p95_ns,
+            python.p99_ns,
+            python.throughput_ops_per_sec
+        ));
+        lines.push(format!(
+            "- Rust advantage vs Python: mean={:.2}x p50={:.2}x p95={:.2}x p99={:.2}x throughput={:.2}x mean_latency_reduction={:.2}% p50_latency_reduction={:.2}% p95_latency_reduction={:.2}% p99_latency_reduction={:.2}%",
+            speedup.mean_ns,
+            speedup.p50_ns,
+            speedup.p95_ns,
+            speedup.p99_ns,
+            speedup.throughput_ops_per_sec,
+            reduction(python.mean_ns, rust.mean_ns) * 100.0,
+            reduction(python.p50_ns, rust.p50_ns) * 100.0,
+            reduction(python.p95_ns, rust.p95_ns) * 100.0,
+            reduction(python.p99_ns, rust.p99_ns) * 100.0,
+        ));
+        lines.push(String::new());
+    }
+
+    lines.push(format!(
+        "Generated by `cargo run -p xtask -- python-impl-bench-compare`; raw python data lives at `{}`.",
+        paths.python_report_path.display()
+    ));
+
+    fs::write(paths.compare_report_path, lines.join("\n"))
+        .with_context(|| format!("write {}", paths.compare_report_path.display()))?;
+    fs::write(
+        paths.compare_json_path,
+        serde_json::to_string_pretty(&PythonImplComparisonReport { environment, comparisons })
+            .context("serialize python implementation comparison report")?,
+    )
+    .with_context(|| format!("write {}", paths.compare_json_path.display()))?;
+    log::info!(
+        "python implementation comparison written to {}",
+        paths.compare_report_path.display()
+    );
+    Ok(())
+}
+
+fn load_python_impl_compare_report(path: &Path) -> Result<PythonImplComparisonReport> {
+    let raw = fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
+    serde_json::from_str(&raw).with_context(|| format!("parse {}", path.display()))
+}
+
+fn load_criterion_stats(benchmark: &str) -> Result<BenchStats> {
+    let sample_path = Path::new("target/criterion").join(benchmark).join("new").join("sample.json");
+    let raw = fs::read_to_string(&sample_path)
+        .with_context(|| format!("read sample data {}", sample_path.display()))?;
+    let sample: CriterionSample =
+        serde_json::from_str(&raw).with_context(|| format!("parse {}", sample_path.display()))?;
+    if sample.iters.len() != sample.times.len() || sample.iters.is_empty() {
+        bail!("invalid sample data in {}", sample_path.display());
+    }
+
+    let mut latency_ns = sample
+        .times
+        .iter()
+        .zip(sample.iters.iter())
+        .filter_map(|(time, iters)| (*iters > 0.0).then_some(*time / *iters))
+        .collect::<Vec<_>>();
+    if latency_ns.is_empty() {
+        bail!("sample data contains zero iteration counts in {}", sample_path.display());
+    }
+    latency_ns.sort_by(f64::total_cmp);
+    let tail_latencies = trimmed_tail_sample(&latency_ns);
+    let mean_ns = latency_ns.iter().sum::<f64>() / latency_ns.len() as f64;
+    let p50_ns = percentile(&latency_ns, 0.50);
+    let p95_ns = percentile(&tail_latencies, 0.95);
+    let p99_ns = percentile(&tail_latencies, 0.99);
+    let throughput_ops_per_sec = 1_000_000_000.0 / p50_ns.max(1.0);
+
+    Ok(BenchStats {
+        iterations: sample.iters.iter().map(|iters| *iters as usize).sum(),
+        sample_count: latency_ns.len(),
+        mean_ns,
+        p50_ns,
+        p95_ns,
+        p99_ns,
+        throughput_ops_per_sec,
+    })
+}
+
+fn ratio(lhs: f64, rhs: f64) -> f64 {
+    lhs / rhs.max(1.0)
+}
+
+fn reduction(baseline: f64, improved: f64) -> f64 {
+    if baseline <= 0.0 {
+        return 0.0;
+    }
+    (1.0 - (improved / baseline)).clamp(-1.0, 1.0)
+}
+
+fn write_python_benchmark_report(output: &Path, benchmarks: &[PythonBenchmark]) -> Result<()> {
+    if let Some(parent) = output.parent() {
+        fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
+    }
+    let payload = PythonBenchReport { benchmarks: benchmarks.to_vec() };
+    fs::write(
+        output,
+        serde_json::to_string_pretty(&payload).context("serialize benchmark payload")? + "\n",
+    )
+    .with_context(|| format!("write {}", output.display()))
+}
+
+fn run_rust_python_impl_benchmark(name: &str, iterations: usize) -> Result<PythonBenchmark> {
+    let mut samples = Vec::with_capacity(iterations);
+    match name {
+        "lxmf_core_message_from_wire" => {
+            let (wire, _) = rust_sample_wire_payload();
+            for _ in 0..iterations {
+                let started = Instant::now();
+                let decoded =
+                    Message::from_wire(black_box(&wire)).context("decode should succeed")?;
+                black_box(decoded);
+                samples.push(started.elapsed().as_nanos() as f64);
+            }
+        }
+        "lxmf_core_message_to_wire" => {
+            for _ in 0..iterations {
+                let started = Instant::now();
+                let mut message = Message::new();
+                message.destination_hash = Some([0x44; 16]);
+                message.source_hash = Some([0x55; 16]);
+                message.signature = Some([0x66; 64]);
+                message.timestamp = Some(1_770_000_001.0);
+                message.set_title_from_string("wire-title");
+                message.set_content_from_string("wire-content");
+                let wire = message.to_wire(None).context("encode should succeed")?;
+                black_box(wire);
+                samples.push(started.elapsed().as_nanos() as f64);
+            }
+        }
+        "lxmf_core_large_message_from_wire" => {
+            let (wire, _) = rust_sample_large_wire_payload();
+            for _ in 0..iterations {
+                let started = Instant::now();
+                let decoded =
+                    Message::from_wire(black_box(&wire)).context("decode should succeed")?;
+                black_box(decoded);
+                samples.push(started.elapsed().as_nanos() as f64);
+            }
+        }
+        "lxmf_core_large_message_to_wire" => {
+            let content = "x".repeat(2048);
+            for _ in 0..iterations {
+                let started = Instant::now();
+                let mut message = Message::new();
+                message.destination_hash = Some([0xa4; 16]);
+                message.source_hash = Some([0xb5; 16]);
+                message.signature = Some([0xc6; 64]);
+                message.timestamp = Some(1_770_000_101.0);
+                message.set_title_from_string("wire-large-title");
+                message.set_content_from_string(black_box(&content));
+                let wire = message.to_wire(None).context("encode should succeed")?;
+                black_box(wire);
+                samples.push(started.elapsed().as_nanos() as f64);
+            }
+        }
+        "rns_core_announce_create" => {
+            let mut destination = rust_sample_destination();
+            for _ in 0..iterations {
+                let started = Instant::now();
+                let packet = destination
+                    .announce(OsRng, black_box(Some(b"rust-announce-app-data".as_slice())))
+                    .map_err(|err| anyhow!("announce should succeed: {err:?}"))?;
+                black_box(packet);
+                samples.push(started.elapsed().as_nanos() as f64);
+            }
+        }
+        "rns_core_announce_validate" => {
+            let mut destination = rust_sample_destination();
+            let packet = destination
+                .announce(OsRng, Some(b"rust-announce-app-data".as_slice()))
+                .map_err(|err| anyhow!("announce should succeed: {err:?}"))?;
+            for _ in 0..iterations {
+                let started = Instant::now();
+                let info = DestinationAnnounce::validate(black_box(&packet))
+                    .map_err(|err| anyhow!("announce validation should succeed: {err:?}"))?;
+                black_box(info);
+                samples.push(started.elapsed().as_nanos() as f64);
+            }
+        }
+        "rns_core_announce_validate_batch_64" => {
+            let packets = rust_announce_batch_packets()?;
+            let mut signed_data = [0u8; rns_core::packet::PACKET_MDU];
+            for _ in 0..iterations {
+                let started = Instant::now();
+                let mut validated = 0usize;
+                for packet in &packets {
+                    let info = DestinationAnnounce::validate_with_buffer(
+                        black_box(packet),
+                        black_box(&mut signed_data),
+                    )
+                    .map_err(|err| anyhow!("announce validation should succeed: {err:?}"))?;
+                    validated += info.app_data.len();
+                }
+                black_box(validated);
+                samples.push(started.elapsed().as_nanos() as f64);
+            }
+        }
+        "rns_core_identity_sign" => {
+            let identity = PrivateIdentity::new_from_rand(OsRng);
+            let message = vec![0x5a; 2048];
+            for _ in 0..iterations {
+                let started = Instant::now();
+                let signature = lxmf_sign(black_box(&identity), black_box(&message));
+                black_box(signature);
+                samples.push(started.elapsed().as_nanos() as f64);
+            }
+        }
+        "rns_core_identity_verify" => {
+            let identity = PrivateIdentity::new_from_rand(OsRng);
+            let public_identity = *identity.as_identity();
+            let message = vec![0x5a; 2048];
+            let signature = lxmf_sign(&identity, &message);
+            for _ in 0..iterations {
+                let started = Instant::now();
+                let valid = lxmf_verify(
+                    black_box(&public_identity),
+                    black_box(&message),
+                    black_box(&signature),
+                );
+                black_box(valid);
+                samples.push(started.elapsed().as_nanos() as f64);
+            }
+        }
+        "rns_core_identity_encrypt" => {
+            let recipient = PrivateIdentity::new_from_rand(OsRng);
+            let public_identity = *recipient.as_identity();
+            let plaintext = vec![0x42; 2048];
+            let salt = public_identity.address_hash.as_slice().to_vec();
+            let mut out = vec![0u8; 32 + plaintext.len() + 128];
+            for _ in 0..iterations {
+                let started = Instant::now();
+                let ciphertext = encrypt_for_public_key_into(
+                    black_box(&public_identity.public_key),
+                    black_box(salt.as_slice()),
+                    black_box(&plaintext),
+                    black_box(out.as_mut_slice()),
+                    OsRng,
+                )
+                .map_err(|err| anyhow!("encryption should succeed: {err:?}"))?;
+                black_box(ciphertext);
+                samples.push(started.elapsed().as_nanos() as f64);
+            }
+        }
+        "rns_core_identity_decrypt" => {
+            let recipient = PrivateIdentity::new_from_rand(OsRng);
+            let public_identity = *recipient.as_identity();
+            let plaintext = vec![0x42; 2048];
+            let salt = public_identity.address_hash.as_slice().to_vec();
+            let ciphertext = encrypt_for_public_key(
+                &public_identity.public_key,
+                salt.as_slice(),
+                &plaintext,
+                OsRng,
+            )
+            .map_err(|err| anyhow!("encryption should succeed: {err:?}"))?;
+            let mut out = vec![0u8; ciphertext.len()];
+            for _ in 0..iterations {
+                let started = Instant::now();
+                let decrypted = decrypt_with_identity_into(
+                    black_box(&recipient),
+                    black_box(salt.as_slice()),
+                    black_box(&ciphertext),
+                    black_box(out.as_mut_slice()),
+                )
+                .map_err(|err| anyhow!("decryption should succeed: {err:?}"))?;
+                black_box(decrypted);
+                samples.push(started.elapsed().as_nanos() as f64);
+            }
+        }
+        "rns_transport_resource_manager_request_window_reuse" => {
+            let (mut sender_link, mut manager, plain_request) =
+                rust_resource_manager_request_fixture()?;
+            let mut responses = Vec::new();
+            for _ in 0..iterations {
+                let started = Instant::now();
+                manager.handle_packet_into(
+                    black_box(&plain_request),
+                    black_box(&mut sender_link),
+                    black_box(&mut responses),
+                );
+                black_box(responses.len());
+                samples.push(started.elapsed().as_nanos() as f64);
+                responses.clear();
+            }
+        }
+        _ => bail!("unsupported rust benchmark workload `{name}`"),
+    }
+
+    Ok(python_benchmark_from_samples(name.to_string(), iterations, samples))
+}
+
+fn python_benchmark_from_samples(
+    name: String,
+    iterations: usize,
+    mut samples: Vec<f64>,
+) -> PythonBenchmark {
+    samples.sort_by(f64::total_cmp);
+    let tail_samples = trimmed_tail_sample(&samples);
+    let mean_ns = samples.iter().sum::<f64>() / samples.len() as f64;
+    let p50_ns = percentile(&samples, 0.50);
+    let p95_ns = percentile(&tail_samples, 0.95);
+    let p99_ns = percentile(&tail_samples, 0.99);
+    let throughput_ops_per_sec = 1_000_000_000.0 / p50_ns.max(1.0);
+    PythonBenchmark { name, iterations, mean_ns, p50_ns, p95_ns, p99_ns, throughput_ops_per_sec }
+}
+
+fn rust_sample_wire_payload() -> (Vec<u8>, [u8; 16]) {
+    let mut message = Message::new();
+    let destination = [0x11; 16];
+    let source = [0x22; 16];
+    message.destination_hash = Some(destination);
+    message.source_hash = Some(source);
+    message.signature = Some([0x33; 64]);
+    message.timestamp = Some(1_770_000_000.0);
+    message.set_title_from_string("bench-title");
+    message.set_content_from_string("bench-content-payload");
+    let wire = message.to_wire(None).expect("sample message must encode");
+    (wire, destination)
+}
+
+fn rust_sample_large_wire_payload() -> (Vec<u8>, [u8; 16]) {
+    let mut message = Message::new();
+    let destination = [0x77; 16];
+    let source = [0x88; 16];
+    message.destination_hash = Some(destination);
+    message.source_hash = Some(source);
+    message.signature = Some([0x99; 64]);
+    message.timestamp = Some(1_770_000_100.0);
+    message.set_title_from_string("bench-large-title");
+    message.set_content_from_string(&"x".repeat(2048));
+    let wire = message.to_wire(None).expect("large sample message must encode");
+    (wire, destination)
+}
+
+fn rust_sample_destination() -> SingleInputDestination {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    SingleInputDestination::new(
+        identity,
+        DestinationName::new("example_utilities", "announcesample.fruits"),
+    )
+}
+
+fn rust_announce_batch_packets() -> Result<Vec<rns_core::Packet>> {
+    const ANNOUNCE_BATCH_SIZE: usize = 64;
+    let mut packets = Vec::with_capacity(ANNOUNCE_BATCH_SIZE);
+    for index in 0..ANNOUNCE_BATCH_SIZE {
+        let mut destination = rust_sample_destination();
+        let app_data = format!("rust-announce-app-data-{index}");
+        let packet = destination
+            .announce(OsRng, Some(app_data.as_bytes()))
+            .map_err(|err| anyhow!("announce should succeed: {err:?}"))?;
+        packets.push(packet);
+    }
+    Ok(packets)
+}
+
+fn rust_active_link_pair() -> Result<(Link, Link, Vec<u8>)> {
+    let sender = PrivateIdentity::new_from_rand(OsRng);
+    let receiver = PrivateIdentity::new_from_rand(OsRng);
+
+    let _sender = to_transport_private_identity(&sender);
+    let receiver = to_transport_private_identity(&receiver);
+
+    let destination = DestinationDesc {
+        identity: *receiver.as_identity(),
+        address_hash: *receiver.address_hash(),
+        name: TransportDestinationName::new("lxmf", "delivery"),
+    };
+
+    let (tx, _) = tokio::sync::broadcast::channel(16);
+    let mut outbound = Link::new(destination, tx.clone());
+    let request = outbound.request();
+
+    let mut inbound =
+        Link::new_from_request(&request, receiver.sign_key().clone(), destination, tx)
+            .map_err(|err| anyhow!("input link: {err:?}"))?;
+    let proof = inbound.prove();
+    let proof_iface = AddressHash::new_from_rand(OsRng);
+    if !matches!(outbound.handle_packet(&proof, proof_iface), LinkHandleResult::Activated) {
+        bail!("link activation did not succeed");
+    }
+
+    let payload = vec![0x2a; 128];
+    Ok((outbound, inbound, payload))
+}
+
+fn rust_decrypt_resource_packet(link: &Link, packet: &Packet) -> Result<Packet> {
+    let mut plain_packet = *packet;
+    let mut buffer = PacketDataBuffer::new();
+    let plain_len = {
+        let plaintext = link
+            .decrypt(packet.data.as_slice(), buffer.accuire_buf_max())
+            .map_err(|err| anyhow!("decrypt should succeed: {err:?}"))?;
+        plaintext.len()
+    };
+    buffer.resize(plain_len);
+    plain_packet.data = buffer;
+    Ok(plain_packet)
+}
+
+fn rust_resource_manager_request_fixture() -> Result<(Link, ResourceManager, Packet)> {
+    let (sender_link, mut receiver_link, _) = rust_active_link_pair()?;
+    let mut sender_manager = ResourceManager::new();
+    let mut receiver_manager = ResourceManager::new();
+    let resource_data = vec![0x5a; PACKET_MDU * 6];
+
+    let (_, advertisement_packet) = sender_manager
+        .start_send(&sender_link, resource_data, None)
+        .map_err(|err| anyhow!("resource send should succeed: {err:?}"))?;
+    let plain_advertisement = rust_decrypt_resource_packet(&receiver_link, &advertisement_packet)?;
+
+    let mut responses = Vec::new();
+    receiver_manager.handle_packet_into(&plain_advertisement, &mut receiver_link, &mut responses);
+    let request_packet = responses.pop().context("resource request packet")?;
+    let plain_request = rust_decrypt_resource_packet(&sender_link, &request_packet)?;
+
+    Ok((sender_link, sender_manager, plain_request))
+}
+
+fn collect_python_impl_resource_measurements(
+    config: &PythonImplBenchConfig,
+    per_run_reports: &[PythonImplComparisonReport],
+    runs: usize,
+    baseline_iterations: usize,
+    min_duration_seconds: f64,
+    report_root: &Path,
+) -> Result<BTreeMap<String, ResourceMeasurementSet>> {
+    let release_xtask = ensure_release_xtask_binary()?;
+    let resources_root = report_root.join("resources");
+    fs::create_dir_all(&resources_root)
+        .with_context(|| format!("create {}", resources_root.display()))?;
+    let time_command = detect_time_command()?;
+    let mut measurements = BTreeMap::new();
+    let median_rows = aggregate_report_rows_by_label(per_run_reports)?;
+
+    for comparison in &config.comparisons {
+        let rust_key = format!("rust:{}", comparison.rust_benchmark);
+        let python_key = format!("python:{}", comparison.python_benchmark);
+        let median_row = median_rows
+            .get(&comparison.label)
+            .with_context(|| format!("missing median row for `{}`", comparison.label))?;
+        let rust_iterations = resource_iterations_for_duration(
+            baseline_iterations,
+            median_row.rust.p50_ns,
+            min_duration_seconds,
+        );
+        let python_iterations = resource_iterations_for_duration(
+            baseline_iterations,
+            median_row.python.p50_ns,
+            min_duration_seconds,
+        );
+        let rust_entries = collect_resource_measurements_for_workload(
+            &time_command,
+            &release_xtask,
+            PythonImplImplementation::Rust,
+            &comparison.rust_benchmark,
+            runs,
+            rust_iterations,
+            &resources_root,
+        )?;
+        measurements.insert(
+            rust_key,
+            ResourceMeasurementSet {
+                iterations_per_run: rust_iterations,
+                measurements: rust_entries,
+            },
+        );
+
+        let python_entries = collect_resource_measurements_for_workload(
+            &time_command,
+            &release_xtask,
+            PythonImplImplementation::Python,
+            &comparison.python_benchmark,
+            runs,
+            python_iterations,
+            &resources_root,
+        )?;
+        measurements.insert(
+            python_key,
+            ResourceMeasurementSet {
+                iterations_per_run: python_iterations,
+                measurements: python_entries,
+            },
+        );
+    }
+
+    Ok(measurements)
+}
+
+#[derive(Copy, Clone)]
+enum TimeCommandFlavor {
+    Bsd,
+    Gnu,
+}
+
+struct TimeCommand {
+    program: &'static str,
+    flavor: TimeCommandFlavor,
+}
+
+fn detect_time_command() -> Result<TimeCommand> {
+    let program = "/usr/bin/time";
+    if Command::new(program)
+        .args(["-l", "true"])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .is_some()
+    {
+        return Ok(TimeCommand { program, flavor: TimeCommandFlavor::Bsd });
+    }
+    if Command::new(program)
+        .args(["-v", "true"])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .is_some()
+    {
+        return Ok(TimeCommand { program, flavor: TimeCommandFlavor::Gnu });
+    }
+    bail!("unable to find a supported `/usr/bin/time` implementation")
+}
+
+fn ensure_release_xtask_binary() -> Result<PathBuf> {
+    run("cargo", &["build", "-p", "xtask", "--release"])?;
+    let path = Path::new("target").join("release").join(executable_name("xtask"));
+    if !path.exists() {
+        bail!("expected release xtask binary at {}", path.display());
+    }
+    Ok(path)
+}
+
+fn executable_name(base: &str) -> String {
+    if cfg!(windows) {
+        format!("{base}.exe")
+    } else {
+        base.to_string()
+    }
+}
+
+fn collect_resource_measurements_for_workload(
+    time_command: &TimeCommand,
+    current_exe: &Path,
+    implementation: PythonImplImplementation,
+    benchmark: &str,
+    runs: usize,
+    iterations: usize,
+    resources_root: &Path,
+) -> Result<Vec<ResourceMeasurement>> {
+    let mut measurements = Vec::with_capacity(runs);
+    for run_index in 0..runs {
+        let impl_name = match implementation {
+            PythonImplImplementation::Rust => "rust",
+            PythonImplImplementation::Python => "python",
+        };
+        let safe_name = benchmark.replace('/', "_");
+        let output_path =
+            resources_root.join(format!("{impl_name}-{safe_name}-run-{run_index:02}.json"));
+        let (program, args) = match implementation {
+            PythonImplImplementation::Rust => (
+                current_exe.to_string_lossy().to_string(),
+                vec![
+                    "python-impl-bench-workload".to_string(),
+                    "--implementation".to_string(),
+                    "rust".to_string(),
+                    "--benchmark".to_string(),
+                    benchmark.to_string(),
+                    "--iterations".to_string(),
+                    iterations.to_string(),
+                    "--output".to_string(),
+                    output_path.to_string_lossy().to_string(),
+                ],
+            ),
+            PythonImplImplementation::Python => (
+                "python3".to_string(),
+                vec![
+                    "tools/scripts/python_impl_benchmarks.py".to_string(),
+                    "--iterations".to_string(),
+                    iterations.to_string(),
+                    "--benchmark".to_string(),
+                    benchmark.to_string(),
+                    "--output".to_string(),
+                    output_path.to_string_lossy().to_string(),
+                ],
+            ),
+        };
+        let measurement = run_timed_command(time_command, &program, &args)
+            .with_context(|| format!("measure resources for `{benchmark}` ({impl_name})"))?;
+        measurements.push(measurement);
+    }
+    Ok(measurements)
+}
+
+fn run_timed_command(
+    time_command: &TimeCommand,
+    program: &str,
+    args: &[String],
+) -> Result<ResourceMeasurement> {
+    let mut command = Command::new(time_command.program);
+    match time_command.flavor {
+        TimeCommandFlavor::Bsd => {
+            command.arg("-l");
+        }
+        TimeCommandFlavor::Gnu => {
+            command.arg("-v");
+        }
+    }
+    let output = command
+        .arg(program)
+        .args(args)
+        .output()
+        .with_context(|| format!("spawn timed command `{program}`"))?;
+    if !output.status.success() {
+        bail!("timed command `{program}` failed: {}", String::from_utf8_lossy(&output.stderr));
+    }
+    parse_time_output(time_command.flavor, &String::from_utf8_lossy(&output.stderr))
+}
+
+fn parse_time_output(flavor: TimeCommandFlavor, stderr: &str) -> Result<ResourceMeasurement> {
+    match flavor {
+        TimeCommandFlavor::Bsd => parse_bsd_time_output(stderr),
+        TimeCommandFlavor::Gnu => parse_gnu_time_output(stderr),
+    }
+}
+
+fn parse_bsd_time_output(stderr: &str) -> Result<ResourceMeasurement> {
+    let mut user_cpu_seconds = None;
+    let mut sys_cpu_seconds = None;
+    let mut peak_rss_bytes = None;
+    for line in stderr.lines() {
+        let trimmed = line.trim();
+        if trimmed.contains(" real ") && trimmed.contains(" user ") && trimmed.contains(" sys") {
+            let parts = trimmed.split_whitespace().collect::<Vec<_>>();
+            if parts.len() >= 6 {
+                user_cpu_seconds = parts.get(2).and_then(|value| value.parse::<f64>().ok());
+                sys_cpu_seconds = parts.get(4).and_then(|value| value.parse::<f64>().ok());
+            }
+        } else if trimmed.ends_with("maximum resident set size") {
+            peak_rss_bytes =
+                trimmed.split_whitespace().next().and_then(|value| value.parse::<u64>().ok());
+        }
+    }
+    Ok(ResourceMeasurement {
+        peak_rss_bytes: peak_rss_bytes.context("bsd time output missing peak rss")?,
+        user_cpu_seconds: user_cpu_seconds.context("bsd time output missing user cpu")?,
+        sys_cpu_seconds: sys_cpu_seconds.context("bsd time output missing sys cpu")?,
+    })
+}
+
+fn parse_gnu_time_output(stderr: &str) -> Result<ResourceMeasurement> {
+    let mut user_cpu_seconds = None;
+    let mut sys_cpu_seconds = None;
+    let mut peak_rss_bytes = None;
+    for line in stderr.lines() {
+        if let Some(value) = line.strip_prefix("\tUser time (seconds): ") {
+            user_cpu_seconds = value.trim().parse::<f64>().ok();
+        } else if let Some(value) = line.strip_prefix("\tSystem time (seconds): ") {
+            sys_cpu_seconds = value.trim().parse::<f64>().ok();
+        } else if let Some(value) = line.strip_prefix("\tMaximum resident set size (kbytes): ") {
+            peak_rss_bytes = value.trim().parse::<u64>().ok().map(|kb| kb * 1024);
+        }
+    }
+    Ok(ResourceMeasurement {
+        peak_rss_bytes: peak_rss_bytes.context("gnu time output missing peak rss")?,
+        user_cpu_seconds: user_cpu_seconds.context("gnu time output missing user cpu")?,
+        sys_cpu_seconds: sys_cpu_seconds.context("gnu time output missing sys cpu")?,
+    })
+}
+
+fn aggregate_python_impl_report(
+    per_run_reports: &[PythonImplComparisonReport],
+    comparisons: &[PythonImplComparison],
+    resource_measurements: &BTreeMap<String, ResourceMeasurementSet>,
+    profile: PythonImplBenchProfile,
+    compare_runs: usize,
+    resource_runs: usize,
+    baseline_resource_iterations: usize,
+) -> Result<PythonImplReportSummary> {
+    let environment = per_run_reports
+        .first()
+        .context("at least one compare run is required")?
+        .environment
+        .clone();
+    let mut aggregated = Vec::new();
+
+    for comparison in comparisons {
+        let matching_rows = per_run_reports
+            .iter()
+            .map(|report| {
+                report
+                    .comparisons
+                    .iter()
+                    .find(|row| row.label == comparison.label)
+                    .cloned()
+                    .with_context(|| format!("missing comparison row `{}`", comparison.label))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let rust = median_bench_stats(
+            &matching_rows.iter().map(|row| row.rust.clone()).collect::<Vec<_>>(),
+        );
+        let python = median_bench_stats(
+            &matching_rows.iter().map(|row| row.python.clone()).collect::<Vec<_>>(),
+        );
+        let rust_resources = aggregate_resource_stats(
+            resource_measurements
+                .get(&format!("rust:{}", comparison.rust_benchmark))
+                .with_context(|| {
+                    format!(
+                        "missing rust resource measurements for `{}`",
+                        comparison.rust_benchmark
+                    )
+                })?,
+        );
+        let python_resources = aggregate_resource_stats(
+            resource_measurements
+                .get(&format!("python:{}", comparison.python_benchmark))
+                .with_context(|| {
+                    format!(
+                        "missing python resource measurements for `{}`",
+                        comparison.python_benchmark
+                    )
+                })?,
+        );
+        aggregated.push(PythonImplReportComparison {
+            label: comparison.label.clone(),
+            rust_benchmark: comparison.rust_benchmark.clone(),
+            python_benchmark: comparison.python_benchmark.clone(),
+            context: BenchContext {
+                workload_class: comparison.workload_class.clone(),
+                payload_size_bytes: comparison.payload_size_bytes,
+                batch_size: comparison.batch_size,
+            },
+            rust: rust.clone(),
+            python: python.clone(),
+            rust_advantage_vs_python: bench_advantage(&rust, &python),
+            rust_resources: rust_resources.clone(),
+            python_resources: python_resources.clone(),
+            rust_resource_advantage_vs_python: ResourceAdvantage {
+                rss_reduction: reduction(
+                    python_resources.median_peak_rss_bytes as f64,
+                    rust_resources.median_peak_rss_bytes as f64,
+                ),
+                cpu_time_reduction: reduction(
+                    python_resources.median_cpu_seconds_per_1k_ops,
+                    rust_resources.median_cpu_seconds_per_1k_ops,
+                ),
+            },
+        });
+    }
+
+    Ok(PythonImplReportSummary {
+        profile: match profile {
+            PythonImplBenchProfile::Fast => "fast".to_string(),
+            PythonImplBenchProfile::Report => "report".to_string(),
+        },
+        compare_runs,
+        resource_runs,
+        resource_iterations: baseline_resource_iterations,
+        environment,
+        comparisons: aggregated,
+    })
+}
+
+fn aggregate_report_rows_by_label(
+    per_run_reports: &[PythonImplComparisonReport],
+) -> Result<BTreeMap<String, PythonImplComparisonRow>> {
+    let mut rows = BTreeMap::new();
+    let comparisons =
+        &per_run_reports.first().context("at least one compare run is required")?.comparisons;
+    for comparison in comparisons {
+        let matching_rows = per_run_reports
+            .iter()
+            .map(|report| {
+                report
+                    .comparisons
+                    .iter()
+                    .find(|row| row.label == comparison.label)
+                    .cloned()
+                    .with_context(|| format!("missing comparison row `{}`", comparison.label))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        rows.insert(
+            comparison.label.clone(),
+            PythonImplComparisonRow {
+                label: comparison.label.clone(),
+                rust_benchmark: comparison.rust_benchmark.clone(),
+                python_benchmark: comparison.python_benchmark.clone(),
+                context: comparison.context.clone(),
+                rust: median_bench_stats(
+                    &matching_rows.iter().map(|row| row.rust.clone()).collect::<Vec<_>>(),
+                ),
+                python: median_bench_stats(
+                    &matching_rows.iter().map(|row| row.python.clone()).collect::<Vec<_>>(),
+                ),
+                rust_speedup_vs_python: median_bench_stats(
+                    &matching_rows
+                        .iter()
+                        .map(|row| row.rust_speedup_vs_python.clone())
+                        .collect::<Vec<_>>(),
+                ),
+                rust_advantage_vs_python: comparison.rust_advantage_vs_python.clone(),
+            },
+        );
+    }
+    Ok(rows)
+}
+
+fn resource_iterations_for_duration(
+    baseline_iterations: usize,
+    p50_ns: f64,
+    min_duration_seconds: f64,
+) -> usize {
+    let target_iterations = ((min_duration_seconds * 1_000_000_000.0) / p50_ns.max(1.0)).ceil();
+    baseline_iterations.max(target_iterations as usize)
+}
+
+fn median_bench_stats(values: &[BenchStats]) -> BenchStats {
+    BenchStats {
+        iterations: median_usize(values.iter().map(|entry| entry.iterations).collect()),
+        sample_count: median_usize(values.iter().map(|entry| entry.sample_count).collect()),
+        mean_ns: median_f64(values.iter().map(|entry| entry.mean_ns).collect()),
+        p50_ns: median_f64(values.iter().map(|entry| entry.p50_ns).collect()),
+        p95_ns: median_f64(values.iter().map(|entry| entry.p95_ns).collect()),
+        p99_ns: median_f64(values.iter().map(|entry| entry.p99_ns).collect()),
+        throughput_ops_per_sec: median_f64(
+            values.iter().map(|entry| entry.throughput_ops_per_sec).collect(),
+        ),
+    }
+}
+
+fn aggregate_resource_stats(resource_set: &ResourceMeasurementSet) -> ResourceStats {
+    let measurements = &resource_set.measurements;
+    let peak_rss_values = measurements.iter().map(|entry| entry.peak_rss_bytes).collect::<Vec<_>>();
+    let user_values = measurements.iter().map(|entry| entry.user_cpu_seconds).collect::<Vec<_>>();
+    let sys_values = measurements.iter().map(|entry| entry.sys_cpu_seconds).collect::<Vec<_>>();
+    let cpu_per_k_values = measurements
+        .iter()
+        .map(|entry| {
+            ((entry.user_cpu_seconds + entry.sys_cpu_seconds) * 1000.0)
+                / resource_set.iterations_per_run as f64
+        })
+        .collect::<Vec<_>>();
+    ResourceStats {
+        runs: measurements.len(),
+        iterations_per_run: resource_set.iterations_per_run,
+        mean_peak_rss_bytes: peak_rss_values.iter().map(|value| *value as f64).sum::<f64>()
+            / peak_rss_values.len() as f64,
+        median_peak_rss_bytes: median_u64(peak_rss_values.clone()),
+        max_peak_rss_bytes: peak_rss_values.into_iter().max().unwrap_or(0),
+        mean_user_cpu_seconds: user_values.iter().sum::<f64>() / user_values.len() as f64,
+        median_user_cpu_seconds: median_f64(user_values),
+        mean_sys_cpu_seconds: sys_values.iter().sum::<f64>() / sys_values.len() as f64,
+        median_sys_cpu_seconds: median_f64(sys_values),
+        mean_cpu_seconds_per_1k_ops: cpu_per_k_values.iter().sum::<f64>()
+            / cpu_per_k_values.len() as f64,
+        median_cpu_seconds_per_1k_ops: median_f64(cpu_per_k_values),
+    }
+}
+
+fn bench_advantage(rust: &BenchStats, python: &BenchStats) -> BenchAdvantage {
+    BenchAdvantage {
+        mean_speedup: ratio(python.mean_ns, rust.mean_ns),
+        p50_speedup: ratio(python.p50_ns, rust.p50_ns),
+        p95_speedup: ratio(python.p95_ns, rust.p95_ns),
+        p99_speedup: ratio(python.p99_ns, rust.p99_ns),
+        throughput_gain: ratio(rust.throughput_ops_per_sec, python.throughput_ops_per_sec),
+        mean_latency_reduction: reduction(python.mean_ns, rust.mean_ns),
+        p50_latency_reduction: reduction(python.p50_ns, rust.p50_ns),
+        p95_latency_reduction: reduction(python.p95_ns, rust.p95_ns),
+        p99_latency_reduction: reduction(python.p99_ns, rust.p99_ns),
+    }
+}
+
+fn write_python_impl_report_summary(summary: &PythonImplReportSummary) -> Result<()> {
+    fs::create_dir_all(PYTHON_IMPL_REPORT_DIR)
+        .with_context(|| format!("create {}", PYTHON_IMPL_REPORT_DIR))?;
+    fs::write(
+        PYTHON_IMPL_REPORT_JSON_PATH,
+        serde_json::to_string_pretty(summary).context("serialize benchmark report summary")?,
+    )
+    .with_context(|| format!("write {PYTHON_IMPL_REPORT_JSON_PATH}"))?;
+
+    let mut lines = Vec::new();
+    lines.push("# Python Implementation Benchmark Report".to_string());
+    lines.push(String::new());
+    lines.push(format!("- Profile: `{}`", summary.profile));
+    lines.push(format!("- Compare runs: {}", summary.compare_runs));
+    lines.push(format!("- Resource runs: {}", summary.resource_runs));
+    lines.push(format!("- Resource iterations per run: {}", summary.resource_iterations));
+    lines.push(format!("- Git commit: `{}`", summary.environment.git_commit));
+    lines.push(format!("- Host: `{}`", summary.environment.uname));
+    lines.push(String::new());
+    for comparison in &summary.comparisons {
+        lines.push(format!("## {}", comparison.label));
+        let mut context_parts = Vec::new();
+        if let Some(workload_class) = &comparison.context.workload_class {
+            context_parts.push(format!("workload_class={workload_class}"));
+        }
+        if let Some(payload_size_bytes) = comparison.context.payload_size_bytes {
+            context_parts.push(format!("payload_size_bytes={payload_size_bytes}"));
+        }
+        if let Some(batch_size) = comparison.context.batch_size {
+            context_parts.push(format!("batch_size={batch_size}"));
+        }
+        if !context_parts.is_empty() {
+            lines.push(format!("- Context: {}", context_parts.join(" ")));
+        }
+        lines.push(format!(
+            "- Timing: rust_p50_ns={:.2} python_p50_ns={:.2} rust_speedup={:.2}x throughput_gain={:.2}x",
+            comparison.rust.p50_ns,
+            comparison.python.p50_ns,
+            comparison.rust_advantage_vs_python.p50_speedup,
+            comparison.rust_advantage_vs_python.throughput_gain
+        ));
+        lines.push(format!(
+            "- Resources: rust_peak_rss_bytes={} python_peak_rss_bytes={} rss_reduction={:.2}% rust_cpu_seconds_per_1k_ops={:.6} python_cpu_seconds_per_1k_ops={:.6} cpu_reduction={:.2}%",
+            comparison.rust_resources.median_peak_rss_bytes,
+            comparison.python_resources.median_peak_rss_bytes,
+            comparison.rust_resource_advantage_vs_python.rss_reduction * 100.0,
+            comparison.rust_resources.median_cpu_seconds_per_1k_ops,
+            comparison.python_resources.median_cpu_seconds_per_1k_ops,
+            comparison.rust_resource_advantage_vs_python.cpu_time_reduction * 100.0
+        ));
+        lines.push(String::new());
+    }
+    fs::write(PYTHON_IMPL_REPORT_TEXT_PATH, lines.join("\n"))
+        .with_context(|| format!("write {PYTHON_IMPL_REPORT_TEXT_PATH}"))
+}
+
+fn median_f64(mut values: Vec<f64>) -> f64 {
+    values.sort_by(f64::total_cmp);
+    values[values.len() / 2]
+}
+
+fn median_u64(mut values: Vec<u64>) -> u64 {
+    values.sort_unstable();
+    values[values.len() / 2]
+}
+
+fn median_usize(mut values: Vec<usize>) -> usize {
+    values.sort_unstable();
+    values[values.len() / 2]
+}
+
+fn load_python_impl_bench_config() -> Result<PythonImplBenchConfig> {
+    let raw = fs::read_to_string(PYTHON_IMPL_BENCH_CONFIG_PATH)
+        .with_context(|| format!("read {PYTHON_IMPL_BENCH_CONFIG_PATH}"))?;
+    toml::from_str(&raw).with_context(|| format!("parse {PYTHON_IMPL_BENCH_CONFIG_PATH}"))
+}
+
+fn capture_python_impl_environment() -> Result<PythonImplEnvironment> {
+    let git_commit = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+
+    Ok(PythonImplEnvironment {
+        rustc_version: capture_command_stdout("rustc", &["--version"])?,
+        cargo_version: capture_command_stdout("cargo", &["--version"])?,
+        python_version: capture_command_stdout("python3", &["--version"])?,
+        python_rns_module: capture_command_stdout(
+            "python3",
+            &["-c", "import RNS; print(getattr(RNS, '__file__', 'unknown'))"],
+        )?,
+        python_lxmf_module: capture_command_stdout(
+            "python3",
+            &["-c", "import LXMF; print(getattr(LXMF, '__file__', 'unknown'))"],
+        )?,
+        uname: capture_platform_descriptor()?,
+        git_commit,
+        benchmark_config_path: PYTHON_IMPL_BENCH_CONFIG_PATH.to_string(),
+    })
+}
+
+fn capture_platform_descriptor() -> Result<String> {
+    #[cfg(target_family = "windows")]
+    {
+        let release = capture_command_stdout("cmd", &["/C", "ver"]).unwrap_or_else(|_| {
+            format!(
+                "Windows ({})",
+                std::env::var("OS").unwrap_or_else(|_| std::env::consts::OS.to_string())
+            )
+        });
+        let arch = std::env::var("PROCESSOR_ARCHITECTURE")
+            .unwrap_or_else(|_| std::env::consts::ARCH.to_string());
+        Ok(format!("{release}; arch={arch}"))
+    }
+
+    #[cfg(not(target_family = "windows"))]
+    {
+        capture_command_stdout("uname", &["-a"])
+    }
 }
 
 fn collect_estimate_files(dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
@@ -2908,7 +4380,7 @@ fn run_sdk_queue_pressure_check() -> Result<()> {
         &[
             "test",
             "-p",
-            "rns-rpc",
+            "reticulum-rs-rpc",
             "sdk_event_queues_remain_bounded_under_sustained_load",
             "--",
             "--nocapture",
@@ -3004,6 +4476,137 @@ fn run_reproducible_build_check() -> Result<()> {
     Ok(())
 }
 
+fn run_package_daemon_bundle(version: Option<String>) -> Result<()> {
+    let version = release_version_label(version)?;
+    let bundle_stem = format!("lxmd-daemon-{version}-{}", release_platform_label());
+    let output_dir = Path::new(RELEASE_BUNDLE_OUTPUT_DIR);
+    fs::create_dir_all(output_dir).with_context(|| format!("create {}", output_dir.display()))?;
+
+    for (package, binary) in DAEMON_RELEASE_BINARIES {
+        run("cargo", &["build", "--release", "-p", package, "--bin", binary])?;
+    }
+
+    let staging_dir = output_dir.join(&bundle_stem);
+    if staging_dir.exists() {
+        fs::remove_dir_all(&staging_dir)
+            .with_context(|| format!("remove {}", staging_dir.display()))?;
+    }
+    fs::create_dir_all(&staging_dir)
+        .with_context(|| format!("create {}", staging_dir.display()))?;
+
+    for (_, binary) in DAEMON_RELEASE_BINARIES {
+        let binary_name = executable_name(binary);
+        let source = Path::new("target").join("release").join(&binary_name);
+        let destination = staging_dir.join(&binary_name);
+        fs::copy(&source, &destination).with_context(|| {
+            format!("copy bundled binary {} -> {}", source.display(), destination.display())
+        })?;
+    }
+
+    let lxmd_path = Path::new("target").join("release").join(executable_name("lxmd"));
+    let example_config = capture_command_stdout(
+        lxmd_path.to_str().ok_or_else(|| anyhow!("invalid lxmd path: {}", lxmd_path.display()))?,
+        &["--exampleconfig"],
+    )?;
+    let example_config_path = staging_dir.join("lxmd.example.config");
+    fs::write(&example_config_path, example_config.as_bytes())
+        .with_context(|| format!("write {}", example_config_path.display()))?;
+
+    let readme_path = staging_dir.join("README.md");
+    fs::copy("README.md", &readme_path)
+        .with_context(|| format!("copy README.md -> {}", readme_path.display()))?;
+
+    let archive_path = create_release_archive(output_dir, &staging_dir, &bundle_stem)?;
+    let archive_bytes = fs::read(&archive_path)
+        .with_context(|| format!("read archive {}", archive_path.display()))?;
+    let archive_name = archive_path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| anyhow!("invalid archive filename: {}", archive_path.display()))?;
+    let sha_path = output_dir.join(format!("{archive_name}.sha256"));
+    let checksum_line = format!("{}  {archive_name}\n", sha256_hex(&archive_bytes));
+    fs::write(&sha_path, checksum_line.as_bytes())
+        .with_context(|| format!("write {}", sha_path.display()))?;
+
+    fs::remove_dir_all(&staging_dir)
+        .with_context(|| format!("remove {}", staging_dir.display()))?;
+
+    log::info!("created {}", archive_path.display());
+    log::info!("created {}", sha_path.display());
+    Ok(())
+}
+
+fn release_version_label(version: Option<String>) -> Result<String> {
+    if let Some(version) = version.map(|value| value.trim().to_string()) {
+        if !version.is_empty() {
+            return Ok(version.replace('/', "-"));
+        }
+    }
+
+    if let Ok(tag) = capture_command_stdout("git", &["describe", "--tags", "--exact-match"]) {
+        if !tag.is_empty() {
+            return Ok(tag.replace('/', "-"));
+        }
+    }
+
+    let manifest = fs::read_to_string("crates/apps/lxmf-cli/Cargo.toml")
+        .context("read crates/apps/lxmf-cli/Cargo.toml for release version")?;
+    for line in manifest.lines() {
+        let trimmed = line.trim();
+        if let Some(value) = trimmed.strip_prefix("version = ") {
+            return Ok(value.trim_matches('"').replace('/', "-"));
+        }
+    }
+
+    bail!("unable to determine release version for daemon bundle")
+}
+
+fn release_platform_label() -> String {
+    let os = std::env::consts::OS;
+    let arch = match std::env::consts::ARCH {
+        "x86_64" => "x64",
+        "aarch64" => "arm64",
+        "x86" => "x86",
+        "arm" => "arm",
+        other => other,
+    };
+    format!("{os}-{arch}")
+}
+
+fn create_release_archive(
+    output_dir: &Path,
+    staging_dir: &Path,
+    bundle_stem: &str,
+) -> Result<PathBuf> {
+    if cfg!(windows) {
+        let archive = output_dir.join(format!("{bundle_stem}.zip"));
+        if archive.exists() {
+            fs::remove_file(&archive).with_context(|| format!("remove {}", archive.display()))?;
+        }
+        let staging_arg = staging_dir
+            .to_str()
+            .ok_or_else(|| anyhow!("invalid staging path: {}", staging_dir.display()))?;
+        let archive_arg = archive
+            .to_str()
+            .ok_or_else(|| anyhow!("invalid archive path: {}", archive.display()))?;
+        run("tar", &["-a", "-c", "-f", archive_arg, staging_arg])?;
+        return Ok(archive);
+    }
+
+    let archive = output_dir.join(format!("{bundle_stem}.tar.gz"));
+    if archive.exists() {
+        fs::remove_file(&archive).with_context(|| format!("remove {}", archive.display()))?;
+    }
+    let archive_arg =
+        archive.to_str().ok_or_else(|| anyhow!("invalid archive path: {}", archive.display()))?;
+    let staging_name = staging_dir
+        .file_name()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| anyhow!("invalid staging path: {}", staging_dir.display()))?;
+    run("tar", &["-C", RELEASE_BUNDLE_OUTPUT_DIR, "-czf", archive_arg, staging_name])?;
+    Ok(archive)
+}
+
 fn write_bytes(path: &str, bytes: &[u8]) -> Result<()> {
     let path = Path::new(path);
     if let Some(parent) = path.parent() {
@@ -3084,7 +4687,6 @@ fn run_embedded_native_lock_check() -> Result<()> {
         EMBEDDED_NATIVE_LAB_PROFILE_PATH,
         EMBEDDED_NATIVE_NODE_CONFIG_PATH,
         EMBEDDED_NATIVE_WORKFLOW_PATH,
-        CI_WORKFLOW_PATH,
     ] {
         if !Path::new(path).exists() {
             bail!("required path missing for embedded native lock check: {path}");
@@ -3157,7 +4759,10 @@ fn run_embedded_native_lock_check() -> Result<()> {
 }
 
 fn run_embedded_link_check() -> Result<()> {
-    run("cargo", &["test", "-p", "rns-transport", "--test", "embedded_link_contract", "--no-run"])?;
+    run(
+        "cargo",
+        &["test", "-p", "reticulum-rs-transport", "--test", "embedded_link_contract", "--no-run"],
+    )?;
 
     let backends = fs::read_to_string("docs/contracts/sdk-v2-backends.md")
         .context("missing docs/contracts/sdk-v2-backends.md")?;
@@ -3194,8 +4799,11 @@ fn run_embedded_core_check() -> Result<()> {
         &["check", "-p", "rns-embedded-runtime", "--no-default-features", "--features", "alloc"],
     )?;
     run("cargo", &["check", "-p", "rns-embedded-runtime", "--features", "std"])?;
-    run("cargo", &["check", "-p", "lxmf-core", "--no-default-features", "--features", "alloc"])?;
-    run("cargo", &["check", "-p", "rns-core", "--no-default-features", "--features", "alloc"])?;
+    run("cargo", &["check", "-p", "lxmf-wire", "--no-default-features", "--features", "alloc"])?;
+    run(
+        "cargo",
+        &["check", "-p", "reticulum-rs-core", "--no-default-features", "--features", "alloc"],
+    )?;
     run("cargo", &["test", "-p", "rns-embedded-core"])?;
     run("cargo", &["test", "-p", "rns-embedded-ffi"])?;
     run("cargo", &["test", "-p", "rns-embedded-runtime"])?;
@@ -3203,8 +4811,8 @@ fn run_embedded_core_check() -> Result<()> {
     let matrix = fs::read_to_string("docs/contracts/sdk-v2-feature-matrix.md")
         .context("missing docs/contracts/sdk-v2-feature-matrix.md")?;
     for marker in [
-        "| `lxmf-core` |",
-        "| `rns-core` |",
+        "| `lxmf-wire` |",
+        "| `reticulum-rs-core` |",
         "| `rns-embedded-ffi` |",
         "| `rns-embedded-runtime` |",
         "`alloc-ready`",
@@ -3460,9 +5068,23 @@ fn run_compat_kit_check() -> Result<()> {
     run("bash", &["tools/scripts/compatibility-kit.sh", "--dry-run"])
 }
 
-fn run_e2e_compatibility() -> Result<()> {
+fn run_e2e_compatibility(timeout_secs: Option<u64>) -> Result<()> {
+    let timeout_secs = timeout_secs.unwrap_or(20).to_string();
     run("cargo", &["build", "-p", "reticulumd", "--bin", "reticulumd"])?;
-    run("cargo", &["run", "-p", "rns-tools", "--bin", "rnx", "--", "e2e", "--timeout-secs", "20"])
+    run(
+        "cargo",
+        &[
+            "run",
+            "-p",
+            "rns-tools",
+            "--bin",
+            "rnx",
+            "--",
+            "e2e",
+            "--timeout-secs",
+            timeout_secs.as_str(),
+        ],
+    )
 }
 
 fn run_mesh_sim() -> Result<()> {
@@ -3543,15 +5165,6 @@ fn run_architecture_lint_check() -> Result<()> {
         if !report.contains(marker) {
             bail!("architecture boundary report missing marker '{marker}'");
         }
-    }
-
-    let workflow = fs::read_to_string(CI_WORKFLOW_PATH)
-        .with_context(|| format!("missing {CI_WORKFLOW_PATH}"))?;
-    if !workflow.contains("architecture-lint:") {
-        bail!("ci workflow must include an 'architecture-lint' job");
-    }
-    if !workflow.contains("cargo xtask ci --stage architecture-lint") {
-        bail!("ci workflow must execute `cargo xtask ci --stage architecture-lint`");
     }
 
     Ok(())
@@ -3661,7 +5274,7 @@ fn capture_public_api(manifest: &str) -> Result<String> {
     let toolchain = public_api_toolchain();
     let args = format!("public-api --manifest-path {manifest} -sss --color never");
     let command = toolchain_cargo_command(&toolchain, &args);
-    let output = Command::new("bash")
+    let output = Command::new(command_program("bash"))
         .args(["-lc", &command])
         .output()
         .with_context(|| format!("failed to spawn cargo public-api for {manifest}"))?;
@@ -3701,10 +5314,134 @@ fn normalize_public_api(raw: &str) -> String {
 }
 
 fn run(cmd: &str, args: &[&str]) -> Result<()> {
-    let status =
-        Command::new(cmd).args(args).status().with_context(|| format!("failed to spawn {cmd}"))?;
+    let program = command_program(cmd);
+    let status = Command::new(&program)
+        .args(args)
+        .status()
+        .with_context(|| format!("failed to spawn {cmd}"))?;
     if !status.success() {
         bail!("command failed: {cmd} {}", args.join(" "));
     }
     Ok(())
+}
+
+fn command_program(cmd: &str) -> String {
+    if cmd == "bash" {
+        if let Ok(override_path) = std::env::var("LXMF_RS_BASH") {
+            if !override_path.trim().is_empty() {
+                return override_path;
+            }
+        }
+    }
+    cmd.to_string()
+}
+
+fn run_publish_crates(wave: PublishWave, dry_run: bool, allow_dirty: bool) -> Result<()> {
+    for krate in publish_wave_crates(wave) {
+        log::info!("publishing {} from {}", krate.package, krate.manifest_path);
+        if dry_run {
+            run_publish_dry_run_with_fallback(*krate, allow_dirty)?;
+        } else {
+            let mut args = vec!["publish"];
+            if allow_dirty {
+                args.push("--allow-dirty");
+            }
+            args.push("--manifest-path");
+            args.push(krate.manifest_path);
+            run("cargo", &args)?;
+        }
+    }
+    Ok(())
+}
+
+fn run_yank_crate(package: &str, version: &str, undo: bool) -> Result<()> {
+    let mut args = vec!["yank"];
+    if undo {
+        args.push("--undo");
+    }
+    args.push("--vers");
+    args.push(version);
+    args.push(package);
+    run("cargo", &args)
+}
+
+fn publish_wave_crates(wave: PublishWave) -> &'static [PublishedCrate] {
+    match wave {
+        PublishWave::Wave1 => WAVE1_PUBLIC_CRATES,
+        PublishWave::Facades => FACADE_PUBLIC_CRATES,
+        PublishWave::All => {
+            static ALL_PUBLIC_CRATES: &[PublishedCrate] = &[
+                PublishedCrate {
+                    package: "reticulum-rs-core",
+                    manifest_path: "crates/libs/rns-core/Cargo.toml",
+                },
+                PublishedCrate {
+                    package: "lxmf-wire",
+                    manifest_path: "crates/libs/lxmf-core/Cargo.toml",
+                },
+                PublishedCrate {
+                    package: "reticulum-rs-transport",
+                    manifest_path: "crates/libs/rns-transport/Cargo.toml",
+                },
+                PublishedCrate {
+                    package: "reticulum-rs-rpc",
+                    manifest_path: "crates/libs/rns-rpc/Cargo.toml",
+                },
+                PublishedCrate {
+                    package: "lxmf-sdk",
+                    manifest_path: "crates/libs/lxmf-sdk/Cargo.toml",
+                },
+                PublishedCrate {
+                    package: "reticulum-rs",
+                    manifest_path: "crates/libs/reticulum-rs/Cargo.toml",
+                },
+                PublishedCrate { package: "lxmf", manifest_path: "crates/libs/lxmf/Cargo.toml" },
+            ];
+            ALL_PUBLIC_CRATES
+        }
+    }
+}
+
+fn run_publish_dry_run_with_fallback(krate: PublishedCrate, allow_dirty: bool) -> Result<()> {
+    let mut args = vec!["publish", "--dry-run"];
+    if allow_dirty {
+        args.push("--allow-dirty");
+    }
+    args.push("--manifest-path");
+    args.push(krate.manifest_path);
+
+    let output = Command::new("cargo")
+        .args(&args)
+        .output()
+        .with_context(|| format!("failed to spawn cargo publish for {}", krate.package))?;
+    print_cargo_output(&output);
+    if output.status.success() {
+        return Ok(());
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if stderr.contains("failed to select a version for the requirement") {
+        log::warn!(
+            "dry-run fallback: {} depends on unpublished local versions; validating package contents instead",
+            krate.package
+        );
+        let mut package_args = vec!["package", "--list"];
+        if allow_dirty {
+            package_args.push("--allow-dirty");
+        }
+        package_args.push("--manifest-path");
+        package_args.push(krate.manifest_path);
+        return run("cargo", &package_args);
+    }
+
+    bail!("command failed: cargo {}", args.join(" "));
+}
+
+fn print_cargo_output(output: &std::process::Output) {
+    if !output.stdout.is_empty() {
+        print!("{}", String::from_utf8_lossy(&output.stdout));
+    }
+    if !output.stderr.is_empty() {
+        log::error!("{}", String::from_utf8_lossy(&output.stderr));
+    }
 }

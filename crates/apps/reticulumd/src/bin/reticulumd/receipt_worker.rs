@@ -1,44 +1,38 @@
-use super::bridge_helpers::log_delivery_trace;
-use super::inbound_worker::prune_outbound_resource_mappings_for_message;
-use reticulum_daemon::receipt_bridge::{handle_receipt_event, ReceiptEvent};
+use super::outbound_resources::OutboundResourceMap;
+use super::receipt_events::handle_receipt_update;
+use reticulum_daemon::receipt_bridge::ReceiptEvent;
 use rns_rpc::RpcDaemon;
-use rns_transport::receipt::prune_receipt_mappings_for_message;
 use std::collections::HashMap;
-use std::rc::Rc;
 use std::sync::{Arc, Mutex};
-use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::sync::mpsc::Receiver;
+
+const RECEIPT_WORKER_DRAIN_LIMIT: usize = 256;
 
 pub(super) fn spawn_receipt_worker(
-    daemon: Rc<RpcDaemon>,
-    mut receipt_rx: UnboundedReceiver<ReceiptEvent>,
+    daemon: Arc<RpcDaemon>,
+    mut receipt_rx: Receiver<ReceiptEvent>,
     receipt_map: Arc<Mutex<HashMap<String, String>>>,
-    outbound_resource_map: Arc<Mutex<HashMap<String, String>>>,
+    outbound_resource_map: OutboundResourceMap,
 ) {
     let daemon_receipts = daemon;
-    tokio::task::spawn_local(async move {
+    tokio::spawn(async move {
         while let Some(event) = receipt_rx.recv().await {
-            let message_id = event.message_id.clone();
-            let status = event.status.clone();
-            let detail = format!("status={status}");
-            log_delivery_trace(&message_id, "-", "receipt-update", &detail);
-            let result = handle_receipt_event(&daemon_receipts, event);
-            if let Err(err) = result {
-                let detail = format!("persist-failed err={err}");
-                log_delivery_trace(&message_id, "-", "receipt-persist", &detail);
-            } else {
-                if matches!(
-                    status.trim().to_ascii_lowercase().as_str(),
-                    "delivered" | "cancelled" | "expired" | "rejected"
-                ) || status.trim().to_ascii_lowercase().starts_with("failed")
-                {
-                    prune_receipt_mappings_for_message(&receipt_map, &message_id);
-                    prune_outbound_resource_mappings_for_message(
-                        &outbound_resource_map,
-                        &message_id,
-                    );
+            handle_receipt_update(&daemon_receipts, event, &receipt_map, &outbound_resource_map);
+            for _ in 0..RECEIPT_WORKER_DRAIN_LIMIT {
+                match receipt_rx.try_recv() {
+                    Ok(event) => {
+                        handle_receipt_update(
+                            &daemon_receipts,
+                            event,
+                            &receipt_map,
+                            &outbound_resource_map,
+                        );
+                    }
+                    Err(tokio::sync::mpsc::error::TryRecvError::Empty) => break,
+                    Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => return,
                 }
-                log_delivery_trace(&message_id, "-", "receipt-persist", "ok");
             }
+            tokio::task::yield_now().await;
         }
     });
 }

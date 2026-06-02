@@ -1,0 +1,26 @@
+[package]
+name = "reticulum-rs"
+version = "0.2.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Umbrella crate for the Reticulum network stack crates in LXMF-rs."
+readme = "../../../README.md"
+documentation = "https://docs.rs/reticulum-rs"
+keywords = ["reticulum", "network", "transport", "rpc"]
+categories = ["network-programming", "api-bindings"]
+
+[dependencies]
+rns-core = { workspace = true, optional = true }
+rns-transport = { workspace = true, optional = true }
+rns-rpc = { workspace = true, optional = true }
+
+[features]
+default = ["core", "transport"]
+core = ["dep:rns-core"]
+transport = ["dep:rns-transport", "core"]
+rpc = ["dep:rns-rpc"]
+
+[lints]
+workspace = true

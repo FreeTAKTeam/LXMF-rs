@@ -1,7 +1,23 @@
-.PHONY: bootstrap fmt clippy test test-all test-full-targets doc deny audit udeps boundaries ci release-check api-diff licenses migration-checks forbidden-deps
+.PHONY: bootstrap fmt clippy test test-all test-full-targets doc deny audit udeps boundaries ci release-check package-daemon-bundle api-diff licenses migration-checks forbidden-deps python-impl-bench python-impl-bench-report python-lxmd-smoke check-bin run-bin sccache-show-stats sccache-zero-stats
 
 bootstrap:
 	./tools/scripts/bootstrap-dev.sh
+
+check-bin:
+	@test -n "$(PKG)" || (echo "set PKG=<package>" >&2; exit 2)
+	@test -n "$(BIN)" || (echo "set BIN=<binary>" >&2; exit 2)
+	cargo check -p $(PKG) --bin $(BIN)
+
+run-bin:
+	@test -n "$(PKG)" || (echo "set PKG=<package>" >&2; exit 2)
+	@test -n "$(BIN)" || (echo "set BIN=<binary>" >&2; exit 2)
+	cargo run -p $(PKG) --bin $(BIN) -- $(ARGS)
+
+sccache-show-stats:
+	@if command -v sccache >/dev/null 2>&1; then sccache --show-stats; else echo "sccache not installed"; fi
+
+sccache-zero-stats:
+	@if command -v sccache >/dev/null 2>&1; then sccache --zero-stats; else echo "sccache not installed"; fi
 
 fmt:
 	cargo fmt --all -- --check
@@ -40,6 +56,9 @@ ci: fmt clippy test doc boundaries migration-checks
 
 release-check: ci deny audit
 
+package-daemon-bundle:
+	cargo xtask package-daemon-bundle $(if $(VERSION),--version $(VERSION),)
+
 api-diff:
 	@for manifest in \
 		crates/libs/lxmf-core/Cargo.toml \
@@ -58,3 +77,12 @@ licenses:
 
 migration-checks:
 	cargo xtask migration-checks
+
+python-impl-bench:
+	cargo xtask python-impl-bench-compare
+
+python-impl-bench-report:
+	cargo xtask python-impl-bench-report
+
+python-lxmd-smoke:
+	./tools/scripts/python-lxmd-rust-lxmd-smoke.sh

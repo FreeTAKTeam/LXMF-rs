@@ -1,10 +1,18 @@
 [package]
-name = "rns-transport"
-version = "0.1.0"
+name = "reticulum-rs-transport"
+version = "0.2.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "Transport, link, interface, receipt, and resource layers for the Reticulum network stack."
+readme = "../../../README.md"
+documentation = "https://docs.rs/reticulum-rs-transport"
+keywords = ["reticulum", "transport", "network", "links"]
+categories = ["network-programming"]
+
+[lib]
+name = "rns_transport"
 
 [dependencies]
 aes.workspace = true
@@ -24,19 +32,36 @@ serde_bytes = { workspace = true }
 serde_json.workspace = true
 sha2.workspace = true
 log.workspace = true
+tracing.workspace = true
 hex.workspace = true
+btleplug = { version = "0.11.8", optional = true }
+futures = { version = "0.3.31", optional = true }
+socket2 = { version = "0.5", features = ["all"] }
 tokio = { workspace = true, features = ["full"] }
 tokio-util = { workspace = true }
 tokio-serial = { workspace = true }
+uuid = { version = "1.16.0", optional = true }
 x25519-dalek = { workspace = true, features = ["static_secrets"] }
 rns-core.workspace = true
 
 [features]
 default = []
 fernet-aes128 = []
+rnode-ble = ["dep:btleplug", "dep:futures", "dep:uuid"]
+vrn76-kiss-ble = ["rnode-ble"]
 
 [dev-dependencies]
+criterion.workspace = true
 tempfile.workspace = true
+
+[[bench]]
+name = "link_hotpaths"
+harness = false
+
+[[example]]
+name = "vrn76_kiss_ble_probe"
+path = "examples/vrn76_kiss_ble_probe.rs"
+required-features = ["vrn76-kiss-ble"]
 
 [lints]
 workspace = true

@@ -18,7 +18,7 @@ for file in "${required_files[@]}"; do
   fi
 done
 
-cargo run -p reticulumd -- --help >/dev/null
-cargo run -p lxmf-cli -- --help >/dev/null
-cargo run -p rns-tools --bin rnprobe -- --help >/dev/null
+cargo run -p reticulumd --bin reticulumd -- --help >/dev/null
+cargo run -p lxmf-cli --bin lxmf-cli -- --help >/dev/null
+cargo run -p rns-tools --bin rnsd -- --help >/dev/null
 cargo run -p rns-tools --bin rnx -- --help >/dev/null

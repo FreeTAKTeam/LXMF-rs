@@ -1,0 +1,110 @@
+# Python Implementation Benchmarking
+
+This runbook defines the benchmark workflow for apples-to-apples comparison
+between Rust protocol hot paths and the canonical Python `RNS` and `LXMF`
+implementations.
+
+## Scope
+
+Use this suite for protocol-core and transport-hotpath comparisons only:
+
+- LXMF message encode/decode
+- LXMF large-message encode/decode
+- Reticulum announce create/validate
+- Reticulum identity sign/verify
+- Reticulum identity encrypt/decrypt
+- Reticulum resource request window handling
+
+Do not use this suite for SDK, RPC, daemon startup, or full end-to-end product
+performance claims. Those surfaces require separate workload harnesses.
+
+## Profiles
+
+Benchmark parameters and workload mappings live in
+`tools/benchmarks/python_impl.toml`.
+
+That file is the source of truth for:
+
+- Quick developer runs in the `fast` profile
+- Publishable runs in the `report` profile
+- Rust/Python workload pairings
+- Repeated-run and resource-measurement counts
+
+## Commands
+
+Quick comparison:
+
+```bash
+cargo xtask python-impl-bench-compare
+```
+
+Stricter single comparison pass:
+
+```bash
+cargo xtask python-impl-bench-compare --profile report
+```
+
+Aggregated report for serious claims:
+
+```bash
+cargo xtask python-impl-bench-report
+```
+
+Shortcuts:
+
+```bash
+make python-impl-bench
+make python-impl-bench-report
+```
+
+## Outputs
+
+Quick comparison writes:
+
+- `target/criterion/python-impl-benchmarks.json`
+- `target/criterion/python-impl-environment.json`
+- `target/criterion/python-impl-compare.json`
+- `target/criterion/python-impl-compare.txt`
+
+Aggregated report mode writes:
+
+- `target/criterion/python-impl-report/report.json`
+- `target/criterion/python-impl-report/report.txt`
+- `target/criterion/python-impl-report/runs/run-XX/...`
+- `target/criterion/python-impl-report/resources/...`
+
+Interpretation:
+
+- Per-run artifacts preserve raw timing for each repeated comparison pass
+- `report.json` is the machine-readable summary for a benchmark page or CI
+- `report.txt` is the operator-facing summary
+- Resource artifacts come from isolated subprocess runs and are suitable for
+  CPU-time and peak-RSS claims
+- Resource-run iterations are auto-scaled per workload so very fast paths run
+  long enough to produce non-zero CPU measurements
+- Rust resource measurements are executed via a prebuilt `target/release/xtask`
+  workload runner so they are not distorted by debug-build overhead
+
+## Operating Rules
+
+- Run report mode on a quiet machine
+- Do not compare results from different profiles
+- Keep the same host, toolchain, and config when making serious claims
+- Use repeated-run medians, not a single lucky pass
+- Keep claims scoped to the workloads actually measured
+- Prefer peak RSS and CPU time over raw `%CPU`
+- Treat low single-digit differences as noise until reproduced
+
+## Claim Discipline
+
+Acceptable claim examples:
+
+- “On matched protocol-core workloads, Rust delivered 5.0x lower p50 latency.”
+- “Across 5 repeated report-profile runs, Rust maintained higher throughput on every measured workload.”
+- “In isolated workload runs, Rust used less peak RSS and less CPU time per 1k operations.”
+
+Not acceptable from this suite alone:
+
+- “The Rust daemon is X faster overall.”
+- “The SDK is X faster.”
+- “The whole system uses X less memory.”

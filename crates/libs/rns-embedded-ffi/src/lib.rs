@@ -1,5 +1,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![allow(clippy::missing_safety_doc)]
+#![allow(clippy::not_unsafe_ptr_arg_deref)]
 
 extern crate alloc;
 
@@ -15,6 +16,9 @@ use rns_embedded_runtime::{
 
 #[cfg(not(feature = "std"))]
 use core::panic::PanicInfo;
+
+#[cfg(feature = "std")]
+use std::panic::{catch_unwind, AssertUnwindSafe};
 
 #[cfg(not(feature = "std"))]
 use critical_section::RawRestoreState;
@@ -47,9 +51,16 @@ struct NoopCriticalSection;
 critical_section::set_impl!(NoopCriticalSection);
 
 #[cfg(not(feature = "std"))]
+// SAFETY: this shim runs on single-threaded embedded builds where callers do not
+// rely on nested interrupt masking; the no-op critical section only gates local
+// allocator/runtime bootstrap paths in this crate.
 unsafe impl critical_section::Impl for NoopCriticalSection {
+    // SAFETY: acquire does not modify machine state and the paired restore token
+    // is the unit type, so callers can only observe the no-op contract above.
     unsafe fn acquire() -> RawRestoreState {}
 
+    // SAFETY: release is paired with the no-op acquire implementation and has no
+    // machine state to restore for this single-threaded shim.
     unsafe fn release(_restore_state: RawRestoreState) {}
 }
 
@@ -516,19 +527,25 @@ pub extern "C" fn rns_embedded_v1_abi_version() -> u32 {
 pub extern "C" fn rns_embedded_v1_get_capabilities(
     out_capabilities: *mut RnsEmbeddedV1Capabilities,
 ) -> RnsEmbeddedStatus {
-    if out_capabilities.is_null() {
-        return RnsEmbeddedStatus::InvalidArgument;
-    }
-    unsafe {
-        *out_capabilities = RnsEmbeddedV1Capabilities::default();
-    }
-    RnsEmbeddedStatus::Ok
+    ffi_status_boundary(|| {
+        if out_capabilities.is_null() {
+            return RnsEmbeddedStatus::InvalidArgument;
+        }
+        // SAFETY: `out_capabilities` is validated non-null above and points to
+        // writable caller-provided storage for one `RnsEmbeddedV1Capabilities`.
+        unsafe {
+            *out_capabilities = RnsEmbeddedV1Capabilities::default();
+        }
+        RnsEmbeddedStatus::Ok
+    })
 }
 
 #[no_mangle]
 pub extern "C" fn rns_embedded_v1_node_new() -> *mut RnsEmbeddedV1Node {
-    ensure_allocator_ready();
-    Box::into_raw(Box::new(RnsEmbeddedV1Node { node: EmbeddedNode::new() }))
+    ffi_ptr_boundary(|| {
+        ensure_allocator_ready();
+        Box::into_raw(Box::new(RnsEmbeddedV1Node { node: EmbeddedNode::new() }))
+    })
 }
 
 #[no_mangle]
@@ -536,6 +553,8 @@ pub extern "C" fn rns_embedded_v1_node_free(node: *mut RnsEmbeddedV1Node) {
     if node.is_null() {
         return;
     }
+    // SAFETY: `node` is allocated by `rns_embedded_v1_node_new` with
+    // `Box::into_raw` and this function takes back ownership exactly once.
     unsafe {
         drop(Box::from_raw(node));
     }
@@ -755,21 +774,28 @@ pub extern "C" fn rns_embedded_v1_node_start(
     config: *const RnsEmbeddedV1NodeConfig,
     out_node_error: *mut RnsEmbeddedV1NodeError,
 ) -> RnsEmbeddedStatus {
-    let Some(node) = v1_node_mut(node) else {
-        return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidHandle);
-    };
-    if config.is_null() {
-        return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidPointer);
-    }
-    let config = unsafe { &*config };
-    let node_config = match v1_node_config(config) {
-        Ok(config) => config,
-        Err(err) => return set_v1_node_error(out_node_error, err),
-    };
-    match node.node.start(node_config) {
-        Ok(()) => clear_v1_node_error(out_node_error),
-        Err(err) => set_v1_node_error(out_node_error, err),
-    }
+    ffi_v1_node_error_boundary(out_node_error, || {
+        let Some(node) = v1_node_mut(node) else {
+            return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidHandle);
+        };
+        if config.is_null() {
+            return set_v1_pointer_error(
+                out_node_error,
+                RnsEmbeddedV1NodeErrorCode::InvalidPointer,
+            );
+        }
+        // SAFETY: `config` is validated non-null above and is only borrowed
+        // immutably for the duration of this conversion/start call.
+        let config = unsafe { &*config };
+        let node_config = match v1_node_config(config) {
+            Ok(config) => config,
+            Err(err) => return set_v1_node_error(out_node_error, err),
+        };
+        match node.node.start(node_config) {
+            Ok(()) => clear_v1_node_error(out_node_error),
+            Err(err) => set_v1_node_error(out_node_error, err),
+        }
+    })
 }
 
 #[no_mangle]
@@ -777,13 +803,15 @@ pub extern "C" fn rns_embedded_v1_node_stop(
     node: *mut RnsEmbeddedV1Node,
     out_node_error: *mut RnsEmbeddedV1NodeError,
 ) -> RnsEmbeddedStatus {
-    let Some(node) = v1_node_mut(node) else {
-        return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidHandle);
-    };
-    match node.node.stop() {
-        Ok(()) => clear_v1_node_error(out_node_error),
-        Err(err) => set_v1_node_error(out_node_error, err),
-    }
+    ffi_v1_node_error_boundary(out_node_error, || {
+        let Some(node) = v1_node_mut(node) else {
+            return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidHandle);
+        };
+        match node.node.stop() {
+            Ok(()) => clear_v1_node_error(out_node_error),
+            Err(err) => set_v1_node_error(out_node_error, err),
+        }
+    })
 }
 
 #[no_mangle]
@@ -792,21 +820,28 @@ pub extern "C" fn rns_embedded_v1_node_restart(
     config: *const RnsEmbeddedV1NodeConfig,
     out_node_error: *mut RnsEmbeddedV1NodeError,
 ) -> RnsEmbeddedStatus {
-    let Some(node) = v1_node_mut(node) else {
-        return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidHandle);
-    };
-    if config.is_null() {
-        return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidPointer);
-    }
-    let config = unsafe { &*config };
-    let node_config = match v1_node_config(config) {
-        Ok(config) => config,
-        Err(err) => return set_v1_node_error(out_node_error, err),
-    };
-    match node.node.restart(node_config) {
-        Ok(()) => clear_v1_node_error(out_node_error),
-        Err(err) => set_v1_node_error(out_node_error, err),
-    }
+    ffi_v1_node_error_boundary(out_node_error, || {
+        let Some(node) = v1_node_mut(node) else {
+            return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidHandle);
+        };
+        if config.is_null() {
+            return set_v1_pointer_error(
+                out_node_error,
+                RnsEmbeddedV1NodeErrorCode::InvalidPointer,
+            );
+        }
+        // SAFETY: `config` is validated non-null above and is only borrowed
+        // immutably while building the restart configuration.
+        let config = unsafe { &*config };
+        let node_config = match v1_node_config(config) {
+            Ok(config) => config,
+            Err(err) => return set_v1_node_error(out_node_error, err),
+        };
+        match node.node.restart(node_config) {
+            Ok(()) => clear_v1_node_error(out_node_error),
+            Err(err) => set_v1_node_error(out_node_error, err),
+        }
+    })
 }
 
 #[no_mangle]
@@ -814,17 +849,21 @@ pub extern "C" fn rns_embedded_v1_node_get_status(
     node: *mut RnsEmbeddedV1Node,
     out_status: *mut RnsEmbeddedV1NodeStatus,
 ) -> RnsEmbeddedStatus {
-    let Some(node) = v1_node_mut(node) else {
-        return RnsEmbeddedStatus::InvalidArgument;
-    };
-    if out_status.is_null() {
-        return RnsEmbeddedStatus::InvalidArgument;
-    }
-    let status = node.node.get_status();
-    unsafe {
-        *out_status = map_v1_status(status);
-    }
-    RnsEmbeddedStatus::Ok
+    ffi_status_boundary(|| {
+        let Some(node) = v1_node_mut(node) else {
+            return RnsEmbeddedStatus::InvalidArgument;
+        };
+        if out_status.is_null() {
+            return RnsEmbeddedStatus::InvalidArgument;
+        }
+        let status = node.node.get_status();
+        // SAFETY: `out_status` is validated non-null above and points to writable
+        // caller storage for one `RnsEmbeddedV1NodeStatus`.
+        unsafe {
+            *out_status = map_v1_status(status);
+        }
+        RnsEmbeddedStatus::Ok
+    })
 }
 
 #[no_mangle]
@@ -836,27 +875,39 @@ pub extern "C" fn rns_embedded_v1_node_send(
     out_receipt: *mut RnsEmbeddedV1SendReceipt,
     out_node_error: *mut RnsEmbeddedV1NodeError,
 ) -> RnsEmbeddedStatus {
-    let Some(node) = v1_node_mut(node) else {
-        return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidHandle);
-    };
-    if destination_ptr.is_null() || out_receipt.is_null() {
-        return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidPointer);
-    }
-    let Some(body) = byte_slice(body_ptr, body_len) else {
-        return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidPointer);
-    };
-    let destination_slice = unsafe { core::slice::from_raw_parts(destination_ptr, 16) };
-    let mut destination = [0_u8; 16];
-    destination.copy_from_slice(destination_slice);
-    match node.node.send(destination, body, SendOptions) {
-        Ok(receipt) => {
-            unsafe {
-                *out_receipt = map_v1_receipt(receipt);
-            }
-            clear_v1_node_error(out_node_error)
+    ffi_v1_node_error_boundary(out_node_error, || {
+        let Some(node) = v1_node_mut(node) else {
+            return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidHandle);
+        };
+        if destination_ptr.is_null() || out_receipt.is_null() {
+            return set_v1_pointer_error(
+                out_node_error,
+                RnsEmbeddedV1NodeErrorCode::InvalidPointer,
+            );
         }
-        Err(err) => set_v1_node_error(out_node_error, err),
-    }
+        let Some(body) = byte_slice(body_ptr, body_len) else {
+            return set_v1_pointer_error(
+                out_node_error,
+                RnsEmbeddedV1NodeErrorCode::InvalidPointer,
+            );
+        };
+        // SAFETY: `destination_ptr` is validated non-null above and must reference
+        // exactly one 16-byte destination buffer for the duration of this call.
+        let destination_slice = unsafe { core::slice::from_raw_parts(destination_ptr, 16) };
+        let mut destination = [0_u8; 16];
+        destination.copy_from_slice(destination_slice);
+        match node.node.send(destination, body, SendOptions) {
+            Ok(receipt) => {
+                // SAFETY: `out_receipt` is validated non-null above and points to
+                // writable caller storage for one mapped receipt.
+                unsafe {
+                    *out_receipt = map_v1_receipt(receipt);
+                }
+                clear_v1_node_error(out_node_error)
+            }
+            Err(err) => set_v1_node_error(out_node_error, err),
+        }
+    })
 }
 
 #[no_mangle]
@@ -869,30 +920,43 @@ pub extern "C" fn rns_embedded_v1_node_broadcast(
     out_receipt: *mut RnsEmbeddedV1SendReceipt,
     out_node_error: *mut RnsEmbeddedV1NodeError,
 ) -> RnsEmbeddedStatus {
-    let Some(node) = v1_node_mut(node) else {
-        return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidHandle);
-    };
-    if out_receipt.is_null() {
-        return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidPointer);
-    }
-    let Some(body) = byte_slice(body_ptr, body_len) else {
-        return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidPointer);
-    };
-    let destinations = match destination_list(destinations_ptr, destination_count) {
-        Some(destinations) => destinations,
-        None => {
-            return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidPointer)
+    ffi_v1_node_error_boundary(out_node_error, || {
+        let Some(node) = v1_node_mut(node) else {
+            return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidHandle);
+        };
+        if out_receipt.is_null() {
+            return set_v1_pointer_error(
+                out_node_error,
+                RnsEmbeddedV1NodeErrorCode::InvalidPointer,
+            );
         }
-    };
-    match node.node.broadcast(body, BroadcastOptions { destinations }) {
-        Ok(receipt) => {
-            unsafe {
-                *out_receipt = map_v1_receipt(receipt);
+        let Some(body) = byte_slice(body_ptr, body_len) else {
+            return set_v1_pointer_error(
+                out_node_error,
+                RnsEmbeddedV1NodeErrorCode::InvalidPointer,
+            );
+        };
+        let destinations = match destination_list(destinations_ptr, destination_count) {
+            Some(destinations) => destinations,
+            None => {
+                return set_v1_pointer_error(
+                    out_node_error,
+                    RnsEmbeddedV1NodeErrorCode::InvalidPointer,
+                )
             }
-            clear_v1_node_error(out_node_error)
+        };
+        match node.node.broadcast(body, BroadcastOptions { destinations }) {
+            Ok(receipt) => {
+                // SAFETY: `out_receipt` is validated non-null above and points to
+                // writable caller storage for one mapped receipt.
+                unsafe {
+                    *out_receipt = map_v1_receipt(receipt);
+                }
+                clear_v1_node_error(out_node_error)
+            }
+            Err(err) => set_v1_node_error(out_node_error, err),
         }
-        Err(err) => set_v1_node_error(out_node_error, err),
-    }
+    })
 }
 
 #[no_mangle]
@@ -901,13 +965,15 @@ pub extern "C" fn rns_embedded_v1_node_set_log_level(
     level: RnsEmbeddedV1LogLevel,
     out_node_error: *mut RnsEmbeddedV1NodeError,
 ) -> RnsEmbeddedStatus {
-    let Some(node) = v1_node_mut(node) else {
-        return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidHandle);
-    };
-    match node.node.set_log_level(map_v1_log_level(level)) {
-        Ok(()) => clear_v1_node_error(out_node_error),
-        Err(err) => set_v1_node_error(out_node_error, err),
-    }
+    ffi_v1_node_error_boundary(out_node_error, || {
+        let Some(node) = v1_node_mut(node) else {
+            return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidHandle);
+        };
+        match node.node.set_log_level(map_v1_log_level(level)) {
+            Ok(()) => clear_v1_node_error(out_node_error),
+            Err(err) => set_v1_node_error(out_node_error, err),
+        }
+    })
 }
 
 #[no_mangle]
@@ -916,22 +982,29 @@ pub extern "C" fn rns_embedded_v1_node_subscribe_events(
     out_subscription: *mut *mut RnsEmbeddedEventSubscription,
     out_node_error: *mut RnsEmbeddedV1NodeError,
 ) -> RnsEmbeddedStatus {
-    let Some(node) = v1_node_mut(node) else {
-        return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidHandle);
-    };
-    if out_subscription.is_null() {
-        return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidPointer);
-    }
-    match node.node.subscribe_events() {
-        Ok(subscription) => {
-            unsafe {
-                *out_subscription =
-                    Box::into_raw(Box::new(RnsEmbeddedEventSubscription { subscription }));
-            }
-            clear_v1_node_error(out_node_error)
+    ffi_v1_node_error_boundary(out_node_error, || {
+        let Some(node) = v1_node_mut(node) else {
+            return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidHandle);
+        };
+        if out_subscription.is_null() {
+            return set_v1_pointer_error(
+                out_node_error,
+                RnsEmbeddedV1NodeErrorCode::InvalidPointer,
+            );
         }
-        Err(err) => set_v1_node_error(out_node_error, err),
-    }
+        match node.node.subscribe_events() {
+            Ok(subscription) => {
+                // SAFETY: `out_subscription` is validated non-null above and points
+                // to writable caller storage for the newly allocated handle.
+                unsafe {
+                    *out_subscription =
+                        Box::into_raw(Box::new(RnsEmbeddedEventSubscription { subscription }));
+                }
+                clear_v1_node_error(out_node_error)
+            }
+            Err(err) => set_v1_node_error(out_node_error, err),
+        }
+    })
 }
 
 #[no_mangle]
@@ -942,25 +1015,32 @@ pub extern "C" fn rns_embedded_v1_subscription_next(
     out_event: *mut RnsEmbeddedV1NodeEvent,
     out_node_error: *mut RnsEmbeddedV1NodeError,
 ) -> RnsEmbeddedStatus {
-    let Some(subscription) = v1_subscription_mut(subscription) else {
-        return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidHandle);
-    };
-    if out_poll_result.is_null() || out_event.is_null() {
-        return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidPointer);
-    }
-    match subscription.subscription.next(timeout_ms) {
-        Ok(result) => {
-            unsafe {
-                *out_poll_result = map_v1_poll_result(&result);
-                *out_event = match result {
-                    PollResult::Event(ref event) => map_v1_event(event),
-                    _ => RnsEmbeddedV1NodeEvent::default(),
-                };
-            }
-            set_v1_poll_sideband_error(out_node_error, &result)
+    ffi_v1_node_error_boundary(out_node_error, || {
+        let Some(subscription) = v1_subscription_mut(subscription) else {
+            return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidHandle);
+        };
+        if out_poll_result.is_null() || out_event.is_null() {
+            return set_v1_pointer_error(
+                out_node_error,
+                RnsEmbeddedV1NodeErrorCode::InvalidPointer,
+            );
         }
-        Err(err) => set_v1_node_error(out_node_error, err),
-    }
+        match subscription.subscription.next(timeout_ms) {
+            Ok(result) => {
+                // SAFETY: both output pointers are validated non-null above and
+                // point to writable caller storage for this poll result.
+                unsafe {
+                    *out_poll_result = map_v1_poll_result(&result);
+                    *out_event = match result {
+                        PollResult::Event(ref event) => map_v1_event(event),
+                        _ => RnsEmbeddedV1NodeEvent::default(),
+                    };
+                }
+                set_v1_poll_sideband_error(out_node_error, &result)
+            }
+            Err(err) => set_v1_node_error(out_node_error, err),
+        }
+    })
 }
 
 #[no_mangle]
@@ -968,14 +1048,18 @@ pub extern "C" fn rns_embedded_v1_subscription_close(
     subscription: *mut RnsEmbeddedEventSubscription,
     out_node_error: *mut RnsEmbeddedV1NodeError,
 ) -> RnsEmbeddedStatus {
-    if subscription.is_null() {
-        return clear_v1_node_error(out_node_error);
-    }
-    let boxed = unsafe { Box::from_raw(subscription) };
-    match boxed.subscription.close() {
-        Ok(()) => clear_v1_node_error(out_node_error),
-        Err(err) => set_v1_node_error(out_node_error, err),
-    }
+    ffi_v1_node_error_boundary(out_node_error, || {
+        if subscription.is_null() {
+            return clear_v1_node_error(out_node_error);
+        }
+        // SAFETY: `subscription` comes from `Box::into_raw` in
+        // `rns_embedded_v1_node_subscribe_events` and is reclaimed exactly once here.
+        let boxed = unsafe { Box::from_raw(subscription) };
+        match boxed.subscription.close() {
+            Ok(()) => clear_v1_node_error(out_node_error),
+            Err(err) => set_v1_node_error(out_node_error, err),
+        }
+    })
 }
 
 fn node_mut<'a>(node: *mut RnsEmbeddedNode) -> Option<&'a mut RnsEmbeddedNode> {
@@ -991,6 +1075,8 @@ fn v1_node_mut<'a>(node: *mut RnsEmbeddedV1Node) -> Option<&'a mut RnsEmbeddedV1
     if node.is_null() {
         return None;
     }
+    // SAFETY: callers pass handles allocated by this crate and this helper only
+    // creates a temporary exclusive borrow for the duration of the FFI call.
     Some(unsafe { &mut *node })
 }
 
@@ -1000,6 +1086,8 @@ fn v1_subscription_mut<'a>(
     if subscription.is_null() {
         return None;
     }
+    // SAFETY: callers pass handles allocated by this crate and this helper only
+    // creates a temporary exclusive borrow for the duration of the FFI call.
     Some(unsafe { &mut *subscription })
 }
 
@@ -1022,6 +1110,8 @@ fn destination_list(ptr: *const u8, count: usize) -> Option<alloc::vec::Vec<[u8;
     if ptr.is_null() {
         return None;
     }
+    // SAFETY: `ptr` is validated non-null above and the byte count is derived
+    // from the caller-provided destination count with fixed 16-byte entries.
     let bytes = unsafe { core::slice::from_raw_parts(ptr, count.saturating_mul(16)) };
     let mut out = alloc::vec::Vec::with_capacity(count);
     for chunk in bytes.chunks_exact(16) {
@@ -1232,8 +1322,59 @@ fn map_v1_log_level(level: RnsEmbeddedV1LogLevel) -> NodeLogLevel {
     }
 }
 
+fn ffi_status_boundary<F>(f: F) -> RnsEmbeddedStatus
+where
+    F: FnOnce() -> RnsEmbeddedStatus,
+{
+    #[cfg(feature = "std")]
+    {
+        catch_unwind(AssertUnwindSafe(f)).unwrap_or(RnsEmbeddedStatus::InvalidState)
+    }
+
+    #[cfg(not(feature = "std"))]
+    {
+        f()
+    }
+}
+
+fn ffi_ptr_boundary<T, F>(f: F) -> *mut T
+where
+    F: FnOnce() -> *mut T,
+{
+    #[cfg(feature = "std")]
+    {
+        catch_unwind(AssertUnwindSafe(f)).unwrap_or(core::ptr::null_mut())
+    }
+
+    #[cfg(not(feature = "std"))]
+    {
+        f()
+    }
+}
+
+fn ffi_v1_node_error_boundary<F>(
+    out_node_error: *mut RnsEmbeddedV1NodeError,
+    f: F,
+) -> RnsEmbeddedStatus
+where
+    F: FnOnce() -> RnsEmbeddedStatus,
+{
+    #[cfg(feature = "std")]
+    {
+        catch_unwind(AssertUnwindSafe(f))
+            .unwrap_or_else(|_| set_v1_node_error(out_node_error, NodeError::InternalError))
+    }
+
+    #[cfg(not(feature = "std"))]
+    {
+        f()
+    }
+}
+
 fn clear_v1_node_error(out_node_error: *mut RnsEmbeddedV1NodeError) -> RnsEmbeddedStatus {
     if !out_node_error.is_null() {
+        // SAFETY: `out_node_error` is checked non-null above and points to
+        // writable caller storage for one sideband error struct.
         unsafe {
             *out_node_error = RnsEmbeddedV1NodeError::default();
         }
@@ -1254,6 +1395,8 @@ fn set_v1_poll_sideband_error(
             PollResult::NodeStopped => RnsEmbeddedV1NodeErrorCode::NotRunning,
             PollResult::Event(_) => RnsEmbeddedV1NodeErrorCode::Unknown,
         };
+        // SAFETY: `out_node_error` is checked non-null above and points to
+        // writable caller storage for one sideband error struct.
         unsafe {
             *out_node_error = RnsEmbeddedV1NodeError { code, ..RnsEmbeddedV1NodeError::default() };
         }
@@ -1266,6 +1409,8 @@ fn set_v1_pointer_error(
     code: RnsEmbeddedV1NodeErrorCode,
 ) -> RnsEmbeddedStatus {
     if !out_node_error.is_null() {
+        // SAFETY: `out_node_error` is checked non-null above and points to
+        // writable caller storage for one sideband error struct.
         unsafe {
             *out_node_error = RnsEmbeddedV1NodeError { code, ..RnsEmbeddedV1NodeError::default() };
         }
@@ -1278,6 +1423,8 @@ fn set_v1_node_error(
     error: NodeError,
 ) -> RnsEmbeddedStatus {
     if !out_node_error.is_null() {
+        // SAFETY: `out_node_error` is checked non-null above and points to
+        // writable caller storage for one sideband error struct.
         unsafe {
             *out_node_error = RnsEmbeddedV1NodeError {
                 code: map_v1_node_error_code(&error),
@@ -1359,25 +1506,25 @@ mod tests {
     use serde_json::Value;
 
     use super::{
-        rns_embedded_node_free, rns_embedded_node_new, rns_embedded_node_push_inbound_wire,
-        rns_embedded_node_queue_message, rns_embedded_node_set_link_state,
-        rns_embedded_node_take_outbound_wire, rns_embedded_node_tick, rns_embedded_v1_abi_version,
-        rns_embedded_v1_get_capabilities, rns_embedded_v1_node_broadcast,
-        rns_embedded_v1_node_config_default, rns_embedded_v1_node_free,
-        rns_embedded_v1_node_get_status, rns_embedded_v1_node_new, rns_embedded_v1_node_restart,
-        rns_embedded_v1_node_send, rns_embedded_v1_node_set_log_level, rns_embedded_v1_node_start,
-        rns_embedded_v1_node_stop, rns_embedded_v1_node_subscribe_events,
-        rns_embedded_v1_subscription_close, rns_embedded_v1_subscription_next,
-        RnsEmbeddedLinkState, RnsEmbeddedNodeConfig, RnsEmbeddedStatus, RnsEmbeddedV1Capabilities,
-        RnsEmbeddedV1EventKind, RnsEmbeddedV1LogLevel, RnsEmbeddedV1NodeError,
-        RnsEmbeddedV1NodeErrorCode, RnsEmbeddedV1NodeEvent, RnsEmbeddedV1NodeStatus,
-        RnsEmbeddedV1PollResult, RnsEmbeddedV1PollResultKind, RnsEmbeddedV1RunState,
-        RnsEmbeddedV1SendReceipt, RNS_EMBEDDED_V1_CAPABILITY_SCHEMA_VERSION,
-        RNS_EMBEDDED_V1_CAP_BLOCKING_NEXT, RNS_EMBEDDED_V1_CAP_BROADCAST_EXPLICIT_LIST,
-        RNS_EMBEDDED_V1_CAP_COMPAT_LEGACY_FFI, RNS_EMBEDDED_V1_CAP_EVENT_GAP_SIGNALING,
-        RNS_EMBEDDED_V1_CAP_MANAGED_RUNTIME, RNS_EMBEDDED_V1_DRIVER_TICK_MAX_MS,
-        RNS_EMBEDDED_V1_DRIVER_TICK_TARGET_MS, RNS_EMBEDDED_V1_KNOWN_CAPABILITY_BITS,
-        RNS_EMBEDDED_V1_MAX_BLOCKING_TIMEOUT_MS,
+        ffi_v1_node_error_boundary, rns_embedded_node_free, rns_embedded_node_new,
+        rns_embedded_node_push_inbound_wire, rns_embedded_node_queue_message,
+        rns_embedded_node_set_link_state, rns_embedded_node_take_outbound_wire,
+        rns_embedded_node_tick, rns_embedded_v1_abi_version, rns_embedded_v1_get_capabilities,
+        rns_embedded_v1_node_broadcast, rns_embedded_v1_node_config_default,
+        rns_embedded_v1_node_free, rns_embedded_v1_node_get_status, rns_embedded_v1_node_new,
+        rns_embedded_v1_node_restart, rns_embedded_v1_node_send,
+        rns_embedded_v1_node_set_log_level, rns_embedded_v1_node_start, rns_embedded_v1_node_stop,
+        rns_embedded_v1_node_subscribe_events, rns_embedded_v1_subscription_close,
+        rns_embedded_v1_subscription_next, RnsEmbeddedLinkState, RnsEmbeddedNodeConfig,
+        RnsEmbeddedStatus, RnsEmbeddedV1Capabilities, RnsEmbeddedV1EventKind,
+        RnsEmbeddedV1LogLevel, RnsEmbeddedV1NodeError, RnsEmbeddedV1NodeErrorCode,
+        RnsEmbeddedV1NodeEvent, RnsEmbeddedV1NodeStatus, RnsEmbeddedV1PollResult,
+        RnsEmbeddedV1PollResultKind, RnsEmbeddedV1RunState, RnsEmbeddedV1SendReceipt,
+        RNS_EMBEDDED_V1_CAPABILITY_SCHEMA_VERSION, RNS_EMBEDDED_V1_CAP_BLOCKING_NEXT,
+        RNS_EMBEDDED_V1_CAP_BROADCAST_EXPLICIT_LIST, RNS_EMBEDDED_V1_CAP_COMPAT_LEGACY_FFI,
+        RNS_EMBEDDED_V1_CAP_EVENT_GAP_SIGNALING, RNS_EMBEDDED_V1_CAP_MANAGED_RUNTIME,
+        RNS_EMBEDDED_V1_DRIVER_TICK_MAX_MS, RNS_EMBEDDED_V1_DRIVER_TICK_TARGET_MS,
+        RNS_EMBEDDED_V1_KNOWN_CAPABILITY_BITS, RNS_EMBEDDED_V1_MAX_BLOCKING_TIMEOUT_MS,
     };
     use rns_embedded_core::packet::{decode_frame, encode_frame, PacketFrame};
     use rns_embedded_runtime::node::{
@@ -1892,6 +2039,18 @@ mod tests {
         assert_eq!(status.epoch, fixture["restarted_epoch"].as_u64().expect("restarted epoch"));
 
         rns_embedded_v1_node_free(node);
+    }
+
+    #[test]
+    fn ffi_v1_boundary_maps_panic_to_internal_error() {
+        let mut error = RnsEmbeddedV1NodeError::default();
+
+        let status = ffi_v1_node_error_boundary(&mut error, || -> RnsEmbeddedStatus {
+            panic!("simulated ffi boundary panic");
+        });
+
+        assert_eq!(status, RnsEmbeddedStatus::InvalidState);
+        assert_eq!(error.code, RnsEmbeddedV1NodeErrorCode::InternalError);
     }
 
     #[test]

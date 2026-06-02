@@ -12,23 +12,85 @@ pub struct RpcResponse {
     pub error: Option<RpcError>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SdkCustomOperationSpec {
+    pub id: String,
+    pub group: String,
+    pub kind: String,
+    pub transport_variant: String,
+    pub description: String,
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    #[serde(default)]
+    pub required_capabilities: Vec<String>,
+}
+
+impl SdkCustomOperationSpec {
+    pub fn new(
+        id: impl Into<String>,
+        group: impl Into<String>,
+        kind: impl Into<String>,
+        transport_variant: impl Into<String>,
+        description: impl Into<String>,
+    ) -> Self {
+        Self {
+            id: Self::trimmed(id),
+            group: Self::trimmed(group),
+            kind: Self::trimmed(kind).to_ascii_lowercase(),
+            transport_variant: Self::trimmed(transport_variant),
+            description: Self::trimmed(description),
+            aliases: Vec::new(),
+            required_capabilities: Vec::new(),
+        }
+    }
+
+    pub fn with_alias(mut self, alias: impl Into<String>) -> Self {
+        let alias = Self::trimmed(alias);
+        if !alias.is_empty() && !self.aliases.iter().any(|current| current == &alias) {
+            self.aliases.push(alias);
+        }
+        self
+    }
+
+    pub fn with_required_capability(mut self, capability: impl Into<String>) -> Self {
+        let capability = Self::trimmed(capability);
+        if !capability.is_empty()
+            && !self.required_capabilities.iter().any(|current| current == &capability)
+        {
+            self.required_capabilities.push(capability);
+        }
+        self
+    }
+
+    fn trimmed(value: impl Into<String>) -> String {
+        value.into().trim().to_owned()
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone, Eq)]
+pub struct SdkCursorHint {
+    pub method: String,
+    pub next_cursor: String,
+    pub captured_at_ms: u64,
+}
+
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct RpcError {
     pub code: String,
     pub message: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub machine_code: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub category: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub retryable: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub is_user_actionable: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub details: Option<Box<JsonMap<String, JsonValue>>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub cause_code: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub extensions: Option<Box<JsonMap<String, JsonValue>>>,
 }
 
@@ -37,9 +99,8 @@ impl RpcError {
         let code = code.into();
         let message = message.into();
         let category = Self::category_for_code(code.as_str());
-        let retryable = category
-            .as_deref()
-            .is_some_and(|value| value == "Transport" || value == "Timeout");
+        let retryable =
+            category.as_deref().is_some_and(|value| value == "Transport" || value == "Timeout");
         let is_user_actionable = category.as_deref().is_some_and(|value| {
             matches!(value, "Validation" | "Capability" | "Config" | "Policy" | "Security")
         });
@@ -116,11 +177,35 @@ pub struct DeliveryPolicy {
     pub prioritised_destinations: Vec<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct PropagationState {
     pub enabled: bool,
     pub store_root: Option<String>,
     pub target_cost: u32,
+    #[serde(default = "default_propagation_stamp_cost_flexibility")]
+    pub stamp_cost_flexibility: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message_storage_limit_mb: Option<u64>,
+    #[serde(default = "default_delivery_transfer_limit")]
+    pub delivery_limit: u32,
+    #[serde(default = "default_propagation_transfer_limit")]
+    pub propagation_limit: u32,
+    #[serde(default = "default_propagation_sync_limit")]
+    pub sync_limit: u32,
+    #[serde(default = "default_true")]
+    pub autopeer: bool,
+    #[serde(default = "default_autopeer_maxdepth")]
+    pub autopeer_maxdepth: u32,
+    #[serde(default)]
+    pub static_peers: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_peers: Option<u32>,
+    #[serde(default)]
+    pub from_static_only: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub peering_cost: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_peering_cost_max: Option<u32>,
     pub total_ingested: usize,
     pub last_ingest_count: usize,
     pub sync_state: u32,
@@ -128,16 +213,82 @@ pub struct PropagationState {
     pub sync_progress: f64,
     pub messages_received: usize,
     pub max_messages: usize,
+    #[serde(default)]
+    pub client_propagation_messages_received: usize,
+    #[serde(default)]
+    pub client_propagation_messages_served: usize,
+    #[serde(default)]
+    pub unpeered_propagation_incoming: usize,
+    #[serde(default)]
+    pub unpeered_propagation_rx_bytes: u64,
     pub selected_node: Option<String>,
     pub last_sync_started: Option<i64>,
     pub last_sync_completed: Option<i64>,
     pub last_sync_error: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+impl Default for PropagationState {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            store_root: None,
+            target_cost: 0,
+            stamp_cost_flexibility: default_propagation_stamp_cost_flexibility(),
+            message_storage_limit_mb: None,
+            delivery_limit: default_delivery_transfer_limit(),
+            propagation_limit: default_propagation_transfer_limit(),
+            sync_limit: default_propagation_sync_limit(),
+            autopeer: default_true(),
+            autopeer_maxdepth: default_autopeer_maxdepth(),
+            static_peers: Vec::new(),
+            max_peers: None,
+            from_static_only: false,
+            peering_cost: None,
+            remote_peering_cost_max: None,
+            total_ingested: 0,
+            last_ingest_count: 0,
+            sync_state: 0,
+            state_name: String::new(),
+            sync_progress: 0.0,
+            messages_received: 0,
+            max_messages: 0,
+            client_propagation_messages_received: 0,
+            client_propagation_messages_served: 0,
+            unpeered_propagation_incoming: 0,
+            unpeered_propagation_rx_bytes: 0,
+            selected_node: None,
+            last_sync_started: None,
+            last_sync_completed: None,
+            last_sync_error: None,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct StampPolicy {
     pub target_cost: u32,
     pub flexibility: u32,
+    #[serde(default = "default_stamp_enforce")]
+    pub enforce: bool,
+}
+
+impl Default for StampPolicy {
+    fn default() -> Self {
+        Self { target_cost: 0, flexibility: 0, enforce: default_stamp_enforce() }
+    }
+}
+
+fn default_stamp_enforce() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+struct DaemonStatusSnapshot {
+    peer_count: usize,
+    interfaces: Vec<InterfaceRecord>,
+    delivery_policy: DeliveryPolicy,
+    propagation: PropagationState,
+    stamp_policy: StampPolicy,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -260,16 +411,47 @@ struct RpcMetrics {
     sdk_send_latency_ms: RpcLatencyHistogram,
     sdk_poll_latency_ms: RpcLatencyHistogram,
     sdk_auth_latency_ms: RpcLatencyHistogram,
+    sdk_send_store_write_ns_total: u64,
+    sdk_send_store_write_ops_total: u64,
+    sdk_send_delivery_schedule_ns_total: u64,
+    sdk_send_delivery_schedule_ops_total: u64,
+    sdk_send_event_publish_ns_total: u64,
+    sdk_send_event_publish_ops_total: u64,
+    daemon_status_lock_wait_ns_total: u64,
+    daemon_status_snapshot_wait_ns_total: u64,
+    daemon_status_message_count_wait_ns_total: u64,
+    daemon_status_calls_total: u64,
+    sdk_poll_event_log_lock_wait_ns_total: u64,
+    sdk_poll_event_log_lock_ops_total: u64,
+}
+
+enum EventSinkCommand {
+    Publish {
+        sink: Arc<dyn EventSinkBridge>,
+        sink_kind: String,
+        envelope: RpcEventSinkEnvelope,
+    },
+    #[cfg(test)]
+    Flush {
+        reply: mpsc::Sender<()>,
+    },
+}
+
+struct OutboundDeliveryCommand {
+    record: MessageRecord,
+    options: OutboundDeliveryOptions,
 }
 
 pub struct RpcDaemon {
-    store: MessagesStore,
+    store: Arc<MessagesStore>,
     identity_hash: String,
     delivery_destination_hash: Mutex<Option<String>>,
     events: broadcast::Sender<RpcEvent>,
+    sdk_events: broadcast::Sender<SequencedRpcEvent>,
     event_queue: Mutex<VecDeque<RpcEvent>>,
     sdk_event_log: Mutex<VecDeque<SequencedRpcEvent>>,
     sdk_next_event_seq: Mutex<u64>,
+    announce_next_seq: Mutex<u64>,
     sdk_dropped_event_count: Mutex<u64>,
     sdk_active_contract_version: Mutex<u16>,
     sdk_profile: Mutex<String>,
@@ -277,6 +459,7 @@ pub struct RpcDaemon {
     sdk_runtime_config: Mutex<JsonValue>,
     sdk_config_apply_lock: Mutex<()>,
     sdk_effective_capabilities: Mutex<Vec<String>>,
+    sdk_custom_operations: Mutex<Vec<SdkCustomOperationSpec>>,
     sdk_stream_degraded: Mutex<bool>,
     sdk_seen_jti: Mutex<HashMap<String, u64>>,
     sdk_rate_window_started_ms: Mutex<u64>,
@@ -292,13 +475,14 @@ pub struct RpcDaemon {
     sdk_attachment_payloads: Mutex<HashMap<String, String>>,
     sdk_attachment_order: Mutex<Vec<String>>,
     sdk_attachment_uploads: Mutex<HashMap<String, SdkAttachmentUploadSession>>,
+    sdk_cursor_hints: Mutex<HashMap<String, SdkCursorHint>>,
     sdk_markers: Mutex<HashMap<String, SdkMarkerRecord>>,
     sdk_marker_order: Mutex<Vec<String>>,
     sdk_identities: Mutex<HashMap<String, SdkIdentityBundle>>,
     sdk_contacts: Mutex<HashMap<String, SdkContactRecord>>,
     sdk_contact_order: Mutex<Vec<String>>,
     sdk_active_identity: Mutex<Option<String>>,
-    sdk_remote_commands: Mutex<HashSet<String>>,
+    sdk_remote_commands: Mutex<HashMap<String, SdkRemoteCommandRecord>>,
     sdk_voice_sessions: Mutex<HashMap<String, SdkVoiceSessionRecord>>,
     peers: Mutex<HashMap<String, PeerRecord>>,
     interfaces: Mutex<Vec<InterfaceRecord>>,
@@ -309,24 +493,101 @@ pub struct RpcDaemon {
     paper_ingest_seen: Mutex<HashSet<String>>,
     stamp_policy: Mutex<StampPolicy>,
     ticket_cache: Mutex<HashMap<String, TicketRecord>>,
-    delivery_traces: Mutex<HashMap<String, Vec<DeliveryTraceEntry>>>,
-    delivery_status_lock: Mutex<()>,
-    sdk_metrics: Mutex<RpcMetrics>,
+    ticket_last_deliveries: Mutex<HashMap<String, i64>>,
+    delivery_traces: Arc<Mutex<HashMap<String, Vec<DeliveryTraceEntry>>>>,
+    daemon_status_snapshot: std::sync::RwLock<DaemonStatusSnapshot>,
+    delivery_status_lock: Arc<Mutex<()>>,
+    sdk_metrics: Arc<Mutex<RpcMetrics>>,
     outbound_bridge: Option<Arc<dyn OutboundBridge>>,
+    outbound_delivery_tx: Option<mpsc::SyncSender<OutboundDeliveryCommand>>,
     announce_bridge: Option<Arc<dyn AnnounceBridge>>,
     event_sink_bridges: Vec<Arc<dyn EventSinkBridge>>,
+    event_sink_tx: Option<mpsc::SyncSender<EventSinkCommand>>,
+    interface_mutation_bridge: Mutex<Option<Arc<dyn InterfaceMutationBridge>>>,
+    remote_control_bridge: Mutex<Option<Arc<dyn RemoteControlBridge>>>,
+    started_at: std::time::Instant,
 }
 
 pub trait OutboundBridge: Send + Sync {
+    fn validate_delivery(
+        &self,
+        _record: &MessageRecord,
+        _options: &OutboundDeliveryOptions,
+    ) -> Result<(), std::io::Error> {
+        Ok(())
+    }
+
     fn deliver(
         &self,
         record: &MessageRecord,
         options: &OutboundDeliveryOptions,
     ) -> Result<(), std::io::Error>;
+
+    fn encode_paper(
+        &self,
+        _record: &MessageRecord,
+    ) -> Result<Option<PaperEncodeEnvelope>, std::io::Error> {
+        Ok(None)
+    }
+
+    fn decode_paper_uri(&self, _uri: &str) -> Result<Option<PaperDecodeOutcome>, std::io::Error> {
+        Ok(None)
+    }
+
+    fn delivery_pipeline_status(&self) -> Option<JsonValue> {
+        None
+    }
 }
 
 pub trait AnnounceBridge: Send + Sync {
     fn announce_now(&self) -> Result<(), std::io::Error>;
+}
+
+pub trait InterfaceMutationBridge: Send + Sync {
+    fn apply_interfaces(
+        &self,
+        interfaces: Vec<InterfaceRecord>,
+    ) -> Result<Vec<InterfaceRecord>, std::io::Error>;
+}
+
+pub trait RemoteControlBridge: Send + Sync {
+    fn propagation_remote_status(
+        &self,
+        remote: &str,
+        identity_private_key_hex: Option<&str>,
+        timeout_secs: f64,
+    ) -> Result<JsonValue, std::io::Error>;
+
+    fn propagation_remote_sync(
+        &self,
+        remote: &str,
+        peer: &str,
+        identity_private_key_hex: Option<&str>,
+        timeout_secs: f64,
+    ) -> Result<JsonValue, std::io::Error>;
+
+    fn propagation_remote_fetch(
+        &self,
+        remote: &str,
+        identity_private_key_hex: Option<&str>,
+        timeout_secs: f64,
+        transfer_limit_kb: Option<f64>,
+    ) -> Result<JsonValue, std::io::Error>;
+
+    fn propagation_remote_download(
+        &self,
+        remote: &str,
+        identity_private_key_hex: Option<&str>,
+        timeout_secs: f64,
+    ) -> Result<JsonValue, std::io::Error>;
+
+    fn propagation_remote_unpeer(
+        &self,
+        remote: &str,
+        peer: &str,
+        identity_private_key_hex: Option<&str>,
+        timeout_secs: f64,
+    ) -> Result<JsonValue, std::io::Error>;
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -361,6 +622,22 @@ pub struct OutboundDeliveryOptions {
     pub source_private_key: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct PaperEncodeEnvelope {
+    pub uri: String,
+    pub transient_id: String,
+    pub destination_hint: String,
+    pub extensions: JsonMap<String, JsonValue>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PaperDecodeOutcome {
+    pub transient_id: String,
+    pub destination_hint: String,
+    pub record: Option<MessageRecord>,
+    pub raw_lxmf_bytes: Option<Vec<u8>>,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct RpcEvent {
     pub event_type: String,
@@ -368,9 +645,9 @@ pub struct RpcEvent {
 }
 
 #[derive(Debug, Clone)]
-struct SequencedRpcEvent {
-    seq_no: u64,
-    event: RpcEvent,
+pub struct SequencedRpcEvent {
+    pub seq_no: u64,
+    pub event: RpcEvent,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -378,11 +655,75 @@ pub struct PeerRecord {
     pub peer: String,
     pub last_seen: i64,
     #[serde(default)]
+    pub capabilities: Vec<String>,
+    #[serde(default)]
     pub name: Option<String>,
     #[serde(default)]
     pub name_source: Option<String>,
     #[serde(default)]
+    pub peer_type: Option<String>,
+    #[serde(default)]
+    pub alive: bool,
+    #[serde(default)]
+    pub last_sync_attempt: i64,
+    #[serde(default)]
+    pub next_sync_attempt: i64,
+    #[serde(default)]
+    pub sync_backoff: u32,
+    #[serde(default = "default_network_distance")]
+    pub network_distance: u32,
+    #[serde(default)]
+    pub rx_bytes: u64,
+    #[serde(default)]
+    pub tx_bytes: u64,
+    #[serde(default = "default_acceptance_rate")]
+    pub acceptance_rate: f64,
+    #[serde(default)]
     pub first_seen: i64,
     #[serde(default)]
     pub seen_count: u64,
+    #[serde(default)]
+    pub peering_timebase: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub propagation_transfer_limit: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub propagation_sync_limit: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub propagation_stamp_cost: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub propagation_stamp_cost_flexibility: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub peering_cost: Option<u32>,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_autopeer_maxdepth() -> u32 {
+    6
+}
+
+fn default_propagation_stamp_cost_flexibility() -> u32 {
+    3
+}
+
+fn default_delivery_transfer_limit() -> u32 {
+    1000
+}
+
+fn default_propagation_transfer_limit() -> u32 {
+    256
+}
+
+fn default_propagation_sync_limit() -> u32 {
+    10240
+}
+
+fn default_network_distance() -> u32 {
+    1
+}
+
+fn default_acceptance_rate() -> f64 {
+    0.0
 }

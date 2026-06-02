@@ -9,6 +9,8 @@ pub mod domain;
 mod error;
 pub mod event;
 mod lifecycle;
+#[cfg(feature = "std")]
+pub mod messaging;
 pub mod profiles;
 pub mod types;
 
@@ -30,15 +32,21 @@ pub use backend::mobile_ble::{
 };
 #[cfg(all(feature = "rpc-backend", feature = "std"))]
 pub use backend::rpc::RpcBackendClient;
+#[cfg(all(feature = "zmq-pipeline-backend", feature = "std"))]
+pub use backend::zmq_pipeline::{
+    ZmqEndpointRole, ZmqPipelineBackendClient, ZmqPipelineBackendConfig, ZmqPipelineTokenAuth,
+};
 pub use backend::{
     KeyProviderClass, SdkBackend, SdkBackendAsyncEvents, SdkBackendKeyManagement, SdkKeyPurpose,
     SdkStoredKey,
 };
+#[cfg(feature = "sdk-async")]
+pub use backend::{SdkBackendAsyncOps, SdkBoxFuture, SdkEventStream};
 // Stability class: stable
 pub use capability::{
     effective_capabilities_for_profile, negotiate_contract_version, negotiate_plugins,
     CapabilityDescriptor, CapabilityState, EffectiveLimits, NegotiationRequest,
-    NegotiationResponse, PluginDescriptor, PluginState,
+    NegotiationResponse, ParityReference, PluginDescriptor, PluginState,
 };
 // Stability class: internal
 pub use client::Client;
@@ -52,10 +60,11 @@ pub use domain::{
     IdentityImportRequest, IdentityRef, IdentityResolveRequest, MarkerCreateRequest,
     MarkerDeleteRequest, MarkerId, MarkerListRequest, MarkerListResult, MarkerRecord,
     MarkerUpdatePositionRequest, PaperMessageEnvelope, PresenceListRequest, PresenceListResult,
-    PresenceRecord, RemoteCommandRequest, RemoteCommandResponse, TelemetryPoint, TelemetryQuery,
-    TopicCreateRequest, TopicId, TopicListRequest, TopicListResult, TopicPath, TopicPublishRequest,
-    TopicRecord, TopicSubscriptionRequest, TrustLevel, VoiceSessionId, VoiceSessionOpenRequest,
-    VoiceSessionState, VoiceSessionUpdateRequest,
+    PresenceRecord, RemoteCommandRequest, RemoteCommandResponse, RemoteCommandSession,
+    RemoteCommandSessionListRequest, RemoteCommandSessionListResult, TelemetryPoint,
+    TelemetryQuery, TopicCreateRequest, TopicId, TopicListRequest, TopicListResult, TopicPath,
+    TopicPublishRequest, TopicRecord, TopicSubscriptionRequest, TrustLevel, VoiceSessionId,
+    VoiceSessionOpenRequest, VoiceSessionState, VoiceSessionUpdateRequest,
 };
 pub use error::{code as error_code, ErrorCategory, ErrorDetails, SdkError};
 // Stability class: stable
@@ -64,6 +73,12 @@ pub use event::{
 };
 // Stability class: stable
 pub use lifecycle::{Lifecycle, SdkMethod};
+#[cfg(feature = "std")]
+pub use messaging::{
+    AnnounceRecord, ConversationRecord, MessageDirection, MessageMethod, MessageRecord,
+    MessageState, MessagingStore, PeerRecord, PeerState, SendMessageRequest, StoredOutboundMessage,
+    SyncPhase, SyncStatus,
+};
 pub use profiles::{
     default_effective_limits, default_memory_budget, required_capabilities, supports_capability,
     MemoryBudget,
@@ -81,3 +96,11 @@ pub use types::{
 
 pub const CONTRACT_RELEASE: &str = "v2.5";
 pub const SCHEMA_NAMESPACE: &str = "v2";
+pub const SDK_VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const RETICULUM_CONFORMANCE_REFERENCE_REF: &str = "0319444b20e0815f26c6b9ceeba8fa44de037c9b";
+pub const PYTHON_RETICULUM_REFERENCE_REF: &str = "15320e4d2cfabb143c1db20ca887e275fd521585";
+pub const PYTHON_LXMF_REFERENCE_REF: &str = "727830cefda83d9c6e3982b48675425f3f988f9c";
+
+pub(crate) fn default_sdk_version() -> String {
+    SDK_VERSION.to_owned()
+}

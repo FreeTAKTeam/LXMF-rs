@@ -1114,9 +1114,7 @@ fn driver_tick(inner: &Arc<StdNodeInner>, epoch: u64) -> bool {
 
 #[cfg(feature = "std")]
 fn stop_driver_locked(state: &mut NodeState) -> Option<JoinHandle<()>> {
-    let Some(driver) = state.driver.as_mut() else {
-        return None;
-    };
+    let driver = state.driver.as_mut()?;
     driver.stop_requested = true;
     driver.handle.take()
 }

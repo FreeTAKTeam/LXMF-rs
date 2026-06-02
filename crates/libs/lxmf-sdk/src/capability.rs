@@ -1,7 +1,8 @@
 use crate::profiles::required_capabilities;
 use crate::types::{AuthMode, BindMode, OverflowPolicy, Profile, RpcBackendConfig};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use serde_json::Value as JsonValue;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -35,6 +36,24 @@ pub struct EffectiveLimits {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[non_exhaustive]
+pub struct ParityReference {
+    pub reticulum_conformance_ref: String,
+    pub python_reticulum_ref: String,
+    pub python_lxmf_ref: String,
+}
+
+impl Default for ParityReference {
+    fn default() -> Self {
+        Self {
+            reticulum_conformance_ref: crate::RETICULUM_CONFORMANCE_REFERENCE_REF.to_owned(),
+            python_reticulum_ref: crate::PYTHON_RETICULUM_REFERENCE_REF.to_owned(),
+            python_lxmf_ref: crate::PYTHON_LXMF_REFERENCE_REF.to_owned(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct NegotiationRequest {
     pub supported_contract_versions: Vec<u16>,
     pub requested_capabilities: Vec<String>,
@@ -44,6 +63,8 @@ pub struct NegotiationRequest {
     pub overflow_policy: OverflowPolicy,
     pub block_timeout_ms: Option<u64>,
     pub rpc_backend: Option<RpcBackendConfig>,
+    #[serde(default)]
+    pub extensions: BTreeMap<String, JsonValue>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -55,6 +76,10 @@ pub struct NegotiationResponse {
     pub effective_limits: EffectiveLimits,
     pub contract_release: String,
     pub schema_namespace: String,
+    #[serde(default = "crate::default_sdk_version")]
+    pub sdk_version: String,
+    #[serde(default)]
+    pub python_reference: ParityReference,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]

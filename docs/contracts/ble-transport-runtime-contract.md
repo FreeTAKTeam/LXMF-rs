@@ -10,7 +10,7 @@ Defines daemon-side BLE transport worker behavior for long-lived operation.
 ## Boundary Rules
 
 - OS-native BLE dependencies stay in `reticulumd` adapter layer.
-- `rns-transport` remains runtime-agnostic and must not depend on OS BLE crates.
+- `reticulum-rs-transport` (`crates/libs/rns-transport`) remains runtime-agnostic and must not depend on OS BLE crates.
 
 ## Worker Model
 

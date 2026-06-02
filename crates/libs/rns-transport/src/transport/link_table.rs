@@ -3,7 +3,7 @@ use tokio::time::{Duration, Instant};
 
 use crate::destination::link::LinkId;
 use crate::hash::AddressHash;
-use crate::packet::{Header, HeaderType, IfacFlag, Packet};
+use crate::packet::Packet;
 
 #[allow(dead_code)]
 pub struct LinkEntry {
@@ -20,18 +20,10 @@ pub struct LinkEntry {
 
 fn send_backwards(packet: &Packet, entry: &LinkEntry) -> (Packet, AddressHash) {
     let propagated = Packet {
-        header: Header {
-            ifac_flag: IfacFlag::Authenticated,
-            header_type: HeaderType::Type2,
-            context_flag: packet.header.context_flag,
-            propagation_type: packet.header.propagation_type,
-            destination_type: packet.header.destination_type,
-            packet_type: packet.header.packet_type,
-            hops: packet.header.hops + 1,
-        },
+        header: packet.header,
         ifac: None,
         destination: packet.destination,
-        transport: Some(entry.next_hop),
+        transport: packet.transport,
         context: packet.context,
         data: packet.data,
     };
@@ -65,7 +57,7 @@ impl LinkTable {
         }
 
         let now = Instant::now();
-        let taken_hops = link_request.header.hops + 1;
+        let taken_hops = link_request.header.hops;
 
         let entry = LinkEntry {
             timestamp: now,
@@ -84,6 +76,10 @@ impl LinkTable {
 
     pub fn original_destination(&self, link_id: &LinkId) -> Option<AddressHash> {
         self.entries.get(link_id).filter(|e| e.validated).map(|e| e.original_destination)
+    }
+
+    pub fn proof_validation_context(&self, link_id: &LinkId) -> Option<(AddressHash, AddressHash)> {
+        self.entries.get(link_id).map(|entry| (entry.original_destination, entry.next_hop_iface))
     }
 
     pub fn handle_keepalive(&mut self, packet: &Packet) -> Option<(Packet, AddressHash)> {
@@ -105,6 +101,19 @@ impl LinkTable {
             }
             None => None,
         }
+    }
+
+    pub fn handle_reverse_link_packet(
+        &mut self,
+        packet: &Packet,
+        received_on: AddressHash,
+    ) -> Option<(Packet, AddressHash)> {
+        let entry = self.entries.get_mut(&packet.destination)?;
+        if !entry.validated || received_on != entry.next_hop_iface {
+            return None;
+        }
+        entry.timestamp = Instant::now();
+        Some(send_backwards(packet, entry))
     }
 
     pub fn remove_stale(&mut self) {

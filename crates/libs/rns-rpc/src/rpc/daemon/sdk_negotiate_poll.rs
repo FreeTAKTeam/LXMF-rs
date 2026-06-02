@@ -1,5 +1,10 @@
+use super::*;
+
 impl RpcDaemon {
-    fn handle_sdk_negotiate_v2(&self, request: RpcRequest) -> Result<RpcResponse, std::io::Error> {
+    pub(super) fn handle_sdk_negotiate_v2(
+        &self,
+        request: RpcRequest,
+    ) -> Result<RpcResponse, std::io::Error> {
         let params = request.params.ok_or_else(|| {
             std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing params")
         })?;
@@ -22,10 +27,8 @@ impl RpcDaemon {
         };
 
         let profile = parsed.config.profile.trim().to_ascii_lowercase();
-        if !matches!(
-            profile.as_str(),
-            "desktop-full" | "desktop-local-runtime" | "embedded-alloc"
-        ) {
+        if !matches!(profile.as_str(), "desktop-full" | "desktop-local-runtime" | "embedded-alloc")
+        {
             return Ok(self.sdk_error_response(
                 request.id,
                 "SDK_CAPABILITY_CONTRACT_INCOMPATIBLE",
@@ -100,6 +103,19 @@ impl RpcDaemon {
                 "overflow_policy=block requires block_timeout_ms",
             ));
         }
+        let custom_operations = match parsed.config.extensions.get("custom_operations").cloned() {
+            Some(JsonValue::Null) | None => Vec::new(),
+            Some(value) => match serde_json::from_value::<Vec<SdkCustomOperationSpec>>(value) {
+                Ok(operations) => operations,
+                Err(err) => {
+                    return Ok(self.sdk_error_response(
+                        request.id,
+                        "SDK_VALIDATION_INVALID_ARGUMENT",
+                        &format!("config.extensions.custom_operations is invalid: {err}"),
+                    ))
+                }
+            },
+        };
 
         let mut store_forward_policy =
             Self::default_store_forward_policy_for_profile(profile.as_str());
@@ -281,6 +297,7 @@ impl RpcDaemon {
                 .expect("sdk_effective_capabilities mutex poisoned");
             *guard = effective_capabilities.clone();
         }
+        self.set_sdk_custom_operations(custom_operations);
         {
             let rpc_backend =
                 parsed.config.rpc_backend.as_ref().map_or(JsonValue::Null, |backend| {
@@ -325,6 +342,14 @@ impl RpcDaemon {
                     config
                 },
             );
+            let mut runtime_extensions = parsed.config.extensions.clone();
+            runtime_extensions.insert(
+                "rate_limits".to_owned(),
+                json!({
+                    "per_ip_per_minute": 120,
+                    "per_principal_per_minute": 120,
+                }),
+            );
             let next_runtime_config = json!({
                 "profile": profile,
                 "bind_mode": bind_mode,
@@ -346,12 +371,7 @@ impl RpcDaemon {
                 },
                 "event_sink": event_sink,
                 "idempotency_ttl_ms": limits.get("idempotency_ttl_ms").and_then(JsonValue::as_u64).unwrap_or(86_400_000_u64),
-                "extensions": {
-                    "rate_limits": {
-                        "per_ip_per_minute": 120,
-                        "per_principal_per_minute": 120,
-                    }
-                }
+                "extensions": runtime_extensions,
             });
             if let Err(error) = self.validate_sdk_runtime_config(&next_runtime_config) {
                 return Ok(RpcResponse { id: request.id, result: None, error: Some(error) });
@@ -387,13 +407,16 @@ impl RpcDaemon {
                 "effective_limits": limits,
                 "contract_release": "v2.5",
                 "schema_namespace": "v2",
+                "sdk_version": SDK_VERSION,
+                "python_reference": python_reference_meta(),
                 "meta": self.response_meta(),
             })),
             error: None,
         })
     }
 
-    fn handle_sdk_poll_events_v2(
+    #[allow(clippy::result_large_err)]
+    pub(super) fn handle_sdk_poll_events_v2(
         &self,
         request: RpcRequest,
     ) -> Result<RpcResponse, std::io::Error> {
@@ -443,7 +466,11 @@ impl RpcDaemon {
             }
         };
 
+        let log_lock_started = std::time::Instant::now();
         let log_guard = self.sdk_event_log.lock().expect("sdk_event_log mutex poisoned");
+        let log_lock_wait_ns =
+            log_lock_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
+        self.metrics_record_sdk_poll_event_log_lock_wait(log_lock_wait_ns);
         let dropped_count =
             *self.sdk_dropped_event_count.lock().expect("sdk_dropped_event_count mutex poisoned");
         let oldest_seq = log_guard.front().map(|entry| entry.seq_no);
@@ -503,22 +530,22 @@ impl RpcDaemon {
 
         if parsed.cursor.is_none() && event_rows.len() < parsed.max {
             if let Some(gap_meta) = compute_stream_gap(dropped_count, oldest_seq) {
-            let gap_row = json!({
-                    "event_id": format!("gap-{}", gap_meta.gap_seq_no),
-                "runtime_id": self.identity_hash,
-                "stream_id": SDK_STREAM_ID,
-                    "seq_no": gap_meta.gap_seq_no,
-                "contract_version": self.active_contract_version(),
-                "ts_ms": (now_i64().max(0) as u64) * 1000,
-                "event_type": "StreamGap",
-                "severity": "warn",
-                "source_component": "rns-rpc",
-                "payload": {
-                        "expected_seq_no": gap_meta.expected_seq_no,
-                        "observed_seq_no": gap_meta.observed_seq_no,
-                        "dropped_count": gap_meta.dropped_count,
-                },
-            });
+                let gap_row = json!({
+                        "event_id": format!("gap-{}", gap_meta.gap_seq_no),
+                    "runtime_id": self.identity_hash,
+                    "stream_id": SDK_STREAM_ID,
+                        "seq_no": gap_meta.gap_seq_no,
+                    "contract_version": self.active_contract_version(),
+                    "ts_ms": (now_i64().max(0) as u64) * 1000,
+                    "event_type": "StreamGap",
+                    "severity": "warn",
+                    "source_component": "rns-rpc",
+                    "payload": {
+                            "expected_seq_no": gap_meta.expected_seq_no,
+                            "observed_seq_no": gap_meta.observed_seq_no,
+                            "dropped_count": gap_meta.dropped_count,
+                    },
+                });
                 if let Err(response) = append_event_row(gap_row, &mut event_rows, &mut batch_bytes)
                 {
                     return Ok(response);
@@ -578,5 +605,4 @@ impl RpcDaemon {
             error: None,
         })
     }
-
 }

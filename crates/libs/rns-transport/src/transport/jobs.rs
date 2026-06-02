@@ -1,73 +1,184 @@
-use super::announce::{handle_announce, retransmit_announces};
+use super::announce::{handle_announce, release_held_announces, retransmit_announces};
 use super::path::{handle_fixed_destinations, handle_link_request};
 use super::wire::{handle_data, handle_proof};
 use super::*;
+use crate::destination::link::LinkWatchdogAction;
 
+#[allow(dead_code)]
+const MIN_LINKS_CHECK_DELAY: Duration = Duration::from_millis(10);
+
+#[allow(dead_code)]
+fn link_check_delay_from_deadline(
+    now: std::time::Instant,
+    earliest_retry: Option<std::time::Instant>,
+) -> Duration {
+    let Some(deadline) = earliest_retry else {
+        return INTERVAL_LINKS_CHECK;
+    };
+
+    if deadline <= now {
+        return MIN_LINKS_CHECK_DELAY;
+    }
+
+    std::cmp::min(deadline.duration_since(now), INTERVAL_LINKS_CHECK)
+}
+
+#[allow(dead_code)]
+async fn next_link_check_delay(handler_arc: &Arc<Mutex<TransportHandler>>) -> Duration {
+    let (in_links, out_links) = {
+        let handler = handler_arc.lock().await;
+        (
+            handler.in_links.values().cloned().collect::<Vec<_>>(),
+            handler.out_links.values().cloned().collect::<Vec<_>>(),
+        )
+    };
+
+    let now = std::time::Instant::now();
+    let mut earliest_deadline = None;
+    for link in in_links {
+        let link = link.lock().await;
+        for deadline in
+            [link.next_channel_retry_at(), link.next_watchdog_deadline(false)].into_iter().flatten()
+        {
+            earliest_deadline = Some(match earliest_deadline {
+                Some(current) => std::cmp::min(current, deadline),
+                None => deadline,
+            });
+        }
+    }
+    for link in out_links {
+        let link = link.lock().await;
+        for deadline in
+            [link.next_channel_retry_at(), link.next_watchdog_deadline(true)].into_iter().flatten()
+        {
+            earliest_deadline = Some(match earliest_deadline {
+                Some(current) => std::cmp::min(current, deadline),
+                None => deadline,
+            });
+        }
+    }
+
+    link_check_delay_from_deadline(now, earliest_deadline)
+}
+
+#[allow(dead_code)]
 pub(super) async fn handle_check_links<'a>(mut handler: MutexGuard<'a, TransportHandler>) {
     let mut links_to_remove: Vec<AddressHash> = Vec::new();
+    let mut closed_link_ids: Vec<AddressHash> = Vec::new();
     let mut pending_packets: Vec<Packet> = Vec::new();
+    let mut direct_messages: Vec<TxMessage> = Vec::new();
+    let now = std::time::Instant::now();
 
     // Clean up input links
     for link_entry in &handler.in_links {
         let mut link = link_entry.1.lock().await;
-        if link.elapsed() > INTERVAL_INPUT_LINK_CLEANUP {
-            link.close();
-            links_to_remove.push(*link_entry.0);
+        if let Some(iface) = link.ingress_iface() {
+            for packet in link.poll_channel_timeouts(now) {
+                direct_messages.push(TxMessage { tx_type: TxMessageType::Direct(iface), packet });
+            }
+        }
+        match link.status() {
+            LinkStatus::Closed => {
+                links_to_remove.push(*link_entry.0);
+                closed_link_ids.push(*link.id());
+            }
+            LinkStatus::Pending | LinkStatus::Handshake => {
+                if link.elapsed() > INTERVAL_INPUT_LINK_CLEANUP {
+                    link.close();
+                    links_to_remove.push(*link_entry.0);
+                    closed_link_ids.push(*link.id());
+                }
+            }
+            LinkStatus::Active | LinkStatus::Stale => {
+                if let LinkWatchdogAction::SendTeardown(packet) = link.check_watchdog(false) {
+                    if let Some(iface) = link.ingress_iface() {
+                        direct_messages
+                            .push(TxMessage { tx_type: TxMessageType::Direct(iface), packet });
+                    }
+                    links_to_remove.push(*link_entry.0);
+                    closed_link_ids.push(*link.id());
+                }
+            }
         }
     }
 
     for addr in &links_to_remove {
         handler.in_links.remove(addr);
     }
+    for link_id in &closed_link_ids {
+        handler.resource_manager.remove_link_state(*link_id);
+    }
 
     links_to_remove.clear();
+    closed_link_ids.clear();
 
     for link_entry in &handler.out_links {
         let mut link = link_entry.1.lock().await;
-        if link.status() == LinkStatus::Closed {
-            link.close();
-            links_to_remove.push(*link_entry.0);
+        if let Some(iface) = link.ingress_iface() {
+            for packet in link.poll_channel_timeouts(now) {
+                direct_messages.push(TxMessage { tx_type: TxMessageType::Direct(iface), packet });
+            }
+        }
+        match link.status() {
+            LinkStatus::Closed => {
+                links_to_remove.push(*link_entry.0);
+                closed_link_ids.push(*link.id());
+            }
+            LinkStatus::Active | LinkStatus::Stale => match link.check_watchdog(true) {
+                LinkWatchdogAction::SendKeepAlive => {
+                    if let Some(iface) = link.ingress_iface() {
+                        direct_messages.push(TxMessage {
+                            tx_type: TxMessageType::Direct(iface),
+                            packet: link.keep_alive_packet(KEEP_ALIVE_REQUEST),
+                        });
+                    }
+                }
+                LinkWatchdogAction::SendTeardown(packet) => {
+                    if let Some(iface) = link.ingress_iface() {
+                        direct_messages
+                            .push(TxMessage { tx_type: TxMessageType::Direct(iface), packet });
+                    }
+                    links_to_remove.push(*link_entry.0);
+                    closed_link_ids.push(*link.id());
+                }
+                LinkWatchdogAction::None => {}
+            },
+            LinkStatus::Pending => {
+                if link.elapsed() > INTERVAL_OUTPUT_LINK_REPEAT {
+                    log::warn!("tp({}): repeat link request {}", handler.config.name, link.id());
+                    pending_packets.push(link.request());
+                }
+            }
+            LinkStatus::Handshake => {}
         }
     }
 
     for addr in &links_to_remove {
         handler.out_links.remove(addr);
     }
-
-    for link_entry in &handler.out_links {
-        let mut link = link_entry.1.lock().await;
-
-        if link.status() == LinkStatus::Active && link.elapsed() > INTERVAL_OUTPUT_LINK_RESTART {
-            link.restart();
-        }
-
-        if link.status() == LinkStatus::Pending && link.elapsed() > INTERVAL_OUTPUT_LINK_REPEAT {
-            log::warn!("tp({}): repeat link request {}", handler.config.name, link.id());
-            pending_packets.push(link.request());
-        }
+    for link_id in &closed_link_ids {
+        handler.resource_manager.remove_link_state(*link_id);
     }
 
     for packet in pending_packets {
         handler.send_packet(packet).await;
     }
-}
-
-pub(super) async fn handle_keep_links<'a>(mut handler: MutexGuard<'a, TransportHandler>) {
-    let mut packets = Vec::new();
-    for link in handler.out_links.values() {
-        let link = link.lock().await;
-
-        if link.status() == LinkStatus::Active {
-            packets.push(link.keep_alive_packet(KEEP_ALIVE_REQUEST));
-        }
-    }
-    for packet in packets {
-        handler.send_packet(packet).await;
+    for message in direct_messages {
+        handler.send(message).await;
     }
 }
 
-pub(super) async fn handle_cleanup<'a>(handler: MutexGuard<'a, TransportHandler>) {
-    handler.iface_manager.lock().await.cleanup();
+pub(super) async fn handle_cleanup<'a>(mut handler: MutexGuard<'a, TransportHandler>) {
+    handler.gc_unicast_ifaces().await;
+    {
+        let iface_manager = handler.iface_manager.clone();
+        let mut iface_manager = iface_manager.lock().await;
+        handler
+            .path_table
+            .remove_stale(std::time::Instant::now(), |iface| iface_manager.mode(iface));
+        handler.tunnel_table.remove_stale(std::time::Instant::now());
+        iface_manager.cleanup();
+    }
 }
 
 pub(super) async fn manage_transport(
@@ -104,7 +215,7 @@ pub(super) async fn manage_transport(
                         let mut handler = handler_arc.lock().await;
 
                         if PACKET_TRACE {
-                            log::debug!("tp: << rx({}) = {} {}", message.address, packet, packet.hash());
+                            log::debug!("<< rx({}) = {} {}", message.address, packet, packet.hash());
                         }
 
                         if handle_fixed_destinations(
@@ -126,22 +237,12 @@ pub(super) async fn manage_transport(
                             continue;
                         }
 
-                        if handler.config.broadcast
-                            && packet.header.packet_type != PacketType::Announce
-                        {
-                            handler
-                                .send(TxMessage {
-                                    tx_type: TxMessageType::Broadcast(Some(message.address)),
-                                    packet,
-                                })
-                                .await;
-                        }
-
                         match packet.header.packet_type {
                             PacketType::Announce => handle_announce(
                                 &packet,
                                 handler,
-                                message.address
+                                message.address,
+                                message.source,
                             ).await,
                             PacketType::LinkRequest => handle_link_request(
                                 &packet,
@@ -150,7 +251,7 @@ pub(super) async fn manage_transport(
                             ).await,
                             PacketType::Proof => {
                                 drop(handler);
-                                handle_proof(packet, handler_arc.clone()).await;
+                                handle_proof(packet, handler_arc.clone(), message.address).await;
                             }
                             PacketType::Data => handle_data(&packet, message.address, handler).await,
                         }
@@ -170,34 +271,13 @@ pub(super) async fn manage_transport(
                     break;
                 }
 
+                let delay = next_link_check_delay(&handler).await;
                 tokio::select! {
                     _ = cancel.cancelled() => {
                         break;
                     },
-                    _ = time::sleep(INTERVAL_LINKS_CHECK) => {
+                    _ = time::sleep(delay) => {
                         handle_check_links(handler.lock().await).await;
-                    }
-                }
-            }
-        });
-    }
-
-    {
-        let handler = handler_arc.clone();
-        let cancel = cancel.clone();
-
-        tokio::spawn(async move {
-            loop {
-                if cancel.is_cancelled() {
-                    break;
-                }
-
-                tokio::select! {
-                    _ = cancel.cancelled() => {
-                        break;
-                    },
-                    _ = time::sleep(INTERVAL_OUTPUT_LINK_KEEP) => {
-                        handle_keep_links(handler.lock().await).await;
                     }
                 }
             }
@@ -256,7 +336,7 @@ pub(super) async fn manage_transport(
         });
     }
 
-    if retransmit {
+    {
         let handler = handler_arc.clone();
         let cancel = cancel.clone();
 
@@ -271,7 +351,16 @@ pub(super) async fn manage_transport(
                         break;
                     },
                     _ = time::sleep(INTERVAL_ANNOUNCES_RETRANSMIT) => {
-                        retransmit_announces(handler.lock().await).await;
+                        let guard = handler.lock().await;
+                        if retransmit {
+                            retransmit_announces(guard).await;
+                        } else {
+                            release_held_announces(guard).await;
+                            handler.lock().await.iface_manager.lock().await.release_queued_announces().await;
+                            continue;
+                        }
+                        release_held_announces(handler.lock().await).await;
+                        handler.lock().await.iface_manager.lock().await.release_queued_announces().await;
                     }
                 }
             }
@@ -299,6 +388,7 @@ pub(super) async fn manage_transport(
                         let mut handler = handler.lock().await;
                         let now = Instant::now();
                         let requests = handler.resource_manager.retry_requests(now);
+                        let advertisements = handler.resource_manager.poll_outgoing(now);
                         for (link_id, request) in requests {
                             let link = handler
                                 .in_links
@@ -312,9 +402,40 @@ pub(super) async fn manage_transport(
                                 handler.send_packet(packet).await;
                             }
                         }
+                        for (_link_id, packet) in advertisements {
+                            handler.send_packet(packet).await;
+                        }
                     }
                 }
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn link_check_delay_uses_retry_deadline_when_sooner_than_default_sweep() {
+        let now = std::time::Instant::now();
+        let deadline = now + Duration::from_millis(150);
+
+        assert_eq!(link_check_delay_from_deadline(now, Some(deadline)), Duration::from_millis(150));
+    }
+
+    #[test]
+    fn link_check_delay_clamps_overdue_retries_to_minimum_delay() {
+        let now = std::time::Instant::now();
+        let deadline = now - Duration::from_millis(5);
+
+        assert_eq!(link_check_delay_from_deadline(now, Some(deadline)), MIN_LINKS_CHECK_DELAY);
+    }
+
+    #[test]
+    fn link_check_delay_keeps_default_sweep_without_pending_retries() {
+        let now = std::time::Instant::now();
+
+        assert_eq!(link_check_delay_from_deadline(now, None), INTERVAL_LINKS_CHECK);
     }
 }

@@ -1,3 +1,4 @@
+use crate::types::{Ack, MessageId};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use std::collections::BTreeMap;
@@ -402,6 +403,50 @@ pub struct RemoteCommandResponse {
     pub extensions: BTreeMap<String, JsonValue>,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RemoteCommandState {
+    Dispatched,
+    ReceiptAcknowledged,
+    Processing,
+    Completed,
+    Failed,
+    #[serde(other)]
+    Unknown,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct RemoteCommandSession {
+    pub command_id: String,
+    pub correlation_id: String,
+    pub command: String,
+    pub target: Option<String>,
+    pub timeout_ms: Option<u64>,
+    pub delivery_state: Option<String>,
+    pub command_state: RemoteCommandState,
+    pub created_at_ms: u64,
+    pub updated_at_ms: u64,
+    pub request_payload: JsonValue,
+    pub response_payload: Option<JsonValue>,
+    pub accepted: Option<bool>,
+    #[serde(default)]
+    pub extensions: BTreeMap<String, JsonValue>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct RemoteCommandSessionListRequest {
+    pub cursor: Option<String>,
+    pub limit: Option<usize>,
+    #[serde(default)]
+    pub extensions: BTreeMap<String, JsonValue>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct RemoteCommandSessionListResult {
+    pub sessions: Vec<RemoteCommandSession>,
+    pub next_cursor: Option<String>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct VoiceSessionId(pub String);
 
@@ -432,6 +477,98 @@ pub struct VoiceSessionUpdateRequest {
     pub state: VoiceSessionState,
     #[serde(default)]
     pub extensions: BTreeMap<String, JsonValue>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct WorkflowPeerReadyRequest {
+    pub identity: IdentityRef,
+    pub display_name: Option<String>,
+    pub trust_level: Option<TrustLevel>,
+    pub bootstrap: Option<bool>,
+    pub announce: Option<bool>,
+    #[serde(default)]
+    pub metadata: BTreeMap<String, JsonValue>,
+    #[serde(default)]
+    pub extensions: BTreeMap<String, JsonValue>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct WorkflowPeerReadyResult {
+    pub identity: IdentityRef,
+    pub contact: ContactRecord,
+    pub was_created: bool,
+    pub announced: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct WorkflowTopicSyncRequest {
+    pub topic_path: TopicPath,
+    #[serde(default)]
+    pub metadata: BTreeMap<String, JsonValue>,
+    pub telemetry_limit: Option<usize>,
+    #[serde(default)]
+    pub extensions: BTreeMap<String, JsonValue>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct WorkflowTopicSyncResult {
+    pub topic: TopicRecord,
+    pub was_created: bool,
+    pub subscribed: bool,
+    pub telemetry: Vec<TelemetryPoint>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct WorkflowAttachmentDraft {
+    pub name: String,
+    pub content_type: String,
+    pub bytes_base64: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct WorkflowAttachmentReportRequest {
+    pub topic_path: TopicPath,
+    pub attachment: WorkflowAttachmentDraft,
+    pub summary_payload: Option<JsonValue>,
+    pub correlation_id: Option<String>,
+    #[serde(default)]
+    pub topic_metadata: BTreeMap<String, JsonValue>,
+    #[serde(default)]
+    pub extensions: BTreeMap<String, JsonValue>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct WorkflowAttachmentReportResult {
+    pub topic: TopicRecord,
+    pub attachment: AttachmentMeta,
+    pub published: Ack,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct WorkflowMissionUpdateRequest {
+    pub peer_identity: IdentityRef,
+    pub content: String,
+    pub topic_path: Option<TopicPath>,
+    #[serde(default)]
+    pub attachments: Vec<WorkflowAttachmentDraft>,
+    #[serde(default)]
+    pub metadata: BTreeMap<String, JsonValue>,
+    pub correlation_id: Option<String>,
+    pub idempotency_key: Option<String>,
+    pub display_name: Option<String>,
+    pub trust_level: Option<TrustLevel>,
+    pub bootstrap: Option<bool>,
+    pub announce: Option<bool>,
+    #[serde(default)]
+    pub extensions: BTreeMap<String, JsonValue>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct WorkflowMissionUpdateResult {
+    pub peer: WorkflowPeerReadyResult,
+    pub message_id: MessageId,
+    pub topic: Option<TopicRecord>,
+    pub attachments: Vec<AttachmentMeta>,
 }
 
 #[cfg(test)]

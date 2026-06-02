@@ -130,3 +130,15 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Generated SDKs are local build artifacts; keep the derived spec tracked.
+generated/clients/go/
+generated/clients/javascript/
+generated/clients/python/
+
+# Local scratch space
+.tmp/
+
+# Wrapper build artifacts
+wrappers/kotlin-mobile/.gradle/
+wrappers/kotlin-mobile/build/

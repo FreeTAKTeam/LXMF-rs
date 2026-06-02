@@ -1,5 +1,292 @@
+use super::*;
+
+const PR_REQUEST_SENT: u32 = 0x04;
+const PR_COMPLETE: u32 = 0x07;
+const PR_IDLE: u32 = 0x00;
+const PR_FAILED: u32 = 0xfe;
+
 impl RpcDaemon {
-    fn handle_rpc_legacy_propagation(&self, request: RpcRequest) -> Result<RpcResponse, std::io::Error> {
+    pub fn note_client_propagation_messages_received(&self, ingested_count: usize) {
+        let state = {
+            let mut guard = self.propagation_state.lock().expect("propagation mutex poisoned");
+            guard.last_ingest_count = ingested_count;
+            guard.total_ingested += ingested_count;
+            guard.client_propagation_messages_received =
+                guard.client_propagation_messages_received.saturating_add(ingested_count);
+            guard.clone()
+        };
+        self.update_daemon_status_snapshot(|snapshot| {
+            snapshot.propagation = state;
+        });
+    }
+
+    pub fn canonical_propagation_payload_hex(
+        &self,
+        payload_hex: &str,
+    ) -> Result<String, std::io::Error> {
+        let target_cost =
+            self.propagation_state.lock().expect("propagation mutex poisoned").target_cost;
+        canonical_propagation_transient_hex(payload_hex, target_cost)
+    }
+
+    pub fn canonical_propagation_payload_hex_at_cost(
+        &self,
+        payload_hex: &str,
+        stamp_cost: u32,
+    ) -> Result<String, std::io::Error> {
+        canonical_propagation_transient_hex(payload_hex, stamp_cost)
+    }
+
+    pub fn canonical_propagation_payload_bytes(
+        &self,
+        payload: &[u8],
+    ) -> Result<String, std::io::Error> {
+        let target_cost =
+            self.propagation_state.lock().expect("propagation mutex poisoned").target_cost;
+        Ok(hex::encode(canonical_propagation_transient_bytes(payload, target_cost)?))
+    }
+
+    pub fn canonical_propagation_payload_bytes_at_cost(
+        &self,
+        payload: &[u8],
+        stamp_cost: u32,
+    ) -> Result<String, std::io::Error> {
+        Ok(hex::encode(canonical_propagation_transient_bytes(payload, stamp_cost)?))
+    }
+
+    pub fn propagation_target_cost(&self) -> u32 {
+        self.propagation_state.lock().expect("propagation mutex poisoned").target_cost
+    }
+
+    pub fn propagation_min_accepted_stamp_cost(&self) -> u32 {
+        let state = self.propagation_state.lock().expect("propagation mutex poisoned");
+        state.target_cost.saturating_sub(state.stamp_cost_flexibility)
+    }
+
+    pub fn ingest_propagation_payload_bytes_with_aliases(
+        &self,
+        payload: &[u8],
+        transient_id: &str,
+        aliases: &[String],
+    ) -> Result<String, std::io::Error> {
+        let target_cost =
+            self.propagation_state.lock().expect("propagation mutex poisoned").target_cost;
+        let normalized = if payload.is_empty() {
+            None
+        } else {
+            Some(normalize_propagation_payload_bytes(payload, target_cost)?)
+        };
+        if let Some((_canonical_transient_id, payload)) = normalized {
+            let payload_hex = hex::encode(payload);
+            let mut guard =
+                self.propagation_payloads.lock().expect("propagation payload mutex poisoned");
+            guard.insert(normalize_propagation_transient_key(transient_id), payload_hex.clone());
+            for alias in aliases {
+                guard.insert(normalize_propagation_transient_key(alias), payload_hex.clone());
+            }
+        }
+
+        let state = {
+            let mut guard = self.propagation_state.lock().expect("propagation mutex poisoned");
+            let ingested_count = usize::from(!transient_id.is_empty());
+            guard.last_ingest_count = ingested_count;
+            guard.total_ingested += ingested_count;
+            guard.client_propagation_messages_received =
+                guard.client_propagation_messages_received.saturating_add(ingested_count);
+            guard.clone()
+        };
+        self.update_daemon_status_snapshot(|snapshot| {
+            snapshot.propagation = state;
+        });
+
+        Ok(normalize_propagation_transient_key(transient_id))
+    }
+
+    pub fn ingest_propagation_payload_hex(
+        &self,
+        payload_hex: &str,
+        transient_id: Option<&str>,
+    ) -> Result<String, std::io::Error> {
+        let target_cost =
+            self.propagation_state.lock().expect("propagation mutex poisoned").target_cost;
+        self.ingest_propagation_payload_hex_at_cost(payload_hex, transient_id, target_cost)
+    }
+
+    pub fn ingest_propagation_payload_hex_at_cost(
+        &self,
+        payload_hex: &str,
+        transient_id: Option<&str>,
+        stamp_cost: u32,
+    ) -> Result<String, std::io::Error> {
+        let normalized_payload = if !payload_hex.is_empty() {
+            Some(normalize_propagation_payload_hex(payload_hex, stamp_cost)?)
+        } else {
+            None
+        };
+        let canonical_transient_id =
+            normalized_payload.as_ref().map(|(transient_id, _payload_hex)| transient_id.clone());
+        if let (Some(provided_transient_id), Some(canonical_transient_id)) =
+            (transient_id, canonical_transient_id.as_ref())
+        {
+            if !provided_transient_id.eq_ignore_ascii_case(canonical_transient_id) {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "transient_id does not match propagation payload",
+                ));
+            }
+        }
+        let transient_id =
+            transient_id.map(normalize_propagation_transient_key).unwrap_or_else(|| {
+                canonical_transient_id.unwrap_or_else(|| {
+                    let mut hasher = Sha256::new();
+                    hasher.update(payload_hex.as_bytes());
+                    encode_hex(hasher.finalize())
+                })
+            });
+
+        if let Some((_canonical_transient_id, payload_hex)) = normalized_payload {
+            self.propagation_payloads
+                .lock()
+                .expect("propagation payload mutex poisoned")
+                .insert(transient_id.clone(), payload_hex);
+        }
+
+        self.note_client_propagation_messages_received(usize::from(
+            !payload_hex.is_empty() && !transient_id.is_empty(),
+        ));
+
+        Ok(transient_id)
+    }
+
+    pub fn ingest_propagation_payload_bytes(
+        &self,
+        payload: &[u8],
+        transient_id: Option<&str>,
+    ) -> Result<String, std::io::Error> {
+        let target_cost =
+            self.propagation_state.lock().expect("propagation mutex poisoned").target_cost;
+        self.ingest_propagation_payload_bytes_at_cost(payload, transient_id, target_cost)
+    }
+
+    pub fn ingest_propagation_payload_bytes_at_cost(
+        &self,
+        payload: &[u8],
+        transient_id: Option<&str>,
+        stamp_cost: u32,
+    ) -> Result<String, std::io::Error> {
+        let payload_hex = hex::encode(payload);
+        self.ingest_propagation_payload_hex_at_cost(payload_hex.as_str(), transient_id, stamp_cost)
+    }
+
+    pub fn has_propagation_payload(&self, transient_id: &str) -> bool {
+        self.propagation_payloads
+            .lock()
+            .expect("propagation payload mutex poisoned")
+            .contains_key(normalize_propagation_transient_key(transient_id).as_str())
+    }
+
+    pub fn list_propagation_payloads_for_destination(
+        &self,
+        destination: &[u8; 16],
+    ) -> Vec<(Vec<u8>, usize)> {
+        let mut entries = self
+            .propagation_payloads
+            .lock()
+            .expect("propagation payload mutex poisoned")
+            .iter()
+            .filter_map(|(transient_id, payload_hex)| {
+                let transient_id = hex::decode(transient_id).ok()?;
+                if transient_id.len() != 32 {
+                    return None;
+                }
+                let payload = hex::decode(payload_hex).ok()?;
+                propagation_payload_matches_destination(payload.as_slice(), destination)
+                    .then_some((transient_id, payload.len()))
+            })
+            .collect::<Vec<_>>();
+        entries.sort_by_key(|(_transient_id, size)| *size);
+        entries
+    }
+
+    pub fn fetch_propagation_payloads_for_destination(
+        &self,
+        destination: &[u8; 16],
+        wanted: &[Vec<u8>],
+        transfer_limit_bytes: Option<usize>,
+    ) -> Vec<Vec<u8>> {
+        let guard = self.propagation_payloads.lock().expect("propagation payload mutex poisoned");
+        let mut messages = Vec::new();
+        let per_message_overhead = 16usize;
+        let mut cumulative_size = 24usize;
+        for transient_id in wanted {
+            if transient_id.len() != 32 {
+                continue;
+            }
+            let transient_hex = hex::encode(transient_id);
+            let Some(payload_hex) = guard.get(transient_hex.as_str()) else {
+                continue;
+            };
+            let Ok(payload) = hex::decode(payload_hex) else {
+                continue;
+            };
+            if !propagation_payload_matches_destination(payload.as_slice(), destination) {
+                continue;
+            }
+            let stored_size = payload.len().saturating_add(PROPAGATION_STAMP_SIZE);
+            let next_size = cumulative_size.saturating_add(stored_size + per_message_overhead);
+            if transfer_limit_bytes.is_some_and(|limit| next_size > limit) {
+                continue;
+            }
+            cumulative_size = next_size;
+            messages.push(payload);
+        }
+        drop(guard);
+
+        if !messages.is_empty() {
+            let state = {
+                let mut guard = self.propagation_state.lock().expect("propagation mutex poisoned");
+                guard.client_propagation_messages_served =
+                    guard.client_propagation_messages_served.saturating_add(messages.len());
+                guard.clone()
+            };
+            self.update_daemon_status_snapshot(|snapshot| {
+                snapshot.propagation = state;
+            });
+        }
+
+        messages
+    }
+
+    pub fn purge_propagation_payloads_for_destination(
+        &self,
+        destination: &[u8; 16],
+        haves: &[Vec<u8>],
+    ) -> usize {
+        let mut guard =
+            self.propagation_payloads.lock().expect("propagation payload mutex poisoned");
+        let mut purged = 0usize;
+        for transient_id in haves {
+            if transient_id.len() != 32 {
+                continue;
+            }
+            let transient_hex = hex::encode(transient_id);
+            let should_remove = guard
+                .get(transient_hex.as_str())
+                .and_then(|payload_hex| hex::decode(payload_hex).ok())
+                .is_some_and(|payload| {
+                    propagation_payload_matches_destination(payload.as_slice(), destination)
+                });
+            if should_remove && guard.remove(transient_hex.as_str()).is_some() {
+                purged += 1;
+            }
+        }
+        purged
+    }
+
+    pub(super) fn handle_rpc_legacy_propagation(
+        &self,
+        request: RpcRequest,
+    ) -> Result<RpcResponse, std::io::Error> {
         match request.method.as_str() {
             "get_delivery_policy" => {
                 let policy = self.delivery_policy.lock().expect("policy mutex poisoned").clone();
@@ -35,6 +322,9 @@ impl RpcDaemon {
                     }
                     guard.clone()
                 };
+                self.update_daemon_status_snapshot(|snapshot| {
+                    snapshot.delivery_policy = policy.clone();
+                });
 
                 Ok(RpcResponse {
                     id: request.id,
@@ -58,6 +348,7 @@ impl RpcDaemon {
                 let parsed: PropagationEnableParams = serde_json::from_value(params)
                     .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
 
+                let mut static_peers_to_activate = Vec::new();
                 let state = {
                     let mut guard =
                         self.propagation_state.lock().expect("propagation mutex poisoned");
@@ -68,8 +359,51 @@ impl RpcDaemon {
                     if let Some(cost) = parsed.target_cost {
                         guard.target_cost = cost;
                     }
+                    if let Some(flexibility) = parsed.stamp_cost_flexibility {
+                        guard.stamp_cost_flexibility = flexibility;
+                    }
+                    if let Some(limit) = parsed.message_storage_limit_mb {
+                        guard.message_storage_limit_mb = (limit > 0).then_some(limit);
+                    }
+                    if let Some(limit) = parsed.delivery_limit {
+                        guard.delivery_limit = limit;
+                    }
+                    if let Some(limit) = parsed.propagation_limit {
+                        guard.propagation_limit = limit;
+                    }
+                    if let Some(limit) = parsed.sync_limit {
+                        guard.sync_limit = limit.max(guard.propagation_limit);
+                    } else if guard.sync_limit < guard.propagation_limit {
+                        guard.sync_limit = guard.propagation_limit;
+                    }
+                    if let Some(autopeer) = parsed.autopeer {
+                        guard.autopeer = autopeer;
+                    }
+                    if let Some(autopeer_maxdepth) = parsed.autopeer_maxdepth {
+                        guard.autopeer_maxdepth = autopeer_maxdepth;
+                    }
+                    if let Some(static_peers) = parsed.static_peers {
+                        static_peers_to_activate = static_peers.clone();
+                        guard.static_peers = static_peers;
+                    }
+                    if let Some(max_peers) = parsed.max_peers {
+                        guard.max_peers = Some(max_peers);
+                    }
+                    if let Some(from_static_only) = parsed.from_static_only {
+                        guard.from_static_only = from_static_only;
+                    }
+                    if let Some(peering_cost) = parsed.peering_cost {
+                        guard.peering_cost = Some(peering_cost);
+                    }
+                    if let Some(remote_peering_cost_max) = parsed.remote_peering_cost_max {
+                        guard.remote_peering_cost_max = Some(remote_peering_cost_max);
+                    }
                     guard.clone()
                 };
+                self.update_daemon_status_snapshot(|snapshot| {
+                    snapshot.propagation = state.clone();
+                });
+                self.activate_static_peers(&static_peers_to_activate);
                 Ok(RpcResponse {
                     id: request.id,
                     result: Some(json!({ "propagation": state })),
@@ -84,13 +418,42 @@ impl RpcDaemon {
                     .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
 
                 let payload_hex = parsed.payload_hex.unwrap_or_default();
-                let transient_id = parsed.transient_id.unwrap_or_else(|| {
-                    let mut hasher = Sha256::new();
-                    hasher.update(payload_hex.as_bytes());
-                    encode_hex(hasher.finalize())
-                });
+                let target_cost =
+                    self.propagation_state.lock().expect("propagation mutex poisoned").target_cost;
+                let normalized_payload = if !payload_hex.is_empty() {
+                    Some(normalize_propagation_payload_hex(payload_hex.as_str(), target_cost)?)
+                } else {
+                    None
+                };
+                if let (Some(provided_transient_id), Some((canonical_transient_id, _payload_hex))) =
+                    (parsed.transient_id.as_ref(), normalized_payload.as_ref())
+                {
+                    if !provided_transient_id.eq_ignore_ascii_case(canonical_transient_id) {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::InvalidInput,
+                            "transient_id does not match propagation payload",
+                        ));
+                    }
+                }
+                let transient_id = parsed
+                    .transient_id
+                    .map(|value| normalize_propagation_transient_key(value.as_str()))
+                    .unwrap_or_else(|| {
+                        normalized_payload
+                            .as_ref()
+                            .map(|(transient_id, _payload_hex)| transient_id.clone())
+                            .unwrap_or_else(|| {
+                                let mut hasher = Sha256::new();
+                                hasher.update(payload_hex.as_bytes());
+                                encode_hex(hasher.finalize())
+                            })
+                    });
+                let ingested_count =
+                    usize::from(!payload_hex.is_empty() && !transient_id.is_empty());
 
-                if !payload_hex.is_empty() {
+                if let Some(payload_hex) =
+                    normalized_payload.map(|(_transient_id, payload_hex)| payload_hex)
+                {
                     self.propagation_payloads
                         .lock()
                         .expect("propagation payload mutex poisoned")
@@ -100,11 +463,15 @@ impl RpcDaemon {
                 let state = {
                     let mut guard =
                         self.propagation_state.lock().expect("propagation mutex poisoned");
-                    let ingested_count = usize::from(!transient_id.is_empty());
                     guard.last_ingest_count = ingested_count;
                     guard.total_ingested += ingested_count;
+                    guard.client_propagation_messages_received =
+                        guard.client_propagation_messages_received.saturating_add(ingested_count);
                     guard.clone()
                 };
+                self.update_daemon_status_snapshot(|snapshot| {
+                    snapshot.propagation = state.clone();
+                });
 
                 Ok(RpcResponse {
                     id: request.id,
@@ -126,16 +493,27 @@ impl RpcDaemon {
                     .propagation_payloads
                     .lock()
                     .expect("propagation payload mutex poisoned")
-                    .get(&parsed.transient_id)
+                    .get(normalize_propagation_transient_key(parsed.transient_id.as_str()).as_str())
                     .cloned()
                     .ok_or_else(|| {
                         std::io::Error::new(std::io::ErrorKind::NotFound, "transient_id not found")
                     })?;
+                {
+                    let mut guard =
+                        self.propagation_state.lock().expect("propagation mutex poisoned");
+                    guard.client_propagation_messages_served =
+                        guard.client_propagation_messages_served.saturating_add(1);
+                    let state = guard.clone();
+                    drop(guard);
+                    self.update_daemon_status_snapshot(|snapshot| {
+                        snapshot.propagation = state;
+                    });
+                }
 
                 Ok(RpcResponse {
                     id: request.id,
                     result: Some(json!({
-                        "transient_id": parsed.transient_id,
+                        "transient_id": normalize_propagation_transient_key(parsed.transient_id.as_str()),
                         "payload_hex": payload,
                     })),
                     error: None,
@@ -173,6 +551,15 @@ impl RpcDaemon {
                         .expect("propagation node mutex poisoned");
                     *guard = peer.clone();
                 }
+                let state = {
+                    let mut guard =
+                        self.propagation_state.lock().expect("propagation mutex poisoned");
+                    guard.selected_node = peer.clone();
+                    guard.clone()
+                };
+                self.update_daemon_status_snapshot(|snapshot| {
+                    snapshot.propagation = state;
+                });
                 let event = RpcEvent {
                     event_type: "propagation_node_selected".into(),
                     payload: json!({ "peer": peer }),
@@ -233,8 +620,417 @@ impl RpcDaemon {
                     error: None,
                 })
             }
+            "propagation_remote_status" => {
+                let params = request.params.ok_or_else(|| {
+                    std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing params")
+                })?;
+                let parsed: PropagationRemoteStatusParams = serde_json::from_value(params)
+                    .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
+                let bridge = self
+                    .remote_control_bridge
+                    .lock()
+                    .expect("remote control bridge mutex poisoned")
+                    .clone()
+                    .ok_or_else(|| std::io::Error::other("remote control bridge unavailable"))?;
+                let timeout_secs = parsed.timeout_secs.unwrap_or(5.0).max(0.1);
+                let result = bridge.propagation_remote_status(
+                    parsed.remote.as_str(),
+                    parsed.identity_private_key_hex.as_deref(),
+                    timeout_secs,
+                )?;
+                Ok(RpcResponse {
+                    id: request.id,
+                    result: Some(json!({
+                        "remote": parsed.remote,
+                        "status": result,
+                    })),
+                    error: None,
+                })
+            }
+            "propagation_remote_sync" => {
+                let params = request.params.ok_or_else(|| {
+                    std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing params")
+                })?;
+                let parsed: PropagationRemotePeerParams = serde_json::from_value(params)
+                    .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
+                let bridge = self
+                    .remote_control_bridge
+                    .lock()
+                    .expect("remote control bridge mutex poisoned")
+                    .clone()
+                    .ok_or_else(|| std::io::Error::other("remote control bridge unavailable"))?;
+                let timeout_secs = parsed.timeout_secs.unwrap_or(5.0).max(0.1);
+                self.update_propagation_sync_state(|state| {
+                    state.sync_state = PR_REQUEST_SENT;
+                    state.state_name = "syncing".to_string();
+                    state.sync_progress = 0.0;
+                    state.last_sync_started = Some(now_i64());
+                    state.last_sync_completed = None;
+                    state.last_sync_error = None;
+                });
+                let result = match bridge.propagation_remote_sync(
+                    parsed.remote.as_str(),
+                    parsed.peer.as_str(),
+                    parsed.identity_private_key_hex.as_deref(),
+                    timeout_secs,
+                ) {
+                    Ok(result) => {
+                        self.update_propagation_sync_state(|state| {
+                            state.sync_state = PR_COMPLETE;
+                            state.state_name = "completed".to_string();
+                            state.sync_progress = 1.0;
+                            state.last_sync_completed = Some(now_i64());
+                            state.last_sync_error = None;
+                        });
+                        result
+                    }
+                    Err(err) => {
+                        self.update_propagation_sync_state(|state| {
+                            state.sync_state = PR_FAILED;
+                            state.state_name = "failed".to_string();
+                            state.sync_progress = 0.0;
+                            state.last_sync_error = Some(err.to_string());
+                        });
+                        return Err(err);
+                    }
+                };
+                Ok(RpcResponse {
+                    id: request.id,
+                    result: Some(json!({
+                        "remote": parsed.remote,
+                        "peer": parsed.peer,
+                        "result": result,
+                    })),
+                    error: None,
+                })
+            }
+            "propagation_remote_download" => {
+                let params = request.params.ok_or_else(|| {
+                    std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing params")
+                })?;
+                let parsed: PropagationRemoteStatusParams = serde_json::from_value(params)
+                    .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
+                let bridge = self
+                    .remote_control_bridge
+                    .lock()
+                    .expect("remote control bridge mutex poisoned")
+                    .clone()
+                    .ok_or_else(|| std::io::Error::other("remote control bridge unavailable"))?;
+                let timeout_secs = parsed.timeout_secs.unwrap_or(5.0).max(0.1);
+                self.update_propagation_sync_state(|state| {
+                    state.sync_state = PR_REQUEST_SENT;
+                    state.state_name = "downloading".to_string();
+                    state.sync_progress = 0.0;
+                    state.last_sync_started = Some(now_i64());
+                    state.last_sync_completed = None;
+                    state.last_sync_error = None;
+                });
+                let result = match bridge.propagation_remote_download(
+                    parsed.remote.as_str(),
+                    parsed.identity_private_key_hex.as_deref(),
+                    timeout_secs,
+                ) {
+                    Ok(result) => {
+                        self.update_propagation_sync_state(|state| {
+                            state.sync_state = PR_COMPLETE;
+                            state.state_name = "completed".to_string();
+                            state.sync_progress = 1.0;
+                            state.last_sync_completed = Some(now_i64());
+                            state.last_sync_error = None;
+                        });
+                        result
+                    }
+                    Err(err) => {
+                        self.update_propagation_sync_state(|state| {
+                            state.sync_state = PR_FAILED;
+                            state.state_name = "failed".to_string();
+                            state.sync_progress = 0.0;
+                            state.last_sync_error = Some(err.to_string());
+                        });
+                        return Err(err);
+                    }
+                };
+                Ok(RpcResponse {
+                    id: request.id,
+                    result: Some(json!({
+                        "remote": parsed.remote,
+                        "result": result,
+                    })),
+                    error: None,
+                })
+            }
+            "propagation_acknowledge_sync_completion" => {
+                let parsed = request
+                    .params
+                    .map(serde_json::from_value::<PropagationAcknowledgeSyncParams>)
+                    .transpose()
+                    .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?
+                    .unwrap_or_default();
+                let state = {
+                    let mut guard =
+                        self.propagation_state.lock().expect("propagation mutex poisoned");
+                    if parsed.reset_state || guard.sync_state <= PR_COMPLETE {
+                        guard.sync_state = parsed.failure_state.unwrap_or(PR_IDLE);
+                        guard.state_name =
+                            propagation_sync_state_name(guard.sync_state).to_string();
+                        if guard.sync_state == PR_IDLE {
+                            guard.last_sync_error = None;
+                        }
+                    }
+                    guard.sync_progress = 0.0;
+                    guard.clone()
+                };
+                self.update_daemon_status_snapshot(|snapshot| {
+                    snapshot.propagation = state.clone();
+                });
+                Ok(RpcResponse {
+                    id: request.id,
+                    result: Some(json!({ "propagation": state })),
+                    error: None,
+                })
+            }
+            "propagation_remote_fetch" => {
+                let params = request.params.ok_or_else(|| {
+                    std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing params")
+                })?;
+                let parsed: PropagationRemoteFetchParams = serde_json::from_value(params)
+                    .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
+                let bridge = self
+                    .remote_control_bridge
+                    .lock()
+                    .expect("remote control bridge mutex poisoned")
+                    .clone()
+                    .ok_or_else(|| std::io::Error::other("remote control bridge unavailable"))?;
+                let timeout_secs = parsed.timeout_secs.unwrap_or(8.0).max(0.1);
+                let result = bridge.propagation_remote_fetch(
+                    parsed.remote.as_str(),
+                    parsed.identity_private_key_hex.as_deref(),
+                    timeout_secs,
+                    parsed.transfer_limit_kb,
+                )?;
+                Ok(RpcResponse {
+                    id: request.id,
+                    result: Some(json!({
+                        "remote": parsed.remote,
+                        "result": result,
+                    })),
+                    error: None,
+                })
+            }
+            "propagation_remote_unpeer" => {
+                let params = request.params.ok_or_else(|| {
+                    std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing params")
+                })?;
+                let parsed: PropagationRemotePeerParams = serde_json::from_value(params)
+                    .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
+                let bridge = self
+                    .remote_control_bridge
+                    .lock()
+                    .expect("remote control bridge mutex poisoned")
+                    .clone()
+                    .ok_or_else(|| std::io::Error::other("remote control bridge unavailable"))?;
+                let timeout_secs = parsed.timeout_secs.unwrap_or(5.0).max(0.1);
+                let result = bridge.propagation_remote_unpeer(
+                    parsed.remote.as_str(),
+                    parsed.peer.as_str(),
+                    parsed.identity_private_key_hex.as_deref(),
+                    timeout_secs,
+                )?;
+                Ok(RpcResponse {
+                    id: request.id,
+                    result: Some(json!({
+                        "remote": parsed.remote,
+                        "peer": parsed.peer,
+                        "result": result,
+                    })),
+                    error: None,
+                })
+            }
             _ => unreachable!("legacy propagation route: {}", request.method),
         }
     }
+}
 
+fn propagation_sync_state_name(state: u32) -> &'static str {
+    match state {
+        PR_IDLE => "idle",
+        PR_REQUEST_SENT => "syncing",
+        PR_COMPLETE => "completed",
+        PR_FAILED => "failed",
+        0x01 => "path_requested",
+        0x02 => "link_establishing",
+        0x03 => "link_established",
+        0x05 => "receiving",
+        0x06 => "response_received",
+        0xf0 => "no_path",
+        0xf1 => "link_failed",
+        0xf2 => "transfer_failed",
+        0xf3 => "no_identity",
+        0xf4 => "no_access",
+        _ => "unknown",
+    }
+}
+
+fn normalize_propagation_transient_key(transient_id: &str) -> String {
+    transient_id.trim().to_ascii_lowercase()
+}
+
+const PROPAGATION_STAMP_SIZE: usize = 32;
+const PROPAGATION_STAMP_WORKBLOCK_ROUNDS: usize = 1000;
+// Python rejects propagation-stamped payloads that cannot contain a minimally
+// structured LXMF message before validating the trailing stamp.
+const MIN_PROPAGATION_STAMPED_PAYLOAD_SIZE: usize = 112 + PROPAGATION_STAMP_SIZE;
+
+pub(super) fn normalize_propagation_payload_hex(
+    payload_hex: &str,
+    target_cost: u32,
+) -> Result<(String, String), std::io::Error> {
+    let transient_data = decode_propagation_payload_hex(payload_hex)?;
+    let (transient_id, payload) =
+        normalize_propagation_payload_bytes(&transient_data, target_cost)?;
+    Ok((hex::encode(transient_id), hex::encode(payload)))
+}
+
+pub(super) fn canonical_propagation_transient_hex(
+    payload_hex: &str,
+    target_cost: u32,
+) -> Result<String, std::io::Error> {
+    let transient_data = decode_propagation_payload_hex(payload_hex)?;
+    let transient_id = canonical_propagation_transient_bytes(&transient_data, target_cost)?;
+    Ok(hex::encode(transient_id))
+}
+
+pub(super) fn decode_propagation_payload_hex(payload_hex: &str) -> Result<Vec<u8>, std::io::Error> {
+    hex::decode(payload_hex.trim()).map_err(|err| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("invalid propagation payload hex: {err}"),
+        )
+    })
+}
+
+pub(super) fn canonical_propagation_transient_bytes(
+    transient_data: &[u8],
+    target_cost: u32,
+) -> Result<[u8; 32], std::io::Error> {
+    if target_cost == 0 {
+        let transient_hash =
+            Sha256::digest(propagation_payload_hash_input(transient_data, target_cost)?);
+        let mut transient_id = [0u8; 32];
+        transient_id.copy_from_slice(transient_hash.as_slice());
+        return Ok(transient_id);
+    }
+
+    if transient_data.len() <= MIN_PROPAGATION_STAMPED_PAYLOAD_SIZE {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "invalid propagation stamp",
+        ));
+    }
+
+    let split_at = transient_data.len() - PROPAGATION_STAMP_SIZE;
+    let lxm_data = &transient_data[..split_at];
+    let stamp = &transient_data[split_at..];
+
+    let transient_hash = Sha256::digest(lxm_data);
+    let workblock = propagation_stamp_workblock(transient_hash.as_slice());
+    if !propagation_stamp_valid(stamp, target_cost, workblock.as_slice()) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "invalid propagation stamp",
+        ));
+    }
+
+    let mut transient_id = [0u8; 32];
+    transient_id.copy_from_slice(transient_hash.as_slice());
+    Ok(transient_id)
+}
+
+pub(super) fn normalize_propagation_payload_bytes(
+    transient_data: &[u8],
+    target_cost: u32,
+) -> Result<([u8; 32], &[u8]), std::io::Error> {
+    let lxm_data = propagation_payload_hash_input(transient_data, target_cost)?;
+
+    let transient_hash = Sha256::digest(lxm_data);
+    let mut transient_id = [0u8; 32];
+    transient_id.copy_from_slice(transient_hash.as_slice());
+    Ok((transient_id, lxm_data))
+}
+
+pub(super) fn propagation_payload_hash_input(
+    transient_data: &[u8],
+    target_cost: u32,
+) -> Result<&[u8], std::io::Error> {
+    if target_cost == 0 {
+        return Ok(split_propagation_stamp(transient_data)
+            .map(|(lxm_data, _stamp)| lxm_data)
+            .unwrap_or(transient_data));
+    }
+
+    let (lxm_data, stamp) = split_propagation_stamp(transient_data).ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::PermissionDenied, "invalid propagation stamp")
+    })?;
+
+    let transient_hash = Sha256::digest(lxm_data);
+    let workblock = propagation_stamp_workblock(transient_hash.as_slice());
+    if !propagation_stamp_valid(stamp, target_cost, workblock.as_slice()) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "invalid propagation stamp",
+        ));
+    }
+
+    Ok(lxm_data)
+}
+
+pub(super) fn split_propagation_stamp(transient_data: &[u8]) -> Option<(&[u8], &[u8])> {
+    if transient_data.len() <= MIN_PROPAGATION_STAMPED_PAYLOAD_SIZE {
+        return None;
+    }
+
+    let split_at = transient_data.len() - PROPAGATION_STAMP_SIZE;
+    Some((&transient_data[..split_at], &transient_data[split_at..]))
+}
+
+fn propagation_payload_matches_destination(payload: &[u8], destination: &[u8; 16]) -> bool {
+    payload.len() >= 16 && &payload[..16] == destination
+}
+
+pub(super) fn propagation_stamp_workblock(material: &[u8]) -> Vec<u8> {
+    let mut workblock = Vec::with_capacity(PROPAGATION_STAMP_WORKBLOCK_ROUNDS * 256);
+    for round in 0..PROPAGATION_STAMP_WORKBLOCK_ROUNDS {
+        let mut salt_data = Vec::with_capacity(material.len() + 8);
+        salt_data.extend_from_slice(material);
+        let packed =
+            rmp_serde::to_vec(&(round as u32)).expect("msgpack encode propagation stamp round");
+        salt_data.extend_from_slice(&packed);
+        let salt_hash = Sha256::digest(&salt_data);
+        let hk = hkdf::Hkdf::<Sha256>::new(Some(salt_hash.as_slice()), material);
+        let mut okm = [0u8; 256];
+        hk.expand(&[], &mut okm).expect("hkdf expand propagation stamp workblock");
+        workblock.extend_from_slice(&okm);
+    }
+    workblock
+}
+
+pub(super) fn propagation_stamp_valid(stamp: &[u8], target_cost: u32, workblock: &[u8]) -> bool {
+    propagation_stamp_value(workblock, stamp) >= target_cost
+}
+
+pub(super) fn propagation_stamp_value(workblock: &[u8], stamp: &[u8]) -> u32 {
+    let mut material = Vec::with_capacity(workblock.len() + stamp.len());
+    material.extend_from_slice(workblock);
+    material.extend_from_slice(stamp);
+    let hash = Sha256::digest(&material);
+    let mut value = 0u32;
+    for byte in hash {
+        if byte == 0 {
+            value += 8;
+        } else {
+            value += byte.leading_zeros();
+            break;
+        }
+    }
+    value
 }

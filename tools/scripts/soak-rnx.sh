@@ -13,6 +13,8 @@ PAUSE_SECS="${PAUSE_SECS:-1}"
 CHAOS_INTERVAL="${CHAOS_INTERVAL:-5}"
 CHAOS_NODES="${CHAOS_NODES:-5}"
 CHAOS_TIMEOUT_SECS="${CHAOS_TIMEOUT_SECS:-75}"
+SOAK_BASE_RPC_PORT="${SOAK_BASE_RPC_PORT:-54000}"
+CHAOS_BASE_RPC_PORT="${CHAOS_BASE_RPC_PORT:-56000}"
 MAX_FAILURES="${MAX_FAILURES:-0}"
 REPORT_PATH="${REPORT_PATH:-target/soak/soak-report.json}"
 
@@ -36,9 +38,12 @@ started_epoch="$(date +%s)"
 run_e2e_round() {
   local output
   local status=0
+  local a_port=$(( SOAK_BASE_RPC_PORT + ((round - 1) * 4) ))
+  local b_port=$(( a_port + 1 ))
   if output="$(
     cargo run --quiet --manifest-path "${MANIFEST_PATH}" --bin rnx -- \
-      e2e --timeout-secs "${TIMEOUT_SECS}" 2>&1
+      e2e --a-port "${a_port}" --b-port "${b_port}" --timeout-secs "${TIMEOUT_SECS}" \
+      --mode opportunistic --mode propagated 2>&1
   )"; then
     :
   else
@@ -55,9 +60,11 @@ run_e2e_round() {
 run_mesh_chaos_round() {
   local output
   local status=0
+  local base_rpc_port=$(( CHAOS_BASE_RPC_PORT + ((mesh_runs - 1) * 10) ))
   if output="$(
     cargo run --quiet --manifest-path "${MANIFEST_PATH}" --bin rnx -- \
-      mesh-sim --nodes "${CHAOS_NODES}" --timeout-secs "${CHAOS_TIMEOUT_SECS}" 2>&1
+      mesh-sim --nodes "${CHAOS_NODES}" --base-rpc-port "${base_rpc_port}" \
+      --timeout-secs "${CHAOS_TIMEOUT_SECS}" 2>&1
   )"; then
     :
   else

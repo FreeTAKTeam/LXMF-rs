@@ -1,46 +1,529 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://weft.tak/contracts/sdk/v2/rpc/sdk_release_c_methods.schema.json",
-  "title": "LXMF SDK RPC Release C Domain Methods v2",
-  "oneOf": [
-    { "$ref": "#/$defs/request" },
-    { "$ref": "#/$defs/response_error" }
-  ],
   "$defs": {
-    "rpc_id": {
-      "oneOf": [
-        { "type": "string", "minLength": 1 },
-        { "type": "integer", "minimum": 0 }
-      ]
-    },
-    "rpc_error": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["code", "message"],
-      "properties": {
-        "code": { "type": "string", "minLength": 1 },
-        "message": { "type": "string", "minLength": 1 },
-        "machine_code": { "type": "string", "pattern": "^SDK_[A-Z]+_[A-Z0-9_]+$" },
-        "category": { "type": "string", "minLength": 1 },
-        "retryable": { "type": "boolean" },
-        "is_user_actionable": { "type": "boolean" },
-        "details": { "type": "object", "additionalProperties": true },
-        "cause_code": { "type": "string", "pattern": "^SDK_[A-Z]+_[A-Z0-9_]+$" },
-        "extensions": { "type": "object", "additionalProperties": true }
-      }
-    },
     "extension_map": {
-      "type": "object",
-      "additionalProperties": true
+      "additionalProperties": true,
+      "type": "object"
     },
     "request": {
-      "type": "object",
       "additionalProperties": false,
-      "required": ["id", "method", "params"],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "enum": [
+                  "sdk_identity_list_v2",
+                  "sdk_identity_announce_now_v2"
+                ]
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "additionalProperties": false,
+                "properties": {
+                  "extensions": {
+                    "$ref": "#/$defs/extension_map"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "enum": [
+                  "sdk_identity_presence_list_v2",
+                  "sdk_identity_contact_list_v2"
+                ]
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "additionalProperties": false,
+                "properties": {
+                  "cursor": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "extensions": {
+                    "$ref": "#/$defs/extension_map"
+                  },
+                  "limit": {
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "enum": [
+                  "sdk_identity_activate_v2",
+                  "sdk_identity_export_v2",
+                  "sdk_identity_bootstrap_v2"
+                ]
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "additionalProperties": false,
+                "properties": {
+                  "auto_sync": {
+                    "type": "boolean"
+                  },
+                  "extensions": {
+                    "$ref": "#/$defs/extension_map"
+                  },
+                  "identity": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "identity"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "sdk_identity_import_v2"
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "additionalProperties": false,
+                "properties": {
+                  "bundle_base64": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "extensions": {
+                    "$ref": "#/$defs/extension_map"
+                  },
+                  "passphrase": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "bundle_base64"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "sdk_identity_resolve_v2"
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "additionalProperties": false,
+                "properties": {
+                  "extensions": {
+                    "$ref": "#/$defs/extension_map"
+                  },
+                  "hash": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "hash"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "sdk_identity_contact_update_v2"
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "additionalProperties": false,
+                "properties": {
+                  "bootstrap": {
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  },
+                  "display_name": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "extensions": {
+                    "$ref": "#/$defs/extension_map"
+                  },
+                  "identity": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "trust_level": {
+                    "enum": [
+                      null,
+                      "unknown",
+                      "untrusted",
+                      "trusted",
+                      "blocked"
+                    ],
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "identity"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "sdk_paper_encode_v2"
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "additionalProperties": false,
+                "properties": {
+                  "extensions": {
+                    "$ref": "#/$defs/extension_map"
+                  },
+                  "message_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "message_id"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "sdk_paper_decode_v2"
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "additionalProperties": false,
+                "properties": {
+                  "destination_hint": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "extensions": {
+                    "$ref": "#/$defs/extension_map"
+                  },
+                  "transient_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "uri": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "uri"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "sdk_command_invoke_v2"
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "additionalProperties": false,
+                "properties": {
+                  "command": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "extensions": {
+                    "$ref": "#/$defs/extension_map"
+                  },
+                  "payload": {},
+                  "target": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "timeout_ms": {
+                    "minimum": 1,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "command",
+                  "payload"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "sdk_command_reply_v2"
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "additionalProperties": false,
+                "properties": {
+                  "accepted": {
+                    "type": "boolean"
+                  },
+                  "correlation_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "extensions": {
+                    "$ref": "#/$defs/extension_map"
+                  },
+                  "payload": {}
+                },
+                "required": [
+                  "accepted",
+                  "correlation_id",
+                  "payload"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "sdk_voice_session_open_v2"
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "additionalProperties": false,
+                "properties": {
+                  "codec_hint": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "extensions": {
+                    "$ref": "#/$defs/extension_map"
+                  },
+                  "peer_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "peer_id"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "sdk_voice_session_update_v2"
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "additionalProperties": false,
+                "properties": {
+                  "extensions": {
+                    "$ref": "#/$defs/extension_map"
+                  },
+                  "session_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "state": {
+                    "enum": [
+                      "new",
+                      "ringing",
+                      "active",
+                      "holding",
+                      "closed",
+                      "failed"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "session_id",
+                  "state"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "sdk_voice_session_close_v2"
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "additionalProperties": false,
+                "properties": {
+                  "extensions": {
+                    "$ref": "#/$defs/extension_map"
+                  },
+                  "session_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "session_id"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        }
+      ],
       "properties": {
-        "id": { "$ref": "#/$defs/rpc_id" },
+        "id": {
+          "$ref": "#/$defs/rpc_id"
+        },
         "method": {
-          "type": "string",
           "enum": [
             "sdk_identity_list_v2",
             "sdk_identity_announce_now_v2",
@@ -59,361 +542,102 @@
             "sdk_voice_session_open_v2",
             "sdk_voice_session_update_v2",
             "sdk_voice_session_close_v2"
-          ]
+          ],
+          "type": "string"
         },
-        "params": { "type": "object" }
-      },
-      "allOf": [
-        {
-          "if": {
-            "properties": { "method": { "const": "sdk_identity_list_v2" } },
-            "required": ["method"]
-          },
-          "then": {
-            "properties": {
-              "params": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "extensions": { "$ref": "#/$defs/extension_map" }
-                }
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": { "method": { "const": "sdk_identity_announce_now_v2" } },
-            "required": ["method"]
-          },
-          "then": {
-            "properties": {
-              "params": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "extensions": { "$ref": "#/$defs/extension_map" }
-                }
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": { "method": { "const": "sdk_identity_presence_list_v2" } },
-            "required": ["method"]
-          },
-          "then": {
-            "properties": {
-              "params": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "cursor": { "type": ["string", "null"] },
-                  "limit": { "type": "integer", "minimum": 1 },
-                  "extensions": { "$ref": "#/$defs/extension_map" }
-                }
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": { "method": { "const": "sdk_identity_activate_v2" } },
-            "required": ["method"]
-          },
-          "then": {
-            "properties": {
-              "params": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["identity"],
-                "properties": {
-                  "identity": { "type": "string", "minLength": 1 },
-                  "extensions": { "$ref": "#/$defs/extension_map" }
-                }
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": { "method": { "const": "sdk_identity_import_v2" } },
-            "required": ["method"]
-          },
-          "then": {
-            "properties": {
-              "params": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["bundle_base64"],
-                "properties": {
-                  "bundle_base64": { "type": "string", "minLength": 1 },
-                  "passphrase": { "type": ["string", "null"] },
-                  "extensions": { "$ref": "#/$defs/extension_map" }
-                }
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": { "method": { "const": "sdk_identity_export_v2" } },
-            "required": ["method"]
-          },
-          "then": {
-            "properties": {
-              "params": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["identity"],
-                "properties": {
-                  "identity": { "type": "string", "minLength": 1 },
-                  "extensions": { "$ref": "#/$defs/extension_map" }
-                }
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": { "method": { "const": "sdk_identity_resolve_v2" } },
-            "required": ["method"]
-          },
-          "then": {
-            "properties": {
-              "params": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["hash"],
-                "properties": {
-                  "hash": { "type": "string", "minLength": 1 },
-                  "extensions": { "$ref": "#/$defs/extension_map" }
-                }
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": { "method": { "const": "sdk_identity_contact_update_v2" } },
-            "required": ["method"]
-          },
-          "then": {
-            "properties": {
-              "params": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["identity"],
-                "properties": {
-                  "identity": { "type": "string", "minLength": 1 },
-                  "display_name": { "type": ["string", "null"] },
-                  "trust_level": {
-                    "type": ["string", "null"],
-                    "enum": [null, "unknown", "untrusted", "trusted", "blocked"]
-                  },
-                  "bootstrap": { "type": ["boolean", "null"] },
-                  "metadata": { "type": "object", "additionalProperties": true },
-                  "extensions": { "$ref": "#/$defs/extension_map" }
-                }
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": { "method": { "const": "sdk_identity_contact_list_v2" } },
-            "required": ["method"]
-          },
-          "then": {
-            "properties": {
-              "params": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "cursor": { "type": ["string", "null"] },
-                  "limit": { "type": "integer", "minimum": 1 },
-                  "extensions": { "$ref": "#/$defs/extension_map" }
-                }
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": { "method": { "const": "sdk_identity_bootstrap_v2" } },
-            "required": ["method"]
-          },
-          "then": {
-            "properties": {
-              "params": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["identity"],
-                "properties": {
-                  "identity": { "type": "string", "minLength": 1 },
-                  "auto_sync": { "type": "boolean" },
-                  "extensions": { "$ref": "#/$defs/extension_map" }
-                }
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": { "method": { "const": "sdk_paper_encode_v2" } },
-            "required": ["method"]
-          },
-          "then": {
-            "properties": {
-              "params": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["message_id"],
-                "properties": {
-                  "message_id": { "type": "string", "minLength": 1 },
-                  "extensions": { "$ref": "#/$defs/extension_map" }
-                }
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": { "method": { "const": "sdk_paper_decode_v2" } },
-            "required": ["method"]
-          },
-          "then": {
-            "properties": {
-              "params": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["uri"],
-                "properties": {
-                  "uri": { "type": "string", "minLength": 1 },
-                  "transient_id": { "type": ["string", "null"] },
-                  "destination_hint": { "type": ["string", "null"] },
-                  "extensions": { "$ref": "#/$defs/extension_map" }
-                }
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": { "method": { "const": "sdk_command_invoke_v2" } },
-            "required": ["method"]
-          },
-          "then": {
-            "properties": {
-              "params": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["command", "payload"],
-                "properties": {
-                  "command": { "type": "string", "minLength": 1 },
-                  "target": { "type": ["string", "null"] },
-                  "payload": {},
-                  "timeout_ms": { "type": ["integer", "null"], "minimum": 1 },
-                  "extensions": { "$ref": "#/$defs/extension_map" }
-                }
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": { "method": { "const": "sdk_command_reply_v2" } },
-            "required": ["method"]
-          },
-          "then": {
-            "properties": {
-              "params": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["correlation_id", "accepted", "payload"],
-                "properties": {
-                  "correlation_id": { "type": "string", "minLength": 1 },
-                  "accepted": { "type": "boolean" },
-                  "payload": {},
-                  "extensions": { "$ref": "#/$defs/extension_map" }
-                }
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": { "method": { "const": "sdk_voice_session_open_v2" } },
-            "required": ["method"]
-          },
-          "then": {
-            "properties": {
-              "params": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["peer_id"],
-                "properties": {
-                  "peer_id": { "type": "string", "minLength": 1 },
-                  "codec_hint": { "type": ["string", "null"] },
-                  "extensions": { "$ref": "#/$defs/extension_map" }
-                }
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": { "method": { "const": "sdk_voice_session_update_v2" } },
-            "required": ["method"]
-          },
-          "then": {
-            "properties": {
-              "params": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["session_id", "state"],
-                "properties": {
-                  "session_id": { "type": "string", "minLength": 1 },
-                  "state": {
-                    "type": "string",
-                    "enum": ["new", "ringing", "active", "holding", "closed", "failed"]
-                  },
-                  "extensions": { "$ref": "#/$defs/extension_map" }
-                }
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": { "method": { "const": "sdk_voice_session_close_v2" } },
-            "required": ["method"]
-          },
-          "then": {
-            "properties": {
-              "params": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["session_id"],
-                "properties": {
-                  "session_id": { "type": "string", "minLength": 1 },
-                  "extensions": { "$ref": "#/$defs/extension_map" }
-                }
-              }
-            }
-          }
+        "params": {
+          "type": "object"
         }
-      ]
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "type": "object"
     },
     "response_error": {
-      "type": "object",
       "additionalProperties": false,
-      "required": ["id", "error"],
       "properties": {
-        "id": { "$ref": "#/$defs/rpc_id" },
-        "error": { "$ref": "#/$defs/rpc_error" }
-      }
+        "error": {
+          "$ref": "#/$defs/rpc_error"
+        },
+        "id": {
+          "$ref": "#/$defs/rpc_id"
+        }
+      },
+      "required": [
+        "error",
+        "id"
+      ],
+      "type": "object"
+    },
+    "rpc_error": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "cause_code": {
+          "pattern": "^SDK_[A-Z]+_[A-Z0-9_]+$",
+          "type": "string"
+        },
+        "code": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "details": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "extensions": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "is_user_actionable": {
+          "type": "boolean"
+        },
+        "machine_code": {
+          "pattern": "^SDK_[A-Z]+_[A-Z0-9_]+$",
+          "type": "string"
+        },
+        "message": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "retryable": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "type": "object"
+    },
+    "rpc_id": {
+      "oneOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "minimum": 0,
+          "type": "integer"
+        }
+      ]
     }
-  }
+  },
+  "$id": "https://weft.tak/contracts/sdk/v2/rpc/sdk_release_c_methods.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/request"
+    },
+    {
+      "$ref": "#/$defs/response_error"
+    }
+  ],
+  "title": "LXMF SDK RPC Release C Domain Methods v2"
 }

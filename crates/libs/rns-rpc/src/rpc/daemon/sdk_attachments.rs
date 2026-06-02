@@ -1,5 +1,7 @@
+use super::*;
+
 impl RpcDaemon {
-    fn attachment_topics_are_known(&self, topic_ids: &[String]) -> Option<String> {
+    pub(super) fn attachment_topics_are_known(&self, topic_ids: &[String]) -> Option<String> {
         topic_ids.iter().find_map(|topic_id| {
             if self
                 .sdk_topics
@@ -14,12 +16,12 @@ impl RpcDaemon {
         })
     }
 
-    fn is_sha256_hex(value: &str) -> bool {
+    pub(super) fn is_sha256_hex(value: &str) -> bool {
         let normalized = value.trim().to_ascii_lowercase();
         normalized.len() == 64 && normalized.as_bytes().iter().all(u8::is_ascii_hexdigit)
     }
 
-    fn handle_sdk_attachment_store_v2(
+    pub(super) fn handle_sdk_attachment_store_v2(
         &self,
         request: RpcRequest,
     ) -> Result<RpcResponse, std::io::Error> {
@@ -112,7 +114,7 @@ impl RpcDaemon {
         })
     }
 
-    fn handle_sdk_attachment_get_v2(
+    pub(super) fn handle_sdk_attachment_get_v2(
         &self,
         request: RpcRequest,
     ) -> Result<RpcResponse, std::io::Error> {
@@ -153,7 +155,7 @@ impl RpcDaemon {
         })
     }
 
-    fn handle_sdk_attachment_list_v2(
+    pub(super) fn handle_sdk_attachment_list_v2(
         &self,
         request: RpcRequest,
     ) -> Result<RpcResponse, std::io::Error> {
@@ -221,7 +223,7 @@ impl RpcDaemon {
         })
     }
 
-    fn handle_sdk_attachment_delete_v2(
+    pub(super) fn handle_sdk_attachment_delete_v2(
         &self,
         request: RpcRequest,
     ) -> Result<RpcResponse, std::io::Error> {
@@ -270,7 +272,7 @@ impl RpcDaemon {
         })
     }
 
-    fn handle_sdk_attachment_download_v2(
+    pub(super) fn handle_sdk_attachment_download_v2(
         &self,
         request: RpcRequest,
     ) -> Result<RpcResponse, std::io::Error> {
@@ -321,7 +323,7 @@ impl RpcDaemon {
         })
     }
 
-    fn handle_sdk_attachment_upload_start_v2(
+    pub(super) fn handle_sdk_attachment_upload_start_v2(
         &self,
         request: RpcRequest,
     ) -> Result<RpcResponse, std::io::Error> {
@@ -414,7 +416,7 @@ impl RpcDaemon {
         })
     }
 
-    fn handle_sdk_attachment_upload_chunk_v2(
+    pub(super) fn handle_sdk_attachment_upload_chunk_v2(
         &self,
         request: RpcRequest,
     ) -> Result<RpcResponse, std::io::Error> {
@@ -497,7 +499,7 @@ impl RpcDaemon {
         })
     }
 
-    fn handle_sdk_attachment_upload_commit_v2(
+    pub(super) fn handle_sdk_attachment_upload_commit_v2(
         &self,
         request: RpcRequest,
     ) -> Result<RpcResponse, std::io::Error> {
@@ -526,10 +528,8 @@ impl RpcDaemon {
             }
         };
         let upload = {
-            let mut uploads = self
-                .sdk_attachment_uploads
-                .lock()
-                .expect("sdk_attachment_uploads mutex poisoned");
+            let mut uploads =
+                self.sdk_attachment_uploads.lock().expect("sdk_attachment_uploads mutex poisoned");
             uploads.remove(upload_id.as_str())
         };
         let Some(upload) = upload else {
@@ -600,7 +600,7 @@ impl RpcDaemon {
         })
     }
 
-    fn handle_sdk_attachment_download_chunk_v2(
+    pub(super) fn handle_sdk_attachment_download_chunk_v2(
         &self,
         request: RpcRequest,
     ) -> Result<RpcResponse, std::io::Error> {
@@ -690,7 +690,7 @@ impl RpcDaemon {
         })
     }
 
-    fn handle_sdk_attachment_associate_topic_v2(
+    pub(super) fn handle_sdk_attachment_associate_topic_v2(
         &self,
         request: RpcRequest,
     ) -> Result<RpcResponse, std::io::Error> {

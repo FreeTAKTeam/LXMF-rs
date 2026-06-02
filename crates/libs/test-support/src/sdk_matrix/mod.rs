@@ -415,7 +415,7 @@ fn sdk_nostd_capability_table_has_required_rows() {
         by_crate.insert(row.crate_name.clone(), row);
     }
 
-    for required in ["lxmf-core", "rns-core"] {
+    for required in ["lxmf-wire", "reticulum-rs-core"] {
         assert!(by_crate.contains_key(required), "no_std audit table missing crate '{required}'");
     }
 
@@ -425,7 +425,7 @@ fn sdk_nostd_capability_table_has_required_rows() {
     assert!(
         lxmf_core_manifest.contains("default = [\"std\"]")
             && lxmf_core_manifest.contains("alloc = []"),
-        "lxmf-core Cargo.toml must declare std default and alloc feature for no_std audit tracking"
+        "lxmf-wire Cargo.toml must declare std default and alloc feature for no_std audit tracking"
     );
 
     let rns_core_manifest =
@@ -434,6 +434,6 @@ fn sdk_nostd_capability_table_has_required_rows() {
     assert!(
         rns_core_manifest.contains("default = [\"std\"]")
             && rns_core_manifest.contains("alloc = []"),
-        "rns-core Cargo.toml must declare std default and alloc feature for no_std audit tracking"
+        "reticulum-rs-core Cargo.toml must declare std default and alloc feature for no_std audit tracking"
     );
 }

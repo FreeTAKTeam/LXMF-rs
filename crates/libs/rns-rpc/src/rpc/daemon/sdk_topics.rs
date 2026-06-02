@@ -1,5 +1,7 @@
+use super::*;
+
 impl RpcDaemon {
-    fn handle_sdk_topic_create_v2(
+    pub(super) fn handle_sdk_topic_create_v2(
         &self,
         request: RpcRequest,
     ) -> Result<RpcResponse, std::io::Error> {
@@ -54,7 +56,10 @@ impl RpcDaemon {
         Ok(RpcResponse { id: request.id, result: Some(json!({ "topic": record })), error: None })
     }
 
-    fn handle_sdk_topic_get_v2(&self, request: RpcRequest) -> Result<RpcResponse, std::io::Error> {
+    pub(super) fn handle_sdk_topic_get_v2(
+        &self,
+        request: RpcRequest,
+    ) -> Result<RpcResponse, std::io::Error> {
         if !self.sdk_has_capability("sdk.capability.topics") {
             return Ok(self.sdk_capability_disabled_response(
                 request.id,
@@ -88,7 +93,10 @@ impl RpcDaemon {
         Ok(RpcResponse { id: request.id, result: Some(json!({ "topic": topic })), error: None })
     }
 
-    fn handle_sdk_topic_list_v2(&self, request: RpcRequest) -> Result<RpcResponse, std::io::Error> {
+    pub(super) fn handle_sdk_topic_list_v2(
+        &self,
+        request: RpcRequest,
+    ) -> Result<RpcResponse, std::io::Error> {
         if !self.sdk_has_capability("sdk.capability.topics") {
             return Ok(self.sdk_capability_disabled_response(
                 request.id,
@@ -139,7 +147,7 @@ impl RpcDaemon {
         })
     }
 
-    fn handle_sdk_topic_subscribe_v2(
+    pub(super) fn handle_sdk_topic_subscribe_v2(
         &self,
         request: RpcRequest,
     ) -> Result<RpcResponse, std::io::Error> {
@@ -192,7 +200,7 @@ impl RpcDaemon {
         })
     }
 
-    fn handle_sdk_topic_unsubscribe_v2(
+    pub(super) fn handle_sdk_topic_unsubscribe_v2(
         &self,
         request: RpcRequest,
     ) -> Result<RpcResponse, std::io::Error> {
@@ -232,7 +240,7 @@ impl RpcDaemon {
         })
     }
 
-    fn handle_sdk_topic_publish_v2(
+    pub(super) fn handle_sdk_topic_publish_v2(
         &self,
         request: RpcRequest,
     ) -> Result<RpcResponse, std::io::Error> {
@@ -302,7 +310,7 @@ impl RpcDaemon {
         Ok(RpcResponse { id: request.id, result: Some(json!({ "accepted": true })), error: None })
     }
 
-    fn handle_sdk_telemetry_query_v2(
+    pub(super) fn handle_sdk_telemetry_query_v2(
         &self,
         request: RpcRequest,
     ) -> Result<RpcResponse, std::io::Error> {
@@ -344,7 +352,7 @@ impl RpcDaemon {
         Ok(RpcResponse { id: request.id, result: Some(json!({ "points": points })), error: None })
     }
 
-    fn handle_sdk_telemetry_subscribe_v2(
+    pub(super) fn handle_sdk_telemetry_subscribe_v2(
         &self,
         request: RpcRequest,
     ) -> Result<RpcResponse, std::io::Error> {

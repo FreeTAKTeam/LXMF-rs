@@ -33,3 +33,46 @@ fn receipt_event_updates_store_and_emits_event() {
     let messages = result.get("messages").unwrap().as_array().unwrap();
     assert_eq!(messages[0].get("receipt_status").unwrap(), "delivered");
 }
+
+#[test]
+fn resource_completion_receipt_stays_non_terminal_until_delivery_receipt() {
+    let daemon = RpcDaemon::test_instance();
+    let _ = daemon
+        .handle_rpc(RpcRequest {
+            id: 10,
+            method: "send_message".into(),
+            params: Some(json!({
+                "id": "msg-resource-1",
+                "source": "peer-a",
+                "destination": "peer-b",
+                "title": "Hi",
+                "content": "hello"
+            })),
+        })
+        .unwrap();
+
+    handle_receipt_event(
+        &daemon,
+        ReceiptEvent { message_id: "msg-resource-1".into(), status: "sent: link resource".into() },
+    )
+    .expect("record resource sent");
+
+    let status = daemon
+        .handle_rpc(RpcRequest { id: 11, method: "list_messages".into(), params: None })
+        .unwrap();
+    assert_eq!(
+        status.result.unwrap()["messages"][0]["receipt_status"],
+        json!("sent: link resource")
+    );
+
+    handle_receipt_event(
+        &daemon,
+        ReceiptEvent { message_id: "msg-resource-1".into(), status: "delivered".into() },
+    )
+    .expect("record delivered");
+
+    let final_status = daemon
+        .handle_rpc(RpcRequest { id: 12, method: "list_messages".into(), params: None })
+        .unwrap();
+    assert_eq!(final_status.result.unwrap()["messages"][0]["receipt_status"], json!("delivered"));
+}

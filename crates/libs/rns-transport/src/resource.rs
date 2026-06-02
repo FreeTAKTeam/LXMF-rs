@@ -39,6 +39,11 @@ const FLAG_RESPONSE: u8 = 0x10;
 const FLAG_METADATA: u8 = 0x20;
 
 const METADATA_MAX_SIZE: usize = 16 * 1024 * 1024 - 1;
+const AUTO_COMPRESS_MAX_SIZE: usize = 64 * 1024 * 1024;
+const MAX_INBOUND_RESOURCE_TRANSFER_SIZE: u64 = AUTO_COMPRESS_MAX_SIZE as u64;
+pub const DEFAULT_RESOURCE_RETRY_INTERVAL_SECS: u64 = 2;
+pub const DEFAULT_RESOURCE_MAX_RETRIES: u8 = 16;
+const DEFAULT_RESOURCE_MAX_ADV_RETRIES: u8 = 4;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResourceStatus {
@@ -48,6 +53,16 @@ pub enum ResourceStatus {
     AwaitingProof,
     Complete,
     Failed,
+}
+
+impl ResourceStatus {
+    pub fn is_terminal(self) -> bool {
+        matches!(self, Self::Complete | Self::Failed)
+    }
+
+    fn accepts_transfer_activity(self) -> bool {
+        matches!(self, Self::Advertised | Self::Transferring | Self::AwaitingProof)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -77,6 +92,8 @@ pub enum ResourceEventKind {
     Progress(ResourceProgress),
     Complete(ResourceComplete),
     OutboundComplete,
+    OutboundFailed,
+    OutboundCancelled,
 }
 
 #[derive(Debug, Clone)]
@@ -91,6 +108,9 @@ pub struct ResourceProgress {
 pub struct ResourceComplete {
     pub data: Vec<u8>,
     pub metadata: Option<Vec<u8>>,
+    pub request_id: Option<Vec<u8>>,
+    pub is_request: bool,
+    pub is_response: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

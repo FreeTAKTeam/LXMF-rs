@@ -1,5 +1,5 @@
 use crate::error::LxmfError;
-use crate::message::Payload;
+use crate::message::{MessageContainer, MessageState, Payload, TransportMethod};
 use alloc::format;
 use alloc::string::String;
 use alloc::string::ToString;
@@ -10,6 +10,9 @@ use ed25519_dalek::Signature;
 use rand_core::CryptoRngCore;
 use rns_core::crypt::fernet::{Fernet, PlainText, FERNET_MAX_PADDING_SIZE, FERNET_OVERHEAD_SIZE};
 use rns_core::identity::{DerivedKey, Identity, PrivateIdentity, PUBLIC_KEY_LENGTH};
+use rns_core::ratchets::decrypt_with_identity;
+use serde::Deserialize;
+use serde_bytes::ByteBuf;
 use sha2::{Digest, Sha256};
 use x25519_dalek::{EphemeralSecret, PublicKey};
 
@@ -18,6 +21,11 @@ pub const LXM_URI_PREFIX: &str = "lxm://";
 const STORAGE_MAGIC: &[u8; 8] = b"LXMFSTR0";
 const STORAGE_VERSION: u8 = 1;
 const STORAGE_FLAG_HAS_SIGNATURE: u8 = 0x01;
+
+#[derive(Debug, Deserialize)]
+struct PythonStorageContainer {
+    lxmf_bytes: serde_bytes::ByteBuf,
+}
 
 #[derive(Debug, Clone)]
 pub struct WireMessage {
@@ -86,30 +94,24 @@ impl WireMessage {
     }
 
     pub fn pack_storage(&self) -> Result<Vec<u8>, LxmfError> {
-        let payload = self.payload.to_msgpack()?;
-        let mut out = Vec::with_capacity(
-            STORAGE_MAGIC.len()
-                + 1
-                + 1
-                + 16
-                + 16
-                + self.signature.map(|_| SIGNATURE_LENGTH).unwrap_or(0)
-                + payload.len(),
-        );
-        out.extend_from_slice(STORAGE_MAGIC);
-        out.push(STORAGE_VERSION);
-        let mut flags = 0u8;
-        if self.signature.is_some() {
-            flags |= STORAGE_FLAG_HAS_SIGNATURE;
-        }
-        out.push(flags);
-        out.extend_from_slice(&self.destination);
-        out.extend_from_slice(&self.source);
-        if let Some(signature) = self.signature {
-            out.extend_from_slice(&signature);
-        }
-        out.extend_from_slice(&payload);
-        Ok(out)
+        self.pack_storage_container(MessageState::Outbound, TransportMethod::Direct, false, None)
+    }
+
+    pub fn pack_storage_container(
+        &self,
+        state: MessageState,
+        method: TransportMethod,
+        transport_encrypted: bool,
+        transport_encryption: Option<String>,
+    ) -> Result<Vec<u8>, LxmfError> {
+        let container = MessageContainer {
+            state: state.as_u8(),
+            lxmf_bytes: ByteBuf::from(self.pack()?),
+            transport_encrypted,
+            transport_encryption,
+            method: method.as_u8(),
+        };
+        container.to_msgpack()
     }
 
     pub fn unpack(bytes: &[u8]) -> Result<Self, LxmfError> {
@@ -166,6 +168,10 @@ impl WireMessage {
             return Ok(Self { destination: dest, source: src, signature, payload });
         }
 
+        if let Ok(container) = rmp_serde::from_slice::<PythonStorageContainer>(bytes) {
+            return Self::unpack(container.lxmf_bytes.as_ref());
+        }
+
         Self::unpack(bytes)
     }
 
@@ -193,14 +199,55 @@ impl WireMessage {
         timestamp: f64,
         rng: R,
     ) -> Result<Vec<u8>, LxmfError> {
+        let (envelope, _) =
+            self.pack_propagation_with_options_and_rng(destination, timestamp, None, rng)?;
+        Ok(envelope)
+    }
+
+    pub fn pack_propagation_with_options_and_rng<R: CryptoRngCore + Copy>(
+        &self,
+        destination: &Identity,
+        timestamp: f64,
+        propagation_stamp: Option<&[u8]>,
+        rng: R,
+    ) -> Result<(Vec<u8>, [u8; 32]), LxmfError> {
+        let (lxmf_data, transient_id) =
+            self.pack_propagation_transient_with_rng(destination, rng)?;
+        let packed = Self::pack_propagation_envelope(timestamp, &lxmf_data, propagation_stamp)?;
+        Ok((packed, transient_id))
+    }
+
+    pub fn pack_propagation_transient_with_rng<R: CryptoRngCore + Copy>(
+        &self,
+        destination: &Identity,
+        rng: R,
+    ) -> Result<(Vec<u8>, [u8; 32]), LxmfError> {
         let packed = self.pack()?;
         let encrypted = encrypt_for_identity(destination, &packed[16..], rng)?;
 
         let mut lxmf_data = Vec::with_capacity(16 + encrypted.len());
         lxmf_data.extend_from_slice(&packed[..16]);
         lxmf_data.extend_from_slice(&encrypted);
+        let transient_id = Sha256::digest(&lxmf_data);
+        let mut transient_id_bytes = [0u8; 32];
+        transient_id_bytes.copy_from_slice(transient_id.as_slice());
+        Ok((lxmf_data, transient_id_bytes))
+    }
 
-        let envelope = (timestamp, vec![serde_bytes::ByteBuf::from(lxmf_data)]);
+    pub fn pack_propagation_envelope(
+        timestamp: f64,
+        lxmf_data: &[u8],
+        propagation_stamp: Option<&[u8]>,
+    ) -> Result<Vec<u8>, LxmfError> {
+        let mut transient_payload = Vec::with_capacity(
+            lxmf_data.len() + propagation_stamp.map(|stamp| stamp.len()).unwrap_or(0),
+        );
+        transient_payload.extend_from_slice(lxmf_data);
+        if let Some(stamp) = propagation_stamp {
+            transient_payload.extend_from_slice(stamp);
+        }
+
+        let envelope = (timestamp, vec![serde_bytes::ByteBuf::from(transient_payload)]);
         rmp_serde::to_vec(&envelope).map_err(|e| LxmfError::Encode(e.to_string()))
     }
 
@@ -241,6 +288,34 @@ impl WireMessage {
             .or_else(|_| base64::engine::general_purpose::URL_SAFE.decode(encoded))
             .map_err(|e| LxmfError::Decode(format!("invalid lxm uri payload: {e}")))
     }
+
+    pub fn unpack_paper(
+        paper_bytes: &[u8],
+        recipient: &PrivateIdentity,
+    ) -> Result<Self, LxmfError> {
+        if paper_bytes.len() <= 16 + PUBLIC_KEY_LENGTH {
+            return Err(LxmfError::Decode("paper message too short".into()));
+        }
+
+        let mut destination = [0u8; 16];
+        destination.copy_from_slice(&paper_bytes[..16]);
+
+        let decrypted = decrypt_with_identity(
+            recipient,
+            recipient.address_hash().as_slice(),
+            &paper_bytes[16..],
+        )
+        .map_err(|err| LxmfError::Decode(format!("paper message decrypt failed: {err:?}")))?;
+        let mut wire = Vec::with_capacity(16 + decrypted.len());
+        wire.extend_from_slice(&destination);
+        wire.extend_from_slice(&decrypted);
+        Self::unpack(&wire)
+    }
+
+    pub fn unpack_paper_uri(uri: &str, recipient: &PrivateIdentity) -> Result<Self, LxmfError> {
+        let paper_bytes = Self::decode_lxm_uri(uri)?;
+        Self::unpack_paper(&paper_bytes, recipient)
+    }
 }
 
 fn encrypt_for_identity<R: CryptoRngCore + Copy>(
@@ -266,4 +341,9 @@ fn encrypt_for_identity<R: CryptoRngCore + Copy>(
     let total = PUBLIC_KEY_LENGTH + token.len();
     out.truncate(total);
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    include!("wire_tests.rs");
 }

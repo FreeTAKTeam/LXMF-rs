@@ -217,16 +217,21 @@ Transport/runtime implementation defaults (non-negotiated in current v2 core lim
 - `embedded-alloc`: `4`
 
 ## Release A: Foundation Implementation
+
+Historical naming note: this plan keeps the active workspace path
+`crates/libs/rns-rpc` in file references, but the published package name is now
+`reticulum-rs-rpc`.
+
 Deliverables:
 1. `crates/libs/lxmf-sdk` with core traits/types/state machine and capability descriptors.
 2. Canonical-signature alignment across existing contracts/schemas:
 - update `docs/contracts/sdk-v2.md` public API from `start(config)` to `start(StartRequest)`
 - keep `configure(expected_revision, patch)` canonical everywhere
 - ensure `poll_events(cursor: Option<EventCursor>, max)` semantics match schema `null` reset behavior
-3. RPC adapter module mapping SDK calls to `rns-rpc`.
+3. RPC adapter module mapping SDK calls to `reticulum-rs-rpc`.
 4. Core SDK RPC request/response schemas under `docs/schemas/sdk/v2/rpc/` for all core SDK methods.
 5. Introduce capability-gated `SdkCommand` variant transport model in `docs/schemas/sdk/v2/command.schema.json` for additive non-core features, aligned with `docs/contracts/sdk-v2.md` trait-evolution rules.
-6. `rns-rpc` v2 SDK methods:
+6. `reticulum-rs-rpc` v2 SDK methods:
 - `sdk_negotiate_v2`
 - `sdk_send_v2`
 - `sdk_status_v2`

@@ -14,9 +14,9 @@ pub struct DecodedInboundMessage {
     pub id: String,
     pub source: [u8; 16],
     pub destination: [u8; 16],
-    pub title: String,
-    pub content: String,
-    pub timestamp: i64,
+    pub title: Vec<u8>,
+    pub content: Vec<u8>,
+    pub timestamp_f64: f64,
     pub fields: Option<rmpv::Value>,
 }
 
@@ -43,9 +43,9 @@ pub fn decode_inbound_message(
         id,
         source,
         destination,
-        title: String::from_utf8(message.title).unwrap_or_default(),
-        content: String::from_utf8(message.content).unwrap_or_default(),
-        timestamp: message.timestamp.map(|value| value as i64).unwrap_or(0),
+        title: message.title,
+        content: message.content,
+        timestamp_f64: message.timestamp.unwrap_or(0.0),
         fields: message.fields,
     })
 }

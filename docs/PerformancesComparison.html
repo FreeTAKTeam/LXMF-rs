@@ -1,0 +1,1030 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rust vs Python Performance Benchmarks</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --rust-orange: #F74C00;
+            --rust-orange-light: #FF8C5A;
+            --python-blue: #3776AB;
+            --python-blue-light: #5B9BD5;
+            --bg-dark: #0D1117;
+            --bg-card: #161B22;
+            --bg-elevated: #21262D;
+            --text-primary: #E6EDF3;
+            --text-secondary: #8B949E;
+            --border: #30363D;
+            --success: #238636;
+            --warning: #F0883E;
+            --gradient-rust: linear-gradient(135deg, #F74C00 0%, #FF8C5A 100%);
+            --gradient-python: linear-gradient(135deg, #3776AB 0%, #5B9BD5 100%);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* Animated background grid */
+        .bg-grid {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                linear-gradient(rgba(247, 76, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(247, 76, 0, 0.03) 1px, transparent 1px);
+            background-size: 50px 50px;
+            pointer-events: none;
+            z-index: 0;
+            animation: gridMove 20s linear infinite;
+        }
+
+        @keyframes gridMove {
+            0% { transform: translate(0, 0); }
+            100% { transform: translate(50px, 50px); }
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+            position: relative;
+            z-index: 1;
+        }
+
+        header {
+            text-align: center;
+            padding: 3rem 0;
+            margin-bottom: 2rem;
+        }
+
+        h1 {
+            font-size: 3rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #F74C00 0%, #FF8C5A 50%, #3776AB 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 0.5rem;
+            letter-spacing: -0.02em;
+        }
+
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+            font-weight: 300;
+        }
+
+        .env-info {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            flex-wrap: wrap;
+            margin-top: 1.5rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .env-badge {
+            background: var(--bg-card);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .env-badge::before {
+            content: '●';
+            color: var(--rust-orange);
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 3rem;
+        }
+
+        .stat-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 1.5rem;
+            position: relative;
+            overflow: hidden;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: var(--gradient-rust);
+            transform: scaleX(0);
+            transform-origin: left;
+            transition: transform 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+        }
+
+        .stat-card:hover::before {
+            transform: scaleX(1);
+        }
+
+        .stat-label {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: 800;
+            font-family: 'JetBrains Mono', monospace;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-value.rust { color: var(--rust-orange-light); }
+        .stat-value.python { color: var(--python-blue-light); }
+
+        .stat-delta {
+            font-size: 0.9rem;
+            color: var(--success);
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .stat-delta::before {
+            content: '↑';
+        }
+
+        .chart-section {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            position: relative;
+        }
+
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        h2 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .chart-icon {
+            width: 32px;
+            height: 32px;
+            background: var(--bg-elevated);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+        }
+
+        .controls {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 0.875rem;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+
+        .btn:hover {
+            background: var(--border);
+            color: var(--text-primary);
+        }
+
+        .btn.active {
+            background: var(--rust-orange);
+            color: white;
+            border-color: var(--rust-orange);
+        }
+
+        .chart-container {
+            position: relative;
+            height: 400px;
+            width: 100%;
+        }
+
+        .chart-container.large {
+            height: 500px;
+        }
+
+        .legend-custom {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-top: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        .legend-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 4px;
+        }
+
+        .legend-color.rust { background: var(--rust-orange); }
+        .legend-color.python { background: var(--python-blue); }
+
+        .comparison-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+            font-size: 0.9rem;
+        }
+
+        .comparison-table th,
+        .comparison-table td {
+            padding: 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .comparison-table th {
+            color: var(--text-secondary);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+            letter-spacing: 0.05em;
+            background: var(--bg-elevated);
+        }
+
+        .comparison-table tr:hover td {
+            background: var(--bg-elevated);
+        }
+
+        .comparison-table td {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .speedup-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-weight: 700;
+            font-size: 0.85rem;
+        }
+
+        .speedup-high {
+            background: rgba(247, 76, 0, 0.2);
+            color: var(--rust-orange-light);
+        }
+
+        .speedup-medium {
+            background: rgba(240, 136, 62, 0.2);
+            color: var(--warning);
+        }
+
+        .speedup-low {
+            background: rgba(139, 148, 158, 0.2);
+            color: var(--text-secondary);
+        }
+
+        .speedup-slower {
+            background: rgba(55, 118, 171, 0.2);
+            color: var(--python-blue-light);
+        }
+
+        .metric-bar {
+            height: 6px;
+            background: var(--bg-elevated);
+            border-radius: 3px;
+            overflow: hidden;
+            margin-top: 0.5rem;
+            position: relative;
+        }
+
+        .metric-fill {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 1s ease;
+        }
+
+        .metric-fill.rust { background: var(--rust-orange); }
+        .metric-fill.python { background: var(--python-blue); }
+
+        .tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 1rem;
+        }
+
+        .tab {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            padding: 0.75rem 1.5rem;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 0.95rem;
+            font-weight: 500;
+            position: relative;
+            transition: color 0.2s ease;
+        }
+
+        .tab:hover {
+            color: var(--text-primary);
+        }
+
+        .tab.active {
+            color: var(--rust-orange);
+        }
+
+        .tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: -1rem;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: var(--rust-orange);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .scatter-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .mini-chart {
+            background: var(--bg-elevated);
+            border-radius: 12px;
+            padding: 1.5rem;
+            border: 1px solid var(--border);
+        }
+
+        .mini-chart h4 {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            margin-bottom: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        footer {
+            text-align: center;
+            padding: 3rem 0;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            border-top: 1px solid var(--border);
+            margin-top: 3rem;
+        }
+
+        @media (max-width: 768px) {
+            h1 { font-size: 2rem; }
+            .chart-container { height: 300px; }
+            .chart-container.large { height: 350px; }
+            .dashboard { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-grid"></div>
+    
+    <div class="container">
+        <header>
+            <h1>Reticulum & LXMF </h1>
+            <p class="subtitle">Rust vs Python Performance Comparison</p>
+            <div class="env-info">
+                <div class="env-badge">Rust 1.93.1</div>
+                <div class="env-badge">Python 3.11.9</div>
+                <div class="env-badge">Windows AMD64</div>
+                <div class="env-badge">12 Benchmarks</div>
+            </div>
+        </header>
+
+        <div class="dashboard">
+            <div class="stat-card">
+                <div class="stat-label">Average Speedup (P50)</div>
+                <div class="stat-value rust" id="avgSpeedup">0x</div>
+                <div class="stat-delta">Faster than Python</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Max Speedup Achieved</div>
+                <div class="stat-value rust" id="maxSpeedup">0x</div>
+                <div class="stat-delta">LXMF Large Decode (P99)</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Rust Avg Throughput</div>
+                <div class="stat-value rust" id="avgThroughput">0 ops/s</div>
+                <div class="stat-delta">Operations per second</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Python Avg Throughput</div>
+                <div class="stat-value python" id="pyAvgThroughput">0 ops/s</div>
+                <div class="stat-delta">Baseline comparison</div>
+            </div>
+        </div>
+
+        <div class="chart-section">
+            <div class="chart-header">
+                <h2><span class="chart-icon">📊</span> Speedup Comparison</h2>
+                <div class="controls">
+                    <button class="btn active" onclick="switchMetric('p50')">P50 (Median)</button>
+                    <button class="btn" onclick="switchMetric('p95')">P95</button>
+                    <button class="btn" onclick="switchMetric('p99')">P99</button>
+                    <button class="btn" onclick="switchMetric('throughput')">Throughput</button>
+                </div>
+            </div>
+            <div class="chart-container large">
+                <canvas id="speedupChart"></canvas>
+            </div>
+            <div class="legend-custom">
+                <div class="legend-item">
+                    <div class="legend-color rust"></div>
+                    <span>Rust Implementation</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color python"></div>
+                    <span>Python Implementation</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="chart-section">
+            <div class="tabs">
+                <button class="tab active" onclick="switchTab('latency')">Latency Analysis (μs)</button>
+                <button class="tab" onclick="switchTab('throughput')">Throughput Analysis</button>
+                <button class="tab" onclick="switchTab('detailed')">Detailed Breakdown</button>
+            </div>
+
+            <div id="latency" class="tab-content active">
+                <div class="chart-container">
+                    <canvas id="latencyChart"></canvas>
+                </div>
+            </div>
+
+            <div id="throughput" class="tab-content">
+                <div class="chart-container">
+                    <canvas id="throughputChart"></canvas>
+                </div>
+            </div>
+
+            <div id="detailed" class="tab-content">
+                <div class="scatter-grid" id="scatterGrid">
+                    <!-- Mini charts will be inserted here -->
+                </div>
+            </div>
+        </div>
+
+        <div class="chart-section">
+            <div class="chart-header">
+                <h2><span class="chart-icon">📋</span> Detailed Results</h2>
+            </div>
+            <table class="comparison-table">
+                <thead>
+                    <tr>
+                        <th>Benchmark</th>
+                        <th>Rust P50 (μs)</th>
+                        <th>Python P50 (μs)</th>
+                        <th>Speedup</th>
+                        <th>Performance</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody">
+                    <!-- Table rows will be inserted here -->
+                </tbody>
+            </table>
+        </div>
+
+        <footer>
+            <p>Benchmark data generated from python-impl-compare.json • Visualized with Chart.js</p>
+        </footer>
+    </div>
+
+    <script>
+        // Data from JSON
+        const benchmarks = [
+            { name: "LXMF message decode", rust: { p50: 1.48, p95: 7.46, p99: 7.46, throughput: 674221 }, python: { p50: 461.4, p95: 991.5, p99: 1427.5, throughput: 2167 }, speedup: { p50: 311.09, p95: 132.83, p99: 191.24, throughput: 311.09 } },
+            { name: "LXMF message encode", rust: { p50: 2.69, p95: 5.81, p99: 5.81, throughput: 372150 }, python: { p50: 159.0, p95: 227.1, p99: 306.9, throughput: 6289 }, speedup: { p50: 59.17, p95: 39.11, p99: 52.85, throughput: 59.17 } },
+            { name: "LXMF large message decode", rust: { p50: 1.54, p95: 1.66, p99: 1.66, throughput: 649222 }, python: { p50: 523.6, p95: 1398.1, p99: 2463.7, throughput: 1910 }, speedup: { p50: 339.93, p95: 843.12, p99: 1485.72, throughput: 339.93 } },
+            { name: "LXMF large message encode", rust: { p50: 3.62, p95: 4.21, p99: 4.21, throughput: 276052 }, python: { p50: 194.5, p95: 248.7, p99: 295.8, throughput: 5141 }, speedup: { p50: 53.69, p95: 59.02, p99: 70.20, throughput: 53.69 } },
+            { name: "Reticulum announce create", rust: { p50: 51.24, p95: 52.63, p99: 52.63, throughput: 19516 }, python: { p50: 149.4, p95: 288.8, p99: 391.9, throughput: 6693 }, speedup: { p50: 2.92, p95: 5.49, p99: 7.45, throughput: 2.92 } },
+            { name: "Reticulum announce validate", rust: { p50: 103.78, p95: 110.73, p99: 110.73, throughput: 9635 }, python: { p50: 453.4, p95: 1384.0, p99: 2396.4, throughput: 2206 }, speedup: { p50: 4.37, p95: 12.50, p99: 21.64, throughput: 4.37 } },
+            { name: "Reticulum announce validate batch 64", rust: { p50: 6277.75, p95: 6668.63, p99: 6668.63, throughput: 159 }, python: { p50: 21976.9, p95: 42780.4, p99: 52326.6, throughput: 46 }, speedup: { p50: 3.50, p95: 6.42, p99: 7.85, throughput: 3.50 } },
+            { name: "Reticulum identity sign", rust: { p50: 73.42, p95: 97.80, p99: 97.80, throughput: 13620 }, python: { p50: 67.7, p95: 119.1, p99: 127.0, throughput: 14771 }, speedup: { p50: 0.92, p95: 1.22, p99: 1.30, throughput: 0.92 } },
+            { name: "Reticulum identity verify", rust: { p50: 157.38, p95: 294.18, p99: 294.18, throughput: 6354 }, python: { p50: 274.4, p95: 336.2, p99: 386.1, throughput: 3644 }, speedup: { p50: 1.74, p95: 1.14, p99: 1.31, throughput: 1.74 } },
+            { name: "Reticulum identity encrypt", rust: { p50: 239.47, p95: 292.30, p99: 292.30, throughput: 4176 }, python: { p50: 374.3, p95: 551.2, p99: 662.7, throughput: 2672 }, speedup: { p50: 1.56, p95: 1.89, p99: 2.27, throughput: 1.56 } },
+            { name: "Reticulum identity decrypt", rust: { p50: 281.96, p95: 323.96, p99: 323.96, throughput: 3547 }, python: { p50: 240.8, p95: 340.2, p99: 392.1, throughput: 4153 }, speedup: { p50: 0.85, p95: 1.05, p99: 1.21, throughput: 0.85 } },
+            { name: "Reticulum resource request window", rust: { p50: 0.44, p95: 0.47, p99: 0.47, throughput: 2265703 }, python: { p50: 4.8, p95: 8.8, p99: 9.2, throughput: 208333 }, speedup: { p50: 10.88, p95: 18.80, p99: 19.66, throughput: 10.88 } }
+        ];
+
+        // Chart instances
+        let speedupChart, latencyChart, throughputChart;
+        let currentMetric = 'p50';
+
+        // Initialize dashboard stats
+        function initStats() {
+            const avgSpeedup = benchmarks.reduce((acc, b) => acc + b.speedup.p50, 0) / benchmarks.length;
+            const maxSpeedup = Math.max(...benchmarks.map(b => Math.max(b.speedup.p50, b.speedup.p95, b.speedup.p99)));
+            const avgThroughput = benchmarks.reduce((acc, b) => acc + b.rust.throughput, 0) / benchmarks.length;
+            const pyAvgThroughput = benchmarks.reduce((acc, b) => acc + b.python.throughput, 0) / benchmarks.length;
+
+            document.getElementById('avgSpeedup').textContent = avgSpeedup.toFixed(1) + 'x';
+            document.getElementById('maxSpeedup').textContent = maxSpeedup.toFixed(0) + 'x';
+            document.getElementById('avgThroughput').textContent = formatNumber(avgThroughput) + ' ops/s';
+            document.getElementById('pyAvgThroughput').textContent = formatNumber(pyAvgThroughput) + ' ops/s';
+        }
+
+        function formatNumber(num) {
+            if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+            if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+            return num.toFixed(0);
+        }
+
+        // Speedup Chart
+        function initSpeedupChart() {
+            const ctx = document.getElementById('speedupChart').getContext('2d');
+            
+            const data = {
+                labels: benchmarks.map(b => b.name.replace('Reticulum ', 'R-').replace('LXMF ', 'L-')),
+                datasets: [
+                    {
+                        label: 'Rust',
+                        data: benchmarks.map(b => b.rust[currentMetric]),
+                        backgroundColor: 'rgba(247, 76, 0, 0.8)',
+                        borderColor: '#F74C00',
+                        borderWidth: 2,
+                        borderRadius: 6,
+                        yAxisID: 'y'
+                    },
+                    {
+                        label: 'Python',
+                        data: benchmarks.map(b => b.python[currentMetric]),
+                        backgroundColor: 'rgba(55, 118, 171, 0.8)',
+                        borderColor: '#3776AB',
+                        borderWidth: 2,
+                        borderRadius: 6,
+                        yAxisID: 'y'
+                    }
+                ]
+            };
+
+            if (currentMetric === 'throughput') {
+                data.datasets.reverse(); // Show Rust on top for throughput
+            }
+
+            speedupChart = new Chart(ctx, {
+                type: 'bar',
+                data: data,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: '#161B22',
+                            titleColor: '#E6EDF3',
+                            bodyColor: '#8B949E',
+                            borderColor: '#30363D',
+                            borderWidth: 1,
+                            padding: 12,
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) label += ': ';
+                                    if (currentMetric === 'throughput') {
+                                        label += formatNumber(context.parsed.y) + ' ops/s';
+                                    } else {
+                                        label += context.parsed.y.toFixed(2) + ' μs';
+                                    }
+                                    return label;
+                                },
+                                afterBody: function(context) {
+                                    if (context.length === 2) {
+                                        const rust = context[0].dataset.label === 'Rust' ? context[0].parsed.y : context[1].parsed.y;
+                                        const py = context[0].dataset.label === 'Python' ? context[0].parsed.y : context[1].parsed.y;
+                                        const speedup = rust > py ? (rust/py).toFixed(1) + 'x faster' : (py/rust).toFixed(1) + 'x slower';
+                                        return 'Speedup: ' + speedup;
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: {
+                                color: '#8B949E',
+                                font: { size: 11, family: 'Inter' },
+                                maxRotation: 45
+                            },
+                            grid: { display: false }
+                        },
+                        y: {
+                            type: 'logarithmic',
+                            ticks: {
+                                color: '#8B949E',
+                                font: { family: 'JetBrains Mono' },
+                                callback: function(value) {
+                                    if (currentMetric === 'throughput') return formatNumber(value);
+                                    return value + (currentMetric === 'throughput' ? '' : 'μs');
+                                }
+                            },
+                            grid: {
+                                color: '#21262D',
+                                drawBorder: false
+                            }
+                        }
+                    },
+                    animation: {
+                        duration: 1000,
+                        easing: 'easeOutQuart'
+                    }
+                }
+            });
+        }
+
+        // Latency Chart (Radar)
+        function initLatencyChart() {
+            const ctx = document.getElementById('latencyChart').getContext('2d');
+            
+            latencyChart = new Chart(ctx, {
+                type: 'radar',
+                data: {
+                    labels: benchmarks.map(b => b.name.replace('Reticulum ', '').replace('LXMF ', '')),
+                    datasets: [
+                        {
+                            label: 'Rust P50',
+                            data: benchmarks.map(b => Math.log10(b.rust.p50)),
+                            borderColor: '#F74C00',
+                            backgroundColor: 'rgba(247, 76, 0, 0.2)',
+                            pointBackgroundColor: '#F74C00',
+                            pointBorderColor: '#fff',
+                            pointHoverBackgroundColor: '#fff',
+                            pointHoverBorderColor: '#F74C00'
+                        },
+                        {
+                            label: 'Python P50',
+                            data: benchmarks.map(b => Math.log10(b.python.p50)),
+                            borderColor: '#3776AB',
+                            backgroundColor: 'rgba(55, 118, 171, 0.2)',
+                            pointBackgroundColor: '#3776AB',
+                            pointBorderColor: '#fff',
+                            pointHoverBackgroundColor: '#fff',
+                            pointHoverBorderColor: '#3776AB'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: { color: '#8B949E', font: { family: 'Inter' } }
+                        },
+                        tooltip: {
+                            backgroundColor: '#161B22',
+                            titleColor: '#E6EDF3',
+                            bodyColor: '#8B949E',
+                            borderColor: '#30363D',
+                            borderWidth: 1,
+                            callbacks: {
+                                label: function(context) {
+                                    const val = Math.pow(10, context.parsed.r || context.parsed);
+                                    return context.dataset.label + ': ' + val.toFixed(2) + ' μs';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        r: {
+                            angleLines: { color: '#30363D' },
+                            grid: { color: '#21262D' },
+                            pointLabels: {
+                                color: '#8B949E',
+                                font: { size: 10, family: 'Inter' }
+                            },
+                            ticks: {
+                                display: false,
+                                backdropColor: 'transparent'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Throughput Chart
+        function initThroughputChart() {
+            const ctx = document.getElementById('throughputChart').getContext('2d');
+            
+            throughputChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: benchmarks.map(b => b.name.replace('Reticulum ', 'R-').replace('LXMF ', 'L-')),
+                    datasets: [
+                        {
+                            label: 'Rust Throughput',
+                            data: benchmarks.map(b => b.rust.throughput),
+                            borderColor: '#F74C00',
+                            backgroundColor: 'rgba(247, 76, 0, 0.1)',
+                            fill: true,
+                            tension: 0.4,
+                            pointRadius: 6,
+                            pointBackgroundColor: '#F74C00',
+                            pointBorderColor: '#fff',
+                            pointBorderWidth: 2
+                        },
+                        {
+                            label: 'Python Throughput',
+                            data: benchmarks.map(b => b.python.throughput),
+                            borderColor: '#3776AB',
+                            backgroundColor: 'rgba(55, 118, 171, 0.1)',
+                            fill: true,
+                            tension: 0.4,
+                            pointRadius: 6,
+                            pointBackgroundColor: '#3776AB',
+                            pointBorderColor: '#fff',
+                            pointBorderWidth: 2
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: { color: '#8B949E', font: { family: 'Inter' } }
+                        },
+                        tooltip: {
+                            backgroundColor: '#161B22',
+                            titleColor: '#E6EDF3',
+                            bodyColor: '#8B949E',
+                            borderColor: '#30363D',
+                            borderWidth: 1,
+                            callbacks: {
+                                label: function(context) {
+                                    return context.dataset.label + ': ' + formatNumber(context.parsed.y) + ' ops/s';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: {
+                                color: '#8B949E',
+                                font: { size: 11 },
+                                maxRotation: 45
+                            },
+                            grid: { display: false }
+                        },
+                        y: {
+                            type: 'logarithmic',
+                            ticks: {
+                                color: '#8B949E',
+                                font: { family: 'JetBrains Mono' },
+                                callback: function(value) { return formatNumber(value); }
+                            },
+                            grid: { color: '#21262D', drawBorder: false }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Create mini scatter charts for detailed view
+        function createScatterCharts() {
+            const container = document.getElementById('scatterGrid');
+            const metrics = ['p50', 'p95', 'p99', 'throughput'];
+            
+            metrics.forEach(metric => {
+                const div = document.createElement('div');
+                div.className = 'mini-chart';
+                div.innerHTML = `<h4>${metric === 'throughput' ? 'Throughput (ops/s)' : metric.toUpperCase() + ' Latency (μs)'}</h4><canvas id="scatter-${metric}"></canvas>`;
+                container.appendChild(div);
+                
+                const ctx = document.getElementById(`scatter-${metric}`).getContext('2d');
+                new Chart(ctx, {
+                    type: 'scatter',
+                    data: {
+                        datasets: [{
+                            label: 'Benchmarks',
+                            data: benchmarks.map(b => ({
+                                x: b.python[metric],
+                                y: b.rust[metric],
+                                label: b.name
+                            })),
+                            backgroundColor: benchmarks.map(b => 
+                                b.speedup[metric] > 10 ? '#F74C00' : 
+                                b.speedup[metric] > 2 ? '#F0883E' : '#8B949E'
+                            ),
+                            pointRadius: 8,
+                            pointHoverRadius: 12
+                        }, {
+                            label: 'Parity Line',
+                            data: [{x: 0, y: 0}, {x: 1000000, y: 1000000}],
+                            type: 'line',
+                            borderColor: '#30363D',
+                            borderDash: [5, 5],
+                            pointRadius: 0,
+                            fill: false
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                backgroundColor: '#161B22',
+                                titleColor: '#E6EDF3',
+                                bodyColor: '#8B949E',
+                                borderColor: '#30363D',
+                                borderWidth: 1,
+                                callbacks: {
+                                    label: function(context) {
+                                        if (context.raw.label) {
+                                            const b = benchmarks.find(bm => bm.name === context.raw.label);
+                                            const speedup = b.speedup[metric];
+                                            return [
+                                                context.raw.label,
+                                                `Rust: ${metric === 'throughput' ? formatNumber(context.raw.y) : context.raw.y.toFixed(2)}${metric === 'throughput' ? '' : 'μs'}`,
+                                                `Python: ${metric === 'throughput' ? formatNumber(context.raw.x) : context.raw.x.toFixed(2)}${metric === 'throughput' ? '' : 'μs'}`,
+                                                `Speedup: ${speedup.toFixed(1)}x`
+                                            ];
+                                        }
+                                        return '';
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                type: 'logarithmic',
+                                title: { display: true, text: 'Python', color: '#3776AB' },
+                                ticks: { color: '#8B949E', callback: (v) => formatNumber(v) },
+                                grid: { color: '#21262D' }
+                            },
+                            y: {
+                                type: 'logarithmic',
+                                title: { display: true, text: 'Rust', color: '#F74C00' },
+                                ticks: { color: '#8B949E', callback: (v) => formatNumber(v) },
+                                grid: { color: '#21262D' }
+                            }
+                        }
+                    }
+                });
+            });
+        }
+
+        // Populate table
+        function populateTable() {
+            const tbody = document.getElementById('tableBody');
+            benchmarks.forEach(b => {
+                const tr = document.createElement('tr');
+                const speedup = b.speedup.p50;
+                let badgeClass = 'speedup-low';
+                let badgeText = speedup.toFixed(1) + 'x';
+                
+                if (speedup > 50) { badgeClass = 'speedup-high'; badgeText = '🔥 ' + speedup.toFixed(0) + 'x'; }
+                else if (speedup > 10) { badgeClass = 'speedup-high'; }
+                else if (speedup > 2) { badgeClass = 'speedup-medium'; }
+                else if (speedup < 1) { badgeClass = 'speedup-slower'; badgeText = (1/speedup).toFixed(1) + 'x slower'; }
+                
+                const maxVal = Math.max(b.rust.p50, b.python.p50);
+                
+                tr.innerHTML = `
+                    <td><strong>${b.name}</strong></td>
+                    <td>${b.rust.p50.toFixed(2)}</td>
+                    <td>${b.python.p50.toFixed(2)}</td>
+                    <td><span class="speedup-badge ${badgeClass}">${badgeText}</span></td>
+                    <td>
+                        <div class="metric-bar">
+                            <div class="metric-fill rust" style="width: ${(b.rust.p50/maxVal)*100}%"></div>
+                        </div>
+                        <div class="metric-bar">
+                            <div class="metric-fill python" style="width: ${(b.python.p50/maxVal)*100}%"></div>
+                        </div>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // Switch metric for main chart
+        function switchMetric(metric) {
+            currentMetric = metric;
+            document.querySelectorAll('.controls .btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            speedupChart.data.datasets[0].data = benchmarks.map(b => b.rust[metric]);
+            speedupChart.data.datasets[1].data = benchmarks.map(b => b.python[metric]);
+            
+            if (metric === 'throughput') {
+                speedupChart.data.datasets[0].label = 'Rust';
+                speedupChart.data.datasets[1].label = 'Python';
+            }
+            
+            speedupChart.update();
+        }
+
+        // Switch tabs
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+            document.getElementById(tabName).classList.add('active');
+        }
+
+        // Initialize
+        window.addEventListener('load', () => {
+            initStats();
+            initSpeedupChart();
+            initLatencyChart();
+            initThroughputChart();
+            createScatterCharts();
+            populateTable();
+        });
+    </script>
+</body>
+</html>

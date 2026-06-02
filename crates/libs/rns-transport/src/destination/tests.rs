@@ -14,6 +14,7 @@ use super::DestinationAnnounce;
 use super::DestinationName;
 use super::SingleInputDestination;
 use super::RATCHET_LENGTH;
+use crate::packet::ContextFlag;
 
 #[derive(Clone, Copy)]
 struct FixedRng {
@@ -192,6 +193,46 @@ fn announce_without_ratchet_flag_ignores_ratchet_bytes() {
 }
 
 #[test]
+fn announce_destination_hash_mismatch_is_rejected() {
+    let priv_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut destination = SingleInputDestination::new(
+        priv_identity,
+        DestinationName::new("example_utilities", "announcesample.fruits"),
+    );
+
+    let mut announce = destination.announce(OsRng, None).expect("valid announce packet");
+    announce.destination = Hash::new_from_slice(&[0xAA; 16]).into();
+
+    match DestinationAnnounce::validate(&announce) {
+        Ok(_) => panic!("mismatched destination hash must fail validation"),
+        Err(err) => assert!(matches!(err, RnsError::IncorrectHash)),
+    }
+}
+
+#[test]
+fn announce_with_ratchet_bytes_but_unset_flag_is_rejected() {
+    let temp = TempDir::new().expect("temp dir");
+    let priv_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut destination = SingleInputDestination::new(
+        priv_identity,
+        DestinationName::new("example_utilities", "announcesample.fruits"),
+    );
+    let ratchet_path = temp
+        .path()
+        .join("ratchets")
+        .join(format!("{}.ratchets", destination.desc.address_hash.to_hex_string()));
+    destination.enable_ratchets(&ratchet_path).expect("enable ratchets");
+
+    let mut announce = destination.announce(OsRng, None).expect("valid announce packet");
+    announce.header.context_flag = ContextFlag::Unset;
+
+    match DestinationAnnounce::validate(&announce) {
+        Ok(_) => panic!("ratchet bytes without ratchet flag must fail validation"),
+        Err(err) => assert!(matches!(err, RnsError::IncorrectSignature)),
+    }
+}
+
+#[test]
 fn announce_random_blob_matches_python_layout() {
     let priv_identity = PrivateIdentity::new_from_rand(OsRng);
     let mut destination = SingleInputDestination::new(
@@ -210,4 +251,38 @@ fn announce_random_blob_matches_python_layout() {
     let emitted = u64::from_be_bytes(ts_bytes);
     assert!(emitted >= before.saturating_sub(1));
     assert!(emitted <= after.saturating_add(1));
+}
+
+#[test]
+fn path_response_reuses_cached_announce_for_same_tag() {
+    let priv_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut destination = SingleInputDestination::new(
+        priv_identity,
+        DestinationName::new("example_utilities", "announcesample.fruits"),
+    );
+    let tag = [0xAB; 16];
+
+    let first = destination
+        .path_response_with_tag(FixedRng::new(0x10), None, Some(&tag))
+        .expect("first path response");
+    let second = destination
+        .path_response_with_tag(FixedRng::new(0x80), None, Some(&tag))
+        .expect("cached path response");
+
+    assert_eq!(first.context, crate::packet::PacketContext::PathResponse);
+    assert_eq!(second.context, crate::packet::PacketContext::PathResponse);
+    assert_eq!(first.data, second.data);
+}
+
+#[test]
+fn path_response_without_tag_keeps_legacy_signature() {
+    let priv_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut destination = SingleInputDestination::new(
+        priv_identity,
+        DestinationName::new("example_utilities", "announcesample.fruits"),
+    );
+
+    let response = destination.path_response(FixedRng::new(0x10), None).expect("path response");
+
+    assert_eq!(response.context, crate::packet::PacketContext::PathResponse);
 }

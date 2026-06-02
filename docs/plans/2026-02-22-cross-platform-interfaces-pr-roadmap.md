@@ -3,7 +3,12 @@
 Status: in-progress (PR-11 native BLE complete; LoRa fail-closed state hardening in progress)
 Date: 2026-02-22
 Owner: platform/networking
-Audience: maintainers of `reticulumd`, `rns-transport`, CI/release engineering
+Audience: maintainers of `reticulumd`, `reticulum-rs-transport`, CI/release engineering
+
+Historical naming note: this roadmap keeps workspace paths such as
+`crates/libs/rns-transport` and `crates/libs/rns-rpc` for code-navigation
+clarity. The corresponding published crates are `reticulum-rs-transport` and
+`reticulum-rs-rpc`.
 
 ## 1) Executive Summary
 This roadmap adds three new runtime interfaces to `reticulumd`:
@@ -41,7 +46,7 @@ The plan is organized as a PR-by-PR backlog with explicit dependencies, code tou
 ## 2.3 Hard Constraints
 1. No user-facing Cargo feature toggles required to activate interface behavior by config.
 2. Platform-specific dependency usage must remain compile-safe by target OS selection.
-3. `rns-transport` remains runtime-agnostic for BLE/LoRa; serial worker support may live in `rns-transport` because `InterfaceManager` lifecycle ownership is there.
+3. `reticulum-rs-transport` remains runtime-agnostic for BLE/LoRa; serial worker support may live in `reticulum-rs-transport` because `InterfaceManager` lifecycle ownership is there.
 4. Boundary checks must pass (`tools/scripts/check-boundaries.sh`).
 
 ## 2.4 Runtime Mutation Contract (Mandatory v1 Behavior)
@@ -66,7 +71,7 @@ The following behavior is required and must be reflected in `docs/contracts/rpc-
 ## 2.5 Dependency and Toolchain Policy
 1. Workspace `rust-version` remains `1.75` and default toolchain remains `stable`.
 2. Platform-specific dependencies for BLE must be target-scoped in `crates/apps/reticulumd/Cargo.toml` using `target.'cfg(...)'.dependencies`.
-3. `rns-transport` and `lxmf-sdk` must not gain desktop OS-specific BLE dependencies.
+3. `reticulum-rs-transport` and `lxmf-sdk` must not gain desktop OS-specific BLE dependencies.
 4. `Cargo.lock` updates are expected and must remain deterministic.
 5. Required compile matrix policy for new interface code:
 1. Linux target compile path is validated.
@@ -164,7 +169,7 @@ Branch: `codex/pr-01-interface-scope-config-contract`
 7. Codify `reload_config` restart-required semantics when these kinds are changed.
 8. Codify allowed `reload_config` hot-apply surface to existing legacy TCP fields only (`enabled`, endpoint, reconnect/backoff settings).
 9. Expose applied-vs-rejected interface IDs in RPC response payloads for deterministic observability.
-10. Align `rns-rpc` legacy method dispatch implementation with the same policy to avoid daemon vs client contract drift.
+10. Align `reticulum-rs-rpc` legacy method dispatch implementation with the same policy to avoid daemon vs client contract drift.
 
 ### Tests
 1. Parser accepts existing TCP examples unchanged.
@@ -180,9 +185,9 @@ Branch: `codex/pr-01-interface-scope-config-contract`
 1. `cargo test -p reticulumd --test config`
 2. `cargo test -p reticulumd --test rpc_interface_mutation_policy`
 3. `cargo test -p reticulumd --test rpc_reload_config_policy`
-4. `cargo test -p rns-rpc --test interface_mutation_policy`
+4. `cargo test -p reticulum-rs-rpc --test interface_mutation_policy`
 5. `cargo check -p reticulumd`
-6. `cargo check -p rns-rpc`
+6. `cargo check -p reticulum-rs-rpc`
 
 ### Rollback Criteria
 1. If legacy TCP config regression appears, revert schema expansion and reintroduce via compatibility wrapper.
@@ -210,7 +215,7 @@ Branch: `codex/pr-02-interface-module-os-dispatch`
 2. Add dispatch layer for `serial`, `ble_gatt`, `lora`, existing TCP.
 3. Add target-OS BLE backend selection (`cfg(target_os = "linux"|"macos"|"windows")`).
 4. Add consistent startup log lines for each interface registration outcome.
-5. Introduce target-scoped dependency stubs only under `reticulumd` to keep `rns-transport` runtime-agnostic.
+5. Introduce target-scoped dependency stubs only under `reticulumd` to keep `reticulum-rs-transport` runtime-agnostic.
 6. Add explicit unsupported-platform compile path that returns deterministic diagnostics.
 
 ### Tests
@@ -227,7 +232,7 @@ Branch: `codex/pr-02-interface-module-os-dispatch`
 1. If bootstrap behavior regresses for TCP, revert dispatch indirection and reintroduce in smaller patch.
 
 ---
-## PR-03: Shared Embedded Worker Utility in `rns-transport`
+## PR-03: Shared Embedded Worker Utility in `reticulum-rs-transport`
 Branch: `codex/pr-03-rns-transport-embedded-worker`
 
 ### Objective
@@ -251,8 +256,8 @@ Branch: `codex/pr-03-rns-transport-embedded-worker`
 3. Worker cancellation is graceful.
 
 ### Acceptance Commands
-1. `cargo test -p rns-transport --test embedded_link_contract`
-2. `cargo test -p rns-transport --test embedded_iface_worker`
+1. `cargo test -p reticulum-rs-transport --test embedded_link_contract`
+2. `cargo test -p reticulum-rs-transport --test embedded_iface_worker`
 
 ### Rollback Criteria
 1. If transport behavior changes unexpectedly, keep worker local to `reticulumd` and revisit upstream abstraction later.

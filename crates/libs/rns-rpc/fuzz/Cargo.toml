@@ -9,7 +9,7 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
-rns-rpc = { path = ".." }
+rns-rpc = { package = "reticulum-rs-rpc", path = ".." }
 
 [[bin]]
 name = "rpc_frame_envelope"

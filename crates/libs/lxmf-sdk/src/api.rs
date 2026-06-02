@@ -1,4 +1,6 @@
 use crate::app::{Envelope, EnvelopeResponse, OperationRegistry};
+#[cfg(feature = "sdk-async")]
+use crate::backend::SdkEventStream;
 use crate::domain::{
     AttachmentDownloadChunk, AttachmentDownloadChunkRequest, AttachmentId, AttachmentListRequest,
     AttachmentListResult, AttachmentMeta, AttachmentStoreRequest, AttachmentUploadChunkAck,
@@ -8,7 +10,8 @@ use crate::domain::{
     IdentityRef, IdentityResolveRequest, MarkerCreateRequest, MarkerDeleteRequest,
     MarkerListRequest, MarkerListResult, MarkerRecord, MarkerUpdatePositionRequest,
     PaperMessageEnvelope, PresenceListRequest, PresenceListResult, RemoteCommandRequest,
-    RemoteCommandResponse, TelemetryPoint, TelemetryQuery, TopicCreateRequest, TopicId,
+    RemoteCommandResponse, RemoteCommandSession, RemoteCommandSessionListRequest,
+    RemoteCommandSessionListResult, TelemetryPoint, TelemetryQuery, TopicCreateRequest, TopicId,
     TopicListRequest, TopicListResult, TopicPublishRequest, TopicRecord, TopicSubscriptionRequest,
     VoiceSessionId, VoiceSessionOpenRequest, VoiceSessionState, VoiceSessionUpdateRequest,
 };
@@ -40,6 +43,11 @@ pub trait LxmfSdkManualTick {
 #[cfg(feature = "sdk-async")]
 pub trait LxmfSdkAsync {
     fn subscribe_events(&self, start: SubscriptionStart) -> Result<EventSubscription, SdkError>;
+
+    fn open_event_stream(
+        &self,
+        subscription: &EventSubscription,
+    ) -> Result<Option<SdkEventStream>, SdkError>;
 }
 
 #[cfg(not(feature = "sdk-async"))]
@@ -246,6 +254,20 @@ pub trait LxmfSdkRemoteCommands {
         _correlation_id: String,
         _reply: RemoteCommandResponse,
     ) -> Result<Ack, SdkError> {
+        Err(SdkError::capability_disabled("sdk.capability.remote_commands"))
+    }
+
+    fn command_session_get(
+        &self,
+        _correlation_id: String,
+    ) -> Result<Option<RemoteCommandSession>, SdkError> {
+        Err(SdkError::capability_disabled("sdk.capability.remote_commands"))
+    }
+
+    fn command_session_list(
+        &self,
+        _req: RemoteCommandSessionListRequest,
+    ) -> Result<RemoteCommandSessionListResult, SdkError> {
         Err(SdkError::capability_disabled("sdk.capability.remote_commands"))
     }
 }

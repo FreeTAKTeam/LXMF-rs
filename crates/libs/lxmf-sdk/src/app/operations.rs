@@ -9,6 +9,8 @@ use std::sync::OnceLock;
 #[serde(transparent)]
 pub struct OperationId(String);
 
+type OperationIndexes = (BTreeMap<OperationId, usize>, BTreeMap<String, OperationId>);
+
 impl OperationId {
     pub fn new(value: impl Into<String>) -> Self {
         Self(value.into())
@@ -249,9 +251,7 @@ impl OperationRegistry {
         Self::new(merged)
     }
 
-    fn build_indexes(
-        entries: &[OperationEntry],
-    ) -> Result<(BTreeMap<OperationId, usize>, BTreeMap<String, OperationId>), RegistryError> {
+    fn build_indexes(entries: &[OperationEntry]) -> Result<OperationIndexes, RegistryError> {
         let mut by_id = BTreeMap::<OperationId, usize>::new();
         let mut aliases = BTreeMap::<String, OperationId>::new();
 
@@ -343,6 +343,15 @@ fn built_in_entries() -> Vec<OperationEntry> {
             "Queue one outbound message for delivery.",
         )
         .with_alias("sdk_send_v2"),
+        OperationEntry::new(
+            "app.delivery.send_batch",
+            "delivery",
+            OperationKind::Command,
+            TransportVariant::Rpc,
+            "Queue a batch of outbound messages for delivery.",
+        )
+        .with_alias("sdk_send_batch_v2")
+        .with_required_capability("sdk.capability.batch_send"),
         OperationEntry::new(
             "app.delivery.status",
             "delivery",
@@ -612,6 +621,49 @@ fn built_in_entries() -> Vec<OperationEntry> {
         .with_alias("sdk_marker_delete_v2")
         .with_required_capability("sdk.capability.markers"),
         OperationEntry::new(
+            "app.workflow.peer_ready",
+            "workflow",
+            OperationKind::Command,
+            TransportVariant::Rpc,
+            "Ensure a peer contact exists and optionally announce before use.",
+        )
+        .with_alias("sdk_workflow_peer_ready_v2")
+        .with_required_capability("sdk.capability.contact_management")
+        .with_required_capability("sdk.capability.identity_discovery"),
+        OperationEntry::new(
+            "app.workflow.topic_sync",
+            "workflow",
+            OperationKind::Command,
+            TransportVariant::Rpc,
+            "Ensure a topic exists, subscribe to it, and fetch a telemetry snapshot.",
+        )
+        .with_alias("sdk_workflow_topic_sync_v2")
+        .with_required_capability("sdk.capability.topics")
+        .with_required_capability("sdk.capability.topic_subscriptions")
+        .with_required_capability("sdk.capability.telemetry_query"),
+        OperationEntry::new(
+            "app.workflow.attachment_report_publish",
+            "workflow",
+            OperationKind::Command,
+            TransportVariant::Rpc,
+            "Ensure a topic, store an attachment, and publish a summary report.",
+        )
+        .with_alias("sdk_workflow_attachment_report_publish_v2")
+        .with_required_capability("sdk.capability.topics")
+        .with_required_capability("sdk.capability.attachments")
+        .with_required_capability("sdk.capability.topic_fanout"),
+        OperationEntry::new(
+            "app.workflow.mission_update_send",
+            "workflow",
+            OperationKind::Command,
+            TransportVariant::Rpc,
+            "Ensure peer and optional topic state, store attachments, and send a mission update.",
+        )
+        .with_alias("sdk_workflow_mission_update_send_v2")
+        .with_required_capability("sdk.capability.contact_management")
+        .with_required_capability("sdk.capability.topics")
+        .with_required_capability("sdk.capability.attachments"),
+        OperationEntry::new(
             "app.voice.session.open",
             "voice",
             OperationKind::Command,
@@ -753,12 +805,12 @@ mod tests {
         let registry = OperationRegistry::built_in();
         let grouped = registry.entries_by_group();
 
-        assert!(grouped.get("runtime").is_some());
-        assert!(grouped.get("attachments").is_some());
-        assert!(grouped.get("markers").is_some());
-        assert!(grouped.get("telemetry").is_some());
-        assert!(grouped.get("topics").is_some());
-        assert!(grouped.get("voice").is_some());
+        assert!(grouped.contains_key("runtime"));
+        assert!(grouped.contains_key("attachments"));
+        assert!(grouped.contains_key("markers"));
+        assert!(grouped.contains_key("telemetry"));
+        assert!(grouped.contains_key("topics"));
+        assert!(grouped.contains_key("voice"));
         assert!(grouped
             .get("identity")
             .expect("identity group")

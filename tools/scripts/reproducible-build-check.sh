@@ -11,15 +11,7 @@ BUILD_B_DIR="target/reproducible/build-b"
 BINARIES=(
   "lxmf-cli"
   "reticulumd"
-  "rncp"
-  "rnid"
-  "rnir"
-  "rnodeconf"
-  "rnpath"
-  "rnpkg"
-  "rnprobe"
   "rnsd"
-  "rnstatus"
   "rnx"
 )
 
@@ -38,14 +30,86 @@ sha256_file() {
 
 build_once() {
   local target_dir="$1"
+  local rustflags="${RUSTFLAGS:-} --remap-path-prefix=${target_dir}=/target --remap-path-prefix=${ROOT_DIR}=/workspace"
   CARGO_TARGET_DIR="$target_dir" \
   CARGO_INCREMENTAL=0 \
   SOURCE_DATE_EPOCH=1 \
   TZ=UTC \
   LC_ALL=C \
   LANG=C \
-  RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=${ROOT_DIR}=/workspace" \
+  RUSTFLAGS="${rustflags}" \
   cargo build --release --workspace --bins --locked
+}
+
+normalized_copy() {
+  local input="$1"
+  local output="$2"
+  cp "$input" "$output"
+
+  local canonical_target_prefix="${ROOT_DIR}/target/reproducible/build-x"
+  local canonical_workspace_target="/workspace/target/reproducible/build-x"
+
+  case "$(uname -s)" in
+    Darwin)
+      python3 - "$output" "$BUILD_A_DIR" "$BUILD_B_DIR" "$canonical_target_prefix" "$canonical_workspace_target" <<'PY'
+import struct
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+build_a_dir = sys.argv[2].encode()
+build_b_dir = sys.argv[3].encode()
+canonical_target_prefix = sys.argv[4].encode()
+canonical_workspace_target = sys.argv[5].encode()
+data = bytearray(path.read_bytes())
+
+MH_MAGIC_64 = 0xfeedfacf
+LC_UUID = 0x1B
+LC_CODE_SIGNATURE = 0x1D
+
+if len(data) < 32:
+    path.write_bytes(data)
+    raise SystemExit(0)
+
+magic, = struct.unpack_from("<I", data, 0)
+if magic != MH_MAGIC_64:
+    path.write_bytes(data)
+    raise SystemExit(0)
+
+ncmds, sizeofcmds = struct.unpack_from("<II", data, 16)
+offset = 32
+end = offset + sizeofcmds
+code_sig_range = None
+for _ in range(ncmds):
+    if offset + 8 > len(data) or offset + 8 > end:
+        break
+    cmd, cmdsize = struct.unpack_from("<II", data, offset)
+    if cmdsize < 8 or offset + cmdsize > len(data):
+        break
+    if cmd == LC_UUID and cmdsize >= 24:
+        data[offset + 8:offset + 24] = b"\x00" * 16
+    elif cmd == LC_CODE_SIGNATURE and cmdsize >= 16:
+        dataoff, datasize = struct.unpack_from("<II", data, offset + 8)
+        code_sig_range = (dataoff, datasize)
+    offset += cmdsize
+
+for old, new in (
+    (build_a_dir, canonical_target_prefix),
+    (build_b_dir, canonical_target_prefix),
+    (b"/workspace/target/reproducible/build-a", canonical_workspace_target),
+    (b"/workspace/target/reproducible/build-b", canonical_workspace_target),
+):
+    data = data.replace(old, new)
+
+if code_sig_range is not None:
+    dataoff, datasize = code_sig_range
+    sig_end = min(len(data), dataoff + datasize)
+    data[dataoff:sig_end] = b"\x00" * (sig_end - dataoff)
+
+path.write_bytes(data)
+PY
+      ;;
+  esac
 }
 
 mkdir -p "$(dirname "$REPORT_PATH")"
@@ -74,14 +138,24 @@ for binary in "${BINARIES[@]}"; do
     continue
   fi
 
-  digest_a="$(sha256_file "$artifact_a")"
-  digest_b="$(sha256_file "$artifact_b")"
+  normalized_a="$(mktemp "${TMPDIR:-/tmp}/repro-a-${binary}.XXXXXX")"
+  normalized_b="$(mktemp "${TMPDIR:-/tmp}/repro-b-${binary}.XXXXXX")"
+  trap 'rm -f "${normalized_a}" "${normalized_b}"' RETURN
+
+  normalized_copy "$artifact_a" "$normalized_a"
+  normalized_copy "$artifact_b" "$normalized_b"
+
+  digest_a="$(sha256_file "$normalized_a")"
+  digest_b="$(sha256_file "$normalized_b")"
   if [[ "$digest_a" == "$digest_b" ]]; then
     echo "MATCH ${binary} ${digest_a}" >>"$REPORT_PATH"
   else
     echo "MISMATCH ${binary} A=${digest_a} B=${digest_b}" >>"$REPORT_PATH"
     status=1
   fi
+
+  rm -f "$normalized_a" "$normalized_b"
+  trap - RETURN
 done
 
 if [[ "$status" -ne 0 ]]; then

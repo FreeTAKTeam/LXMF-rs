@@ -8,6 +8,10 @@
 
 The workspace had accumulated multiple compatibility paths across `lxmf`, `reticulum-daemon`, and `reticulum`:
 
+Historical naming note: this ADR predates the workspace/package split cleanup.
+The maintained crates.io package names for the active wire and daemon RPC
+surfaces are now `lxmf-wire` and `reticulum-rs-rpc`.
+
 - duplicate bridge/runtime conversion logic,
 - relaxed inbound decode fallback controlled by environment flags,
 - mixed attachment key handling (`attachments`, `files`, and public `"5"`),
@@ -30,7 +34,7 @@ We adopt a clean-break canonical policy for v0.3:
 5. Inbound payload shape selection is explicit (`FullWire` vs `DestinationStripped`) at call sites.
 6. Client surfaces call `send_message_v2` directly; no client fallback to `send_message`.
 7. Server keeps both `send_message` and `send_message_v2`, but both flow through the same strict outbound bridge path.
-8. Shared helpers live in `reticulum` for:
+8. Shared helpers live in the Reticulum stack crates for:
    - delivery/link send outcomes and link send fallback behavior,
    - destination hash parsing,
    - receipt mapping and receipt status recording.

@@ -147,6 +147,218 @@ fn sdk_release_b_domain_methods_roundtrip() {
 }
 
 #[test]
+fn sdk_cursor_hint_returns_latest_non_null_cursor_for_method() {
+    let daemon = RpcDaemon::test_instance();
+
+    for (id, topic_path) in [(900_u64, "ops/alpha"), (901_u64, "ops/bravo")] {
+        let created = daemon
+            .handle_rpc(rpc_request(
+                id,
+                "sdk_topic_create_v2",
+                json!({
+                    "topic_path": topic_path,
+                    "metadata": { "kind": "ops" },
+                }),
+            ))
+            .expect("topic create");
+        assert!(created.error.is_none());
+    }
+
+    let paged = daemon
+        .handle_rpc(rpc_request(902, "sdk_topic_list_v2", json!({ "limit": 1 })))
+        .expect("paged topic list");
+    assert!(paged.error.is_none());
+    let first_cursor = paged.result.expect("paged result")["next_cursor"]
+        .as_str()
+        .expect("first cursor")
+        .to_string();
+
+    let hinted = daemon
+        .handle_rpc(rpc_request(
+            903,
+            "sdk_cursor_hint_v2",
+            json!({ "method": "sdk_topic_list_v2" }),
+        ))
+        .expect("cursor hint");
+    assert!(hinted.error.is_none());
+    let hinted_result = hinted.result.expect("hint result");
+    assert_eq!(hinted_result["method"], json!("sdk_topic_list_v2"));
+    assert_eq!(hinted_result["hint"]["method"], json!("sdk_topic_list_v2"));
+    assert_eq!(hinted_result["hint"]["next_cursor"], json!(first_cursor.clone()));
+    assert!(hinted_result["hint"]["captured_at_ms"].as_u64().is_some());
+
+    let terminal = daemon
+        .handle_rpc(rpc_request(904, "sdk_topic_list_v2", json!({ "limit": 10 })))
+        .expect("terminal topic list");
+    assert!(terminal.error.is_none());
+    assert_eq!(terminal.result.expect("terminal result")["next_cursor"], JsonValue::Null);
+
+    let retained = daemon
+        .handle_rpc(rpc_request(
+            905,
+            "sdk_cursor_hint_v2",
+            json!({ "method": "sdk_topic_list_v2" }),
+        ))
+        .expect("retained cursor hint");
+    assert!(retained.error.is_none());
+    assert_eq!(retained.result.expect("retained result")["hint"]["next_cursor"], json!(first_cursor));
+}
+
+#[test]
+fn sdk_domain_snapshot_restore_accepts_legacy_remote_command_arrays() {
+    let store = MessagesStore::in_memory().expect("in-memory store");
+    store
+        .put_sdk_domain_snapshot(&json!({
+            "next_domain_seq": 7,
+            "topics": {},
+            "topic_order": [],
+            "topic_subscriptions": [],
+            "telemetry_points": [],
+            "attachments": {},
+            "attachment_payloads": {},
+            "attachment_order": [],
+            "markers": {},
+            "marker_order": [],
+            "identities": {},
+            "contacts": {},
+            "contact_order": [],
+            "active_identity": null,
+            "remote_commands": ["cmd-legacy-1", "cmd-legacy-2"],
+            "voice_sessions": {},
+        }))
+        .expect("persist legacy snapshot");
+
+    let daemon = RpcDaemon::with_store(store, "legacy-restore-node".to_string());
+
+    let command_sessions = daemon
+        .handle_rpc(rpc_request(
+            499,
+            "sdk_command_session_list_v2",
+            json!({ "limit": 10 }),
+        ))
+        .expect("command session list");
+    assert!(command_sessions.error.is_none());
+    assert_eq!(
+        command_sessions.result.expect("command session list result")["session_list"]["sessions"]
+            .as_array()
+            .expect("session rows")
+            .len(),
+        0
+    );
+}
+
+#[test]
+fn sdk_remote_command_sessions_correlate_inbound_messages() {
+    let daemon = RpcDaemon::test_instance();
+
+    let command = daemon
+        .handle_rpc(rpc_request(
+            500,
+            "sdk_command_invoke_v2",
+            json!({
+                "command": "ping",
+                "target": "node-b",
+                "payload": { "body": "hello" },
+            }),
+        ))
+        .expect("command invoke");
+    assert!(command.error.is_none());
+    let correlation_id = command.result.expect("command result")["response"]["payload"]
+        ["correlation_id"]
+        .as_str()
+        .expect("correlation_id")
+        .to_string();
+
+    let pre_poll = daemon
+        .handle_rpc(rpc_request(
+            501,
+            "sdk_poll_events_v2",
+            json!({ "cursor": null, "max": 100 }),
+        ))
+        .expect("pre poll");
+    assert!(pre_poll.error.is_none());
+    let pre_cursor = pre_poll.result.expect("pre poll result")["next_cursor"]
+        .as_str()
+        .expect("pre cursor")
+        .to_string();
+
+    daemon
+        .accept_inbound_for_test(MessageRecord {
+            id: "cmd-progress-1".to_owned(),
+            source: "node-b".to_owned(),
+            destination: "test-identity".to_owned(),
+            title: "command progress".to_owned(),
+            content: "processing".to_owned(),
+            timestamp: now_i64(),
+            direction: "in".to_owned(),
+            fields: Some(json!({
+                "sdk_command": {
+                    "correlation_id": correlation_id,
+                    "event": "processing_started",
+                    "payload": { "stage": "decode" }
+                }
+            })),
+            receipt_status: None,
+        })
+        .expect("accept inbound progress");
+
+    daemon
+        .accept_inbound_for_test(MessageRecord {
+            id: "cmd-complete-1".to_owned(),
+            source: "node-b".to_owned(),
+            destination: "test-identity".to_owned(),
+            title: "command complete".to_owned(),
+            content: "done".to_owned(),
+            timestamp: now_i64(),
+            direction: "in".to_owned(),
+            fields: Some(json!({
+                "sdk_command": {
+                    "correlation_id": correlation_id,
+                    "event": "completed",
+                    "accepted": true,
+                    "payload": { "reply": "pong" }
+                }
+            })),
+            receipt_status: None,
+        })
+        .expect("accept inbound completion");
+
+    let session = daemon
+        .handle_rpc(rpc_request(
+            502,
+            "sdk_command_session_get_v2",
+            json!({ "correlation_id": correlation_id.clone() }),
+        ))
+        .expect("command session get");
+    assert!(session.error.is_none());
+    let session_result = session.result.expect("session result");
+    let command_id = session_result["session"]["command_id"].clone();
+    assert_eq!(session_result["session"]["command_state"], json!("completed"));
+    assert_eq!(session_result["session"]["accepted"], json!(true));
+    assert_eq!(session_result["session"]["response_payload"]["reply"], json!("pong"));
+
+    let poll = daemon
+        .handle_rpc(rpc_request(
+            503,
+            "sdk_poll_events_v2",
+            json!({ "cursor": pre_cursor, "max": 100 }),
+        ))
+        .expect("poll events");
+    assert!(poll.error.is_none());
+    let poll_result = poll.result.expect("poll result");
+    let events = poll_result["events"].as_array().expect("events");
+    assert!(events.iter().any(|event| {
+        event["event_type"] == json!("command.processing_started")
+            && event["payload"]["command_id"] == command_id
+    }));
+    assert!(events.iter().any(|event| {
+        event["event_type"] == json!("command.completed")
+            && event["payload"]["command_id"] == command_id
+            && event["payload"]["response_payload"]["kind"] == json!("object")
+    }));
+}
+
+#[test]
 fn sdk_release_b_filtered_list_cursor_does_not_stall_on_no_matches() {
     let daemon = RpcDaemon::test_instance();
     let topic_a = daemon
@@ -386,6 +598,14 @@ fn sdk_release_c_domain_methods_roundtrip() {
     assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.voice.session.open")));
     assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.voice.session.update")));
     assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.voice.session.close")));
+    assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.workflow.peer_ready")));
+    assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.workflow.topic_sync")));
+    assert!(registry_entries
+        .iter()
+        .any(|entry| entry["id"] == json!("app.workflow.attachment_report_publish")));
+    assert!(registry_entries
+        .iter()
+        .any(|entry| entry["id"] == json!("app.workflow.mission_update_send")));
 
     let list_before =
         daemon.handle_rpc(rpc_request(120, "sdk_identity_list_v2", json!({}))).expect("list");
@@ -558,6 +778,19 @@ fn sdk_release_c_domain_methods_roundtrip() {
     assert!(paper_decode.error.is_none());
     assert_eq!(paper_decode.result.expect("result")["accepted"], json!(true));
 
+    let pre_command_poll = daemon
+        .handle_rpc(rpc_request(
+            1269,
+            "sdk_poll_events_v2",
+            json!({ "cursor": null, "max": 200 }),
+        ))
+        .expect("pre-command poll");
+    assert!(pre_command_poll.error.is_none());
+    let pre_command_cursor = pre_command_poll.result.expect("pre-command poll result")["next_cursor"]
+        .as_str()
+        .expect("pre-command cursor")
+        .to_string();
+
     let command = daemon
         .handle_rpc(rpc_request(
             127,
@@ -575,6 +808,52 @@ fn sdk_release_c_domain_methods_roundtrip() {
         .as_str()
         .expect("correlation id")
         .to_string();
+    let command_session = daemon
+        .handle_rpc(rpc_request(
+            1271,
+            "sdk_command_session_get_v2",
+            json!({ "correlation_id": correlation_id.clone() }),
+        ))
+        .expect("command session get");
+    assert!(command_session.error.is_none());
+    let command_session_result = command_session.result.expect("command session result");
+    assert_eq!(command_session_result["session"]["correlation_id"], json!(correlation_id.clone()));
+    assert_eq!(command_session_result["session"]["command_state"], json!("dispatched"));
+
+    let command_sessions = daemon
+        .handle_rpc(rpc_request(
+            1272,
+            "sdk_command_session_list_v2",
+            json!({ "limit": 10 }),
+        ))
+        .expect("command session list");
+    assert!(command_sessions.error.is_none());
+    assert!(command_sessions.result.expect("command session list result")["session_list"]["sessions"]
+        .as_array()
+        .expect("command session rows")
+        .iter()
+        .any(|row| row["correlation_id"] == json!(correlation_id.clone())));
+    let dispatched_events = daemon
+        .handle_rpc(rpc_request(
+            1273,
+            "sdk_poll_events_v2",
+            json!({ "cursor": pre_command_cursor, "max": 50 }),
+        ))
+        .expect("poll dispatched events");
+    assert!(dispatched_events.error.is_none());
+    let dispatched_events_result = dispatched_events.result.expect("dispatched events result");
+    let post_dispatch_cursor = dispatched_events_result["next_cursor"]
+        .as_str()
+        .expect("post-dispatch cursor")
+        .to_string();
+    assert!(dispatched_events_result["events"]
+        .as_array()
+        .expect("events")
+        .iter()
+        .any(|event| {
+            event["event_type"] == json!("command.dispatched")
+                && event["payload"]["command"] == json!("ping")
+        }));
 
     let command_reply = daemon
         .handle_rpc(rpc_request(
@@ -589,6 +868,37 @@ fn sdk_release_c_domain_methods_roundtrip() {
         .expect("command reply");
     assert!(command_reply.error.is_none());
     assert_eq!(command_reply.result.expect("result")["accepted"], json!(true));
+    let command_session_after_reply = daemon
+        .handle_rpc(rpc_request(
+            1282,
+            "sdk_command_session_get_v2",
+            json!({ "correlation_id": correlation_id.clone() }),
+        ))
+        .expect("command session after reply");
+    assert!(command_session_after_reply.error.is_none());
+    let command_session_after_reply_result =
+        command_session_after_reply.result.expect("command session after reply result");
+    assert_eq!(command_session_after_reply_result["session"]["command_state"], json!("completed"));
+    assert_eq!(
+        command_session_after_reply_result["session"]["response_payload"]["reply"],
+        json!("pong")
+    );
+    let completion_events = daemon
+        .handle_rpc(rpc_request(
+            1283,
+            "sdk_poll_events_v2",
+            json!({ "cursor": post_dispatch_cursor, "max": 50 }),
+        ))
+        .expect("poll completion events");
+    assert!(completion_events.error.is_none());
+    assert!(completion_events.result.expect("completion events result")["events"]
+        .as_array()
+        .expect("events")
+        .iter()
+        .any(|event| {
+            event["event_type"] == json!("command.completed")
+                && event["payload"]["accepted"] == json!(true)
+        }));
 
     let envelope_command = daemon
         .handle_rpc(rpc_request(
@@ -597,6 +907,7 @@ fn sdk_release_c_domain_methods_roundtrip() {
             json!({
                 "operation_id": "vendor.example.custom",
                 "kind": "command",
+                "correlation_id": "env-corr-1",
                 "target": "node-b",
                 "payload": { "body": "hello" },
                 "timeout_ms": 500,
@@ -608,8 +919,11 @@ fn sdk_release_c_domain_methods_roundtrip() {
     let envelope_response = &envelope_command.result.expect("envelope command result")["response"];
     assert_eq!(envelope_response["accepted"], json!(true));
     assert_eq!(envelope_response["extensions"]["via"], json!("test"));
+    assert_eq!(envelope_response["correlation_id"], json!("env-corr-1"));
     let envelope_payload = &envelope_response["payload"];
     assert_eq!(envelope_payload["command"], json!("vendor.example.custom"));
+    assert_eq!(envelope_payload["command_state"], json!("dispatched"));
+    assert!(envelope_payload["correlation_id"].as_str().is_some());
     assert_eq!(envelope_payload["target"], json!("node-b"));
 
     let voice_open = daemon
@@ -676,6 +990,244 @@ fn sdk_release_c_domain_methods_roundtrip() {
     assert_eq!(
         voice_update_envelope.result.expect("voice update envelope result")["response"]["payload"],
         json!("active")
+    );
+}
+
+#[test]
+fn sdk_operation_registry_roundtrips_workflow_family() {
+    let daemon = RpcDaemon::test_instance();
+
+    let peer_ready = daemon
+        .handle_rpc(rpc_request(
+            1360,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "sdk_workflow_peer_ready_v2",
+                "kind": "command",
+                "payload": {
+                    "identity": "node-b",
+                    "display_name": "Node Bravo",
+                    "trust_level": "trusted",
+                    "bootstrap": true,
+                    "announce": true,
+                },
+            }),
+        ))
+        .expect("workflow peer ready");
+    assert!(peer_ready.error.is_none());
+    let peer_payload = &peer_ready.result.expect("peer ready result")["response"]["payload"];
+    assert_eq!(peer_payload["contact"]["identity"], json!("node-b"));
+    assert_eq!(peer_payload["announced"], json!(true));
+
+    let topic_sync = daemon
+        .handle_rpc(rpc_request(
+            1361,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "sdk_workflow_topic_sync_v2",
+                "kind": "command",
+                "payload": {
+                    "topic_path": "ops/workflow",
+                    "telemetry_limit": 0,
+                },
+            }),
+        ))
+        .expect("workflow topic sync");
+    assert!(topic_sync.error.is_none());
+    let topic_payload = &topic_sync.result.expect("topic sync result")["response"]["payload"];
+    assert_eq!(topic_payload["topic"]["topic_path"], json!("ops/workflow"));
+    assert_eq!(topic_payload["subscribed"], json!(true));
+
+    let attachment_report = daemon
+        .handle_rpc(rpc_request(
+            1362,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "sdk_workflow_attachment_report_publish_v2",
+                "kind": "command",
+                "payload": {
+                    "topic_path": "ops/workflow",
+                    "summary_payload": { "summary": "workflow report" },
+                    "attachment": {
+                        "name": "report.txt",
+                        "content_type": "text/plain",
+                        "bytes_base64": "cmVwb3J0",
+                    },
+                },
+            }),
+        ))
+        .expect("workflow attachment report");
+    assert!(attachment_report.error.is_none());
+    let attachment_payload =
+        &attachment_report.result.expect("attachment report result")["response"]["payload"];
+    assert_eq!(attachment_payload["attachment"]["name"], json!("report.txt"));
+    assert_eq!(attachment_payload["published"]["accepted"], json!(true));
+
+    let mission = daemon
+        .handle_rpc(rpc_request(
+            1363,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "sdk_workflow_mission_update_send_v2",
+                "kind": "command",
+                "payload": {
+                    "peer_identity": "node-b",
+                    "content": "mission update",
+                    "topic_path": "ops/workflow",
+                    "attachments": [{
+                        "name": "sitrep.txt",
+                        "content_type": "text/plain",
+                        "bytes_base64": "c2l0cmVw",
+                    }],
+                },
+            }),
+        ))
+        .expect("workflow mission update");
+    assert!(mission.error.is_none());
+    let mission_payload = &mission.result.expect("mission update result")["response"]["payload"];
+    assert_eq!(mission_payload["topic"]["topic_path"], json!("ops/workflow"));
+    assert_eq!(mission_payload["attachments"].as_array().expect("attachments").len(), 1);
+    assert!(mission_payload["message_id"].as_str().is_some());
+}
+
+#[test]
+fn sdk_command_events_summarize_large_payloads() {
+    let daemon = RpcDaemon::test_instance();
+
+    let pre_poll = daemon
+        .handle_rpc(rpc_request(
+            490,
+            "sdk_poll_events_v2",
+            json!({ "cursor": null, "max": 50 }),
+        ))
+        .expect("pre poll");
+    assert!(pre_poll.error.is_none());
+    let pre_cursor = pre_poll.result.expect("pre poll result")["next_cursor"]
+        .as_str()
+        .expect("pre cursor")
+        .to_string();
+
+    let large_body = "x".repeat(64 * 1024);
+    let command = daemon
+        .handle_rpc(rpc_request(
+            491,
+            "sdk_command_invoke_v2",
+            json!({
+                "command": "large",
+                "target": "node-b",
+                "payload": { "body": large_body },
+            }),
+        ))
+        .expect("command invoke");
+    assert!(command.error.is_none());
+
+    let poll = daemon
+        .handle_rpc(rpc_request(
+            492,
+            "sdk_poll_events_v2",
+            json!({ "cursor": pre_cursor, "max": 50 }),
+        ))
+        .expect("poll");
+    assert!(poll.error.is_none());
+    let events = poll.result.expect("poll result")["events"].as_array().expect("events").clone();
+    let dispatched = events
+        .iter()
+        .find(|event| event["event_type"] == json!("command.dispatched"))
+        .expect("command.dispatched event");
+    assert_eq!(dispatched["payload"]["request_payload"]["kind"], json!("object"));
+    assert_eq!(dispatched["payload"]["request_payload"]["truncated"], json!(true));
+}
+
+#[test]
+fn sdk_operation_registry_includes_product_catalog_entries() {
+    let daemon =
+        RpcDaemon::test_instance().with_sdk_custom_operations(vec![SdkCustomOperationSpec::new(
+            "r3akt.message.send",
+            "r3akt",
+            "command",
+            "extension",
+            "Send a R3AKT product message through the shared operation runtime.",
+        )
+        .with_alias("R3AKT;EMergencyMessages.send")]);
+
+    let registry = daemon
+        .handle_rpc(rpc_request(1318, "sdk_operation_registry_v2", json!({})))
+        .expect("operation registry");
+    assert!(registry.error.is_none());
+    let entries = registry.result.expect("registry result")["registry"]["entries"]
+        .as_array()
+        .expect("registry entries")
+        .clone();
+    let custom = entries
+        .iter()
+        .find(|entry| entry["id"] == json!("r3akt.message.send"))
+        .expect("custom operation entry");
+    assert_eq!(custom["group"], json!("r3akt"));
+    assert_eq!(custom["transport_variant"], json!("extension"));
+    assert_eq!(custom["aliases"][0], json!("R3AKT;EMergencyMessages.send"));
+
+    let response = daemon
+        .handle_rpc(rpc_request(
+            1319,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "R3AKT;EMergencyMessages.send",
+                "kind": "command",
+                "target": "node-b",
+                "payload": { "text": "hello" },
+                "extensions": { "product": "r3akt" }
+            }),
+        ))
+        .expect("custom operation envelope");
+    assert!(response.error.is_none());
+    let response = response.result.expect("custom envelope result");
+    assert_eq!(response["response"]["operation_id"], json!("r3akt.message.send"));
+    assert_eq!(response["response"]["payload"]["command"], json!("r3akt.message.send"));
+    assert_eq!(response["response"]["extensions"]["product"], json!("r3akt"));
+}
+
+#[test]
+fn sdk_negotiate_v2_installs_product_catalog_entries() {
+    let daemon = RpcDaemon::test_instance();
+    let negotiated = daemon
+        .handle_rpc(rpc_request(
+            1316,
+            "sdk_negotiate_v2",
+            json!({
+                "supported_contract_versions": [2],
+                "requested_capabilities": [],
+                "config": {
+                    "profile": "desktop-full",
+                    "extensions": {
+                        "custom_operations": [{
+                            "id": "r3akt.message.send",
+                            "group": "r3akt",
+                            "kind": "command",
+                            "transport_variant": "extension",
+                            "description": "Send a R3AKT product message through the shared operation runtime.",
+                            "aliases": ["R3AKT;EMergencyMessages.send"]
+                        }]
+                    }
+                }
+            }),
+        ))
+        .expect("negotiate with custom operation catalog");
+    assert!(negotiated.error.is_none());
+
+    let registry = daemon
+        .handle_rpc(rpc_request(1317, "sdk_operation_registry_v2", json!({})))
+        .expect("operation registry");
+    assert!(registry.error.is_none());
+    let entries = registry.result.expect("registry result")["registry"]["entries"]
+        .as_array()
+        .expect("registry entries")
+        .clone();
+    assert!(
+        entries.iter().any(|entry| {
+            entry["id"] == json!("r3akt.message.send")
+                && entry["aliases"][0] == json!("R3AKT;EMergencyMessages.send")
+        }),
+        "startup product catalog should be visible through the daemon registry"
     );
 }
 
@@ -1393,6 +1945,19 @@ fn sdk_domain_state_survives_restart() {
             ))
             .expect("command reply after restart");
         assert!(command_reply.error.is_none());
+        let command_session = daemon
+            .handle_rpc(rpc_request(
+                2151,
+                "sdk_command_session_get_v2",
+                json!({ "correlation_id": correlation_id.clone() }),
+            ))
+            .expect("command session after restart");
+        assert!(command_session.error.is_none());
+        assert_eq!(
+            command_session.result.expect("command session after restart result")["session"]
+                ["command_state"],
+            json!("completed")
+        );
 
         let voice_close = daemon
             .handle_rpc(rpc_request(
@@ -1507,6 +2072,55 @@ fn sdk_domain_state_is_storage_authoritative_across_live_daemons() {
         ))
         .expect("command reply on daemon B");
     assert!(command_reply_from_b.error.is_none());
+
+    let command_session_from_b = daemon_b
+        .handle_rpc(rpc_request(
+            306,
+            "sdk_command_session_get_v2",
+            json!({ "correlation_id": correlation_id.clone() }),
+        ))
+        .expect("command session get on daemon B");
+    assert!(command_session_from_b.error.is_none());
+    assert_eq!(
+        command_session_from_b.result.expect("command session result")["session"]["response_payload"]
+            ["reply"],
+        json!("ok")
+    );
+
+    daemon_b
+        .accept_inbound_for_test(MessageRecord {
+            id: "cmd-live-daemon-complete".to_owned(),
+            source: "peer-a".to_owned(),
+            destination: "authority-node".to_owned(),
+            title: "command complete".to_owned(),
+            content: "ok".to_owned(),
+            timestamp: now_i64(),
+            direction: "in".to_owned(),
+            fields: Some(json!({
+                "sdk_command": {
+                    "correlation_id": correlation_id,
+                    "event": "completed",
+                    "accepted": true,
+                    "payload": { "reply": "from-inbound" }
+                }
+            })),
+            receipt_status: None,
+        })
+        .expect("accept inbound correlation on daemon B");
+
+    let command_session_after_inbound = daemon_b
+        .handle_rpc(rpc_request(
+            307,
+            "sdk_command_session_get_v2",
+            json!({ "correlation_id": correlation_id.clone() }),
+        ))
+        .expect("command session get after inbound");
+    assert!(command_session_after_inbound.error.is_none());
+    assert_eq!(
+        command_session_after_inbound.result.expect("command session after inbound result")["session"]
+            ["response_payload"]["reply"],
+        json!("from-inbound")
+    );
 
     let _ = std::fs::remove_file(&db_path);
 }
@@ -1741,6 +2355,27 @@ fn sdk_config_and_terminal_state_survive_restart_without_orphan_transitions() {
 
 #[test]
 fn sdk_backup_restore_drill_recovers_snapshot_and_messages() {
+    fn sqlite_sidecar_paths(path: &std::path::Path) -> [std::path::PathBuf; 2] {
+        let file_name = path.file_name().expect("sqlite file name").to_string_lossy();
+        [
+            path.with_file_name(format!("{file_name}-wal")),
+            path.with_file_name(format!("{file_name}-shm")),
+        ]
+    }
+
+    fn checkpoint_sqlite_db(path: &std::path::Path) {
+        let conn = rusqlite::Connection::open(path).expect("open sqlite for checkpoint");
+        conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);").expect("checkpoint sqlite db");
+    }
+
+    fn restore_sqlite_file(from: &std::path::Path, to: &std::path::Path) {
+        let _ = std::fs::remove_file(to);
+        for sidecar in sqlite_sidecar_paths(to) {
+            let _ = std::fs::remove_file(sidecar);
+        }
+        std::fs::copy(from, to).expect("restore backup");
+    }
+
     use std::time::{SystemTime, UNIX_EPOCH};
 
     let run_id = SystemTime::now().duration_since(UNIX_EPOCH).expect("unix epoch").as_nanos();
@@ -1787,6 +2422,7 @@ fn sdk_backup_restore_drill_recovers_snapshot_and_messages() {
         assert!(inbound.error.is_none());
     }
 
+    checkpoint_sqlite_db(db_path.as_path());
     std::fs::copy(db_path.as_path(), backup_path.as_path()).expect("copy backup");
 
     {
@@ -1822,7 +2458,7 @@ fn sdk_backup_restore_drill_recovers_snapshot_and_messages() {
         assert!(drift_inbound.error.is_none());
     }
 
-    std::fs::copy(backup_path.as_path(), db_path.as_path()).expect("restore backup");
+    restore_sqlite_file(backup_path.as_path(), db_path.as_path());
 
     {
         let store = MessagesStore::open(db_path.as_path()).expect("open restored sqlite store");
@@ -1875,4 +2511,10 @@ fn sdk_backup_restore_drill_recovers_snapshot_and_messages() {
 
     let _ = std::fs::remove_file(&db_path);
     let _ = std::fs::remove_file(&backup_path);
+    for sidecar in sqlite_sidecar_paths(db_path.as_path()) {
+        let _ = std::fs::remove_file(sidecar);
+    }
+    for sidecar in sqlite_sidecar_paths(backup_path.as_path()) {
+        let _ = std::fs::remove_file(sidecar);
+    }
 }

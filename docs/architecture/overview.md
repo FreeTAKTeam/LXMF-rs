@@ -8,11 +8,13 @@
 - Protocol extension growth is versioned and governed by registry.
 
 ## Stable Public Crates
-- `lxmf-core`
+- `lxmf`
+- `lxmf-wire`
 - `lxmf-sdk`
-- `rns-core`
-- `rns-transport`
-- `rns-rpc`
+- `reticulum-rs`
+- `reticulum-rs-core`
+- `reticulum-rs-transport`
+- `reticulum-rs-rpc`
 
 ## Extension Governance
 - Registry source of truth: `docs/contracts/extension-registry.md`
@@ -22,12 +24,16 @@
 ## SDK Integration Guide
 - Guide index: `docs/sdk/README.md`
 - Lifecycle/event operations: `docs/sdk/lifecycle-and-events.md`
+- Remote mTLS: `docs/sdk/remote-mtls.md`
+- Delivery states: `docs/sdk/delivery-states.md`
+- Error handling: `docs/sdk/error-handling.md`
 - Profile/security configuration: `docs/sdk/configuration-profiles.md`
+- JSON and wire-field mapping details: `docs/architecture/json-lxmf-fields.md`
 
 ## Layering Rules
 - `crates/libs/*` must not depend on `crates/apps/*`.
-- `lxmf-core` must not directly depend on `tokio`, `clap`, `ureq`, or `serde_json`.
-- `rns-core` must not directly depend on `tokio` or `clap`.
+- `lxmf-wire` (`crates/libs/lxmf-core`) must not directly depend on `tokio`, `clap`, `ureq`, or `serde_json`.
+- `reticulum-rs-core` (`crates/libs/rns-core`) must not directly depend on `tokio` or `clap`.
 - CLI/daemon concerns live in `crates/apps/*`.
 - Module size policy and exception registry:
   - `docs/architecture/module-size-policy.md`

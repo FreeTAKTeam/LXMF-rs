@@ -7,6 +7,7 @@ const CAP_MANUAL_TICK: &str = "sdk.capability.manual_tick";
 const CAP_TOKEN_AUTH: &str = "sdk.capability.token_auth";
 const CAP_MTLS_AUTH: &str = "sdk.capability.mtls_auth";
 const CAP_RECEIPT_TERMINALITY: &str = "sdk.capability.receipt_terminality";
+const CAP_BATCH_SEND: &str = "sdk.capability.batch_send";
 const CAP_CONFIG_REVISION_CAS: &str = "sdk.capability.config_revision_cas";
 const CAP_IDEMPOTENCY_TTL: &str = "sdk.capability.idempotency_ttl";
 const CAP_TOPICS: &str = "sdk.capability.topics";
@@ -58,6 +59,7 @@ const DESKTOP_FULL_SUPPORTED: &[&str] = &[
     CAP_TOKEN_AUTH,
     CAP_MTLS_AUTH,
     CAP_RECEIPT_TERMINALITY,
+    CAP_BATCH_SEND,
     CAP_CONFIG_REVISION_CAS,
     CAP_IDEMPOTENCY_TTL,
     CAP_TOPICS,
@@ -89,6 +91,7 @@ const DESKTOP_LOCAL_RUNTIME_SUPPORTED: &[&str] = &[
     CAP_TOKEN_AUTH,
     CAP_MTLS_AUTH,
     CAP_RECEIPT_TERMINALITY,
+    CAP_BATCH_SEND,
     CAP_CONFIG_REVISION_CAS,
     CAP_IDEMPOTENCY_TTL,
     CAP_TOPICS,
@@ -118,6 +121,7 @@ const EMBEDDED_ALLOC_SUPPORTED: &[&str] = &[
     CAP_MANUAL_TICK,
     CAP_TOKEN_AUTH,
     CAP_RECEIPT_TERMINALITY,
+    CAP_BATCH_SEND,
     CAP_CONFIG_REVISION_CAS,
     CAP_IDEMPOTENCY_TTL,
     CAP_TOPICS,

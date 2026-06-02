@@ -195,6 +195,10 @@ fn send_request_builder_sets_optional_fields_and_extensions() {
     .with_idempotency_key("idem-1")
     .with_ttl_ms(42_000)
     .with_correlation_id("corr-1")
+    .with_delivery_method("direct")
+    .with_stamp_cost(16)
+    .with_include_ticket(true)
+    .with_try_propagation_on_fail(true)
     .with_extension("sdk.ext.example", serde_json::json!({"enabled": true}));
 
     assert_eq!(request.source, "source");
@@ -202,6 +206,10 @@ fn send_request_builder_sets_optional_fields_and_extensions() {
     assert_eq!(request.idempotency_key.as_deref(), Some("idem-1"));
     assert_eq!(request.ttl_ms, Some(42_000));
     assert_eq!(request.correlation_id.as_deref(), Some("corr-1"));
+    assert_eq!(request.delivery_method.as_deref(), Some("direct"));
+    assert_eq!(request.stamp_cost, Some(16));
+    assert_eq!(request.include_ticket, Some(true));
+    assert_eq!(request.try_propagation_on_fail, Some(true));
     assert_eq!(request.extensions.len(), 1);
 }
 

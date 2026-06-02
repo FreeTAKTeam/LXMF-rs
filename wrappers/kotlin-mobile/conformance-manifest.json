@@ -1,0 +1,15 @@
+{
+  "wrapper": "kotlin-mobile",
+  "contract_family": "sdk-app",
+  "contract_release": "v1",
+  "fixtures": "../../docs/fixtures/sdk-app-v1",
+  "scenarios": [
+    "lifecycle.start_stop_restart",
+    "events.delivery_ordering",
+    "timeout.poll_timeout",
+    "delivery.queue_pressure",
+    "connectivity.reconnect_recovery",
+    "errors.typed_mapping",
+    "compatibility.unknown_additive"
+  ]
+}

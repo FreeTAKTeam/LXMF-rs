@@ -1,18 +1,28 @@
 [package]
 name = "lxmf-sdk"
-version = "0.1.0"
+version = "0.2.1"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "High-level Rust SDK for LXMF clients and RPC-backed LXMF workflows."
+readme = "../../../README.md"
+documentation = "https://docs.rs/lxmf-sdk"
+keywords = ["lxmf", "sdk", "messaging", "reticulum"]
+categories = ["network-programming", "api-bindings"]
 
 [dependencies]
+lxmf-core.workspace = true
 rns-rpc = { workspace = true, optional = true }
 rustls = { workspace = true, optional = true }
 rustls-pemfile = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 thiserror.workspace = true
+tokio = { workspace = true, optional = true }
+tokio-rustls = { workspace = true, optional = true }
+tokio-stream = { workspace = true, optional = true }
+zeromq = { workspace = true, optional = true }
 hmac.workspace = true
 sha2.workspace = true
 hex.workspace = true
@@ -21,8 +31,9 @@ zeroize.workspace = true
 [features]
 default = ["std", "sdk-async", "rpc-backend"]
 std = []
-sdk-async = []
-rpc-backend = ["std", "dep:rns-rpc", "dep:rustls", "dep:rustls-pemfile"]
+sdk-async = ["dep:tokio", "dep:tokio-stream"]
+rpc-backend = ["std", "dep:rns-rpc", "dep:rustls", "dep:rustls-pemfile", "dep:tokio-rustls"]
+zmq-pipeline-backend = ["std", "sdk-async", "dep:rns-rpc", "dep:zeromq"]
 embedded-alloc = []
 loom-tests = []
 
@@ -36,6 +47,10 @@ ignore = { development = ["loom"] }
 [[bench]]
 name = "sdk_client_paths"
 harness = false
+
+[[example]]
+name = "zmq_pipeline_send"
+required-features = ["zmq-pipeline-backend"]
 
 [lints]
 workspace = true

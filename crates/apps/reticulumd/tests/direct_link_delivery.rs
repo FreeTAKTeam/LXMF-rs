@@ -30,7 +30,7 @@ async fn direct_send_uses_link_payloads() {
     let receiver = rns_transport::identity_bridge::to_transport_private_identity(&receiver);
 
     let transport = Transport::new(TransportConfig::new("test", &sender, true));
-    transport.iface_manager().lock().await.spawn(SinkInterface, sink_worker);
+    let proof_iface = transport.iface_manager().lock().await.spawn(SinkInterface, sink_worker);
 
     let destination = DestinationDesc {
         identity: *receiver.as_identity(),
@@ -47,7 +47,7 @@ async fn direct_send_uses_link_payloads() {
             .expect("input link");
     let proof = input_link.prove();
 
-    link.lock().await.handle_packet(&proof);
+    link.lock().await.handle_packet(&proof, proof_iface);
     tokio::time::sleep(Duration::from_millis(20)).await;
 
     let result = send_via_link(&transport, destination, b"hello link", Duration::from_secs(1))

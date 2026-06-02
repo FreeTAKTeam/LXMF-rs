@@ -1,5 +1,5 @@
 use super::delivery::DeliveryPlan;
-use super::node::{Config, Profile};
+use super::runtime::{Config, Profile};
 use crate::SdkConfig;
 
 impl Config {

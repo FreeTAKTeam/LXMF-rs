@@ -1,12 +1,10 @@
 use core::cmp;
 use core::convert::From;
 
-use aes::cipher::block_padding::Pkcs7;
-use aes::cipher::BlockDecryptMut;
-use aes::cipher::BlockSizeUser;
 use aes::cipher::Key;
 use aes::cipher::Unsigned;
-use cbc::cipher::BlockEncryptMut;
+use aes::cipher::{BlockDecryptMut, BlockEncryptMut, BlockSizeUser};
+use aes::Block;
 use cbc::cipher::KeyIvInit;
 use crypto_common::{IvSizeUser, KeySizeUser, OutputSizeUser};
 use hmac::{Hmac, Mac};
@@ -146,10 +144,19 @@ impl<R: CryptoRngCore + Copy> Fernet<R> {
 
         out_len += iv.len();
 
-        let chiper_len = AesCbcEnc::new(&self.enc_key, &iv)
-            .encrypt_padded_b2b_mut::<Pkcs7>(text.0, &mut out_buf[out_len..])
-            .map_err(|_| RnsError::InvalidArgument)?
-            .len();
+        let cipher_buf = &mut out_buf[out_len..out_len + padded_cipher_len];
+        cipher_buf[..text.0.len()].copy_from_slice(text.0);
+        let pad_len = padded_cipher_len - text.0.len();
+        for byte in &mut cipher_buf[text.0.len()..] {
+            *byte = pad_len as u8;
+        }
+
+        let mut cipher = AesCbcEnc::new(&self.enc_key, &iv);
+        for chunk in cipher_buf.chunks_exact_mut(AES_BLOCK_SIZE) {
+            cipher.encrypt_block_mut(Block::from_mut_slice(chunk));
+        }
+
+        let chiper_len = cipher_buf.len();
 
         out_len += chiper_len;
 
@@ -214,12 +221,30 @@ impl<R: CryptoRngCore + Copy> Fernet<R> {
             token_data[..IV_KEY_SIZE].try_into().map_err(|_| RnsError::InvalidArgument)?;
 
         let ciphertext = &token_data[IV_KEY_SIZE..tag_start_index];
+        if ciphertext.is_empty()
+            || ciphertext.len() % AES_BLOCK_SIZE != 0
+            || out_buf.len() < ciphertext.len()
+        {
+            return Err(RnsError::CryptoError);
+        }
 
-        let msg = AesCbcDec::new(&self.enc_key, &iv.into())
-            .decrypt_padded_b2b_mut::<Pkcs7>(ciphertext, out_buf)
-            .map_err(|_| RnsError::CryptoError)?;
+        let plain_buf = &mut out_buf[..ciphertext.len()];
+        plain_buf.copy_from_slice(ciphertext);
 
-        Ok(PlainText(msg))
+        let mut cipher = AesCbcDec::new(&self.enc_key, &iv.into());
+        for chunk in plain_buf.chunks_exact_mut(AES_BLOCK_SIZE) {
+            cipher.decrypt_block_mut(Block::from_mut_slice(chunk));
+        }
+
+        let pad_len = usize::from(*plain_buf.last().ok_or(RnsError::CryptoError)?);
+        if pad_len == 0 || pad_len > AES_BLOCK_SIZE || pad_len > plain_buf.len() {
+            return Err(RnsError::CryptoError);
+        }
+        if plain_buf[plain_buf.len() - pad_len..].iter().any(|byte| usize::from(*byte) != pad_len) {
+            return Err(RnsError::CryptoError);
+        }
+
+        Ok(PlainText(&plain_buf[..plain_buf.len() - pad_len]))
     }
 }
 

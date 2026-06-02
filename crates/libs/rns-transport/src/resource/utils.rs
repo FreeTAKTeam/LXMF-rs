@@ -1,21 +1,12 @@
-fn build_link_packet(
+#[doc(hidden)]
+pub fn build_link_packet(
     link: &Link,
     packet_type: PacketType,
     context: PacketContext,
     payload: &[u8],
 ) -> Result<Packet, RnsError> {
     let mut packet_data = PacketDataBuffer::new();
-    let should_encrypt = context != PacketContext::Resource
-        && !(packet_type == PacketType::Proof && context == PacketContext::ResourceProof);
-    if should_encrypt {
-        let cipher_text_len = {
-            let cipher_text = link.encrypt(payload, packet_data.accuire_buf_max())?;
-            cipher_text.len()
-        };
-        packet_data.resize(cipher_text_len);
-    } else {
-        packet_data.write(payload)?;
-    }
+    fill_link_packet_data(link, packet_type, context, payload, &mut packet_data)?;
     Ok(Packet {
         header: Header {
             destination_type: DestinationType::Link,
@@ -30,9 +21,52 @@ fn build_link_packet(
     })
 }
 
-pub(crate) fn build_resource_request_packet(link: &Link, request: &ResourceRequest) -> Packet {
+#[doc(hidden)]
+pub fn build_link_packet_into(
+    link: &Link,
+    packet_type: PacketType,
+    context: PacketContext,
+    payload: &[u8],
+    packet: &mut Packet,
+) -> Result<(), RnsError> {
+    packet.header = Header {
+        destination_type: DestinationType::Link,
+        packet_type,
+        ..Default::default()
+    };
+    packet.ifac = None;
+    packet.destination = *link.id();
+    packet.transport = None;
+    packet.context = context;
+    fill_link_packet_data(link, packet_type, context, payload, &mut packet.data)
+}
+
+#[doc(hidden)]
+pub fn build_resource_request_packet(link: &Link, request: &ResourceRequest) -> Packet {
     build_link_packet(link, PacketType::Data, PacketContext::ResourceRequest, &request.encode())
         .expect("resource request packet")
+}
+
+fn fill_link_packet_data(
+    link: &Link,
+    packet_type: PacketType,
+    context: PacketContext,
+    payload: &[u8],
+    packet_data: &mut PacketDataBuffer,
+) -> Result<(), RnsError> {
+    packet_data.reset();
+    let should_encrypt = context != PacketContext::Resource
+        && !(packet_type == PacketType::Proof && context == PacketContext::ResourceProof);
+    if should_encrypt {
+        let cipher_text_len = {
+            let cipher_text = link.encrypt(payload, packet_data.accuire_buf_max())?;
+            cipher_text.len()
+        };
+        packet_data.resize(cipher_text_len);
+    } else {
+        packet_data.write(payload)?;
+    }
+    Ok(())
 }
 
 fn slice_hashmap_segment(hashes: &[[u8; MAPHASH_LEN]], segment: usize) -> Vec<u8> {

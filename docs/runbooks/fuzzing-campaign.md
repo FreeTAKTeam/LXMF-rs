@@ -18,7 +18,7 @@ cargo run -p xtask -- sdk-fuzz-check
 
 The CI gate performs:
 - fuzz target compile checks for both fuzz crates
-- deterministic fuzz-smoke parser runs in `rns-rpc` and `lxmf-sdk`
+- deterministic fuzz-smoke parser runs in `reticulum-rs-rpc` and `lxmf-sdk`
 
 ## Long campaign (recommended pre-release)
 

@@ -1,5 +1,5 @@
 use super::errors::{Error, ErrorCategory, ErrorCode};
-use super::node::{Profile, SendReceipt};
+use super::runtime::{Profile, SendReceipt};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]

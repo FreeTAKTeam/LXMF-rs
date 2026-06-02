@@ -7,7 +7,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::buffer::{InputBuffer, OutputBuffer};
 use crate::error::RnsError;
-use crate::iface::RxMessage;
+use crate::iface::{IfaceSource, RxMessage};
 use crate::packet::Packet;
 use crate::serde::Serialize;
 
@@ -37,23 +37,52 @@ fn tx_diag_enabled() -> bool {
     })
 }
 
+fn tcp_wire_buffer_capacity(mtu: usize) -> usize {
+    // Worst-case HDLC expansion doubles bytes (all escaped) plus frame delimiters.
+    mtu.saturating_mul(2).saturating_add(16)
+}
+
 pub struct TcpClient {
     addr: String,
     stream: Option<TcpStream>,
+    mtu: usize,
 }
 
 impl TcpClient {
+    pub const DEFAULT_MTU: usize = 2048;
+
     pub fn new<T: Into<String>>(addr: T) -> Self {
-        Self { addr: addr.into(), stream: None }
+        Self { addr: addr.into(), stream: None, mtu: Self::DEFAULT_MTU }
     }
 
     pub fn new_from_stream<T: Into<String>>(addr: T, stream: TcpStream) -> Self {
-        Self { addr: addr.into(), stream: Some(stream) }
+        Self { addr: addr.into(), stream: Some(stream), mtu: Self::DEFAULT_MTU }
     }
 
+    #[must_use]
+    pub fn with_mtu(mut self, mtu: usize) -> Self {
+        self.mtu = mtu.max(256);
+        self
+    }
+
+    #[must_use]
+    pub fn addr(&self) -> &str {
+        &self.addr
+    }
+
+    #[must_use]
+    pub fn mtu_value(&self) -> usize {
+        self.mtu
+    }
+
+    #[tracing::instrument(name = "tcp_peer", skip_all, fields(addr = tracing::field::Empty))]
     pub async fn spawn(context: InterfaceContext<TcpClient>) {
         let iface_stop = context.channel.stop.clone();
-        let addr = { context.inner.lock().unwrap().addr.clone() };
+        let (addr, mtu) = {
+            let guard = context.inner.lock().unwrap();
+            (guard.addr.clone(), guard.mtu)
+        };
+        tracing::Span::current().record("addr", addr.as_str());
         let iface_address = context.channel.address;
         let mut stream = { context.inner.lock().unwrap().stream.take() };
 
@@ -62,7 +91,7 @@ impl TcpClient {
 
         let mut running = true;
         loop {
-            if !running || context.cancel.is_cancelled() {
+            if !running || context.cancel.is_cancelled() || iface_stop.is_cancelled() {
                 break;
             }
 
@@ -79,24 +108,28 @@ impl TcpClient {
             };
 
             if stream.is_err() {
-                log::info!("tcp_client: couldn't connect to <{}>", addr);
-                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                log::warn!("couldn't connect to <{}>", addr);
+                tokio::select! {
+                    _ = context.cancel.cancelled() => break,
+                    _ = iface_stop.cancelled() => break,
+                    _ = tokio::time::sleep(std::time::Duration::from_secs(5)) => {}
+                }
                 continue;
             }
 
             let cancel = context.cancel.clone();
             let stop = CancellationToken::new();
+            let iface_stop_rx = iface_stop.clone();
+            let iface_stop_tx = iface_stop.clone();
 
             let stream = stream.unwrap();
             let (read_stream, write_stream) = stream.into_split();
 
-            log::info!("tcp_client connected to <{}>", addr);
+            log::info!("connected to <{}>", addr);
 
             // Use protocol MTU-scale buffers, not size_of::<Packet>(), since packet
             // struct size does not reflect serialized wire size and can silently drop
             // larger payloads during serialization.
-            const BUFFER_SIZE: usize = 2048;
-
             // Start receive task
             let rx_task = {
                 let cancel = cancel.clone();
@@ -105,13 +138,17 @@ impl TcpClient {
                 let rx_channel = rx_channel.clone();
 
                 tokio::spawn(async move {
-                    let mut hdlc_rx_buffer = [0u8; BUFFER_SIZE];
-                    let mut frame_buffer: Vec<u8> = Vec::with_capacity(BUFFER_SIZE * 4);
-                    let mut tcp_buffer = [0u8; (BUFFER_SIZE * 16)];
+                    let mut hdlc_rx_buffer = vec![0u8; mtu];
+                    let mut frame_buffer: Vec<u8> = Vec::with_capacity(mtu.saturating_mul(4));
+                    let mut tcp_buffer = vec![0u8; mtu.saturating_mul(16)];
 
                     loop {
                         tokio::select! {
                             _ = cancel.cancelled() => {
+                                    break;
+                            }
+                            _ = iface_stop_rx.cancelled() => {
+                                    stop.cancel();
                                     break;
                             }
                             _ = stop.cancelled() => {
@@ -120,7 +157,7 @@ impl TcpClient {
                             result = stream.read(&mut tcp_buffer[..]) => {
                                     match result {
                                         Ok(0) => {
-                                            log::warn!("tcp_client: connection closed");
+                                            log::warn!("connection closed");
                                             stop.cancel();
                                             break;
                                         }
@@ -136,10 +173,10 @@ impl TcpClient {
                                                         Packet::deserialize(&mut InputBuffer::new(output.as_slice()))
                                                     {
                                                         if PACKET_TRACE {
-                                                            log::trace!("tcp_client: rx << ({}) {}", iface_address, packet);
+                                                            log::trace!("rx << ({}) {}", iface_address, packet);
                                                         }
                                                         if tx_diag_enabled() {
-                                                            eprintln!(
+                                                            log::debug!(
                                                                 "[tp-diag] tcp_client rx_packet iface={} type={:?} dst={} ctx={:02x} hops={}",
                                                                 iface_address,
                                                                 packet.header.packet_type,
@@ -152,13 +189,14 @@ impl TcpClient {
                                                             .send(RxMessage {
                                                                 address: iface_address,
                                                                 packet,
+                                                                source: IfaceSource::None,
                                                             })
                                                             .await;
                                                     } else {
-                                                        log::warn!("tcp_client: couldn't decode packet");
+                                                        log::warn!("couldn't decode packet");
                                                     }
                                                 } else {
-                                                    log::warn!("tcp_client: couldn't decode hdlc frame");
+                                                    log::warn!("couldn't decode hdlc frame");
                                                 }
 
                                                 // Drop all bytes up to and including the closing
@@ -166,14 +204,14 @@ impl TcpClient {
                                                 frame_buffer.drain(..=end);
                                             }
 
-                                            if frame_buffer.len() > BUFFER_SIZE * 64 {
+                                            if frame_buffer.len() > mtu.saturating_mul(64) {
                                                 // Guard against unbounded growth on malformed
                                                 // streams where no valid frame closes.
                                                 frame_buffer.clear();
                                             }
                                         }
                                         Err(e) => {
-                                            log::warn!("tcp_client: connection error {}", e);
+                                            log::warn!("connection error {}", e);
                                             break;
                                         }
                                     }
@@ -195,13 +233,17 @@ impl TcpClient {
                             break;
                         }
 
-                        let mut hdlc_tx_buffer = [0u8; BUFFER_SIZE];
-                        let mut tx_buffer = [0u8; BUFFER_SIZE];
+                        let mut hdlc_tx_buffer = vec![0u8; tcp_wire_buffer_capacity(mtu)];
+                        let mut tx_buffer = vec![0u8; mtu];
 
                         let mut tx_channel = tx_channel.lock().await;
 
                         tokio::select! {
                             _ = cancel.cancelled() => {
+                                    break;
+                            }
+                            _ = iface_stop_tx.cancelled() => {
+                                    stop.cancel();
                                     break;
                             }
                             _ = stop.cancelled() => {
@@ -210,42 +252,27 @@ impl TcpClient {
                             Some(message) = tx_channel.recv() => {
                                 let packet = message.packet;
                                 if PACKET_TRACE {
-                                    log::trace!("tcp_client: tx >> ({}) {}", iface_address, packet);
+                                    log::trace!("tx >> ({}) {}", iface_address, packet);
                                 }
                                 if tx_diag_enabled() {
-                                    eprintln!("[tp-diag] tcp_client tx_dequeue iface={} {}", iface_address, packet);
-                                    log::info!("[tp-diag] tcp_client tx_dequeue iface={} {}", iface_address, packet);
+                                    log::debug!("[tp-diag] tcp_client tx_dequeue iface={} {}", iface_address, packet);
                                 }
                                 let mut output = OutputBuffer::new(&mut tx_buffer);
                                 if packet.serialize(&mut output).is_ok() {
                                     let mut hdlc_output = OutputBuffer::new(&mut hdlc_tx_buffer[..]);
                                     if Hdlc::encode(output.as_slice(), &mut hdlc_output).is_ok() {
                                         if let Err(err) = stream.write_all(hdlc_output.as_slice()).await {
-                                            log::warn!("tcp_client: write_all failed on {}: {}", iface_address, err);
-                                            eprintln!(
-                                                "[tp-diag] tcp_client write_all failed iface={} err={}",
-                                                iface_address, err
-                                            );
+                                            log::warn!("[tp-diag] write_all failed iface={} err={}", iface_address, err);
                                             stop.cancel();
                                             break;
                                         }
                                         if let Err(err) = stream.flush().await {
-                                            log::warn!("tcp_client: flush failed on {}: {}", iface_address, err);
-                                            eprintln!(
-                                                "[tp-diag] tcp_client flush failed iface={} err={}",
-                                                iface_address, err
-                                            );
+                                            log::warn!("[tp-diag] flush failed iface={} err={}", iface_address, err);
                                             stop.cancel();
                                             break;
                                         }
                                         if tx_diag_enabled() {
-                                            eprintln!(
-                                                "[tp-diag] tcp_client tx_write_ok iface={} wire_len={} raw_len={}",
-                                                iface_address,
-                                                hdlc_output.as_slice().len(),
-                                                output.as_slice().len()
-                                            );
-                                            log::info!(
+                                            log::debug!(
                                                 "[tp-diag] tcp_client tx_write_ok iface={} wire_len={} raw_len={}",
                                                 iface_address,
                                                 hdlc_output.as_slice().len(),
@@ -254,24 +281,14 @@ impl TcpClient {
                                         }
                                     } else {
                                         log::warn!(
-                                            "tcp_client: failed to HDLC-encode packet on {} (raw_len={})",
-                                            iface_address,
-                                            output.as_slice().len()
-                                        );
-                                        eprintln!(
-                                            "[tp-diag] tcp_client hdlc_encode failed iface={} raw_len={}",
+                                            "[tp-diag] hdlc_encode failed iface={} raw_len={}",
                                             iface_address,
                                             output.as_slice().len()
                                         );
                                     }
                                 } else {
                                     log::warn!(
-                                        "tcp_client: failed to serialize packet on {} (buffer_cap={})",
-                                        iface_address,
-                                        tx_buffer.len()
-                                    );
-                                    eprintln!(
-                                        "[tp-diag] tcp_client serialize failed iface={} buffer_cap={}",
+                                        "[tp-diag] serialize failed iface={} buffer_cap={}",
                                         iface_address,
                                         tx_buffer.len()
                                     );
@@ -285,7 +302,7 @@ impl TcpClient {
             tx_task.await.unwrap();
             rx_task.await.unwrap();
 
-            log::info!("tcp_client: disconnected from <{}>", addr);
+            log::info!("disconnected from <{}>", addr);
         }
 
         iface_stop.cancel();
@@ -294,6 +311,31 @@ impl TcpClient {
 
 impl Interface for TcpClient {
     fn mtu() -> usize {
-        2048
+        TcpClient::DEFAULT_MTU
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{tcp_wire_buffer_capacity, TcpClient};
+    use crate::buffer::OutputBuffer;
+    use crate::iface::hdlc::Hdlc;
+
+    #[test]
+    fn tcp_client_default_and_configured_mtu_are_exposed() {
+        assert_eq!(TcpClient::new("rmap.world:4242").mtu_value(), TcpClient::DEFAULT_MTU);
+        assert_eq!(TcpClient::new("rmap.world:4242").with_mtu(4096).mtu_value(), 4096);
+        assert_eq!(TcpClient::new("rmap.world:4242").with_mtu(64).mtu_value(), 256);
+    }
+
+    #[test]
+    fn tcp_wire_capacity_handles_worst_case_hdlc_escape_expansion() {
+        let mtu = 512;
+        let raw = vec![0x7e_u8; mtu];
+        let mut wire = vec![0_u8; tcp_wire_buffer_capacity(mtu)];
+        let mut output = OutputBuffer::new(&mut wire[..]);
+
+        let encoded_len = Hdlc::encode(&raw, &mut output).expect("encode worst-case payload");
+        assert!(encoded_len >= (mtu * 2) + 2, "wire len must cover escaped payload plus flags");
     }
 }

@@ -3,11 +3,14 @@
 - Status: accepted
 - Date: 2026-02-20
 - Owners: LXMF-rs maintainers
-- Scope: `lxmf-sdk`, `rns-rpc`, `reticulumd`, contract/security gates
+- Scope: `lxmf-sdk`, `reticulum-rs-rpc` (`crates/libs/rns-rpc`), `reticulumd`, contract/security gates
 
 ## Context
 
 SDK v2.5 introduced hard-break API and runtime boundaries. Security controls already exist in code (auth mode validation, replay rejection, redaction, rate limits), but a formal threat model was missing as a review and release artifact.
+
+Historical naming note: this ADR references the active workspace path
+`crates/libs/rns-rpc`; the published package name is now `reticulum-rs-rpc`.
 
 ## Decision
 

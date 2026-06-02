@@ -1,3 +1,5 @@
+use super::*;
+
 impl RpcDaemon {
     pub fn handle_rpc(&self, request: RpcRequest) -> Result<RpcResponse, std::io::Error> {
         let request_id = request.id;
@@ -32,15 +34,16 @@ impl RpcDaemon {
             }),
             "sdk_negotiate_v2" => self.handle_sdk_negotiate_v2(request),
             "daemon_status_ex" => {
-                let peer_count = self.peers.lock().expect("peers mutex poisoned").len();
-                let interfaces = self.interfaces.lock().expect("interfaces mutex poisoned").clone();
+                let snapshot_started = std::time::Instant::now();
+                let snapshot = self.daemon_status_snapshot();
+                let snapshot_wait_ns =
+                    snapshot_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
+                let message_count_started = std::time::Instant::now();
                 let message_count =
-                    self.store.list_messages(10_000, None).map_err(std::io::Error::other)?.len();
-                let delivery_policy =
-                    self.delivery_policy.lock().expect("policy mutex poisoned").clone();
-                let propagation =
-                    self.propagation_state.lock().expect("propagation mutex poisoned").clone();
-                let stamp_policy = self.stamp_policy.lock().expect("stamp mutex poisoned").clone();
+                    self.store.message_count().map_err(std::io::Error::other)? as usize;
+                let message_count_wait_ns =
+                    message_count_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
+                self.metrics_record_daemon_status_wait(snapshot_wait_ns, message_count_wait_ns);
 
                 Ok(RpcResponse {
                     id: request.id,
@@ -48,13 +51,14 @@ impl RpcDaemon {
                         "identity_hash": self.identity_hash,
                         "delivery_destination_hash": self.local_delivery_hash(),
                         "running": true,
-                        "peer_count": peer_count,
+                        "peer_count": snapshot.peer_count,
                         "message_count": message_count,
-                        "interface_count": interfaces.len(),
-                        "interfaces": interfaces,
-                        "delivery_policy": delivery_policy,
-                        "propagation": propagation,
-                        "stamp_policy": stamp_policy,
+                        "interface_count": snapshot.interfaces.len(),
+                        "interfaces": snapshot.interfaces,
+                        "delivery_policy": snapshot.delivery_policy,
+                        "propagation": snapshot.propagation,
+                        "stamp_policy": snapshot.stamp_policy,
+                        "delivery_pipeline": self.outbound_bridge.as_ref().and_then(|bridge| bridge.delivery_pipeline_status()),
                         "capabilities": Self::capabilities(),
                     })),
                     error: None,
@@ -62,6 +66,7 @@ impl RpcDaemon {
             }
             "sdk_snapshot_v2" => self.handle_sdk_snapshot_v2(request),
             "sdk_status_v2" => self.handle_sdk_status_v2(request),
+            "sdk_cursor_hint_v2" => self.handle_sdk_cursor_hint_v2(request),
             "sdk_configure_v2" => self.handle_sdk_configure_v2(request),
             "sdk_shutdown_v2" => self.handle_sdk_shutdown_v2(request),
             "sdk_topic_create_v2" => self.handle_sdk_topic_create_v2(request),
@@ -102,12 +107,22 @@ impl RpcDaemon {
             "sdk_identity_contact_update_v2" => self.handle_sdk_identity_contact_update_v2(request),
             "sdk_identity_contact_list_v2" => self.handle_sdk_identity_contact_list_v2(request),
             "sdk_identity_bootstrap_v2" => self.handle_sdk_identity_bootstrap_v2(request),
+            "sdk_workflow_peer_ready_v2" => self.handle_sdk_workflow_peer_ready_v2(request),
+            "sdk_workflow_topic_sync_v2" => self.handle_sdk_workflow_topic_sync_v2(request),
+            "sdk_workflow_attachment_report_publish_v2" => {
+                self.handle_sdk_workflow_attachment_report_publish_v2(request)
+            }
+            "sdk_workflow_mission_update_send_v2" => {
+                self.handle_sdk_workflow_mission_update_send_v2(request)
+            }
             "sdk_paper_encode_v2" => self.handle_sdk_paper_encode_v2(request),
             "sdk_paper_decode_v2" => self.handle_sdk_paper_decode_v2(request),
             "sdk_operation_registry_v2" => self.handle_sdk_operation_registry_v2(request),
             "sdk_envelope_execute_v2" => self.handle_sdk_envelope_execute_v2(request),
             "sdk_command_invoke_v2" => self.handle_sdk_command_invoke_v2(request),
             "sdk_command_reply_v2" => self.handle_sdk_command_reply_v2(request),
+            "sdk_command_session_get_v2" => self.handle_sdk_command_session_get_v2(request),
+            "sdk_command_session_list_v2" => self.handle_sdk_command_session_list_v2(request),
             "sdk_voice_session_open_v2" => self.handle_sdk_voice_session_open_v2(request),
             "sdk_voice_session_update_v2" => self.handle_sdk_voice_session_update_v2(request),
             "sdk_voice_session_close_v2" => self.handle_sdk_voice_session_close_v2(request),
@@ -116,6 +131,7 @@ impl RpcDaemon {
 
         match response {
             Ok(response) => {
+                self.record_sdk_cursor_hint(method.as_str(), &response);
                 let elapsed_ms = metrics_started.elapsed().as_millis() as u64;
                 self.metrics_record_rpc_response(method.as_str(), elapsed_ms, &response);
                 if let Some(trace_id) = lifecycle_trace_id.as_deref() {
@@ -145,8 +161,7 @@ impl RpcDaemon {
                 self.metrics_record_rpc_response(method.as_str(), elapsed_ms, &mapped);
                 if let Some(trace_id) = lifecycle_trace_id.as_deref() {
                     let mut details = Self::sdk_lifecycle_details(method.as_str(), &mapped);
-                    details
-                        .insert("mapped_invalid_input".to_string(), JsonValue::Bool(true));
+                    details.insert("mapped_invalid_input".to_string(), JsonValue::Bool(true));
                     self.emit_sdk_lifecycle_trace(
                         trace_id,
                         request_id,
@@ -181,13 +196,17 @@ impl RpcDaemon {
             }
         }
     }
-    fn append_delivery_trace(&self, message_id: &str, status: String) {
+    pub(super) fn append_delivery_trace_to(
+        traces: &Mutex<HashMap<String, Vec<DeliveryTraceEntry>>>,
+        message_id: &str,
+        status: String,
+    ) {
         const MAX_DELIVERY_TRACE_ENTRIES: usize = 32;
         const MAX_TRACKED_MESSAGE_TRACES: usize = 2048;
 
         let timestamp = now_i64();
         let reason_code = delivery_reason_code(&status).map(ToOwned::to_owned);
-        let mut guard = self.delivery_traces.lock().expect("delivery traces mutex poisoned");
+        let mut guard = traces.lock().expect("delivery traces mutex poisoned");
         let entry = guard.entry(message_id.to_string()).or_default();
         entry.push(DeliveryTraceEntry { status, timestamp, reason_code });
         if entry.len() > MAX_DELIVERY_TRACE_ENTRIES {
@@ -223,4 +242,7 @@ impl RpcDaemon {
         }
     }
 
+    pub(super) fn append_delivery_trace(&self, message_id: &str, status: String) {
+        Self::append_delivery_trace_to(&self.delivery_traces, message_id, status);
+    }
 }
