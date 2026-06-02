@@ -87,6 +87,7 @@ const PYTHON_IMPL_ENVIRONMENT_PATH: &str = "target/criterion/python-impl-environ
 const PYTHON_IMPL_REPORT_DIR: &str = "target/criterion/python-impl-report";
 const PYTHON_IMPL_REPORT_JSON_PATH: &str = "target/criterion/python-impl-report/report.json";
 const PYTHON_IMPL_REPORT_TEXT_PATH: &str = "target/criterion/python-impl-report/report.txt";
+const CI_WORKFLOW_PATH: &str = ".github/workflows/ci.yml";
 const SUPPLY_CHAIN_SBOM_PATH: &str = "target/supply-chain/sbom/cargo-metadata.sbom.json";
 const SUPPLY_CHAIN_PROVENANCE_PATH: &str =
     "target/supply-chain/provenance/artifact-provenance.json";
@@ -107,6 +108,18 @@ const EMBEDDED_HIL_REPORT_PATH: &str = "target/hil/esp32-smoke-report.json";
 const EMBEDDED_NATIVE_INTEROP_REPORT_PATH: &str = "target/hil/native-node-report.json";
 const EMBEDDED_NATIVE_INTEROP_LOG_PATH: &str = "target/hil/native-node.log";
 const EMBEDDED_NATIVE_INTEROP_SCRIPT_PATH: &str = "tools/scripts/embedded-native-interop-smoke.sh";
+const EMBEDDED_NATIVE_REQUIRED_CI_JOBS: &[&str] = &[
+    "embedded-node-build",
+    "embedded-node-contract",
+    "embedded-node-failure-matrix",
+    "embedded-node-hil",
+];
+const EMBEDDED_NATIVE_REQUIRED_JOB_COMMAND_MARKERS: &[(&str, &str)] = &[
+    ("embedded-node-build", "cargo xtask ci --stage embedded-node-build"),
+    ("embedded-node-contract", "cargo xtask ci --stage embedded-node-contract"),
+    ("embedded-node-failure-matrix", "cargo xtask ci --stage embedded-node-failure-matrix"),
+    ("embedded-node-hil", "cargo xtask ci --stage embedded-node-hil"),
+];
 const LEADER_READINESS_REPORT_PATH: &str = "target/release-readiness/leader-grade-readiness.md";
 const CANARY_CRITERIA_REPORT_PATH: &str = "target/release-readiness/canary-criteria-report.md";
 const CANARY_CRITERIA_REPORT_JSON_PATH: &str =
@@ -4726,6 +4739,19 @@ fn run_embedded_native_lock_check() -> Result<()> {
     ] {
         if !lockfile.contains(marker) {
             bail!("embedded native lockfile missing marker '{marker}' in {EMBEDDED_NATIVE_LOCKFILE_PATH}");
+        }
+    }
+
+    let workflow =
+        fs::read_to_string(CI_WORKFLOW_PATH).with_context(|| format!("read {CI_WORKFLOW_PATH}"))?;
+    for job in EMBEDDED_NATIVE_REQUIRED_CI_JOBS {
+        if !workflow.contains(&format!("{job}:")) {
+            bail!("CI workflow missing embedded native required job '{job}' in {CI_WORKFLOW_PATH}");
+        }
+    }
+    for (job, marker) in EMBEDDED_NATIVE_REQUIRED_JOB_COMMAND_MARKERS {
+        if !workflow.contains(marker) {
+            bail!("CI workflow missing command marker for {job}: '{marker}'");
         }
     }
 
