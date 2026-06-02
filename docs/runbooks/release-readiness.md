@@ -234,6 +234,11 @@ Git revision metadata when available, generated client config/state artifacts,
 logs, and destination hashes. Keep this artifact with the release candidate
 evidence before making any external-client interoperability claim.
 
+When the gate fails, classify it as a Rust-side regression, external client
+setup/dependency drift, external client behavior change, or harness/environment
+flake. Record that classification with the report/log paths in the release notes
+or a follow-up issue before shipping.
+
 Embedded footprint report artifact:
 
 - `target/embedded/footprint-report.txt`

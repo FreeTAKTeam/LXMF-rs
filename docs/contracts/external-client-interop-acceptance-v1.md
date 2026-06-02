@@ -109,6 +109,26 @@ proof, logs, destination hashes, and the client-specific proof report path.
 Release notes may only claim external-client interoperability for a client whose
 gate summary has `status: "pass"` for the release candidate.
 
+## Ownership And Failure Handling
+
+The release owner is responsible for running the gate for each external client
+named in release notes and retaining the generated `gate-summary.json` with the
+release candidate evidence.
+
+If the gate fails, the release owner must classify the failure before claiming
+or removing interoperability support:
+
+1. Rust-side regression in this repository.
+2. External client setup or dependency drift.
+3. External client behavior change.
+4. Harness flake or environment failure.
+
+The classification and the relevant report/log paths must be recorded in the
+release notes or a follow-up issue. Client-specific harness fixes belong with the
+matching smoke script and runbook in this repository; external client behavior
+changes should be tracked against the upstream client checkout and pinned in the
+next passing gate summary.
+
 ## Non-Goals
 
 This contract does not yet require:
