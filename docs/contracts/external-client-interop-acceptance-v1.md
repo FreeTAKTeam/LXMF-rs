@@ -124,7 +124,7 @@ or removing interoperability support:
 4. Harness flake or environment failure.
 
 The classification and the relevant report/log paths must be recorded in the
-release notes or follow-up issue. Client-specific harness fixes belong with the
+release notes or a follow-up issue. Client-specific harness fixes belong with the
 matching smoke script and runbook in this repository; external client behavior
 changes should be tracked against the upstream client checkout and pinned in the
 next passing gate summary.
