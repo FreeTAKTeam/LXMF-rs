@@ -1308,8 +1308,10 @@ fn link_close_line(id: &AddressHash) -> String {
 
 include!("link/proof.rs");
 
+const LINK_IDENTIFY_PAYLOAD_LENGTH: usize = PUBLIC_KEY_LENGTH * 2 + SIGNATURE_LENGTH;
+
 fn parse_link_identify_payload(payload: &[u8], link_id: &AddressHash) -> Option<Identity> {
-    if payload.len() < PUBLIC_KEY_LENGTH * 2 + SIGNATURE_LENGTH {
+    if payload.len() != LINK_IDENTIFY_PAYLOAD_LENGTH {
         return None;
     }
     let identity = Identity::new_from_slices(
@@ -2393,6 +2395,15 @@ mod tests {
     fn parse_link_identify_rejects_short_payload() {
         let link_id = AddressHash::new([0x01; ADDRESS_HASH_SIZE]);
         assert!(parse_link_identify_payload(&[0u8; 64], &link_id).is_none());
+    }
+
+    #[test]
+    fn parse_link_identify_rejects_trailing_bytes() {
+        let link_id = AddressHash::new([0xAB; ADDRESS_HASH_SIZE]);
+        let private = PrivateIdentity::new_from_rand(OsRng);
+        let mut payload = build_test_identify_payload(&private, &link_id);
+        payload.push(0x00);
+        assert!(parse_link_identify_payload(&payload, &link_id).is_none());
     }
 
     #[test]
