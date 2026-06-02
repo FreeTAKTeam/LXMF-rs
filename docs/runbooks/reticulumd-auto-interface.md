@@ -21,11 +21,53 @@ the Reticulum defaults in interface status:
   strings
 - `configured_bitrate`: accepted as an alias for the common `bitrate` field
 
-The full runtime is not complete yet. Python `AutoInterface` enumerates local
-network devices, selects link-local IPv6 addresses, joins the derived multicast
-group per device, exchanges peering packets, and spawns per-peer UDP interfaces.
-The Rust daemon reports an explicit startup failure for enabled `auto`
-interfaces until that OS-dependent discovery and peering runtime exists.
+Python `AutoInterface` enumerates local network devices, selects link-local IPv6
+addresses, joins the derived multicast group per device, exchanges peering
+packets, and spawns per-peer UDP interfaces. The Rust daemon now enumerates host
+link-local IPv6 interface candidates with
+`if-addrs`, applies the Python-compatible `devices` and `ignored_devices`
+selector, and records the resulting discovery/data listener startup plan in
+interface runtime status, including the initial multicast `peer_announce`
+packets that the live socket runtime must send per adopted interface. Those
+planned sends include `payload_hex`, which is the exact Python-compatible
+peering-token UDP payload for the target address and port, plus
+`destination_host`, `destination_scope_ifname`, and
+`destination_socket_target`, which brackets IPv6 destinations and scopes default
+link-local multicast sends with `%ifname`. The daemon also reports
+`planned_initial_peer_announce_count`, and its send hook returns deterministic
+destination-tagged errors when a future socket sender fails. The initial
+peer-announce bridge can now resolve structured host/port/scope targets into
+socket addresses through an injected interface-index resolver and send the
+payloads through a supplied UDP socket. The daemon also has a native resolver
+that reads interface indexes from `if-addrs`, and `_runtime.auto` records
+`native_scope_id_source = "if-addrs interface index"` so scoped IPv6 multicast
+and reverse-unicast sends have a concrete OS-backed lookup path. Runtime status
+also includes
+`planned_discovery_socket_binds` for the unicast and multicast discovery
+listener sockets the daemon must own. The daemon can now bind planned unicast
+discovery sockets from those targets, and it has a staged multicast discovery
+socket binder that resolves link-scope joins to an interface index before
+joining the multicast group. Bound discovery sockets can now receive a UDP
+datagram into typed AutoInterface metadata containing socket kind, interface
+name, bind address, optional multicast group, source address, and raw payload.
+The daemon can feed that typed datagram into the shared authenticated discovery
+state helper, preserving the source address while classifying local multicast
+echoes, remote peer additions/refreshes, and invalid-token rejections.
+The daemon also reports planned peer data socket binds for each adopted
+interface, can bind those `data_port` sockets with native scope IDs, receives
+typed peer data datagrams, and classifies known-peer, duplicate, and
+unknown-peer inbound packets through the shared discovery/deduplication state.
+Enabled `auto` startup now attempts to bind those discovery sockets with native
+scope IDs, sends the initial multicast `peer_announce` packets, starts the
+cancellable receive loops, starts the repeat multicast `peer_announce`
+scheduler, starts the peer-job scheduler, starts peer data receive loops, and records
+`auto_discovery_runtime.bound_socket_count`, `receive_loop_count`,
+`initial_peer_announce_count`, `repeat_peer_announce_scheduler_count`, and
+`peer_job_scheduler_count`, `data_socket_count`, and
+`data_receive_loop_count` in interface runtime metadata. Accepted peer-data
+packets are injected into the normal transport ingress path through per-peer
+virtual interfaces, and direct/broadcast transport sends are serialized and
+routed back out over the matching peer UDP data sockets.
 
 The reusable transport layer now also includes Python-compatible helpers for:
 
@@ -74,6 +116,43 @@ The reusable transport layer now also includes Python-compatible helpers for:
   Darwin and Android default interface skip lists
 - selecting descoped per-interface `fe80:` IPv6 link-local addresses from
   adopted interface candidates
+- daemon-side OS interface enumeration of operational link-local IPv6
+  candidates, adoption through the shared selector, and `_runtime.auto`
+  startup-plan plus initial peer-announce reporting for enabled `auto`
+  interfaces, backed by a reusable send hook over structured
+  destination/payload datagrams with host/port/scope metadata and
+  destination-tagged failure reporting, plus a supplied-UDP-socket send bridge
+  that resolves interface scopes through either an injected interface-index
+  lookup or the native `if-addrs` interface-index resolver
+- `_runtime.auto` planned discovery socket bind reporting for per-interface
+  unicast and multicast discovery listeners, plus a staged unicast discovery
+  socket binder that resolves scoped bind addresses through an injected
+  interface-index lookup
+- staged multicast discovery socket bind/join resolution that binds multicast
+  sockets on the unspecified address, joins the derived multicast group with
+  the correct link-scope interface index, and reports deterministic target
+  errors before the live receive loop is connected
+- typed discovery datagram receive bridging from bound discovery sockets,
+  preserving socket kind, interface name, bind address, multicast group, source
+  address, and raw payload for the shared authenticated discovery helper
+- daemon-side authenticated discovery datagram processing that classifies local
+  multicast echoes, accepted peer events, and invalid-token rejects before the
+  long-running receive loop is connected
+- a cancellable daemon receive-loop primitive that reads bound discovery
+  sockets, authenticates each datagram into shared discovery state, and reports
+  accepted/rejected outcomes through a channel
+- `_runtime.auto` planned peer data socket bind reporting for per-interface
+  `data_port` listeners, plus a native-scope data socket binder and typed
+  peer-data datagram receive bridge
+- a cancellable daemon peer-data receive-loop primitive that reads bound data
+  sockets, classifies inbound datagrams with the shared known-peer and
+  duplicate-suppression state, and reports accepted/duplicate/unknown decisions
+  through a channel
+- daemon startup that binds native-scope discovery sockets, starts the receive
+  loops, repeat multicast peer-announce scheduler, peer-job scheduler, and
+  peer-data receive loops, injects accepted peer-data packets into transport,
+  routes direct/broadcast transport sends to peer UDP data sockets, and records
+  discovery/data runtime counts
 - classifying local multicast echoes separately from remote peers so discovery
   packets from this node's own link-local addresses update echo state instead
   of spawning peer state
@@ -100,23 +179,8 @@ interfaces = [
 ]
 ```
 
-## Remaining Runtime Work
+## Operational Follow-Up
 
-- Enumerate OS network interfaces and apply the existing selector to the live
-  interface list.
-- Join the derived Reticulum multicast discovery group.
-- Create discovery and data sockets from the existing startup plan, join the
-  derived Reticulum multicast discovery group, start peer-job scheduling, wait
-  for the initial peering window, advance the runtime gate, and route valid
-  packets through the outbound peering packet planner and authenticated
-  discovery helper.
-- Spawn per-interface UDP listeners and per-peer UDP packet paths on
-  `data_port`, then wire them through the existing listener, outbound target,
-  and inbound delivery helpers.
 - Restart per-interface UDP listeners from the link-local replacement helper
   when the live address for an adopted interface changes.
-- Use the shared timing profile when scheduling duplicate-suppression work.
-- Wire the multicast announce scheduler into the live socket runtime.
-- Wire the peer-job execution helper into the live socket runtime.
-- Wire the spawned peer inbound delivery helper into live UDP packet delivery.
 - Wire the runtime `carrier_changed` flag into live status/reporting.

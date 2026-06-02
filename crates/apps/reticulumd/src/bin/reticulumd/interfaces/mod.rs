@@ -1,3 +1,4 @@
+pub(super) mod auto;
 pub(super) mod ble;
 pub(super) mod common;
 pub(super) mod kiss;

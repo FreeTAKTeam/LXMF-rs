@@ -680,7 +680,7 @@ pub(super) fn mark_interface_runtime_managed(record: &mut InterfaceRecord, manag
     });
 }
 
-fn with_interface_runtime_metadata(
+pub(super) fn with_interface_runtime_metadata(
     record: &mut InterfaceRecord,
     update: impl FnOnce(&mut JsonMap<String, JsonValue>),
 ) {

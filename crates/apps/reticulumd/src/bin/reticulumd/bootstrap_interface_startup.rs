@@ -1,9 +1,12 @@
 use super::super::{
     mark_interface_runtime_fields, mark_interface_startup_status, strict_tcp_client_preflight,
+    with_interface_runtime_metadata,
 };
 use super::{InterfaceStartupFailure, TcpServerSelection};
 use crate::interface_hot_apply::tcp_interface_key;
-use crate::interfaces::{ble, common::interface_label, kiss, lora, serial, udp, vrn76_kiss_ble};
+use crate::interfaces::{
+    auto, ble, common::interface_label, kiss, lora, serial, udp, vrn76_kiss_ble,
+};
 use crate::Args;
 use reticulum_daemon::config::{DaemonConfig, InterfaceConfig};
 use rns_rpc::InterfaceRecord;
@@ -92,12 +95,17 @@ pub(super) async fn startup_configured_interfaces(
                 }
             }
             "auto" => {
-                startup_auto(
+                if startup_auto(
                     iface,
                     &label,
+                    iface_manager,
                     &mut configured_interfaces[index],
                     &mut startup_failures,
-                );
+                )
+                .await
+                {
+                    startup_successes += 1;
+                }
             }
             "serial" => {
                 if startup_serial(
@@ -493,20 +501,96 @@ async fn startup_udp(
     true
 }
 
-fn startup_auto(
+async fn startup_auto(
     iface: &InterfaceConfig,
     label: &str,
+    iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
     record: &mut InterfaceRecord,
     startup_failures: &mut Vec<InterfaceStartupFailure>,
-) {
-    record_startup_failure(
-        record,
-        startup_failures,
-        label.to_string(),
-        iface.kind.clone(),
-        "AutoInterface OS interface discovery and IPv6 peering runtime is not yet implemented"
-            .to_string(),
-    );
+) -> bool {
+    match auto::build_native_startup_plan(iface) {
+        Ok(plan) => {
+            let adopted_count = plan.adopted_devices.len();
+            let candidate_count = plan.candidates.len();
+            with_interface_runtime_metadata(record, |runtime| {
+                runtime.insert("auto".to_string(), plan.runtime_json());
+            });
+            let mode = iface.interface_mode().unwrap_or(InterfaceMode::Full);
+            let (host_iface, transport_runtime) = {
+                let mut manager = iface_manager.lock().await;
+                let channel =
+                    manager.new_channel_with_role_and_mode(128, IfaceRole::Multicast, mode);
+                let host_iface = channel.address;
+                apply_interface_runtime_config(&mut manager, host_iface, iface);
+                (
+                    host_iface,
+                    auto::AutoInterfaceTransportRuntime::from_channel(
+                        channel,
+                        Arc::clone(iface_manager),
+                    ),
+                )
+            };
+            let runtime_iface = host_iface.to_string();
+            match plan
+                .spawn_discovery_runtime_with_native_scope_ids_and_transport(Some(
+                    transport_runtime,
+                ))
+                .await
+            {
+                Ok(summary) => {
+                    with_interface_runtime_metadata(record, |runtime| {
+                        runtime.insert(
+                            "auto_discovery_runtime".to_string(),
+                            auto::discovery_runtime_summary_json(&summary),
+                        );
+                    });
+                    log::info!(
+                        "[daemon] auto enabled iface={} name={} discovery_loops={}/{} data_loops={}/{} initial_peer_announces={} repeat_schedulers={} peer_job_schedulers={} adopted={} candidates={}",
+                        runtime_iface,
+                        label,
+                        summary.receive_loop_count,
+                        summary.bound_socket_count,
+                        summary.data_receive_loop_count,
+                        summary.data_socket_count,
+                        summary.initial_peer_announce_count,
+                        summary.repeat_peer_announce_scheduler_count,
+                        summary.peer_job_scheduler_count,
+                        adopted_count,
+                        candidate_count
+                    );
+                    mark_interface_startup_status(
+                        record,
+                        "spawned",
+                        None,
+                        Some(runtime_iface.as_str()),
+                    );
+                    mark_interface_runtime_fields(record, "running", 0);
+                    true
+                }
+                Err(err) => {
+                    let _ = iface_manager.lock().await.stop_interface(host_iface);
+                    record_startup_failure(
+                        record,
+                        startup_failures,
+                        label.to_string(),
+                        iface.kind.clone(),
+                        format!("AutoInterface discovery runtime startup failed: {err}"),
+                    );
+                    false
+                }
+            }
+        }
+        Err(err) => {
+            record_startup_failure(
+                record,
+                startup_failures,
+                label.to_string(),
+                iface.kind.clone(),
+                format!("AutoInterface OS interface discovery failed: {err}"),
+            );
+            false
+        }
+    }
 }
 
 async fn startup_serial(

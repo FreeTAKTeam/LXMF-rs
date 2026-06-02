@@ -29,6 +29,12 @@ pub struct AutoPeeringPacket {
     pub token: [u8; crate::hash::HASH_SIZE],
 }
 
+impl AutoPeeringPacket {
+    pub fn payload(&self) -> &[u8; crate::hash::HASH_SIZE] {
+        &self.token
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AutoPeerDataTarget {
     pub ifname: String,

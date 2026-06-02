@@ -121,11 +121,38 @@ gap, even though deeper propagation-router parity remains open.
   and inbound multi-interface duplicate suppression matches Python's
   48-entry/0.75-second packet-hash window. Spawned peer inbound delivery
   decisions now reject unknown peers, suppress duplicate packets without
-  refreshing peer state, and refresh known peers only on accepted packets, but
-  they still need to be wired into the live socket runtime.
-  The daemon reports the explicit runtime gap in interface status, but the full
-  OS-interface enumeration, socket listeners, and spawned per-peer runtime
-  remains incomplete.
+  refreshing peer state, and refresh known peers only on accepted packets.
+  The daemon now enumerates operational OS link-local IPv6 candidates with
+  `if-addrs`, applies the shared AutoInterface selector, and records the
+  resulting adopted-device discovery/data listener startup plan plus initial
+  multicast peer-announce send plan in `_runtime.auto`, including structured
+  host/port/scope targets and planned send counts. The initial peer-announce
+  bridge can resolve those targets through an injected interface-index lookup
+  or the native `if-addrs` interface-index resolver and send the peering
+  payloads through a supplied UDP socket. `_runtime.auto` records that native
+  scope IDs come from `if-addrs` interface indexes. `_runtime.auto`
+  now also reports planned unicast and multicast discovery socket bind targets,
+  and the daemon has staged unicast and multicast discovery socket bind helpers.
+  The multicast helper resolves link-scope group joins to interface indexes and
+  binds on the unspecified address before joining the derived group. Bound
+  discovery sockets now expose typed single-datagram receives with socket kind,
+  interface, source, and raw payload metadata, and those datagrams can now be
+  authenticated and classified into local echo, peer event, or invalid-token
+  rejection outcomes through the shared AutoInterface discovery state. A
+  cancellable daemon receive-loop primitive now owns bound discovery sockets,
+  updates shared discovery state, and reports accepted/rejected receive events;
+  `_runtime.auto` reports the planned discovery receive-loop count. The daemon
+  also reports planned peer data socket binds, binds those `data_port` sockets,
+  receives typed peer data datagrams, and classifies them through the shared
+  known-peer and duplicate-suppression state. Enabled
+  AutoInterface startup now binds native-scope discovery sockets, starts those
+  receive loops, sends initial multicast peer-announce packets, starts the
+  repeat multicast peer-announce scheduler, starts the peer-job scheduler,
+  starts peer data receive loops, injects accepted peer-data packets into the
+  normal transport ingress path through per-peer virtual interfaces, routes
+  direct/broadcast transport sends back out over peer UDP data sockets, records
+  `auto_discovery_runtime` counts, and reports complete AutoInterface runtime
+  status when startup succeeds.
   RNode detect, firmware-version, platform, and MCU probe responses have typed
   parsers and validation helpers in `rns-transport`, and active LoRa
   streams record probe, reported radio configuration, and hardware error

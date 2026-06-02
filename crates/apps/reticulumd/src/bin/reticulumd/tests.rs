@@ -1636,7 +1636,7 @@ interfaces = [
 }
 
 #[test]
-fn bootstrap_reports_auto_interface_as_explicit_runtime_gap() {
+fn bootstrap_reports_auto_interface_as_spawned_runtime() {
     let temp = TempDir::new().expect("temp dir");
     let db_path = temp.path().join("reticulum.db");
     let config_path = temp.path().join("daemon.toml");
@@ -1644,7 +1644,7 @@ fn bootstrap_reports_auto_interface_as_explicit_runtime_gap() {
         &config_path,
         r#"
 interfaces = [
-  { type = "AutoInterface", enabled = true, name = "auto-main" }
+  { type = "AutoInterface", enabled = true, name = "auto-main", devices = ["codex-nonexistent-auto-test"] }
 ]
 "#,
     )
@@ -1685,13 +1685,62 @@ interfaces = [
             .and_then(|value| value.as_str()),
         Some("ff12:0:d70b:fb1c:16e4:5e39:485e:31e1")
     );
-    assert_eq!(runtime.get("startup_status").and_then(|value| value.as_str()), Some("failed"));
+    assert_eq!(runtime.get("startup_status").and_then(|value| value.as_str()), Some("spawned"));
+    assert_eq!(runtime.get("runtime_status").and_then(|value| value.as_str()), Some("running"));
+    assert_eq!(runtime.get("startup_error"), None);
+    assert!(runtime.get("iface").and_then(|value| value.as_str()).is_some());
+    let auto_runtime = runtime.get("auto").expect("auto runtime plan metadata");
+    assert_eq!(
+        auto_runtime.get("auto_runtime_status").and_then(|value| value.as_str()),
+        Some("complete")
+    );
+    assert!(auto_runtime.get("startup_plan").is_some(), "auto startup plan missing: {runtime:?}");
     assert!(
-        runtime
-            .get("startup_error")
-            .and_then(|value| value.as_str())
-            .is_some_and(|value| value.contains("AutoInterface OS interface discovery")),
-        "auto startup error should explain the explicit runtime gap: {runtime:?}"
+        auto_runtime.get("initial_peer_announces").is_some(),
+        "auto initial peer-announce plan missing: {runtime:?}"
+    );
+    assert!(
+        auto_runtime
+            .get("planned_discovery_socket_binds")
+            .and_then(|value| value.as_array())
+            .is_some(),
+        "auto discovery socket bind plan missing: {runtime:?}"
+    );
+    assert!(
+        auto_runtime.get("planned_data_socket_binds").and_then(|value| value.as_array()).is_some(),
+        "auto peer data socket bind plan missing: {runtime:?}"
+    );
+    let discovery_runtime =
+        runtime.get("auto_discovery_runtime").expect("auto discovery runtime metadata");
+    assert_eq!(
+        discovery_runtime.get("bound_socket_count").and_then(|value| value.as_u64()),
+        Some(0)
+    );
+    assert_eq!(
+        discovery_runtime.get("receive_loop_count").and_then(|value| value.as_u64()),
+        Some(0)
+    );
+    assert_eq!(
+        discovery_runtime.get("initial_peer_announce_count").and_then(|value| value.as_u64()),
+        Some(0)
+    );
+    assert_eq!(
+        discovery_runtime
+            .get("repeat_peer_announce_scheduler_count")
+            .and_then(|value| value.as_u64()),
+        Some(0)
+    );
+    assert_eq!(
+        discovery_runtime.get("peer_job_scheduler_count").and_then(|value| value.as_u64()),
+        Some(0)
+    );
+    assert_eq!(
+        discovery_runtime.get("data_socket_count").and_then(|value| value.as_u64()),
+        Some(0)
+    );
+    assert_eq!(
+        discovery_runtime.get("data_receive_loop_count").and_then(|value| value.as_u64()),
+        Some(0)
     );
 }
 
