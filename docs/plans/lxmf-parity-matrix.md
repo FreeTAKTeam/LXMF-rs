@@ -2,6 +2,9 @@
 
 Status: historical parity snapshot; check `docs/status/current-roadmap.md` for
 current repo-wide status before relying on this file for active execution order.
+As of 2026-06-02, the live Python-reference interop workflow is green for the
+current branch, but that checkpoint does not convert the partial peer, router,
+propagation, and stamper rows below into full parity.
 
 Last reassessed: 2026-05-07 (`cargo run -p xtask -- ci`, `cargo run -p xtask -- architecture-checks`, live local Rust/Python interop gates)
 
