@@ -5,8 +5,8 @@ Status: historical planning note
 This roadmap is retained as planning context for parity work. The release gate
 and current status tracking live in:
 
-- `docs/plans/lxmf-parity-matrix.md`
-- `docs/plans/reticulum-parity-matrix.md`
+- `docs/status/lxmf-parity-matrix.md`
+- `docs/status/reticulum-parity-matrix.md`
 - `docs/runbooks/release-readiness.md`
 
 This plan groups the currently known Reticulum and LXMF framework gaps into delivery waves. The intent is to finish behavior-level parity in the active workspace, not to expand RPC surface area without matching protocol/runtime behavior.

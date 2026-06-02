@@ -122,6 +122,7 @@ pub enum LinkWatchdogAction {
 pub enum LinkEvent {
     Activated,
     Data(Box<LinkPayload>),
+    PeerIdentified(Box<Identity>),
     Closed,
 }
 

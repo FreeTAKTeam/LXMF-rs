@@ -15,8 +15,8 @@ Last updated: 2026-01-26
 ## Task 0: Inventory & parity map bootstrap
 
 **Files:**
-- Modify: `https://github.com/FreeTAKTeam/LXMF-rs/docs/plans/lxmf-parity-matrix.md`
-- Create: `https://github.com/FreeTAKTeam/LXMF-rs/docs/plans/reticulum-parity-matrix.md`
+- Modify: `https://github.com/FreeTAKTeam/LXMF-rs/docs/status/lxmf-parity-matrix.md`
+- Create: `https://github.com/FreeTAKTeam/LXMF-rs/docs/status/reticulum-parity-matrix.md`
 - Modify: `https://github.com/FreeTAKTeam/LXMF-rs/docs/plans/2026-01-26-lxmf-reticulum-full-parity.md`
 
 **Step 1: Enumerate Python reference surfaces**
@@ -24,13 +24,13 @@ Last updated: 2026-01-26
 - Scan Python Reticulum reference tree for identity, crypto, addressing, packet framing, transport, routing, persistence, CLI.
 
 **Step 2: Build parity matrices**
-- Update `docs/plans/lxmf-parity-matrix.md` with any missing LXMF items and map to Rust files.
-- Create `docs/plans/reticulum-parity-matrix.md` with a full list of Reticulum features and map to Rust files.
+- Update `docs/status/lxmf-parity-matrix.md` with any missing LXMF items and map to Rust files.
+- Create `docs/status/reticulum-parity-matrix.md` with a full list of Reticulum features and map to Rust files.
 
 **Step 3: Commit**
 ```bash
-git add https://github.com/FreeTAKTeam/LXMF-rs/docs/plans/lxmf-parity-matrix.md \
-  https://github.com/FreeTAKTeam/LXMF-rs/docs/plans/reticulum-parity-matrix.md \
+git add https://github.com/FreeTAKTeam/LXMF-rs/docs/status/lxmf-parity-matrix.md \
+  https://github.com/FreeTAKTeam/LXMF-rs/docs/status/reticulum-parity-matrix.md \
   https://github.com/FreeTAKTeam/LXMF-rs/docs/plans/2026-01-26-lxmf-reticulum-full-parity.md
 
 git commit -m "docs: add full LXMF/Reticulum parity plan"
@@ -519,8 +519,8 @@ git commit -m "feat: add LXMF router/CLI parity"
 ## Task C: Cross‑repo integration checks
 
 **Files:**
-- Modify: `https://github.com/FreeTAKTeam/LXMF-rs/docs/plans/lxmf-parity-matrix.md`
-- Modify: `https://github.com/FreeTAKTeam/LXMF-rs/docs/plans/reticulum-parity-matrix.md`
+- Modify: `https://github.com/FreeTAKTeam/LXMF-rs/docs/status/lxmf-parity-matrix.md`
+- Modify: `https://github.com/FreeTAKTeam/LXMF-rs/docs/status/reticulum-parity-matrix.md`
 
 **Step 1: Update parity status**
 - Mark each feature as complete, partial, or blocked.
@@ -532,8 +532,8 @@ Expected: PASS
 
 **Step 3: Commit**
 ```bash
-git add https://github.com/FreeTAKTeam/LXMF-rs/docs/plans/lxmf-parity-matrix.md \
-  https://github.com/FreeTAKTeam/LXMF-rs/docs/plans/reticulum-parity-matrix.md
+git add https://github.com/FreeTAKTeam/LXMF-rs/docs/status/lxmf-parity-matrix.md \
+  https://github.com/FreeTAKTeam/LXMF-rs/docs/status/reticulum-parity-matrix.md
 
 git commit -m "docs: update parity matrices"
 ```

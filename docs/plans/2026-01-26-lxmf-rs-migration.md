@@ -36,7 +36,7 @@ Status: track each item as missing/partial/done with tests and dependencies.
 ### Task 1: Create parity matrix and fixtures layout
 
 **Files:**
-- Create: `docs/plans/lxmf-parity-matrix.md`
+- Create: `docs/status/lxmf-parity-matrix.md`
 - Create: `tests/fixtures/python/lxmf/` (directory)
 
 **Step 1: Write the failing test**
@@ -69,7 +69,7 @@ Expected: PASS
 **Step 5: Commit**
 
 ```bash
-git add docs/plans/lxmf-parity-matrix.md tests/fixtures/python/lxmf
+git add docs/status/lxmf-parity-matrix.md tests/fixtures/python/lxmf
 
 git commit -m "chore: add lxmf parity matrix and fixture layout"
 ```
@@ -592,14 +592,14 @@ git commit -m "feat: lxmd CLI skeleton"
 ### Task 13: Compatibility gate checklist
 
 **Files:**
-- Modify: `docs/plans/lxmf-parity-matrix.md`
+- Modify: `docs/status/lxmf-parity-matrix.md`
 
 **Step 1: Write the failing test**
 
 ```rust
 #[test]
 fn parity_matrix_has_no_missing_router_items() {
-    let text = std::fs::read_to_string("docs/plans/lxmf-parity-matrix.md").unwrap();
+    let text = std::fs::read_to_string("docs/status/lxmf-parity-matrix.md").unwrap();
     assert!(!text.contains("missing") || !text.contains("router"));
 }
 ```
@@ -623,7 +623,7 @@ Expected: PASS when router items done
 **Step 5: Commit**
 
 ```bash
-git add docs/plans/lxmf-parity-matrix.md
+git add docs/status/lxmf-parity-matrix.md
 
 git commit -m "chore: update LXMF parity matrix status"
 ```

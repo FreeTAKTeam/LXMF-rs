@@ -9,7 +9,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  lint-format:
+  quality:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,14 +19,18 @@ jobs:
           sudo apt-get install -y pkg-config libdbus-1-dev
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt
+          components: rustfmt,clippy
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
           cache-targets: true
           cache-on-failure: false
       - name: Format
-        run: cargo xtask ci --stage lint-format
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --all-features --no-deps -- -D warnings
+      - name: Check
+        run: cargo check --workspace --all-targets
 
   correctness:
     runs-on: ubuntu-latest
@@ -367,9 +371,9 @@ jobs:
           cache-targets: true
           cache-on-failure: false
       - name: Integration tests
-        run: cargo xtask ci --stage test-integration
+        run: cargo test --workspace --tests
 
-  doc:
+  contracts:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

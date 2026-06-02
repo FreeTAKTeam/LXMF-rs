@@ -2615,7 +2615,7 @@ mod tests {
         assert!(state.lock().await.peer(&source_address).is_some());
 
         sender
-            .send_to(&vec![0; rns_transport::hash::HASH_SIZE], bind_addr)
+            .send_to(&[0; rns_transport::hash::HASH_SIZE], bind_addr)
             .await
             .expect("send invalid discovery datagram");
         let rejected = tokio::time::timeout(std::time::Duration::from_secs(1), events_rx.recv())

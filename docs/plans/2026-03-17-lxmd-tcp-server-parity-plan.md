@@ -7,7 +7,7 @@ Last updated: 2026-03-17
 This plan is an execution addendum to:
 
 - `docs/plans/2026-01-26-lxmf-reticulum-full-parity.md` (full LXMF + Reticulum parity track)
-- `docs/plans/lxmf-parity-matrix.md` and `docs/plans/reticulum-parity-matrix.md` (status source of truth)
+- `docs/status/lxmf-parity-matrix.md` and `docs/status/reticulum-parity-matrix.md` (status source of truth)
 - `docs/contracts/compatibility-contract.md` and `docs/contracts/compatibility-matrix.md` (compatibility gates)
 
 Goal for this addendum: close the specific gap where Rust `lxmd` does not behave like Python `lxmd` when configured as a TCP server, then extend the work to broader daemon/runtime parity.
@@ -101,8 +101,8 @@ The Rust `lxmd` compatibility entrypoint currently models "server bind" as a ded
    - `docs/contracts/compatibility-contract.md`
    - `docs/runbooks/*` where TCP server startup is described
 2. Update parity matrices:
-   - `docs/plans/lxmf-parity-matrix.md`
-   - `docs/plans/reticulum-parity-matrix.md`
+   - `docs/status/lxmf-parity-matrix.md`
+   - `docs/status/reticulum-parity-matrix.md`
 3. Add migration notes for operators currently depending on `transport` overrides.
 
 **Exit criteria:** docs describe one coherent parity model and operators have migration guidance.

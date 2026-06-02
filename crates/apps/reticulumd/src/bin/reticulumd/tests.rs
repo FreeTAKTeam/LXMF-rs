@@ -1533,7 +1533,7 @@ interfaces = [
 #[test]
 fn reticulum_parity_matrix_mentions_config_driven_lxmd_tcp_server_startup() {
     let parity_matrix_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../docs/plans/reticulum-parity-matrix.md");
+        .join("../../../docs/status/reticulum-parity-matrix.md");
     let text = fs::read_to_string(&parity_matrix_path).expect("read reticulum parity matrix");
 
     assert!(

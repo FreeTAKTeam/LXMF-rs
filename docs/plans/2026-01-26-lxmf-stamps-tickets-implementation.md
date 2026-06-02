@@ -372,14 +372,14 @@ git commit -m "feat: add ticket parsing and validation"
 ### Task 5: Update LXMF parity matrix status
 
 **Files:**
-- Modify: `docs/plans/lxmf-parity-matrix.md`
+- Modify: `docs/status/lxmf-parity-matrix.md`
 
 **Step 1: Write the failing test**
 
 ```rust
 #[test]
 fn parity_matrix_marks_stamp_ticket_progress() {
-    let text = std::fs::read_to_string("docs/plans/lxmf-parity-matrix.md").unwrap();
+    let text = std::fs::read_to_string("docs/status/lxmf-parity-matrix.md").unwrap();
     assert!(text.contains("LXMF/LXStamper.py") && text.contains("partial"));
 }
 ```
@@ -403,7 +403,7 @@ Expected: PASS
 **Step 5: Commit**
 
 ```bash
-git add docs/plans/lxmf-parity-matrix.md tests/parity_matrix_gate.rs
+git add docs/status/lxmf-parity-matrix.md tests/parity_matrix_gate.rs
 
 git commit -m "chore: update LXMF parity matrix for stamps/tickets"
 ```
