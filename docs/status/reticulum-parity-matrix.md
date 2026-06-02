@@ -3,7 +3,7 @@
 Status: historical parity snapshot; check `docs/status/current-roadmap.md` for
 current repo-wide status before relying on this file for active execution order.
 
-Last reassessed: 2026-03-10 (`cargo test -p reticulum-rs-rpc --lib`, `cargo test -p reticulum-rs-transport --lib`, `cargo test -p lxmf-wire --lib`)
+Last reassessed: 2026-06-02 (PR #215 GitHub CI rollup green at `0c4588c`; local `cargo +nightly udeps --workspace --all-targets`)
 
 Status legend: `not-started` | `partial` | `done`
 
@@ -12,6 +12,12 @@ Status legend: `not-started` | `partial` | `done`
 Naming note: this matrix keeps workspace paths in the table for code-navigation
 clarity. The corresponding published crate names are `reticulum-rs-core`,
 `reticulum-rs-transport`, and `reticulum-rs-rpc`.
+
+As of 2026-06-02, KISS and LoRa/RNode are implemented interface areas in the
+active branch rather than absent placeholders. The remaining `partial` status
+for `RNS/Interfaces/*` is about reference breadth and operational completeness:
+Python still ships additional interface families and wider management/tooling
+behavior than this repository currently starts, validates, and documents.
 
 | Python Surface | Rust Surface | Status | Notes |
 | --- | --- | --- | --- |
@@ -33,7 +39,13 @@ clarity. The corresponding published crate names are `reticulum-rs-core`,
 
 ## Confirmed Gaps
 
-- Interface parity is incomplete. KISS and active serial LoRa support are now present, but the Python reference still includes more built-in interface types and richer RNode management than the active Rust daemon starts or validates.
+- Interface parity is incomplete, but KISS and LoRa/RNode should no longer be
+  described as unimplemented. Active support now covers serial KISS,
+  TCP/Wi-Fi KISS client startup, serial and TCP/Wi-Fi LoRa/RNode startup,
+  feature-gated RNode BLE startup, and feature-gated VR-N76 KISS-over-BLE
+  startup. Remaining gaps are the Python interface families not yet covered
+  here, host/hardware lifecycle evidence for BLE/RNode devices, and broader
+  operational management behavior.
 - AutoInterface live daemon runtime is implemented. The daemon binds discovery
   and peer-data sockets with native scoped IPv6 resolution from `if-addrs`,
   receives and authenticates discovery datagrams, classifies peer-data packets,
@@ -56,4 +68,5 @@ clarity. The corresponding published crate names are `reticulum-rs-core`,
 
 - Core protocol primitives are in substantially better shape than the surrounding runtime/tooling surface.
 - The active workspace is closest to parity in `reticulum-rs-core` and the lower-level parts of `reticulum-rs-transport`.
-- The largest Reticulum gaps are interface breadth, operational daemon behavior, and utility/CLI parity.
+- The largest Reticulum gaps are the remaining interface-family breadth,
+  operational daemon behavior, and utility/CLI parity.

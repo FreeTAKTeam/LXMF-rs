@@ -1,6 +1,6 @@
 # Current Roadmap Status
 
-Last updated: 2026-06-01
+Last updated: 2026-06-02
 
 This document is the current source of truth for repository-wide delivery
 status. Update this file first when parity status, release confidence, or the
@@ -15,12 +15,14 @@ Related documents:
 
 ## Current Summary
 
-- Focused build, test, and clippy checks are green for the current daemon/CLI
-  slices, and the strict architecture boundary check passes.
-- `cargo run -p xtask -- architecture-checks` is green for both strict boundary
-  checks and the module-size gate.
-- The repository is not blocked by broken builds. The main blockers are parity
-  gaps and CI/doc drift.
+- PR #215's `master` -> `main` integration branch is mergeable and clean, with
+  the GitHub CI rollup green at head `0c4588c`.
+- The `CI / unused-deps (pull_request)` failure was resolved by removing stale
+  `reticulum-rs-rpc` dependency declarations; the matching local check
+  `cargo +nightly udeps --workspace --all-targets` reports all dependencies in
+  use.
+- The repository is not blocked by broken builds. The main blockers are now
+  remaining Python parity gaps, not CI or merge conflicts.
 
 ## What Is True Now
 
@@ -82,11 +84,14 @@ gap, even though deeper propagation-router parity remains open.
   normal or propagation stamp work states.
 - Peer/router/runtime parity remains partial.
 - Reticulum interface breadth is still narrower than the Python reference, but
-  KISS serial framing/configuration, TCP/Wi-Fi KISS client startup, and active serial plus TCP/Wi-Fi LoRa/RNode-style startup
-  are now implemented in the active daemon path, including Python-compatible
-  KISS single-port command-byte decoding with port-nibble stripping, preserved
-  full RNode command bytes, RNode startup probe frames, and
-  short-term/long-term airtime-limit commands.
+  KISS and LoRa/RNode are active implemented areas in the current branch. The
+  daemon and transport crates now cover serial KISS
+  framing/configuration, TCP/Wi-Fi KISS client startup, serial and TCP/Wi-Fi
+  LoRa/RNode startup, feature-gated native RNode BLE startup, and feature-gated
+  VR-N76 KISS-over-BLE startup. The active path includes Python-compatible KISS
+  single-port command-byte decoding with port-nibble stripping, preserved full
+  RNode command bytes, RNode startup probe frames, and short-term/long-term
+  airtime-limit commands.
   Configured UDP multicast startup now uses the transport multicast path so
   peer-routing is registered for point-to-point replies discovered through the
   multicast interface.
@@ -217,8 +222,9 @@ gap, even though deeper propagation-router parity remains open.
   appends the same RNode detect/radio-configuration command frames as
   serial/TCP startup, and writes radio-off plus leave-host frames during BLE
   cleanup. BLE startup and fatal command-response validation now feeds the same
-  RNode protocol state used by serial/TCP startup, but broader RNode management
-  operations over BLE remain incomplete. BLE connect timeout and RNode
+  RNode protocol state used by serial/TCP startup, but higher-level RNode
+  management CLI/configuration operations over BLE remain incomplete. BLE
+  connect timeout and RNode
   command-response timeout are kept distinct: native BLE connect defaults to
   five seconds and uses `ble_connect_timeout_ms` overrides, while RNode startup
   validation defaults to Python's 1500 ms command deadline and uses

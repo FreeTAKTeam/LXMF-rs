@@ -4,9 +4,12 @@ Status: historical parity snapshot; check `docs/status/current-roadmap.md` for
 current repo-wide status before relying on this file for active execution order.
 As of 2026-06-02, the live Python-reference interop workflow is green for the
 current branch, but that checkpoint does not convert the partial peer, router,
-propagation, and stamper rows below into full parity.
+propagation, and stamper rows below into full parity. The Reticulum
+KISS/LoRa/RNode interface work improves the transport substrate available to
+LXMF, but it does not by itself complete LXMF peer sync, propagation router, or
+stamp worker parity.
 
-Last reassessed: 2026-05-07 (`cargo run -p xtask -- ci`, `cargo run -p xtask -- architecture-checks`, live local Rust/Python interop gates)
+Last reassessed: 2026-06-02 (PR #215 GitHub CI rollup green at `0c4588c`; local `cargo +nightly udeps --workspace --all-targets`)
 
 Status legend: `not-started` | `partial` | `done`
 
@@ -118,6 +121,8 @@ Recent focused evidence:
 - `cargo test -p reticulum-rs-rpc --lib ticket_generate_reuses_persisted_ticket_after_daemon_restart -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib outbound_lxm -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib propagation_remote_sync -- --nocapture`
+- PR #215 GitHub CI rollup at `0c4588c`, including the pinned
+  Python-reference interop workflow and `CI / unused-deps (pull_request)`.
 - `cargo test -p reticulum-rs-rpc --lib propagation_acknowledge_sync_completion -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib list_peers_exposes_python_style_message_counters -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib propagation_enable_activates_static_peers_like_python -- --nocapture`
