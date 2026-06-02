@@ -94,6 +94,7 @@ impl KissStreamDecoder {
 
     pub fn push_bytes(&mut self, input: &[u8]) -> Result<Vec<KissFrame>, KissDecodeError> {
         let mut frames = Vec::new();
+        let max_frame_len = max_buffered_frame_len(self.max_payload_len);
         for byte in input {
             if *byte == FEND {
                 if !self.frame.is_empty() {
@@ -107,9 +108,18 @@ impl KissStreamDecoder {
                 continue;
             }
             self.frame.push(*byte);
+            if self.frame.len() > max_frame_len {
+                let actual = self.frame.len();
+                self.frame.clear();
+                return Err(KissDecodeError::FrameTooLarge { limit: max_frame_len, actual });
+            }
         }
         Ok(frames)
     }
+}
+
+fn max_buffered_frame_len(max_payload_len: usize) -> usize {
+    max_payload_len.saturating_mul(2).saturating_add(1)
 }
 
 fn decode_frame(raw: &[u8], max_payload_len: usize, strip_command_port_nibble: bool) -> KissFrame {

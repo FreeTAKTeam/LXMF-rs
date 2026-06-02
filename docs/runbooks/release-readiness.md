@@ -72,9 +72,9 @@ reference revisions from `.github/workflows/python-interop.yml`: Reticulum
 conformance `0319444b20e0815f26c6b9ceeba8fa44de037c9b`, Python Reticulum
 `15320e4d2cfabb143c1db20ca887e275fd521585`, and Python LXMF
 `727830cefda83d9c6e3982b48675425f3f988f9c`. The latest GitHub metadata checked
-on 2026-05-29 showed the newest `Python reference interop` run failing on
-`switch_to_tracing`, with the latest successful run on 2026-05-28 for
-`udp-multicast`; do not encode transient run IDs in runtime SDK responses.
+on 2026-06-02 showed the newest `Python reference interop` pull-request run
+green for `codex/kiss-codec-parity`, and the latest `main` run also green.
+Do not encode transient run IDs in runtime SDK responses.
 
 The commands below remain useful release checks, but they are not currently
 enforced by pull-request CI unless and until `.github/workflows/ci.yml` is

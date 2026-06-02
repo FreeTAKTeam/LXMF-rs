@@ -2,6 +2,9 @@
 
 Status: historical parity snapshot; check `docs/status/current-roadmap.md` for
 current repo-wide status before relying on this file for active execution order.
+As of 2026-06-02, the live Python-reference interop workflow is green for the
+current branch, but that checkpoint does not convert the partial runtime,
+interface breadth, discovery, resolver, or utility rows below into full parity.
 
 Last reassessed: 2026-03-10 (`cargo test -p reticulum-rs-rpc --lib`, `cargo test -p reticulum-rs-transport --lib`, `cargo test -p lxmf-wire --lib`)
 

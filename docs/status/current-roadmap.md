@@ -1,6 +1,6 @@
 # Current Roadmap Status
 
-Last updated: 2026-06-01
+Last updated: 2026-06-02
 
 This document is the current source of truth for repository-wide delivery
 status. Update this file first when parity status, release confidence, or the
@@ -19,8 +19,12 @@ Related documents:
   slices, and the strict architecture boundary check passes.
 - `cargo run -p xtask -- architecture-checks` is green for both strict boundary
   checks and the module-size gate.
-- The repository is not blocked by broken builds. The main blockers are parity
-  gaps and CI/doc drift.
+- Live GitHub metadata checked on 2026-06-02 shows the `Python reference
+  interop` pull-request workflow green for the current `codex/kiss-codec-parity`
+  branch and for the latest `main` run. That workflow is the current
+  Rust/Python checkpoint against the pinned reference revisions below.
+- The repository is not blocked by known broken parity gates. The main blockers
+  are remaining behavioral parity gaps and keeping docs/current CI in sync.
 
 ## What Is True Now
 
@@ -47,6 +51,10 @@ gap, even though deeper propagation-router parity remains open.
   `python_channel_interop`, `python_paper_interop`, and `python_compat_matrix`.
   `crates/apps/lxmf-cli/tests/python_lxmd_remote_relay.rs` is also included for
   cross-implementation LXMD relay paths.
+  The pinned checkpoint currently reports Reticulum conformance
+  `0319444b20e0815f26c6b9ceeba8fa44de037c9b`, Python Reticulum
+  `15320e4d2cfabb143c1db20ca887e275fd521585`, and Python LXMF
+  `727830cefda83d9c6e3982b48675425f3f988f9c`.
 - `reticulumd` now defaults to local Unix RPC, treats TCP as opt-in, rejects
   unauthenticated remote TCP binds, handles graceful listener shutdown, and
   documents service-manager deployment in
@@ -251,7 +259,9 @@ gap, even though deeper propagation-router parity remains open.
 1. Keep architecture and boundary gates trustworthy.
 2. Keep the pinned Rust/Python interop workflow green and extend it when new
    compatibility rows become supported.
-3. Align `README.md`, `docs/runbooks/release-readiness.md`, and GitHub CI with
+3. Refresh the historical LXMF and Reticulum parity matrices when a parity area
+   changes status. Until refreshed, this file remains the source of truth.
+4. Align `README.md`, `docs/runbooks/release-readiness.md`, and GitHub CI with
    the same definition of "green".
 
 ## Update Rules

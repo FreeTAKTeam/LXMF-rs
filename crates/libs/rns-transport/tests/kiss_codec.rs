@@ -7,9 +7,9 @@ use rns_transport::iface::kiss::{
 };
 use rns_transport::iface::{TxMessage, TxMessageType};
 use rns_transport::kiss::{
-    decode_frames, encode_command_frame, encode_data_frame, KissCommand, KissFrame,
-    KissStreamDecoder, CMD_DATA, CMD_P, CMD_READY, CMD_SLOTTIME, CMD_TXDELAY, CMD_TXTAIL, FEND,
-    FESC, TFEND, TFESC,
+    decode_frames, encode_command_frame, encode_data_frame, KissCommand, KissDecodeError,
+    KissFrame, KissStreamDecoder, CMD_DATA, CMD_P, CMD_READY, CMD_SLOTTIME, CMD_TXDELAY,
+    CMD_TXTAIL, FEND, FESC, TFEND, TFESC,
 };
 use rns_transport::packet::Packet;
 use tokio_util::sync::CancellationToken;
@@ -181,6 +181,24 @@ fn stream_decoder_buffers_split_frames() {
     let frames = decoder.push_bytes(&[b'i', b'n', b'g', FEND]).expect("finish decode");
 
     assert_eq!(frames, vec![KissFrame::Data(b"ping".to_vec())]);
+}
+
+#[test]
+fn stream_decoder_rejects_oversized_unterminated_frame() {
+    let mut decoder = KissStreamDecoder::new(2);
+
+    let err = decoder
+        .push_bytes(&[FEND, CMD_DATA, b'a', b'b', b'c', b'd', b'e'])
+        .expect_err("unterminated frame should be bounded");
+
+    assert_eq!(err, KissDecodeError::FrameTooLarge { limit: 5, actual: 6 });
+    assert!(!decoder.has_partial_frame());
+
+    let frames = decoder
+        .push_bytes(&[FEND, CMD_DATA, b'o', b'k', FEND])
+        .expect("decoder should recover after oversized partial frame");
+
+    assert_eq!(frames, vec![KissFrame::Data(b"ok".to_vec())]);
 }
 
 #[tokio::test]
