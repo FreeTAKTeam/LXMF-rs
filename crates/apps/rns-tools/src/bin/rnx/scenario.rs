@@ -221,8 +221,8 @@ pub(crate) fn run_e2e(
 
     cleanup_child(&mut a_child, keep);
     cleanup_child(&mut b_child, keep);
-    log::trace!("E2E ok: peer discovery A<->B succeeded");
-    log::trace!("E2E ok: compatibility delivery modes completed");
+    println!("E2E ok: peer discovery A<->B succeeded");
+    println!("E2E ok: compatibility delivery modes completed");
     Ok(())
 }
 
@@ -342,7 +342,7 @@ pub(crate) fn run_delivery_mode(
         }
         *request_id = (*request_id).wrapping_add(1);
 
-        log::trace!("E2E ok: mode={} message {} delivered", label, message_id);
+        println!("E2E ok: mode={} message {} delivered", label, message_id);
         return Ok(());
     }
 
@@ -410,7 +410,7 @@ pub(crate) fn run_paper_workflow(
     }
     *request_id = (*request_id).wrapping_add(1);
 
-    log::trace!("E2E ok: mode=paper message {} encoded/decoded", message_id);
+    println!("E2E ok: mode=paper message {} encoded/decoded", message_id);
     Ok(())
 }
 

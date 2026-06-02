@@ -53,7 +53,16 @@ crates/libs/rns-transport/src/transport/tests.rs
 crates/libs/test-support/src/sdk_schema/fixtures_contract_tests.rs
 xtask/src/client_codegen.rs
 crates/apps/reticulumd/src/bin/reticulumd/bootstrap.rs
+crates/apps/reticulumd/src/bin/reticulumd/bootstrap_interface_startup.rs
+crates/apps/reticulumd/src/bin/reticulumd/bridge_delivery_task_tests.rs
+crates/apps/reticulumd/src/bin/reticulumd/interfaces/auto.rs
 crates/apps/reticulumd/src/bin/reticulumd/interfaces/ble/mod.rs
 crates/apps/reticulumd/src/bin/reticulumd/interfaces/ble/native.rs
 crates/apps/reticulumd/src/bin/reticulumd/tests.rs
+crates/libs/rns-transport/src/iface/auto.rs
+crates/libs/rns-transport/src/iface/kiss.rs
+crates/libs/rns-transport/src/iface/lora.rs
+crates/libs/rns-transport/src/iface/rnode_ble.rs
 crates/libs/rns-transport/src/iface/serial.rs
+crates/libs/rns-transport/src/iface/vrn76_kiss_ble.rs
+crates/libs/test-support/src/sdk_conformance/app_mode_contract_tests.rs

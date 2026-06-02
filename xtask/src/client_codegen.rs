@@ -2501,19 +2501,21 @@ fn transform_schema_node_for_generator(value: &Value) -> Result<Value> {
         Value::Object(map) => {
             let mut out = Map::new();
 
-            let nullable = if let Some(types) = map.get("type").and_then(Value::as_array) {
-                type_with_nullable(types)?
+            let type_array = if let Some(types) = map.get("type").and_then(Value::as_array) {
+                type_array_to_generator_type(types)?
             } else {
                 None
             };
 
             for (key, node) in map {
                 if key == "type" {
-                    if let Some((base_type, nullable)) = &nullable {
+                    if let Some(TypeArrayConversion::Single { base_type, nullable }) = &type_array {
                         out.insert("type".to_string(), Value::String(base_type.to_string()));
                         if *nullable {
                             out.insert("nullable".to_string(), Value::Bool(true));
                         }
+                    } else if type_array.is_some() {
+                        continue;
                     } else {
                         out.insert(key.clone(), transform_schema_node_for_generator(node)?);
                     }
@@ -2536,13 +2538,26 @@ fn transform_schema_node_for_generator(value: &Value) -> Result<Value> {
                 out.insert(key.clone(), transformed);
             }
 
+            if let Some(TypeArrayConversion::AnyOf { schemas, nullable }) = type_array {
+                out.insert("anyOf".to_string(), Value::Array(schemas));
+                if nullable {
+                    out.insert("nullable".to_string(), Value::Bool(true));
+                }
+            }
+
             Ok(Value::Object(out))
         }
         _ => Ok(value.clone()),
     }
 }
 
-fn type_with_nullable(type_list: &[Value]) -> Result<Option<(String, bool)>> {
+#[derive(Debug, Clone)]
+enum TypeArrayConversion {
+    Single { base_type: String, nullable: bool },
+    AnyOf { schemas: Vec<Value>, nullable: bool },
+}
+
+fn type_array_to_generator_type(type_list: &[Value]) -> Result<Option<TypeArrayConversion>> {
     let has_null = type_list.iter().any(|value| value == "null");
     let mut seen = Vec::new();
     for value in type_list {
@@ -2555,9 +2570,14 @@ fn type_with_nullable(type_list: &[Value]) -> Result<Option<(String, bool)>> {
 
     match seen.as_slice() {
         [] => Ok(None),
-        [kind] => Ok(Some((kind.to_string(), has_null))),
-        _ if has_null => Ok(None),
-        _ => Ok(None),
+        [kind] => Ok(Some(TypeArrayConversion::Single {
+            base_type: kind.to_string(),
+            nullable: has_null,
+        })),
+        _ => Ok(Some(TypeArrayConversion::AnyOf {
+            schemas: seen.into_iter().map(|kind| json!({ "type": kind })).collect::<Vec<_>>(),
+            nullable: has_null,
+        })),
     }
 }
 
@@ -2591,19 +2611,19 @@ fn run_openapi_generator(
             args.extend(vec![
                 "generate".to_string(),
                 "-i".to_string(),
-                spec_path
-                    .canonicalize()
-                    .with_context(|| format!("canonicalize {}", spec_path.display()))?
-                    .to_string_lossy()
-                    .to_string(),
+                external_tool_path(
+                    &spec_path
+                        .canonicalize()
+                        .with_context(|| format!("canonicalize {}", spec_path.display()))?,
+                ),
                 "-g".to_string(),
                 generator.to_string(),
                 "-o".to_string(),
-                output_dir
-                    .canonicalize()
-                    .with_context(|| format!("canonicalize {}", output_dir.display()))?
-                    .to_string_lossy()
-                    .to_string(),
+                external_tool_path(
+                    &output_dir
+                        .canonicalize()
+                        .with_context(|| format!("canonicalize {}", output_dir.display()))?,
+                ),
             ]);
             if openapi_version.starts_with("3.1") {
                 args.push("--skip-validate-spec".to_string());
@@ -2614,7 +2634,7 @@ fn run_openapi_generator(
                     bail!("missing generator config file {}", abs.display());
                 }
                 args.push("-c".to_string());
-                args.push(abs.to_string_lossy().to_string());
+                args.push(external_tool_path(&abs));
             }
 
             run_command(command_program, &args.iter().map(String::as_str).collect::<Vec<_>>())?;
@@ -2689,11 +2709,29 @@ fn run_openapi_generator(
 }
 
 fn run_command(cmd: &str, args: &[&str]) -> Result<()> {
-    let status = Command::new(cmd).args(args).status().with_context(|| format!("spawn {cmd}"))?;
+    let program = command_program(cmd);
+    let status =
+        Command::new(&program).args(args).status().with_context(|| format!("spawn {cmd}"))?;
     if !status.success() {
         bail!("command failed: {} {}", cmd, args.join(" "));
     }
     Ok(())
+}
+
+fn command_program(cmd: &str) -> String {
+    if cmd == "bash" {
+        if let Ok(override_path) = env::var("LXMF_RS_BASH") {
+            if !override_path.trim().is_empty() {
+                return override_path;
+            }
+        }
+    }
+    cmd.to_string()
+}
+
+fn external_tool_path(path: &Path) -> String {
+    let rendered = path.to_string_lossy();
+    rendered.strip_prefix(r"\\?\").unwrap_or(&rendered).to_string()
 }
 
 fn collect_files_recursive(path: &Path) -> Result<Vec<PathBuf>> {
@@ -3084,6 +3122,7 @@ mod tests {
                         "properties": {
                             "method": {"const": "sdk_send_v2"},
                             "count": {"type": ["integer", "null"]},
+                            "body": {"type": ["object", "string", "null"]},
                         },
                         "required": ["method"]
                     },
@@ -3120,6 +3159,12 @@ mod tests {
         assert_eq!(count["type"], "integer");
         assert_eq!(count["nullable"], true);
         assert!(count.get("additionalProperties").is_none());
+
+        let body = &request["properties"]["body"];
+        assert_eq!(body["anyOf"][0]["type"], "object");
+        assert_eq!(body["anyOf"][1]["type"], "string");
+        assert_eq!(body["nullable"], true);
+        assert!(body.get("type").is_none());
 
         let payload = &converted["components"]["schemas"]["Payload"];
         assert!(payload.get("const").is_none());

@@ -29,8 +29,6 @@ serde_bytes.workspace = true
 rusqlite = { workspace = true }
 serde.workspace = true
 tokio = { workspace = true, features = ["full"] }
-tokio-stream = { version = "0.1", features = ["sync"] }
-x509-parser.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]

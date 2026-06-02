@@ -8,13 +8,13 @@
     },
     {
       "path": "docs/contracts/baselines/lxmf-sdk-public-api.txt",
-      "bytes": 243872,
-      "sha256": "47ac80f9a38c0df34fcbb034abf763e89f4eb8cd5ad911ecd2175f755d829042"
+      "bytes": 246445,
+      "sha256": "3d34997453935f256dab1812e64cdc2bfcf7795b5cecb3cc5a95862029e7ee19"
     },
     {
       "path": "docs/contracts/baselines/schema-client-generation-baseline.json",
       "bytes": 373,
-      "sha256": "518232ef5ab7d09611f45646f8b4ec0770718884b45df147bc4e495ca0ba995c"
+      "sha256": "d409195dd61e6bf76a1d615d56551d7623759f1b8187c15a33cd7b926cba28bd"
     },
     {
       "path": "docs/contracts/ble-camera-wire-v1.md",
@@ -355,6 +355,11 @@
       "path": "docs/fixtures/sdk-app-v1/timeout.poll_timeout.json",
       "bytes": 259,
       "sha256": "6fab1c6489f1dfe12ee9dac7c79c64bffe9996b1c626334d9f82df50fc1480ac"
+    },
+    {
+      "path": "docs/fixtures/sdk-operation-runtime/r3akt.catalog.json",
+      "bytes": 2313,
+      "sha256": "1cfc3ec1b4a4fcbc88ca9f014ed72fdd3721b9b4dda0527395dbfc1da358c9e5"
     },
     {
       "path": "docs/fixtures/sdk-v2/attachment.meta.valid.json",

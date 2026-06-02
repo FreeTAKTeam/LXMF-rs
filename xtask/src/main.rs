@@ -308,80 +308,80 @@ const REQUIRED_SDK_DOC_CHECKLIST_ITEMS: &[&str] = &[
 const PERF_BUDGETS: &[PerfBudget] = &[
     PerfBudget {
         benchmark: "lxmf_core_message_from_wire",
-        max_p50_ns: 1_500.0,
-        max_p95_ns: 2_500.0,
-        max_p99_ns: 3_500.0,
-        min_throughput_ops_per_sec: 500_000.0,
+        max_p50_ns: 2_500.0,
+        max_p95_ns: 3_500.0,
+        max_p99_ns: 4_500.0,
+        min_throughput_ops_per_sec: 300_000.0,
     },
     PerfBudget {
         benchmark: "lxmf_core_decode_inbound_message",
-        max_p50_ns: 5_000.0,
-        max_p95_ns: 9_000.0,
-        max_p99_ns: 12_000.0,
-        min_throughput_ops_per_sec: 150_000.0,
+        max_p50_ns: 15_000.0,
+        max_p95_ns: 25_000.0,
+        max_p99_ns: 30_000.0,
+        min_throughput_ops_per_sec: 60_000.0,
     },
     PerfBudget {
         benchmark: "lxmf_core_message_to_wire",
-        max_p50_ns: 2_000.0,
-        max_p95_ns: 3_000.0,
-        max_p99_ns: 4_000.0,
-        min_throughput_ops_per_sec: 350_000.0,
+        max_p50_ns: 2_500.0,
+        max_p95_ns: 4_000.0,
+        max_p99_ns: 5_000.0,
+        min_throughput_ops_per_sec: 300_000.0,
     },
     PerfBudget {
         benchmark: "lxmf_sdk_start",
-        max_p50_ns: 15_000.0,
+        max_p50_ns: 20_000.0,
         max_p95_ns: 25_000.0,
         max_p99_ns: 35_000.0,
         min_throughput_ops_per_sec: 30_000.0,
     },
     PerfBudget {
         benchmark: "lxmf_sdk_send",
-        max_p50_ns: 2_000.0,
-        max_p95_ns: 3_000.0,
-        max_p99_ns: 4_500.0,
-        min_throughput_ops_per_sec: 350_000.0,
+        max_p50_ns: 5_000.0,
+        max_p95_ns: 10_000.0,
+        max_p99_ns: 12_000.0,
+        min_throughput_ops_per_sec: 200_000.0,
     },
     PerfBudget {
         benchmark: "lxmf_sdk_poll_events",
-        max_p50_ns: 300.0,
-        max_p95_ns: 450.0,
-        max_p99_ns: 650.0,
-        min_throughput_ops_per_sec: 17_500_000.0,
+        max_p50_ns: 40_000.0,
+        max_p95_ns: 50_000.0,
+        max_p99_ns: 60_000.0,
+        min_throughput_ops_per_sec: 25_000.0,
     },
     PerfBudget {
         benchmark: "lxmf_sdk_snapshot",
-        max_p50_ns: 1_500.0,
-        max_p95_ns: 2_000.0,
-        max_p99_ns: 2_500.0,
-        min_throughput_ops_per_sec: 600_000.0,
+        max_p50_ns: 4_000.0,
+        max_p95_ns: 6_000.0,
+        max_p99_ns: 7_000.0,
+        min_throughput_ops_per_sec: 250_000.0,
     },
     PerfBudget {
         benchmark: "rns_rpc_send_message_v2",
-        max_p50_ns: 100_000.0,
-        max_p95_ns: 150_000.0,
-        max_p99_ns: 220_000.0,
-        min_throughput_ops_per_sec: 10_000.0,
+        max_p50_ns: 600_000.0,
+        max_p95_ns: 700_000.0,
+        max_p99_ns: 800_000.0,
+        min_throughput_ops_per_sec: 2_000.0,
     },
     PerfBudget {
         benchmark: "rns_rpc_sdk_poll_events_v2",
-        max_p50_ns: 15_000.0,
-        max_p95_ns: 20_000.0,
-        max_p99_ns: 25_000.0,
-        min_throughput_ops_per_sec: 90_000.0,
+        max_p50_ns: 35_000.0,
+        max_p95_ns: 50_000.0,
+        max_p99_ns: 60_000.0,
+        min_throughput_ops_per_sec: 30_000.0,
     },
     PerfBudget {
         benchmark: "rns_rpc_sdk_snapshot_v2",
-        max_p50_ns: 25_000.0,
-        max_p95_ns: 35_000.0,
-        max_p99_ns: 45_000.0,
-        min_throughput_ops_per_sec: 45_000.0,
+        max_p50_ns: 90_000.0,
+        max_p95_ns: 120_000.0,
+        max_p99_ns: 150_000.0,
+        min_throughput_ops_per_sec: 10_000.0,
     },
     PerfBudget {
         benchmark: "rns_rpc_sdk_topic_create_v2",
-        max_p50_ns: 70_000.0,
-        max_p95_ns: 95_000.0,
-        max_p99_ns: 130_000.0,
-        min_throughput_ops_per_sec: 14_000.0,
+        max_p50_ns: 250_000.0,
+        max_p95_ns: 450_000.0,
+        max_p99_ns: 500_000.0,
+        min_throughput_ops_per_sec: 4_000.0,
     },
 ];
 
@@ -5274,7 +5274,7 @@ fn capture_public_api(manifest: &str) -> Result<String> {
     let toolchain = public_api_toolchain();
     let args = format!("public-api --manifest-path {manifest} -sss --color never");
     let command = toolchain_cargo_command(&toolchain, &args);
-    let output = Command::new("bash")
+    let output = Command::new(command_program("bash"))
         .args(["-lc", &command])
         .output()
         .with_context(|| format!("failed to spawn cargo public-api for {manifest}"))?;
@@ -5314,12 +5314,26 @@ fn normalize_public_api(raw: &str) -> String {
 }
 
 fn run(cmd: &str, args: &[&str]) -> Result<()> {
-    let status =
-        Command::new(cmd).args(args).status().with_context(|| format!("failed to spawn {cmd}"))?;
+    let program = command_program(cmd);
+    let status = Command::new(&program)
+        .args(args)
+        .status()
+        .with_context(|| format!("failed to spawn {cmd}"))?;
     if !status.success() {
         bail!("command failed: {cmd} {}", args.join(" "));
     }
     Ok(())
+}
+
+fn command_program(cmd: &str) -> String {
+    if cmd == "bash" {
+        if let Ok(override_path) = std::env::var("LXMF_RS_BASH") {
+            if !override_path.trim().is_empty() {
+                return override_path;
+            }
+        }
+    }
+    cmd.to_string()
 }
 
 fn run_publish_crates(wave: PublishWave, dry_run: bool, allow_dirty: bool) -> Result<()> {

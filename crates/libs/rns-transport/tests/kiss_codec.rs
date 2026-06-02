@@ -14,6 +14,8 @@ use rns_transport::kiss::{
 use rns_transport::packet::Packet;
 use tokio_util::sync::CancellationToken;
 
+const KISS_TEST_CALLBACK_CHANNEL_CAPACITY: usize = 8;
+
 #[test]
 fn encode_data_frame_escapes_fend_and_fesc() {
     let payload = [0x01, FEND, 0x02, FESC, 0x03];
@@ -187,7 +189,8 @@ async fn run_kiss_stream_reports_unknown_command_frames() {
     let (rx_send, _rx_recv) = tokio::sync::mpsc::channel(1);
     let (_tx_send, tx_recv) = tokio::sync::mpsc::channel(1);
     let tx_recv = Arc::new(tokio::sync::Mutex::new(tx_recv));
-    let (command_tx, mut command_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (command_tx, mut command_rx) =
+        tokio::sync::mpsc::channel(KISS_TEST_CALLBACK_CHANNEL_CAPACITY);
     let cancel = CancellationToken::new();
 
     let worker_cancel = cancel.clone();
@@ -234,7 +237,7 @@ async fn run_kiss_stream_reports_inbound_data_frames_for_status_hooks() {
     let (rx_send, _rx_recv) = tokio::sync::mpsc::channel(1);
     let (_tx_send, tx_recv) = tokio::sync::mpsc::channel(1);
     let tx_recv = Arc::new(tokio::sync::Mutex::new(tx_recv));
-    let (data_rx_tx, mut data_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (data_rx_tx, mut data_rx) = tokio::sync::mpsc::channel(KISS_TEST_CALLBACK_CHANNEL_CAPACITY);
     let cancel = CancellationToken::new();
 
     let worker_cancel = cancel.clone();
@@ -280,8 +283,9 @@ async fn run_kiss_stream_drops_stale_partial_data_frame_after_python_read_timeou
     let (rx_send, _rx_recv) = tokio::sync::mpsc::channel(1);
     let (_tx_send, tx_recv) = tokio::sync::mpsc::channel(1);
     let tx_recv = Arc::new(tokio::sync::Mutex::new(tx_recv));
-    let (command_tx, mut command_rx) = tokio::sync::mpsc::unbounded_channel();
-    let (data_rx_tx, mut data_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (command_tx, mut command_rx) =
+        tokio::sync::mpsc::channel(KISS_TEST_CALLBACK_CHANNEL_CAPACITY);
+    let (data_rx_tx, mut data_rx) = tokio::sync::mpsc::channel(KISS_TEST_CALLBACK_CHANNEL_CAPACITY);
     let cancel = CancellationToken::new();
 
     let worker_cancel = cancel.clone();

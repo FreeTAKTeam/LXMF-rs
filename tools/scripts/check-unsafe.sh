@@ -101,6 +101,7 @@ done < "${INVENTORY_PATH}"
 
 while IFS=: read -r file line _; do
   [[ -n "${file}" ]] || continue
+  file="${file//\\//}"
   [[ -n "${line}" ]] || continue
   [[ -f "${file}" ]] || fail "unsafe match references missing file '${file}'"
   [[ "${line}" =~ ^[0-9]+$ ]] || fail "unsafe match has invalid line '${line}' for ${file}"

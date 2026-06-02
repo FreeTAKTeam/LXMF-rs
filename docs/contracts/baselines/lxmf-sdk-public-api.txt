@@ -214,20 +214,21 @@ pub fn lxmf_sdk::app::Client<B>::runtime(&self) -> lxmf_sdk::app::Runtime<'_, B>
 impl<B: lxmf_sdk::SdkBackend> lxmf_sdk::app::Client<B>
 pub fn lxmf_sdk::app::Client<B>::delivery_plan(&self) -> core::result::Result<lxmf_sdk::app::DeliveryPlan, lxmf_sdk::app::Error>
 pub fn lxmf_sdk::app::Client<B>::delivery_status(&self, message_id: impl core::convert::Into<lxmf_sdk::MessageId>) -> core::result::Result<core::option::Option<lxmf_sdk::app::DeliveryStatus>, lxmf_sdk::app::Error>
-pub async fn lxmf_sdk::app::Client<B>::delivery_status_async(&self, message_id: impl core::convert::Into<lxmf_sdk::MessageId>) -> core::result::Result<core::option::Option<lxmf_sdk::app::DeliveryStatus>, lxmf_sdk::app::Error> where B: lxmf_sdk::SdkBackendAsyncOps
 pub fn lxmf_sdk::app::Client<B>::operation_registry(&self) -> core::result::Result<lxmf_sdk::app::OperationRegistry, lxmf_sdk::app::Error>
 pub fn lxmf_sdk::app::Client<B>::restart(&self, config: lxmf_sdk::app::Config) -> core::result::Result<lxmf_sdk::app::Handle, lxmf_sdk::app::Error>
 pub fn lxmf_sdk::app::Client<B>::send(&self, request: lxmf_sdk::app::SendRequest) -> core::result::Result<lxmf_sdk::app::SendReceipt, lxmf_sdk::app::Error>
-pub async fn lxmf_sdk::app::Client<B>::send_async(&self, request: lxmf_sdk::app::SendRequest) -> core::result::Result<lxmf_sdk::app::SendReceipt, lxmf_sdk::app::Error> where B: lxmf_sdk::SdkBackendAsyncOps
 pub fn lxmf_sdk::app::Client<B>::send_with_options(&self, request: lxmf_sdk::app::SendRequest, options: lxmf_sdk::app::DeliveryOptions) -> core::result::Result<lxmf_sdk::app::SendReport, lxmf_sdk::app::Error>
-pub async fn lxmf_sdk::app::Client<B>::send_with_options_async(&self, request: lxmf_sdk::app::SendRequest, options: lxmf_sdk::app::DeliveryOptions) -> core::result::Result<lxmf_sdk::app::SendReport, lxmf_sdk::app::Error> where B: lxmf_sdk::SdkBackendAsyncOps
 pub fn lxmf_sdk::app::Client<B>::send_with_profile_defaults(&self, request: lxmf_sdk::app::SendRequest) -> core::result::Result<lxmf_sdk::app::SendReport, lxmf_sdk::app::Error>
-pub async fn lxmf_sdk::app::Client<B>::send_with_profile_defaults_async(&self, request: lxmf_sdk::app::SendRequest) -> core::result::Result<lxmf_sdk::app::SendReport, lxmf_sdk::app::Error> where B: lxmf_sdk::SdkBackendAsyncOps
 pub fn lxmf_sdk::app::Client<B>::start(&self, config: lxmf_sdk::app::Config) -> core::result::Result<lxmf_sdk::app::Handle, lxmf_sdk::app::Error>
-pub async fn lxmf_sdk::app::Client<B>::start_async(&self, config: lxmf_sdk::app::Config) -> core::result::Result<lxmf_sdk::app::Handle, lxmf_sdk::app::Error> where B: lxmf_sdk::SdkBackendAsyncOps
 pub fn lxmf_sdk::app::Client<B>::status(&self) -> core::result::Result<lxmf_sdk::app::RuntimeStatus, lxmf_sdk::app::Error>
-pub async fn lxmf_sdk::app::Client<B>::status_async(&self) -> core::result::Result<lxmf_sdk::app::RuntimeStatus, lxmf_sdk::app::Error> where B: lxmf_sdk::SdkBackendAsyncOps
 pub fn lxmf_sdk::app::Client<B>::stop(&self, mode: lxmf_sdk::ShutdownMode) -> core::result::Result<(), lxmf_sdk::app::Error>
+impl<B: lxmf_sdk::SdkBackend> lxmf_sdk::app::Client<B>
+pub async fn lxmf_sdk::app::Client<B>::delivery_status_async(&self, message_id: impl core::convert::Into<lxmf_sdk::MessageId>) -> core::result::Result<core::option::Option<lxmf_sdk::app::DeliveryStatus>, lxmf_sdk::app::Error> where B: lxmf_sdk::SdkBackendAsyncOps
+pub async fn lxmf_sdk::app::Client<B>::send_async(&self, request: lxmf_sdk::app::SendRequest) -> core::result::Result<lxmf_sdk::app::SendReceipt, lxmf_sdk::app::Error> where B: lxmf_sdk::SdkBackendAsyncOps
+pub async fn lxmf_sdk::app::Client<B>::send_with_options_async(&self, request: lxmf_sdk::app::SendRequest, options: lxmf_sdk::app::DeliveryOptions) -> core::result::Result<lxmf_sdk::app::SendReport, lxmf_sdk::app::Error> where B: lxmf_sdk::SdkBackendAsyncOps
+pub async fn lxmf_sdk::app::Client<B>::send_with_profile_defaults_async(&self, request: lxmf_sdk::app::SendRequest) -> core::result::Result<lxmf_sdk::app::SendReport, lxmf_sdk::app::Error> where B: lxmf_sdk::SdkBackendAsyncOps
+pub async fn lxmf_sdk::app::Client<B>::start_async(&self, config: lxmf_sdk::app::Config) -> core::result::Result<lxmf_sdk::app::Handle, lxmf_sdk::app::Error> where B: lxmf_sdk::SdkBackendAsyncOps
+pub async fn lxmf_sdk::app::Client<B>::status_async(&self) -> core::result::Result<lxmf_sdk::app::RuntimeStatus, lxmf_sdk::app::Error> where B: lxmf_sdk::SdkBackendAsyncOps
 pub async fn lxmf_sdk::app::Client<B>::stop_async(&self, mode: lxmf_sdk::ShutdownMode) -> core::result::Result<(), lxmf_sdk::app::Error> where B: lxmf_sdk::SdkBackendAsyncOps
 pub fn lxmf_sdk::app::Client<B>::subscribe_events(&self, start: lxmf_sdk::app::SubscriptionStart) -> core::result::Result<lxmf_sdk::app::EventStream<B>, lxmf_sdk::app::Error> where B: lxmf_sdk::SdkBackendAsyncEvents
 impl<B: lxmf_sdk::SdkBackend> lxmf_sdk::app::Client<B>
@@ -538,17 +539,25 @@ pub lxmf_sdk::app::SendReport::receipt: lxmf_sdk::app::SendReceipt
 pub lxmf_sdk::app::SendReport::total_delay_ms: u64
 #[non_exhaustive] pub struct lxmf_sdk::app::SendRequest
 pub lxmf_sdk::app::SendRequest::correlation_id: core::option::Option<alloc::string::String>
+pub lxmf_sdk::app::SendRequest::delivery_method: core::option::Option<alloc::string::String>
 pub lxmf_sdk::app::SendRequest::destination: alloc::string::String
 pub lxmf_sdk::app::SendRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
 pub lxmf_sdk::app::SendRequest::idempotency_key: core::option::Option<alloc::string::String>
+pub lxmf_sdk::app::SendRequest::include_ticket: core::option::Option<bool>
 pub lxmf_sdk::app::SendRequest::payload: serde_json::value::Value
 pub lxmf_sdk::app::SendRequest::source: alloc::string::String
+pub lxmf_sdk::app::SendRequest::stamp_cost: core::option::Option<u32>
+pub lxmf_sdk::app::SendRequest::try_propagation_on_fail: core::option::Option<bool>
 pub lxmf_sdk::app::SendRequest::ttl_ms: core::option::Option<u64>
 impl lxmf_sdk::app::SendRequest
 pub fn lxmf_sdk::app::SendRequest::new(source: impl core::convert::Into<alloc::string::String>, destination: impl core::convert::Into<alloc::string::String>, payload: serde_json::value::Value) -> Self
 pub fn lxmf_sdk::app::SendRequest::with_correlation_id(self, correlation_id: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn lxmf_sdk::app::SendRequest::with_delivery_method(self, method: impl core::convert::Into<alloc::string::String>) -> Self
 pub fn lxmf_sdk::app::SendRequest::with_extension(self, key: impl core::convert::Into<alloc::string::String>, value: serde_json::value::Value) -> Self
 pub fn lxmf_sdk::app::SendRequest::with_idempotency_key(self, key: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn lxmf_sdk::app::SendRequest::with_include_ticket(self, include_ticket: bool) -> Self
+pub fn lxmf_sdk::app::SendRequest::with_stamp_cost(self, stamp_cost: u32) -> Self
+pub fn lxmf_sdk::app::SendRequest::with_try_propagation_on_fail(self, try_propagation_on_fail: bool) -> Self
 pub fn lxmf_sdk::app::SendRequest::with_ttl_ms(self, ttl_ms: u64) -> Self
 #[non_exhaustive] pub struct lxmf_sdk::app::StreamGapDetails
 pub lxmf_sdk::app::StreamGapDetails::dropped_count: u64
@@ -585,6 +594,7 @@ pub lxmf_sdk::capability::EffectiveLimits::max_poll_events: usize
 pub lxmf_sdk::capability::NegotiationRequest::auth_mode: lxmf_sdk::AuthMode
 pub lxmf_sdk::capability::NegotiationRequest::bind_mode: lxmf_sdk::BindMode
 pub lxmf_sdk::capability::NegotiationRequest::block_timeout_ms: core::option::Option<u64>
+pub lxmf_sdk::capability::NegotiationRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
 pub lxmf_sdk::capability::NegotiationRequest::overflow_policy: lxmf_sdk::OverflowPolicy
 pub lxmf_sdk::capability::NegotiationRequest::profile: lxmf_sdk::Profile
 pub lxmf_sdk::capability::NegotiationRequest::requested_capabilities: alloc::vec::Vec<alloc::string::String>
@@ -1058,10 +1068,6 @@ pub lxmf_sdk::messaging::SyncPhase::LinkEstablishing
 pub lxmf_sdk::messaging::SyncPhase::PathRequested
 pub lxmf_sdk::messaging::SyncPhase::Receiving
 pub lxmf_sdk::messaging::SyncPhase::RequestSent
-pub const lxmf_sdk::messaging::DESTINATION_KIND_APP: &str
-pub const lxmf_sdk::messaging::DESTINATION_KIND_LXMF_DELIVERY: &str
-pub const lxmf_sdk::messaging::DESTINATION_KIND_LXMF_PROPAGATION: &str
-pub const lxmf_sdk::messaging::DESTINATION_KIND_OTHER: &str
 pub struct lxmf_sdk::messaging::AnnounceRecord
 pub lxmf_sdk::messaging::AnnounceRecord::app_data: alloc::string::String
 pub lxmf_sdk::messaging::AnnounceRecord::destination_hex: alloc::string::String
@@ -1071,6 +1077,7 @@ pub lxmf_sdk::messaging::AnnounceRecord::hops: u8
 pub lxmf_sdk::messaging::AnnounceRecord::identity_hex: alloc::string::String
 pub lxmf_sdk::messaging::AnnounceRecord::interface_hex: alloc::string::String
 pub lxmf_sdk::messaging::AnnounceRecord::received_at_ms: u64
+impl lxmf_sdk::messaging::AnnounceRecord
 pub fn lxmf_sdk::messaging::AnnounceRecord::from_raw(destination_hex: impl core::convert::Into<alloc::string::String>, identity_hex: impl core::convert::Into<alloc::string::String>, destination_kind: impl core::convert::Into<alloc::string::String>, app_data: &[u8], hops: u8, interface_hex: impl core::convert::Into<alloc::string::String>, received_at_ms: u64) -> Self
 pub struct lxmf_sdk::messaging::ConversationRecord
 pub lxmf_sdk::messaging::ConversationRecord::conversation_id: alloc::string::String
@@ -1137,6 +1144,10 @@ pub lxmf_sdk::messaging::SyncStatus::phase: lxmf_sdk::messaging::SyncPhase
 pub lxmf_sdk::messaging::SyncStatus::requested_at_ms: core::option::Option<u64>
 impl core::default::Default for lxmf_sdk::messaging::SyncStatus
 pub fn lxmf_sdk::messaging::SyncStatus::default() -> Self
+pub const lxmf_sdk::messaging::DESTINATION_KIND_APP: &str
+pub const lxmf_sdk::messaging::DESTINATION_KIND_LXMF_DELIVERY: &str
+pub const lxmf_sdk::messaging::DESTINATION_KIND_LXMF_PROPAGATION: &str
+pub const lxmf_sdk::messaging::DESTINATION_KIND_OTHER: &str
 pub mod lxmf_sdk::profiles
 pub struct lxmf_sdk::profiles::MemoryBudget
 pub lxmf_sdk::profiles::MemoryBudget::max_attachment_spool_bytes: usize
@@ -1371,17 +1382,25 @@ pub fn lxmf_sdk::SdkConfig::with_store_forward_policy(self, capacity_policy: lxm
 pub fn lxmf_sdk::SdkConfig::with_token_auth(self, issuer: impl core::convert::Into<alloc::string::String>, audience: impl core::convert::Into<alloc::string::String>, shared_secret: impl core::convert::Into<alloc::string::String>) -> Self
 #[non_exhaustive] pub struct lxmf_sdk::types::SendRequest
 pub lxmf_sdk::types::SendRequest::correlation_id: core::option::Option<alloc::string::String>
+pub lxmf_sdk::types::SendRequest::delivery_method: core::option::Option<alloc::string::String>
 pub lxmf_sdk::types::SendRequest::destination: alloc::string::String
 pub lxmf_sdk::types::SendRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
 pub lxmf_sdk::types::SendRequest::idempotency_key: core::option::Option<alloc::string::String>
+pub lxmf_sdk::types::SendRequest::include_ticket: core::option::Option<bool>
 pub lxmf_sdk::types::SendRequest::payload: serde_json::value::Value
 pub lxmf_sdk::types::SendRequest::source: alloc::string::String
+pub lxmf_sdk::types::SendRequest::stamp_cost: core::option::Option<u32>
+pub lxmf_sdk::types::SendRequest::try_propagation_on_fail: core::option::Option<bool>
 pub lxmf_sdk::types::SendRequest::ttl_ms: core::option::Option<u64>
 impl lxmf_sdk::SendRequest
 pub fn lxmf_sdk::SendRequest::new(source: impl core::convert::Into<alloc::string::String>, destination: impl core::convert::Into<alloc::string::String>, payload: serde_json::value::Value) -> Self
 pub fn lxmf_sdk::SendRequest::with_correlation_id(self, correlation_id: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn lxmf_sdk::SendRequest::with_delivery_method(self, method: impl core::convert::Into<alloc::string::String>) -> Self
 pub fn lxmf_sdk::SendRequest::with_extension(self, key: impl core::convert::Into<alloc::string::String>, value: serde_json::value::Value) -> Self
 pub fn lxmf_sdk::SendRequest::with_idempotency_key(self, key: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn lxmf_sdk::SendRequest::with_include_ticket(self, include_ticket: bool) -> Self
+pub fn lxmf_sdk::SendRequest::with_stamp_cost(self, stamp_cost: u32) -> Self
+pub fn lxmf_sdk::SendRequest::with_try_propagation_on_fail(self, try_propagation_on_fail: bool) -> Self
 pub fn lxmf_sdk::SendRequest::with_ttl_ms(self, ttl_ms: u64) -> Self
 #[non_exhaustive] pub struct lxmf_sdk::types::StartRequest
 pub lxmf_sdk::types::StartRequest::config: lxmf_sdk::SdkConfig
@@ -1612,7 +1631,8 @@ pub lxmf_sdk::AnnounceRecord::hops: u8
 pub lxmf_sdk::AnnounceRecord::identity_hex: alloc::string::String
 pub lxmf_sdk::AnnounceRecord::interface_hex: alloc::string::String
 pub lxmf_sdk::AnnounceRecord::received_at_ms: u64
-pub fn lxmf_sdk::AnnounceRecord::from_raw(destination_hex: impl core::convert::Into<alloc::string::String>, identity_hex: impl core::convert::Into<alloc::string::String>, destination_kind: impl core::convert::Into<alloc::string::String>, app_data: &[u8], hops: u8, interface_hex: impl core::convert::Into<alloc::string::String>, received_at_ms: u64) -> Self
+impl lxmf_sdk::messaging::AnnounceRecord
+pub fn lxmf_sdk::messaging::AnnounceRecord::from_raw(destination_hex: impl core::convert::Into<alloc::string::String>, identity_hex: impl core::convert::Into<alloc::string::String>, destination_kind: impl core::convert::Into<alloc::string::String>, app_data: &[u8], hops: u8, interface_hex: impl core::convert::Into<alloc::string::String>, received_at_ms: u64) -> Self
 pub struct lxmf_sdk::AttachmentDownloadChunk
 pub lxmf_sdk::AttachmentDownloadChunk::attachment_id: lxmf_sdk::domain::AttachmentId
 pub lxmf_sdk::AttachmentDownloadChunk::bytes_base64: alloc::string::String
@@ -2048,6 +2068,7 @@ pub lxmf_sdk::MobileBleWriteRequest::write_timeout_ms: u64
 pub lxmf_sdk::NegotiationRequest::auth_mode: lxmf_sdk::AuthMode
 pub lxmf_sdk::NegotiationRequest::bind_mode: lxmf_sdk::BindMode
 pub lxmf_sdk::NegotiationRequest::block_timeout_ms: core::option::Option<u64>
+pub lxmf_sdk::NegotiationRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
 pub lxmf_sdk::NegotiationRequest::overflow_policy: lxmf_sdk::OverflowPolicy
 pub lxmf_sdk::NegotiationRequest::profile: lxmf_sdk::Profile
 pub lxmf_sdk::NegotiationRequest::requested_capabilities: alloc::vec::Vec<alloc::string::String>
@@ -2062,17 +2083,17 @@ pub lxmf_sdk::NegotiationResponse::python_reference: lxmf_sdk::capability::Parit
 pub lxmf_sdk::NegotiationResponse::runtime_id: alloc::string::String
 pub lxmf_sdk::NegotiationResponse::schema_namespace: alloc::string::String
 pub lxmf_sdk::NegotiationResponse::sdk_version: alloc::string::String
+pub struct lxmf_sdk::PaperMessageEnvelope
+pub lxmf_sdk::PaperMessageEnvelope::destination_hint: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PaperMessageEnvelope::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::PaperMessageEnvelope::transient_id: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PaperMessageEnvelope::uri: alloc::string::String
 #[non_exhaustive] pub struct lxmf_sdk::ParityReference
 pub lxmf_sdk::ParityReference::python_lxmf_ref: alloc::string::String
 pub lxmf_sdk::ParityReference::python_reticulum_ref: alloc::string::String
 pub lxmf_sdk::ParityReference::reticulum_conformance_ref: alloc::string::String
 impl core::default::Default for lxmf_sdk::capability::ParityReference
 pub fn lxmf_sdk::capability::ParityReference::default() -> Self
-pub struct lxmf_sdk::PaperMessageEnvelope
-pub lxmf_sdk::PaperMessageEnvelope::destination_hint: core::option::Option<alloc::string::String>
-pub lxmf_sdk::PaperMessageEnvelope::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
-pub lxmf_sdk::PaperMessageEnvelope::transient_id: core::option::Option<alloc::string::String>
-pub lxmf_sdk::PaperMessageEnvelope::uri: alloc::string::String
 pub struct lxmf_sdk::PeerRecord
 pub lxmf_sdk::PeerRecord::announce_last_seen_at_ms: core::option::Option<u64>
 pub lxmf_sdk::PeerRecord::app_data: core::option::Option<alloc::string::String>
@@ -2302,17 +2323,25 @@ pub lxmf_sdk::SendMessageRequest::destination_hex: alloc::string::String
 pub lxmf_sdk::SendMessageRequest::title: core::option::Option<alloc::string::String>
 #[non_exhaustive] pub struct lxmf_sdk::SendRequest
 pub lxmf_sdk::SendRequest::correlation_id: core::option::Option<alloc::string::String>
+pub lxmf_sdk::SendRequest::delivery_method: core::option::Option<alloc::string::String>
 pub lxmf_sdk::SendRequest::destination: alloc::string::String
 pub lxmf_sdk::SendRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
 pub lxmf_sdk::SendRequest::idempotency_key: core::option::Option<alloc::string::String>
+pub lxmf_sdk::SendRequest::include_ticket: core::option::Option<bool>
 pub lxmf_sdk::SendRequest::payload: serde_json::value::Value
 pub lxmf_sdk::SendRequest::source: alloc::string::String
+pub lxmf_sdk::SendRequest::stamp_cost: core::option::Option<u32>
+pub lxmf_sdk::SendRequest::try_propagation_on_fail: core::option::Option<bool>
 pub lxmf_sdk::SendRequest::ttl_ms: core::option::Option<u64>
 impl lxmf_sdk::SendRequest
 pub fn lxmf_sdk::SendRequest::new(source: impl core::convert::Into<alloc::string::String>, destination: impl core::convert::Into<alloc::string::String>, payload: serde_json::value::Value) -> Self
 pub fn lxmf_sdk::SendRequest::with_correlation_id(self, correlation_id: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn lxmf_sdk::SendRequest::with_delivery_method(self, method: impl core::convert::Into<alloc::string::String>) -> Self
 pub fn lxmf_sdk::SendRequest::with_extension(self, key: impl core::convert::Into<alloc::string::String>, value: serde_json::value::Value) -> Self
 pub fn lxmf_sdk::SendRequest::with_idempotency_key(self, key: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn lxmf_sdk::SendRequest::with_include_ticket(self, include_ticket: bool) -> Self
+pub fn lxmf_sdk::SendRequest::with_stamp_cost(self, stamp_cost: u32) -> Self
+pub fn lxmf_sdk::SendRequest::with_try_propagation_on_fail(self, try_propagation_on_fail: bool) -> Self
 pub fn lxmf_sdk::SendRequest::with_ttl_ms(self, ttl_ms: u64) -> Self
 #[non_exhaustive] pub struct lxmf_sdk::StartRequest
 pub lxmf_sdk::StartRequest::config: lxmf_sdk::SdkConfig

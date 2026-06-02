@@ -901,7 +901,7 @@ impl RpcDaemon {
             }
             (spec.id, spec.rpc_method)
         } else if kind == "command" {
-            (operation_id.clone(), "sdk_command_invoke_v2")
+            (operation_id, "sdk_command_invoke_v2")
         } else {
             return Ok(self.envelope_invalid(request.id, "unknown operation id"));
         };

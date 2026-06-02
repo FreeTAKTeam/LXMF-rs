@@ -78,6 +78,7 @@ const FREQ_MAX: u64 = 3_000_000_000;
 const Q_SNR_MIN_BASE: f64 = -9.0;
 const Q_SNR_MAX: f64 = 6.0;
 const Q_SNR_STEP: f64 = 2.0;
+const LORA_KISS_PROBE_CHANNEL_CAPACITY: usize = 64;
 const R_NODE_STARTUP_RESPONSE_TIMEOUT: Duration = Duration::from_millis(1_500);
 const R_NODE_TCP_ACTIVITY_KEEPALIVE: Duration = Duration::from_millis(3_500);
 const R_NODE_FRAMEBUFFER_BYTES_PER_LINE: usize = 8;
@@ -1147,8 +1148,8 @@ where
     IO: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
     let stream_cancel = run.cancel.child_token();
-    let (command_tx, command_rx) = tokio::sync::mpsc::unbounded_channel();
-    let (data_rx_tx, data_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (command_tx, command_rx) = tokio::sync::mpsc::channel(LORA_KISS_PROBE_CHANNEL_CAPACITY);
+    let (data_rx_tx, data_rx) = tokio::sync::mpsc::channel(LORA_KISS_PROBE_CHANNEL_CAPACITY);
     let probe_status_task = tokio::spawn(record_probe_status_commands_with_startup_timeout(
         run.interface,
         command_rx,
@@ -1194,8 +1195,8 @@ impl Interface for LoraInterface {
 
 async fn record_probe_status_commands_with_startup_timeout(
     interface: Arc<std::sync::Mutex<LoraInterface>>,
-    mut command_rx: tokio::sync::mpsc::UnboundedReceiver<KissCommandFrame>,
-    mut data_rx: tokio::sync::mpsc::UnboundedReceiver<()>,
+    mut command_rx: tokio::sync::mpsc::Receiver<KissCommandFrame>,
+    mut data_rx: tokio::sync::mpsc::Receiver<()>,
     cancel: tokio_util::sync::CancellationToken,
     startup_response_timeout: Option<Duration>,
 ) {
@@ -1310,8 +1311,8 @@ mod tests {
         let iface =
             Arc::new(Mutex::new(LoraInterface::new("COM9", 115_200, LoraConfig::us915_default())));
         let cancel = CancellationToken::new();
-        let (command_tx, command_rx) = tokio::sync::mpsc::unbounded_channel();
-        let (_data_rx_tx, data_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (command_tx, command_rx) = tokio::sync::mpsc::channel(LORA_KISS_PROBE_CHANNEL_CAPACITY);
+        let (_data_rx_tx, data_rx) = tokio::sync::mpsc::channel(LORA_KISS_PROBE_CHANNEL_CAPACITY);
 
         let task = tokio::spawn(record_probe_status_commands_with_startup_timeout(
             iface.clone(),
@@ -1323,6 +1324,7 @@ mod tests {
 
         command_tx
             .send(KissCommandFrame { command: CMD_ERROR, payload: vec![ERROR_TXFAILED] })
+            .await
             .expect("send fatal command");
 
         tokio::time::timeout(Duration::from_secs(1), cancel.cancelled())
@@ -1341,8 +1343,8 @@ mod tests {
         let iface =
             Arc::new(Mutex::new(LoraInterface::new("COM9", 115_200, LoraConfig::us915_default())));
         let cancel = CancellationToken::new();
-        let (command_tx, command_rx) = tokio::sync::mpsc::unbounded_channel();
-        let (_data_rx_tx, data_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (command_tx, command_rx) = tokio::sync::mpsc::channel(LORA_KISS_PROBE_CHANNEL_CAPACITY);
+        let (_data_rx_tx, data_rx) = tokio::sync::mpsc::channel(LORA_KISS_PROBE_CHANNEL_CAPACITY);
 
         let task = tokio::spawn(record_probe_status_commands_with_startup_timeout(
             iface.clone(),
@@ -1354,6 +1356,7 @@ mod tests {
 
         command_tx
             .send(KissCommandFrame { command: CMD_FW_VERSION, payload: vec![1] })
+            .await
             .expect("send malformed command");
 
         assert!(
@@ -1380,8 +1383,8 @@ mod tests {
         }
 
         let cancel = CancellationToken::new();
-        let (command_tx, command_rx) = tokio::sync::mpsc::unbounded_channel();
-        let (data_rx_tx, data_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (command_tx, command_rx) = tokio::sync::mpsc::channel(LORA_KISS_PROBE_CHANNEL_CAPACITY);
+        let (data_rx_tx, data_rx) = tokio::sync::mpsc::channel(LORA_KISS_PROBE_CHANNEL_CAPACITY);
 
         let task = tokio::spawn(record_probe_status_commands_with_startup_timeout(
             iface.clone(),
@@ -1391,7 +1394,7 @@ mod tests {
             None,
         ));
 
-        data_rx_tx.send(()).expect("send data frame event");
+        data_rx_tx.send(()).await.expect("send data frame event");
 
         tokio::time::sleep(Duration::from_millis(20)).await;
         drop(command_tx);
@@ -1409,8 +1412,8 @@ mod tests {
         let iface =
             Arc::new(Mutex::new(LoraInterface::new("COM9", 115_200, LoraConfig::us915_default())));
         let cancel = CancellationToken::new();
-        let (command_tx, command_rx) = tokio::sync::mpsc::unbounded_channel();
-        let (_data_rx_tx, data_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (command_tx, command_rx) = tokio::sync::mpsc::channel(LORA_KISS_PROBE_CHANNEL_CAPACITY);
+        let (_data_rx_tx, data_rx) = tokio::sync::mpsc::channel(LORA_KISS_PROBE_CHANNEL_CAPACITY);
 
         let task = tokio::spawn(record_probe_status_commands_with_startup_timeout(
             iface.clone(),
@@ -1440,8 +1443,8 @@ mod tests {
         let iface =
             Arc::new(Mutex::new(LoraInterface::new("COM9", 115_200, LoraConfig::us915_default())));
         let cancel = CancellationToken::new();
-        let (command_tx, command_rx) = tokio::sync::mpsc::unbounded_channel();
-        let (_data_rx_tx, data_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (command_tx, command_rx) = tokio::sync::mpsc::channel(LORA_KISS_PROBE_CHANNEL_CAPACITY);
+        let (_data_rx_tx, data_rx) = tokio::sync::mpsc::channel(LORA_KISS_PROBE_CHANNEL_CAPACITY);
 
         let task = tokio::spawn(record_probe_status_commands_with_startup_timeout(
             iface.clone(),
@@ -1469,7 +1472,7 @@ mod tests {
             KissCommandFrame { command: CMD_CR, payload: vec![5] },
             KissCommandFrame { command: CMD_RADIO_STATE, payload: vec![RADIO_STATE_ON] },
         ] {
-            command_tx.send(frame).expect("send startup command");
+            command_tx.send(frame).await.expect("send startup command");
         }
 
         assert!(
@@ -1496,8 +1499,8 @@ mod tests {
         }
 
         let cancel = CancellationToken::new();
-        let (command_tx, command_rx) = tokio::sync::mpsc::unbounded_channel();
-        let (_data_rx_tx, data_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (command_tx, command_rx) = tokio::sync::mpsc::channel(LORA_KISS_PROBE_CHANNEL_CAPACITY);
+        let (_data_rx_tx, data_rx) = tokio::sync::mpsc::channel(LORA_KISS_PROBE_CHANNEL_CAPACITY);
 
         let task = tokio::spawn(record_probe_status_commands_with_startup_timeout(
             iface.clone(),
@@ -1525,7 +1528,7 @@ mod tests {
             KissCommandFrame { command: CMD_CR, payload: vec![5] },
             KissCommandFrame { command: CMD_RADIO_STATE, payload: vec![RADIO_STATE_ON] },
         ] {
-            command_tx.send(frame).expect("send startup command");
+            command_tx.send(frame).await.expect("send startup command");
         }
 
         assert!(

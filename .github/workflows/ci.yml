@@ -131,7 +131,7 @@ jobs:
           cache-targets: true
           cache-on-failure: false
       - name: Serial interface tests
-        run: cargo test -p rns-transport serial::tests
+        run: cargo test -p reticulum-rs-transport serial::tests
 
   interfaces-test-ble-linux:
     runs-on: ubuntu-latest
@@ -810,6 +810,45 @@ jobs:
           cache-on-failure: false
       - name: SDK conformance suite
         run: cargo xtask ci --stage sdk-conformance
+
+  sdk-wrapper-parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux BLE build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libdbus-1-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: SDK wrapper parity gate
+        run: cargo test -p test-support sdk_wrapper_parity_release_gate
+
+  kotlin-wrapper-conformance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux BLE build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libdbus-1-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Kotlin wrapper conformance
+        run: gradle -p wrappers/kotlin-mobile test
 
   sdk-security-check:
     runs-on: ubuntu-latest
