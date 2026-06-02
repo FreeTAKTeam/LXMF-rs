@@ -477,6 +477,10 @@ pub trait OutboundBridge: Send + Sync {
     fn decode_paper_uri(&self, _uri: &str) -> Result<Option<PaperDecodeOutcome>, std::io::Error> {
         Ok(None)
     }
+
+    fn delivery_pipeline_status(&self) -> Option<JsonValue> {
+        None
+    }
 }
 
 pub trait AnnounceBridge: Send + Sync {

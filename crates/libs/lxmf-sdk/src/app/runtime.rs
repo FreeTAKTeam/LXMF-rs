@@ -136,6 +136,14 @@ pub struct SendRequest {
     pub source: String,
     pub destination: String,
     pub payload: JsonValue,
+    #[serde(default)]
+    pub delivery_method: Option<String>,
+    #[serde(default)]
+    pub stamp_cost: Option<u32>,
+    #[serde(default)]
+    pub include_ticket: Option<bool>,
+    #[serde(default)]
+    pub try_propagation_on_fail: Option<bool>,
     pub idempotency_key: Option<String>,
     pub ttl_ms: Option<u64>,
     pub correlation_id: Option<String>,
@@ -153,6 +161,10 @@ impl SendRequest {
             source: source.into(),
             destination: destination.into(),
             payload,
+            delivery_method: None,
+            stamp_cost: None,
+            include_ticket: None,
+            try_propagation_on_fail: None,
             idempotency_key: None,
             ttl_ms: None,
             correlation_id: None,
@@ -175,6 +187,26 @@ impl SendRequest {
         self
     }
 
+    pub fn with_delivery_method(mut self, method: impl Into<String>) -> Self {
+        self.delivery_method = Some(method.into());
+        self
+    }
+
+    pub fn with_stamp_cost(mut self, stamp_cost: u32) -> Self {
+        self.stamp_cost = Some(stamp_cost);
+        self
+    }
+
+    pub fn with_include_ticket(mut self, include_ticket: bool) -> Self {
+        self.include_ticket = Some(include_ticket);
+        self
+    }
+
+    pub fn with_try_propagation_on_fail(mut self, try_propagation_on_fail: bool) -> Self {
+        self.try_propagation_on_fail = Some(try_propagation_on_fail);
+        self
+    }
+
     pub fn with_extension(mut self, key: impl Into<String>, value: JsonValue) -> Self {
         self.extensions.insert(key.into(), value);
         self
@@ -185,6 +217,10 @@ impl SendRequest {
             source: self.source,
             destination: self.destination,
             payload: self.payload,
+            delivery_method: self.delivery_method,
+            stamp_cost: self.stamp_cost,
+            include_ticket: self.include_ticket,
+            try_propagation_on_fail: self.try_propagation_on_fail,
             idempotency_key: self.idempotency_key,
             ttl_ms: self.ttl_ms,
             correlation_id: self.correlation_id,
@@ -261,5 +297,26 @@ pub(crate) fn map_delivery_snapshot(snapshot: DeliverySnapshot) -> DeliveryStatu
         last_updated_ms: snapshot.last_updated_ms,
         attempts: snapshot.attempts,
         reason_code: snapshot.reason_code,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SendRequest;
+    use serde_json::json;
+
+    #[test]
+    fn app_send_request_preserves_delivery_options_in_raw_request() {
+        let raw = SendRequest::new("source", "destination", json!({ "content": "hello" }))
+            .with_delivery_method("propagated")
+            .with_stamp_cost(8)
+            .with_include_ticket(true)
+            .with_try_propagation_on_fail(true)
+            .into_raw();
+
+        assert_eq!(raw.delivery_method.as_deref(), Some("propagated"));
+        assert_eq!(raw.stamp_cost, Some(8));
+        assert_eq!(raw.include_ticket, Some(true));
+        assert_eq!(raw.try_propagation_on_fail, Some(true));
     }
 }

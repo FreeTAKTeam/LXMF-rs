@@ -21,14 +21,19 @@ use zeromq::{PullSocket, PushSocket, Socket, SocketRecv, SocketSend, ZmqMessage}
 
 #[path = "zmq_pipeline/config.rs"]
 mod config;
+#[path = "zmq_pipeline/negotiation.rs"]
+mod negotiation;
 #[path = "zmq_pipeline/parsing.rs"]
 mod parsing;
+#[path = "zmq_pipeline/send.rs"]
+mod send;
 
 #[cfg(test)]
 #[path = "zmq_pipeline/tests.rs"]
 mod tests;
 
 pub use config::{ZmqEndpointRole, ZmqPipelineBackendConfig, ZmqPipelineTokenAuth};
+use negotiation::new_session_id;
 
 pub struct ZmqPipelineBackendClient {
     config: ZmqPipelineBackendConfig,
@@ -74,7 +79,7 @@ impl ZmqPipelineBackendClient {
             request_id,
             self.config.response_endpoint.clone(),
             payload,
-            self.auth_metadata(),
+            self.auth_metadata_for_request(request_id),
         );
         let encoded = zmq::encode_envelope(&envelope)
             .map_err(|err| sdk_error(ErrorCategory::Transport, err.to_string()))?;
@@ -142,20 +147,20 @@ impl ZmqPipelineBackendClient {
         }
     }
 
-    fn auth_metadata(&self) -> Option<ZmqRpcAuthMetadata> {
+    fn auth_metadata_for_request(&self, request_id: u64) -> Option<ZmqRpcAuthMetadata> {
         let auth = self.config.token_auth.as_ref()?;
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|duration| duration.as_secs())
             .unwrap_or(0);
         let payload = format!(
-            "iss={};aud={};iat={};exp={};jti={}-{}",
+            "iss={};aud={};jti={}-{};sub=sdk-client;iat={};exp={}",
             auth.issuer,
             auth.audience,
+            self.session_id,
+            request_id,
             now,
             now.saturating_add(auth.ttl_secs.max(1)),
-            self.session_id,
-            self.next_request_id.load(Ordering::Relaxed)
         );
         let sig = token_signature(auth.shared_secret.as_str(), payload.as_str());
         Some(ZmqRpcAuthMetadata {
@@ -178,6 +183,7 @@ impl ZmqPipelineTransport {
 
 impl SdkBackend for ZmqPipelineBackendClient {
     fn negotiate(&self, req: NegotiationRequest) -> Result<NegotiationResponse, SdkError> {
+        let (bind_mode, auth_mode, rpc_backend) = self.negotiation_security_config(&req);
         let result = self.call_rpc(
             "sdk_negotiate_v2",
             Some(json!({
@@ -185,11 +191,11 @@ impl SdkBackend for ZmqPipelineBackendClient {
                 "requested_capabilities": req.requested_capabilities,
                 "config": {
                     "profile": req.profile,
-                    "bind_mode": req.bind_mode,
-                    "auth_mode": req.auth_mode,
+                    "bind_mode": bind_mode,
+                    "auth_mode": auth_mode,
                     "overflow_policy": req.overflow_policy,
                     "block_timeout_ms": req.block_timeout_ms,
-                    "rpc_backend": req.rpc_backend,
+                    "rpc_backend": rpc_backend,
                 }
             })),
         )?;
@@ -215,61 +221,19 @@ impl SdkBackend for ZmqPipelineBackendClient {
             effective_limits,
             contract_release: Self::parse_required_string(&result, "contract_release")?,
             schema_namespace: Self::parse_required_string(&result, "schema_namespace")?,
+            sdk_version: Self::parse_optional_string_or_default(
+                &result,
+                "sdk_version",
+                crate::SDK_VERSION,
+            )?,
+            python_reference: Self::parse_parity_reference(&result)?,
         })
     }
 
     fn send(&self, req: SendRequest) -> Result<MessageId, SdkError> {
-        let SendRequest {
-            source,
-            destination,
-            payload,
-            idempotency_key,
-            ttl_ms,
-            correlation_id,
-            extensions,
-        } = req;
-        let content = payload
-            .get("content")
-            .and_then(JsonValue::as_str)
-            .map(str::to_owned)
-            .unwrap_or_else(|| payload.to_string());
-        let title =
-            payload.get("title").and_then(JsonValue::as_str).map(str::to_owned).unwrap_or_default();
-        let mut fields = match payload {
-            JsonValue::Object(map) => JsonValue::Object(map),
-            other => json!({ "payload": other }),
-        };
-        if let JsonValue::Object(map) = &mut fields {
-            let mut sdk_meta = serde_json::Map::new();
-            if let Some(value) = idempotency_key {
-                sdk_meta.insert("idempotency_key".to_string(), JsonValue::String(value));
-            }
-            if let Some(value) = ttl_ms {
-                sdk_meta.insert("ttl_ms".to_string(), JsonValue::from(value));
-            }
-            if let Some(value) = correlation_id {
-                sdk_meta.insert("correlation_id".to_string(), JsonValue::String(value));
-            }
-            if !extensions.is_empty() {
-                sdk_meta.insert(
-                    "extensions".to_string(),
-                    JsonValue::Object(extensions.into_iter().collect()),
-                );
-            }
-            if !sdk_meta.is_empty() {
-                map.insert("_sdk".to_string(), JsonValue::Object(sdk_meta));
-            }
-        }
         let value = self.call_rpc(
             "sdk_send_v2",
-            Some(json!({
-                "id": format!("sdk-zmq-{}", self.next_request_id()),
-                "source": source,
-                "destination": destination,
-                "title": title,
-                "content": content,
-                "fields": fields,
-            })),
+            Some(send::send_params(req, format!("sdk-zmq-{}", self.next_request_id()))),
         )?;
         Ok(MessageId(Self::parse_required_string(&value, "message_id")?))
     }
@@ -466,14 +430,6 @@ fn token_signature(secret: &str, payload: &str) -> String {
         .expect("token shared secret must be non-empty");
     mac.update(payload.as_bytes());
     hex::encode(mac.finalize().into_bytes())
-}
-
-fn new_session_id() -> String {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_nanos())
-        .unwrap_or(0);
-    format!("zmq-sdk-{:032x}", now)
 }
 
 fn map_rpc_error(error: RpcError) -> SdkError {

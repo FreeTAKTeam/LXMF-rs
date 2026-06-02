@@ -232,7 +232,7 @@ impl InterfaceManager {
 
         let (tx_send, tx_recv) = InterfaceChannel::make_tx_channel(tx_cap);
 
-        log::debug!("iface: create channel {} role={:?} mode={:?}", address, role, mode);
+        log::debug!("create channel {} role={:?} mode={:?}", address, role, mode);
 
         let stop = CancellationToken::new();
 
@@ -375,7 +375,7 @@ impl InterfaceManager {
         let address = AddressHash::new_from_hash(&full_hash);
 
         log::debug!(
-            "iface: register virtual iface {} on host {} role={:?} mode={:?}",
+            "register virtual iface {} on host {} role={:?} mode={:?}",
             address,
             host,
             role,
@@ -443,7 +443,7 @@ impl InterfaceManager {
                     Ok(Ok(())) => {
                         if tx_diag_enabled() {
                             log::warn!(
-                                "iface: recovered from full tx queue on {} for {:?}",
+                                "recovered from full tx queue on {} for {:?}",
                                 iface.address,
                                 message.tx_type
                             );
@@ -452,7 +452,7 @@ impl InterfaceManager {
                     }
                     Ok(Err(_)) => {
                         log::warn!(
-                            "iface: tx queue closed on {} for {:?}",
+                            "tx queue closed on {} for {:?}",
                             iface.address,
                             message.tx_type
                         );
@@ -460,7 +460,7 @@ impl InterfaceManager {
                     }
                     Err(_) => {
                         log::warn!(
-                            "iface: tx queue full timeout on {} for {:?}",
+                            "tx queue full timeout on {} for {:?}",
                             iface.address,
                             message.tx_type
                         );
@@ -469,7 +469,7 @@ impl InterfaceManager {
                 }
             }
             Err(mpsc::error::TrySendError::Closed(_)) => {
-                log::warn!("iface: tx queue closed on {} for {:?}", iface.address, message.tx_type);
+                log::warn!("tx queue closed on {} for {:?}", iface.address, message.tx_type);
                 false
             }
         }
@@ -496,7 +496,7 @@ impl InterfaceManager {
 
         if iface.announce_queue.len() >= MAX_QUEUED_ANNOUNCES_PER_IFACE {
             log::warn!(
-                "iface: dropping announce for {} on {} because announce queue is full",
+                "dropping announce for {} on {} because announce queue is full",
                 message.packet.destination,
                 iface.address
             );

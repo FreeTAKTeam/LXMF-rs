@@ -44,8 +44,12 @@ pub(crate) fn run_camera_capture_upload(
     let name = format!("capture-{}.jpg", timestamp_millis());
     let attachment_id =
         upload_attachment_via_rpc(rpc.as_str(), name, content_type, bytes.as_slice(), chunk_size)?;
-    println!("CAMERA_CAPTURE_UPLOAD ok: bytes={} attachment_id={}", bytes.len(), attachment_id);
+    println!("{}", camera_capture_upload_success_line(bytes.len(), attachment_id.as_str()));
     Ok(())
+}
+
+fn camera_capture_upload_success_line(bytes: usize, attachment_id: &str) -> String {
+    format!("CAMERA_CAPTURE_UPLOAD ok: bytes={bytes} attachment_id={attachment_id}")
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
@@ -242,4 +246,16 @@ fn capture_camera_over_ble(
         let _ = peripheral.disconnect().await;
         Ok(bytes)
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn camera_capture_upload_success_marker_matches_script_contract() {
+        let line = camera_capture_upload_success_line(42, "att-123");
+
+        assert_eq!(line, "CAMERA_CAPTURE_UPLOAD ok: bytes=42 attachment_id=att-123");
+    }
 }

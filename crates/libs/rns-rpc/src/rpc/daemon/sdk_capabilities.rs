@@ -120,6 +120,7 @@ impl RpcDaemon {
             "sdk.capability.token_auth".to_string(),
             "sdk.capability.mtls_auth".to_string(),
             "sdk.capability.receipt_terminality".to_string(),
+            "sdk.capability.batch_send".to_string(),
             "sdk.capability.config_revision_cas".to_string(),
             "sdk.capability.idempotency_ttl".to_string(),
             "sdk.capability.topics".to_string(),

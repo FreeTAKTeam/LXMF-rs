@@ -595,8 +595,16 @@ pub lxmf_sdk::capability::NegotiationResponse::active_contract_version: u16
 pub lxmf_sdk::capability::NegotiationResponse::contract_release: alloc::string::String
 pub lxmf_sdk::capability::NegotiationResponse::effective_capabilities: alloc::vec::Vec<alloc::string::String>
 pub lxmf_sdk::capability::NegotiationResponse::effective_limits: lxmf_sdk::capability::EffectiveLimits
+pub lxmf_sdk::capability::NegotiationResponse::python_reference: lxmf_sdk::capability::ParityReference
 pub lxmf_sdk::capability::NegotiationResponse::runtime_id: alloc::string::String
 pub lxmf_sdk::capability::NegotiationResponse::schema_namespace: alloc::string::String
+pub lxmf_sdk::capability::NegotiationResponse::sdk_version: alloc::string::String
+#[non_exhaustive] pub struct lxmf_sdk::capability::ParityReference
+pub lxmf_sdk::capability::ParityReference::python_lxmf_ref: alloc::string::String
+pub lxmf_sdk::capability::ParityReference::python_reticulum_ref: alloc::string::String
+pub lxmf_sdk::capability::ParityReference::reticulum_conformance_ref: alloc::string::String
+impl core::default::Default for lxmf_sdk::capability::ParityReference
+pub fn lxmf_sdk::capability::ParityReference::default() -> Self
 #[non_exhaustive] pub struct lxmf_sdk::capability::PluginDescriptor
 pub lxmf_sdk::capability::PluginDescriptor::optional_capabilities: alloc::vec::Vec<alloc::string::String>
 pub lxmf_sdk::capability::PluginDescriptor::plugin_id: alloc::string::String
@@ -2050,8 +2058,16 @@ pub lxmf_sdk::NegotiationResponse::active_contract_version: u16
 pub lxmf_sdk::NegotiationResponse::contract_release: alloc::string::String
 pub lxmf_sdk::NegotiationResponse::effective_capabilities: alloc::vec::Vec<alloc::string::String>
 pub lxmf_sdk::NegotiationResponse::effective_limits: lxmf_sdk::capability::EffectiveLimits
+pub lxmf_sdk::NegotiationResponse::python_reference: lxmf_sdk::capability::ParityReference
 pub lxmf_sdk::NegotiationResponse::runtime_id: alloc::string::String
 pub lxmf_sdk::NegotiationResponse::schema_namespace: alloc::string::String
+pub lxmf_sdk::NegotiationResponse::sdk_version: alloc::string::String
+#[non_exhaustive] pub struct lxmf_sdk::ParityReference
+pub lxmf_sdk::ParityReference::python_lxmf_ref: alloc::string::String
+pub lxmf_sdk::ParityReference::python_reticulum_ref: alloc::string::String
+pub lxmf_sdk::ParityReference::reticulum_conformance_ref: alloc::string::String
+impl core::default::Default for lxmf_sdk::capability::ParityReference
+pub fn lxmf_sdk::capability::ParityReference::default() -> Self
 pub struct lxmf_sdk::PaperMessageEnvelope
 pub lxmf_sdk::PaperMessageEnvelope::destination_hint: core::option::Option<alloc::string::String>
 pub lxmf_sdk::PaperMessageEnvelope::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
@@ -2392,7 +2408,11 @@ pub lxmf_sdk::VoiceSessionUpdateRequest::extensions: alloc::collections::btree::
 pub lxmf_sdk::VoiceSessionUpdateRequest::session_id: lxmf_sdk::domain::VoiceSessionId
 pub lxmf_sdk::VoiceSessionUpdateRequest::state: lxmf_sdk::domain::VoiceSessionState
 pub const lxmf_sdk::CONTRACT_RELEASE: &str
+pub const lxmf_sdk::PYTHON_LXMF_REFERENCE_REF: &str
+pub const lxmf_sdk::PYTHON_RETICULUM_REFERENCE_REF: &str
+pub const lxmf_sdk::RETICULUM_CONFORMANCE_REFERENCE_REF: &str
 pub const lxmf_sdk::SCHEMA_NAMESPACE: &str
+pub const lxmf_sdk::SDK_VERSION: &str
 pub trait lxmf_sdk::LxmfSdk
 pub fn lxmf_sdk::LxmfSdk::cancel(&self, id: lxmf_sdk::MessageId) -> core::result::Result<lxmf_sdk::CancelResult, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::LxmfSdk::configure(&self, expected_revision: u64, patch: lxmf_sdk::ConfigPatch) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>

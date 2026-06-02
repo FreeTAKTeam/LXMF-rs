@@ -8,8 +8,8 @@
     },
     {
       "path": "docs/contracts/baselines/lxmf-sdk-public-api.txt",
-      "bytes": 242441,
-      "sha256": "4b37a4bb332017d9d91fc0333011ddcaba77e2e1866111feaafbb6baf81a8895"
+      "bytes": 243872,
+      "sha256": "47ac80f9a38c0df34fcbb034abf763e89f4eb8cd5ad911ecd2175f755d829042"
     },
     {
       "path": "docs/contracts/baselines/schema-client-generation-baseline.json",
@@ -1393,8 +1393,8 @@
     },
     {
       "path": "docs/fixtures/sdk-v2/rpc/sdk_negotiate_v2.response.valid.json",
-      "bytes": 284,
-      "sha256": "8fee757a4e27e3f25aba1a79b500a2df96635ddd559002e096b0925b408bb575"
+      "bytes": 973,
+      "sha256": "de5eaab3b747560588009045d4dc7277622f956b4388f830fcc1134c63bb3dbc"
     },
     {
       "path": "docs/fixtures/sdk-v2/rpc/sdk_poll_events_v2.request.invalid.json",
@@ -1410,6 +1410,21 @@
       "path": "docs/fixtures/sdk-v2/rpc/sdk_poll_events_v2.response.valid.json",
       "bytes": 118,
       "sha256": "f95fbdb4378ddf3a2c981253396b44da0b0c7d5cbbbc9ec7a4e8587c2bfa0cb4"
+    },
+    {
+      "path": "docs/fixtures/sdk-v2/rpc/sdk_send_batch_v2.request.invalid.json",
+      "bytes": 134,
+      "sha256": "dee63650c15cfb918f4ef5938aa0f1df43b04b2fcd5f6d317599a33f7f776d1c"
+    },
+    {
+      "path": "docs/fixtures/sdk-v2/rpc/sdk_send_batch_v2.request.valid.json",
+      "bytes": 514,
+      "sha256": "d18c489babc9294f174f5cb5e6b74282e7c5e9dc7591fbba7b15f43e0c7e3749"
+    },
+    {
+      "path": "docs/fixtures/sdk-v2/rpc/sdk_send_batch_v2.response.valid.json",
+      "bytes": 349,
+      "sha256": "8443d08c7c931f4b7d2836975523c15b117633e09d135fa293d42bcfc2acbb58"
     },
     {
       "path": "docs/fixtures/sdk-v2/rpc/sdk_send_v2.request.invalid.json",
@@ -1453,8 +1468,8 @@
     },
     {
       "path": "docs/fixtures/sdk-v2/rpc/sdk_snapshot_v2.response.valid.json",
-      "bytes": 328,
-      "sha256": "79968ba49f07110e3ed3eb70504b11c783ebb46fad3d0b6ae71760083c6f6376"
+      "bytes": 735,
+      "sha256": "f132da1b0e974b9ce1135227beddfbdcc5b52d31a17122648d7504e7518ab1aa"
     },
     {
       "path": "docs/fixtures/sdk-v2/rpc/sdk_status_v2.request.invalid.json",
@@ -1468,8 +1483,8 @@
     },
     {
       "path": "docs/fixtures/sdk-v2/rpc/sdk_status_v2.response.valid.json",
-      "bytes": 108,
-      "sha256": "f3973cc465e6fd646e982cc9a88d37d14fdb62838be2ee64607fdebee5ece6ac"
+      "bytes": 515,
+      "sha256": "51fd83d6a4c4ea7ba6f3734f32f1ee3a5141bc98c79725c46b734df924a341ba"
     },
     {
       "path": "docs/fixtures/sdk-v2/telemetry.point.valid.json",
@@ -1518,8 +1533,8 @@
     },
     {
       "path": "docs/schemas/sdk/v2/clients/smoke-requests.json",
-      "bytes": 1814,
-      "sha256": "1e0cda69fc5548b8b0fb95f8f011ab6efd07e87f0a7227123f37f868c92526d6"
+      "bytes": 2151,
+      "sha256": "8792f0679b06ceb992c60812cc2a4cacc4ab899ab9071b3572d057acb55a3574"
     },
     {
       "path": "docs/schemas/sdk/v2/command-plugin.schema.json",
@@ -1573,8 +1588,8 @@
     },
     {
       "path": "docs/schemas/sdk/v2/rpc/sdk_negotiate_v2.schema.json",
-      "bytes": 5100,
-      "sha256": "513234a47c8b692f1275c7d82d1f3bee4d91cab6301c664520ff55b461906ffd"
+      "bytes": 6543,
+      "sha256": "309b6dbf5e553a5b90c6fe5b4c532bfee06def53a1e31af30e787f3ab4833da0"
     },
     {
       "path": "docs/schemas/sdk/v2/rpc/sdk_poll_events_v2.schema.json",
@@ -1592,6 +1607,11 @@
       "sha256": "2b09ff3873499692277dcba0588b143b047aa30159b45a9cf8a2dfe5f5f5b556"
     },
     {
+      "path": "docs/schemas/sdk/v2/rpc/sdk_send_batch_v2.schema.json",
+      "bytes": 5365,
+      "sha256": "67f4052fd719ec38e43b1360265f6ea6eb19fa50575e63c0bfdd59b1596806c8"
+    },
+    {
       "path": "docs/schemas/sdk/v2/rpc/sdk_send_v2.schema.json",
       "bytes": 4018,
       "sha256": "7320e40905df7e89eaa434a7cc634b6db74da12d4a37a331093531ef02e505f8"
@@ -1603,13 +1623,13 @@
     },
     {
       "path": "docs/schemas/sdk/v2/rpc/sdk_snapshot_v2.schema.json",
-      "bytes": 4164,
-      "sha256": "f3314d3b584aba3d326498c401c96f1900ced64e4f2aea29c779e18ecd2bde31"
+      "bytes": 5381,
+      "sha256": "06cac91ff1fede79302769ba3043e7f1a5f8907522a00e5d66a79d78eb0606cb"
     },
     {
       "path": "docs/schemas/sdk/v2/rpc/sdk_status_v2.schema.json",
-      "bytes": 3103,
-      "sha256": "0ded28a3bdfc9e78ce5d93326d10f61e1837586aa5f0844166662dbc077700df"
+      "bytes": 4320,
+      "sha256": "d7d4ddd7eec9cdcf573ac541cd450efbd03dcf1ff1d68a0a2c82cc507b7b168f"
     },
     {
       "path": "docs/schemas/sdk/v2/telemetry.schema.json",

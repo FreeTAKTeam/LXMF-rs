@@ -117,7 +117,7 @@ pub(super) async fn send_to_next_hop<'a>(
 
     if let Some(iface) = maybe_iface {
         if diag::enabled() {
-            log::info!(
+            log::debug!(
                 "[tp-diag] forward_next_hop node={} dst={} lookup={} out={} iface={}",
                 handler.config.name,
                 packet.destination,
@@ -128,7 +128,7 @@ pub(super) async fn send_to_next_hop<'a>(
         }
         handler.send(TxMessage { tx_type: TxMessageType::Direct(iface), packet }).await;
     } else if diag::enabled() {
-        log::info!(
+        log::debug!(
             "[tp-diag] forward_next_hop_miss node={} dst={} lookup={}",
             handler.config.name,
             packet.destination,
@@ -300,7 +300,7 @@ pub(super) async fn handle_link_request_as_intermediate<'a>(
     mut handler: MutexGuard<'a, TransportHandler>,
 ) {
     if diag::enabled() {
-        log::info!(
+        log::debug!(
             "[tp-diag] link_request_intermediate node={} dst={} from_iface={} next_hop={} next_iface={} packet={}",
             handler.config.name,
             packet.destination,

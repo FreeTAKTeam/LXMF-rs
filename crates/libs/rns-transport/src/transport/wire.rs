@@ -89,7 +89,7 @@ async fn should_forward_link_request_proof(
         handler.link_table.proof_validation_context(&packet.destination)
     else {
         if diag::enabled() {
-            log::info!(
+            log::debug!(
                 "[tp-diag] lrproof_forward_skip node={} reason=no_link_table_entry link={} iface={}",
                 handler.config.name,
                 packet.destination,
@@ -100,7 +100,7 @@ async fn should_forward_link_request_proof(
     };
     if expected_iface != iface {
         if diag::enabled() {
-            log::info!(
+            log::debug!(
                 "[tp-diag] lrproof_forward_skip node={} reason=wrong_iface link={} expected={} got={}",
                 handler.config.name,
                 packet.destination,
@@ -114,7 +114,7 @@ async fn should_forward_link_request_proof(
     let Some(destination) = handler.single_out_destinations.get(&original_destination).cloned()
     else {
         if diag::enabled() {
-            log::info!(
+            log::debug!(
                 "[tp-diag] lrproof_forward_skip node={} reason=missing_destination_identity link={} dst={}",
                 handler.config.name,
                 packet.destination,
@@ -132,7 +132,7 @@ async fn should_forward_link_request_proof(
     )
     .is_ok();
     if diag::enabled() {
-        log::info!(
+        log::debug!(
             "[tp-diag] lrproof_forward_validate node={} link={} dst={} iface={} valid={}",
             handler.config.name,
             packet.destination,
@@ -203,7 +203,7 @@ pub(super) async fn handle_proof(
 
     if let Some((packet, iface)) = maybe_packet {
         if diag::enabled() {
-            log::info!(
+            log::debug!(
                 "[tp-diag] lrproof_forward node={} link={} iface={}",
                 handler.config.name,
                 packet.destination,
@@ -212,7 +212,7 @@ pub(super) async fn handle_proof(
         }
         handler.send(TxMessage { tx_type: TxMessageType::Direct(iface), packet }).await;
     } else if packet.context == PacketContext::LinkRequestProof && diag::enabled() {
-        log::info!(
+        log::debug!(
             "[tp-diag] lrproof_not_forwarded node={} link={} ingress_iface={}",
             handler.config.name,
             packet.destination,
@@ -318,9 +318,11 @@ pub(super) async fn handle_data<'a>(
         if let Some((packet, iface)) = handler.link_table.handle_reverse_link_packet(packet, iface)
         {
             if diag::enabled() {
-                eprintln!(
+                log::debug!(
                     "[resource-diag] wire_resource_reverse_forward node={} link={} iface={}",
-                    handler.config.name, packet.destination, iface
+                    handler.config.name,
+                    packet.destination,
+                    iface
                 );
             }
             handler.send(TxMessage { tx_type: TxMessageType::Direct(iface), packet }).await;

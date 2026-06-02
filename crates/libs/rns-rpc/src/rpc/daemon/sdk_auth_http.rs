@@ -6,6 +6,8 @@ impl RpcDaemon {
         json!({
             "contract_version": format!("v{}", self.active_contract_version()),
             "profile": profile,
+            "sdk_version": SDK_VERSION,
+            "python_reference": python_reference_meta(),
             "rpc_endpoint": JsonValue::Null,
         })
     }

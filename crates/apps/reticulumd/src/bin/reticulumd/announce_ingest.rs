@@ -26,9 +26,9 @@ pub(super) async fn ingest_announce_event(
     peer_crypto.lock().expect("peer map").insert(peer.clone(), PeerCrypto { identity });
     if diagnostics_enabled() {
         if let Some(name) = peer_name.as_ref() {
-            eprintln!("[daemon] rx announce peer={} name={}", peer, name);
+            log::debug!("[daemon] rx announce peer={} name={}", peer, name);
         } else {
-            eprintln!("[daemon] rx announce peer={}", peer);
+            log::debug!("[daemon] rx announce peer={}", peer);
         }
     }
     let timestamp = now_epoch_secs_i64();

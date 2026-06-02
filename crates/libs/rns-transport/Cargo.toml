@@ -32,6 +32,7 @@ serde_bytes = { workspace = true }
 serde_json.workspace = true
 sha2.workspace = true
 log.workspace = true
+tracing.workspace = true
 hex.workspace = true
 socket2 = { version = "0.5", features = ["all"] }
 tokio = { workspace = true, features = ["full"] }

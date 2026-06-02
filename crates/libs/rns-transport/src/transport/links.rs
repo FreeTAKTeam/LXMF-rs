@@ -455,7 +455,7 @@ impl Transport {
         if let Some(link) = link {
             let status = link.lock().await.status();
             if super::diag::enabled() {
-                log::info!(
+                log::debug!(
                     "[tp-diag] reuse_out_link destination={} status={:?}",
                     destination.address_hash,
                     status
@@ -479,7 +479,7 @@ impl Transport {
             destination
         );
         if super::diag::enabled() {
-            log::info!(
+            log::debug!(
                 "[tp-diag] create_out_link destination={} link_id={}",
                 destination.address_hash,
                 link.id()
@@ -506,7 +506,7 @@ impl Transport {
             handler.path_requests.generate(destination, tag)
         };
         if super::diag::enabled() {
-            log::info!(
+            log::debug!(
                 "[tp-diag] path_request_broadcast dst={} on_iface={}",
                 destination,
                 on_iface.map(|iface| iface.to_string()).unwrap_or_else(|| "-".to_string())
@@ -522,7 +522,7 @@ impl Transport {
             )
             .await;
         if super::diag::enabled() {
-            log::info!(
+            log::debug!(
                 "[tp-diag] path_request_broadcast_done dst={} matched={} sent={} failed={}",
                 destination,
                 dispatch.matched_ifaces,

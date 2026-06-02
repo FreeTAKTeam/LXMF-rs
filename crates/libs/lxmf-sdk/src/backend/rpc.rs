@@ -4,7 +4,9 @@ use crate::backend::SdkBackend;
 use crate::backend::SdkEventStream;
 #[cfg(feature = "sdk-async")]
 use crate::backend::{SdkBackendAsyncEvents, SdkBackendAsyncOps};
-use crate::capability::{EffectiveLimits, NegotiationRequest, NegotiationResponse};
+use crate::capability::{
+    EffectiveLimits, NegotiationRequest, NegotiationResponse, ParityReference,
+};
 use crate::domain::{
     AttachmentDownloadChunk, AttachmentDownloadChunkRequest, AttachmentId, AttachmentListRequest,
     AttachmentListResult, AttachmentMeta, AttachmentStoreRequest, AttachmentUploadChunkAck,

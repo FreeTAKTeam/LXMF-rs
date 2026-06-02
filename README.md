@@ -374,4 +374,4 @@ If you are using Linux and the Linux daemon guide above, point `--config` at the
 
 ## License
 
-MIT
+EPL

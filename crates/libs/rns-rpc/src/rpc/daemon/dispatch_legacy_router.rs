@@ -18,6 +18,7 @@ impl RpcDaemon {
             | "send_message"
             | "send_message_v2"
             | "sdk_send_v2"
+            | "sdk_send_batch_v2"
             | "receive_message"
             | "record_receipt"
             | "sdk_cancel_message_v2"

@@ -5,13 +5,16 @@ use std::path::PathBuf;
 use std::process::{Command, ExitCode};
 
 fn main() -> ExitCode {
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
     let args: Vec<_> = env::args_os().skip(1).collect();
     let reticulumd = resolve_reticulumd_binary();
 
     #[cfg(unix)]
     {
         let err = Command::new(&reticulumd).args(&args).exec();
-        eprintln!("rnsd: failed to exec {}: {}", reticulumd.display(), err);
+        log::error!("failed to exec {}: {}", reticulumd.display(), err);
         ExitCode::from(1)
     }
 
@@ -20,7 +23,7 @@ fn main() -> ExitCode {
         match Command::new(&reticulumd).args(&args).status() {
             Ok(status) => ExitCode::from(status.code().unwrap_or(1) as u8),
             Err(err) => {
-                eprintln!("rnsd: failed to launch {}: {}", reticulumd.display(), err);
+                log::error!("failed to launch {}: {}", reticulumd.display(), err);
                 ExitCode::from(1)
             }
         }

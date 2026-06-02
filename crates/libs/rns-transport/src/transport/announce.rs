@@ -77,6 +77,12 @@ async fn process_announce<'a>(
     };
     let interface = route_iface.as_slice().to_vec();
 
+    log::debug!(
+        "[announce-debug] accepted dst={} app_data_hex={}",
+        packet.destination,
+        hex::encode(announce.app_data)
+    );
+
     let _ = handler.announce_tx.send(AnnounceEvent {
         destination,
         app_data: PacketDataBuffer::new_from_slice(announce.app_data),
@@ -144,7 +150,7 @@ pub(super) async fn release_held_announces<'a>(handler: MutexGuard<'a, Transport
             Ok(result) => result,
             Err(err) => {
                 log::warn!(
-                    "tp: dropping held announce for {} after revalidate failure: {:?}",
+                    "dropping held announce for {} after revalidate failure: {:?}",
                     packet.destination,
                     err
                 );

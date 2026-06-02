@@ -46,6 +46,26 @@ fn sdk_rpc_core_schema_valid_fixtures_pass_contract_checks() {
         &fixture("docs/fixtures/sdk-v2/rpc/sdk_send_v2.response.valid.json"),
     );
     assert_schema_valid(
+        &schemas.sdk_send_batch_v2,
+        "docs/fixtures/sdk-v2/rpc/sdk_send_batch_v2.request.valid.json",
+        &fixture("docs/fixtures/sdk-v2/rpc/sdk_send_batch_v2.request.valid.json"),
+    );
+    assert_schema_valid(
+        &openrpc_schemas.sdk_send_batch_v2,
+        "docs/fixtures/sdk-v2/rpc/sdk_send_batch_v2.request.valid.json",
+        &fixture("docs/fixtures/sdk-v2/rpc/sdk_send_batch_v2.request.valid.json"),
+    );
+    assert_schema_valid(
+        &schemas.sdk_send_batch_v2,
+        "docs/fixtures/sdk-v2/rpc/sdk_send_batch_v2.response.valid.json",
+        &fixture("docs/fixtures/sdk-v2/rpc/sdk_send_batch_v2.response.valid.json"),
+    );
+    assert_schema_valid(
+        &openrpc_schemas.sdk_send_batch_v2,
+        "docs/fixtures/sdk-v2/rpc/sdk_send_batch_v2.response.valid.json",
+        &fixture("docs/fixtures/sdk-v2/rpc/sdk_send_batch_v2.response.valid.json"),
+    );
+    assert_schema_valid(
         &schemas.sdk_status_v2,
         "docs/fixtures/sdk-v2/rpc/sdk_status_v2.request.valid.json",
         &fixture("docs/fixtures/sdk-v2/rpc/sdk_status_v2.request.valid.json"),
@@ -191,6 +211,16 @@ fn sdk_rpc_core_schema_invalid_fixtures_are_rejected() {
         &openrpc_schemas.sdk_send_v2,
         "docs/fixtures/sdk-v2/rpc/sdk_send_v2.request.invalid.json",
         &fixture("docs/fixtures/sdk-v2/rpc/sdk_send_v2.request.invalid.json"),
+    );
+    assert_schema_invalid(
+        &schemas.sdk_send_batch_v2,
+        "docs/fixtures/sdk-v2/rpc/sdk_send_batch_v2.request.invalid.json",
+        &fixture("docs/fixtures/sdk-v2/rpc/sdk_send_batch_v2.request.invalid.json"),
+    );
+    assert_schema_invalid(
+        &openrpc_schemas.sdk_send_batch_v2,
+        "docs/fixtures/sdk-v2/rpc/sdk_send_batch_v2.request.invalid.json",
+        &fixture("docs/fixtures/sdk-v2/rpc/sdk_send_batch_v2.request.invalid.json"),
     );
     assert_schema_invalid(
         &schemas.sdk_status_v2,

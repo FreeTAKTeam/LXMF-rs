@@ -85,18 +85,22 @@ impl BleGattInterface {
 
             let mut backend = NativeBleBackend::new(backend_name);
             if let Err(err) = establish_session(&mut backend, &settings).await {
-                eprintln!(
-                    "ble_gatt: establish session failed iface={} backend={} err={}",
-                    label, backend_name, err.message
+                log::error!(
+                    "establish session failed iface={} backend={} err={}",
+                    label,
+                    backend_name,
+                    err.message
                 );
                 sleep(reconnect_backoff).await;
                 reconnect_backoff = next_backoff(reconnect_backoff, settings.max_reconnect_backoff);
                 continue;
             }
             reconnect_backoff = settings.reconnect_backoff;
-            eprintln!(
-                "ble_gatt: session established iface={} backend={} addr={}",
-                label, backend_name, iface_address
+            log::info!(
+                "session established iface={} backend={} addr={}",
+                label,
+                backend_name,
+                iface_address
             );
 
             let mut tx_buffer = [0_u8; BLE_RAW_PACKET_BUFFER];
@@ -113,17 +117,17 @@ impl BleGattInterface {
                         let packet = message.packet;
                         let mut output = OutputBuffer::new(&mut tx_buffer);
                         if packet.serialize(&mut output).is_err() {
-                            eprintln!("ble_gatt: packet serialize failed iface={}", label);
+                            log::error!("packet serialize failed iface={}", label);
                             continue;
                         }
                         let mut hdlc_output = OutputBuffer::new(&mut hdlc_tx_buffer);
                         if Hdlc::encode(output.as_slice(), &mut hdlc_output).is_err() {
-                            eprintln!("ble_gatt: hdlc encode failed iface={}", label);
+                            log::error!("hdlc encode failed iface={}", label);
                             continue;
                         }
                         if let Err(err) = send_chunked(&mut backend, hdlc_output.as_slice(), settings.mtu).await {
-                            eprintln!(
-                                "ble_gatt: write failed iface={} backend={} err={}",
+                            log::error!(
+                                "write failed iface={} backend={} err={}",
                                 label, backend_name, err.message
                             );
                             reconnect_needed = true;
@@ -149,8 +153,8 @@ impl BleGattInterface {
                                 }
                             }
                             Err(err) => {
-                                eprintln!(
-                                    "ble_gatt: read failed iface={} backend={} err={}",
+                                log::error!(
+                                    "read failed iface={} backend={} err={}",
                                     label, backend_name, err.message
                                 );
                                 reconnect_needed = true;
@@ -224,7 +228,7 @@ fn log_report(
     settings: &BleRuntimeSettings,
     report: &BleLifecycleReport,
 ) {
-    eprintln!(
+    log::info!(
         "[daemon] ble_gatt configured ({} backend) name={} adapter={} peripheral_id={} service_uuid={} write_char_uuid={} notify_char_uuid={} mtu={} scan_timeout_ms={} connect_timeout_ms={} reconnect_backoff_ms={} max_reconnect_backoff_ms={} attempts={} transitions={}",
         backend_name,
         iface.name.as_deref().unwrap_or("<unnamed>"),

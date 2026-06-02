@@ -210,7 +210,7 @@ impl UdpInterface {
                 .map_err(|_| RnsError::ConnectionError);
 
             if socket.is_err() {
-                log::info!("udp_interface: couldn't bind to <{}>", bind_addr);
+                log::warn!("couldn't bind to <{}>", bind_addr);
                 tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                 continue;
             }
@@ -253,7 +253,7 @@ impl UdpInterface {
                             result = socket.recv_from(&mut rx_buffer) => {
                                 match result {
                                     Ok((0, _)) => {
-                                        log::warn!("udp_interface: connection closed");
+                                        log::warn!("connection closed");
                                         stop.cancel();
                                         break;
                                     }
@@ -274,7 +274,7 @@ impl UdpInterface {
                                             };
                                             if PACKET_TRACE {
                                                 log::trace!(
-                                                    "udp_interface: rx << (iface {} / attributed {}) from {} {}",
+                                                    "rx << (iface {} / attributed {}) from {} {}",
                                                     iface_address, attributed_iface, in_addr, packet
                                                 );
                                             }
@@ -284,11 +284,11 @@ impl UdpInterface {
                                                 source: IfaceSource::Udp(in_addr),
                                             }).await;
                                         } else {
-                                            log::warn!("udp_interface: couldn't decode packet");
+                                            log::warn!("couldn't decode packet");
                                         }
                                     }
                                     Err(e) => {
-                                        log::warn!("udp_interface: connection error {}", e);
+                                        log::warn!("connection error {}", e);
                                         break;
                                     }
                                 }
@@ -341,7 +341,7 @@ impl UdpInterface {
                                                 } else if addr == iface_address {
                                                     if PACKET_TRACE {
                                                         log::trace!(
-                                                            "udp_interface: dropping Direct tx targeting multicast iface {} (type={:?})",
+                                                            "dropping Direct tx targeting multicast iface {} (type={:?})",
                                                             iface_address,
                                                             message.packet.header.packet_type,
                                                         );
@@ -350,7 +350,7 @@ impl UdpInterface {
                                                 } else {
                                                     if PACKET_TRACE {
                                                         log::trace!(
-                                                            "udp_interface: dropping Direct tx for unknown virtual iface {}",
+                                                            "dropping Direct tx for unknown virtual iface {}",
                                                             addr,
                                                         );
                                                     }
@@ -368,7 +368,7 @@ impl UdpInterface {
                                         let packet = message.packet;
                                         if PACKET_TRACE {
                                             log::trace!(
-                                                "udp_interface: tx >> ({}) to {} {}",
+                                                "tx >> ({}) to {} {}",
                                                 iface_address, dest, packet
                                             );
                                         }

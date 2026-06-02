@@ -418,6 +418,13 @@ impl RpcDaemon {
                     error: None,
                 })
             }
+            "sdk_send_batch_v2" => {
+                let params = request.params.ok_or_else(|| {
+                    std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing params")
+                })?;
+                let parsed = parse_outbound_send_batch_request(params)?;
+                self.store_outbound_batch(request.id, parsed)
+            }
             "send_message" | "send_message_v2" | "sdk_send_v2" => {
                 let params = request.params.ok_or_else(|| {
                     std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing params")

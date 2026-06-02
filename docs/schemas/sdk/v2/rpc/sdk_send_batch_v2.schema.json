@@ -3,36 +3,26 @@
     "params": {
       "additionalProperties": false,
       "properties": {
-        "message_id": {
+        "batch_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "messages": {
+          "items": {
+            "$ref": "#/$defs/send_batch_message"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "source": {
           "minLength": 1,
           "type": "string"
         }
       },
       "required": [
-        "message_id"
-      ],
-      "type": "object"
-    },
-    "python_reference": {
-      "additionalProperties": false,
-      "properties": {
-        "python_lxmf_ref": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "python_reticulum_ref": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "reticulum_conformance_ref": {
-          "minLength": 1,
-          "type": "string"
-        }
-      },
-      "required": [
-        "python_lxmf_ref",
-        "python_reticulum_ref",
-        "reticulum_conformance_ref"
+        "batch_id",
+        "messages",
+        "source"
       ],
       "type": "object"
     },
@@ -43,7 +33,7 @@
           "$ref": "#/$defs/rpc_id"
         },
         "method": {
-          "const": "sdk_status_v2"
+          "const": "sdk_send_batch_v2"
         },
         "params": {
           "$ref": "#/$defs/params"
@@ -72,34 +62,6 @@
       ],
       "type": "object"
     },
-    "response_meta": {
-      "additionalProperties": true,
-      "properties": {
-        "contract_version": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "profile": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "python_reference": {
-          "$ref": "#/$defs/python_reference"
-        },
-        "rpc_endpoint": {
-          "type": [
-            "object",
-            "string",
-            "null"
-          ]
-        },
-        "sdk_version": {
-          "minLength": 1,
-          "type": "string"
-        }
-      },
-      "type": "object"
-    },
     "response_ok": {
       "additionalProperties": false,
       "properties": {
@@ -117,21 +79,32 @@
       "type": "object"
     },
     "result": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
-        "message": {
-          "additionalProperties": true,
-          "type": [
-            "object",
-            "null"
-          ]
+        "accepted_count": {
+          "minimum": 0,
+          "type": "integer"
         },
-        "meta": {
-          "$ref": "#/$defs/response_meta"
+        "batch_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "rejected_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "results": {
+          "items": {
+            "$ref": "#/$defs/send_batch_result_item"
+          },
+          "type": "array"
         }
       },
       "required": [
-        "message"
+        "accepted_count",
+        "batch_id",
+        "rejected_count",
+        "results"
       ],
       "type": "object"
     },
@@ -190,9 +163,91 @@
           "type": "integer"
         }
       ]
+    },
+    "send_batch_message": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "destination": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "fields": {
+          "additionalProperties": true,
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "include_ticket": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "method": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "stamp_cost": {
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "try_propagation_on_fail": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "content",
+        "destination",
+        "id"
+      ],
+      "type": "object"
+    },
+    "send_batch_result_item": {
+      "additionalProperties": false,
+      "properties": {
+        "accepted": {
+          "type": "boolean"
+        },
+        "error": {
+          "$ref": "#/$defs/rpc_error"
+        },
+        "id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "message_id": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "accepted",
+        "id"
+      ],
+      "type": "object"
     }
   },
-  "$id": "https://weft.tak/contracts/sdk/v2/rpc/sdk_status_v2.schema.json",
+  "$id": "https://weft.tak/contracts/sdk/v2/rpc/sdk_send_batch_v2.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "oneOf": [
     {
@@ -205,5 +260,5 @@
       "$ref": "#/$defs/response_error"
     }
   ],
-  "title": "LXMF SDK RPC sdk_status_v2 v2"
+  "title": "LXMF SDK RPC sdk_send_batch_v2 v2"
 }

@@ -112,6 +112,7 @@ impl RpcDaemon {
             id: request.id,
             result: Some(json!({
                 "message": message,
+                "delivery_pipeline": self.outbound_bridge.as_ref().and_then(|bridge| bridge.delivery_pipeline_status()),
                 "meta": self.response_meta(),
             })),
             error: None,
@@ -281,6 +282,7 @@ impl RpcDaemon {
                 "effective_capabilities": effective_capabilities,
                 "queued_messages": queued_messages,
                 "in_flight_messages": in_flight_messages,
+                "delivery_pipeline": self.outbound_bridge.as_ref().and_then(|bridge| bridge.delivery_pipeline_status()),
                 "counts_included": params.include_counts,
                 "meta": self.response_meta(),
             })),

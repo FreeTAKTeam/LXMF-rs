@@ -11,7 +11,7 @@ pub(crate) fn startup(iface: &InterfaceConfig) -> Result<(), String> {
 
     let state = ensure_state_file(path)?;
 
-    eprintln!(
+    log::info!(
         "[daemon] lora configured name={} region={} state_path={} duty_cycle_debt_ms={} debt_elapsed_ms={} uncertain={}",
         iface.name.as_deref().unwrap_or("<unnamed>"),
         iface.region.as_deref().unwrap_or("<unset>"),
@@ -22,7 +22,7 @@ pub(crate) fn startup(iface: &InterfaceConfig) -> Result<(), String> {
     );
 
     if state.duty_cycle_debt_ms > 0 {
-        eprintln!(
+        log::info!(
             "[daemon] lora compliance gate name={} debt_remaining_ms={} tx_allowed_after_additional_wait_ms={}",
             iface.name.as_deref().unwrap_or("<unnamed>"),
             state.duty_cycle_debt_ms,

@@ -390,6 +390,8 @@ impl RpcDaemon {
                 "effective_limits": limits,
                 "contract_release": "v2.5",
                 "schema_namespace": "v2",
+                "sdk_version": SDK_VERSION,
+                "python_reference": python_reference_meta(),
                 "meta": self.response_meta(),
             })),
             error: None,

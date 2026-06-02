@@ -122,6 +122,7 @@ pub enum LinkWatchdogAction {
 pub enum LinkEvent {
     Activated,
     Data(Box<LinkPayload>),
+    PeerIdentified(Box<Identity>),
     Closed,
 }
 
@@ -240,7 +241,7 @@ impl Link {
         };
 
         let link_id = LinkId::from(packet);
-        log::debug!("link: create from request {}", link_id);
+        log::debug!("create from request {}", link_id);
 
         let mut link = Self {
             id: link_id,
@@ -420,10 +421,19 @@ impl Link {
                 }
                 return LinkHandleResult::Proof(proof);
             }
-            PacketContext::None
-            | PacketContext::Request
-            | PacketContext::Response
-            | PacketContext::LinkIdentify => {
+            PacketContext::LinkIdentify => {
+                let mut buffer = [0u8; PACKET_MDU];
+                if let Ok(plain_text) = self.decrypt(packet.data.as_slice(), &mut buffer[..]) {
+                    if let Some(identity) = parse_link_identify_payload(plain_text, &self.id) {
+                        self.post_event(LinkEvent::PeerIdentified(Box::new(identity)));
+                    } else {
+                        log::warn!("link({}): invalid identify payload, dropping", self.id);
+                    }
+                } else {
+                    log::error!("link({}): can't decrypt identify packet", self.id);
+                }
+            }
+            PacketContext::None | PacketContext::Request | PacketContext::Response => {
                 let mut buffer = [0u8; PACKET_MDU];
                 if let Ok(plain_text) = self.decrypt(packet.data.as_slice(), &mut buffer[..]) {
                     log::trace!("link({}): data {}B", self.id, plain_text.len());
@@ -580,6 +590,12 @@ impl Link {
 
     pub fn channel_packet(&self, data: &[u8]) -> Result<Packet, RnsError> {
         self.packet_with_context(data, PacketContext::Channel)
+    }
+
+    /// Build a link peer identification packet (context = 0xFB LinkIdentify).
+    /// The payload should be built with `build_link_identify_payload`.
+    pub fn identify_packet(&self, payload: &[u8]) -> Result<Packet, RnsError> {
+        self.packet_with_context(payload, PacketContext::LinkIdentify)
     }
 
     pub fn register_channel_handler<F>(&mut self, msg_type: u16, handler: F) -> HandlerId
@@ -841,7 +857,7 @@ impl Link {
 
     fn packet_with_context(&self, data: &[u8], context: PacketContext) -> Result<Packet, RnsError> {
         if !self.status.can_exchange_data() {
-            log::warn!("link: can't create data packet for closed link");
+            log::warn!("can't create data packet for closed link");
         }
 
         let mut packet_data = PacketDataBuffer::new();
@@ -863,7 +879,7 @@ impl Link {
 
     pub fn data_packet_into(&self, data: &[u8], packet: &mut Packet) -> Result<(), RnsError> {
         if !self.status.can_exchange_data() {
-            log::warn!("link: can't create data packet for closed link");
+            log::warn!("can't create data packet for closed link");
         }
 
         packet.header = Header {
@@ -952,7 +968,7 @@ impl Link {
 
         packet_data.resize(token_len);
 
-        log::trace!("link: {} create rtt packet = {} sec", self.id, rtt);
+        log::trace!("{} create rtt packet = {} sec", self.id, rtt);
 
         Packet {
             header: Header { destination_type: DestinationType::Link, ..Default::default() },
@@ -1149,8 +1165,8 @@ impl Link {
 
         self.post_event(LinkEvent::Closed);
 
-        log::warn!("link: close {}", self.id);
-        eprintln!("link: close {}", self.id);
+        println!("{}", link_close_line(&self.id));
+        log::warn!("close {}", self.id);
     }
 
     fn teardown_packet(&self) -> Result<Packet, RnsError> {
@@ -1286,7 +1302,32 @@ fn clamp_link_signalling(bytes: [u8; LINK_MTU_SIZE]) -> [u8; LINK_MTU_SIZE] {
     [((value >> 16) & 0xFF) as u8, ((value >> 8) & 0xFF) as u8, (value & 0xFF) as u8]
 }
 
+fn link_close_line(id: &AddressHash) -> String {
+    format!("link: close {id}")
+}
+
 include!("link/proof.rs");
+
+const LINK_IDENTIFY_PAYLOAD_LENGTH: usize = PUBLIC_KEY_LENGTH * 2 + SIGNATURE_LENGTH;
+
+fn parse_link_identify_payload(payload: &[u8], link_id: &AddressHash) -> Option<Identity> {
+    if payload.len() != LINK_IDENTIFY_PAYLOAD_LENGTH {
+        return None;
+    }
+    let identity = Identity::new_from_slices(
+        &payload[..PUBLIC_KEY_LENGTH],
+        &payload[PUBLIC_KEY_LENGTH..PUBLIC_KEY_LENGTH * 2],
+    );
+    let signature = Signature::from_slice(
+        &payload[PUBLIC_KEY_LENGTH * 2..PUBLIC_KEY_LENGTH * 2 + SIGNATURE_LENGTH],
+    )
+    .ok()?;
+    let mut signed = Vec::with_capacity(ADDRESS_HASH_SIZE + PUBLIC_KEY_LENGTH * 2);
+    signed.extend_from_slice(link_id.as_slice());
+    signed.extend_from_slice(&payload[..PUBLIC_KEY_LENGTH * 2]);
+    identity.verify(&signed, &signature).ok()?;
+    Some(identity)
+}
 
 #[cfg(test)]
 mod tests {
@@ -1311,6 +1352,13 @@ mod tests {
         assert!(!LinkStatus::Closed.can_exchange_data());
         assert!(!LinkStatus::Closed.can_retry_channel_messages());
         assert!(!LinkStatus::Closed.can_send_teardown());
+    }
+
+    #[test]
+    fn link_close_line_preserves_compatibility_marker() {
+        let line = link_close_line(&AddressHash::new([0x11; 16]));
+
+        assert!(line.contains("link: close"));
     }
 
     #[test]
@@ -2319,5 +2367,60 @@ mod tests {
 
         assert_eq!(link.check_watchdog(true), LinkWatchdogAction::SendKeepAlive);
         assert_eq!(link.status, LinkStatus::Active);
+    }
+
+    fn build_test_identify_payload(private: &PrivateIdentity, link_id: &AddressHash) -> Vec<u8> {
+        let identity = private.as_identity();
+        let mut payload = Vec::with_capacity(PUBLIC_KEY_LENGTH * 2 + SIGNATURE_LENGTH);
+        payload.extend_from_slice(identity.public_key_bytes());
+        payload.extend_from_slice(identity.verifying_key_bytes());
+        let mut signed = Vec::with_capacity(ADDRESS_HASH_SIZE + PUBLIC_KEY_LENGTH * 2);
+        signed.extend_from_slice(link_id.as_slice());
+        signed.extend_from_slice(identity.public_key_bytes());
+        signed.extend_from_slice(identity.verifying_key_bytes());
+        payload.extend_from_slice(&private.sign(&signed).to_bytes());
+        payload
+    }
+
+    #[test]
+    fn parse_link_identify_accepts_valid_proof() {
+        let link_id = AddressHash::new([0xAB; ADDRESS_HASH_SIZE]);
+        let private = PrivateIdentity::new_from_rand(OsRng);
+        let payload = build_test_identify_payload(&private, &link_id);
+        let result = parse_link_identify_payload(&payload, &link_id);
+        assert_eq!(result.map(|i| i.address_hash), Some(private.as_identity().address_hash));
+    }
+
+    #[test]
+    fn parse_link_identify_rejects_short_payload() {
+        let link_id = AddressHash::new([0x01; ADDRESS_HASH_SIZE]);
+        assert!(parse_link_identify_payload(&[0u8; 64], &link_id).is_none());
+    }
+
+    #[test]
+    fn parse_link_identify_rejects_trailing_bytes() {
+        let link_id = AddressHash::new([0xAB; ADDRESS_HASH_SIZE]);
+        let private = PrivateIdentity::new_from_rand(OsRng);
+        let mut payload = build_test_identify_payload(&private, &link_id);
+        payload.push(0x00);
+        assert!(parse_link_identify_payload(&payload, &link_id).is_none());
+    }
+
+    #[test]
+    fn parse_link_identify_rejects_corrupted_signature() {
+        let link_id = AddressHash::new([0xAB; ADDRESS_HASH_SIZE]);
+        let private = PrivateIdentity::new_from_rand(OsRng);
+        let mut payload = build_test_identify_payload(&private, &link_id);
+        payload[PUBLIC_KEY_LENGTH * 2] ^= 0xFF;
+        assert!(parse_link_identify_payload(&payload, &link_id).is_none());
+    }
+
+    #[test]
+    fn parse_link_identify_rejects_wrong_link_id() {
+        let link_id_a = AddressHash::new([0xAA; ADDRESS_HASH_SIZE]);
+        let link_id_b = AddressHash::new([0xBB; ADDRESS_HASH_SIZE]);
+        let private = PrivateIdentity::new_from_rand(OsRng);
+        let payload = build_test_identify_payload(&private, &link_id_a);
+        assert!(parse_link_identify_payload(&payload, &link_id_b).is_none());
     }
 }

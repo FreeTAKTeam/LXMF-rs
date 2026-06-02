@@ -69,7 +69,7 @@ pub(crate) fn run_tcp_native_peer(
         match transport.poll_frame().map_err(embedded_to_io)? {
             Some(frame) => match frame.kind {
                 FRAME_KIND_ANNOUNCE => {
-                    println!(
+                    log::trace!(
                         "TCP_NATIVE_PEER frame kind=0x{:02x} seq={} bytes={} role=announce",
                         frame.kind,
                         frame.sequence,
@@ -78,7 +78,7 @@ pub(crate) fn run_tcp_native_peer(
                 }
                 FRAME_KIND_LXMF_MESSAGE => {
                     let envelope = decode_envelope(&frame.payload).map_err(embedded_to_io)?;
-                    println!(
+                    log::trace!(
                         "TCP_NATIVE_PEER frame kind=0x{:02x} seq={} body={} source={} destination={}",
                         frame.kind,
                         frame.sequence,
@@ -92,7 +92,7 @@ pub(crate) fn run_tcp_native_peer(
                     }
                 }
                 _ => {
-                    println!(
+                    log::trace!(
                         "TCP_NATIVE_PEER frame kind=0x{:02x} seq={} payload_hex={}",
                         frame.kind,
                         frame.sequence,
@@ -108,7 +108,7 @@ pub(crate) fn run_tcp_native_peer(
         }
     }
 
-    println!("TCP_NATIVE_PEER ok: addr={} responses={} mode={:?}", addr, responses, mode);
+    log::info!("TCP_NATIVE_PEER ok: addr={} responses={} mode={:?}", addr, responses, mode);
     Ok(())
 }
 
@@ -125,7 +125,7 @@ pub(crate) fn run_tcp_native_listener(
     timeout_secs: u64,
 ) -> io::Result<()> {
     let listener = TcpListener::bind(bind.as_str())?;
-    println!("TCP_NATIVE_LISTENER listening bind={}", bind);
+    log::info!("TCP_NATIVE_LISTENER listening bind={}", bind);
 
     let deferred_outbound = if mode != NativeListenerMode::Passive {
         let runtime_seq = resolve_runtime_seq(runtime_seq);
@@ -165,7 +165,7 @@ pub(crate) fn run_tcp_native_listener(
 
     loop {
         let (stream, peer_addr) = listener.accept()?;
-        println!("TCP_NATIVE_LISTENER accepted peer={}", peer_addr);
+        log::info!("TCP_NATIVE_LISTENER accepted peer={}", peer_addr);
         let mut transport =
             TcpEmbeddedTransport::from_stream(stream, u16::MAX).map_err(embedded_to_io)?;
         let outcome = handle_tcp_native_session(
@@ -202,7 +202,7 @@ pub(crate) fn run_tcp_native_bridge(
     timeout_secs: u64,
 ) -> io::Result<()> {
     let listener = TcpListener::bind(bind.as_str())?;
-    println!("TCP_NATIVE_BRIDGE listening bind={} mode={:?}", bind, mode);
+    log::info!("TCP_NATIVE_BRIDGE listening bind={} mode={:?}", bind, mode);
 
     let runtime_seq = resolve_runtime_seq(runtime_seq);
     let deferred_outbound = match mode {
@@ -236,7 +236,7 @@ pub(crate) fn run_tcp_native_bridge(
 
     loop {
         let (stream, peer_addr) = listener.accept()?;
-        println!("TCP_NATIVE_BRIDGE accepted peer={}", peer_addr);
+        log::info!("TCP_NATIVE_BRIDGE accepted peer={}", peer_addr);
         let mut transport =
             TcpEmbeddedTransport::from_stream(stream, u16::MAX).map_err(embedded_to_io)?;
         let outcome = handle_tcp_native_session(
@@ -283,9 +283,11 @@ pub(crate) fn run_tcp_native_bridge(
                 )?
             }
         };
-        println!(
+        log::info!(
             "TCP_NATIVE_BRIDGE ok: peer={} mode={:?} attachment_id={}",
-            peer_addr, mode, attachment_id
+            peer_addr,
+            mode,
+            attachment_id
         );
         if !serve {
             break;

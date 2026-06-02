@@ -45,6 +45,25 @@
       }
     },
     {
+      "name": "sdk_send_batch_v2",
+      "summary": "Queue a batch of outbound messages for delivery.",
+      "params": [
+        {
+          "name": "params",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/SdkSendBatchV2Params"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/SdkSendBatchV2Result"
+        }
+      }
+    },
+    {
       "name": "sdk_status_v2",
       "summary": "Read the status for a message.",
       "params": [
@@ -813,6 +832,57 @@
           }
         }
       },
+      "PythonReference": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "reticulum_conformance_ref",
+          "python_reticulum_ref",
+          "python_lxmf_ref"
+        ],
+        "properties": {
+          "reticulum_conformance_ref": {
+            "type": "string",
+            "minLength": 1
+          },
+          "python_reticulum_ref": {
+            "type": "string",
+            "minLength": 1
+          },
+          "python_lxmf_ref": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "ResponseMeta": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "contract_version": {
+            "type": "string",
+            "minLength": 1
+          },
+          "profile": {
+            "type": "string",
+            "minLength": 1
+          },
+          "rpc_endpoint": {
+            "type": [
+              "object",
+              "string",
+              "null"
+            ]
+          },
+          "python_reference": {
+            "$ref": "#/components/schemas/PythonReference"
+          },
+          "sdk_version": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
       "SdkNegotiateV2Params": {
         "type": "object",
         "additionalProperties": true,
@@ -889,7 +959,9 @@
           "effective_capabilities",
           "effective_limits",
           "contract_release",
-          "schema_namespace"
+          "schema_namespace",
+          "python_reference",
+          "sdk_version"
         ],
         "properties": {
           "runtime_id": {
@@ -916,6 +988,16 @@
             "minLength": 1
           },
           "schema_namespace": {
+            "type": "string",
+            "minLength": 1
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "python_reference": {
+            "$ref": "#/components/schemas/PythonReference"
+          },
+          "sdk_version": {
             "type": "string",
             "minLength": 1
           }
@@ -1127,6 +1209,209 @@
           }
         ]
       },
+      "SdkSendBatchV2Message": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "destination",
+          "content"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "destination": {
+            "type": "string",
+            "minLength": 1
+          },
+          "title": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string",
+            "minLength": 1
+          },
+          "fields": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true
+          },
+          "method": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stamp_cost": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "include_ticket": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "try_propagation_on_fail": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        }
+      },
+      "SdkSendBatchV2Params": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "batch_id",
+          "source",
+          "messages"
+        ],
+        "properties": {
+          "batch_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source": {
+            "type": "string",
+            "minLength": 1
+          },
+          "messages": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/components/schemas/SdkSendBatchV2Message"
+            }
+          }
+        }
+      },
+      "SdkSendBatchV2ResultItem": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "accepted"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "message_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "accepted": {
+            "type": "boolean"
+          },
+          "error": {
+            "$ref": "#/components/schemas/RpcError"
+          }
+        }
+      },
+      "SdkSendBatchV2Result": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "batch_id",
+          "accepted_count",
+          "rejected_count",
+          "results"
+        ],
+        "properties": {
+          "batch_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "accepted_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "rejected_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SdkSendBatchV2ResultItem"
+            }
+          }
+        }
+      },
+      "SdkSendBatchV2RequestEnvelope": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "method",
+          "params"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/RpcId"
+          },
+          "method": {
+            "const": "sdk_send_batch_v2"
+          },
+          "params": {
+            "$ref": "#/components/schemas/SdkSendBatchV2Params"
+          }
+        }
+      },
+      "SdkSendBatchV2ResponseOkEnvelope": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "result"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/RpcId"
+          },
+          "result": {
+            "$ref": "#/components/schemas/SdkSendBatchV2Result"
+          }
+        }
+      },
+      "SdkSendBatchV2ResponseErrorEnvelope": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "error"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/RpcId"
+          },
+          "error": {
+            "$ref": "#/components/schemas/RpcError"
+          }
+        }
+      },
+      "SdkSendBatchV2Envelope": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/SdkSendBatchV2RequestEnvelope"
+          },
+          {
+            "$ref": "#/components/schemas/SdkSendBatchV2ResponseOkEnvelope"
+          },
+          {
+            "$ref": "#/components/schemas/SdkSendBatchV2ResponseErrorEnvelope"
+          }
+        ]
+      },
       "SdkStatusV2Params": {
         "type": "object",
         "additionalProperties": false,
@@ -1153,6 +1438,9 @@
               "null"
             ],
             "additionalProperties": true
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
           }
         }
       },
@@ -1598,6 +1886,9 @@
           },
           "counts_included": {
             "type": "boolean"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
           }
         }
       },

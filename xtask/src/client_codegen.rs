@@ -719,25 +719,56 @@ fn project_core_legacy_rpc_schema(
     components: &Map<String, Value>,
 ) -> Result<LegacyRpcSchemaArtifact> {
     let method_id = to_pascal_case(method_name);
-    let ref_map = BTreeMap::from([
+    let params_component = format!("{method_id}Params");
+    let result_component = format!("{method_id}Result");
+    let request_component = format!("{method_id}RequestEnvelope");
+    let response_ok_component = format!("{method_id}ResponseOkEnvelope");
+    let response_error_component = format!("{method_id}ResponseErrorEnvelope");
+    let mut ref_map = BTreeMap::from([
         (format!("#/components/schemas/{method_id}Params"), "#/$defs/params".to_string()),
         (format!("#/components/schemas/{method_id}Result"), "#/$defs/result".to_string()),
         ("#/components/schemas/RpcId".to_string(), "#/$defs/rpc_id".to_string()),
         ("#/components/schemas/RpcError".to_string(), "#/$defs/rpc_error".to_string()),
     ]);
+    let extra_components = legacy_projection_extra_components(
+        components,
+        &[
+            params_component.as_str(),
+            result_component.as_str(),
+            request_component.as_str(),
+            response_ok_component.as_str(),
+            response_error_component.as_str(),
+        ],
+    )?;
+    for (component, def_key) in &extra_components {
+        ref_map.insert(format!("#/components/schemas/{component}"), format!("#/$defs/{def_key}"));
+    }
 
-    let request = rewrite_schema_refs(
-        component_schema(components, &format!("{method_id}RequestEnvelope"))?,
-        &ref_map,
-    )?;
-    let response_ok = rewrite_schema_refs(
-        component_schema(components, &format!("{method_id}ResponseOkEnvelope"))?,
-        &ref_map,
-    )?;
-    let response_error = rewrite_schema_refs(
-        component_schema(components, &format!("{method_id}ResponseErrorEnvelope"))?,
-        &ref_map,
-    )?;
+    let request = rewrite_schema_refs(component_schema(components, &request_component)?, &ref_map)?;
+    let response_ok =
+        rewrite_schema_refs(component_schema(components, &response_ok_component)?, &ref_map)?;
+    let response_error =
+        rewrite_schema_refs(component_schema(components, &response_error_component)?, &ref_map)?;
+    let mut defs = Map::new();
+    defs.insert("rpc_id".to_string(), component_schema(components, "RpcId")?);
+    defs.insert("rpc_error".to_string(), component_schema(components, "RpcError")?);
+    defs.insert(
+        "params".to_string(),
+        rewrite_schema_refs(component_schema(components, &params_component)?, &ref_map)?,
+    );
+    defs.insert(
+        "result".to_string(),
+        rewrite_schema_refs(component_schema(components, &result_component)?, &ref_map)?,
+    );
+    for (component, def_key) in extra_components {
+        defs.insert(
+            def_key.to_string(),
+            rewrite_schema_refs(component_schema(components, component)?, &ref_map)?,
+        );
+    }
+    defs.insert("request".to_string(), request);
+    defs.insert("response_ok".to_string(), response_ok);
+    defs.insert("response_error".to_string(), response_error);
 
     Ok(LegacyRpcSchemaArtifact {
         path: Path::new(LEGACY_RPC_SCHEMA_DIR).join(format!("{method_name}.schema.json")),
@@ -750,17 +781,60 @@ fn project_core_legacy_rpc_schema(
                 { "$ref": "#/$defs/response_ok" },
                 { "$ref": "#/$defs/response_error" }
             ],
-            "$defs": {
-                "rpc_id": component_schema(components, "RpcId")?,
-                "rpc_error": component_schema(components, "RpcError")?,
-                "params": rewrite_schema_refs(component_schema(components, &format!("{method_id}Params"))?, &ref_map)?,
-                "result": rewrite_schema_refs(component_schema(components, &format!("{method_id}Result"))?, &ref_map)?,
-                "request": request,
-                "response_ok": response_ok,
-                "response_error": response_error
-            }
+            "$defs": defs
         }),
     })
+}
+
+fn legacy_projection_extra_components(
+    components: &Map<String, Value>,
+    root_components: &[&str],
+) -> Result<Vec<(&'static str, &'static str)>> {
+    let response_meta_ref = "#/components/schemas/ResponseMeta";
+    let python_reference_ref = "#/components/schemas/PythonReference";
+    let send_batch_message_ref = "#/components/schemas/SdkSendBatchV2Message";
+    let send_batch_result_item_ref = "#/components/schemas/SdkSendBatchV2ResultItem";
+    let mut needs_response_meta = false;
+    let mut needs_python_reference = false;
+    let mut needs_send_batch_message = false;
+    let mut needs_send_batch_result_item = false;
+    for component in root_components {
+        let schema = component_schema(components, component)?;
+        needs_response_meta |= schema_mentions_ref(&schema, response_meta_ref);
+        needs_python_reference |= schema_mentions_ref(&schema, python_reference_ref);
+        needs_send_batch_message |= schema_mentions_ref(&schema, send_batch_message_ref);
+        needs_send_batch_result_item |= schema_mentions_ref(&schema, send_batch_result_item_ref);
+    }
+    if needs_response_meta {
+        let response_meta = component_schema(components, "ResponseMeta")?;
+        needs_python_reference |= schema_mentions_ref(&response_meta, python_reference_ref);
+    }
+
+    let mut extras = Vec::new();
+    if needs_python_reference {
+        extras.push(("PythonReference", "python_reference"));
+    }
+    if needs_response_meta {
+        extras.push(("ResponseMeta", "response_meta"));
+    }
+    if needs_send_batch_message {
+        extras.push(("SdkSendBatchV2Message", "send_batch_message"));
+    }
+    if needs_send_batch_result_item {
+        extras.push(("SdkSendBatchV2ResultItem", "send_batch_result_item"));
+    }
+    Ok(extras)
+}
+
+fn schema_mentions_ref(schema: &Value, target_ref: &str) -> bool {
+    match schema {
+        Value::Object(map) => {
+            map.get("$ref").and_then(Value::as_str) == Some(target_ref)
+                || map.values().any(|value| schema_mentions_ref(value, target_ref))
+        }
+        Value::Array(items) => items.iter().any(|value| schema_mentions_ref(value, target_ref)),
+        _ => false,
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -3111,7 +3185,7 @@ mod tests {
         let openrpc = serde_json::from_str::<Value>(&fs::read_to_string(openrpc_path)?)?;
         let projected = project_legacy_rpc_schemas(&openrpc)?;
 
-        assert_eq!(projected.len(), 10, "expected 8 core + release B + release C projections");
+        assert_eq!(projected.len(), 11, "expected 9 core + release B + release C projections");
 
         for artifact in projected {
             let committed_path = workspace.join(&artifact.path);

@@ -16,10 +16,54 @@ impl OutboundBridge for PendingOutboundBridge {
     }
 }
 
+struct PipelineStatusBridge;
+
+impl OutboundBridge for PipelineStatusBridge {
+    fn deliver(
+        &self,
+        _record: &MessageRecord,
+        _options: &OutboundDeliveryOptions,
+    ) -> Result<(), std::io::Error> {
+        Ok(())
+    }
+
+    fn delivery_pipeline_status(&self) -> Option<serde_json::Value> {
+        Some(json!({
+            "queued_total": 3,
+            "in_flight_total": 1,
+            "rejected_queue_full_total": 0,
+        }))
+    }
+}
+
 struct SlowOutboundBridge {
     started_tx: StdMutex<Option<std_mpsc::Sender<()>>>,
     release_rx: StdMutex<std_mpsc::Receiver<()>>,
     blocked_once: StdAtomicBool,
+}
+
+struct BlockingOutboundBridge {
+    started_tx: StdMutex<std_mpsc::Sender<String>>,
+    release_rx: StdMutex<std_mpsc::Receiver<()>>,
+}
+
+impl BlockingOutboundBridge {
+    fn new(started_tx: std_mpsc::Sender<String>, release_rx: std_mpsc::Receiver<()>) -> Self {
+        Self { started_tx: StdMutex::new(started_tx), release_rx: StdMutex::new(release_rx) }
+    }
+}
+
+impl OutboundBridge for BlockingOutboundBridge {
+    fn deliver(
+        &self,
+        record: &MessageRecord,
+        _options: &OutboundDeliveryOptions,
+    ) -> Result<(), std::io::Error> {
+        let _ = self.started_tx.lock().expect("started mutex").send(record.id.clone());
+        let _ =
+            self.release_rx.lock().expect("release mutex").recv_timeout(StdDuration::from_secs(2));
+        Ok(())
+    }
 }
 
 impl SlowOutboundBridge {
@@ -169,6 +213,30 @@ fn send_with_bridge_stays_in_sending_until_acknowledged() {
 }
 
 #[test]
+fn sdk_status_v2_includes_delivery_pipeline_status_when_bridge_reports_it() {
+    let store = MessagesStore::in_memory().expect("in-memory store");
+    let daemon = RpcDaemon::with_store_and_bridges(
+        store,
+        "pipeline-status-node".to_string(),
+        Some(Arc::new(PipelineStatusBridge)),
+        None,
+    );
+
+    let status = daemon
+        .handle_rpc(rpc_request(
+            12,
+            "sdk_status_v2",
+            json!({ "message_id": "pipeline-status-missing" }),
+        ))
+        .expect("status");
+    let result = status.result.expect("result");
+
+    assert_eq!(result["delivery_pipeline"]["queued_total"], json!(3));
+    assert_eq!(result["delivery_pipeline"]["in_flight_total"], json!(1));
+    assert_eq!(result["delivery_pipeline"]["rejected_queue_full_total"], json!(0));
+}
+
+#[test]
 fn bridge_backed_send_schedules_without_waiting_on_slow_delivery() {
     let store = MessagesStore::in_memory().expect("in-memory store");
     let (started_tx, started_rx) = std_mpsc::channel();
@@ -219,6 +287,46 @@ fn bridge_backed_send_schedules_without_waiting_on_slow_delivery() {
     );
 
     release_tx.send(()).expect("release slow bridge");
+}
+
+#[test]
+fn outbound_delivery_worker_uses_bounded_parallel_lanes() {
+    let store = MessagesStore::in_memory().expect("in-memory store");
+    let (started_tx, started_rx) = std_mpsc::channel();
+    let (release_tx, release_rx) = std_mpsc::channel();
+    let daemon = RpcDaemon::with_store_and_bridges(
+        store,
+        "parallel-bridge-node".to_string(),
+        Some(Arc::new(BlockingOutboundBridge::new(started_tx, release_rx))),
+        None,
+    );
+
+    for index in 0..2 {
+        let response = daemon
+            .handle_rpc(rpc_request(
+                20 + index,
+                "send_message_v2",
+                json!({
+                    "id": format!("parallel-bridge-{index}"),
+                    "source": "src",
+                    "destination": "dst",
+                    "title": "",
+                    "content": "hello"
+                }),
+            ))
+            .expect("send");
+        assert!(response.error.is_none());
+    }
+
+    let first =
+        started_rx.recv_timeout(StdDuration::from_secs(1)).expect("first delivery should start");
+    let second = started_rx
+        .recv_timeout(StdDuration::from_secs(1))
+        .expect("second delivery should start before first is released");
+    assert_ne!(first, second);
+
+    release_tx.send(()).expect("release first");
+    release_tx.send(()).expect("release second");
 }
 
 #[test]

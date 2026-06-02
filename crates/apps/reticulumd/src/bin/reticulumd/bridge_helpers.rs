@@ -6,11 +6,19 @@ pub(crate) fn opportunistic_payload<'a>(payload: &'a [u8], destination: &[u8; 16
     shared_strip_destination_prefix(payload, destination)
 }
 
+pub(crate) fn delivery_trace_line(
+    message_id: &str,
+    destination: &str,
+    stage: &str,
+    detail: &str,
+) -> String {
+    format!("[delivery-trace] msg_id={message_id} dst={destination} stage={stage} {detail}")
+}
+
 pub(crate) fn log_delivery_trace(message_id: &str, destination: &str, stage: &str, detail: &str) {
-    eprintln!(
-        "[delivery-trace] msg_id={} dst={} stage={} {}",
-        message_id, destination, stage, detail
-    );
+    let line = delivery_trace_line(message_id, destination, stage, detail);
+    println!("{line}");
+    log::trace!("{line}");
 }
 
 pub(crate) fn diagnostics_enabled() -> bool {
@@ -26,6 +34,18 @@ pub(crate) fn diagnostics_enabled() -> bool {
             })
             .unwrap_or(false)
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn delivery_trace_line_preserves_resource_marker() {
+        let line = delivery_trace_line("msg-1", "dst-1", "direct", "resource_hash=abc123");
+
+        assert!(line.contains("resource_hash=abc123"));
+    }
 }
 
 pub(crate) fn payload_preview(bytes: &[u8], limit: usize) -> String {

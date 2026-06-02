@@ -46,7 +46,7 @@ pub use backend::{SdkBackendAsyncOps, SdkBoxFuture, SdkEventStream};
 pub use capability::{
     effective_capabilities_for_profile, negotiate_contract_version, negotiate_plugins,
     CapabilityDescriptor, CapabilityState, EffectiveLimits, NegotiationRequest,
-    NegotiationResponse, PluginDescriptor, PluginState,
+    NegotiationResponse, ParityReference, PluginDescriptor, PluginState,
 };
 // Stability class: internal
 pub use client::Client;
@@ -96,3 +96,11 @@ pub use types::{
 
 pub const CONTRACT_RELEASE: &str = "v2.5";
 pub const SCHEMA_NAMESPACE: &str = "v2";
+pub const SDK_VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const RETICULUM_CONFORMANCE_REFERENCE_REF: &str = "0319444b20e0815f26c6b9ceeba8fa44de037c9b";
+pub const PYTHON_RETICULUM_REFERENCE_REF: &str = "15320e4d2cfabb143c1db20ca887e275fd521585";
+pub const PYTHON_LXMF_REFERENCE_REF: &str = "727830cefda83d9c6e3982b48675425f3f988f9c";
+
+pub(crate) fn default_sdk_version() -> String {
+    SDK_VERSION.to_owned()
+}

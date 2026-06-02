@@ -177,7 +177,7 @@ impl ResourceManager {
         ));
         if (advertisement.flags & FLAG_SPLIT) == FLAG_SPLIT {
             log::warn!(
-                "resource: rejecting unsupported advertisement flags (split={})",
+                "rejecting unsupported advertisement flags (split={})",
                 (advertisement.flags & FLAG_SPLIT) == FLAG_SPLIT
             );
             resource_diag("reject_advertisement split");
@@ -189,7 +189,7 @@ impl ResourceManager {
             return;
         }
         let Ok(mut receiver) = ResourceReceiver::new(&advertisement, *link.id()) else {
-            log::warn!("resource: rejecting unreasonable advertisement");
+            log::warn!("rejecting unreasonable advertisement");
             resource_diag("reject_advertisement unreasonable");
             return;
         };
@@ -210,7 +210,7 @@ impl ResourceManager {
         ) {
             Ok(packet) => responses.push(packet),
             Err(_) => {
-                log::warn!("resource: failed to build request packet");
+                log::warn!("failed to build request packet");
             }
         };
     }
@@ -264,7 +264,7 @@ impl ResourceManager {
             ) {
                 Ok(packet) => responses.push(packet),
                 Err(_) => {
-                    log::warn!("resource: failed to build request packet");
+                    log::warn!("failed to build request packet");
                 }
             };
         }
@@ -312,7 +312,7 @@ impl ResourceManager {
                     ) {
                         Ok(packet) => Some(packet),
                         Err(_) => {
-                            log::warn!("resource: failed to build request packet");
+                            log::warn!("failed to build request packet");
                             None
                         }
                     };
@@ -398,6 +398,6 @@ fn resource_diag(message: &str) {
     if std::env::var("RETICULUMD_DIAGNOSTICS").ok().is_some_and(|value| {
         matches!(value.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on" | "debug")
     }) {
-        eprintln!("[resource-diag] {message}");
+        log::debug!("[resource-diag] {message}");
     }
 }

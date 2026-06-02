@@ -23,7 +23,11 @@ async fn main() -> Result<(), lxmf_sdk::app::Error> {
         }),
     )
     .with_ttl_ms(30_000)
-    .with_correlation_id("example-rpc-desktop-send");
+    .with_correlation_id("example-rpc-desktop-send")
+    .with_delivery_method("direct")
+    .with_stamp_cost(8)
+    .with_include_ticket(true)
+    .with_try_propagation_on_fail(true);
     let receipt = client.messages().send_async(send_request).await?;
     println!("queued message_id={}", receipt.message_id);
 

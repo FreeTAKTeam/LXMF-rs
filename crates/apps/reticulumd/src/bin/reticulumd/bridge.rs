@@ -6,6 +6,8 @@ use super::bridge_helpers::{
 mod announce;
 #[path = "bridge_delivery_method.rs"]
 mod delivery_method;
+#[path = "bridge_delivery_scheduler.rs"]
+mod delivery_scheduler;
 #[path = "bridge_delivery_task.rs"]
 mod delivery_task;
 #[path = "bridge_delivery_task_cancel.rs"]
@@ -68,6 +70,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub(crate) use delivery_method::{validate_delivery_request, RequestedDeliveryMethod};
+use delivery_scheduler::{DeliveryScheduler, DeliverySchedulerConfig};
 use delivery_task::{DeliveryTask, LinkModeStatuses};
 use identity_resolver::resolve_destination_identity_blocking;
 #[cfg(test)]
@@ -91,6 +94,7 @@ pub(super) struct TransportBridge {
     outbound_resource_map: OutboundResourceMap,
     outbound_propagation_link: Arc<tokio::sync::Mutex<Option<CachedPropagationLink>>>,
     receipt_tx: tokio::sync::mpsc::Sender<ReceiptEvent>,
+    delivery_scheduler: DeliveryScheduler,
 }
 
 #[derive(Clone, Copy)]
@@ -132,6 +136,7 @@ impl TransportBridge {
             outbound_resource_map,
             outbound_propagation_link: Arc::new(tokio::sync::Mutex::new(None)),
             receipt_tx,
+            delivery_scheduler: DeliveryScheduler::spawn(DeliverySchedulerConfig::from_env()),
         }
     }
 

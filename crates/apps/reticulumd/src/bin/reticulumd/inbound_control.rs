@@ -23,91 +23,75 @@ pub(super) fn spawn_control_worker(
             let Ok(event) = rx.recv().await else {
                 break;
             };
-            let LinkEvent::Data(payload) = event.event else {
-                continue;
-            };
             let destination_hex = hex::encode(event.address_hash.as_slice());
             let is_control_request =
                 control.control_destination_hash_hex.as_deref() == Some(destination_hex.as_str());
             let is_propagation_request = control.propagation_destination_hash_hex.as_deref()
                 == Some(destination_hex.as_str());
-            if std::env::var("RETICULUMD_DIAGNOSTICS").ok().is_some_and(|value| {
-                matches!(
-                    value.trim().to_ascii_lowercase().as_str(),
-                    "1" | "true" | "yes" | "on" | "debug"
-                )
-            }) {
-                eprintln!(
-                    "[daemon-control] link_data link={} destination={} context={:02x} propagation_destination={:?} control_destination={:?} is_propagation={} is_control={} len={}",
-                    event.id,
-                    destination_hex,
-                    payload.context() as u8,
-                    control.propagation_destination_hash_hex,
-                    control.control_destination_hash_hex,
-                    is_propagation_request,
-                    is_control_request,
-                    payload.len(),
-                );
-            }
-            if !is_control_request && !is_propagation_request {
-                continue;
-            }
-            match payload.context() {
-                PacketContext::LinkIdentify => {
-                    if let Some(identity) =
-                        parse_link_identify_payload(payload.as_slice(), &event.id)
-                    {
+            match event.event {
+                LinkEvent::PeerIdentified(identity) => {
+                    if is_control_request || is_propagation_request {
                         if let Ok(mut guard) = identified.lock() {
-                            guard.insert(event.id, identity);
+                            guard.insert(event.id, *identity);
                         }
                     }
                 }
-                PacketContext::Request => {
-                    let Some(request_id) = payload.request_id() else {
-                        continue;
-                    };
-                    let remote_identity =
-                        identified.lock().ok().and_then(|guard| guard.get(&event.id).cloned());
-                    let response = handle_control_request(
-                        daemon.as_ref(),
-                        &control,
-                        payload.as_slice(),
-                        remote_identity.as_ref(),
-                        is_propagation_request,
-                    );
-                    if let Err(err) = response::send_control_response(
-                        transport.as_ref(),
-                        &event.id,
-                        request_id,
-                        response,
-                    )
-                    .await
-                    {
-                        eprintln!(
-                            "[daemon-control] failed to send response link={} propagation_request={} error={}",
+                LinkEvent::Data(payload) => {
+                    if std::env::var("RETICULUMD_DIAGNOSTICS").ok().is_some_and(|value| {
+                        matches!(
+                            value.trim().to_ascii_lowercase().as_str(),
+                            "1" | "true" | "yes" | "on" | "debug"
+                        )
+                    }) {
+                        log::debug!(
+                            "[daemon-control] link_data link={} destination={} context={:02x} propagation_destination={:?} control_destination={:?} is_propagation={} is_control={} len={}",
                             event.id,
+                            destination_hex,
+                            payload.context() as u8,
+                            control.propagation_destination_hash_hex,
+                            control.control_destination_hash_hex,
                             is_propagation_request,
-                            err
+                            is_control_request,
+                            payload.len(),
                         );
+                    }
+                    if !is_control_request && !is_propagation_request {
+                        continue;
+                    }
+                    if payload.context() == PacketContext::Request {
+                        let Some(request_id) = payload.request_id() else {
+                            continue;
+                        };
+                        let remote_identity =
+                            identified.lock().ok().and_then(|guard| guard.get(&event.id).cloned());
+                        let response = handle_control_request(
+                            daemon.as_ref(),
+                            &control,
+                            payload.as_slice(),
+                            remote_identity.as_ref(),
+                            is_propagation_request,
+                        );
+                        if let Err(err) = response::send_control_response(
+                            transport.as_ref(),
+                            &event.id,
+                            request_id,
+                            response,
+                        )
+                        .await
+                        {
+                            log::error!(
+                                "[daemon-control] failed to send response link={} propagation_request={} error={}",
+                                event.id,
+                                is_propagation_request,
+                                err
+                            );
+                        }
                     }
                 }
                 _ => {}
             }
         }
     });
-}
-
-fn parse_link_identify_payload(payload: &[u8], link_id: &AddressHash) -> Option<Identity> {
-    if payload.len() < 32 + 32 + 64 {
-        return None;
-    }
-    let identity = Identity::new_from_slices(&payload[..32], &payload[32..64]);
-    let signature = ed25519_dalek::Signature::from_slice(&payload[64..128]).ok()?;
-    let mut signed = Vec::with_capacity(16 + 64);
-    signed.extend_from_slice(link_id.as_slice());
-    signed.extend_from_slice(&payload[..64]);
-    identity.verify(&signed, &signature).ok()?;
-    Some(identity)
 }
 
 fn handle_control_request(
