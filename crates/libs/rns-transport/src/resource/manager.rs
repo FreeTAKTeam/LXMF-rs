@@ -348,7 +348,7 @@ impl ResourceManager {
                 }
                 PartOutcome::Incomplete => {
                     let request = receiver.build_request();
-                    receiver.mark_request();
+                    receiver.mark_active_request();
                     request_packet = match build_link_packet(
                         link,
                         PacketType::Data,
