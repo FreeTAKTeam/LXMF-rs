@@ -98,9 +98,10 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
   identified-sender accounting, peering-key values, and explicit peering-key
   readiness status values are exposed. Local offer responses now accept
   Python's boolean all/none and list-shaped response forms, keep full-offer
-  stamp-policy and peering-key gates for boolean wants-all responses, and reject
-  valid-looking wanted transient IDs outside the current offer before mutating
-  queue state or creating a new peer queue. Existing peers in local sync
+  stamp-policy and peering-key gates for boolean wants-all and request-limited
+  full-offer responses, and reject valid-looking wanted transient IDs outside
+  the current offer before mutating queue state or creating a new peer queue.
+  Existing peers in local sync
   backoff now also postpone before the local existing-entry queue-fill path,
   but the active workspace does not yet match Python `LXMPeer` queueing,
   transfer, and peering behavior.
@@ -155,6 +156,7 @@ Recent focused evidence:
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_rejects_transfer_limited_wanted_ids_without_mutating_queue -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_boolean -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_boolean_wanted_ids_true_keeps_full_offer_policy_gates_like_python -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib peer_sync_request_transfer_limit_keeps_full_offer_policy_gates_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_during_backoff_does_not_queue_new_existing_entries_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib propagation_remote_fetch -- --nocapture`

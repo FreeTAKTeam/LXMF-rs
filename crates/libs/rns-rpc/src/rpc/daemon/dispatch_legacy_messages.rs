@@ -641,10 +641,8 @@ impl RpcDaemon {
                 self.queue_existing_propagation_for_peer(record.peer.as_str())?;
                 let record_transfer_limit_bytes =
                     record.propagation_transfer_limit.map(|limit| limit as usize);
-                let explicit_peer_sync_selection = requested_transfer_limit_bytes.is_some()
-                    || wanted_ids
-                        .as_ref()
-                        .is_some_and(PeerSyncWantedIds::requires_offer_validation);
+                let explicit_peer_sync_selection =
+                    wanted_ids.as_ref().is_some_and(PeerSyncWantedIds::requires_offer_validation);
                 let transfer_limit_bytes =
                     match (record_transfer_limit_bytes, requested_transfer_limit_bytes) {
                         (Some(record_limit), Some(requested_limit)) => {

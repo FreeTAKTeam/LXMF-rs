@@ -70,6 +70,35 @@ fn daemon_status_ex_reads_cached_status_snapshot() {
     assert_eq!(result["stamp_policy"]["enforce"].as_bool(), Some(true));
 }
 
+fn ready_propagation_peer_daemon(peer_seed: u8) -> (RpcDaemon, String) {
+    let store = MessagesStore::in_memory().expect("store");
+    let daemon = RpcDaemon::with_store(store, hex::encode([2u8; 16]));
+    let peer = hex::encode([peer_seed; 16]);
+    daemon
+        .accept_announce_with_metadata(
+            peer.clone(),
+            1_700_000_606 + i64::from(peer_seed),
+            None,
+            None,
+            None,
+            Some(vec!["propagation".to_string()]),
+            None,
+            None,
+            None,
+            Some(1),
+            Some(Some(1)),
+            Some(Some(1)),
+            None,
+            Some(1),
+            None,
+            None,
+            None,
+            None,
+        )
+        .expect("accept ready propagation peer announce");
+    (daemon, peer)
+}
+
 #[test]
 fn propagation_policy_is_reported_and_enforced_for_new_peers() {
     let daemon = RpcDaemon::test_instance();
@@ -3116,16 +3145,13 @@ fn peer_sync_without_offers_preserves_liveness_when_not_backing_off_like_python(
 
 #[test]
 fn peer_sync_during_backoff_postpones_skipped_offers() {
-    let daemon = RpcDaemon::test_instance();
-    daemon
-        .handle_rpc(rpc_request(52, "peer_sync", json!({ "peer": "peer-backoff-skipped" })))
-        .expect("initial peer sync");
+    let (daemon, peer) = ready_propagation_peer_daemon(0x47);
     {
         let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
-        let peer = peers.get_mut("peer-backoff-skipped").expect("peer record");
-        peer.propagation_sync_limit = Some(1_000);
-        peer.peering_timebase = 1_700_000_000;
-        peer.network_distance = 3;
+        let record = peers.get_mut(peer.as_str()).expect("peer record");
+        record.propagation_sync_limit = Some(1_000);
+        record.peering_timebase = 1_700_000_000;
+        record.network_distance = 3;
     }
     let previous_transfer = PropagationEntryRecord {
         transient_id: "ed".repeat(32),
@@ -3139,7 +3165,7 @@ fn peer_sync_during_backoff_postpones_skipped_offers() {
     daemon
         .store
         .mark_peer_unhandled_propagation(
-            "peer-backoff-skipped",
+            peer.as_str(),
             previous_transfer.transient_id.as_str(),
         )
         .expect("mark previous transfer unhandled");
@@ -3148,18 +3174,18 @@ fn peer_sync_during_backoff_postpones_skipped_offers() {
             53,
             "peer_sync",
             json!({
-                "peer": "peer-backoff-skipped",
+                "peer": peer.as_str(),
                 "transfer_limit_kb": 1.0,
             }),
         ))
         .expect("peer sync with previous transfer");
     let previous_resource_bytes =
         rmp_serde::to_vec(&(1.0_f64, vec![vec![0x19; 40]])).expect("pack sync resource").len();
-    daemon.record_outbound_peer_activity("peer-backoff-skipped", 64, false);
+    daemon.record_outbound_peer_activity(peer.as_str(), 64, false);
     {
         let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
-        let peer = peers.get_mut("peer-backoff-skipped").expect("peer record");
-        peer.propagation_sync_limit = Some(24);
+        let record = peers.get_mut(peer.as_str()).expect("peer record");
+        record.propagation_sync_limit = Some(24);
     }
     let entry = PropagationEntryRecord {
         transient_id: "ee".repeat(32),
@@ -3172,7 +3198,7 @@ fn peer_sync_during_backoff_postpones_skipped_offers() {
     daemon.store.upsert_propagation_entry(&entry).expect("store entry");
     daemon
         .store
-        .mark_peer_unhandled_propagation("peer-backoff-skipped", entry.transient_id.as_str())
+        .mark_peer_unhandled_propagation(peer.as_str(), entry.transient_id.as_str())
         .expect("mark unhandled");
 
     let before = daemon
@@ -3184,7 +3210,7 @@ fn peer_sync_during_backoff_postpones_skipped_offers() {
         .as_array()
         .expect("peer rows")
         .iter()
-        .find(|row| row["peer"].as_str() == Some("peer-backoff-skipped"))
+        .find(|row| row["peer"].as_str() == Some(peer.as_str()))
         .expect("peer row");
     let sync_backoff = before_row["sync_backoff"].as_u64().expect("sync backoff");
     let next_sync_attempt =
@@ -3193,7 +3219,7 @@ fn peer_sync_during_backoff_postpones_skipped_offers() {
     assert!(next_sync_attempt > 0);
 
     let result = daemon
-        .handle_rpc(rpc_request(54, "peer_sync", json!({ "peer": "peer-backoff-skipped" })))
+        .handle_rpc(rpc_request(54, "peer_sync", json!({ "peer": peer.as_str() })))
         .expect("skipped peer sync")
         .result
         .expect("peer sync result");
@@ -3247,7 +3273,7 @@ fn peer_sync_during_backoff_postpones_skipped_offers() {
         .as_array()
         .expect("peer rows")
         .iter()
-        .find(|row| row["peer"].as_str() == Some("peer-backoff-skipped"))
+        .find(|row| row["peer"].as_str() == Some(peer.as_str()))
         .expect("peer row");
     assert_eq!(after_row["sync_backoff"].as_u64(), Some(sync_backoff));
     assert_eq!(after_row["next_sync_attempt"].as_i64(), Some(next_sync_attempt));
@@ -3557,6 +3583,64 @@ fn peer_sync_requires_stamp_policy_for_ordinary_limited_peer_like_python() {
     let unhandled = daemon
         .store
         .list_peer_unhandled_propagation("peer-limited-policy")
+        .expect("list unhandled");
+    assert_eq!(unhandled.len(), 1);
+    assert_eq!(unhandled[0].transient_id, entry.transient_id);
+}
+
+#[test]
+fn peer_sync_request_transfer_limit_keeps_full_offer_policy_gates_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    daemon
+        .handle_rpc(rpc_request(52, "peer_sync", json!({ "peer": "peer-request-limit-policy" })))
+        .expect("initial peer sync");
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let peer = peers.get_mut("peer-request-limit-policy").expect("peer record");
+        peer.propagation_sync_limit = Some(1_000);
+        peer.propagation_stamp_cost = None;
+        peer.propagation_stamp_cost_flexibility = None;
+        peer.peering_cost = None;
+    }
+    let entry = PropagationEntryRecord {
+        transient_id: "e7".repeat(32),
+        destination: "17".repeat(16),
+        payload_hex: "17".repeat(20),
+        received_at: 1_700_000_625,
+        size_bytes: 20,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&entry).expect("store entry");
+    daemon
+        .store
+        .mark_peer_unhandled_propagation("peer-request-limit-policy", entry.transient_id.as_str())
+        .expect("mark unhandled");
+
+    let result = daemon
+        .handle_rpc(rpc_request(
+            54,
+            "peer_sync",
+            json!({
+                "peer": "peer-request-limit-policy",
+                "transfer_limit_kb": 1.0,
+            }),
+        ))
+        .expect("policy-gated request-limited peer sync")
+        .result
+        .expect("peer sync result");
+    assert_eq!(result["synced"].as_bool(), Some(false));
+    assert_eq!(result["postponed"].as_bool(), Some(true));
+    assert_eq!(result["postpone_reason"].as_str(), Some("stamp_policy"));
+    assert_eq!(result["transfer_limit"].as_u64(), Some(1_000));
+    assert_eq!(result["propagation"]["transfer_limit"].as_u64(), Some(1_000));
+    assert_eq!(result["propagation"]["offered"].as_u64(), Some(0));
+    assert_eq!(result["propagation"]["handled"].as_u64(), Some(0));
+    assert_eq!(result["propagation"]["skipped"].as_u64(), Some(0));
+    assert_eq!(result["propagation"]["transfer_limited"].as_u64(), Some(0));
+
+    let unhandled = daemon
+        .store
+        .list_peer_unhandled_propagation("peer-request-limit-policy")
         .expect("list unhandled");
     assert_eq!(unhandled.len(), 1);
     assert_eq!(unhandled[0].transient_id, entry.transient_id);
@@ -4018,7 +4102,7 @@ fn list_peers_exposes_python_style_message_counters() {
 
 #[test]
 fn peer_sync_marks_unhandled_propagation_entries_handled() {
-    let daemon = RpcDaemon::test_instance();
+    let (daemon, peer) = ready_propagation_peer_daemon(0x41);
     let entry = PropagationEntryRecord {
         transient_id: "ab".repeat(32),
         destination: "12".repeat(16),
@@ -4030,28 +4114,28 @@ fn peer_sync_marks_unhandled_propagation_entries_handled() {
     daemon.store.upsert_propagation_entry(&entry).expect("store propagation entry");
     daemon
         .store
-        .mark_peer_unhandled_propagation("peer-propagation-sync", entry.transient_id.as_str())
+        .mark_peer_unhandled_propagation(peer.as_str(), entry.transient_id.as_str())
         .expect("mark propagation unhandled");
 
     daemon
         .handle_rpc(rpc_request(
             55,
             "peer_sync",
-            json!({ "peer": "peer-propagation-sync", "transfer_limit_kb": 1 }),
+            json!({ "peer": peer.as_str(), "transfer_limit_kb": 1 }),
         ))
         .expect("peer sync");
 
     assert!(
         daemon
             .store
-            .list_peer_unhandled_propagation("peer-propagation-sync")
+            .list_peer_unhandled_propagation(peer.as_str())
             .expect("list unhandled")
             .is_empty()
     );
     assert_eq!(
         daemon
             .store
-            .list_peer_handled_propagation_ids("peer-propagation-sync")
+            .list_peer_handled_propagation_ids(peer.as_str())
             .expect("list handled"),
         vec![entry.transient_id]
     );
@@ -4059,7 +4143,19 @@ fn peer_sync_marks_unhandled_propagation_entries_handled() {
 
 #[test]
 fn peer_sync_queues_existing_entries_for_new_manual_peer() {
-    let daemon = RpcDaemon::test_instance();
+    let store = MessagesStore::in_memory().expect("store");
+    let daemon = RpcDaemon::with_store(store, hex::encode([2u8; 16]));
+    let peer = hex::encode([0x42_u8; 16]);
+    daemon
+        .handle_rpc(rpc_request(54, "peer_sync", json!({ "peer": peer.as_str() })))
+        .expect("seed manual peer");
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let record = peers.get_mut(peer.as_str()).expect("peer record");
+        record.propagation_stamp_cost = Some(1);
+        record.propagation_stamp_cost_flexibility = Some(1);
+        record.peering_cost = Some(1);
+    }
     let entry = PropagationEntryRecord {
         transient_id: "ac".repeat(32),
         destination: "12".repeat(16),
@@ -4074,7 +4170,7 @@ fn peer_sync_queues_existing_entries_for_new_manual_peer() {
         .handle_rpc(rpc_request(
             55,
             "peer_sync",
-            json!({ "peer": "peer-manual-queue", "transfer_limit_kb": 1 }),
+            json!({ "peer": peer.as_str(), "transfer_limit_kb": 1 }),
         ))
         .expect("peer sync")
         .result
@@ -4768,14 +4864,11 @@ fn peer_sync_keeps_sync_limited_entries_queued_when_peer_wants_none() {
 
 #[test]
 fn peer_sync_ignores_stamp_policy_for_entries_skipped_by_cumulative_sync_limit() {
-    let daemon = RpcDaemon::test_instance();
-    daemon
-        .handle_rpc(rpc_request(52, "peer_sync", json!({ "peer": "peer-stamped-skipped" })))
-        .expect("initial peer sync");
+    let (daemon, peer) = ready_propagation_peer_daemon(0x48);
     {
         let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
-        let peer = peers.get_mut("peer-stamped-skipped").expect("peer record");
-        peer.propagation_sync_limit = Some(80);
+        let record = peers.get_mut(peer.as_str()).expect("peer record");
+        record.propagation_sync_limit = Some(80);
     }
     let transferable = PropagationEntryRecord {
         transient_id: "a6".repeat(32),
@@ -4797,7 +4890,7 @@ fn peer_sync_ignores_stamp_policy_for_entries_skipped_by_cumulative_sync_limit()
         daemon.store.upsert_propagation_entry(entry).expect("store propagation entry");
         daemon
             .store
-            .mark_peer_unhandled_propagation("peer-stamped-skipped", entry.transient_id.as_str())
+            .mark_peer_unhandled_propagation(peer.as_str(), entry.transient_id.as_str())
             .expect("mark unhandled");
     }
 
@@ -4806,7 +4899,7 @@ fn peer_sync_ignores_stamp_policy_for_entries_skipped_by_cumulative_sync_limit()
             55,
             "peer_sync",
             json!({
-                "peer": "peer-stamped-skipped",
+                "peer": peer.as_str(),
                 "transfer_limit_kb": 1.0,
             }),
         ))
@@ -4833,14 +4926,14 @@ fn peer_sync_ignores_stamp_policy_for_entries_skipped_by_cumulative_sync_limit()
     assert_eq!(
         daemon
             .store
-            .list_peer_handled_propagation_ids("peer-stamped-skipped")
+            .list_peer_handled_propagation_ids(peer.as_str())
             .expect("handled ids"),
         vec![transferable.transient_id]
     );
     assert_eq!(
         daemon
             .store
-            .list_peer_unhandled_propagation("peer-stamped-skipped")
+            .list_peer_unhandled_propagation(peer.as_str())
             .expect("pending propagation"),
         vec![skipped]
     );
@@ -5117,7 +5210,7 @@ fn list_peers_top_level_message_counters_match_python_sync_accounting() {
 
 #[test]
 fn peer_sync_result_reports_cumulative_acceptance_rate_like_python() {
-    let daemon = RpcDaemon::test_instance();
+    let (daemon, peer) = ready_propagation_peer_daemon(0x43);
     let first = PropagationEntryRecord {
         transient_id: "b1".repeat(32),
         destination: "12".repeat(16),
@@ -5129,13 +5222,13 @@ fn peer_sync_result_reports_cumulative_acceptance_rate_like_python() {
     daemon.store.upsert_propagation_entry(&first).expect("store first entry");
     daemon
         .store
-        .mark_peer_unhandled_propagation("peer-cumulative-acceptance", first.transient_id.as_str())
+        .mark_peer_unhandled_propagation(peer.as_str(), first.transient_id.as_str())
         .expect("mark first unhandled");
     daemon
         .handle_rpc(rpc_request(
             57,
             "peer_sync",
-            json!({ "peer": "peer-cumulative-acceptance", "transfer_limit_kb": 1 }),
+            json!({ "peer": peer.as_str(), "transfer_limit_kb": 1 }),
         ))
         .expect("initial peer sync");
     daemon.event_queue.lock().expect("event_queue mutex poisoned").clear();
@@ -5160,10 +5253,7 @@ fn peer_sync_result_reports_cumulative_acceptance_rate_like_python() {
         daemon.store.upsert_propagation_entry(entry).expect("store propagation entry");
         daemon
             .store
-            .mark_peer_unhandled_propagation(
-                "peer-cumulative-acceptance",
-                entry.transient_id.as_str(),
-            )
+            .mark_peer_unhandled_propagation(peer.as_str(), entry.transient_id.as_str())
             .expect("mark unhandled");
     }
 
@@ -5172,7 +5262,7 @@ fn peer_sync_result_reports_cumulative_acceptance_rate_like_python() {
             58,
             "peer_sync",
             json!({
-                "peer": "peer-cumulative-acceptance",
+                "peer": peer.as_str(),
                 "wanted_ids": [wanted.transient_id.as_str()],
             }),
         ))
@@ -5378,14 +5468,11 @@ fn list_peers_ignores_stale_handled_propagation_marks() {
 
 #[test]
 fn peer_sync_applies_per_peer_propagation_sync_limit() {
-    let daemon = RpcDaemon::test_instance();
-    daemon
-        .handle_rpc(rpc_request(56, "peer_sync", json!({ "peer": "peer-sync-budget" })))
-        .expect("initial peer sync");
+    let (daemon, peer) = ready_propagation_peer_daemon(0x44);
     {
         let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
-        let peer = peers.get_mut("peer-sync-budget").expect("peer record");
-        peer.propagation_sync_limit = Some((24 + 20 + 32 + 16 + 1) as u32);
+        let record = peers.get_mut(peer.as_str()).expect("peer record");
+        record.propagation_sync_limit = Some((24 + 20 + 32 + 16 + 1) as u32);
     }
 
     let small = PropagationEntryRecord {
@@ -5409,7 +5496,7 @@ fn peer_sync_applies_per_peer_propagation_sync_limit() {
     for entry in [&small, &large] {
         daemon
             .store
-            .mark_peer_unhandled_propagation("peer-sync-budget", entry.transient_id.as_str())
+            .mark_peer_unhandled_propagation(peer.as_str(), entry.transient_id.as_str())
             .expect("mark unhandled");
     }
 
@@ -5418,7 +5505,7 @@ fn peer_sync_applies_per_peer_propagation_sync_limit() {
             57,
             "peer_sync",
             json!({
-                "peer": "peer-sync-budget",
+                "peer": peer,
                 "transfer_limit_kb": 1.0,
             }),
         ))
@@ -5426,12 +5513,12 @@ fn peer_sync_applies_per_peer_propagation_sync_limit() {
 
     let handled = daemon
         .store
-        .list_peer_handled_propagation_ids("peer-sync-budget")
+        .list_peer_handled_propagation_ids(peer.as_str())
         .expect("handled ids");
     assert_eq!(handled, vec![small.transient_id]);
     let pending = daemon
         .store
-        .list_peer_unhandled_propagation("peer-sync-budget")
+        .list_peer_unhandled_propagation(peer.as_str())
         .expect("pending propagation");
     assert_eq!(pending, vec![large]);
 }
@@ -5492,14 +5579,11 @@ fn peer_sync_skips_entry_at_exact_sync_limit_like_python() {
 
 #[test]
 fn peer_sync_applies_python_per_message_overhead_for_sync_limit() {
-    let daemon = RpcDaemon::test_instance();
-    daemon
-        .handle_rpc(rpc_request(56, "peer_sync", json!({ "peer": "peer-sync-overhead" })))
-        .expect("initial peer sync");
+    let (daemon, peer) = ready_propagation_peer_daemon(0x45);
     {
         let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
-        let peer = peers.get_mut("peer-sync-overhead").expect("peer record");
-        peer.propagation_sync_limit = Some((24 + 40 + 16 + 1) as u32);
+        let record = peers.get_mut(peer.as_str()).expect("peer record");
+        record.propagation_sync_limit = Some((24 + 40 + 16 + 1) as u32);
     }
 
     let entry = PropagationEntryRecord {
@@ -5513,7 +5597,7 @@ fn peer_sync_applies_python_per_message_overhead_for_sync_limit() {
     daemon.store.upsert_propagation_entry(&entry).expect("store propagation entry");
     daemon
         .store
-        .mark_peer_unhandled_propagation("peer-sync-overhead", entry.transient_id.as_str())
+        .mark_peer_unhandled_propagation(peer.as_str(), entry.transient_id.as_str())
         .expect("mark unhandled");
 
     let result = daemon
@@ -5521,7 +5605,7 @@ fn peer_sync_applies_python_per_message_overhead_for_sync_limit() {
             57,
             "peer_sync",
             json!({
-                "peer": "peer-sync-overhead",
+                "peer": peer.as_str(),
                 "transfer_limit_kb": 1.0,
             }),
         ))
@@ -5537,22 +5621,19 @@ fn peer_sync_applies_python_per_message_overhead_for_sync_limit() {
 
     let handled = daemon
         .store
-        .list_peer_handled_propagation_ids("peer-sync-overhead")
+        .list_peer_handled_propagation_ids(peer.as_str())
         .expect("handled ids");
     assert_eq!(handled, vec![entry.transient_id]);
 }
 
 #[test]
 fn peer_sync_uses_transfer_limit_when_sync_limit_is_absent() {
-    let daemon = RpcDaemon::test_instance();
-    daemon
-        .handle_rpc(rpc_request(58, "peer_sync", json!({ "peer": "peer-transfer-budget" })))
-        .expect("initial peer sync");
+    let (daemon, peer) = ready_propagation_peer_daemon(0x46);
     {
         let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
-        let peer = peers.get_mut("peer-transfer-budget").expect("peer record");
-        peer.propagation_transfer_limit = Some((24 + 20 + 32 + 16 + 1) as u32);
-        peer.propagation_sync_limit = None;
+        let record = peers.get_mut(peer.as_str()).expect("peer record");
+        record.propagation_transfer_limit = Some((24 + 20 + 32 + 16 + 1) as u32);
+        record.propagation_sync_limit = None;
     }
 
     let small = PropagationEntryRecord {
@@ -5576,7 +5657,7 @@ fn peer_sync_uses_transfer_limit_when_sync_limit_is_absent() {
     for entry in [&small, &large] {
         daemon
             .store
-            .mark_peer_unhandled_propagation("peer-transfer-budget", entry.transient_id.as_str())
+            .mark_peer_unhandled_propagation(peer.as_str(), entry.transient_id.as_str())
             .expect("mark unhandled");
     }
 
@@ -5585,7 +5666,7 @@ fn peer_sync_uses_transfer_limit_when_sync_limit_is_absent() {
             59,
             "peer_sync",
             json!({
-                "peer": "peer-transfer-budget",
+                "peer": peer.as_str(),
                 "transfer_limit_kb": 1.0,
             }),
         ))
@@ -5593,12 +5674,12 @@ fn peer_sync_uses_transfer_limit_when_sync_limit_is_absent() {
 
     let handled = daemon
         .store
-        .list_peer_handled_propagation_ids("peer-transfer-budget")
+        .list_peer_handled_propagation_ids(peer.as_str())
         .expect("handled ids");
     assert_eq!(handled, vec![small.transient_id]);
     let pending = daemon
         .store
-        .list_peer_unhandled_propagation("peer-transfer-budget")
+        .list_peer_unhandled_propagation(peer.as_str())
         .expect("pending propagation");
     assert_eq!(pending, vec![large]);
 }
@@ -5985,14 +6066,11 @@ fn postponed_peer_sync_reports_request_transfer_limit() {
 
 #[test]
 fn peer_sync_orders_offers_by_python_weight_before_sync_limit() {
-    let daemon = RpcDaemon::test_instance();
-    daemon
-        .handle_rpc(rpc_request(62, "peer_sync", json!({ "peer": "peer-weight-order" })))
-        .expect("initial peer sync");
+    let (daemon, peer) = ready_propagation_peer_daemon(0x49);
     {
         let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
-        let peer = peers.get_mut("peer-weight-order").expect("peer record");
-        peer.propagation_sync_limit = Some(152);
+        let record = peers.get_mut(peer.as_str()).expect("peer record");
+        record.propagation_sync_limit = Some(152);
     }
 
     let older_large = PropagationEntryRecord {
@@ -6015,7 +6093,7 @@ fn peer_sync_orders_offers_by_python_weight_before_sync_limit() {
         daemon.store.upsert_propagation_entry(entry).expect("store propagation entry");
         daemon
             .store
-            .mark_peer_unhandled_propagation("peer-weight-order", entry.transient_id.as_str())
+            .mark_peer_unhandled_propagation(peer.as_str(), entry.transient_id.as_str())
             .expect("mark unhandled");
     }
 
@@ -6024,7 +6102,7 @@ fn peer_sync_orders_offers_by_python_weight_before_sync_limit() {
             63,
             "peer_sync",
             json!({
-                "peer": "peer-weight-order",
+                "peer": peer.as_str(),
                 "transfer_limit_kb": 1.0,
             }),
         ))
@@ -6042,27 +6120,24 @@ fn peer_sync_orders_offers_by_python_weight_before_sync_limit() {
 
     let handled = daemon
         .store
-        .list_peer_handled_propagation_ids("peer-weight-order")
+        .list_peer_handled_propagation_ids(peer.as_str())
         .expect("handled ids");
     assert_eq!(handled, vec![newer_small.transient_id]);
     let pending = daemon
         .store
-        .list_peer_unhandled_propagation("peer-weight-order")
+        .list_peer_unhandled_propagation(peer.as_str())
         .expect("pending propagation");
     assert_eq!(pending, vec![older_large]);
 }
 
 #[test]
 fn peer_sync_reports_propagation_transfer_accounting() {
-    let daemon = RpcDaemon::test_instance();
-    daemon
-        .handle_rpc(rpc_request(60, "peer_sync", json!({ "peer": "peer-sync-report" })))
-        .expect("initial peer sync");
+    let (daemon, peer) = ready_propagation_peer_daemon(0x4a);
     daemon.event_queue.lock().expect("event_queue mutex poisoned").clear();
     {
         let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
-        let peer = peers.get_mut("peer-sync-report").expect("peer record");
-        peer.propagation_sync_limit = Some((24 + 20 + 32 + 16 + 1) as u32);
+        let record = peers.get_mut(peer.as_str()).expect("peer record");
+        record.propagation_sync_limit = Some((24 + 20 + 32 + 16 + 1) as u32);
     }
 
     let small = PropagationEntryRecord {
@@ -6086,7 +6161,7 @@ fn peer_sync_reports_propagation_transfer_accounting() {
     for entry in [&small, &large] {
         daemon
             .store
-            .mark_peer_unhandled_propagation("peer-sync-report", entry.transient_id.as_str())
+            .mark_peer_unhandled_propagation(peer.as_str(), entry.transient_id.as_str())
             .expect("mark unhandled");
     }
 
@@ -6095,7 +6170,7 @@ fn peer_sync_reports_propagation_transfer_accounting() {
             61,
             "peer_sync",
             json!({
-                "peer": "peer-sync-report",
+                "peer": peer.as_str(),
                 "transfer_limit_kb": 1.0,
             }),
         ))
@@ -6173,7 +6248,7 @@ fn peer_sync_reports_propagation_transfer_accounting() {
         .as_array()
         .expect("peer rows")
         .iter()
-        .find(|row| row["peer"].as_str() == Some("peer-sync-report"))
+        .find(|row| row["peer"].as_str() == Some(peer.as_str()))
         .expect("peer row");
     assert_eq!(row["tx_bytes"].as_u64(), Some(expected_resource_bytes as u64));
     assert_eq!(row["messages"]["offered"].as_u64(), Some(1));
@@ -6185,14 +6260,11 @@ fn peer_sync_reports_propagation_transfer_accounting() {
 
 #[test]
 fn peer_sync_updates_transfer_rate_from_transferred_bytes() {
-    let daemon = RpcDaemon::test_instance();
-    daemon
-        .handle_rpc(rpc_request(63, "peer_sync", json!({ "peer": "peer-sync-rate" })))
-        .expect("initial peer sync");
+    let (daemon, peer) = ready_propagation_peer_daemon(0x4b);
     {
         let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
-        let peer = peers.get_mut("peer-sync-rate").expect("peer record");
-        peer.propagation_sync_limit = Some(1_000);
+        let record = peers.get_mut(peer.as_str()).expect("peer record");
+        record.propagation_sync_limit = Some(1_000);
     }
 
     let entry = PropagationEntryRecord {
@@ -6206,7 +6278,7 @@ fn peer_sync_updates_transfer_rate_from_transferred_bytes() {
     daemon.store.upsert_propagation_entry(&entry).expect("store propagation entry");
     daemon
         .store
-        .mark_peer_unhandled_propagation("peer-sync-rate", entry.transient_id.as_str())
+        .mark_peer_unhandled_propagation(peer.as_str(), entry.transient_id.as_str())
         .expect("mark unhandled");
 
     let result = daemon
@@ -6214,7 +6286,7 @@ fn peer_sync_updates_transfer_rate_from_transferred_bytes() {
             64,
             "peer_sync",
             json!({
-                "peer": "peer-sync-rate",
+                "peer": peer.as_str(),
                 "transfer_limit_kb": 1.0,
             }),
         ))
@@ -6236,7 +6308,7 @@ fn peer_sync_updates_transfer_rate_from_transferred_bytes() {
         .as_array()
         .expect("peer rows")
         .iter()
-        .find(|row| row["peer"].as_str() == Some("peer-sync-rate"))
+        .find(|row| row["peer"].as_str() == Some(peer.as_str()))
         .expect("peer row");
     assert_eq!(row["sync_transfer_rate"].as_f64(), Some(expected_resource_bytes as f64));
     assert_eq!(row["str"].as_u64(), Some(expected_resource_bytes as u64));
@@ -6244,14 +6316,11 @@ fn peer_sync_updates_transfer_rate_from_transferred_bytes() {
 
 #[test]
 fn peer_sync_preserves_transfer_rate_when_no_offers_remain_like_python() {
-    let daemon = RpcDaemon::test_instance();
-    daemon
-        .handle_rpc(rpc_request(63, "peer_sync", json!({ "peer": "peer-sync-rate-empty" })))
-        .expect("initial peer sync");
+    let (daemon, peer) = ready_propagation_peer_daemon(0x4c);
     {
         let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
-        let peer = peers.get_mut("peer-sync-rate-empty").expect("peer record");
-        peer.propagation_sync_limit = Some(1_000);
+        let record = peers.get_mut(peer.as_str()).expect("peer record");
+        record.propagation_sync_limit = Some(1_000);
     }
 
     let entry = PropagationEntryRecord {
@@ -6265,14 +6334,14 @@ fn peer_sync_preserves_transfer_rate_when_no_offers_remain_like_python() {
     daemon.store.upsert_propagation_entry(&entry).expect("store propagation entry");
     daemon
         .store
-        .mark_peer_unhandled_propagation("peer-sync-rate-empty", entry.transient_id.as_str())
+        .mark_peer_unhandled_propagation(peer.as_str(), entry.transient_id.as_str())
         .expect("mark unhandled");
     daemon
         .handle_rpc(rpc_request(
             64,
             "peer_sync",
             json!({
-                "peer": "peer-sync-rate-empty",
+                "peer": peer.as_str(),
                 "transfer_limit_kb": 1.0,
             }),
         ))
@@ -6281,7 +6350,7 @@ fn peer_sync_preserves_transfer_rate_when_no_offers_remain_like_python() {
         rmp_serde::to_vec(&(1.0_f64, vec![vec![0x30; 48]])).expect("pack sync resource").len();
 
     let result = daemon
-        .handle_rpc(rpc_request(65, "peer_sync", json!({ "peer": "peer-sync-rate-empty" })))
+        .handle_rpc(rpc_request(65, "peer_sync", json!({ "peer": peer.as_str() })))
         .expect("peer sync without offers")
         .result
         .expect("peer sync result");
@@ -6299,7 +6368,7 @@ fn peer_sync_preserves_transfer_rate_when_no_offers_remain_like_python() {
         .as_array()
         .expect("peer rows")
         .iter()
-        .find(|row| row["peer"].as_str() == Some("peer-sync-rate-empty"))
+        .find(|row| row["peer"].as_str() == Some(peer.as_str()))
         .expect("peer row");
     assert_eq!(row["sync_transfer_rate"].as_f64(), Some(expected_resource_bytes as f64));
     assert_eq!(row["str"].as_u64(), Some(expected_resource_bytes as u64));
@@ -6307,14 +6376,11 @@ fn peer_sync_preserves_transfer_rate_when_no_offers_remain_like_python() {
 
 #[test]
 fn peer_sync_preserves_transfer_rate_when_offers_are_skipped_or_transfer_limited() {
-    let daemon = RpcDaemon::test_instance();
-    daemon
-        .handle_rpc(rpc_request(63, "peer_sync", json!({ "peer": "peer-sync-rate-skipped" })))
-        .expect("initial peer sync");
+    let (daemon, peer) = ready_propagation_peer_daemon(0x4d);
     {
         let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
-        let peer = peers.get_mut("peer-sync-rate-skipped").expect("peer record");
-        peer.propagation_sync_limit = Some(1_000);
+        let record = peers.get_mut(peer.as_str()).expect("peer record");
+        record.propagation_sync_limit = Some(1_000);
     }
 
     let handled = PropagationEntryRecord {
@@ -6328,14 +6394,14 @@ fn peer_sync_preserves_transfer_rate_when_offers_are_skipped_or_transfer_limited
     daemon.store.upsert_propagation_entry(&handled).expect("store handled entry");
     daemon
         .store
-        .mark_peer_unhandled_propagation("peer-sync-rate-skipped", handled.transient_id.as_str())
+        .mark_peer_unhandled_propagation(peer.as_str(), handled.transient_id.as_str())
         .expect("mark handled unhandled");
     daemon
         .handle_rpc(rpc_request(
             64,
             "peer_sync",
             json!({
-                "peer": "peer-sync-rate-skipped",
+                "peer": peer.as_str(),
                 "transfer_limit_kb": 1.0,
             }),
         ))
@@ -6345,8 +6411,8 @@ fn peer_sync_preserves_transfer_rate_when_offers_are_skipped_or_transfer_limited
 
     {
         let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
-        let peer = peers.get_mut("peer-sync-rate-skipped").expect("peer record");
-        peer.propagation_sync_limit = Some(24 + 40 + 16);
+        let record = peers.get_mut(peer.as_str()).expect("peer record");
+        record.propagation_sync_limit = Some(24 + 40 + 16);
     }
     let skipped = PropagationEntryRecord {
         transient_id: "d9".repeat(32),
@@ -6359,7 +6425,7 @@ fn peer_sync_preserves_transfer_rate_when_offers_are_skipped_or_transfer_limited
     daemon.store.upsert_propagation_entry(&skipped).expect("store skipped entry");
     daemon
         .store
-        .mark_peer_unhandled_propagation("peer-sync-rate-skipped", skipped.transient_id.as_str())
+        .mark_peer_unhandled_propagation(peer.as_str(), skipped.transient_id.as_str())
         .expect("mark skipped unhandled");
 
     let result = daemon
@@ -6367,7 +6433,7 @@ fn peer_sync_preserves_transfer_rate_when_offers_are_skipped_or_transfer_limited
             65,
             "peer_sync",
             json!({
-                "peer": "peer-sync-rate-skipped",
+                "peer": peer.as_str(),
                 "transfer_limit_kb": 1.0,
             }),
         ))
@@ -6388,18 +6454,18 @@ fn peer_sync_preserves_transfer_rate_when_offers_are_skipped_or_transfer_limited
         .as_array()
         .expect("peer rows")
         .iter()
-        .find(|row| row["peer"].as_str() == Some("peer-sync-rate-skipped"))
+        .find(|row| row["peer"].as_str() == Some(peer.as_str()))
         .expect("peer row");
     assert_eq!(row["sync_transfer_rate"].as_f64(), Some(first_resource_bytes as f64));
     assert_eq!(row["str"].as_u64(), Some(first_resource_bytes as u64));
 
     {
         let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
-        let peer = peers.get_mut("peer-sync-rate-skipped").expect("peer record");
-        peer.propagation_transfer_limit = None;
-        peer.propagation_sync_limit = Some(1_000);
-        peer.next_sync_attempt = 0;
-        peer.sync_backoff = 0;
+        let record = peers.get_mut(peer.as_str()).expect("peer record");
+        record.propagation_transfer_limit = None;
+        record.propagation_sync_limit = Some(1_000);
+        record.next_sync_attempt = 0;
+        record.sync_backoff = 0;
     }
     let second_handled = PropagationEntryRecord {
         transient_id: "da".repeat(32),
@@ -6413,7 +6479,7 @@ fn peer_sync_preserves_transfer_rate_when_offers_are_skipped_or_transfer_limited
     daemon
         .store
         .mark_peer_unhandled_propagation(
-            "peer-sync-rate-skipped",
+            peer.as_str(),
             second_handled.transient_id.as_str(),
         )
         .expect("mark second handled unhandled");
@@ -6422,7 +6488,7 @@ fn peer_sync_preserves_transfer_rate_when_offers_are_skipped_or_transfer_limited
             67,
             "peer_sync",
             json!({
-                "peer": "peer-sync-rate-skipped",
+                "peer": peer.as_str(),
                 "transfer_limit_kb": 1.0,
             }),
         ))
@@ -6433,9 +6499,9 @@ fn peer_sync_preserves_transfer_rate_when_offers_are_skipped_or_transfer_limited
 
     {
         let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
-        let peer = peers.get_mut("peer-sync-rate-skipped").expect("peer record");
-        peer.propagation_transfer_limit = Some(80);
-        peer.propagation_sync_limit = Some(1_000);
+        let record = peers.get_mut(peer.as_str()).expect("peer record");
+        record.propagation_transfer_limit = Some(80);
+        record.propagation_sync_limit = Some(1_000);
     }
     let transfer_limited = PropagationEntryRecord {
         transient_id: "db".repeat(32),
@@ -6452,7 +6518,7 @@ fn peer_sync_preserves_transfer_rate_when_offers_are_skipped_or_transfer_limited
     daemon
         .store
         .mark_peer_unhandled_propagation(
-            "peer-sync-rate-skipped",
+            peer.as_str(),
             transfer_limited.transient_id.as_str(),
         )
         .expect("mark transfer limited unhandled");
@@ -6462,7 +6528,7 @@ fn peer_sync_preserves_transfer_rate_when_offers_are_skipped_or_transfer_limited
             68,
             "peer_sync",
             json!({
-                "peer": "peer-sync-rate-skipped",
+                "peer": peer.as_str(),
                 "transfer_limit_kb": 1.0,
             }),
         ))

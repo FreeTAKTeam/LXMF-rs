@@ -149,6 +149,9 @@ gap, even though deeper propagation-router parity remains open.
   `wanted_ids: true`: a boolean wants-all response waits for stamp-policy and
   peering-key readiness like the original offer path instead of bypassing those
   gates as an explicit selected-ID response.
+- Local peer sync request-only transfer limits now also stay on Python's
+  full-offer policy path: `transfer_limit_kb` constrains offer construction
+  but does not by itself bypass stamp-policy or peering-key readiness.
 - Empty local peer sync now follows Python's no-unhandled-messages path: a
   clean peer with no pending propagation entries records the attempt but
   preserves liveness and the previous sync transfer rate, and avoids synthetic
