@@ -2754,6 +2754,60 @@ fn propagation_peer_maintenance_candidate_pool_includes_unknown_speed_peers_like
 }
 
 #[test]
+fn propagation_peer_maintenance_candidate_pool_includes_all_unknown_speed_peers_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    let fast_peer = make_ready_propagation_peer(&daemon, 0x5a);
+    let slower_peer = make_ready_propagation_peer(&daemon, 0x5b);
+    let first_unknown_peer = make_ready_propagation_peer(&daemon, 0x5c);
+    let second_unknown_peer = make_ready_propagation_peer(&daemon, 0x5d);
+    let third_unknown_peer = make_ready_propagation_peer(&daemon, 0x5e);
+    let entry = PropagationEntryRecord {
+        transient_id: "da".repeat(32),
+        destination: "1c".repeat(16),
+        payload_hex: "28".repeat(32),
+        received_at: 1_700_000_624,
+        size_bytes: 32,
+        stamp_value: Some(12),
+    };
+    daemon.store.upsert_propagation_entry(&entry).expect("store propagation entry");
+    for peer in [
+        &fast_peer,
+        &slower_peer,
+        &first_unknown_peer,
+        &second_unknown_peer,
+        &third_unknown_peer,
+    ] {
+        daemon
+            .store
+            .mark_peer_unhandled_propagation(peer.as_str(), entry.transient_id.as_str())
+            .expect("mark unhandled");
+    }
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        for (peer, rate) in [
+            (fast_peer.as_str(), 2_048.0),
+            (slower_peer.as_str(), 1_024.0),
+            (first_unknown_peer.as_str(), 0.0),
+            (second_unknown_peer.as_str(), 0.0),
+            (third_unknown_peer.as_str(), 0.0),
+        ] {
+            let record = peers.get_mut(peer).expect("peer record");
+            record.alive = true;
+            record.last_seen = 1_700_000_624;
+            record.last_sync_attempt = record.last_seen.saturating_sub(1);
+            record.next_sync_attempt = 0;
+            record.sync_transfer_rate = rate;
+        }
+    }
+
+    let selected = daemon
+        .select_peer_for_maintenance_sync(1_700_000_624)
+        .expect("select maintenance sync peer");
+
+    assert_eq!(selected.as_deref(), Some(third_unknown_peer.as_str()));
+}
+
+#[test]
 fn propagation_peer_maintenance_unresponsive_pool_does_not_starve_later_peers_like_python() {
     let daemon = RpcDaemon::test_instance();
     let first_peer = make_ready_propagation_peer(&daemon, 0x57);
