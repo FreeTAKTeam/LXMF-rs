@@ -257,6 +257,37 @@ mod tests {
         }
     }
 
+    fn ready_propagation_daemon() -> RpcDaemon {
+        RpcDaemon::test_instance_with_identity(hex::encode([2u8; 16]))
+    }
+
+    fn make_ready_propagation_peer(daemon: &RpcDaemon, peer_seed: u8) -> String {
+        let peer = hex::encode([peer_seed; 16]);
+        daemon
+            .accept_announce_with_metadata(
+                peer.clone(),
+                1_700_000_606 + i64::from(peer_seed),
+                None,
+                None,
+                None,
+                Some(vec!["propagation".to_string()]),
+                None,
+                None,
+                None,
+                Some(1),
+                Some(Some(1)),
+                Some(Some(1)),
+                None,
+                Some(1),
+                None,
+                None,
+                None,
+                None,
+            )
+            .expect("accept ready propagation peer announce");
+        peer
+    }
+
     fn control_request(path: &str, data: rmpv::Value) -> Vec<u8> {
         rmp_serde::to_vec_named(&rmpv::Value::Array(vec![
             rmpv::Value::Nil,
@@ -566,8 +597,8 @@ mod tests {
 
     #[test]
     fn python_status_reports_peer_sync_transfer_rate_counter() {
-        let peer = "peer-sync-transfer-rate".to_string();
-        let daemon = RpcDaemon::test_instance();
+        let daemon = ready_propagation_daemon();
+        let peer = make_ready_propagation_peer(&daemon, 0x91);
         daemon
             .handle_rpc(RpcRequest {
                 id: 1,
@@ -615,8 +646,8 @@ mod tests {
 
     #[test]
     fn python_status_reports_peer_propagation_message_ids() {
-        let peer = "peer-message-ids".to_string();
-        let daemon = RpcDaemon::test_instance();
+        let daemon = ready_propagation_daemon();
+        let peer = make_ready_propagation_peer(&daemon, 0x92);
         daemon
             .handle_rpc(RpcRequest {
                 id: 1,
@@ -683,8 +714,8 @@ mod tests {
 
     #[test]
     fn python_status_reports_peer_message_counters_at_top_level() {
-        let peer = "peer-top-level-status-counters".to_string();
-        let daemon = RpcDaemon::test_instance();
+        let daemon = ready_propagation_daemon();
+        let peer = make_ready_propagation_peer(&daemon, 0x93);
         daemon
             .handle_rpc(RpcRequest {
                 id: 1,

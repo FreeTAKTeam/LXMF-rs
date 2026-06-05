@@ -2383,6 +2383,8 @@ fn sdk_backup_restore_drill_recovers_snapshot_and_messages() {
         .join(format!("lxmf-rs-sdk-drill-{run_id}-{}.sqlite", std::process::id()));
     let backup_path = std::env::temp_dir()
         .join(format!("lxmf-rs-sdk-drill-{run_id}-{}.sqlite.backup", std::process::id()));
+    let restored_path = std::env::temp_dir()
+        .join(format!("lxmf-rs-sdk-drill-{run_id}-{}.sqlite.restored", std::process::id()));
 
     let baseline_topic_id: String;
     let baseline_message_id = "drill-baseline-msg-1";
@@ -2458,10 +2460,11 @@ fn sdk_backup_restore_drill_recovers_snapshot_and_messages() {
         assert!(drift_inbound.error.is_none());
     }
 
-    restore_sqlite_file(backup_path.as_path(), db_path.as_path());
+    restore_sqlite_file(backup_path.as_path(), restored_path.as_path());
 
     {
-        let store = MessagesStore::open(db_path.as_path()).expect("open restored sqlite store");
+        let store =
+            MessagesStore::open(restored_path.as_path()).expect("open restored sqlite store");
         let daemon = RpcDaemon::with_store(store, "drill-node".to_string());
 
         let baseline_topic = daemon
@@ -2511,10 +2514,14 @@ fn sdk_backup_restore_drill_recovers_snapshot_and_messages() {
 
     let _ = std::fs::remove_file(&db_path);
     let _ = std::fs::remove_file(&backup_path);
+    let _ = std::fs::remove_file(&restored_path);
     for sidecar in sqlite_sidecar_paths(db_path.as_path()) {
         let _ = std::fs::remove_file(sidecar);
     }
     for sidecar in sqlite_sidecar_paths(backup_path.as_path()) {
+        let _ = std::fs::remove_file(sidecar);
+    }
+    for sidecar in sqlite_sidecar_paths(restored_path.as_path()) {
         let _ = std::fs::remove_file(sidecar);
     }
 }

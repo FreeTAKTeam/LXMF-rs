@@ -70,9 +70,7 @@ fn daemon_status_ex_reads_cached_status_snapshot() {
     assert_eq!(result["stamp_policy"]["enforce"].as_bool(), Some(true));
 }
 
-fn ready_propagation_peer_daemon(peer_seed: u8) -> (RpcDaemon, String) {
-    let store = MessagesStore::in_memory().expect("store");
-    let daemon = RpcDaemon::with_store(store, hex::encode([2u8; 16]));
+fn make_ready_propagation_peer(daemon: &RpcDaemon, peer_seed: u8) -> String {
     let peer = hex::encode([peer_seed; 16]);
     daemon
         .accept_announce_with_metadata(
@@ -96,6 +94,13 @@ fn ready_propagation_peer_daemon(peer_seed: u8) -> (RpcDaemon, String) {
             None,
         )
         .expect("accept ready propagation peer announce");
+    peer
+}
+
+fn ready_propagation_peer_daemon(peer_seed: u8) -> (RpcDaemon, String) {
+    let store = MessagesStore::in_memory().expect("store");
+    let daemon = RpcDaemon::with_store(store, hex::encode([2u8; 16]));
+    let peer = make_ready_propagation_peer(&daemon, peer_seed);
     (daemon, peer)
 }
 
@@ -549,7 +554,8 @@ fn propagation_enable_static_only_unpeers_existing_non_static_peers() {
 
 #[test]
 fn propagation_enable_queues_existing_entries_for_static_peers() {
-    let daemon = RpcDaemon::test_instance();
+    let daemon = RpcDaemon::test_instance_with_identity(hex::encode([2u8; 16]));
+    let peer = hex::encode([0x51_u8; 16]);
     let entry = PropagationEntryRecord {
         transient_id: "a7".repeat(32),
         destination: "12".repeat(16),
@@ -566,10 +572,11 @@ fn propagation_enable_queues_existing_entries_for_static_peers() {
             "propagation_enable",
             json!({
                 "enabled": true,
-                "static_peers": ["peer-static-queue"],
+                "static_peers": [peer.as_str()],
             }),
         ))
         .expect("enable propagation");
+    assert_eq!(make_ready_propagation_peer(&daemon, 0x51), peer);
 
     let peers = daemon
         .handle_rpc(RpcRequest { id: 27, method: "list_peers".to_string(), params: None })
@@ -580,7 +587,7 @@ fn propagation_enable_queues_existing_entries_for_static_peers() {
         .as_array()
         .expect("peer rows")
         .iter()
-        .find(|row| row["peer"].as_str() == Some("peer-static-queue"))
+        .find(|row| row["peer"].as_str() == Some(peer.as_str()))
         .expect("peer row");
     assert_eq!(row["messages"]["offered"].as_u64(), Some(0));
     assert_eq!(row["messages"]["unhandled"].as_u64(), Some(1));
@@ -593,7 +600,7 @@ fn propagation_enable_queues_existing_entries_for_static_peers() {
         .handle_rpc(rpc_request(
             28,
             "peer_sync",
-            json!({ "peer": "peer-static-queue", "transfer_limit_kb": 1 }),
+            json!({ "peer": peer.as_str(), "transfer_limit_kb": 1 }),
         ))
         .expect("peer sync")
         .result
@@ -11277,9 +11284,9 @@ fn peer_sync_reactivates_persisted_unpeered_record() {
 
 #[test]
 fn peer_unpeer_clears_persisted_propagation_queue_marks() {
-    let daemon = RpcDaemon::test_instance();
+    let (daemon, peer) = ready_propagation_peer_daemon(0x52);
     daemon
-        .handle_rpc(rpc_request(90, "peer_sync", json!({ "peer": "peer-unpeer-queue" })))
+        .handle_rpc(rpc_request(90, "peer_sync", json!({ "peer": peer.as_str() })))
         .expect("sync peer");
     let entry = PropagationEntryRecord {
         transient_id: "ee".repeat(32),
@@ -11292,15 +11299,15 @@ fn peer_unpeer_clears_persisted_propagation_queue_marks() {
     daemon.store.upsert_propagation_entry(&entry).expect("store propagation entry");
     daemon
         .store
-        .mark_peer_unhandled_propagation("peer-unpeer-queue", entry.transient_id.as_str())
+        .mark_peer_unhandled_propagation(peer.as_str(), entry.transient_id.as_str())
         .expect("mark unhandled");
     daemon
         .store
-        .mark_peer_unhandled_propagation("peer-unpeer-queue", "fa".repeat(32).as_str())
+        .mark_peer_unhandled_propagation(peer.as_str(), "fa".repeat(32).as_str())
         .expect("mark stale unhandled");
 
     let unpeer = daemon
-        .handle_rpc(rpc_request(91, "peer_unpeer", json!({ "peer": "peer-unpeer-queue" })))
+        .handle_rpc(rpc_request(91, "peer_unpeer", json!({ "peer": peer.as_str() })))
         .expect("unpeer peer")
         .result
         .expect("unpeer result");
@@ -11312,16 +11319,17 @@ fn peer_unpeer_clears_persisted_propagation_queue_marks() {
     assert!(
         daemon
             .store
-            .list_peer_unhandled_propagation("peer-unpeer-queue")
+            .list_peer_unhandled_propagation(peer.as_str())
             .expect("list unhandled")
             .is_empty()
     );
 
+    make_ready_propagation_peer(&daemon, 0x52);
     daemon
         .handle_rpc(rpc_request(
             92,
             "peer_sync",
-            json!({ "peer": "peer-unpeer-queue", "transfer_limit_kb": 1 }),
+            json!({ "peer": peer.as_str(), "transfer_limit_kb": 1 }),
         ))
         .expect("resync peer");
     let peers = daemon
