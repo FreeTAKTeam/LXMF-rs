@@ -125,6 +125,10 @@ gap, even though deeper propagation-router parity remains open.
   peer candidate pool: the fastest two waiting peers remain candidates, and
   zero-transfer-rate peers are added so unknown-speed peers are not starved by
   previously measured peers.
+- Propagation peer maintenance retry selection now mirrors Python's
+  unresponsive-peer pool behavior as well: when no live waiting peer is
+  eligible, retry-ready unresponsive peers are selected from the whole due pool
+  instead of always retrying the first sorted peer.
 - Propagation peer maintenance also follows Python's sync-pool boundary for
   retained static peers: static peers past `LXMPeer.MAX_UNREACHABLE` are kept
   peered, but are not selected for waiting or retry-ready sync in that

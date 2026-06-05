@@ -2754,6 +2754,45 @@ fn propagation_peer_maintenance_candidate_pool_includes_unknown_speed_peers_like
 }
 
 #[test]
+fn propagation_peer_maintenance_unresponsive_pool_does_not_starve_later_peers_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    let first_peer = make_ready_propagation_peer(&daemon, 0x57);
+    let second_peer = make_ready_propagation_peer(&daemon, 0x58);
+    let third_peer = make_ready_propagation_peer(&daemon, 0x59);
+    let entry = PropagationEntryRecord {
+        transient_id: "d8".repeat(32),
+        destination: "1b".repeat(16),
+        payload_hex: "27".repeat(32),
+        received_at: 1_700_000_621,
+        size_bytes: 32,
+        stamp_value: Some(12),
+    };
+    daemon.store.upsert_propagation_entry(&entry).expect("store propagation entry");
+    for peer in [&first_peer, &second_peer, &third_peer] {
+        daemon
+            .store
+            .mark_peer_unhandled_propagation(peer.as_str(), entry.transient_id.as_str())
+            .expect("mark unhandled");
+    }
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        for peer in [&first_peer, &second_peer, &third_peer] {
+            let record = peers.get_mut(peer.as_str()).expect("peer record");
+            record.alive = false;
+            record.last_seen = 1_700_000_621;
+            record.last_sync_attempt = record.last_seen.saturating_sub(1);
+            record.next_sync_attempt = 0;
+        }
+    }
+
+    let selected = daemon
+        .select_peer_for_maintenance_sync(1_700_000_623)
+        .expect("select maintenance sync peer");
+
+    assert_eq!(selected.as_deref(), Some(second_peer.as_str()));
+}
+
+#[test]
 fn propagation_peer_maintenance_does_not_sync_unreachable_static_peer_like_python() {
     let daemon = RpcDaemon::test_instance();
     daemon

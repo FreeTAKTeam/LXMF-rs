@@ -1575,8 +1575,12 @@ impl RpcDaemon {
             return Ok(peer_pool.into_iter().nth(selected_index).map(|record| record.peer));
         }
 
-        unresponsive.sort_by(|left, right| left.peer.cmp(&right.peer));
-        Ok(unresponsive.into_iter().next().map(|record| record.peer))
+        if !unresponsive.is_empty() {
+            unresponsive.sort_by(|left, right| left.peer.cmp(&right.peer));
+            let selected_index = timestamp.rem_euclid(unresponsive.len() as i64) as usize;
+            return Ok(unresponsive.into_iter().nth(selected_index).map(|record| record.peer));
+        }
+        Ok(None)
     }
 
     pub(super) fn ensure_peer_admission_allowed(
