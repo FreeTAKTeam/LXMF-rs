@@ -2546,6 +2546,101 @@ fn propagation_peer_maintenance_rotates_low_acceptance_autopeers_like_python() {
 }
 
 #[test]
+fn propagation_peer_maintenance_rotates_low_acceptance_non_static_peers_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    daemon
+        .handle_rpc(rpc_request(
+            47,
+            "propagation_enable",
+            json!({
+                "enabled": true,
+                "autopeer": true,
+                "max_peers": 3,
+                "static_peers": ["peer-rotation-static"],
+            }),
+        ))
+        .expect("enable propagation");
+
+    daemon
+        .handle_rpc(rpc_request(48, "peer_sync", json!({ "peer": "peer-rotation-manual-low" })))
+        .expect("create manual peer");
+    daemon
+        .handle_rpc(rpc_request(49, "peer_sync", json!({ "peer": "peer-rotation-static" })))
+        .expect("create static peer");
+    daemon
+        .accept_announce_with_metadata(
+            "peer-rotation-auto-keep".to_string(),
+            1_700_000_613,
+            Some("peer-rotation-auto-keep".to_string()),
+            Some("announce".to_string()),
+            None,
+            Some(vec!["propagation".to_string()]),
+            None,
+            None,
+            None,
+            Some(1),
+            Some(Some(0)),
+            Some(Some(1)),
+            None,
+            Some(1),
+            None,
+            None,
+            None,
+            None,
+        )
+        .expect("accept autopeer announce");
+
+    let recent = now_i64();
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        for (peer, outgoing) in [
+            ("peer-rotation-manual-low", 0),
+            ("peer-rotation-static", 10),
+            ("peer-rotation-auto-keep", 10),
+        ] {
+            let record = peers.get_mut(peer).expect("peer record");
+            record.last_seen = recent;
+            record.alive = true;
+            record.last_sync_attempt = recent - 1;
+            record.offered = 10;
+            record.outgoing = outgoing;
+        }
+    }
+    daemon.event_queue.lock().expect("event_queue mutex poisoned").clear();
+
+    let result = daemon
+        .handle_rpc(rpc_request(50, "propagation_peer_maintenance", json!({})))
+        .expect("peer maintenance")
+        .result
+        .expect("peer maintenance result");
+
+    assert_eq!(result["culled"].as_u64(), Some(0));
+    assert_eq!(result["rotated"].as_u64(), Some(1));
+    assert_eq!(
+        result["rotated_peers"].as_array().expect("rotated peers"),
+        &[json!("peer-rotation-manual-low")]
+    );
+
+    let peers = daemon
+        .handle_rpc(RpcRequest { id: 51, method: "list_peers".to_string(), params: None })
+        .expect("list peers")
+        .result
+        .expect("list peers result");
+    let rows = peers["peers"].as_array().expect("peer rows");
+    assert!(
+        rows.iter().all(|row| row["peer"].as_str() != Some("peer-rotation-manual-low"))
+    );
+    assert!(rows.iter().any(|row| row["peer"].as_str() == Some("peer-rotation-static")));
+    assert!(rows.iter().any(|row| row["peer"].as_str() == Some("peer-rotation-auto-keep")));
+
+    let event = std::iter::from_fn(|| daemon.take_event())
+        .find(|event| event.event_type == "peer_unpeer")
+        .expect("rotation unpeer event");
+    assert_eq!(event.payload["peer"].as_str(), Some("peer-rotation-manual-low"));
+    assert_eq!(event.payload["reason"].as_str(), Some("peer_rotation"));
+}
+
+#[test]
 fn stale_announce_does_not_regress_propagation_peer_state() {
     let daemon = RpcDaemon::test_instance();
     daemon

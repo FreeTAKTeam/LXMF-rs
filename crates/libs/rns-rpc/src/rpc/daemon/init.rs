@@ -1425,7 +1425,9 @@ impl RpcDaemon {
         Ok(removed)
     }
 
-    pub(super) fn rotate_low_acceptance_autopeers(&self) -> Result<Vec<String>, std::io::Error> {
+    pub(super) fn rotate_low_acceptance_non_static_peers(
+        &self,
+    ) -> Result<Vec<String>, std::io::Error> {
         let (max_peers, static_peers) = {
             let propagation = self.propagation_state.lock().expect("propagation mutex poisoned");
             let Some(max_peers) = propagation.max_peers else {
@@ -1472,7 +1474,7 @@ impl RpcDaemon {
         for (record, _unhandled) in peer_stats {
             let is_static =
                 static_peers.iter().any(|peer| peer.eq_ignore_ascii_case(record.peer.as_str()));
-            if is_static || record.peer_type.as_deref() != Some("auto") {
+            if is_static {
                 continue;
             }
             if record.alive {

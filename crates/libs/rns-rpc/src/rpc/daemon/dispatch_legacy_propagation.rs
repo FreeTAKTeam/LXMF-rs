@@ -979,7 +979,7 @@ impl RpcDaemon {
             "propagation_peer_maintenance" => {
                 let timestamp = now_i64();
                 let culled_peers = self.cull_unreachable_non_static_peers(timestamp)?;
-                let rotated_peers = self.rotate_low_acceptance_autopeers()?;
+                let rotated_peers = self.rotate_low_acceptance_non_static_peers()?;
                 Ok(RpcResponse {
                     id: request.id,
                     result: Some(json!({
