@@ -145,6 +145,10 @@ gap, even though deeper propagation-router parity remains open.
   `wanted_ids: true` transfers every offered message, while `wanted_ids: false`
   and `wanted_ids: []` mark the whole offer handled without resource transfer,
   preserving the no-transfer liveness and transfer-rate behavior.
+- Local peer sync now also keeps Python's full-offer policy gates for
+  `wanted_ids: true`: a boolean wants-all response waits for stamp-policy and
+  peering-key readiness like the original offer path instead of bypassing those
+  gates as an explicit selected-ID response.
 - Empty local peer sync now follows Python's no-unhandled-messages path: a
   clean peer with no pending propagation entries records the attempt but
   preserves liveness and the previous sync transfer rate, and avoids synthetic

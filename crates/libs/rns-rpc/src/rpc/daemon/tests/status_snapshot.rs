@@ -4185,7 +4185,31 @@ fn peer_sync_offer_response_only_transfers_wanted_messages_like_python() {
 
 #[test]
 fn peer_sync_boolean_wanted_ids_true_transfers_all_offered_messages_like_python() {
-    let daemon = RpcDaemon::test_instance();
+    let store = MessagesStore::in_memory().expect("store");
+    let daemon = RpcDaemon::with_store(store, hex::encode([2u8; 16]));
+    let peer = hex::encode([3u8; 16]);
+    daemon
+        .accept_announce_with_metadata(
+            peer.clone(),
+            1_700_000_606,
+            None,
+            None,
+            None,
+            Some(vec!["propagation".to_string()]),
+            None,
+            None,
+            None,
+            Some(1),
+            Some(Some(1)),
+            Some(Some(1)),
+            None,
+            Some(1),
+            None,
+            None,
+            None,
+            None,
+        )
+        .expect("accept ready propagation peer announce");
     let first = PropagationEntryRecord {
         transient_id: "b3".repeat(32),
         destination: "12".repeat(16),
@@ -4206,7 +4230,7 @@ fn peer_sync_boolean_wanted_ids_true_transfers_all_offered_messages_like_python(
         daemon.store.upsert_propagation_entry(entry).expect("store propagation entry");
         daemon
             .store
-            .mark_peer_unhandled_propagation("peer-wants-all", entry.transient_id.as_str())
+            .mark_peer_unhandled_propagation(peer.as_str(), entry.transient_id.as_str())
             .expect("mark unhandled");
     }
 
@@ -4215,7 +4239,7 @@ fn peer_sync_boolean_wanted_ids_true_transfers_all_offered_messages_like_python(
             55,
             "peer_sync",
             json!({
-                "peer": "peer-wants-all",
+                "peer": peer,
                 "wanted_ids": true,
             }),
         ))
@@ -4236,10 +4260,71 @@ fn peer_sync_boolean_wanted_ids_true_transfers_all_offered_messages_like_python(
     assert!(
         daemon
             .store
-            .list_peer_unhandled_propagation("peer-wants-all")
+            .list_peer_unhandled_propagation(peer.as_str())
             .expect("pending propagation")
             .is_empty()
     );
+}
+
+#[test]
+fn peer_sync_boolean_wanted_ids_true_keeps_full_offer_policy_gates_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    daemon
+        .handle_rpc(rpc_request(52, "peer_sync", json!({ "peer": "peer-wants-all-policy" })))
+        .expect("initial peer sync");
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let peer = peers.get_mut("peer-wants-all-policy").expect("peer record");
+        peer.propagation_sync_limit = Some(1_000);
+        peer.propagation_stamp_cost = None;
+        peer.propagation_stamp_cost_flexibility = None;
+        peer.peering_cost = None;
+    }
+    let entry = PropagationEntryRecord {
+        transient_id: "b7".repeat(32),
+        destination: "12".repeat(16),
+        payload_hex: "17".repeat(24),
+        received_at: 1_700_000_609,
+        size_bytes: 24,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&entry).expect("store propagation entry");
+    daemon
+        .store
+        .mark_peer_unhandled_propagation("peer-wants-all-policy", entry.transient_id.as_str())
+        .expect("mark unhandled");
+
+    let result = daemon
+        .handle_rpc(rpc_request(
+            55,
+            "peer_sync",
+            json!({
+                "peer": "peer-wants-all-policy",
+                "wanted_ids": true,
+            }),
+        ))
+        .expect("peer sync")
+        .result
+        .expect("peer sync result");
+
+    assert_eq!(result["synced"].as_bool(), Some(false));
+    assert_eq!(result["postponed"].as_bool(), Some(true));
+    assert_eq!(result["postpone_reason"].as_str(), Some("stamp_policy"));
+    assert_eq!(result["propagation"]["postponed"].as_bool(), Some(true));
+    assert_eq!(
+        result["propagation"]["postpone_reason"].as_str(),
+        Some("stamp_policy")
+    );
+    assert_eq!(result["propagation"]["offered"].as_u64(), Some(0));
+    assert_eq!(result["propagation"]["handled"].as_u64(), Some(0));
+    assert_eq!(result["propagation"]["skipped"].as_u64(), Some(0));
+
+    let unhandled = daemon
+        .store
+        .list_peer_unhandled_propagation("peer-wants-all-policy")
+        .expect("pending propagation");
+    assert_eq!(unhandled.len(), 1);
+    assert_eq!(unhandled[0].transient_id, entry.transient_id);
 }
 
 #[test]
