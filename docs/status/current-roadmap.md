@@ -113,6 +113,10 @@ gap, even though deeper propagation-router parity remains open.
   headroom, tested non-static peers below the acceptance-rate threshold can be
   unpeered with queue cleanup while static and higher-acceptance peers remain
   peered.
+- Propagation peer maintenance now starts one eligible waiting or retry-ready
+  peer sync through the existing local `peer_sync` path, so Python
+  `sync_peers()`-style maintenance mutates queue marks and transfer accounting
+  instead of only reporting cull/rotation status.
 - Propagation offer handling now follows Python's invalid propagation-stamp
   throttle: peer resource transfers containing invalid propagation stamps mark
   that propagation peer throttled for Python's `PN_STAMP_THROTTLE` window, and

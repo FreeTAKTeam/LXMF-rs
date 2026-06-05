@@ -2399,6 +2399,7 @@ fn propagation_peer_maintenance_culls_unreachable_non_static_peers_like_python()
             peers.get_mut("peer-static-unreachable-retained").expect("static peer");
         static_peer.last_seen = stale_last_seen;
         static_peer.alive = false;
+        static_peer.next_sync_attempt = i64::MAX;
     }
     daemon.event_queue.lock().expect("event_queue mutex poisoned").clear();
 
@@ -2413,6 +2414,7 @@ fn propagation_peer_maintenance_culls_unreachable_non_static_peers_like_python()
         result["culled_peers"].as_array().expect("culled peers"),
         &[json!("peer-auto-unreachable-cull")]
     );
+    assert_eq!(result["synced_peer"].as_str(), None);
     let peers = daemon
         .handle_rpc(RpcRequest { id: 43, method: "list_peers".to_string(), params: None })
         .expect("list peers")
@@ -2638,6 +2640,73 @@ fn propagation_peer_maintenance_rotates_low_acceptance_non_static_peers_like_pyt
         .expect("rotation unpeer event");
     assert_eq!(event.payload["peer"].as_str(), Some("peer-rotation-manual-low"));
     assert_eq!(event.payload["reason"].as_str(), Some("peer_rotation"));
+}
+
+#[test]
+fn propagation_peer_maintenance_syncs_one_waiting_peer_like_python() {
+    let (daemon, peer) = ready_propagation_peer_daemon(0x53);
+    let entry = PropagationEntryRecord {
+        transient_id: "d5".repeat(32),
+        destination: "18".repeat(16),
+        payload_hex: "24".repeat(32),
+        received_at: 1_700_000_618,
+        size_bytes: 32,
+        stamp_value: Some(12),
+    };
+    daemon.store.upsert_propagation_entry(&entry).expect("store propagation entry");
+    daemon
+        .store
+        .mark_peer_unhandled_propagation(peer.as_str(), entry.transient_id.as_str())
+        .expect("mark unhandled");
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let record = peers.get_mut(peer.as_str()).expect("peer record");
+        record.alive = true;
+        record.last_seen = now_i64();
+        record.last_sync_attempt = record.last_seen.saturating_sub(1);
+        record.next_sync_attempt = 0;
+        record.sync_transfer_rate = 1024.0;
+    }
+    daemon.event_queue.lock().expect("event_queue mutex poisoned").clear();
+
+    let result = daemon
+        .handle_rpc(rpc_request(52, "propagation_peer_maintenance", json!({})))
+        .expect("peer maintenance")
+        .result
+        .expect("peer maintenance result");
+
+    assert_eq!(result["culled"].as_u64(), Some(0));
+    assert_eq!(result["rotated"].as_u64(), Some(0));
+    assert_eq!(result["synced_peer"].as_str(), Some(peer.as_str()));
+    assert_eq!(result["peer_sync"]["peer"].as_str(), Some(peer.as_str()));
+    assert_eq!(result["peer_sync"]["propagation"]["transferred"].as_u64(), Some(1));
+    assert_eq!(
+        result["peer_sync"]["propagation"]["transferred_ids"]
+            .as_array()
+            .expect("transferred ids"),
+        &[json!(entry.transient_id.as_str())]
+    );
+
+    assert!(
+        daemon
+            .store
+            .list_peer_unhandled_propagation(peer.as_str())
+            .expect("list unhandled")
+            .is_empty()
+    );
+    assert_eq!(
+        daemon
+            .store
+            .list_peer_handled_propagation_ids(peer.as_str())
+            .expect("handled ids"),
+        vec![entry.transient_id]
+    );
+
+    let event = std::iter::from_fn(|| daemon.take_event())
+        .find(|event| event.event_type == "peer_sync")
+        .expect("maintenance peer sync event");
+    assert_eq!(event.payload["peer"].as_str(), Some(peer.as_str()));
+    assert_eq!(event.payload["propagation"]["transferred"].as_u64(), Some(1));
 }
 
 #[test]

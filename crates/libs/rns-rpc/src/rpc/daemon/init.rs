@@ -1521,6 +1521,50 @@ impl RpcDaemon {
         Ok(removed)
     }
 
+    pub(super) fn select_peer_for_maintenance_sync(
+        &self,
+        timestamp: i64,
+    ) -> Result<Option<String>, std::io::Error> {
+        let active_peers = {
+            let guard = self.peers.lock().expect("peers mutex poisoned");
+            guard
+                .values()
+                .filter(|record| record.peer_type.as_deref() != Some("unpeered"))
+                .cloned()
+                .collect::<Vec<_>>()
+        };
+
+        let mut waiting = Vec::new();
+        let mut unresponsive = Vec::new();
+        for record in active_peers {
+            let stats = self
+                .store
+                .peer_propagation_message_stats(record.peer.as_str())
+                .map_err(std::io::Error::other)?;
+            if stats.unhandled == 0 {
+                continue;
+            }
+            if record.alive {
+                waiting.push(record);
+            } else if timestamp > record.next_sync_attempt {
+                unresponsive.push(record);
+            }
+        }
+
+        if !waiting.is_empty() {
+            waiting.sort_by(|left, right| {
+                right
+                    .sync_transfer_rate
+                    .total_cmp(&left.sync_transfer_rate)
+                    .then_with(|| left.peer.cmp(&right.peer))
+            });
+            return Ok(waiting.into_iter().next().map(|record| record.peer));
+        }
+
+        unresponsive.sort_by(|left, right| left.peer.cmp(&right.peer));
+        Ok(unresponsive.into_iter().next().map(|record| record.peer))
+    }
+
     pub(super) fn ensure_peer_admission_allowed(
         &self,
         peer: &str,
