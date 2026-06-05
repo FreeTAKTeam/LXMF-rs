@@ -152,6 +152,10 @@ gap, even though deeper propagation-router parity remains open.
 - Local peer sync request-only transfer limits now also stay on Python's
   full-offer policy path: `transfer_limit_kb` constrains offer construction
   but does not by itself bypass stamp-policy or peering-key readiness.
+- Local peer sync selected-ID offer responses that request a transfer now also
+  stay on Python's full-offer policy path: non-empty list-shaped `wanted_ids`
+  wait for stamp-policy and peering-key readiness before mutating queue state or
+  transferring payloads.
 - Empty local peer sync now follows Python's no-unhandled-messages path: a
   clean peer with no pending propagation entries records the attempt but
   preserves liveness and the previous sync transfer rate, and avoids synthetic

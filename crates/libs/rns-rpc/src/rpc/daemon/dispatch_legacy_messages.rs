@@ -760,8 +760,11 @@ impl RpcDaemon {
                         wanted_ids.as_ref(),
                         sync_limit_bytes,
                     );
+                let peer_response_requests_transfer =
+                    wanted_ids.as_ref().is_some_and(PeerSyncWantedIds::requests_transfer);
                 let peer_policy_required = remaining_policy_relevant > 0
                     && (!explicit_peer_sync_selection
+                        || peer_response_requests_transfer
                         || remaining_policy_relevant_has_stamp
                         || peer_stamp_policy_partially_known(&record));
                 if peer_policy_required && !peer_stamp_policy_known(&record) {
@@ -1781,6 +1784,13 @@ impl PeerSyncWantedIds {
 
     fn wants_none(&self) -> bool {
         matches!(self, Self::Selected(ids) if ids.is_empty())
+    }
+
+    fn requests_transfer(&self) -> bool {
+        match self {
+            Self::All => true,
+            Self::Selected(ids) => !ids.is_empty(),
+        }
     }
 
     fn requires_offer_validation(&self) -> bool {
