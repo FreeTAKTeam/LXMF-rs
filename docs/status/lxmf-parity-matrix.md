@@ -9,7 +9,7 @@ KISS/LoRa/RNode interface work improves the transport substrate available to
 LXMF, but it does not by itself complete LXMF peer sync, propagation router, or
 stamp worker parity.
 
-Last reassessed: 2026-06-05 (unreachable static peer maintenance sync skip regression added)
+Last reassessed: 2026-06-05 (high-cost manual peer peering-break regression added)
 
 Status legend: `not-started` | `partial` | `done`
 
@@ -92,7 +92,8 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
   strict peering-timebase config refresh, Python-style unreachable-peer
   maintenance culling, low-acceptance non-static peer rotation,
   maintenance-driven waiting peer sync, and unreachable static peer sync-pool
-  skipping, admitted-offer-only
+  skipping, high-cost existing-peer peering breaks with queue cleanup,
+  admitted-offer-only
   validated peering links, mixed invalid-stamp peer resource handling that
   preserves valid entries before throttling, inbound propagation resource
   source-peer queueing, remote-sync source-peer inbound byte/message accounting
@@ -179,6 +180,7 @@ Recent focused evidence:
 - `cargo test -p reticulum-rs-rpc --lib autopeered_announce_records_propagation_peer_state -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib low_value_stamped_entries -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib equal_timebase_announce_does_not_refresh_propagation_peer_state_like_python -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib high_cost_announce_breaks_existing_manual_peer_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib propagation_peer_maintenance_culls_unreachable_non_static_peers_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib propagation_peer_maintenance_rotates_low_acceptance_autopeers_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib propagation_peer_maintenance_rotates_low_acceptance_non_static_peers_like_python -- --nocapture`

@@ -931,7 +931,7 @@ impl RpcDaemon {
         let is_static = self.is_static_peer(peer.as_str());
         let remote_peering_cost_allowed = self.remote_peering_cost_allowed(peering_cost);
         if !is_static && !remote_peering_cost_allowed {
-            self.remove_autopeered_peer_if_stale_or_expensive(peer.as_str(), timestamp)?;
+            self.remove_peer_if_stale_or_expensive(peer.as_str(), timestamp)?;
         }
         if !is_static && propagation_enabled == Some(false) {
             self.remove_autopeered_peer_if_propagation_disabled(
@@ -1644,7 +1644,7 @@ impl RpcDaemon {
         }
     }
 
-    pub(super) fn remove_autopeered_peer_if_stale_or_expensive(
+    pub(super) fn remove_peer_if_stale_or_expensive(
         &self,
         peer: &str,
         timestamp: i64,
@@ -1656,9 +1656,8 @@ impl RpcDaemon {
         let unhandled_ids =
             self.store.list_peer_unhandled_propagation_ids(peer).map_err(std::io::Error::other)?;
         let mut guard = self.peers.lock().expect("peers mutex poisoned");
-        let should_remove = guard.get(peer).is_some_and(|existing| {
-            existing.peer_type.as_deref() == Some("auto") && timestamp >= existing.peering_timebase
-        });
+        let should_remove =
+            guard.get(peer).is_some_and(|existing| timestamp >= existing.peering_timebase);
         if !should_remove {
             return Ok(());
         }

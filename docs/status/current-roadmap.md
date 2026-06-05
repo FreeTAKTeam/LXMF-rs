@@ -104,6 +104,10 @@ gap, even though deeper propagation-router parity remains open.
   ordering: equal-timebase announces are retained in the announce log but no
   longer overwrite the active peer's propagation limits, costs, or peering
   policy fields.
+- Propagation peer admission now mirrors Python's high-cost peering policy for
+  existing non-static peers: a newer announce above `remote_peering_cost_max`
+  breaks manual or auto peering and clears propagation queue marks, while stale
+  high-cost announces are ignored.
 - Propagation peer maintenance now has an explicit RPC path for Python
   `sync_peers()`-style unreachable-peer culling: non-static peers unheard for
   `LXMPeer.MAX_UNREACHABLE` are unpeered and have their propagation queue marks

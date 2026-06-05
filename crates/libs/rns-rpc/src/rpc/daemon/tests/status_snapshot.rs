@@ -7932,7 +7932,7 @@ fn stale_high_cost_announce_does_not_remove_newer_autopeer() {
 }
 
 #[test]
-fn high_cost_announce_does_not_remove_manual_peer() {
+fn high_cost_announce_breaks_existing_manual_peer_like_python() {
     let daemon = RpcDaemon::test_instance();
     daemon
         .handle_rpc(rpc_request(
@@ -7949,6 +7949,21 @@ fn high_cost_announce_does_not_remove_manual_peer() {
     daemon
         .handle_rpc(rpc_request(58, "peer_sync", json!({ "peer": "peer-manual" })))
         .expect("manual peer sync");
+
+    let entry = PropagationEntryRecord {
+        transient_id: "ef".repeat(32),
+        destination: "12".repeat(16),
+        payload_hex: "12".repeat(24),
+        received_at: 1_700_000_499,
+        size_bytes: 24,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&entry).expect("store propagation entry");
+    daemon
+        .store
+        .mark_peer_unhandled_propagation("peer-manual", entry.transient_id.as_str())
+        .expect("mark manual peer propagation unhandled");
+    daemon.event_queue.lock().expect("event_queue mutex poisoned").clear();
 
     daemon
         .accept_announce_with_metadata(
@@ -7978,9 +7993,29 @@ fn high_cost_announce_does_not_remove_manual_peer() {
         .expect("list peers")
         .result
         .expect("list peers result");
-    let row = peers["peers"].as_array().and_then(|rows| rows.first()).expect("peer row");
-    assert_eq!(row["peer"].as_str(), Some("peer-manual"));
-    assert_eq!(row["peer_type"].as_str(), Some("manual"));
+    assert_eq!(peers["peers"].as_array().map(|rows| rows.len()), Some(0));
+    assert!(
+        daemon
+            .store
+            .list_peer_unhandled_propagation("peer-manual")
+            .expect("manual peer propagation marks after break")
+            .is_empty(),
+        "breaking a manual peer should clear stale propagation queue marks"
+    );
+    let event = daemon
+        .event_queue
+        .lock()
+        .expect("event_queue mutex poisoned")
+        .iter()
+        .rev()
+        .find(|event| event.event_type == "peer_unpeer")
+        .cloned()
+        .expect("manual peer removal event");
+    assert_eq!(event.payload["peer"].as_str(), Some("peer-manual"));
+    assert_eq!(event.payload["removed"].as_bool(), Some(true));
+    assert_eq!(event.payload["reason"].as_str(), Some("peering_cost_policy"));
+    assert_eq!(event.payload["propagation_cleared"].as_u64(), Some(1));
+    assert_eq!(event.payload["propagation_cleared_bytes"].as_u64(), Some(24));
 }
 
 include!("status_snapshot_propagation_ingest.rs");
