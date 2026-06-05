@@ -1537,6 +1537,9 @@ impl RpcDaemon {
         let mut waiting = Vec::new();
         let mut unresponsive = Vec::new();
         for record in active_peers {
+            if timestamp > record.last_seen.saturating_add(LXMF_PEER_MAX_UNREACHABLE_SECS) {
+                continue;
+            }
             let stats = self
                 .store
                 .peer_propagation_message_stats(record.peer.as_str())

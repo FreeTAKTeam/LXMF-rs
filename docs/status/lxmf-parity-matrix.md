@@ -9,7 +9,7 @@ KISS/LoRa/RNode interface work improves the transport substrate available to
 LXMF, but it does not by itself complete LXMF peer sync, propagation router, or
 stamp worker parity.
 
-Last reassessed: 2026-06-05 (maintenance-driven waiting peer sync regression added)
+Last reassessed: 2026-06-05 (unreachable static peer maintenance sync skip regression added)
 
 Status legend: `not-started` | `partial` | `done`
 
@@ -90,8 +90,9 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
   accounting, per-peer propagation transfer/sync limits, propagation stamp
   policy, Python-compatible low-value stamped peer-offer handling,
   strict peering-timebase config refresh, Python-style unreachable-peer
-  maintenance culling, low-acceptance non-static peer rotation, and
-  maintenance-driven waiting peer sync, admitted-offer-only
+  maintenance culling, low-acceptance non-static peer rotation,
+  maintenance-driven waiting peer sync, and unreachable static peer sync-pool
+  skipping, admitted-offer-only
   validated peering links, mixed invalid-stamp peer resource handling that
   preserves valid entries before throttling, inbound propagation resource
   source-peer queueing, remote-sync source-peer inbound byte/message accounting
@@ -182,6 +183,7 @@ Recent focused evidence:
 - `cargo test -p reticulum-rs-rpc --lib propagation_peer_maintenance_rotates_low_acceptance_autopeers_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib propagation_peer_maintenance_rotates_low_acceptance_non_static_peers_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib propagation_peer_maintenance_syncs_one_waiting_peer_like_python -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib propagation_peer_maintenance_does_not_sync_unreachable_static_peer_like_python -- --nocapture`
 - `cargo test -p reticulumd --bin reticulumd python_status_exposes_peer_peering_key_value -- --nocapture`
 - `cargo test -p reticulumd --bin reticulumd python_status_exposes_peer_peering_key_status -- --nocapture`
 - `cargo test -p reticulumd --bin reticulumd peer_sync_command_reports_peering_key_status -- --nocapture`

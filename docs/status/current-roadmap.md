@@ -117,6 +117,10 @@ gap, even though deeper propagation-router parity remains open.
   peer sync through the existing local `peer_sync` path, so Python
   `sync_peers()`-style maintenance mutates queue marks and transfer accounting
   instead of only reporting cull/rotation status.
+- Propagation peer maintenance also follows Python's sync-pool boundary for
+  retained static peers: static peers past `LXMPeer.MAX_UNREACHABLE` are kept
+  peered, but are not selected for waiting or retry-ready sync in that
+  maintenance pass.
 - Propagation offer handling now follows Python's invalid propagation-stamp
   throttle: peer resource transfers containing invalid propagation stamps mark
   that propagation peer throttled for Python's `PN_STAMP_THROTTLE` window, and

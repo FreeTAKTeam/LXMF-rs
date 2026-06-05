@@ -2710,6 +2710,90 @@ fn propagation_peer_maintenance_syncs_one_waiting_peer_like_python() {
 }
 
 #[test]
+fn propagation_peer_maintenance_does_not_sync_unreachable_static_peer_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    daemon
+        .handle_rpc(rpc_request(
+            53,
+            "propagation_enable",
+            json!({
+                "enabled": true,
+                "static_peers": ["peer-static-unreachable-sync-skip"],
+            }),
+        ))
+        .expect("enable propagation");
+
+    let entry = PropagationEntryRecord {
+        transient_id: "d6".repeat(32),
+        destination: "19".repeat(16),
+        payload_hex: "25".repeat(32),
+        received_at: 1_700_000_619,
+        size_bytes: 32,
+        stamp_value: Some(12),
+    };
+    daemon.store.upsert_propagation_entry(&entry).expect("store propagation entry");
+    daemon
+        .store
+        .mark_peer_unhandled_propagation(
+            "peer-static-unreachable-sync-skip",
+            entry.transient_id.as_str(),
+        )
+        .expect("mark unhandled");
+    daemon
+        .accept_announce_with_metadata(
+            "peer-static-unreachable-sync-skip".to_string(),
+            1_700_000_619,
+            Some("Static Unreachable".to_string()),
+            Some("announce".to_string()),
+            None,
+            Some(vec!["propagation".to_string()]),
+            None,
+            None,
+            None,
+            Some(1),
+            Some(Some(0)),
+            Some(Some(1)),
+            None,
+            Some(1),
+            None,
+            None,
+            None,
+            None,
+        )
+        .expect("accept static peer announce");
+    let stale_last_seen = now_i64() - (14 * 24 * 60 * 60) - 1;
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let record = peers
+            .get_mut("peer-static-unreachable-sync-skip")
+            .expect("static peer");
+        record.alive = false;
+        record.last_seen = stale_last_seen;
+        record.next_sync_attempt = 0;
+    }
+    daemon.event_queue.lock().expect("event_queue mutex poisoned").clear();
+
+    let result = daemon
+        .handle_rpc(rpc_request(54, "propagation_peer_maintenance", json!({})))
+        .expect("peer maintenance")
+        .result
+        .expect("peer maintenance result");
+
+    assert_eq!(result["culled"].as_u64(), Some(0));
+    assert_eq!(result["synced_peer"].as_str(), None);
+    assert_eq!(
+        daemon
+            .store
+            .list_peer_unhandled_propagation("peer-static-unreachable-sync-skip")
+            .expect("list unhandled"),
+        vec![entry]
+    );
+    assert!(
+        std::iter::from_fn(|| daemon.take_event()).all(|event| event.event_type != "peer_sync")
+    );
+}
+
+#[test]
 fn stale_announce_does_not_regress_propagation_peer_state() {
     let daemon = RpcDaemon::test_instance();
     daemon
