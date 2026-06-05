@@ -151,6 +151,9 @@ gap, even though deeper propagation-router parity remains open.
   failure backoff, while existing failure backoff remains intact.
 - Postponed local peer sync now also preserves the previous sync transfer rate
   instead of clearing transfer accounting before any offer/resource path runs.
+- Postponed local peer sync now honors existing peer backoff before the local
+  queue-fill path: a backed-off peer does not opportunistically gain new
+  unhandled propagation marks until the sync attempt is eligible to run.
 - Local peer sync now preserves the previous sync transfer rate when pending
   offers are only skipped by sync limits or marked transfer-limited, matching
   Python's resource-completion-only transfer-rate updates.

@@ -3256,6 +3256,67 @@ fn peer_sync_during_backoff_postpones_skipped_offers() {
 }
 
 #[test]
+fn peer_sync_during_backoff_does_not_queue_new_existing_entries_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    daemon
+        .handle_rpc(rpc_request(52, "peer_sync", json!({ "peer": "peer-backoff-no-queue" })))
+        .expect("initial peer sync");
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let peer = peers.get_mut("peer-backoff-no-queue").expect("peer record");
+        peer.sync_backoff = 12 * 60;
+        peer.next_sync_attempt = now_i64().saturating_add(12 * 60);
+    }
+    let entry = PropagationEntryRecord {
+        transient_id: "e8".repeat(32),
+        destination: "18".repeat(16),
+        payload_hex: "18".repeat(20),
+        received_at: 1_700_000_615,
+        size_bytes: 20,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&entry).expect("store entry");
+
+    let result = daemon
+        .handle_rpc(rpc_request(54, "peer_sync", json!({ "peer": "peer-backoff-no-queue" })))
+        .expect("backoff peer sync")
+        .result
+        .expect("peer sync result");
+    assert_eq!(result["synced"].as_bool(), Some(false));
+    assert_eq!(result["postponed"].as_bool(), Some(true));
+    assert_eq!(result["postpone_reason"].as_str(), Some("backoff"));
+    assert_eq!(result["propagation"]["offered"].as_u64(), Some(0));
+
+    assert!(
+        daemon
+            .store
+            .list_peer_unhandled_propagation("peer-backoff-no-queue")
+            .expect("pending propagation")
+            .is_empty()
+    );
+    assert!(
+        daemon
+            .store
+            .list_peer_handled_propagation_ids("peer-backoff-no-queue")
+            .expect("handled ids")
+            .is_empty()
+    );
+
+    let peers = daemon
+        .handle_rpc(RpcRequest { id: 55, method: "list_peers".to_string(), params: None })
+        .expect("list peers")
+        .result
+        .expect("list peers result");
+    let row = peers["peers"]
+        .as_array()
+        .expect("peer rows")
+        .iter()
+        .find(|row| row["peer"].as_str() == Some("peer-backoff-no-queue"))
+        .expect("peer row");
+    assert_eq!(row["messages"]["unhandled"].as_u64(), Some(0));
+}
+
+#[test]
 fn peer_sync_postpones_offers_until_stamp_policy_is_known() {
     let daemon = RpcDaemon::test_instance();
     daemon

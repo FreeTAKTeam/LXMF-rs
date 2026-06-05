@@ -99,8 +99,10 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
   readiness status values are exposed. Local offer responses now accept
   Python's boolean all/none and list-shaped response forms and reject
   valid-looking wanted transient IDs outside the current offer before mutating
-  queue state or creating a new peer queue, but the active workspace does not
-  yet match Python `LXMPeer` queueing, transfer, and peering behavior.
+  queue state or creating a new peer queue. Existing peers in local sync
+  backoff now also postpone before the local existing-entry queue-fill path,
+  but the active workspace does not yet match Python `LXMPeer` queueing,
+  transfer, and peering behavior.
 - Paper-command baseline is implemented for bridge-backed `reticulumd`: SDK
   paper encode/decode uses canonical `lxmf-wire` paper URI helpers and tests
   reject the old placeholder `lxm://{destination}/{message_id}` path. Broader
@@ -151,6 +153,7 @@ Recent focused evidence:
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_rejects_unknown_wanted_ids_without_creating_new_peer_queue -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_rejects_transfer_limited_wanted_ids_without_mutating_queue -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_boolean -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib peer_sync_during_backoff_does_not_queue_new_existing_entries_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib propagation_remote_fetch -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib propagation_remote_download -- --nocapture`
