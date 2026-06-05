@@ -121,6 +121,10 @@ gap, even though deeper propagation-router parity remains open.
   peer sync through the existing local `peer_sync` path, so Python
   `sync_peers()`-style maintenance mutates queue marks and transfer accounting
   instead of only reporting cull/rotation status.
+- Propagation peer maintenance selection now also mirrors Python's waiting
+  peer candidate pool: the fastest two waiting peers remain candidates, and
+  zero-transfer-rate peers are added so unknown-speed peers are not starved by
+  previously measured peers.
 - Propagation peer maintenance also follows Python's sync-pool boundary for
   retained static peers: static peers past `LXMPeer.MAX_UNREACHABLE` are kept
   peered, but are not selected for waiting or retry-ready sync in that

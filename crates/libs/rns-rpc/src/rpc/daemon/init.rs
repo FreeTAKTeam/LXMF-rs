@@ -3,6 +3,7 @@ use super::*;
 
 pub(super) const LXMF_PEER_SYNC_BACKOFF_STEP_SECS: u32 = 12 * 60;
 pub(super) const LXMF_PEER_MAX_UNREACHABLE_SECS: i64 = 14 * 24 * 60 * 60;
+const LXMF_PEER_FASTEST_RANDOM_POOL: usize = 2;
 const LXMF_PEER_ROTATION_HEADROOM_PCT: usize = 10;
 const LXMF_PEER_ROTATION_ACCEPTANCE_RATE_MAX: f64 = 0.5;
 
@@ -1561,7 +1562,17 @@ impl RpcDaemon {
                     .total_cmp(&left.sync_transfer_rate)
                     .then_with(|| left.peer.cmp(&right.peer))
             });
-            return Ok(waiting.into_iter().next().map(|record| record.peer));
+            let fastest_count = LXMF_PEER_FASTEST_RANDOM_POOL.min(waiting.len());
+            let mut peer_pool = waiting.iter().take(fastest_count).cloned().collect::<Vec<_>>();
+            peer_pool.extend(
+                waiting
+                    .iter()
+                    .filter(|record| record.sync_transfer_rate == 0.0)
+                    .take(fastest_count)
+                    .cloned(),
+            );
+            let selected_index = timestamp.rem_euclid(peer_pool.len() as i64) as usize;
+            return Ok(peer_pool.into_iter().nth(selected_index).map(|record| record.peer));
         }
 
         unresponsive.sort_by(|left, right| left.peer.cmp(&right.peer));
