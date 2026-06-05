@@ -9,7 +9,7 @@ KISS/LoRa/RNode interface work improves the transport substrate available to
 LXMF, but it does not by itself complete LXMF peer sync, propagation router, or
 stamp worker parity.
 
-Last reassessed: 2026-06-05 (offer-response peer-sync gate regressions added)
+Last reassessed: 2026-06-05 (peer maintenance rotation regression added)
 
 Status legend: `not-started` | `partial` | `done`
 
@@ -90,13 +90,14 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
   accounting, per-peer propagation transfer/sync limits, propagation stamp
   policy, Python-compatible low-value stamped peer-offer handling,
   strict peering-timebase config refresh, Python-style unreachable-peer
-  maintenance culling, admitted-offer-only validated peering links, mixed
-  invalid-stamp peer resource handling that preserves valid entries before
-  throttling, inbound propagation resource source-peer queueing, remote-sync
-  source-peer inbound byte/message accounting without outbound transfer-rate or
-  `tx_bytes` inflation, local-delivery source-peer accounting, unpeered
-  identified-sender accounting, peering-key values, and explicit peering-key
-  readiness status values are exposed. Local offer responses now accept
+  maintenance culling and low-acceptance autopeer rotation, admitted-offer-only
+  validated peering links, mixed invalid-stamp peer resource handling that
+  preserves valid entries before throttling, inbound propagation resource
+  source-peer queueing, remote-sync source-peer inbound byte/message accounting
+  without outbound transfer-rate or `tx_bytes` inflation, local-delivery
+  source-peer accounting, unpeered identified-sender accounting, peering-key
+  values, and explicit peering-key readiness status values are exposed. Local
+  offer responses now accept
   Python's boolean all/none and list-shaped response forms, keep full-offer
   stamp-policy and peering-key gates for boolean wants-all, request-limited,
   selected-ID transfer, and no-transfer responses, and reject valid-looking
@@ -177,6 +178,7 @@ Recent focused evidence:
 - `cargo test -p reticulum-rs-rpc --lib low_value_stamped_entries -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib equal_timebase_announce_does_not_refresh_propagation_peer_state_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib propagation_peer_maintenance_culls_unreachable_non_static_peers_like_python -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib propagation_peer_maintenance_rotates_low_acceptance_autopeers_like_python -- --nocapture`
 - `cargo test -p reticulumd --bin reticulumd python_status_exposes_peer_peering_key_value -- --nocapture`
 - `cargo test -p reticulumd --bin reticulumd python_status_exposes_peer_peering_key_status -- --nocapture`
 - `cargo test -p reticulumd --bin reticulumd peer_sync_command_reports_peering_key_status -- --nocapture`

@@ -108,6 +108,10 @@ gap, even though deeper propagation-router parity remains open.
   `sync_peers()`-style unreachable-peer culling: non-static peers unheard for
   `LXMPeer.MAX_UNREACHABLE` are unpeered and have their propagation queue marks
   cleared, while configured static peers are retained.
+- Propagation peer maintenance now also mirrors Python `rotate_peers()` for
+  low-acceptance autopeers: when configured peer capacity needs headroom, tested
+  non-static autopeers below the acceptance-rate threshold can be unpeered with
+  queue cleanup while higher-acceptance peers remain peered.
 - Propagation offer handling now follows Python's invalid propagation-stamp
   throttle: peer resource transfers containing invalid propagation stamps mark
   that propagation peer throttled for Python's `PN_STAMP_THROTTLE` window, and

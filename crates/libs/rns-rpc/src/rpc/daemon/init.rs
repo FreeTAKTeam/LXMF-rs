@@ -3,6 +3,8 @@ use super::*;
 
 pub(super) const LXMF_PEER_SYNC_BACKOFF_STEP_SECS: u32 = 12 * 60;
 pub(super) const LXMF_PEER_MAX_UNREACHABLE_SECS: i64 = 14 * 24 * 60 * 60;
+const LXMF_PEER_ROTATION_HEADROOM_PCT: usize = 10;
+const LXMF_PEER_ROTATION_ACCEPTANCE_RATE_MAX: f64 = 0.5;
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct PeerPropagationState {
@@ -1423,6 +1425,100 @@ impl RpcDaemon {
         Ok(removed)
     }
 
+    pub(super) fn rotate_low_acceptance_autopeers(&self) -> Result<Vec<String>, std::io::Error> {
+        let (max_peers, static_peers) = {
+            let propagation = self.propagation_state.lock().expect("propagation mutex poisoned");
+            let Some(max_peers) = propagation.max_peers else {
+                return Ok(Vec::new());
+            };
+            (max_peers as usize, propagation.static_peers.clone())
+        };
+        if max_peers == 0 {
+            return Ok(Vec::new());
+        }
+        let headroom = ((max_peers * LXMF_PEER_ROTATION_HEADROOM_PCT) / 100).max(1);
+        let active_peers = {
+            let guard = self.peers.lock().expect("peers mutex poisoned");
+            guard
+                .values()
+                .filter(|record| record.peer_type.as_deref() != Some("unpeered"))
+                .cloned()
+                .collect::<Vec<_>>()
+        };
+        let required_drops = active_peers.len().saturating_sub(max_peers.saturating_sub(headroom));
+        if required_drops == 0 || active_peers.len().saturating_sub(required_drops) <= 1 {
+            return Ok(Vec::new());
+        }
+        let untested_count =
+            active_peers.iter().filter(|record| record.last_sync_attempt == 0).count();
+        if untested_count >= headroom {
+            return Ok(Vec::new());
+        }
+
+        let mut peer_stats = Vec::with_capacity(active_peers.len());
+        for record in active_peers {
+            let stats = self
+                .store
+                .peer_propagation_message_stats(record.peer.as_str())
+                .map_err(std::io::Error::other)?;
+            peer_stats.push((record, stats.unhandled));
+        }
+        if peer_stats.iter().any(|(_, unhandled)| *unhandled == 0) {
+            peer_stats.retain(|(_, unhandled)| *unhandled == 0);
+        }
+
+        let mut unresponsive = Vec::new();
+        let mut waiting = Vec::new();
+        for (record, _unhandled) in peer_stats {
+            let is_static =
+                static_peers.iter().any(|peer| peer.eq_ignore_ascii_case(record.peer.as_str()));
+            if is_static || record.peer_type.as_deref() != Some("auto") {
+                continue;
+            }
+            if record.alive {
+                if record.offered > 0 {
+                    waiting.push(record);
+                }
+            } else {
+                unresponsive.push(record);
+            }
+        }
+
+        let mut drop_pool = Vec::new();
+        if unresponsive.is_empty() {
+            drop_pool.extend(waiting);
+        } else {
+            drop_pool.extend(unresponsive);
+            drop_pool.extend(waiting);
+        }
+        drop_pool.sort_by(|left, right| {
+            peer_rotation_acceptance_rate(left)
+                .total_cmp(&peer_rotation_acceptance_rate(right))
+                .then_with(|| left.peer.cmp(&right.peer))
+        });
+
+        let mut removed = Vec::new();
+        for record in drop_pool.into_iter().take(required_drops) {
+            if peer_rotation_acceptance_rate(&record) >= LXMF_PEER_ROTATION_ACCEPTANCE_RATE_MAX {
+                continue;
+            }
+            let cleanup = self.unpeer_local_state(record.peer.as_str())?;
+            if cleanup.removed {
+                self.publish_event(RpcEvent {
+                    event_type: "peer_unpeer".into(),
+                    payload: policy_unpeer_event_payload(
+                        record.peer.as_str(),
+                        "peer_rotation",
+                        &cleanup,
+                    ),
+                });
+                removed.push(record.peer);
+            }
+        }
+        removed.sort();
+        Ok(removed)
+    }
+
     pub(super) fn ensure_peer_admission_allowed(
         &self,
         peer: &str,
@@ -1664,4 +1760,12 @@ fn policy_unpeer_event_payload(
         "incoming": incoming,
         "messages": cleanup.messages.clone(),
     })
+}
+
+fn peer_rotation_acceptance_rate(peer: &PeerRecord) -> f64 {
+    if peer.offered == 0 {
+        0.0
+    } else {
+        (peer.outgoing as f64 / peer.offered as f64).clamp(0.0, 1.0)
+    }
 }
