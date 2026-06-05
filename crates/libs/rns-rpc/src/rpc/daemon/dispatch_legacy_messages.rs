@@ -760,11 +760,9 @@ impl RpcDaemon {
                         wanted_ids.as_ref(),
                         sync_limit_bytes,
                     );
-                let peer_response_requests_transfer =
-                    wanted_ids.as_ref().is_some_and(PeerSyncWantedIds::requests_transfer);
                 let peer_policy_required = remaining_policy_relevant > 0
                     && (!explicit_peer_sync_selection
-                        || peer_response_requests_transfer
+                        || wanted_ids.is_some()
                         || remaining_policy_relevant_has_stamp
                         || peer_stamp_policy_partially_known(&record));
                 if peer_policy_required && !peer_stamp_policy_known(&record) {
@@ -1751,10 +1749,10 @@ fn peer_sync_policy_relevance(
     let mut policy_relevant_pending = 0usize;
     let mut policy_relevant_has_stamp = false;
     let mut policy_relevant_size = 24usize;
-    for entry in pending_propagation
-        .iter()
-        .filter(|entry| wanted_ids.map_or(true, |ids| ids.wants(entry.transient_id.as_str())))
-    {
+    let policy_wanted_ids = wanted_ids.filter(|ids| !ids.wants_none());
+    for entry in pending_propagation.iter().filter(|entry| {
+        policy_wanted_ids.map_or(true, |ids| ids.wants(entry.transient_id.as_str()))
+    }) {
         let entry_size = usize::try_from(entry.size_bytes).unwrap_or(usize::MAX);
         let transfer_size = entry_size.saturating_add(16);
         let next_size = policy_relevant_size.saturating_add(transfer_size);
@@ -1784,13 +1782,6 @@ impl PeerSyncWantedIds {
 
     fn wants_none(&self) -> bool {
         matches!(self, Self::Selected(ids) if ids.is_empty())
-    }
-
-    fn requests_transfer(&self) -> bool {
-        match self {
-            Self::All => true,
-            Self::Selected(ids) => !ids.is_empty(),
-        }
     }
 
     fn requires_offer_validation(&self) -> bool {

@@ -156,6 +156,10 @@ gap, even though deeper propagation-router parity remains open.
   stay on Python's full-offer policy path: non-empty list-shaped `wanted_ids`
   wait for stamp-policy and peering-key readiness before mutating queue state or
   transferring payloads.
+- Local peer sync no-transfer offer responses now also stay on Python's
+  full-offer policy path: `wanted_ids: false` and `wanted_ids: []` wait for
+  stamp-policy and peering-key readiness before marking offered queue entries
+  handled without resource transfer.
 - Empty local peer sync now follows Python's no-unhandled-messages path: a
   clean peer with no pending propagation entries records the attempt but
   preserves liveness and the previous sync transfer rate, and avoids synthetic
