@@ -683,6 +683,7 @@ pub struct PeerRecord {
     pub propagation_stamp_cost: Option<u32>,
     pub propagation_stamp_cost_flexibility: Option<u32>,
     pub peering_cost: Option<u32>,
+    pub peering_key_value: Option<u32>,
 }
 
 impl serde::Serialize for PeerRecord {
@@ -733,6 +734,9 @@ impl serde::Serialize for PeerRecord {
         }
         if let Some(value) = self.peering_cost {
             map.serialize_entry("peering_cost", &value)?;
+        }
+        if let Some(value) = self.peering_key_value {
+            map.serialize_entry("peering_key", &vec![JsonValue::Null, JsonValue::from(value)])?;
         }
         map.end()
     }
@@ -806,6 +810,8 @@ struct PeerRecordWire {
     stamp_cost_flexibility: Option<u32>,
     #[serde(default)]
     peering_cost: Option<u32>,
+    #[serde(default)]
+    peering_key: Option<JsonValue>,
 }
 
 impl<'de> Deserialize<'de> for PeerRecord {
@@ -874,8 +880,17 @@ impl<'de> Deserialize<'de> for PeerRecord {
                 .propagation_stamp_cost_flexibility
                 .or(wire.stamp_cost_flexibility),
             peering_cost: wire.peering_cost,
+            peering_key_value: parse_python_peering_key_value(wire.peering_key.as_ref()),
         })
     }
+}
+
+fn parse_python_peering_key_value(value: Option<&JsonValue>) -> Option<u32> {
+    let value = value?;
+    if let Some(array) = value.as_array() {
+        return array.get(1).and_then(parse_json_u32);
+    }
+    parse_json_u32(value)
 }
 
 fn parse_peer_limit_bytes(
@@ -1038,6 +1053,7 @@ mod peer_record_serde_tests {
         assert_eq!(record.outgoing, 1);
         assert_eq!(record.incoming, 4);
         assert_eq!(record.peering_cost, Some(3));
+        assert_eq!(record.peering_key_value, Some(3));
     }
 
     #[test]
@@ -1128,6 +1144,7 @@ mod peer_record_serde_tests {
             propagation_stamp_cost: Some(7),
             propagation_stamp_cost_flexibility: Some(2),
             peering_cost: Some(9),
+            peering_key_value: Some(9),
         };
 
         let value = serde_json::to_value(record).expect("serialize peer record");
@@ -1147,6 +1164,7 @@ mod peer_record_serde_tests {
         assert_eq!(value["target_stamp_cost"].as_u64(), Some(7));
         assert_eq!(value["propagation_stamp_cost_flexibility"].as_u64(), Some(2));
         assert_eq!(value["stamp_cost_flexibility"].as_u64(), Some(2));
+        assert_eq!(value["peering_key"][1].as_u64(), Some(9));
     }
 
     #[test]
@@ -1178,6 +1196,7 @@ mod peer_record_serde_tests {
             propagation_stamp_cost: Some(8),
             propagation_stamp_cost_flexibility: Some(3),
             peering_cost: Some(10),
+            peering_key_value: Some(10),
         };
 
         let value = serde_json::to_value(&record).expect("serialize peer record");

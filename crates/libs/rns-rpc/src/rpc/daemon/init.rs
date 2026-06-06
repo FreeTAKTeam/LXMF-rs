@@ -1136,6 +1136,7 @@ impl RpcDaemon {
             propagation_stamp_cost: None,
             propagation_stamp_cost_flexibility: None,
             peering_cost: None,
+            peering_key_value: None,
         };
         guard.insert(peer, record.clone());
         let peer_count = Self::active_peer_count_from_guard(&guard);
@@ -1239,6 +1240,7 @@ impl RpcDaemon {
                     propagation_stamp_cost: None,
                     propagation_stamp_cost_flexibility: None,
                     peering_cost: None,
+                    peering_key_value: None,
                 },
             );
             static_peers_to_queue.push(peer.clone());
@@ -1843,6 +1845,7 @@ impl RpcDaemon {
             propagation_stamp_cost: None,
             propagation_stamp_cost_flexibility: None,
             peering_cost: None,
+            peering_key_value: None,
         }
     }
 

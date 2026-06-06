@@ -1733,6 +1733,9 @@ impl RpcDaemon {
 
 pub(super) fn peer_peering_key_value(peer: &PeerRecord, local_identity_hash: &str) -> Option<u32> {
     let peering_cost = peer.peering_cost?;
+    if let Some(value) = peer.peering_key_value.filter(|value| *value >= peering_cost) {
+        return Some(value);
+    }
     let remote_hash = decode_truncated_hash(peer.peer.as_str())?;
     let local_hash = decode_truncated_hash(local_identity_hash)?;
     let mut material = Vec::with_capacity(remote_hash.len() + local_hash.len());

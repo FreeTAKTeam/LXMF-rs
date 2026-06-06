@@ -259,6 +259,12 @@ gap, even though deeper propagation-router parity remains open.
   each offer response: the persisted peer record uses cumulative
   `outgoing / offered` counters, so a later no-transfer offer response no longer
   overwrites an earlier successful transfer with a batch-only zero rate.
+- Peer record restore and export now also retain Python's serialized
+  `peering_key` readiness value, and local peer sync treats a restored value
+  meeting `peering_cost` as ready before falling back to Rust key derivation.
+  This lets restored Python LXMPeer state proceed through stamped offer
+  transfer instead of being postponed solely because the local hash-derived key
+  cannot be recomputed.
 - Local peer sync offer ordering now also applies Python's prioritised
   destination weighting before sync-limit selection, so propagation entries for
   prioritised destinations are offered ahead of lower raw-weight entries when
