@@ -97,7 +97,8 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
   existing-peer peering breaks with queue cleanup,
   admitted-offer-only
   validated peering links for multi-message client or peer propagation
-  resources, mixed invalid-stamp peer resource handling that preserves valid
+  resources while packet propagation keeps Python-style multi-message
+  acceptance, mixed invalid-stamp peer resource handling that preserves valid
   entries before throttling, inbound propagation resource source-peer queueing,
   remote-sync source-peer inbound byte/message accounting without outbound
   transfer-rate or `tx_bytes` inflation, local-delivery source-peer accounting,
@@ -208,7 +209,8 @@ Recent focused evidence:
 - `cargo test -p reticulumd --bin reticulumd message_get_marks_served_wanted_payloads_transferred_for_peer -- --nocapture`
 - `cargo test -p reticulumd --bin reticulumd inbound_peer_propagation_preserves_valid_messages_when_transfer_has_invalid_stamp_like_python -- --nocapture`
 - `cargo test -p reticulumd --bin reticulumd inbound_peer_propagation_local_delivery_counts_source_peer_like_python -- --nocapture`
-- `cargo test -p reticulumd --bin reticulumd inbound_client_propagation_rejects_multi_message_without_validated_link_like_python -- --nocapture`
+- `cargo test -p reticulumd --bin reticulumd inbound_client_packet_propagation_accepts_multi_message_like_python -- --nocapture`
+- `cargo test -p reticulumd --bin reticulumd inbound_client_resource_rejects_multi_message_without_validated_link_like_python -- --nocapture`
 - `cargo test -p reticulumd --bin reticulumd inbound_peer_propagation_ -- --nocapture`
 - `cargo test -p reticulumd --bin reticulumd offer_request -- --nocapture`
 - `cargo test -p reticulumd --bin reticulumd inbound_worker::control::tests -- --nocapture`

@@ -231,6 +231,9 @@ gap, even though deeper propagation-router parity remains open.
 - Inbound peer propagation resources from identified but unpeered senders now
   update the Python-style unpeered propagation counters instead of client
   counters, while still queueing accepted payloads for active peers.
+- Multi-message propagation rejection is now restricted to unvalidated resource
+  transfers; direct propagation packets continue to accept multi-message
+  envelopes like Python's `propagation_packet` path.
 - Reticulum interface breadth is still narrower than the Python reference, but
   KISS and LoRa/RNode are active implemented areas in the current branch. The
   daemon and transport crates now cover serial KISS
