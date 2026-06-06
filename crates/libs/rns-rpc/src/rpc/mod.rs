@@ -12,7 +12,9 @@ use rmpv::Value as MsgPackValue;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map as JsonMap, Value as JsonValue};
 
-use crate::storage::messages::{AnnounceRecord, MessageRecord, MessagesStore};
+use crate::storage::messages::{
+    AnnounceRecord, MessageRecord, MessagesStore, PropagationEntryRecord,
+};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::sync::{mpsc, Arc, Mutex};

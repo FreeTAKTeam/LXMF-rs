@@ -35,6 +35,7 @@ impl RpcDaemon {
             | "get_outbound_propagation_node"
             | "set_outbound_propagation_node"
             | "list_propagation_nodes"
+            | "propagation_peer_maintenance"
             | "propagation_remote_status"
             | "propagation_remote_sync"
             | "propagation_remote_fetch"

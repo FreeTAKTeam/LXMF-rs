@@ -18,9 +18,10 @@ use rns_rpc::{
     AnnounceBridge, InterfaceRecord, MessagesStore, OutboundBridge, RemoteControlBridge, RpcDaemon,
 };
 use rns_transport::destination::SingleInputDestination;
+use rns_transport::hash::AddressHash;
 use rns_transport::transport::Transport;
 use serde_json::{Map as JsonMap, Value as JsonValue};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::IsTerminal;
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -55,6 +56,7 @@ pub(super) struct PropagationControlContext {
     pub(super) delivery_destination:
         Option<Arc<tokio::sync::Mutex<rns_transport::destination::SingleInputDestination>>>,
     pub(super) allowed_control_identities: Vec<String>,
+    pub(super) validated_peer_links: Arc<Mutex<HashSet<AddressHash>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -339,6 +341,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
                 control_destination_hash_hex,
                 delivery_destination: announce_destination.clone(),
                 allowed_control_identities: configured_control_identities,
+                validated_peer_links: Arc::new(Mutex::new(HashSet::new())),
             },
             receipt_tx.clone(),
             outbound_resource_map,

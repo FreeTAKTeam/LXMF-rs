@@ -9,7 +9,8 @@ use rns_transport::identity::DecryptIdentity;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum LocalPropagationImportOutcome {
     Imported,
-    Skipped,
+    Duplicate,
+    Rejected,
 }
 
 pub(super) fn rmpv_binary_array(value: &rmpv::Value) -> Result<Vec<Vec<u8>>, std::io::Error> {
@@ -106,10 +107,10 @@ async fn accept_local_propagated_payload_inner(
 
     annotate_inbound_record_stamp_status(&mut record, stamp_status);
     if !inbound_record_allowed_by_delivery_policy(daemon, &record) {
-        return Ok(LocalPropagationImportOutcome::Skipped);
+        return Ok(LocalPropagationImportOutcome::Rejected);
     }
     if daemon.message_exists(record.id.as_str())? {
-        return Ok(LocalPropagationImportOutcome::Skipped);
+        return Ok(LocalPropagationImportOutcome::Duplicate);
     }
     daemon.record_inbound_peer_activity(&record.source, wire.len());
     daemon.accept_inbound_with_raw(record, &wire)?;
@@ -166,4 +167,149 @@ fn decrypt_local_propagated_wire(
         std::io::ErrorKind::InvalidData,
         "failed to decrypt propagated LXMF payload for local delivery",
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lxmf::WireMessage;
+    use rand_core::OsRng;
+    use reticulum_daemon::lxmf_bridge::build_wire_message_with_options;
+    use rns_transport::destination::DestinationName;
+    use rns_transport::identity::PrivateIdentity;
+    use rns_transport::identity_bridge::{to_core_identity, to_core_private_identity};
+    use tokio::sync::Mutex as TokioMutex;
+
+    #[tokio::test]
+    async fn policy_rejected_fetched_payload_is_reported_separately_from_duplicate() {
+        let daemon = RpcDaemon::test_instance();
+        let delivery_private = PrivateIdentity::new_from_rand(OsRng);
+        let source_private = PrivateIdentity::new_from_rand(OsRng);
+        let delivery_destination = Arc::new(TokioMutex::new(SingleInputDestination::new(
+            delivery_private.clone(),
+            DestinationName::new("lxmf", "delivery"),
+        )));
+        let source_destination = SingleInputDestination::new(
+            source_private.clone(),
+            DestinationName::new("lxmf", "delivery"),
+        );
+        let mut destination_hash = [0u8; 16];
+        {
+            let destination = delivery_destination.lock().await;
+            destination_hash.copy_from_slice(destination.desc.address_hash.as_slice());
+        }
+        let mut source_hash = [0u8; 16];
+        source_hash.copy_from_slice(source_destination.desc.address_hash.as_slice());
+        daemon
+            .handle_rpc(RpcRequest {
+                id: 80,
+                method: "set_delivery_policy".to_string(),
+                params: Some(json!({
+                    "ignored_destinations": [hex::encode(source_hash)],
+                })),
+            })
+            .expect("set delivery policy");
+
+        let wire = build_wire_message_with_options(
+            source_hash,
+            destination_hash,
+            "ignored fetch title",
+            "ignored fetch content",
+            None,
+            &to_core_private_identity(&source_private),
+            None,
+            None,
+            None,
+        )
+        .expect("wire");
+        let transient_payload = {
+            let destination = delivery_destination.lock().await;
+            let message = WireMessage::unpack(&wire).expect("wire unpack");
+            message
+                .pack_propagation_transient_with_rng(
+                    &to_core_identity(destination.identity.as_identity()),
+                    OsRng,
+                )
+                .expect("propagation transient")
+                .0
+        };
+
+        let outcome = accept_local_propagated_payload_inner(
+            &daemon,
+            delivery_destination,
+            &transient_payload,
+        )
+        .await
+        .expect("accept fetched payload");
+
+        assert_eq!(
+            outcome,
+            LocalPropagationImportOutcome::Rejected,
+            "policy-rejected fetched payloads should not be counted as duplicates"
+        );
+    }
+
+    #[tokio::test]
+    async fn duplicate_fetched_payload_is_reported_separately_from_rejection() {
+        let daemon = RpcDaemon::test_instance();
+        let delivery_private = PrivateIdentity::new_from_rand(OsRng);
+        let source_private = PrivateIdentity::new_from_rand(OsRng);
+        let delivery_destination = Arc::new(TokioMutex::new(SingleInputDestination::new(
+            delivery_private.clone(),
+            DestinationName::new("lxmf", "delivery"),
+        )));
+        let source_destination = SingleInputDestination::new(
+            source_private.clone(),
+            DestinationName::new("lxmf", "delivery"),
+        );
+        let mut destination_hash = [0u8; 16];
+        {
+            let destination = delivery_destination.lock().await;
+            destination_hash.copy_from_slice(destination.desc.address_hash.as_slice());
+        }
+        let mut source_hash = [0u8; 16];
+        source_hash.copy_from_slice(source_destination.desc.address_hash.as_slice());
+
+        let wire = build_wire_message_with_options(
+            source_hash,
+            destination_hash,
+            "duplicate fetch title",
+            "duplicate fetch content",
+            None,
+            &to_core_private_identity(&source_private),
+            None,
+            None,
+            None,
+        )
+        .expect("wire");
+        let transient_payload = {
+            let destination = delivery_destination.lock().await;
+            let message = WireMessage::unpack(&wire).expect("wire unpack");
+            message
+                .pack_propagation_transient_with_rng(
+                    &to_core_identity(destination.identity.as_identity()),
+                    OsRng,
+                )
+                .expect("propagation transient")
+                .0
+        };
+
+        let first = accept_local_propagated_payload_inner(
+            &daemon,
+            delivery_destination.clone(),
+            &transient_payload,
+        )
+        .await
+        .expect("first fetch accept");
+        let second = accept_local_propagated_payload_inner(
+            &daemon,
+            delivery_destination,
+            &transient_payload,
+        )
+        .await
+        .expect("second fetch accept");
+
+        assert_eq!(first, LocalPropagationImportOutcome::Imported);
+        assert_eq!(second, LocalPropagationImportOutcome::Duplicate);
+    }
 }

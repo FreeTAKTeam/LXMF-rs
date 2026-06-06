@@ -173,7 +173,7 @@ impl RpcDaemon {
                 } else {
                     (parsed.name, parsed.name_source)
                 };
-                self.accept_announce_with_metadata(
+                self.accept_announce_with_metadata_for_path_response(
                     parsed.peer,
                     timestamp,
                     name,
@@ -187,17 +187,19 @@ impl RpcDaemon {
                     Some(stamp_cost_flexibility),
                     Some(peering_cost),
                     aspect,
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
+                    parsed.hops,
+                    parsed.interface,
+                    parsed.source_private_key,
+                    parsed.source_identity,
+                    parsed.source_node,
+                    parsed.is_path_response,
                 )?;
                 let record =
                     self.peers.lock().expect("peers mutex poisoned").get(peer.as_str()).cloned();
+                let peer = record.map(|record| self.enriched_peer_status_row(record));
                 Ok(RpcResponse {
                     id: request.id,
-                    result: Some(json!({ "peer": record })),
+                    result: Some(json!({ "peer": peer })),
                     error: None,
                 })
             }

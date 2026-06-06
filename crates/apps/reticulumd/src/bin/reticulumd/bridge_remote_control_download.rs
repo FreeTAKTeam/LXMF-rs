@@ -19,6 +19,7 @@ pub(super) async fn propagation_download_request(
     request_identity: &PrivateIdentity,
     remote: &str,
     timeout: Duration,
+    transfer_limit_kb: Option<f64>,
 ) -> Result<(JsonValue, Identity), std::io::Error> {
     let remote_hash = AddressHash::new(parse_destination_hash_required(remote)?);
     let remote_identity = resolve_remote_identity(transport, &remote_hash, timeout).await?;
@@ -64,7 +65,7 @@ pub(super) async fn propagation_download_request(
     let wanted = binary_array_response(&list_response)?;
 
     if wanted.is_empty() {
-        return Ok((json!({ "available": 0, "downloaded": 0, "duplicates": 0 }), remote_identity));
+        return Ok((propagation_download_summary_json(0, &[], 0, 0, 0), remote_identity));
     }
 
     let get_payload = build_link_request_payload(
@@ -72,7 +73,7 @@ pub(super) async fn propagation_download_request(
         rmpv::Value::Array(vec![
             rmpv::Value::Array(wanted.iter().cloned().map(rmpv::Value::Binary).collect()),
             rmpv::Value::Array(Vec::new()),
-            rmpv::Value::F64(1000.0),
+            transfer_limit_kb.map(rmpv::Value::F64).unwrap_or_else(|| rmpv::Value::F64(1000.0)),
         ]),
     )?;
     let get_request_id =
@@ -94,12 +95,19 @@ pub(super) async fn propagation_download_request(
     let mut haves = Vec::new();
     let mut downloaded = 0usize;
     let mut duplicates = 0usize;
+    let mut rejected = 0usize;
     for payload in &payloads {
         let transient_id = Sha256::digest(payload);
-        haves.push(transient_id.to_vec());
         match accept_downloaded_propagation_payload(daemon, delivery_destination, payload).await? {
-            DownloadAcceptOutcome::Stored => downloaded += 1,
-            DownloadAcceptOutcome::Duplicate => duplicates += 1,
+            DownloadAcceptOutcome::Stored => {
+                downloaded += 1;
+                haves.push(transient_id.to_vec());
+            }
+            DownloadAcceptOutcome::Duplicate => {
+                duplicates += 1;
+                haves.push(transient_id.to_vec());
+            }
+            DownloadAcceptOutcome::Rejected => rejected += 1,
         }
     }
 
@@ -121,19 +129,43 @@ pub(super) async fn propagation_download_request(
     }
 
     Ok((
-        json!({
-            "available": wanted.len(),
-            "downloaded": downloaded,
-            "duplicates": duplicates,
-        }),
+        propagation_download_summary_json(
+            wanted.len(),
+            &payloads,
+            downloaded,
+            duplicates,
+            rejected,
+        ),
         remote_identity,
     ))
+}
+
+fn propagation_download_summary_json(
+    available: usize,
+    payloads: &[Vec<u8>],
+    downloaded: usize,
+    duplicates: usize,
+    rejected: usize,
+) -> JsonValue {
+    let transferred_bytes = payloads.iter().map(Vec::len).sum::<usize>();
+    json!({
+        "available_count": available,
+        "downloaded_count": downloaded,
+        "duplicate_count": duplicates,
+        "rejected_count": rejected,
+        "available": available,
+        "downloaded": downloaded,
+        "duplicates": duplicates,
+        "rejected": rejected,
+        "transferred_bytes": transferred_bytes,
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DownloadAcceptOutcome {
     Stored,
     Duplicate,
+    Rejected,
 }
 
 async fn accept_downloaded_propagation_payload(
@@ -179,7 +211,7 @@ async fn accept_downloaded_propagation_payload(
 
     annotate_inbound_record_stamp_status(&mut record, stamp_status);
     if !inbound_record_allowed_by_delivery_policy(daemon, &record) {
-        return Ok(DownloadAcceptOutcome::Duplicate);
+        return Ok(DownloadAcceptOutcome::Rejected);
     }
     if daemon.message_exists(record.id.as_str())? {
         return Ok(DownloadAcceptOutcome::Duplicate);
@@ -250,5 +282,106 @@ fn binary_array_response(response: &rmpv::Value) -> Result<Vec<Vec<u8>>, std::io
             std::io::ErrorKind::InvalidData,
             "propagation node returned non-list response",
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lxmf::WireMessage;
+    use rand_core::OsRng;
+    use reticulum_daemon::lxmf_bridge::build_wire_message_with_options;
+    use rns_transport::destination::DestinationName;
+    use rns_transport::identity::PrivateIdentity;
+    use rns_transport::identity_bridge::{to_core_identity, to_core_private_identity};
+    use tokio::sync::Mutex as TokioMutex;
+
+    #[test]
+    fn propagation_download_summary_reports_transferred_bytes() {
+        let payloads = vec![b"downloaded".to_vec(), b"payload-two".to_vec()];
+
+        let summary = propagation_download_summary_json(5, &payloads, 1, 1, 2);
+
+        assert_eq!(summary["available_count"].as_u64(), Some(5));
+        assert_eq!(summary["downloaded_count"].as_u64(), Some(1));
+        assert_eq!(summary["duplicate_count"].as_u64(), Some(1));
+        assert_eq!(summary["rejected_count"].as_u64(), Some(2));
+        assert_eq!(summary["available"].as_u64(), Some(5));
+        assert_eq!(summary["downloaded"].as_u64(), Some(1));
+        assert_eq!(summary["duplicates"].as_u64(), Some(1));
+        assert_eq!(summary["rejected"].as_u64(), Some(2));
+        assert_eq!(
+            summary["transferred_bytes"].as_u64(),
+            Some(payloads.iter().map(Vec::len).sum::<usize>() as u64)
+        );
+    }
+
+    #[tokio::test]
+    async fn policy_rejected_downloaded_payload_is_not_reported_as_duplicate_have() {
+        let daemon = RpcDaemon::test_instance();
+        let delivery_private = PrivateIdentity::new_from_rand(OsRng);
+        let source_private = PrivateIdentity::new_from_rand(OsRng);
+        let delivery_destination = Arc::new(TokioMutex::new(SingleInputDestination::new(
+            delivery_private.clone(),
+            DestinationName::new("lxmf", "delivery"),
+        )));
+        let source_destination = SingleInputDestination::new(
+            source_private.clone(),
+            DestinationName::new("lxmf", "delivery"),
+        );
+        let mut destination_hash = [0u8; 16];
+        {
+            let destination = delivery_destination.lock().await;
+            destination_hash.copy_from_slice(destination.desc.address_hash.as_slice());
+        }
+        let mut source_hash = [0u8; 16];
+        source_hash.copy_from_slice(source_destination.desc.address_hash.as_slice());
+        daemon
+            .handle_rpc(RpcRequest {
+                id: 70,
+                method: "set_delivery_policy".to_string(),
+                params: Some(json!({
+                    "ignored_destinations": [hex::encode(source_hash)],
+                })),
+            })
+            .expect("set delivery policy");
+
+        let wire = build_wire_message_with_options(
+            source_hash,
+            destination_hash,
+            "ignored remote title",
+            "ignored remote content",
+            None,
+            &to_core_private_identity(&source_private),
+            None,
+            None,
+            None,
+        )
+        .expect("wire");
+        let transient_payload = {
+            let destination = delivery_destination.lock().await;
+            let message = WireMessage::unpack(&wire).expect("wire unpack");
+            message
+                .pack_propagation_transient_with_rng(
+                    &to_core_identity(destination.identity.as_identity()),
+                    OsRng,
+                )
+                .expect("propagation transient")
+                .0
+        };
+
+        let outcome = accept_downloaded_propagation_payload(
+            &daemon,
+            &delivery_destination,
+            transient_payload.as_slice(),
+        )
+        .await
+        .expect("accept downloaded payload");
+
+        assert_eq!(
+            outcome,
+            DownloadAcceptOutcome::Rejected,
+            "policy-rejected downloads are not local haves and must not be acked"
+        );
     }
 }

@@ -273,6 +273,17 @@ impl ResourceReceiver {
         self.retry_count = self.retry_count.saturating_add(1);
     }
 
+    /// Update the request timestamp without counting a retry.
+    ///
+    /// Use when sending a request as a direct reaction to an incoming part
+    /// (transfer is actively progressing). Calling `mark_request` in that path
+    /// causes the periodic `retry_requests` timer to see `retry_count >=
+    /// retry_limit` and prematurely kill the receiver even though no timeout
+    /// occurred.
+    fn mark_active_request(&mut self) {
+        self.last_request = Instant::now();
+    }
+
     fn retry_due(&self, now: Instant, retry_interval: Duration, max_retries: u8) -> bool {
         if self.status.is_terminal() {
             return false;

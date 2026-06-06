@@ -44,8 +44,14 @@ pub(super) fn compose_python_status(
                     } else {
                         "discovered"
                     };
-                    let (outgoing, incoming, offered, unhandled) =
-                        daemon.peer_message_stats(peer.as_str()).unwrap_or((0, 0, 0, 0));
+                    let (
+                        outgoing,
+                        incoming,
+                        offered,
+                        unhandled,
+                        offered_bytes,
+                        unhandled_bytes,
+                    ) = daemon.peer_message_stats(peer.as_str()).unwrap_or((0, 0, 0, 0, 0, 0));
                     total_peer_count = total_peer_count.saturating_add(1);
                     if peer_type == "discovered" {
                         discovered_peer_count = discovered_peer_count.saturating_add(1);
@@ -56,36 +62,68 @@ pub(super) fn compose_python_status(
                         .get("propagation_stamp_cost_flexibility")
                         .cloned()
                         .unwrap_or(Value::Null);
+                    let sync_transfer_rate =
+                        row.get("sync_transfer_rate").and_then(Value::as_f64).unwrap_or(0.0);
+                    let handled_ids = row.get("handled_ids").cloned().unwrap_or_else(|| json!([]));
+                    let unhandled_ids =
+                        row.get("unhandled_ids").cloned().unwrap_or_else(|| json!([]));
+                    let internal_peer_type =
+                        row.get("peer_type").cloned().unwrap_or(Value::Null);
+                    let name_source = row.get("name_source").cloned().unwrap_or(Value::Null);
+                    let first_seen = row.get("first_seen").and_then(Value::as_i64).unwrap_or(0);
+                    let seen_count = row.get("seen_count").and_then(Value::as_u64).unwrap_or(0);
+                    let sync_strategy =
+                        row.get("sync_strategy").and_then(Value::as_u64).unwrap_or(2);
+                    let messages = json!({
+                        "offered": offered,
+                        "outgoing": outgoing,
+                        "incoming": incoming,
+                        "unhandled": unhandled,
+                        "offered_bytes": offered_bytes,
+                        "unhandled_bytes": unhandled_bytes,
+                        "handled_ids": handled_ids.clone(),
+                        "unhandled_ids": unhandled_ids.clone()
+                    });
                     Some((
                         peer,
                         json!({
                             "type": peer_type,
+                            "peer_type": internal_peer_type,
                             "state": 0,
+                            "sync_strategy": sync_strategy,
                             "alive": row.get("alive").and_then(Value::as_bool).unwrap_or(true),
                             "name": row.get("name").cloned().unwrap_or(Value::Null),
+                            "name_source": name_source,
+                            "first_seen": first_seen,
+                            "seen_count": seen_count,
                             "last_heard": row.get("last_seen").and_then(Value::as_i64).unwrap_or(0),
                             "next_sync_attempt": row.get("next_sync_attempt").and_then(Value::as_i64).unwrap_or(0),
                             "last_sync_attempt": row.get("last_sync_attempt").and_then(Value::as_i64).unwrap_or(0),
                             "sync_backoff": row.get("sync_backoff").and_then(Value::as_u64).unwrap_or(0),
                             "peering_timebase": row.get("peering_timebase").and_then(Value::as_i64).unwrap_or(0),
                             "ler": 0,
-                            "str": 0,
+                            "str": sync_transfer_rate as u64,
+                            "sync_transfer_rate": sync_transfer_rate,
                             "transfer_limit": row.get("propagation_transfer_limit").cloned().unwrap_or(Value::Null),
                             "sync_limit": row.get("propagation_sync_limit").cloned().unwrap_or(Value::Null),
                             "target_stamp_cost": target_stamp_cost,
                             "stamp_cost_flexibility": stamp_cost_flexibility,
                             "peering_cost": row.get("peering_cost").cloned().unwrap_or(Value::Null),
                             "peering_key": row.get("peering_key").cloned().unwrap_or(Value::Null),
+                            "peering_key_status": row.get("peering_key_status").cloned().unwrap_or(Value::Null),
                             "network_distance": row.get("network_distance").and_then(Value::as_u64).unwrap_or(1),
                             "rx_bytes": row.get("rx_bytes").and_then(Value::as_u64).unwrap_or(0),
                             "tx_bytes": row.get("tx_bytes").and_then(Value::as_u64).unwrap_or(0),
                             "acceptance_rate": row.get("acceptance_rate").and_then(Value::as_f64).unwrap_or(0.0),
-                            "messages": {
-                                "offered": offered,
-                                "outgoing": outgoing,
-                                "incoming": incoming,
-                                "unhandled": unhandled
-                            }
+                            "offered": offered,
+                            "outgoing": outgoing,
+                            "incoming": incoming,
+                            "unhandled": unhandled,
+                            "offered_bytes": offered_bytes,
+                            "unhandled_bytes": unhandled_bytes,
+                            "handled_ids": handled_ids.clone(),
+                            "unhandled_ids": unhandled_ids.clone(),
+                            "messages": messages
                         }),
                     ))
                 })
@@ -103,8 +141,20 @@ pub(super) fn compose_python_status(
         "stamp_cost_flexibility": propagation.get("stamp_cost_flexibility").and_then(Value::as_u64).unwrap_or(3),
         "peering_cost": propagation.get("peering_cost").and_then(Value::as_u64).unwrap_or(18),
         "max_peering_cost": propagation.get("remote_peering_cost_max").and_then(Value::as_u64).unwrap_or(26),
+        "autopeer": propagation.get("autopeer").and_then(Value::as_bool).unwrap_or(true),
         "autopeer_maxdepth": propagation.get("autopeer_maxdepth").and_then(Value::as_u64).unwrap_or(6),
         "from_static_only": propagation.get("from_static_only").and_then(Value::as_bool).unwrap_or(false),
+        "total_ingested": propagation.get("total_ingested").and_then(Value::as_u64).unwrap_or(0),
+        "last_ingest_count": propagation.get("last_ingest_count").and_then(Value::as_u64).unwrap_or(0),
+        "messages_received": propagation.get("messages_received").and_then(Value::as_u64).unwrap_or(0),
+        "max_messages": propagation.get("max_messages").and_then(Value::as_u64).unwrap_or(0),
+        "selected_node": propagation.get("selected_node").cloned().unwrap_or(Value::Null),
+        "sync_state": propagation.get("sync_state").and_then(Value::as_u64).unwrap_or(0),
+        "state_name": propagation.get("state_name").cloned().unwrap_or(Value::Null),
+        "sync_progress": propagation.get("sync_progress").and_then(Value::as_f64).unwrap_or(0.0),
+        "last_sync_started": propagation.get("last_sync_started").cloned().unwrap_or(Value::Null),
+        "last_sync_completed": propagation.get("last_sync_completed").cloned().unwrap_or(Value::Null),
+        "last_sync_error": propagation.get("last_sync_error").cloned().unwrap_or(Value::Null),
         "messagestore": {
             "count": message_count,
             "bytes": message_bytes,

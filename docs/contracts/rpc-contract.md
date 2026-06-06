@@ -128,9 +128,21 @@ All methods below are required for full CLI feature coverage.
 ### Peers and interfaces
 - `list_peers` (no params)
 - `peer_sync`
-: Params keys: `peer`
+: Params keys: `peer` (optional: `transfer_limit_kb`, `wanted_ids`). When
+  `wanted_ids` is `true`, every offered message is transferred like Python's
+  "wants all" offer response. When `wanted_ids` is `false` or an empty list,
+  every offered ID is treated like a Python LXMF peer response indicating the
+  peer already has those messages: they become handled but are not transferred.
+  A non-empty list transfers only the supplied IDs and handles the rest. Each
+  supplied wanted ID must be a 32-byte transient ID encoded as 64 hex
+  characters; malformed wanted IDs are rejected before peer queue state is
+  mutated.
 - `peer_unpeer`
-: Params keys: `peer`
+: Params keys: `peer`. Result and `peer_unpeer` event include `removed`,
+  `propagation_cleared`, `propagation_cleared_bytes`, top-level aggregate
+  peer counters `offered`, `outgoing`, `incoming`, and `messages` with
+  `offered`, `outgoing`, `incoming`, `unhandled`, byte counts, and handled /
+  unhandled propagation IDs.
 - `clear_peers` (no params)
 - `list_interfaces` (no params)
 - `set_interfaces`
@@ -181,6 +193,8 @@ The following contract is mandatory in v1:
 : Params keys: `transient_id`
 - `propagation_remote_sync`
 : Params keys: `remote`, `peer` (optional: `identity_private_key_hex`, `timeout_secs`).
+  `remote` is trimmed and must not be blank; invalid remotes are rejected
+  before the bridge is called or local peer/sync state is updated.
   `propagation_status.propagation.sync_state` uses Python `LXMRouter.PR_*`
   values for remote sync lifecycle: request sent `0x04`, complete `0x07`,
   failed `0xfe`.
@@ -189,7 +203,11 @@ The following contract is mandatory in v1:
   `acknowledge_sync_completion`: clears progress, resets completed states to
   idle, and preserves failure states unless `reset_state` is true.
 - `propagation_remote_unpeer`
+: Mirrors local `peer_unpeer` cleanup accounting for the local peer state after
+  the remote unpeer call succeeds, and includes the remote bridge `result`.
 : Params keys: `remote`, `peer` (optional: `identity_private_key_hex`, `timeout_secs`).
+  `remote` is trimmed and must not be blank; invalid remotes are rejected
+  before the bridge is called or local peer state is removed.
 
 ### Stamp / tickets
 - `stamp_policy_get` (no params)
