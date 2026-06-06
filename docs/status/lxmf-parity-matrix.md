@@ -9,7 +9,7 @@ KISS/LoRa/RNode interface work improves the transport substrate available to
 LXMF, but it does not by itself complete LXMF peer sync, propagation router, or
 stamp worker parity.
 
-Last reassessed: 2026-06-05 (maintenance unknown-speed waiting-pool regression added)
+Last reassessed: 2026-06-06 (Python destination-hash peer restore regression added)
 
 Status legend: `not-started` | `partial` | `done`
 
@@ -101,7 +101,8 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
   source-peer queueing, remote-sync source-peer inbound byte/message accounting
   without outbound transfer-rate or `tx_bytes` inflation, local-delivery
   source-peer accounting, unpeered identified-sender accounting, peering-key
-  values, and explicit peering-key readiness status values are exposed. Local
+  values, explicit peering-key readiness status values, and Python
+  `destination_hash` peer-record restore are exposed. Local
   offer responses now accept
   Python's boolean all/none and list-shaped response forms, keep full-offer
   stamp-policy and peering-key gates for boolean wants-all, request-limited,
@@ -147,6 +148,7 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
 
 Recent focused evidence:
 
+- `cargo test -p reticulum-rs-rpc --lib peer_record_deserializes_python_destination_hash_alias -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib ticket_generate_renews_ticket_inside_renewal_window -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib ticket_renewal_keeps_old_unexpired_ticket_valid_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib ticket -- --nocapture`

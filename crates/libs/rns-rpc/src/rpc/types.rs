@@ -739,7 +739,10 @@ impl serde::Serialize for PeerRecord {
 
 #[derive(Deserialize)]
 struct PeerRecordWire {
-    peer: String,
+    #[serde(default)]
+    peer: Option<String>,
+    #[serde(default)]
+    destination_hash: Option<String>,
     #[serde(default)]
     last_seen: Option<i64>,
     #[serde(default)]
@@ -810,6 +813,10 @@ impl<'de> Deserialize<'de> for PeerRecord {
         D: serde::Deserializer<'de>,
     {
         let wire = PeerRecordWire::deserialize(deserializer)?;
+        let peer = wire
+            .peer
+            .or(wire.destination_hash)
+            .ok_or_else(|| serde::de::Error::missing_field("peer"))?;
         let last_seen = wire
             .last_seen
             .or(wire.last_heard)
@@ -831,7 +838,7 @@ impl<'de> Deserialize<'de> for PeerRecord {
         )
         .or_else(|| python_transfer_limit.then_some(transfer_limit).flatten());
         Ok(Self {
-            peer: wire.peer,
+            peer,
             last_seen,
             capabilities: wire.capabilities,
             name: wire.name,
@@ -1001,6 +1008,32 @@ mod peer_record_serde_tests {
         assert_eq!(value["offered"].as_u64(), Some(7));
         assert_eq!(value["outgoing"].as_u64(), Some(5));
         assert_eq!(value["incoming"].as_u64(), Some(3));
+    }
+
+    #[test]
+    fn peer_record_deserializes_python_destination_hash_alias() {
+        let record: PeerRecord = serde_json::from_value(json!({
+            "destination_hash": "peer-python-destination",
+            "last_heard": 1_700_001_007,
+            "sync_strategy": 2,
+            "peering_key": ["not-used-in-rust", 3],
+            "handled_ids": [],
+            "unhandled_ids": [],
+            "offered": 2,
+            "outgoing": 1,
+            "incoming": 4,
+            "peering_cost": 3,
+        }))
+        .expect("deserialize python serialized peer");
+
+        assert_eq!(record.peer, "peer-python-destination");
+        assert_eq!(record.last_seen, 1_700_001_007);
+        assert_eq!(record.first_seen, 1_700_001_007);
+        assert_eq!(record.seen_count, 1);
+        assert_eq!(record.offered, 2);
+        assert_eq!(record.outgoing, 1);
+        assert_eq!(record.incoming, 4);
+        assert_eq!(record.peering_cost, Some(3));
     }
 
     #[test]
