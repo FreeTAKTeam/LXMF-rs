@@ -482,6 +482,42 @@ fn resource_receiver_slides_window_without_redundant_requests() {
 }
 
 #[test]
+fn resource_sender_emits_outbound_failed_when_status_is_failed() {
+    // Covers the new `ResourceStatus::Failed => OutboundResourcePoll::Failed` arm
+    // in poll(). The same path is exercised when handle_request_into() fails to
+    // build a packet and sets self.status = Failed.
+    let signer = PrivateIdentity::new_from_rand(OsRng);
+    let identity = *signer.as_identity();
+    let destination = DestinationDesc {
+        identity,
+        address_hash: identity.address_hash,
+        name: DestinationName::new("lxmf", "resource"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(1);
+    let link = Link::new(destination, tx);
+
+    let mut manager = ResourceManager::new_with_config(Duration::from_secs(1), 2);
+    let (resource_hash, _) =
+        manager.start_send(&link, b"fail me".to_vec(), None).expect("start sender");
+    manager.confirm_outbound_dispatch(resource_hash, true);
+
+    assert!(manager.outgoing.contains_key(&resource_hash));
+    assert!(manager.drain_events().is_empty());
+
+    manager.outgoing.get_mut(&resource_hash).unwrap().status = ResourceStatus::Failed;
+
+    let packets = manager.poll_outgoing(Instant::now());
+    assert!(packets.is_empty());
+    assert!(!manager.outgoing.contains_key(&resource_hash));
+
+    let events = manager.drain_events();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].hash, resource_hash);
+    assert_eq!(events[0].link_id, *link.id());
+    assert!(matches!(events[0].kind, ResourceEventKind::OutboundFailed));
+}
+
+#[test]
 fn resource_manager_link_close_allows_later_resource_on_new_link() {
     let signer = PrivateIdentity::new_from_rand(OsRng);
     let identity = *signer.as_identity();

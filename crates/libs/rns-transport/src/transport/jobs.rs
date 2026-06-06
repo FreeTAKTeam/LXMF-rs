@@ -405,6 +405,8 @@ pub(super) async fn manage_transport(
                         for (_link_id, packet) in advertisements {
                             handler.send_packet(packet).await;
                         }
+                        let events = handler.resource_manager.drain_events();
+                        super::resource_wire::publish_resource_events(&handler, events);
                     }
                 }
             }
