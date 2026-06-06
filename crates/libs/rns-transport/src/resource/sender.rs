@@ -178,7 +178,7 @@ impl ResourceSender {
                 self.last_part_sent = now;
                 OutboundResourcePoll::None
             }
-            ResourceStatus::Failed => return OutboundResourcePoll::Failed,
+            ResourceStatus::Failed => OutboundResourcePoll::Failed,
             _ => OutboundResourcePoll::None,
         }
     }
