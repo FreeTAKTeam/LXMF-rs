@@ -75,6 +75,9 @@ gap, even though deeper propagation-router parity remains open.
   clearing queue marks, peer records, and selected propagation-node state.
   Outbound propagation-node selection now also stores the existing peer's
   canonical id and queues existing propagation entries under that identity.
+  Remote unpeer now reports the stored peer id after case-insensitive local
+  cleanup, so response and event identity match the queue marks that were
+  cleared.
 - Daemon receipt status and peer-activity bookkeeping now preserve Python's
   distinction between transport `sent:*` states and final `delivered` receipts:
   send/resource completion records sent-only peer tx bookkeeping, while actual

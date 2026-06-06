@@ -2025,7 +2025,7 @@ impl RpcDaemon {
                 self.publish_event(RpcEvent {
                     event_type: "peer_unpeer".into(),
                     payload: json!({
-                        "peer": peer_id,
+                        "peer": cleanup.peer.as_str(),
                         "remote": remote_id.as_str(),
                         "removed": cleanup.removed,
                         "propagation_cleared": cleanup.propagation_cleared,
@@ -2041,7 +2041,7 @@ impl RpcDaemon {
                     id: request.id,
                     result: Some(json!({
                         "remote": remote_id,
-                        "peer": peer_id,
+                        "peer": cleanup.peer.as_str(),
                         "removed": cleanup.removed,
                         "propagation_cleared": cleanup.propagation_cleared,
                         "propagation_cleared_bytes": cleanup.propagation_cleared_bytes,
