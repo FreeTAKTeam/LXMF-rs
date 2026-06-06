@@ -5886,6 +5886,76 @@ fn peer_sync_result_reports_cumulative_acceptance_rate_like_python() {
 }
 
 #[test]
+fn peer_sync_persists_cumulative_acceptance_rate_like_python() {
+    let (daemon, peer) = ready_propagation_peer_daemon(0x44);
+    let first = PropagationEntryRecord {
+        transient_id: "44".repeat(32),
+        destination: "12".repeat(16),
+        payload_hex: "12".repeat(24),
+        received_at: 1_700_000_611,
+        size_bytes: 24,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&first).expect("store first entry");
+    daemon
+        .store
+        .mark_peer_unhandled_propagation(peer.as_str(), first.transient_id.as_str())
+        .expect("mark first unhandled");
+    daemon
+        .handle_rpc(rpc_request(
+            57,
+            "peer_sync",
+            json!({ "peer": peer.as_str(), "transfer_limit_kb": 1 }),
+        ))
+        .expect("initial peer sync");
+
+    let wanted = PropagationEntryRecord {
+        transient_id: "45".repeat(32),
+        destination: "12".repeat(16),
+        payload_hex: "13".repeat(24),
+        received_at: 1_700_000_612,
+        size_bytes: 24,
+        stamp_value: None,
+    };
+    let already_known = PropagationEntryRecord {
+        transient_id: "46".repeat(32),
+        destination: "12".repeat(16),
+        payload_hex: "14".repeat(24),
+        received_at: 1_700_000_613,
+        size_bytes: 24,
+        stamp_value: None,
+    };
+    for entry in [&wanted, &already_known] {
+        daemon.store.upsert_propagation_entry(entry).expect("store propagation entry");
+        daemon
+            .store
+            .mark_peer_unhandled_propagation(peer.as_str(), entry.transient_id.as_str())
+            .expect("mark unhandled");
+    }
+
+    daemon
+        .handle_rpc(rpc_request(
+            58,
+            "peer_sync",
+            json!({
+                "peer": peer.as_str(),
+                "wanted_ids": [wanted.transient_id.as_str()],
+            }),
+        ))
+        .expect("second peer sync");
+
+    let peers = daemon.peers.lock().expect("peers mutex poisoned");
+    let record = peers.get(peer.as_str()).expect("peer record");
+    assert_eq!(record.offered, 3);
+    assert_eq!(record.outgoing, 2);
+    assert!(
+        (record.acceptance_rate - (2.0 / 3.0)).abs() < f64::EPSILON,
+        "stored acceptance rate should remain cumulative, got {}",
+        record.acceptance_rate
+    );
+}
+
+#[test]
 fn peer_sync_persists_counters_after_propagation_entries_are_purged_like_python() {
     let (daemon, peer) = ready_propagation_peer_daemon(0xb4);
     let wanted = PropagationEntryRecord {
