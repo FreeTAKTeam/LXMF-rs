@@ -63,5 +63,14 @@ name = "vrn76_kiss_ble_probe"
 path = "examples/vrn76_kiss_ble_probe.rs"
 required-features = ["vrn76-kiss-ble"]
 
+[[example]]
+name = "rnode_ble_probe"
+path = "examples/rnode_ble_probe.rs"
+required-features = ["rnode-ble"]
+
+[[example]]
+name = "lora_serial_probe"
+path = "examples/lora_serial_probe.rs"
+
 [lints]
 workspace = true
