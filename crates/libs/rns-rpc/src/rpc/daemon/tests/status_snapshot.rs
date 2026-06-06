@@ -197,6 +197,53 @@ fn propagation_enable_activates_static_peers_like_python() {
 }
 
 #[test]
+fn propagation_enable_matches_existing_static_peer_case_insensitively_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    let stored_peer = "Peer-Static-Case";
+    let configured_peer = stored_peer.to_ascii_lowercase();
+    let entry = PropagationEntryRecord {
+        transient_id: "a8".repeat(32),
+        destination: "12".repeat(16),
+        payload_hex: "12".repeat(24),
+        received_at: 1_700_000_102,
+        size_bytes: 24,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&entry).expect("store propagation entry");
+    daemon
+        .handle_rpc(rpc_request(26, "peer_sync", json!({ "peer": stored_peer })))
+        .expect("seed manual peer");
+
+    daemon
+        .handle_rpc(rpc_request(
+            27,
+            "propagation_enable",
+            json!({
+                "enabled": true,
+                "static_peers": [configured_peer],
+            }),
+        ))
+        .expect("enable static peer");
+
+    let peers = daemon
+        .handle_rpc(RpcRequest { id: 28, method: "list_peers".to_string(), params: None })
+        .expect("list peers")
+        .result
+        .expect("list peers result");
+    let rows = peers["peers"].as_array().expect("peer rows");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["peer"].as_str(), Some(stored_peer));
+    assert_eq!(rows[0]["peer_type"].as_str(), Some("static"));
+    assert_eq!(
+        daemon
+            .store
+            .list_peer_unhandled_propagation(stored_peer)
+            .expect("static peer queued propagation"),
+        vec![entry]
+    );
+}
+
+#[test]
 fn propagation_enable_normalizes_static_peer_config_for_status_and_type() {
     let daemon = RpcDaemon::test_instance();
     let result = daemon

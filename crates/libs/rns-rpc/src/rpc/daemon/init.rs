@@ -1199,7 +1199,10 @@ impl RpcDaemon {
         }
 
         for peer in &configured_static_peers {
-            if let Some(existing) = guard.get_mut(peer) {
+            let existing_peer_key =
+                guard.keys().find(|existing| existing.eq_ignore_ascii_case(peer.as_str())).cloned();
+            if let Some(existing_peer_key) = existing_peer_key {
+                let existing = guard.get_mut(&existing_peer_key).expect("peer record disappeared");
                 existing.peer_type = Some("static".to_string());
                 continue;
             }

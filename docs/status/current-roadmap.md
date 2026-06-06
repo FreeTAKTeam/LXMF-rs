@@ -119,6 +119,9 @@ gap, even though deeper propagation-router parity remains open.
   ordering: equal-timebase announces are retained in the announce log but no
   longer overwrite the active peer's propagation limits, costs, or peering
   policy fields.
+- Static peer activation now resolves existing peers case-insensitively before
+  inserting configured static peers, preserving the stored peer id and avoiding
+  duplicate queue/account records.
 - Propagation peer admission now mirrors Python's high-cost peering policy for
   existing non-static peers: a newer announce above `remote_peering_cost_max`
   breaks manual or auto peering and clears propagation queue marks, while stale
