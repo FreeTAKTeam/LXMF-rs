@@ -897,8 +897,119 @@ impl RpcDaemon {
                     }
                     propagation_handled_ids.push(transient_id);
                 }
-                let propagation_resource_bytes =
+                let mut propagation_resource_bytes =
                     peer_sync_resource_data_size(propagation_resource_payloads.as_slice())?;
+                let persistent_full_offer_sync = record.sync_strategy == 2
+                    && wanted_ids.as_ref().is_none_or(|ids| matches!(ids, PeerSyncWantedIds::All))
+                    && propagation_transferred > 0
+                    && propagation_skipped > 0;
+                if persistent_full_offer_sync {
+                    propagation_skipped = 0;
+                    propagation_remaining_bytes = 0;
+                    propagation_skipped_ids.clear();
+                    loop {
+                        let mut retry_pending = self
+                            .store
+                            .list_peer_unhandled_propagation(peer_key)
+                            .map_err(std::io::Error::other)?;
+                        if retry_pending.is_empty() {
+                            break;
+                        }
+                        retry_pending.sort_by(|left, right| {
+                            let left_weight = propagation_peer_sync_weight(
+                                left,
+                                timestamp,
+                                prioritised_destinations.as_slice(),
+                            );
+                            let right_weight = propagation_peer_sync_weight(
+                                right,
+                                timestamp,
+                                prioritised_destinations.as_slice(),
+                            );
+                            left_weight
+                                .partial_cmp(&right_weight)
+                                .unwrap_or(std::cmp::Ordering::Equal)
+                                .then_with(|| left.transient_id.cmp(&right.transient_id))
+                        });
+
+                        let mut batch_cumulative_size = 24usize;
+                        let mut batch_transferred = 0usize;
+                        let mut batch_skipped = 0usize;
+                        let mut batch_remaining_bytes = 0u64;
+                        let mut batch_skipped_ids = Vec::new();
+                        let mut batch_resource_payloads = Vec::new();
+                        for entry in retry_pending {
+                            let entry_size =
+                                usize::try_from(entry.size_bytes).unwrap_or(usize::MAX);
+                            let transfer_size = entry_size.saturating_add(16);
+                            if transfer_limit_bytes.is_some_and(|limit| transfer_size > limit) {
+                                propagation_transfer_limited =
+                                    propagation_transfer_limited.saturating_add(1);
+                                propagation_transfer_limited_bytes =
+                                    propagation_transfer_limited_bytes
+                                        .saturating_add(entry.size_bytes);
+                                let transient_id = entry.transient_id;
+                                self.store
+                                    .mark_peer_transfer_limited_propagation(
+                                        peer_key,
+                                        transient_id.as_str(),
+                                    )
+                                    .map_err(std::io::Error::other)?;
+                                propagation_transfer_limited_ids.push(transient_id);
+                                continue;
+                            }
+                            let next_size = batch_cumulative_size.saturating_add(transfer_size);
+                            if sync_limit_bytes.is_some_and(|limit| next_size >= limit) {
+                                batch_skipped = batch_skipped.saturating_add(1);
+                                batch_remaining_bytes =
+                                    batch_remaining_bytes.saturating_add(entry.size_bytes);
+                                batch_skipped_ids.push(entry.transient_id);
+                                continue;
+                            }
+                            batch_cumulative_size = next_size;
+                            let transient_id = entry.transient_id.clone();
+                            let payload_bytes =
+                                hex::decode(entry.payload_hex.as_str()).map_err(|err| {
+                                    std::io::Error::new(
+                                        std::io::ErrorKind::InvalidData,
+                                        format!("invalid propagation payload hex: {err}"),
+                                    )
+                                })?;
+                            let propagation_message = json!({
+                                "transient_id": entry.transient_id,
+                                "destination": entry.destination,
+                                "payload_hex": entry.payload_hex,
+                                "received_at": entry.received_at,
+                                "size_bytes": entry.size_bytes,
+                                "stamp_value": entry.stamp_value,
+                            });
+                            self.store
+                                .mark_peer_transferred_propagation(peer_key, transient_id.as_str())
+                                .map_err(std::io::Error::other)?;
+                            batch_transferred = batch_transferred.saturating_add(1);
+                            propagation_handled = propagation_handled.saturating_add(1);
+                            propagation_offered_bytes =
+                                propagation_offered_bytes.saturating_add(entry.size_bytes);
+                            propagation_transferred = propagation_transferred.saturating_add(1);
+                            propagation_bytes = propagation_bytes.saturating_add(entry.size_bytes);
+                            propagation_transferred_ids.push(transient_id.clone());
+                            propagation_messages.push(propagation_message);
+                            batch_resource_payloads.push(payload_bytes);
+                            propagation_handled_ids.push(transient_id);
+                        }
+
+                        if batch_transferred == 0 {
+                            propagation_skipped = propagation_skipped.saturating_add(batch_skipped);
+                            propagation_remaining_bytes =
+                                propagation_remaining_bytes.saturating_add(batch_remaining_bytes);
+                            propagation_skipped_ids.extend(batch_skipped_ids);
+                            break;
+                        }
+                        propagation_resource_bytes = propagation_resource_bytes.saturating_add(
+                            peer_sync_resource_data_size(batch_resource_payloads.as_slice())?,
+                        );
+                    }
+                }
                 let mut propagation_sync = json!({
                     "synced": true,
                     "postponed": false,

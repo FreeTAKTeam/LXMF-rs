@@ -256,6 +256,9 @@ gap, even though deeper propagation-router parity remains open.
   not part of the current peer offer before mutating queue state, avoiding the
   false completion path where an out-of-offer request marked pending messages
   handled or created a new peer queue from existing propagation entries.
+- Local peer sync now uses Python's persistent `sync_strategy` behavior after a
+  completed full-offer transfer: persistent peers continue into the next
+  eligible sync-limited batch while lazy peers retain one-batch queueing.
 - Peer record restore and export now accept and emit Python's serialized
   `destination_hash` peer identifier as an alias for Rust's internal `peer`
   field, and restored Python-style peers now derive acceptance rate from
