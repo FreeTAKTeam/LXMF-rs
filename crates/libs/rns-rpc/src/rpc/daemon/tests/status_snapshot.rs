@@ -9936,6 +9936,115 @@ fn propagation_remote_fetch_marks_source_received_and_queues_other_peers() {
 }
 
 #[test]
+fn propagation_remote_imports_match_source_peer_case_insensitively_like_python() {
+    let sync_payload = b"remote-sync-case-source-payload";
+    let sync_payload_hex = hex::encode(sync_payload);
+    let sync_transient_id = hex::encode(Sha256::digest(sync_payload));
+    let sync_source_peer = "Remote-Sync-Case-Source";
+    let sync_relay_peer = "remote-sync-case-relay";
+    let sync_daemon = RpcDaemon::test_instance();
+    sync_daemon
+        .handle_rpc(rpc_request(76, "peer_sync", json!({ "peer": sync_source_peer })))
+        .expect("seed sync source peer");
+    sync_daemon
+        .handle_rpc(rpc_request(77, "peer_sync", json!({ "peer": sync_relay_peer })))
+        .expect("seed sync relay peer");
+    sync_daemon.set_remote_control_bridge(Arc::new(TestRemoteControlBridge {
+        result: Ok(json!({
+            "synced": true,
+            "messages": [{
+                "transient_id": sync_transient_id,
+                "payload_hex": sync_payload_hex,
+            }],
+        })),
+    }));
+
+    sync_daemon
+        .handle_rpc(rpc_request(
+            78,
+            "propagation_remote_sync",
+            json!({
+                "remote": "remote-node",
+                "peer": "remote-sync-case-source",
+            }),
+        ))
+        .expect("remote sync from source peer");
+    assert!(
+        sync_daemon
+            .store
+            .list_peer_unhandled_propagation(sync_source_peer)
+            .expect("sync source unhandled")
+            .is_empty(),
+        "remote sync source should not be offered the payload it supplied"
+    );
+    assert_eq!(
+        sync_daemon
+            .store
+            .list_peer_handled_propagation_ids(sync_source_peer)
+            .expect("sync source handled ids"),
+        vec![sync_transient_id.clone()]
+    );
+    let sync_relay_pending = sync_daemon
+        .store
+        .list_peer_unhandled_propagation(sync_relay_peer)
+        .expect("sync relay pending");
+    assert_eq!(sync_relay_pending.len(), 1);
+    assert_eq!(sync_relay_pending[0].transient_id, sync_transient_id);
+
+    let fetch_payload = b"remote-fetch-case-source-payload";
+    let fetch_payload_hex = hex::encode(fetch_payload);
+    let fetch_transient_id = hex::encode(Sha256::digest(fetch_payload));
+    let fetch_source_peer = "Remote-Fetch-Case-Source";
+    let fetch_relay_peer = "remote-fetch-case-relay";
+    let fetch_daemon = RpcDaemon::test_instance();
+    fetch_daemon
+        .handle_rpc(rpc_request(79, "peer_sync", json!({ "peer": fetch_source_peer })))
+        .expect("seed fetch source peer");
+    fetch_daemon
+        .handle_rpc(rpc_request(80, "peer_sync", json!({ "peer": fetch_relay_peer })))
+        .expect("seed fetch relay peer");
+    fetch_daemon.set_remote_control_bridge(Arc::new(TestRemoteControlBridge {
+        result: Ok(json!({
+            "available_count": 1,
+            "fetched_count": 1,
+            "messages": [{
+                "transient_id": fetch_transient_id,
+                "payload_hex": fetch_payload_hex,
+            }],
+        })),
+    }));
+
+    fetch_daemon
+        .handle_rpc(rpc_request(
+            81,
+            "propagation_remote_fetch",
+            json!({ "remote": "remote-fetch-case-source" }),
+        ))
+        .expect("remote fetch from source peer");
+    assert!(
+        fetch_daemon
+            .store
+            .list_peer_unhandled_propagation(fetch_source_peer)
+            .expect("fetch source unhandled")
+            .is_empty(),
+        "remote fetch source should not be offered the payload it supplied"
+    );
+    assert_eq!(
+        fetch_daemon
+            .store
+            .list_peer_handled_propagation_ids(fetch_source_peer)
+            .expect("fetch source handled ids"),
+        vec![fetch_transient_id.clone()]
+    );
+    let fetch_relay_pending = fetch_daemon
+        .store
+        .list_peer_unhandled_propagation(fetch_relay_peer)
+        .expect("fetch relay pending");
+    assert_eq!(fetch_relay_pending.len(), 1);
+    assert_eq!(fetch_relay_pending[0].transient_id, fetch_transient_id);
+}
+
+#[test]
 fn propagation_remote_fetch_trims_remote_before_bridge_and_response() {
     let daemon = RpcDaemon::test_instance();
     daemon.set_remote_control_bridge(Arc::new(TestRemoteControlBridge {

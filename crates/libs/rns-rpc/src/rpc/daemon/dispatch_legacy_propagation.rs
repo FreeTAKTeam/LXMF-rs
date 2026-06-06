@@ -375,18 +375,23 @@ impl RpcDaemon {
             return Ok(());
         }
 
+        let active_peers = self.active_peer_ids();
+        let source_active_peer =
+            active_peers.iter().find(|peer| peer.eq_ignore_ascii_case(source_peer)).cloned();
         self.record_inbound_propagation_peer_activity_count(
-            source_peer,
+            source_active_peer.as_deref().unwrap_or(source_peer),
             transferred_bytes,
             imported_ids.len(),
         );
-        let active_peers = self.active_peer_ids();
         for transient_id in imported_ids {
             self.store
-                .mark_peer_received_propagation(source_peer, transient_id.as_str())
+                .mark_peer_received_propagation(
+                    source_active_peer.as_deref().unwrap_or(source_peer),
+                    transient_id.as_str(),
+                )
                 .map_err(std::io::Error::other)?;
             for peer in &active_peers {
-                if peer == source_peer {
+                if peer.eq_ignore_ascii_case(source_peer) {
                     continue;
                 }
                 self.store
@@ -407,15 +412,17 @@ impl RpcDaemon {
             return Ok(());
         }
 
+        let active_peers = self.active_peer_ids();
+        let source_active_peer =
+            active_peers.iter().find(|peer| peer.eq_ignore_ascii_case(source_peer)).cloned();
         self.record_inbound_propagation_peer_activity_count(
-            source_peer,
+            source_active_peer.as_deref().unwrap_or(source_peer),
             transferred_bytes,
             imported_ids.len(),
         );
-        let active_peers = self.active_peer_ids();
         for transient_id in imported_ids {
             for peer in &active_peers {
-                if peer == source_peer {
+                if peer.eq_ignore_ascii_case(source_peer) {
                     self.store
                         .mark_peer_received_propagation(peer.as_str(), transient_id.as_str())
                         .map_err(std::io::Error::other)?;
@@ -1441,7 +1448,12 @@ impl RpcDaemon {
                 let timestamp = now_i64();
                 let timeout_secs = parsed.timeout_secs.unwrap_or(5.0).max(0.1);
                 let existing_record = {
-                    self.peers.lock().expect("peers mutex poisoned").get(peer_id.as_str()).cloned()
+                    self.peers
+                        .lock()
+                        .expect("peers mutex poisoned")
+                        .values()
+                        .find(|record| record.peer.eq_ignore_ascii_case(peer_id.as_str()))
+                        .cloned()
                 };
                 if let Some(record) = existing_record {
                     let peer_transfer_limit_kb =
@@ -1560,7 +1572,10 @@ impl RpcDaemon {
                         });
                         let peer_sync_completed_at = now_i64();
                         if let Ok(mut peers) = self.peers.lock() {
-                            if let Some(peer) = peers.get_mut(peer_id.as_str()) {
+                            if let Some(peer) = peers
+                                .values_mut()
+                                .find(|record| record.peer.eq_ignore_ascii_case(peer_id.as_str()))
+                            {
                                 peer.alive = true;
                                 peer.last_seen = peer_sync_completed_at;
                                 peer.last_sync_attempt = peer_sync_completed_at;
@@ -1572,7 +1587,8 @@ impl RpcDaemon {
                             .peers
                             .lock()
                             .expect("peers mutex poisoned")
-                            .get(peer_id.as_str())
+                            .values()
+                            .find(|record| record.peer.eq_ignore_ascii_case(peer_id.as_str()))
                             .cloned();
                         if let Some(peer) = peer {
                             let (

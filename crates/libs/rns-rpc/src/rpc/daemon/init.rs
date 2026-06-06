@@ -603,9 +603,10 @@ impl RpcDaemon {
     ) -> bool {
         let peer = peer.trim();
         if let Ok(mut guard) = self.peers.lock() {
-            if let Some(existing) =
-                guard.get_mut(peer).filter(|record| record.peer_type.as_deref() != Some("unpeered"))
-            {
+            if let Some(existing) = guard.values_mut().find(|record| {
+                record.peer_type.as_deref() != Some("unpeered")
+                    && record.peer.eq_ignore_ascii_case(peer)
+            }) {
                 existing.alive = true;
                 existing.last_seen = now_i64();
                 existing.incoming = existing.incoming.saturating_add(messages as u64);
@@ -1069,7 +1070,10 @@ impl RpcDaemon {
         let cleaned_capabilities = normalize_capabilities(capabilities);
 
         let mut guard = self.peers.lock().expect("peers mutex poisoned");
-        if let Some(existing) = guard.get_mut(&peer) {
+        let existing_peer_key =
+            guard.keys().find(|existing| existing.eq_ignore_ascii_case(peer.as_str())).cloned();
+        if let Some(existing_peer_key) = existing_peer_key {
+            let existing = guard.get_mut(&existing_peer_key).expect("peer record disappeared");
             let is_newer = timestamp >= existing.last_seen;
             existing.last_seen = existing.last_seen.max(timestamp);
             existing.seen_count = existing.seen_count.saturating_add(1);
@@ -1145,7 +1149,8 @@ impl RpcDaemon {
             .peers
             .lock()
             .expect("peers mutex poisoned")
-            .get(peer)
+            .values()
+            .find(|record| record.peer.eq_ignore_ascii_case(peer))
             .and_then(|record| record.peer_type.clone());
         let peer_type = if self.is_static_peer(peer) {
             Some("static".to_string())
