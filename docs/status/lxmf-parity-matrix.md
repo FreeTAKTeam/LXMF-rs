@@ -2,14 +2,14 @@
 
 Status: historical parity snapshot; check `docs/status/current-roadmap.md` for
 current repo-wide status before relying on this file for active execution order.
-As of 2026-06-05, the live Python-reference interop workflow is green for the
+As of 2026-06-06, the live Python-reference interop workflow is green for the
 current branch, but that checkpoint does not convert the partial peer, router,
 propagation, and stamper rows below into full parity. The Reticulum
 KISS/LoRa/RNode interface work improves the transport substrate available to
 LXMF, but it does not by itself complete LXMF peer sync, propagation router, or
 stamp worker parity.
 
-Last reassessed: 2026-06-05 (maintenance unknown-speed waiting-pool regression added)
+Last reassessed: 2026-06-06 (new-peer offer-response queue guard added)
 
 Status legend: `not-started` | `partial` | `done`
 
@@ -106,8 +106,8 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
   Python's boolean all/none and list-shaped response forms, keep full-offer
   stamp-policy and peering-key gates for boolean wants-all, request-limited,
   selected-ID transfer, and no-transfer responses, and reject valid-looking
-  wanted transient IDs outside the current offer before mutating queue state or
-  creating a new peer queue.
+  wanted transient IDs outside an existing current offer before mutating queue
+  state or creating a new peer queue.
   Existing peers in local sync
   backoff now also postpone before the local existing-entry queue-fill path,
   but the active workspace does not yet match Python `LXMPeer` queueing,
@@ -160,6 +160,7 @@ Recent focused evidence:
 - `cargo test -p reticulum-rs-rpc --lib propagation_remote_sync_counts_source_incoming_after_prior_transfer_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_rejects_unknown_wanted_ids_without_mutating_queue -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_rejects_unknown_wanted_ids_without_creating_new_peer_queue -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib peer_sync_rejects_offer_response_without_existing_peer_queue -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_rejects_transfer_limited_wanted_ids_without_mutating_queue -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_boolean -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_boolean_wanted_ids_true_keeps_full_offer_policy_gates_like_python -- --nocapture`

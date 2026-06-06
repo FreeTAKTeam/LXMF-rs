@@ -208,6 +208,10 @@ gap, even though deeper propagation-router parity remains open.
   not part of the current peer offer before mutating queue state, avoiding the
   false completion path where an out-of-offer request marked pending messages
   handled or created a new peer queue from existing propagation entries.
+- Local offer-response handling now also rejects explicit `wanted_ids` for
+  brand-new peers before peer creation or queue fill, so a response without an
+  existing peer offer cannot manufacture handled, transferred, or unhandled
+  propagation marks.
 - Inbound propagation peer-resource handling now tracks Python's validated
   peering-link rule: a successful admitted `/offer` peering-key validation
   marks the link as peer-validated, capacity-denied offers do not authorize the
