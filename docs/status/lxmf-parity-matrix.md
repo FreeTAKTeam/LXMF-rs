@@ -9,7 +9,7 @@ KISS/LoRa/RNode interface work improves the transport substrate available to
 LXMF, but it does not by itself complete LXMF peer sync, propagation router, or
 stamp worker parity.
 
-Last reassessed: 2026-06-06 (Python destination-hash peer-record regressions added)
+Last reassessed: 2026-06-06 (destination fetch duplicate-wanted transfer regression added)
 
 Status legend: `not-started` | `partial` | `done`
 
@@ -101,9 +101,9 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
   source-peer queueing, remote-sync source-peer inbound byte/message accounting
   without outbound transfer-rate or `tx_bytes` inflation, local-delivery
   source-peer accounting, unpeered identified-sender accounting, peering-key
-  values, explicit peering-key readiness status values, and bidirectional
-  Python `destination_hash` peer-record compatibility are exposed. Local
-  offer responses now accept
+  values, explicit peering-key readiness status values, bidirectional
+  Python `destination_hash` peer-record compatibility, and destination fetch
+  duplicate-wanted de-duplication are exposed. Local offer responses now accept
   Python's boolean all/none and list-shaped response forms, keep full-offer
   stamp-policy and peering-key gates for boolean wants-all, request-limited,
   selected-ID transfer, and no-transfer responses, and reject valid-looking
@@ -150,6 +150,9 @@ Recent focused evidence:
 
 - `cargo test -p reticulum-rs-rpc --lib peer_record_deserializes_python_destination_hash_alias -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_record_serializes_python_status_aliases -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib propagation_destination_fetch_deduplicates_repeated_wanted_ids_like_python -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib propagation_destination_fetch -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib propagation_fetch_transfer_limit_accounts_for_stripped_stamp_bytes -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib ticket_generate_renews_ticket_inside_renewal_window -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib ticket_renewal_keeps_old_unexpired_ticket_valid_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib ticket -- --nocapture`

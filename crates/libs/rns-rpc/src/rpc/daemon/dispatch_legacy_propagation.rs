@@ -824,11 +824,15 @@ impl RpcDaemon {
         let per_message_overhead = 16usize;
         let mut cumulative_size = 24usize;
         let mut messages = Vec::new();
+        let mut served_ids = HashSet::new();
         for transient_id in wanted {
             if transient_id.len() != 32 {
                 continue;
             }
             let transient_hex = hex::encode(transient_id);
+            if !served_ids.insert(transient_hex.clone()) {
+                continue;
+            }
             let payload = match self
                 .store
                 .get_propagation_entry(transient_hex.as_str())

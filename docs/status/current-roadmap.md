@@ -169,6 +169,9 @@ gap, even though deeper propagation-router parity remains open.
   peer traffic only: it updates source-peer liveness/backoff and inbound
   counters without inflating outbound `tx_bytes`, `sync_transfer_rate`, or
   offer acceptance when no outbound LXMPeer transfer completed.
+- Propagation destination fetch now deduplicates repeated wanted transient IDs
+  within a single transfer, so one advertised payload is served and counted
+  once instead of inflating transfer output or served-message counters.
 - Local peer sync now accepts Python's boolean and list-shaped offer responses:
   `wanted_ids: true` transfers every offered message, while `wanted_ids: false`
   and `wanted_ids: []` mark the whole offer handled without resource transfer,
