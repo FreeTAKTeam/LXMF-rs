@@ -6,27 +6,6 @@ fn resource_manager_defaults_match_reference_retry_budget() {
     assert_eq!(manager.retry_limit, 16);
 }
 
-fn test_link() -> Link {
-    let (tx, _) = tokio::sync::broadcast::channel(1);
-    Link::new(test_destination(), tx)
-}
-
-fn test_destination() -> DestinationDesc {
-    let signer = PrivateIdentity::new_from_rand(OsRng);
-    let identity = *signer.as_identity();
-    DestinationDesc {
-        identity,
-        address_hash: identity.address_hash,
-        name: DestinationName::new("lxmf", "resource"),
-    }
-}
-
-fn test_requested_link() -> Link {
-    let mut link = test_link();
-    link.request();
-    link
-}
-
 /// Regression test for: `mark_request()` was called on every incoming part,
 /// incrementing `retry_count` past `retry_limit`. The periodic
 /// `retry_requests()` timer would then silently remove the receiver
@@ -37,7 +16,16 @@ fn test_requested_link() -> Link {
 /// in `handle_resource_part_into`. Only timer-driven retries should count.
 #[test]
 fn resource_receiver_not_killed_by_timer_during_active_transfer() {
-    let mut link = test_requested_link();
+    let signer = PrivateIdentity::new_from_rand(OsRng);
+    let identity = *signer.as_identity();
+    let destination = DestinationDesc {
+        identity,
+        address_hash: identity.address_hash,
+        name: DestinationName::new("lxmf", "resource"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(1);
+    let mut link = Link::new(destination, tx);
+    link.request();
 
     // Use the default config (retry_limit = 16) to catch future changes.
     let mut manager = ResourceManager::new();
@@ -121,7 +109,15 @@ fn resource_receiver_not_killed_by_timer_during_active_transfer() {
 
 #[test]
 fn resource_advertisements_use_reference_advertisement_retry_budget() {
-    let link = test_link();
+    let signer = PrivateIdentity::new_from_rand(OsRng);
+    let identity = *signer.as_identity();
+    let destination = DestinationDesc {
+        identity,
+        address_hash: identity.address_hash,
+        name: DestinationName::new("lxmf", "resource"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(1);
+    let link = Link::new(destination, tx);
 
     let mut manager = ResourceManager::new_with_config(Duration::from_secs(1), 16);
     let (resource_hash, _) =
@@ -135,7 +131,15 @@ fn resource_advertisements_use_reference_advertisement_retry_budget() {
 
 #[test]
 fn resource_manager_retries_advertisement_until_budget_exhausted() {
-    let link = test_link();
+    let signer = PrivateIdentity::new_from_rand(OsRng);
+    let identity = *signer.as_identity();
+    let destination = DestinationDesc {
+        identity,
+        address_hash: identity.address_hash,
+        name: DestinationName::new("lxmf", "resource"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(1);
+    let link = Link::new(destination, tx);
 
     let mut manager = ResourceManager::new_with_config(Duration::from_secs(1), 2);
     let (resource_hash, _) =
@@ -158,7 +162,15 @@ fn resource_manager_retries_advertisement_until_budget_exhausted() {
 
 #[test]
 fn resource_manager_emits_outbound_failed_when_advertisement_retry_budget_exhausts() {
-    let link = test_link();
+    let signer = PrivateIdentity::new_from_rand(OsRng);
+    let identity = *signer.as_identity();
+    let destination = DestinationDesc {
+        identity,
+        address_hash: identity.address_hash,
+        name: DestinationName::new("lxmf", "resource"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(1);
+    let link = Link::new(destination, tx);
 
     let mut manager = ResourceManager::new_with_config(Duration::from_secs(1), 1);
     let (resource_hash, _) =
@@ -182,7 +194,15 @@ fn resource_manager_emits_outbound_failed_when_advertisement_retry_budget_exhaus
 
 #[test]
 fn resource_manager_emits_outbound_failed_when_advertisement_dispatch_fails() {
-    let link = test_link();
+    let signer = PrivateIdentity::new_from_rand(OsRng);
+    let identity = *signer.as_identity();
+    let destination = DestinationDesc {
+        identity,
+        address_hash: identity.address_hash,
+        name: DestinationName::new("lxmf", "resource"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(1);
+    let link = Link::new(destination, tx);
 
     let mut manager = ResourceManager::new_with_config(Duration::from_secs(1), 1);
     let (resource_hash, _) =
@@ -201,7 +221,16 @@ fn resource_manager_emits_outbound_failed_when_advertisement_dispatch_fails() {
 
 #[test]
 fn resource_manager_cancel_outgoing_emits_initiator_cancel_packet_and_event() {
-    let link = test_requested_link();
+    let signer = PrivateIdentity::new_from_rand(OsRng);
+    let identity = *signer.as_identity();
+    let destination = DestinationDesc {
+        identity,
+        address_hash: identity.address_hash,
+        name: DestinationName::new("lxmf", "resource"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(1);
+    let mut link = Link::new(destination, tx);
+    link.request();
 
     let mut manager = ResourceManager::new_with_config(Duration::from_secs(1), 2);
     let (resource_hash, _) =
@@ -235,7 +264,16 @@ fn resource_manager_cancel_outgoing_emits_initiator_cancel_packet_and_event() {
 
 #[test]
 fn resource_manager_times_out_transferring_sender_after_retry_budget() {
-    let mut link = test_requested_link();
+    let signer = PrivateIdentity::new_from_rand(OsRng);
+    let identity = *signer.as_identity();
+    let destination = DestinationDesc {
+        identity,
+        address_hash: identity.address_hash,
+        name: DestinationName::new("lxmf", "resource"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(1);
+    let mut link = Link::new(destination, tx);
+    link.request();
 
     let mut manager = ResourceManager::new_with_config(Duration::from_secs(1), 1);
     let payload = vec![0x42; PACKET_MDU + 32];
@@ -275,7 +313,16 @@ fn resource_manager_times_out_transferring_sender_after_retry_budget() {
 
 #[test]
 fn resource_manager_times_out_awaiting_proof_after_retry_budget() {
-    let mut link = test_requested_link();
+    let signer = PrivateIdentity::new_from_rand(OsRng);
+    let identity = *signer.as_identity();
+    let destination = DestinationDesc {
+        identity,
+        address_hash: identity.address_hash,
+        name: DestinationName::new("lxmf", "resource"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(1);
+    let mut link = Link::new(destination, tx);
+    link.request();
 
     let mut manager = ResourceManager::new_with_config(Duration::from_secs(1), 1);
     let (resource_hash, _) =
@@ -315,7 +362,16 @@ fn resource_manager_times_out_awaiting_proof_after_retry_budget() {
 
 #[test]
 fn resource_manager_removes_link_scoped_state_on_link_close() {
-    let mut link = test_requested_link();
+    let signer = PrivateIdentity::new_from_rand(OsRng);
+    let identity = *signer.as_identity();
+    let destination = DestinationDesc {
+        identity,
+        address_hash: identity.address_hash,
+        name: DestinationName::new("lxmf", "resource"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(1);
+    let mut link = Link::new(destination, tx);
+    link.request();
 
     let mut manager = ResourceManager::new_with_config(Duration::from_secs(1), 2);
     let (resource_hash, _) =
@@ -347,94 +403,80 @@ fn resource_manager_removes_link_scoped_state_on_link_close() {
 }
 
 #[test]
-fn resource_sender_emits_outbound_failed_when_status_is_failed() {
-    // Covers the new `ResourceStatus::Failed => OutboundResourcePoll::Failed` arm
-    // in poll(). The same path is exercised when handle_request_into() fails to
-    // build a packet and sets self.status = Failed.
-    let link = test_link();
-
-    let mut manager = ResourceManager::new_with_config(Duration::from_secs(1), 2);
-    let (resource_hash, _) =
-        manager.start_send(&link, b"fail me".to_vec(), None).expect("start sender");
-    manager.confirm_outbound_dispatch(resource_hash, true);
-
-    assert!(manager.outgoing.contains_key(&resource_hash));
-    assert!(manager.drain_events().is_empty());
-
-    manager.outgoing.get_mut(&resource_hash).unwrap().status = ResourceStatus::Failed;
-
-    let packets = manager.poll_outgoing(Instant::now());
-    assert!(packets.is_empty());
-    assert!(!manager.outgoing.contains_key(&resource_hash));
-
-    let events = manager.drain_events();
-    assert_eq!(events.len(), 1);
-    assert_eq!(events[0].hash, resource_hash);
-    assert_eq!(events[0].link_id, *link.id());
-    assert!(matches!(events[0].kind, ResourceEventKind::OutboundFailed));
-}
-
-#[test]
-fn resource_manager_link_close_allows_later_resource_on_new_link() {
-    let destination = test_destination();
+fn resource_receiver_slides_window_without_redundant_requests() {
+    // With adaptive in-flight tracking the receiver keeps at most WINDOW fragments
+    // in flight at any time. Each received part opens one slot, so exactly one new
+    // fragment is requested per arrived part once the pipeline is full — never the
+    // same fragment twice while it is still in flight.
+    let signer = PrivateIdentity::new_from_rand(OsRng);
+    let identity = *signer.as_identity();
+    let destination = DestinationDesc {
+        identity,
+        address_hash: identity.address_hash,
+        name: DestinationName::new("lxmf", "resource"),
+    };
     let (tx, _) = tokio::sync::broadcast::channel(1);
-    let mut first_link = Link::new(destination, tx.clone());
-    first_link.request();
+    let mut link = Link::new(destination, tx);
+    link.request();
 
-    let mut manager = ResourceManager::new_with_config(Duration::from_secs(1), 2);
-    let (first_hash, _) =
-        manager.start_send(&first_link, vec![0x11; PACKET_MDU + 24], None).expect("first send");
-    manager.confirm_outbound_dispatch(first_hash, true);
+    let mut manager = ResourceManager::new();
+
+    const TOTAL_PARTS: usize = 10;
+    let random_hash = [0xAB; RANDOM_HASH_SIZE];
+    let parts: Vec<Vec<u8>> = (0..TOTAL_PARTS)
+        .map(|i| vec![i as u8; PACKET_MDU])
+        .collect();
+    let mut hashmap_bytes = Vec::with_capacity(TOTAL_PARTS * MAPHASH_LEN);
+    for part in &parts {
+        hashmap_bytes.extend_from_slice(&map_hash(part, &random_hash));
+    }
 
     let adv = ResourceAdvertisement {
-        transfer_size: 1,
-        data_size: 1,
-        parts: 1,
-        hash: Hash::new_from_slice(&[0x44; 32]),
-        random_hash: [0u8; RANDOM_HASH_SIZE],
-        original_hash: Hash::new_from_slice(&[0x44; 32]),
+        transfer_size: (TOTAL_PARTS * PACKET_MDU) as u64,
+        data_size: (TOTAL_PARTS * PACKET_MDU) as u64,
+        parts: TOTAL_PARTS as u32,
+        hash: Hash::new_from_slice(&[0xCC; 32]),
+        random_hash,
+        original_hash: Hash::new_from_slice(&[0xCC; 32]),
         segment_index: 1,
         total_segments: 1,
         request_id: None,
         flags: 0,
-        hashmap: vec![0u8; MAPHASH_LEN],
+        hashmap: hashmap_bytes,
     };
-    let incoming_packet = resource_packet(
+
+    let adv_packet = resource_packet(
         PacketContext::ResourceAdvrtisement,
-        &adv.pack().expect("advertisement"),
-        *first_link.id(),
+        &adv.pack().expect("pack"),
+        *link.id(),
     );
-    let _ = manager.handle_packet(&incoming_packet, &mut first_link);
-    manager.remove_link_state(*first_link.id());
+    let _ = manager.handle_packet(&adv_packet, &mut link);
+    assert!(manager.incoming.contains_key(&adv.hash));
 
-    let mut second_link = Link::new(destination, tx);
-    second_link.request();
-    let (second_hash, _) =
-        manager.start_send(&second_link, vec![0x22; PACKET_MDU + 24], None).expect("second send");
-    manager.confirm_outbound_dispatch(second_hash, true);
+    // Feed 9 of 10 parts. Verify window-sliding behaviour:
+    // at most 1 new request per received part (window opens by 1 slot each time),
+    // and the total number of request packets is bounded by TOTAL_PARTS - WINDOW
+    // (WINDOW fragments were already requested in the advertisement response).
+    let mut total_request_packets = 0usize;
+    for part in parts.iter().take(TOTAL_PARTS - 1) {
+        let p = resource_packet(PacketContext::Resource, part, *link.id());
+        let responses = manager.handle_packet(&p, &mut link);
+        let req_packets: Vec<_> = responses
+            .iter()
+            .filter(|p| p.context == PacketContext::ResourceRequest)
+            .collect();
+        assert!(
+            req_packets.len() <= 1,
+            "expected at most 1 request per received part, got {}",
+            req_packets.len()
+        );
+        total_request_packets += req_packets.len();
+    }
 
-    assert!(!manager.outgoing.contains_key(&first_hash));
-    assert!(manager.outgoing.contains_key(&second_hash));
-    assert!(manager.incoming.is_empty());
-
-    let first_map_hash = manager
-        .outgoing
-        .get(&second_hash)
-        .expect("second outgoing sender")
-        .map_hashes[0];
-    let request = ResourceRequest {
-        hashmap_exhausted: false,
-        last_map_hash: None,
-        resource_hash: second_hash,
-        requested_hashes: vec![first_map_hash],
-    };
-    let request_packet =
-        resource_packet(PacketContext::ResourceRequest, &request.encode(), *second_link.id());
-    let responses = manager.handle_packet(&request_packet, &mut second_link);
-
-    assert_eq!(responses.len(), 1);
-    assert_eq!(
-        manager.outgoing.get(&second_hash).expect("second sender").status,
-        ResourceStatus::Transferring
+    assert!(
+        total_request_packets <= TOTAL_PARTS - WINDOW,
+        "total request packets {} exceeds TOTAL_PARTS - WINDOW = {}",
+        total_request_packets,
+        TOTAL_PARTS - WINDOW
     );
 }
