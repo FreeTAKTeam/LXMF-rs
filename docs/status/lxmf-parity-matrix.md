@@ -9,7 +9,7 @@ KISS/LoRa/RNode interface work improves the transport substrate available to
 LXMF, but it does not by itself complete LXMF peer sync, propagation router, or
 stamp worker parity.
 
-Last reassessed: 2026-06-06 (restored Python peering-key readiness regression added)
+Last reassessed: 2026-06-06 (duplicate wanted-ID peer sync regression added)
 
 Status legend: `not-started` | `partial` | `done`
 
@@ -101,13 +101,14 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
   preserves valid entries before throttling, inbound propagation resource
   source-peer queueing, remote-sync source-peer inbound byte/message accounting
   without outbound transfer-rate or `tx_bytes` inflation, local-delivery
-  source-peer accounting, unpeered identified-sender accounting, peering-key
-  values, explicit peering-key readiness status values, bidirectional
-  Python `destination_hash` peer-record compatibility, Python-style restored
-  acceptance-rate derivation from offered/outgoing counters, restored
-  Python `peering_key` readiness and below-cost key cleanup for local peer
-  sync, restored Python `sync_strategy` transfer-state reporting, and destination fetch
-  duplicate-wanted de-duplication are exposed. Local offer responses now accept
+  source-peer accounting and queue marks, unpeered identified-sender
+  accounting, peering-key values, explicit peering-key readiness status values,
+  bidirectional Python `destination_hash` peer-record compatibility,
+  Python-style restored acceptance-rate derivation from offered/outgoing
+  counters, restored Python `peering_key` readiness and below-cost key cleanup
+  for local peer sync, restored Python `sync_strategy` transfer-state
+  reporting, and destination fetch duplicate-wanted de-duplication are exposed.
+  Local offer responses now accept
   Python's boolean all/none and list-shaped response forms, keep full-offer
   stamp-policy and peering-key gates for boolean wants-all, request-limited,
   selected-ID transfer, and no-transfer responses, preserve previous

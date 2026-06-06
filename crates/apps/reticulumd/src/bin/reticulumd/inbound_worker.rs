@@ -964,7 +964,7 @@ mod tests {
             None,
         )
         .expect("wire");
-        let (envelope, transient_len) = {
+        let (envelope, transient_id, transient_len) = {
             let destination = delivery_destination.lock().await;
             let message = WireMessage::unpack(&wire).expect("wire unpack");
             let (transient, transient_id) = message
@@ -977,6 +977,7 @@ mod tests {
             (
                 WireMessage::pack_propagation_envelope(1.0, &transient, Some(&stamp))
                     .expect("propagation envelope"),
+                hex::encode(transient_id),
                 transient.len(),
             )
         };
@@ -994,6 +995,15 @@ mod tests {
         let peer = peer_row(&daemon, propagation_peer.as_str(), 48);
         assert_eq!(peer["messages"]["incoming"].as_u64(), Some(1));
         assert_eq!(peer["rx_bytes"].as_u64(), Some(transient_len as u64));
+        assert!(
+            daemon
+                .has_peer_completed_propagation_mark(
+                    propagation_peer.as_str(),
+                    transient_id.as_str()
+                )
+                .expect("completed propagation mark lookup"),
+            "locally delivered peer propagation payloads should still mark the source peer handled"
+        );
 
         let status = daemon
             .handle_rpc(RpcRequest {

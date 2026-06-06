@@ -312,8 +312,9 @@ gap, even though deeper propagation-router parity remains open.
   like Python peer identity handling, while preserving the stored peer id for
   queue marks and inbound peer counters.
 - Inbound peer propagation resources that locally deliver a payload now credit
-  the propagation source peer's inbound counters instead of treating the
-  transfer as a client propagation receive.
+  the propagation source peer's inbound counters and mark the source peer
+  received/handled instead of treating the transfer as a client propagation
+  receive.
 - Inbound peer propagation resources from identified but unpeered senders now
   update the Python-style unpeered propagation counters instead of client
   counters, while still queueing accepted payloads for active peers.
