@@ -1,7 +1,7 @@
 use rns_transport::iface::lora::{
-    CMD_DETECT, CMD_FW_VERSION, CMD_MCU, CMD_PLATFORM, DETECT_REQ, LoraConfig, PLATFORM_AVR,
-    PLATFORM_ESP32, PLATFORM_NRF52, RADIO_STATE_OFF, RADIO_STATE_ON,
-    REQUIRED_FW_VERSION_MAJOR, REQUIRED_FW_VERSION_MINOR, RNodeProbeStatus, RNodeRadioStatus,
+    LoraConfig, RNodeProbeStatus, RNodeRadioStatus, CMD_DETECT, CMD_FW_VERSION, CMD_MCU,
+    CMD_PLATFORM, DETECT_REQ, PLATFORM_AVR, PLATFORM_ESP32, PLATFORM_NRF52, RADIO_STATE_OFF,
+    RADIO_STATE_ON, REQUIRED_FW_VERSION_MAJOR, REQUIRED_FW_VERSION_MINOR,
 };
 use rns_transport::iface::rnode_ble::{
     NativeRnodeBleBackend, NativeRnodeBleSettings, RnodeBleKissConfig, RnodeBleKissError,
@@ -29,7 +29,7 @@ async fn run() -> Result<(), String> {
     let lora_config = build_lora_config(&args)?;
 
     let initial_frames = match lora_config.as_ref() {
-        Some(lc) => lc.clone().command_frames(),
+        Some(lc) => lc.command_frames(),
         None => vec![
             encode_command_frame(CMD_DETECT, &[DETECT_REQ]),
             encode_command_frame(CMD_FW_VERSION, &[0x00]),
@@ -156,7 +156,7 @@ fn build_lora_config(args: &ProbeArgs) -> Result<Option<LoraConfig>, String> {
         coding_rate: args.cr.unwrap_or(base.coding_rate),
         ..base
     };
-    config.clone().validate().map_err(|e| format!("radio config invalid: {e}"))?;
+    config.validate().map_err(|e| format!("radio config invalid: {e}"))?;
     Ok(Some(config))
 }
 
