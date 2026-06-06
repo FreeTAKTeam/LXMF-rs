@@ -2,7 +2,7 @@
 
 Status: historical parity snapshot; check `docs/status/current-roadmap.md` for
 current repo-wide status before relying on this file for active execution order.
-As of 2026-06-05, the live Python-reference interop workflow is green for the
+As of 2026-06-06, the live Python-reference interop workflow is green for the
 current branch, but that checkpoint does not convert the partial peer, router,
 propagation, and stamper rows below into full parity. The Reticulum
 KISS/LoRa/RNode interface work improves the transport substrate available to
@@ -96,15 +96,21 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
   selection, and unreachable static peer sync-pool skipping, high-cost
   existing-peer peering breaks with queue cleanup,
   admitted-offer-only
-  validated peering links, mixed invalid-stamp peer resource handling that
-  preserves valid entries before throttling, inbound propagation resource
-  source-peer queueing, remote-sync source-peer inbound byte/message accounting
-  without outbound transfer-rate or `tx_bytes` inflation, local-delivery
-  source-peer accounting, unpeered identified-sender accounting, peering-key
+  validated peering links for multi-message client or peer propagation
+  resources while packet propagation keeps Python-style multi-message
+  acceptance, mixed invalid-stamp peer resource handling that preserves valid
+  entries before throttling, inbound propagation resource source-peer queueing,
+  remote-sync source-peer inbound byte/message accounting without outbound
+  transfer-rate or `tx_bytes` inflation, local-delivery source-peer accounting,
+  unpeered identified-sender accounting, peering-key
   values, and explicit peering-key readiness status values are exposed. Local
   offer responses now accept
   Python's boolean all/none and list-shaped response forms, keep full-offer
   stamp-policy and peering-key gates for boolean wants-all, request-limited,
+  selected-ID transfer, and no-transfer responses, preserve previous
+  last-heard/seen-count values for no-transfer responses, and reject
+  valid-looking wanted transient IDs outside the current offer before mutating
+  queue state or creating a new peer queue.
   selected-ID transfer, and no-transfer responses, and reject valid-looking
   wanted transient IDs outside the current offer before mutating queue state or
   creating a new peer queue.
@@ -171,6 +177,7 @@ Recent focused evidence:
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_selected_wanted_ids_keep_full_offer_policy_gates_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_empty_wanted_ids_keep_full_offer_policy_gates_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_persists_cumulative_acceptance_rate_like_python -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib peer_sync_no_transfer_preserves_last_heard_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_during_backoff_does_not_queue_new_existing_entries_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_prioritised_destinations_reduce_offer_weight_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync -- --nocapture`
@@ -211,6 +218,8 @@ Recent focused evidence:
 - `cargo test -p reticulumd --bin reticulumd message_get_marks_served_wanted_payloads_transferred_for_peer -- --nocapture`
 - `cargo test -p reticulumd --bin reticulumd inbound_peer_propagation_preserves_valid_messages_when_transfer_has_invalid_stamp_like_python -- --nocapture`
 - `cargo test -p reticulumd --bin reticulumd inbound_peer_propagation_local_delivery_counts_source_peer_like_python -- --nocapture`
+- `cargo test -p reticulumd --bin reticulumd inbound_client_packet_propagation_accepts_multi_message_like_python -- --nocapture`
+- `cargo test -p reticulumd --bin reticulumd inbound_client_resource_rejects_multi_message_without_validated_link_like_python -- --nocapture`
 - `cargo test -p reticulumd --bin reticulumd inbound_peer_propagation_ -- --nocapture`
 - `cargo test -p reticulumd --bin reticulumd offer_request -- --nocapture`
 - `cargo test -p reticulumd --bin reticulumd inbound_worker::control::tests -- --nocapture`

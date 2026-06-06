@@ -72,7 +72,7 @@ pub(super) fn spawn_inbound_worker(
                                         .ok()
                                         .is_some_and(|guard| guard.contains(&event.link_id));
                                     if let Err(error) =
-                                        propagation::ingest_propagation_envelope_from_peer(
+                                        propagation::ingest_propagation_resource_from_peer(
                                             daemon.as_ref(),
                                             &complete.data,
                                             resource_control.delivery_destination.as_ref(),
@@ -277,7 +277,10 @@ fn spawn_packet_inbound_worker(
 #[cfg(test)]
 mod tests {
     use super::delivery_events;
-    use super::propagation::{ingest_propagation_envelope, ingest_propagation_envelope_from_peer};
+    use super::propagation::{
+        ingest_propagation_envelope, ingest_propagation_envelope_from_peer,
+        ingest_propagation_resource_from_peer,
+    };
     use hkdf::Hkdf;
     use lxmf::WireMessage;
     use rand_core::OsRng;
@@ -436,10 +439,9 @@ mod tests {
                 .expect("propagation envelope");
         let peer = hex::encode([0x77_u8; 16]);
 
-        let err =
-            ingest_propagation_envelope_from_peer(&daemon, &envelope, None, Some(&peer), false)
-                .await
-                .expect_err("invalid peer propagation envelope should be rejected");
+        let err = ingest_propagation_envelope_from_peer(&daemon, &envelope, None, Some(&peer))
+            .await
+            .expect_err("invalid peer propagation envelope should be rejected");
 
         assert!(err.to_string().contains("invalid propagation stamp"));
         assert!(daemon.propagation_peer_is_throttled(peer.as_str()));
@@ -469,10 +471,9 @@ mod tests {
             .expect("propagation envelope");
         let peer = hex::encode([0x7A_u8; 16]);
 
-        let err =
-            ingest_propagation_envelope_from_peer(&daemon, &envelope, None, Some(&peer), true)
-                .await
-                .expect_err("mixed-stamp peer resource should reject the transfer");
+        let err = ingest_propagation_envelope_from_peer(&daemon, &envelope, None, Some(&peer))
+            .await
+            .expect_err("mixed-stamp peer resource should reject the transfer");
 
         assert!(err.to_string().contains("invalid propagation stamp"));
         assert!(daemon.propagation_peer_is_throttled(peer.as_str()));
@@ -514,15 +515,10 @@ mod tests {
         let envelope =
             rmp_serde::to_vec(&(1.0_f64, vec![transient])).expect("propagation envelope");
 
-        let ingested = ingest_propagation_envelope_from_peer(
-            &daemon,
-            &envelope,
-            None,
-            Some(&source_peer),
-            true,
-        )
-        .await
-        .expect("ingest peer propagation envelope");
+        let ingested =
+            ingest_propagation_envelope_from_peer(&daemon, &envelope, None, Some(&source_peer))
+                .await
+                .expect("ingest peer propagation envelope");
 
         assert_eq!(ingested, 1);
         let source_row = peer_row(&daemon, source_peer.as_str(), 49);
@@ -573,15 +569,10 @@ mod tests {
         let envelope =
             rmp_serde::to_vec(&(1.0_f64, vec![transient])).expect("propagation envelope");
 
-        let ingested = ingest_propagation_envelope_from_peer(
-            &daemon,
-            &envelope,
-            None,
-            Some(&unpeered_source),
-            false,
-        )
-        .await
-        .expect("ingest unpeered propagation envelope");
+        let ingested =
+            ingest_propagation_envelope_from_peer(&daemon, &envelope, None, Some(&unpeered_source))
+                .await
+                .expect("ingest unpeered propagation envelope");
 
         assert_eq!(ingested, 1);
         let status = daemon
@@ -628,9 +619,47 @@ mod tests {
         let peer = hex::encode([0x78_u8; 16]);
 
         let err =
-            ingest_propagation_envelope_from_peer(&daemon, &envelope, None, Some(&peer), false)
+            ingest_propagation_resource_from_peer(&daemon, &envelope, None, Some(&peer), false)
                 .await
                 .expect_err("unvalidated peer resource should reject multi-message transfer");
+
+        assert!(err.to_string().contains("valid peering key"));
+        assert!(!daemon.has_propagation_payload(first_id.as_str()));
+        assert!(!daemon.has_propagation_payload(second_id.as_str()));
+    }
+
+    #[tokio::test]
+    async fn inbound_client_packet_propagation_accepts_multi_message_like_python() {
+        let daemon = RpcDaemon::test_instance();
+        let first = b"unvalidated-client-first".to_vec();
+        let second = b"unvalidated-client-second".to_vec();
+        let first_id = hex::encode(Sha256::digest(&first));
+        let second_id = hex::encode(Sha256::digest(&second));
+        let envelope =
+            rmp_serde::to_vec(&(1.0_f64, vec![first, second])).expect("propagation envelope");
+
+        let ingested = ingest_propagation_envelope(&daemon, &envelope, None)
+            .await
+            .expect("multi-message packet propagation should be accepted");
+
+        assert_eq!(ingested, 2);
+        assert!(daemon.has_propagation_payload(first_id.as_str()));
+        assert!(daemon.has_propagation_payload(second_id.as_str()));
+    }
+
+    #[tokio::test]
+    async fn inbound_client_resource_rejects_multi_message_without_validated_link_like_python() {
+        let daemon = RpcDaemon::test_instance();
+        let first = b"unvalidated-client-resource-first".to_vec();
+        let second = b"unvalidated-client-resource-second".to_vec();
+        let first_id = hex::encode(Sha256::digest(&first));
+        let second_id = hex::encode(Sha256::digest(&second));
+        let envelope =
+            rmp_serde::to_vec(&(1.0_f64, vec![first, second])).expect("propagation envelope");
+
+        let err = ingest_propagation_resource_from_peer(&daemon, &envelope, None, None, false)
+            .await
+            .expect_err("unvalidated client resource should reject multi-message transfer");
 
         assert!(err.to_string().contains("valid peering key"));
         assert!(!daemon.has_propagation_payload(first_id.as_str()));
@@ -649,7 +678,7 @@ mod tests {
         let peer = hex::encode([0x79_u8; 16]);
 
         let ingested =
-            ingest_propagation_envelope_from_peer(&daemon, &envelope, None, Some(&peer), true)
+            ingest_propagation_resource_from_peer(&daemon, &envelope, None, Some(&peer), true)
                 .await
                 .expect("validated peer resource should accept multi-message transfer");
 
@@ -957,7 +986,6 @@ mod tests {
             &envelope,
             Some(&delivery_destination),
             Some(&propagation_peer),
-            true,
         )
         .await
         .expect("ingest peer propagation envelope");

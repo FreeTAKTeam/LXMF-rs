@@ -7051,6 +7051,70 @@ fn peer_sync_updates_transfer_rate_from_transferred_bytes() {
 }
 
 #[test]
+fn peer_sync_no_transfer_preserves_last_heard_like_python() {
+    let (daemon, peer) = ready_propagation_peer_daemon(0x4d);
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let record = peers.get_mut(peer.as_str()).expect("peer record");
+        record.alive = false;
+        record.last_seen = 7;
+        record.seen_count = 3;
+        record.propagation_sync_limit = Some(1_000);
+    }
+
+    let entry = PropagationEntryRecord {
+        transient_id: "db".repeat(32),
+        destination: "18".repeat(16),
+        payload_hex: "25".repeat(40),
+        received_at: 1_700_000_619,
+        size_bytes: 40,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&entry).expect("store propagation entry");
+    daemon
+        .store
+        .mark_peer_unhandled_propagation(peer.as_str(), entry.transient_id.as_str())
+        .expect("mark unhandled");
+
+    let result = daemon
+        .handle_rpc(rpc_request(
+            64,
+            "peer_sync",
+            json!({
+                "peer": peer.as_str(),
+                "wanted_ids": [],
+                "transfer_limit_kb": 1.0,
+            }),
+        ))
+        .expect("peer sync")
+        .result
+        .expect("peer sync result");
+
+    assert_eq!(result["propagation"]["handled"].as_u64(), Some(1));
+    assert_eq!(result["propagation"]["transferred"].as_u64(), Some(0));
+    let last_sync_attempt = result["last_sync_attempt"].as_i64().expect("last sync attempt");
+    assert!(last_sync_attempt > 7);
+    assert_eq!(result["last_heard"].as_i64(), Some(7));
+    assert_eq!(result["seen_count"].as_u64(), Some(3));
+    assert_eq!(result["alive"].as_bool(), Some(false));
+
+    let peers = daemon
+        .handle_rpc(RpcRequest { id: 65, method: "list_peers".to_string(), params: None })
+        .expect("list peers")
+        .result
+        .expect("list peers result");
+    let row = peers["peers"]
+        .as_array()
+        .expect("peer rows")
+        .iter()
+        .find(|row| row["peer"].as_str() == Some(peer.as_str()))
+        .expect("peer row");
+    assert_eq!(row["last_heard"].as_i64(), Some(7));
+    assert_eq!(row["seen_count"].as_u64(), Some(3));
+    assert_eq!(row["alive"].as_bool(), Some(false));
+}
+
+#[test]
 fn peer_sync_preserves_transfer_rate_when_no_offers_remain_like_python() {
     let (daemon, peer) = ready_propagation_peer_daemon(0x4c);
     {
