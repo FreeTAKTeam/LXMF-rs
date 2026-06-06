@@ -367,6 +367,7 @@ mod tests {
     }
 
     include!("tests_timeouts.rs");
+    include!("tests_timeouts_lifecycle.rs");
 
     fn resource_packet(context: PacketContext, payload: &[u8], destination: AddressHash) -> Packet {
         Packet {

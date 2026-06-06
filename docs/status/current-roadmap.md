@@ -1,6 +1,6 @@
 # Current Roadmap Status
 
-Last updated: 2026-06-05
+Last updated: 2026-06-06
 
 This document is the current source of truth for repository-wide delivery
 status. Update this file first when parity status, release confidence, or the
@@ -211,6 +211,10 @@ gap, even though deeper propagation-router parity remains open.
 - Local peer sync now persists the peer acceptance-rate cache from cumulative
   `outgoing/offered` counters, matching Python `LXMPeer.acceptance_rate`
   instead of replacing the cache with only the latest offer-response ratio.
+- Local peer sync offer ordering now also applies Python's prioritised
+  destination weighting before sync-limit selection, so propagation entries for
+  prioritised destinations are offered ahead of lower raw-weight entries when
+  only one payload fits.
 - Inbound propagation peer-resource handling now tracks Python's validated
   peering-link rule: a successful admitted `/offer` peering-key validation
   marks the link as peer-validated, capacity-denied offers do not authorize the
