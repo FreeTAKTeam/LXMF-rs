@@ -14,11 +14,12 @@ impl RpcDaemon {
         let unhandled_ids =
             self.store.list_peer_unhandled_propagation_ids(peer.peer.as_str()).unwrap_or_default();
         let is_static_peer = self.is_static_peer(peer.peer.as_str());
+        let sync_strategy = peer.sync_strategy;
         let mut row = serde_json::to_value(peer).unwrap_or_else(|_| json!({}));
         row["type"] =
             JsonValue::String(if is_static_peer { "static" } else { "discovered" }.to_string());
         row["state"] = JsonValue::from(0);
-        row["sync_strategy"] = JsonValue::from(2);
+        row["sync_strategy"] = JsonValue::from(sync_strategy);
         row["ler"] = JsonValue::from(0);
         row["str"] = row
             .get("sync_transfer_rate")
@@ -162,7 +163,7 @@ impl RpcDaemon {
                 "first_seen": record.first_seen,
                 "seen_count": record.seen_count,
                 "state": 0,
-                "sync_strategy": 2,
+                "sync_strategy": record.sync_strategy,
                 "ler": 0,
                 "peering_timebase": record.peering_timebase,
                 "network_distance": record.network_distance,
@@ -211,7 +212,7 @@ impl RpcDaemon {
                 "postponed": true,
                 "postpone_reason": postpone_reason,
                 "state": 0,
-                "sync_strategy": 2,
+                "sync_strategy": record.sync_strategy,
                 "ler": 0,
                 "peering_timebase": record.peering_timebase,
                 "network_distance": record.network_distance,
@@ -1051,7 +1052,7 @@ impl RpcDaemon {
                         "first_seen": record.first_seen,
                         "seen_count": record.seen_count,
                         "state": 0,
-                        "sync_strategy": 2,
+                        "sync_strategy": record.sync_strategy,
                         "ler": 0,
                         "peering_timebase": record.peering_timebase,
                         "network_distance": record.network_distance,
@@ -1096,7 +1097,7 @@ impl RpcDaemon {
                         "seen_count": record.seen_count,
                         "synced": true,
                         "state": 0,
-                        "sync_strategy": 2,
+                        "sync_strategy": record.sync_strategy,
                         "ler": 0,
                         "peering_timebase": record.peering_timebase,
                         "network_distance": record.network_distance,

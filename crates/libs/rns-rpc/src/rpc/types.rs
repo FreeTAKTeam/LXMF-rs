@@ -678,6 +678,7 @@ pub struct PeerRecord {
     pub first_seen: i64,
     pub seen_count: u64,
     pub peering_timebase: i64,
+    pub sync_strategy: u8,
     pub propagation_transfer_limit: Option<u32>,
     pub propagation_sync_limit: Option<u32>,
     pub propagation_stamp_cost: Option<u32>,
@@ -716,6 +717,7 @@ impl serde::Serialize for PeerRecord {
         map.serialize_entry("first_seen", &self.first_seen)?;
         map.serialize_entry("seen_count", &self.seen_count)?;
         map.serialize_entry("peering_timebase", &self.peering_timebase)?;
+        map.serialize_entry("sync_strategy", &self.sync_strategy)?;
         if let Some(value) = self.propagation_transfer_limit {
             map.serialize_entry("propagation_transfer_limit", &value)?;
             map.serialize_entry("transfer_limit", &value)?;
@@ -792,6 +794,8 @@ struct PeerRecordWire {
     seen_count: Option<u64>,
     #[serde(default)]
     peering_timebase: i64,
+    #[serde(default = "default_peer_sync_strategy")]
+    sync_strategy: u8,
     #[serde(default)]
     propagation_transfer_limit: Option<JsonValue>,
     #[serde(default)]
@@ -873,6 +877,7 @@ impl<'de> Deserialize<'de> for PeerRecord {
             first_seen: wire.first_seen.unwrap_or(last_seen),
             seen_count: wire.seen_count.unwrap_or_else(|| u64::from(last_seen > 0)),
             peering_timebase: wire.peering_timebase,
+            sync_strategy: wire.sync_strategy,
             propagation_transfer_limit: transfer_limit,
             propagation_sync_limit: sync_limit,
             propagation_stamp_cost: wire.propagation_stamp_cost.or(wire.target_stamp_cost),
@@ -954,6 +959,10 @@ fn default_propagation_sync_limit() -> u32 {
 
 fn default_network_distance() -> u32 {
     1
+}
+
+fn default_peer_sync_strategy() -> u8 {
+    2
 }
 
 #[cfg(test)]
@@ -1054,6 +1063,7 @@ mod peer_record_serde_tests {
         assert_eq!(record.incoming, 4);
         assert_eq!(record.peering_cost, Some(3));
         assert_eq!(record.peering_key_value, Some(3));
+        assert_eq!(record.sync_strategy, 2);
     }
 
     #[test]
@@ -1139,6 +1149,7 @@ mod peer_record_serde_tests {
             first_seen: 1_700_000_900,
             seen_count: 4,
             peering_timebase: 1_700_000_950,
+            sync_strategy: 2,
             propagation_transfer_limit: Some(333),
             propagation_sync_limit: Some(444),
             propagation_stamp_cost: Some(7),
@@ -1191,6 +1202,7 @@ mod peer_record_serde_tests {
             first_seen: 1_700_000_901,
             seen_count: 5,
             peering_timebase: 1_700_000_951,
+            sync_strategy: 2,
             propagation_transfer_limit: Some(555),
             propagation_sync_limit: Some(666),
             propagation_stamp_cost: Some(8),

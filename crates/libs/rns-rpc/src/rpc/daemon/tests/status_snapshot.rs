@@ -4775,6 +4775,7 @@ fn peer_sync_uses_restored_python_peering_key_value() {
         "propagation_stamp_cost_flexibility": 1,
         "peering_cost": 1,
         "peering_key": ["opaque-python-key", 1],
+        "sync_strategy": 1,
         "handled_ids": [],
         "unhandled_ids": [],
     }))
@@ -4805,6 +4806,7 @@ fn peer_sync_uses_restored_python_peering_key_value() {
         .result
         .expect("peer sync result");
     assert_eq!(result["synced"].as_bool(), Some(true));
+    assert_eq!(result["sync_strategy"].as_u64(), Some(1));
     assert_eq!(result["peering_key"].as_u64(), Some(1));
     assert_eq!(result["peering_key_status"].as_str(), Some("ready"));
     assert_eq!(result["propagation"]["handled"].as_u64(), Some(1));
@@ -4815,6 +4817,9 @@ fn peer_sync_uses_restored_python_peering_key_value() {
             .expect("transferred ids"),
         &[json!(entry.transient_id.as_str())]
     );
+    let events = daemon.event_queue.lock().expect("event_queue mutex poisoned");
+    let event = events.iter().find(|event| event.event_type == "peer_sync").expect("peer event");
+    assert_eq!(event.payload["sync_strategy"].as_u64(), Some(1));
 }
 
 #[test]

@@ -265,6 +265,9 @@ gap, even though deeper propagation-router parity remains open.
   This lets restored Python LXMPeer state proceed through stamped offer
   transfer instead of being postponed solely because the local hash-derived key
   cannot be recomputed.
+- Restored peer records now also preserve Python's serialized `sync_strategy`
+  transfer strategy instead of collapsing every peer to persistent strategy in
+  local/remote peer sync results, events, and peer status rows.
 - Local peer sync offer ordering now also applies Python's prioritised
   destination weighting before sync-limit selection, so propagation entries for
   prioritised destinations are offered ahead of lower raw-weight entries when

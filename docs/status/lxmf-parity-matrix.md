@@ -105,7 +105,8 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
   values, explicit peering-key readiness status values, bidirectional
   Python `destination_hash` peer-record compatibility, Python-style restored
   acceptance-rate derivation from offered/outgoing counters, restored
-  Python `peering_key` readiness for local peer sync, and destination fetch
+  Python `peering_key` readiness for local peer sync, restored Python
+  `sync_strategy` transfer-state reporting, and destination fetch
   duplicate-wanted de-duplication are exposed. Local offer responses now accept
   Python's boolean all/none and list-shaped response forms, keep full-offer
   stamp-policy and peering-key gates for boolean wants-all, request-limited,
