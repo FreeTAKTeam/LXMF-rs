@@ -954,7 +954,8 @@ impl RpcDaemon {
             .peers
             .lock()
             .expect("peers mutex poisoned")
-            .get(peer.as_str())
+            .values()
+            .find(|record| record.peer.eq_ignore_ascii_case(peer.as_str()))
             .map(|record| record.last_seen)
             .unwrap_or_default();
         let static_path_response_refresh_allowed = !is_path_response || static_peer_last_seen == 0;

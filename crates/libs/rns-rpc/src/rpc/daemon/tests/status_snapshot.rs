@@ -1943,6 +1943,100 @@ fn static_peer_path_response_announce_does_not_refresh_existing_peer_state() {
 }
 
 #[test]
+fn static_peer_path_response_matches_existing_peer_case_insensitively_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    let stored_peer = "Peer-Static-Path-Case";
+    let request_peer = stored_peer.to_ascii_lowercase();
+    daemon
+        .handle_rpc(rpc_request(
+            56,
+            "propagation_enable",
+            json!({
+                "enabled": true,
+                "static_peers": [stored_peer],
+            }),
+        ))
+        .expect("enable static peer");
+    let initial_app_data = rmp_serde::to_vec_named(&MsgPackValue::Array(vec![
+        MsgPackValue::Boolean(false),
+        MsgPackValue::from(1_700_000_024i64),
+        MsgPackValue::Boolean(true),
+        MsgPackValue::from(222),
+        MsgPackValue::from(888),
+        MsgPackValue::Array(vec![
+            MsgPackValue::from(7),
+            MsgPackValue::from(2),
+            MsgPackValue::from(4),
+        ]),
+        MsgPackValue::Map(vec![(
+            MsgPackValue::from(1),
+            MsgPackValue::Binary(b"Static Case PN".to_vec()),
+        )]),
+    ]))
+    .expect("encode initial propagation app data");
+    daemon
+        .handle_rpc(rpc_request(
+            57,
+            "announce_received",
+            json!({
+                "peer": stored_peer,
+                "timestamp": 1_700_000_140i64,
+                "app_data_hex": hex::encode(initial_app_data),
+                "aspect": "lxmf.propagation",
+            }),
+        ))
+        .expect("initial announce");
+
+    let path_response_app_data = rmp_serde::to_vec_named(&MsgPackValue::Array(vec![
+        MsgPackValue::Boolean(false),
+        MsgPackValue::from(1_700_000_125i64),
+        MsgPackValue::Boolean(true),
+        MsgPackValue::from(555),
+        MsgPackValue::from(1110),
+        MsgPackValue::Array(vec![
+            MsgPackValue::from(10),
+            MsgPackValue::from(3),
+            MsgPackValue::from(6),
+        ]),
+        MsgPackValue::Map(vec![(
+            MsgPackValue::from(1),
+            MsgPackValue::Binary(b"Path Case PN".to_vec()),
+        )]),
+    ]))
+    .expect("encode path response propagation app data");
+    daemon
+        .handle_rpc(rpc_request(
+            58,
+            "announce_received",
+            json!({
+                "peer": request_peer,
+                "timestamp": 1_700_000_150i64,
+                "app_data_hex": hex::encode(path_response_app_data),
+                "aspect": "lxmf.propagation",
+                "is_path_response": true,
+            }),
+        ))
+        .expect("path response announce");
+
+    let peers = daemon
+        .handle_rpc(RpcRequest { id: 59, method: "list_peers".to_string(), params: None })
+        .expect("list peers")
+        .result
+        .expect("list peers result");
+    let rows = peers["peers"].as_array().expect("peer rows");
+    assert_eq!(rows.len(), 1);
+    let row = rows.iter().find(|row| row["peer"].as_str() == Some(stored_peer)).expect("static row");
+    assert_eq!(row["last_heard"].as_i64(), Some(1_700_000_140));
+    assert_eq!(row["peering_timebase"].as_i64(), Some(1_700_000_024));
+    assert_eq!(row["propagation_transfer_limit"].as_u64(), Some(222));
+    assert_eq!(row["propagation_sync_limit"].as_u64(), Some(888));
+    assert_eq!(row["propagation_stamp_cost"].as_u64(), Some(7));
+    assert_eq!(row["propagation_stamp_cost_flexibility"].as_u64(), Some(2));
+    assert_eq!(row["peering_cost"].as_u64(), Some(4));
+    assert_eq!(row["name"].as_str(), Some("Static Case PN"));
+}
+
+#[test]
 fn announce_received_parses_propagation_peer_name_from_python_metadata() {
     let daemon = RpcDaemon::test_instance();
     daemon

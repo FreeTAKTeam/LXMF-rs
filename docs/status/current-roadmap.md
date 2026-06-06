@@ -122,7 +122,10 @@ gap, even though deeper propagation-router parity remains open.
 - Static peer activation now resolves existing peers case-insensitively before
   inserting configured static peers, preserving the stored peer id and avoiding
   duplicate queue/account records. Existing propagation entries are also queued
-  under the stored peer id instead of the configured spelling.
+  under the stored peer id instead of the configured spelling. Static
+  path-response announce suppression now applies the same stored-peer identity
+  rule, so a different-case path response cannot refresh an already active
+  static peer's limits, liveness, or metadata.
 - Propagation peer admission now mirrors Python's high-cost peering policy for
   existing non-static peers: a newer announce above `remote_peering_cost_max`
   breaks manual or auto peering and clears propagation queue marks, while stale
