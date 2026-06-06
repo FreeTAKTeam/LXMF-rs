@@ -21,7 +21,29 @@ pub(super) async fn ingest_propagation_envelope(
     payload: &[u8],
     delivery_destination: Option<&Arc<tokio::sync::Mutex<SingleInputDestination>>>,
 ) -> Result<usize, std::io::Error> {
-    ingest_propagation_envelope_from_peer(daemon, payload, delivery_destination, None, false).await
+    ingest_propagation_envelope_from_peer(daemon, payload, delivery_destination, None).await
+}
+
+pub(super) async fn ingest_propagation_resource_from_peer(
+    daemon: &RpcDaemon,
+    payload: &[u8],
+    delivery_destination: Option<&Arc<tokio::sync::Mutex<SingleInputDestination>>>,
+    remote_propagation_peer: Option<&str>,
+    peer_link_validated: bool,
+) -> Result<usize, std::io::Error> {
+    if !peer_link_validated && propagation_envelope_message_count(payload)? > 1 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "received multiple propagation messages without valid peering key",
+        ));
+    }
+    ingest_propagation_envelope_from_peer(
+        daemon,
+        payload,
+        delivery_destination,
+        remote_propagation_peer,
+    )
+    .await
 }
 
 pub(super) async fn ingest_propagation_envelope_from_peer(
@@ -29,7 +51,6 @@ pub(super) async fn ingest_propagation_envelope_from_peer(
     payload: &[u8],
     delivery_destination: Option<&Arc<tokio::sync::Mutex<SingleInputDestination>>>,
     remote_propagation_peer: Option<&str>,
-    peer_link_validated: bool,
 ) -> Result<usize, std::io::Error> {
     let (_timestamp, messages): (f64, Vec<Vec<u8>>) =
         rmp_serde::from_slice(payload).map_err(|err| {
@@ -38,12 +59,6 @@ pub(super) async fn ingest_propagation_envelope_from_peer(
                 format!("invalid propagation envelope: {err}"),
             )
         })?;
-    if remote_propagation_peer.is_some() && !peer_link_validated && messages.len() > 1 {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::PermissionDenied,
-            "received multiple propagation messages without valid peering key",
-        ));
-    }
     let accepted_stamp_cost = daemon.propagation_min_accepted_stamp_cost();
     let mut invalid_stamp_error = None;
     for message in messages.iter() {
@@ -92,6 +107,17 @@ pub(super) async fn ingest_propagation_envelope_from_peer(
     if let Some(error) = invalid_stamp_error {
         return Err(error);
     }
+    Ok(messages.len())
+}
+
+fn propagation_envelope_message_count(payload: &[u8]) -> Result<usize, std::io::Error> {
+    let (_timestamp, messages): (f64, Vec<Vec<u8>>) =
+        rmp_serde::from_slice(payload).map_err(|err| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("invalid propagation envelope: {err}"),
+            )
+        })?;
     Ok(messages.len())
 }
 

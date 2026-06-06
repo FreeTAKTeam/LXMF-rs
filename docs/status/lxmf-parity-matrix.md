@@ -2,14 +2,14 @@
 
 Status: historical parity snapshot; check `docs/status/current-roadmap.md` for
 current repo-wide status before relying on this file for active execution order.
-As of 2026-06-05, the live Python-reference interop workflow is green for the
+As of 2026-06-06, the live Python-reference interop workflow is green for the
 current branch, but that checkpoint does not convert the partial peer, router,
 propagation, and stamper rows below into full parity. The Reticulum
 KISS/LoRa/RNode interface work improves the transport substrate available to
 LXMF, but it does not by itself complete LXMF peer sync, propagation router, or
 stamp worker parity.
 
-Last reassessed: 2026-06-05 (boolean offer-response peer-sync regressions added)
+Last reassessed: 2026-06-06 (prioritised destination peer-offer weighting regression added)
 
 Status legend: `not-started` | `partial` | `done`
 
@@ -90,17 +90,38 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
   accounting, per-peer propagation transfer/sync limits, propagation stamp
   policy, Python-compatible low-value stamped peer-offer handling,
   strict peering-timebase config refresh, Python-style unreachable-peer
-  maintenance culling, admitted-offer-only validated peering links, mixed
-  invalid-stamp peer resource handling that preserves valid entries before
-  throttling, inbound propagation resource source-peer queueing, remote-sync
-  source-peer inbound byte/message accounting without outbound transfer-rate or
-  `tx_bytes` inflation, local-delivery source-peer accounting, unpeered
-  identified-sender accounting, peering-key values, and explicit peering-key
-  readiness status values are exposed. Local offer responses now accept
-  Python's boolean all/none and list-shaped response forms and reject
+  maintenance culling, low-acceptance non-static peer rotation,
+  maintenance-driven waiting peer sync, Python-style maintenance candidate
+  pooling for all unknown-speed peers, retry-ready unresponsive-peer pool
+  selection, and unreachable static peer sync-pool skipping, high-cost
+  existing-peer peering breaks with queue cleanup,
+  admitted-offer-only
+  validated peering links for multi-message client or peer propagation
+  resources while packet propagation keeps Python-style multi-message
+  acceptance, mixed invalid-stamp peer resource handling that preserves valid
+  entries before throttling, inbound propagation resource source-peer queueing,
+  remote-sync source-peer inbound byte/message accounting without outbound
+  transfer-rate or `tx_bytes` inflation, local-delivery source-peer accounting,
+  unpeered identified-sender accounting, peering-key
+  values, and explicit peering-key readiness status values are exposed. Local
+  offer responses now accept
+  Python's boolean all/none and list-shaped response forms, keep full-offer
+  stamp-policy and peering-key gates for boolean wants-all, request-limited,
+  selected-ID transfer, and no-transfer responses, preserve previous
+  last-heard/seen-count values for no-transfer responses, and reject
   valid-looking wanted transient IDs outside the current offer before mutating
-  queue state or creating a new peer queue, but the active workspace does not
-  yet match Python `LXMPeer` queueing, transfer, and peering behavior.
+  queue state or creating a new peer queue.
+  selected-ID transfer, and no-transfer responses, and reject valid-looking
+  wanted transient IDs outside the current offer before mutating queue state or
+  creating a new peer queue.
+  Local peer sync also persists Python-style cumulative acceptance-rate cache
+  values after multiple offer responses.
+  creating a new peer queue. Local peer sync offer ordering now applies
+  Python's prioritised destination weighting before sync-limit selection.
+  Existing peers in local sync
+  backoff now also postpone before the local existing-entry queue-fill path,
+  but the active workspace does not yet match Python `LXMPeer` queueing,
+  transfer, and peering behavior.
 - Paper-command baseline is implemented for bridge-backed `reticulumd`: SDK
   paper encode/decode uses canonical `lxmf-wire` paper URI helpers and tests
   reject the old placeholder `lxm://{destination}/{message_id}` path. Broader
@@ -151,6 +172,14 @@ Recent focused evidence:
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_rejects_unknown_wanted_ids_without_creating_new_peer_queue -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_rejects_transfer_limited_wanted_ids_without_mutating_queue -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_boolean -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib peer_sync_boolean_wanted_ids_true_keeps_full_offer_policy_gates_like_python -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib peer_sync_request_transfer_limit_keeps_full_offer_policy_gates_like_python -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib peer_sync_selected_wanted_ids_keep_full_offer_policy_gates_like_python -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib peer_sync_empty_wanted_ids_keep_full_offer_policy_gates_like_python -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib peer_sync_persists_cumulative_acceptance_rate_like_python -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib peer_sync_no_transfer_preserves_last_heard_like_python -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib peer_sync_during_backoff_does_not_queue_new_existing_entries_like_python -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib peer_sync_prioritised_destinations_reduce_offer_weight_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib propagation_remote_fetch -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib propagation_remote_download -- --nocapture`
@@ -166,7 +195,15 @@ Recent focused evidence:
 - `cargo test -p reticulum-rs-rpc --lib autopeered_announce_records_propagation_peer_state -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib low_value_stamped_entries -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib equal_timebase_announce_does_not_refresh_propagation_peer_state_like_python -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib high_cost_announce_breaks_existing_manual_peer_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib propagation_peer_maintenance_culls_unreachable_non_static_peers_like_python -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib propagation_peer_maintenance_rotates_low_acceptance_autopeers_like_python -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib propagation_peer_maintenance_rotates_low_acceptance_non_static_peers_like_python -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib propagation_peer_maintenance_syncs_one_waiting_peer_like_python -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib propagation_peer_maintenance_candidate_pool_includes_unknown_speed_peers_like_python -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib propagation_peer_maintenance_candidate_pool_includes_all_unknown_speed_peers_like_python -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib propagation_peer_maintenance_unresponsive_pool_does_not_starve_later_peers_like_python -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib propagation_peer_maintenance_does_not_sync_unreachable_static_peer_like_python -- --nocapture`
 - `cargo test -p reticulumd --bin reticulumd python_status_exposes_peer_peering_key_value -- --nocapture`
 - `cargo test -p reticulumd --bin reticulumd python_status_exposes_peer_peering_key_status -- --nocapture`
 - `cargo test -p reticulumd --bin reticulumd peer_sync_command_reports_peering_key_status -- --nocapture`
@@ -181,6 +218,8 @@ Recent focused evidence:
 - `cargo test -p reticulumd --bin reticulumd message_get_marks_served_wanted_payloads_transferred_for_peer -- --nocapture`
 - `cargo test -p reticulumd --bin reticulumd inbound_peer_propagation_preserves_valid_messages_when_transfer_has_invalid_stamp_like_python -- --nocapture`
 - `cargo test -p reticulumd --bin reticulumd inbound_peer_propagation_local_delivery_counts_source_peer_like_python -- --nocapture`
+- `cargo test -p reticulumd --bin reticulumd inbound_client_packet_propagation_accepts_multi_message_like_python -- --nocapture`
+- `cargo test -p reticulumd --bin reticulumd inbound_client_resource_rejects_multi_message_without_validated_link_like_python -- --nocapture`
 - `cargo test -p reticulumd --bin reticulumd inbound_peer_propagation_ -- --nocapture`
 - `cargo test -p reticulumd --bin reticulumd offer_request -- --nocapture`
 - `cargo test -p reticulumd --bin reticulumd inbound_worker::control::tests -- --nocapture`

@@ -566,22 +566,36 @@ impl RpcDaemon {
                     ));
                 }
                 let wanted_ids = canonical_peer_sync_wanted_ids(parsed.wanted_ids.as_ref())?;
+                let requested_transfer_limit_bytes =
+                    parsed.transfer_limit_kb.map(|limit| (limit.max(0.0) * 1000.0) as usize);
 
                 let timestamp = now_i64();
+                let prioritised_destinations = self
+                    .delivery_policy
+                    .lock()
+                    .expect("policy mutex poisoned")
+                    .prioritised_destinations
+                    .clone();
                 let existing_peer =
                     self.peers.lock().expect("peers mutex poisoned").get(peer_id).cloned();
                 if existing_peer.is_none()
                     && wanted_ids.as_ref().is_some_and(PeerSyncWantedIds::requires_offer_validation)
                 {
-                    let requested_transfer_limit_bytes =
-                        parsed.transfer_limit_kb.map(|limit| (limit.max(0.0) * 1000.0) as usize);
                     let mut prospective_propagation = self
                         .store
                         .list_peer_prospective_unhandled_propagation(peer_id)
                         .map_err(std::io::Error::other)?;
                     prospective_propagation.sort_by(|left, right| {
-                        let left_weight = propagation_peer_sync_weight(left, timestamp);
-                        let right_weight = propagation_peer_sync_weight(right, timestamp);
+                        let left_weight = propagation_peer_sync_weight(
+                            left,
+                            timestamp,
+                            prioritised_destinations.as_slice(),
+                        );
+                        let right_weight = propagation_peer_sync_weight(
+                            right,
+                            timestamp,
+                            prioritised_destinations.as_slice(),
+                        );
                         left_weight
                             .partial_cmp(&right_weight)
                             .unwrap_or(std::cmp::Ordering::Equal)
@@ -594,8 +608,37 @@ impl RpcDaemon {
                         requested_transfer_limit_bytes,
                     )?;
                 }
+                if let Some(record) = existing_peer.as_ref() {
+                    let record_transfer_limit_bytes =
+                        record.propagation_transfer_limit.map(|limit| limit as usize);
+                    let transfer_limit_bytes =
+                        match (record_transfer_limit_bytes, requested_transfer_limit_bytes) {
+                            (Some(record_limit), Some(requested_limit)) => {
+                                Some(record_limit.min(requested_limit))
+                            }
+                            (Some(record_limit), None) => Some(record_limit),
+                            (None, Some(requested_limit)) => Some(requested_limit),
+                            (None, None) => None,
+                        };
+                    let sync_limit_bytes = record
+                        .propagation_sync_limit
+                        .map(|limit| limit as usize)
+                        .or(transfer_limit_bytes);
+                    if record.next_sync_attempt > 0 && timestamp < record.next_sync_attempt {
+                        return Ok(self.postponed_peer_sync_response(
+                            request.id,
+                            record,
+                            timestamp,
+                            "backoff",
+                            transfer_limit_bytes,
+                            sync_limit_bytes,
+                        ));
+                    }
+                }
                 let existing_peer_type =
                     existing_peer.as_ref().and_then(|record| record.peer_type.clone());
+                let prior_peer_seen =
+                    existing_peer.as_ref().map(|record| (record.last_seen, record.seen_count));
                 let peer_type = if self.is_static_peer(peer_id) {
                     Some("static".to_string())
                 } else if existing_peer_type.as_deref() == Some("unpeered") {
@@ -614,10 +657,8 @@ impl RpcDaemon {
                 self.queue_existing_propagation_for_peer(record.peer.as_str())?;
                 let record_transfer_limit_bytes =
                     record.propagation_transfer_limit.map(|limit| limit as usize);
-                let requested_transfer_limit_bytes =
-                    parsed.transfer_limit_kb.map(|limit| (limit.max(0.0) * 1000.0) as usize);
                 let explicit_peer_sync_selection =
-                    wanted_ids.is_some() || requested_transfer_limit_bytes.is_some();
+                    wanted_ids.as_ref().is_some_and(PeerSyncWantedIds::requires_offer_validation);
                 let transfer_limit_bytes =
                     match (record_transfer_limit_bytes, requested_transfer_limit_bytes) {
                         (Some(record_limit), Some(requested_limit)) => {
@@ -655,8 +696,16 @@ impl RpcDaemon {
                 let mut propagation_rejected_bytes = 0u64;
                 let mut propagation_rejected_ids = Vec::new();
                 pending_propagation.sort_by(|left, right| {
-                    let left_weight = propagation_peer_sync_weight(left, timestamp);
-                    let right_weight = propagation_peer_sync_weight(right, timestamp);
+                    let left_weight = propagation_peer_sync_weight(
+                        left,
+                        timestamp,
+                        prioritised_destinations.as_slice(),
+                    );
+                    let right_weight = propagation_peer_sync_weight(
+                        right,
+                        timestamp,
+                        prioritised_destinations.as_slice(),
+                    );
                     left_weight
                         .partial_cmp(&right_weight)
                         .unwrap_or(std::cmp::Ordering::Equal)
@@ -737,6 +786,7 @@ impl RpcDaemon {
                     );
                 let peer_policy_required = remaining_policy_relevant > 0
                     && (!explicit_peer_sync_selection
+                        || wanted_ids.is_some()
                         || remaining_policy_relevant_has_stamp
                         || peer_stamp_policy_partially_known(&record));
                 if peer_policy_required && !peer_stamp_policy_known(&record) {
@@ -871,6 +921,8 @@ impl RpcDaemon {
                     sync_transfer_rate,
                     tx_bytes,
                     alive,
+                    last_heard,
+                    seen_count,
                 ) = {
                     let mut guard = self.peers.lock().expect("peers mutex poisoned");
                     if let Some(existing) = guard.get_mut(&record.peer) {
@@ -896,6 +948,12 @@ impl RpcDaemon {
                             || existing.acceptance_rate > 0.0;
                         let was_alive = existing.alive;
                         existing.last_sync_attempt = timestamp;
+                        if propagation_no_transfer_offer_response {
+                            if let Some((last_seen, seen_count)) = prior_peer_seen {
+                                existing.last_seen = last_seen;
+                                existing.seen_count = seen_count;
+                            }
+                        }
                         existing.alive = if (propagation_no_work
                             && existing.sync_backoff == 0
                             && had_prior_peer_activity)
@@ -915,9 +973,11 @@ impl RpcDaemon {
                                 existing.offered.saturating_add(propagation_offered as u64);
                             existing.outgoing =
                                 existing.outgoing.saturating_add(propagation_transferred as u64);
-                            existing.acceptance_rate = (propagation_transferred as f64
-                                / propagation_offered as f64)
-                                .clamp(0.0, 1.0);
+                            existing.acceptance_rate = if existing.offered == 0 {
+                                0.0
+                            } else {
+                                (existing.outgoing as f64 / existing.offered as f64).clamp(0.0, 1.0)
+                            };
                         }
                         if propagation_completed {
                             existing.sync_backoff = 0;
@@ -937,6 +997,8 @@ impl RpcDaemon {
                             existing.sync_transfer_rate,
                             existing.tx_bytes,
                             existing.alive,
+                            existing.last_seen,
+                            existing.seen_count,
                         )
                     } else {
                         (
@@ -947,6 +1009,8 @@ impl RpcDaemon {
                             record.sync_transfer_rate,
                             record.tx_bytes,
                             record.alive,
+                            record.last_seen,
+                            record.seen_count,
                         )
                     }
                 };
@@ -993,9 +1057,9 @@ impl RpcDaemon {
                         "timestamp": timestamp,
                         "name": &record.name,
                         "name_source": &record.name_source,
-                        "last_heard": record.last_seen,
+                        "last_heard": last_heard,
                         "first_seen": record.first_seen,
-                        "seen_count": record.seen_count,
+                        "seen_count": seen_count,
                         "state": 0,
                         "sync_strategy": 2,
                         "ler": 0,
@@ -1039,7 +1103,7 @@ impl RpcDaemon {
                         "name": record.name,
                         "name_source": record.name_source,
                         "first_seen": record.first_seen,
-                        "seen_count": record.seen_count,
+                        "seen_count": seen_count,
                         "synced": true,
                         "state": 0,
                         "sync_strategy": 2,
@@ -1050,7 +1114,7 @@ impl RpcDaemon {
                         "tx_bytes": tx_bytes,
                         "alive": alive,
                         "acceptance_rate": acceptance_rate,
-                        "last_heard": record.last_seen,
+                        "last_heard": last_heard,
                         "last_sync_attempt": last_sync_attempt,
                         "next_sync_attempt": next_sync_attempt,
                         "sync_backoff": sync_backoff,
@@ -1723,10 +1787,10 @@ fn peer_sync_policy_relevance(
     let mut policy_relevant_pending = 0usize;
     let mut policy_relevant_has_stamp = false;
     let mut policy_relevant_size = 24usize;
-    for entry in pending_propagation
-        .iter()
-        .filter(|entry| wanted_ids.map_or(true, |ids| ids.wants(entry.transient_id.as_str())))
-    {
+    let policy_wanted_ids = wanted_ids.filter(|ids| !ids.wants_none());
+    for entry in pending_propagation.iter().filter(|entry| {
+        policy_wanted_ids.map_or(true, |ids| ids.wants(entry.transient_id.as_str()))
+    }) {
         let entry_size = usize::try_from(entry.size_bytes).unwrap_or(usize::MAX);
         let transfer_size = entry_size.saturating_add(16);
         let next_size = policy_relevant_size.saturating_add(transfer_size);
@@ -1851,12 +1915,24 @@ fn peer_sync_resource_data_size(payloads: &[Vec<u8>]) -> Result<u64, std::io::Er
     Ok(packed.len() as u64)
 }
 
-fn propagation_peer_sync_weight(entry: &PropagationEntryRecord, now: i64) -> f64 {
+fn propagation_peer_sync_weight(
+    entry: &PropagationEntryRecord,
+    now: i64,
+    prioritised_destinations: &[String],
+) -> f64 {
     const FOUR_DAYS_SECS: f64 = 4.0 * 24.0 * 60.0 * 60.0;
 
     let age_secs = now.saturating_sub(entry.received_at) as f64;
     let age_weight = (age_secs / FOUR_DAYS_SECS).max(1.0);
-    age_weight * entry.size_bytes as f64
+    let priority_weight = if prioritised_destinations
+        .iter()
+        .any(|destination| entry.destination.eq_ignore_ascii_case(destination.trim()))
+    {
+        0.1
+    } else {
+        1.0
+    };
+    priority_weight * age_weight * entry.size_bytes as f64
 }
 
 fn decode_truncated_hash(value: &str) -> Option<Vec<u8>> {
