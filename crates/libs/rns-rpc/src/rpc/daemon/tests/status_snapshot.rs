@@ -3362,6 +3362,14 @@ fn propagation_peer_maintenance_skips_unresponsive_peer_at_backoff_boundary_like
 }
 
 #[test]
+fn peer_sync_backoff_boundary_remains_postponed_like_python() {
+    assert!(dispatch_legacy_messages::peer_sync_backoff_active(99, 100));
+    assert!(dispatch_legacy_messages::peer_sync_backoff_active(100, 100));
+    assert!(!dispatch_legacy_messages::peer_sync_backoff_active(101, 100));
+    assert!(!dispatch_legacy_messages::peer_sync_backoff_active(100, 0));
+}
+
+#[test]
 fn propagation_peer_maintenance_unresponsive_pool_does_not_starve_later_peers_like_python() {
     let daemon = RpcDaemon::test_instance();
     let first_peer = make_ready_propagation_peer(&daemon, 0x57);

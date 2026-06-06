@@ -1,4 +1,4 @@
-use super::dispatch_legacy_messages::LocalUnpeerCleanup;
+use super::dispatch_legacy_messages::{peer_sync_backoff_active, LocalUnpeerCleanup};
 use super::*;
 
 pub(super) const LXMF_PEER_SYNC_BACKOFF_STEP_SECS: u32 = 12 * 60;
@@ -1573,7 +1573,7 @@ impl RpcDaemon {
             if stats.unhandled == 0 {
                 continue;
             }
-            if record.next_sync_attempt > 0 && timestamp <= record.next_sync_attempt {
+            if peer_sync_backoff_active(timestamp, record.next_sync_attempt) {
                 continue;
             }
             if record.alive {

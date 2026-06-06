@@ -168,6 +168,9 @@ gap, even though deeper propagation-router parity remains open.
 - Propagation peer maintenance now skips peers whose `next_sync_attempt` has
   not strictly elapsed, so a backed-off peer at the exact retry boundary cannot
   consume the maintenance sync slot and block another eligible queued peer.
+- Local and remote peer sync now use the same strict `next_sync_attempt`
+  boundary, so explicit sync requests also remain postponed until the retry
+  timestamp has actually elapsed.
 - Propagation peer maintenance also follows Python's sync-pool boundary for
   retained static peers: static peers past `LXMPeer.MAX_UNREACHABLE` are kept
   peered, but are not selected for waiting or retry-ready sync in that

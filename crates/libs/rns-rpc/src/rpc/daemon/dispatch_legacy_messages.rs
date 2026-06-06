@@ -628,7 +628,7 @@ impl RpcDaemon {
                         };
                     let sync_limit_bytes =
                         record.propagation_sync_limit.map(|limit| limit as usize);
-                    if record.next_sync_attempt > 0 && timestamp < record.next_sync_attempt {
+                    if peer_sync_backoff_active(timestamp, record.next_sync_attempt) {
                         return Ok(self.postponed_peer_sync_response(
                             request.id,
                             record,
@@ -673,7 +673,7 @@ impl RpcDaemon {
                         (None, None) => None,
                     };
                 let sync_limit_bytes = record.propagation_sync_limit.map(|limit| limit as usize);
-                if record.next_sync_attempt > 0 && timestamp < record.next_sync_attempt {
+                if peer_sync_backoff_active(timestamp, record.next_sync_attempt) {
                     return Ok(self.postponed_peer_sync_response(
                         request.id,
                         &record,
@@ -1998,6 +1998,10 @@ fn peer_sync_policy_relevance(
         policy_relevant_has_stamp |= entry.stamp_value.is_some();
     }
     (policy_relevant_pending, policy_relevant_has_stamp)
+}
+
+pub(super) fn peer_sync_backoff_active(timestamp: i64, next_sync_attempt: i64) -> bool {
+    next_sync_attempt > 0 && timestamp <= next_sync_attempt
 }
 
 #[derive(Debug)]

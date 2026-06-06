@@ -1484,7 +1484,10 @@ impl RpcDaemon {
                         transfer_limit_kb.map(|limit| (limit.max(0.0) * 1000.0) as u64);
                     let sync_limit =
                         record.propagation_sync_limit.map(u64::from).or(transfer_limit);
-                    if record.next_sync_attempt > 0 && timestamp < record.next_sync_attempt {
+                    if super::dispatch_legacy_messages::peer_sync_backoff_active(
+                        timestamp,
+                        record.next_sync_attempt,
+                    ) {
                         return Ok(self.postponed_peer_sync_response(
                             request.id,
                             &record,
@@ -1512,7 +1515,10 @@ impl RpcDaemon {
                     transfer_limit_kb.map(|limit| (limit.max(0.0) * 1000.0) as u64);
                 let sync_limit = record.propagation_sync_limit.map(u64::from).or(transfer_limit);
                 let peer_key = record.peer.clone();
-                if record.next_sync_attempt > 0 && timestamp < record.next_sync_attempt {
+                if super::dispatch_legacy_messages::peer_sync_backoff_active(
+                    timestamp,
+                    record.next_sync_attempt,
+                ) {
                     return Ok(self.postponed_peer_sync_response(
                         request.id,
                         &record,
