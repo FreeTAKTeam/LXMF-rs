@@ -302,11 +302,11 @@ fn resource_manager_removes_link_scoped_state_on_link_close() {
 }
 
 #[test]
-fn resource_receiver_sends_no_redundant_requests_during_fast_transfer() {
-    // Before fix: N parts arriving → N request packets (one per Incomplete outcome).
-    // After fix:  N parts arriving in <<50ms → 0 request packets (cooldown not elapsed).
-    // The remaining<WINDOW guard is also exercised: parts 8-9 leave 2-1 parts
-    // remaining (<WINDOW=4), so immediate_request_due returns false regardless of time.
+fn resource_receiver_slides_window_without_redundant_requests() {
+    // With adaptive in-flight tracking the receiver keeps at most WINDOW fragments
+    // in flight at any time. Each received part opens one slot, so exactly one new
+    // fragment is requested per arrived part once the pipeline is full — never the
+    // same fragment twice while it is still in flight.
     let signer = PrivateIdentity::new_from_rand(OsRng);
     let identity = *signer.as_identity();
     let destination = DestinationDesc {
@@ -352,20 +352,31 @@ fn resource_receiver_sends_no_redundant_requests_during_fast_transfer() {
     let _ = manager.handle_packet(&adv_packet, &mut link);
     assert!(manager.incoming.contains_key(&adv.hash));
 
-    // Feed 9 of 10 parts in a tight loop — all arrive within microseconds.
-    let mut request_count = 0usize;
+    // Feed 9 of 10 parts. Verify window-sliding behaviour:
+    // at most 1 new request per received part (window opens by 1 slot each time),
+    // and the total number of request packets is bounded by TOTAL_PARTS - WINDOW
+    // (WINDOW fragments were already requested in the advertisement response).
+    let mut total_request_packets = 0usize;
     for part in parts.iter().take(TOTAL_PARTS - 1) {
         let p = resource_packet(PacketContext::Resource, part, *link.id());
         let responses = manager.handle_packet(&p, &mut link);
-        request_count += responses
+        let req_packets: Vec<_> = responses
             .iter()
             .filter(|p| p.context == PacketContext::ResourceRequest)
-            .count();
+            .collect();
+        assert!(
+            req_packets.len() <= 1,
+            "expected at most 1 request per received part, got {}",
+            req_packets.len()
+        );
+        total_request_packets += req_packets.len();
     }
 
-    assert_eq!(
-        request_count, 0,
-        "expected no redundant request packets during fast transfer, got {request_count}"
+    assert!(
+        total_request_packets <= TOTAL_PARTS - WINDOW,
+        "total request packets {} exceeds TOTAL_PARTS - WINDOW = {}",
+        total_request_packets,
+        TOTAL_PARTS - WINDOW
     );
 }
 
