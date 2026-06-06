@@ -121,7 +121,10 @@ gap, even though deeper propagation-router parity remains open.
 - Propagation peer config refresh now follows Python's strict peering-timebase
   ordering: equal-timebase announces are retained in the announce log but no
   longer overwrite the active peer's propagation limits, costs, or peering
-  policy fields.
+  policy fields. Propagation announce parsing now also mirrors Python's limit
+  normalization by clamping sync limits below the peer transfer limit up to the
+  transfer limit, preventing valid offers from being starved by too-low sync
+  budgets.
 - Static peer activation now resolves existing peers case-insensitively before
   inserting configured static peers, preserving the stored peer id and avoiding
   duplicate queue/account records. Existing propagation entries are also queued
