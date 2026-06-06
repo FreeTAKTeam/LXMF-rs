@@ -570,6 +570,12 @@ impl RpcDaemon {
                     parsed.transfer_limit_kb.map(|limit| (limit.max(0.0) * 1000.0) as usize);
 
                 let timestamp = now_i64();
+                let prioritised_destinations = self
+                    .delivery_policy
+                    .lock()
+                    .expect("policy mutex poisoned")
+                    .prioritised_destinations
+                    .clone();
                 let existing_peer =
                     self.peers.lock().expect("peers mutex poisoned").get(peer_id).cloned();
                 if existing_peer.is_none()
@@ -580,8 +586,16 @@ impl RpcDaemon {
                         .list_peer_prospective_unhandled_propagation(peer_id)
                         .map_err(std::io::Error::other)?;
                     prospective_propagation.sort_by(|left, right| {
-                        let left_weight = propagation_peer_sync_weight(left, timestamp);
-                        let right_weight = propagation_peer_sync_weight(right, timestamp);
+                        let left_weight = propagation_peer_sync_weight(
+                            left,
+                            timestamp,
+                            prioritised_destinations.as_slice(),
+                        );
+                        let right_weight = propagation_peer_sync_weight(
+                            right,
+                            timestamp,
+                            prioritised_destinations.as_slice(),
+                        );
                         left_weight
                             .partial_cmp(&right_weight)
                             .unwrap_or(std::cmp::Ordering::Equal)
@@ -680,8 +694,16 @@ impl RpcDaemon {
                 let mut propagation_rejected_bytes = 0u64;
                 let mut propagation_rejected_ids = Vec::new();
                 pending_propagation.sort_by(|left, right| {
-                    let left_weight = propagation_peer_sync_weight(left, timestamp);
-                    let right_weight = propagation_peer_sync_weight(right, timestamp);
+                    let left_weight = propagation_peer_sync_weight(
+                        left,
+                        timestamp,
+                        prioritised_destinations.as_slice(),
+                    );
+                    let right_weight = propagation_peer_sync_weight(
+                        right,
+                        timestamp,
+                        prioritised_destinations.as_slice(),
+                    );
                     left_weight
                         .partial_cmp(&right_weight)
                         .unwrap_or(std::cmp::Ordering::Equal)
@@ -1877,12 +1899,24 @@ fn peer_sync_resource_data_size(payloads: &[Vec<u8>]) -> Result<u64, std::io::Er
     Ok(packed.len() as u64)
 }
 
-fn propagation_peer_sync_weight(entry: &PropagationEntryRecord, now: i64) -> f64 {
+fn propagation_peer_sync_weight(
+    entry: &PropagationEntryRecord,
+    now: i64,
+    prioritised_destinations: &[String],
+) -> f64 {
     const FOUR_DAYS_SECS: f64 = 4.0 * 24.0 * 60.0 * 60.0;
 
     let age_secs = now.saturating_sub(entry.received_at) as f64;
     let age_weight = (age_secs / FOUR_DAYS_SECS).max(1.0);
-    age_weight * entry.size_bytes as f64
+    let priority_weight = if prioritised_destinations
+        .iter()
+        .any(|destination| entry.destination.eq_ignore_ascii_case(destination.trim()))
+    {
+        0.1
+    } else {
+        1.0
+    };
+    priority_weight * age_weight * entry.size_bytes as f64
 }
 
 fn decode_truncated_hash(value: &str) -> Option<Vec<u8>> {

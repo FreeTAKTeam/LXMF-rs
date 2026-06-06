@@ -20,6 +20,14 @@ struct ResourceReceiver {
     last_request: Instant,
     retry_count: u8,
     status: ResourceStatus,
+    /// Indices of fragments not yet requested, in hashmap order.
+    request_queue: VecDeque<usize>,
+    /// Ordered by send time (front = oldest). Used to detect timed-out fragments in O(1).
+    in_flight_queue: VecDeque<(Instant, usize)>,
+    /// Maps fragment index → time it was last requested, for RTT measurement.
+    in_flight_set: HashMap<usize, Instant>,
+    /// RTT sample from the most recently matched received part; read once by the manager.
+    last_rtt_sample: Option<Duration>,
 }
 
 #[derive(Debug, Clone)]
@@ -68,6 +76,10 @@ impl ResourceReceiver {
             last_request: now,
             retry_count: 0,
             status: ResourceStatus::Advertised,
+            request_queue: VecDeque::new(),
+            in_flight_queue: VecDeque::new(),
+            in_flight_set: HashMap::new(),
+            last_rtt_sample: None,
         };
         receiver.apply_hashmap_segment(adv.segment_index.saturating_sub(1) as usize, &adv.hashmap);
         Ok(receiver)
@@ -80,29 +92,71 @@ impl ResourceReceiver {
             let mut entry = [0u8; MAPHASH_LEN];
             entry.copy_from_slice(&bytes[start..start + MAPHASH_LEN]);
             let idx = segment * HASHMAP_MAX_LEN + i;
-            if idx < self.hashmap.len() {
+            if idx < self.hashmap.len() && self.hashmap[idx].is_none() {
                 self.hashmap[idx] = Some(entry);
+                self.request_queue.push_back(idx);
             }
         }
     }
 
-    fn build_request(&self) -> ResourceRequest {
-        let mut requested = Vec::new();
-        let mut last_known: Option<[u8; MAPHASH_LEN]> = None;
-        let mut hashmap_exhausted = false;
+    fn build_request(&mut self, now: Instant, rtt: Duration) -> ResourceRequest {
+        // TODO: the loss threshold (2×rtt) and EWMA alpha (7/8) are intuition-based
+        // and have not been formally tuned or proven. On links with high jitter the
+        // 2×rtt multiplier may be too tight (causing spurious re-requests); on links
+        // with asymmetric delay it may be too loose. The EWMA alpha controls how
+        // quickly the estimate tracks changes — a higher alpha (closer to 1) gives
+        // more weight to history and reacts more slowly to sudden changes. Both
+        // values should be validated against real-world Reticulum traffic traces.
+        let loss_threshold = rtt.saturating_mul(2);
 
-        for (idx, entry) in self.hashmap.iter().enumerate() {
-            if let Some(hash) = entry {
-                last_known = Some(*hash);
-                if self.parts[idx].is_none() {
-                    requested.push(*hash);
-                    if requested.len() >= WINDOW {
+        // Drain the front of in_flight_queue (front = oldest, since we append in time order).
+        // Received entries are lazily pruned; entries older than 2×rtt are declared lost
+        // and pushed to the front of request_queue for priority re-request.
+        loop {
+            match self.in_flight_queue.front() {
+                None => break,
+                Some(&(sent_at, idx)) => {
+                    if self.parts[idx].is_some() {
+                        self.in_flight_set.remove(&idx);
+                        self.in_flight_queue.pop_front();
+                    } else if now.duration_since(sent_at) > loss_threshold {
+                        self.in_flight_set.remove(&idx);
+                        self.in_flight_queue.pop_front();
+                        self.request_queue.push_front(idx);
+                    } else {
                         break;
                     }
                 }
-            } else {
-                hashmap_exhausted = true;
-                break;
+            }
+        }
+
+        // Detect hashmap exhaustion: scan for the first None entry.
+        let mut last_known = None;
+        let mut hashmap_exhausted = false;
+        for entry in &self.hashmap {
+            match entry {
+                Some(h) => last_known = Some(*h),
+                None => { hashmap_exhausted = true; break; }
+            }
+        }
+
+        // Fill available window slots. Lost fragments are at the front of request_queue
+        // (pushed there above) so they get priority over new fragments.
+        let window_space = WINDOW.saturating_sub(self.in_flight_set.len());
+        let mut requested = Vec::new();
+        while requested.len() < window_space {
+            match self.request_queue.pop_front() {
+                None => break,
+                Some(idx) => {
+                    if self.parts[idx].is_none() && !self.in_flight_set.contains_key(&idx) {
+                        if let Some(hash) = self.hashmap[idx] {
+                            requested.push(hash);
+                            self.in_flight_set.insert(idx, now);
+                            self.in_flight_queue.push_back((now, idx));
+                        }
+                    }
+                    // Received or already in-flight — skip.
+                }
             }
         }
 
@@ -137,7 +191,12 @@ impl ResourceReceiver {
             self.parts[index] = Some(part.to_vec());
             self.received += 1;
             self.received_bytes = self.received_bytes.saturating_add(part.len() as u64);
-            self.last_progress = Instant::now();
+            let now = Instant::now();
+            self.last_progress = now;
+            // Measure RTT: if this fragment was in-flight, record how long it took.
+            if let Some(sent_at) = self.in_flight_set.remove(&index) {
+                self.last_rtt_sample = Some(now.duration_since(sent_at));
+            }
         }
 
         if self.received == self.parts.len() && !self.parts.is_empty() {
