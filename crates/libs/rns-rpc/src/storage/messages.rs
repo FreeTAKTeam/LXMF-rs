@@ -1037,6 +1037,27 @@ impl MessagesStore {
         })
     }
 
+    pub fn peer_completed_propagation_mark_exists(
+        &self,
+        peer: &str,
+        transient_id: &str,
+    ) -> rusqlite::Result<bool> {
+        self.with_read_conn(|conn| {
+            conn.query_row(
+                "SELECT EXISTS(
+                    SELECT 1
+                    FROM propagation_peer_entries
+                    WHERE peer = ?1
+                      AND transient_id = ?2
+                      AND state IN ('handled', 'transferred', 'received', 'transfer_limited')
+                    LIMIT 1
+                 )",
+                params![peer, normalize_hex_key(transient_id)],
+                |row| row.get(0),
+            )
+        })
+    }
+
     pub fn list_peer_unhandled_propagation_ids(&self, peer: &str) -> rusqlite::Result<Vec<String>> {
         self.with_read_conn(|conn| {
             let mut stmt = conn.prepare(

@@ -5945,6 +5945,76 @@ fn peer_sync_result_reports_cumulative_acceptance_rate_like_python() {
 }
 
 #[test]
+fn peer_sync_persists_cumulative_acceptance_rate_like_python() {
+    let (daemon, peer) = ready_propagation_peer_daemon(0x44);
+    let first = PropagationEntryRecord {
+        transient_id: "44".repeat(32),
+        destination: "12".repeat(16),
+        payload_hex: "12".repeat(24),
+        received_at: 1_700_000_611,
+        size_bytes: 24,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&first).expect("store first entry");
+    daemon
+        .store
+        .mark_peer_unhandled_propagation(peer.as_str(), first.transient_id.as_str())
+        .expect("mark first unhandled");
+    daemon
+        .handle_rpc(rpc_request(
+            57,
+            "peer_sync",
+            json!({ "peer": peer.as_str(), "transfer_limit_kb": 1 }),
+        ))
+        .expect("initial peer sync");
+
+    let wanted = PropagationEntryRecord {
+        transient_id: "45".repeat(32),
+        destination: "12".repeat(16),
+        payload_hex: "13".repeat(24),
+        received_at: 1_700_000_612,
+        size_bytes: 24,
+        stamp_value: None,
+    };
+    let already_known = PropagationEntryRecord {
+        transient_id: "46".repeat(32),
+        destination: "12".repeat(16),
+        payload_hex: "14".repeat(24),
+        received_at: 1_700_000_613,
+        size_bytes: 24,
+        stamp_value: None,
+    };
+    for entry in [&wanted, &already_known] {
+        daemon.store.upsert_propagation_entry(entry).expect("store propagation entry");
+        daemon
+            .store
+            .mark_peer_unhandled_propagation(peer.as_str(), entry.transient_id.as_str())
+            .expect("mark unhandled");
+    }
+
+    daemon
+        .handle_rpc(rpc_request(
+            58,
+            "peer_sync",
+            json!({
+                "peer": peer.as_str(),
+                "wanted_ids": [wanted.transient_id.as_str()],
+            }),
+        ))
+        .expect("second peer sync");
+
+    let peers = daemon.peers.lock().expect("peers mutex poisoned");
+    let record = peers.get(peer.as_str()).expect("peer record");
+    assert_eq!(record.offered, 3);
+    assert_eq!(record.outgoing, 2);
+    assert!(
+        (record.acceptance_rate - (2.0 / 3.0)).abs() < f64::EPSILON,
+        "stored acceptance rate should remain cumulative, got {}",
+        record.acceptance_rate
+    );
+}
+
+#[test]
 fn peer_sync_persists_counters_after_propagation_entries_are_purged_like_python() {
     let (daemon, peer) = ready_propagation_peer_daemon(0xb4);
     let wanted = PropagationEntryRecord {
@@ -7037,6 +7107,70 @@ fn peer_sync_updates_transfer_rate_from_transferred_bytes() {
         .expect("peer row");
     assert_eq!(row["sync_transfer_rate"].as_f64(), Some(expected_resource_bytes as f64));
     assert_eq!(row["str"].as_u64(), Some(expected_resource_bytes as u64));
+}
+
+#[test]
+fn peer_sync_no_transfer_preserves_last_heard_like_python() {
+    let (daemon, peer) = ready_propagation_peer_daemon(0x4d);
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let record = peers.get_mut(peer.as_str()).expect("peer record");
+        record.alive = false;
+        record.last_seen = 7;
+        record.seen_count = 3;
+        record.propagation_sync_limit = Some(1_000);
+    }
+
+    let entry = PropagationEntryRecord {
+        transient_id: "db".repeat(32),
+        destination: "18".repeat(16),
+        payload_hex: "25".repeat(40),
+        received_at: 1_700_000_619,
+        size_bytes: 40,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&entry).expect("store propagation entry");
+    daemon
+        .store
+        .mark_peer_unhandled_propagation(peer.as_str(), entry.transient_id.as_str())
+        .expect("mark unhandled");
+
+    let result = daemon
+        .handle_rpc(rpc_request(
+            64,
+            "peer_sync",
+            json!({
+                "peer": peer.as_str(),
+                "wanted_ids": [],
+                "transfer_limit_kb": 1.0,
+            }),
+        ))
+        .expect("peer sync")
+        .result
+        .expect("peer sync result");
+
+    assert_eq!(result["propagation"]["handled"].as_u64(), Some(1));
+    assert_eq!(result["propagation"]["transferred"].as_u64(), Some(0));
+    let last_sync_attempt = result["last_sync_attempt"].as_i64().expect("last sync attempt");
+    assert!(last_sync_attempt > 7);
+    assert_eq!(result["last_heard"].as_i64(), Some(7));
+    assert_eq!(result["seen_count"].as_u64(), Some(3));
+    assert_eq!(result["alive"].as_bool(), Some(false));
+
+    let peers = daemon
+        .handle_rpc(RpcRequest { id: 65, method: "list_peers".to_string(), params: None })
+        .expect("list peers")
+        .result
+        .expect("list peers result");
+    let row = peers["peers"]
+        .as_array()
+        .expect("peer rows")
+        .iter()
+        .find(|row| row["peer"].as_str() == Some(peer.as_str()))
+        .expect("peer row");
+    assert_eq!(row["last_heard"].as_i64(), Some(7));
+    assert_eq!(row["seen_count"].as_u64(), Some(3));
+    assert_eq!(row["alive"].as_bool(), Some(false));
 }
 
 #[test]

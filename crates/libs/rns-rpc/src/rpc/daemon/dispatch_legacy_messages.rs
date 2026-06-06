@@ -613,6 +613,8 @@ impl RpcDaemon {
                 }
                 let existing_peer_type =
                     existing_peer.as_ref().and_then(|record| record.peer_type.clone());
+                let prior_peer_seen =
+                    existing_peer.as_ref().map(|record| (record.last_seen, record.seen_count));
                 let peer_type = if self.is_static_peer(peer_id) {
                     Some("static".to_string())
                 } else if existing_peer_type.as_deref() == Some("unpeered") {
@@ -895,6 +897,8 @@ impl RpcDaemon {
                     sync_transfer_rate,
                     tx_bytes,
                     alive,
+                    last_heard,
+                    seen_count,
                 ) = {
                     let mut guard = self.peers.lock().expect("peers mutex poisoned");
                     if let Some(existing) = guard.get_mut(&record.peer) {
@@ -920,6 +924,12 @@ impl RpcDaemon {
                             || existing.acceptance_rate > 0.0;
                         let was_alive = existing.alive;
                         existing.last_sync_attempt = timestamp;
+                        if propagation_no_transfer_offer_response {
+                            if let Some((last_seen, seen_count)) = prior_peer_seen {
+                                existing.last_seen = last_seen;
+                                existing.seen_count = seen_count;
+                            }
+                        }
                         existing.alive = if (propagation_no_work
                             && existing.sync_backoff == 0
                             && had_prior_peer_activity)
@@ -939,9 +949,11 @@ impl RpcDaemon {
                                 existing.offered.saturating_add(propagation_offered as u64);
                             existing.outgoing =
                                 existing.outgoing.saturating_add(propagation_transferred as u64);
-                            existing.acceptance_rate = (propagation_transferred as f64
-                                / propagation_offered as f64)
-                                .clamp(0.0, 1.0);
+                            existing.acceptance_rate = if existing.offered == 0 {
+                                0.0
+                            } else {
+                                (existing.outgoing as f64 / existing.offered as f64).clamp(0.0, 1.0)
+                            };
                         }
                         if propagation_completed {
                             existing.sync_backoff = 0;
@@ -961,6 +973,8 @@ impl RpcDaemon {
                             existing.sync_transfer_rate,
                             existing.tx_bytes,
                             existing.alive,
+                            existing.last_seen,
+                            existing.seen_count,
                         )
                     } else {
                         (
@@ -971,6 +985,8 @@ impl RpcDaemon {
                             record.sync_transfer_rate,
                             record.tx_bytes,
                             record.alive,
+                            record.last_seen,
+                            record.seen_count,
                         )
                     }
                 };
@@ -1017,9 +1033,9 @@ impl RpcDaemon {
                         "timestamp": timestamp,
                         "name": &record.name,
                         "name_source": &record.name_source,
-                        "last_heard": record.last_seen,
+                        "last_heard": last_heard,
                         "first_seen": record.first_seen,
-                        "seen_count": record.seen_count,
+                        "seen_count": seen_count,
                         "state": 0,
                         "sync_strategy": 2,
                         "ler": 0,
@@ -1063,7 +1079,7 @@ impl RpcDaemon {
                         "name": record.name,
                         "name_source": record.name_source,
                         "first_seen": record.first_seen,
-                        "seen_count": record.seen_count,
+                        "seen_count": seen_count,
                         "synced": true,
                         "state": 0,
                         "sync_strategy": 2,
@@ -1074,7 +1090,7 @@ impl RpcDaemon {
                         "tx_bytes": tx_bytes,
                         "alive": alive,
                         "acceptance_rate": acceptance_rate,
-                        "last_heard": record.last_seen,
+                        "last_heard": last_heard,
                         "last_sync_attempt": last_sync_attempt,
                         "next_sync_attempt": next_sync_attempt,
                         "sync_backoff": sync_backoff,
