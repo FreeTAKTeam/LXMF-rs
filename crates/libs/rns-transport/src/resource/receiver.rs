@@ -273,6 +273,14 @@ impl ResourceReceiver {
         self.retry_count = self.retry_count.saturating_add(1);
     }
 
+    fn immediate_request_due(&self, now: Instant) -> bool {
+        let remaining = self.parts.len().saturating_sub(self.received);
+        if remaining < WINDOW {
+            return false;
+        }
+        now.duration_since(self.last_request) >= RESOURCE_REQUEST_COOLDOWN
+    }
+
     fn retry_due(&self, now: Instant, retry_interval: Duration, max_retries: u8) -> bool {
         if self.status.is_terminal() {
             return false;

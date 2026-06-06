@@ -347,20 +347,23 @@ impl ResourceManager {
                     break;
                 }
                 PartOutcome::Incomplete => {
-                    let request = receiver.build_request();
-                    receiver.mark_request();
-                    request_packet = match build_link_packet(
-                        link,
-                        PacketType::Data,
-                        PacketContext::ResourceRequest,
-                        &request.encode(),
-                    ) {
-                        Ok(packet) => Some(packet),
-                        Err(_) => {
-                            log::warn!("failed to build request packet");
-                            None
-                        }
-                    };
+                    let now = Instant::now();
+                    if receiver.immediate_request_due(now) {
+                        let request = receiver.build_request();
+                        receiver.mark_request();
+                        request_packet = match build_link_packet(
+                            link,
+                            PacketType::Data,
+                            PacketContext::ResourceRequest,
+                            &request.encode(),
+                        ) {
+                            Ok(packet) => Some(packet),
+                            Err(_) => {
+                                log::warn!("failed to build request packet");
+                                None
+                            }
+                        };
+                    }
                     if receiver.received > before_received {
                         resource_diag(&format!(
                             "progress hash={} received={}/{} bytes={}/{}",

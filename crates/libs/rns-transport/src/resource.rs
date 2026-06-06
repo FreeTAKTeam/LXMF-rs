@@ -44,6 +44,7 @@ const MAX_INBOUND_RESOURCE_TRANSFER_SIZE: u64 = AUTO_COMPRESS_MAX_SIZE as u64;
 pub const DEFAULT_RESOURCE_RETRY_INTERVAL_SECS: u64 = 2;
 pub const DEFAULT_RESOURCE_MAX_RETRIES: u8 = 16;
 const DEFAULT_RESOURCE_MAX_ADV_RETRIES: u8 = 4;
+pub(crate) const RESOURCE_REQUEST_COOLDOWN: Duration = Duration::from_millis(50);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResourceStatus {

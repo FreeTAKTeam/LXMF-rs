@@ -302,6 +302,74 @@ fn resource_manager_removes_link_scoped_state_on_link_close() {
 }
 
 #[test]
+fn resource_receiver_sends_no_redundant_requests_during_fast_transfer() {
+    // Before fix: N parts arriving → N request packets (one per Incomplete outcome).
+    // After fix:  N parts arriving in <<50ms → 0 request packets (cooldown not elapsed).
+    // The remaining<WINDOW guard is also exercised: parts 8-9 leave 2-1 parts
+    // remaining (<WINDOW=4), so immediate_request_due returns false regardless of time.
+    let signer = PrivateIdentity::new_from_rand(OsRng);
+    let identity = *signer.as_identity();
+    let destination = DestinationDesc {
+        identity,
+        address_hash: identity.address_hash,
+        name: DestinationName::new("lxmf", "resource"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(1);
+    let mut link = Link::new(destination, tx);
+    link.request();
+
+    let mut manager = ResourceManager::new();
+
+    const TOTAL_PARTS: usize = 10;
+    let random_hash = [0xAB; RANDOM_HASH_SIZE];
+    let parts: Vec<Vec<u8>> = (0..TOTAL_PARTS)
+        .map(|i| vec![i as u8; PACKET_MDU])
+        .collect();
+    let mut hashmap_bytes = Vec::with_capacity(TOTAL_PARTS * MAPHASH_LEN);
+    for part in &parts {
+        hashmap_bytes.extend_from_slice(&map_hash(part, &random_hash));
+    }
+
+    let adv = ResourceAdvertisement {
+        transfer_size: (TOTAL_PARTS * PACKET_MDU) as u64,
+        data_size: (TOTAL_PARTS * PACKET_MDU) as u64,
+        parts: TOTAL_PARTS as u32,
+        hash: Hash::new_from_slice(&[0xCC; 32]),
+        random_hash,
+        original_hash: Hash::new_from_slice(&[0xCC; 32]),
+        segment_index: 1,
+        total_segments: 1,
+        request_id: None,
+        flags: 0,
+        hashmap: hashmap_bytes,
+    };
+
+    let adv_packet = resource_packet(
+        PacketContext::ResourceAdvrtisement,
+        &adv.pack().expect("pack"),
+        *link.id(),
+    );
+    let _ = manager.handle_packet(&adv_packet, &mut link);
+    assert!(manager.incoming.contains_key(&adv.hash));
+
+    // Feed 9 of 10 parts in a tight loop — all arrive within microseconds.
+    let mut request_count = 0usize;
+    for part in parts.iter().take(TOTAL_PARTS - 1) {
+        let p = resource_packet(PacketContext::Resource, part, *link.id());
+        let responses = manager.handle_packet(&p, &mut link);
+        request_count += responses
+            .iter()
+            .filter(|p| p.context == PacketContext::ResourceRequest)
+            .count();
+    }
+
+    assert_eq!(
+        request_count, 0,
+        "expected no redundant request packets during fast transfer, got {request_count}"
+    );
+}
+
+#[test]
 fn resource_manager_link_close_allows_later_resource_on_new_link() {
     let signer = PrivateIdentity::new_from_rand(OsRng);
     let identity = *signer.as_identity();
