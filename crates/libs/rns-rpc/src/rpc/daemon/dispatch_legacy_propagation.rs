@@ -1498,6 +1498,7 @@ impl RpcDaemon {
                 let transfer_limit =
                     transfer_limit_kb.map(|limit| (limit.max(0.0) * 1000.0) as u64);
                 let sync_limit = record.propagation_sync_limit.map(u64::from).or(transfer_limit);
+                let peer_key = record.peer.clone();
                 if record.next_sync_attempt > 0 && timestamp < record.next_sync_attempt {
                     return Ok(self.postponed_peer_sync_response(
                         request.id,
@@ -1534,9 +1535,9 @@ impl RpcDaemon {
                                     state.sync_progress = 0.0;
                                     state.last_sync_error = Some(err.to_string());
                                 });
-                                self.record_outbound_peer_activity(peer_id.as_str(), 0, false);
+                                self.record_outbound_peer_activity(peer_key.as_str(), 0, false);
                                 self.publish_failed_remote_peer_sync_event(
-                                    peer_id.as_str(),
+                                    peer_key.as_str(),
                                     remote_id.as_str(),
                                     err.to_string().as_str(),
                                     transfer_limit,
@@ -1720,7 +1721,7 @@ impl RpcDaemon {
                         });
                         if err.kind() == std::io::ErrorKind::WouldBlock {
                             self.record_throttled_remote_peer_sync(
-                                peer_id.as_str(),
+                                peer_key.as_str(),
                                 remote_id.as_str(),
                                 error.as_str(),
                                 transfer_limit,
@@ -1728,7 +1729,7 @@ impl RpcDaemon {
                             );
                         } else if is_retryable_remote_peer_sync_error(&err) {
                             self.record_retryable_remote_peer_sync_error(
-                                peer_id.as_str(),
+                                peer_key.as_str(),
                                 remote_id.as_str(),
                                 error.as_str(),
                                 transfer_limit,
@@ -1736,14 +1737,14 @@ impl RpcDaemon {
                             );
                         } else if is_remote_access_denied_error(&err) {
                             self.break_remote_peer_sync_peering_on_denied_access(
-                                peer_id.as_str(),
+                                peer_key.as_str(),
                                 remote_id.as_str(),
                                 error.as_str(),
                             )?;
                         } else {
-                            self.record_outbound_peer_activity(peer_id.as_str(), 0, false);
+                            self.record_outbound_peer_activity(peer_key.as_str(), 0, false);
                             self.publish_failed_remote_peer_sync_event(
-                                peer_id.as_str(),
+                                peer_key.as_str(),
                                 remote_id.as_str(),
                                 error.as_str(),
                                 transfer_limit,

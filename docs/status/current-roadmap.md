@@ -155,7 +155,9 @@ gap, even though deeper propagation-router parity remains open.
 - Remote propagation sync now maps peer `ERROR_THROTTLED` responses to the
   Python throttle path: the peer's next sync attempt is postponed by
   `PN_STAMP_THROTTLE` while liveness, acceptance, and generic sync backoff are
-  preserved.
+  preserved. Throttled and other failed remote-sync accounting now resolves the
+  existing peer case-insensitively and mutates the stored peer identity instead
+  of the request spelling.
 - Remote propagation sync now also treats peer `ERROR_NO_ACCESS` as a peering
   break like Python `LXMPeer.offer_response`: the denied peer is unpeered
   locally and its propagation queue marks are cleared instead of being retained
