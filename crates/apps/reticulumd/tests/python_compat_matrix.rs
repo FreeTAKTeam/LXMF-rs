@@ -3,7 +3,7 @@ mod python_compat_cases;
 
 use python_compat_cases::{
     assert_cases_are_dispatchable_by_harness_and_smoke_script, assert_required_modes_covered,
-    run_case,
+    assert_smoke_rpc_call_retries_transient_connection_refusals, run_case,
 };
 
 #[test]
@@ -86,4 +86,9 @@ fn python_compat_lxm_interchange() {
 #[test]
 fn compatibility_cases_are_dispatchable_by_harness_and_smoke_script() {
     assert_cases_are_dispatchable_by_harness_and_smoke_script();
+}
+
+#[test]
+fn smoke_rpc_call_retries_transient_connection_refusals() {
+    assert_smoke_rpc_call_retries_transient_connection_refusals();
 }
