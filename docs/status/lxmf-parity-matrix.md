@@ -93,8 +93,8 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
   maintenance culling, low-acceptance non-static peer rotation,
   maintenance-driven waiting peer sync, Python-style maintenance candidate
   pooling with capped unknown-speed additions, retry-ready unresponsive-peer pool
-  selection, waiting-peer backoff eligibility, and unreachable static peer
-  sync-pool skipping, high-cost existing-peer peering breaks with queue cleanup,
+  selection, strict backoff retry-boundary eligibility, and unreachable static
+  peer sync-pool skipping, high-cost existing-peer peering breaks with queue cleanup,
   admitted-offer-only validated peering links for multi-message client or peer
   propagation resources while packet propagation keeps Python-style
   multi-message acceptance, mixed invalid-stamp peer resource handling that
@@ -234,6 +234,7 @@ Recent focused evidence:
 - `cargo test -p reticulum-rs-rpc --lib propagation_peer_maintenance_syncs_one_waiting_peer_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib propagation_peer_maintenance_candidate_pool_includes_unknown_speed_peers_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib propagation_peer_maintenance_caps_unknown_speed_pool_like_python -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib propagation_peer_maintenance_skips_unresponsive_peer_at_backoff_boundary_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib propagation_peer_maintenance_unresponsive_pool_does_not_starve_later_peers_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib propagation_peer_maintenance_does_not_sync_unreachable_static_peer_like_python -- --nocapture`
 - `cargo test -p reticulumd --bin reticulumd python_status_exposes_peer_peering_key_value -- --nocapture`

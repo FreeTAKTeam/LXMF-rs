@@ -3327,6 +3327,41 @@ fn propagation_peer_maintenance_skips_waiting_peer_in_backoff_like_python() {
 }
 
 #[test]
+fn propagation_peer_maintenance_skips_unresponsive_peer_at_backoff_boundary_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    let peer = make_ready_propagation_peer(&daemon, 0x62);
+    let entry = PropagationEntryRecord {
+        transient_id: "dd".repeat(32),
+        destination: "1e".repeat(16),
+        payload_hex: "2a".repeat(32),
+        received_at: 1_700_000_627,
+        size_bytes: 32,
+        stamp_value: Some(12),
+    };
+    daemon.store.upsert_propagation_entry(&entry).expect("store propagation entry");
+    daemon
+        .store
+        .mark_peer_unhandled_propagation(peer.as_str(), entry.transient_id.as_str())
+        .expect("mark unhandled");
+    {
+        let timestamp = 1_700_000_627;
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let record = peers.get_mut(peer.as_str()).expect("peer record");
+        record.alive = false;
+        record.last_seen = timestamp;
+        record.last_sync_attempt = timestamp.saturating_sub(1);
+        record.next_sync_attempt = timestamp;
+        record.sync_transfer_rate = 0.0;
+    }
+
+    let selected = daemon
+        .select_peer_for_maintenance_sync(1_700_000_627)
+        .expect("select maintenance sync peer");
+
+    assert!(selected.is_none(), "peer at exact retry boundary should stay in backoff");
+}
+
+#[test]
 fn propagation_peer_maintenance_unresponsive_pool_does_not_starve_later_peers_like_python() {
     let daemon = RpcDaemon::test_instance();
     let first_peer = make_ready_propagation_peer(&daemon, 0x57);
