@@ -68,7 +68,9 @@ gap, even though deeper propagation-router parity remains open.
   Those fetch/download source peers now also record inbound runtime activity
   and received-byte counters. Remote sync, fetch, and download source matching
   is now also case-insensitive while preserving the stored peer id for queue
-  marks and inbound counters.
+  marks and inbound counters. Local peer sync now applies the same stored-peer
+  identity rule when reading and mutating propagation queue marks, so a
+  different-case request cannot miss or fork an existing peer queue.
 - Daemon receipt status and peer-activity bookkeeping now preserve Python's
   distinction between transport `sent:*` states and final `delivered` receipts:
   send/resource completion records sent-only peer tx bookkeeping, while actual

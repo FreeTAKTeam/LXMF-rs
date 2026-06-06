@@ -12121,6 +12121,84 @@ fn peer_sync_reactivates_persisted_unpeered_record() {
 }
 
 #[test]
+fn peer_sync_matches_existing_peer_queue_case_insensitively_like_python() {
+    let store = MessagesStore::in_memory().expect("store");
+    let daemon = RpcDaemon::with_store(store, hex::encode([2u8; 16]));
+    let stored_peer = "Ab".repeat(16);
+    let request_peer = stored_peer.to_ascii_lowercase();
+    daemon
+        .accept_announce_with_metadata(
+            stored_peer.clone(),
+            1_700_000_930,
+            None,
+            None,
+            None,
+            Some(vec!["propagation".to_string()]),
+            None,
+            None,
+            None,
+            Some(1),
+            Some(Some(1)),
+            Some(Some(1)),
+            None,
+            Some(1),
+            None,
+            None,
+            None,
+            None,
+        )
+        .expect("accept mixed-case propagation peer");
+    let entry = PropagationEntryRecord {
+        transient_id: "d1".repeat(32),
+        destination: "1d".repeat(16),
+        payload_hex: "44".repeat(24),
+        received_at: 1_700_000_931,
+        size_bytes: 24,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&entry).expect("store propagation entry");
+    daemon
+        .store
+        .mark_peer_unhandled_propagation(stored_peer.as_str(), entry.transient_id.as_str())
+        .expect("mark mixed-case peer unhandled");
+
+    let result = daemon
+        .handle_rpc(rpc_request(90, "peer_sync", json!({ "peer": request_peer })))
+        .expect("peer sync with lowercase id")
+        .result
+        .expect("peer sync result");
+
+    assert_eq!(result["peer"].as_str(), Some(stored_peer.as_str()));
+    assert_eq!(result["propagation"]["transferred"].as_u64(), Some(1));
+    assert_eq!(
+        daemon
+            .store
+            .list_peer_handled_propagation_ids(stored_peer.as_str())
+            .expect("mixed-case handled ids"),
+        vec![entry.transient_id.clone()]
+    );
+    assert!(
+        daemon
+            .store
+            .list_peer_unhandled_propagation(stored_peer.as_str())
+            .expect("mixed-case unhandled")
+            .is_empty()
+    );
+
+    let peers = daemon
+        .handle_rpc(RpcRequest { id: 91, method: "list_peers".to_string(), params: None })
+        .expect("list peers")
+        .result
+        .expect("list peers result");
+    let rows = peers["peers"].as_array().expect("peer rows");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["peer"].as_str(), Some(stored_peer.as_str()));
+    assert_eq!(rows[0]["messages"]["handled_ids"].as_array().expect("handled ids"), &[
+        json!(entry.transient_id.as_str()),
+    ]);
+}
+
+#[test]
 fn peer_unpeer_clears_persisted_propagation_queue_marks() {
     let (daemon, peer) = ready_propagation_peer_daemon(0x52);
     daemon

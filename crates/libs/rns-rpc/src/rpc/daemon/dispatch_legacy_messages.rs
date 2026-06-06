@@ -570,8 +570,13 @@ impl RpcDaemon {
                     parsed.transfer_limit_kb.map(|limit| (limit.max(0.0) * 1000.0) as usize);
 
                 let timestamp = now_i64();
-                let existing_peer =
-                    self.peers.lock().expect("peers mutex poisoned").get(peer_id).cloned();
+                let existing_peer = self
+                    .peers
+                    .lock()
+                    .expect("peers mutex poisoned")
+                    .values()
+                    .find(|record| record.peer.eq_ignore_ascii_case(peer_id))
+                    .cloned();
                 if existing_peer.is_none()
                     && wanted_ids.as_ref().is_some_and(PeerSyncWantedIds::requires_offer_validation)
                 {
@@ -666,12 +671,13 @@ impl RpcDaemon {
                         sync_limit_bytes,
                     ));
                 }
+                let peer_key = record.peer.as_str();
                 self.store
-                    .remove_stale_peer_unhandled_propagation(peer_id)
+                    .remove_stale_peer_unhandled_propagation(peer_key)
                     .map_err(std::io::Error::other)?;
                 let mut pending_propagation = self
                     .store
-                    .list_peer_unhandled_propagation(peer_id)
+                    .list_peer_unhandled_propagation(peer_key)
                     .map_err(std::io::Error::other)?;
                 let mut propagation_transfer_limited = 0usize;
                 let mut propagation_transfer_limited_bytes = 0u64;
@@ -716,7 +722,7 @@ impl RpcDaemon {
                                 propagation_rejected_ids.push(entry.transient_id.clone());
                                 self.store
                                     .remove_peer_unhandled_propagation(
-                                        peer_id,
+                                        peer_key,
                                         entry.transient_id.as_str(),
                                     )
                                     .map_err(std::io::Error::other)?;
@@ -743,7 +749,7 @@ impl RpcDaemon {
                             let transient_id = entry.transient_id;
                             self.store
                                 .mark_peer_transfer_limited_propagation(
-                                    peer_id,
+                                    peer_key,
                                     transient_id.as_str(),
                                 )
                                 .map_err(std::io::Error::other)?;
@@ -809,7 +815,7 @@ impl RpcDaemon {
                             propagation_transfer_limited_bytes.saturating_add(entry.size_bytes);
                         let transient_id = entry.transient_id;
                         self.store
-                            .mark_peer_transfer_limited_propagation(peer_id, transient_id.as_str())
+                            .mark_peer_transfer_limited_propagation(peer_key, transient_id.as_str())
                             .map_err(std::io::Error::other)?;
                         propagation_transfer_limited_ids.push(transient_id);
                         continue;
@@ -847,7 +853,7 @@ impl RpcDaemon {
                             "stamp_value": entry.stamp_value,
                         });
                         self.store
-                            .mark_peer_transferred_propagation(peer_id, transient_id.as_str())
+                            .mark_peer_transferred_propagation(peer_key, transient_id.as_str())
                             .map_err(std::io::Error::other)?;
                         propagation_transferred = propagation_transferred.saturating_add(1);
                         propagation_bytes = propagation_bytes.saturating_add(entry.size_bytes);
@@ -856,7 +862,7 @@ impl RpcDaemon {
                         propagation_resource_payloads.push(payload_bytes);
                     } else {
                         self.store
-                            .mark_peer_handled_propagation(peer_id, transient_id.as_str())
+                            .mark_peer_handled_propagation(peer_key, transient_id.as_str())
                             .map_err(std::io::Error::other)?;
                     }
                     propagation_handled_ids.push(transient_id);
