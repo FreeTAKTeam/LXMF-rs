@@ -1,6 +1,6 @@
 # Current Roadmap Status
 
-Last updated: 2026-06-05
+Last updated: 2026-06-06
 
 This document is the current source of truth for repository-wide delivery
 status. Update this file first when parity status, release confidence, or the
@@ -222,8 +222,9 @@ gap, even though deeper propagation-router parity remains open.
   and records inbound bytes, while newly ingested propagation entries are queued
   only for other active peers.
 - Inbound peer propagation resources that locally deliver a payload now credit
-  the propagation source peer's inbound counters instead of treating the
-  transfer as a client propagation receive.
+  the propagation source peer's inbound counters and mark the source peer
+  received/handled instead of treating the transfer as a client propagation
+  receive.
 - Inbound peer propagation resources from identified but unpeered senders now
   update the Python-style unpeered propagation counters instead of client
   counters, while still queueing accepted payloads for active peers.

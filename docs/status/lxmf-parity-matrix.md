@@ -2,14 +2,14 @@
 
 Status: historical parity snapshot; check `docs/status/current-roadmap.md` for
 current repo-wide status before relying on this file for active execution order.
-As of 2026-06-05, the live Python-reference interop workflow is green for the
+As of 2026-06-06, the live Python-reference interop workflow is green for the
 current branch, but that checkpoint does not convert the partial peer, router,
 propagation, and stamper rows below into full parity. The Reticulum
 KISS/LoRa/RNode interface work improves the transport substrate available to
 LXMF, but it does not by itself complete LXMF peer sync, propagation router, or
 stamp worker parity.
 
-Last reassessed: 2026-06-05 (maintenance unknown-speed waiting-pool regression added)
+Last reassessed: 2026-06-06 (local-delivery source-peer queue mark regression added)
 
 Status legend: `not-started` | `partial` | `done`
 
@@ -100,7 +100,7 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
   preserves valid entries before throttling, inbound propagation resource
   source-peer queueing, remote-sync source-peer inbound byte/message accounting
   without outbound transfer-rate or `tx_bytes` inflation, local-delivery
-  source-peer accounting, unpeered identified-sender accounting, peering-key
+  source-peer accounting and queue marks, unpeered identified-sender accounting, peering-key
   values, and explicit peering-key readiness status values are exposed. Local
   offer responses now accept
   Python's boolean all/none and list-shaped response forms, keep full-offer
