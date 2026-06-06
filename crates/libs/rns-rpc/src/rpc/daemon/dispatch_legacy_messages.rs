@@ -1141,7 +1141,7 @@ impl RpcDaemon {
                             existing.acceptance_rate = if existing.offered == 0 {
                                 0.0
                             } else {
-                                (existing.outgoing as f64 / existing.offered as f64).clamp(0.0, 1.0)
+                                (existing.outgoing as f64 / existing.offered as f64).max(0.0)
                             };
                         }
                         if propagation_completed {
@@ -1953,11 +1953,11 @@ pub(super) fn peer_acceptance_rate_for_reporting(
     alive: bool,
 ) -> f64 {
     if offered > 0 {
-        (outgoing as f64 / offered as f64).clamp(0.0, 1.0)
+        (outgoing as f64 / offered as f64).max(0.0)
     } else if !alive {
         0.0
     } else {
-        cached_rate.clamp(0.0, 1.0)
+        cached_rate.max(0.0)
     }
 }
 

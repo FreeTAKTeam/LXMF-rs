@@ -116,7 +116,9 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
   valid-looking wanted transient IDs outside the current offer before mutating
   queue state or creating a new peer queue. Non-empty list-shaped offer
   responses also preserve Python's response order and duplicate IDs when
-  building transferred resource payloads and outgoing transfer accounting.
+  building transferred resource payloads and outgoing transfer accounting, and
+  the resulting acceptance-rate reporting keeps Python's raw
+  `outgoing / offered` value instead of capping above `1.0`.
   Sync-limited queued entries also
   remain subject to Python's stamp-policy and peering-key readiness gates
   before offer skipping. Local peer sync also persists
