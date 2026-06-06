@@ -3429,6 +3429,35 @@ fn peer_activity_updates_runtime_counters() {
 }
 
 #[test]
+fn inbound_peer_activity_matches_existing_peer_case_insensitively_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    let stored_peer = "Peer-Inbound-Case";
+    let request_peer = stored_peer.to_ascii_lowercase();
+    daemon
+        .handle_rpc(rpc_request(51, "peer_sync", json!({ "peer": stored_peer })))
+        .expect("peer sync");
+
+    daemon.record_inbound_peer_activity(request_peer.as_str(), 120);
+
+    let peers = daemon
+        .handle_rpc(RpcRequest { id: 52, method: "list_peers".to_string(), params: None })
+        .expect("list peers")
+        .result
+        .expect("list peers result");
+    let rows = peers["peers"].as_array().expect("peer rows");
+    assert_eq!(rows.len(), 1);
+    let row = rows
+        .iter()
+        .find(|row| row["peer"].as_str() == Some(stored_peer))
+        .expect("stored peer row");
+    assert_eq!(row["rx_bytes"].as_u64(), Some(120));
+    assert_eq!(row["alive"].as_bool(), Some(true));
+    let last_seen = row["last_seen"].as_i64().expect("last_seen");
+    assert!(last_seen > 0);
+    assert_eq!(row["last_heard"].as_i64(), Some(last_seen));
+}
+
+#[test]
 fn delivered_peer_activity_updates_last_heard_like_python() {
     let daemon = RpcDaemon::test_instance();
     daemon

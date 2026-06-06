@@ -582,8 +582,11 @@ impl RpcDaemon {
     }
 
     pub fn record_inbound_peer_activity(&self, peer: &str, bytes: usize) {
+        let peer = peer.trim();
         if let Ok(mut guard) = self.peers.lock() {
-            if let Some(existing) = guard.get_mut(peer) {
+            if let Some(existing) =
+                guard.values_mut().find(|record| record.peer.eq_ignore_ascii_case(peer))
+            {
                 existing.alive = true;
                 existing.last_seen = now_i64();
                 existing.rx_bytes = existing.rx_bytes.saturating_add(bytes as u64);

@@ -83,7 +83,9 @@ gap, even though deeper propagation-router parity remains open.
   send/resource completion records sent-only peer tx bookkeeping, while actual
   delivery receipts mark the outbound peer heard/delivered. Outbound sent and
   delivered peer activity now resolve existing peers case-insensitively, so
-  transfer and receipt accounting mutate the stored peer identity.
+  transfer and receipt accounting mutate the stored peer identity. Inbound peer
+  activity now applies the same stored-identity rule for receive byte and
+  last-heard bookkeeping.
 - RPC message listing now accepts bounded `limit`/`cursor` parameters and uses
   a stable `timestamp:id` cursor so same-second messages paginate without
   skipping or repeating records. Message and announce list handlers now report
