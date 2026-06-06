@@ -12412,6 +12412,94 @@ fn peer_unpeer_clears_selected_propagation_node() {
 }
 
 #[test]
+fn peer_unpeer_matches_existing_peer_case_insensitively_like_python() {
+    let store = MessagesStore::in_memory().expect("store");
+    let daemon = RpcDaemon::with_store(store, hex::encode([2u8; 16]));
+    let stored_peer = "Cd".repeat(16);
+    let request_peer = stored_peer.to_ascii_lowercase();
+    daemon
+        .accept_announce_with_metadata(
+            stored_peer.clone(),
+            1_700_000_940,
+            None,
+            None,
+            None,
+            Some(vec!["propagation".to_string()]),
+            None,
+            None,
+            None,
+            Some(1),
+            Some(Some(1)),
+            Some(Some(1)),
+            None,
+            Some(1),
+            None,
+            None,
+            None,
+            None,
+        )
+        .expect("accept mixed-case propagation peer");
+    daemon
+        .handle_rpc(rpc_request(
+            96,
+            "set_outbound_propagation_node",
+            json!({ "peer": stored_peer.as_str() }),
+        ))
+        .expect("select mixed-case peer");
+    let entry = PropagationEntryRecord {
+        transient_id: "d2".repeat(32),
+        destination: "2d".repeat(16),
+        payload_hex: "55".repeat(24),
+        received_at: 1_700_000_941,
+        size_bytes: 24,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&entry).expect("store propagation entry");
+    daemon
+        .store
+        .mark_peer_unhandled_propagation(stored_peer.as_str(), entry.transient_id.as_str())
+        .expect("mark mixed-case peer unhandled");
+
+    let result = daemon
+        .handle_rpc(rpc_request(97, "peer_unpeer", json!({ "peer": request_peer })))
+        .expect("unpeer with lower-case id")
+        .result
+        .expect("unpeer result");
+
+    assert_eq!(result["peer"].as_str(), Some(stored_peer.as_str()));
+    assert_eq!(result["removed"].as_bool(), Some(true));
+    assert_eq!(result["propagation_cleared"].as_u64(), Some(1));
+    assert!(
+        daemon
+            .store
+            .list_peer_unhandled_propagation(stored_peer.as_str())
+            .expect("mixed-case unhandled")
+            .is_empty()
+    );
+
+    let selected = daemon
+        .handle_rpc(RpcRequest {
+            id: 98,
+            method: "get_outbound_propagation_node".to_string(),
+            params: None,
+        })
+        .expect("get selected propagation node")
+        .result
+        .expect("selected propagation node result");
+    assert_eq!(selected["peer"], JsonValue::Null);
+
+    let peers = daemon
+        .handle_rpc(RpcRequest { id: 99, method: "list_peers".to_string(), params: None })
+        .expect("list peers")
+        .result
+        .expect("list peers result");
+    assert!(
+        peers["peers"].as_array().expect("peer rows").is_empty(),
+        "unpeered mixed-case peer should not remain active"
+    );
+}
+
+#[test]
 fn peer_unpeer_reports_cleared_propagation_queue_accounting() {
     let daemon = RpcDaemon::test_instance();
     daemon

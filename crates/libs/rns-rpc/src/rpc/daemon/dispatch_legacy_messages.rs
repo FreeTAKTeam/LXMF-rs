@@ -1128,7 +1128,7 @@ impl RpcDaemon {
                 let event = RpcEvent {
                     event_type: "peer_unpeer".into(),
                     payload: json!({
-                        "peer": peer_id,
+                        "peer": cleanup.peer.as_str(),
                         "removed": cleanup.removed,
                         "propagation_cleared": cleanup.propagation_cleared,
                         "propagation_cleared_bytes": cleanup.propagation_cleared_bytes,
@@ -1142,7 +1142,7 @@ impl RpcDaemon {
                 Ok(RpcResponse {
                     id: request.id,
                     result: Some(json!({
-                        "peer": peer_id,
+                        "peer": cleanup.peer.as_str(),
                         "removed": cleanup.removed,
                         "propagation_cleared": cleanup.propagation_cleared,
                         "propagation_cleared_bytes": cleanup.propagation_cleared_bytes,
@@ -1620,6 +1620,7 @@ impl RpcDaemon {
 }
 
 pub(super) struct LocalUnpeerCleanup {
+    pub(super) peer: String,
     pub(super) removed: bool,
     pub(super) propagation_cleared: usize,
     pub(super) propagation_cleared_bytes: u64,
@@ -1631,17 +1632,32 @@ impl RpcDaemon {
         &self,
         peer_id: &str,
     ) -> Result<LocalUnpeerCleanup, std::io::Error> {
-        let propagation_stats =
-            self.store.peer_propagation_message_stats(peer_id).map_err(std::io::Error::other)?;
+        let peer_id = peer_id.trim();
+        let peer_key = self
+            .peers
+            .lock()
+            .expect("peers mutex poisoned")
+            .values()
+            .find(|record| record.peer.eq_ignore_ascii_case(peer_id))
+            .map(|record| record.peer.clone())
+            .unwrap_or_else(|| peer_id.to_string());
+        let propagation_stats = self
+            .store
+            .peer_propagation_message_stats(peer_key.as_str())
+            .map_err(std::io::Error::other)?;
         let (outgoing, incoming, offered, unhandled, offered_bytes, unhandled_bytes) =
-            self.peer_message_stats(peer_id)?;
-        let handled_ids =
-            self.store.list_peer_handled_propagation_ids(peer_id).map_err(std::io::Error::other)?;
+            self.peer_message_stats(peer_key.as_str())?;
+        let handled_ids = self
+            .store
+            .list_peer_handled_propagation_ids(peer_key.as_str())
+            .map_err(std::io::Error::other)?;
         let unhandled_ids = self
             .store
-            .list_peer_unhandled_propagation_ids(peer_id)
+            .list_peer_unhandled_propagation_ids(peer_key.as_str())
             .map_err(std::io::Error::other)?;
-        self.store.clear_peer_propagation_marks(peer_id).map_err(std::io::Error::other)?;
+        self.store
+            .clear_peer_propagation_marks(peer_key.as_str())
+            .map_err(std::io::Error::other)?;
         let messages = json!({
             "offered": offered,
             "outgoing": outgoing,
@@ -1654,7 +1670,9 @@ impl RpcDaemon {
         });
         let removed = {
             let mut guard = self.peers.lock().expect("peers mutex poisoned");
-            let removed = guard.remove(peer_id).is_some();
+            let remove_key =
+                guard.keys().find(|key| key.eq_ignore_ascii_case(peer_key.as_str())).cloned();
+            let removed = remove_key.and_then(|key| guard.remove(&key)).is_some();
             let peer_count = Self::active_peer_count_from_guard(&guard);
             drop(guard);
             self.update_daemon_status_snapshot(|snapshot| {
@@ -1666,7 +1684,7 @@ impl RpcDaemon {
         {
             let mut guard =
                 self.outbound_propagation_node.lock().expect("propagation node mutex poisoned");
-            if guard.as_deref() == Some(peer_id) {
+            if guard.as_deref().is_some_and(|peer| peer.eq_ignore_ascii_case(peer_key.as_str())) {
                 *guard = None;
                 cleared_selected_node = true;
             }
@@ -1682,6 +1700,7 @@ impl RpcDaemon {
             });
         }
         Ok(LocalUnpeerCleanup {
+            peer: peer_key,
             removed,
             propagation_cleared: propagation_stats
                 .offered
