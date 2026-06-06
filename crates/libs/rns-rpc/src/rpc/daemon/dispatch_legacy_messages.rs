@@ -789,7 +789,7 @@ impl RpcDaemon {
                     peer_sync_policy_relevance(
                         pending_propagation.as_slice(),
                         wanted_ids.as_ref(),
-                        sync_limit_bytes,
+                        None,
                     );
                 let peer_policy_required = remaining_policy_relevant > 0
                     && (!explicit_peer_sync_selection

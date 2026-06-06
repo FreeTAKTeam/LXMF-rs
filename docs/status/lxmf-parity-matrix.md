@@ -113,7 +113,9 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
   selected-ID transfer, and no-transfer responses, preserve previous
   last-heard/seen-count values for no-transfer responses, and reject
   valid-looking wanted transient IDs outside the current offer before mutating
-  queue state or creating a new peer queue. Local peer sync also persists
+  queue state or creating a new peer queue. Sync-limited queued entries also
+  remain subject to Python's stamp-policy and peering-key readiness gates
+  before offer skipping. Local peer sync also persists
   Python-style cumulative acceptance-rate cache values after multiple offer
   responses, offer ordering now applies Python's prioritised destination
   weighting before sync-limit selection, and persistent full-offer syncs
@@ -196,6 +198,7 @@ Recent focused evidence:
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_during_backoff_does_not_queue_new_existing_entries_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib empty_peer_sync_checks_peering_key_before_no_unhandled_shortcut_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib persistent_peer_sync_continues_after_completed_batch_like_python -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib peer_sync_checks_peering_key_before_sync_limit_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_prioritised_destinations_reduce_offer_weight_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib propagation_remote_fetch -- --nocapture`

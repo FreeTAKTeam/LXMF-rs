@@ -256,6 +256,9 @@ gap, even though deeper propagation-router parity remains open.
   not part of the current peer offer before mutating queue state, avoiding the
   false completion path where an out-of-offer request marked pending messages
   handled or created a new peer queue from existing propagation entries.
+- Local peer sync now checks Python's stamp-policy and peering-key readiness
+  gates before sync-limit offer skipping, so sync-limited queued messages cannot
+  bypass key generation or missing policy discovery.
 - Local peer sync now uses Python's persistent `sync_strategy` behavior after a
   completed full-offer transfer: persistent peers continue into the next
   eligible sync-limited batch while lazy peers retain one-batch queueing.

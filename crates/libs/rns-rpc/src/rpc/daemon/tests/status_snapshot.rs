@@ -4992,7 +4992,7 @@ fn peer_sync_transfer_limits_oversized_stamped_entries_before_peering_key_gate()
 }
 
 #[test]
-fn peer_sync_sync_limits_stamped_entries_before_peering_key_gate() {
+fn peer_sync_checks_peering_key_before_sync_limit_like_python() {
     let daemon = RpcDaemon::test_instance();
     daemon
         .handle_rpc(rpc_request(52, "peer_sync", json!({ "peer": "peer-key-sync-limit-first" })))
@@ -5024,17 +5024,22 @@ fn peer_sync_sync_limits_stamped_entries_before_peering_key_gate() {
         .expect("sync-limited peer sync")
         .result
         .expect("peer sync result");
-    assert_eq!(result["synced"].as_bool(), Some(true));
+    assert_eq!(result["synced"].as_bool(), Some(false));
+    assert_eq!(result["postponed"].as_bool(), Some(true));
+    assert_eq!(result["postpone_reason"].as_str(), Some("peering_key"));
     assert_eq!(result["peering_key"], JsonValue::Null);
-    assert_eq!(result["propagation"]["postponed"].as_bool(), Some(false));
-    assert_eq!(result["propagation"]["postpone_reason"], JsonValue::Null);
+    assert_eq!(result["propagation"]["postponed"].as_bool(), Some(true));
+    assert_eq!(
+        result["propagation"]["postpone_reason"].as_str(),
+        Some("peering_key")
+    );
     assert_eq!(result["propagation"]["handled"].as_u64(), Some(0));
     assert_eq!(result["propagation"]["offered"].as_u64(), Some(0));
-    assert_eq!(result["propagation"]["skipped"].as_u64(), Some(1));
-    assert_eq!(result["propagation"]["remaining_bytes"].as_u64(), Some(20));
+    assert_eq!(result["propagation"]["skipped"].as_u64(), Some(0));
+    assert_eq!(result["propagation"]["remaining_bytes"].as_u64(), Some(0));
     assert_eq!(
         result["propagation"]["skipped_ids"].as_array().expect("skipped ids"),
-        &[json!(skipped.transient_id.as_str())]
+        &[] as &[JsonValue]
     );
 
     let unhandled = daemon
@@ -5104,6 +5109,10 @@ fn repeated_skipped_peer_sync_retries_without_failure_backoff() {
         let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
         let peer = peers.get_mut("peer-skipped-repeat").expect("peer record");
         peer.propagation_sync_limit = Some(24);
+        peer.propagation_stamp_cost = Some(1);
+        peer.propagation_stamp_cost_flexibility = Some(1);
+        peer.peering_cost = Some(1);
+        peer.peering_key_value = Some(1);
     }
     let entry = PropagationEntryRecord {
         transient_id: "ea".repeat(32),
@@ -5176,6 +5185,10 @@ fn peer_sync_with_only_skipped_offers_clears_failure_backoff_like_python() {
         let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
         let peer = peers.get_mut("peer-skipped-initial").expect("peer record");
         peer.propagation_sync_limit = Some(24);
+        peer.propagation_stamp_cost = Some(1);
+        peer.propagation_stamp_cost_flexibility = Some(1);
+        peer.peering_cost = Some(1);
+        peer.peering_key_value = Some(1);
         peer.alive = false;
         peer.sync_backoff = 12 * 60;
         peer.next_sync_attempt = 0;
@@ -5235,6 +5248,10 @@ fn peer_sync_result_and_event_report_skipped_only_completion() {
         let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
         let peer = peers.get_mut("peer-backoff-report").expect("peer record");
         peer.propagation_sync_limit = Some(24);
+        peer.propagation_stamp_cost = Some(1);
+        peer.propagation_stamp_cost_flexibility = Some(1);
+        peer.peering_cost = Some(1);
+        peer.peering_key_value = Some(1);
     }
     let entry = PropagationEntryRecord {
         transient_id: "ba".repeat(32),
@@ -6122,6 +6139,10 @@ fn peer_sync_keeps_unwanted_sync_limited_entries_queued() {
         let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
         let peer = peers.get_mut("peer-unwanted-sync-limit").expect("peer record");
         peer.propagation_sync_limit = Some(24);
+        peer.propagation_stamp_cost = Some(1);
+        peer.propagation_stamp_cost_flexibility = Some(1);
+        peer.peering_cost = Some(1);
+        peer.peering_key_value = Some(1);
     }
     let already_known = PropagationEntryRecord {
         transient_id: "a5".repeat(32),
@@ -6255,7 +6276,7 @@ fn peer_sync_keeps_sync_limited_entries_queued_when_peer_wants_none() {
 }
 
 #[test]
-fn peer_sync_ignores_stamp_policy_for_entries_skipped_by_cumulative_sync_limit() {
+fn peer_sync_skips_policy_ready_entries_by_cumulative_sync_limit() {
     let (daemon, peer) = ready_propagation_peer_daemon(0x48);
     {
         let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
@@ -7178,6 +7199,10 @@ fn peer_sync_skips_entry_at_exact_sync_limit_like_python() {
         let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
         let peer = peers.get_mut("peer-sync-equal-budget").expect("peer record");
         peer.propagation_sync_limit = Some((24 + 20 + 16) as u32);
+        peer.propagation_stamp_cost = Some(1);
+        peer.propagation_stamp_cost_flexibility = Some(1);
+        peer.peering_cost = Some(1);
+        peer.peering_key_value = Some(1);
     }
 
     let entry = PropagationEntryRecord {
