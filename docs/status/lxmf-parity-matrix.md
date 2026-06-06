@@ -9,7 +9,7 @@ KISS/LoRa/RNode interface work improves the transport substrate available to
 LXMF, but it does not by itself complete LXMF peer sync, propagation router, or
 stamp worker parity.
 
-Last reassessed: 2026-06-05 (maintenance unknown-speed waiting-pool regression added)
+Last reassessed: 2026-06-06 (client multi-message propagation-resource rejection regression added)
 
 Status legend: `not-started` | `partial` | `done`
 
@@ -96,11 +96,12 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
   selection, and unreachable static peer sync-pool skipping, high-cost
   existing-peer peering breaks with queue cleanup,
   admitted-offer-only
-  validated peering links, mixed invalid-stamp peer resource handling that
-  preserves valid entries before throttling, inbound propagation resource
-  source-peer queueing, remote-sync source-peer inbound byte/message accounting
-  without outbound transfer-rate or `tx_bytes` inflation, local-delivery
-  source-peer accounting, unpeered identified-sender accounting, peering-key
+  validated peering links for multi-message client or peer propagation
+  resources, mixed invalid-stamp peer resource handling that preserves valid
+  entries before throttling, inbound propagation resource source-peer queueing,
+  remote-sync source-peer inbound byte/message accounting without outbound
+  transfer-rate or `tx_bytes` inflation, local-delivery source-peer accounting,
+  unpeered identified-sender accounting, peering-key
   values, and explicit peering-key readiness status values are exposed. Local
   offer responses now accept
   Python's boolean all/none and list-shaped response forms, keep full-offer
@@ -205,6 +206,7 @@ Recent focused evidence:
 - `cargo test -p reticulumd --bin reticulumd message_get_marks_served_wanted_payloads_transferred_for_peer -- --nocapture`
 - `cargo test -p reticulumd --bin reticulumd inbound_peer_propagation_preserves_valid_messages_when_transfer_has_invalid_stamp_like_python -- --nocapture`
 - `cargo test -p reticulumd --bin reticulumd inbound_peer_propagation_local_delivery_counts_source_peer_like_python -- --nocapture`
+- `cargo test -p reticulumd --bin reticulumd inbound_client_propagation_rejects_multi_message_without_validated_link_like_python -- --nocapture`
 - `cargo test -p reticulumd --bin reticulumd inbound_peer_propagation_ -- --nocapture`
 - `cargo test -p reticulumd --bin reticulumd offer_request -- --nocapture`
 - `cargo test -p reticulumd --bin reticulumd inbound_worker::control::tests -- --nocapture`

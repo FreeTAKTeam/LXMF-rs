@@ -638,6 +638,25 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn inbound_client_propagation_rejects_multi_message_without_validated_link_like_python() {
+        let daemon = RpcDaemon::test_instance();
+        let first = b"unvalidated-client-first".to_vec();
+        let second = b"unvalidated-client-second".to_vec();
+        let first_id = hex::encode(Sha256::digest(&first));
+        let second_id = hex::encode(Sha256::digest(&second));
+        let envelope =
+            rmp_serde::to_vec(&(1.0_f64, vec![first, second])).expect("propagation envelope");
+
+        let err = ingest_propagation_envelope(&daemon, &envelope, None)
+            .await
+            .expect_err("unvalidated client resource should reject multi-message transfer");
+
+        assert!(err.to_string().contains("valid peering key"));
+        assert!(!daemon.has_propagation_payload(first_id.as_str()));
+        assert!(!daemon.has_propagation_payload(second_id.as_str()));
+    }
+
+    #[tokio::test]
     async fn inbound_peer_propagation_accepts_multi_message_with_validated_link_like_python() {
         let daemon = RpcDaemon::test_instance();
         let first = b"validated-peer-first".to_vec();

@@ -38,7 +38,7 @@ pub(super) async fn ingest_propagation_envelope_from_peer(
                 format!("invalid propagation envelope: {err}"),
             )
         })?;
-    if remote_propagation_peer.is_some() && !peer_link_validated && messages.len() > 1 {
+    if !peer_link_validated && messages.len() > 1 {
         return Err(std::io::Error::new(
             std::io::ErrorKind::PermissionDenied,
             "received multiple propagation messages without valid peering key",

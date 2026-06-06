@@ -1,6 +1,6 @@
 # Current Roadmap Status
 
-Last updated: 2026-06-05
+Last updated: 2026-06-06
 
 This document is the current source of truth for repository-wide delivery
 status. Update this file first when parity status, release confidence, or the
@@ -211,9 +211,9 @@ gap, even though deeper propagation-router parity remains open.
 - Inbound propagation peer-resource handling now tracks Python's validated
   peering-link rule: a successful admitted `/offer` peering-key validation
   marks the link as peer-validated, capacity-denied offers do not authorize the
-  link, and peer resource transfers with multiple propagation messages are
-  rejected unless they arrive on such a validated link. Validated link state is
-  cleared when the link closes.
+  link, and client or peer resource transfers with multiple propagation
+  messages are rejected unless they arrive on such a validated link. Validated
+  link state is cleared when the link closes.
 - Inbound peer propagation resources with mixed valid and invalid propagation
   stamps now follow Python's transfer handling more closely: valid messages are
   ingested before the transfer is rejected and the offending peer is throttled.
