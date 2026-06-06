@@ -282,8 +282,9 @@ gap, even though deeper propagation-router parity remains open.
   `destination_hash` peer identifier as an alias for Rust's internal `peer`
   field, and restored Python-style peers now derive acceptance rate from
   `outgoing / offered` when the serialized `acceptance_rate` field is absent,
-  so persisted LXMPeer state can rehydrate identity plus queue/account counters
-  without requiring a Rust-only record shape.
+  including duplicate-response ratios above `1.0`, so persisted LXMPeer state
+  can rehydrate identity plus queue/account counters without requiring a
+  Rust-only record shape.
 - Local peer sync now persists the peer acceptance-rate cache from cumulative
   `outgoing/offered` counters, matching Python `LXMPeer.acceptance_rate`
   instead of replacing the cache with only the latest offer-response ratio.

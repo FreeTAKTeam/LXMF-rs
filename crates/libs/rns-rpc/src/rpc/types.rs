@@ -837,7 +837,7 @@ impl<'de> Deserialize<'de> for PeerRecord {
             if wire.offered == 0 {
                 0.0
             } else {
-                (wire.outgoing as f64 / wire.offered as f64).clamp(0.0, 1.0)
+                (wire.outgoing as f64 / wire.offered as f64).max(0.0)
             }
         });
         let python_transfer_limit = wire.propagation_transfer_limit.is_some()
@@ -1079,6 +1079,18 @@ mod peer_record_serde_tests {
         .expect("deserialize python serialized peer");
 
         assert_eq!(record.acceptance_rate, 0.25);
+
+        let duplicate_response_record: PeerRecord = serde_json::from_value(json!({
+            "destination_hash": "peer-python-duplicate-acceptance",
+            "last_heard": 1_700_001_009,
+            "offered": 1,
+            "outgoing": 2,
+            "handled_ids": [],
+            "unhandled_ids": [],
+        }))
+        .expect("deserialize python serialized peer with duplicate-response counters");
+
+        assert_eq!(duplicate_response_record.acceptance_rate, 2.0);
     }
 
     #[test]

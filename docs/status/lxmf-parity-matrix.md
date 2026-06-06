@@ -106,8 +106,9 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
   accounting, peering-key values, explicit peering-key readiness status values,
   bidirectional Python `destination_hash` peer-record compatibility,
   Python-style restored acceptance-rate derivation from offered/outgoing
-  counters, restored Python `peering_key` readiness and below-cost key cleanup
-  for local peer sync, restored Python `sync_strategy` transfer-state
+  counters including duplicate-response ratios above `1.0`, restored Python
+  `peering_key` readiness and below-cost key cleanup for local peer sync,
+  restored Python `sync_strategy` transfer-state
   reporting, and destination fetch duplicate-wanted de-duplication are exposed.
   Local offer responses now accept
   Python's boolean all/none and list-shaped response forms, keep full-offer
@@ -192,6 +193,7 @@ Recent focused evidence:
 - `cargo test -p reticulum-rs-rpc --lib propagation_remote_sync_creates_missing_peer_record -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib propagation_remote_sync_marks_source_handled_and_queues_other_peers -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib propagation_remote_sync_counts_source_incoming_after_prior_transfer_like_python -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib peer_record_derives_python_acceptance_rate_when_alias_is_absent -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_rejects_unknown_wanted_ids_without_mutating_queue -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_rejects_unknown_wanted_ids_without_creating_new_peer_queue -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_rejects_transfer_limited_wanted_ids_without_mutating_queue -- --nocapture`
