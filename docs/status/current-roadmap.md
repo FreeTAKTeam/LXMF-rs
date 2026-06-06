@@ -104,10 +104,38 @@ gap, even though deeper propagation-router parity remains open.
   ordering: equal-timebase announces are retained in the announce log but no
   longer overwrite the active peer's propagation limits, costs, or peering
   policy fields.
+- Propagation peer admission now mirrors Python's high-cost peering policy for
+  existing non-static peers: a newer announce above `remote_peering_cost_max`
+  breaks manual or auto peering and clears propagation queue marks, while stale
+  high-cost announces are ignored.
 - Propagation peer maintenance now has an explicit RPC path for Python
   `sync_peers()`-style unreachable-peer culling: non-static peers unheard for
   `LXMPeer.MAX_UNREACHABLE` are unpeered and have their propagation queue marks
   cleared, while configured static peers are retained.
+- Propagation peer maintenance now also mirrors Python `rotate_peers()` for
+  low-acceptance non-static peers: when configured peer capacity needs
+  headroom, tested non-static peers below the acceptance-rate threshold can be
+  unpeered with queue cleanup while static and higher-acceptance peers remain
+  peered.
+- Propagation peer maintenance now starts one eligible waiting or retry-ready
+  peer sync through the existing local `peer_sync` path, so Python
+  `sync_peers()`-style maintenance mutates queue marks and transfer accounting
+  instead of only reporting cull/rotation status.
+- Propagation peer maintenance selection now also mirrors Python's waiting
+  peer candidate pool: the fastest two waiting peers remain candidates, and
+  zero-transfer-rate peers are added so unknown-speed peers are not starved by
+  previously measured peers.
+- Propagation peer maintenance waiting-pool selection now includes every
+  zero-transfer-rate waiting peer like Python, instead of capping unknown-speed
+  additions to the fastest-pool size and starving later unknown-speed peers.
+- Propagation peer maintenance retry selection now mirrors Python's
+  unresponsive-peer pool behavior as well: when no live waiting peer is
+  eligible, retry-ready unresponsive peers are selected from the whole due pool
+  instead of always retrying the first sorted peer.
+- Propagation peer maintenance also follows Python's sync-pool boundary for
+  retained static peers: static peers past `LXMPeer.MAX_UNREACHABLE` are kept
+  peered, but are not selected for waiting or retry-ready sync in that
+  maintenance pass.
 - Propagation offer handling now follows Python's invalid propagation-stamp
   throttle: peer resource transfers containing invalid propagation stamps mark
   that propagation peer throttled for Python's `PN_STAMP_THROTTLE` window, and
@@ -145,12 +173,30 @@ gap, even though deeper propagation-router parity remains open.
   `wanted_ids: true` transfers every offered message, while `wanted_ids: false`
   and `wanted_ids: []` mark the whole offer handled without resource transfer,
   preserving the no-transfer liveness and transfer-rate behavior.
+- Local peer sync now also keeps Python's full-offer policy gates for
+  `wanted_ids: true`: a boolean wants-all response waits for stamp-policy and
+  peering-key readiness like the original offer path instead of bypassing those
+  gates as an explicit selected-ID response.
+- Local peer sync request-only transfer limits now also stay on Python's
+  full-offer policy path: `transfer_limit_kb` constrains offer construction
+  but does not by itself bypass stamp-policy or peering-key readiness.
+- Local peer sync selected-ID offer responses that request a transfer now also
+  stay on Python's full-offer policy path: non-empty list-shaped `wanted_ids`
+  wait for stamp-policy and peering-key readiness before mutating queue state or
+  transferring payloads.
+- Local peer sync no-transfer offer responses now also stay on Python's
+  full-offer policy path: `wanted_ids: false` and `wanted_ids: []` wait for
+  stamp-policy and peering-key readiness before marking offered queue entries
+  handled without resource transfer.
 - Empty local peer sync now follows Python's no-unhandled-messages path: a
   clean peer with no pending propagation entries records the attempt but
   preserves liveness and the previous sync transfer rate, and avoids synthetic
   failure backoff, while existing failure backoff remains intact.
 - Postponed local peer sync now also preserves the previous sync transfer rate
   instead of clearing transfer accounting before any offer/resource path runs.
+- Postponed local peer sync now honors existing peer backoff before the local
+  queue-fill path: a backed-off peer does not opportunistically gain new
+  unhandled propagation marks until the sync attempt is eligible to run.
 - Local peer sync now preserves the previous sync transfer rate when pending
   offers are only skipped by sync limits or marked transfer-limited, matching
   Python's resource-completion-only transfer-rate updates.

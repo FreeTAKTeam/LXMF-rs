@@ -566,6 +566,8 @@ impl RpcDaemon {
                     ));
                 }
                 let wanted_ids = canonical_peer_sync_wanted_ids(parsed.wanted_ids.as_ref())?;
+                let requested_transfer_limit_bytes =
+                    parsed.transfer_limit_kb.map(|limit| (limit.max(0.0) * 1000.0) as usize);
 
                 let timestamp = now_i64();
                 let existing_peer =
@@ -573,8 +575,6 @@ impl RpcDaemon {
                 if existing_peer.is_none()
                     && wanted_ids.as_ref().is_some_and(PeerSyncWantedIds::requires_offer_validation)
                 {
-                    let requested_transfer_limit_bytes =
-                        parsed.transfer_limit_kb.map(|limit| (limit.max(0.0) * 1000.0) as usize);
                     let mut prospective_propagation = self
                         .store
                         .list_peer_prospective_unhandled_propagation(peer_id)
@@ -593,6 +593,33 @@ impl RpcDaemon {
                         requested_transfer_limit_bytes,
                         requested_transfer_limit_bytes,
                     )?;
+                }
+                if let Some(record) = existing_peer.as_ref() {
+                    let record_transfer_limit_bytes =
+                        record.propagation_transfer_limit.map(|limit| limit as usize);
+                    let transfer_limit_bytes =
+                        match (record_transfer_limit_bytes, requested_transfer_limit_bytes) {
+                            (Some(record_limit), Some(requested_limit)) => {
+                                Some(record_limit.min(requested_limit))
+                            }
+                            (Some(record_limit), None) => Some(record_limit),
+                            (None, Some(requested_limit)) => Some(requested_limit),
+                            (None, None) => None,
+                        };
+                    let sync_limit_bytes = record
+                        .propagation_sync_limit
+                        .map(|limit| limit as usize)
+                        .or(transfer_limit_bytes);
+                    if record.next_sync_attempt > 0 && timestamp < record.next_sync_attempt {
+                        return Ok(self.postponed_peer_sync_response(
+                            request.id,
+                            record,
+                            timestamp,
+                            "backoff",
+                            transfer_limit_bytes,
+                            sync_limit_bytes,
+                        ));
+                    }
                 }
                 let existing_peer_type =
                     existing_peer.as_ref().and_then(|record| record.peer_type.clone());
@@ -614,10 +641,8 @@ impl RpcDaemon {
                 self.queue_existing_propagation_for_peer(record.peer.as_str())?;
                 let record_transfer_limit_bytes =
                     record.propagation_transfer_limit.map(|limit| limit as usize);
-                let requested_transfer_limit_bytes =
-                    parsed.transfer_limit_kb.map(|limit| (limit.max(0.0) * 1000.0) as usize);
                 let explicit_peer_sync_selection =
-                    wanted_ids.is_some() || requested_transfer_limit_bytes.is_some();
+                    wanted_ids.as_ref().is_some_and(PeerSyncWantedIds::requires_offer_validation);
                 let transfer_limit_bytes =
                     match (record_transfer_limit_bytes, requested_transfer_limit_bytes) {
                         (Some(record_limit), Some(requested_limit)) => {
@@ -737,6 +762,7 @@ impl RpcDaemon {
                     );
                 let peer_policy_required = remaining_policy_relevant > 0
                     && (!explicit_peer_sync_selection
+                        || wanted_ids.is_some()
                         || remaining_policy_relevant_has_stamp
                         || peer_stamp_policy_partially_known(&record));
                 if peer_policy_required && !peer_stamp_policy_known(&record) {
@@ -1723,10 +1749,10 @@ fn peer_sync_policy_relevance(
     let mut policy_relevant_pending = 0usize;
     let mut policy_relevant_has_stamp = false;
     let mut policy_relevant_size = 24usize;
-    for entry in pending_propagation
-        .iter()
-        .filter(|entry| wanted_ids.map_or(true, |ids| ids.wants(entry.transient_id.as_str())))
-    {
+    let policy_wanted_ids = wanted_ids.filter(|ids| !ids.wants_none());
+    for entry in pending_propagation.iter().filter(|entry| {
+        policy_wanted_ids.map_or(true, |ids| ids.wants(entry.transient_id.as_str()))
+    }) {
         let entry_size = usize::try_from(entry.size_bytes).unwrap_or(usize::MAX);
         let transfer_size = entry_size.saturating_add(16);
         let next_size = policy_relevant_size.saturating_add(transfer_size);

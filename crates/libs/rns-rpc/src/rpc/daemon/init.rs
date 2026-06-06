@@ -3,6 +3,9 @@ use super::*;
 
 pub(super) const LXMF_PEER_SYNC_BACKOFF_STEP_SECS: u32 = 12 * 60;
 pub(super) const LXMF_PEER_MAX_UNREACHABLE_SECS: i64 = 14 * 24 * 60 * 60;
+const LXMF_PEER_FASTEST_RANDOM_POOL: usize = 2;
+const LXMF_PEER_ROTATION_HEADROOM_PCT: usize = 10;
+const LXMF_PEER_ROTATION_ACCEPTANCE_RATE_MAX: f64 = 0.5;
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct PeerPropagationState {
@@ -929,7 +932,7 @@ impl RpcDaemon {
         let is_static = self.is_static_peer(peer.as_str());
         let remote_peering_cost_allowed = self.remote_peering_cost_allowed(peering_cost);
         if !is_static && !remote_peering_cost_allowed {
-            self.remove_autopeered_peer_if_stale_or_expensive(peer.as_str(), timestamp)?;
+            self.remove_peer_if_stale_or_expensive(peer.as_str(), timestamp)?;
         }
         if !is_static && propagation_enabled == Some(false) {
             self.remove_autopeered_peer_if_propagation_disabled(
@@ -1423,6 +1426,158 @@ impl RpcDaemon {
         Ok(removed)
     }
 
+    pub(super) fn rotate_low_acceptance_non_static_peers(
+        &self,
+    ) -> Result<Vec<String>, std::io::Error> {
+        let (max_peers, static_peers) = {
+            let propagation = self.propagation_state.lock().expect("propagation mutex poisoned");
+            let Some(max_peers) = propagation.max_peers else {
+                return Ok(Vec::new());
+            };
+            (max_peers as usize, propagation.static_peers.clone())
+        };
+        if max_peers == 0 {
+            return Ok(Vec::new());
+        }
+        let headroom = ((max_peers * LXMF_PEER_ROTATION_HEADROOM_PCT) / 100).max(1);
+        let active_peers = {
+            let guard = self.peers.lock().expect("peers mutex poisoned");
+            guard
+                .values()
+                .filter(|record| record.peer_type.as_deref() != Some("unpeered"))
+                .cloned()
+                .collect::<Vec<_>>()
+        };
+        let required_drops = active_peers.len().saturating_sub(max_peers.saturating_sub(headroom));
+        if required_drops == 0 || active_peers.len().saturating_sub(required_drops) <= 1 {
+            return Ok(Vec::new());
+        }
+        let untested_count =
+            active_peers.iter().filter(|record| record.last_sync_attempt == 0).count();
+        if untested_count >= headroom {
+            return Ok(Vec::new());
+        }
+
+        let mut peer_stats = Vec::with_capacity(active_peers.len());
+        for record in active_peers {
+            let stats = self
+                .store
+                .peer_propagation_message_stats(record.peer.as_str())
+                .map_err(std::io::Error::other)?;
+            peer_stats.push((record, stats.unhandled));
+        }
+        if peer_stats.iter().any(|(_, unhandled)| *unhandled == 0) {
+            peer_stats.retain(|(_, unhandled)| *unhandled == 0);
+        }
+
+        let mut unresponsive = Vec::new();
+        let mut waiting = Vec::new();
+        for (record, _unhandled) in peer_stats {
+            let is_static =
+                static_peers.iter().any(|peer| peer.eq_ignore_ascii_case(record.peer.as_str()));
+            if is_static {
+                continue;
+            }
+            if record.alive {
+                if record.offered > 0 {
+                    waiting.push(record);
+                }
+            } else {
+                unresponsive.push(record);
+            }
+        }
+
+        let mut drop_pool = Vec::new();
+        if unresponsive.is_empty() {
+            drop_pool.extend(waiting);
+        } else {
+            drop_pool.extend(unresponsive);
+            drop_pool.extend(waiting);
+        }
+        drop_pool.sort_by(|left, right| {
+            peer_rotation_acceptance_rate(left)
+                .total_cmp(&peer_rotation_acceptance_rate(right))
+                .then_with(|| left.peer.cmp(&right.peer))
+        });
+
+        let mut removed = Vec::new();
+        for record in drop_pool.into_iter().take(required_drops) {
+            if peer_rotation_acceptance_rate(&record) >= LXMF_PEER_ROTATION_ACCEPTANCE_RATE_MAX {
+                continue;
+            }
+            let cleanup = self.unpeer_local_state(record.peer.as_str())?;
+            if cleanup.removed {
+                self.publish_event(RpcEvent {
+                    event_type: "peer_unpeer".into(),
+                    payload: policy_unpeer_event_payload(
+                        record.peer.as_str(),
+                        "peer_rotation",
+                        &cleanup,
+                    ),
+                });
+                removed.push(record.peer);
+            }
+        }
+        removed.sort();
+        Ok(removed)
+    }
+
+    pub(super) fn select_peer_for_maintenance_sync(
+        &self,
+        timestamp: i64,
+    ) -> Result<Option<String>, std::io::Error> {
+        let active_peers = {
+            let guard = self.peers.lock().expect("peers mutex poisoned");
+            guard
+                .values()
+                .filter(|record| record.peer_type.as_deref() != Some("unpeered"))
+                .cloned()
+                .collect::<Vec<_>>()
+        };
+
+        let mut waiting = Vec::new();
+        let mut unresponsive = Vec::new();
+        for record in active_peers {
+            if timestamp > record.last_seen.saturating_add(LXMF_PEER_MAX_UNREACHABLE_SECS) {
+                continue;
+            }
+            let stats = self
+                .store
+                .peer_propagation_message_stats(record.peer.as_str())
+                .map_err(std::io::Error::other)?;
+            if stats.unhandled == 0 {
+                continue;
+            }
+            if record.alive {
+                waiting.push(record);
+            } else if timestamp > record.next_sync_attempt {
+                unresponsive.push(record);
+            }
+        }
+
+        if !waiting.is_empty() {
+            waiting.sort_by(|left, right| {
+                right
+                    .sync_transfer_rate
+                    .total_cmp(&left.sync_transfer_rate)
+                    .then_with(|| left.peer.cmp(&right.peer))
+            });
+            let fastest_count = LXMF_PEER_FASTEST_RANDOM_POOL.min(waiting.len());
+            let mut peer_pool = waiting.iter().take(fastest_count).cloned().collect::<Vec<_>>();
+            peer_pool
+                .extend(waiting.iter().filter(|record| record.sync_transfer_rate == 0.0).cloned());
+            let selected_index = timestamp.rem_euclid(peer_pool.len() as i64) as usize;
+            return Ok(peer_pool.into_iter().nth(selected_index).map(|record| record.peer));
+        }
+
+        if !unresponsive.is_empty() {
+            unresponsive.sort_by(|left, right| left.peer.cmp(&right.peer));
+            let selected_index = timestamp.rem_euclid(unresponsive.len() as i64) as usize;
+            return Ok(unresponsive.into_iter().nth(selected_index).map(|record| record.peer));
+        }
+        Ok(None)
+    }
+
     pub(super) fn ensure_peer_admission_allowed(
         &self,
         peer: &str,
@@ -1499,7 +1654,7 @@ impl RpcDaemon {
         }
     }
 
-    pub(super) fn remove_autopeered_peer_if_stale_or_expensive(
+    pub(super) fn remove_peer_if_stale_or_expensive(
         &self,
         peer: &str,
         timestamp: i64,
@@ -1511,9 +1666,8 @@ impl RpcDaemon {
         let unhandled_ids =
             self.store.list_peer_unhandled_propagation_ids(peer).map_err(std::io::Error::other)?;
         let mut guard = self.peers.lock().expect("peers mutex poisoned");
-        let should_remove = guard.get(peer).is_some_and(|existing| {
-            existing.peer_type.as_deref() == Some("auto") && timestamp >= existing.peering_timebase
-        });
+        let should_remove =
+            guard.get(peer).is_some_and(|existing| timestamp >= existing.peering_timebase);
         if !should_remove {
             return Ok(());
         }
@@ -1664,4 +1818,12 @@ fn policy_unpeer_event_payload(
         "incoming": incoming,
         "messages": cleanup.messages.clone(),
     })
+}
+
+fn peer_rotation_acceptance_rate(peer: &PeerRecord) -> f64 {
+    if peer.offered == 0 {
+        0.0
+    } else {
+        (peer.outgoing as f64 / peer.offered as f64).clamp(0.0, 1.0)
+    }
 }

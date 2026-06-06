@@ -979,12 +979,29 @@ impl RpcDaemon {
             "propagation_peer_maintenance" => {
                 let timestamp = now_i64();
                 let culled_peers = self.cull_unreachable_non_static_peers(timestamp)?;
+                let rotated_peers = self.rotate_low_acceptance_non_static_peers()?;
+                let synced_peer = self.select_peer_for_maintenance_sync(timestamp)?;
+                let peer_sync = if let Some(peer) = synced_peer.as_ref() {
+                    self.handle_rpc(RpcRequest {
+                        id: request.id,
+                        method: "peer_sync".to_string(),
+                        params: Some(json!({ "peer": peer })),
+                    })?
+                    .result
+                    .unwrap_or(JsonValue::Null)
+                } else {
+                    JsonValue::Null
+                };
                 Ok(RpcResponse {
                     id: request.id,
                     result: Some(json!({
                         "timestamp": timestamp,
                         "culled": culled_peers.len(),
                         "culled_peers": culled_peers,
+                        "rotated": rotated_peers.len(),
+                        "rotated_peers": rotated_peers,
+                        "synced_peer": synced_peer,
+                        "peer_sync": peer_sync,
                         "max_unreachable_secs": super::init::LXMF_PEER_MAX_UNREACHABLE_SECS,
                     })),
                     error: None,

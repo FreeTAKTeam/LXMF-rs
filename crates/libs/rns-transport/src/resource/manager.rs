@@ -391,7 +391,7 @@ impl ResourceManager {
                     let rtt = stats.rtt;
                     let request = receiver.build_request(now, rtt);
                     if !request.requested_hashes.is_empty() || request.hashmap_exhausted {
-                        receiver.last_request = now;
+                        receiver.mark_active_request();
                         request_packet = match build_link_packet(
                             link,
                             PacketType::Data,

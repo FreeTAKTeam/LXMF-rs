@@ -92,6 +92,33 @@ mod tests {
     const ERROR_INVALID_DATA: u8 = 0xF4;
     const ERROR_NOT_FOUND: u8 = 0xFD;
 
+    fn make_ready_propagation_peer(daemon: &RpcDaemon, peer_seed: u8) -> String {
+        let peer = hex::encode([peer_seed; 16]);
+        daemon
+            .accept_announce_with_metadata(
+                peer.clone(),
+                1_700_000_606 + i64::from(peer_seed),
+                None,
+                None,
+                None,
+                Some(vec!["propagation".to_string()]),
+                None,
+                None,
+                None,
+                Some(1),
+                Some(Some(1)),
+                Some(Some(1)),
+                None,
+                Some(1),
+                None,
+                None,
+                None,
+                None,
+            )
+            .expect("accept ready propagation peer announce");
+        peer
+    }
+
     #[test]
     fn peer_command_returns_none_for_unhandled_path() {
         let daemon = RpcDaemon::test_instance();
@@ -181,7 +208,7 @@ mod tests {
         let peer_bytes = [0xC7; 16];
         let peer_hex = hex::encode(peer_bytes);
         let payload_hex = format!("{}{}", "23".repeat(16), "45".repeat(24));
-        let daemon = RpcDaemon::test_instance();
+        let daemon = RpcDaemon::test_instance_with_identity(hex::encode([2u8; 16]));
         daemon
             .handle_rpc(RpcRequest {
                 id: 1,
@@ -192,6 +219,7 @@ mod tests {
                 })),
             })
             .expect("enable propagation");
+        assert_eq!(make_ready_propagation_peer(&daemon, 0xC7), peer_hex);
         let ingest = daemon
             .handle_rpc(RpcRequest {
                 id: 2,
