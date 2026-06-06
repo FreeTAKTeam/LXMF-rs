@@ -81,7 +81,9 @@ gap, even though deeper propagation-router parity remains open.
 - Daemon receipt status and peer-activity bookkeeping now preserve Python's
   distinction between transport `sent:*` states and final `delivered` receipts:
   send/resource completion records sent-only peer tx bookkeeping, while actual
-  delivery receipts mark the outbound peer heard/delivered.
+  delivery receipts mark the outbound peer heard/delivered. Outbound sent and
+  delivered peer activity now resolve existing peers case-insensitively, so
+  transfer and receipt accounting mutate the stored peer identity.
 - RPC message listing now accepts bounded `limit`/`cursor` parameters and uses
   a stable `timestamp:id` cursor so same-second messages paginate without
   skipping or repeating records. Message and announce list handlers now report

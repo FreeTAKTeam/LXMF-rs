@@ -618,8 +618,11 @@ impl RpcDaemon {
     }
 
     pub fn record_outbound_peer_activity(&self, peer: &str, bytes: usize, delivered: bool) {
+        let peer = peer.trim();
         if let Ok(mut guard) = self.peers.lock() {
-            if let Some(existing) = guard.get_mut(peer) {
+            if let Some(existing) =
+                guard.values_mut().find(|record| record.peer.eq_ignore_ascii_case(peer))
+            {
                 let now = now_i64();
                 existing.tx_bytes = existing.tx_bytes.saturating_add(bytes as u64);
                 existing.last_sync_attempt = now;
@@ -643,8 +646,11 @@ impl RpcDaemon {
     }
 
     pub fn record_outbound_peer_sent(&self, peer: &str, bytes: usize) {
+        let peer = peer.trim();
         if let Ok(mut guard) = self.peers.lock() {
-            if let Some(existing) = guard.get_mut(peer) {
+            if let Some(existing) =
+                guard.values_mut().find(|record| record.peer.eq_ignore_ascii_case(peer))
+            {
                 existing.tx_bytes = existing.tx_bytes.saturating_add(bytes as u64);
                 existing.last_sync_attempt = now_i64();
             }
