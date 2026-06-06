@@ -410,7 +410,11 @@ impl ResourceManager {
         }
         if let Some(hash) = failed {
             self.incoming.remove(&hash);
-            // Reset arrival timing so a gap between resources doesn't skew the EWMA.
+            // Reset so the inter-resource gap doesn't skew the arrival EWMA.
+            // TODO: a better approach is to schedule a delayed reset — wait
+            // arrival_interval * 2, and only reset if no new part has arrived by
+            // then. This preserves the estimate when the next resource starts
+            // immediately after this one finishes.
             if let Some(stats) = self.link_stats.get_mut(link.id()) {
                 stats.last_arrival = None;
             }
@@ -418,6 +422,7 @@ impl ResourceManager {
         }
         if let Some(hash) = completed {
             self.incoming.remove(&hash);
+            // Same TODO as the failed path above.
             if let Some(stats) = self.link_stats.get_mut(link.id()) {
                 stats.last_arrival = None;
             }

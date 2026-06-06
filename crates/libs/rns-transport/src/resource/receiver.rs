@@ -100,6 +100,13 @@ impl ResourceReceiver {
     }
 
     fn build_request(&mut self, now: Instant, rtt: Duration) -> ResourceRequest {
+        // TODO: the loss threshold (2×rtt) and EWMA alpha (7/8) are intuition-based
+        // and have not been formally tuned or proven. On links with high jitter the
+        // 2×rtt multiplier may be too tight (causing spurious re-requests); on links
+        // with asymmetric delay it may be too loose. The EWMA alpha controls how
+        // quickly the estimate tracks changes — a higher alpha (closer to 1) gives
+        // more weight to history and reacts more slowly to sudden changes. Both
+        // values should be validated against real-world Reticulum traffic traces.
         let loss_threshold = rtt.saturating_mul(2);
 
         // Drain the front of in_flight_queue (front = oldest, since we append in time order).
