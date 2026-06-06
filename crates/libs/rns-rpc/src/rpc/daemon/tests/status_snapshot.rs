@@ -8848,6 +8848,83 @@ fn selected_propagation_node_queues_existing_entries_for_peer_sync() {
 }
 
 #[test]
+fn selected_propagation_node_matches_existing_peer_case_insensitively_like_python() {
+    let store = MessagesStore::in_memory().expect("store");
+    let daemon = RpcDaemon::with_store(store, hex::encode([2u8; 16]));
+    let stored_peer = "Ef".repeat(16);
+    let request_peer = stored_peer.to_ascii_lowercase();
+    daemon
+        .accept_announce_with_metadata(
+            stored_peer.clone(),
+            1_700_000_608,
+            None,
+            None,
+            None,
+            Some(vec!["propagation".to_string()]),
+            None,
+            None,
+            None,
+            Some(1),
+            Some(Some(1)),
+            Some(Some(1)),
+            None,
+            Some(1),
+            None,
+            None,
+            None,
+            None,
+        )
+        .expect("accept mixed-case propagation peer");
+    let entry = PropagationEntryRecord {
+        transient_id: "ae".repeat(32),
+        destination: "13".repeat(16),
+        payload_hex: "35".repeat(24),
+        received_at: 1_700_000_609,
+        size_bytes: 24,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&entry).expect("store propagation entry");
+
+    let result = daemon
+        .handle_rpc(rpc_request(
+            75,
+            "set_outbound_propagation_node",
+            json!({ "peer": request_peer }),
+        ))
+        .expect("set propagation node")
+        .result
+        .expect("set propagation node result");
+    assert_eq!(result["peer"].as_str(), Some(stored_peer.as_str()));
+
+    let selected = daemon
+        .handle_rpc(RpcRequest {
+            id: 76,
+            method: "get_outbound_propagation_node".to_string(),
+            params: None,
+        })
+        .expect("get selected propagation node")
+        .result
+        .expect("selected propagation node result");
+    assert_eq!(selected["peer"].as_str(), Some(stored_peer.as_str()));
+
+    assert_eq!(
+        daemon
+            .store
+            .list_peer_unhandled_propagation(stored_peer.as_str())
+            .expect("stored peer unhandled")
+            .len(),
+        1
+    );
+    assert!(
+        daemon
+            .store
+            .list_peer_unhandled_propagation(stored_peer.to_ascii_lowercase().as_str())
+            .expect("lowercase peer unhandled")
+            .is_empty()
+    );
+}
+
+#[test]
 fn rejected_selected_propagation_node_does_not_update_selection() {
     let daemon = RpcDaemon::test_instance();
     daemon

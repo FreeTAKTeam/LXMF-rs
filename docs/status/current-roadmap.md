@@ -73,6 +73,8 @@ gap, even though deeper propagation-router parity remains open.
   different-case request cannot miss or fork an existing peer queue. Local
   unpeer cleanup now also resolves existing peers case-insensitively before
   clearing queue marks, peer records, and selected propagation-node state.
+  Outbound propagation-node selection now also stores the existing peer's
+  canonical id and queues existing propagation entries under that identity.
 - Daemon receipt status and peer-activity bookkeeping now preserve Python's
   distinction between transport `sent:*` states and final `delivered` receipts:
   send/resource completion records sent-only peer tx bookkeeping, while actual

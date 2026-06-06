@@ -1298,14 +1298,17 @@ impl RpcDaemon {
                     .map(serde_json::from_value::<SetOutboundPropagationNodeParams>)
                     .transpose()
                     .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
-                let peer = parsed
+                let requested_peer = parsed
                     .and_then(|value| value.peer)
                     .map(|value| value.trim().to_string())
                     .filter(|value| !value.is_empty());
-                if let Some(peer_id) = peer.as_deref() {
-                    self.ensure_peer_for_sync(peer_id, now_i64())?;
-                    self.queue_existing_propagation_for_peer(peer_id)?;
-                }
+                let peer = if let Some(peer_id) = requested_peer.as_deref() {
+                    let record = self.ensure_peer_for_sync(peer_id, now_i64())?;
+                    self.queue_existing_propagation_for_peer(record.peer.as_str())?;
+                    Some(record.peer)
+                } else {
+                    None
+                };
                 {
                     let mut guard = self
                         .outbound_propagation_node
