@@ -1067,6 +1067,29 @@ impl MessagesStore {
         })
     }
 
+    pub fn peer_propagation_mark_stats(
+        &self,
+        peer: &str,
+    ) -> rusqlite::Result<PropagationEntryStats> {
+        self.with_read_conn(|conn| {
+            let (entries, bytes): (i64, Option<i64>) = conn.query_row(
+                "SELECT
+                    COALESCE(SUM(CASE WHEN e.transient_id IS NOT NULL THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN e.transient_id IS NOT NULL THEN e.size_bytes ELSE 0 END), 0)
+                 FROM propagation_peer_entries p
+                 LEFT JOIN propagation_entries e
+                    ON e.transient_id = p.transient_id
+                 WHERE p.peer = ?1",
+                params![peer],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )?;
+            Ok(PropagationEntryStats {
+                entries: entries.max(0) as u64,
+                bytes: bytes.unwrap_or(0).max(0) as u64,
+            })
+        })
+    }
+
     pub fn peer_propagation_message_stats(
         &self,
         peer: &str,

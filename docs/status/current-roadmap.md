@@ -73,6 +73,9 @@ gap, even though deeper propagation-router parity remains open.
   different-case request cannot miss or fork an existing peer queue. Local
   unpeer cleanup now also resolves existing peers case-insensitively before
   clearing queue marks, peer records, and selected propagation-node state.
+  Unpeer cleanup accounting now counts every cleared live propagation queue mark,
+  including received and transfer-limited entries, so local and remote unpeer
+  responses match the queue state actually removed.
   Outbound propagation-node selection now also stores the existing peer's
   canonical id and queues existing propagation entries under that identity.
   Remote unpeer now reports the stored peer id after case-insensitive local

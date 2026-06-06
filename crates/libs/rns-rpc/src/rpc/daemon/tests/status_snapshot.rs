@@ -13378,6 +13378,116 @@ fn peer_unpeer_reports_cleared_propagation_queue_accounting() {
 }
 
 #[test]
+fn peer_unpeer_counts_received_and_transfer_limited_queue_marks_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    daemon
+        .handle_rpc(rpc_request(93, "peer_sync", json!({ "peer": "peer-unpeer-all-marks" })))
+        .expect("sync peer");
+    daemon.event_queue.lock().expect("event_queue mutex poisoned").clear();
+
+    let handled = PropagationEntryRecord {
+        transient_id: "da".repeat(32),
+        destination: "31".repeat(16),
+        payload_hex: "31".repeat(10),
+        received_at: 1_700_000_703,
+        size_bytes: 10,
+        stamp_value: None,
+    };
+    let unhandled = PropagationEntryRecord {
+        transient_id: "db".repeat(32),
+        destination: "32".repeat(16),
+        payload_hex: "32".repeat(20),
+        received_at: 1_700_000_704,
+        size_bytes: 20,
+        stamp_value: None,
+    };
+    let received = PropagationEntryRecord {
+        transient_id: "dc".repeat(32),
+        destination: "33".repeat(16),
+        payload_hex: "33".repeat(30),
+        received_at: 1_700_000_705,
+        size_bytes: 30,
+        stamp_value: None,
+    };
+    let transfer_limited = PropagationEntryRecord {
+        transient_id: "dd".repeat(32),
+        destination: "34".repeat(16),
+        payload_hex: "34".repeat(40),
+        received_at: 1_700_000_706,
+        size_bytes: 40,
+        stamp_value: None,
+    };
+    for entry in [&handled, &unhandled, &received, &transfer_limited] {
+        daemon.store.upsert_propagation_entry(entry).expect("store entry");
+    }
+    daemon
+        .store
+        .mark_peer_handled_propagation("peer-unpeer-all-marks", handled.transient_id.as_str())
+        .expect("mark handled");
+    daemon
+        .store
+        .mark_peer_unhandled_propagation("peer-unpeer-all-marks", unhandled.transient_id.as_str())
+        .expect("mark unhandled");
+    daemon
+        .store
+        .mark_peer_received_propagation("peer-unpeer-all-marks", received.transient_id.as_str())
+        .expect("mark received");
+    daemon
+        .store
+        .mark_peer_transfer_limited_propagation(
+            "peer-unpeer-all-marks",
+            transfer_limited.transient_id.as_str(),
+        )
+        .expect("mark transfer limited");
+
+    let result = daemon
+        .handle_rpc(rpc_request(
+            94,
+            "peer_unpeer",
+            json!({ "peer": "peer-unpeer-all-marks" }),
+        ))
+        .expect("unpeer")
+        .result
+        .expect("unpeer result");
+    assert_eq!(result["propagation_cleared"].as_u64(), Some(4));
+    assert_eq!(result["propagation_cleared_bytes"].as_u64(), Some(100));
+    assert_eq!(
+        result["messages"]["handled_ids"].as_array().expect("result handled ids"),
+        &[
+            json!(handled.transient_id.as_str()),
+            json!(received.transient_id.as_str()),
+            json!(transfer_limited.transient_id.as_str()),
+        ]
+    );
+    assert_eq!(
+        daemon
+            .store
+            .list_peer_handled_propagation_ids("peer-unpeer-all-marks")
+            .expect("remaining handled ids"),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        daemon
+            .store
+            .list_peer_unhandled_propagation("peer-unpeer-all-marks")
+            .expect("remaining unhandled entries"),
+        Vec::<PropagationEntryRecord>::new()
+    );
+
+    let event = daemon
+        .event_queue
+        .lock()
+        .expect("event_queue mutex poisoned")
+        .iter()
+        .rev()
+        .find(|event| event.event_type == "peer_unpeer")
+        .cloned()
+        .expect("peer unpeer event");
+    assert_eq!(event.payload["propagation_cleared"].as_u64(), Some(4));
+    assert_eq!(event.payload["propagation_cleared_bytes"].as_u64(), Some(100));
+}
+
+#[test]
 fn peer_sync_rejects_blank_peer_identifier() {
     let daemon = RpcDaemon::test_instance();
 

@@ -1663,9 +1663,9 @@ impl RpcDaemon {
             .find(|record| record.peer.eq_ignore_ascii_case(peer_id))
             .map(|record| record.peer.clone())
             .unwrap_or_else(|| peer_id.to_string());
-        let propagation_stats = self
+        let propagation_mark_stats = self
             .store
-            .peer_propagation_message_stats(peer_key.as_str())
+            .peer_propagation_mark_stats(peer_key.as_str())
             .map_err(std::io::Error::other)?;
         let (outgoing, incoming, offered, unhandled, offered_bytes, unhandled_bytes) =
             self.peer_message_stats(peer_key.as_str())?;
@@ -1724,13 +1724,8 @@ impl RpcDaemon {
         Ok(LocalUnpeerCleanup {
             peer: peer_key,
             removed,
-            propagation_cleared: propagation_stats
-                .offered
-                .saturating_add(propagation_stats.unhandled)
-                as usize,
-            propagation_cleared_bytes: propagation_stats
-                .offered_bytes
-                .saturating_add(propagation_stats.unhandled_bytes),
+            propagation_cleared: propagation_mark_stats.entries as usize,
+            propagation_cleared_bytes: propagation_mark_stats.bytes,
             messages,
         })
     }
