@@ -1676,19 +1676,34 @@ impl RpcDaemon {
         peer: &str,
         timestamp: i64,
     ) -> Result<(), std::io::Error> {
-        let propagation_stats =
-            self.store.peer_propagation_message_stats(peer).map_err(std::io::Error::other)?;
-        let handled_ids =
-            self.store.list_peer_handled_propagation_ids(peer).map_err(std::io::Error::other)?;
-        let unhandled_ids =
-            self.store.list_peer_unhandled_propagation_ids(peer).map_err(std::io::Error::other)?;
+        let peer_key = {
+            let guard = self.peers.lock().expect("peers mutex poisoned");
+            guard
+                .keys()
+                .find(|existing| existing.eq_ignore_ascii_case(peer))
+                .cloned()
+                .unwrap_or_else(|| peer.to_string())
+        };
+        let propagation_stats = self
+            .store
+            .peer_propagation_message_stats(peer_key.as_str())
+            .map_err(std::io::Error::other)?;
+        let handled_ids = self
+            .store
+            .list_peer_handled_propagation_ids(peer_key.as_str())
+            .map_err(std::io::Error::other)?;
+        let unhandled_ids = self
+            .store
+            .list_peer_unhandled_propagation_ids(peer_key.as_str())
+            .map_err(std::io::Error::other)?;
         let mut guard = self.peers.lock().expect("peers mutex poisoned");
-        let should_remove =
-            guard.get(peer).is_some_and(|existing| timestamp >= existing.peering_timebase);
+        let should_remove = guard
+            .get(peer_key.as_str())
+            .is_some_and(|existing| timestamp >= existing.peering_timebase);
         if !should_remove {
             return Ok(());
         }
-        let removed = guard.remove(peer).is_some();
+        let removed = guard.remove(peer_key.as_str()).is_some();
         if !removed {
             return Ok(());
         }
@@ -1697,7 +1712,9 @@ impl RpcDaemon {
         self.update_daemon_status_snapshot(|snapshot| {
             snapshot.peer_count = peer_count;
         });
-        self.store.clear_peer_propagation_marks(peer).map_err(std::io::Error::other)?;
+        self.store
+            .clear_peer_propagation_marks(peer_key.as_str())
+            .map_err(std::io::Error::other)?;
         let messages = json!({
             "offered": propagation_stats.offered,
             "unhandled": propagation_stats.unhandled,
@@ -1709,7 +1726,7 @@ impl RpcDaemon {
         self.publish_event(RpcEvent {
             event_type: "peer_unpeer".into(),
             payload: json!({
-                "peer": peer,
+                "peer": peer_key.as_str(),
                 "removed": true,
                 "reason": "peering_cost_policy",
                 "propagation_cleared": propagation_stats
@@ -1725,7 +1742,10 @@ impl RpcDaemon {
         {
             let mut selected =
                 self.outbound_propagation_node.lock().expect("propagation node mutex poisoned");
-            if selected.as_deref() == Some(peer) {
+            if selected
+                .as_deref()
+                .is_some_and(|selected| selected.eq_ignore_ascii_case(peer_key.as_str()))
+            {
                 *selected = None;
                 cleared_selected_node = true;
             }

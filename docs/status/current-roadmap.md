@@ -122,7 +122,9 @@ gap, even though deeper propagation-router parity remains open.
 - Propagation peer admission now mirrors Python's high-cost peering policy for
   existing non-static peers: a newer announce above `remote_peering_cost_max`
   breaks manual or auto peering and clears propagation queue marks, while stale
-  high-cost announces are ignored.
+  high-cost announces are ignored. High-cost peering breaks now also resolve
+  existing peers case-insensitively before applying timebase, queue cleanup,
+  selected-node cleanup, and removal events.
 - Propagation peer maintenance now has an explicit RPC path for Python
   `sync_peers()`-style unreachable-peer culling: non-static peers unheard for
   `LXMPeer.MAX_UNREACHABLE` are unpeered and have their propagation queue marks

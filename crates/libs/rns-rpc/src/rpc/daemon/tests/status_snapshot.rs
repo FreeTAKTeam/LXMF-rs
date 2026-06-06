@@ -8327,6 +8327,92 @@ fn high_cost_announce_breaks_existing_manual_peer_like_python() {
     assert_eq!(event.payload["propagation_cleared_bytes"].as_u64(), Some(24));
 }
 
+#[test]
+fn high_cost_announce_breaks_existing_peer_case_insensitively_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    daemon
+        .handle_rpc(rpc_request(
+            60,
+            "propagation_enable",
+            json!({
+                "enabled": true,
+                "autopeer": true,
+                "remote_peering_cost_max": 5,
+            }),
+        ))
+        .expect("enable propagation");
+
+    let stored_peer = "Peer-Manual-High-Cost-Case";
+    let announce_peer = stored_peer.to_ascii_lowercase();
+    daemon
+        .handle_rpc(rpc_request(61, "peer_sync", json!({ "peer": stored_peer })))
+        .expect("manual peer sync");
+
+    let entry = PropagationEntryRecord {
+        transient_id: "f4".repeat(32),
+        destination: "14".repeat(16),
+        payload_hex: "14".repeat(24),
+        received_at: 1_700_000_501,
+        size_bytes: 24,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&entry).expect("store propagation entry");
+    daemon
+        .store
+        .mark_peer_unhandled_propagation(stored_peer, entry.transient_id.as_str())
+        .expect("mark manual peer propagation unhandled");
+    daemon.event_queue.lock().expect("event_queue mutex poisoned").clear();
+
+    daemon
+        .accept_announce_with_metadata(
+            announce_peer,
+            1_700_000_502,
+            None,
+            None,
+            None,
+            Some(vec!["propagation".to_string()]),
+            None,
+            None,
+            None,
+            Some(3),
+            Some(Some(1)),
+            Some(Some(9)),
+            None,
+            Some(1),
+            None,
+            None,
+            None,
+            None,
+        )
+        .expect("accept high-cost announce");
+
+    let peers = daemon
+        .handle_rpc(RpcRequest { id: 62, method: "list_peers".to_string(), params: None })
+        .expect("list peers")
+        .result
+        .expect("list peers result");
+    assert_eq!(peers["peers"].as_array().map(|rows| rows.len()), Some(0));
+    assert!(
+        daemon
+            .store
+            .list_peer_unhandled_propagation(stored_peer)
+            .expect("manual peer propagation marks after break")
+            .is_empty()
+    );
+    let event = daemon
+        .event_queue
+        .lock()
+        .expect("event_queue mutex poisoned")
+        .iter()
+        .rev()
+        .find(|event| event.event_type == "peer_unpeer")
+        .cloned()
+        .expect("manual peer removal event");
+    assert_eq!(event.payload["peer"].as_str(), Some(stored_peer));
+    assert_eq!(event.payload["reason"].as_str(), Some("peering_cost_policy"));
+    assert_eq!(event.payload["propagation_cleared"].as_u64(), Some(1));
+}
+
 include!("status_snapshot_propagation_ingest.rs");
 
 #[test]
