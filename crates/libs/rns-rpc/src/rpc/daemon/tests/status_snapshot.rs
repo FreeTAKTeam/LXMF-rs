@@ -2808,6 +2808,51 @@ fn propagation_peer_maintenance_candidate_pool_includes_all_unknown_speed_peers_
 }
 
 #[test]
+fn propagation_peer_maintenance_skips_waiting_peer_in_backoff_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    let backed_off_peer = make_ready_propagation_peer(&daemon, 0x60);
+    let due_peer = make_ready_propagation_peer(&daemon, 0x61);
+    let entry = PropagationEntryRecord {
+        transient_id: "dc".repeat(32),
+        destination: "1d".repeat(16),
+        payload_hex: "29".repeat(32),
+        received_at: 1_700_000_626,
+        size_bytes: 32,
+        stamp_value: Some(12),
+    };
+    daemon.store.upsert_propagation_entry(&entry).expect("store propagation entry");
+    for peer in [&backed_off_peer, &due_peer] {
+        daemon
+            .store
+            .mark_peer_unhandled_propagation(peer.as_str(), entry.transient_id.as_str())
+            .expect("mark unhandled");
+    }
+    {
+        let timestamp = 1_700_000_626;
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let backed_off = peers.get_mut(backed_off_peer.as_str()).expect("backed-off peer");
+        backed_off.alive = true;
+        backed_off.last_seen = timestamp;
+        backed_off.last_sync_attempt = timestamp.saturating_sub(1);
+        backed_off.next_sync_attempt = timestamp.saturating_add(12 * 60);
+        backed_off.sync_transfer_rate = 2_048.0;
+
+        let due = peers.get_mut(due_peer.as_str()).expect("due peer");
+        due.alive = true;
+        due.last_seen = timestamp;
+        due.last_sync_attempt = timestamp.saturating_sub(1);
+        due.next_sync_attempt = 0;
+        due.sync_transfer_rate = 1_024.0;
+    }
+
+    let selected = daemon
+        .select_peer_for_maintenance_sync(1_700_000_626)
+        .expect("select maintenance sync peer");
+
+    assert_eq!(selected.as_deref(), Some(due_peer.as_str()));
+}
+
+#[test]
 fn propagation_peer_maintenance_unresponsive_pool_does_not_starve_later_peers_like_python() {
     let daemon = RpcDaemon::test_instance();
     let first_peer = make_ready_propagation_peer(&daemon, 0x57);

@@ -1548,9 +1548,12 @@ impl RpcDaemon {
             if stats.unhandled == 0 {
                 continue;
             }
+            if record.next_sync_attempt > 0 && timestamp < record.next_sync_attempt {
+                continue;
+            }
             if record.alive {
                 waiting.push(record);
-            } else if timestamp > record.next_sync_attempt {
+            } else {
                 unresponsive.push(record);
             }
         }

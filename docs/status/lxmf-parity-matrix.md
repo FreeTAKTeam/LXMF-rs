@@ -9,7 +9,7 @@ KISS/LoRa/RNode interface work improves the transport substrate available to
 LXMF, but it does not by itself complete LXMF peer sync, propagation router, or
 stamp worker parity.
 
-Last reassessed: 2026-06-06 (destination fetch duplicate-wanted transfer regression added)
+Last reassessed: 2026-06-06 (peer maintenance backoff eligibility regression added)
 
 Status legend: `not-started` | `partial` | `done`
 
@@ -93,8 +93,8 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
   maintenance culling, low-acceptance non-static peer rotation,
   maintenance-driven waiting peer sync, Python-style maintenance candidate
   pooling for all unknown-speed peers, retry-ready unresponsive-peer pool
-  selection, and unreachable static peer sync-pool skipping, high-cost
-  existing-peer peering breaks with queue cleanup,
+  selection, waiting-peer backoff eligibility, and unreachable static peer
+  sync-pool skipping, high-cost existing-peer peering breaks with queue cleanup,
   admitted-offer-only
   validated peering links, mixed invalid-stamp peer resource handling that
   preserves valid entries before throttling, inbound propagation resource
@@ -153,6 +153,10 @@ Recent focused evidence:
 - `cargo test -p reticulum-rs-rpc --lib propagation_destination_fetch_deduplicates_repeated_wanted_ids_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib propagation_destination_fetch -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib propagation_fetch_transfer_limit_accounts_for_stripped_stamp_bytes -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib propagation_peer_maintenance_skips_waiting_peer_in_backoff_like_python -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib propagation_peer_maintenance_candidate_pool -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib propagation_peer_maintenance_unresponsive_pool_does_not_starve_later_peers_like_python -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib propagation_peer_maintenance_syncs_one_waiting_peer_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib ticket_generate_renews_ticket_inside_renewal_window -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib ticket_renewal_keeps_old_unexpired_ticket_valid_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib ticket -- --nocapture`

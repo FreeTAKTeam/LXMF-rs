@@ -132,6 +132,9 @@ gap, even though deeper propagation-router parity remains open.
   unresponsive-peer pool behavior as well: when no live waiting peer is
   eligible, retry-ready unresponsive peers are selected from the whole due pool
   instead of always retrying the first sorted peer.
+- Propagation peer maintenance now skips waiting peers whose
+  `next_sync_attempt` is still in the future, so a backed-off live peer cannot
+  consume the maintenance sync slot and block another eligible queued peer.
 - Propagation peer maintenance also follows Python's sync-pool boundary for
   retained static peers: static peers past `LXMPeer.MAX_UNREACHABLE` are kept
   peered, but are not selected for waiting or retry-ready sync in that
