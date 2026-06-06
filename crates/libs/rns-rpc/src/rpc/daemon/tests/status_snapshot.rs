@@ -244,6 +244,61 @@ fn propagation_enable_matches_existing_static_peer_case_insensitively_like_pytho
 }
 
 #[test]
+fn propagation_enable_queues_existing_entries_under_stored_static_peer_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    let stored_peer = "Peer-Static-Queue-Case";
+    let configured_peer = stored_peer.to_ascii_lowercase();
+    daemon
+        .handle_rpc(rpc_request(29, "peer_sync", json!({ "peer": stored_peer })))
+        .expect("seed manual peer");
+
+    let entry = PropagationEntryRecord {
+        transient_id: "a9".repeat(32),
+        destination: "12".repeat(16),
+        payload_hex: "12".repeat(24),
+        received_at: 1_700_000_103,
+        size_bytes: 24,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&entry).expect("store propagation entry");
+
+    daemon
+        .handle_rpc(rpc_request(
+            30,
+            "propagation_enable",
+            json!({
+                "enabled": true,
+                "static_peers": [configured_peer],
+            }),
+        ))
+        .expect("enable static peer");
+
+    let peers = daemon
+        .handle_rpc(RpcRequest { id: 31, method: "list_peers".to_string(), params: None })
+        .expect("list peers")
+        .result
+        .expect("list peers result");
+    let rows = peers["peers"].as_array().expect("peer rows");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["peer"].as_str(), Some(stored_peer));
+    assert_eq!(rows[0]["peer_type"].as_str(), Some("static"));
+    assert_eq!(
+        daemon
+            .store
+            .list_peer_unhandled_propagation(stored_peer)
+            .expect("static peer queued propagation under stored id"),
+        vec![entry]
+    );
+    assert!(
+        daemon
+            .store
+            .list_peer_unhandled_propagation(configured_peer.as_str())
+            .expect("configured-case queue remains empty")
+            .is_empty()
+    );
+}
+
+#[test]
 fn propagation_enable_normalizes_static_peer_config_for_status_and_type() {
     let daemon = RpcDaemon::test_instance();
     let result = daemon

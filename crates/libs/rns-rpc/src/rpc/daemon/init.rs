@@ -1198,12 +1198,14 @@ impl RpcDaemon {
             guard.remove(peer);
         }
 
+        let mut static_peers_to_queue = Vec::new();
         for peer in &configured_static_peers {
             let existing_peer_key =
                 guard.keys().find(|existing| existing.eq_ignore_ascii_case(peer.as_str())).cloned();
             if let Some(existing_peer_key) = existing_peer_key {
                 let existing = guard.get_mut(&existing_peer_key).expect("peer record disappeared");
                 existing.peer_type = Some("static".to_string());
+                static_peers_to_queue.push(existing_peer_key);
                 continue;
             }
 
@@ -1238,6 +1240,7 @@ impl RpcDaemon {
                     peering_cost: None,
                 },
             );
+            static_peers_to_queue.push(peer.clone());
         }
         let peer_count = Self::active_peer_count_from_guard(&guard);
         drop(guard);
@@ -1301,7 +1304,7 @@ impl RpcDaemon {
                 snapshot.propagation = state;
             });
         }
-        for peer in configured_static_peers {
+        for peer in static_peers_to_queue {
             self.queue_existing_propagation_for_peer(peer.as_str())?;
         }
         Ok(())
