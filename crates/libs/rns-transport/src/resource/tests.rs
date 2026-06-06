@@ -366,6 +366,7 @@ mod tests {
         assert!(max_advertised_parts(MAX_INBOUND_RESOURCE_TRANSFER_SIZE + 1).is_err());
     }
 
+    include!("tests_window.rs");
     include!("tests_timeouts.rs");
 
     fn resource_packet(context: PacketContext, payload: &[u8], destination: AddressHash) -> Packet {

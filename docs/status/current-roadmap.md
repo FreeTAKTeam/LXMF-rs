@@ -244,6 +244,10 @@ gap, even though deeper propagation-router parity remains open.
   field, so persisted Python-style LXMPeer state can rehydrate and carry the
   peer identity plus queue/account counters without requiring a Rust-only
   record shape.
+- Local peer sync offer ordering now also applies Python's prioritised
+  destination weighting before sync-limit selection, so propagation entries for
+  prioritised destinations are offered ahead of lower raw-weight entries when
+  only one payload fits.
 - Inbound propagation peer-resource handling now tracks Python's validated
   peering-link rule: a successful admitted `/offer` peering-key validation
   marks the link as peer-validated, capacity-denied offers do not authorize the

@@ -6,6 +6,7 @@ pub struct ResourceManager {
     events: Vec<ResourceEvent>,
     retry_interval: Duration,
     retry_limit: u8,
+    link_stats: HashMap<AddressHash, LinkStats>,
 }
 
 impl ResourceManager {
@@ -24,6 +25,7 @@ impl ResourceManager {
             events: Vec::new(),
             retry_interval,
             retry_limit,
+            link_stats: HashMap::new(),
         }
     }
 
@@ -110,6 +112,7 @@ impl ResourceManager {
         self.pending_outgoing.retain(|_, sender| sender.link_id != link_id);
         self.outgoing.retain(|_, sender| sender.link_id != link_id);
         self.incoming.retain(|_, receiver| receiver.link_id != link_id);
+        self.link_stats.remove(&link_id);
     }
 
     pub fn drain_events(&mut self) -> Vec<ResourceEvent> {
@@ -126,9 +129,14 @@ impl ResourceManager {
         let mut failed = Vec::new();
         for (hash, receiver) in self.incoming.iter_mut() {
             if receiver.retry_due(now, self.retry_interval, self.retry_limit) {
-                let request = receiver.build_request();
-                receiver.mark_request();
-                requests.push((receiver.link_id, request));
+                let rtt = self.link_stats.get(&receiver.link_id)
+                    .map(|s| s.rtt)
+                    .unwrap_or(LinkStats::new().rtt);
+                let request = receiver.build_request(now, rtt);
+                if !request.requested_hashes.is_empty() || request.hashmap_exhausted {
+                    receiver.mark_request();
+                    requests.push((receiver.link_id, request));
+                }
             }
             if receiver.retry_count >= self.retry_limit {
                 failed.push(*hash);
@@ -238,7 +246,9 @@ impl ResourceManager {
             resource_diag("reject_advertisement unreasonable");
             return;
         };
-        let request = receiver.build_request();
+        let adv_now = Instant::now();
+        let rtt = self.link_stats.entry(*link.id()).or_insert_with(LinkStats::new).rtt;
+        let request = receiver.build_request(adv_now, rtt);
         resource_diag(&format!(
             "request_parts hash={} requested={} exhausted={}",
             resource_hash,
@@ -300,7 +310,11 @@ impl ResourceManager {
         };
         if let Some(receiver) = self.incoming.get_mut(&update.resource_hash) {
             receiver.handle_hash_update(&update);
-            let request = receiver.build_request();
+            let update_now = Instant::now();
+            let rtt = self.link_stats.get(&receiver.link_id)
+                .map(|s| s.rtt)
+                .unwrap_or(LinkStats::new().rtt);
+            let request = receiver.build_request(update_now, rtt);
             match build_link_packet(
                 link,
                 PacketType::Data,
@@ -347,21 +361,18 @@ impl ResourceManager {
                     break;
                 }
                 PartOutcome::Incomplete => {
-                    let request = receiver.build_request();
-                    receiver.mark_active_request();
-                    request_packet = match build_link_packet(
-                        link,
-                        PacketType::Data,
-                        PacketContext::ResourceRequest,
-                        &request.encode(),
-                    ) {
-                        Ok(packet) => Some(packet),
-                        Err(_) => {
-                            log::warn!("failed to build request packet");
-                            None
-                        }
-                    };
+                    let now = Instant::now();
+                    let stats = self.link_stats
+                        .entry(receiver.link_id)
+                        .or_insert_with(LinkStats::new);
+
+                    // Collect RTT sample measured during handle_part (if any).
+                    if let Some(rtt) = receiver.last_rtt_sample.take() {
+                        stats.update_rtt(rtt);
+                    }
+
                     if receiver.received > before_received {
+                        stats.record_arrival(now);
                         resource_diag(&format!(
                             "progress hash={} received={}/{} bytes={}/{}",
                             hash,
@@ -376,16 +387,46 @@ impl ResourceManager {
                             kind: ResourceEventKind::Progress(receiver.progress()),
                         });
                     }
+
+                    let rtt = stats.rtt;
+                    let request = receiver.build_request(now, rtt);
+                    if !request.requested_hashes.is_empty() || request.hashmap_exhausted {
+                        receiver.mark_active_request();
+                        request_packet = match build_link_packet(
+                            link,
+                            PacketType::Data,
+                            PacketContext::ResourceRequest,
+                            &request.encode(),
+                        ) {
+                            Ok(packet) => Some(packet),
+                            Err(_) => {
+                                log::warn!("failed to build request packet");
+                                None
+                            }
+                        };
+                    }
                     break;
                 }
             }
         }
         if let Some(hash) = failed {
             self.incoming.remove(&hash);
+            // Reset so the inter-resource gap doesn't skew the arrival EWMA.
+            // TODO: a better approach is to schedule a delayed reset — wait
+            // arrival_interval * 2, and only reset if no new part has arrived by
+            // then. This preserves the estimate when the next resource starts
+            // immediately after this one finishes.
+            if let Some(stats) = self.link_stats.get_mut(link.id()) {
+                stats.last_arrival = None;
+            }
             return;
         }
         if let Some(hash) = completed {
             self.incoming.remove(&hash);
+            // Same TODO as the failed path above.
+            if let Some(stats) = self.link_stats.get_mut(link.id()) {
+                stats.last_arrival = None;
+            }
             if let Some(payload) = payload {
                 self.events.push(ResourceEvent {
                     hash,
