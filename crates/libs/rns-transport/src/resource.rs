@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::io::Read;
 use tokio::time::{Duration, Instant};
 
@@ -44,6 +44,44 @@ const MAX_INBOUND_RESOURCE_TRANSFER_SIZE: u64 = AUTO_COMPRESS_MAX_SIZE as u64;
 pub const DEFAULT_RESOURCE_RETRY_INTERVAL_SECS: u64 = 2;
 pub const DEFAULT_RESOURCE_MAX_RETRIES: u8 = 16;
 const DEFAULT_RESOURCE_MAX_ADV_RETRIES: u8 = 4;
+
+/// Exponentially weighted moving average: alpha = 7/8.
+pub(crate) fn ewma(old: Duration, sample: Duration) -> Duration {
+    let micros =
+        (old.as_micros() as u64).saturating_mul(7).saturating_add(sample.as_micros() as u64) / 8;
+    Duration::from_micros(micros)
+}
+
+/// Per-link adaptive statistics used to decide when to re-request lost fragments.
+#[derive(Debug, Clone)]
+pub(crate) struct LinkStats {
+    /// EWMA of round-trip time (request → part arrival).
+    pub(crate) rtt: Duration,
+    /// EWMA of inter-arrival interval between consecutive received parts.
+    pub(crate) arrival_interval: Duration,
+    pub(crate) last_arrival: Option<Instant>,
+}
+
+impl LinkStats {
+    pub(crate) fn new() -> Self {
+        Self {
+            rtt: Duration::from_millis(500),
+            arrival_interval: Duration::from_millis(100),
+            last_arrival: None,
+        }
+    }
+
+    pub(crate) fn update_rtt(&mut self, sample: Duration) {
+        self.rtt = ewma(self.rtt, sample);
+    }
+
+    pub(crate) fn record_arrival(&mut self, now: Instant) {
+        if let Some(last) = self.last_arrival {
+            self.arrival_interval = ewma(self.arrival_interval, now.duration_since(last));
+        }
+        self.last_arrival = Some(now);
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResourceStatus {

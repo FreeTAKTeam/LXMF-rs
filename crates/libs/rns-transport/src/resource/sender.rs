@@ -178,6 +178,7 @@ impl ResourceSender {
                 self.last_part_sent = now;
                 OutboundResourcePoll::None
             }
+            ResourceStatus::Failed => OutboundResourcePoll::Failed,
             _ => OutboundResourcePoll::None,
         }
     }
@@ -210,7 +211,8 @@ impl ResourceSender {
                         sent_any = true;
                         packets.push(scratch_packet);
                     } else {
-                        log::warn!("failed to build resource packet");
+                        self.status = ResourceStatus::Failed;
+                        return;
                     }
                 }
             } else {
@@ -249,7 +251,7 @@ impl ResourceSender {
                             ) {
                                 packets.push(packet);
                             } else {
-                                log::warn!("failed to build hash update packet");
+                                self.status = ResourceStatus::Failed;
                             }
                         }
                     }
