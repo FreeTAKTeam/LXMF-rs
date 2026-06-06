@@ -809,6 +809,7 @@ impl RpcDaemon {
                 if peer_policy_required
                     && peer_peering_key_value(&record, self.identity_hash.as_str()).is_none()
                 {
+                    self.clear_invalid_restored_peer_peering_key(&record);
                     return Ok(self.postponed_peer_sync_response(
                         request.id,
                         &record,
@@ -1558,6 +1559,25 @@ impl RpcDaemon {
             .and_then(|lxmf| lxmf.get("include_ticket"))
             .and_then(JsonValue::as_bool)
             .unwrap_or(false)
+    }
+
+    fn clear_invalid_restored_peer_peering_key(&self, record: &PeerRecord) {
+        let (Some(peering_cost), Some(peering_key_value)) =
+            (record.peering_cost, record.peering_key_value)
+        else {
+            return;
+        };
+        if peering_key_value >= peering_cost {
+            return;
+        }
+        let mut guard = self.peers.lock().expect("peers mutex poisoned");
+        if let Some(existing) = guard.get_mut(&record.peer) {
+            if existing.peering_cost == Some(peering_cost)
+                && existing.peering_key_value == Some(peering_key_value)
+            {
+                existing.peering_key_value = None;
+            }
+        }
     }
 
     pub(super) fn restart_required_response(

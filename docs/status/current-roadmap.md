@@ -268,6 +268,9 @@ gap, even though deeper propagation-router parity remains open.
   This lets restored Python LXMPeer state proceed through stamped offer
   transfer instead of being postponed solely because the local hash-derived key
   cannot be recomputed.
+- Local peer sync now also follows Python `peering_key_ready()` cleanup for
+  restored peering keys below the current `peering_cost`: the stale restored
+  value is cleared before the sync is postponed for key regeneration.
 - Restored peer records now also preserve Python's serialized `sync_strategy`
   transfer strategy instead of collapsing every peer to persistent strategy in
   local/remote peer sync results, events, and peer status rows.

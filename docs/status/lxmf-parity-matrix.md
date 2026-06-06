@@ -105,8 +105,8 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
   values, explicit peering-key readiness status values, bidirectional
   Python `destination_hash` peer-record compatibility, Python-style restored
   acceptance-rate derivation from offered/outgoing counters, restored
-  Python `peering_key` readiness for local peer sync, restored Python
-  `sync_strategy` transfer-state reporting, and destination fetch
+  Python `peering_key` readiness and below-cost key cleanup for local peer
+  sync, restored Python `sync_strategy` transfer-state reporting, and destination fetch
   duplicate-wanted de-duplication are exposed. Local offer responses now accept
   Python's boolean all/none and list-shaped response forms, keep full-offer
   stamp-policy and peering-key gates for boolean wants-all, request-limited,
@@ -183,6 +183,7 @@ Recent focused evidence:
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_boolean -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_stores_cumulative_acceptance_rate_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_uses_restored_python_peering_key_value -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib peer_sync_clears_restored_python_peering_key_below_cost_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_boolean_wanted_ids_true_keeps_full_offer_policy_gates_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_request_transfer_limit_keeps_full_offer_policy_gates_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_selected_wanted_ids_keep_full_offer_policy_gates_like_python -- --nocapture`

@@ -4823,6 +4823,62 @@ fn peer_sync_uses_restored_python_peering_key_value() {
 }
 
 #[test]
+fn peer_sync_clears_restored_python_peering_key_below_cost_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    let peer = "peer-restored-low-key";
+    let record: PeerRecord = serde_json::from_value(json!({
+        "destination_hash": peer,
+        "last_heard": 1_700_000_618,
+        "alive": true,
+        "propagation_transfer_limit": 1,
+        "propagation_sync_limit": 1,
+        "propagation_stamp_cost": 1,
+        "propagation_stamp_cost_flexibility": 1,
+        "peering_cost": 2,
+        "peering_key": ["opaque-python-key", 1],
+        "handled_ids": [],
+        "unhandled_ids": [],
+    }))
+    .expect("deserialize restored Python peer");
+    daemon
+        .peers
+        .lock()
+        .expect("peers mutex poisoned")
+        .insert(peer.to_string(), record);
+
+    let entry = PropagationEntryRecord {
+        transient_id: "ee".repeat(32),
+        destination: "1e".repeat(16),
+        payload_hex: "1e".repeat(20),
+        received_at: 1_700_000_620,
+        size_bytes: 20,
+        stamp_value: Some(1),
+    };
+    daemon.store.upsert_propagation_entry(&entry).expect("store entry");
+    daemon
+        .store
+        .mark_peer_unhandled_propagation(peer, entry.transient_id.as_str())
+        .expect("mark unhandled");
+
+    let result = daemon
+        .handle_rpc(rpc_request(56, "peer_sync", json!({ "peer": peer })))
+        .expect("low-key peer sync")
+        .result
+        .expect("peer sync result");
+    assert_eq!(result["synced"].as_bool(), Some(false));
+    assert_eq!(result["postpone_reason"].as_str(), Some("peering_key"));
+    assert_eq!(result["peering_key"], JsonValue::Null);
+    assert_eq!(result["peering_key_status"].as_str(), Some("not_ready"));
+
+    let stored = daemon.peers.lock().expect("peers mutex poisoned");
+    let record = stored.get(peer).expect("stored peer");
+    assert_eq!(
+        record.peering_key_value, None,
+        "Python peering_key_ready clears keys below peering_cost"
+    );
+}
+
+#[test]
 fn peer_sync_transfer_limits_oversized_stamped_entries_before_peering_key_gate() {
     let daemon = RpcDaemon::test_instance();
     daemon
