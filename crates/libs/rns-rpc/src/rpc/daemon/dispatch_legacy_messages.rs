@@ -796,6 +796,10 @@ impl RpcDaemon {
                         || wanted_ids.is_some()
                         || remaining_policy_relevant_has_stamp
                         || peer_stamp_policy_partially_known(&record));
+                let empty_peer_peering_key_required = pending_propagation.is_empty()
+                    && propagation_transfer_limited == 0
+                    && propagation_rejected == 0
+                    && peer_stamp_policy_known(&record);
                 if peer_policy_required && !peer_stamp_policy_known(&record) {
                     return Ok(self.postponed_peer_sync_response(
                         request.id,
@@ -806,7 +810,7 @@ impl RpcDaemon {
                         sync_limit_bytes,
                     ));
                 }
-                if peer_policy_required
+                if (peer_policy_required || empty_peer_peering_key_required)
                     && peer_peering_key_value(&record, self.identity_hash.as_str()).is_none()
                 {
                     self.clear_invalid_restored_peer_peering_key(&record);

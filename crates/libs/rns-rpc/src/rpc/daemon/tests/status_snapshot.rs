@@ -4879,6 +4879,52 @@ fn peer_sync_clears_restored_python_peering_key_below_cost_like_python() {
 }
 
 #[test]
+fn empty_peer_sync_checks_peering_key_before_no_unhandled_shortcut_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    let peer = "peer-empty-key-policy";
+    daemon
+        .handle_rpc(rpc_request(52, "peer_sync", json!({ "peer": peer })))
+        .expect("initial peer sync");
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let record = peers.get_mut(peer).expect("peer record");
+        record.propagation_stamp_cost = Some(1);
+        record.propagation_stamp_cost_flexibility = Some(0);
+        record.peering_cost = Some(1);
+        record.peering_key_value = None;
+        record.sync_backoff = 0;
+        record.next_sync_attempt = 0;
+    }
+    daemon.event_queue.lock().expect("event_queue mutex poisoned").clear();
+
+    let result = daemon
+        .handle_rpc(rpc_request(53, "peer_sync", json!({ "peer": peer })))
+        .expect("empty peer sync")
+        .result
+        .expect("peer sync result");
+    assert_eq!(result["synced"].as_bool(), Some(false));
+    assert_eq!(result["postponed"].as_bool(), Some(true));
+    assert_eq!(result["postpone_reason"].as_str(), Some("peering_key"));
+    assert_eq!(result["propagation"]["offered"].as_u64(), Some(0));
+    assert_eq!(result["messages"]["unhandled"].as_u64(), Some(0));
+    assert_eq!(result["peering_key"], JsonValue::Null);
+    assert_eq!(result["peering_key_status"].as_str(), Some("not_ready"));
+
+    let event = daemon
+        .event_queue
+        .lock()
+        .expect("event_queue mutex poisoned")
+        .iter()
+        .rev()
+        .find(|event| event.event_type == "peer_sync")
+        .cloned()
+        .expect("postponed peer sync event");
+    assert_eq!(event.payload["postponed"].as_bool(), Some(true));
+    assert_eq!(event.payload["postpone_reason"].as_str(), Some("peering_key"));
+    assert_eq!(event.payload["messages"]["unhandled"].as_u64(), Some(0));
+}
+
+#[test]
 fn peer_sync_transfer_limits_oversized_stamped_entries_before_peering_key_gate() {
     let daemon = RpcDaemon::test_instance();
     daemon

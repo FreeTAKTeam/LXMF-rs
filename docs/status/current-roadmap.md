@@ -237,6 +237,9 @@ gap, even though deeper propagation-router parity remains open.
   clean peer with no pending propagation entries records the attempt but
   preserves liveness and the previous sync transfer rate, and avoids synthetic
   failure backoff, while existing failure backoff remains intact.
+- Empty local peer sync now still checks Python's peering-key readiness gate
+  when the peer already has known stamp and peering policy, so key generation
+  is not bypassed solely because there are no queued propagation entries.
 - Postponed local peer sync now also preserves the previous sync transfer rate
   instead of clearing transfer accounting before any offer/resource path runs.
 - Postponed local peer sync now honors existing peer backoff before the local
