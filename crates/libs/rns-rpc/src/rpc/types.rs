@@ -780,8 +780,8 @@ struct PeerRecordWire {
     sync_transfer_rate: Option<f64>,
     #[serde(default)]
     str: Option<f64>,
-    #[serde(default = "default_acceptance_rate")]
-    acceptance_rate: f64,
+    #[serde(default)]
+    acceptance_rate: Option<f64>,
     #[serde(default)]
     first_seen: Option<i64>,
     #[serde(default)]
@@ -823,6 +823,13 @@ impl<'de> Deserialize<'de> for PeerRecord {
             .or(wire.last_heard)
             .ok_or_else(|| serde::de::Error::missing_field("last_seen"))?;
         let sync_transfer_rate = wire.sync_transfer_rate.or(wire.str).unwrap_or_default();
+        let acceptance_rate = wire.acceptance_rate.unwrap_or_else(|| {
+            if wire.offered == 0 {
+                0.0
+            } else {
+                (wire.outgoing as f64 / wire.offered as f64).clamp(0.0, 1.0)
+            }
+        });
         let python_transfer_limit = wire.propagation_transfer_limit.is_some()
             && wire.transfer_limit.is_none();
         let transfer_limit = parse_peer_limit_bytes(
@@ -856,7 +863,7 @@ impl<'de> Deserialize<'de> for PeerRecord {
             rx_bytes: wire.rx_bytes,
             tx_bytes: wire.tx_bytes,
             sync_transfer_rate,
-            acceptance_rate: wire.acceptance_rate,
+            acceptance_rate,
             first_seen: wire.first_seen.unwrap_or(last_seen),
             seen_count: wire.seen_count.unwrap_or_else(|| u64::from(last_seen > 0)),
             peering_timebase: wire.peering_timebase,
@@ -932,10 +939,6 @@ fn default_propagation_sync_limit() -> u32 {
 
 fn default_network_distance() -> u32 {
     1
-}
-
-fn default_acceptance_rate() -> f64 {
-    0.0
 }
 
 #[cfg(test)]
@@ -1035,6 +1038,21 @@ mod peer_record_serde_tests {
         assert_eq!(record.outgoing, 1);
         assert_eq!(record.incoming, 4);
         assert_eq!(record.peering_cost, Some(3));
+    }
+
+    #[test]
+    fn peer_record_derives_python_acceptance_rate_when_alias_is_absent() {
+        let record: PeerRecord = serde_json::from_value(json!({
+            "destination_hash": "peer-python-acceptance",
+            "last_heard": 1_700_001_008,
+            "offered": 4,
+            "outgoing": 1,
+            "handled_ids": [],
+            "unhandled_ids": [],
+        }))
+        .expect("deserialize python serialized peer");
+
+        assert_eq!(record.acceptance_rate, 0.25);
     }
 
     #[test]

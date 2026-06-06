@@ -251,9 +251,10 @@ gap, even though deeper propagation-router parity remains open.
   handled or created a new peer queue from existing propagation entries.
 - Peer record restore and export now accept and emit Python's serialized
   `destination_hash` peer identifier as an alias for Rust's internal `peer`
-  field, so persisted Python-style LXMPeer state can rehydrate and carry the
-  peer identity plus queue/account counters without requiring a Rust-only
-  record shape.
+  field, and restored Python-style peers now derive acceptance rate from
+  `outgoing / offered` when the serialized `acceptance_rate` field is absent,
+  so persisted LXMPeer state can rehydrate identity plus queue/account counters
+  without requiring a Rust-only record shape.
 - Local peer sync offer ordering now also applies Python's prioritised
   destination weighting before sync-limit selection, so propagation entries for
   prioritised destinations are offered ahead of lower raw-weight entries when

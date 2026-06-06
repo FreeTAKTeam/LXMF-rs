@@ -102,8 +102,9 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
   without outbound transfer-rate or `tx_bytes` inflation, local-delivery
   source-peer accounting, unpeered identified-sender accounting, peering-key
   values, explicit peering-key readiness status values, bidirectional
-  Python `destination_hash` peer-record compatibility, and destination fetch
-  duplicate-wanted de-duplication are exposed. Local offer responses now accept
+  Python `destination_hash` peer-record compatibility, Python-style restored
+  acceptance-rate derivation from offered/outgoing counters, and destination
+  fetch duplicate-wanted de-duplication are exposed. Local offer responses now accept
   Python's boolean all/none and list-shaped response forms, keep full-offer
   stamp-policy and peering-key gates for boolean wants-all, request-limited,
   selected-ID transfer, and no-transfer responses, and reject valid-looking
@@ -150,6 +151,7 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
 Recent focused evidence:
 
 - `cargo test -p reticulum-rs-rpc --lib peer_record_deserializes_python_destination_hash_alias -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib peer_record_derives_python_acceptance_rate_when_alias_is_absent -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_record_serializes_python_status_aliases -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib propagation_destination_fetch_deduplicates_repeated_wanted_ids_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib propagation_destination_fetch -- --nocapture`

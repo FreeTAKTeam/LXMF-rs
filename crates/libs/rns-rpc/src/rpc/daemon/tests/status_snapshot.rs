@@ -5653,6 +5653,65 @@ fn peer_sync_boolean_wanted_ids_false_handles_all_offered_messages_like_python()
 }
 
 #[test]
+fn peer_sync_no_transfer_offer_response_preserves_tx_bytes_like_python() {
+    let (daemon, peer) = ready_propagation_peer_daemon(0xb6);
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let record = peers.get_mut(peer.as_str()).expect("peer record");
+        record.propagation_sync_limit = Some(1_000);
+        record.tx_bytes = 77;
+        record.sync_transfer_rate = 12_345.0;
+    }
+    let already_known = PropagationEntryRecord {
+        transient_id: "b6".repeat(32),
+        destination: "12".repeat(16),
+        payload_hex: "12".repeat(24),
+        received_at: 1_700_000_608,
+        size_bytes: 24,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&already_known).expect("store propagation entry");
+    daemon
+        .store
+        .mark_peer_unhandled_propagation(peer.as_str(), already_known.transient_id.as_str())
+        .expect("mark unhandled");
+
+    let result = daemon
+        .handle_rpc(rpc_request(
+            55,
+            "peer_sync",
+            json!({
+                "peer": peer.as_str(),
+                "wanted_ids": false,
+            }),
+        ))
+        .expect("peer sync")
+        .result
+        .expect("peer sync result");
+
+    assert_eq!(result["propagation"]["handled"].as_u64(), Some(1));
+    assert_eq!(result["propagation"]["transferred"].as_u64(), Some(0));
+    assert_eq!(result["messages"]["offered"].as_u64(), Some(1));
+    assert_eq!(result["messages"]["outgoing"].as_u64(), Some(0));
+    assert_eq!(result["tx_bytes"].as_u64(), Some(77));
+    assert_eq!(result["sync_transfer_rate"].as_f64(), Some(12_345.0));
+
+    let peers = daemon
+        .handle_rpc(RpcRequest { id: 56, method: "list_peers".to_string(), params: None })
+        .expect("list peers")
+        .result
+        .expect("list peers result");
+    let row = peers["peers"]
+        .as_array()
+        .expect("peer rows")
+        .iter()
+        .find(|row| row["peer"].as_str() == Some(peer.as_str()))
+        .expect("peer row");
+    assert_eq!(row["tx_bytes"].as_u64(), Some(77));
+    assert_eq!(row["sync_transfer_rate"].as_f64(), Some(12_345.0));
+}
+
+#[test]
 fn peer_sync_matches_wanted_ids_by_canonical_transient_id() {
     let (daemon, peer) = ready_propagation_peer_daemon(0xa1);
     let wanted = PropagationEntryRecord {
