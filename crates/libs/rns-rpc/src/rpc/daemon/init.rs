@@ -1768,9 +1768,17 @@ impl RpcDaemon {
         peer: &str,
         peering_timebase: i64,
     ) -> Result<(), std::io::Error> {
+        let peer_key = {
+            let guard = self.peers.lock().expect("peers mutex poisoned");
+            guard
+                .keys()
+                .find(|existing| existing.eq_ignore_ascii_case(peer))
+                .cloned()
+                .unwrap_or_else(|| peer.to_string())
+        };
         let should_remove = {
             let guard = self.peers.lock().expect("peers mutex poisoned");
-            guard.get(peer).is_some_and(|existing| {
+            guard.get(peer_key.as_str()).is_some_and(|existing| {
                 existing.peer_type.as_deref() == Some("auto")
                     && peering_timebase >= existing.peering_timebase
             })
@@ -1778,11 +1786,15 @@ impl RpcDaemon {
         if !should_remove {
             return Ok(());
         }
-        let cleanup = self.unpeer_local_state(peer)?;
+        let cleanup = self.unpeer_local_state(peer_key.as_str())?;
         if cleanup.removed {
             self.publish_event(RpcEvent {
                 event_type: "peer_unpeer".into(),
-                payload: policy_unpeer_event_payload(peer, "propagation_disabled", &cleanup),
+                payload: policy_unpeer_event_payload(
+                    cleanup.peer.as_str(),
+                    "propagation_disabled",
+                    &cleanup,
+                ),
             });
         }
         Ok(())

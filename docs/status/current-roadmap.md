@@ -125,6 +125,9 @@ gap, even though deeper propagation-router parity remains open.
   high-cost announces are ignored. High-cost peering breaks now also resolve
   existing peers case-insensitively before applying timebase, queue cleanup,
   selected-node cleanup, and removal events.
+- Disabled propagation-node announces now apply the same stored-peer identity
+  rule when unpeering existing autopeers, clearing queue marks, selected-node
+  state, and removal events under the canonical peer id.
 - Propagation peer maintenance now has an explicit RPC path for Python
   `sync_peers()`-style unreachable-peer culling: non-static peers unheard for
   `LXMPeer.MAX_UNREACHABLE` are unpeered and have their propagation queue marks
