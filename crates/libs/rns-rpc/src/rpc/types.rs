@@ -692,6 +692,7 @@ impl serde::Serialize for PeerRecord {
     {
         let mut map = serializer.serialize_map(None)?;
         map.serialize_entry("peer", &self.peer)?;
+        map.serialize_entry("destination_hash", &self.peer)?;
         map.serialize_entry("last_seen", &self.last_seen)?;
         map.serialize_entry("last_heard", &self.last_seen)?;
         map.serialize_entry("capabilities", &self.capabilities)?;
@@ -1112,6 +1113,7 @@ mod peer_record_serde_tests {
         };
 
         let value = serde_json::to_value(record).expect("serialize peer record");
+        assert_eq!(value["destination_hash"].as_str(), Some("peer-python-status"));
         assert_eq!(value["last_seen"].as_i64(), Some(1_700_001_005));
         assert_eq!(value["last_heard"].as_i64(), Some(1_700_001_005));
         assert_eq!(value["sync_transfer_rate"].as_f64(), Some(2048.0));

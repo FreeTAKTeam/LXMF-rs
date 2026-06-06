@@ -208,10 +208,11 @@ gap, even though deeper propagation-router parity remains open.
   not part of the current peer offer before mutating queue state, avoiding the
   false completion path where an out-of-offer request marked pending messages
   handled or created a new peer queue from existing propagation entries.
-- Peer record restore now accepts Python's serialized `destination_hash` peer
-  identifier as an alias for Rust's internal `peer` field, so persisted
-  Python-style LXMPeer state can rehydrate the peer identity and queue/account
-  counters without requiring a Rust-only record shape.
+- Peer record restore and export now accept and emit Python's serialized
+  `destination_hash` peer identifier as an alias for Rust's internal `peer`
+  field, so persisted Python-style LXMPeer state can rehydrate and carry the
+  peer identity plus queue/account counters without requiring a Rust-only
+  record shape.
 - Inbound propagation peer-resource handling now tracks Python's validated
   peering-link rule: a successful admitted `/offer` peering-key validation
   marks the link as peer-validated, capacity-denied offers do not authorize the
