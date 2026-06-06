@@ -7462,7 +7462,7 @@ fn peer_sync_applies_python_per_message_overhead_for_sync_limit() {
 }
 
 #[test]
-fn peer_sync_uses_transfer_limit_when_sync_limit_is_absent() {
+fn peer_sync_keeps_transfer_limit_separate_from_missing_sync_limit_like_python() {
     let (daemon, peer) = ready_propagation_peer_daemon(0x46);
     {
         let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
@@ -7512,12 +7512,12 @@ fn peer_sync_uses_transfer_limit_when_sync_limit_is_absent() {
         .store
         .list_peer_handled_propagation_ids(peer.as_str())
         .expect("handled ids");
-    assert_eq!(handled, vec![small.transient_id]);
+    assert_eq!(handled, vec![small.transient_id, large.transient_id]);
     let pending = daemon
         .store
         .list_peer_unhandled_propagation(peer.as_str())
         .expect("pending propagation");
-    assert_eq!(pending, vec![large]);
+    assert!(pending.is_empty());
 }
 
 #[test]
@@ -7741,7 +7741,7 @@ fn peer_sync_applies_request_transfer_limit_without_persisting_it() {
     assert_eq!(result["propagation"]["transfer_limited"].as_u64(), Some(1));
     assert_eq!(result["propagation"]["transfer_limit"].as_u64(), Some(80));
     assert_eq!(result["transfer_limit"].as_u64(), Some(80));
-    assert_eq!(result["sync_limit"].as_u64(), Some(80));
+    assert!(result["sync_limit"].is_null());
 
     let event = daemon
         .event_queue
@@ -7753,7 +7753,7 @@ fn peer_sync_applies_request_transfer_limit_without_persisting_it() {
         .cloned()
         .expect("peer sync event");
     assert_eq!(event.payload["transfer_limit"].as_u64(), Some(80));
-    assert_eq!(event.payload["sync_limit"].as_u64(), Some(80));
+    assert!(event.payload["sync_limit"].is_null());
     assert_eq!(event.payload["propagation"]["transfer_limit"].as_u64(), Some(80));
 
     let peers = daemon
@@ -7882,9 +7882,9 @@ fn postponed_peer_sync_reports_request_transfer_limit() {
     assert_eq!(result["postponed"].as_bool(), Some(true));
     assert_eq!(result["postpone_reason"].as_str(), Some("backoff"));
     assert_eq!(result["propagation"]["transfer_limit"].as_u64(), Some(80));
-    assert_eq!(result["propagation"]["sync_limit"].as_u64(), Some(80));
+    assert!(result["propagation"]["sync_limit"].is_null());
     assert_eq!(result["transfer_limit"].as_u64(), Some(80));
-    assert_eq!(result["sync_limit"].as_u64(), Some(80));
+    assert!(result["sync_limit"].is_null());
 
     let event = daemon
         .event_queue
@@ -7896,7 +7896,7 @@ fn postponed_peer_sync_reports_request_transfer_limit() {
         .cloned()
         .expect("postponed peer sync event");
     assert_eq!(event.payload["transfer_limit"].as_u64(), Some(80));
-    assert_eq!(event.payload["sync_limit"].as_u64(), Some(80));
+    assert!(event.payload["sync_limit"].is_null());
     assert_eq!(event.payload["propagation"]["transfer_limit"].as_u64(), Some(80));
 }
 

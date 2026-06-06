@@ -224,7 +224,9 @@ gap, even though deeper propagation-router parity remains open.
   gates as an explicit selected-ID response.
 - Local peer sync request-only transfer limits now also stay on Python's
   full-offer policy path: `transfer_limit_kb` constrains offer construction
-  but does not by itself bypass stamp-policy or peering-key readiness.
+  but does not by itself bypass stamp-policy or peering-key readiness. Request
+  and peer transfer limits remain per-message caps and no longer synthesize a
+  total sync limit when `propagation_sync_limit` is absent.
 - Local peer sync selected-ID offer responses that request a transfer now also
   stay on Python's full-offer policy path: non-empty list-shaped `wanted_ids`
   wait for stamp-policy and peering-key readiness before mutating queue state or

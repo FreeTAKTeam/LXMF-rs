@@ -611,7 +611,7 @@ impl RpcDaemon {
                         wanted_ids.as_ref(),
                         prospective_propagation.as_slice(),
                         requested_transfer_limit_bytes,
-                        requested_transfer_limit_bytes,
+                        None,
                     )?;
                 }
                 if let Some(record) = existing_peer.as_ref() {
@@ -626,10 +626,8 @@ impl RpcDaemon {
                             (None, Some(requested_limit)) => Some(requested_limit),
                             (None, None) => None,
                         };
-                    let sync_limit_bytes = record
-                        .propagation_sync_limit
-                        .map(|limit| limit as usize)
-                        .or(transfer_limit_bytes);
+                    let sync_limit_bytes =
+                        record.propagation_sync_limit.map(|limit| limit as usize);
                     if record.next_sync_attempt > 0 && timestamp < record.next_sync_attempt {
                         return Ok(self.postponed_peer_sync_response(
                             request.id,
@@ -674,10 +672,7 @@ impl RpcDaemon {
                         (None, Some(requested_limit)) => Some(requested_limit),
                         (None, None) => None,
                     };
-                let sync_limit_bytes = record
-                    .propagation_sync_limit
-                    .map(|limit| limit as usize)
-                    .or(transfer_limit_bytes);
+                let sync_limit_bytes = record.propagation_sync_limit.map(|limit| limit as usize);
                 if record.next_sync_attempt > 0 && timestamp < record.next_sync_attempt {
                     return Ok(self.postponed_peer_sync_response(
                         request.id,
