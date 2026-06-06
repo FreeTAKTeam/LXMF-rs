@@ -120,7 +120,9 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
   responses, offer ordering now applies Python's prioritised destination
   weighting before sync-limit selection, and persistent full-offer syncs
   continue into the next eligible batch while lazy peers keep one-batch
-  behavior.
+  behavior. Persistent sync transfer accounting now accumulates `tx_bytes`
+  across batches while reporting `sync_transfer_rate` from the last completed
+  batch.
   Existing peers in local sync
   backoff now also postpone before the local existing-entry queue-fill path,
   and empty local syncs still honor Python's peering-key readiness gate when
@@ -198,6 +200,7 @@ Recent focused evidence:
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_during_backoff_does_not_queue_new_existing_entries_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib empty_peer_sync_checks_peering_key_before_no_unhandled_shortcut_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib persistent_peer_sync_continues_after_completed_batch_like_python -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib persistent_peer_sync_reports_last_batch_transfer_rate_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_checks_peering_key_before_sync_limit_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_prioritised_destinations_reduce_offer_weight_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync -- --nocapture`

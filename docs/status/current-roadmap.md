@@ -262,6 +262,10 @@ gap, even though deeper propagation-router parity remains open.
 - Local peer sync now uses Python's persistent `sync_strategy` behavior after a
   completed full-offer transfer: persistent peers continue into the next
   eligible sync-limited batch while lazy peers retain one-batch queueing.
+- Persistent local peer sync now keeps Python's transfer accounting split:
+  `tx_bytes` accumulates every completed resource batch, while
+  `sync_transfer_rate` reports the last completed resource instead of the
+  aggregate multi-batch size.
 - Peer record restore and export now accept and emit Python's serialized
   `destination_hash` peer identifier as an alias for Rust's internal `peer`
   field, and restored Python-style peers now derive acceptance rate from

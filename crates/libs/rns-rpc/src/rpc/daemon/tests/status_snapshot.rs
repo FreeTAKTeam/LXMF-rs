@@ -7129,6 +7129,80 @@ fn persistent_peer_sync_continues_after_completed_batch_like_python() {
 }
 
 #[test]
+fn persistent_peer_sync_reports_last_batch_transfer_rate_like_python() {
+    let (daemon, peer) = ready_propagation_peer_daemon(0x50);
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let record = peers.get_mut(peer.as_str()).expect("peer record");
+        record.sync_strategy = 2;
+        record.propagation_sync_limit = Some((24 + 30 + 16 + 1) as u32);
+    }
+
+    let first = PropagationEntryRecord {
+        transient_id: "c5".repeat(32),
+        destination: "15".repeat(16),
+        payload_hex: "19".repeat(20),
+        received_at: 1_700_000_608,
+        size_bytes: 20,
+        stamp_value: None,
+    };
+    let second = PropagationEntryRecord {
+        transient_id: "c6".repeat(32),
+        destination: "15".repeat(16),
+        payload_hex: "1a".repeat(30),
+        received_at: 1_700_000_609,
+        size_bytes: 30,
+        stamp_value: None,
+    };
+    for entry in [&first, &second] {
+        daemon.store.upsert_propagation_entry(entry).expect("store propagation entry");
+        daemon
+            .store
+            .mark_peer_unhandled_propagation(peer.as_str(), entry.transient_id.as_str())
+            .expect("mark unhandled");
+    }
+
+    let result = daemon
+        .handle_rpc(rpc_request(58, "peer_sync", json!({ "peer": peer.as_str() })))
+        .expect("persistent peer sync")
+        .result
+        .expect("peer sync result");
+    let first_resource_bytes =
+        rmp_serde::to_vec(&(1.0_f64, vec![vec![0x19; 20]])).expect("pack first resource").len();
+    let second_resource_bytes =
+        rmp_serde::to_vec(&(1.0_f64, vec![vec![0x1a; 30]])).expect("pack second resource").len();
+    assert_ne!(
+        first_resource_bytes, second_resource_bytes,
+        "test needs distinct batch sizes"
+    );
+    assert_eq!(result["propagation"]["transferred"].as_u64(), Some(2));
+    assert_eq!(
+        result["tx_bytes"].as_u64(),
+        Some((first_resource_bytes + second_resource_bytes) as u64)
+    );
+    assert_eq!(result["sync_transfer_rate"].as_f64(), Some(second_resource_bytes as f64));
+    assert_eq!(result["str"].as_u64(), Some(second_resource_bytes as u64));
+
+    let row = daemon
+        .handle_rpc(RpcRequest { id: 59, method: "list_peers".to_string(), params: None })
+        .expect("list peers")
+        .result
+        .expect("list peers result")["peers"]
+        .as_array()
+        .expect("peer rows")
+        .iter()
+        .find(|row| row["peer"].as_str() == Some(peer.as_str()))
+        .cloned()
+        .expect("peer row");
+    assert_eq!(
+        row["tx_bytes"].as_u64(),
+        Some((first_resource_bytes + second_resource_bytes) as u64)
+    );
+    assert_eq!(row["sync_transfer_rate"].as_f64(), Some(second_resource_bytes as f64));
+    assert_eq!(row["str"].as_u64(), Some(second_resource_bytes as u64));
+}
+
+#[test]
 fn lazy_peer_sync_keeps_one_completed_batch_like_python() {
     let (daemon, peer) = ready_propagation_peer_daemon(0x4f);
     {

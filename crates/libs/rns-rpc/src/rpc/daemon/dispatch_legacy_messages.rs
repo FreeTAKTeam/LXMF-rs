@@ -899,6 +899,7 @@ impl RpcDaemon {
                 }
                 let mut propagation_resource_bytes =
                     peer_sync_resource_data_size(propagation_resource_payloads.as_slice())?;
+                let mut propagation_last_resource_bytes = propagation_resource_bytes;
                 let persistent_full_offer_sync = record.sync_strategy == 2
                     && wanted_ids.as_ref().is_none_or(|ids| matches!(ids, PeerSyncWantedIds::All))
                     && propagation_transferred > 0
@@ -1005,9 +1006,11 @@ impl RpcDaemon {
                             propagation_skipped_ids.extend(batch_skipped_ids);
                             break;
                         }
-                        propagation_resource_bytes = propagation_resource_bytes.saturating_add(
-                            peer_sync_resource_data_size(batch_resource_payloads.as_slice())?,
-                        );
+                        let batch_resource_bytes =
+                            peer_sync_resource_data_size(batch_resource_payloads.as_slice())?;
+                        propagation_resource_bytes =
+                            propagation_resource_bytes.saturating_add(batch_resource_bytes);
+                        propagation_last_resource_bytes = batch_resource_bytes;
                     }
                 }
                 let mut propagation_sync = json!({
@@ -1089,7 +1092,7 @@ impl RpcDaemon {
                         existing.tx_bytes =
                             existing.tx_bytes.saturating_add(propagation_resource_bytes);
                         if propagation_transferred > 0 {
-                            existing.sync_transfer_rate = propagation_resource_bytes as f64;
+                            existing.sync_transfer_rate = propagation_last_resource_bytes as f64;
                         }
                         if propagation_offered > 0 {
                             existing.offered =
