@@ -969,8 +969,8 @@ impl RpcDaemon {
                                 existing.offered.saturating_add(propagation_offered as u64);
                             existing.outgoing =
                                 existing.outgoing.saturating_add(propagation_transferred as u64);
-                            existing.acceptance_rate = (propagation_transferred as f64
-                                / propagation_offered as f64)
+                            existing.acceptance_rate = (existing.outgoing as f64
+                                / existing.offered as f64)
                                 .clamp(0.0, 1.0);
                         }
                         if propagation_completed {

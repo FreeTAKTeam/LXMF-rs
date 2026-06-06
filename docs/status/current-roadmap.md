@@ -255,6 +255,10 @@ gap, even though deeper propagation-router parity remains open.
   `outgoing / offered` when the serialized `acceptance_rate` field is absent,
   so persisted LXMPeer state can rehydrate identity plus queue/account counters
   without requiring a Rust-only record shape.
+- Local peer sync now stores Python-style lifetime acceptance accounting after
+  each offer response: the persisted peer record uses cumulative
+  `outgoing / offered` counters, so a later no-transfer offer response no longer
+  overwrites an earlier successful transfer with a batch-only zero rate.
 - Local peer sync offer ordering now also applies Python's prioritised
   destination weighting before sync-limit selection, so propagation entries for
   prioritised destinations are offered ahead of lower raw-weight entries when
