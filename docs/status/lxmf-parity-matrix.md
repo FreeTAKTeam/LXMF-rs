@@ -2,14 +2,14 @@
 
 Status: historical parity snapshot; check `docs/status/current-roadmap.md` for
 current repo-wide status before relying on this file for active execution order.
-As of 2026-06-05, the live Python-reference interop workflow is green for the
+As of 2026-06-06, the live Python-reference interop workflow is green for the
 current branch, but that checkpoint does not convert the partial peer, router,
 propagation, and stamper rows below into full parity. The Reticulum
 KISS/LoRa/RNode interface work improves the transport substrate available to
 LXMF, but it does not by itself complete LXMF peer sync, propagation router, or
 stamp worker parity.
 
-Last reassessed: 2026-06-05 (maintenance unknown-speed waiting-pool regression added)
+Last reassessed: 2026-06-06 (no-transfer peer-sync last-heard regression added)
 
 Status legend: `not-started` | `partial` | `done`
 
@@ -105,9 +105,10 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
   offer responses now accept
   Python's boolean all/none and list-shaped response forms, keep full-offer
   stamp-policy and peering-key gates for boolean wants-all, request-limited,
-  selected-ID transfer, and no-transfer responses, and reject valid-looking
-  wanted transient IDs outside the current offer before mutating queue state or
-  creating a new peer queue.
+  selected-ID transfer, and no-transfer responses, preserve previous
+  last-heard/seen-count values for no-transfer responses, and reject
+  valid-looking wanted transient IDs outside the current offer before mutating
+  queue state or creating a new peer queue.
   Existing peers in local sync
   backoff now also postpone before the local existing-entry queue-fill path,
   but the active workspace does not yet match Python `LXMPeer` queueing,
@@ -166,6 +167,7 @@ Recent focused evidence:
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_request_transfer_limit_keeps_full_offer_policy_gates_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_selected_wanted_ids_keep_full_offer_policy_gates_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_empty_wanted_ids_keep_full_offer_policy_gates_like_python -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib peer_sync_no_transfer_preserves_last_heard_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_during_backoff_does_not_queue_new_existing_entries_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib propagation_remote_fetch -- --nocapture`
