@@ -37,6 +37,7 @@ async fn run() -> Result<(), String> {
             encode_command_frame(CMD_MCU, &[0x00]),
         ],
     };
+    let shutdown_frames = lora_config.as_ref().map(|lc| lc.shutdown_frames()).unwrap_or_default();
 
     let mut settings = NativeRnodeBleSettings::for_peripheral(args.peripheral_id.clone());
     settings.scan_timeout = Duration::from_millis(args.scan_timeout_ms);
@@ -46,7 +47,8 @@ async fn run() -> Result<(), String> {
         settings = settings.with_adapter(adapter.to_string());
     }
 
-    let config = RnodeBleKissConfig { initial_frames, ..RnodeBleKissConfig::default() };
+    let config =
+        RnodeBleKissConfig { initial_frames, shutdown_frames, ..RnodeBleKissConfig::default() };
 
     let backend = NativeRnodeBleBackend::new(settings);
     let mut runtime = RnodeBleKissRuntime::new(backend, config);
@@ -72,6 +74,10 @@ async fn run() -> Result<(), String> {
         println!("\n--- radio status ---");
         print_radio_status(&radio);
     }
+    if let Err(err) = validate_probe_result(&probe, &radio, lora_config) {
+        shutdown_and_cleanup(runtime).await;
+        return Err(err);
+    }
 
     if let Some(hex) = args.send_hex.as_deref() {
         let bytes = parse_hex(hex)?;
@@ -91,10 +97,26 @@ async fn run() -> Result<(), String> {
         .await;
     }
 
+    shutdown_and_cleanup(runtime).await;
+    Ok(())
+}
+
+async fn shutdown_and_cleanup(mut runtime: RnodeBleKissRuntime<NativeRnodeBleBackend>) {
     let _ = runtime.shutdown().await;
     let mut backend = runtime.into_backend();
     if let Err(err) = backend.cleanup().await {
         eprintln!("cleanup warning: {err}");
+    }
+}
+
+fn validate_probe_result(
+    probe: &RNodeProbeStatus,
+    radio: &RNodeRadioStatus,
+    lora_config: Option<LoraConfig>,
+) -> Result<(), String> {
+    probe.validate_startup_probe()?;
+    if let Some(config) = lora_config {
+        radio.validate_config(config, RADIO_STATE_ON)?;
     }
     Ok(())
 }

@@ -77,6 +77,12 @@ async fn run() -> Result<(), String> {
         println!("\n--- radio status ---");
         print_radio_status(&radio);
     }
+    if let Err(err) = validate_probe_result(&probe, &radio, lora_config) {
+        for frame in &shutdown_frames {
+            let _ = port.write_all(frame).await;
+        }
+        return Err(err);
+    }
 
     if let Some(hex) = args.send_hex.as_deref() {
         let bytes = parse_hex(hex)?;
@@ -105,6 +111,18 @@ async fn run() -> Result<(), String> {
 
     for frame in &shutdown_frames {
         let _ = port.write_all(frame).await;
+    }
+    Ok(())
+}
+
+fn validate_probe_result(
+    probe: &RNodeProbeStatus,
+    radio: &RNodeRadioStatus,
+    lora_config: Option<LoraConfig>,
+) -> Result<(), String> {
+    probe.validate_startup_probe()?;
+    if let Some(config) = lora_config {
+        radio.validate_config(config, RADIO_STATE_ON)?;
     }
     Ok(())
 }
