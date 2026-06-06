@@ -6,6 +6,27 @@ fn resource_manager_defaults_match_reference_retry_budget() {
     assert_eq!(manager.retry_limit, 16);
 }
 
+fn test_link() -> Link {
+    let (tx, _) = tokio::sync::broadcast::channel(1);
+    Link::new(test_destination(), tx)
+}
+
+fn test_destination() -> DestinationDesc {
+    let signer = PrivateIdentity::new_from_rand(OsRng);
+    let identity = *signer.as_identity();
+    DestinationDesc {
+        identity,
+        address_hash: identity.address_hash,
+        name: DestinationName::new("lxmf", "resource"),
+    }
+}
+
+fn test_requested_link() -> Link {
+    let mut link = test_link();
+    link.request();
+    link
+}
+
 /// Regression test for: `mark_request()` was called on every incoming part,
 /// incrementing `retry_count` past `retry_limit`. The periodic
 /// `retry_requests()` timer would then silently remove the receiver
@@ -16,16 +37,7 @@ fn resource_manager_defaults_match_reference_retry_budget() {
 /// in `handle_resource_part_into`. Only timer-driven retries should count.
 #[test]
 fn resource_receiver_not_killed_by_timer_during_active_transfer() {
-    let signer = PrivateIdentity::new_from_rand(OsRng);
-    let identity = *signer.as_identity();
-    let destination = DestinationDesc {
-        identity,
-        address_hash: identity.address_hash,
-        name: DestinationName::new("lxmf", "resource"),
-    };
-    let (tx, _) = tokio::sync::broadcast::channel(1);
-    let mut link = Link::new(destination, tx);
-    link.request();
+    let mut link = test_requested_link();
 
     // Use the default config (retry_limit = 16) to catch future changes.
     let mut manager = ResourceManager::new();
@@ -109,15 +121,7 @@ fn resource_receiver_not_killed_by_timer_during_active_transfer() {
 
 #[test]
 fn resource_advertisements_use_reference_advertisement_retry_budget() {
-    let signer = PrivateIdentity::new_from_rand(OsRng);
-    let identity = *signer.as_identity();
-    let destination = DestinationDesc {
-        identity,
-        address_hash: identity.address_hash,
-        name: DestinationName::new("lxmf", "resource"),
-    };
-    let (tx, _) = tokio::sync::broadcast::channel(1);
-    let link = Link::new(destination, tx);
+    let link = test_link();
 
     let mut manager = ResourceManager::new_with_config(Duration::from_secs(1), 16);
     let (resource_hash, _) =
@@ -131,15 +135,7 @@ fn resource_advertisements_use_reference_advertisement_retry_budget() {
 
 #[test]
 fn resource_manager_retries_advertisement_until_budget_exhausted() {
-    let signer = PrivateIdentity::new_from_rand(OsRng);
-    let identity = *signer.as_identity();
-    let destination = DestinationDesc {
-        identity,
-        address_hash: identity.address_hash,
-        name: DestinationName::new("lxmf", "resource"),
-    };
-    let (tx, _) = tokio::sync::broadcast::channel(1);
-    let link = Link::new(destination, tx);
+    let link = test_link();
 
     let mut manager = ResourceManager::new_with_config(Duration::from_secs(1), 2);
     let (resource_hash, _) =
@@ -162,15 +158,7 @@ fn resource_manager_retries_advertisement_until_budget_exhausted() {
 
 #[test]
 fn resource_manager_emits_outbound_failed_when_advertisement_retry_budget_exhausts() {
-    let signer = PrivateIdentity::new_from_rand(OsRng);
-    let identity = *signer.as_identity();
-    let destination = DestinationDesc {
-        identity,
-        address_hash: identity.address_hash,
-        name: DestinationName::new("lxmf", "resource"),
-    };
-    let (tx, _) = tokio::sync::broadcast::channel(1);
-    let link = Link::new(destination, tx);
+    let link = test_link();
 
     let mut manager = ResourceManager::new_with_config(Duration::from_secs(1), 1);
     let (resource_hash, _) =
@@ -194,15 +182,7 @@ fn resource_manager_emits_outbound_failed_when_advertisement_retry_budget_exhaus
 
 #[test]
 fn resource_manager_emits_outbound_failed_when_advertisement_dispatch_fails() {
-    let signer = PrivateIdentity::new_from_rand(OsRng);
-    let identity = *signer.as_identity();
-    let destination = DestinationDesc {
-        identity,
-        address_hash: identity.address_hash,
-        name: DestinationName::new("lxmf", "resource"),
-    };
-    let (tx, _) = tokio::sync::broadcast::channel(1);
-    let link = Link::new(destination, tx);
+    let link = test_link();
 
     let mut manager = ResourceManager::new_with_config(Duration::from_secs(1), 1);
     let (resource_hash, _) =
@@ -221,16 +201,7 @@ fn resource_manager_emits_outbound_failed_when_advertisement_dispatch_fails() {
 
 #[test]
 fn resource_manager_cancel_outgoing_emits_initiator_cancel_packet_and_event() {
-    let signer = PrivateIdentity::new_from_rand(OsRng);
-    let identity = *signer.as_identity();
-    let destination = DestinationDesc {
-        identity,
-        address_hash: identity.address_hash,
-        name: DestinationName::new("lxmf", "resource"),
-    };
-    let (tx, _) = tokio::sync::broadcast::channel(1);
-    let mut link = Link::new(destination, tx);
-    link.request();
+    let link = test_requested_link();
 
     let mut manager = ResourceManager::new_with_config(Duration::from_secs(1), 2);
     let (resource_hash, _) =
@@ -264,16 +235,7 @@ fn resource_manager_cancel_outgoing_emits_initiator_cancel_packet_and_event() {
 
 #[test]
 fn resource_manager_times_out_transferring_sender_after_retry_budget() {
-    let signer = PrivateIdentity::new_from_rand(OsRng);
-    let identity = *signer.as_identity();
-    let destination = DestinationDesc {
-        identity,
-        address_hash: identity.address_hash,
-        name: DestinationName::new("lxmf", "resource"),
-    };
-    let (tx, _) = tokio::sync::broadcast::channel(1);
-    let mut link = Link::new(destination, tx);
-    link.request();
+    let mut link = test_requested_link();
 
     let mut manager = ResourceManager::new_with_config(Duration::from_secs(1), 1);
     let payload = vec![0x42; PACKET_MDU + 32];
@@ -313,16 +275,7 @@ fn resource_manager_times_out_transferring_sender_after_retry_budget() {
 
 #[test]
 fn resource_manager_times_out_awaiting_proof_after_retry_budget() {
-    let signer = PrivateIdentity::new_from_rand(OsRng);
-    let identity = *signer.as_identity();
-    let destination = DestinationDesc {
-        identity,
-        address_hash: identity.address_hash,
-        name: DestinationName::new("lxmf", "resource"),
-    };
-    let (tx, _) = tokio::sync::broadcast::channel(1);
-    let mut link = Link::new(destination, tx);
-    link.request();
+    let mut link = test_requested_link();
 
     let mut manager = ResourceManager::new_with_config(Duration::from_secs(1), 1);
     let (resource_hash, _) =
@@ -362,16 +315,7 @@ fn resource_manager_times_out_awaiting_proof_after_retry_budget() {
 
 #[test]
 fn resource_manager_removes_link_scoped_state_on_link_close() {
-    let signer = PrivateIdentity::new_from_rand(OsRng);
-    let identity = *signer.as_identity();
-    let destination = DestinationDesc {
-        identity,
-        address_hash: identity.address_hash,
-        name: DestinationName::new("lxmf", "resource"),
-    };
-    let (tx, _) = tokio::sync::broadcast::channel(1);
-    let mut link = Link::new(destination, tx);
-    link.request();
+    let mut link = test_requested_link();
 
     let mut manager = ResourceManager::new_with_config(Duration::from_secs(1), 2);
     let (resource_hash, _) =
@@ -407,15 +351,7 @@ fn resource_sender_emits_outbound_failed_when_status_is_failed() {
     // Covers the new `ResourceStatus::Failed => OutboundResourcePoll::Failed` arm
     // in poll().  The same path is exercised when handle_request_into() fails to
     // build a packet and sets self.status = Failed.
-    let signer = PrivateIdentity::new_from_rand(OsRng);
-    let identity = *signer.as_identity();
-    let destination = DestinationDesc {
-        identity,
-        address_hash: identity.address_hash,
-        name: DestinationName::new("lxmf", "resource"),
-    };
-    let (tx, _) = tokio::sync::broadcast::channel(1);
-    let link = Link::new(destination, tx);
+    let link = test_link();
 
     let mut manager = ResourceManager::new_with_config(Duration::from_secs(1), 2);
     let (resource_hash, _) =
@@ -440,13 +376,7 @@ fn resource_sender_emits_outbound_failed_when_status_is_failed() {
 
 #[test]
 fn resource_manager_link_close_allows_later_resource_on_new_link() {
-    let signer = PrivateIdentity::new_from_rand(OsRng);
-    let identity = *signer.as_identity();
-    let destination = DestinationDesc {
-        identity,
-        address_hash: identity.address_hash,
-        name: DestinationName::new("lxmf", "resource"),
-    };
+    let destination = test_destination();
     let (tx, _) = tokio::sync::broadcast::channel(1);
     let mut first_link = Link::new(destination, tx.clone());
     first_link.request();
