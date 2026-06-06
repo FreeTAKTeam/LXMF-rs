@@ -6721,6 +6721,82 @@ fn peer_sync_orders_offers_by_python_weight_before_sync_limit() {
 }
 
 #[test]
+fn peer_sync_prioritised_destinations_reduce_offer_weight_like_python() {
+    let (daemon, peer) = ready_propagation_peer_daemon(0x4a);
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let record = peers.get_mut(peer.as_str()).expect("peer record");
+        record.propagation_sync_limit = Some(152);
+    }
+    daemon
+        .handle_rpc(rpc_request(
+            63,
+            "set_delivery_policy",
+            json!({
+                "prioritised_destinations": ["17".repeat(16)],
+            }),
+        ))
+        .expect("set delivery policy");
+
+    let prioritised_large = PropagationEntryRecord {
+        transient_id: "c6".repeat(32),
+        destination: "17".repeat(16),
+        payload_hex: "17".repeat(80),
+        received_at: 1_700_000_614,
+        size_bytes: 80,
+        stamp_value: None,
+    };
+    let normal_small = PropagationEntryRecord {
+        transient_id: "c7".repeat(32),
+        destination: "18".repeat(16),
+        payload_hex: "18".repeat(20),
+        received_at: 1_700_000_615,
+        size_bytes: 20,
+        stamp_value: None,
+    };
+    for entry in [&prioritised_large, &normal_small] {
+        daemon.store.upsert_propagation_entry(entry).expect("store propagation entry");
+        daemon
+            .store
+            .mark_peer_unhandled_propagation(peer.as_str(), entry.transient_id.as_str())
+            .expect("mark unhandled");
+    }
+
+    let result = daemon
+        .handle_rpc(rpc_request(
+            64,
+            "peer_sync",
+            json!({
+                "peer": peer.as_str(),
+                "transfer_limit_kb": 1.0,
+            }),
+        ))
+        .expect("peer sync")
+        .result
+        .expect("peer sync result");
+
+    assert_eq!(
+        result["propagation"]["handled_ids"].as_array().expect("handled ids"),
+        &[json!(prioritised_large.transient_id.as_str())]
+    );
+    assert_eq!(
+        result["propagation"]["skipped_ids"].as_array().expect("skipped ids"),
+        &[json!(normal_small.transient_id.as_str())]
+    );
+
+    let handled = daemon
+        .store
+        .list_peer_handled_propagation_ids(peer.as_str())
+        .expect("handled ids");
+    assert_eq!(handled, vec![prioritised_large.transient_id]);
+    let pending = daemon
+        .store
+        .list_peer_unhandled_propagation(peer.as_str())
+        .expect("pending propagation");
+    assert_eq!(pending, vec![normal_small]);
+}
+
+#[test]
 fn peer_sync_reports_propagation_transfer_accounting() {
     let (daemon, peer) = ready_propagation_peer_daemon(0x4a);
     daemon.event_queue.lock().expect("event_queue mutex poisoned").clear();

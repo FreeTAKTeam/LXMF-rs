@@ -156,6 +156,21 @@ pub(crate) fn assert_cases_are_dispatchable_by_harness_and_smoke_script() {
     }
 }
 
+pub(crate) fn assert_smoke_rpc_call_retries_transient_connection_refusals() {
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let smoke = fs::read_to_string(repo_root.join("tools/scripts/python-lxmd-rust-lxmd-smoke.sh"))
+        .expect("smoke dispatcher should be readable");
+
+    assert!(
+        smoke.contains("except OSError as exc:"),
+        "smoke rpc_call should catch transient socket failures before exhausting retries"
+    );
+    assert!(
+        smoke.contains("ConnectionRefusedError"),
+        "smoke rpc_call should retry connection refusals while Rust RPC starts accepting"
+    );
+}
+
 fn assert_case_present(case_id: &str) {
     assert!(
         COMPATIBILITY_CASES.iter().any(|case| case.id == case_id && !case.description.is_empty()),

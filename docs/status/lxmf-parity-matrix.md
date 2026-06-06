@@ -9,7 +9,7 @@ KISS/LoRa/RNode interface work improves the transport substrate available to
 LXMF, but it does not by itself complete LXMF peer sync, propagation router, or
 stamp worker parity.
 
-Last reassessed: 2026-06-06 (no-transfer peer-sync last-heard regression added)
+Last reassessed: 2026-06-06 (prioritised destination peer-offer weighting regression added)
 
 Status legend: `not-started` | `partial` | `done`
 
@@ -109,6 +109,10 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
   last-heard/seen-count values for no-transfer responses, and reject
   valid-looking wanted transient IDs outside the current offer before mutating
   queue state or creating a new peer queue.
+  selected-ID transfer, and no-transfer responses, and reject valid-looking
+  wanted transient IDs outside the current offer before mutating queue state or
+  creating a new peer queue. Local peer sync offer ordering now applies
+  Python's prioritised destination weighting before sync-limit selection.
   Existing peers in local sync
   backoff now also postpone before the local existing-entry queue-fill path,
   but the active workspace does not yet match Python `LXMPeer` queueing,
@@ -169,6 +173,7 @@ Recent focused evidence:
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_empty_wanted_ids_keep_full_offer_policy_gates_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_no_transfer_preserves_last_heard_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_during_backoff_does_not_queue_new_existing_entries_like_python -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib peer_sync_prioritised_destinations_reduce_offer_weight_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib propagation_remote_fetch -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib propagation_remote_download -- --nocapture`
