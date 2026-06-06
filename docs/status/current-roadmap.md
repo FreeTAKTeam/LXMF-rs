@@ -256,6 +256,10 @@ gap, even though deeper propagation-router parity remains open.
   not part of the current peer offer before mutating queue state, avoiding the
   false completion path where an out-of-offer request marked pending messages
   handled or created a new peer queue from existing propagation entries.
+- Local offer-response handling now preserves Python's list-shaped wanted-ID
+  response order and duplicates for resource transfers, so repeated requested
+  transient IDs produce repeated payloads and outgoing transfer accounting
+  instead of being collapsed before transfer.
 - Local peer sync now checks Python's stamp-policy and peering-key readiness
   gates before sync-limit offer skipping, so sync-limited queued messages cannot
   bypass key generation or missing policy discovery.

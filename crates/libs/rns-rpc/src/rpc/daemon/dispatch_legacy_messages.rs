@@ -835,6 +835,11 @@ impl RpcDaemon {
                 let mut propagation_skipped_ids = Vec::new();
                 let mut propagation_messages = Vec::new();
                 let mut propagation_resource_payloads = Vec::new();
+                let selected_response_ids = wanted_ids
+                    .as_ref()
+                    .and_then(PeerSyncWantedIds::selected_ids)
+                    .map(<[_]>::to_vec);
+                let mut selected_offer_entries = std::collections::HashMap::new();
                 for entry in pending_propagation {
                     let entry_size = usize::try_from(entry.size_bytes).unwrap_or(usize::MAX);
                     let transfer_size = entry_size.saturating_add(16);
@@ -867,6 +872,45 @@ impl RpcDaemon {
                     propagation_offered_bytes =
                         propagation_offered_bytes.saturating_add(entry.size_bytes);
                     if wanted {
+                        if selected_response_ids.is_some() {
+                            selected_offer_entries.insert(transient_id.clone(), entry);
+                        } else {
+                            let payload_bytes =
+                                hex::decode(entry.payload_hex.as_str()).map_err(|err| {
+                                    std::io::Error::new(
+                                        std::io::ErrorKind::InvalidData,
+                                        format!("invalid propagation payload hex: {err}"),
+                                    )
+                                })?;
+                            let propagation_message = json!({
+                                "transient_id": entry.transient_id,
+                                "destination": entry.destination,
+                                "payload_hex": entry.payload_hex,
+                                "received_at": entry.received_at,
+                                "size_bytes": entry.size_bytes,
+                                "stamp_value": entry.stamp_value,
+                            });
+                            self.store
+                                .mark_peer_transferred_propagation(peer_key, transient_id.as_str())
+                                .map_err(std::io::Error::other)?;
+                            propagation_transferred = propagation_transferred.saturating_add(1);
+                            propagation_bytes = propagation_bytes.saturating_add(entry.size_bytes);
+                            propagation_transferred_ids.push(transient_id.clone());
+                            propagation_messages.push(propagation_message);
+                            propagation_resource_payloads.push(payload_bytes);
+                        }
+                    } else {
+                        self.store
+                            .mark_peer_handled_propagation(peer_key, transient_id.as_str())
+                            .map_err(std::io::Error::other)?;
+                    }
+                    propagation_handled_ids.push(transient_id);
+                }
+                if let Some(selected_response_ids) = selected_response_ids.as_ref() {
+                    for wanted_id in selected_response_ids {
+                        let Some(entry) = selected_offer_entries.get(wanted_id) else {
+                            continue;
+                        };
                         let payload_bytes =
                             hex::decode(entry.payload_hex.as_str()).map_err(|err| {
                                 std::io::Error::new(
@@ -883,19 +927,14 @@ impl RpcDaemon {
                             "stamp_value": entry.stamp_value,
                         });
                         self.store
-                            .mark_peer_transferred_propagation(peer_key, transient_id.as_str())
+                            .mark_peer_transferred_propagation(peer_key, wanted_id.as_str())
                             .map_err(std::io::Error::other)?;
                         propagation_transferred = propagation_transferred.saturating_add(1);
                         propagation_bytes = propagation_bytes.saturating_add(entry.size_bytes);
-                        propagation_transferred_ids.push(transient_id.clone());
+                        propagation_transferred_ids.push(wanted_id.clone());
                         propagation_messages.push(propagation_message);
                         propagation_resource_payloads.push(payload_bytes);
-                    } else {
-                        self.store
-                            .mark_peer_handled_propagation(peer_key, transient_id.as_str())
-                            .map_err(std::io::Error::other)?;
                     }
-                    propagation_handled_ids.push(transient_id);
                 }
                 let mut propagation_resource_bytes =
                     peer_sync_resource_data_size(propagation_resource_payloads.as_slice())?;
@@ -1969,14 +2008,14 @@ fn peer_sync_policy_relevance(
 #[derive(Debug)]
 enum PeerSyncWantedIds {
     All,
-    Selected(std::collections::HashSet<String>),
+    Selected(Vec<String>),
 }
 
 impl PeerSyncWantedIds {
     fn wants(&self, transient_id: &str) -> bool {
         match self {
             Self::All => true,
-            Self::Selected(ids) => ids.contains(transient_id),
+            Self::Selected(ids) => ids.iter().any(|id| id == transient_id),
         }
     }
 
@@ -1988,10 +2027,10 @@ impl PeerSyncWantedIds {
         matches!(self, Self::Selected(_))
     }
 
-    fn selected_ids(&self) -> Option<&std::collections::HashSet<String>> {
+    fn selected_ids(&self) -> Option<&[String]> {
         match self {
             Self::All => None,
-            Self::Selected(ids) => Some(ids),
+            Self::Selected(ids) => Some(ids.as_slice()),
         }
     }
 }
@@ -2006,7 +2045,7 @@ fn canonical_peer_sync_wanted_ids(
         return Ok(Some(PeerSyncWantedIds::All));
     }
     if value.as_bool() == Some(false) {
-        return Ok(Some(PeerSyncWantedIds::Selected(std::collections::HashSet::new())));
+        return Ok(Some(PeerSyncWantedIds::Selected(Vec::new())));
     }
     let wanted_ids = value.as_array().ok_or_else(|| {
         std::io::Error::new(
@@ -2014,7 +2053,7 @@ fn canonical_peer_sync_wanted_ids(
             "wanted_ids must be true, false, or a list of 32-byte transient ids",
         )
     })?;
-    let mut canonical = std::collections::HashSet::with_capacity(wanted_ids.len());
+    let mut canonical = Vec::with_capacity(wanted_ids.len());
     for wanted_id in wanted_ids {
         let wanted_id = wanted_id.as_str().ok_or_else(|| {
             std::io::Error::new(
@@ -2029,7 +2068,7 @@ fn canonical_peer_sync_wanted_ids(
                 "wanted_ids must contain 32-byte transient ids",
             ));
         }
-        canonical.insert(wanted_id.to_ascii_lowercase());
+        canonical.push(wanted_id.to_ascii_lowercase());
     }
     Ok(Some(PeerSyncWantedIds::Selected(canonical)))
 }

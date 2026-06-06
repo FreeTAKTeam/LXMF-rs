@@ -5526,6 +5526,79 @@ fn peer_sync_offer_response_only_transfers_wanted_messages_like_python() {
 }
 
 #[test]
+fn peer_sync_preserves_duplicate_wanted_ids_like_python() {
+    let (daemon, peer) = ready_propagation_peer_daemon(0xae);
+    let wanted = PropagationEntryRecord {
+        transient_id: "af".repeat(32),
+        destination: "12".repeat(16),
+        payload_hex: "14".repeat(24),
+        received_at: 1_700_000_608,
+        size_bytes: 24,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&wanted).expect("store propagation entry");
+    daemon
+        .store
+        .mark_peer_unhandled_propagation(peer.as_str(), wanted.transient_id.as_str())
+        .expect("mark unhandled");
+
+    let result = daemon
+        .handle_rpc(rpc_request(
+            56,
+            "peer_sync",
+            json!({
+                "peer": peer.as_str(),
+                "wanted_ids": [wanted.transient_id.as_str(), wanted.transient_id.as_str()],
+            }),
+        ))
+        .expect("peer sync")
+        .result
+        .expect("peer sync result");
+    let expected_resource_bytes = rmp_serde::to_vec(&(1.0_f64, vec![
+        vec![0x14; 24],
+        vec![0x14; 24],
+    ]))
+    .expect("pack duplicate wanted resource")
+    .len();
+
+    assert_eq!(result["propagation"]["offered"].as_u64(), Some(1));
+    assert_eq!(result["propagation"]["handled"].as_u64(), Some(1));
+    assert_eq!(result["propagation"]["transferred"].as_u64(), Some(2));
+    assert_eq!(result["propagation"]["bytes"].as_u64(), Some(48));
+    assert_eq!(result["messages"]["offered"].as_u64(), Some(1));
+    assert_eq!(result["messages"]["outgoing"].as_u64(), Some(2));
+    assert_eq!(result["tx_bytes"].as_u64(), Some(expected_resource_bytes as u64));
+    assert_eq!(
+        result["propagation"]["transferred_ids"]
+            .as_array()
+            .expect("transferred ids"),
+        &[json!(wanted.transient_id.as_str()), json!(wanted.transient_id.as_str())]
+    );
+    assert_eq!(
+        result["propagation"]["messages"].as_array().expect("transferred messages").len(),
+        2
+    );
+
+    let event = daemon
+        .event_queue
+        .lock()
+        .expect("event_queue mutex poisoned")
+        .iter()
+        .rev()
+        .find(|event| event.event_type == "peer_sync")
+        .cloned()
+        .expect("peer sync event");
+    assert_eq!(event.payload["propagation"]["transferred"].as_u64(), Some(2));
+    assert_eq!(event.payload["messages"]["outgoing"].as_u64(), Some(2));
+    assert_eq!(
+        event.payload["propagation"]["transferred_ids"]
+            .as_array()
+            .expect("event transferred ids"),
+        &[json!(wanted.transient_id.as_str()), json!(wanted.transient_id.as_str())]
+    );
+}
+
+#[test]
 fn peer_sync_boolean_wanted_ids_true_transfers_all_offered_messages_like_python() {
     let store = MessagesStore::in_memory().expect("store");
     let daemon = RpcDaemon::with_store(store, hex::encode([2u8; 16]));
