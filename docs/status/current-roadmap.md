@@ -232,6 +232,9 @@ gap, even though deeper propagation-router parity remains open.
   Python's source-peer queueing rule: the source peer is marked received/handled
   and records inbound bytes, while newly ingested propagation entries are queued
   only for other active peers.
+- Inbound peer propagation resource source matching is now case-insensitive
+  like Python peer identity handling, while preserving the stored peer id for
+  queue marks and inbound peer counters.
 - Inbound peer propagation resources that locally deliver a payload now credit
   the propagation source peer's inbound counters instead of treating the
   transfer as a client propagation receive.

@@ -660,6 +660,72 @@ fn propagation_ingest_queues_new_entries_for_static_peers() {
 }
 
 #[test]
+fn peer_propagation_ingest_matches_source_peer_case_insensitively_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    daemon
+        .handle_rpc(rpc_request(
+            29,
+            "peer_sync",
+            json!({ "peer": "Peer-Case-Source" }),
+        ))
+        .expect("seed mixed-case peer");
+    daemon
+        .handle_rpc(rpc_request(30, "peer_sync", json!({ "peer": "peer-case-relay" })))
+        .expect("seed relay peer");
+
+    let payload = b"mixed-case-source-peer-payload";
+    let transient_id = daemon
+        .ingest_peer_propagation_payload_bytes_at_cost(
+            payload,
+            None,
+            0,
+            "peer-case-source",
+        )
+        .expect("peer propagation ingest");
+
+    assert!(
+        daemon
+            .store
+            .list_peer_unhandled_propagation("Peer-Case-Source")
+            .expect("source unhandled")
+            .is_empty(),
+        "source peer should not be offered its own inbound payload"
+    );
+    assert_eq!(
+        daemon
+            .store
+            .list_peer_handled_propagation_ids("Peer-Case-Source")
+            .expect("source handled ids"),
+        vec![transient_id.clone()]
+    );
+    let relay_pending = daemon
+        .store
+        .list_peer_unhandled_propagation("peer-case-relay")
+        .expect("relay unhandled");
+    assert_eq!(relay_pending.len(), 1);
+    assert_eq!(relay_pending[0].transient_id, transient_id);
+
+    let status = daemon
+        .handle_rpc(RpcRequest { id: 31, method: "propagation_status".to_string(), params: None })
+        .expect("propagation status")
+        .result
+        .expect("propagation status result");
+    assert_eq!(status["propagation"]["unpeered_propagation_incoming"].as_u64(), Some(0));
+    let peers = daemon
+        .handle_rpc(RpcRequest { id: 32, method: "list_peers".to_string(), params: None })
+        .expect("list peers")
+        .result
+        .expect("list peers result");
+    let source_row = peers["peers"]
+        .as_array()
+        .expect("peer rows")
+        .iter()
+        .find(|row| row["peer"].as_str() == Some("Peer-Case-Source"))
+        .expect("source peer row");
+    assert_eq!(source_row["rx_bytes"].as_u64(), Some(payload.len() as u64));
+}
+
+#[test]
 fn message_storage_stats_track_count_and_bytes() {
     let daemon = RpcDaemon::test_instance();
     daemon
