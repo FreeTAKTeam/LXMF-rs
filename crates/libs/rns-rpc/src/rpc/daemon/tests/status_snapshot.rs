@@ -3228,7 +3228,7 @@ fn propagation_peer_maintenance_candidate_pool_includes_unknown_speed_peers_like
 }
 
 #[test]
-fn propagation_peer_maintenance_candidate_pool_includes_all_unknown_speed_peers_like_python() {
+fn propagation_peer_maintenance_caps_unknown_speed_pool_like_python() {
     let daemon = RpcDaemon::test_instance();
     let fast_peer = make_ready_propagation_peer(&daemon, 0x5a);
     let slower_peer = make_ready_propagation_peer(&daemon, 0x5b);
@@ -3278,7 +3278,7 @@ fn propagation_peer_maintenance_candidate_pool_includes_all_unknown_speed_peers_
         .select_peer_for_maintenance_sync(1_700_000_624)
         .expect("select maintenance sync peer");
 
-    assert_eq!(selected.as_deref(), Some(third_unknown_peer.as_str()));
+    assert_eq!(selected.as_deref(), Some(fast_peer.as_str()));
 }
 
 #[test]

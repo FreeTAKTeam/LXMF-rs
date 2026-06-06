@@ -1592,8 +1592,13 @@ impl RpcDaemon {
             });
             let fastest_count = LXMF_PEER_FASTEST_RANDOM_POOL.min(waiting.len());
             let mut peer_pool = waiting.iter().take(fastest_count).cloned().collect::<Vec<_>>();
-            peer_pool
-                .extend(waiting.iter().filter(|record| record.sync_transfer_rate == 0.0).cloned());
+            peer_pool.extend(
+                waiting
+                    .iter()
+                    .filter(|record| record.sync_transfer_rate == 0.0)
+                    .take(fastest_count)
+                    .cloned(),
+            );
             let selected_index = timestamp.rem_euclid(peer_pool.len() as i64) as usize;
             return Ok(peer_pool.into_iter().nth(selected_index).map(|record| record.peer));
         }

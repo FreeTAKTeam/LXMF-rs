@@ -158,9 +158,9 @@ gap, even though deeper propagation-router parity remains open.
   peer candidate pool: the fastest two waiting peers remain candidates, and
   zero-transfer-rate peers are added so unknown-speed peers are not starved by
   previously measured peers.
-- Propagation peer maintenance waiting-pool selection now includes every
-  zero-transfer-rate waiting peer like Python, instead of capping unknown-speed
-  additions to the fastest-pool size and starving later unknown-speed peers.
+- Propagation peer maintenance waiting-pool selection now matches Python's
+  capped unknown-speed additions: zero-transfer-rate peers are considered, but
+  only up to the fastest-pool size, preserving Python's candidate weighting.
 - Propagation peer maintenance retry selection now mirrors Python's
   unresponsive-peer pool behavior as well: when no live waiting peer is
   eligible, retry-ready unresponsive peers are selected from the whole due pool
