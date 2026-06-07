@@ -239,10 +239,11 @@ async fn verify_tcp_control(compose: &DockerCompose) -> Result<()> {
         .get_host_port_ipv4(CONTROL_PORT)
         .await
         .context("tcp_control port was not published")?;
+    let host = service.get_host().await.context("tcp_control host was not discovered")?.to_string();
     let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
 
     loop {
-        match request_control(port).await {
+        match request_control(&host, port).await {
             Ok(response) if response.contains("lxmf-e2e-ok") => return Ok(()),
             Ok(_) => {}
             Err(error)
@@ -262,8 +263,8 @@ async fn verify_tcp_control(compose: &DockerCompose) -> Result<()> {
     }
 }
 
-async fn request_control(port: u16) -> std::io::Result<String> {
-    let mut stream = TcpStream::connect(("127.0.0.1", port)).await?;
+async fn request_control(host: &str, port: u16) -> std::io::Result<String> {
+    let mut stream = TcpStream::connect((host, port)).await?;
     stream.write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n").await?;
     let mut response = Vec::new();
     stream.read_to_end(&mut response).await?;
