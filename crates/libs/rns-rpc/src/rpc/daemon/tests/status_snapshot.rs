@@ -825,6 +825,73 @@ fn propagation_purge_removes_deleted_entries_from_peer_record_snapshots() {
 }
 
 #[test]
+fn propagation_ingest_does_not_reopen_handled_peer_record_snapshot() {
+    let daemon = RpcDaemon::test_instance();
+    daemon
+        .handle_rpc(rpc_request(
+            26,
+            "propagation_enable",
+            json!({
+                "enabled": true,
+                "static_peers": ["peer-static-duplicate-handled"],
+            }),
+        ))
+        .expect("enable propagation");
+
+    let destination = [0x43_u8; 16];
+    let mut payload = destination.to_vec();
+    payload.extend_from_slice(b" duplicate handled propagation");
+    let transient_id = hex::encode(Sha256::digest(payload.as_slice()));
+    daemon
+        .store
+        .upsert_propagation_entry(&PropagationEntryRecord {
+            transient_id: transient_id.clone(),
+            destination: hex::encode(destination),
+            payload_hex: hex::encode(payload.as_slice()),
+            received_at: 1_700_000_112,
+            size_bytes: payload.len() as u64,
+            stamp_value: None,
+        })
+        .expect("store handled propagation");
+    daemon
+        .store
+        .mark_peer_handled_propagation("peer-static-duplicate-handled", transient_id.as_str())
+        .expect("mark handled propagation");
+
+    let duplicate = daemon
+        .ingest_propagation_payload_bytes_at_cost(payload.as_slice(), None, 0)
+        .expect("duplicate ingest");
+    assert_eq!(duplicate, transient_id);
+    assert!(
+        daemon
+            .store
+            .list_peer_unhandled_propagation_ids("peer-static-duplicate-handled")
+            .expect("live unhandled ids")
+            .is_empty(),
+        "duplicate ingest should not reopen a handled live queue mark"
+    );
+    assert_eq!(
+        daemon
+            .store
+            .list_peer_handled_propagation_ids("peer-static-duplicate-handled")
+            .expect("live handled ids"),
+        vec![transient_id.clone()]
+    );
+
+    let peers = daemon.peers.lock().expect("peers mutex poisoned");
+    let record = peers.get("peer-static-duplicate-handled").expect("stored peer");
+    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    assert_eq!(
+        serialized["handled_ids"].as_array().expect("serialized handled ids"),
+        &[json!(transient_id.as_str())]
+    );
+    assert_eq!(
+        serialized["unhandled_ids"].as_array().expect("serialized unhandled ids"),
+        &[] as &[JsonValue]
+    );
+}
+
+#[test]
 fn peer_propagation_ingest_matches_source_peer_case_insensitively_like_python() {
     let daemon = RpcDaemon::test_instance();
     daemon

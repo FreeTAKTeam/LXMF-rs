@@ -65,6 +65,10 @@ impl RpcDaemon {
     }
 
     pub(super) fn record_peer_queue_unhandled_id(&self, peer: &str, transient_id: &str) {
+        if self.store.peer_completed_propagation_mark_exists(peer, transient_id).unwrap_or(false) {
+            self.record_peer_queue_handled_id(peer, transient_id);
+            return;
+        }
         let mut guard = self.peers.lock().expect("peers mutex poisoned");
         let existing_peer_key =
             guard.keys().find(|existing| existing.eq_ignore_ascii_case(peer)).cloned();

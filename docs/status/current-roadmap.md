@@ -73,6 +73,9 @@ The project is best described by capability level:
 - Propagation purge cleanup removes deleted local payload IDs from active peer
   record snapshots, so restart/export state does not retain purged queue entries
   after the live peer marks have been cleared.
+- Duplicate or replayed propagation queue attempts respect already-completed
+  peer marks when updating peer record snapshots, avoiding restart/export drift
+  that would reopen handled IDs as unhandled.
 
 ## Remaining Release Blockers
 

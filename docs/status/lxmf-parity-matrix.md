@@ -105,6 +105,8 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   transferred, or transfer-limited.
 - Purging local propagation payloads removes matching deleted IDs from active
   peer record snapshots, preventing restart/export drift after queue cleanup.
+- Duplicate or replayed propagation queue attempts preserve completed peer
+  snapshot state instead of reopening handled IDs as serialized unhandled work.
 - Inbound propagation distinguishes clients, validated peers, unpeered
   identified senders, and local delivery; source peers are accounted and not
   re-offered their own payloads.
