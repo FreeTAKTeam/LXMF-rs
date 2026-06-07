@@ -2073,12 +2073,18 @@ impl RpcDaemon {
                         "peer is required",
                     ));
                 }
-                let bridge = self
+                let bridge = match self
                     .remote_control_bridge
                     .lock()
                     .expect("remote control bridge mutex poisoned")
                     .clone()
-                    .ok_or_else(|| std::io::Error::other("remote control bridge unavailable"))?;
+                {
+                    Some(bridge) => bridge,
+                    None => {
+                        let _ = self.record_payload_backed_peer_queue_snapshot(peer_id);
+                        return Err(std::io::Error::other("remote control bridge unavailable"));
+                    }
+                };
                 let timeout_secs = parsed.timeout_secs.unwrap_or(5.0).max(0.1);
                 let result = match bridge.propagation_remote_unpeer(
                     remote_id.as_str(),

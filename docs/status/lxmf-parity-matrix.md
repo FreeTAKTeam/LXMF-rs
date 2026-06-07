@@ -116,8 +116,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   marks into active peer record snapshots before returning, so deferred syncs
   preserve queued retry work across restart/export.
 - Failed remote unpeer attempts mirror existing payload-backed queue marks into
-  active peer record snapshots before returning the bridge error, so failed
-  peering teardown preserves queued retry work across restart/export.
+  active peer record snapshots before returning bridge-unavailable or
+  bridge-execution errors, so failed peering teardown preserves queued retry
+  work across restart/export.
 - Restored peer record queue IDs are replayed into the live store, newly queued
   existing and inbound/imported propagation IDs are reflected in the serialized
   peer snapshot, source-peer handled IDs are preserved for restart/export, and
