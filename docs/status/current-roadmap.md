@@ -86,7 +86,8 @@ The project is best described by capability level:
   IDs from active peer record snapshots when the underlying propagation payload
   no longer exists, keeping export/restart state aligned with live queue
   cleanup.
-- Restored peer records now prune serialized handled and unhandled queue IDs
+- Restored peer records now accept Python MessagePack binary
+  `destination_hash`, handled, and unhandled IDs, prune serialized queue IDs
   whose payloads are missing during replay, and canonicalize/deduplicate the
   surviving IDs, avoiding restart/export drift when Python snapshot entries
   outlive or duplicate local propagation storage.
