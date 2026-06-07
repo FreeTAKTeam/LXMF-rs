@@ -217,6 +217,10 @@ gap, even though deeper propagation-router parity remains open.
   `wanted_ids: true` transfers every offered message, while `wanted_ids: false`
   and `wanted_ids: []` mark the whole offer handled without resource transfer,
   preserving the no-transfer liveness and transfer-rate behavior.
+- Local peer sync now also maps Python's `ERROR_NO_ACCESS` offer response
+  (`wanted_ids: 0xf1`) to a local peering break: the peer is unpeered, its
+  propagation queue marks are cleared, and a `peer_unpeer` event is emitted
+  without accepting the offered messages.
 - Local peer sync no-transfer offer responses now also preserve the previous
   `last_heard` and `seen_count` values, matching Python's path where
   `resource_concluded()` is not reached and no completed peer transfer is

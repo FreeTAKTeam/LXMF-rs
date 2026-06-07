@@ -569,7 +569,8 @@ impl RpcDaemon {
                         "peer is required",
                     ));
                 }
-                let wanted_ids = canonical_peer_sync_wanted_ids(parsed.wanted_ids.as_ref())?;
+                let (wanted_ids, peer_offer_error) =
+                    canonical_peer_sync_wanted_ids(parsed.wanted_ids.as_ref())?;
                 let requested_transfer_limit_bytes =
                     parsed.transfer_limit_kb.map(|limit| (limit.max(0.0) * 1000.0) as usize);
 
@@ -587,11 +588,43 @@ impl RpcDaemon {
                     .values()
                     .find(|record| record.peer.eq_ignore_ascii_case(peer_id))
                     .cloned();
-                if existing_peer.is_none() && wanted_ids.is_some() {
+                if existing_peer.is_none() && (wanted_ids.is_some() || peer_offer_error.is_some()) {
                     return Err(std::io::Error::new(
                         std::io::ErrorKind::InvalidInput,
                         "wanted_ids require an existing peer offer matching the current peer offer",
                     ));
+                }
+                if let Some(offer_error) = peer_offer_error {
+                    if offer_error != LXMF_PEER_ERROR_NO_ACCESS {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::InvalidInput,
+                            "unsupported peer offer error response",
+                        ));
+                    }
+                    let record =
+                        existing_peer.as_ref().expect("offer responses require an existing peer");
+                    let cleanup = self.unpeer_local_state(record.peer.as_str())?;
+                    let offered = cleanup.messages["offered"].as_u64().unwrap_or(0);
+                    let outgoing = cleanup.messages["outgoing"].as_u64().unwrap_or(0);
+                    let incoming = cleanup.messages["incoming"].as_u64().unwrap_or(0);
+                    let payload = json!({
+                        "peer": cleanup.peer.as_str(),
+                        "reason": "access_denied",
+                        "offer_response": offer_error,
+                        "unpeered": true,
+                        "removed": cleanup.removed,
+                        "propagation_cleared": cleanup.propagation_cleared,
+                        "propagation_cleared_bytes": cleanup.propagation_cleared_bytes,
+                        "offered": offered,
+                        "outgoing": outgoing,
+                        "incoming": incoming,
+                        "messages": cleanup.messages,
+                    });
+                    self.publish_event(RpcEvent {
+                        event_type: "peer_unpeer".into(),
+                        payload: payload.clone(),
+                    });
+                    return Ok(RpcResponse { id: request.id, result: Some(payload), error: None });
                 }
                 if let Some(record) = existing_peer.as_ref() {
                     self.restore_peer_record_queue_marks(record)?;
@@ -2017,6 +2050,8 @@ pub(super) fn peer_sync_backoff_active(timestamp: i64, next_sync_attempt: i64) -
     next_sync_attempt > 0 && timestamp <= next_sync_attempt
 }
 
+const LXMF_PEER_ERROR_NO_ACCESS: u8 = 0xf1;
+
 #[derive(Debug)]
 enum PeerSyncWantedIds {
     All,
@@ -2049,20 +2084,29 @@ impl PeerSyncWantedIds {
 
 fn canonical_peer_sync_wanted_ids(
     wanted_ids: Option<&JsonValue>,
-) -> Result<Option<PeerSyncWantedIds>, std::io::Error> {
+) -> Result<(Option<PeerSyncWantedIds>, Option<u8>), std::io::Error> {
     let Some(value) = wanted_ids else {
-        return Ok(None);
+        return Ok((None, None));
+    };
+    if let Some(error_code) = value.as_u64() {
+        let error_code = u8::try_from(error_code).map_err(|_| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "wanted_ids error response must fit in one byte",
+            )
+        })?;
+        return Ok((None, Some(error_code)));
     };
     if value.as_bool() == Some(true) {
-        return Ok(Some(PeerSyncWantedIds::All));
+        return Ok((Some(PeerSyncWantedIds::All), None));
     }
     if value.as_bool() == Some(false) {
-        return Ok(Some(PeerSyncWantedIds::Selected(Vec::new())));
+        return Ok((Some(PeerSyncWantedIds::Selected(Vec::new())), None));
     }
     let wanted_ids = value.as_array().ok_or_else(|| {
         std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
-            "wanted_ids must be true, false, or a list of 32-byte transient ids",
+            "wanted_ids must be true, false, a Python LXMPeer error code, or a list of 32-byte transient ids",
         )
     })?;
     let mut canonical = Vec::with_capacity(wanted_ids.len());
@@ -2082,7 +2126,7 @@ fn canonical_peer_sync_wanted_ids(
         }
         canonical.push(wanted_id.to_ascii_lowercase());
     }
-    Ok(Some(PeerSyncWantedIds::Selected(canonical)))
+    Ok((Some(PeerSyncWantedIds::Selected(canonical)), None))
 }
 
 fn validate_peer_sync_wanted_ids_in_offer(

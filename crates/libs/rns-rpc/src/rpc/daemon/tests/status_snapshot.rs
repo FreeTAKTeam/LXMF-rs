@@ -6771,6 +6771,92 @@ fn peer_sync_rejects_offer_response_without_existing_peer_queue() {
 }
 
 #[test]
+fn peer_sync_no_access_offer_response_breaks_peering_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    daemon
+        .handle_rpc(rpc_request(52, "peer_sync", json!({ "peer": "peer-local-denied" })))
+        .expect("initial peer sync");
+    let pending = PropagationEntryRecord {
+        transient_id: "ac".repeat(32),
+        destination: "12".repeat(16),
+        payload_hex: "12".repeat(24),
+        received_at: 1_700_000_607,
+        size_bytes: 24,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&pending).expect("store propagation entry");
+    daemon
+        .store
+        .mark_peer_unhandled_propagation("peer-local-denied", pending.transient_id.as_str())
+        .expect("mark unhandled");
+    daemon.event_queue.lock().expect("event_queue mutex poisoned").clear();
+
+    let result = daemon
+        .handle_rpc(rpc_request(
+            55,
+            "peer_sync",
+            json!({
+                "peer": "peer-local-denied",
+                "wanted_ids": 0xf1,
+            }),
+        ))
+        .expect("no-access offer response should break peering")
+        .result
+        .expect("peer sync result");
+
+    assert_eq!(result["peer"].as_str(), Some("peer-local-denied"));
+    assert_eq!(result["offer_response"].as_u64(), Some(0xf1));
+    assert_eq!(result["reason"].as_str(), Some("access_denied"));
+    assert_eq!(result["unpeered"].as_bool(), Some(true));
+    assert_eq!(result["removed"].as_bool(), Some(true));
+    assert_eq!(result["propagation_cleared"].as_u64(), Some(1));
+    assert_eq!(result["propagation_cleared_bytes"].as_u64(), Some(24));
+
+    let peers = daemon
+        .handle_rpc(RpcRequest { id: 56, method: "list_peers".to_string(), params: None })
+        .expect("list peers")
+        .result
+        .expect("list peers result");
+    assert!(
+        peers["peers"]
+            .as_array()
+            .expect("peer rows")
+            .iter()
+            .all(|row| row["peer"].as_str() != Some("peer-local-denied")),
+        "ERROR_NO_ACCESS should remove the local peer record"
+    );
+    assert!(daemon
+        .store
+        .list_peer_unhandled_propagation("peer-local-denied")
+        .expect("pending propagation")
+        .is_empty());
+    assert!(
+        daemon
+            .store
+            .list_peer_handled_propagation_ids("peer-local-denied")
+            .expect("handled ids")
+            .is_empty(),
+        "ERROR_NO_ACCESS should clear queue marks without accepting messages"
+    );
+
+    let event = daemon
+        .event_queue
+        .lock()
+        .expect("event_queue mutex poisoned")
+        .iter()
+        .rev()
+        .find(|event| event.event_type == "peer_unpeer")
+        .cloned()
+        .expect("denied access unpeer event");
+    assert_eq!(event.payload["peer"].as_str(), Some("peer-local-denied"));
+    assert_eq!(event.payload["reason"].as_str(), Some("access_denied"));
+    assert_eq!(event.payload["offer_response"].as_u64(), Some(0xf1));
+    assert_eq!(event.payload["removed"].as_bool(), Some(true));
+    assert_eq!(event.payload["propagation_cleared"].as_u64(), Some(1));
+    assert_eq!(event.payload["propagation_cleared_bytes"].as_u64(), Some(24));
+}
+
+#[test]
 fn peer_sync_rejects_transfer_limited_wanted_ids_without_mutating_queue() {
     let daemon = RpcDaemon::test_instance();
     daemon
