@@ -595,36 +595,76 @@ impl RpcDaemon {
                     ));
                 }
                 if let Some(offer_error) = peer_offer_error {
-                    if offer_error != LXMF_PEER_ERROR_NO_ACCESS {
-                        return Err(std::io::Error::new(
-                            std::io::ErrorKind::InvalidInput,
-                            "unsupported peer offer error response",
-                        ));
-                    }
                     let record =
                         existing_peer.as_ref().expect("offer responses require an existing peer");
-                    let cleanup = self.unpeer_local_state(record.peer.as_str())?;
-                    let offered = cleanup.messages["offered"].as_u64().unwrap_or(0);
-                    let outgoing = cleanup.messages["outgoing"].as_u64().unwrap_or(0);
-                    let incoming = cleanup.messages["incoming"].as_u64().unwrap_or(0);
-                    let payload = json!({
-                        "peer": cleanup.peer.as_str(),
-                        "reason": "access_denied",
-                        "offer_response": offer_error,
-                        "unpeered": true,
-                        "removed": cleanup.removed,
-                        "propagation_cleared": cleanup.propagation_cleared,
-                        "propagation_cleared_bytes": cleanup.propagation_cleared_bytes,
-                        "offered": offered,
-                        "outgoing": outgoing,
-                        "incoming": incoming,
-                        "messages": cleanup.messages,
-                    });
-                    self.publish_event(RpcEvent {
-                        event_type: "peer_unpeer".into(),
-                        payload: payload.clone(),
-                    });
-                    return Ok(RpcResponse { id: request.id, result: Some(payload), error: None });
+                    match offer_error {
+                        LXMF_PEER_ERROR_NO_ACCESS => {
+                            let cleanup = self.unpeer_local_state(record.peer.as_str())?;
+                            let offered = cleanup.messages["offered"].as_u64().unwrap_or(0);
+                            let outgoing = cleanup.messages["outgoing"].as_u64().unwrap_or(0);
+                            let incoming = cleanup.messages["incoming"].as_u64().unwrap_or(0);
+                            let payload = json!({
+                                "peer": cleanup.peer.as_str(),
+                                "reason": "access_denied",
+                                "offer_response": offer_error,
+                                "unpeered": true,
+                                "removed": cleanup.removed,
+                                "propagation_cleared": cleanup.propagation_cleared,
+                                "propagation_cleared_bytes": cleanup.propagation_cleared_bytes,
+                                "offered": offered,
+                                "outgoing": outgoing,
+                                "incoming": incoming,
+                                "messages": cleanup.messages,
+                            });
+                            self.publish_event(RpcEvent {
+                                event_type: "peer_unpeer".into(),
+                                payload: payload.clone(),
+                            });
+                            return Ok(RpcResponse {
+                                id: request.id,
+                                result: Some(payload),
+                                error: None,
+                            });
+                        }
+                        LXMF_PEER_ERROR_THROTTLED => {
+                            self.restore_peer_record_queue_marks(record)?;
+                            let record_transfer_limit_bytes =
+                                record.propagation_transfer_limit.map(|limit| limit as usize);
+                            let transfer_limit_bytes =
+                                match (record_transfer_limit_bytes, requested_transfer_limit_bytes)
+                                {
+                                    (Some(record_limit), Some(requested_limit)) => {
+                                        Some(record_limit.min(requested_limit))
+                                    }
+                                    (Some(record_limit), None) => Some(record_limit),
+                                    (None, Some(requested_limit)) => Some(requested_limit),
+                                    (None, None) => None,
+                                };
+                            let sync_limit_bytes =
+                                record.propagation_sync_limit.map(|limit| limit as usize);
+                            {
+                                let mut peers = self.peers.lock().expect("peers mutex poisoned");
+                                if let Some(peer) = peers.get_mut(record.peer.as_str()) {
+                                    peer.next_sync_attempt =
+                                        timestamp.saturating_add(PN_STAMP_THROTTLE_SECS);
+                                }
+                            }
+                            return Ok(self.postponed_peer_sync_response(
+                                request.id,
+                                record,
+                                timestamp,
+                                "throttled",
+                                transfer_limit_bytes,
+                                sync_limit_bytes,
+                            ));
+                        }
+                        _ => {
+                            return Err(std::io::Error::new(
+                                std::io::ErrorKind::InvalidInput,
+                                "unsupported peer offer error response",
+                            ));
+                        }
+                    }
                 }
                 if let Some(record) = existing_peer.as_ref() {
                     self.restore_peer_record_queue_marks(record)?;
@@ -2051,6 +2091,8 @@ pub(super) fn peer_sync_backoff_active(timestamp: i64, next_sync_attempt: i64) -
 }
 
 const LXMF_PEER_ERROR_NO_ACCESS: u8 = 0xf1;
+const LXMF_PEER_ERROR_THROTTLED: u8 = 0xf6;
+const PN_STAMP_THROTTLE_SECS: i64 = 180;
 
 #[derive(Debug)]
 enum PeerSyncWantedIds {

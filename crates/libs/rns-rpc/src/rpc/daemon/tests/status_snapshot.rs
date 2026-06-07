@@ -6857,6 +6857,113 @@ fn peer_sync_no_access_offer_response_breaks_peering_like_python() {
 }
 
 #[test]
+fn peer_sync_throttled_offer_response_preserves_peer_queue_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    daemon
+        .handle_rpc(rpc_request(52, "peer_sync", json!({ "peer": "peer-local-throttled" })))
+        .expect("initial peer sync");
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let peer = peers.get_mut("peer-local-throttled").expect("peer record");
+        peer.alive = true;
+        peer.sync_backoff = 0;
+        peer.next_sync_attempt = 0;
+        peer.acceptance_rate = 0.75;
+    }
+    let pending = PropagationEntryRecord {
+        transient_id: "ad".repeat(32),
+        destination: "12".repeat(16),
+        payload_hex: "12".repeat(24),
+        received_at: 1_700_000_608,
+        size_bytes: 24,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&pending).expect("store propagation entry");
+    daemon
+        .store
+        .mark_peer_unhandled_propagation("peer-local-throttled", pending.transient_id.as_str())
+        .expect("mark unhandled");
+    daemon.event_queue.lock().expect("event_queue mutex poisoned").clear();
+
+    let result = daemon
+        .handle_rpc(rpc_request(
+            55,
+            "peer_sync",
+            json!({
+                "peer": "peer-local-throttled",
+                "wanted_ids": 0xf6,
+            }),
+        ))
+        .expect("throttled offer response should postpone local peer sync")
+        .result
+        .expect("peer sync result");
+
+    assert_eq!(result["peer"].as_str(), Some("peer-local-throttled"));
+    assert_eq!(result["synced"].as_bool(), Some(false));
+    assert_eq!(result["postpone_reason"].as_str(), Some("throttled"));
+    assert_eq!(result["alive"].as_bool(), Some(true));
+    assert_eq!(result["sync_backoff"].as_u64(), Some(0));
+    let last_sync_attempt = result["last_sync_attempt"].as_i64().expect("last sync attempt");
+    assert!(last_sync_attempt > 0);
+    assert_eq!(result["next_sync_attempt"].as_i64(), Some(last_sync_attempt + 180));
+    assert_eq!(result["acceptance_rate"].as_f64(), Some(0.75));
+    assert_eq!(result["propagation"]["postponed"].as_bool(), Some(true));
+    assert_eq!(result["propagation"]["postpone_reason"].as_str(), Some("throttled"));
+    assert_eq!(result["propagation"]["handled"].as_u64(), Some(0));
+
+    let peers = daemon
+        .handle_rpc(RpcRequest { id: 56, method: "list_peers".to_string(), params: None })
+        .expect("list peers")
+        .result
+        .expect("list peers result");
+    let row = peers["peers"]
+        .as_array()
+        .expect("peer rows")
+        .iter()
+        .find(|row| row["peer"].as_str() == Some("peer-local-throttled"))
+        .expect("peer row");
+    assert_eq!(row["alive"].as_bool(), Some(true));
+    assert_eq!(row["sync_backoff"].as_u64(), Some(0));
+    assert_eq!(row["last_sync_attempt"].as_i64(), Some(last_sync_attempt));
+    assert_eq!(row["next_sync_attempt"].as_i64(), Some(last_sync_attempt + 180));
+    assert_eq!(
+        daemon
+            .store
+            .list_peer_unhandled_propagation("peer-local-throttled")
+            .expect("pending propagation"),
+        vec![pending.clone()]
+    );
+    assert!(
+        daemon
+            .store
+            .list_peer_handled_propagation_ids("peer-local-throttled")
+            .expect("handled ids")
+            .is_empty(),
+        "throttling should preserve queued offers without accepting messages"
+    );
+
+    let event = daemon
+        .event_queue
+        .lock()
+        .expect("event_queue mutex poisoned")
+        .iter()
+        .rev()
+        .find(|event| event.event_type == "peer_sync")
+        .cloned()
+        .expect("throttled peer sync event");
+    assert_eq!(event.payload["peer"].as_str(), Some("peer-local-throttled"));
+    assert_eq!(event.payload["synced"].as_bool(), Some(false));
+    assert_eq!(event.payload["postpone_reason"].as_str(), Some("throttled"));
+    assert_eq!(event.payload["alive"].as_bool(), Some(true));
+    assert_eq!(event.payload["sync_backoff"].as_u64(), Some(0));
+    assert_eq!(event.payload["last_sync_attempt"].as_i64(), Some(last_sync_attempt));
+    assert_eq!(
+        event.payload["next_sync_attempt"].as_i64(),
+        Some(last_sync_attempt + 180)
+    );
+}
+
+#[test]
 fn peer_sync_rejects_transfer_limited_wanted_ids_without_mutating_queue() {
     let daemon = RpcDaemon::test_instance();
     daemon

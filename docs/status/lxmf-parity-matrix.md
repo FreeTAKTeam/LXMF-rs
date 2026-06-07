@@ -131,10 +131,12 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
   before offer skipping. Local peer sync also persists
   Python-style cumulative acceptance-rate cache values after multiple offer
   responses, maps Python's `ERROR_NO_ACCESS` offer response to local unpeering
-  with propagation queue cleanup, offer ordering now applies Python's
-  prioritised destination weighting before sync-limit selection, and persistent
-  full-offer syncs plus selected-ID response syncs continue into the next
-  eligible batch while lazy peers keep one-batch behavior. Persistent sync transfer accounting now
+  with propagation queue cleanup, maps Python's `ERROR_THROTTLED` offer
+  response to the 180-second retry window while preserving queued offers, and
+  offer ordering now applies Python's prioritised destination weighting before
+  sync-limit selection. Persistent full-offer syncs plus selected-ID response
+  syncs continue into the next eligible batch while lazy peers keep one-batch
+  behavior. Persistent sync transfer accounting now
   accumulates `tx_bytes` across batches while reporting `sync_transfer_rate`
   from the last completed batch.
   Explicit `wanted_ids` for brand-new peers are rejected before peer creation
@@ -216,6 +218,7 @@ Recent focused evidence:
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_rejects_unknown_wanted_ids_without_creating_new_peer_queue -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_rejects_offer_response_without_existing_peer_queue -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_no_access_offer_response_breaks_peering_like_python -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib peer_sync_throttled_offer_response_preserves_peer_queue_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_rejects_transfer_limited_wanted_ids_without_mutating_queue -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_boolean -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_stores_cumulative_acceptance_rate_like_python -- --nocapture`

@@ -221,6 +221,10 @@ gap, even though deeper propagation-router parity remains open.
   (`wanted_ids: 0xf1`) to a local peering break: the peer is unpeered, its
   propagation queue marks are cleared, and a `peer_unpeer` event is emitted
   without accepting the offered messages.
+- Local peer sync now also maps Python's `ERROR_THROTTLED` offer response
+  (`wanted_ids: 0xf6`) to the `PN_STAMP_THROTTLE` retry window: the peer and
+  queued offers are preserved, `next_sync_attempt` is postponed by 180 seconds,
+  and generic sync backoff/liveness are left unchanged.
 - Local peer sync no-transfer offer responses now also preserve the previous
   `last_heard` and `seen_count` values, matching Python's path where
   `resource_concluded()` is not reached and no completed peer transfer is

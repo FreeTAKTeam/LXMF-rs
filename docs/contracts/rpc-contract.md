@@ -138,7 +138,10 @@ All methods below are required for full CLI feature coverage.
   characters; malformed wanted IDs are rejected before peer queue state is
   mutated. Numeric Python LXMPeer error response `0xf1` (`ERROR_NO_ACCESS`)
   breaks local peering, clears peer propagation queue marks, and returns a
-  `peer_unpeer`-shaped result with `reason: "access_denied"`.
+  `peer_unpeer`-shaped result with `reason: "access_denied"`. Numeric response
+  `0xf6` (`ERROR_THROTTLED`) preserves the peer and queued offers, postpones
+  `next_sync_attempt` by 180 seconds, and returns a postponed `peer_sync`
+  result with `postpone_reason: "throttled"`.
 - `peer_unpeer`
 : Params keys: `peer`. Result and `peer_unpeer` event include `removed`,
   `propagation_cleared`, `propagation_cleared_bytes`, top-level aggregate
