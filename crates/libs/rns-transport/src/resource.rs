@@ -382,6 +382,7 @@ impl ResourceProof {
 
 include!("resource/sender.rs");
 include!("resource/receiver.rs");
+include!("resource/manager_start.rs");
 include!("resource/manager.rs");
 include!("resource/utils.rs");
 include!("resource/tests.rs");
