@@ -881,9 +881,13 @@ impl RpcDaemon {
                     ));
                 }
                 let peer_key = record.peer.as_str();
-                self.store
-                    .remove_stale_peer_unhandled_propagation(peer_key)
+                let stale_unhandled_ids = self
+                    .store
+                    .remove_stale_peer_unhandled_propagation_ids(peer_key)
                     .map_err(std::io::Error::other)?;
+                for transient_id in stale_unhandled_ids {
+                    self.remove_peer_queue_snapshot_id(transient_id.as_str());
+                }
                 let mut pending_propagation = self
                     .store
                     .list_peer_unhandled_propagation(peer_key)

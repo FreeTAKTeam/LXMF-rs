@@ -968,8 +968,31 @@ impl MessagesStore {
     }
 
     pub fn remove_stale_peer_unhandled_propagation(&self, peer: &str) -> rusqlite::Result<usize> {
+        self.remove_stale_peer_unhandled_propagation_ids(peer).map(|ids| ids.len())
+    }
+
+    pub fn remove_stale_peer_unhandled_propagation_ids(
+        &self,
+        peer: &str,
+    ) -> rusqlite::Result<Vec<String>> {
         self.with_write_conn(|conn| {
-            let affected = conn.execute(
+            let stale_ids = {
+                let mut stmt = conn.prepare(
+                    "SELECT transient_id
+                     FROM propagation_peer_entries
+                     WHERE peer = ?1
+                       AND state = 'unhandled'
+                       AND NOT EXISTS (
+                           SELECT 1
+                           FROM propagation_entries e
+                           WHERE e.transient_id = propagation_peer_entries.transient_id
+                       )
+                     ORDER BY transient_id ASC",
+                )?;
+                let rows = stmt.query_map(params![peer], |row| row.get(0))?;
+                rows.collect::<rusqlite::Result<Vec<String>>>()?
+            };
+            conn.execute(
                 "DELETE FROM propagation_peer_entries
                  WHERE peer = ?1
                    AND state = 'unhandled'
@@ -980,7 +1003,7 @@ impl MessagesStore {
                    )",
                 params![peer],
             )?;
-            Ok(affected)
+            Ok(stale_ids)
         })
     }
 
