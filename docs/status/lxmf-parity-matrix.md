@@ -146,7 +146,10 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
   readiness gate when stamp and peering policy are known. Restored Python
   `handled_ids` and `unhandled_ids` queue marks are now serialized back out
   with peer records, preserving those sync queues through Rust
-  serialize/deserialize cycles. The active workspace
+  serialize/deserialize cycles. Python-named peer-record transfer and sync
+  limits are now serialized in Python's persisted kilobyte units while
+  byte-valued status aliases remain available for Rust/API consumers. The
+  active workspace
   still does not yet match Python `LXMPeer` queueing, transfer, and peering
   behavior.
 - Paper-command baseline is implemented for bridge-backed `reticulumd`: SDK
@@ -231,6 +234,7 @@ Recent focused evidence:
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_preserves_duplicate_wanted_ids_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_keeps_transfer_limit_separate_from_missing_sync_limit_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_restored_python_transfer_limit_synthesizes_sync_limit_like_python -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib peer_record_serializes_python_limit_fields_as_kilobytes_with_byte_aliases -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_restores_python_peer_record_queue_marks_for_existing_entries_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib propagation_remote_fetch -- --nocapture`

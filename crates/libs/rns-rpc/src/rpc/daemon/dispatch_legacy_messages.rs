@@ -45,9 +45,12 @@ impl RpcDaemon {
         row["peering_key"] = peering_key.map_or(JsonValue::Null, JsonValue::from);
         row["peering_key_status"] = json!(peering_key_status);
         row["last_heard"] = row.get("last_seen").cloned().unwrap_or(JsonValue::Null);
-        row["transfer_limit"] =
-            row.get("propagation_transfer_limit").cloned().unwrap_or(JsonValue::Null);
-        row["sync_limit"] = row.get("propagation_sync_limit").cloned().unwrap_or(JsonValue::Null);
+        let transfer_limit = row.get("transfer_limit").cloned().unwrap_or(JsonValue::Null);
+        let sync_limit = row.get("sync_limit").cloned().unwrap_or(JsonValue::Null);
+        row["transfer_limit"] = transfer_limit.clone();
+        row["propagation_transfer_limit"] = transfer_limit;
+        row["sync_limit"] = sync_limit.clone();
+        row["propagation_sync_limit"] = sync_limit;
         row["target_stamp_cost"] =
             row.get("propagation_stamp_cost").cloned().unwrap_or(JsonValue::Null);
         row["stamp_cost_flexibility"] =

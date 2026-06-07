@@ -721,11 +721,11 @@ impl serde::Serialize for PeerRecord {
         map.serialize_entry("peering_timebase", &self.peering_timebase)?;
         map.serialize_entry("sync_strategy", &self.sync_strategy)?;
         if let Some(value) = self.propagation_transfer_limit {
-            map.serialize_entry("propagation_transfer_limit", &value)?;
+            map.serialize_entry("propagation_transfer_limit", &bytes_to_kilobytes(value))?;
             map.serialize_entry("transfer_limit", &value)?;
         }
         if let Some(value) = self.propagation_sync_limit {
-            map.serialize_entry("propagation_sync_limit", &value)?;
+            map.serialize_entry("propagation_sync_limit", &bytes_to_kilobytes(value))?;
             map.serialize_entry("sync_limit", &value)?;
         }
         if let Some(value) = self.propagation_stamp_cost {
@@ -848,15 +848,13 @@ impl<'de> Deserialize<'de> for PeerRecord {
                 (wire.outgoing as f64 / wire.offered as f64).max(0.0)
             }
         });
-        let python_transfer_limit = wire.propagation_transfer_limit.is_some()
-            && wire.transfer_limit.is_none();
+        let python_transfer_limit = wire.propagation_transfer_limit.is_some();
         let transfer_limit = parse_peer_limit_bytes(
             wire.propagation_transfer_limit.as_ref(),
             wire.transfer_limit.as_ref(),
             python_transfer_limit,
         );
-        let python_sync_limit =
-            wire.propagation_sync_limit.is_some() && wire.sync_limit.is_none();
+        let python_sync_limit = wire.propagation_sync_limit.is_some();
         let sync_limit = parse_peer_limit_bytes(
             wire.propagation_sync_limit.as_ref(),
             wire.sync_limit.as_ref(),
@@ -913,11 +911,24 @@ fn parse_peer_limit_bytes(
     alias: Option<&JsonValue>,
     primary_is_python_kb: bool,
 ) -> Option<u32> {
-    let value = primary.or(alias)?;
-    if primary_is_python_kb && primary.is_some() {
-        parse_json_f64(value).and_then(kilobytes_to_bytes)
+    if let Some(alias) = alias {
+        let alias_bytes = parse_json_u32(alias)?;
+        if primary_is_python_kb {
+            if let Some(primary) = primary {
+                let Some(primary_kb) = parse_json_f64(primary) else {
+                    return Some(alias_bytes);
+                };
+                if kilobytes_to_bytes(primary_kb) == Some(alias_bytes) {
+                    return Some(alias_bytes);
+                }
+                return parse_json_u32(primary);
+            }
+        }
+        Some(alias_bytes)
+    } else if primary_is_python_kb {
+        parse_json_f64(primary?).and_then(kilobytes_to_bytes)
     } else {
-        parse_json_u32(value)
+        parse_json_u32(primary?)
     }
 }
 
@@ -941,6 +952,10 @@ fn parse_json_f64(value: &JsonValue) -> Option<f64> {
 fn kilobytes_to_bytes(value: f64) -> Option<u32> {
     let bytes = (value.max(0.0) * 1000.0).floor();
     (bytes.is_finite() && bytes <= f64::from(u32::MAX)).then_some(bytes as u32)
+}
+
+fn bytes_to_kilobytes(value: u32) -> f64 {
+    f64::from(value) / 1000.0
 }
 
 fn default_true() -> bool {
@@ -1191,9 +1206,9 @@ mod peer_record_serde_tests {
         assert_eq!(value["offered"].as_u64(), Some(7));
         assert_eq!(value["outgoing"].as_u64(), Some(5));
         assert_eq!(value["incoming"].as_u64(), Some(3));
-        assert_eq!(value["propagation_transfer_limit"].as_u64(), Some(333));
+        assert_eq!(value["propagation_transfer_limit"].as_f64(), Some(0.333));
         assert_eq!(value["transfer_limit"].as_u64(), Some(333));
-        assert_eq!(value["propagation_sync_limit"].as_u64(), Some(444));
+        assert_eq!(value["propagation_sync_limit"].as_f64(), Some(0.444));
         assert_eq!(value["sync_limit"].as_u64(), Some(444));
         assert_eq!(value["propagation_stamp_cost"].as_u64(), Some(7));
         assert_eq!(value["target_stamp_cost"].as_u64(), Some(7));
@@ -1208,6 +1223,48 @@ mod peer_record_serde_tests {
             value["unhandled_ids"].as_array().expect("unhandled ids"),
             &[json!("cc".repeat(32))]
         );
+    }
+
+    #[test]
+    fn peer_record_serializes_python_limit_fields_as_kilobytes_with_byte_aliases() {
+        let record = PeerRecord {
+            peer: "peer-python-limits".to_string(),
+            last_seen: 1_700_001_005,
+            capabilities: vec!["propagation".to_string()],
+            name: None,
+            name_source: None,
+            peer_type: Some("auto".to_string()),
+            alive: true,
+            last_sync_attempt: 1_700_001_000,
+            next_sync_attempt: 1_700_001_720,
+            sync_backoff: 720,
+            network_distance: 3,
+            offered: 0,
+            outgoing: 0,
+            incoming: 0,
+            rx_bytes: 0,
+            tx_bytes: 0,
+            sync_transfer_rate: 0.0,
+            acceptance_rate: 0.0,
+            first_seen: 1_700_000_900,
+            seen_count: 4,
+            peering_timebase: 1_700_000_950,
+            sync_strategy: 2,
+            propagation_transfer_limit: Some(333),
+            propagation_sync_limit: Some(444),
+            propagation_stamp_cost: Some(7),
+            propagation_stamp_cost_flexibility: Some(2),
+            peering_cost: Some(9),
+            peering_key_value: None,
+            restored_handled_ids: Vec::new(),
+            restored_unhandled_ids: Vec::new(),
+        };
+
+        let value = serde_json::to_value(record).expect("serialize peer record");
+        assert_eq!(value["propagation_transfer_limit"].as_f64(), Some(0.333));
+        assert_eq!(value["transfer_limit"].as_u64(), Some(333));
+        assert_eq!(value["propagation_sync_limit"].as_f64(), Some(0.444));
+        assert_eq!(value["sync_limit"].as_u64(), Some(444));
     }
 
     #[test]
