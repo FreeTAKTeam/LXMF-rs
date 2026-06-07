@@ -1505,7 +1505,7 @@ impl RpcDaemon {
                         .find(|record| record.peer.eq_ignore_ascii_case(peer_id.as_str()))
                         .cloned()
                 };
-                if let Some(record) = existing_record {
+                if let Some(record) = existing_record.as_ref() {
                     let peer_transfer_limit_kb =
                         record.propagation_transfer_limit.map(|limit| f64::from(limit) / 1000.0);
                     let request_transfer_limit_kb =
@@ -1525,7 +1525,7 @@ impl RpcDaemon {
                         self.record_payload_backed_peer_queue_snapshot(record.peer.as_str())?;
                         return Ok(self.postponed_peer_sync_response(
                             request.id,
-                            &record,
+                            record,
                             timestamp,
                             "backoff",
                             transfer_limit.map(|limit| limit as usize),
@@ -1541,7 +1541,11 @@ impl RpcDaemon {
                 {
                     Some(bridge) => bridge,
                     None => {
-                        let _ = self.record_payload_backed_peer_queue_snapshot(peer_id.as_str());
+                        let snapshot_peer = existing_record
+                            .as_ref()
+                            .map(|record| record.peer.as_str())
+                            .unwrap_or(peer_id.as_str());
+                        let _ = self.record_payload_backed_peer_queue_snapshot(snapshot_peer);
                         return Err(std::io::Error::other("remote control bridge unavailable"));
                     }
                 };

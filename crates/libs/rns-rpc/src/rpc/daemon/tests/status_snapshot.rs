@@ -12090,6 +12090,61 @@ fn propagation_remote_sync_missing_bridge_records_existing_queue_snapshot_like_p
 }
 
 #[test]
+fn propagation_remote_sync_missing_bridge_records_case_insensitive_queue_snapshot_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    let stored_peer = "Peer-Remote-Sync-Unavailable-Snapshot-Case";
+    let request_peer = stored_peer.to_ascii_lowercase();
+    daemon
+        .handle_rpc(rpc_request(78, "peer_sync", json!({ "peer": stored_peer })))
+        .expect("seed peer");
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let record = peers.get_mut(stored_peer).expect("peer record");
+        record.restored_handled_ids.clear();
+        record.restored_unhandled_ids.clear();
+    }
+
+    let pending = PropagationEntryRecord {
+        transient_id: "ea".repeat(32),
+        destination: "20".repeat(16),
+        payload_hex: "20".repeat(20),
+        received_at: 1_700_000_808,
+        size_bytes: 20,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&pending).expect("store entry");
+    daemon
+        .store
+        .mark_peer_unhandled_propagation(stored_peer, pending.transient_id.as_str())
+        .expect("seed live queue mark");
+
+    let err = daemon
+        .handle_rpc(rpc_request(
+            79,
+            "propagation_remote_sync",
+            json!({
+                "remote": "remote-without-bridge",
+                "peer": request_peer,
+            }),
+        ))
+        .expect_err("missing bridge should reject remote sync");
+    assert_eq!(err.kind(), std::io::ErrorKind::Other);
+    assert_eq!(err.to_string(), "remote control bridge unavailable");
+
+    let peers = daemon.peers.lock().expect("peers mutex poisoned");
+    let record = peers.get(stored_peer).expect("stored peer");
+    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    assert_eq!(
+        serialized["handled_ids"].as_array().expect("serialized handled ids"),
+        &[] as &[JsonValue]
+    );
+    assert_eq!(
+        serialized["unhandled_ids"].as_array().expect("serialized unhandled ids"),
+        &[json!(pending.transient_id.as_str())]
+    );
+}
+
+#[test]
 fn propagation_remote_unpeer_rejects_blank_peer_before_bridge_call() {
     let daemon = RpcDaemon::test_instance();
     let sync_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
