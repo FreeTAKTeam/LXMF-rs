@@ -5683,6 +5683,65 @@ fn peer_sync_rejects_unknown_wanted_ids_without_creating_new_peer_queue() {
 }
 
 #[test]
+fn peer_sync_rejects_offer_response_without_existing_peer_queue() {
+    let daemon = RpcDaemon::test_instance();
+    let existing = PropagationEntryRecord {
+        transient_id: "ab".repeat(32),
+        destination: "12".repeat(16),
+        payload_hex: "12".repeat(24),
+        received_at: 1_700_000_607,
+        size_bytes: 24,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&existing).expect("store propagation entry");
+
+    let error = daemon
+        .handle_rpc(rpc_request(
+            55,
+            "peer_sync",
+            json!({
+                "peer": "peer-new-valid-wanted",
+                "wanted_ids": [existing.transient_id.as_str()],
+            }),
+        ))
+        .expect_err("offer response should require an existing peer offer");
+    assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+    assert!(
+        error.to_string().contains("existing peer offer"),
+        "unexpected error: {error}"
+    );
+
+    assert!(
+        daemon
+            .store
+            .list_peer_handled_propagation_ids("peer-new-valid-wanted")
+            .expect("handled ids")
+            .is_empty()
+    );
+    assert!(
+        daemon
+            .store
+            .list_peer_unhandled_propagation("peer-new-valid-wanted")
+            .expect("pending propagation")
+            .is_empty(),
+        "rejected offer response must not queue existing propagation for a new peer"
+    );
+    let peers = daemon
+        .handle_rpc(RpcRequest { id: 56, method: "list_peers".to_string(), params: None })
+        .expect("list peers")
+        .result
+        .expect("list peers result");
+    assert!(
+        peers["peers"]
+            .as_array()
+            .expect("peer rows")
+            .iter()
+            .all(|row| row["peer"].as_str() != Some("peer-new-valid-wanted")),
+        "rejected offer response must not create a peer record"
+    );
+}
+
+#[test]
 fn peer_sync_rejects_transfer_limited_wanted_ids_without_mutating_queue() {
     let daemon = RpcDaemon::test_instance();
     daemon

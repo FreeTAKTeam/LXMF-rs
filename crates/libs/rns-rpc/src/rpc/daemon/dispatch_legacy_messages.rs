@@ -578,35 +578,11 @@ impl RpcDaemon {
                     .clone();
                 let existing_peer =
                     self.peers.lock().expect("peers mutex poisoned").get(peer_id).cloned();
-                if existing_peer.is_none()
-                    && wanted_ids.as_ref().is_some_and(PeerSyncWantedIds::requires_offer_validation)
-                {
-                    let mut prospective_propagation = self
-                        .store
-                        .list_peer_prospective_unhandled_propagation(peer_id)
-                        .map_err(std::io::Error::other)?;
-                    prospective_propagation.sort_by(|left, right| {
-                        let left_weight = propagation_peer_sync_weight(
-                            left,
-                            timestamp,
-                            prioritised_destinations.as_slice(),
-                        );
-                        let right_weight = propagation_peer_sync_weight(
-                            right,
-                            timestamp,
-                            prioritised_destinations.as_slice(),
-                        );
-                        left_weight
-                            .partial_cmp(&right_weight)
-                            .unwrap_or(std::cmp::Ordering::Equal)
-                            .then_with(|| left.transient_id.cmp(&right.transient_id))
-                    });
-                    validate_peer_sync_wanted_ids_in_offer(
-                        wanted_ids.as_ref(),
-                        prospective_propagation.as_slice(),
-                        requested_transfer_limit_bytes,
-                        requested_transfer_limit_bytes,
-                    )?;
+                if existing_peer.is_none() && wanted_ids.is_some() {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "wanted_ids require an existing peer offer matching the current peer offer",
+                    ));
                 }
                 if let Some(record) = existing_peer.as_ref() {
                     let record_transfer_limit_bytes =
