@@ -70,6 +70,9 @@ The project is best described by capability level:
 - Malformed remote fetch and download imports now mirror existing
   payload-backed live queue marks into active peer record snapshots before
   failing, preserving restart/export retry state for already queued relay work.
+- Remote fetch and download bridge failures now mirror existing payload-backed
+  live queue marks into active peer record snapshots before returning the
+  failure, preserving restart/export retry state for already queued relay work.
 - Restored Python peer records now update their serialized queue ID snapshot
   when peer sync handles, transfers, or transfer-limits queued offers, reducing
   restart/export drift after live offer-response processing.
