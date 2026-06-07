@@ -293,7 +293,9 @@ gap, even though deeper propagation-router parity remains open.
   from `propagation_transfer_limit`. Local peer sync now also rehydrates
   serialized `handled_ids` and `unhandled_ids` queue marks from restored Python
   peer records for propagation entries that still exist, while ignoring stale
-  transient IDs like Python.
+  transient IDs like Python. Peer record export now also emits those restored
+  Python queue IDs, so a Rust serialize/deserialize roundtrip preserves the
+  LXMPeer queue marks used for later sync decisions.
 - Local peer sync now persists the peer acceptance-rate cache from cumulative
   `outgoing/offered` counters, matching Python `LXMPeer.acceptance_rate`
   instead of replacing the cache with only the latest offer-response ratio.

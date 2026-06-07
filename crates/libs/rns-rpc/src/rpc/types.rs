@@ -742,6 +742,8 @@ impl serde::Serialize for PeerRecord {
         if let Some(value) = self.peering_key_value {
             map.serialize_entry("peering_key", &vec![JsonValue::Null, JsonValue::from(value)])?;
         }
+        map.serialize_entry("handled_ids", &self.restored_handled_ids)?;
+        map.serialize_entry("unhandled_ids", &self.restored_unhandled_ids)?;
         map.end()
     }
 }
@@ -1176,8 +1178,8 @@ mod peer_record_serde_tests {
             propagation_stamp_cost_flexibility: Some(2),
             peering_cost: Some(9),
             peering_key_value: Some(9),
-            restored_handled_ids: Vec::new(),
-            restored_unhandled_ids: Vec::new(),
+            restored_handled_ids: vec!["aa".repeat(32), "bb".repeat(32)],
+            restored_unhandled_ids: vec!["cc".repeat(32)],
         };
 
         let value = serde_json::to_value(record).expect("serialize peer record");
@@ -1198,6 +1200,14 @@ mod peer_record_serde_tests {
         assert_eq!(value["propagation_stamp_cost_flexibility"].as_u64(), Some(2));
         assert_eq!(value["stamp_cost_flexibility"].as_u64(), Some(2));
         assert_eq!(value["peering_key"][1].as_u64(), Some(9));
+        assert_eq!(
+            value["handled_ids"].as_array().expect("handled ids"),
+            &[json!("aa".repeat(32)), json!("bb".repeat(32))]
+        );
+        assert_eq!(
+            value["unhandled_ids"].as_array().expect("unhandled ids"),
+            &[json!("cc".repeat(32))]
+        );
     }
 
     #[test]
@@ -1231,8 +1241,8 @@ mod peer_record_serde_tests {
             propagation_stamp_cost_flexibility: Some(3),
             peering_cost: Some(10),
             peering_key_value: Some(10),
-            restored_handled_ids: Vec::new(),
-            restored_unhandled_ids: Vec::new(),
+            restored_handled_ids: vec!["dd".repeat(32)],
+            restored_unhandled_ids: vec!["ee".repeat(32), "ff".repeat(32)],
         };
 
         let value = serde_json::to_value(&record).expect("serialize peer record");

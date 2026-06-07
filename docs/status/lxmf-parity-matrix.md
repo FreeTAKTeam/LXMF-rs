@@ -9,7 +9,7 @@ KISS/LoRa/RNode interface work improves the transport substrate available to
 LXMF, but it does not by itself complete LXMF peer sync, propagation router, or
 stamp worker parity.
 
-Last reassessed: 2026-06-06 (duplicate wanted-ID peer sync regression added)
+Last reassessed: 2026-06-07 (peer-record queue-ID serialization regression added)
 
 Status legend: `not-started` | `partial` | `done`
 
@@ -138,7 +138,10 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
   backoff now also postpone before the local existing-entry queue-fill path,
   preserve Python's liveness boundary when the attempted sync timestamp equals
   `last_heard`, and empty local syncs still honor Python's peering-key
-  readiness gate when stamp and peering policy are known. The active workspace
+  readiness gate when stamp and peering policy are known. Restored Python
+  `handled_ids` and `unhandled_ids` queue marks are now serialized back out
+  with peer records, preserving those sync queues through Rust
+  serialize/deserialize cycles. The active workspace
   still does not yet match Python `LXMPeer` queueing, transfer, and peering
   behavior.
 - Paper-command baseline is implemented for bridge-backed `reticulumd`: SDK
@@ -179,6 +182,7 @@ Recent focused evidence:
 - `cargo test -p reticulum-rs-rpc --lib peer_record_deserializes_python_destination_hash_alias -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_record_derives_python_acceptance_rate_when_alias_is_absent -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_record_serializes_python_status_aliases -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib peer_record_serialized_status_aliases_roundtrip -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib propagation_destination_fetch_deduplicates_repeated_wanted_ids_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib propagation_destination_fetch -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib propagation_fetch_transfer_limit_accounts_for_stripped_stamp_bytes -- --nocapture`
