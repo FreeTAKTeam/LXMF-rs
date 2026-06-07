@@ -981,6 +981,7 @@ impl RpcDaemon {
                                     transient_id.as_str(),
                                 )
                                 .map_err(std::io::Error::other)?;
+                            self.record_peer_queue_handled(peer_key, transient_id.as_str());
                             propagation_transfer_limited_ids.push(transient_id);
                             continue;
                         }

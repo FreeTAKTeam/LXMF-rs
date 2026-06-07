@@ -86,6 +86,9 @@ The project is best described by capability level:
   IDs from active peer record snapshots when the underlying propagation payload
   no longer exists, keeping export/restart state aligned with live queue
   cleanup.
+- Early transfer-limit decisions made before peering-key handling now update
+  active peer record snapshots as completed work, keeping serialized state in
+  sync with the live transfer-limited mark.
 
 ## Remaining Release Blockers
 

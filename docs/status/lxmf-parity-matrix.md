@@ -117,6 +117,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   for unhandled and completed marks when the propagation payload has already
   been removed, keeping serialized restart/export state aligned with live queue
   cleanup.
+- Transfer-limit decisions made before peering-key handling update active peer
+  record snapshots as completed queue work, so restart/export state reflects
+  the live transfer-limited mark.
 - Inbound propagation distinguishes clients, validated peers, unpeered
   identified senders, and local delivery; source peers are accounted and not
   re-offered their own payloads.

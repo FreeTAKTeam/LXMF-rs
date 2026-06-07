@@ -5407,7 +5407,18 @@ fn peer_sync_transfer_limits_oversized_stamped_entries_before_peering_key_gate()
             .store
             .list_peer_handled_propagation_ids("peer-key-limit-first")
             .expect("handled ids"),
-        vec![oversized.transient_id]
+        vec![oversized.transient_id.clone()]
+    );
+
+    let peers = daemon.peers.lock().expect("peers mutex poisoned");
+    let record = peers.get("peer-key-limit-first").expect("peer record");
+    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    assert_eq!(
+        serialized["handled_ids"].as_array().expect("serialized handled ids"),
+        &[json!(oversized.transient_id.as_str())]
+    );
+    assert!(
+        serialized["unhandled_ids"].as_array().expect("serialized unhandled ids").is_empty()
     );
 }
 
