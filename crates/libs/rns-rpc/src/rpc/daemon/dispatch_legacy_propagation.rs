@@ -1522,6 +1522,7 @@ impl RpcDaemon {
                         timestamp,
                         record.next_sync_attempt,
                     ) {
+                        self.record_payload_backed_peer_queue_snapshot(record.peer.as_str())?;
                         return Ok(self.postponed_peer_sync_response(
                             request.id,
                             &record,
