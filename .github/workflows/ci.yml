@@ -2,12 +2,17 @@ name: CI
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
   push:
     branches: [main]
   workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   quality:
@@ -79,6 +84,7 @@ jobs:
         run: cargo xtask ci --stage build-matrix
 
   interfaces-build-linux:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-full-CI'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -96,6 +102,7 @@ jobs:
         run: cargo check -p reticulumd --all-targets
 
   interfaces-build-macos:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-full-CI'))
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -109,6 +116,7 @@ jobs:
         run: cargo check -p reticulumd --all-targets
 
   interfaces-build-windows:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-full-CI'))
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -122,6 +130,7 @@ jobs:
         run: cargo check -p reticulumd --all-targets
 
   interfaces-test-serial:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-full-CI'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -139,6 +148,7 @@ jobs:
         run: cargo test -p reticulum-rs-transport serial::tests
 
   interfaces-test-ble-linux:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-full-CI'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -156,6 +166,7 @@ jobs:
         run: "cargo test -p reticulumd --bin reticulumd interfaces::ble::"
 
   interfaces-test-ble-macos:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-full-CI'))
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -169,6 +180,7 @@ jobs:
         run: "cargo test -p reticulumd --bin reticulumd interfaces::ble::"
 
   interfaces-test-ble-windows:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-full-CI'))
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -182,6 +194,7 @@ jobs:
         run: "cargo test -p reticulumd --bin reticulumd interfaces::ble::"
 
   interfaces-test-lora:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-full-CI'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -199,6 +212,7 @@ jobs:
         run: cargo test -p reticulumd --bin reticulumd lora_state::tests
 
   interfaces-test-mobile-contract:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-full-CI'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -218,6 +232,7 @@ jobs:
           cargo test -p test-support --test mobile_ble_android_conformance --test mobile_ble_ios_conformance
 
   interfaces-boundary-check:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-full-CI'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -235,6 +250,7 @@ jobs:
         run: bash tools/scripts/check-boundaries.sh
 
   interfaces-required:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-full-CI'))
     runs-on: ubuntu-latest
     needs:
       - interfaces-build-linux
@@ -263,6 +279,7 @@ jobs:
         run: cargo xtask ci --stage interfaces-required
 
   embedded-node-build:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-full-CI'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -280,6 +297,7 @@ jobs:
         run: cargo xtask ci --stage embedded-node-build
 
   embedded-node-contract:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-full-CI'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -297,6 +315,7 @@ jobs:
         run: cargo xtask ci --stage embedded-node-contract
 
   embedded-node-failure-matrix:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-full-CI'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -314,6 +333,7 @@ jobs:
         run: cargo xtask ci --stage embedded-node-failure-matrix
 
   embedded-node-hil:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-full-CI'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -358,6 +378,7 @@ jobs:
         run: cargo xtask ci --stage test-nextest-unit
 
   test-integration:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-full-CI'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -411,6 +432,7 @@ jobs:
         run: cargo run -p xtask -- sdk-migration-check
 
   security:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-full-CI'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

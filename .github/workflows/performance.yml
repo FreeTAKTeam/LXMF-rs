@@ -2,6 +2,7 @@ name: Performance gates
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
   workflow_dispatch:
 
 permissions:
@@ -19,6 +20,7 @@ env:
 jobs:
   sdk-perf-budgets:
     name: SDK latency/throughput budgets
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-full-CI'))
     runs-on: ubuntu-latest
     timeout-minutes: 25
 
@@ -60,6 +62,7 @@ jobs:
 
   python-impl-speedup:
     name: Rust/Python speedup floors
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-full-CI'))
     runs-on: ubuntu-latest
     timeout-minutes: 35
 
