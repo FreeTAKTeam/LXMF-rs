@@ -237,6 +237,7 @@ impl RpcDaemon {
             self.store
                 .mark_peer_unhandled_propagation(peer.as_str(), transient_id)
                 .map_err(std::io::Error::other)?;
+            self.record_peer_queue_unhandled_id(peer.as_str(), transient_id);
         }
         Ok(())
     }
@@ -256,6 +257,7 @@ impl RpcDaemon {
                 self.store
                     .mark_peer_unhandled_propagation(peer.as_str(), transient_id)
                     .map_err(std::io::Error::other)?;
+                self.record_peer_queue_unhandled_id(peer.as_str(), transient_id);
             }
         }
         Ok(())
@@ -397,6 +399,7 @@ impl RpcDaemon {
                 self.store
                     .mark_peer_unhandled_propagation(peer.as_str(), transient_id.as_str())
                     .map_err(std::io::Error::other)?;
+                self.record_peer_queue_unhandled_id(peer.as_str(), transient_id.as_str());
             }
         }
         Ok(())
@@ -430,6 +433,7 @@ impl RpcDaemon {
                     self.store
                         .mark_peer_unhandled_propagation(peer.as_str(), transient_id.as_str())
                         .map_err(std::io::Error::other)?;
+                    self.record_peer_queue_unhandled_id(peer.as_str(), transient_id.as_str());
                 }
             }
         }

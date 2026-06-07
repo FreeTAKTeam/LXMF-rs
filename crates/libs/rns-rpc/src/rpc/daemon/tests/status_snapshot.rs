@@ -759,6 +759,14 @@ fn propagation_ingest_queues_new_entries_for_static_peers() {
         row["messages"]["unhandled_ids"].as_array().expect("message unhandled ids"),
         &[json!(transient_id)]
     );
+
+    let peers = daemon.peers.lock().expect("peers mutex poisoned");
+    let record = peers.get("peer-static-ingest-queue").expect("stored peer");
+    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    assert_eq!(
+        serialized["unhandled_ids"].as_array().expect("serialized unhandled ids"),
+        &[json!(transient_id)]
+    );
 }
 
 #[test]
