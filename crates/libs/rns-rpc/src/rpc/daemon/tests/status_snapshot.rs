@@ -14230,6 +14230,70 @@ fn invalid_stamp_propagation_remote_sync_preserves_peer_queue_without_backoff() 
 }
 
 #[test]
+fn retryable_propagation_remote_sync_records_existing_queue_snapshot_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    daemon.set_remote_control_bridge(Arc::new(RemoteSyncErrorBridge {
+        kind: std::io::ErrorKind::PermissionDenied,
+        message: "propagation peer invalid stamp",
+    }));
+    let peer = "peer-remote-retry-snapshot";
+    daemon
+        .handle_rpc(rpc_request(96, "peer_sync", json!({ "peer": peer })))
+        .expect("initial peer sync");
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let record = peers.get_mut(peer).expect("peer record");
+        record.restored_handled_ids.clear();
+        record.restored_unhandled_ids.clear();
+    }
+    let pending = PropagationEntryRecord {
+        transient_id: "b2".repeat(32),
+        destination: "12".repeat(16),
+        payload_hex: "12".repeat(24),
+        received_at: 1_700_000_613,
+        size_bytes: 24,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&pending).expect("store propagation entry");
+    daemon
+        .store
+        .mark_peer_unhandled_propagation(peer, pending.transient_id.as_str())
+        .expect("mark unhandled");
+
+    let err = daemon
+        .handle_rpc(rpc_request(
+            97,
+            "propagation_remote_sync",
+            json!({
+                "remote": "remote-node",
+                "peer": peer,
+            }),
+        ))
+        .expect_err("retryable remote sync should return the bridge error");
+    assert_eq!(err.kind(), std::io::ErrorKind::PermissionDenied);
+    assert_eq!(err.to_string(), "propagation peer invalid stamp");
+    assert_eq!(
+        daemon
+            .store
+            .list_peer_unhandled_propagation(peer)
+            .expect("pending propagation"),
+        vec![pending.clone()]
+    );
+
+    let peers = daemon.peers.lock().expect("peers mutex poisoned");
+    let record = peers.get(peer).expect("stored peer");
+    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    assert_eq!(
+        serialized["handled_ids"].as_array().expect("serialized handled ids"),
+        &[] as &[JsonValue]
+    );
+    assert_eq!(
+        serialized["unhandled_ids"].as_array().expect("serialized unhandled ids"),
+        &[json!(pending.transient_id.as_str())]
+    );
+}
+
+#[test]
 fn unknown_numeric_propagation_remote_sync_preserves_peer_queue_like_python() {
     let daemon = RpcDaemon::test_instance();
     daemon.set_remote_control_bridge(Arc::new(RemoteSyncErrorBridge {

@@ -63,6 +63,9 @@ The project is best described by capability level:
 - Retryable numeric local offer responses now mirror payload-backed live queue
   marks into the active peer record snapshot before returning, so restart/export
   state preserves the retry queue even when the serialized snapshot was empty.
+- Retryable remote peer-sync failures now perform the same payload-backed live
+  queue snapshot mirroring before reporting the failed sync, keeping local and
+  remote retry/export behavior aligned.
 - Restored Python peer records now update their serialized queue ID snapshot
   when peer sync handles, transfers, or transfer-limits queued offers, reducing
   restart/export drift after live offer-response processing.

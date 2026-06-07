@@ -157,7 +157,7 @@ impl RpcDaemon {
         error: &str,
         transfer_limit: Option<u64>,
         sync_limit: Option<u64>,
-    ) {
+    ) -> Result<(), std::io::Error> {
         let timestamp = now_i64();
         if let Ok(mut peers) = self.peers.lock() {
             if let Some(peer) = peers.get_mut(peer_id) {
@@ -165,6 +165,7 @@ impl RpcDaemon {
                 peer.next_sync_attempt = 0;
             }
         }
+        self.record_payload_backed_peer_queue_snapshot(peer_id)?;
         self.publish_failed_remote_peer_sync_event(
             peer_id,
             remote,
@@ -173,6 +174,7 @@ impl RpcDaemon {
             sync_limit,
             None,
         );
+        Ok(())
     }
 
     fn break_remote_peer_sync_peering_on_denied_access(
@@ -1783,7 +1785,7 @@ impl RpcDaemon {
                                 error.as_str(),
                                 transfer_limit,
                                 sync_limit,
-                            );
+                            )?;
                         } else if is_remote_access_denied_error(&err) {
                             self.break_remote_peer_sync_peering_on_denied_access(
                                 peer_key.as_str(),

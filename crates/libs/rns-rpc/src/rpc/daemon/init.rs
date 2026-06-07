@@ -95,6 +95,32 @@ impl RpcDaemon {
         }
     }
 
+    pub(super) fn record_payload_backed_peer_queue_snapshot(
+        &self,
+        peer: &str,
+    ) -> Result<(), std::io::Error> {
+        for entry in
+            self.store.list_peer_unhandled_propagation(peer).map_err(std::io::Error::other)?
+        {
+            let transient_id = entry.transient_id.trim().to_ascii_lowercase();
+            self.record_peer_queue_unhandled_id(peer, transient_id.as_str());
+        }
+        for transient_id in
+            self.store.list_peer_handled_propagation_ids(peer).map_err(std::io::Error::other)?
+        {
+            let transient_id = transient_id.trim().to_ascii_lowercase();
+            if self
+                .store
+                .get_propagation_entry(transient_id.as_str())
+                .map_err(std::io::Error::other)?
+                .is_some()
+            {
+                self.record_peer_queue_handled_id(peer, transient_id.as_str());
+            }
+        }
+        Ok(())
+    }
+
     pub(super) fn remove_peer_queue_snapshot_id(&self, transient_id: &str) {
         let mut guard = self.peers.lock().expect("peers mutex poisoned");
         for record in guard.values_mut() {
