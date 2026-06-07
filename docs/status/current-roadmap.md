@@ -67,8 +67,9 @@ The project is best described by capability level:
   the peer record snapshot, so postponed syncs can restart/export with the same
   unhandled queue visible in live status.
 - Inbound and remotely imported propagation payloads update active peer record
-  snapshots when they queue new unhandled IDs, keeping restart/export state
-  aligned with live queue fan-out.
+  snapshots when they queue new unhandled IDs or mark source peers handled,
+  keeping restart/export state aligned with live queue fan-out and source
+  accounting.
 
 ## Remaining Release Blockers
 

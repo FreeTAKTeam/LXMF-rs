@@ -833,6 +833,14 @@ fn peer_propagation_ingest_matches_source_peer_case_insensitively_like_python() 
         .find(|row| row["peer"].as_str() == Some("Peer-Case-Source"))
         .expect("source peer row");
     assert_eq!(source_row["rx_bytes"].as_u64(), Some(payload.len() as u64));
+
+    let peers = daemon.peers.lock().expect("peers mutex poisoned");
+    let record = peers.get("Peer-Case-Source").expect("stored source peer");
+    let serialized = serde_json::to_value(record).expect("serialize source peer");
+    assert_eq!(
+        serialized["handled_ids"].as_array().expect("serialized handled ids"),
+        &[json!(transient_id)]
+    );
 }
 
 #[test]

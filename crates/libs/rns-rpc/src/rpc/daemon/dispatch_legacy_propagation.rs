@@ -253,6 +253,7 @@ impl RpcDaemon {
                 self.store
                     .mark_peer_received_propagation(peer.as_str(), transient_id)
                     .map_err(std::io::Error::other)?;
+                self.record_peer_queue_handled_id(peer.as_str(), transient_id);
             } else {
                 self.store
                     .mark_peer_unhandled_propagation(peer.as_str(), transient_id)
@@ -392,6 +393,10 @@ impl RpcDaemon {
                     transient_id.as_str(),
                 )
                 .map_err(std::io::Error::other)?;
+            self.record_peer_queue_handled_id(
+                source_active_peer.as_deref().unwrap_or(source_peer),
+                transient_id.as_str(),
+            );
             for peer in &active_peers {
                 if peer.eq_ignore_ascii_case(source_peer) {
                     continue;
@@ -429,6 +434,7 @@ impl RpcDaemon {
                     self.store
                         .mark_peer_received_propagation(peer.as_str(), transient_id.as_str())
                         .map_err(std::io::Error::other)?;
+                    self.record_peer_queue_handled_id(peer.as_str(), transient_id.as_str());
                 } else {
                     self.store
                         .mark_peer_unhandled_propagation(peer.as_str(), transient_id.as_str())
@@ -716,6 +722,7 @@ impl RpcDaemon {
             self.store
                 .mark_peer_received_propagation(peer.as_str(), transient_id.as_str())
                 .map_err(std::io::Error::other)?;
+            self.record_peer_queue_handled_id(peer.as_str(), transient_id.as_str());
         }
         if let Some(peer) = source_active_peer {
             self.record_inbound_peer_activity(peer.as_str(), normalized_payload.len());
@@ -750,12 +757,12 @@ impl RpcDaemon {
         peer: &str,
         transient_id: &str,
     ) -> Result<(), std::io::Error> {
+        let transient_id = normalize_propagation_transient_key(transient_id);
         self.store
-            .mark_peer_received_propagation(
-                peer,
-                normalize_propagation_transient_key(transient_id).as_str(),
-            )
-            .map_err(std::io::Error::other)
+            .mark_peer_received_propagation(peer, transient_id.as_str())
+            .map_err(std::io::Error::other)?;
+        self.record_peer_queue_handled_id(peer, transient_id.as_str());
+        Ok(())
     }
 
     pub fn has_peer_completed_propagation_mark(
@@ -776,12 +783,12 @@ impl RpcDaemon {
         peer: &str,
         transient_id: &str,
     ) -> Result<(), std::io::Error> {
+        let transient_id = normalize_propagation_transient_key(transient_id);
         self.store
-            .mark_peer_transferred_propagation(
-                peer,
-                normalize_propagation_transient_key(transient_id).as_str(),
-            )
-            .map_err(std::io::Error::other)
+            .mark_peer_transferred_propagation(peer, transient_id.as_str())
+            .map_err(std::io::Error::other)?;
+        self.record_peer_queue_handled_id(peer, transient_id.as_str());
+        Ok(())
     }
 
     pub fn list_propagation_payloads_for_destination(

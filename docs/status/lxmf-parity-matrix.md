@@ -100,8 +100,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   offer-response cleanup paths.
 - Restored peer record queue IDs are replayed into the live store, newly queued
   existing and inbound/imported propagation IDs are reflected in the serialized
-  peer snapshot, and offer-response handling keeps IDs in sync when queued
-  messages become handled, transferred, or transfer-limited.
+  peer snapshot, source-peer handled IDs are preserved for restart/export, and
+  offer-response handling keeps IDs in sync when queued messages become handled,
+  transferred, or transfer-limited.
 - Inbound propagation distinguishes clients, validated peers, unpeered
   identified senders, and local delivery; source peers are accounted and not
   re-offered their own payloads.

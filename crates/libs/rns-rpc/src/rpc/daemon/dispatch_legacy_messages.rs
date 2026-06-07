@@ -1969,19 +1969,7 @@ impl RpcDaemon {
     }
 
     fn record_peer_queue_handled(&self, peer: &str, transient_id: &str) {
-        let mut guard = self.peers.lock().expect("peers mutex poisoned");
-        let existing_peer_key =
-            guard.keys().find(|existing| existing.eq_ignore_ascii_case(peer)).cloned();
-        let Some(existing_peer_key) = existing_peer_key else {
-            return;
-        };
-        let Some(record) = guard.get_mut(&existing_peer_key) else {
-            return;
-        };
-        record.restored_unhandled_ids.retain(|id| !id.eq_ignore_ascii_case(transient_id));
-        if !record.restored_handled_ids.iter().any(|id| id.eq_ignore_ascii_case(transient_id)) {
-            record.restored_handled_ids.push(transient_id.to_string());
-        }
+        self.record_peer_queue_handled_id(peer, transient_id);
     }
 
     pub(super) fn restart_required_response(
