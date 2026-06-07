@@ -824,7 +824,7 @@ struct PeerRecordWire {
     #[serde(default)]
     peering_cost: Option<u32>,
     #[serde(default)]
-    peering_key: Option<JsonValue>,
+    peering_key: Option<PythonPeeringKey>,
     #[serde(default)]
     handled_ids: Vec<PythonHexId>,
     #[serde(default)]
@@ -897,7 +897,7 @@ impl<'de> Deserialize<'de> for PeerRecord {
                 .propagation_stamp_cost_flexibility
                 .or(wire.stamp_cost_flexibility),
             peering_cost: wire.peering_cost,
-            peering_key_value: parse_python_peering_key_value(wire.peering_key.as_ref()),
+            peering_key_value: wire.peering_key.and_then(PythonPeeringKey::into_value),
             restored_handled_ids: wire
                 .handled_ids
                 .into_iter()
@@ -967,12 +967,70 @@ impl<'de> Deserialize<'de> for PythonHexId {
     }
 }
 
-fn parse_python_peering_key_value(value: Option<&JsonValue>) -> Option<u32> {
-    let value = value?;
-    if let Some(array) = value.as_array() {
-        return array.get(1).and_then(parse_json_u32);
+struct PythonPeeringKey(Option<u32>);
+
+impl PythonPeeringKey {
+    fn into_value(self) -> Option<u32> {
+        self.0
     }
-    parse_json_u32(value)
+}
+
+impl<'de> Deserialize<'de> for PythonPeeringKey {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct PythonPeeringKeyVisitor;
+
+        impl<'de> Visitor<'de> for PythonPeeringKeyVisitor {
+            type Value = PythonPeeringKey;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("a peering key value or [stamp, value] pair")
+            }
+
+            fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> {
+                Ok(PythonPeeringKey(u32::try_from(value).ok()))
+            }
+
+            fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E> {
+                Ok(PythonPeeringKey(u32::try_from(value.max(0)).ok()))
+            }
+
+            fn visit_f64<E>(self, value: f64) -> Result<Self::Value, E> {
+                let value = value.max(0.0).floor();
+                Ok(PythonPeeringKey(
+                    (value.is_finite() && value <= f64::from(u32::MAX)).then_some(value as u32),
+                ))
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E> {
+                let value = value.trim().parse::<f64>().ok().and_then(|value| {
+                    let value = value.max(0.0).floor();
+                    (value.is_finite() && value <= f64::from(u32::MAX)).then_some(value as u32)
+                });
+                Ok(PythonPeeringKey(value))
+            }
+
+            fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                self.visit_str(value.as_str())
+            }
+
+            fn visit_seq<A>(self, mut sequence: A) -> Result<Self::Value, A::Error>
+            where
+                A: serde::de::SeqAccess<'de>,
+            {
+                let _stamp = sequence.next_element::<serde::de::IgnoredAny>()?;
+                let value = sequence.next_element::<JsonValue>()?;
+                Ok(PythonPeeringKey(value.as_ref().and_then(parse_json_u32)))
+            }
+        }
+
+        deserializer.deserialize_any(PythonPeeringKeyVisitor)
+    }
 }
 
 fn parse_peer_limit_bytes(
@@ -1184,7 +1242,13 @@ mod peer_record_serde_tests {
             (key("destination_hash"), rmpv::Value::Binary(destination_hash.clone())),
             (key("last_heard"), rmpv::Value::from(1_700_001_008_i64)),
             (key("sync_strategy"), rmpv::Value::from(2_u8)),
-            (key("peering_key"), rmpv::Value::Array(vec![rmpv::Value::Nil, rmpv::Value::from(3_u8)])),
+            (
+                key("peering_key"),
+                rmpv::Value::Array(vec![
+                    rmpv::Value::Binary(vec![0xab; 32]),
+                    rmpv::Value::from(3_u8),
+                ]),
+            ),
             (key("handled_ids"), rmpv::Value::Array(vec![rmpv::Value::Binary(handled_id.clone())])),
             (
                 key("unhandled_ids"),
