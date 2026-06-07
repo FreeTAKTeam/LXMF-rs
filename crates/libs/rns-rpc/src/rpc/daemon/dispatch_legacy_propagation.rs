@@ -132,7 +132,7 @@ impl RpcDaemon {
         error: &str,
         transfer_limit: Option<u64>,
         sync_limit: Option<u64>,
-    ) {
+    ) -> Result<(), std::io::Error> {
         let timestamp = now_i64();
         if let Ok(mut peers) = self.peers.lock() {
             if let Some(peer) = peers.get_mut(peer_id) {
@@ -140,6 +140,7 @@ impl RpcDaemon {
                 peer.next_sync_attempt = timestamp.saturating_add(PN_STAMP_THROTTLE_SECS);
             }
         }
+        self.record_payload_backed_peer_queue_snapshot(peer_id)?;
         self.publish_failed_remote_peer_sync_event(
             peer_id,
             remote,
@@ -148,6 +149,7 @@ impl RpcDaemon {
             sync_limit,
             Some("throttled"),
         );
+        Ok(())
     }
 
     fn record_retryable_remote_peer_sync_error(
@@ -1777,7 +1779,7 @@ impl RpcDaemon {
                                 error.as_str(),
                                 transfer_limit,
                                 sync_limit,
-                            );
+                            )?;
                         } else if is_retryable_remote_peer_sync_error(&err) {
                             self.record_retryable_remote_peer_sync_error(
                                 peer_key.as_str(),
