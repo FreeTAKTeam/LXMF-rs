@@ -686,6 +686,7 @@ pub struct PeerRecord {
     pub propagation_stamp_cost: Option<u32>,
     pub propagation_stamp_cost_flexibility: Option<u32>,
     pub peering_cost: Option<u32>,
+    pub peering_key_stamp: Option<Vec<u8>>,
     pub peering_key_value: Option<u32>,
     pub restored_handled_ids: Vec<String>,
     pub restored_unhandled_ids: Vec<String>,
@@ -744,8 +745,11 @@ impl serde::Serialize for PeerRecord {
         if let Some(value) = self.peering_cost {
             map.serialize_entry("peering_cost", &value)?;
         }
-        if let Some(value) = self.peering_key_value {
-            map.serialize_entry("peering_key", &vec![JsonValue::Null, JsonValue::from(value)])?;
+        if let (Some(stamp), Some(value)) = (&self.peering_key_stamp, self.peering_key_value) {
+            map.serialize_entry(
+                "peering_key",
+                &(serde_bytes::Bytes::new(stamp.as_slice()), value),
+            )?;
         }
         map.serialize_entry("handled_ids", &self.restored_handled_ids)?;
         map.serialize_entry("unhandled_ids", &self.restored_unhandled_ids)?;
@@ -867,6 +871,8 @@ impl<'de> Deserialize<'de> for PeerRecord {
             python_sync_limit,
         )
         .or_else(|| python_transfer_limit.then_some(transfer_limit).flatten());
+        let (peering_key_stamp, peering_key_value) =
+            wire.peering_key.map(PythonPeeringKey::into_parts).unwrap_or_default();
         Ok(Self {
             peer,
             last_seen,
@@ -897,7 +903,8 @@ impl<'de> Deserialize<'de> for PeerRecord {
                 .propagation_stamp_cost_flexibility
                 .or(wire.stamp_cost_flexibility),
             peering_cost: wire.peering_cost,
-            peering_key_value: wire.peering_key.and_then(PythonPeeringKey::into_value),
+            peering_key_stamp,
+            peering_key_value,
             restored_handled_ids: wire
                 .handled_ids
                 .into_iter()
@@ -967,11 +974,18 @@ impl<'de> Deserialize<'de> for PythonHexId {
     }
 }
 
-struct PythonPeeringKey(Option<u32>);
+struct PythonPeeringKey {
+    stamp: Option<Vec<u8>>,
+    value: Option<u32>,
+}
 
 impl PythonPeeringKey {
-    fn into_value(self) -> Option<u32> {
-        self.0
+    fn value(value: Option<u32>) -> Self {
+        Self { stamp: None, value }
+    }
+
+    fn into_parts(self) -> (Option<Vec<u8>>, Option<u32>) {
+        (self.stamp, self.value)
     }
 }
 
@@ -990,16 +1004,16 @@ impl<'de> Deserialize<'de> for PythonPeeringKey {
             }
 
             fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> {
-                Ok(PythonPeeringKey(u32::try_from(value).ok()))
+                Ok(PythonPeeringKey::value(u32::try_from(value).ok()))
             }
 
             fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E> {
-                Ok(PythonPeeringKey(u32::try_from(value.max(0)).ok()))
+                Ok(PythonPeeringKey::value(u32::try_from(value.max(0)).ok()))
             }
 
             fn visit_f64<E>(self, value: f64) -> Result<Self::Value, E> {
                 let value = value.max(0.0).floor();
-                Ok(PythonPeeringKey(
+                Ok(PythonPeeringKey::value(
                     (value.is_finite() && value <= f64::from(u32::MAX)).then_some(value as u32),
                 ))
             }
@@ -1009,7 +1023,7 @@ impl<'de> Deserialize<'de> for PythonPeeringKey {
                     let value = value.max(0.0).floor();
                     (value.is_finite() && value <= f64::from(u32::MAX)).then_some(value as u32)
                 });
-                Ok(PythonPeeringKey(value))
+                Ok(PythonPeeringKey::value(value))
             }
 
             fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
@@ -1023,13 +1037,88 @@ impl<'de> Deserialize<'de> for PythonPeeringKey {
             where
                 A: serde::de::SeqAccess<'de>,
             {
-                let _stamp = sequence.next_element::<serde::de::IgnoredAny>()?;
+                let stamp = sequence
+                    .next_element::<PythonPeeringKeyStamp>()?
+                    .and_then(PythonPeeringKeyStamp::into_bytes);
                 let value = sequence.next_element::<JsonValue>()?;
-                Ok(PythonPeeringKey(value.as_ref().and_then(parse_json_u32)))
+                Ok(PythonPeeringKey {
+                    stamp,
+                    value: value.as_ref().and_then(parse_json_u32),
+                })
             }
         }
 
         deserializer.deserialize_any(PythonPeeringKeyVisitor)
+    }
+}
+
+struct PythonPeeringKeyStamp(Option<Vec<u8>>);
+
+impl PythonPeeringKeyStamp {
+    fn into_bytes(self) -> Option<Vec<u8>> {
+        self.0
+    }
+}
+
+impl<'de> Deserialize<'de> for PythonPeeringKeyStamp {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct PythonPeeringKeyStampVisitor;
+
+        impl<'de> Visitor<'de> for PythonPeeringKeyStampVisitor {
+            type Value = PythonPeeringKeyStamp;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("a nil, string, byte array, or MessagePack binary stamp")
+            }
+
+            fn visit_unit<E>(self) -> Result<Self::Value, E> {
+                Ok(PythonPeeringKeyStamp(None))
+            }
+
+            fn visit_bytes<E>(self, value: &[u8]) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(PythonPeeringKeyStamp(Some(value.to_vec())))
+            }
+
+            fn visit_byte_buf<E>(self, value: Vec<u8>) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(PythonPeeringKeyStamp(Some(value)))
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(PythonPeeringKeyStamp(Some(value.as_bytes().to_vec())))
+            }
+
+            fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                self.visit_str(value.as_str())
+            }
+
+            fn visit_seq<A>(self, mut sequence: A) -> Result<Self::Value, A::Error>
+            where
+                A: serde::de::SeqAccess<'de>,
+            {
+                let mut bytes = Vec::new();
+                while let Some(byte) = sequence.next_element::<u8>()? {
+                    bytes.push(byte);
+                }
+                Ok(PythonPeeringKeyStamp(Some(bytes)))
+            }
+        }
+
+        deserializer.deserialize_any(PythonPeeringKeyStampVisitor)
     }
 }
 
@@ -1225,6 +1314,10 @@ mod peer_record_serde_tests {
         assert_eq!(record.outgoing, 1);
         assert_eq!(record.incoming, 4);
         assert_eq!(record.peering_cost, Some(3));
+        assert_eq!(
+            record.peering_key_stamp,
+            Some(b"not-used-in-rust".to_vec())
+        );
         assert_eq!(record.peering_key_value, Some(3));
         assert_eq!(record.sync_strategy, 2);
     }
@@ -1236,6 +1329,7 @@ mod peer_record_serde_tests {
         }
 
         let destination_hash = (0x10_u8..0x20).collect::<Vec<_>>();
+        let peering_key_stamp = vec![0xab; 32];
         let handled_id = (0x20_u8..0x40).collect::<Vec<_>>();
         let unhandled_id = (0x40_u8..0x60).collect::<Vec<_>>();
         let payload = rmpv::Value::Map(vec![
@@ -1245,7 +1339,7 @@ mod peer_record_serde_tests {
             (
                 key("peering_key"),
                 rmpv::Value::Array(vec![
-                    rmpv::Value::Binary(vec![0xab; 32]),
+                    rmpv::Value::Binary(peering_key_stamp.clone()),
                     rmpv::Value::from(3_u8),
                 ]),
             ),
@@ -1267,7 +1361,26 @@ mod peer_record_serde_tests {
         assert_eq!(record.restored_handled_ids, vec![hex::encode(handled_id)]);
         assert_eq!(record.restored_unhandled_ids, vec![hex::encode(unhandled_id)]);
         assert_eq!(record.last_seen, 1_700_001_008);
+        assert_eq!(record.peering_key_stamp, Some(peering_key_stamp.clone()));
         assert_eq!(record.peering_key_value, Some(3));
+
+        let reencoded = rmp_serde::to_vec(&record).expect("serialize python binary peer");
+        let reencoded: rmpv::Value =
+            rmp_serde::from_slice(reencoded.as_slice()).expect("decode serialized peer");
+        let rmpv::Value::Map(entries) = reencoded else {
+            panic!("serialized peer should be a map");
+        };
+        let peering_key = entries
+            .iter()
+            .find_map(|(key, value)| {
+                (key.as_str() == Some("peering_key")).then_some(value)
+            })
+            .expect("serialized peering key");
+        let rmpv::Value::Array(items) = peering_key else {
+            panic!("serialized peering key should be a pair");
+        };
+        assert_eq!(items.first(), Some(&rmpv::Value::Binary(peering_key_stamp)));
+        assert_eq!(items.get(1).and_then(rmpv::Value::as_u64), Some(3));
 
         let peer_hash = (0xa0_u8..0xb0).collect::<Vec<_>>();
         let peer_payload = rmpv::Value::Map(vec![
@@ -1383,12 +1496,13 @@ mod peer_record_serde_tests {
             propagation_stamp_cost: Some(7),
             propagation_stamp_cost_flexibility: Some(2),
             peering_cost: Some(9),
+            peering_key_stamp: Some(b"python-stamp".to_vec()),
             peering_key_value: Some(9),
             restored_handled_ids: vec!["aa".repeat(32), "bb".repeat(32)],
             restored_unhandled_ids: vec!["cc".repeat(32)],
         };
 
-        let value = serde_json::to_value(record).expect("serialize peer record");
+        let value = serde_json::to_value(&record).expect("serialize peer record");
         assert_eq!(value["destination_hash"].as_str(), Some("peer-python-status"));
         assert_eq!(value["last_seen"].as_i64(), Some(1_700_001_005));
         assert_eq!(value["last_heard"].as_i64(), Some(1_700_001_005));
@@ -1405,6 +1519,15 @@ mod peer_record_serde_tests {
         assert_eq!(value["target_stamp_cost"].as_u64(), Some(7));
         assert_eq!(value["propagation_stamp_cost_flexibility"].as_u64(), Some(2));
         assert_eq!(value["stamp_cost_flexibility"].as_u64(), Some(2));
+        assert_eq!(
+            value["peering_key"][0].as_array().map(|bytes| {
+                bytes
+                    .iter()
+                    .map(|byte| byte.as_u64().expect("stamp byte") as u8)
+                    .collect::<Vec<_>>()
+            }),
+            Some(b"python-stamp".to_vec())
+        );
         assert_eq!(value["peering_key"][1].as_u64(), Some(9));
         assert_eq!(
             value["handled_ids"].as_array().expect("handled ids"),
@@ -1414,6 +1537,13 @@ mod peer_record_serde_tests {
             value["unhandled_ids"].as_array().expect("unhandled ids"),
             &[json!("cc".repeat(32))]
         );
+
+        let without_stamp = PeerRecord {
+            peering_key_stamp: None,
+            ..record
+        };
+        let value = serde_json::to_value(without_stamp).expect("serialize peer without stamp");
+        assert!(value.get("peering_key").is_none());
     }
 
     #[test]
@@ -1446,6 +1576,7 @@ mod peer_record_serde_tests {
             propagation_stamp_cost: Some(7),
             propagation_stamp_cost_flexibility: Some(2),
             peering_cost: Some(9),
+            peering_key_stamp: None,
             peering_key_value: None,
             restored_handled_ids: Vec::new(),
             restored_unhandled_ids: Vec::new(),
@@ -1488,6 +1619,7 @@ mod peer_record_serde_tests {
             propagation_stamp_cost: Some(7),
             propagation_stamp_cost_flexibility: Some(2),
             peering_cost: Some(9),
+            peering_key_stamp: None,
             peering_key_value: None,
             restored_handled_ids: Vec::new(),
             restored_unhandled_ids: Vec::new(),
@@ -1532,6 +1664,7 @@ mod peer_record_serde_tests {
             propagation_stamp_cost: Some(8),
             propagation_stamp_cost_flexibility: Some(3),
             peering_cost: Some(10),
+            peering_key_stamp: Some(b"roundtrip-stamp".to_vec()),
             peering_key_value: Some(10),
             restored_handled_ids: vec!["dd".repeat(32)],
             restored_unhandled_ids: vec!["ee".repeat(32), "ff".repeat(32)],

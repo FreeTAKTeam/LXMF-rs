@@ -1941,6 +1941,7 @@ impl RpcDaemon {
             if existing.peering_cost == Some(peering_cost)
                 && existing.peering_key_value == Some(peering_key_value)
             {
+                existing.peering_key_stamp = None;
                 existing.peering_key_value = None;
             }
         }
