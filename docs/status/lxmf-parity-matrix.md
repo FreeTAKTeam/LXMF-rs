@@ -114,8 +114,8 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
   Python's boolean all/none and list-shaped response forms, keep full-offer
   stamp-policy and peering-key gates for boolean wants-all, request-limited,
   selected-ID transfer, and no-transfer responses, keep live and restored
-  transfer limits as per-message caps instead of synthesizing a missing total
-  sync limit, preserve
+  live transfer limits as per-message caps while restored Python peer records
+  synthesize a missing sync limit from the serialized transfer limit, preserve
   previous last-heard/seen-count values for no-transfer responses, and reject
   valid-looking wanted transient IDs outside the current offer before mutating
   queue state or creating a new peer queue. Non-empty list-shaped offer
@@ -216,7 +216,7 @@ Recent focused evidence:
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_prioritised_destinations_reduce_offer_weight_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_preserves_duplicate_wanted_ids_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_keeps_transfer_limit_separate_from_missing_sync_limit_like_python -- --nocapture`
-- `cargo test -p reticulum-rs-rpc --lib peer_sync_restored_python_transfer_limit_does_not_synthesize_sync_limit_like_python -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib peer_sync_restored_python_transfer_limit_synthesizes_sync_limit_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib propagation_remote_fetch -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib propagation_remote_download -- --nocapture`

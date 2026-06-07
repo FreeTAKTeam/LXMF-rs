@@ -7564,7 +7564,7 @@ fn peer_sync_keeps_transfer_limit_separate_from_missing_sync_limit_like_python()
 }
 
 #[test]
-fn peer_sync_restored_python_transfer_limit_does_not_synthesize_sync_limit_like_python() {
+fn peer_sync_restored_python_transfer_limit_synthesizes_sync_limit_like_python() {
     let daemon = RpcDaemon::test_instance();
     let peer = "peer-restored-transfer-only";
     let record: PeerRecord = serde_json::from_value(json!({
@@ -7580,7 +7580,7 @@ fn peer_sync_restored_python_transfer_limit_does_not_synthesize_sync_limit_like_
     }))
     .expect("deserialize transfer-only Python peer");
     assert_eq!(record.propagation_transfer_limit, Some(70));
-    assert_eq!(record.propagation_sync_limit, None);
+    assert_eq!(record.propagation_sync_limit, Some(70));
     daemon.peers.lock().expect("peers mutex poisoned").insert(peer.to_string(), record);
 
     let first = PropagationEntryRecord {
@@ -7613,14 +7613,15 @@ fn peer_sync_restored_python_transfer_limit_does_not_synthesize_sync_limit_like_
         .expect("peer sync")
         .result
         .expect("peer sync result");
-    assert_eq!(result["propagation"]["handled"].as_u64(), Some(2));
-    assert_eq!(result["propagation"]["transferred"].as_u64(), Some(2));
-    assert_eq!(result["propagation"]["skipped"].as_u64(), Some(0));
-    assert_eq!(result["propagation"]["sync_limit"], JsonValue::Null);
+    assert_eq!(result["propagation"]["handled"].as_u64(), Some(1));
+    assert_eq!(result["propagation"]["transferred"].as_u64(), Some(1));
+    assert_eq!(result["propagation"]["skipped"].as_u64(), Some(1));
+    assert_eq!(result["propagation"]["sync_limit"].as_u64(), Some(70));
 
     let handled = daemon.store.list_peer_handled_propagation_ids(peer).expect("handled ids");
-    assert_eq!(handled, vec![first.transient_id, second.transient_id]);
-    assert!(daemon.store.list_peer_unhandled_propagation(peer).expect("pending").is_empty());
+    assert_eq!(handled, vec![second.transient_id]);
+    let pending = daemon.store.list_peer_unhandled_propagation(peer).expect("pending");
+    assert_eq!(pending, vec![first]);
 }
 
 #[test]

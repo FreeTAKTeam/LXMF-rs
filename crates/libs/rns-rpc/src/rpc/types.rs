@@ -853,7 +853,8 @@ impl<'de> Deserialize<'de> for PeerRecord {
             wire.propagation_sync_limit.as_ref(),
             wire.sync_limit.as_ref(),
             python_sync_limit,
-        );
+        )
+        .or_else(|| python_transfer_limit.then_some(transfer_limit).flatten());
         Ok(Self {
             peer,
             last_seen,
@@ -1113,7 +1114,7 @@ mod peer_record_serde_tests {
         .expect("deserialize python serialized peer with transfer limit only");
 
         assert_eq!(transfer_only.propagation_transfer_limit, Some(152));
-        assert_eq!(transfer_only.propagation_sync_limit, None);
+        assert_eq!(transfer_only.propagation_sync_limit, Some(152));
     }
 
     #[test]

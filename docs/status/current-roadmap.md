@@ -228,8 +228,8 @@ gap, even though deeper propagation-router parity remains open.
 - Local peer sync request-only transfer limits now also stay on Python's
   full-offer policy path: `transfer_limit_kb` constrains offer construction
   but does not by itself bypass stamp-policy or peering-key readiness. Request
-  and peer transfer limits remain per-message caps and no longer synthesize a
-  total sync limit when `propagation_sync_limit` is absent.
+  and live peer transfer limits remain per-message caps when
+  `propagation_sync_limit` is absent.
 - Local peer sync selected-ID offer responses that request a transfer now also
   stay on Python's full-offer policy path: non-empty list-shaped `wanted_ids`
   wait for stamp-policy and peering-key readiness before mutating queue state or
@@ -284,9 +284,9 @@ gap, even though deeper propagation-router parity remains open.
   `outgoing / offered` when the serialized `acceptance_rate` field is absent,
   including duplicate-response ratios above `1.0`, so persisted LXMPeer state
   can rehydrate identity plus queue/account counters without requiring a
-  Rust-only record shape. Restored Python peer records also keep transfer-only
-  limits as per-message transfer caps instead of synthesizing a total sync
-  limit.
+  Rust-only record shape. Restored Python peer records also follow Python
+  `LXMPeer.from_bytes()` by synthesizing a missing `propagation_sync_limit`
+  from `propagation_transfer_limit`.
 - Local peer sync now persists the peer acceptance-rate cache from cumulative
   `outgoing/offered` counters, matching Python `LXMPeer.acceptance_rate`
   instead of replacing the cache with only the latest offer-response ratio.
