@@ -62,6 +62,17 @@ impl Transport {
         None
     }
 
+    async fn resource_mtu_for_iface(&self, iface: Option<AddressHash>) -> usize {
+        let Some(iface) = iface else {
+            return crate::resource::DEFAULT_RESOURCE_INTERFACE_MTU;
+        };
+        self.iface_manager
+            .lock()
+            .await
+            .mtu(&iface)
+            .unwrap_or(crate::resource::DEFAULT_RESOURCE_INTERFACE_MTU)
+    }
+
     pub async fn send_to_all_out_links(&self, payload: &[u8]) {
         let packets = {
             let handler = self.handler.lock().await;
@@ -237,10 +248,19 @@ impl Transport {
         metadata: Option<Vec<u8>>,
     ) -> Result<Hash, RnsError> {
         let link = self.find_any_link(link_id).await.ok_or(RnsError::InvalidArgument)?;
+        let iface = {
+            let link_guard = link.lock().await;
+            link_guard.ingress_iface()
+        };
+        let interface_mtu = self.resource_mtu_for_iface(iface).await;
         let mut handler = self.handler.lock().await;
         let link_guard = link.lock().await;
-        let (resource_hash, packet) =
-            handler.resource_manager.start_send(&link_guard, data, metadata)?;
+        let (resource_hash, packet) = handler.resource_manager.start_send_with_mtu(
+            &link_guard,
+            data,
+            metadata,
+            interface_mtu,
+        )?;
         drop(link_guard);
         drop(handler);
         let outcome = self.send_link_packet_on_bound_iface(&link, packet).await;
@@ -265,14 +285,20 @@ impl Transport {
         metadata: Option<Vec<u8>>,
     ) -> Result<Hash, RnsError> {
         let link = self.find_any_link(link_id).await.ok_or(RnsError::InvalidArgument)?;
+        let iface = {
+            let link_guard = link.lock().await;
+            link_guard.ingress_iface()
+        };
+        let interface_mtu = self.resource_mtu_for_iface(iface).await;
         let mut handler = self.handler.lock().await;
         let link_guard = link.lock().await;
-        let (resource_hash, packet) = handler.resource_manager.start_send_with_options(
+        let (resource_hash, packet) = handler.resource_manager.start_send_with_options_mtu(
             &link_guard,
             data,
             metadata,
             Some(request_id),
             true,
+            interface_mtu,
         )?;
         drop(link_guard);
         drop(handler);
@@ -298,14 +324,20 @@ impl Transport {
         metadata: Option<Vec<u8>>,
     ) -> Result<Hash, RnsError> {
         let link = self.find_any_link(link_id).await.ok_or(RnsError::InvalidArgument)?;
+        let iface = {
+            let link_guard = link.lock().await;
+            link_guard.ingress_iface()
+        };
+        let interface_mtu = self.resource_mtu_for_iface(iface).await;
         let mut handler = self.handler.lock().await;
         let link_guard = link.lock().await;
-        let (resource_hash, packet) = handler.resource_manager.start_send_with_options(
+        let (resource_hash, packet) = handler.resource_manager.start_send_with_options_mtu(
             &link_guard,
             data,
             metadata,
             Some(request_id),
             false,
+            interface_mtu,
         )?;
         drop(link_guard);
         drop(handler);
@@ -444,10 +476,16 @@ impl Transport {
         metadata: Option<Vec<u8>>,
     ) -> Result<Hash, RnsError> {
         let link = self.find_in_link(link_id).await.ok_or(RnsError::InvalidArgument)?;
+        let interface_mtu = self.resource_mtu_for_iface(Some(iface)).await;
         let (resource_hash, packet) = {
             let mut handler = self.handler.lock().await;
             let link_guard = link.lock().await;
-            handler.resource_manager.start_send(&link_guard, data, metadata)?
+            handler.resource_manager.start_send_with_mtu(
+                &link_guard,
+                data,
+                metadata,
+                interface_mtu,
+            )?
         };
         let dispatch = self
             .handler

@@ -1037,6 +1037,10 @@ impl Interface for NativeVrn76KissBleInterface {
     fn mtu() -> usize {
         564
     }
+
+    fn configured_mtu(&self) -> usize {
+        self.config.mtu
+    }
 }
 
 #[cfg(feature = "vrn76-kiss-ble")]

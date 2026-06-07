@@ -69,9 +69,13 @@ fn fill_link_packet_data(
     Ok(())
 }
 
-fn slice_hashmap_segment(hashes: &[[u8; MAPHASH_LEN]], segment: usize) -> Vec<u8> {
-    let start = segment * HASHMAP_MAX_LEN;
-    let end = usize::min((segment + 1) * HASHMAP_MAX_LEN, hashes.len());
+fn slice_hashmap_segment(
+    hashes: &[[u8; MAPHASH_LEN]],
+    segment: usize,
+    segment_len: usize,
+) -> Vec<u8> {
+    let start = segment * segment_len;
+    let end = usize::min((segment + 1) * segment_len, hashes.len());
     let mut out = Vec::with_capacity((end - start) * MAPHASH_LEN);
     for hash in &hashes[start..end] {
         out.extend_from_slice(hash);

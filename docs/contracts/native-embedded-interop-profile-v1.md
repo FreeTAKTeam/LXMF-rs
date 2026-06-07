@@ -2,7 +2,14 @@
 
 ## Scope
 
-Defines the normative embedded-node interoperability profile for ESP32-class devices participating in LXMF/Reticulum-compatible exchanges.
+Defines the native embedded-node interoperability profile for ESP32-class
+devices using the repository's `RNE1` runtime framing.
+
+This profile is not the external Reticulum packet wire or full Python
+Reticulum/LXMF parity contract. Passing its fixtures proves interoperability
+between implementations of this native embedded profile only. External
+compatibility claims require the gates in
+`docs/contracts/external-client-interop-acceptance-v1.md`.
 
 ## Lab Profile Reference
 
