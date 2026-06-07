@@ -1533,12 +1533,18 @@ impl RpcDaemon {
                         ));
                     }
                 }
-                let bridge = self
+                let bridge = match self
                     .remote_control_bridge
                     .lock()
                     .expect("remote control bridge mutex poisoned")
                     .clone()
-                    .ok_or_else(|| std::io::Error::other("remote control bridge unavailable"))?;
+                {
+                    Some(bridge) => bridge,
+                    None => {
+                        let _ = self.record_payload_backed_peer_queue_snapshot(peer_id.as_str());
+                        return Err(std::io::Error::other("remote control bridge unavailable"));
+                    }
+                };
                 let record = self.ensure_peer_for_sync(peer_id.as_str(), timestamp)?;
                 let peer_transfer_limit_kb =
                     record.propagation_transfer_limit.map(|limit| f64::from(limit) / 1000.0);

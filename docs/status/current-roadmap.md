@@ -76,6 +76,9 @@ The project is best described by capability level:
 - Remote peer-sync backoff postponements now mirror existing payload-backed live
   queue marks into active peer record snapshots before returning, so
   restart/export state preserves queued retry work even when sync is deferred.
+- Remote peer-sync bridge-unavailable errors now mirror existing payload-backed
+  live queue marks into active peer record snapshots for already known peers
+  before returning, while still avoiding peer creation when the bridge is absent.
 - Failed remote unpeer attempts now mirror existing payload-backed live queue
   marks into active peer record snapshots before returning bridge-unavailable
   or bridge-execution errors, so restart/export state preserves queued retry
