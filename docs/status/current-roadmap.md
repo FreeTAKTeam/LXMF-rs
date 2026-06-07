@@ -67,9 +67,9 @@ The project is best described by capability level:
   paths now perform the same payload-backed live queue snapshot mirroring
   before reporting the failed sync, keeping local and remote retry/export
   behavior aligned.
-- Malformed remote fetch imports now mirror existing payload-backed live queue
-  marks into active peer record snapshots before failing, preserving
-  restart/export retry state for already queued relay work.
+- Malformed remote fetch and download imports now mirror existing
+  payload-backed live queue marks into active peer record snapshots before
+  failing, preserving restart/export retry state for already queued relay work.
 - Restored Python peer records now update their serialized queue ID snapshot
   when peer sync handles, transfers, or transfer-limits queued offers, reducing
   restart/export drift after live offer-response processing.

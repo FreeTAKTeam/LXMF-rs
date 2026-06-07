@@ -1868,6 +1868,9 @@ impl RpcDaemon {
                                     state.sync_progress = 0.0;
                                     state.last_sync_error = Some(err.to_string());
                                 });
+                                for peer in self.active_peer_ids() {
+                                    self.record_payload_backed_peer_queue_snapshot(peer.as_str())?;
+                                }
                                 return Err(err);
                             }
                         };
