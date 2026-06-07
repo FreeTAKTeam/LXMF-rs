@@ -4993,6 +4993,60 @@ fn peer_sync_records_queued_existing_entries_in_peer_record_snapshot() {
 }
 
 #[test]
+fn peer_sync_records_preexisting_live_queue_marks_in_peer_record_snapshot() {
+    let daemon = RpcDaemon::test_instance();
+    let peer = "peer-preexisting-live-queue-snapshot";
+    daemon
+        .handle_rpc(rpc_request(52, "peer_sync", json!({ "peer": peer })))
+        .expect("initial peer sync");
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let peer_record = peers.get_mut(peer).expect("peer record");
+        peer_record.propagation_sync_limit = Some(1_000);
+        peer_record.propagation_stamp_cost = Some(1);
+        peer_record.propagation_stamp_cost_flexibility = Some(1);
+        peer_record.peering_cost = Some(1);
+        peer_record.peering_key_value = None;
+    }
+    let entry = PropagationEntryRecord {
+        transient_id: "ef".repeat(32),
+        destination: "1f".repeat(16),
+        payload_hex: "1f".repeat(20),
+        received_at: 1_700_000_620,
+        size_bytes: 20,
+        stamp_value: Some(1),
+    };
+    daemon.store.upsert_propagation_entry(&entry).expect("store entry");
+    daemon
+        .store
+        .mark_peer_unhandled_propagation(peer, entry.transient_id.as_str())
+        .expect("seed live queue mark");
+
+    let result = daemon
+        .handle_rpc(rpc_request(54, "peer_sync", json!({ "peer": peer })))
+        .expect("peering-key-gated peer sync")
+        .result
+        .expect("peer sync result");
+    assert_eq!(result["synced"].as_bool(), Some(false));
+    assert_eq!(result["postpone_reason"].as_str(), Some("peering_key"));
+    assert_eq!(
+        result["messages"]["unhandled_ids"].as_array().expect("result unhandled ids"),
+        &[json!(entry.transient_id.as_str())]
+    );
+
+    let peers = daemon.peers.lock().expect("peers mutex poisoned");
+    let record = peers.get(peer).expect("stored peer");
+    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    assert_eq!(
+        serialized["unhandled_ids"].as_array().expect("serialized unhandled ids"),
+        &[json!(entry.transient_id.as_str())]
+    );
+    assert!(
+        serialized["handled_ids"].as_array().expect("serialized handled ids").is_empty()
+    );
+}
+
+#[test]
 fn peer_sync_uses_restored_python_peering_key_value() {
     let daemon = RpcDaemon::test_instance();
     let peer = "peer-restored-python-key";

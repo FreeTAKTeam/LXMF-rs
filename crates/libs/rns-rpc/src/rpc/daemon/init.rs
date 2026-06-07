@@ -44,17 +44,10 @@ impl RpcDaemon {
         &self,
         peer: &str,
     ) -> Result<(), std::io::Error> {
-        let queued = self
-            .store
-            .mark_all_propagation_unhandled_for_peer(peer)
-            .map_err(std::io::Error::other)?;
-        if queued > 0 {
-            let unhandled_ids = self
-                .store
-                .list_peer_unhandled_propagation_ids(peer)
-                .map_err(std::io::Error::other)?;
-            self.record_peer_queue_unhandled(peer, unhandled_ids.as_slice());
-        }
+        self.store.mark_all_propagation_unhandled_for_peer(peer).map_err(std::io::Error::other)?;
+        let unhandled_ids =
+            self.store.list_peer_unhandled_propagation_ids(peer).map_err(std::io::Error::other)?;
+        self.record_peer_queue_unhandled(peer, unhandled_ids.as_slice());
         Ok(())
     }
 
