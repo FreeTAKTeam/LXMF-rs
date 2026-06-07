@@ -1014,7 +1014,9 @@ impl RpcDaemon {
                         sync_limit_bytes,
                     ));
                 }
-                if (peer_policy_required || empty_peer_peering_key_required)
+                let peering_key_required = record.peering_cost.is_some()
+                    && (peer_policy_required || empty_peer_peering_key_required);
+                if peering_key_required
                     && peer_peering_key_value(&record, self.identity_hash.as_str()).is_none()
                 {
                     self.clear_invalid_restored_peer_peering_key(&record);
@@ -2260,6 +2262,9 @@ pub(super) fn peer_acceptance_rate_for_reporting(
 }
 
 fn peer_stamp_policy_known(peer: &PeerRecord) -> bool {
+    if peer.propagation_stamp_cost == Some(0) {
+        return true;
+    }
     peer.propagation_stamp_cost.is_some()
         && peer.propagation_stamp_cost_flexibility.is_some()
         && peer.peering_cost.is_some()

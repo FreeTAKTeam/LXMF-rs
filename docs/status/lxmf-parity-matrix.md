@@ -109,6 +109,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Payload-backed remote failure snapshots replace stale serialized peer queue
   IDs with live payload-backed marks, so bridge failures do not preserve
   obsolete restart/export work after the underlying payload is gone.
+- Zero-cost peer stamp policies transfer unstamped queued offers immediately
+  without waiting for absent peering metadata, matching the Python no-stamp
+  path and avoiding repeated peer-sync postponement.
 - Malformed remote fetch and download imports mirror existing payload-backed
   queue marks into active peer record snapshots before returning the import
   failure, so already queued relay work remains visible after restart/export.

@@ -5606,6 +5606,68 @@ fn peer_sync_postpones_unstamped_offers_until_peering_key_is_ready() {
 }
 
 #[test]
+fn peer_sync_transfers_unstamped_offers_when_stamp_cost_zero_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    daemon
+        .handle_rpc(rpc_request(52, "peer_sync", json!({ "peer": "peer-zero-stamp-cost" })))
+        .expect("initial peer sync");
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let peer = peers.get_mut("peer-zero-stamp-cost").expect("peer record");
+        peer.propagation_sync_limit = Some(1_000);
+        peer.propagation_stamp_cost = Some(0);
+        peer.propagation_stamp_cost_flexibility = Some(0);
+        peer.peering_cost = None;
+    }
+    let entry = PropagationEntryRecord {
+        transient_id: "ec".repeat(32),
+        destination: "1c".repeat(16),
+        payload_hex: "1c".repeat(20),
+        received_at: 1_700_000_623,
+        size_bytes: 20,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&entry).expect("store entry");
+    daemon
+        .store
+        .mark_peer_unhandled_propagation("peer-zero-stamp-cost", entry.transient_id.as_str())
+        .expect("mark unhandled");
+
+    let result = daemon
+        .handle_rpc(rpc_request(54, "peer_sync", json!({ "peer": "peer-zero-stamp-cost" })))
+        .expect("zero-stamp peer sync")
+        .result
+        .expect("peer sync result");
+    assert_eq!(result["synced"].as_bool(), Some(true));
+    assert_ne!(result["postponed"].as_bool(), Some(true));
+    assert_eq!(result["postpone_reason"], JsonValue::Null);
+    assert_eq!(result["peering_key"], JsonValue::Null);
+    assert_eq!(result["peering_key_status"].as_str(), Some("unconfigured"));
+    assert_eq!(result["propagation"]["handled"].as_u64(), Some(1));
+    assert_eq!(result["propagation"]["transferred"].as_u64(), Some(1));
+    assert_eq!(
+        result["propagation"]["transferred_ids"]
+            .as_array()
+            .expect("transferred ids"),
+        &[json!(entry.transient_id.as_str())]
+    );
+    assert!(
+        daemon
+            .store
+            .list_peer_unhandled_propagation("peer-zero-stamp-cost")
+            .expect("list unhandled")
+            .is_empty()
+    );
+    assert_eq!(
+        daemon
+            .store
+            .list_peer_handled_propagation_ids("peer-zero-stamp-cost")
+            .expect("handled ids"),
+        vec![entry.transient_id]
+    );
+}
+
+#[test]
 fn repeated_skipped_peer_sync_retries_without_failure_backoff() {
     let daemon = RpcDaemon::test_instance();
     daemon

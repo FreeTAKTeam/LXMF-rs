@@ -70,6 +70,9 @@ The project is best described by capability level:
 - Payload-backed remote failure snapshots now replace stale serialized peer
   queue IDs with live payload-backed marks, so bridge failures do not preserve
   obsolete restart/export work after the underlying payload is gone.
+- Zero-cost peer stamp policies now sync unstamped queued offers immediately
+  without waiting for absent peering metadata, matching the Python "no stamp
+  required" path and avoiding repeated peer-sync postponement.
 - Malformed remote fetch and download imports now mirror existing
   payload-backed live queue marks into active peer record snapshots before
   failing, preserving restart/export retry state for already queued relay work.
