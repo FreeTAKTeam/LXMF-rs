@@ -770,6 +770,61 @@ fn propagation_ingest_queues_new_entries_for_static_peers() {
 }
 
 #[test]
+fn propagation_purge_removes_deleted_entries_from_peer_record_snapshots() {
+    let daemon = RpcDaemon::test_instance();
+    daemon
+        .handle_rpc(rpc_request(
+            26,
+            "propagation_enable",
+            json!({
+                "enabled": true,
+                "static_peers": ["peer-static-purge-queue"],
+            }),
+        ))
+        .expect("enable propagation");
+
+    let destination = [0x42_u8; 16];
+    let mut payload = destination.to_vec();
+    payload.extend_from_slice(b" purge queued propagation");
+    let transient_id = daemon
+        .ingest_propagation_payload_bytes_at_cost(payload.as_slice(), None, 0)
+        .expect("ingest propagation");
+
+    {
+        let peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let record = peers.get("peer-static-purge-queue").expect("stored peer");
+        let serialized = serde_json::to_value(record).expect("serialize peer record");
+        assert_eq!(
+            serialized["unhandled_ids"].as_array().expect("serialized unhandled ids"),
+            &[json!(transient_id.as_str())]
+        );
+    }
+
+    let transient_bytes = hex::decode(transient_id.as_str()).expect("transient id hex");
+    let purged = daemon.purge_propagation_payloads_for_destination(
+        &destination,
+        &[transient_bytes],
+    );
+    assert!(purged > 0);
+
+    assert!(
+        daemon
+            .store
+            .list_peer_unhandled_propagation_ids("peer-static-purge-queue")
+            .expect("live unhandled ids")
+            .is_empty(),
+        "live store queue should not retain the purged entry"
+    );
+    let peers = daemon.peers.lock().expect("peers mutex poisoned");
+    let record = peers.get("peer-static-purge-queue").expect("stored peer");
+    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    assert_eq!(
+        serialized["unhandled_ids"].as_array().expect("serialized unhandled ids"),
+        &[] as &[JsonValue]
+    );
+}
+
+#[test]
 fn peer_propagation_ingest_matches_source_peer_case_insensitively_like_python() {
     let daemon = RpcDaemon::test_instance();
     daemon

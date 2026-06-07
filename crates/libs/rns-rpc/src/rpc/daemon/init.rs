@@ -98,6 +98,14 @@ impl RpcDaemon {
         }
     }
 
+    pub(super) fn remove_peer_queue_snapshot_id(&self, transient_id: &str) {
+        let mut guard = self.peers.lock().expect("peers mutex poisoned");
+        for record in guard.values_mut() {
+            record.restored_handled_ids.retain(|id| !id.eq_ignore_ascii_case(transient_id));
+            record.restored_unhandled_ids.retain(|id| !id.eq_ignore_ascii_case(transient_id));
+        }
+    }
+
     pub(super) fn normalize_static_peers(static_peers: &[String]) -> Vec<String> {
         let mut normalized = Vec::new();
         for peer in static_peers {

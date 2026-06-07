@@ -927,26 +927,45 @@ impl RpcDaemon {
     ) -> usize {
         let destination_hex = hex::encode(destination);
         let haves_hex = haves.iter().map(hex::encode).collect::<Vec<_>>();
+        let mut removed_snapshot_ids = Vec::new();
+        for transient_hex in &haves_hex {
+            if self.store.get_propagation_entry(transient_hex.as_str()).ok().flatten().is_some_and(
+                |entry| entry.destination.eq_ignore_ascii_case(destination_hex.as_str()),
+            ) {
+                removed_snapshot_ids.push(transient_hex.clone());
+            }
+        }
         let mut purged = self
             .store
             .purge_propagation_entries_for_destination(destination_hex.as_str(), &haves_hex)
             .unwrap_or_default();
-        let mut guard =
-            self.propagation_payloads.lock().expect("propagation payload mutex poisoned");
-        for transient_id in haves {
-            if transient_id.len() != 32 {
-                continue;
+        {
+            let mut guard =
+                self.propagation_payloads.lock().expect("propagation payload mutex poisoned");
+            for transient_id in haves {
+                if transient_id.len() != 32 {
+                    continue;
+                }
+                let transient_hex = hex::encode(transient_id);
+                let should_remove = guard
+                    .get(transient_hex.as_str())
+                    .and_then(|payload_hex| hex::decode(payload_hex).ok())
+                    .is_some_and(|payload| {
+                        propagation_payload_matches_destination(payload.as_slice(), destination)
+                    });
+                if should_remove && guard.remove(transient_hex.as_str()).is_some() {
+                    purged += 1;
+                    if !removed_snapshot_ids
+                        .iter()
+                        .any(|id| id.eq_ignore_ascii_case(&transient_hex))
+                    {
+                        removed_snapshot_ids.push(transient_hex);
+                    }
+                }
             }
-            let transient_hex = hex::encode(transient_id);
-            let should_remove = guard
-                .get(transient_hex.as_str())
-                .and_then(|payload_hex| hex::decode(payload_hex).ok())
-                .is_some_and(|payload| {
-                    propagation_payload_matches_destination(payload.as_slice(), destination)
-                });
-            if should_remove && guard.remove(transient_hex.as_str()).is_some() {
-                purged += 1;
-            }
+        }
+        for transient_id in removed_snapshot_ids {
+            self.remove_peer_queue_snapshot_id(transient_id.as_str());
         }
         purged
     }
