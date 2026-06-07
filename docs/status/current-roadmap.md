@@ -200,6 +200,9 @@ gap, even though deeper propagation-router parity remains open.
 - Remote propagation sync now treats peer `ERROR_INVALID_DATA` offer rejections
   as retryable request failures as well, matching Python's failed offer-response
   cleanup without penalizing peer liveness or sync backoff.
+- Remote propagation sync now also maps peer `ERROR_INVALID_STAMP` responses
+  through the bridge as retryable peer-sync errors, preserving the peer and
+  propagation queue without generic liveness failure/backoff.
 - Remote propagation sync now maps peer `ERROR_TIMEOUT` responses and preserves
   the peer without generic liveness failure/backoff, matching Python's
   failed offer-response cleanup for explicit peer timeout replies.

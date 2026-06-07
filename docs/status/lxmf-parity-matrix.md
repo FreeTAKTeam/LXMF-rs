@@ -113,6 +113,9 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
   restored Python `sync_strategy` transfer-state reporting, restored Python
   `handled_ids`/`unhandled_ids` queue-mark rehydration for existing propagation
   entries, and destination fetch duplicate-wanted de-duplication are exposed.
+  Remote peer sync maps Python's retryable numeric offer-response errors,
+  including `ERROR_INVALID_STAMP`, to preserve-and-retry peer cleanup without
+  generic liveness backoff or queue removal.
   Local offer responses now accept
   Python's boolean all/none and list-shaped response forms, keep full-offer
   stamp-policy and peering-key gates for boolean wants-all, request-limited,
@@ -218,6 +221,8 @@ Recent focused evidence:
 - `cargo test -p reticulum-rs-rpc --lib propagation_remote_sync_creates_missing_peer_record -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib propagation_remote_sync_marks_source_handled_and_queues_other_peers -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib propagation_remote_sync_counts_source_incoming_after_prior_transfer_like_python -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib invalid_stamp_propagation_remote_sync_preserves_peer_queue_without_backoff -- --nocapture`
+- `cargo test -p reticulumd --bin reticulumd propagation_control_response_code_maps_peer_errors_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_record_derives_python_acceptance_rate_when_alias_is_absent -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_rejects_unknown_wanted_ids_without_mutating_queue -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_rejects_unknown_wanted_ids_without_creating_new_peer_queue -- --nocapture`

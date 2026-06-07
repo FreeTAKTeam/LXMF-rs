@@ -2120,6 +2120,7 @@ fn is_retryable_remote_peer_sync_error(err: &std::io::Error) -> bool {
         (err.kind(), err.to_string().as_str()),
         (std::io::ErrorKind::PermissionDenied, "propagation node requires identity")
             | (std::io::ErrorKind::PermissionDenied, "propagation peer invalid peering key")
+            | (std::io::ErrorKind::PermissionDenied, "propagation peer invalid stamp")
             | (std::io::ErrorKind::InvalidInput, "propagation node rejected the request")
             | (std::io::ErrorKind::NotFound, "propagation peer not found")
             | (std::io::ErrorKind::TimedOut, "propagation peer timed out")

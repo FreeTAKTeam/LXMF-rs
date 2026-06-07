@@ -209,6 +209,11 @@ The following contract is mandatory in v1:
   `propagation_status.propagation.sync_state` uses Python `LXMRouter.PR_*`
   values for remote sync lifecycle: request sent `0x04`, complete `0x07`,
   failed `0xfe`.
+  Numeric peer error responses including `0xf0`, `0xf3`, `0xf4`, `0xf5`,
+  `0xfd`, and `0xfe` are mapped to explicit bridge errors so retryable
+  peer-response cleanup can preserve local peer and queue state without generic
+  failure backoff; `0xf1` breaks local peering and `0xf6` applies throttle
+  postponement.
 - `propagation_acknowledge_sync_completion`
 : Optional params keys: `reset_state`, `failure_state`. Mirrors Python
   `acknowledge_sync_completion`: clears progress, resets completed states to
