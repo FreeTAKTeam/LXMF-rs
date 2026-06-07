@@ -4922,6 +4922,78 @@ fn peer_sync_clears_restored_python_peering_key_below_cost_like_python() {
 }
 
 #[test]
+fn peer_sync_restores_python_peer_record_queue_marks_for_existing_entries_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    let peer = "peer-restored-python-queue";
+    let handled = PropagationEntryRecord {
+        transient_id: "e1".repeat(32),
+        destination: "11".repeat(16),
+        payload_hex: "11".repeat(20),
+        received_at: 1_700_000_621,
+        size_bytes: 20,
+        stamp_value: Some(1),
+    };
+    let unhandled = PropagationEntryRecord {
+        transient_id: "e2".repeat(32),
+        destination: "12".repeat(16),
+        payload_hex: "12".repeat(20),
+        received_at: 1_700_000_622,
+        size_bytes: 20,
+        stamp_value: Some(1),
+    };
+    daemon.store.upsert_propagation_entry(&handled).expect("store handled entry");
+    daemon.store.upsert_propagation_entry(&unhandled).expect("store unhandled entry");
+
+    let record: PeerRecord = serde_json::from_value(json!({
+        "destination_hash": peer,
+        "last_heard": 1_700_000_620,
+        "alive": true,
+        "propagation_transfer_limit": 1,
+        "propagation_sync_limit": 1,
+        "propagation_stamp_cost": 1,
+        "propagation_stamp_cost_flexibility": 1,
+        "peering_cost": 1,
+        "handled_ids": [handled.transient_id, "fa".repeat(32)],
+        "unhandled_ids": [unhandled.transient_id, "fb".repeat(32)],
+    }))
+    .expect("deserialize restored Python peer");
+    daemon
+        .peers
+        .lock()
+        .expect("peers mutex poisoned")
+        .insert(peer.to_string(), record);
+
+    let result = daemon
+        .handle_rpc(rpc_request(57, "peer_sync", json!({ "peer": peer })))
+        .expect("restored queue peer sync")
+        .result
+        .expect("peer sync result");
+    assert_eq!(result["synced"].as_bool(), Some(false));
+    assert_eq!(result["postpone_reason"].as_str(), Some("peering_key"));
+
+    let peers = daemon
+        .handle_rpc(RpcRequest { id: 58, method: "list_peers".to_string(), params: None })
+        .expect("list peers")
+        .result
+        .expect("list peers result");
+    let row = peers["peers"]
+        .as_array()
+        .expect("peer rows")
+        .iter()
+        .find(|row| row["peer"].as_str() == Some(peer))
+        .expect("restored peer row");
+
+    assert_eq!(
+        row["messages"]["handled_ids"].as_array().expect("handled ids"),
+        &[json!("e1".repeat(32))]
+    );
+    assert_eq!(
+        row["messages"]["unhandled_ids"].as_array().expect("unhandled ids"),
+        &[json!("e2".repeat(32))]
+    );
+}
+
+#[test]
 fn empty_peer_sync_checks_peering_key_before_no_unhandled_shortcut_like_python() {
     let daemon = RpcDaemon::test_instance();
     let peer = "peer-empty-key-policy";

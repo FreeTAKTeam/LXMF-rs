@@ -685,6 +685,8 @@ pub struct PeerRecord {
     pub propagation_stamp_cost_flexibility: Option<u32>,
     pub peering_cost: Option<u32>,
     pub peering_key_value: Option<u32>,
+    pub restored_handled_ids: Vec<String>,
+    pub restored_unhandled_ids: Vec<String>,
 }
 
 impl serde::Serialize for PeerRecord {
@@ -816,6 +818,10 @@ struct PeerRecordWire {
     peering_cost: Option<u32>,
     #[serde(default)]
     peering_key: Option<JsonValue>,
+    #[serde(default)]
+    handled_ids: Vec<String>,
+    #[serde(default)]
+    unhandled_ids: Vec<String>,
 }
 
 impl<'de> Deserialize<'de> for PeerRecord {
@@ -886,6 +892,8 @@ impl<'de> Deserialize<'de> for PeerRecord {
                 .or(wire.stamp_cost_flexibility),
             peering_cost: wire.peering_cost,
             peering_key_value: parse_python_peering_key_value(wire.peering_key.as_ref()),
+            restored_handled_ids: wire.handled_ids,
+            restored_unhandled_ids: wire.unhandled_ids,
         })
     }
 }
@@ -1168,6 +1176,8 @@ mod peer_record_serde_tests {
             propagation_stamp_cost_flexibility: Some(2),
             peering_cost: Some(9),
             peering_key_value: Some(9),
+            restored_handled_ids: Vec::new(),
+            restored_unhandled_ids: Vec::new(),
         };
 
         let value = serde_json::to_value(record).expect("serialize peer record");
@@ -1221,6 +1231,8 @@ mod peer_record_serde_tests {
             propagation_stamp_cost_flexibility: Some(3),
             peering_cost: Some(10),
             peering_key_value: Some(10),
+            restored_handled_ids: Vec::new(),
+            restored_unhandled_ids: Vec::new(),
         };
 
         let value = serde_json::to_value(&record).expect("serialize peer record");

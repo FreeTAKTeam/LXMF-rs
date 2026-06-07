@@ -108,8 +108,9 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
   Python-style restored acceptance-rate derivation from offered/outgoing
   counters including duplicate-response ratios above `1.0`, restored Python
   `peering_key` readiness and below-cost key cleanup for local peer sync,
-  restored Python `sync_strategy` transfer-state
-  reporting, and destination fetch duplicate-wanted de-duplication are exposed.
+  restored Python `sync_strategy` transfer-state reporting, restored Python
+  `handled_ids`/`unhandled_ids` queue-mark rehydration for existing propagation
+  entries, and destination fetch duplicate-wanted de-duplication are exposed.
   Local offer responses now accept
   Python's boolean all/none and list-shaped response forms, keep full-offer
   stamp-policy and peering-key gates for boolean wants-all, request-limited,
@@ -217,6 +218,7 @@ Recent focused evidence:
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_preserves_duplicate_wanted_ids_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_keeps_transfer_limit_separate_from_missing_sync_limit_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_restored_python_transfer_limit_synthesizes_sync_limit_like_python -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib peer_sync_restores_python_peer_record_queue_marks_for_existing_entries_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib propagation_remote_fetch -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib propagation_remote_download -- --nocapture`

@@ -615,6 +615,7 @@ impl RpcDaemon {
                     )?;
                 }
                 if let Some(record) = existing_peer.as_ref() {
+                    self.restore_peer_record_queue_marks(record)?;
                     let record_transfer_limit_bytes =
                         record.propagation_transfer_limit.map(|limit| limit as usize);
                     let transfer_limit_bytes =
@@ -1732,6 +1733,40 @@ impl RpcDaemon {
                 existing.peering_key_value = None;
             }
         }
+    }
+
+    fn restore_peer_record_queue_marks(&self, record: &PeerRecord) -> Result<(), std::io::Error> {
+        if record.restored_handled_ids.is_empty() && record.restored_unhandled_ids.is_empty() {
+            return Ok(());
+        }
+
+        for transient_id in &record.restored_unhandled_ids {
+            if self
+                .store
+                .get_propagation_entry(transient_id)
+                .map_err(std::io::Error::other)?
+                .is_some()
+            {
+                self.store
+                    .mark_peer_unhandled_propagation(record.peer.as_str(), transient_id)
+                    .map_err(std::io::Error::other)?;
+            }
+        }
+
+        for transient_id in &record.restored_handled_ids {
+            if self
+                .store
+                .get_propagation_entry(transient_id)
+                .map_err(std::io::Error::other)?
+                .is_some()
+            {
+                self.store
+                    .mark_peer_handled_propagation(record.peer.as_str(), transient_id)
+                    .map_err(std::io::Error::other)?;
+            }
+        }
+
+        Ok(())
     }
 
     pub(super) fn restart_required_response(
