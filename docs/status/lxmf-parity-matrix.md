@@ -110,6 +110,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Peer sync queue replay mirrors preexisting live unhandled marks into active
   peer record snapshots, keeping restart/export state aligned even when no new
   store rows were inserted.
+- Rejoining from a persisted `unpeered` peer record clears stale serialized
+  queue snapshots before the peer is active again, preventing pre-unpeer work
+  from being restored on export/restart.
 - Inbound propagation distinguishes clients, validated peers, unpeered
   identified senders, and local delivery; source peers are accounted and not
   re-offered their own payloads.

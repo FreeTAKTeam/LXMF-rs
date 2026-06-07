@@ -1138,6 +1138,8 @@ impl RpcDaemon {
         if let Some(existing_peer_key) = existing_peer_key {
             let existing = guard.get_mut(&existing_peer_key).expect("peer record disappeared");
             let is_newer = timestamp >= existing.last_seen;
+            let reactivating_unpeered = existing.peer_type.as_deref() == Some("unpeered")
+                && peer_type.as_deref() != Some("unpeered");
             existing.last_seen = existing.last_seen.max(timestamp);
             existing.seen_count = existing.seen_count.saturating_add(1);
             if is_newer && !cleaned_capabilities.is_empty() {
@@ -1151,6 +1153,10 @@ impl RpcDaemon {
                 if let Some(peer_type) = peer_type {
                     existing.peer_type = Some(peer_type);
                 }
+            }
+            if reactivating_unpeered {
+                existing.restored_handled_ids.clear();
+                existing.restored_unhandled_ids.clear();
             }
             let record = existing.clone();
             let peer_count = Self::active_peer_count_from_guard(&guard);

@@ -14951,6 +14951,52 @@ fn peer_sync_reactivates_persisted_unpeered_record() {
 }
 
 #[test]
+fn peer_sync_reactivation_clears_unpeered_queue_snapshot() {
+    let daemon = RpcDaemon::test_instance();
+    let peer = "peer-rejoin-clears-queue";
+    {
+        let mut guard = daemon.peers.lock().expect("peers mutex poisoned");
+        let mut record = daemon.transient_peer_record(
+            peer.to_string(),
+            1_700_000_902,
+            Vec::new(),
+            None,
+            None,
+            Some("unpeered".to_string()),
+        );
+        record.restored_handled_ids.push("aa".repeat(32));
+        record.restored_unhandled_ids.push("bb".repeat(32));
+        guard.insert(peer.to_string(), record);
+    }
+
+    let result = daemon
+        .handle_rpc(rpc_request(90, "peer_sync", json!({ "peer": peer })))
+        .expect("peer sync")
+        .result
+        .expect("peer sync result");
+    assert_eq!(result["peer_type"].as_str(), Some("manual"));
+    assert!(
+        result["messages"]["handled_ids"].as_array().expect("result handled ids").is_empty()
+    );
+    assert!(
+        result["messages"]["unhandled_ids"]
+            .as_array()
+            .expect("result unhandled ids")
+            .is_empty()
+    );
+
+    let peers = daemon.peers.lock().expect("peers mutex poisoned");
+    let record = peers.get(peer).expect("stored peer");
+    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    assert!(
+        serialized["handled_ids"].as_array().expect("serialized handled ids").is_empty()
+    );
+    assert!(
+        serialized["unhandled_ids"].as_array().expect("serialized unhandled ids").is_empty()
+    );
+}
+
+#[test]
 fn peer_sync_matches_existing_peer_queue_case_insensitively_like_python() {
     let store = MessagesStore::in_memory().expect("store");
     let daemon = RpcDaemon::with_store(store, hex::encode([2u8; 16]));
