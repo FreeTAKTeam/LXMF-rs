@@ -284,7 +284,9 @@ gap, even though deeper propagation-router parity remains open.
   `outgoing / offered` when the serialized `acceptance_rate` field is absent,
   including duplicate-response ratios above `1.0`, so persisted LXMPeer state
   can rehydrate identity plus queue/account counters without requiring a
-  Rust-only record shape.
+  Rust-only record shape. Restored Python peer records also keep transfer-only
+  limits as per-message transfer caps instead of synthesizing a total sync
+  limit.
 - Local peer sync now persists the peer acceptance-rate cache from cumulative
   `outgoing/offered` counters, matching Python `LXMPeer.acceptance_rate`
   instead of replacing the cache with only the latest offer-response ratio.

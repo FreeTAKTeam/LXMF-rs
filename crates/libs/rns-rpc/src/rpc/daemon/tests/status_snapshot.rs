@@ -7564,6 +7564,66 @@ fn peer_sync_keeps_transfer_limit_separate_from_missing_sync_limit_like_python()
 }
 
 #[test]
+fn peer_sync_restored_python_transfer_limit_does_not_synthesize_sync_limit_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    let peer = "peer-restored-transfer-only";
+    let record: PeerRecord = serde_json::from_value(json!({
+        "destination_hash": peer,
+        "last_heard": 1_700_001_010,
+        "peer_type": "manual",
+        "sync_strategy": 1,
+        "propagation_transfer_limit": 0.07,
+        "propagation_stamp_cost": 1,
+        "stamp_cost_flexibility": 1,
+        "peering_cost": 1,
+        "peering_key": [null, 1],
+    }))
+    .expect("deserialize transfer-only Python peer");
+    assert_eq!(record.propagation_transfer_limit, Some(70));
+    assert_eq!(record.propagation_sync_limit, None);
+    daemon.peers.lock().expect("peers mutex poisoned").insert(peer.to_string(), record);
+
+    let first = PropagationEntryRecord {
+        transient_id: "c8".repeat(32),
+        destination: "16".repeat(16),
+        payload_hex: "16".repeat(10),
+        received_at: 1_700_000_615,
+        size_bytes: 10,
+        stamp_value: None,
+    };
+    let second = PropagationEntryRecord {
+        transient_id: "c9".repeat(32),
+        destination: "16".repeat(16),
+        payload_hex: "16".repeat(10),
+        received_at: 1_700_000_616,
+        size_bytes: 10,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&first).expect("store first entry");
+    daemon.store.upsert_propagation_entry(&second).expect("store second entry");
+    for entry in [&first, &second] {
+        daemon
+            .store
+            .mark_peer_unhandled_propagation(peer, entry.transient_id.as_str())
+            .expect("mark unhandled");
+    }
+
+    let result = daemon
+        .handle_rpc(rpc_request(60, "peer_sync", json!({ "peer": peer })))
+        .expect("peer sync")
+        .result
+        .expect("peer sync result");
+    assert_eq!(result["propagation"]["handled"].as_u64(), Some(2));
+    assert_eq!(result["propagation"]["transferred"].as_u64(), Some(2));
+    assert_eq!(result["propagation"]["skipped"].as_u64(), Some(0));
+    assert_eq!(result["propagation"]["sync_limit"], JsonValue::Null);
+
+    let handled = daemon.store.list_peer_handled_propagation_ids(peer).expect("handled ids");
+    assert_eq!(handled, vec![first.transient_id, second.transient_id]);
+    assert!(daemon.store.list_peer_unhandled_propagation(peer).expect("pending").is_empty());
+}
+
+#[test]
 fn peer_sync_marks_entries_above_transfer_limit_handled_like_python() {
     let daemon = RpcDaemon::test_instance();
     daemon

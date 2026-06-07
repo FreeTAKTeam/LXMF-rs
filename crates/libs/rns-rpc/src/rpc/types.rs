@@ -853,8 +853,7 @@ impl<'de> Deserialize<'de> for PeerRecord {
             wire.propagation_sync_limit.as_ref(),
             wire.sync_limit.as_ref(),
             python_sync_limit,
-        )
-        .or_else(|| python_transfer_limit.then_some(transfer_limit).flatten());
+        );
         Ok(Self {
             peer,
             last_seen,
@@ -1106,15 +1105,15 @@ mod peer_record_serde_tests {
         assert_eq!(record.propagation_transfer_limit, Some(80));
         assert_eq!(record.propagation_sync_limit, Some(1_000));
 
-        let fallback: PeerRecord = serde_json::from_value(json!({
-            "peer": "peer-python-serialized-limit-fallback",
+        let transfer_only: PeerRecord = serde_json::from_value(json!({
+            "peer": "peer-python-serialized-transfer-only",
             "last_seen": 1_700_001_004,
             "propagation_transfer_limit": 0.152,
         }))
-        .expect("deserialize python serialized peer with sync fallback");
+        .expect("deserialize python serialized peer with transfer limit only");
 
-        assert_eq!(fallback.propagation_transfer_limit, Some(152));
-        assert_eq!(fallback.propagation_sync_limit, Some(152));
+        assert_eq!(transfer_only.propagation_transfer_limit, Some(152));
+        assert_eq!(transfer_only.propagation_sync_limit, None);
     }
 
     #[test]
