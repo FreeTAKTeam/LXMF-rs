@@ -15433,6 +15433,62 @@ fn failed_propagation_remote_unpeer_preserves_local_peer_and_queue_state() {
 }
 
 #[test]
+fn failed_propagation_remote_unpeer_records_existing_queue_snapshot_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    daemon.set_remote_control_bridge(Arc::new(TestRemoteControlBridge {
+        result: Err(std::io::ErrorKind::TimedOut),
+    }));
+    let peer = "peer-remote-unpeer-fail-snapshot";
+    daemon
+        .handle_rpc(rpc_request(79, "peer_sync", json!({ "peer": peer })))
+        .expect("peer sync");
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let record = peers.get_mut(peer).expect("peer record");
+        record.restored_handled_ids.clear();
+        record.restored_unhandled_ids.clear();
+    }
+
+    let entry = PropagationEntryRecord {
+        transient_id: "e3".repeat(32),
+        destination: "1b".repeat(16),
+        payload_hex: "1b".repeat(20),
+        received_at: 1_700_000_803,
+        size_bytes: 20,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&entry).expect("store propagation entry");
+    daemon
+        .store
+        .mark_peer_unhandled_propagation(peer, entry.transient_id.as_str())
+        .expect("mark unhandled");
+
+    let err = daemon
+        .handle_rpc(rpc_request(
+            80,
+            "propagation_remote_unpeer",
+            json!({
+                "remote": "remote-node",
+                "peer": peer,
+            }),
+        ))
+        .expect_err("remote unpeer failure should be returned");
+    assert_eq!(err.kind(), std::io::ErrorKind::TimedOut);
+
+    let peers = daemon.peers.lock().expect("peers mutex poisoned");
+    let record = peers.get(peer).expect("stored peer");
+    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    assert_eq!(
+        serialized["handled_ids"].as_array().expect("serialized handled ids"),
+        &[] as &[JsonValue]
+    );
+    assert_eq!(
+        serialized["unhandled_ids"].as_array().expect("serialized unhandled ids"),
+        &[json!(entry.transient_id.as_str())]
+    );
+}
+
+#[test]
 fn failed_propagation_remote_sync_clears_previous_completion() {
     let daemon = RpcDaemon::test_instance();
     daemon.set_remote_control_bridge(Arc::new(TestRemoteControlBridge {

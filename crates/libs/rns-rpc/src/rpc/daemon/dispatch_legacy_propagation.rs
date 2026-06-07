@@ -2080,12 +2080,18 @@ impl RpcDaemon {
                     .clone()
                     .ok_or_else(|| std::io::Error::other("remote control bridge unavailable"))?;
                 let timeout_secs = parsed.timeout_secs.unwrap_or(5.0).max(0.1);
-                let result = bridge.propagation_remote_unpeer(
+                let result = match bridge.propagation_remote_unpeer(
                     remote_id.as_str(),
                     peer_id,
                     parsed.identity_private_key_hex.as_deref(),
                     timeout_secs,
-                )?;
+                ) {
+                    Ok(result) => result,
+                    Err(err) => {
+                        let _ = self.record_payload_backed_peer_queue_snapshot(peer_id);
+                        return Err(err);
+                    }
+                };
                 let cleanup = self.unpeer_local_state(peer_id)?;
                 let offered = cleanup.messages["offered"].as_u64().unwrap_or(0);
                 let outgoing = cleanup.messages["outgoing"].as_u64().unwrap_or(0);
