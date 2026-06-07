@@ -2,6 +2,10 @@
 
 Date: 2026-03-19
 
+Status: historical execution record. Current execution order is maintained in
+`docs/status/current-roadmap.md`; current row status is maintained in the two
+`docs/status/*-parity-matrix.md` files.
+
 Goal:
 
 - make Rust nodes interoperable with Python Reticulum and LXMF nodes without

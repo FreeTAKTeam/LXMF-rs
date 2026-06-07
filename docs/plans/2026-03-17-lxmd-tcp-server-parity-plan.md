@@ -7,7 +7,9 @@ Last updated: 2026-03-17
 This plan is an execution addendum to:
 
 - `docs/plans/2026-01-26-lxmf-reticulum-full-parity.md` (full LXMF + Reticulum parity track)
-- `docs/status/lxmf-parity-matrix.md` and `docs/status/reticulum-parity-matrix.md` (status source of truth)
+- `docs/status/current-roadmap.md` (current execution order)
+- `docs/status/lxmf-parity-matrix.md` and
+  `docs/status/reticulum-parity-matrix.md` (maintained row-level status)
 - `docs/contracts/compatibility-contract.md` and `docs/contracts/compatibility-matrix.md` (compatibility gates)
 
 Goal for this addendum: close the specific gap where Rust `lxmd` does not behave like Python `lxmd` when configured as a TCP server, then extend the work to broader daemon/runtime parity.
