@@ -250,6 +250,10 @@ gap, even though deeper propagation-router parity remains open.
 - Postponed local peer sync now honors existing peer backoff before the local
   queue-fill path: a backed-off peer does not opportunistically gain new
   unhandled propagation marks until the sync attempt is eligible to run.
+- Local peer sync backoff liveness now follows Python's strict failure
+  boundary: a postponed backoff sync only marks the peer not alive when the
+  attempted sync timestamp is newer than `last_heard`, preserving liveness when
+  the values are equal.
 - Local peer sync now preserves the previous sync transfer rate when pending
   offers are only skipped by sync limits or marked transfer-limited, matching
   Python's resource-completion-only transfer-rate updates.

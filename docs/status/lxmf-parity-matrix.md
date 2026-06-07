@@ -136,9 +136,11 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
   batch.
   Existing peers in local sync
   backoff now also postpone before the local existing-entry queue-fill path,
-  and empty local syncs still honor Python's peering-key readiness gate when
-  stamp and peering policy are known. The active workspace still does not yet
-  match Python `LXMPeer` queueing, transfer, and peering behavior.
+  preserve Python's liveness boundary when the attempted sync timestamp equals
+  `last_heard`, and empty local syncs still honor Python's peering-key
+  readiness gate when stamp and peering policy are known. The active workspace
+  still does not yet match Python `LXMPeer` queueing, transfer, and peering
+  behavior.
 - Paper-command baseline is implemented for bridge-backed `reticulumd`: SDK
   paper encode/decode uses canonical `lxmf-wire` paper URI helpers and tests
   reject the old placeholder `lxm://{destination}/{message_id}` path. Broader
@@ -210,6 +212,7 @@ Recent focused evidence:
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_persists_cumulative_acceptance_rate_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_no_transfer_preserves_last_heard_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_during_backoff_does_not_queue_new_existing_entries_like_python -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib postponed_peer_sync_backoff_preserves_alive_when_attempt_matches_last_heard_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib empty_peer_sync_checks_peering_key_before_no_unhandled_shortcut_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib persistent_peer_sync_continues_after_completed_batch_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib persistent_peer_sync_reports_last_batch_transfer_rate_like_python -- --nocapture`

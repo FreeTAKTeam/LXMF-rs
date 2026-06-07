@@ -75,8 +75,8 @@ impl RpcDaemon {
             let mut guard = self.peers.lock().expect("peers mutex poisoned");
             if let Some(existing) = guard.get_mut(&record.peer) {
                 existing.last_sync_attempt = timestamp;
-                if postpone_reason == "backoff" {
-                    existing.alive = existing.last_sync_attempt < existing.last_seen;
+                if postpone_reason == "backoff" && existing.last_sync_attempt > existing.last_seen {
+                    existing.alive = false;
                 }
                 (
                     existing.acceptance_rate,

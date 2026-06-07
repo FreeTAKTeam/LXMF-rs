@@ -8077,6 +8077,53 @@ fn postponed_peer_sync_reports_request_transfer_limit() {
 }
 
 #[test]
+fn postponed_peer_sync_backoff_preserves_alive_when_attempt_matches_last_heard_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    daemon
+        .handle_rpc(rpc_request(60, "peer_sync", json!({ "peer": "peer-backoff-equal-heard" })))
+        .expect("initial peer sync");
+    let record = {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let peer = peers.get_mut("peer-backoff-equal-heard").expect("peer record");
+        peer.alive = true;
+        peer.last_seen = 1_700_001_000;
+        peer.last_sync_attempt = 1_700_000_900;
+        peer.next_sync_attempt = 1_700_001_720;
+        peer.clone()
+    };
+
+    let result = daemon
+        .postponed_peer_sync_response(
+            61,
+            &record,
+            1_700_001_000,
+            "backoff",
+            Some(80),
+            None,
+        )
+        .result
+        .expect("postponed peer sync result");
+
+    assert_eq!(result["postpone_reason"].as_str(), Some("backoff"));
+    assert_eq!(result["last_sync_attempt"].as_i64(), Some(1_700_001_000));
+    assert_eq!(result["last_heard"].as_i64(), Some(1_700_001_000));
+    assert_eq!(result["alive"].as_bool(), Some(true));
+
+    let peers = daemon
+        .handle_rpc(RpcRequest { id: 62, method: "list_peers".to_string(), params: None })
+        .expect("list peers")
+        .result
+        .expect("list peers result");
+    let row = peers["peers"]
+        .as_array()
+        .expect("peer rows")
+        .iter()
+        .find(|row| row["peer"].as_str() == Some("peer-backoff-equal-heard"))
+        .expect("peer row");
+    assert_eq!(row["alive"].as_bool(), Some(true));
+}
+
+#[test]
 fn peer_sync_orders_offers_by_python_weight_before_sync_limit() {
     let (daemon, peer) = ready_propagation_peer_daemon(0x49);
     {
