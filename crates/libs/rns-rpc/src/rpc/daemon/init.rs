@@ -44,10 +44,41 @@ impl RpcDaemon {
         &self,
         peer: &str,
     ) -> Result<(), std::io::Error> {
-        self.store
+        let queued = self
+            .store
             .mark_all_propagation_unhandled_for_peer(peer)
-            .map(|_| ())
-            .map_err(std::io::Error::other)
+            .map_err(std::io::Error::other)?;
+        if queued > 0 {
+            let unhandled_ids = self
+                .store
+                .list_peer_unhandled_propagation_ids(peer)
+                .map_err(std::io::Error::other)?;
+            self.record_peer_queue_unhandled(peer, unhandled_ids.as_slice());
+        }
+        Ok(())
+    }
+
+    fn record_peer_queue_unhandled(&self, peer: &str, transient_ids: &[String]) {
+        let mut guard = self.peers.lock().expect("peers mutex poisoned");
+        let existing_peer_key =
+            guard.keys().find(|existing| existing.eq_ignore_ascii_case(peer)).cloned();
+        let Some(existing_peer_key) = existing_peer_key else {
+            return;
+        };
+        let Some(record) = guard.get_mut(&existing_peer_key) else {
+            return;
+        };
+        for transient_id in transient_ids {
+            if record.restored_handled_ids.iter().any(|id| id.eq_ignore_ascii_case(transient_id))
+                || record
+                    .restored_unhandled_ids
+                    .iter()
+                    .any(|id| id.eq_ignore_ascii_case(transient_id))
+            {
+                continue;
+            }
+            record.restored_unhandled_ids.push(transient_id.clone());
+        }
     }
 
     pub(super) fn normalize_static_peers(static_peers: &[String]) -> Vec<String> {
