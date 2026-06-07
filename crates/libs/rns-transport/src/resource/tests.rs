@@ -356,16 +356,21 @@ mod tests {
 
     #[test]
     fn resource_receiver_bounds_part_count_by_transfer_size_and_mdu() {
-        assert_eq!(max_advertised_parts(1).expect("one byte transfer"), 1);
-        assert_eq!(max_advertised_parts(PACKET_MDU as u64).expect("one packet transfer"), 1);
+        assert_eq!(max_advertised_parts(1, PACKET_MDU).expect("one byte transfer"), 1);
         assert_eq!(
-            max_advertised_parts(PACKET_MDU as u64 + 1).expect("two packet transfer"),
+            max_advertised_parts(PACKET_MDU as u64, PACKET_MDU).expect("one packet transfer"),
+            1
+        );
+        assert_eq!(
+            max_advertised_parts(PACKET_MDU as u64 + 1, PACKET_MDU)
+                .expect("two packet transfer"),
             2
         );
-        assert!(max_advertised_parts(0).is_err());
-        assert!(max_advertised_parts(MAX_INBOUND_RESOURCE_TRANSFER_SIZE + 1).is_err());
+        assert!(max_advertised_parts(0, PACKET_MDU).is_err());
+        assert!(max_advertised_parts(MAX_INBOUND_RESOURCE_TRANSFER_SIZE + 1, PACKET_MDU).is_err());
     }
 
+    include!("tests_mtu.rs");
     include!("tests_timeouts.rs");
     include!("tests_timeouts_lifecycle.rs");
 

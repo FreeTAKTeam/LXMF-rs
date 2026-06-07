@@ -6,6 +6,8 @@ const DEFAULT_IFACE_TX_QUEUE_CAPACITY: usize = 128;
 const IFACE_TX_ENQUEUE_TIMEOUT_MS: u64 = 200;
 const DEFAULT_IFACE_BITRATE_BPS: u64 = 62_500;
 const DEFAULT_ANNOUNCE_CAP_PERCENT: u64 = 2;
+const DEFAULT_IFACE_MTU: usize =
+    crate::packet::PACKET_MDU + 2 + 1 + crate::hash::ADDRESS_HASH_SIZE * 2 + 1;
 const MAX_QUEUED_ANNOUNCES_PER_IFACE: usize = 16_384;
 const QUEUED_ANNOUNCE_LIFE: Duration = Duration::from_secs(60 * 60 * 24);
 

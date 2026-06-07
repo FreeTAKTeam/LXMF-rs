@@ -637,6 +637,108 @@ async fn resource_request_responses_use_bound_link_iface_without_route_lookup() 
     assert_eq!(sent.packet.context, PacketContext::Resource);
 }
 
+#[tokio::test]
+async fn resource_request_responses_fit_bound_iface_mtu() {
+    const LORA_MTU: usize = 220;
+
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let config = TransportConfig::new("test", &local_identity, false);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+    let mut iface_channel = transport.iface_manager.lock().await.new_channel_with_role_mode_mtu(
+        8,
+        crate::iface::IfaceRole::Unicast,
+        crate::iface::InterfaceMode::Full,
+        LORA_MTU,
+    );
+    let iface = iface_channel.address;
+
+    let remote_signer = PrivateIdentity::new_from_rand(OsRng);
+    let remote_identity = *remote_signer.as_identity();
+    let destination = DestinationDesc {
+        identity: remote_identity,
+        address_hash: remote_identity.address_hash,
+        name: DestinationName::new("lxmf", "delivery"),
+    };
+    let (link_events, _) = tokio::sync::broadcast::channel(4);
+    let mut outbound = Link::new(destination, link_events.clone());
+    let request_packet = outbound.request();
+    let mut inbound = Link::new_from_request(
+        &request_packet,
+        remote_signer.sign_key().clone(),
+        destination,
+        link_events,
+    )
+    .expect("inbound link");
+    let proof = inbound.prove();
+    let _ = outbound.handle_packet(&proof, iface);
+    let link_id = *outbound.id();
+
+    let advertisement_packet = {
+        let mut guard = handler.lock().await;
+        let link = Arc::new(Mutex::new(outbound));
+        guard.out_links.insert(destination.address_hash, link.clone());
+        let link_guard = link.lock().await;
+        let (resource_hash, packet) = guard
+            .resource_manager
+            .start_send_with_mtu(&link_guard, vec![0x42; PACKET_MDU * 2], None, LORA_MTU)
+            .expect("start resource");
+        guard.resource_manager.confirm_outbound_dispatch(resource_hash, true);
+        packet
+    };
+
+    let link = handler
+        .lock()
+        .await
+        .out_links
+        .get(&destination.address_hash)
+        .cloned()
+        .expect("outbound link");
+    let link_guard = link.lock().await;
+    let advertisement = decrypt_resource_advertisement(&link_guard, &advertisement_packet);
+    assert!(advertisement.parts > 1, "test payload should require multiple constrained-MTU parts");
+    let requested_hashes = advertisement
+        .hashmap
+        .chunks_exact(MAPHASH_LEN)
+        .map(|chunk| {
+            let mut hash = [0u8; MAPHASH_LEN];
+            hash.copy_from_slice(chunk);
+            hash
+        })
+        .collect::<Vec<_>>();
+    let requested_count = requested_hashes.len();
+    assert!(requested_count > 0, "advertisement must offer at least one resource part");
+    let request = ResourceRequest {
+        hashmap_exhausted: false,
+        last_map_hash: None,
+        resource_hash: advertisement.hash,
+        requested_hashes,
+    };
+    let resource_request_packet = encrypted_resource_control_packet(
+        &link_guard,
+        PacketContext::ResourceRequest,
+        &request.encode(),
+    );
+    drop(link_guard);
+
+    handle_data(&resource_request_packet, iface, handler.lock().await).await;
+
+    for _ in 0..requested_count {
+        let sent = timeout(Duration::from_millis(200), iface_channel.tx_channel.recv())
+            .await
+            .expect("resource part should be sent on bound iface")
+            .expect("tx channel open");
+        assert_eq!(sent.tx_type, TxMessageType::Direct(iface));
+        assert_eq!(sent.packet.destination, link_id);
+        assert_eq!(sent.packet.context, PacketContext::Resource);
+        let wire_len = sent.packet.to_bytes().expect("serialize resource part").len();
+        assert!(
+            wire_len <= LORA_MTU,
+            "resource part serialized to {wire_len} bytes, exceeding MTU {LORA_MTU}"
+        );
+    }
+}
+
 fn decrypt_resource_advertisement(link: &Link, packet: &Packet) -> ResourceAdvertisement {
     let mut buffer = PacketDataBuffer::new();
     let plain_len = {

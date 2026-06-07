@@ -181,6 +181,7 @@ cargo run -p rns-tools --bin rnx -- e2e --timeout-secs 20
 - Extension registry: `docs/contracts/extension-registry.md`
 - RPC contract: `docs/contracts/rpc-contract.md`
 - Payload contract: `docs/contracts/payload-contract.md`
+- Historical performance comparison report: `docs/PerformancesComparison.html`
 - reticulumd operational deployment: `docs/runbooks/reticulumd-operational-deployment.md`
 - crates.io publish plan: `docs/runbooks/crates-io-publish-plan.md`
 - Release readiness: `docs/runbooks/release-readiness.md`

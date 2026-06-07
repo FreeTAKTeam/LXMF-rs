@@ -778,6 +778,10 @@ impl Interface for NativeRnodeBleKissInterface {
     fn mtu() -> usize {
         508
     }
+
+    fn configured_mtu(&self) -> usize {
+        self.config.mtu
+    }
 }
 
 #[cfg(feature = "rnode-ble")]

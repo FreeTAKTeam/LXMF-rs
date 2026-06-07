@@ -968,8 +968,31 @@ impl MessagesStore {
     }
 
     pub fn remove_stale_peer_unhandled_propagation(&self, peer: &str) -> rusqlite::Result<usize> {
+        self.remove_stale_peer_unhandled_propagation_ids(peer).map(|ids| ids.len())
+    }
+
+    pub fn remove_stale_peer_unhandled_propagation_ids(
+        &self,
+        peer: &str,
+    ) -> rusqlite::Result<Vec<String>> {
         self.with_write_conn(|conn| {
-            let affected = conn.execute(
+            let stale_ids = {
+                let mut stmt = conn.prepare(
+                    "SELECT transient_id
+                     FROM propagation_peer_entries
+                     WHERE peer = ?1
+                       AND state = 'unhandled'
+                       AND NOT EXISTS (
+                           SELECT 1
+                           FROM propagation_entries e
+                           WHERE e.transient_id = propagation_peer_entries.transient_id
+                       )
+                     ORDER BY transient_id ASC",
+                )?;
+                let rows = stmt.query_map(params![peer], |row| row.get(0))?;
+                rows.collect::<rusqlite::Result<Vec<String>>>()?
+            };
+            conn.execute(
                 "DELETE FROM propagation_peer_entries
                  WHERE peer = ?1
                    AND state = 'unhandled'
@@ -980,7 +1003,43 @@ impl MessagesStore {
                    )",
                 params![peer],
             )?;
-            Ok(affected)
+            Ok(stale_ids)
+        })
+    }
+
+    pub fn remove_stale_peer_completed_propagation_ids(
+        &self,
+        peer: &str,
+    ) -> rusqlite::Result<Vec<String>> {
+        self.with_write_conn(|conn| {
+            let stale_ids = {
+                let mut stmt = conn.prepare(
+                    "SELECT transient_id
+                     FROM propagation_peer_entries
+                     WHERE peer = ?1
+                       AND state IN ('handled', 'transferred', 'received', 'transfer_limited')
+                       AND NOT EXISTS (
+                           SELECT 1
+                           FROM propagation_entries e
+                           WHERE e.transient_id = propagation_peer_entries.transient_id
+                       )
+                     ORDER BY transient_id ASC",
+                )?;
+                let rows = stmt.query_map(params![peer], |row| row.get(0))?;
+                rows.collect::<rusqlite::Result<Vec<String>>>()?
+            };
+            conn.execute(
+                "DELETE FROM propagation_peer_entries
+                 WHERE peer = ?1
+                   AND state IN ('handled', 'transferred', 'received', 'transfer_limited')
+                   AND NOT EXISTS (
+                       SELECT 1
+                       FROM propagation_entries e
+                       WHERE e.transient_id = propagation_peer_entries.transient_id
+                   )",
+                params![peer],
+            )?;
+            Ok(stale_ids)
         })
     }
 
@@ -1037,6 +1096,27 @@ impl MessagesStore {
         })
     }
 
+    pub fn peer_completed_propagation_mark_exists(
+        &self,
+        peer: &str,
+        transient_id: &str,
+    ) -> rusqlite::Result<bool> {
+        self.with_read_conn(|conn| {
+            conn.query_row(
+                "SELECT EXISTS(
+                    SELECT 1
+                    FROM propagation_peer_entries
+                    WHERE peer = ?1
+                      AND transient_id = ?2
+                      AND state IN ('handled', 'transferred', 'received', 'transfer_limited')
+                    LIMIT 1
+                 )",
+                params![peer, normalize_hex_key(transient_id)],
+                |row| row.get(0),
+            )
+        })
+    }
+
     pub fn list_peer_unhandled_propagation_ids(&self, peer: &str) -> rusqlite::Result<Vec<String>> {
         self.with_read_conn(|conn| {
             let mut stmt = conn.prepare(
@@ -1064,6 +1144,29 @@ impl MessagesStore {
         self.with_write_conn(|conn| {
             let affected = conn.execute("DELETE FROM propagation_peer_entries", [])?;
             Ok(affected)
+        })
+    }
+
+    pub fn peer_propagation_mark_stats(
+        &self,
+        peer: &str,
+    ) -> rusqlite::Result<PropagationEntryStats> {
+        self.with_read_conn(|conn| {
+            let (entries, bytes): (i64, Option<i64>) = conn.query_row(
+                "SELECT
+                    COALESCE(SUM(CASE WHEN e.transient_id IS NOT NULL THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN e.transient_id IS NOT NULL THEN e.size_bytes ELSE 0 END), 0)
+                 FROM propagation_peer_entries p
+                 LEFT JOIN propagation_entries e
+                    ON e.transient_id = p.transient_id
+                 WHERE p.peer = ?1",
+                params![peer],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )?;
+            Ok(PropagationEntryStats {
+                entries: entries.max(0) as u64,
+                bytes: bytes.unwrap_or(0).max(0) as u64,
+            })
         })
     }
 

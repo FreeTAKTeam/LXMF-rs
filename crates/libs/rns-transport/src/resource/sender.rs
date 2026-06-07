@@ -7,6 +7,7 @@ struct ResourceSender {
     parts: Vec<Vec<u8>>,
     sent_parts: Vec<bool>,
     map_hashes: Vec<[u8; MAPHASH_LEN]>,
+    hashmap_segment_len: usize,
     expected_proof: Hash,
     advertisement_packet: Packet,
     last_activity: Instant,
@@ -25,7 +26,16 @@ enum OutboundResourcePoll {
 
 impl ResourceSender {
     fn new(link: &Link, data: Vec<u8>, metadata: Option<Vec<u8>>) -> Result<Self, RnsError> {
-        Self::new_with_options(link, data, metadata, None, false)
+        Self::new_with_mtu(link, data, metadata, DEFAULT_RESOURCE_INTERFACE_MTU)
+    }
+
+    fn new_with_mtu(
+        link: &Link,
+        data: Vec<u8>,
+        metadata: Option<Vec<u8>>,
+        interface_mtu: usize,
+    ) -> Result<Self, RnsError> {
+        Self::new_with_options_mtu(link, data, metadata, None, false, interface_mtu)
     }
 
     pub(super) fn new_with_options(
@@ -35,6 +45,26 @@ impl ResourceSender {
         request_id: Option<Vec<u8>>,
         is_response: bool,
     ) -> Result<Self, RnsError> {
+        Self::new_with_options_mtu(
+            link,
+            data,
+            metadata,
+            request_id,
+            is_response,
+            DEFAULT_RESOURCE_INTERFACE_MTU,
+        )
+    }
+
+    pub(super) fn new_with_options_mtu(
+        link: &Link,
+        data: Vec<u8>,
+        metadata: Option<Vec<u8>>,
+        request_id: Option<Vec<u8>>,
+        is_response: bool,
+        interface_mtu: usize,
+    ) -> Result<Self, RnsError> {
+        let resource_mdu = resource_packet_mdu_for_mtu(interface_mtu)?;
+        let hashmap_segment_len = resource_hashmap_segment_len_for_mtu(interface_mtu)?;
         let has_metadata = metadata.is_some();
         let has_request_id = request_id.is_some();
         let metadata_prefix = if let Some(payload) = metadata.as_ref() {
@@ -72,7 +102,7 @@ impl ResourceSender {
         let cipher_text = cipher.to_vec();
 
         let mut parts = Vec::new();
-        for chunk in cipher_text.chunks(PACKET_MDU) {
+        for chunk in cipher_text.chunks(resource_mdu) {
             parts.push(chunk.to_vec());
         }
 
@@ -101,7 +131,7 @@ impl ResourceSender {
                 }
                 flags
             },
-            hashmap: slice_hashmap_segment(&map_hashes, 0),
+            hashmap: slice_hashmap_segment(&map_hashes, 0, hashmap_segment_len),
         };
         let advertisement_packet = build_link_packet(
             link,
@@ -117,6 +147,7 @@ impl ResourceSender {
             parts,
             sent_parts: vec![false; map_hashes.len()],
             map_hashes,
+            hashmap_segment_len,
             expected_proof,
             advertisement_packet,
             last_activity: now,
@@ -235,12 +266,16 @@ impl ResourceSender {
                 if let Some(last_index) =
                     self.map_hashes.iter().position(|entry| *entry == last_hash)
                 {
-                    let next_segment = (last_index / HASHMAP_MAX_LEN) + 1;
-                    if next_segment * HASHMAP_MAX_LEN < self.map_hashes.len() {
+                    let next_segment = (last_index / self.hashmap_segment_len) + 1;
+                    if next_segment * self.hashmap_segment_len < self.map_hashes.len() {
                         let update = ResourceHashUpdate {
                             resource_hash: self.resource_hash,
                             segment: next_segment as u32,
-                            hashmap: slice_hashmap_segment(&self.map_hashes, next_segment),
+                            hashmap: slice_hashmap_segment(
+                                &self.map_hashes,
+                                next_segment,
+                                self.hashmap_segment_len,
+                            ),
                         };
                         if let Ok(payload) = update.encode() {
                             if let Ok(packet) = build_link_packet(

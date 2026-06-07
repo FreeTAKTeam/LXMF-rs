@@ -86,7 +86,7 @@ impl RpcDaemon {
             "remote_sync": true,
             "synced": false,
             "state": 0,
-            "sync_strategy": 2,
+            "sync_strategy": peer.sync_strategy,
             "ler": 0,
             "peering_timebase": peer.peering_timebase,
             "network_distance": peer.network_distance,
@@ -237,6 +237,7 @@ impl RpcDaemon {
             self.store
                 .mark_peer_unhandled_propagation(peer.as_str(), transient_id)
                 .map_err(std::io::Error::other)?;
+            self.record_peer_queue_unhandled_id(peer.as_str(), transient_id);
         }
         Ok(())
     }
@@ -248,14 +249,16 @@ impl RpcDaemon {
     ) -> Result<(), std::io::Error> {
         let source_peer = source_peer.trim().to_ascii_lowercase();
         for peer in self.active_peer_ids() {
-            if peer == source_peer {
+            if peer.eq_ignore_ascii_case(source_peer.as_str()) {
                 self.store
                     .mark_peer_received_propagation(peer.as_str(), transient_id)
                     .map_err(std::io::Error::other)?;
+                self.record_peer_queue_handled_id(peer.as_str(), transient_id);
             } else {
                 self.store
                     .mark_peer_unhandled_propagation(peer.as_str(), transient_id)
                     .map_err(std::io::Error::other)?;
+                self.record_peer_queue_unhandled_id(peer.as_str(), transient_id);
             }
         }
         Ok(())
@@ -375,23 +378,33 @@ impl RpcDaemon {
             return Ok(());
         }
 
+        let active_peers = self.active_peer_ids();
+        let source_active_peer =
+            active_peers.iter().find(|peer| peer.eq_ignore_ascii_case(source_peer)).cloned();
         self.record_inbound_propagation_peer_activity_count(
-            source_peer,
+            source_active_peer.as_deref().unwrap_or(source_peer),
             transferred_bytes,
             imported_ids.len(),
         );
-        let active_peers = self.active_peer_ids();
         for transient_id in imported_ids {
             self.store
-                .mark_peer_received_propagation(source_peer, transient_id.as_str())
+                .mark_peer_received_propagation(
+                    source_active_peer.as_deref().unwrap_or(source_peer),
+                    transient_id.as_str(),
+                )
                 .map_err(std::io::Error::other)?;
+            self.record_peer_queue_handled_id(
+                source_active_peer.as_deref().unwrap_or(source_peer),
+                transient_id.as_str(),
+            );
             for peer in &active_peers {
-                if peer == source_peer {
+                if peer.eq_ignore_ascii_case(source_peer) {
                     continue;
                 }
                 self.store
                     .mark_peer_unhandled_propagation(peer.as_str(), transient_id.as_str())
                     .map_err(std::io::Error::other)?;
+                self.record_peer_queue_unhandled_id(peer.as_str(), transient_id.as_str());
             }
         }
         Ok(())
@@ -407,22 +420,26 @@ impl RpcDaemon {
             return Ok(());
         }
 
+        let active_peers = self.active_peer_ids();
+        let source_active_peer =
+            active_peers.iter().find(|peer| peer.eq_ignore_ascii_case(source_peer)).cloned();
         self.record_inbound_propagation_peer_activity_count(
-            source_peer,
+            source_active_peer.as_deref().unwrap_or(source_peer),
             transferred_bytes,
             imported_ids.len(),
         );
-        let active_peers = self.active_peer_ids();
         for transient_id in imported_ids {
             for peer in &active_peers {
-                if peer == source_peer {
+                if peer.eq_ignore_ascii_case(source_peer) {
                     self.store
                         .mark_peer_received_propagation(peer.as_str(), transient_id.as_str())
                         .map_err(std::io::Error::other)?;
+                    self.record_peer_queue_handled_id(peer.as_str(), transient_id.as_str());
                 } else {
                     self.store
                         .mark_peer_unhandled_propagation(peer.as_str(), transient_id.as_str())
                         .map_err(std::io::Error::other)?;
+                    self.record_peer_queue_unhandled_id(peer.as_str(), transient_id.as_str());
                 }
             }
         }
@@ -692,19 +709,23 @@ impl RpcDaemon {
             .is_some();
         let payload_hex = hex::encode(normalized_payload);
         self.store_propagation_payload_hex(transient_id.as_str(), payload_hex.as_str())?;
-        let source_is_active = self.active_peer_ids().iter().any(|peer| peer == &source_peer);
+        let source_active_peer = self
+            .active_peer_ids()
+            .into_iter()
+            .find(|peer| peer.eq_ignore_ascii_case(source_peer.as_str()));
         if !already_known {
             self.queue_propagation_entry_from_source_for_active_peers(
                 source_peer.as_str(),
                 transient_id.as_str(),
             )?;
-        } else if source_is_active {
+        } else if let Some(peer) = source_active_peer.as_ref() {
             self.store
-                .mark_peer_received_propagation(source_peer.as_str(), transient_id.as_str())
+                .mark_peer_received_propagation(peer.as_str(), transient_id.as_str())
                 .map_err(std::io::Error::other)?;
+            self.record_peer_queue_handled_id(peer.as_str(), transient_id.as_str());
         }
-        if source_is_active {
-            self.record_inbound_peer_activity(source_peer.as_str(), normalized_payload.len());
+        if let Some(peer) = source_active_peer {
+            self.record_inbound_peer_activity(peer.as_str(), normalized_payload.len());
         } else {
             self.record_unpeered_propagation_attempt(normalized_payload.len());
         }
@@ -736,8 +757,21 @@ impl RpcDaemon {
         peer: &str,
         transient_id: &str,
     ) -> Result<(), std::io::Error> {
+        let transient_id = normalize_propagation_transient_key(transient_id);
         self.store
-            .mark_peer_received_propagation(
+            .mark_peer_received_propagation(peer, transient_id.as_str())
+            .map_err(std::io::Error::other)?;
+        self.record_peer_queue_handled_id(peer, transient_id.as_str());
+        Ok(())
+    }
+
+    pub fn has_peer_completed_propagation_mark(
+        &self,
+        peer: &str,
+        transient_id: &str,
+    ) -> Result<bool, std::io::Error> {
+        self.store
+            .peer_completed_propagation_mark_exists(
                 peer,
                 normalize_propagation_transient_key(transient_id).as_str(),
             )
@@ -749,12 +783,12 @@ impl RpcDaemon {
         peer: &str,
         transient_id: &str,
     ) -> Result<(), std::io::Error> {
+        let transient_id = normalize_propagation_transient_key(transient_id);
         self.store
-            .mark_peer_transferred_propagation(
-                peer,
-                normalize_propagation_transient_key(transient_id).as_str(),
-            )
-            .map_err(std::io::Error::other)
+            .mark_peer_transferred_propagation(peer, transient_id.as_str())
+            .map_err(std::io::Error::other)?;
+        self.record_peer_queue_handled_id(peer, transient_id.as_str());
+        Ok(())
     }
 
     pub fn list_propagation_payloads_for_destination(
@@ -824,11 +858,15 @@ impl RpcDaemon {
         let per_message_overhead = 16usize;
         let mut cumulative_size = 24usize;
         let mut messages = Vec::new();
+        let mut served_ids = HashSet::new();
         for transient_id in wanted {
             if transient_id.len() != 32 {
                 continue;
             }
             let transient_hex = hex::encode(transient_id);
+            if !served_ids.insert(transient_hex.clone()) {
+                continue;
+            }
             let payload = match self
                 .store
                 .get_propagation_entry(transient_hex.as_str())
@@ -889,26 +927,45 @@ impl RpcDaemon {
     ) -> usize {
         let destination_hex = hex::encode(destination);
         let haves_hex = haves.iter().map(hex::encode).collect::<Vec<_>>();
+        let mut removed_snapshot_ids = Vec::new();
+        for transient_hex in &haves_hex {
+            if self.store.get_propagation_entry(transient_hex.as_str()).ok().flatten().is_some_and(
+                |entry| entry.destination.eq_ignore_ascii_case(destination_hex.as_str()),
+            ) {
+                removed_snapshot_ids.push(transient_hex.clone());
+            }
+        }
         let mut purged = self
             .store
             .purge_propagation_entries_for_destination(destination_hex.as_str(), &haves_hex)
             .unwrap_or_default();
-        let mut guard =
-            self.propagation_payloads.lock().expect("propagation payload mutex poisoned");
-        for transient_id in haves {
-            if transient_id.len() != 32 {
-                continue;
+        {
+            let mut guard =
+                self.propagation_payloads.lock().expect("propagation payload mutex poisoned");
+            for transient_id in haves {
+                if transient_id.len() != 32 {
+                    continue;
+                }
+                let transient_hex = hex::encode(transient_id);
+                let should_remove = guard
+                    .get(transient_hex.as_str())
+                    .and_then(|payload_hex| hex::decode(payload_hex).ok())
+                    .is_some_and(|payload| {
+                        propagation_payload_matches_destination(payload.as_slice(), destination)
+                    });
+                if should_remove && guard.remove(transient_hex.as_str()).is_some() {
+                    purged += 1;
+                    if !removed_snapshot_ids
+                        .iter()
+                        .any(|id| id.eq_ignore_ascii_case(&transient_hex))
+                    {
+                        removed_snapshot_ids.push(transient_hex);
+                    }
+                }
             }
-            let transient_hex = hex::encode(transient_id);
-            let should_remove = guard
-                .get(transient_hex.as_str())
-                .and_then(|payload_hex| hex::decode(payload_hex).ok())
-                .is_some_and(|payload| {
-                    propagation_payload_matches_destination(payload.as_slice(), destination)
-                });
-            if should_remove && guard.remove(transient_hex.as_str()).is_some() {
-                purged += 1;
-            }
+        }
+        for transient_id in removed_snapshot_ids {
+            self.remove_peer_queue_snapshot_id(transient_id.as_str());
         }
         purged
     }
@@ -1284,14 +1341,17 @@ impl RpcDaemon {
                     .map(serde_json::from_value::<SetOutboundPropagationNodeParams>)
                     .transpose()
                     .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
-                let peer = parsed
+                let requested_peer = parsed
                     .and_then(|value| value.peer)
                     .map(|value| value.trim().to_string())
                     .filter(|value| !value.is_empty());
-                if let Some(peer_id) = peer.as_deref() {
-                    self.ensure_peer_for_sync(peer_id, now_i64())?;
-                    self.queue_existing_propagation_for_peer(peer_id)?;
-                }
+                let peer = if let Some(peer_id) = requested_peer.as_deref() {
+                    let record = self.ensure_peer_for_sync(peer_id, now_i64())?;
+                    self.queue_existing_propagation_for_peer(record.peer.as_str())?;
+                    Some(record.peer)
+                } else {
+                    None
+                };
                 {
                     let mut guard = self
                         .outbound_propagation_node
@@ -1434,7 +1494,12 @@ impl RpcDaemon {
                 let timestamp = now_i64();
                 let timeout_secs = parsed.timeout_secs.unwrap_or(5.0).max(0.1);
                 let existing_record = {
-                    self.peers.lock().expect("peers mutex poisoned").get(peer_id.as_str()).cloned()
+                    self.peers
+                        .lock()
+                        .expect("peers mutex poisoned")
+                        .values()
+                        .find(|record| record.peer.eq_ignore_ascii_case(peer_id.as_str()))
+                        .cloned()
                 };
                 if let Some(record) = existing_record {
                     let peer_transfer_limit_kb =
@@ -1449,7 +1514,10 @@ impl RpcDaemon {
                         transfer_limit_kb.map(|limit| (limit.max(0.0) * 1000.0) as u64);
                     let sync_limit =
                         record.propagation_sync_limit.map(u64::from).or(transfer_limit);
-                    if record.next_sync_attempt > 0 && timestamp < record.next_sync_attempt {
+                    if super::dispatch_legacy_messages::peer_sync_backoff_active(
+                        timestamp,
+                        record.next_sync_attempt,
+                    ) {
                         return Ok(self.postponed_peer_sync_response(
                             request.id,
                             &record,
@@ -1476,7 +1544,11 @@ impl RpcDaemon {
                 let transfer_limit =
                     transfer_limit_kb.map(|limit| (limit.max(0.0) * 1000.0) as u64);
                 let sync_limit = record.propagation_sync_limit.map(u64::from).or(transfer_limit);
-                if record.next_sync_attempt > 0 && timestamp < record.next_sync_attempt {
+                let peer_key = record.peer.clone();
+                if super::dispatch_legacy_messages::peer_sync_backoff_active(
+                    timestamp,
+                    record.next_sync_attempt,
+                ) {
                     return Ok(self.postponed_peer_sync_response(
                         request.id,
                         &record,
@@ -1512,9 +1584,9 @@ impl RpcDaemon {
                                     state.sync_progress = 0.0;
                                     state.last_sync_error = Some(err.to_string());
                                 });
-                                self.record_outbound_peer_activity(peer_id.as_str(), 0, false);
+                                self.record_outbound_peer_activity(peer_key.as_str(), 0, false);
                                 self.publish_failed_remote_peer_sync_event(
-                                    peer_id.as_str(),
+                                    peer_key.as_str(),
                                     remote_id.as_str(),
                                     err.to_string().as_str(),
                                     transfer_limit,
@@ -1553,7 +1625,10 @@ impl RpcDaemon {
                         });
                         let peer_sync_completed_at = now_i64();
                         if let Ok(mut peers) = self.peers.lock() {
-                            if let Some(peer) = peers.get_mut(peer_id.as_str()) {
+                            if let Some(peer) = peers
+                                .values_mut()
+                                .find(|record| record.peer.eq_ignore_ascii_case(peer_id.as_str()))
+                            {
                                 peer.alive = true;
                                 peer.last_seen = peer_sync_completed_at;
                                 peer.last_sync_attempt = peer_sync_completed_at;
@@ -1565,7 +1640,8 @@ impl RpcDaemon {
                             .peers
                             .lock()
                             .expect("peers mutex poisoned")
-                            .get(peer_id.as_str())
+                            .values()
+                            .find(|record| record.peer.eq_ignore_ascii_case(peer_id.as_str()))
                             .cloned();
                         if let Some(peer) = peer {
                             let (
@@ -1644,7 +1720,7 @@ impl RpcDaemon {
                                 "remote_sync": true,
                                 "synced": true,
                                 "state": 0,
-                                "sync_strategy": 2,
+                                "sync_strategy": peer.sync_strategy,
                                 "ler": 0,
                                 "peering_timebase": peer.peering_timebase,
                                 "network_distance": peer.network_distance,
@@ -1694,7 +1770,7 @@ impl RpcDaemon {
                         });
                         if err.kind() == std::io::ErrorKind::WouldBlock {
                             self.record_throttled_remote_peer_sync(
-                                peer_id.as_str(),
+                                peer_key.as_str(),
                                 remote_id.as_str(),
                                 error.as_str(),
                                 transfer_limit,
@@ -1702,7 +1778,7 @@ impl RpcDaemon {
                             );
                         } else if is_retryable_remote_peer_sync_error(&err) {
                             self.record_retryable_remote_peer_sync_error(
-                                peer_id.as_str(),
+                                peer_key.as_str(),
                                 remote_id.as_str(),
                                 error.as_str(),
                                 transfer_limit,
@@ -1710,14 +1786,14 @@ impl RpcDaemon {
                             );
                         } else if is_remote_access_denied_error(&err) {
                             self.break_remote_peer_sync_peering_on_denied_access(
-                                peer_id.as_str(),
+                                peer_key.as_str(),
                                 remote_id.as_str(),
                                 error.as_str(),
                             )?;
                         } else {
-                            self.record_outbound_peer_activity(peer_id.as_str(), 0, false);
+                            self.record_outbound_peer_activity(peer_key.as_str(), 0, false);
                             self.publish_failed_remote_peer_sync_event(
-                                peer_id.as_str(),
+                                peer_key.as_str(),
                                 remote_id.as_str(),
                                 error.as_str(),
                                 transfer_limit,
@@ -1998,7 +2074,7 @@ impl RpcDaemon {
                 self.publish_event(RpcEvent {
                     event_type: "peer_unpeer".into(),
                     payload: json!({
-                        "peer": peer_id,
+                        "peer": cleanup.peer.as_str(),
                         "remote": remote_id.as_str(),
                         "removed": cleanup.removed,
                         "propagation_cleared": cleanup.propagation_cleared,
@@ -2014,7 +2090,7 @@ impl RpcDaemon {
                     id: request.id,
                     result: Some(json!({
                         "remote": remote_id,
-                        "peer": peer_id,
+                        "peer": cleanup.peer.as_str(),
                         "removed": cleanup.removed,
                         "propagation_cleared": cleanup.propagation_cleared,
                         "propagation_cleared_bytes": cleanup.propagation_cleared_bytes,
@@ -2074,7 +2150,9 @@ fn is_retryable_remote_peer_sync_error(err: &std::io::Error) -> bool {
         (err.kind(), err.to_string().as_str()),
         (std::io::ErrorKind::PermissionDenied, "propagation node requires identity")
             | (std::io::ErrorKind::PermissionDenied, "propagation peer invalid peering key")
+            | (std::io::ErrorKind::PermissionDenied, "propagation peer invalid stamp")
             | (std::io::ErrorKind::InvalidInput, "propagation node rejected the request")
+            | (std::io::ErrorKind::InvalidData, "unexpected propagation control response")
             | (std::io::ErrorKind::NotFound, "propagation peer not found")
             | (std::io::ErrorKind::TimedOut, "propagation peer timed out")
     )

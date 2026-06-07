@@ -136,7 +136,18 @@ All methods below are required for full CLI feature coverage.
   A non-empty list transfers only the supplied IDs and handles the rest. Each
   supplied wanted ID must be a 32-byte transient ID encoded as 64 hex
   characters; malformed wanted IDs are rejected before peer queue state is
-  mutated.
+  mutated. Numeric Python LXMPeer error response `0xf0` (`ERROR_NO_IDENTITY`)
+  preserves the peer and queued offers for an immediate retry without generic
+  backoff or unpeer cleanup. Numeric response `0xf1` (`ERROR_NO_ACCESS`)
+  breaks local peering, clears peer propagation queue marks, and returns a
+  `peer_unpeer`-shaped result with `reason: "access_denied"`. Numeric response
+  `0xf6` (`ERROR_THROTTLED`) preserves the peer and queued offers, postpones
+  `next_sync_attempt` by 180 seconds, and returns a postponed `peer_sync`
+  result with `postpone_reason: "throttled"`. Other numeric responses,
+  including `0xf3` (`ERROR_INVALID_KEY`), `0xf4` (`ERROR_INVALID_DATA`),
+  `0xf5` (`ERROR_INVALID_STAMP`), `0xfd` (`ERROR_NOT_FOUND`), and `0xfe`
+  (`ERROR_TIMEOUT`), preserve the peer and queued offers for retry, record the
+  sync attempt, and avoid generic backoff or unpeer cleanup.
 - `peer_unpeer`
 : Params keys: `peer`. Result and `peer_unpeer` event include `removed`,
   `propagation_cleared`, `propagation_cleared_bytes`, top-level aggregate
@@ -198,6 +209,12 @@ The following contract is mandatory in v1:
   `propagation_status.propagation.sync_state` uses Python `LXMRouter.PR_*`
   values for remote sync lifecycle: request sent `0x04`, complete `0x07`,
   failed `0xfe`.
+  Numeric peer error responses including `0xf0`, `0xf3`, `0xf4`, `0xf5`,
+  `0xfd`, and `0xfe` are mapped to explicit bridge errors so retryable
+  peer-response cleanup can preserve local peer and queue state without generic
+  failure backoff. Other unexpected numeric control responses follow the same
+  preserve-and-retry cleanup path; `0xf1` breaks local peering and `0xf6`
+  applies throttle postponement.
 - `propagation_acknowledge_sync_completion`
 : Optional params keys: `reset_state`, `failure_state`. Mirrors Python
   `acknowledge_sync_completion`: clears progress, resets completed states to

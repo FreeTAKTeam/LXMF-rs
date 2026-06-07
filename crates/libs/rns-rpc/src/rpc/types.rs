@@ -1,4 +1,6 @@
+use serde::de::Visitor;
 use serde::ser::SerializeMap;
+use std::fmt;
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct RpcRequest {
@@ -678,11 +680,16 @@ pub struct PeerRecord {
     pub first_seen: i64,
     pub seen_count: u64,
     pub peering_timebase: i64,
+    pub sync_strategy: u8,
     pub propagation_transfer_limit: Option<u32>,
     pub propagation_sync_limit: Option<u32>,
     pub propagation_stamp_cost: Option<u32>,
     pub propagation_stamp_cost_flexibility: Option<u32>,
     pub peering_cost: Option<u32>,
+    pub peering_key_stamp: Option<Vec<u8>>,
+    pub peering_key_value: Option<u32>,
+    pub restored_handled_ids: Vec<String>,
+    pub restored_unhandled_ids: Vec<String>,
 }
 
 impl serde::Serialize for PeerRecord {
@@ -692,6 +699,7 @@ impl serde::Serialize for PeerRecord {
     {
         let mut map = serializer.serialize_map(None)?;
         map.serialize_entry("peer", &self.peer)?;
+        map.serialize_entry("destination_hash", &self.peer)?;
         map.serialize_entry("last_seen", &self.last_seen)?;
         map.serialize_entry("last_heard", &self.last_seen)?;
         map.serialize_entry("capabilities", &self.capabilities)?;
@@ -714,12 +722,16 @@ impl serde::Serialize for PeerRecord {
         map.serialize_entry("first_seen", &self.first_seen)?;
         map.serialize_entry("seen_count", &self.seen_count)?;
         map.serialize_entry("peering_timebase", &self.peering_timebase)?;
+        map.serialize_entry("sync_strategy", &self.sync_strategy)?;
         if let Some(value) = self.propagation_transfer_limit {
-            map.serialize_entry("propagation_transfer_limit", &value)?;
+            map.serialize_entry("propagation_transfer_limit", &bytes_to_kilobytes(value))?;
             map.serialize_entry("transfer_limit", &value)?;
         }
         if let Some(value) = self.propagation_sync_limit {
-            map.serialize_entry("propagation_sync_limit", &value)?;
+            map.serialize_entry(
+                "propagation_sync_limit",
+                &bytes_to_python_sync_limit_kilobytes(value),
+            )?;
             map.serialize_entry("sync_limit", &value)?;
         }
         if let Some(value) = self.propagation_stamp_cost {
@@ -733,13 +745,24 @@ impl serde::Serialize for PeerRecord {
         if let Some(value) = self.peering_cost {
             map.serialize_entry("peering_cost", &value)?;
         }
+        if let (Some(stamp), Some(value)) = (&self.peering_key_stamp, self.peering_key_value) {
+            map.serialize_entry(
+                "peering_key",
+                &(serde_bytes::Bytes::new(stamp.as_slice()), value),
+            )?;
+        }
+        map.serialize_entry("handled_ids", &self.restored_handled_ids)?;
+        map.serialize_entry("unhandled_ids", &self.restored_unhandled_ids)?;
         map.end()
     }
 }
 
 #[derive(Deserialize)]
 struct PeerRecordWire {
-    peer: String,
+    #[serde(default)]
+    peer: Option<PythonHexId>,
+    #[serde(default)]
+    destination_hash: Option<PythonHexId>,
     #[serde(default)]
     last_seen: Option<i64>,
     #[serde(default)]
@@ -776,14 +799,16 @@ struct PeerRecordWire {
     sync_transfer_rate: Option<f64>,
     #[serde(default)]
     str: Option<f64>,
-    #[serde(default = "default_acceptance_rate")]
-    acceptance_rate: f64,
+    #[serde(default)]
+    acceptance_rate: Option<f64>,
     #[serde(default)]
     first_seen: Option<i64>,
     #[serde(default)]
     seen_count: Option<u64>,
     #[serde(default)]
     peering_timebase: i64,
+    #[serde(default = "default_peer_sync_strategy")]
+    sync_strategy: u8,
     #[serde(default)]
     propagation_transfer_limit: Option<JsonValue>,
     #[serde(default)]
@@ -802,6 +827,12 @@ struct PeerRecordWire {
     stamp_cost_flexibility: Option<u32>,
     #[serde(default)]
     peering_cost: Option<u32>,
+    #[serde(default)]
+    peering_key: Option<PythonPeeringKey>,
+    #[serde(default)]
+    handled_ids: Vec<PythonHexId>,
+    #[serde(default)]
+    unhandled_ids: Vec<PythonHexId>,
 }
 
 impl<'de> Deserialize<'de> for PeerRecord {
@@ -810,28 +841,40 @@ impl<'de> Deserialize<'de> for PeerRecord {
         D: serde::Deserializer<'de>,
     {
         let wire = PeerRecordWire::deserialize(deserializer)?;
+        let peer = wire
+            .peer
+            .map(PythonHexId::into_string)
+            .or_else(|| wire.destination_hash.map(PythonHexId::into_string))
+            .ok_or_else(|| serde::de::Error::missing_field("peer"))?;
         let last_seen = wire
             .last_seen
             .or(wire.last_heard)
             .ok_or_else(|| serde::de::Error::missing_field("last_seen"))?;
         let sync_transfer_rate = wire.sync_transfer_rate.or(wire.str).unwrap_or_default();
-        let python_transfer_limit = wire.propagation_transfer_limit.is_some()
-            && wire.transfer_limit.is_none();
+        let acceptance_rate = wire.acceptance_rate.unwrap_or_else(|| {
+            if wire.offered == 0 {
+                0.0
+            } else {
+                (wire.outgoing as f64 / wire.offered as f64).max(0.0)
+            }
+        });
+        let python_transfer_limit = wire.propagation_transfer_limit.is_some();
         let transfer_limit = parse_peer_limit_bytes(
             wire.propagation_transfer_limit.as_ref(),
             wire.transfer_limit.as_ref(),
             python_transfer_limit,
         );
-        let python_sync_limit =
-            wire.propagation_sync_limit.is_some() && wire.sync_limit.is_none();
+        let python_sync_limit = wire.propagation_sync_limit.is_some();
         let sync_limit = parse_peer_limit_bytes(
             wire.propagation_sync_limit.as_ref(),
             wire.sync_limit.as_ref(),
             python_sync_limit,
         )
         .or_else(|| python_transfer_limit.then_some(transfer_limit).flatten());
+        let (peering_key_stamp, peering_key_value) =
+            wire.peering_key.map(PythonPeeringKey::into_parts).unwrap_or_default();
         Ok(Self {
-            peer: wire.peer,
+            peer,
             last_seen,
             capabilities: wire.capabilities,
             name: wire.name,
@@ -848,10 +891,11 @@ impl<'de> Deserialize<'de> for PeerRecord {
             rx_bytes: wire.rx_bytes,
             tx_bytes: wire.tx_bytes,
             sync_transfer_rate,
-            acceptance_rate: wire.acceptance_rate,
+            acceptance_rate,
             first_seen: wire.first_seen.unwrap_or(last_seen),
             seen_count: wire.seen_count.unwrap_or_else(|| u64::from(last_seen > 0)),
             peering_timebase: wire.peering_timebase,
+            sync_strategy: wire.sync_strategy,
             propagation_transfer_limit: transfer_limit,
             propagation_sync_limit: sync_limit,
             propagation_stamp_cost: wire.propagation_stamp_cost.or(wire.target_stamp_cost),
@@ -859,7 +903,222 @@ impl<'de> Deserialize<'de> for PeerRecord {
                 .propagation_stamp_cost_flexibility
                 .or(wire.stamp_cost_flexibility),
             peering_cost: wire.peering_cost,
+            peering_key_stamp,
+            peering_key_value,
+            restored_handled_ids: wire
+                .handled_ids
+                .into_iter()
+                .map(PythonHexId::into_string)
+                .collect(),
+            restored_unhandled_ids: wire
+                .unhandled_ids
+                .into_iter()
+                .map(PythonHexId::into_string)
+                .collect(),
         })
+    }
+}
+
+struct PythonHexId(String);
+
+impl PythonHexId {
+    fn into_string(self) -> String {
+        self.0
+    }
+}
+
+impl<'de> Deserialize<'de> for PythonHexId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct PythonHexIdVisitor;
+
+        impl Visitor<'_> for PythonHexIdVisitor {
+            type Value = PythonHexId;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("a hex string or MessagePack binary hash")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(PythonHexId(value.trim().to_ascii_lowercase()))
+            }
+
+            fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                self.visit_str(value.as_str())
+            }
+
+            fn visit_bytes<E>(self, value: &[u8]) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(PythonHexId(hex::encode(value)))
+            }
+
+            fn visit_byte_buf<E>(self, value: Vec<u8>) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                self.visit_bytes(value.as_slice())
+            }
+        }
+
+        deserializer.deserialize_any(PythonHexIdVisitor)
+    }
+}
+
+struct PythonPeeringKey {
+    stamp: Option<Vec<u8>>,
+    value: Option<u32>,
+}
+
+impl PythonPeeringKey {
+    fn value(value: Option<u32>) -> Self {
+        Self { stamp: None, value }
+    }
+
+    fn into_parts(self) -> (Option<Vec<u8>>, Option<u32>) {
+        (self.stamp, self.value)
+    }
+}
+
+impl<'de> Deserialize<'de> for PythonPeeringKey {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct PythonPeeringKeyVisitor;
+
+        impl<'de> Visitor<'de> for PythonPeeringKeyVisitor {
+            type Value = PythonPeeringKey;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("a peering key value or [stamp, value] pair")
+            }
+
+            fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> {
+                Ok(PythonPeeringKey::value(u32::try_from(value).ok()))
+            }
+
+            fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E> {
+                Ok(PythonPeeringKey::value(u32::try_from(value.max(0)).ok()))
+            }
+
+            fn visit_f64<E>(self, value: f64) -> Result<Self::Value, E> {
+                let value = value.max(0.0).floor();
+                Ok(PythonPeeringKey::value(
+                    (value.is_finite() && value <= f64::from(u32::MAX)).then_some(value as u32),
+                ))
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E> {
+                let value = value.trim().parse::<f64>().ok().and_then(|value| {
+                    let value = value.max(0.0).floor();
+                    (value.is_finite() && value <= f64::from(u32::MAX)).then_some(value as u32)
+                });
+                Ok(PythonPeeringKey::value(value))
+            }
+
+            fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                self.visit_str(value.as_str())
+            }
+
+            fn visit_seq<A>(self, mut sequence: A) -> Result<Self::Value, A::Error>
+            where
+                A: serde::de::SeqAccess<'de>,
+            {
+                let stamp = sequence
+                    .next_element::<PythonPeeringKeyStamp>()?
+                    .and_then(PythonPeeringKeyStamp::into_bytes);
+                let value = sequence.next_element::<JsonValue>()?;
+                Ok(PythonPeeringKey {
+                    stamp,
+                    value: value.as_ref().and_then(parse_json_u32),
+                })
+            }
+        }
+
+        deserializer.deserialize_any(PythonPeeringKeyVisitor)
+    }
+}
+
+struct PythonPeeringKeyStamp(Option<Vec<u8>>);
+
+impl PythonPeeringKeyStamp {
+    fn into_bytes(self) -> Option<Vec<u8>> {
+        self.0
+    }
+}
+
+impl<'de> Deserialize<'de> for PythonPeeringKeyStamp {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct PythonPeeringKeyStampVisitor;
+
+        impl<'de> Visitor<'de> for PythonPeeringKeyStampVisitor {
+            type Value = PythonPeeringKeyStamp;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("a nil, string, byte array, or MessagePack binary stamp")
+            }
+
+            fn visit_unit<E>(self) -> Result<Self::Value, E> {
+                Ok(PythonPeeringKeyStamp(None))
+            }
+
+            fn visit_bytes<E>(self, value: &[u8]) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(PythonPeeringKeyStamp(Some(value.to_vec())))
+            }
+
+            fn visit_byte_buf<E>(self, value: Vec<u8>) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(PythonPeeringKeyStamp(Some(value)))
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(PythonPeeringKeyStamp(Some(value.as_bytes().to_vec())))
+            }
+
+            fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                self.visit_str(value.as_str())
+            }
+
+            fn visit_seq<A>(self, mut sequence: A) -> Result<Self::Value, A::Error>
+            where
+                A: serde::de::SeqAccess<'de>,
+            {
+                let mut bytes = Vec::new();
+                while let Some(byte) = sequence.next_element::<u8>()? {
+                    bytes.push(byte);
+                }
+                Ok(PythonPeeringKeyStamp(Some(bytes)))
+            }
+        }
+
+        deserializer.deserialize_any(PythonPeeringKeyStampVisitor)
     }
 }
 
@@ -868,11 +1127,27 @@ fn parse_peer_limit_bytes(
     alias: Option<&JsonValue>,
     primary_is_python_kb: bool,
 ) -> Option<u32> {
-    let value = primary.or(alias)?;
-    if primary_is_python_kb && primary.is_some() {
-        parse_json_f64(value).and_then(kilobytes_to_bytes)
+    if let Some(alias) = alias {
+        let alias_bytes = parse_json_u32(alias)?;
+        if primary_is_python_kb {
+            if let Some(primary) = primary {
+                let Some(primary_kb) = parse_json_f64(primary) else {
+                    return Some(alias_bytes);
+                };
+                if kilobytes_to_bytes(primary_kb) == Some(alias_bytes) {
+                    return Some(alias_bytes);
+                }
+                if primary_kb == 0.0 && alias_bytes > 0 {
+                    return parse_json_u32(primary);
+                }
+                return Some(alias_bytes);
+            }
+        }
+        Some(alias_bytes)
+    } else if primary_is_python_kb {
+        parse_json_f64(primary?).and_then(kilobytes_to_bytes)
     } else {
-        parse_json_u32(value)
+        parse_json_u32(primary?)
     }
 }
 
@@ -896,6 +1171,18 @@ fn parse_json_f64(value: &JsonValue) -> Option<f64> {
 fn kilobytes_to_bytes(value: f64) -> Option<u32> {
     let bytes = (value.max(0.0) * 1000.0).floor();
     (bytes.is_finite() && bytes <= f64::from(u32::MAX)).then_some(bytes as u32)
+}
+
+fn bytes_to_kilobytes(value: u32) -> f64 {
+    f64::from(value) / 1000.0
+}
+
+fn bytes_to_python_sync_limit_kilobytes(value: u32) -> u32 {
+    if value == 0 {
+        0
+    } else {
+        value.saturating_add(999) / 1000
+    }
 }
 
 fn default_true() -> bool {
@@ -926,8 +1213,8 @@ fn default_network_distance() -> u32 {
     1
 }
 
-fn default_acceptance_rate() -> f64 {
-    0.0
+fn default_peer_sync_strategy() -> u8 {
+    2
 }
 
 #[cfg(test)]
@@ -1004,6 +1291,138 @@ mod peer_record_serde_tests {
     }
 
     #[test]
+    fn peer_record_deserializes_python_destination_hash_alias() {
+        let record: PeerRecord = serde_json::from_value(json!({
+            "destination_hash": "peer-python-destination",
+            "last_heard": 1_700_001_007,
+            "sync_strategy": 2,
+            "peering_key": ["not-used-in-rust", 3],
+            "handled_ids": [],
+            "unhandled_ids": [],
+            "offered": 2,
+            "outgoing": 1,
+            "incoming": 4,
+            "peering_cost": 3,
+        }))
+        .expect("deserialize python serialized peer");
+
+        assert_eq!(record.peer, "peer-python-destination");
+        assert_eq!(record.last_seen, 1_700_001_007);
+        assert_eq!(record.first_seen, 1_700_001_007);
+        assert_eq!(record.seen_count, 1);
+        assert_eq!(record.offered, 2);
+        assert_eq!(record.outgoing, 1);
+        assert_eq!(record.incoming, 4);
+        assert_eq!(record.peering_cost, Some(3));
+        assert_eq!(
+            record.peering_key_stamp,
+            Some(b"not-used-in-rust".to_vec())
+        );
+        assert_eq!(record.peering_key_value, Some(3));
+        assert_eq!(record.sync_strategy, 2);
+    }
+
+    #[test]
+    fn peer_record_deserializes_python_msgpack_binary_peer_ids() {
+        fn key(value: &str) -> rmpv::Value {
+            rmpv::Value::String(value.into())
+        }
+
+        let destination_hash = (0x10_u8..0x20).collect::<Vec<_>>();
+        let peering_key_stamp = vec![0xab; 32];
+        let handled_id = (0x20_u8..0x40).collect::<Vec<_>>();
+        let unhandled_id = (0x40_u8..0x60).collect::<Vec<_>>();
+        let payload = rmpv::Value::Map(vec![
+            (key("destination_hash"), rmpv::Value::Binary(destination_hash.clone())),
+            (key("last_heard"), rmpv::Value::from(1_700_001_008_i64)),
+            (key("sync_strategy"), rmpv::Value::from(2_u8)),
+            (
+                key("peering_key"),
+                rmpv::Value::Array(vec![
+                    rmpv::Value::Binary(peering_key_stamp.clone()),
+                    rmpv::Value::from(3_u8),
+                ]),
+            ),
+            (key("handled_ids"), rmpv::Value::Array(vec![rmpv::Value::Binary(handled_id.clone())])),
+            (
+                key("unhandled_ids"),
+                rmpv::Value::Array(vec![rmpv::Value::Binary(unhandled_id.clone())]),
+            ),
+            (key("offered"), rmpv::Value::from(2_u8)),
+            (key("outgoing"), rmpv::Value::from(1_u8)),
+            (key("incoming"), rmpv::Value::from(4_u8)),
+            (key("peering_cost"), rmpv::Value::from(3_u8)),
+        ]);
+        let encoded = rmp_serde::to_vec(&payload).expect("encode python peer record");
+        let record: PeerRecord =
+            rmp_serde::from_slice(encoded.as_slice()).expect("deserialize python binary peer");
+
+        assert_eq!(record.peer, hex::encode(destination_hash));
+        assert_eq!(record.restored_handled_ids, vec![hex::encode(handled_id)]);
+        assert_eq!(record.restored_unhandled_ids, vec![hex::encode(unhandled_id)]);
+        assert_eq!(record.last_seen, 1_700_001_008);
+        assert_eq!(record.peering_key_stamp, Some(peering_key_stamp.clone()));
+        assert_eq!(record.peering_key_value, Some(3));
+
+        let reencoded = rmp_serde::to_vec(&record).expect("serialize python binary peer");
+        let reencoded: rmpv::Value =
+            rmp_serde::from_slice(reencoded.as_slice()).expect("decode serialized peer");
+        let rmpv::Value::Map(entries) = reencoded else {
+            panic!("serialized peer should be a map");
+        };
+        let peering_key = entries
+            .iter()
+            .find_map(|(key, value)| {
+                (key.as_str() == Some("peering_key")).then_some(value)
+            })
+            .expect("serialized peering key");
+        let rmpv::Value::Array(items) = peering_key else {
+            panic!("serialized peering key should be a pair");
+        };
+        assert_eq!(items.first(), Some(&rmpv::Value::Binary(peering_key_stamp)));
+        assert_eq!(items.get(1).and_then(rmpv::Value::as_u64), Some(3));
+
+        let peer_hash = (0xa0_u8..0xb0).collect::<Vec<_>>();
+        let peer_payload = rmpv::Value::Map(vec![
+            (key("peer"), rmpv::Value::Binary(peer_hash.clone())),
+            (key("last_heard"), rmpv::Value::from(1_700_001_009_i64)),
+            (key("handled_ids"), rmpv::Value::Array(Vec::new())),
+            (key("unhandled_ids"), rmpv::Value::Array(Vec::new())),
+        ]);
+        let encoded = rmp_serde::to_vec(&peer_payload).expect("encode binary peer record");
+        let record: PeerRecord =
+            rmp_serde::from_slice(encoded.as_slice()).expect("deserialize binary peer field");
+        assert_eq!(record.peer, hex::encode(peer_hash));
+    }
+
+    #[test]
+    fn peer_record_derives_python_acceptance_rate_when_alias_is_absent() {
+        let record: PeerRecord = serde_json::from_value(json!({
+            "destination_hash": "peer-python-acceptance",
+            "last_heard": 1_700_001_008,
+            "offered": 4,
+            "outgoing": 1,
+            "handled_ids": [],
+            "unhandled_ids": [],
+        }))
+        .expect("deserialize python serialized peer");
+
+        assert_eq!(record.acceptance_rate, 0.25);
+
+        let duplicate_response_record: PeerRecord = serde_json::from_value(json!({
+            "destination_hash": "peer-python-duplicate-acceptance",
+            "last_heard": 1_700_001_009,
+            "offered": 1,
+            "outgoing": 2,
+            "handled_ids": [],
+            "unhandled_ids": [],
+        }))
+        .expect("deserialize python serialized peer with duplicate-response counters");
+
+        assert_eq!(duplicate_response_record.acceptance_rate, 2.0);
+    }
+
+    #[test]
     fn peer_record_deserializes_python_serialized_kilobyte_limits_as_runtime_bytes() {
         let record: PeerRecord = serde_json::from_value(json!({
             "peer": "peer-python-serialized-limits",
@@ -1016,15 +1435,15 @@ mod peer_record_serde_tests {
         assert_eq!(record.propagation_transfer_limit, Some(80));
         assert_eq!(record.propagation_sync_limit, Some(1_000));
 
-        let fallback: PeerRecord = serde_json::from_value(json!({
-            "peer": "peer-python-serialized-limit-fallback",
+        let transfer_only: PeerRecord = serde_json::from_value(json!({
+            "peer": "peer-python-serialized-transfer-only",
             "last_seen": 1_700_001_004,
             "propagation_transfer_limit": 0.152,
         }))
-        .expect("deserialize python serialized peer with sync fallback");
+        .expect("deserialize python serialized peer with transfer limit only");
 
-        assert_eq!(fallback.propagation_transfer_limit, Some(152));
-        assert_eq!(fallback.propagation_sync_limit, Some(152));
+        assert_eq!(transfer_only.propagation_transfer_limit, Some(152));
+        assert_eq!(transfer_only.propagation_sync_limit, Some(152));
     }
 
     #[test]
@@ -1071,14 +1490,20 @@ mod peer_record_serde_tests {
             first_seen: 1_700_000_900,
             seen_count: 4,
             peering_timebase: 1_700_000_950,
+            sync_strategy: 2,
             propagation_transfer_limit: Some(333),
             propagation_sync_limit: Some(444),
             propagation_stamp_cost: Some(7),
             propagation_stamp_cost_flexibility: Some(2),
             peering_cost: Some(9),
+            peering_key_stamp: Some(b"python-stamp".to_vec()),
+            peering_key_value: Some(9),
+            restored_handled_ids: vec!["aa".repeat(32), "bb".repeat(32)],
+            restored_unhandled_ids: vec!["cc".repeat(32)],
         };
 
-        let value = serde_json::to_value(record).expect("serialize peer record");
+        let value = serde_json::to_value(&record).expect("serialize peer record");
+        assert_eq!(value["destination_hash"].as_str(), Some("peer-python-status"));
         assert_eq!(value["last_seen"].as_i64(), Some(1_700_001_005));
         assert_eq!(value["last_heard"].as_i64(), Some(1_700_001_005));
         assert_eq!(value["sync_transfer_rate"].as_f64(), Some(2048.0));
@@ -1086,14 +1511,127 @@ mod peer_record_serde_tests {
         assert_eq!(value["offered"].as_u64(), Some(7));
         assert_eq!(value["outgoing"].as_u64(), Some(5));
         assert_eq!(value["incoming"].as_u64(), Some(3));
-        assert_eq!(value["propagation_transfer_limit"].as_u64(), Some(333));
+        assert_eq!(value["propagation_transfer_limit"].as_f64(), Some(0.333));
         assert_eq!(value["transfer_limit"].as_u64(), Some(333));
-        assert_eq!(value["propagation_sync_limit"].as_u64(), Some(444));
+        assert_eq!(value["propagation_sync_limit"].as_u64(), Some(1));
         assert_eq!(value["sync_limit"].as_u64(), Some(444));
         assert_eq!(value["propagation_stamp_cost"].as_u64(), Some(7));
         assert_eq!(value["target_stamp_cost"].as_u64(), Some(7));
         assert_eq!(value["propagation_stamp_cost_flexibility"].as_u64(), Some(2));
         assert_eq!(value["stamp_cost_flexibility"].as_u64(), Some(2));
+        assert_eq!(
+            value["peering_key"][0].as_array().map(|bytes| {
+                bytes
+                    .iter()
+                    .map(|byte| byte.as_u64().expect("stamp byte") as u8)
+                    .collect::<Vec<_>>()
+            }),
+            Some(b"python-stamp".to_vec())
+        );
+        assert_eq!(value["peering_key"][1].as_u64(), Some(9));
+        assert_eq!(
+            value["handled_ids"].as_array().expect("handled ids"),
+            &[json!("aa".repeat(32)), json!("bb".repeat(32))]
+        );
+        assert_eq!(
+            value["unhandled_ids"].as_array().expect("unhandled ids"),
+            &[json!("cc".repeat(32))]
+        );
+
+        let without_stamp = PeerRecord {
+            peering_key_stamp: None,
+            ..record
+        };
+        let value = serde_json::to_value(without_stamp).expect("serialize peer without stamp");
+        assert!(value.get("peering_key").is_none());
+    }
+
+    #[test]
+    fn peer_record_serializes_python_limit_fields_as_kilobytes_with_byte_aliases() {
+        let record = PeerRecord {
+            peer: "peer-python-limits".to_string(),
+            last_seen: 1_700_001_005,
+            capabilities: vec!["propagation".to_string()],
+            name: None,
+            name_source: None,
+            peer_type: Some("auto".to_string()),
+            alive: true,
+            last_sync_attempt: 1_700_001_000,
+            next_sync_attempt: 1_700_001_720,
+            sync_backoff: 720,
+            network_distance: 3,
+            offered: 0,
+            outgoing: 0,
+            incoming: 0,
+            rx_bytes: 0,
+            tx_bytes: 0,
+            sync_transfer_rate: 0.0,
+            acceptance_rate: 0.0,
+            first_seen: 1_700_000_900,
+            seen_count: 4,
+            peering_timebase: 1_700_000_950,
+            sync_strategy: 2,
+            propagation_transfer_limit: Some(333),
+            propagation_sync_limit: Some(444),
+            propagation_stamp_cost: Some(7),
+            propagation_stamp_cost_flexibility: Some(2),
+            peering_cost: Some(9),
+            peering_key_stamp: None,
+            peering_key_value: None,
+            restored_handled_ids: Vec::new(),
+            restored_unhandled_ids: Vec::new(),
+        };
+
+        let value = serde_json::to_value(record).expect("serialize peer record");
+        assert_eq!(value["propagation_transfer_limit"].as_f64(), Some(0.333));
+        assert_eq!(value["transfer_limit"].as_u64(), Some(333));
+        assert_eq!(value["propagation_sync_limit"].as_u64(), Some(1));
+        assert_eq!(value["sync_limit"].as_u64(), Some(444));
+    }
+
+    #[test]
+    fn peer_record_serializes_python_sync_limit_as_integer_kilobytes() {
+        let record = PeerRecord {
+            peer: "peer-python-sync-limit".to_string(),
+            last_seen: 1_700_001_005,
+            capabilities: vec!["propagation".to_string()],
+            name: None,
+            name_source: None,
+            peer_type: Some("auto".to_string()),
+            alive: true,
+            last_sync_attempt: 1_700_001_000,
+            next_sync_attempt: 1_700_001_720,
+            sync_backoff: 720,
+            network_distance: 3,
+            offered: 0,
+            outgoing: 0,
+            incoming: 0,
+            rx_bytes: 0,
+            tx_bytes: 0,
+            sync_transfer_rate: 0.0,
+            acceptance_rate: 0.0,
+            first_seen: 1_700_000_900,
+            seen_count: 4,
+            peering_timebase: 1_700_000_950,
+            sync_strategy: 2,
+            propagation_transfer_limit: Some(333),
+            propagation_sync_limit: Some(444),
+            propagation_stamp_cost: Some(7),
+            propagation_stamp_cost_flexibility: Some(2),
+            peering_cost: Some(9),
+            peering_key_stamp: None,
+            peering_key_value: None,
+            restored_handled_ids: Vec::new(),
+            restored_unhandled_ids: Vec::new(),
+        };
+
+        let value = serde_json::to_value(&record).expect("serialize peer record");
+        assert_eq!(value["propagation_sync_limit"].as_u64(), Some(1));
+        assert_eq!(value["sync_limit"].as_u64(), Some(444));
+
+        let roundtrip: PeerRecord =
+            serde_json::from_value(value).expect("roundtrip serialized peer record");
+        assert_eq!(roundtrip.propagation_sync_limit, record.propagation_sync_limit);
     }
 
     #[test]
@@ -1120,11 +1658,16 @@ mod peer_record_serde_tests {
             first_seen: 1_700_000_901,
             seen_count: 5,
             peering_timebase: 1_700_000_951,
+            sync_strategy: 2,
             propagation_transfer_limit: Some(555),
             propagation_sync_limit: Some(666),
             propagation_stamp_cost: Some(8),
             propagation_stamp_cost_flexibility: Some(3),
             peering_cost: Some(10),
+            peering_key_stamp: Some(b"roundtrip-stamp".to_vec()),
+            peering_key_value: Some(10),
+            restored_handled_ids: vec!["dd".repeat(32)],
+            restored_unhandled_ids: vec!["ee".repeat(32), "ff".repeat(32)],
         };
 
         let value = serde_json::to_value(&record).expect("serialize peer record");

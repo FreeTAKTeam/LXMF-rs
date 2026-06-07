@@ -73,8 +73,8 @@
     },
     {
       "path": "docs/contracts/native-embedded-interop-profile-v1.md",
-      "bytes": 3391,
-      "sha256": "b1706a6f3493d217d1258249ae4902b1f6531774777270f54477f5c5b5b5803f"
+      "bytes": 3701,
+      "sha256": "2affb5b8e9f8c444ca1bb7cd6aedf6a7898d8671bb7781568261322c3b05aa8c"
     },
     {
       "path": "docs/contracts/native-embedded-lab-profile-v1.md",
@@ -113,8 +113,8 @@
     },
     {
       "path": "docs/contracts/rpc-contract.md",
-      "bytes": 12332,
-      "sha256": "1e021a07457f534d7c244c1068ab2b6427a676dae5c255da025dc19f15106375"
+      "bytes": 13621,
+      "sha256": "90ec5677934d15e98db072d2934ee7c8de3de80152ce6e40eccd5ebece0ea3e2"
     },
     {
       "path": "docs/contracts/schema-driven-clients.md",

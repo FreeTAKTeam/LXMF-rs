@@ -427,6 +427,39 @@ fn propagation_fetch_transfer_limit_accounts_for_stripped_stamp_bytes() {
 }
 
 #[test]
+fn propagation_destination_fetch_deduplicates_repeated_wanted_ids_like_python() {
+    use sha2::{Digest, Sha256};
+
+    let daemon = RpcDaemon::test_instance();
+    let destination = [0x7a_u8; 16];
+    let mut payload = destination.to_vec();
+    payload.extend_from_slice(b" repeated wanted payload");
+    let transient_id = Sha256::digest(&payload).to_vec();
+
+    daemon
+        .ingest_propagation_payload_bytes_with_aliases(
+            payload.as_slice(),
+            hex::encode(&transient_id).as_str(),
+            &[],
+        )
+        .expect("ingest propagation payload");
+
+    let fetched = daemon.fetch_propagation_payloads_for_destination(
+        &destination,
+        &[transient_id.clone(), transient_id],
+        None,
+    );
+    assert_eq!(fetched, vec![payload]);
+
+    let status = daemon
+        .handle_rpc(RpcRequest { id: 82, method: "propagation_status".to_string(), params: None })
+        .expect("propagation status")
+        .result
+        .expect("propagation status result");
+    assert_eq!(status["propagation"]["client_propagation_messages_served"].as_u64(), Some(1));
+}
+
+#[test]
 fn propagation_destination_fetch_combines_store_and_memory_payloads() {
     use sha2::{Digest, Sha256};
 

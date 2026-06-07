@@ -23,6 +23,7 @@ const HEADER_MINSIZE: usize = 2 + 1 + ADDRESS_HASH_SIZE;
 const HEADER_MAXSIZE: usize = 2 + 1 + (ADDRESS_HASH_SIZE * 2);
 const IFAC_MIN_SIZE: usize = 1;
 const RETICULUM_MTU: usize = PACKET_MDU + HEADER_MAXSIZE + IFAC_MIN_SIZE;
+pub(crate) const DEFAULT_RESOURCE_INTERFACE_MTU: usize = RETICULUM_MTU;
 pub const LINK_PACKET_MDU: usize =
     ((RETICULUM_MTU - IFAC_MIN_SIZE - HEADER_MINSIZE - FERNET_OVERHEAD_SIZE)
         / FERNET_MAX_PADDING_SIZE)
@@ -44,6 +45,36 @@ const MAX_INBOUND_RESOURCE_TRANSFER_SIZE: u64 = AUTO_COMPRESS_MAX_SIZE as u64;
 pub const DEFAULT_RESOURCE_RETRY_INTERVAL_SECS: u64 = 2;
 pub const DEFAULT_RESOURCE_MAX_RETRIES: u8 = 16;
 const DEFAULT_RESOURCE_MAX_ADV_RETRIES: u8 = 4;
+
+pub(crate) fn resource_packet_mdu_for_mtu(interface_mtu: usize) -> Result<usize, RnsError> {
+    if interface_mtu >= DEFAULT_RESOURCE_INTERFACE_MTU {
+        return Ok(PACKET_MDU);
+    }
+    interface_mtu
+        .checked_sub(HEADER_MAXSIZE + IFAC_MIN_SIZE)
+        .filter(|mdu| *mdu > 0)
+        .map(|mdu| mdu.min(PACKET_MDU))
+        .ok_or(RnsError::InvalidArgument)
+}
+
+fn resource_hashmap_segment_len_for_mtu(interface_mtu: usize) -> Result<usize, RnsError> {
+    let encrypted_control_mdu = if interface_mtu >= DEFAULT_RESOURCE_INTERFACE_MTU {
+        LINK_PACKET_MDU
+    } else {
+        let payload_capacity = interface_mtu
+            .checked_sub(IFAC_MIN_SIZE + HEADER_MINSIZE + FERNET_OVERHEAD_SIZE)
+            .ok_or(RnsError::InvalidArgument)?;
+        (payload_capacity / FERNET_MAX_PADDING_SIZE)
+            .checked_mul(FERNET_MAX_PADDING_SIZE)
+            .and_then(|value| value.checked_sub(1))
+            .ok_or(RnsError::InvalidArgument)?
+    };
+    encrypted_control_mdu
+        .checked_sub(ADVERTISEMENT_OVERHEAD)
+        .map(|available| available / MAPHASH_LEN)
+        .filter(|entries| *entries > 0)
+        .ok_or(RnsError::InvalidArgument)
+}
 
 /// Exponentially weighted moving average: alpha = 7/8.
 pub(crate) fn ewma(old: Duration, sample: Duration) -> Duration {
@@ -351,6 +382,7 @@ impl ResourceProof {
 
 include!("resource/sender.rs");
 include!("resource/receiver.rs");
+include!("resource/manager_start.rs");
 include!("resource/manager.rs");
 include!("resource/utils.rs");
 include!("resource/tests.rs");
