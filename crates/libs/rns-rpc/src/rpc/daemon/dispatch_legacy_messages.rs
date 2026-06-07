@@ -249,6 +249,124 @@ impl RpcDaemon {
         }
     }
 
+    fn local_peer_offer_error_response(
+        &self,
+        request_id: u64,
+        record: &PeerRecord,
+        timestamp: i64,
+        reason: &str,
+        offer_response: u8,
+        limit_bytes: (Option<usize>, Option<usize>),
+    ) -> RpcResponse {
+        let (transfer_limit_bytes, sync_limit_bytes) = limit_bytes;
+        let peer = self
+            .peers
+            .lock()
+            .expect("peers mutex poisoned")
+            .get(record.peer.as_str())
+            .cloned()
+            .unwrap_or_else(|| record.clone());
+        let (outgoing, incoming, offered, unhandled, offered_bytes, unhandled_bytes) =
+            self.peer_message_stats(peer.peer.as_str()).unwrap_or((0, 0, 0, 0, 0, 0));
+        let acceptance_rate =
+            peer_acceptance_rate_for_reporting(peer.acceptance_rate, outgoing, offered, peer.alive);
+        let handled_ids =
+            self.store.list_peer_handled_propagation_ids(peer.peer.as_str()).unwrap_or_default();
+        let unhandled_ids =
+            self.store.list_peer_unhandled_propagation_ids(peer.peer.as_str()).unwrap_or_default();
+        let messages = json!({
+            "offered": offered,
+            "outgoing": outgoing,
+            "incoming": incoming,
+            "unhandled": unhandled,
+            "offered_bytes": offered_bytes,
+            "unhandled_bytes": unhandled_bytes,
+            "handled_ids": handled_ids,
+            "unhandled_ids": unhandled_ids,
+        });
+        let peering_key = peer_peering_key_value(&peer, self.identity_hash.as_str());
+        let peering_key_status = peer_peering_key_status(&peer, peering_key);
+        let peer_type_value = peer.peer_type.clone();
+        let peer_status_type =
+            if self.is_static_peer(peer.peer.as_str()) { "static" } else { "discovered" };
+        let propagation_sync = json!({
+            "synced": false,
+            "postponed": false,
+            "reason": reason,
+            "offer_response": offer_response,
+            "handled": 0,
+            "transferred": 0,
+            "skipped": 0,
+            "rejected": 0,
+            "offered": 0,
+            "bytes": 0,
+            "offered_bytes": 0,
+            "rejected_bytes": 0,
+            "remaining": unhandled,
+            "remaining_bytes": unhandled_bytes,
+            "handled_ids": [],
+            "transferred_ids": [],
+            "skipped_ids": [],
+            "rejected_ids": [],
+            "transfer_limited": 0,
+            "transfer_limited_bytes": 0,
+            "transfer_limited_ids": [],
+            "messages": [],
+            "peering_key": peering_key,
+            "peering_key_status": peering_key_status,
+            "transfer_limit": transfer_limit_bytes,
+            "sync_limit": sync_limit_bytes,
+            "target_stamp_cost": peer.propagation_stamp_cost,
+            "stamp_cost_flexibility": peer.propagation_stamp_cost_flexibility,
+        });
+        let payload = json!({
+            "peer": &peer.peer,
+            "peer_type": peer_type_value,
+            "type": peer_status_type,
+            "timestamp": timestamp,
+            "name": &peer.name,
+            "name_source": &peer.name_source,
+            "last_heard": peer.last_seen,
+            "first_seen": peer.first_seen,
+            "seen_count": peer.seen_count,
+            "state": 0,
+            "sync_strategy": peer.sync_strategy,
+            "ler": 0,
+            "peering_timebase": peer.peering_timebase,
+            "network_distance": peer.network_distance,
+            "rx_bytes": peer.rx_bytes,
+            "tx_bytes": peer.tx_bytes,
+            "alive": peer.alive,
+            "acceptance_rate": acceptance_rate,
+            "last_sync_attempt": peer.last_sync_attempt,
+            "next_sync_attempt": peer.next_sync_attempt,
+            "sync_backoff": peer.sync_backoff,
+            "sync_transfer_rate": peer.sync_transfer_rate,
+            "str": peer.sync_transfer_rate as u64,
+            "synced": false,
+            "reason": reason,
+            "offer_response": offer_response,
+            "propagation_transfer_limit": peer.propagation_transfer_limit,
+            "propagation_sync_limit": peer.propagation_sync_limit,
+            "propagation_stamp_cost": peer.propagation_stamp_cost,
+            "propagation_stamp_cost_flexibility": peer.propagation_stamp_cost_flexibility,
+            "peering_key": peering_key,
+            "peering_key_status": peering_key_status,
+            "transfer_limit": transfer_limit_bytes,
+            "sync_limit": sync_limit_bytes,
+            "target_stamp_cost": peer.propagation_stamp_cost,
+            "stamp_cost_flexibility": peer.propagation_stamp_cost_flexibility,
+            "offered": offered,
+            "outgoing": outgoing,
+            "incoming": incoming,
+            "messages": messages,
+            "propagation": propagation_sync,
+        });
+        self.publish_event(RpcEvent { event_type: "peer_sync".into(), payload: payload.clone() });
+
+        RpcResponse { id: request_id, result: Some(payload), error: None }
+    }
+
     pub(super) fn handle_rpc_legacy_messages(
         &self,
         request: RpcRequest,
@@ -598,6 +716,38 @@ impl RpcDaemon {
                     let record =
                         existing_peer.as_ref().expect("offer responses require an existing peer");
                     match offer_error {
+                        LXMF_PEER_ERROR_NO_IDENTITY => {
+                            self.restore_peer_record_queue_marks(record)?;
+                            let record_transfer_limit_bytes =
+                                record.propagation_transfer_limit.map(|limit| limit as usize);
+                            let transfer_limit_bytes =
+                                match (record_transfer_limit_bytes, requested_transfer_limit_bytes)
+                                {
+                                    (Some(record_limit), Some(requested_limit)) => {
+                                        Some(record_limit.min(requested_limit))
+                                    }
+                                    (Some(record_limit), None) => Some(record_limit),
+                                    (None, Some(requested_limit)) => Some(requested_limit),
+                                    (None, None) => None,
+                                };
+                            let sync_limit_bytes =
+                                record.propagation_sync_limit.map(|limit| limit as usize);
+                            {
+                                let mut peers = self.peers.lock().expect("peers mutex poisoned");
+                                if let Some(peer) = peers.get_mut(record.peer.as_str()) {
+                                    peer.last_sync_attempt = timestamp;
+                                    peer.next_sync_attempt = 0;
+                                }
+                            }
+                            return Ok(self.local_peer_offer_error_response(
+                                request.id,
+                                record,
+                                timestamp,
+                                "identity_required",
+                                offer_error,
+                                (transfer_limit_bytes, sync_limit_bytes),
+                            ));
+                        }
                         LXMF_PEER_ERROR_NO_ACCESS => {
                             let cleanup = self.unpeer_local_state(record.peer.as_str())?;
                             let offered = cleanup.messages["offered"].as_u64().unwrap_or(0);
@@ -2090,6 +2240,7 @@ pub(super) fn peer_sync_backoff_active(timestamp: i64, next_sync_attempt: i64) -
     next_sync_attempt > 0 && timestamp <= next_sync_attempt
 }
 
+const LXMF_PEER_ERROR_NO_IDENTITY: u8 = 0xf0;
 const LXMF_PEER_ERROR_NO_ACCESS: u8 = 0xf1;
 const LXMF_PEER_ERROR_THROTTLED: u8 = 0xf6;
 const PN_STAMP_THROTTLE_SECS: i64 = 180;

@@ -6964,6 +6964,111 @@ fn peer_sync_throttled_offer_response_preserves_peer_queue_like_python() {
 }
 
 #[test]
+fn peer_sync_no_identity_offer_response_preserves_peer_for_immediate_retry_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    daemon
+        .handle_rpc(rpc_request(52, "peer_sync", json!({ "peer": "peer-local-needs-id" })))
+        .expect("initial peer sync");
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let peer = peers.get_mut("peer-local-needs-id").expect("peer record");
+        peer.alive = true;
+        peer.sync_backoff = 0;
+        peer.next_sync_attempt = 0;
+        peer.acceptance_rate = 0.8;
+    }
+    let pending = PropagationEntryRecord {
+        transient_id: "ae".repeat(32),
+        destination: "12".repeat(16),
+        payload_hex: "12".repeat(24),
+        received_at: 1_700_000_609,
+        size_bytes: 24,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&pending).expect("store propagation entry");
+    daemon
+        .store
+        .mark_peer_unhandled_propagation("peer-local-needs-id", pending.transient_id.as_str())
+        .expect("mark unhandled");
+    daemon.event_queue.lock().expect("event_queue mutex poisoned").clear();
+
+    let result = daemon
+        .handle_rpc(rpc_request(
+            55,
+            "peer_sync",
+            json!({
+                "peer": "peer-local-needs-id",
+                "wanted_ids": 0xf0,
+            }),
+        ))
+        .expect("identity-required response should preserve peer for retry")
+        .result
+        .expect("peer sync result");
+
+    assert_eq!(result["peer"].as_str(), Some("peer-local-needs-id"));
+    assert_eq!(result["synced"].as_bool(), Some(false));
+    assert_eq!(result["reason"].as_str(), Some("identity_required"));
+    assert_eq!(result["offer_response"].as_u64(), Some(0xf0));
+    assert_eq!(result["alive"].as_bool(), Some(true));
+    assert_eq!(result["sync_backoff"].as_u64(), Some(0));
+    assert_eq!(result["next_sync_attempt"].as_i64(), Some(0));
+    assert_eq!(result["acceptance_rate"].as_f64(), Some(0.8));
+    assert_eq!(result["propagation"]["handled"].as_u64(), Some(0));
+    assert_eq!(result["propagation"]["postponed"].as_bool(), Some(false));
+    assert_eq!(
+        daemon
+            .store
+            .list_peer_unhandled_propagation("peer-local-needs-id")
+            .expect("pending propagation"),
+        vec![pending.clone()]
+    );
+    assert!(
+        daemon
+            .store
+            .list_peer_handled_propagation_ids("peer-local-needs-id")
+            .expect("handled ids")
+            .is_empty(),
+        "identity-required response should not accept offered messages"
+    );
+
+    let peers = daemon
+        .handle_rpc(RpcRequest { id: 56, method: "list_peers".to_string(), params: None })
+        .expect("list peers")
+        .result
+        .expect("list peers result");
+    let row = peers["peers"]
+        .as_array()
+        .expect("peer rows")
+        .iter()
+        .find(|row| row["peer"].as_str() == Some("peer-local-needs-id"))
+        .expect("peer row");
+    let last_sync_attempt = row["last_sync_attempt"].as_i64().expect("last sync attempt");
+    assert!(last_sync_attempt > 0);
+    assert_eq!(row["alive"].as_bool(), Some(true));
+    assert_eq!(row["sync_backoff"].as_u64(), Some(0));
+    assert_eq!(row["next_sync_attempt"].as_i64(), Some(0));
+
+    let events = daemon.event_queue.lock().expect("event_queue mutex poisoned");
+    assert!(
+        events.iter().all(|event| event.event_type != "peer_unpeer"),
+        "identity-required response should not break peering"
+    );
+    let event = events
+        .iter()
+        .rev()
+        .find(|event| event.event_type == "peer_sync")
+        .cloned()
+        .expect("identity-required peer sync event");
+    assert_eq!(event.payload["peer"].as_str(), Some("peer-local-needs-id"));
+    assert_eq!(event.payload["synced"].as_bool(), Some(false));
+    assert_eq!(event.payload["reason"].as_str(), Some("identity_required"));
+    assert_eq!(event.payload["offer_response"].as_u64(), Some(0xf0));
+    assert_eq!(event.payload["alive"].as_bool(), Some(true));
+    assert_eq!(event.payload["sync_backoff"].as_u64(), Some(0));
+    assert_eq!(event.payload["next_sync_attempt"].as_i64(), Some(0));
+}
+
+#[test]
 fn peer_sync_rejects_transfer_limited_wanted_ids_without_mutating_queue() {
     let daemon = RpcDaemon::test_instance();
     daemon

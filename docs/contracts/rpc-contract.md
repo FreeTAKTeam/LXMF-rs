@@ -136,7 +136,9 @@ All methods below are required for full CLI feature coverage.
   A non-empty list transfers only the supplied IDs and handles the rest. Each
   supplied wanted ID must be a 32-byte transient ID encoded as 64 hex
   characters; malformed wanted IDs are rejected before peer queue state is
-  mutated. Numeric Python LXMPeer error response `0xf1` (`ERROR_NO_ACCESS`)
+  mutated. Numeric Python LXMPeer error response `0xf0` (`ERROR_NO_IDENTITY`)
+  preserves the peer and queued offers for an immediate retry without generic
+  backoff or unpeer cleanup. Numeric response `0xf1` (`ERROR_NO_ACCESS`)
   breaks local peering, clears peer propagation queue marks, and returns a
   `peer_unpeer`-shaped result with `reason: "access_denied"`. Numeric response
   `0xf6` (`ERROR_THROTTLED`) preserves the peer and queued offers, postpones
