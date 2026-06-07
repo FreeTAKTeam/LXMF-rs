@@ -85,10 +85,21 @@ pub(super) async fn handle_link_resource_packet<'a>(
         Some(packet) => packet,
         None => return true,
     };
-    let mut responses = std::mem::take(&mut handler.resource_response_packets);
-    handler.resource_manager.handle_packet_into(&packet_for_manager, &mut link, &mut responses);
-    let events = handler.resource_manager.drain_events();
     let response_iface = link.ingress_iface().unwrap_or(iface);
+    let interface_mtu = handler
+        .iface_manager
+        .lock()
+        .await
+        .mtu(&response_iface)
+        .unwrap_or(crate::resource::DEFAULT_RESOURCE_INTERFACE_MTU);
+    let mut responses = std::mem::take(&mut handler.resource_response_packets);
+    handler.resource_manager.handle_packet_into_with_mtu(
+        &packet_for_manager,
+        &mut link,
+        &mut responses,
+        interface_mtu,
+    );
+    let events = handler.resource_manager.drain_events();
     if diag::enabled() && !responses.is_empty() {
         log::debug!(
             "[resource-diag] wire_resource_responses node={} link={} ctx={:02x} responses={} iface={}",

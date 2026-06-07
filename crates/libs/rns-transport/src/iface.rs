@@ -169,6 +169,10 @@ impl InterfaceChannel {
 
 pub trait Interface {
     fn mtu() -> usize;
+
+    fn configured_mtu(&self) -> usize {
+        Self::mtu()
+    }
 }
 
 struct LocalInterface {
@@ -176,6 +180,7 @@ struct LocalInterface {
     full_hash: Hash,
     tx_send: InterfaceTxSender,
     stop: CancellationToken,
+    mtu: usize,
     role: IfaceRole,
     mode: InterfaceMode,
     outgoing: bool,
@@ -230,6 +235,16 @@ impl InterfaceManager {
         role: IfaceRole,
         mode: InterfaceMode,
     ) -> InterfaceChannel {
+        self.new_channel_with_role_mode_mtu(tx_cap, role, mode, DEFAULT_IFACE_MTU)
+    }
+
+    pub fn new_channel_with_role_mode_mtu(
+        &mut self,
+        tx_cap: usize,
+        role: IfaceRole,
+        mode: InterfaceMode,
+        mtu: usize,
+    ) -> InterfaceChannel {
         self.counter += 1;
 
         let counter_bytes = self.counter.to_le_bytes();
@@ -247,6 +262,7 @@ impl InterfaceManager {
             full_hash,
             tx_send,
             stop: stop.clone(),
+            mtu,
             role,
             mode,
             outgoing: true,
@@ -277,8 +293,9 @@ impl InterfaceManager {
         role: IfaceRole,
         mode: InterfaceMode,
     ) -> InterfaceContext<T> {
+        let mtu = inner.configured_mtu();
         let channel =
-            self.new_channel_with_role_and_mode(DEFAULT_IFACE_TX_QUEUE_CAPACITY, role, mode);
+            self.new_channel_with_role_mode_mtu(DEFAULT_IFACE_TX_QUEUE_CAPACITY, role, mode, mtu);
         let inner = Arc::new(Mutex::new(inner));
         InterfaceContext::<T> { inner: inner.clone(), channel, cancel: self.cancel.clone() }
     }
@@ -336,6 +353,10 @@ impl InterfaceManager {
 
     pub fn outgoing(&self, address: &AddressHash) -> Option<bool> {
         self.ifaces.iter().find(|i| i.address == *address).map(|i| i.outgoing)
+    }
+
+    pub fn mtu(&self, address: &AddressHash) -> Option<usize> {
+        self.ifaces.iter().find(|i| i.address == *address).map(|i| i.mtu)
     }
 
     pub fn announce_pacing(&self, address: &AddressHash) -> Option<(u64, u64)> {
@@ -403,6 +424,7 @@ impl InterfaceManager {
     ) -> Option<AddressHash> {
         let host_iface = self.ifaces.iter().find(|i| i.address == host)?;
         let host_tx = host_iface.tx_send.clone();
+        let mtu = host_iface.mtu;
         let mode = host_iface.mode;
 
         // Virtual iface gets its own CancellationToken so it can be
@@ -429,6 +451,7 @@ impl InterfaceManager {
             full_hash,
             tx_send: host_tx,
             stop,
+            mtu,
             role,
             mode,
             outgoing: host_iface.outgoing,

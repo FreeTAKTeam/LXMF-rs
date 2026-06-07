@@ -1191,6 +1191,10 @@ impl Interface for LoraInterface {
     fn mtu() -> usize {
         220
     }
+
+    fn configured_mtu(&self) -> usize {
+        usize::from(self.config.max_payload_bytes)
+    }
 }
 
 async fn record_probe_status_commands_with_startup_timeout(

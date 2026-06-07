@@ -301,6 +301,10 @@ impl Interface for SerialInterface {
     fn mtu() -> usize {
         2048
     }
+
+    fn configured_mtu(&self) -> usize {
+        self.mtu
+    }
 }
 
 async fn run_serial_stream<IO>(
