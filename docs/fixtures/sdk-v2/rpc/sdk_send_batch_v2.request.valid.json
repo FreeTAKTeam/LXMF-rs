@@ -1,0 +1,25 @@
+{
+  "id": 22,
+  "method": "sdk_send_batch_v2",
+  "params": {
+    "batch_id": "batch-1",
+    "source": "src",
+    "messages": [
+      {
+        "id": "batch-msg-1",
+        "destination": "dst-a",
+        "title": "hello a",
+        "content": "payload a"
+      },
+      {
+        "id": "batch-msg-2",
+        "destination": "dst-b",
+        "title": "hello b",
+        "content": "payload b",
+        "method": "direct",
+        "include_ticket": false,
+        "try_propagation_on_fail": true
+      }
+    ]
+  }
+}

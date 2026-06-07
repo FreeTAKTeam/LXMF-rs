@@ -17,6 +17,7 @@ pub mod error;
 pub mod hash;
 pub mod identity;
 pub mod iface;
+pub mod kiss;
 pub mod packet;
 pub mod ratchets;
 pub mod receipt;

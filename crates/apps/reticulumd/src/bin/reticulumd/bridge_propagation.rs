@@ -8,10 +8,11 @@ use rns_transport::identity::Identity;
 use rns_transport::packet::PacketContext;
 use rns_transport::transport::Transport;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 pub(super) const PROPAGATION_INVALID_STAMP_SIGNAL: u8 = 0xF5;
 pub(super) const DEFAULT_PROPAGATION_STAMP_COST: u32 = 13;
+const PROPAGATION_LINK_ACTIVATION_GRACE: Duration = Duration::from_secs(25);
 
 pub(super) struct PropagationPayload {
     pub(super) bytes: Vec<u8>,
@@ -23,6 +24,7 @@ pub(super) struct PropagationPayload {
 pub(super) struct CachedPropagationLink {
     pub(super) node_hex: String,
     pub(super) link: Arc<tokio::sync::Mutex<Link>>,
+    pub(super) created_at: Instant,
 }
 
 pub(super) fn build_propagation_payload_until_cancelled(
@@ -66,12 +68,16 @@ pub(super) async fn cached_propagation_link(
         return None;
     }
 
-    if cached.link.lock().await.status() == LinkStatus::Closed {
-        *guard = None;
-        return None;
+    let status = cached.link.lock().await.status();
+    if status == LinkStatus::Active
+        || (status.not_yet_active()
+            && cached.created_at.elapsed() <= PROPAGATION_LINK_ACTIVATION_GRACE)
+    {
+        return Some(cached.link);
     }
 
-    Some(cached.link)
+    *guard = None;
+    None
 }
 
 pub(super) async fn propagation_link_for_node(
@@ -84,13 +90,18 @@ pub(super) async fn propagation_link_for_node(
         return link;
     }
 
+    transport.reset_out_link(&destination.address_hash).await;
     let link = transport.link(destination).await;
     let mut guard = state.lock().await;
-    *guard = Some(CachedPropagationLink { node_hex: node_hex.to_string(), link: link.clone() });
+    *guard = Some(CachedPropagationLink {
+        node_hex: node_hex.to_string(),
+        link: link.clone(),
+        created_at: Instant::now(),
+    });
     link
 }
 
-pub(super) async fn wait_for_propagation_signal(
+pub(crate) async fn wait_for_propagation_signal(
     rx: &mut tokio::sync::broadcast::Receiver<rns_transport::transport::ReceivedData>,
     link_id: AddressHash,
     timeout: Duration,

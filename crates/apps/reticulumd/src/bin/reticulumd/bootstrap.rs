@@ -11,9 +11,9 @@ use super::Args;
 #[path = "bootstrap_transport.rs"]
 mod transport_startup;
 use reticulum_daemon::announce_names::{
-    encode_delivery_display_name_app_data,
+    encode_delivery_announce_app_data_with_capabilities,
     encode_propagation_node_app_data as encode_python_propagation_node_app_data,
-    normalize_display_name, PropagationNodeAnnounceConfig,
+    normalize_capabilities, normalize_display_name, PropagationNodeAnnounceConfig,
 };
 use reticulum_daemon::config::{DaemonConfig, InterfaceConfig};
 use reticulum_daemon::identity_store::load_or_create_identity;
@@ -336,6 +336,7 @@ pub(super) struct PropagationControlContext {
     pub(super) delivery_destination:
         Option<Arc<tokio::sync::Mutex<rns_transport::destination::SingleInputDestination>>>,
     pub(super) allowed_control_identities: Vec<String>,
+    pub(super) validated_peer_links: Arc<Mutex<HashSet<AddressHash>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -403,16 +404,31 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         args.db.parent().map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."));
     let mut local_identity_hash = [0u8; 16];
     local_identity_hash.copy_from_slice(identity.address_hash().as_slice());
-    let identity_hash = hex::encode(identity.address_hash().as_slice());
-    let local_display_name =
-        std::env::var("LXMF_DISPLAY_NAME").ok().and_then(|value| normalize_display_name(&value));
     let daemon_config = args.config.as_ref().and_then(|path| match DaemonConfig::from_path(path) {
         Ok(config) => Some(config),
         Err(err) => {
-            eprintln!("[daemon] failed to load config {}: {}", path.display(), err);
+            log::error!("[daemon] failed to load config {}: {}", path.display(), err);
             None
         }
     });
+    let identity_hash = hex::encode(identity.address_hash().as_slice());
+    let local_display_name = std::env::var("LXMF_DISPLAY_NAME")
+        .ok()
+        .and_then(|value| normalize_display_name(&value))
+        .or_else(|| {
+            daemon_config
+                .as_ref()
+                .and_then(|config| config.display_name.as_deref())
+                .and_then(normalize_display_name)
+        });
+    let local_announce_capabilities = env_capabilities("LXMF_RCH_ANNOUNCE_CAPABILITIES")
+        .or_else(|| {
+            daemon_config
+                .as_ref()
+                .map(|config| normalize_capabilities(&config.announce_capabilities))
+                .filter(|capabilities| !capabilities.is_empty())
+        })
+        .unwrap_or_default();
     let mut configured_interfaces = daemon_config
         .as_ref()
         .map(|config| {
@@ -435,6 +451,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         identity: &identity,
         reticulum_storage_path: reticulum_storage_path.as_path(),
         local_display_name: local_display_name.as_deref(),
+        local_announce_capabilities: &local_announce_capabilities,
         configured_interfaces,
         receipt_map: receipt_map.clone(),
         receipt_tx: receipt_tx.clone(),
@@ -462,16 +479,18 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     let interface_worker_bridges = Arc::new(startup.interface_worker_bridges);
 
     if !startup_failures.is_empty() {
-        eprintln!(
+        log::warn!(
             "[daemon] interface startup degraded started={} failed={} strict={}",
             startup_successes,
             startup_failures.len(),
             args.strict_interface_startup
         );
         for failure in &startup_failures {
-            eprintln!(
+            log::warn!(
                 "[daemon] interface startup failure name={} kind={} err={}",
-                failure.label, failure.kind, failure.error
+                failure.label,
+                failure.kind,
+                failure.error
             );
         }
     }
@@ -510,9 +529,14 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
                 identity.clone(),
                 delivery_source_hash,
                 destination.clone(),
-                local_display_name
-                    .as_ref()
-                    .and_then(|display_name| encode_delivery_display_name_app_data(display_name)),
+                local_display_name.as_ref().and_then(|display_name| {
+                    encode_delivery_announce_app_data_with_capabilities(
+                        display_name,
+                        None,
+                        &local_announce_capabilities,
+                    )
+                }),
+                local_announce_capabilities.clone(),
                 propagation_destination.clone(),
                 propagation_app_data,
                 control_destination.clone(),
@@ -669,6 +693,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
                 control_destination_hash_hex,
                 delivery_destination: announce_destination.clone(),
                 allowed_control_identities: configured_control_identities,
+                validated_peer_links: Arc::new(Mutex::new(HashSet::new())),
             },
             receipt_tx.clone(),
             outbound_resource_map,
@@ -944,6 +969,21 @@ fn parse_hex_list_env(key: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
+fn env_capabilities(key: &str) -> Option<Vec<String>> {
+    std::env::var(key)
+        .ok()
+        .map(|value| {
+            let values = value
+                .split([',', ';', ' ', '\t', '\r', '\n'])
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToOwned::to_owned)
+                .collect::<Vec<_>>();
+            normalize_capabilities(&values)
+        })
+        .filter(|capabilities| !capabilities.is_empty())
+}
+
 fn env_u64(key: &str) -> Option<u64> {
     std::env::var(key)
         .ok()
@@ -1005,7 +1045,7 @@ pub(super) fn mark_interface_runtime_managed(record: &mut InterfaceRecord, manag
     });
 }
 
-fn with_interface_runtime_metadata(
+pub(super) fn with_interface_runtime_metadata(
     record: &mut InterfaceRecord,
     update: impl FnOnce(&mut JsonMap<String, JsonValue>),
 ) {

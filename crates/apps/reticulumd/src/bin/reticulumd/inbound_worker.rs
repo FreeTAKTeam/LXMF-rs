@@ -12,8 +12,8 @@ mod routing;
 use reticulum_daemon::receipt_bridge::ReceiptEvent;
 use rns_rpc::{RpcDaemon, RpcRequest};
 use rns_transport::destination::link::{Link, LinkEvent};
-use rns_transport::destination::SingleInputDestination;
-use rns_transport::hash::AddressHash;
+use rns_transport::destination::{DestinationName, SingleInputDestination};
+use rns_transport::hash::{AddressHash, Hash};
 use rns_transport::identity::{DecryptIdentity, Identity};
 use rns_transport::packet::{
     ContextFlag, DestinationType, Header, HeaderType, IfacFlag, Packet, PacketContext,
@@ -23,6 +23,7 @@ use rns_transport::resource::ResourceEventKind;
 use rns_transport::transport::Transport;
 use routing::InboundLxmfDestination;
 use serde_json::{json, Value};
+use sha2::Digest;
 use std::sync::Arc;
 
 pub(super) fn spawn_inbound_worker(
@@ -60,15 +61,28 @@ pub(super) fn spawn_inbound_worker(
                                     .await;
                                 }
                                 InboundLxmfDestination::Propagation => {
-                                    if let Err(error) = propagation::ingest_propagation_envelope(
-                                        daemon.as_ref(),
-                                        &complete.data,
-                                        resource_control.delivery_destination.as_ref(),
+                                    let remote_peer = remote_propagation_peer_for_link(
+                                        transport.as_ref(),
+                                        &event.link_id,
                                     )
-                                    .await
+                                    .await;
+                                    let peer_link_validated = resource_control
+                                        .validated_peer_links
+                                        .lock()
+                                        .ok()
+                                        .is_some_and(|guard| guard.contains(&event.link_id));
+                                    if let Err(error) =
+                                        propagation::ingest_propagation_resource_from_peer(
+                                            daemon.as_ref(),
+                                            &complete.data,
+                                            resource_control.delivery_destination.as_ref(),
+                                            remote_peer.as_deref(),
+                                            peer_link_validated,
+                                        )
+                                        .await
                                     {
                                         if diagnostics_enabled() {
-                                            eprintln!(
+                                            log::debug!(
                                                 "[daemon-rx] dropping inbound propagation resource: {}",
                                                 error
                                             );
@@ -79,27 +93,93 @@ pub(super) fn spawn_inbound_worker(
                         }
                     }
                     ResourceEventKind::OutboundComplete => {
+                        handle_outbound_resource_completion(
+                            daemon.as_ref(),
+                            &outbound_resource_map,
+                            &receipt_tx,
+                            &event.hash,
+                        );
+                    }
+                    ResourceEventKind::OutboundFailed => {
+                        handle_outbound_resource_failure(
+                            daemon.as_ref(),
+                            &outbound_resource_map,
+                            &receipt_tx,
+                            &event.hash,
+                        );
+                    }
+                    ResourceEventKind::OutboundCancelled => {
                         let resource_hash_hex = hex::encode(event.hash.as_slice());
-                        if let Some(tracking) = take_outbound_resource_tracking(
+                        let _ = take_outbound_resource_tracking(
                             &outbound_resource_map,
                             resource_hash_hex.as_str(),
-                        ) {
-                            daemon.record_outbound_peer_activity(
-                                &tracking.peer,
-                                tracking.bytes,
-                                true,
-                            );
-                            let _ = receipt_tx.try_send(ReceiptEvent {
-                                message_id: tracking.message_id,
-                                status: tracking.sent_status,
-                            });
-                        }
+                        );
                     }
                     ResourceEventKind::Progress(_) => {}
                 }
             }
         }
     });
+}
+
+async fn remote_propagation_peer_for_link(
+    transport: &Transport,
+    link_id: &AddressHash,
+) -> Option<String> {
+    if let Some(link) = transport.find_in_link(link_id).await {
+        let guard = link.lock().await;
+        return Some(propagation_destination_hash_for_identity(guard.peer_identity()));
+    }
+    if let Some(link) = transport.find_out_link(link_id).await {
+        let guard = link.lock().await;
+        return Some(propagation_destination_hash_for_identity(guard.peer_identity()));
+    }
+    None
+}
+
+fn propagation_destination_hash_for_identity(identity: &Identity) -> String {
+    let name = DestinationName::new("lxmf", "propagation");
+    let hash = sha2::Sha256::new()
+        .chain_update(name.as_name_hash_slice())
+        .chain_update(identity.address_hash.as_slice())
+        .finalize();
+    hex::encode(&hash[..16])
+}
+
+fn handle_outbound_resource_completion(
+    daemon: &RpcDaemon,
+    outbound_resource_map: &OutboundResourceMap,
+    receipt_tx: &tokio::sync::mpsc::Sender<ReceiptEvent>,
+    resource_hash: &Hash,
+) {
+    let resource_hash_hex = hex::encode(resource_hash.as_slice());
+    if let Some(tracking) =
+        take_outbound_resource_tracking(outbound_resource_map, resource_hash_hex.as_str())
+    {
+        daemon.record_outbound_peer_sent(&tracking.peer, tracking.bytes);
+        let _ = receipt_tx.try_send(ReceiptEvent {
+            message_id: tracking.message_id,
+            status: tracking.sent_status,
+        });
+    }
+}
+
+fn handle_outbound_resource_failure(
+    daemon: &RpcDaemon,
+    outbound_resource_map: &OutboundResourceMap,
+    receipt_tx: &tokio::sync::mpsc::Sender<ReceiptEvent>,
+    resource_hash: &Hash,
+) {
+    let resource_hash_hex = hex::encode(resource_hash.as_slice());
+    if let Some(tracking) =
+        take_outbound_resource_tracking(outbound_resource_map, resource_hash_hex.as_str())
+    {
+        daemon.record_outbound_peer_activity(&tracking.peer, tracking.bytes, false);
+        let _ = receipt_tx.try_send(ReceiptEvent {
+            message_id: tracking.message_id,
+            status: "failed: resource transfer timed out".to_string(),
+        });
+    }
 }
 
 fn spawn_packet_inbound_worker(
@@ -131,7 +211,7 @@ fn spawn_packet_inbound_worker(
                     .await
                     else {
                         if diagnostics_enabled() {
-                            eprintln!(
+                            log::debug!(
                                 "[daemon-rx] skipping unresolved full-wire payload: dst={} len={} ctx={:?}",
                                 raw_destination_hex,
                                 data.len(),
@@ -159,7 +239,7 @@ fn spawn_packet_inbound_worker(
                             .await
                             {
                                 if diagnostics_enabled() {
-                                    eprintln!(
+                                    log::debug!(
                                         "[daemon-rx] dropping inbound propagation payload: dst={} error={}",
                                         raw_destination_hex, error
                                     );
@@ -182,7 +262,7 @@ fn spawn_packet_inbound_worker(
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
                     if diagnostics_enabled() {
-                        eprintln!(
+                        log::debug!(
                             "[daemon-rx] received-data channel lagged; skipped {} events",
                             skipped
                         );
@@ -197,7 +277,10 @@ fn spawn_packet_inbound_worker(
 #[cfg(test)]
 mod tests {
     use super::delivery_events;
-    use super::propagation::ingest_propagation_envelope;
+    use super::propagation::{
+        ingest_propagation_envelope, ingest_propagation_envelope_from_peer,
+        ingest_propagation_resource_from_peer,
+    };
     use hkdf::Hkdf;
     use lxmf::WireMessage;
     use rand_core::OsRng;
@@ -206,6 +289,7 @@ mod tests {
     use reticulum_daemon::lxmf_stamps::generate_propagation_stamp;
     use rns_rpc::{RpcDaemon, RpcRequest};
     use rns_transport::destination::{DestinationName, SingleInputDestination};
+    use rns_transport::hash::Hash;
     use rns_transport::identity::PrivateIdentity;
     use rns_transport::identity_bridge::{
         to_core_identity, to_core_private_identity, to_transport_private_identity,
@@ -213,7 +297,8 @@ mod tests {
     use rns_transport::transport::{ReceivedPayloadMode, Transport, TransportConfig};
     use serde_json::json;
     use sha2::{Digest, Sha256};
-    use std::sync::Arc;
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
     use tokio::sync::Mutex as TokioMutex;
 
     #[tokio::test]
@@ -251,6 +336,55 @@ mod tests {
         assert_eq!(status["propagation"]["client_propagation_messages_received"].as_u64(), Some(1));
     }
 
+    #[test]
+    fn outbound_resource_failure_event_marks_tracking_failed() {
+        let daemon = RpcDaemon::test_instance();
+        daemon
+            .handle_rpc(RpcRequest {
+                id: 1,
+                method: "propagation_enable".to_string(),
+                params: Some(json!({
+                    "enabled": true,
+                    "static_peers": ["peer-resource-timeout"],
+                })),
+            })
+            .expect("enable static peer");
+        let resource_hash = Hash::new_from_slice(&[0x51; 32]);
+        let resource_hash_hex = hex::encode(resource_hash.as_slice());
+        let map = Arc::new(Mutex::new(HashMap::new()));
+        super::super::outbound_resources::track_outbound_resource(
+            &map,
+            resource_hash_hex.clone(),
+            super::super::outbound_resources::OutboundResourceTracking {
+                message_id: "resource-timeout-message".to_string(),
+                peer: "peer-resource-timeout".to_string(),
+                bytes: 512,
+                sent_status: "sent: link resource".to_string(),
+            },
+        );
+        let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+
+        super::handle_outbound_resource_failure(&daemon, &map, &tx, &resource_hash);
+
+        assert!(super::super::outbound_resources::take_outbound_resource_tracking(
+            &map,
+            resource_hash_hex.as_str()
+        )
+        .is_none());
+        let event = rx.try_recv().expect("failed receipt event");
+        assert_eq!(event.message_id, "resource-timeout-message");
+        assert_eq!(event.status, "failed: resource transfer timed out");
+        let peers = daemon
+            .handle_rpc(RpcRequest { id: 2, method: "list_peers".to_string(), params: None })
+            .expect("list peers")
+            .result
+            .expect("list peers result");
+        let row = peers["peers"].as_array().and_then(|rows| rows.first()).expect("peer row");
+        assert_eq!(row["tx_bytes"].as_u64(), Some(512));
+        assert_eq!(row["alive"].as_bool(), Some(false));
+        assert_eq!(row["sync_backoff"].as_u64(), Some(12 * 60));
+    }
+
     #[tokio::test]
     async fn inbound_propagation_invalid_entry_is_rejected() {
         let daemon = RpcDaemon::test_instance();
@@ -284,6 +418,273 @@ mod tests {
             .result
             .expect("propagation status result");
         assert_eq!(status["propagation"]["client_propagation_messages_received"].as_u64(), Some(0));
+    }
+
+    #[tokio::test]
+    async fn inbound_propagation_invalid_peer_stamp_throttles_peer_like_python() {
+        let daemon = RpcDaemon::test_instance();
+        daemon
+            .handle_rpc(RpcRequest {
+                id: 4,
+                method: "propagation_enable".to_string(),
+                params: Some(serde_json::json!({
+                    "enabled": true,
+                    "target_cost": 1,
+                    "stamp_cost_flexibility": 0,
+                })),
+            })
+            .expect("enable propagation");
+        let envelope =
+            rmp_serde::to_vec(&(1.0_f64, vec![b"unstamped-peer-propagation-payload".to_vec()]))
+                .expect("propagation envelope");
+        let peer = hex::encode([0x77_u8; 16]);
+
+        let err = ingest_propagation_envelope_from_peer(&daemon, &envelope, None, Some(&peer))
+            .await
+            .expect_err("invalid peer propagation envelope should be rejected");
+
+        assert!(err.to_string().contains("invalid propagation stamp"));
+        assert!(daemon.propagation_peer_is_throttled(peer.as_str()));
+    }
+
+    #[tokio::test]
+    async fn inbound_peer_propagation_preserves_valid_messages_when_transfer_has_invalid_stamp_like_python(
+    ) {
+        let daemon = RpcDaemon::test_instance();
+        daemon
+            .handle_rpc(RpcRequest {
+                id: 44,
+                method: "propagation_enable".to_string(),
+                params: Some(serde_json::json!({
+                    "enabled": true,
+                    "target_cost": 1,
+                    "stamp_cost_flexibility": 0,
+                })),
+            })
+            .expect("enable propagation");
+        let valid_lxm_data = [0x52_u8; 113];
+        let valid_transient = stamped_propagation_payload(&valid_lxm_data, 1);
+        let valid_transient_id = hex::encode(Sha256::digest(valid_lxm_data));
+        let invalid_transient = b"unstamped-peer-propagation-payload".to_vec();
+        let invalid_transient_id = hex::encode(Sha256::digest(&invalid_transient));
+        let envelope = rmp_serde::to_vec(&(1.0_f64, vec![invalid_transient, valid_transient]))
+            .expect("propagation envelope");
+        let peer = hex::encode([0x7A_u8; 16]);
+
+        let err = ingest_propagation_envelope_from_peer(&daemon, &envelope, None, Some(&peer))
+            .await
+            .expect_err("mixed-stamp peer resource should reject the transfer");
+
+        assert!(err.to_string().contains("invalid propagation stamp"));
+        assert!(daemon.propagation_peer_is_throttled(peer.as_str()));
+        assert!(
+            daemon.has_propagation_payload(valid_transient_id.as_str()),
+            "valid entries in a mixed peer transfer should still be ingested"
+        );
+        assert!(!daemon.has_propagation_payload(invalid_transient_id.as_str()));
+    }
+
+    #[tokio::test]
+    async fn inbound_peer_propagation_marks_source_handled_and_queues_other_peers_like_python() {
+        let daemon = RpcDaemon::test_instance();
+        daemon
+            .handle_rpc(RpcRequest {
+                id: 46,
+                method: "propagation_enable".to_string(),
+                params: Some(serde_json::json!({
+                    "enabled": true,
+                    "target_cost": 1,
+                    "stamp_cost_flexibility": 0,
+                })),
+            })
+            .expect("enable propagation");
+        let source_peer = hex::encode([0x7B_u8; 16]);
+        let relay_peer = hex::encode([0x7C_u8; 16]);
+        for (id, peer) in [(47, &source_peer), (48, &relay_peer)] {
+            daemon
+                .handle_rpc(RpcRequest {
+                    id,
+                    method: "peer_sync".to_string(),
+                    params: Some(serde_json::json!({ "peer": peer })),
+                })
+                .expect("seed propagation peer");
+        }
+        let lxm_data = [0x53_u8; 113];
+        let transient = stamped_propagation_payload(&lxm_data, 1);
+        let transient_id = hex::encode(Sha256::digest(lxm_data));
+        let envelope =
+            rmp_serde::to_vec(&(1.0_f64, vec![transient])).expect("propagation envelope");
+
+        let ingested =
+            ingest_propagation_envelope_from_peer(&daemon, &envelope, None, Some(&source_peer))
+                .await
+                .expect("ingest peer propagation envelope");
+
+        assert_eq!(ingested, 1);
+        let source_row = peer_row(&daemon, source_peer.as_str(), 49);
+        assert_eq!(
+            source_row["messages"]["handled_ids"].as_array().expect("source handled ids"),
+            &[serde_json::json!(transient_id.as_str())]
+        );
+        assert!(source_row["messages"]["unhandled_ids"]
+            .as_array()
+            .expect("source unhandled ids")
+            .is_empty());
+        assert_eq!(source_row["rx_bytes"].as_u64(), Some(lxm_data.len() as u64));
+        assert_eq!(source_row["messages"]["incoming"].as_u64(), Some(1));
+        let relay_row = peer_row(&daemon, relay_peer.as_str(), 50);
+        assert_eq!(
+            relay_row["messages"]["unhandled_ids"].as_array().expect("relay unhandled ids"),
+            &[serde_json::json!(transient_id.as_str())]
+        );
+    }
+
+    #[tokio::test]
+    async fn inbound_unpeered_propagation_counts_unpeered_sender_and_queues_active_peers_like_python(
+    ) {
+        let daemon = RpcDaemon::test_instance();
+        daemon
+            .handle_rpc(RpcRequest {
+                id: 51,
+                method: "propagation_enable".to_string(),
+                params: Some(serde_json::json!({
+                    "enabled": true,
+                    "target_cost": 1,
+                    "stamp_cost_flexibility": 0,
+                })),
+            })
+            .expect("enable propagation");
+        let unpeered_source = hex::encode([0x7D_u8; 16]);
+        let relay_peer = hex::encode([0x7E_u8; 16]);
+        daemon
+            .handle_rpc(RpcRequest {
+                id: 52,
+                method: "peer_sync".to_string(),
+                params: Some(serde_json::json!({ "peer": relay_peer })),
+            })
+            .expect("seed relay peer");
+        let lxm_data = [0x54_u8; 113];
+        let transient = stamped_propagation_payload(&lxm_data, 1);
+        let transient_id = hex::encode(Sha256::digest(lxm_data));
+        let envelope =
+            rmp_serde::to_vec(&(1.0_f64, vec![transient])).expect("propagation envelope");
+
+        let ingested =
+            ingest_propagation_envelope_from_peer(&daemon, &envelope, None, Some(&unpeered_source))
+                .await
+                .expect("ingest unpeered propagation envelope");
+
+        assert_eq!(ingested, 1);
+        let status = daemon
+            .handle_rpc(RpcRequest {
+                id: 53,
+                method: "propagation_status".to_string(),
+                params: None,
+            })
+            .expect("propagation status")
+            .result
+            .expect("propagation status result");
+        assert_eq!(status["propagation"]["unpeered_propagation_incoming"].as_u64(), Some(1));
+        assert_eq!(
+            status["propagation"]["unpeered_propagation_rx_bytes"].as_u64(),
+            Some(lxm_data.len() as u64)
+        );
+        assert_eq!(status["propagation"]["client_propagation_messages_received"].as_u64(), Some(0));
+        let peers = daemon
+            .handle_rpc(RpcRequest { id: 54, method: "list_peers".to_string(), params: None })
+            .expect("list peers")
+            .result
+            .expect("list peers result");
+        let rows = peers["peers"].as_array().expect("peer rows");
+        assert!(
+            rows.iter().all(|row| row["peer"].as_str() != Some(unpeered_source.as_str())),
+            "unpeered sender should not be promoted to an active peer"
+        );
+        let relay_row = peer_row(&daemon, relay_peer.as_str(), 55);
+        assert_eq!(
+            relay_row["messages"]["unhandled_ids"].as_array().expect("relay unhandled ids"),
+            &[serde_json::json!(transient_id.as_str())]
+        );
+    }
+
+    #[tokio::test]
+    async fn inbound_peer_propagation_rejects_multi_message_without_validated_link_like_python() {
+        let daemon = RpcDaemon::test_instance();
+        let first = b"unvalidated-peer-first".to_vec();
+        let second = b"unvalidated-peer-second".to_vec();
+        let first_id = hex::encode(Sha256::digest(&first));
+        let second_id = hex::encode(Sha256::digest(&second));
+        let envelope =
+            rmp_serde::to_vec(&(1.0_f64, vec![first, second])).expect("propagation envelope");
+        let peer = hex::encode([0x78_u8; 16]);
+
+        let err =
+            ingest_propagation_resource_from_peer(&daemon, &envelope, None, Some(&peer), false)
+                .await
+                .expect_err("unvalidated peer resource should reject multi-message transfer");
+
+        assert!(err.to_string().contains("valid peering key"));
+        assert!(!daemon.has_propagation_payload(first_id.as_str()));
+        assert!(!daemon.has_propagation_payload(second_id.as_str()));
+    }
+
+    #[tokio::test]
+    async fn inbound_client_packet_propagation_accepts_multi_message_like_python() {
+        let daemon = RpcDaemon::test_instance();
+        let first = b"unvalidated-client-first".to_vec();
+        let second = b"unvalidated-client-second".to_vec();
+        let first_id = hex::encode(Sha256::digest(&first));
+        let second_id = hex::encode(Sha256::digest(&second));
+        let envelope =
+            rmp_serde::to_vec(&(1.0_f64, vec![first, second])).expect("propagation envelope");
+
+        let ingested = ingest_propagation_envelope(&daemon, &envelope, None)
+            .await
+            .expect("multi-message packet propagation should be accepted");
+
+        assert_eq!(ingested, 2);
+        assert!(daemon.has_propagation_payload(first_id.as_str()));
+        assert!(daemon.has_propagation_payload(second_id.as_str()));
+    }
+
+    #[tokio::test]
+    async fn inbound_client_resource_rejects_multi_message_without_validated_link_like_python() {
+        let daemon = RpcDaemon::test_instance();
+        let first = b"unvalidated-client-resource-first".to_vec();
+        let second = b"unvalidated-client-resource-second".to_vec();
+        let first_id = hex::encode(Sha256::digest(&first));
+        let second_id = hex::encode(Sha256::digest(&second));
+        let envelope =
+            rmp_serde::to_vec(&(1.0_f64, vec![first, second])).expect("propagation envelope");
+
+        let err = ingest_propagation_resource_from_peer(&daemon, &envelope, None, None, false)
+            .await
+            .expect_err("unvalidated client resource should reject multi-message transfer");
+
+        assert!(err.to_string().contains("valid peering key"));
+        assert!(!daemon.has_propagation_payload(first_id.as_str()));
+        assert!(!daemon.has_propagation_payload(second_id.as_str()));
+    }
+
+    #[tokio::test]
+    async fn inbound_peer_propagation_accepts_multi_message_with_validated_link_like_python() {
+        let daemon = RpcDaemon::test_instance();
+        let first = b"validated-peer-first".to_vec();
+        let second = b"validated-peer-second".to_vec();
+        let first_id = hex::encode(Sha256::digest(&first));
+        let second_id = hex::encode(Sha256::digest(&second));
+        let envelope =
+            rmp_serde::to_vec(&(1.0_f64, vec![first, second])).expect("propagation envelope");
+        let peer = hex::encode([0x79_u8; 16]);
+
+        let ingested =
+            ingest_propagation_resource_from_peer(&daemon, &envelope, None, Some(&peer), true)
+                .await
+                .expect("validated peer resource should accept multi-message transfer");
+
+        assert_eq!(ingested, 2);
+        assert!(daemon.has_propagation_payload(first_id.as_str()));
+        assert!(daemon.has_propagation_payload(second_id.as_str()));
     }
 
     #[tokio::test]
@@ -429,6 +830,191 @@ mod tests {
         assert!(items[0]["fields"]["_lxmf"]["propagation_stamp_value"]
             .as_u64()
             .is_some_and(|value| value >= 1));
+    }
+
+    #[tokio::test]
+    async fn local_propagation_payload_records_stamp_inside_flexibility_window() {
+        let daemon = RpcDaemon::test_instance();
+        daemon
+            .handle_rpc(RpcRequest {
+                id: 44,
+                method: "propagation_enable".to_string(),
+                params: Some(serde_json::json!({
+                    "enabled": true,
+                    "target_cost": 3,
+                    "stamp_cost_flexibility": 2,
+                })),
+            })
+            .expect("enable propagation");
+        let delivery_private = PrivateIdentity::new_from_rand(OsRng);
+        let source_private = PrivateIdentity::new_from_rand(OsRng);
+        let delivery_destination = Arc::new(TokioMutex::new(SingleInputDestination::new(
+            delivery_private.clone(),
+            DestinationName::new("lxmf", "delivery"),
+        )));
+        let source_destination = SingleInputDestination::new(
+            source_private.clone(),
+            DestinationName::new("lxmf", "delivery"),
+        );
+        let mut destination_hash = [0u8; 16];
+        {
+            let destination = delivery_destination.lock().await;
+            destination_hash.copy_from_slice(destination.desc.address_hash.as_slice());
+        }
+        daemon.set_delivery_destination_hash(Some(hex::encode(destination_hash)));
+        let mut source_hash = [0u8; 16];
+        source_hash.copy_from_slice(source_destination.desc.address_hash.as_slice());
+
+        let wire = build_wire_message_with_options(
+            source_hash,
+            destination_hash,
+            "flex propagated title",
+            "flex propagated content",
+            None,
+            &to_core_private_identity(&source_private),
+            None,
+            None,
+            None,
+        )
+        .expect("wire");
+        let envelope = {
+            let destination = delivery_destination.lock().await;
+            let message = WireMessage::unpack(&wire).expect("wire unpack");
+            let (transient, _) = message
+                .pack_propagation_transient_with_rng(
+                    &to_core_identity(destination.identity.as_identity()),
+                    OsRng,
+                )
+                .expect("propagation transient");
+            let stamped = stamped_propagation_payload_with_value_range(&transient, 1, 3);
+            rmp_serde::to_vec(&(1.0_f64, vec![stamped])).expect("propagation envelope")
+        };
+
+        let ingested = ingest_propagation_envelope(&daemon, &envelope, Some(&delivery_destination))
+            .await
+            .expect("ingest propagation envelope");
+        assert_eq!(ingested, 1);
+
+        let messages = daemon
+            .handle_rpc(RpcRequest { id: 45, method: "list_messages".to_string(), params: None })
+            .expect("list messages")
+            .result
+            .expect("list messages result");
+        let items = messages["messages"].as_array().expect("message items");
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0]["title"].as_str(), Some("flex propagated title"));
+        assert_eq!(items[0]["fields"]["_lxmf"]["propagation_stamp_checked"], json!(true));
+        assert_eq!(items[0]["fields"]["_lxmf"]["propagation_stamp_valid"], json!(true));
+        assert_eq!(items[0]["fields"]["_lxmf"]["propagation_stamp_target_cost"], json!(1));
+        assert!(items[0]["fields"]["_lxmf"]["propagation_stamp_value"]
+            .as_u64()
+            .is_some_and(|value| (1..3).contains(&value)));
+    }
+
+    #[tokio::test]
+    async fn inbound_peer_propagation_local_delivery_counts_source_peer_like_python() {
+        let daemon = RpcDaemon::test_instance();
+        daemon
+            .handle_rpc(RpcRequest {
+                id: 46,
+                method: "propagation_enable".to_string(),
+                params: Some(serde_json::json!({
+                    "enabled": true,
+                    "target_cost": 1,
+                    "stamp_cost_flexibility": 0,
+                })),
+            })
+            .expect("enable propagation");
+        let delivery_private = PrivateIdentity::new_from_rand(OsRng);
+        let source_private = PrivateIdentity::new_from_rand(OsRng);
+        let delivery_destination = Arc::new(TokioMutex::new(SingleInputDestination::new(
+            delivery_private.clone(),
+            DestinationName::new("lxmf", "delivery"),
+        )));
+        let source_destination = SingleInputDestination::new(
+            source_private.clone(),
+            DestinationName::new("lxmf", "delivery"),
+        );
+        let mut destination_hash = [0u8; 16];
+        {
+            let destination = delivery_destination.lock().await;
+            destination_hash.copy_from_slice(destination.desc.address_hash.as_slice());
+        }
+        daemon.set_delivery_destination_hash(Some(hex::encode(destination_hash)));
+        let mut source_hash = [0u8; 16];
+        source_hash.copy_from_slice(source_destination.desc.address_hash.as_slice());
+        let propagation_peer = hex::encode([0x7F_u8; 16]);
+        daemon
+            .handle_rpc(RpcRequest {
+                id: 47,
+                method: "peer_sync".to_string(),
+                params: Some(serde_json::json!({ "peer": propagation_peer })),
+            })
+            .expect("seed propagation peer");
+
+        let wire = build_wire_message_with_options(
+            source_hash,
+            destination_hash,
+            "peer local propagated title",
+            "peer local propagated content",
+            None,
+            &to_core_private_identity(&source_private),
+            None,
+            None,
+            None,
+        )
+        .expect("wire");
+        let (envelope, transient_id, transient_len) = {
+            let destination = delivery_destination.lock().await;
+            let message = WireMessage::unpack(&wire).expect("wire unpack");
+            let (transient, transient_id) = message
+                .pack_propagation_transient_with_rng(
+                    &to_core_identity(destination.identity.as_identity()),
+                    OsRng,
+                )
+                .expect("propagation transient");
+            let stamp = generate_propagation_stamp(&transient_id, 1).expect("propagation stamp");
+            (
+                WireMessage::pack_propagation_envelope(1.0, &transient, Some(&stamp))
+                    .expect("propagation envelope"),
+                hex::encode(transient_id),
+                transient.len(),
+            )
+        };
+
+        let ingested = ingest_propagation_envelope_from_peer(
+            &daemon,
+            &envelope,
+            Some(&delivery_destination),
+            Some(&propagation_peer),
+        )
+        .await
+        .expect("ingest peer propagation envelope");
+        assert_eq!(ingested, 1);
+
+        let peer = peer_row(&daemon, propagation_peer.as_str(), 48);
+        assert_eq!(peer["messages"]["incoming"].as_u64(), Some(1));
+        assert_eq!(peer["rx_bytes"].as_u64(), Some(transient_len as u64));
+        assert!(
+            daemon
+                .has_peer_completed_propagation_mark(
+                    propagation_peer.as_str(),
+                    transient_id.as_str()
+                )
+                .expect("completed propagation mark lookup"),
+            "locally delivered peer propagation payloads should still mark the source peer handled"
+        );
+
+        let status = daemon
+            .handle_rpc(RpcRequest {
+                id: 49,
+                method: "propagation_status".to_string(),
+                params: None,
+            })
+            .expect("propagation status")
+            .result
+            .expect("propagation status result");
+        assert_eq!(status["propagation"]["client_propagation_messages_received"].as_u64(), Some(0));
     }
 
     #[tokio::test]

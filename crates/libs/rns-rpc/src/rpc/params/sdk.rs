@@ -698,6 +698,8 @@ struct SdkRuntimeConfig {
     event_sink: Option<SdkEventSinkConfig>,
     #[serde(default)]
     rpc_backend: Option<SdkRpcBackendConfig>,
+    #[serde(default)]
+    extensions: JsonMap<String, JsonValue>,
 }
 
 #[derive(Debug, Deserialize)]

@@ -191,6 +191,14 @@ enum Command {
         ttl_ms: Option<u64>,
         #[arg(long)]
         correlation_id: Option<String>,
+        #[arg(long)]
+        delivery_method: Option<String>,
+        #[arg(long)]
+        stamp_cost: Option<u32>,
+        #[arg(long)]
+        include_ticket: bool,
+        #[arg(long)]
+        try_propagation_on_fail: bool,
     },
     Cancel {
         #[arg(long)]
@@ -230,6 +238,9 @@ enum Command {
 }
 
 fn main() -> ExitCode {
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
     let cli = Cli::parse();
     match run(&cli) {
         Ok(output) => {
@@ -268,6 +279,10 @@ fn run(cli: &Cli) -> Result<JsonValue, SdkError> {
             idempotency_key,
             ttl_ms,
             correlation_id,
+            delivery_method,
+            stamp_cost,
+            include_ticket,
+            try_propagation_on_fail,
         } => {
             ensure_started(&client, cli)?;
             let payload =
@@ -281,6 +296,18 @@ fn run(cli: &Cli) -> Result<JsonValue, SdkError> {
             }
             if let Some(correlation_id) = correlation_id.clone() {
                 req = req.with_correlation_id(correlation_id);
+            }
+            if let Some(delivery_method) = delivery_method.clone() {
+                req = req.with_delivery_method(delivery_method);
+            }
+            if let Some(stamp_cost) = stamp_cost {
+                req = req.with_stamp_cost(*stamp_cost);
+            }
+            if *include_ticket {
+                req = req.with_include_ticket(true);
+            }
+            if *try_propagation_on_fail {
+                req = req.with_try_propagation_on_fail(true);
             }
             let message_id = client.send(req)?;
             Ok(json!({ "message_id": message_id }))
@@ -653,35 +680,39 @@ fn emit_error(cli: &Cli, err: SdkError) {
     match output_mode(cli) {
         OutputModeArg::Human => {}
         OutputModeArg::Json | OutputModeArg::JsonPretty => {
-            let machine_code = err.machine_code.clone();
-            let message = err.message.clone();
-            let envelope = json!({
-                "ok": false,
-                "error": err,
-            });
-            let serialized = match output_mode(cli) {
-                OutputModeArg::Json => serde_json::to_string(&envelope),
-                OutputModeArg::JsonPretty | OutputModeArg::Human => {
-                    serde_json::to_string_pretty(&envelope)
-                }
-            };
-            match serialized {
-                Ok(serialized) => eprintln!("{serialized}"),
-                Err(ser_err) => {
-                    eprintln!(
-                    "{{\"ok\":false,\"error\":{{\"machine_code\":\"{}\",\"message\":\"{}\",\"serialization\":\"{}\"}}}}",
-                        machine_code, message, ser_err
-                );
-                }
-            }
+            eprintln!("{}", serialize_error_for_stderr(cli, &err));
             return;
         }
     }
 
-    eprintln!("error [{}]: {}", err.machine_code, err.message);
+    log::error!("error [{}]: {}", err.machine_code, err.message);
     if !err.details.is_empty() {
-        eprintln!("details: {}", JsonValue::Object(err.details.into_iter().collect()));
+        log::error!("details: {}", JsonValue::Object(err.details.into_iter().collect()));
     }
+}
+
+fn serialize_error_for_stderr(cli: &Cli, err: &SdkError) -> String {
+    let envelope = json!({
+        "ok": false,
+        "error": err,
+    });
+    let serialized = match output_mode(cli) {
+        OutputModeArg::Json => serde_json::to_string(&envelope),
+        OutputModeArg::JsonPretty | OutputModeArg::Human => serde_json::to_string_pretty(&envelope),
+    };
+    serialized.unwrap_or_else(|ser_err| {
+        let fallback = json!({
+            "ok": false,
+            "error": {
+                "machine_code": err.machine_code,
+                "message": err.message,
+                "serialization": ser_err.to_string(),
+            },
+        });
+        serde_json::to_string(&fallback).unwrap_or_else(|_| {
+            "{\"ok\":false,\"error\":{\"machine_code\":\"serialization_failed\"}}".to_string()
+        })
+    })
 }
 
 #[cfg(test)]
@@ -714,6 +745,42 @@ mod tests {
     }
 
     #[test]
+    fn send_command_accepts_delivery_option_flags() {
+        let cli = parse_cli(&[
+            "lxmf-cli",
+            "send",
+            "--source",
+            "source.peer",
+            "--destination",
+            "dest.peer",
+            "--content",
+            "hello",
+            "--delivery-method",
+            "propagated",
+            "--stamp-cost",
+            "4",
+            "--include-ticket",
+            "--try-propagation-on-fail",
+        ]);
+
+        let Command::Send {
+            delivery_method,
+            stamp_cost,
+            include_ticket,
+            try_propagation_on_fail,
+            ..
+        } = cli.command
+        else {
+            panic!("expected send command");
+        };
+
+        assert_eq!(delivery_method.as_deref(), Some("propagated"));
+        assert_eq!(stamp_cost, Some(4));
+        assert!(include_ticket);
+        assert!(try_propagation_on_fail);
+    }
+
+    #[test]
     fn token_auth_mode_requires_shared_secret() {
         let cli = parse_cli(&[
             "lxmf-cli",
@@ -741,6 +808,18 @@ mod tests {
     fn legacy_json_flag_maps_to_json_pretty_output() {
         let cli = parse_cli(&["lxmf-cli", "--json", "start"]);
         assert_eq!(output_mode(&cli), OutputModeArg::JsonPretty);
+    }
+
+    #[test]
+    fn json_error_output_is_raw_json_for_stderr() {
+        let cli = parse_cli(&["lxmf-cli", "--output", "json", "start"]);
+        let err = invalid_argument("missing --config");
+
+        let output = serialize_error_for_stderr(&cli, &err);
+
+        let parsed: JsonValue = serde_json::from_str(&output).expect("error output should be JSON");
+        assert_eq!(parsed["ok"], false);
+        assert_eq!(parsed["error"]["machine_code"], error_code::VALIDATION_INVALID_ARGUMENT);
     }
 
     #[test]

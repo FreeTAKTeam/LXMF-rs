@@ -49,6 +49,7 @@ pub(super) struct TransportStartupInput<'a> {
     pub(super) identity: &'a PrivateIdentity,
     pub(super) reticulum_storage_path: &'a std::path::Path,
     pub(super) local_display_name: Option<&'a str>,
+    pub(super) local_announce_capabilities: &'a [String],
     pub(super) configured_interfaces: Vec<InterfaceRecord>,
     pub(super) receipt_map: Arc<Mutex<HashMap<String, String>>>,
     pub(super) receipt_tx:
@@ -66,6 +67,7 @@ pub(super) async fn start_transport_and_interfaces(
         identity,
         reticulum_storage_path,
         local_display_name,
+        local_announce_capabilities,
         mut configured_interfaces,
         receipt_map,
         receipt_tx,
@@ -181,6 +183,7 @@ pub(super) async fn start_transport_and_interfaces(
                 args,
                 config,
                 &selected_tcp_server,
+                &transport_instance,
                 &iface_manager,
                 server_iface.as_ref(),
                 &mut configured_interfaces,
@@ -267,11 +270,11 @@ pub(super) async fn start_transport_and_interfaces(
 
         match transport_instance.restore_reticulum_path_table(reticulum_storage_path).await {
             Ok(restored) if restored > 0 => {
-                eprintln!("[daemon] restored {} Reticulum path table entries", restored);
+                log::info!("[daemon] restored {} Reticulum path table entries", restored);
             }
             Ok(_) => {}
             Err(err) => {
-                eprintln!("[daemon] failed to restore Reticulum path table: {}", err);
+                log::error!("[daemon] failed to restore Reticulum path table: {}", err);
             }
         }
 
@@ -304,6 +307,7 @@ pub(super) async fn start_transport_and_interfaces(
             &mut transport_instance,
             transport_identity.clone(),
             local_display_name,
+            local_announce_capabilities,
             propagation_control_enabled,
         )
         .await;
@@ -317,7 +321,7 @@ pub(super) async fn start_transport_and_interfaces(
 
         transport = Some(Arc::new(transport_instance));
     } else if let Some(config) = daemon_config {
-        eprintln!(
+        log::warn!(
             "{}",
             pretty_warn_line(
                 "transport disabled; configured interfaces will remain inactive until you start reticulumd with --transport HOST:PORT"

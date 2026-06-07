@@ -5,6 +5,7 @@ struct ResourceReceiver {
     random_hash: [u8; RANDOM_HASH_SIZE],
     parts: Vec<Option<Vec<u8>>>,
     hashmap: Vec<Option<[u8; MAPHASH_LEN]>>,
+    hashmap_segment_len: usize,
     received: usize,
     received_bytes: u64,
     total_bytes: u64,
@@ -20,6 +21,14 @@ struct ResourceReceiver {
     last_request: Instant,
     retry_count: u8,
     status: ResourceStatus,
+    /// Indices of fragments not yet requested, in hashmap order.
+    request_queue: VecDeque<usize>,
+    /// Ordered by send time (front = oldest). Used to detect timed-out fragments in O(1).
+    in_flight_queue: VecDeque<(Instant, usize)>,
+    /// Maps fragment index → time it was last requested, for RTT measurement.
+    in_flight_set: HashMap<usize, Instant>,
+    /// RTT sample from the most recently matched received part; read once by the manager.
+    last_rtt_sample: Option<Duration>,
 }
 
 #[derive(Debug, Clone)]
@@ -211,8 +220,18 @@ enum PartOutcome {
 
 impl ResourceReceiver {
     fn new(adv: &ResourceAdvertisement, link_id: AddressHash) -> Result<Self, RnsError> {
+        Self::new_with_mtu(adv, link_id, DEFAULT_RESOURCE_INTERFACE_MTU)
+    }
+
+    fn new_with_mtu(
+        adv: &ResourceAdvertisement,
+        link_id: AddressHash,
+        interface_mtu: usize,
+    ) -> Result<Self, RnsError> {
         let now = Instant::now();
-        let max_parts = max_advertised_parts(adv.transfer_size)?;
+        let resource_mdu = resource_packet_mdu_for_mtu(interface_mtu)?;
+        let hashmap_segment_len = resource_hashmap_segment_len_for_mtu(interface_mtu)?;
+        let max_parts = max_advertised_parts(adv.transfer_size, resource_mdu)?;
         if adv.parts == 0 || u64::from(adv.parts) > max_parts {
             return Err(RnsError::InvalidArgument);
         }
@@ -223,6 +242,7 @@ impl ResourceReceiver {
             random_hash: adv.random_hash,
             parts: vec![None; total_parts],
             hashmap: vec![None; total_parts],
+            hashmap_segment_len,
             received: 0,
             received_bytes: 0,
             total_bytes: adv.transfer_size,
@@ -238,6 +258,10 @@ impl ResourceReceiver {
             last_request: now,
             retry_count: 0,
             status: ResourceStatus::Advertised,
+            request_queue: VecDeque::new(),
+            in_flight_queue: VecDeque::new(),
+            in_flight_set: HashMap::new(),
+            last_rtt_sample: None,
         };
         receiver.apply_hashmap_segment(adv.segment_index.saturating_sub(1) as usize, &adv.hashmap);
         Ok(receiver)
@@ -249,30 +273,72 @@ impl ResourceReceiver {
             let start = i * MAPHASH_LEN;
             let mut entry = [0u8; MAPHASH_LEN];
             entry.copy_from_slice(&bytes[start..start + MAPHASH_LEN]);
-            let idx = segment * HASHMAP_MAX_LEN + i;
-            if idx < self.hashmap.len() {
+            let idx = segment * self.hashmap_segment_len + i;
+            if idx < self.hashmap.len() && self.hashmap[idx].is_none() {
                 self.hashmap[idx] = Some(entry);
+                self.request_queue.push_back(idx);
             }
         }
     }
 
-    fn build_request(&self) -> ResourceRequest {
-        let mut requested = Vec::new();
-        let mut last_known: Option<[u8; MAPHASH_LEN]> = None;
-        let mut hashmap_exhausted = false;
+    fn build_request(&mut self, now: Instant, rtt: Duration) -> ResourceRequest {
+        // TODO: the loss threshold (2×rtt) and EWMA alpha (7/8) are intuition-based
+        // and have not been formally tuned or proven. On links with high jitter the
+        // 2×rtt multiplier may be too tight (causing spurious re-requests); on links
+        // with asymmetric delay it may be too loose. The EWMA alpha controls how
+        // quickly the estimate tracks changes — a higher alpha (closer to 1) gives
+        // more weight to history and reacts more slowly to sudden changes. Both
+        // values should be validated against real-world Reticulum traffic traces.
+        let loss_threshold = rtt.saturating_mul(2);
 
-        for (idx, entry) in self.hashmap.iter().enumerate() {
-            if let Some(hash) = entry {
-                last_known = Some(*hash);
-                if self.parts[idx].is_none() {
-                    requested.push(*hash);
-                    if requested.len() >= WINDOW {
+        // Drain the front of in_flight_queue (front = oldest, since we append in time order).
+        // Received entries are lazily pruned; entries older than 2×rtt are declared lost
+        // and pushed to the front of request_queue for priority re-request.
+        loop {
+            match self.in_flight_queue.front() {
+                None => break,
+                Some(&(sent_at, idx)) => {
+                    if self.parts[idx].is_some() {
+                        self.in_flight_set.remove(&idx);
+                        self.in_flight_queue.pop_front();
+                    } else if now.duration_since(sent_at) > loss_threshold {
+                        self.in_flight_set.remove(&idx);
+                        self.in_flight_queue.pop_front();
+                        self.request_queue.push_front(idx);
+                    } else {
                         break;
                     }
                 }
-            } else {
-                hashmap_exhausted = true;
-                break;
+            }
+        }
+
+        // Detect hashmap exhaustion: scan for the first None entry.
+        let mut last_known = None;
+        let mut hashmap_exhausted = false;
+        for entry in &self.hashmap {
+            match entry {
+                Some(h) => last_known = Some(*h),
+                None => { hashmap_exhausted = true; break; }
+            }
+        }
+
+        // Fill available window slots. Lost fragments are at the front of request_queue
+        // (pushed there above) so they get priority over new fragments.
+        let window_space = WINDOW.saturating_sub(self.in_flight_set.len());
+        let mut requested = Vec::new();
+        while requested.len() < window_space {
+            match self.request_queue.pop_front() {
+                None => break,
+                Some(idx) => {
+                    if self.parts[idx].is_none() && !self.in_flight_set.contains_key(&idx) {
+                        if let Some(hash) = self.hashmap[idx] {
+                            requested.push(hash);
+                            self.in_flight_set.insert(idx, now);
+                            self.in_flight_queue.push_back((now, idx));
+                        }
+                    }
+                    // Received or already in-flight — skip.
+                }
             }
         }
 
@@ -339,7 +405,12 @@ impl ResourceReceiver {
             self.parts[index] = Some(part.to_vec());
             self.received += 1;
             self.received_bytes = self.received_bytes.saturating_add(part.len() as u64);
-            self.last_progress = Instant::now();
+            let now = Instant::now();
+            self.last_progress = now;
+            // Measure RTT: if this fragment was in-flight, record how long it took.
+            if let Some(sent_at) = self.in_flight_set.remove(&index) {
+                self.last_rtt_sample = Some(now.duration_since(sent_at));
+            }
         }
 
         if self.received == self.parts.len() && !self.parts.is_empty() {
@@ -377,6 +448,17 @@ impl ResourceReceiver {
     fn mark_request(&mut self) {
         self.last_request = Instant::now();
         self.retry_count = self.retry_count.saturating_add(1);
+    }
+
+    /// Update the request timestamp without counting a retry.
+    ///
+    /// Use when sending a request as a direct reaction to an incoming part
+    /// (transfer is actively progressing). Calling `mark_request` in that path
+    /// causes the periodic `retry_requests` timer to see `retry_count >=
+    /// retry_limit` and prematurely kill the receiver even though no timeout
+    /// occurred.
+    fn mark_active_request(&mut self) {
+        self.last_request = Instant::now();
     }
 
     fn retry_due(&self, now: Instant, retry_interval: Duration, max_retries: u8) -> bool {
@@ -489,11 +571,11 @@ fn max_decompressed_resource_size(advertised_data_size: u64) -> usize {
         .min(AUTO_COMPRESS_MAX_SIZE)
 }
 
-fn max_advertised_parts(transfer_size: u64) -> Result<u64, RnsError> {
+fn max_advertised_parts(transfer_size: u64, resource_mdu: usize) -> Result<u64, RnsError> {
     if transfer_size == 0 || transfer_size > MAX_INBOUND_RESOURCE_TRANSFER_SIZE {
         return Err(RnsError::InvalidArgument);
     }
-    let packet_mdu = PACKET_MDU as u64;
+    let packet_mdu = resource_mdu as u64;
     Ok(transfer_size.div_ceil(packet_mdu).max(1))
 }
 

@@ -6,11 +6,12 @@ active branch.
 
 ## 1. Parity truth
 
-- Repository-wide status is tracked first in `docs/status/current-roadmap.md`.
-- `docs/plans/lxmf-parity-matrix.md` and `docs/plans/reticulum-parity-matrix.md`
-  are historical parity snapshots, not the primary release gate.
-- If a parity matrix disagrees with `docs/status/current-roadmap.md`, treat the
-  matrix as stale until it is refreshed in the same change.
+- Repository-wide posture and execution order are tracked in
+  `docs/status/current-roadmap.md`.
+- `docs/status/lxmf-parity-matrix.md` and `docs/status/reticulum-parity-matrix.md`
+  are the maintained row-level parity records.
+- Changes to a project-level claim must update the roadmap and affected matrix
+  together.
 - Rust/Python live interop is enforced by `.github/workflows/python-interop.yml`
   on pull requests for the pinned Python Reticulum/LXMF references. Do not mark
   parity complete until non-ignored evidence exists for the specific matrix row.
@@ -68,6 +69,14 @@ reference compatibility. It runs:
 - ignored live Rust/Python channel, paper, compatibility-matrix, and LXMD
   remote-relay interop tests with the pinned checkouts.
 
+The SDK reports the parity checkpoint as its crate version plus the pinned
+reference revisions from `.github/workflows/python-interop.yml`: Reticulum
+conformance `0319444b20e0815f26c6b9ceeba8fa44de037c9b`, Python Reticulum
+`15320e4d2cfabb143c1db20ca887e275fd521585`, and Python LXMF
+`727830cefda83d9c6e3982b48675425f3f988f9c`. Check GitHub Actions for current
+run status; do not copy transient run IDs or conclusions into runtime SDK
+responses or long-lived documentation.
+
 The commands below remain useful release checks, but they are not currently
 enforced by pull-request CI unless and until `.github/workflows/ci.yml` is
 expanded.
@@ -105,6 +114,26 @@ cargo run -p xtask -- architecture-checks
 cargo run -p xtask -- sdk-docs-check
 cargo run -p xtask -- sdk-migration-check
 ```
+
+ZeroMQ transport readiness checks before considering a default switch:
+
+```bash
+cargo check --workspace --all-targets
+cargo test --workspace
+cargo clippy --workspace --all-targets --all-features --no-deps -- -D warnings
+cargo doc --workspace --no-deps
+bash tools/scripts/check-boundaries.sh
+cargo run -p rns-tools --bin rnx -- replay --trace docs/fixtures/sdk-v2/rpc/replay_known_send_cancel.v1.json
+```
+
+Additional required evidence:
+
+- local TCP SDK plus daemon integration covers start, send, cancel, status, configure, poll events,
+  snapshot, and shutdown
+- multi-client tests prove no cross-session response delivery
+- queue pressure, restart, reconnect, no-peer, oversized-frame, and sustained-event stress cases
+  map to documented SDK errors
+- remote ZeroMQ endpoints fail closed without token auth
 
 Extended/manual release checks:
 

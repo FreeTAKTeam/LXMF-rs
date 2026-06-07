@@ -26,7 +26,7 @@ pub(crate) fn spawn_on_inbound_watcher(
                             &event,
                             messages_dir.as_deref(),
                         ) {
-                            eprintln!("lxmd: on-inbound hook failed: {err}");
+                            log::error!("on-inbound hook failed: {err}");
                         }
                     }
                 }
@@ -38,7 +38,7 @@ pub(crate) fn spawn_on_inbound_watcher(
                     thread::sleep(Duration::from_millis(250));
                 }
                 Err(err) => {
-                    eprintln!("lxmd: inbound event watcher stopped: {err}");
+                    log::error!("inbound event watcher stopped: {err}");
                     break;
                 }
             }

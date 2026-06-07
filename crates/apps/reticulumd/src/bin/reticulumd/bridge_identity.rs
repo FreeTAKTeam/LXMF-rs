@@ -51,9 +51,15 @@ pub(super) fn cached_identity_for_destination(
             .values()
             .for_each(|identity| push_unique_identity(&mut candidates, Some(*identity)));
     }
+    const DESTINATION_NAMES: [(&str, &str); 4] = [
+        ("lxmf", "delivery"),
+        ("lxmf", "propagation"),
+        ("lxmf", "propagation.control"),
+        ("r3akt", "emergency"),
+    ];
     candidates.into_iter().find(|identity| {
-        ["delivery", "propagation", "propagation.control"].iter().any(|aspect| {
-            SingleOutputDestination::new(*identity, DestinationName::new("lxmf", aspect))
+        DESTINATION_NAMES.iter().any(|(app, aspect)| {
+            SingleOutputDestination::new(*identity, DestinationName::new(app, aspect))
                 .desc
                 .address_hash
                 == destination_hash

@@ -70,11 +70,11 @@ pub(super) async fn run_rpc_loop(
     tokio::spawn(async move {
         match tokio::signal::ctrl_c().await {
             Ok(()) => {
-                println!("[daemon] shutdown signal received");
+                log::info!("[daemon] shutdown signal received");
                 let _ = shutdown_tx.send(true);
             }
             Err(err) => {
-                eprintln!("[daemon] failed to install shutdown signal handler: {}", err);
+                log::error!("[daemon] failed to install shutdown signal handler: {}", err);
             }
         }
     });
@@ -128,13 +128,13 @@ async fn run_plain_rpc_loop(
     mut shutdown: ShutdownReceiver,
 ) {
     let listener = TcpListener::bind(addr).await.expect("bind rpc listener");
-    println!("reticulumd listening on http://{}", addr);
+    println!("{}", rpc_ready_line("http", addr));
 
     loop {
         tokio::select! {
             shutdown_result = shutdown.changed() => {
                 if shutdown_result.is_err() || *shutdown.borrow() {
-                    println!("[daemon] rpc tcp listener shutting down");
+                    log::info!("[daemon] rpc tcp listener shutting down");
                     break;
                 }
             }
@@ -157,14 +157,14 @@ async fn run_unix_rpc_loop(
 ) {
     prepare_rpc_unix_socket_path(&path).expect("prepare rpc unix socket path");
     let listener = UnixListener::bind(&path).expect("bind rpc unix socket");
-    println!("reticulumd listening on unix:{}", path.display());
+    log::info!("reticulumd listening on unix:{}", path.display());
     let peer_addr = SocketAddr::from(([127, 0, 0, 1], 0));
 
     loop {
         tokio::select! {
             shutdown_result = shutdown.changed() => {
                 if shutdown_result.is_err() || *shutdown.borrow() {
-                    println!("[daemon] rpc unix listener shutting down");
+                    log::info!("[daemon] rpc unix listener shutting down");
                     break;
                 }
             }
@@ -228,13 +228,13 @@ async fn run_tls_rpc_loop(
     let tls_server = build_tls_server_config(&config).expect("build rpc tls server config");
     let acceptor = TlsAcceptor::from(tls_server);
     let listener = TcpListener::bind(addr).await.expect("bind tls rpc listener");
-    println!("reticulumd listening on https://{}", addr);
+    println!("{}", rpc_ready_line("https", addr));
 
     loop {
         tokio::select! {
             shutdown_result = shutdown.changed() => {
                 if shutdown_result.is_err() || *shutdown.borrow() {
-                    println!("[daemon] rpc tls listener shutting down");
+                    log::info!("[daemon] rpc tls listener shutting down");
                     break;
                 }
             }
@@ -255,7 +255,7 @@ async fn run_tls_rpc_loop(
                             .await;
                         }
                         Err(err) => {
-                            eprintln!(
+                            log::error!(
                                 "[daemon] rpc tls handshake failed peer={} err={}",
                                 peer_addr, err
                             );
@@ -267,6 +267,7 @@ async fn run_tls_rpc_loop(
     }
 }
 
+#[tracing::instrument(name = "rpc_conn", skip(stream, daemon, transport_auth))]
 async fn handle_connection<S>(
     mut stream: S,
     peer_addr: SocketAddr,
@@ -278,7 +279,7 @@ async fn handle_connection<S>(
     let buffer = match read_http_request(&mut stream).await {
         Ok(buffer) => buffer,
         Err(err) => {
-            eprintln!("[daemon] rpc read error peer={} err={}", peer_addr, err);
+            log::error!("[daemon] rpc read error peer={} err={}", peer_addr, err);
             let _ = stream.write_all(request_read_error_response(&err)).await;
             let _ = stream.shutdown().await;
             return;
@@ -468,9 +469,11 @@ async fn handle_event_stream<S>(
         let batch = match poll_sdk_event_stream_batch(daemon, cursor.as_deref(), 256) {
             Ok(batch) => batch,
             Err(err) => {
-                eprintln!(
+                log::error!(
                     "[daemon] event stream catch-up error peer={} code={} message={}",
-                    peer_addr, err.code, err.message
+                    peer_addr,
+                    err.code,
+                    err.message
                 );
                 let response = RpcResponse { id: 0, result: None, error: Some(*err) };
                 if let Ok(frame) = codec::encode_frame(&response) {
@@ -507,7 +510,7 @@ async fn handle_event_stream<S>(
         let frame = match codec::encode_frame(&event) {
             Ok(frame) => frame,
             Err(err) => {
-                eprintln!("[daemon] event stream encode error peer={} err={}", peer_addr, err);
+                log::error!("[daemon] event stream encode error peer={} err={}", peer_addr, err);
                 break;
             }
         };
@@ -803,6 +806,13 @@ mod rpc_loop_tests {
     use tokio::io::{duplex, AsyncReadExt, AsyncWriteExt};
     #[cfg(unix)]
     use tokio::net::UnixStream;
+
+    #[test]
+    fn rpc_ready_line_matches_e2e_harness_marker() {
+        let line = rpc_ready_line("http", "127.0.0.1:4242");
+
+        assert!(line.contains("listening on http://127.0.0.1:4242"));
+    }
 
     #[test]
     fn read_http_request_collects_complete_post_body() {

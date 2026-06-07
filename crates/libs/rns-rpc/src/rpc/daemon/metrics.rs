@@ -25,7 +25,7 @@ impl RpcDaemon {
         metrics.rpc_requests_total = metrics.rpc_requests_total.saturating_add(1);
         Self::metrics_increment(&mut metrics.rpc_requests_by_method, method);
         match method {
-            "sdk_send_v2" | "send_message" | "send_message_v2" => {
+            "sdk_send_v2" | "sdk_send_batch_v2" | "send_message" | "send_message_v2" => {
                 metrics.sdk_send_total = metrics.sdk_send_total.saturating_add(1);
             }
             "sdk_poll_events_v2" => {
@@ -50,7 +50,7 @@ impl RpcDaemon {
             Self::metrics_increment(&mut metrics.rpc_errors_by_method, method);
         }
         match method {
-            "sdk_send_v2" | "send_message" | "send_message_v2" => {
+            "sdk_send_v2" | "sdk_send_batch_v2" | "send_message" | "send_message_v2" => {
                 metrics.sdk_send_latency_ms.observe(elapsed_ms);
                 if response.error.is_some() {
                     metrics.sdk_send_error_total = metrics.sdk_send_error_total.saturating_add(1);
@@ -107,7 +107,7 @@ impl RpcDaemon {
         metrics.rpc_errors_total = metrics.rpc_errors_total.saturating_add(1);
         Self::metrics_increment(&mut metrics.rpc_errors_by_method, method);
         match method {
-            "sdk_send_v2" | "send_message" | "send_message_v2" => {
+            "sdk_send_v2" | "sdk_send_batch_v2" | "send_message" | "send_message_v2" => {
                 metrics.sdk_send_error_total = metrics.sdk_send_error_total.saturating_add(1);
                 metrics.sdk_send_latency_ms.observe(elapsed_ms);
             }

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::io::Read;
 use tokio::time::{Duration, Instant};
 
@@ -23,6 +23,7 @@ const HEADER_MINSIZE: usize = 2 + 1 + ADDRESS_HASH_SIZE;
 const HEADER_MAXSIZE: usize = 2 + 1 + (ADDRESS_HASH_SIZE * 2);
 const IFAC_MIN_SIZE: usize = 1;
 const RETICULUM_MTU: usize = PACKET_MDU + HEADER_MAXSIZE + IFAC_MIN_SIZE;
+pub(crate) const DEFAULT_RESOURCE_INTERFACE_MTU: usize = RETICULUM_MTU;
 pub const LINK_PACKET_MDU: usize =
     ((RETICULUM_MTU - IFAC_MIN_SIZE - HEADER_MINSIZE - FERNET_OVERHEAD_SIZE)
         / FERNET_MAX_PADDING_SIZE)
@@ -41,6 +42,77 @@ const FLAG_METADATA: u8 = 0x20;
 const METADATA_MAX_SIZE: usize = 16 * 1024 * 1024 - 1;
 const AUTO_COMPRESS_MAX_SIZE: usize = 64 * 1024 * 1024;
 const MAX_INBOUND_RESOURCE_TRANSFER_SIZE: u64 = AUTO_COMPRESS_MAX_SIZE as u64;
+pub const DEFAULT_RESOURCE_RETRY_INTERVAL_SECS: u64 = 2;
+pub const DEFAULT_RESOURCE_MAX_RETRIES: u8 = 16;
+const DEFAULT_RESOURCE_MAX_ADV_RETRIES: u8 = 4;
+
+pub(crate) fn resource_packet_mdu_for_mtu(interface_mtu: usize) -> Result<usize, RnsError> {
+    if interface_mtu >= DEFAULT_RESOURCE_INTERFACE_MTU {
+        return Ok(PACKET_MDU);
+    }
+    interface_mtu
+        .checked_sub(HEADER_MAXSIZE + IFAC_MIN_SIZE)
+        .filter(|mdu| *mdu > 0)
+        .map(|mdu| mdu.min(PACKET_MDU))
+        .ok_or(RnsError::InvalidArgument)
+}
+
+fn resource_hashmap_segment_len_for_mtu(interface_mtu: usize) -> Result<usize, RnsError> {
+    let encrypted_control_mdu = if interface_mtu >= DEFAULT_RESOURCE_INTERFACE_MTU {
+        LINK_PACKET_MDU
+    } else {
+        let payload_capacity = interface_mtu
+            .checked_sub(IFAC_MIN_SIZE + HEADER_MINSIZE + FERNET_OVERHEAD_SIZE)
+            .ok_or(RnsError::InvalidArgument)?;
+        (payload_capacity / FERNET_MAX_PADDING_SIZE)
+            .checked_mul(FERNET_MAX_PADDING_SIZE)
+            .and_then(|value| value.checked_sub(1))
+            .ok_or(RnsError::InvalidArgument)?
+    };
+    encrypted_control_mdu
+        .checked_sub(ADVERTISEMENT_OVERHEAD)
+        .map(|available| available / MAPHASH_LEN)
+        .filter(|entries| *entries > 0)
+        .ok_or(RnsError::InvalidArgument)
+}
+
+/// Exponentially weighted moving average: alpha = 7/8.
+pub(crate) fn ewma(old: Duration, sample: Duration) -> Duration {
+    let micros =
+        (old.as_micros() as u64).saturating_mul(7).saturating_add(sample.as_micros() as u64) / 8;
+    Duration::from_micros(micros)
+}
+
+/// Per-link adaptive statistics used to decide when to re-request lost fragments.
+#[derive(Debug, Clone)]
+pub(crate) struct LinkStats {
+    /// EWMA of round-trip time (request → part arrival).
+    pub(crate) rtt: Duration,
+    /// EWMA of inter-arrival interval between consecutive received parts.
+    pub(crate) arrival_interval: Duration,
+    pub(crate) last_arrival: Option<Instant>,
+}
+
+impl LinkStats {
+    pub(crate) fn new() -> Self {
+        Self {
+            rtt: Duration::from_millis(500),
+            arrival_interval: Duration::from_millis(100),
+            last_arrival: None,
+        }
+    }
+
+    pub(crate) fn update_rtt(&mut self, sample: Duration) {
+        self.rtt = ewma(self.rtt, sample);
+    }
+
+    pub(crate) fn record_arrival(&mut self, now: Instant) {
+        if let Some(last) = self.last_arrival {
+            self.arrival_interval = ewma(self.arrival_interval, now.duration_since(last));
+        }
+        self.last_arrival = Some(now);
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResourceStatus {
@@ -89,6 +161,8 @@ pub enum ResourceEventKind {
     Progress(ResourceProgress),
     Complete(ResourceComplete),
     OutboundComplete,
+    OutboundFailed,
+    OutboundCancelled,
 }
 
 #[derive(Debug, Clone)]
@@ -353,6 +427,7 @@ impl ResourceProof {
 
 include!("resource/sender.rs");
 include!("resource/receiver.rs");
+include!("resource/manager_start.rs");
 include!("resource/manager.rs");
 include!("resource/utils.rs");
 include!("resource/tests.rs");

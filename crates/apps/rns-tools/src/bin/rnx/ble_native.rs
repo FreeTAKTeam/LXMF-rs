@@ -139,7 +139,7 @@ pub(crate) fn run_ble_native_peer(
             let frame = decode_frame(&notification.value[1..]).map_err(embedded_to_io)?;
             match frame.kind {
                 FRAME_KIND_ANNOUNCE => {
-                    println!(
+                    log::trace!(
                         "BLE_NATIVE_PEER frame kind=0x{:02x} seq={} bytes={} role=announce",
                         frame.kind,
                         frame.sequence,
@@ -148,7 +148,7 @@ pub(crate) fn run_ble_native_peer(
                 }
                 FRAME_KIND_LXMF_MESSAGE => {
                     let envelope = decode_envelope(&frame.payload).map_err(embedded_to_io)?;
-                    println!(
+                    log::trace!(
                         "BLE_NATIVE_PEER frame kind=0x{:02x} seq={} body={} source={} destination={}",
                         frame.kind,
                         frame.sequence,
@@ -162,7 +162,7 @@ pub(crate) fn run_ble_native_peer(
                     }
                 }
                 _ => {
-                    println!(
+                    log::trace!(
                         "BLE_NATIVE_PEER frame kind=0x{:02x} seq={} payload_hex={}",
                         frame.kind,
                         frame.sequence,
@@ -178,7 +178,7 @@ pub(crate) fn run_ble_native_peer(
 
         let _ = peripheral.unsubscribe(&notify_char).await;
         let _ = peripheral.disconnect().await;
-        println!(
+        log::info!(
             "BLE_NATIVE_PEER ok: device_id={} responses={} mode={:?}",
             peripheral.id(),
             responses,
@@ -307,7 +307,7 @@ pub(crate) fn run_ble_native_bridge(
                 reply.body.as_slice(),
                 4096,
             )?;
-            println!(
+            log::info!(
                 "BLE_NATIVE_BRIDGE ok: device_id={} frame_seq={} body={} attachment_id={}",
                 peripheral.id(),
                 frame.sequence,

@@ -6,6 +6,9 @@ surface.
 
 Scope:
 - Transport: HTTP `POST /rpc` with framed MessagePack payloads over Unix sockets, TCP, or TLS/mTLS.
+- Experimental transport: feature-gated ZeroMQ pipeline RPC uses the same framed MessagePack RPC
+  payload bytes inside an application envelope. HTTP remains the default and authoritative transport
+  until the ZeroMQ release gates below pass.
 - Event stream: HTTP `GET /events` with framed MessagePack events.
 - Live event stream: HTTP `GET /events/stream` keeps the connection open and writes framed SDK
   event objects until the client disconnects. Frames use the same 4-byte big-endian length prefix
@@ -51,6 +54,45 @@ Response object:
 - `result: object | array | scalar | null`
 - `error: { code: string, message: string } | null`
 
+## Experimental ZeroMQ pipeline transport
+
+Status: opt-in, feature-gated, not the default SDK transport.
+
+Crate/API pin:
+
+- Rust crate: `zeromq = 0.6.0`
+- Enabled crate features: `tokio-runtime`, `tcp-transport`
+- Initial socket pattern: paired `PUSH`/`PULL` sockets
+- IPC transport is deferred for the first cross-platform pass.
+
+Envelope:
+
+- `protocol_version: u16`, currently `1`
+- `session_id: string`
+- `request_id: u64`
+- `kind: request | response | event | control`
+- `auth: { scheme, value } | null`
+- `response_endpoint: string | null`
+- `payload: bytes`, containing the existing framed MessagePack RPC request or response
+
+Correlation is mandatory. SDK clients must accept a response only when both `session_id` and
+`request_id` match the pending call. ZeroMQ socket identity, round-robin delivery, and peer ordering
+are not sufficient for request/reply semantics.
+
+Security:
+
+- Loopback TCP endpoints may run in local-trusted mode.
+- Non-local TCP endpoints fail closed unless explicit application-layer auth metadata is configured.
+- The first auth mode is token/HMAC metadata equivalent to the HTTP bearer token semantics.
+- mTLS is not provided by ZeroMQ and must not be inferred from the socket layer.
+- IPC endpoints are deferred until the optional Unix-only transport feature is introduced.
+
+Events:
+
+- `sdk_poll_events_v2` cursor semantics remain authoritative.
+- Pushed event envelopes are a wakeup/optimization path only until they prove identical gap, cursor,
+  overflow, replay, and reset behavior.
+
 ## Stable method set
 
 All methods below are required for full CLI feature coverage.
@@ -86,9 +128,21 @@ All methods below are required for full CLI feature coverage.
 ### Peers and interfaces
 - `list_peers` (no params)
 - `peer_sync`
-: Params keys: `peer`
+: Params keys: `peer` (optional: `transfer_limit_kb`, `wanted_ids`). When
+  `wanted_ids` is `true`, every offered message is transferred like Python's
+  "wants all" offer response. When `wanted_ids` is `false` or an empty list,
+  every offered ID is treated like a Python LXMF peer response indicating the
+  peer already has those messages: they become handled but are not transferred.
+  A non-empty list transfers only the supplied IDs and handles the rest. Each
+  supplied wanted ID must be a 32-byte transient ID encoded as 64 hex
+  characters; malformed wanted IDs are rejected before peer queue state is
+  mutated.
 - `peer_unpeer`
-: Params keys: `peer`
+: Params keys: `peer`. Result and `peer_unpeer` event include `removed`,
+  `propagation_cleared`, `propagation_cleared_bytes`, top-level aggregate
+  peer counters `offered`, `outgoing`, `incoming`, and `messages` with
+  `offered`, `outgoing`, `incoming`, `unhandled`, byte counts, and handled /
+  unhandled propagation IDs.
 - `clear_peers` (no params)
 - `list_interfaces` (no params)
 - `set_interfaces`
@@ -139,6 +193,8 @@ The following contract is mandatory in v1:
 : Params keys: `transient_id`
 - `propagation_remote_sync`
 : Params keys: `remote`, `peer` (optional: `identity_private_key_hex`, `timeout_secs`).
+  `remote` is trimmed and must not be blank; invalid remotes are rejected
+  before the bridge is called or local peer/sync state is updated.
   `propagation_status.propagation.sync_state` uses Python `LXMRouter.PR_*`
   values for remote sync lifecycle: request sent `0x04`, complete `0x07`,
   failed `0xfe`.
@@ -147,7 +203,11 @@ The following contract is mandatory in v1:
   `acknowledge_sync_completion`: clears progress, resets completed states to
   idle, and preserves failure states unless `reset_state` is true.
 - `propagation_remote_unpeer`
+: Mirrors local `peer_unpeer` cleanup accounting for the local peer state after
+  the remote unpeer call succeeds, and includes the remote bridge `result`.
 : Params keys: `remote`, `peer` (optional: `identity_private_key_hex`, `timeout_secs`).
+  `remote` is trimmed and must not be blank; invalid remotes are rejected
+  before the bridge is called or local peer state is removed.
 
 ### Stamp / tickets
 - `stamp_policy_get` (no params)

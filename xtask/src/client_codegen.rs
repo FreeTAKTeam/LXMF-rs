@@ -719,25 +719,56 @@ fn project_core_legacy_rpc_schema(
     components: &Map<String, Value>,
 ) -> Result<LegacyRpcSchemaArtifact> {
     let method_id = to_pascal_case(method_name);
-    let ref_map = BTreeMap::from([
+    let params_component = format!("{method_id}Params");
+    let result_component = format!("{method_id}Result");
+    let request_component = format!("{method_id}RequestEnvelope");
+    let response_ok_component = format!("{method_id}ResponseOkEnvelope");
+    let response_error_component = format!("{method_id}ResponseErrorEnvelope");
+    let mut ref_map = BTreeMap::from([
         (format!("#/components/schemas/{method_id}Params"), "#/$defs/params".to_string()),
         (format!("#/components/schemas/{method_id}Result"), "#/$defs/result".to_string()),
         ("#/components/schemas/RpcId".to_string(), "#/$defs/rpc_id".to_string()),
         ("#/components/schemas/RpcError".to_string(), "#/$defs/rpc_error".to_string()),
     ]);
+    let extra_components = legacy_projection_extra_components(
+        components,
+        &[
+            params_component.as_str(),
+            result_component.as_str(),
+            request_component.as_str(),
+            response_ok_component.as_str(),
+            response_error_component.as_str(),
+        ],
+    )?;
+    for (component, def_key) in &extra_components {
+        ref_map.insert(format!("#/components/schemas/{component}"), format!("#/$defs/{def_key}"));
+    }
 
-    let request = rewrite_schema_refs(
-        component_schema(components, &format!("{method_id}RequestEnvelope"))?,
-        &ref_map,
-    )?;
-    let response_ok = rewrite_schema_refs(
-        component_schema(components, &format!("{method_id}ResponseOkEnvelope"))?,
-        &ref_map,
-    )?;
-    let response_error = rewrite_schema_refs(
-        component_schema(components, &format!("{method_id}ResponseErrorEnvelope"))?,
-        &ref_map,
-    )?;
+    let request = rewrite_schema_refs(component_schema(components, &request_component)?, &ref_map)?;
+    let response_ok =
+        rewrite_schema_refs(component_schema(components, &response_ok_component)?, &ref_map)?;
+    let response_error =
+        rewrite_schema_refs(component_schema(components, &response_error_component)?, &ref_map)?;
+    let mut defs = Map::new();
+    defs.insert("rpc_id".to_string(), component_schema(components, "RpcId")?);
+    defs.insert("rpc_error".to_string(), component_schema(components, "RpcError")?);
+    defs.insert(
+        "params".to_string(),
+        rewrite_schema_refs(component_schema(components, &params_component)?, &ref_map)?,
+    );
+    defs.insert(
+        "result".to_string(),
+        rewrite_schema_refs(component_schema(components, &result_component)?, &ref_map)?,
+    );
+    for (component, def_key) in extra_components {
+        defs.insert(
+            def_key.to_string(),
+            rewrite_schema_refs(component_schema(components, component)?, &ref_map)?,
+        );
+    }
+    defs.insert("request".to_string(), request);
+    defs.insert("response_ok".to_string(), response_ok);
+    defs.insert("response_error".to_string(), response_error);
 
     Ok(LegacyRpcSchemaArtifact {
         path: Path::new(LEGACY_RPC_SCHEMA_DIR).join(format!("{method_name}.schema.json")),
@@ -750,17 +781,60 @@ fn project_core_legacy_rpc_schema(
                 { "$ref": "#/$defs/response_ok" },
                 { "$ref": "#/$defs/response_error" }
             ],
-            "$defs": {
-                "rpc_id": component_schema(components, "RpcId")?,
-                "rpc_error": component_schema(components, "RpcError")?,
-                "params": rewrite_schema_refs(component_schema(components, &format!("{method_id}Params"))?, &ref_map)?,
-                "result": rewrite_schema_refs(component_schema(components, &format!("{method_id}Result"))?, &ref_map)?,
-                "request": request,
-                "response_ok": response_ok,
-                "response_error": response_error
-            }
+            "$defs": defs
         }),
     })
+}
+
+fn legacy_projection_extra_components(
+    components: &Map<String, Value>,
+    root_components: &[&str],
+) -> Result<Vec<(&'static str, &'static str)>> {
+    let response_meta_ref = "#/components/schemas/ResponseMeta";
+    let python_reference_ref = "#/components/schemas/PythonReference";
+    let send_batch_message_ref = "#/components/schemas/SdkSendBatchV2Message";
+    let send_batch_result_item_ref = "#/components/schemas/SdkSendBatchV2ResultItem";
+    let mut needs_response_meta = false;
+    let mut needs_python_reference = false;
+    let mut needs_send_batch_message = false;
+    let mut needs_send_batch_result_item = false;
+    for component in root_components {
+        let schema = component_schema(components, component)?;
+        needs_response_meta |= schema_mentions_ref(&schema, response_meta_ref);
+        needs_python_reference |= schema_mentions_ref(&schema, python_reference_ref);
+        needs_send_batch_message |= schema_mentions_ref(&schema, send_batch_message_ref);
+        needs_send_batch_result_item |= schema_mentions_ref(&schema, send_batch_result_item_ref);
+    }
+    if needs_response_meta {
+        let response_meta = component_schema(components, "ResponseMeta")?;
+        needs_python_reference |= schema_mentions_ref(&response_meta, python_reference_ref);
+    }
+
+    let mut extras = Vec::new();
+    if needs_python_reference {
+        extras.push(("PythonReference", "python_reference"));
+    }
+    if needs_response_meta {
+        extras.push(("ResponseMeta", "response_meta"));
+    }
+    if needs_send_batch_message {
+        extras.push(("SdkSendBatchV2Message", "send_batch_message"));
+    }
+    if needs_send_batch_result_item {
+        extras.push(("SdkSendBatchV2ResultItem", "send_batch_result_item"));
+    }
+    Ok(extras)
+}
+
+fn schema_mentions_ref(schema: &Value, target_ref: &str) -> bool {
+    match schema {
+        Value::Object(map) => {
+            map.get("$ref").and_then(Value::as_str) == Some(target_ref)
+                || map.values().any(|value| schema_mentions_ref(value, target_ref))
+        }
+        Value::Array(items) => items.iter().any(|value| schema_mentions_ref(value, target_ref)),
+        _ => false,
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2427,19 +2501,21 @@ fn transform_schema_node_for_generator(value: &Value) -> Result<Value> {
         Value::Object(map) => {
             let mut out = Map::new();
 
-            let nullable = if let Some(types) = map.get("type").and_then(Value::as_array) {
-                type_with_nullable(types)?
+            let type_array = if let Some(types) = map.get("type").and_then(Value::as_array) {
+                type_array_to_generator_type(types)?
             } else {
                 None
             };
 
             for (key, node) in map {
                 if key == "type" {
-                    if let Some((base_type, nullable)) = &nullable {
+                    if let Some(TypeArrayConversion::Single { base_type, nullable }) = &type_array {
                         out.insert("type".to_string(), Value::String(base_type.to_string()));
                         if *nullable {
                             out.insert("nullable".to_string(), Value::Bool(true));
                         }
+                    } else if type_array.is_some() {
+                        continue;
                     } else {
                         out.insert(key.clone(), transform_schema_node_for_generator(node)?);
                     }
@@ -2462,13 +2538,26 @@ fn transform_schema_node_for_generator(value: &Value) -> Result<Value> {
                 out.insert(key.clone(), transformed);
             }
 
+            if let Some(TypeArrayConversion::AnyOf { schemas, nullable }) = type_array {
+                out.insert("anyOf".to_string(), Value::Array(schemas));
+                if nullable {
+                    out.insert("nullable".to_string(), Value::Bool(true));
+                }
+            }
+
             Ok(Value::Object(out))
         }
         _ => Ok(value.clone()),
     }
 }
 
-fn type_with_nullable(type_list: &[Value]) -> Result<Option<(String, bool)>> {
+#[derive(Debug, Clone)]
+enum TypeArrayConversion {
+    Single { base_type: String, nullable: bool },
+    AnyOf { schemas: Vec<Value>, nullable: bool },
+}
+
+fn type_array_to_generator_type(type_list: &[Value]) -> Result<Option<TypeArrayConversion>> {
     let has_null = type_list.iter().any(|value| value == "null");
     let mut seen = Vec::new();
     for value in type_list {
@@ -2481,9 +2570,14 @@ fn type_with_nullable(type_list: &[Value]) -> Result<Option<(String, bool)>> {
 
     match seen.as_slice() {
         [] => Ok(None),
-        [kind] => Ok(Some((kind.to_string(), has_null))),
-        _ if has_null => Ok(None),
-        _ => Ok(None),
+        [kind] => Ok(Some(TypeArrayConversion::Single {
+            base_type: kind.to_string(),
+            nullable: has_null,
+        })),
+        _ => Ok(Some(TypeArrayConversion::AnyOf {
+            schemas: seen.into_iter().map(|kind| json!({ "type": kind })).collect::<Vec<_>>(),
+            nullable: has_null,
+        })),
     }
 }
 
@@ -2517,19 +2611,19 @@ fn run_openapi_generator(
             args.extend(vec![
                 "generate".to_string(),
                 "-i".to_string(),
-                spec_path
-                    .canonicalize()
-                    .with_context(|| format!("canonicalize {}", spec_path.display()))?
-                    .to_string_lossy()
-                    .to_string(),
+                external_tool_path(
+                    &spec_path
+                        .canonicalize()
+                        .with_context(|| format!("canonicalize {}", spec_path.display()))?,
+                ),
                 "-g".to_string(),
                 generator.to_string(),
                 "-o".to_string(),
-                output_dir
-                    .canonicalize()
-                    .with_context(|| format!("canonicalize {}", output_dir.display()))?
-                    .to_string_lossy()
-                    .to_string(),
+                external_tool_path(
+                    &output_dir
+                        .canonicalize()
+                        .with_context(|| format!("canonicalize {}", output_dir.display()))?,
+                ),
             ]);
             if openapi_version.starts_with("3.1") {
                 args.push("--skip-validate-spec".to_string());
@@ -2540,7 +2634,7 @@ fn run_openapi_generator(
                     bail!("missing generator config file {}", abs.display());
                 }
                 args.push("-c".to_string());
-                args.push(abs.to_string_lossy().to_string());
+                args.push(external_tool_path(&abs));
             }
 
             run_command(command_program, &args.iter().map(String::as_str).collect::<Vec<_>>())?;
@@ -2615,11 +2709,29 @@ fn run_openapi_generator(
 }
 
 fn run_command(cmd: &str, args: &[&str]) -> Result<()> {
-    let status = Command::new(cmd).args(args).status().with_context(|| format!("spawn {cmd}"))?;
+    let program = command_program(cmd);
+    let status =
+        Command::new(&program).args(args).status().with_context(|| format!("spawn {cmd}"))?;
     if !status.success() {
         bail!("command failed: {} {}", cmd, args.join(" "));
     }
     Ok(())
+}
+
+fn command_program(cmd: &str) -> String {
+    if cmd == "bash" {
+        if let Ok(override_path) = env::var("LXMF_RS_BASH") {
+            if !override_path.trim().is_empty() {
+                return override_path;
+            }
+        }
+    }
+    cmd.to_string()
+}
+
+fn external_tool_path(path: &Path) -> String {
+    let rendered = path.to_string_lossy();
+    rendered.strip_prefix(r"\\?\").unwrap_or(&rendered).to_string()
 }
 
 fn collect_files_recursive(path: &Path) -> Result<Vec<PathBuf>> {
@@ -3010,6 +3122,7 @@ mod tests {
                         "properties": {
                             "method": {"const": "sdk_send_v2"},
                             "count": {"type": ["integer", "null"]},
+                            "body": {"type": ["object", "string", "null"]},
                         },
                         "required": ["method"]
                     },
@@ -3046,6 +3159,12 @@ mod tests {
         assert_eq!(count["type"], "integer");
         assert_eq!(count["nullable"], true);
         assert!(count.get("additionalProperties").is_none());
+
+        let body = &request["properties"]["body"];
+        assert_eq!(body["anyOf"][0]["type"], "object");
+        assert_eq!(body["anyOf"][1]["type"], "string");
+        assert_eq!(body["nullable"], true);
+        assert!(body.get("type").is_none());
 
         let payload = &converted["components"]["schemas"]["Payload"];
         assert!(payload.get("const").is_none());
@@ -3111,7 +3230,7 @@ mod tests {
         let openrpc = serde_json::from_str::<Value>(&fs::read_to_string(openrpc_path)?)?;
         let projected = project_legacy_rpc_schemas(&openrpc)?;
 
-        assert_eq!(projected.len(), 10, "expected 8 core + release B + release C projections");
+        assert_eq!(projected.len(), 11, "expected 9 core + release B + release C projections");
 
         for artifact in projected {
             let committed_path = workspace.join(&artifact.path);

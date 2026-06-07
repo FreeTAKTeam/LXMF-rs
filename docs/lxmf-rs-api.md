@@ -60,10 +60,14 @@ Related references:
 
 Published crates.io entry points:
 
-- `lxmf 0.3.0`
-- `lxmf-sdk 0.2.1`
-- `lxmf-wire 0.2.0`
-- `reticulum-rs 0.2.0`
-- `reticulum-rs-core 0.2.0`
-- `reticulum-rs-transport 0.2.0`
-- `reticulum-rs-rpc 0.3.0`
+- `lxmf`
+- `lxmf-sdk`
+- `lxmf-wire`
+- `reticulum-rs`
+- `reticulum-rs-core`
+- `reticulum-rs-transport`
+- `reticulum-rs-rpc`
+
+Use the root `Cargo.toml`, crates.io badges in `README.md`, or the selected
+release tag for version numbers. This page intentionally does not duplicate
+mutable release versions.

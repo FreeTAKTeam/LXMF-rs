@@ -1,3 +1,5 @@
+use serde::ser::SerializeMap;
+
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct RpcRequest {
     pub id: u64,
@@ -10,6 +12,61 @@ pub struct RpcResponse {
     pub id: u64,
     pub result: Option<JsonValue>,
     pub error: Option<RpcError>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SdkCustomOperationSpec {
+    pub id: String,
+    pub group: String,
+    pub kind: String,
+    pub transport_variant: String,
+    pub description: String,
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    #[serde(default)]
+    pub required_capabilities: Vec<String>,
+}
+
+impl SdkCustomOperationSpec {
+    pub fn new(
+        id: impl Into<String>,
+        group: impl Into<String>,
+        kind: impl Into<String>,
+        transport_variant: impl Into<String>,
+        description: impl Into<String>,
+    ) -> Self {
+        Self {
+            id: Self::trimmed(id),
+            group: Self::trimmed(group),
+            kind: Self::trimmed(kind).to_ascii_lowercase(),
+            transport_variant: Self::trimmed(transport_variant),
+            description: Self::trimmed(description),
+            aliases: Vec::new(),
+            required_capabilities: Vec::new(),
+        }
+    }
+
+    pub fn with_alias(mut self, alias: impl Into<String>) -> Self {
+        let alias = Self::trimmed(alias);
+        if !alias.is_empty() && !self.aliases.iter().any(|current| current == &alias) {
+            self.aliases.push(alias);
+        }
+        self
+    }
+
+    pub fn with_required_capability(mut self, capability: impl Into<String>) -> Self {
+        let capability = Self::trimmed(capability);
+        if !capability.is_empty()
+            && !self.required_capabilities.iter().any(|current| current == &capability)
+        {
+            self.required_capabilities.push(capability);
+        }
+        self
+    }
+
+    fn trimmed(value: impl Into<String>) -> String {
+        value.into().trim().to_owned()
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone, Eq)]
@@ -441,6 +498,7 @@ pub struct RpcDaemon {
     sdk_runtime_config: Mutex<JsonValue>,
     sdk_config_apply_lock: Mutex<()>,
     sdk_effective_capabilities: Mutex<Vec<String>>,
+    sdk_custom_operations: Mutex<Vec<SdkCustomOperationSpec>>,
     sdk_stream_degraded: Mutex<bool>,
     sdk_seen_jti: Mutex<HashMap<String, u64>>,
     sdk_rate_window_started_ms: Mutex<u64>,
@@ -470,6 +528,7 @@ pub struct RpcDaemon {
     delivery_policy: Mutex<DeliveryPolicy>,
     propagation_state: Mutex<PropagationState>,
     propagation_payloads: Mutex<HashMap<String, String>>,
+    throttled_propagation_peers: Mutex<HashMap<String, i64>>,
     outbound_propagation_node: Mutex<Option<String>>,
     paper_ingest_seen: Mutex<HashSet<String>>,
     stamp_policy: Mutex<StampPolicy>,
@@ -490,6 +549,14 @@ pub struct RpcDaemon {
 }
 
 pub trait OutboundBridge: Send + Sync {
+    fn validate_delivery(
+        &self,
+        _record: &MessageRecord,
+        _options: &OutboundDeliveryOptions,
+    ) -> Result<(), std::io::Error> {
+        Ok(())
+    }
+
     fn deliver(
         &self,
         record: &MessageRecord,
@@ -503,11 +570,12 @@ pub trait OutboundBridge: Send + Sync {
         Ok(None)
     }
 
-    fn decode_paper_uri(
-        &self,
-        _uri: &str,
-    ) -> Result<Option<PaperDecodeOutcome>, std::io::Error> {
+    fn decode_paper_uri(&self, _uri: &str) -> Result<Option<PaperDecodeOutcome>, std::io::Error> {
         Ok(None)
+    }
+
+    fn delivery_pipeline_status(&self) -> Option<JsonValue> {
+        None
     }
 }
 
@@ -536,6 +604,23 @@ pub trait RemoteControlBridge: Send + Sync {
         peer: &str,
         identity_private_key_hex: Option<&str>,
         timeout_secs: f64,
+        transfer_limit_kb: Option<f64>,
+    ) -> Result<JsonValue, std::io::Error>;
+
+    fn propagation_remote_fetch(
+        &self,
+        remote: &str,
+        identity_private_key_hex: Option<&str>,
+        timeout_secs: f64,
+        transfer_limit_kb: Option<f64>,
+    ) -> Result<JsonValue, std::io::Error>;
+
+    fn propagation_remote_download(
+        &self,
+        remote: &str,
+        identity_private_key_hex: Option<&str>,
+        timeout_secs: f64,
+        transfer_limit_kb: Option<f64>,
     ) -> Result<JsonValue, std::io::Error>;
 
     fn propagation_remote_download(
@@ -614,50 +699,247 @@ pub struct SequencedRpcEvent {
     pub event: RpcEvent,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PeerRecord {
     pub peer: String,
     pub last_seen: i64,
-    #[serde(default)]
     pub capabilities: Vec<String>,
-    #[serde(default)]
     pub name: Option<String>,
-    #[serde(default)]
     pub name_source: Option<String>,
-    #[serde(default)]
     pub peer_type: Option<String>,
-    #[serde(default)]
     pub alive: bool,
-    #[serde(default)]
     pub last_sync_attempt: i64,
-    #[serde(default)]
     pub next_sync_attempt: i64,
-    #[serde(default)]
     pub sync_backoff: u32,
-    #[serde(default = "default_network_distance")]
     pub network_distance: u32,
-    #[serde(default)]
+    pub offered: u64,
+    pub outgoing: u64,
+    pub incoming: u64,
     pub rx_bytes: u64,
-    #[serde(default)]
     pub tx_bytes: u64,
-    #[serde(default = "default_acceptance_rate")]
+    pub sync_transfer_rate: f64,
     pub acceptance_rate: f64,
-    #[serde(default)]
     pub first_seen: i64,
-    #[serde(default)]
     pub seen_count: u64,
-    #[serde(default)]
     pub peering_timebase: i64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub propagation_transfer_limit: Option<u32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub propagation_sync_limit: Option<u32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub propagation_stamp_cost: Option<u32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub propagation_stamp_cost_flexibility: Option<u32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub peering_cost: Option<u32>,
+}
+
+impl serde::Serialize for PeerRecord {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut map = serializer.serialize_map(None)?;
+        map.serialize_entry("peer", &self.peer)?;
+        map.serialize_entry("last_seen", &self.last_seen)?;
+        map.serialize_entry("last_heard", &self.last_seen)?;
+        map.serialize_entry("capabilities", &self.capabilities)?;
+        map.serialize_entry("name", &self.name)?;
+        map.serialize_entry("name_source", &self.name_source)?;
+        map.serialize_entry("peer_type", &self.peer_type)?;
+        map.serialize_entry("alive", &self.alive)?;
+        map.serialize_entry("last_sync_attempt", &self.last_sync_attempt)?;
+        map.serialize_entry("next_sync_attempt", &self.next_sync_attempt)?;
+        map.serialize_entry("sync_backoff", &self.sync_backoff)?;
+        map.serialize_entry("network_distance", &self.network_distance)?;
+        map.serialize_entry("offered", &self.offered)?;
+        map.serialize_entry("outgoing", &self.outgoing)?;
+        map.serialize_entry("incoming", &self.incoming)?;
+        map.serialize_entry("rx_bytes", &self.rx_bytes)?;
+        map.serialize_entry("tx_bytes", &self.tx_bytes)?;
+        map.serialize_entry("sync_transfer_rate", &self.sync_transfer_rate)?;
+        map.serialize_entry("str", &self.sync_transfer_rate)?;
+        map.serialize_entry("acceptance_rate", &self.acceptance_rate)?;
+        map.serialize_entry("first_seen", &self.first_seen)?;
+        map.serialize_entry("seen_count", &self.seen_count)?;
+        map.serialize_entry("peering_timebase", &self.peering_timebase)?;
+        if let Some(value) = self.propagation_transfer_limit {
+            map.serialize_entry("propagation_transfer_limit", &value)?;
+            map.serialize_entry("transfer_limit", &value)?;
+        }
+        if let Some(value) = self.propagation_sync_limit {
+            map.serialize_entry("propagation_sync_limit", &value)?;
+            map.serialize_entry("sync_limit", &value)?;
+        }
+        if let Some(value) = self.propagation_stamp_cost {
+            map.serialize_entry("propagation_stamp_cost", &value)?;
+            map.serialize_entry("target_stamp_cost", &value)?;
+        }
+        if let Some(value) = self.propagation_stamp_cost_flexibility {
+            map.serialize_entry("propagation_stamp_cost_flexibility", &value)?;
+            map.serialize_entry("stamp_cost_flexibility", &value)?;
+        }
+        if let Some(value) = self.peering_cost {
+            map.serialize_entry("peering_cost", &value)?;
+        }
+        map.end()
+    }
+}
+
+#[derive(Deserialize)]
+struct PeerRecordWire {
+    peer: String,
+    #[serde(default)]
+    last_seen: Option<i64>,
+    #[serde(default)]
+    last_heard: Option<i64>,
+    #[serde(default)]
+    capabilities: Vec<String>,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    name_source: Option<String>,
+    #[serde(default)]
+    peer_type: Option<String>,
+    #[serde(default)]
+    alive: bool,
+    #[serde(default)]
+    last_sync_attempt: i64,
+    #[serde(default)]
+    next_sync_attempt: i64,
+    #[serde(default)]
+    sync_backoff: u32,
+    #[serde(default = "default_network_distance")]
+    network_distance: u32,
+    #[serde(default)]
+    offered: u64,
+    #[serde(default)]
+    outgoing: u64,
+    #[serde(default)]
+    incoming: u64,
+    #[serde(default)]
+    rx_bytes: u64,
+    #[serde(default)]
+    tx_bytes: u64,
+    #[serde(default)]
+    sync_transfer_rate: Option<f64>,
+    #[serde(default)]
+    str: Option<f64>,
+    #[serde(default = "default_acceptance_rate")]
+    acceptance_rate: f64,
+    #[serde(default)]
+    first_seen: Option<i64>,
+    #[serde(default)]
+    seen_count: Option<u64>,
+    #[serde(default)]
+    peering_timebase: i64,
+    #[serde(default)]
+    propagation_transfer_limit: Option<JsonValue>,
+    #[serde(default)]
+    transfer_limit: Option<JsonValue>,
+    #[serde(default)]
+    propagation_sync_limit: Option<JsonValue>,
+    #[serde(default)]
+    sync_limit: Option<JsonValue>,
+    #[serde(default)]
+    propagation_stamp_cost: Option<u32>,
+    #[serde(default)]
+    target_stamp_cost: Option<u32>,
+    #[serde(default)]
+    propagation_stamp_cost_flexibility: Option<u32>,
+    #[serde(default)]
+    stamp_cost_flexibility: Option<u32>,
+    #[serde(default)]
+    peering_cost: Option<u32>,
+}
+
+impl<'de> Deserialize<'de> for PeerRecord {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let wire = PeerRecordWire::deserialize(deserializer)?;
+        let last_seen = wire
+            .last_seen
+            .or(wire.last_heard)
+            .ok_or_else(|| serde::de::Error::missing_field("last_seen"))?;
+        let sync_transfer_rate = wire.sync_transfer_rate.or(wire.str).unwrap_or_default();
+        let python_transfer_limit = wire.propagation_transfer_limit.is_some()
+            && wire.transfer_limit.is_none();
+        let transfer_limit = parse_peer_limit_bytes(
+            wire.propagation_transfer_limit.as_ref(),
+            wire.transfer_limit.as_ref(),
+            python_transfer_limit,
+        );
+        let python_sync_limit =
+            wire.propagation_sync_limit.is_some() && wire.sync_limit.is_none();
+        let sync_limit = parse_peer_limit_bytes(
+            wire.propagation_sync_limit.as_ref(),
+            wire.sync_limit.as_ref(),
+            python_sync_limit,
+        )
+        .or_else(|| python_transfer_limit.then_some(transfer_limit).flatten());
+        Ok(Self {
+            peer: wire.peer,
+            last_seen,
+            capabilities: wire.capabilities,
+            name: wire.name,
+            name_source: wire.name_source,
+            peer_type: wire.peer_type,
+            alive: wire.alive,
+            last_sync_attempt: wire.last_sync_attempt,
+            next_sync_attempt: wire.next_sync_attempt,
+            sync_backoff: wire.sync_backoff,
+            network_distance: wire.network_distance,
+            offered: wire.offered,
+            outgoing: wire.outgoing,
+            incoming: wire.incoming,
+            rx_bytes: wire.rx_bytes,
+            tx_bytes: wire.tx_bytes,
+            sync_transfer_rate,
+            acceptance_rate: wire.acceptance_rate,
+            first_seen: wire.first_seen.unwrap_or(last_seen),
+            seen_count: wire.seen_count.unwrap_or_else(|| u64::from(last_seen > 0)),
+            peering_timebase: wire.peering_timebase,
+            propagation_transfer_limit: transfer_limit,
+            propagation_sync_limit: sync_limit,
+            propagation_stamp_cost: wire.propagation_stamp_cost.or(wire.target_stamp_cost),
+            propagation_stamp_cost_flexibility: wire
+                .propagation_stamp_cost_flexibility
+                .or(wire.stamp_cost_flexibility),
+            peering_cost: wire.peering_cost,
+        })
+    }
+}
+
+fn parse_peer_limit_bytes(
+    primary: Option<&JsonValue>,
+    alias: Option<&JsonValue>,
+    primary_is_python_kb: bool,
+) -> Option<u32> {
+    let value = primary.or(alias)?;
+    if primary_is_python_kb && primary.is_some() {
+        parse_json_f64(value).and_then(kilobytes_to_bytes)
+    } else {
+        parse_json_u32(value)
+    }
+}
+
+fn parse_json_u32(value: &JsonValue) -> Option<u32> {
+    if let Some(value) = value.as_u64() {
+        u32::try_from(value).ok()
+    } else if let Some(value) = value.as_i64() {
+        u32::try_from(value.max(0)).ok()
+    } else {
+        parse_json_f64(value).and_then(|value| {
+            let bytes = value.max(0.0).floor();
+            (bytes.is_finite() && bytes <= f64::from(u32::MAX)).then_some(bytes as u32)
+        })
+    }
+}
+
+fn parse_json_f64(value: &JsonValue) -> Option<f64> {
+    value.as_f64().or_else(|| value.as_str()?.trim().parse::<f64>().ok())
+}
+
+fn kilobytes_to_bytes(value: f64) -> Option<u32> {
+    let bytes = (value.max(0.0) * 1000.0).floor();
+    (bytes.is_finite() && bytes <= f64::from(u32::MAX)).then_some(bytes as u32)
 }
 
 fn default_true() -> bool {
@@ -690,4 +972,209 @@ fn default_network_distance() -> u32 {
 
 fn default_acceptance_rate() -> f64 {
     0.0
+}
+
+#[cfg(test)]
+mod peer_record_serde_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn peer_record_deserializes_legacy_seen_fields_from_last_seen() {
+        let record: PeerRecord = serde_json::from_value(json!({
+            "peer": "peer-legacy",
+            "last_seen": 1_700_001_001,
+        }))
+        .expect("deserialize legacy peer");
+
+        assert_eq!(record.first_seen, 1_700_001_001);
+        assert_eq!(record.seen_count, 1);
+    }
+
+    #[test]
+    fn peer_record_deserializes_explicit_seen_fields_without_rewriting_them() {
+        let record: PeerRecord = serde_json::from_value(json!({
+            "peer": "peer-current",
+            "last_seen": 1_700_001_020,
+            "first_seen": 1_700_001_000,
+            "seen_count": 4,
+        }))
+        .expect("deserialize current peer");
+
+        assert_eq!(record.first_seen, 1_700_001_000);
+        assert_eq!(record.seen_count, 4);
+    }
+
+    #[test]
+    fn peer_record_deserializes_unseen_legacy_peer_without_synthetic_seen_count() {
+        let record: PeerRecord = serde_json::from_value(json!({
+            "peer": "peer-static",
+            "last_seen": 0,
+        }))
+        .expect("deserialize unseen peer");
+
+        assert_eq!(record.first_seen, 0);
+        assert_eq!(record.seen_count, 0);
+    }
+
+    #[test]
+    fn peer_record_deserializes_python_status_aliases() {
+        let record: PeerRecord = serde_json::from_value(json!({
+            "peer": "peer-python-status",
+            "last_heard": 1_700_001_004,
+            "str": 4096.0,
+            "offered": 7,
+            "outgoing": 5,
+            "incoming": 3,
+            "transfer_limit": 333,
+            "sync_limit": 444,
+            "target_stamp_cost": 7,
+            "stamp_cost_flexibility": 2,
+        }))
+        .expect("deserialize python status peer");
+
+        assert_eq!(record.last_seen, 1_700_001_004);
+        assert_eq!(record.first_seen, 1_700_001_004);
+        assert_eq!(record.seen_count, 1);
+        assert_eq!(record.sync_transfer_rate, 4096.0);
+        assert_eq!(record.propagation_transfer_limit, Some(333));
+        assert_eq!(record.propagation_sync_limit, Some(444));
+        assert_eq!(record.propagation_stamp_cost, Some(7));
+        assert_eq!(record.propagation_stamp_cost_flexibility, Some(2));
+        let value = serde_json::to_value(record).expect("serialize python status peer");
+        assert_eq!(value["offered"].as_u64(), Some(7));
+        assert_eq!(value["outgoing"].as_u64(), Some(5));
+        assert_eq!(value["incoming"].as_u64(), Some(3));
+    }
+
+    #[test]
+    fn peer_record_deserializes_python_serialized_kilobyte_limits_as_runtime_bytes() {
+        let record: PeerRecord = serde_json::from_value(json!({
+            "peer": "peer-python-serialized-limits",
+            "last_seen": 1_700_001_004,
+            "propagation_transfer_limit": 0.08,
+            "propagation_sync_limit": 1,
+        }))
+        .expect("deserialize python serialized peer");
+
+        assert_eq!(record.propagation_transfer_limit, Some(80));
+        assert_eq!(record.propagation_sync_limit, Some(1_000));
+
+        let fallback: PeerRecord = serde_json::from_value(json!({
+            "peer": "peer-python-serialized-limit-fallback",
+            "last_seen": 1_700_001_004,
+            "propagation_transfer_limit": 0.152,
+        }))
+        .expect("deserialize python serialized peer with sync fallback");
+
+        assert_eq!(fallback.propagation_transfer_limit, Some(152));
+        assert_eq!(fallback.propagation_sync_limit, Some(152));
+    }
+
+    #[test]
+    fn peer_record_prefers_internal_status_fields_over_aliases() {
+        let record: PeerRecord = serde_json::from_value(json!({
+            "peer": "peer-internal-status",
+            "last_seen": 0,
+            "last_heard": 1_700_001_004,
+            "sync_transfer_rate": 0.0,
+            "str": 4096.0,
+            "propagation_transfer_limit": 0,
+            "transfer_limit": 333,
+        }))
+        .expect("deserialize internal and alias status peer");
+
+        assert_eq!(record.last_seen, 0);
+        assert_eq!(record.first_seen, 0);
+        assert_eq!(record.seen_count, 0);
+        assert_eq!(record.sync_transfer_rate, 0.0);
+        assert_eq!(record.propagation_transfer_limit, Some(0));
+    }
+
+    #[test]
+    fn peer_record_serializes_python_status_aliases() {
+        let record = PeerRecord {
+            peer: "peer-python-status".to_string(),
+            last_seen: 1_700_001_005,
+            capabilities: vec!["propagation".to_string()],
+            name: Some("Peer Python Status".to_string()),
+            name_source: Some("announce".to_string()),
+            peer_type: Some("auto".to_string()),
+            alive: true,
+            last_sync_attempt: 1_700_001_000,
+            next_sync_attempt: 1_700_001_720,
+            sync_backoff: 720,
+            network_distance: 3,
+            offered: 7,
+            outgoing: 5,
+            incoming: 3,
+            rx_bytes: 123,
+            tx_bytes: 456,
+            sync_transfer_rate: 2048.0,
+            acceptance_rate: 0.5,
+            first_seen: 1_700_000_900,
+            seen_count: 4,
+            peering_timebase: 1_700_000_950,
+            propagation_transfer_limit: Some(333),
+            propagation_sync_limit: Some(444),
+            propagation_stamp_cost: Some(7),
+            propagation_stamp_cost_flexibility: Some(2),
+            peering_cost: Some(9),
+        };
+
+        let value = serde_json::to_value(record).expect("serialize peer record");
+        assert_eq!(value["last_seen"].as_i64(), Some(1_700_001_005));
+        assert_eq!(value["last_heard"].as_i64(), Some(1_700_001_005));
+        assert_eq!(value["sync_transfer_rate"].as_f64(), Some(2048.0));
+        assert_eq!(value["str"].as_f64(), Some(2048.0));
+        assert_eq!(value["offered"].as_u64(), Some(7));
+        assert_eq!(value["outgoing"].as_u64(), Some(5));
+        assert_eq!(value["incoming"].as_u64(), Some(3));
+        assert_eq!(value["propagation_transfer_limit"].as_u64(), Some(333));
+        assert_eq!(value["transfer_limit"].as_u64(), Some(333));
+        assert_eq!(value["propagation_sync_limit"].as_u64(), Some(444));
+        assert_eq!(value["sync_limit"].as_u64(), Some(444));
+        assert_eq!(value["propagation_stamp_cost"].as_u64(), Some(7));
+        assert_eq!(value["target_stamp_cost"].as_u64(), Some(7));
+        assert_eq!(value["propagation_stamp_cost_flexibility"].as_u64(), Some(2));
+        assert_eq!(value["stamp_cost_flexibility"].as_u64(), Some(2));
+    }
+
+    #[test]
+    fn peer_record_serialized_status_aliases_roundtrip() {
+        let record = PeerRecord {
+            peer: "peer-roundtrip-status".to_string(),
+            last_seen: 1_700_001_006,
+            capabilities: vec!["propagation".to_string(), "delivery".to_string()],
+            name: Some("Peer Roundtrip Status".to_string()),
+            name_source: Some("announce".to_string()),
+            peer_type: Some("static".to_string()),
+            alive: true,
+            last_sync_attempt: 1_700_001_001,
+            next_sync_attempt: 1_700_001_721,
+            sync_backoff: 720,
+            network_distance: 2,
+            offered: 9,
+            outgoing: 6,
+            incoming: 4,
+            rx_bytes: 12,
+            tx_bytes: 34,
+            sync_transfer_rate: 1024.0,
+            acceptance_rate: 0.75,
+            first_seen: 1_700_000_901,
+            seen_count: 5,
+            peering_timebase: 1_700_000_951,
+            propagation_transfer_limit: Some(555),
+            propagation_sync_limit: Some(666),
+            propagation_stamp_cost: Some(8),
+            propagation_stamp_cost_flexibility: Some(3),
+            peering_cost: Some(10),
+        };
+
+        let value = serde_json::to_value(&record).expect("serialize peer record");
+        let roundtrip: PeerRecord =
+            serde_json::from_value(value).expect("deserialize serialized peer record");
+
+        assert_eq!(roundtrip, record);
+    }
 }

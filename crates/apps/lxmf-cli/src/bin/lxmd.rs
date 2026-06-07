@@ -143,6 +143,9 @@ struct Args {
 }
 
 fn main() -> ExitCode {
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
     let args = Args::parse();
     if args.exampleconfig {
         print!("{}", example_config());
@@ -152,7 +155,7 @@ fn main() -> ExitCode {
     let effective = match load_effective_args(&args) {
         Ok(effective) => effective,
         Err(err) => {
-            eprintln!("lxmd: failed to load config: {err}");
+            log::error!("failed to load config: {err}");
             return ExitCode::from(1);
         }
     };
@@ -212,7 +215,7 @@ fn main() -> ExitCode {
     #[cfg(unix)]
     {
         let err = cmd.exec();
-        eprintln!("lxmd: failed to exec {}: {}", reticulumd.display(), err);
+        log::error!("failed to exec {}: {}", reticulumd.display(), err);
         ExitCode::from(1)
     }
 
@@ -221,7 +224,7 @@ fn main() -> ExitCode {
         match cmd.status() {
             Ok(status) => ExitCode::from(status.code().unwrap_or(1) as u8),
             Err(err) => {
-                eprintln!("lxmd: failed to launch {}: {}", reticulumd.display(), err);
+                log::error!("failed to launch {}: {}", reticulumd.display(), err);
                 ExitCode::from(1)
             }
         }
@@ -236,7 +239,7 @@ fn maybe_handle_query_mode(args: &EffectiveArgs) -> Option<ExitCode> {
     let rpc_addr = match query::resolve_query_rpc_addr(args.remote.as_deref(), &args.rpc) {
         Ok(rpc_addr) => rpc_addr,
         Err(err) => {
-            eprintln!("lxmd: {err}");
+            log::error!("{err}");
             return Some(ExitCode::from(2));
         }
     };
@@ -249,7 +252,7 @@ fn maybe_handle_query_mode(args: &EffectiveArgs) -> Option<ExitCode> {
         ) {
             Ok(value) => value,
             Err(err) => {
-                eprintln!("lxmd: {err}");
+                log::error!("{err}");
                 return Some(ExitCode::from(2));
             }
         };
@@ -310,7 +313,7 @@ fn maybe_handle_query_mode(args: &EffectiveArgs) -> Option<ExitCode> {
     match result {
         Ok(_) => Some(ExitCode::SUCCESS),
         Err(err) => {
-            eprintln!("lxmd: {err}");
+            log::error!("{err}");
             Some(ExitCode::from(1))
         }
     }
@@ -381,15 +384,60 @@ mod tests {
     #[test]
     fn compatibility_notes_only_emitted_for_used_flags() {
         let args = super::Args::parse_from(["lxmd", "--propagation-node", "--service"]);
-        let effective = load_effective_args(&args).expect("effective args");
+        let effective = EffectiveArgs {
+            profile: "default".into(),
+            rpc: super::DEFAULT_RPC_ADDR.into(),
+            rnsconfig: None,
+            propagation_node: true,
+            on_inbound: None,
+            quiet: false,
+            service: true,
+            display_name: None,
+            db: None,
+            identity: None,
+            transport: None,
+            reticulumd: None,
+            messages_dir: None,
+            config_dir: None,
+            timeout_secs: 5.0,
+            status: false,
+            peers: false,
+            sync: None,
+            unpeer: None,
+            remote: None,
+            query_identity: None,
+            python_compat: super::PythonCompatConfig::default(),
+        };
         let notes = compatibility_notes(&args, &effective);
         assert_eq!(notes.len(), 1);
     }
 
     #[test]
     fn propagation_node_uses_supervised_launch() {
-        let args = super::Args::parse_from(["lxmd", "--propagation-node"]);
-        let effective = load_effective_args(&args).expect("effective args");
+        let effective = EffectiveArgs {
+            profile: "default".into(),
+            rpc: super::DEFAULT_RPC_ADDR.into(),
+            rnsconfig: None,
+            propagation_node: true,
+            on_inbound: None,
+            quiet: false,
+            service: false,
+            display_name: None,
+            db: None,
+            identity: None,
+            transport: None,
+            reticulumd: None,
+            messages_dir: None,
+            config_dir: None,
+            timeout_secs: 5.0,
+            status: false,
+            peers: false,
+            sync: None,
+            unpeer: None,
+            remote: None,
+            query_identity: None,
+            python_compat: super::PythonCompatConfig::default(),
+        };
         assert!(requires_supervised_launch(&effective));
     }
 

@@ -1,0 +1,20 @@
+{
+  "id": 22,
+  "result": {
+    "batch_id": "batch-1",
+    "accepted_count": 2,
+    "rejected_count": 0,
+    "results": [
+      {
+        "id": "batch-msg-1",
+        "message_id": "batch-msg-1",
+        "accepted": true
+      },
+      {
+        "id": "batch-msg-2",
+        "message_id": "batch-msg-2",
+        "accepted": true
+      }
+    ]
+  }
+}

@@ -1,83 +1,110 @@
 # Current Roadmap Status
 
-Last updated: 2026-05-07
+Last reassessed: 2026-06-07
 
-This document is the current source of truth for repository-wide delivery
-status. Update this file first when parity status, release confidence, or the
-active execution order changes.
+This file is the repository-level source of truth for parity posture, release
+confidence, and execution order. Detailed row-level status lives in:
 
-Related documents:
+- `docs/status/reticulum-parity-matrix.md`
+- `docs/status/lxmf-parity-matrix.md`
 
-- Execution board: `docs/plans/2026-03-19-python-compatibility-execution-board.md`
-- Numbered compatibility backlog: `docs/plans/2026-03-18-rust-python-compat-issue-list.md`
-- LXMF parity snapshot: `docs/plans/lxmf-parity-matrix.md`
-- Reticulum parity snapshot: `docs/plans/reticulum-parity-matrix.md`
+Historical plans and issue lists explain how work was approached; they do not
+override these status files.
 
-## Current Summary
+## Current Position
 
-- Focused build, test, and clippy checks are green for the current daemon/CLI
-  slices, and the strict architecture boundary check passes.
-- `cargo run -p xtask -- architecture-checks` is green for both strict boundary
-  checks and the module-size gate.
-- The repository is not blocked by broken builds. The main blockers are parity
-  gaps and CI/doc drift.
+LXMF-rs is a usable Rust implementation of Reticulum and LXMF with strong core
+protocol coverage and repeatable interoperability against pinned Python
+references. It is not yet a complete drop-in replacement for every Python
+Reticulum/LXMF runtime, interface, router, and utility behavior.
 
-## What Is True Now
+The project is best described by capability level:
 
-### Landed Baseline
+| Capability | Status | Meaning |
+| --- | --- | --- |
+| Wire compatible | achieved | Core Reticulum packet/identity primitives and LXMF message encodings are implemented and tested. |
+| Direct-message interoperable | achieved | Selected bidirectional Rust/Python direct, link, channel, paper, and daemon paths are exercised in CI. |
+| Propagation interoperable | partial | Propagated delivery and substantial peer/node behavior exist, but the complete Python router and peer lifecycle is not yet reproduced. |
+| Operationally substitutable | partial | `reticulumd` is deployable and supports several production interfaces, but runtime, interface, and utility breadth remains narrower than Python. |
+| Full Python surface parity | not achieved | Remaining gaps are tracked in the two parity matrices. |
 
-The following compatibility foundation work is on `main` and should be treated
-as the current baseline:
+## Strong Areas
 
-- buffer writer parity (`#110`)
-- buffer callback parity (`#111`)
-- resource lifecycle truth and generic-resource handling (`#112`)
-- daemon receipt semantics for resource-backed sends (`#113`)
-- honor LXMF delivery modes in the `reticulumd` bridge (`#114`)
-- path tag lifetime parity (`#115`)
+### Reticulum
 
-This means older planning notes that say `reticulumd` ignores requested LXMF
-delivery modes are stale. Delivery-mode handling is no longer an open baseline
-gap, even though deeper propagation-router parity remains open.
+- Identity, destination, packet, cryptography, link, resource, and buffer
+  behavior are the strongest RNS areas.
+- Link establishment, proof validation, interface binding, watchdog timing,
+  teardown, receipts, and resource lifecycle have active regression coverage.
+- `reticulumd` supports TCP client/server, UDP, serial, KISS, AutoInterface,
+  LoRa/RNode, feature-gated RNode BLE, and feature-gated VR-N76 KISS-over-BLE.
+- AutoInterface has a live daemon runtime, including discovery, peer lifecycle,
+  peer-data sockets, transport ingress, outbound routing, and multicast proof
+  fallback.
 
-### Still Open
+### LXMF
 
-- Rust/Python live interop is now represented in `.github/workflows/python-interop.yml`
-  for pinned Reticulum/LXMF references. The high-signal local gates are
-  `python_channel_interop`, `python_paper_interop`, and `python_compat_matrix`.
-  `crates/apps/lxmf-cli/tests/python_lxmd_remote_relay.rs` is also included for
-  cross-implementation LXMD relay paths.
-- `reticulumd` now defaults to local Unix RPC, treats TCP as opt-in, rejects
-  unauthenticated remote TCP binds, handles graceful listener shutdown, and
-  documents service-manager deployment in
-  `docs/runbooks/reticulumd-operational-deployment.md`.
-- Propagation-router behavior is still partial relative to Python LXMF.
-- Stamp, ticket, and propagation-stamp semantics are still partial.
-- Peer/router/runtime parity remains partial.
-- Reticulum interface breadth is still narrower than the Python reference.
-- Parser-only `rns-tools` utility placeholders have been retired from the
-  release surface. Utility parity remains incomplete until real equivalents for
-  the retired Python-style commands are implemented.
-- Migration-era legacy crates and router/runtime stubs have been removed from
-  the repository surface; active code must stay in the workspace crates listed
-  in `Cargo.toml`.
-- The module-size gate is green after splitting `lxmd` launch/config helpers,
-  `rnx` TCP/BLE/scenario helpers, RPC event/helper/status tests, LXMF wire tests,
-  SDK backend/client/app-control/node tests, and transport resource/interface/
-  path/tunnel helpers out of oversized modules.
+- Message wire/storage packing, signatures, propagation packing, paper
+  encoding, timestamp precision metadata, binary-field preservation, and
+  Python-compatible storage containers are implemented.
+- Delivery modes are honored by the daemon; the old claim that requested modes
+  are ignored is obsolete.
+- Direct and propagated resource sends support receipt-state separation,
+  timeout/failure propagation, and active resource cancellation.
+- Ticket validity, renewal, derivation, persistence, and inbound ticket reuse
+  are implemented.
+- Propagation peers have real queue, policy, maintenance, throttling, peering,
+  offer-response, source-accounting, and acceptance-rate behavior. These are
+  substantial implementations, not SDK-only placeholders.
+
+## Remaining Release Blockers
+
+These are blockers to a broad "Python replacement" claim, not blockers to using
+the implemented subset.
+
+1. **Propagation router lifecycle**
+   - Complete peer offer, transfer, retry, fetch, download, and synchronization
+     behavior across success, denial, timeout, identity, and restart paths.
+   - Close remaining `LXMRouter` side effects and persistent queue semantics.
+2. **Deferred stamp lifecycle**
+   - Add Python-style background work ownership, queueing, retry, cancellation,
+     and progress behavior for expensive normal and propagation stamps.
+3. **Interop breadth**
+   - Add bidirectional live Python cases for every claimed delivery mode and
+     newly completed peer/router row.
+   - Capture release evidence for Sideband, MeshChatX, and Columba before making
+     client-specific compatibility claims.
+4. **Reticulum behavioral breadth**
+   - Finish channel ordering, resolver/bootstrap, announce/path edge behavior,
+     and runtime mutation parity.
+5. **Operational breadth**
+   - Add prepared-host hardware evidence for BLE/RNode paths.
+   - Implement or explicitly defer missing Python interface families and
+     utility commands.
 
 ## Active Execution Order
 
-1. Keep architecture and boundary gates trustworthy.
-2. Keep the pinned Rust/Python interop workflow green and extend it when new
-   compatibility rows become supported.
-3. Align `README.md`, `docs/runbooks/release-readiness.md`, and GitHub CI with
-   the same definition of "green".
+1. Finish propagation peer/router state machines.
+2. Finish deferred stamp worker and retry lifecycle.
+3. Expand pinned Rust/Python interoperability gates with each completed row.
+4. Close RNS channel, discovery, resolver, and transport-policy gaps.
+5. Collect hardware, soak, and external-client release evidence.
+6. Expand interface and utility breadth after protocol behavior stabilizes.
 
-## Update Rules
+## Verification Baseline
 
-- Update this file in the same PR that changes project-wide status claims.
-- When a historical planning note disagrees with this file, treat the planning
-  note as stale until it is refreshed.
-- Do not mark parity items as complete here unless the behavior is implemented
-  in active workspace code and backed by non-ignored evidence.
+- Primary CI: `.github/workflows/ci.yml`
+- Pinned Python interop: `.github/workflows/python-interop.yml`
+- Reference revisions are declared in the interop workflow rather than copied
+  into status prose.
+- Current run status belongs in GitHub Actions, not in this maintained document.
+- A passing Python-reference workflow proves only the scenarios it executes.
+
+## Status Rules
+
+- `done` requires active implementation plus active automated evidence.
+- A local model, RPC projection, or SDK state machine alone does not establish
+  Python protocol/runtime parity.
+- A passing interop workflow does not promote unrelated matrix rows.
+- Update this file and the affected matrix in the same change.
+- Keep implementation history in Git and historical plans, not in this file.

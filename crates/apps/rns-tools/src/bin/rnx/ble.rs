@@ -103,7 +103,7 @@ pub(crate) fn run_ble_scan(
                 }
             }
             let manufacturer = format_manufacturer_data(&properties.manufacturer_data);
-            println!(
+            log::trace!(
                 "BLE_SCAN device id={} name={} address={} rssi={:?} services={:?} manufacturer={}",
                 id,
                 properties.local_name.as_deref().unwrap_or("<none>"),
@@ -117,7 +117,7 @@ pub(crate) fn run_ble_scan(
                 break;
             }
         }
-        println!("BLE_SCAN done: devices_shown={shown}");
+        log::trace!("BLE_SCAN done: devices_shown={shown}");
         Ok(())
     })
 }
@@ -200,7 +200,7 @@ pub(crate) fn run_ble_find_camera(
                     .any(|ch| ch.uuid == notify_uuid && ch.service_uuid == service_uuid);
 
                 if has_write && has_notify {
-                    println!("BLE_FIND_CAMERA match id={} name={} rssi={}", id, name, rssi);
+                    log::trace!("BLE_FIND_CAMERA match id={} name={} rssi={}", id, name, rssi);
                     let _ = peripheral.disconnect().await;
                     return Ok(());
                 }

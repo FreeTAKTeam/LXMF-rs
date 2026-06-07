@@ -158,6 +158,7 @@ rpc_call() {
   local params_json="${3:-null}"
   "${PYTHON_BIN}" - <<'PY' "${rpc_addr}" "${method}" "${params_json}"
 import json
+import errno
 import socket
 import sys
 import time
@@ -177,6 +178,16 @@ def is_rate_limited(error):
         return error.get("code") == "SDK_SECURITY_RATE_LIMITED"
     return False
 
+def is_retryable_socket_error(exc):
+    if isinstance(exc, (ConnectionRefusedError, TimeoutError, socket.timeout)):
+        return True
+    return getattr(exc, "errno", None) in {
+        errno.ECONNREFUSED,
+        errno.ECONNRESET,
+        errno.EPIPE,
+        errno.ETIMEDOUT,
+    }
+
 for attempt in range(60):
     payload = {"id": 1, "method": method, "params": params}
     packed = msgpack.packb(payload)
@@ -187,14 +198,20 @@ for attempt in range(60):
         f"Content-Length: {len(frame)}\r\n"
         f"Connection: close\r\n\r\n"
     ).encode("utf-8") + frame
-    with socket.create_connection((host, int(port)), timeout=30) as sock:
-        sock.sendall(request)
-        response = bytearray()
-        while True:
-            chunk = sock.recv(65536)
-            if not chunk:
-                break
-            response.extend(chunk)
+    try:
+        with socket.create_connection((host, int(port)), timeout=30) as sock:
+            sock.sendall(request)
+            response = bytearray()
+            while True:
+                chunk = sock.recv(65536)
+                if not chunk:
+                    break
+                response.extend(chunk)
+    except OSError as exc:
+        if is_retryable_socket_error(exc) and attempt + 1 < 60:
+            time.sleep(1)
+            continue
+        raise
     header_end = response.find(b"\r\n\r\n")
     if header_end < 0:
         raise SystemExit("missing rpc response body")

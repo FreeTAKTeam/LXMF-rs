@@ -104,6 +104,12 @@ fn fixture(name: &str) -> JsonValue {
     read_json(&fixture_dir().join(name))
 }
 
+fn read_workspace_text(path: &str) -> String {
+    let full_path = workspace_root().join(path);
+    fs::read_to_string(&full_path)
+        .unwrap_or_else(|err| panic!("failed to read {}: {err}", full_path.display()))
+}
+
 #[test]
 fn sdk_conformance_app_mode_manifest_covers_required_scenarios() {
     let manifest = fixture("manifest.json");
@@ -138,6 +144,216 @@ fn sdk_conformance_app_mode_manifest_covers_required_scenarios() {
     assert_eq!(seen.len(), REQUIRED_SCENARIOS.len());
     for required in REQUIRED_SCENARIOS {
         assert!(seen.contains(*required), "missing required app-api scenario {required}");
+    }
+}
+
+#[test]
+fn sdk_easy_golden_paths_reference_conformance_scenarios() {
+    let required_paths = [
+        "examples/sdk-easy/rust-managed/Cargo.toml",
+        "examples/sdk-easy/rust-managed/src/main.rs",
+        "examples/sdk-easy/rust-managed/README.md",
+        "examples/sdk-easy/kotlin-mobile/Main.kt",
+        "examples/sdk-easy/kotlin-mobile/README.md",
+        "docs/sdk/migration-to-easy.md",
+    ];
+    for path in required_paths {
+        assert!(workspace_root().join(path).is_file(), "missing #33 golden-path artifact: {path}");
+    }
+
+    let rust_main = read_workspace_text("examples/sdk-easy/rust-managed/src/main.rs");
+    for required in [
+        "Config::desktop_default()",
+        "start_async",
+        "SubscriptionStart::Tail",
+        "send_async",
+        "EventKind::MessageDelivered",
+        "EventKind::StreamGapDetected",
+        "delivery.queue_pressure",
+        "events.delivery_ordering",
+    ] {
+        assert!(rust_main.contains(required), "rust example missing required marker {required}");
+    }
+
+    let kotlin_main = read_workspace_text("examples/sdk-easy/kotlin-mobile/Main.kt");
+    for required in [
+        "mobile_default",
+        "start",
+        "subscribeEvents",
+        "send",
+        "MessageDelivered",
+        "StreamGapDetected",
+        "lifecycle.start_stop_restart",
+        "events.delivery_ordering",
+    ] {
+        assert!(
+            kotlin_main.contains(required),
+            "kotlin example missing required marker {required}"
+        );
+    }
+
+    let migration = read_workspace_text("docs/sdk/migration-to-easy.md");
+    for scenario in REQUIRED_SCENARIOS {
+        assert!(
+            migration.contains(scenario),
+            "migration guide must reference conformance scenario {scenario}"
+        );
+    }
+}
+
+#[test]
+fn sdk_first_party_kotlin_wrapper_exposes_easy_mode_contract() {
+    let required_paths = [
+        "wrappers/kotlin-mobile/README.md",
+        "wrappers/kotlin-mobile/conformance-manifest.json",
+        "wrappers/kotlin-mobile/src/main/kotlin/org/freetakteam/lxmf/easy/LxmfEasyClient.kt",
+        "wrappers/kotlin-mobile/src/test/kotlin/org/freetakteam/lxmf/easy/LxmfEasyConformanceTest.kt",
+    ];
+    for path in required_paths {
+        assert!(workspace_root().join(path).is_file(), "missing #31 wrapper artifact: {path}");
+    }
+
+    let client = read_workspace_text(
+        "wrappers/kotlin-mobile/src/main/kotlin/org/freetakteam/lxmf/easy/LxmfEasyClient.kt",
+    );
+    for required in [
+        "class LxmfEasyClient",
+        "interface LxmfEasyBackend",
+        "Flow<LxmfEvent>",
+        "suspend fun start",
+        "suspend fun send",
+        "suspend fun stop",
+        "AutoCloseable",
+        "sealed class LxmfEasyError",
+        "mobile_default",
+        "QueuePressureRaised",
+        "StreamGapDetected",
+    ] {
+        assert!(client.contains(required), "kotlin wrapper missing required API marker {required}");
+    }
+    assert!(
+        !client.contains("Pseudocode"),
+        "first-party wrapper source must not remain a pseudocode sketch"
+    );
+
+    let manifest =
+        read_json(&workspace_root().join("wrappers/kotlin-mobile/conformance-manifest.json"));
+    assert_eq!(manifest["wrapper"].as_str(), Some("kotlin-mobile"));
+    assert_eq!(manifest["contract_family"].as_str(), Some("sdk-app"));
+    assert_eq!(manifest["contract_release"].as_str(), Some("v1"));
+    let scenarios = manifest["scenarios"].as_array().expect("wrapper scenarios");
+    let seen = scenarios
+        .iter()
+        .map(|scenario| scenario.as_str().expect("scenario id"))
+        .collect::<BTreeSet<_>>();
+    for scenario in REQUIRED_SCENARIOS {
+        assert!(seen.contains(scenario), "kotlin wrapper manifest missing scenario {scenario}");
+    }
+
+    let tests =
+        read_workspace_text("wrappers/kotlin-mobile/src/test/kotlin/org/freetakteam/lxmf/easy/LxmfEasyConformanceTest.kt");
+    for scenario in REQUIRED_SCENARIOS {
+        assert!(tests.contains(scenario), "kotlin wrapper test missing scenario {scenario}");
+    }
+    for required in [
+        "conformance-manifest.json",
+        "docs/fixtures/sdk-app-v1",
+        "Files.readString",
+        "Files.isRegularFile",
+    ] {
+        assert!(
+            tests.contains(required),
+            "kotlin wrapper test must exercise shared fixture integration marker {required}"
+        );
+    }
+}
+
+#[test]
+fn sdk_wrapper_parity_release_gate_is_wired_for_ci_and_releases() {
+    let registry = read_json(&workspace_root().join("wrappers/wrapper-conformance.json"));
+    assert_eq!(registry["contract_family"].as_str(), Some("sdk-app"));
+    assert_eq!(registry["contract_release"].as_str(), Some("v1"));
+
+    let wrappers = registry["wrappers"].as_array().expect("wrapper registry entries");
+    let kotlin = wrappers
+        .iter()
+        .find(|wrapper| wrapper["id"].as_str() == Some("kotlin-mobile"))
+        .expect("kotlin-mobile wrapper registry entry");
+    assert_eq!(
+        kotlin["manifest"].as_str(),
+        Some("wrappers/kotlin-mobile/conformance-manifest.json")
+    );
+    assert_eq!(
+        kotlin["fixture_root"].as_str(),
+        Some("docs/fixtures/sdk-app-v1"),
+        "wrapper registry should point every wrapper at the shared fixture root"
+    );
+
+    let scenarios = kotlin["scenarios"].as_array().expect("kotlin wrapper scenarios");
+    let seen = scenarios
+        .iter()
+        .map(|scenario| scenario.as_str().expect("scenario id"))
+        .collect::<BTreeSet<_>>();
+    for scenario in REQUIRED_SCENARIOS {
+        assert!(seen.contains(scenario), "wrapper registry missing scenario {scenario}");
+    }
+
+    let ci = read_workspace_text(".github/workflows/ci.yml");
+    assert!(
+        ci.contains("SDK wrapper parity gate")
+            && ci.contains("cargo test -p test-support sdk_wrapper_parity_release_gate"),
+        "pull-request CI must run the SDK wrapper parity gate"
+    );
+
+    let release = read_workspace_text(".github/workflows/release-bundles.yml");
+    assert!(
+        release.contains("sdk-wrapper-parity")
+            && release.contains("cargo test -p test-support sdk_wrapper_parity_release_gate")
+            && release.contains("needs: [validate-release-version, sdk-wrapper-parity]"),
+        "release bundles must fail before packaging when wrapper parity drifts"
+    );
+}
+
+#[test]
+fn sdk_kotlin_wrapper_has_executable_gradle_conformance_harness() {
+    for path in [
+        "wrappers/kotlin-mobile/settings.gradle.kts",
+        "wrappers/kotlin-mobile/build.gradle.kts",
+        "wrappers/kotlin-mobile/src/test/kotlin/org/freetakteam/lxmf/easy/LxmfEasyConformanceTest.kt",
+    ] {
+        assert!(workspace_root().join(path).is_file(), "missing Kotlin wrapper build artifact: {path}");
+    }
+
+    let build = read_workspace_text("wrappers/kotlin-mobile/build.gradle.kts");
+    for required in [
+        "kotlin(\"jvm\")",
+        "kotlinx-coroutines-core",
+        "kotlin(\"test-junit5\")",
+        "useJUnitPlatform()",
+    ] {
+        assert!(build.contains(required), "Kotlin wrapper build missing {required}");
+    }
+
+    let ci = read_workspace_text(".github/workflows/ci.yml");
+    assert!(
+        ci.contains("kotlin-wrapper-conformance")
+            && ci.contains("gradle/actions/setup-gradle@v4")
+            && ci.contains("gradle -p wrappers/kotlin-mobile test"),
+        "CI must execute the Kotlin wrapper conformance tests"
+    );
+}
+
+#[test]
+fn sdk_quickstart_links_easy_mode_golden_paths() {
+    let quickstart = read_workspace_text("docs/sdk/quickstart.md");
+    for required in [
+        "examples/sdk-easy/rust-managed",
+        "examples/sdk-easy/kotlin-mobile",
+        "wrappers/kotlin-mobile",
+        "docs/sdk/migration-to-easy.md",
+        "docs/fixtures/sdk-app-v1/manifest.json",
+    ] {
+        assert!(quickstart.contains(required), "quickstart missing #33 link {required}");
     }
 }
 

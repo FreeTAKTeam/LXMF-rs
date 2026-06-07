@@ -9,6 +9,8 @@ publish = false
 
 [dependencies]
 anyhow.workspace = true
+log = { workspace = true }
+tracing-subscriber = { workspace = true }
 clap.workspace = true
 hex.workspace = true
 globset = "0.4"

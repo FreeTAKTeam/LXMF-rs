@@ -56,6 +56,24 @@ fn find_ready_out_link_candidate(
 }
 
 impl Transport {
+    pub async fn reset_out_link(&self, destination: &AddressHash) {
+        let removed = {
+            let mut handler = self.handler.lock().await;
+            handler.out_links.remove(destination)
+        };
+        let Some(link) = removed else {
+            return;
+        };
+
+        let link_id = {
+            let mut link = link.lock().await;
+            let link_id = *link.id();
+            link.close();
+            link_id
+        };
+        self.handler.lock().await.resource_manager.remove_link_state(link_id);
+    }
+
     pub(crate) async fn send_link_packet_on_bound_iface(
         &self,
         link: &Arc<Mutex<Link>>,
@@ -146,6 +164,17 @@ impl Transport {
         })
         .await
         .map_err(|_| RnsError::ConnectionError)?
+    }
+
+    async fn resource_mtu_for_iface(&self, iface: Option<AddressHash>) -> usize {
+        let Some(iface) = iface else {
+            return crate::resource::DEFAULT_RESOURCE_INTERFACE_MTU;
+        };
+        self.iface_manager
+            .lock()
+            .await
+            .mtu(&iface)
+            .unwrap_or(crate::resource::DEFAULT_RESOURCE_INTERFACE_MTU)
     }
 
     pub async fn send_to_all_out_links(&self, payload: &[u8]) {
@@ -335,6 +364,32 @@ impl Transport {
         }
     }
 
+    pub async fn cancel_resource(
+        &self,
+        link_id: &AddressHash,
+        resource_hash: Hash,
+    ) -> Result<bool, RnsError> {
+        let link = self.find_any_link(link_id).await.ok_or(RnsError::InvalidArgument)?;
+        let packet = {
+            let mut handler = self.handler.lock().await;
+            let link_guard = link.lock().await;
+            let packet = handler.resource_manager.cancel_outgoing(resource_hash, &link_guard)?;
+            let events = handler.resource_manager.drain_events();
+            super::resource_wire::publish_resource_events(&handler, events);
+            packet
+        };
+        let Some(packet) = packet else {
+            return Ok(false);
+        };
+
+        let outcome = self.send_link_packet_on_bound_iface(&link, packet).await;
+        if matches!(outcome, SendPacketOutcome::SentDirect | SendPacketOutcome::SentBroadcast) {
+            Ok(true)
+        } else {
+            Err(RnsError::ConnectionError)
+        }
+    }
+
     pub async fn send_channel_message(
         &self,
         link_id: &AddressHash,
@@ -489,6 +544,13 @@ impl Transport {
             link.id(),
             destination
         );
+        if super::diag::enabled() {
+            log::debug!(
+                "[tp-diag] create_out_link destination={} link_id={}",
+                destination.address_hash,
+                link.id()
+            );
+        }
 
         let link = Arc::new(Mutex::new(link));
 

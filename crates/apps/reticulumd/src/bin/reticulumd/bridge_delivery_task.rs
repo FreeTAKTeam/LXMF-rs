@@ -1,5 +1,7 @@
 use super::identity_resolver;
 use super::*;
+use rand_core::OsRng;
+use rns_transport::ratchets::encrypt_for_public_key;
 
 pub(super) struct LinkModeStatuses {
     pub(super) packet: &'static str,
@@ -292,6 +294,9 @@ impl DeliveryTask {
         if self.abort_if_cancelled("opportunistic") {
             return;
         }
+        let Some(identity) = self.resolve_destination_identity().await else {
+            return;
+        };
         // Opportunistic SINGLE packets must carry LXMF wire bytes
         // without the destination prefix. Receivers prepend the
         // packet destination hash before unpacking.
@@ -311,7 +316,7 @@ impl DeliveryTask {
             return;
         }
 
-        let packet = Packet {
+        let mut packet = Packet {
             header: Header {
                 ifac_flag: IfacFlag::Open,
                 header_type: HeaderType::Type1,
@@ -327,6 +332,42 @@ impl DeliveryTask {
             context: PacketContext::None,
             data,
         };
+        let ciphertext = match encrypt_for_public_key(
+            &identity.public_key,
+            identity.address_hash.as_slice(),
+            packet.data.as_slice(),
+            OsRng,
+        ) {
+            Ok(ciphertext) => ciphertext,
+            Err(err) => {
+                log_delivery_trace(
+                    &self.message_id,
+                    &self.destination_hex,
+                    "opportunistic",
+                    &format!("encrypt failed: {err:?}"),
+                );
+                let _ = self.receipt_tx.try_send(ReceiptEvent {
+                    message_id: self.message_id,
+                    status: "failed: opportunistic encrypt failed".to_string(),
+                });
+                return;
+            }
+        };
+        let mut encrypted_data = PacketDataBuffer::new();
+        if encrypted_data.write(ciphertext.as_slice()).is_err() {
+            log_delivery_trace(
+                &self.message_id,
+                &self.destination_hex,
+                "opportunistic",
+                "ciphertext too large",
+            );
+            let _ = self.receipt_tx.try_send(ReceiptEvent {
+                message_id: self.message_id,
+                status: "failed: opportunistic ciphertext too large".to_string(),
+            });
+            return;
+        }
+        packet.data = encrypted_data;
         let packet_hash = hex::encode(packet.hash().to_bytes());
         track_receipt_mapping(&self.receipt_map, &packet_hash, &self.message_id);
         if diagnostics_enabled() {
@@ -340,7 +381,7 @@ impl DeliveryTask {
         } else {
             log_delivery_trace(&self.message_id, &self.destination_hex, "opportunistic", "sending");
         }
-        let trace = self.transport.send_packet_with_trace(packet).await;
+        let trace = self.transport.send_prepared_packet_broadcast_with_trace(packet).await;
         let trace_detail = send_trace_detail(trace);
         log_delivery_trace(&self.message_id, &self.destination_hex, "opportunistic", &trace_detail);
         let outcome = trace.outcome;

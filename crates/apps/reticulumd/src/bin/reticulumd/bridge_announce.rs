@@ -1,6 +1,6 @@
 use super::*;
 use reticulum_daemon::announce_names::{
-    encode_delivery_announce_app_data,
+    encode_delivery_announce_app_data_with_capabilities,
     encode_propagation_node_app_data as encode_python_propagation_node_app_data,
     parse_peer_name_from_app_data, PropagationNodeAnnounceConfig,
 };
@@ -12,8 +12,12 @@ impl TransportBridge {
         let Some((display_name, _)) = parse_peer_name_from_app_data(app_data.as_slice()) else {
             return Some(app_data);
         };
-        encode_delivery_announce_app_data(display_name.as_str(), self.current_inbound_stamp_cost())
-            .or(Some(app_data))
+        encode_delivery_announce_app_data_with_capabilities(
+            display_name.as_str(),
+            self.current_inbound_stamp_cost(),
+            &self.announce_capabilities,
+        )
+        .or(Some(app_data))
     }
 
     fn current_inbound_stamp_cost(&self) -> Option<u32> {

@@ -33,9 +33,11 @@ pub(crate) fn run_replay(
             )
         })?;
     }
-    println!(
+    log::trace!(
         "REPLAY ok: trace='{}' steps={} digest={}",
-        capture.trace_name, capture.steps_executed, capture.response_digest_sha256
+        capture.trace_name,
+        capture.steps_executed,
+        capture.response_digest_sha256
     );
     Ok(())
 }
@@ -120,7 +122,7 @@ pub(crate) fn run_e2e(
             return Err(err);
         }
     };
-    eprintln!(
+    log::info!(
         "[rnx] ready A delivery={:?} propagation={:?}; B delivery={:?} propagation={:?}",
         a_ready.delivery_hash,
         a_ready.propagation_hash,
@@ -557,6 +559,8 @@ fn delivery_trace_statuses(
 fn expected_delivery_trace_statuses(expected_mode: &str) -> &'static [&'static str] {
     match expected_mode {
         "direct" => &["sent: direct", "sent: link"],
+        "sent: link" => &["sent: link"],
+        "sent: link resource" => &["sent: link resource"],
         "opportunistic" => &["sent: opportunistic"],
         "propagated" => &["sent: propagated", "sent: propagated resource", "delivered"],
         other => panic!("unsupported delivery mode '{other}'"),

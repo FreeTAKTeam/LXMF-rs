@@ -12,6 +12,13 @@ struct SdkOperationSpec {
     rpc_method: &'static str,
 }
 
+#[derive(Debug, Clone)]
+struct ResolvedSdkOperationSpec {
+    id: String,
+    kind: String,
+    rpc_method: &'static str,
+}
+
 const SDK_OPERATION_SPECS: &[SdkOperationSpec] = &[
     SdkOperationSpec {
         id: "app.runtime.status",
@@ -444,14 +451,37 @@ const SDK_OPERATION_SPECS: &[SdkOperationSpec] = &[
 ];
 
 impl RpcDaemon {
-    fn operation_spec(id_or_alias: &str) -> Option<&'static SdkOperationSpec> {
-        SDK_OPERATION_SPECS.iter().find(|spec| {
+    fn operation_spec(&self, id_or_alias: &str) -> Option<ResolvedSdkOperationSpec> {
+        if let Some(spec) = SDK_OPERATION_SPECS.iter().find(|spec| {
             spec.id == id_or_alias || spec.aliases.iter().any(|alias| alias == &id_or_alias)
-        })
+        }) {
+            return Some(ResolvedSdkOperationSpec {
+                id: spec.id.to_owned(),
+                kind: spec.kind.to_owned(),
+                rpc_method: spec.rpc_method,
+            });
+        }
+
+        self.sdk_custom_operations
+            .lock()
+            .expect("sdk_custom_operations mutex poisoned")
+            .iter()
+            .find(|spec| {
+                (spec.id == id_or_alias || spec.aliases.iter().any(|alias| alias == id_or_alias))
+                    && spec
+                        .required_capabilities
+                        .iter()
+                        .all(|capability| self.sdk_has_capability(capability))
+            })
+            .map(|spec| ResolvedSdkOperationSpec {
+                id: spec.id.clone(),
+                kind: spec.kind.clone(),
+                rpc_method: "sdk_command_invoke_v2",
+            })
     }
 
     pub(super) fn operation_registry_json(&self) -> JsonValue {
-        let entries = SDK_OPERATION_SPECS
+        let mut entries = SDK_OPERATION_SPECS
             .iter()
             .filter(|spec| {
                 spec.required_capabilities
@@ -470,6 +500,28 @@ impl RpcDaemon {
                 })
             })
             .collect::<Vec<_>>();
+        entries.extend(
+            self.sdk_custom_operations
+                .lock()
+                .expect("sdk_custom_operations mutex poisoned")
+                .iter()
+                .filter(|spec| {
+                    spec.required_capabilities
+                        .iter()
+                        .all(|capability| self.sdk_has_capability(capability))
+                })
+                .map(|spec| {
+                    json!({
+                        "id": spec.id,
+                        "group": spec.group,
+                        "kind": spec.kind,
+                        "transport_variant": spec.transport_variant,
+                        "description": spec.description,
+                        "aliases": spec.aliases,
+                        "required_capabilities": spec.required_capabilities,
+                    })
+                }),
+        );
         json!({ "entries": entries })
     }
 
@@ -839,7 +891,7 @@ impl RpcDaemon {
             return Ok(self.envelope_invalid(request.id, "kind must be query or command"));
         }
 
-        let spec = Self::operation_spec(operation_id.as_str());
+        let spec = self.operation_spec(operation_id.as_str());
         let (canonical_id, rpc_method) = if let Some(spec) = spec {
             if spec.kind != kind {
                 return Ok(self.envelope_invalid(
@@ -847,9 +899,9 @@ impl RpcDaemon {
                     "envelope kind does not match registered operation kind",
                 ));
             }
-            (spec.id.to_owned(), spec.rpc_method)
+            (spec.id, spec.rpc_method)
         } else if kind == "command" {
-            (operation_id.clone(), "sdk_command_invoke_v2")
+            (operation_id, "sdk_command_invoke_v2")
         } else {
             return Ok(self.envelope_invalid(request.id, "unknown operation id"));
         };

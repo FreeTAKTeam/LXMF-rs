@@ -214,6 +214,12 @@ async fn process_announce<'a>(
     };
     let interface = route_iface.as_slice().to_vec();
 
+    log::debug!(
+        "[announce-debug] accepted dst={} app_data_hex={}",
+        packet.destination,
+        hex::encode(announce.app_data)
+    );
+
     let _ = handler.announce_tx.send(AnnounceEvent {
         destination,
         app_data: announce.app_data,
@@ -363,18 +369,16 @@ pub(super) async fn handle_validated_announce<'a>(
     let mut handler = handler;
     let destination_known = handler.has_destination(&packet.destination)
         || handler.knows_destination(&packet.destination);
-    match handler.announce_limits.check(iface, packet, destination_known) {
-        AnnounceLimitAction::Allow => {}
-        AnnounceLimitAction::Hold(release_after) => {
-            log::info!(
-                "tp({}): holding announce for {} on iface {} for at least {:?}",
-                handler.config.name,
-                packet.destination,
-                iface,
-                release_after,
-            );
-            return;
-        }
+    if let AnnounceLimitAction::Hold(delay) =
+        handler.announce_limits.check(iface, packet, destination_known)
+    {
+        log::debug!(
+            "tp({}): holding announce for {} for {:?}",
+            handler.config.name,
+            packet.destination,
+            delay
+        );
+        return;
     }
 
     let _ = process_announce(packet, handler, iface, source, announce).await;
@@ -435,7 +439,7 @@ pub(super) async fn release_held_announces<'a>(handler: MutexGuard<'a, Transport
             Ok(result) => result,
             Err(err) => {
                 log::warn!(
-                    "tp: dropping held announce for {} after revalidate failure: {:?}",
+                    "dropping held announce for {} after revalidate failure: {:?}",
                     packet.destination,
                     err
                 );

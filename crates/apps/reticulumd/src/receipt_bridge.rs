@@ -36,6 +36,9 @@ impl ReceiptHandler for ReceiptBridge {
 }
 
 pub fn handle_receipt_event(daemon: &RpcDaemon, event: ReceiptEvent) -> Result<(), std::io::Error> {
+    if event.status.eq_ignore_ascii_case("delivered") {
+        daemon.record_message_delivery_receipt(event.message_id.as_str())?;
+    }
     record_receipt_status(
         &|message_id: &str, status: &str| {
             let _ = daemon.handle_rpc(rns_rpc::rpc::RpcRequest {

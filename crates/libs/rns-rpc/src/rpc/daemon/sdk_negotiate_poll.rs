@@ -103,6 +103,19 @@ impl RpcDaemon {
                 "overflow_policy=block requires block_timeout_ms",
             ));
         }
+        let custom_operations = match parsed.config.extensions.get("custom_operations").cloned() {
+            Some(JsonValue::Null) | None => Vec::new(),
+            Some(value) => match serde_json::from_value::<Vec<SdkCustomOperationSpec>>(value) {
+                Ok(operations) => operations,
+                Err(err) => {
+                    return Ok(self.sdk_error_response(
+                        request.id,
+                        "SDK_VALIDATION_INVALID_ARGUMENT",
+                        &format!("config.extensions.custom_operations is invalid: {err}"),
+                    ))
+                }
+            },
+        };
 
         let mut store_forward_policy =
             Self::default_store_forward_policy_for_profile(profile.as_str());
@@ -284,6 +297,7 @@ impl RpcDaemon {
                 .expect("sdk_effective_capabilities mutex poisoned");
             *guard = effective_capabilities.clone();
         }
+        self.set_sdk_custom_operations(custom_operations);
         {
             let rpc_backend =
                 parsed.config.rpc_backend.as_ref().map_or(JsonValue::Null, |backend| {
@@ -327,6 +341,14 @@ impl RpcDaemon {
                     }
                     config
                 },
+            );
+            let mut runtime_extensions = parsed.config.extensions.clone();
+            runtime_extensions.insert(
+                "rate_limits".to_owned(),
+                json!({
+                    "per_ip_per_minute": 120,
+                    "per_principal_per_minute": 120,
+                }),
             );
             let next_runtime_config = json!({
                 "profile": profile,
@@ -390,6 +412,8 @@ impl RpcDaemon {
                 "effective_limits": limits,
                 "contract_release": "v2.5",
                 "schema_namespace": "v2",
+                "sdk_version": SDK_VERSION,
+                "python_reference": python_reference_meta(),
                 "meta": self.response_meta(),
             })),
             error: None,

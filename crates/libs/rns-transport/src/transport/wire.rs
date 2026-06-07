@@ -231,7 +231,7 @@ async fn should_forward_link_request_proof_unlocked(
     )
     .is_ok();
     if diag::enabled() {
-        log::info!(
+        log::debug!(
             "[tp-diag] lrproof_forward_validate node={} link={} dst={} iface={} valid={}",
             config_name,
             packet.destination,
@@ -359,7 +359,7 @@ pub(super) async fn handle_proof(
 
     if let Some((packet, iface)) = maybe_packet {
         if diag::enabled() {
-            log::info!(
+            log::debug!(
                 "[tp-diag] lrproof_forward node={} link={} iface={}",
                 config_name,
                 packet.destination,
@@ -372,7 +372,7 @@ pub(super) async fn handle_proof(
         )
         .await;
     } else if packet.context == PacketContext::LinkRequestProof && diag::enabled() {
-        log::info!(
+        log::debug!(
             "[tp-diag] lrproof_not_forwarded node={} link={} ingress_iface={}",
             config_name,
             packet.destination,

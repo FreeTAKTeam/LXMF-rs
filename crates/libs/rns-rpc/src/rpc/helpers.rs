@@ -266,6 +266,43 @@ fn parse_fuzzy_u32(value: &MsgPackValue) -> Option<u32> {
     }
 }
 
+fn parse_fuzzy_i64(value: &MsgPackValue) -> Option<i64> {
+    match value {
+        MsgPackValue::Integer(value) => value
+            .as_i64()
+            .or_else(|| value.as_u64().and_then(|value| i64::try_from(value).ok())),
+        MsgPackValue::F64(value) => {
+            if value.is_finite()
+                && value.fract() == 0.0
+                && *value >= i64::MIN as f64
+                && *value <= i64::MAX as f64
+            {
+                Some(*value as i64)
+            } else {
+                None
+            }
+        }
+        MsgPackValue::F32(value) => {
+            let value = f64::from(*value);
+            if value.is_finite()
+                && value.fract() == 0.0
+                && value >= i64::MIN as f64
+                && value <= i64::MAX as f64
+            {
+                Some(value as i64)
+            } else {
+                None
+            }
+        }
+        MsgPackValue::Boolean(value) => Some(if *value { 1 } else { 0 }),
+        MsgPackValue::Binary(bytes) => {
+            std::str::from_utf8(bytes).ok()?.trim().parse::<i64>().ok()
+        }
+        MsgPackValue::String(text) => text.as_str()?.trim().parse::<i64>().ok(),
+        _ => None,
+    }
+}
+
 fn parse_announce_costs_from_app_data_hex(
     app_data_hex: Option<&str>,
 ) -> (Option<u32>, Option<u32>, Option<u32>) {
@@ -331,6 +368,25 @@ fn parse_propagation_limits_from_app_data_hex(
     };
 
     (entries.get(3).and_then(parse_fuzzy_u32), entries.get(4).and_then(parse_fuzzy_u32))
+}
+
+fn parse_propagation_timebase_from_app_data_hex(app_data_hex: Option<&str>) -> Option<i64> {
+    let raw_hex = app_data_hex.map(str::trim).filter(|value| !value.is_empty())?;
+    let app_data = hex::decode(raw_hex).ok()?;
+    let value = rmp_serde::from_slice::<MsgPackValue>(&app_data).ok()?;
+    let entries = value.as_array()?;
+    entries.get(1).and_then(parse_fuzzy_i64)
+}
+
+fn parse_propagation_enabled_from_app_data_hex(app_data_hex: Option<&str>) -> Option<bool> {
+    let raw_hex = app_data_hex.map(str::trim).filter(|value| !value.is_empty())?;
+    let app_data = hex::decode(raw_hex).ok()?;
+    let value = rmp_serde::from_slice::<MsgPackValue>(&app_data).ok()?;
+    let entries = value.as_array()?;
+    if entries.len() < 6 {
+        return None;
+    }
+    entries.get(2).map(parse_bool_capability_flag)
 }
 
 fn parse_peer_name_from_app_data_hex(app_data_hex: Option<&str>) -> Option<(String, &'static str)> {

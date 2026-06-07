@@ -1,5 +1,5 @@
 use super::{encode_propagation_node_app_data, pretty_daemon_line};
-use reticulum_daemon::announce_names::encode_delivery_display_name_app_data;
+use reticulum_daemon::announce_names::encode_delivery_announce_app_data_with_capabilities;
 use rns_transport::destination::{DestinationName, SingleInputDestination};
 use rns_transport::identity::PrivateIdentity;
 use rns_transport::transport::Transport;
@@ -19,6 +19,7 @@ pub(super) async fn register_transport_destinations(
     transport: &mut Transport,
     transport_identity: PrivateIdentity,
     local_display_name: Option<&str>,
+    local_announce_capabilities: &[String],
     propagation_control_enabled: bool,
 ) -> RegisteredTransportDestinations {
     let delivery = transport
@@ -29,7 +30,13 @@ pub(super) async fn register_transport_destinations(
     transport
         .set_destination_announce_app_data(
             &delivery,
-            local_display_name.and_then(encode_delivery_display_name_app_data),
+            local_display_name.and_then(|display_name| {
+                encode_delivery_announce_app_data_with_capabilities(
+                    display_name,
+                    None,
+                    local_announce_capabilities,
+                )
+            }),
         )
         .await;
 
@@ -84,6 +91,22 @@ async fn destination_hash(
     let mut hash = [0u8; 16];
     hash.copy_from_slice(dest.desc.address_hash.as_slice());
     let hash_hex = hex::encode(hash);
-    println!("{}", pretty_daemon_line(&format!("{label} destination hash={hash_hex}")));
+    println!("{}", daemon_destination_hash_line(label, hash_hex.as_str()));
     (hash, hash_hex)
+}
+
+fn daemon_destination_hash_line(label: &str, hash_hex: &str) -> String {
+    pretty_daemon_line(&format!("{label} destination hash={hash_hex}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn destination_hash_line_keeps_smoke_script_marker() {
+        let line = daemon_destination_hash_line("delivery", "0123456789abcdef");
+
+        assert!(line.contains("delivery destination hash=0123456789abcdef"));
+    }
 }

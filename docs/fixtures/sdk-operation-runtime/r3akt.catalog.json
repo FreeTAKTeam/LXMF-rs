@@ -1,0 +1,86 @@
+{
+  "catalog_family": "sdk-operation-runtime",
+  "catalog_release": "v1",
+  "product": "r3akt",
+  "runtime_owner": "LXMF-rs",
+  "custom_operations": [
+    {
+      "id": "r3akt.message.send",
+      "group": "r3akt",
+      "kind": "command",
+      "transport_variant": "extension",
+      "description": "Send a R3AKT product message through the shared operation runtime.",
+      "aliases": [
+        "R3AKT;EMergencyMessages.send",
+        "POST /api/messages"
+      ],
+      "required_capabilities": [
+        "sdk.capability.remote_commands"
+      ]
+    },
+    {
+      "id": "r3akt.marker.list",
+      "group": "r3akt",
+      "kind": "query",
+      "transport_variant": "extension",
+      "description": "List R3AKT map markers through the shared operation runtime.",
+      "aliases": [
+        "R3AKT;Markers.list",
+        "GET /api/markers"
+      ],
+      "required_capabilities": [
+        "sdk.capability.remote_commands"
+      ]
+    },
+    {
+      "id": "r3akt.presence.announce",
+      "group": "r3akt",
+      "kind": "command",
+      "transport_variant": "extension",
+      "description": "Publish R3AKT presence state without product-local runtime dispatch.",
+      "aliases": [
+        "R3AKT;Presence.announce",
+        "POST /RCH",
+        "POST /RTH"
+      ],
+      "required_capabilities": [
+        "sdk.capability.remote_commands"
+      ]
+    }
+  ],
+  "parity_flows": [
+    {
+      "id": "message_send",
+      "operation_id": "r3akt.message.send",
+      "legacy_alias": "R3AKT;EMergencyMessages.send",
+      "runtime_method": "sdk_envelope_execute_v2"
+    },
+    {
+      "id": "marker_list",
+      "operation_id": "r3akt.marker.list",
+      "legacy_alias": "GET /api/markers",
+      "runtime_method": "sdk_envelope_execute_v2"
+    },
+    {
+      "id": "presence_announce",
+      "operation_id": "r3akt.presence.announce",
+      "legacy_alias": "R3AKT;Presence.announce",
+      "runtime_method": "sdk_envelope_execute_v2"
+    }
+  ],
+  "ownership_boundary": {
+    "LXMF-rs owns": [
+      "operation registry",
+      "alias canonicalization",
+      "envelope validation",
+      "sdk_envelope_execute_v2 dispatch",
+      "event and error envelopes"
+    ],
+    "Product repos own": [
+      "catalog entries",
+      "payload schemas",
+      "domain-specific event typing",
+      "UI policy"
+    ]
+  }
+}

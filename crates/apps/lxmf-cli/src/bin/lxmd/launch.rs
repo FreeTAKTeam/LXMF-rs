@@ -19,13 +19,13 @@ pub(crate) fn launch_supervised(
     let mut child = match cmd.spawn() {
         Ok(child) => child,
         Err(err) => {
-            eprintln!("lxmd: failed to launch {}: {}", reticulumd.display(), err);
+            log::error!("failed to launch {}: {}", reticulumd.display(), err);
             return ExitCode::from(1);
         }
     };
 
     if let Err(err) = wait_until_ready(&mut child, rpc_addr, crate::READY_TIMEOUT) {
-        eprintln!("lxmd: {err}");
+        log::error!("{err}");
         let _ = child.kill();
         let _ = child.wait();
         return ExitCode::from(1);
@@ -33,7 +33,7 @@ pub(crate) fn launch_supervised(
 
     if args.propagation_node {
         if let Err(err) = enable_propagation_mode(rpc_addr) {
-            eprintln!("lxmd: failed to enable propagation mode: {err}");
+            log::error!("failed to enable propagation mode: {err}");
             let _ = child.kill();
             let _ = child.wait();
             return ExitCode::from(1);
@@ -41,7 +41,7 @@ pub(crate) fn launch_supervised(
     }
 
     if let Err(err) = apply_python_compat_config(rpc_addr, args) {
-        eprintln!("lxmd: failed to apply python-style daemon settings: {err}");
+        log::error!("failed to apply python-style daemon settings: {err}");
         let _ = child.kill();
         let _ = child.wait();
         return ExitCode::from(1);
@@ -49,7 +49,7 @@ pub(crate) fn launch_supervised(
 
     if args.propagation_node {
         if let Err(err) = rpc_client::rpc_call(rpc_addr, "announce_now", None) {
-            eprintln!("lxmd: failed to announce propagation state: {err}");
+            log::error!("failed to announce propagation state: {err}");
         }
     }
 
@@ -64,7 +64,7 @@ pub(crate) fn launch_supervised(
     match child.wait() {
         Ok(status) => ExitCode::from(status.code().unwrap_or(1) as u8),
         Err(err) => {
-            eprintln!("lxmd: failed waiting for reticulumd: {}", err);
+            log::error!("failed waiting for reticulumd: {}", err);
             ExitCode::from(1)
         }
     }

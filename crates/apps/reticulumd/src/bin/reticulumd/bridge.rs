@@ -6,6 +6,8 @@ use super::bridge_helpers::{
 mod announce;
 #[path = "bridge_delivery_method.rs"]
 mod delivery_method;
+#[path = "bridge_delivery_scheduler.rs"]
+mod delivery_scheduler;
 #[path = "bridge_delivery_task.rs"]
 mod delivery_task;
 #[path = "bridge_delivery_task_cancel.rs"]
@@ -31,6 +33,14 @@ mod payload_builder;
 mod propagation;
 #[path = "bridge_remote_control.rs"]
 mod remote_control;
+#[path = "bridge_remote_control_download.rs"]
+mod remote_control_download;
+#[path = "bridge_remote_control_link.rs"]
+mod remote_control_link;
+#[path = "bridge_remote_fetch.rs"]
+mod remote_fetch;
+#[path = "bridge_remote_request.rs"]
+mod remote_request;
 use super::outbound_resources::{
     track_outbound_resource, OutboundResourceMap, OutboundResourceTracking,
     OUTBOUND_RESOURCE_SENT_STATUS,
@@ -40,7 +50,7 @@ use rns_core::identity::PrivateIdentity;
 use rns_rpc::{RpcDaemon, RpcRequest};
 use rns_transport::delivery::await_link_activation;
 use rns_transport::delivery::{
-    send_on_link, send_outcome_is_sent, send_outcome_status, send_via_link, LinkSendResult,
+    send_on_link, send_outcome_is_sent, send_outcome_status, LinkSendResult,
 };
 use rns_transport::destination::{
     link::{Link, LinkStatus},
@@ -60,8 +70,11 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub(crate) use delivery_method::{validate_delivery_request, RequestedDeliveryMethod};
+use delivery_scheduler::{DeliveryScheduler, DeliverySchedulerConfig};
 use delivery_task::{DeliveryTask, LinkModeStatuses};
 use identity_resolver::resolve_destination_identity_blocking;
+#[cfg(test)]
+pub(crate) use propagation::wait_for_propagation_signal;
 use propagation::CachedPropagationLink;
 
 pub(super) struct TransportBridge {
@@ -71,6 +84,7 @@ pub(super) struct TransportBridge {
     delivery_source_hash: [u8; 16],
     announce_destination: Arc<tokio::sync::Mutex<SingleInputDestination>>,
     announce_app_data: Option<Vec<u8>>,
+    announce_capabilities: Vec<String>,
     propagation_announce_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>>,
     propagation_announce_app_data: Option<Vec<u8>>,
     control_announce_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>>,
@@ -80,6 +94,7 @@ pub(super) struct TransportBridge {
     outbound_resource_map: OutboundResourceMap,
     outbound_propagation_link: Arc<tokio::sync::Mutex<Option<CachedPropagationLink>>>,
     receipt_tx: tokio::sync::mpsc::Sender<ReceiptEvent>,
+    delivery_scheduler: DeliveryScheduler,
 }
 
 #[derive(Clone, Copy)]
@@ -95,6 +110,7 @@ impl TransportBridge {
         delivery_source_hash: [u8; 16],
         announce_destination: Arc<tokio::sync::Mutex<SingleInputDestination>>,
         announce_app_data: Option<Vec<u8>>,
+        announce_capabilities: Vec<String>,
         propagation_announce_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>>,
         propagation_announce_app_data: Option<Vec<u8>>,
         control_announce_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>>,
@@ -110,6 +126,7 @@ impl TransportBridge {
             delivery_source_hash,
             announce_destination,
             announce_app_data,
+            announce_capabilities,
             propagation_announce_destination,
             propagation_announce_app_data,
             control_announce_destination,
@@ -119,6 +136,7 @@ impl TransportBridge {
             outbound_resource_map,
             outbound_propagation_link: Arc::new(tokio::sync::Mutex::new(None)),
             receipt_tx,
+            delivery_scheduler: DeliveryScheduler::spawn(DeliverySchedulerConfig::from_env()),
         }
     }
 

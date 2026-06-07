@@ -11,7 +11,7 @@ use crate::buffer::{InputBuffer, OutputBuffer};
 use crate::error::RnsError;
 use crate::hash::AddressHash;
 use crate::iface::{IfaceRole, IfaceSource, InterfaceManager, RxMessage, TxMessageType};
-use crate::packet::Packet;
+use crate::packet::{Packet, PacketContext, PacketType};
 use crate::serde::Serialize;
 
 use super::{Interface, InterfaceContext};
@@ -68,6 +68,10 @@ fn bind_udp(bind_addr: &str, forward_addr: Option<&str>) -> std::io::Result<UdpS
 
 // UDP trace logging stays on by default for packet-level network bring-up visibility.
 const PACKET_TRACE: bool = true;
+
+fn is_link_proof(packet: &Packet) -> bool {
+    packet.header.packet_type == PacketType::Proof && packet.context == PacketContext::LinkProof
+}
 
 /// Returns true if `addr` parses as a SocketAddr whose IP is multicast
 /// (IPv4 `224.0.0.0/4` or IPv6 `ff00::/8`).
@@ -210,7 +214,7 @@ impl UdpInterface {
                 .map_err(|_| RnsError::ConnectionError);
 
             if socket.is_err() {
-                log::info!("udp_interface: couldn't bind to <{}>", bind_addr);
+                log::warn!("couldn't bind to <{}>", bind_addr);
                 tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                 continue;
             }
@@ -253,7 +257,7 @@ impl UdpInterface {
                             result = socket.recv_from(&mut rx_buffer) => {
                                 match result {
                                     Ok((0, _)) => {
-                                        log::warn!("udp_interface: connection closed");
+                                        log::warn!("connection closed");
                                         stop.cancel();
                                         break;
                                     }
@@ -274,7 +278,7 @@ impl UdpInterface {
                                             };
                                             if PACKET_TRACE {
                                                 log::trace!(
-                                                    "udp_interface: rx << (iface {} / attributed {}) from {} {}",
+                                                    "rx << (iface {} / attributed {}) from {} {}",
                                                     iface_address, attributed_iface, in_addr, packet
                                                 );
                                             }
@@ -284,11 +288,11 @@ impl UdpInterface {
                                                 source: IfaceSource::Udp(in_addr),
                                             });
                                         } else {
-                                            log::warn!("udp_interface: couldn't decode packet");
+                                            log::warn!("couldn't decode packet");
                                         }
                                     }
                                     Err(e) => {
-                                        log::warn!("udp_interface: connection error {}", e);
+                                        log::warn!("connection error {}", e);
                                         break;
                                     }
                                 }
@@ -328,9 +332,11 @@ impl UdpInterface {
                                     //   Broadcast → multicast forward_addr (unchanged).
                                     //   Direct(iface_hash):
                                     //     - if hash resolves in peer_routing → unicast to that peer
+                                    //     - else if hash == this iface's own address and this is
+                                    //       an encrypted link proof → multicast fallback
                                     //     - else if hash == this iface's own address → drop
-                                    //       (the tx-guard: Direct tx to a multicast iface is
-                                    //       nonsensical — every packet would flood the group)
+                                    //       (the tx-guard: ordinary Direct tx to a multicast
+                                    //       iface is nonsensical — every packet would flood the group)
                                     //     - else → drop (unknown virtual iface)
                                     let target = match message.tx_type {
                                         TxMessageType::Broadcast(_) => Some(forward_addr.clone()),
@@ -338,10 +344,18 @@ impl UdpInterface {
                                             if let Some(ref routing) = peer_routing {
                                                 if let Some(peer) = routing.lock().await.addr_for_hash(&addr) {
                                                     Some(peer.to_string())
+                                                } else if addr == iface_address && is_link_proof(&message.packet) {
+                                                    if PACKET_TRACE {
+                                                        log::trace!(
+                                                            "broadcasting Direct link proof fallback for multicast iface {}",
+                                                            iface_address,
+                                                        );
+                                                    }
+                                                    Some(forward_addr.clone())
                                                 } else if addr == iface_address {
                                                     if PACKET_TRACE {
                                                         log::trace!(
-                                                            "udp_interface: dropping Direct tx targeting multicast iface {} (type={:?})",
+                                                            "dropping Direct tx targeting multicast iface {} (type={:?})",
                                                             iface_address,
                                                             message.packet.header.packet_type,
                                                         );
@@ -350,7 +364,7 @@ impl UdpInterface {
                                                 } else {
                                                     if PACKET_TRACE {
                                                         log::trace!(
-                                                            "udp_interface: dropping Direct tx for unknown virtual iface {}",
+                                                            "dropping Direct tx for unknown virtual iface {}",
                                                             addr,
                                                         );
                                                     }
@@ -368,7 +382,7 @@ impl UdpInterface {
                                         let packet = message.packet;
                                         if PACKET_TRACE {
                                             log::trace!(
-                                                "udp_interface: tx >> ({}) to {} {}",
+                                                "tx >> ({}) to {} {}",
                                                 iface_address, dest, packet
                                             );
                                         }

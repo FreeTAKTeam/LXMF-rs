@@ -53,13 +53,17 @@ const CHANNEL_RTT_FAST_SECS: f32 = 0.18;
 const CHANNEL_RTT_MEDIUM_SECS: f32 = 0.75;
 const CHANNEL_RTT_SLOW_SECS: f32 = 1.45;
 const CHANNEL_WINDOW_FLEXIBILITY: u8 = 4;
+#[allow(dead_code)]
 const CHANNEL_MAX_TRIES: u8 = 5;
 
 #[derive(Debug, Copy, Clone)]
 struct PendingChannelPacket {
     sequence: u16,
+    #[allow(dead_code)]
     packet: Packet,
+    #[allow(dead_code)]
     tries: u8,
+    #[allow(dead_code)]
     next_retry_at: Instant,
 }
 
@@ -86,6 +90,7 @@ impl LinkStatus {
         matches!(self, Self::Active)
     }
 
+    #[allow(dead_code)]
     fn can_retry_channel_messages(self) -> bool {
         matches!(self, Self::Active | Self::Stale)
     }
@@ -120,6 +125,7 @@ pub enum LinkWatchdogAction {
 pub enum LinkEvent {
     Activated,
     Data(Box<LinkPayload>),
+    PeerIdentified(Box<Identity>),
     Closed,
 }
 
@@ -328,7 +334,7 @@ impl Link {
         };
 
         let link_id = LinkId::from(packet);
-        log::debug!("link: create from request {}", link_id);
+        log::debug!("create from request {}", link_id);
 
         let mut link = Self {
             id: link_id,
@@ -761,6 +767,7 @@ impl Link {
         self.channel_states.insert(sequence, ChannelMessageState::Failed);
     }
 
+    #[allow(dead_code)]
     pub(crate) fn poll_channel_timeouts(&mut self, now: Instant) -> Vec<Packet> {
         if !self.status.can_retry_channel_messages() {
             return Vec::new();
@@ -807,6 +814,7 @@ impl Link {
         resend_packets
     }
 
+    #[allow(dead_code)]
     pub(crate) fn next_channel_retry_at(&self) -> Option<Instant> {
         if !self.status.can_retry_channel_messages() {
             return None;
@@ -927,7 +935,7 @@ impl Link {
 
     fn packet_with_context(&self, data: &[u8], context: PacketContext) -> Result<Packet, RnsError> {
         if !self.status.can_exchange_data() {
-            log::warn!("link: can't create data packet for closed link");
+            log::warn!("can't create data packet for closed link");
         }
 
         let mut packet_data = PacketDataBuffer::new();
@@ -949,7 +957,7 @@ impl Link {
 
     pub fn data_packet_into(&self, data: &[u8], packet: &mut Packet) -> Result<(), RnsError> {
         if !self.status.can_exchange_data() {
-            log::warn!("link: can't create data packet for closed link");
+            log::warn!("can't create data packet for closed link");
         }
 
         packet.header = Header {
@@ -1038,7 +1046,7 @@ impl Link {
 
         packet_data.resize(token_len);
 
-        log::trace!("link: {} create rtt packet = {} sec", self.id, rtt);
+        log::trace!("{} create rtt packet = {} sec", self.id, rtt);
 
         Packet {
             header: Header { destination_type: DestinationType::Link, ..Default::default() },
@@ -1235,8 +1243,8 @@ impl Link {
 
         self.post_event(LinkEvent::Closed);
 
-        log::warn!("link: close {}", self.id);
-        eprintln!("link: close {}", self.id);
+        println!("{}", link_close_line(&self.id));
+        log::warn!("close {}", self.id);
     }
 
     fn teardown_packet(&self) -> Result<Packet, RnsError> {
@@ -1381,6 +1389,10 @@ fn clamp_link_signalling(bytes: [u8; LINK_MTU_SIZE]) -> [u8; LINK_MTU_SIZE] {
     [((value >> 16) & 0xFF) as u8, ((value >> 8) & 0xFF) as u8, (value & 0xFF) as u8]
 }
 
+fn link_close_line(id: &AddressHash) -> String {
+    format!("link: close {id}")
+}
+
 include!("link/proof.rs");
 
 #[cfg(test)]
@@ -1406,6 +1418,13 @@ mod tests {
         assert!(!LinkStatus::Closed.can_exchange_data());
         assert!(!LinkStatus::Closed.can_retry_channel_messages());
         assert!(!LinkStatus::Closed.can_send_teardown());
+    }
+
+    #[test]
+    fn link_close_line_preserves_compatibility_marker() {
+        let line = link_close_line(&AddressHash::new([0x11; 16]));
+
+        assert!(line.contains("link: close"));
     }
 
     #[test]
@@ -2143,6 +2162,7 @@ mod tests {
             outbound.handle_packet(&inbound.prove(), iface),
             LinkHandleResult::Activated
         ));
+        outbound.rtt = Duration::from_millis(10);
 
         let (sequence, _packet) = outbound
             .send_channel_message(0x7101, b"eventually-fails".to_vec())

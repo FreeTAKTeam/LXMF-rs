@@ -1,9 +1,14 @@
+pub mod auto;
 pub mod driver;
 pub mod hdlc;
+pub mod kiss;
+pub mod lora;
+pub mod rnode_ble;
 pub mod serial;
 pub mod tcp_client;
 pub mod tcp_server;
 pub mod udp;
+pub mod vrn76_kiss_ble;
 
 use std::collections::VecDeque;
 use std::net::SocketAddr;
@@ -170,6 +175,10 @@ impl InterfaceChannel {
 
 pub trait Interface {
     fn mtu() -> usize;
+
+    fn configured_mtu(&self) -> usize {
+        Self::mtu()
+    }
 }
 
 struct LocalInterface {
@@ -177,8 +186,10 @@ struct LocalInterface {
     full_hash: Hash,
     tx_send: InterfaceTxSender,
     stop: CancellationToken,
+    mtu: usize,
     role: IfaceRole,
     mode: InterfaceMode,
+    outgoing: bool,
     announce_queue: VecDeque<QueuedAnnounce>,
     announce_allowed_at: Instant,
     announce_bitrate_bps: u64,
@@ -230,6 +241,16 @@ impl InterfaceManager {
         role: IfaceRole,
         mode: InterfaceMode,
     ) -> InterfaceChannel {
+        self.new_channel_with_role_mode_mtu(tx_cap, role, mode, DEFAULT_IFACE_MTU)
+    }
+
+    pub fn new_channel_with_role_mode_mtu(
+        &mut self,
+        tx_cap: usize,
+        role: IfaceRole,
+        mode: InterfaceMode,
+        mtu: usize,
+    ) -> InterfaceChannel {
         self.counter += 1;
 
         let counter_bytes = self.counter.to_le_bytes();
@@ -238,7 +259,7 @@ impl InterfaceManager {
 
         let (tx_send, tx_recv) = InterfaceChannel::make_tx_channel(tx_cap);
 
-        log::debug!("iface: create channel {} role={:?} mode={:?}", address, role, mode);
+        log::debug!("create channel {} role={:?} mode={:?}", address, role, mode);
 
         let stop = CancellationToken::new();
 
@@ -247,8 +268,10 @@ impl InterfaceManager {
             full_hash,
             tx_send,
             stop: stop.clone(),
+            mtu,
             role,
             mode,
+            outgoing: true,
             announce_queue: VecDeque::new(),
             announce_allowed_at: Instant::now(),
             announce_bitrate_bps: DEFAULT_IFACE_BITRATE_BPS,
@@ -276,8 +299,9 @@ impl InterfaceManager {
         role: IfaceRole,
         mode: InterfaceMode,
     ) -> InterfaceContext<T> {
+        let mtu = inner.configured_mtu();
         let channel =
-            self.new_channel_with_role_and_mode(DEFAULT_IFACE_TX_QUEUE_CAPACITY, role, mode);
+            self.new_channel_with_role_mode_mtu(DEFAULT_IFACE_TX_QUEUE_CAPACITY, role, mode, mtu);
         let inner = Arc::new(Mutex::new(inner));
         InterfaceContext::<T> { inner: inner.clone(), channel, cancel: self.cancel.clone() }
     }
@@ -333,6 +357,21 @@ impl InterfaceManager {
         self.ifaces.iter().find(|i| i.address == *address).map(|i| i.mode)
     }
 
+    pub fn outgoing(&self, address: &AddressHash) -> Option<bool> {
+        self.ifaces.iter().find(|i| i.address == *address).map(|i| i.outgoing)
+    }
+
+    pub fn mtu(&self, address: &AddressHash) -> Option<usize> {
+        self.ifaces.iter().find(|i| i.address == *address).map(|i| i.mtu)
+    }
+
+    pub fn announce_pacing(&self, address: &AddressHash) -> Option<(u64, u64)> {
+        self.ifaces
+            .iter()
+            .find(|i| i.address == *address)
+            .map(|i| (i.announce_bitrate_bps, i.announce_cap_percent))
+    }
+
     pub fn full_hash(&self, address: &AddressHash) -> Option<Hash> {
         self.ifaces.iter().find(|i| i.address == *address).map(|i| i.full_hash)
     }
@@ -348,6 +387,30 @@ impl InterfaceManager {
     pub fn set_mode(&mut self, address: AddressHash, mode: InterfaceMode) -> bool {
         if let Some(iface) = self.ifaces.iter_mut().find(|i| i.address == address) {
             iface.mode = mode;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn set_outgoing(&mut self, address: AddressHash, outgoing: bool) -> bool {
+        if let Some(iface) = self.ifaces.iter_mut().find(|i| i.address == address) {
+            iface.outgoing = outgoing;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn set_announce_pacing(
+        &mut self,
+        address: AddressHash,
+        bitrate_bps: u64,
+        cap_percent: u64,
+    ) -> bool {
+        if let Some(iface) = self.ifaces.iter_mut().find(|i| i.address == address) {
+            iface.announce_bitrate_bps = bitrate_bps;
+            iface.announce_cap_percent = cap_percent;
             true
         } else {
             false
@@ -371,6 +434,7 @@ impl InterfaceManager {
     ) -> Option<AddressHash> {
         let host_iface = self.ifaces.iter().find(|i| i.address == host)?;
         let host_tx = host_iface.tx_send.clone();
+        let mtu = host_iface.mtu;
         let mode = host_iface.mode;
 
         // Virtual iface gets its own CancellationToken so it can be
@@ -385,7 +449,7 @@ impl InterfaceManager {
         let address = AddressHash::new_from_hash(&full_hash);
 
         log::debug!(
-            "iface: register virtual iface {} on host {} role={:?} mode={:?}",
+            "register virtual iface {} on host {} role={:?} mode={:?}",
             address,
             host,
             role,
@@ -397,8 +461,10 @@ impl InterfaceManager {
             full_hash,
             tx_send: host_tx,
             stop,
+            mtu,
             role,
             mode,
+            outgoing: host_iface.outgoing,
             announce_queue: VecDeque::new(),
             announce_allowed_at: Instant::now(),
             announce_bitrate_bps: host_iface.announce_bitrate_bps,
@@ -532,7 +598,7 @@ impl InterfaceManager {
 
         if iface.announce_queue.len() >= MAX_QUEUED_ANNOUNCES_PER_IFACE {
             log::warn!(
-                "iface: dropping announce for {} on {} because announce queue is full",
+                "dropping announce for {} on {} because announce queue is full",
                 message.packet.destination,
                 iface.address
             );
@@ -565,6 +631,7 @@ impl InterfaceManager {
 
         for iface in &mut self.ifaces {
             if iface.stop.is_cancelled()
+                || !iface.outgoing
                 || iface.announce_queue.is_empty()
                 || now < iface.announce_allowed_at
             {
@@ -656,7 +723,7 @@ impl InterfaceManager {
                 TxMessageType::Direct(address) => address == iface.address,
             };
 
-            if should_send && !iface.stop.is_cancelled() {
+            if should_send && iface.outgoing && !iface.stop.is_cancelled() {
                 trace.matched_ifaces += 1;
                 let is_paced_announce = message.packet.header.packet_type == PacketType::Announce
                     && message.packet.header.hops > 0

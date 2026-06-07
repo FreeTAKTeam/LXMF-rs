@@ -149,6 +149,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "asynchronous-codec"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a860072022177f903e59730004fb5dc13db9275b79bb2aef7ba8ce831956c233"
+dependencies = [
+ "bytes",
+ "futures-sink",
+ "futures-util",
+ "memchr",
+ "pin-project-lite",
+]
+
+[[package]]
 name = "autocfg"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -608,6 +621,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "crossbeam-queue"
+version = "0.3.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0f58bbc28f91df819d0aa2a2c00cd19754769c2fad90579b3592b1c9ba7a3115"
+dependencies = [
+ "crossbeam-utils",
+]
+
+[[package]]
 name = "crossbeam-utils"
 version = "0.8.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -626,7 +648,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "78c8292055d1c1df0cce5d180393dc8cce0abec0a7102adb6c7b1eef6016d60a"
 dependencies = [
  "generic-array",
- "rand_core",
+ "rand_core 0.6.4",
  "typenum",
 ]
 
@@ -793,7 +815,7 @@ checksum = "4a3daa8e81a3963a60642bcc1f90a670680bd4a77535faa384e9d1c79d620871"
 dependencies = [
  "curve25519-dalek",
  "ed25519",
- "rand_core",
+ "rand_core 0.6.4",
  "serde",
  "sha2",
  "subtle",
@@ -1071,6 +1093,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "hash32"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "47d60b12902ba28e2730cd37e95b8c9223af2808df9e902d4df49588d1470606"
+dependencies = [
+ "byteorder",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.14.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1098,6 +1129,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7382cf6263419f2d8df38c55d7da83da5c18aef87fc7a7fc1fb1e344edfe14c1"
 dependencies = [
  "hashbrown 0.15.5",
+]
+
+[[package]]
+name = "heapless"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0bfb9eb618601c89945a70e254898da93b13be0388091d42117462b265bb3fad"
+dependencies = [
+ "hash32",
+ "stable_deref_trait",
 ]
 
 [[package]]
@@ -1145,6 +1186,16 @@ dependencies = [
  "matches",
  "unicode-bidi",
  "unicode-normalization",
+]
+
+[[package]]
+name = "if-addrs"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c0a05c691e1fae256cf7013d99dad472dc52d5543322761f83ec8d47eab40d2b"
+dependencies = [
+ "libc",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1397,6 +1448,7 @@ dependencies = [
  "clap",
  "clap_complete",
  "hex",
+ "log",
  "lxmf-sdk",
  "rmp-serde",
  "rmpv",
@@ -1405,6 +1457,15 @@ dependencies = [
  "serde_json",
  "tempfile",
  "toml",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "lxmf-embedded-mini"
+version = "0.1.0"
+dependencies = [
+ "heapless",
+ "lxmf-wire",
 ]
 
 [[package]]
@@ -1415,6 +1476,7 @@ dependencies = [
  "hex",
  "hmac",
  "loom",
+ "lxmf-wire",
  "reticulum-rs-rpc",
  "rustls",
  "rustls-pemfile",
@@ -1426,6 +1488,7 @@ dependencies = [
  "tokio-rustls",
  "tokio-stream",
  "zeroize",
+ "zeromq",
 ]
 
 [[package]]
@@ -1436,7 +1499,7 @@ dependencies = [
  "criterion",
  "ed25519-dalek",
  "hex",
- "rand_core",
+ "rand_core 0.6.4",
  "reticulum-rs-core",
  "rmp-serde",
  "rmpv",
@@ -1808,6 +1871,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "439ee305def115ba05938db6eb1644ff94165c5ab5e9420d1c1bcedbba909391"
 
 [[package]]
+name = "ppv-lite86"
+version = "0.2.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "85eae3c4ed2f50dcfe72643da4befc30deadb458a9b590d720cde2f2b1e97da9"
+dependencies = [
+ "zerocopy",
+]
+
+[[package]]
 name = "proc-macro2"
 version = "1.0.106"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1832,12 +1904,41 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "69cdb34c158ceb288df11e18b4bd39de994f6657d83847bdffdbd7f346754b0f"
 
 [[package]]
+name = "rand"
+version = "0.9.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "44c5af06bb1b7d3216d91932aed5265164bf384dc89cd6ba05cf59a35f5f76ea"
+dependencies = [
+ "rand_chacha",
+ "rand_core 0.9.5",
+]
+
+[[package]]
+name = "rand_chacha"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d3022b5f1df60f26e1ffddd6c66e8aa15de382ae63b3a0c1bfc0e4d3e3f325cb"
+dependencies = [
+ "ppv-lite86",
+ "rand_core 0.9.5",
+]
+
+[[package]]
 name = "rand_core"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
 dependencies = [
  "getrandom 0.2.17",
+]
+
+[[package]]
+name = "rand_core"
+version = "0.9.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "76afc826de14238e6e8c374ddcc1fa19e374fd8dd986b0d2af0d02377261d83c"
+dependencies = [
+ "getrandom 0.3.4",
 ]
 
 [[package]]
@@ -1919,7 +2020,8 @@ dependencies = [
  "hex",
  "hkdf",
  "hmac",
- "rand_core",
+ "log",
+ "rand_core 0.6.4",
  "rmp-serde",
  "serde",
  "serde_bytes",
@@ -1937,18 +2039,17 @@ dependencies = [
  "hex",
  "hkdf",
  "hmac",
- "rand_core",
+ "rand_core 0.6.4",
  "rmp-serde",
  "rmpv",
  "rusqlite",
  "serde",
+ "serde_bytes",
  "serde_cbor",
  "serde_json",
  "sha2",
  "tempfile",
  "tokio",
- "tokio-stream",
- "x509-parser",
  "zeroize",
 ]
 
@@ -1957,16 +2058,18 @@ name = "reticulum-rs-transport"
 version = "0.2.0"
 dependencies = [
  "aes",
+ "btleplug",
  "bzip2",
  "cbc",
  "criterion",
  "crypto-common",
  "ed25519-dalek",
+ "futures",
  "hex",
  "hkdf",
  "hmac",
  "log",
- "rand_core",
+ "rand_core 0.6.4",
  "reticulum-rs-core",
  "rmp",
  "rmp-serde",
@@ -1981,6 +2084,8 @@ dependencies = [
  "tokio",
  "tokio-serial",
  "tokio-util",
+ "tracing",
+ "uuid",
  "x25519-dalek",
 ]
 
@@ -1996,8 +2101,10 @@ dependencies = [
  "futures",
  "hex",
  "hkdf",
+ "if-addrs",
+ "log",
  "lxmf-wire",
- "rand_core",
+ "rand_core 0.6.4",
  "reticulum-rs-core",
  "reticulum-rs-rpc",
  "reticulum-rs-transport",
@@ -2014,9 +2121,12 @@ dependencies = [
  "tokio-rustls",
  "tokio-util",
  "toml",
+ "tracing",
+ "tracing-subscriber",
  "uuid",
  "x25519-dalek",
  "x509-parser",
+ "zeromq",
 ]
 
 [[package]]
@@ -2094,7 +2204,7 @@ version = "0.1.0"
 dependencies = [
  "hex",
  "lxmf-wire",
- "rand_core",
+ "rand_core 0.6.4",
  "reticulum-rs-core",
  "rmp-serde",
  "rmpv",
@@ -2116,6 +2226,7 @@ dependencies = [
  "clap",
  "futures",
  "hex",
+ "log",
  "reticulum-rs-rpc",
  "rns-embedded-core",
  "rns-embedded-runtime",
@@ -2123,6 +2234,7 @@ dependencies = [
  "sha2",
  "tempfile",
  "tokio",
+ "tracing-subscriber",
  "uuid",
 ]
 
@@ -2223,12 +2335,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b39cdef0fa800fc44525c84ccb54a029961a8215f9619753635a9c0d2538d46d"
 
 [[package]]
+name = "saa"
+version = "5.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68f5acb362a0e75c2a963532fa7fabf13dff81626dc494df16488d30befcbea0"
+
+[[package]]
 name = "same-file"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "93fc1dc3aaa9bfed95e02e6eadabb4baf7e3078b0bd1b4d7b6b0b68378900502"
 dependencies = [
  "winapi-util",
+]
+
+[[package]]
+name = "scc"
+version = "3.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5bcd12b6caff5213cc3c03123cde8c3db5e413008a63b0c0ba35e6275825ea92"
+dependencies = [
+ "saa",
+ "sdd",
 ]
 
 [[package]]
@@ -2242,6 +2370,15 @@ name = "scopeguard"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
+
+[[package]]
+name = "sdd"
+version = "4.8.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e5f0e40a01b94e35d1dacbcfbe5bfd3d31e37d9590b2e6d86a82b0e87bd4f551"
+dependencies = [
+ "saa",
+]
 
 [[package]]
 name = "semver"
@@ -2394,7 +2531,7 @@ version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77549399552de45a898a580c1b41d445bf730df867cc44e6c0233bbc4b8329de"
 dependencies = [
- "rand_core",
+ "rand_core 0.6.4",
 ]
 
 [[package]]
@@ -2438,6 +2575,12 @@ dependencies = [
  "base64ct",
  "der",
 ]
+
+[[package]]
+name = "stable_deref_trait"
+version = "1.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
 name = "static_assertions"
@@ -2499,6 +2642,7 @@ dependencies = [
  "base64 0.22.1",
  "jsonschema",
  "lxmf-sdk",
+ "lxmf-wire",
  "reticulum-rs-core",
  "reticulum-rs-rpc",
  "serde",
@@ -2685,6 +2829,7 @@ checksum = "9ae9cec805b01e8fc3fd2fe289f89149a9b66dd16786abd8b19cfa7b48cb0098"
 dependencies = [
  "bytes",
  "futures-core",
+ "futures-io",
  "futures-sink",
  "pin-project-lite",
  "tokio",
@@ -2738,7 +2883,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "63e71662fa4b2a2c3a26f570f037eb95bb1f85397f3cd8076caed2f026a6d100"
 dependencies = [
  "pin-project-lite",
+ "tracing-attributes",
  "tracing-core",
+]
+
+[[package]]
+name = "tracing-attributes"
+version = "0.1.31"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7490cfa5ec963746568740651ac6781f701c9c5ea257c58e057f3ba8cf69e8da"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -2846,6 +3003,7 @@ version = "1.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ee48d38b119b0cd71fe4141b30f5ba9c7c5d9f4e7a3a8b4a674e4b6ef789976f"
 dependencies = [
+ "getrandom 0.3.4",
  "js-sys",
  "wasm-bindgen",
 ]
@@ -3292,7 +3450,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c7e468321c81fb07fa7f4c636c3972b9100f0346e5b6a9f2bd0603a52f7ed277"
 dependencies = [
  "curve25519-dalek",
- "rand_core",
+ "rand_core 0.6.4",
  "serde",
  "zeroize",
 ]
@@ -3329,8 +3487,9 @@ dependencies = [
  "globset",
  "hex",
  "jsonschema",
+ "log",
  "lxmf-wire",
- "rand_core",
+ "rand_core 0.6.4",
  "reticulum-rs-core",
  "reticulum-rs-rpc",
  "reticulum-rs-transport",
@@ -3339,6 +3498,7 @@ dependencies = [
  "sha2",
  "tokio",
  "toml",
+ "tracing-subscriber",
  "x25519-dalek",
 ]
 
@@ -3380,6 +3540,30 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "zeromq"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "efb2c254fd8f366755335c9e43b865f8484fe3bd717d65ffe7c3f28852863030"
+dependencies = [
+ "async-trait",
+ "asynchronous-codec",
+ "bytes",
+ "crossbeam-queue",
+ "futures",
+ "log",
+ "num-traits",
+ "once_cell",
+ "parking_lot",
+ "rand",
+ "regex",
+ "scc",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-util",
+ "uuid",
 ]
 
 [[package]]

@@ -1,3 +1,4 @@
+use super::remote_control_download::propagation_download_request;
 use super::*;
 use lxmf::inbound_decode::InboundPayloadMode;
 use reticulum_daemon::inbound_delivery::{
@@ -11,6 +12,68 @@ use sha2::{Digest, Sha256};
 use x25519_dalek::PublicKey;
 
 impl TransportBridge {
+    pub(super) fn run_remote_control_raw(
+        &self,
+        remote: &str,
+        identity_private_key_hex: Option<&str>,
+        timeout_secs: f64,
+        path: &str,
+        data: rmpv::Value,
+    ) -> Result<rmpv::Value, std::io::Error> {
+        let remote = remote.trim().to_string();
+        let identity_override = identity_private_key_hex
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| {
+                let bytes = hex::decode(value).map_err(|err| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        format!("identity_private_key_hex must be hex-encoded: {err}"),
+                    )
+                })?;
+                PrivateIdentity::from_private_key_bytes(&bytes).map_err(|err| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        format!("invalid identity private key: {err:?}"),
+                    )
+                })
+            })
+            .transpose()?;
+        let request_identity = identity_override.unwrap_or_else(|| self.signer.clone());
+        let timeout = Duration::from_secs_f64(timeout_secs.max(0.1));
+        let path = path.to_string();
+        let transport = self.transport.clone();
+        let identity_cache = self.outbound_propagation_identities.clone();
+
+        std::thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|err| {
+                    std::io::Error::other(format!("failed to build remote control runtime: {err}"))
+                })?;
+            runtime.block_on(async move {
+                let result = remote_control_request(
+                    transport.as_ref(),
+                    &request_identity,
+                    &remote,
+                    &path,
+                    data,
+                    timeout,
+                )
+                .await;
+                if let Ok((_, identity)) = &result {
+                    if let Ok(mut guard) = identity_cache.lock() {
+                        guard.insert(remote.clone(), *identity);
+                    }
+                }
+                result.and_then(|(value, _)| response_to_result(value))
+            })
+        })
+        .join()
+        .map_err(|_| std::io::Error::other("remote control helper thread panicked"))?
+    }
+
     pub(super) fn run_remote_control(
         &self,
         remote: &str,
@@ -66,7 +129,7 @@ impl TransportBridge {
                         guard.insert(remote.clone(), *identity);
                     }
                 }
-                result.map(|(json, _)| json)
+                result.and_then(|(value, _)| response_to_json(&value))
             })
         })
         .join()
@@ -101,13 +164,18 @@ impl RemoteControlBridge for TransportBridge {
         peer: &str,
         identity_private_key_hex: Option<&str>,
         timeout_secs: f64,
+        transfer_limit_kb: Option<f64>,
     ) -> Result<JsonValue, std::io::Error> {
+        let peer_value = remote_peer_value(peer)?;
+        let request = transfer_limit_kb
+            .map(|limit| rmpv::Value::Array(vec![peer_value.clone(), rmpv::Value::F64(limit)]))
+            .unwrap_or(peer_value);
         self.run_remote_control(
             remote,
             identity_private_key_hex,
             timeout_secs,
             "/pn/peer/sync",
-            remote_peer_value(peer)?,
+            request,
         )
     }
 
@@ -513,16 +581,25 @@ async fn remote_control_request(
     response_to_json(&response).map(|json| (json, remote_identity))
 }
 
+fn propagation_remote_fetch_ack_payload(
+    payload_outcomes: &[(&[u8], LocalPropagationImportOutcome)],
+) -> rmpv::Value {
+    let haves = payload_outcomes
+        .iter()
+        .filter(|(_payload, outcome)| {
+            matches!(
+                outcome,
+                LocalPropagationImportOutcome::Imported | LocalPropagationImportOutcome::Duplicate
+            )
+        })
+        .map(|(payload, _outcome)| rmpv::Value::Binary(Sha256::digest(payload).to_vec()))
+        .collect();
+    rmpv::Value::Array(vec![rmpv::Value::Nil, rmpv::Value::Array(haves)])
+}
+
 fn response_to_json(response: &rmpv::Value) -> Result<JsonValue, std::io::Error> {
-    if let Some(code) = response.as_u64().or_else(|| response.as_i64().map(|value| value as u64)) {
-        let (kind, message) = match code as u8 {
-            0xF0 => (std::io::ErrorKind::PermissionDenied, "propagation node requires identity"),
-            0xF1 => (std::io::ErrorKind::PermissionDenied, "propagation node denied access"),
-            0xF4 => (std::io::ErrorKind::InvalidInput, "propagation node rejected the request"),
-            0xFD => (std::io::ErrorKind::NotFound, "propagation peer not found"),
-            _ => (std::io::ErrorKind::InvalidData, "unexpected propagation control response"),
-        };
-        return Err(std::io::Error::new(kind, message));
+    if let Some(error) = response_code_error(response) {
+        return Err(error);
     }
     if let Some(json) = rmpv_to_json(response) {
         return Ok(json);
@@ -535,6 +612,13 @@ fn response_to_json(response: &rmpv::Value) -> Result<JsonValue, std::io::Error>
             "unsupported propagation control response payload",
         )),
     }
+}
+
+fn response_to_result(response: rmpv::Value) -> Result<rmpv::Value, std::io::Error> {
+    if let Some(error) = response_code_error(&response) {
+        return Err(error);
+    }
+    Ok(response)
 }
 
 fn build_link_identify_payload(identity: &PrivateIdentity, link_id: &AddressHash) -> Vec<u8> {
@@ -727,5 +811,79 @@ fn value_to_bytes(value: &rmpv::Value) -> Option<Vec<u8>> {
             Some(value.as_bytes().to_vec())
         }
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sha2::{Digest, Sha256};
+
+    #[test]
+    fn propagation_remote_fetch_summary_reports_transferred_bytes() {
+        let payloads = vec![b"first".to_vec(), b"second-payload".to_vec()];
+
+        let summary = propagation_remote_fetch_summary(7, &payloads, 1, 2, 3);
+
+        assert_eq!(summary["available_count"].as_u64(), Some(7));
+        assert_eq!(summary["fetched_count"].as_u64(), Some(2));
+        assert_eq!(summary["imported_count"].as_u64(), Some(1));
+        assert_eq!(summary["duplicate_count"].as_u64(), Some(2));
+        assert_eq!(summary["rejected_count"].as_u64(), Some(3));
+        assert_eq!(
+            summary["transferred_bytes"].as_u64(),
+            Some(payloads.iter().map(Vec::len).sum::<usize>() as u64)
+        );
+    }
+
+    #[test]
+    fn propagation_control_response_code_maps_throttled_like_python() {
+        let err = response_code_error(&rmpv::Value::from(0xF6_u64))
+            .expect("throttled response should map to error");
+
+        assert_eq!(err.kind(), std::io::ErrorKind::WouldBlock);
+        assert_eq!(err.to_string(), "propagation peer throttled");
+    }
+
+    #[test]
+    fn propagation_control_response_code_maps_invalid_peering_key_like_python() {
+        let err = response_code_error(&rmpv::Value::from(0xF3_u64))
+            .expect("invalid key response should map to error");
+
+        assert_eq!(err.kind(), std::io::ErrorKind::PermissionDenied);
+        assert_eq!(err.to_string(), "propagation peer invalid peering key");
+    }
+
+    #[test]
+    fn propagation_control_response_code_maps_timeout_like_python() {
+        let err = response_code_error(&rmpv::Value::from(0xFE_u64))
+            .expect("timeout response should map to error");
+
+        assert_eq!(err.kind(), std::io::ErrorKind::TimedOut);
+        assert_eq!(err.to_string(), "propagation peer timed out");
+    }
+
+    #[test]
+    fn propagation_remote_fetch_ack_payload_reports_imported_and_duplicate_haves() {
+        let imported_payload = b"imported remote fetch payload".to_vec();
+        let duplicate_payload = b"duplicate remote fetch payload".to_vec();
+        let rejected_payload = b"rejected remote fetch payload".to_vec();
+
+        let ack = propagation_remote_fetch_ack_payload(&[
+            (&imported_payload, LocalPropagationImportOutcome::Imported),
+            (&duplicate_payload, LocalPropagationImportOutcome::Duplicate),
+            (&rejected_payload, LocalPropagationImportOutcome::Rejected),
+        ]);
+
+        let rmpv::Value::Array(entries) = ack else {
+            panic!("expected /get acknowledgement array");
+        };
+        assert!(entries.first().is_some_and(rmpv::Value::is_nil));
+        let Some(rmpv::Value::Array(haves)) = entries.get(1) else {
+            panic!("expected haves array");
+        };
+        assert_eq!(haves.len(), 2);
+        assert_eq!(haves[0], rmpv::Value::Binary(Sha256::digest(imported_payload).to_vec()));
+        assert_eq!(haves[1], rmpv::Value::Binary(Sha256::digest(duplicate_payload).to_vec()));
     }
 }

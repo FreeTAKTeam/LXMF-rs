@@ -27,7 +27,7 @@ pub(super) async fn accept_delivery_resource(
         Ok(status) => status,
         Err(error) => {
             if diagnostics_enabled() {
-                eprintln!("[daemon-rx] dropping inbound resource due to stamp policy: {}", error);
+                log::warn!("[daemon-rx] dropping inbound resource due to stamp policy: {}", error);
             }
             return;
         }
@@ -65,7 +65,7 @@ pub(super) async fn accept_delivery_packet(
         let (record, diagnostics) =
             decode_inbound_payload_with_diagnostics(destination, data, payload_mode);
         if let Some(ref decoded) = record {
-            eprintln!(
+            log::debug!(
                 "[daemon-rx] decoded msg_id={} src={} dst={} title_len={} content_len={}",
                 decoded.id,
                 decoded.source,
@@ -74,7 +74,7 @@ pub(super) async fn accept_delivery_packet(
                 decoded.content.len()
             );
         } else {
-            eprintln!(
+            log::debug!(
                 "[daemon-rx] decode-failed raw_dst={} resolved_dst={} attempts={}",
                 raw_destination_hex,
                 hex::encode(destination),
@@ -90,7 +90,7 @@ pub(super) async fn accept_delivery_packet(
             Ok(status) => Some(status),
             Err(_) => {
                 if diagnostics_enabled() {
-                    eprintln!(
+                    log::warn!(
                         "[daemon-rx] dropping inbound payload due to stamp policy: raw_dst={} resolved_dst={}",
                         raw_destination_hex,
                         hex::encode(destination)
@@ -132,7 +132,7 @@ pub(super) fn log_resolved_packet(
     data: &[u8],
 ) {
     if diagnostics_enabled() {
-        eprintln!(
+        log::debug!(
             "[daemon-rx] dst={} resolved={:?} mode={:?} len={} ratchet_used={} data_prefix={}",
             raw_destination_hex,
             resolved_destination,

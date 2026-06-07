@@ -138,3 +138,7 @@ generated/clients/python/
 
 # Local scratch space
 .tmp/
+
+# Wrapper build artifacts
+wrappers/kotlin-mobile/.gradle/
+wrappers/kotlin-mobile/build/

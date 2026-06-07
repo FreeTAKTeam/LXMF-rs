@@ -13,6 +13,7 @@
           "sdk_configure_v2",
           "sdk_negotiate_v2",
           "sdk_poll_events_v2",
+          "sdk_send_batch_v2",
           "sdk_send_v2",
           "sdk_shutdown_v2",
           "sdk_snapshot_v2",
@@ -23,6 +24,7 @@
           "sdk_configure_v2",
           "sdk_negotiate_v2",
           "sdk_poll_events_v2",
+          "sdk_send_batch_v2",
           "sdk_send_v2",
           "sdk_shutdown_v2",
           "sdk_snapshot_v2",
@@ -93,6 +95,29 @@
             "type": "object"
           }
         ]
+      },
+      "PythonReference": {
+        "additionalProperties": false,
+        "properties": {
+          "python_lxmf_ref": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "python_reticulum_ref": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "reticulum_conformance_ref": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "python_lxmf_ref",
+          "python_reticulum_ref",
+          "reticulum_conformance_ref"
+        ],
+        "type": "object"
       },
       "RPCError": {
         "additionalProperties": false,
@@ -206,6 +231,9 @@
             "$ref": "#/components/schemas/SdkPollEventsV2Request"
           },
           {
+            "$ref": "#/components/schemas/SdkSendBatchV2Request"
+          },
+          {
             "$ref": "#/components/schemas/SdkSendV2Request"
           },
           {
@@ -235,6 +263,9 @@
           },
           {
             "$ref": "#/components/schemas/SdkPollEventsV2Response"
+          },
+          {
+            "$ref": "#/components/schemas/SdkSendBatchV2Response"
           },
           {
             "$ref": "#/components/schemas/SdkSendV2Response"
@@ -268,6 +299,78 @@
         "required": [
           "id",
           "result"
+        ],
+        "type": "object"
+      },
+      "ResponseMeta": {
+        "additionalProperties": true,
+        "properties": {
+          "contract_version": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "profile": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "python_reference": {
+            "$ref": "#/components/schemas/PythonReference"
+          },
+          "rpc_endpoint": {
+            "type": [
+              "object",
+              "string",
+              "null"
+            ]
+          },
+          "sdk_version": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "RpcError": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "cause_code": {
+            "pattern": "^SDK_[A-Z]+_[A-Z0-9_]+$",
+            "type": "string"
+          },
+          "code": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "details": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "extensions": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "is_user_actionable": {
+            "type": "boolean"
+          },
+          "machine_code": {
+            "pattern": "^SDK_[A-Z]+_[A-Z0-9_]+$",
+            "type": "string"
+          },
+          "message": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "retryable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "code",
+          "message"
         ],
         "type": "object"
       },
@@ -556,11 +659,21 @@
             "additionalProperties": true,
             "type": "object"
           },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "python_reference": {
+            "$ref": "#/components/schemas/PythonReference"
+          },
           "runtime_id": {
             "minLength": 1,
             "type": "string"
           },
           "schema_namespace": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "sdk_version": {
             "minLength": 1,
             "type": "string"
           }
@@ -570,8 +683,10 @@
           "contract_release",
           "effective_capabilities",
           "effective_limits",
+          "python_reference",
           "runtime_id",
-          "schema_namespace"
+          "schema_namespace",
+          "sdk_version"
         ],
         "type": "object"
       },
@@ -661,6 +776,187 @@
           "dropped_count",
           "events",
           "next_cursor"
+        ],
+        "type": "object"
+      },
+      "SdkSendBatchV2Message": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "destination": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": true,
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "include_ticket": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "method": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stamp_cost": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "try_propagation_on_fail": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "content",
+          "destination",
+          "id"
+        ],
+        "type": "object"
+      },
+      "SdkSendBatchV2Params": {
+        "additionalProperties": false,
+        "properties": {
+          "batch_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/SdkSendBatchV2Message"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "source": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "batch_id",
+          "messages",
+          "source"
+        ],
+        "type": "object"
+      },
+      "SdkSendBatchV2Request": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RPCRequest"
+          },
+          {
+            "properties": {
+              "method": {
+                "enum": [
+                  "sdk_send_batch_v2"
+                ],
+                "type": "string"
+              },
+              "params": {
+                "$ref": "#/components/schemas/SdkSendBatchV2Params"
+              }
+            },
+            "required": [
+              "method",
+              "params"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "SdkSendBatchV2Response": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RPCSuccess"
+          },
+          {
+            "properties": {
+              "result": {
+                "$ref": "#/components/schemas/SdkSendBatchV2Result"
+              }
+            },
+            "required": [
+              "result"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "SdkSendBatchV2Result": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted_count": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "batch_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "rejected_count": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/SdkSendBatchV2ResultItem"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "accepted_count",
+          "batch_id",
+          "rejected_count",
+          "results"
+        ],
+        "type": "object"
+      },
+      "SdkSendBatchV2ResultItem": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "error": {
+            "$ref": "#/components/schemas/RpcError"
+          },
+          "id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "message_id": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "accepted",
+          "id"
         ],
         "type": "object"
       },
@@ -939,6 +1235,9 @@
             "minimum": 0,
             "type": "integer"
           },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
           "profile": {
             "minLength": 1,
             "type": "string"
@@ -1035,6 +1334,9 @@
               "object",
               "null"
             ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
           }
         },
         "required": [

@@ -32,6 +32,8 @@ Auth-specific flags:
 
 - `start`
 - `send --source --destination [--content|--payload-json]`
+  `[--delivery-method <direct|propagated|paper>] [--stamp-cost <cost>]`
+  `[--include-ticket] [--try-propagation-on-fail]`
 - `cancel --message-id`
 - `status --message-id`
 - `poll [--cursor] [--max]`
@@ -51,6 +53,19 @@ cargo run -p lxmf-cli -- send \
   --source example.service \
   --destination example.peer \
   --content "hello from lxmf-cli"
+```
+
+Send with explicit delivery options:
+
+```bash
+cargo run -p lxmf-cli -- send \
+  --source example.service \
+  --destination example.peer \
+  --content "hello from lxmf-cli" \
+  --delivery-method direct \
+  --stamp-cost 8 \
+  --include-ticket \
+  --try-propagation-on-fail
 ```
 
 Poll events in human mode:

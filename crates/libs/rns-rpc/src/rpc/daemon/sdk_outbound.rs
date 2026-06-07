@@ -287,6 +287,7 @@ impl RpcDaemon {
             "send_message",
             "send_message_v2",
             "sdk_send_v2",
+            "sdk_send_batch_v2",
             "sdk_negotiate_v2",
             "sdk_status_v2",
             "sdk_configure_v2",

@@ -28,7 +28,7 @@ fn propagation_counters_track_ingest_and_unpeered_attempts() {
     assert_eq!(propagation["unpeered_propagation_incoming"].as_u64(), Some(1));
     assert_eq!(propagation["unpeered_propagation_rx_bytes"].as_u64(), Some(42));
 
-    daemon
+    let fetched = daemon
         .handle_rpc(rpc_request(
             62,
             "propagation_fetch",
@@ -36,7 +36,11 @@ fn propagation_counters_track_ingest_and_unpeered_attempts() {
                 "transient_id": hex::encode(Sha256::digest(payload)),
             }),
         ))
-        .expect("propagation fetch");
+        .expect("propagation fetch")
+        .result
+        .expect("propagation fetch result");
+    assert_eq!(fetched["transferred_bytes"].as_u64(), Some(payload.len() as u64));
+    assert_eq!(fetched["payload_bytes"].as_u64(), Some(payload.len() as u64));
     let result = daemon
         .handle_rpc(RpcRequest { id: 63, method: "propagation_status".to_string(), params: None })
         .expect("propagation status")
@@ -188,6 +192,47 @@ fn propagation_ingest_derives_transient_id_from_payload_bytes() {
 }
 
 #[test]
+fn propagation_rpc_ingest_persists_payloads_to_store_for_fetch_after_cache_clear() {
+    use sha2::{Digest, Sha256};
+
+    let daemon = RpcDaemon::test_instance();
+    let payload = b"stored-rpc-propagation-wire-payload";
+    let payload_hex = hex::encode(payload);
+    let transient_id = hex::encode(Sha256::digest(payload));
+
+    daemon
+        .handle_rpc(rpc_request(
+            72,
+            "propagation_ingest",
+            json!({
+                "payload_hex": payload_hex,
+            }),
+        ))
+        .expect("propagation ingest");
+
+    let stored = daemon
+        .store
+        .get_propagation_entry(transient_id.as_str())
+        .expect("load propagation entry")
+        .expect("propagation entry persisted");
+    assert_eq!(stored.payload_hex, payload_hex);
+
+    daemon.propagation_payloads.lock().expect("propagation payload mutex poisoned").clear();
+    let fetched = daemon
+        .handle_rpc(rpc_request(
+            73,
+            "propagation_fetch",
+            json!({
+                "transient_id": transient_id,
+            }),
+        ))
+        .expect("fetch stored propagation payload")
+        .result
+        .expect("fetch result");
+    assert_eq!(fetched["payload_hex"].as_str(), Some(payload_hex.as_str()));
+}
+
+#[test]
 fn propagation_ingest_accepts_stamped_payload_with_canonical_transient_id_when_cost_is_zero() {
     use sha2::{Digest, Sha256};
 
@@ -294,6 +339,59 @@ fn propagation_alias_ingest_stores_python_served_unstamped_payload() {
 }
 
 #[test]
+fn duplicate_alias_ingest_does_not_double_count_received() {
+    use sha2::{Digest, Sha256};
+
+    let daemon = RpcDaemon::test_instance();
+    let lxm_data = b"duplicate-alias-ingest-payload".to_vec();
+    let transient_data = stamped_propagation_payload(&lxm_data, 1);
+    let canonical_transient_id = hex::encode(Sha256::digest(&lxm_data));
+
+    for _ in 0..2 {
+        daemon
+            .ingest_propagation_payload_bytes_with_aliases(
+                transient_data.as_slice(),
+                canonical_transient_id.as_str(),
+                &[],
+            )
+            .expect("alias ingest stamped propagation payload");
+    }
+
+    let status = daemon
+        .handle_rpc(RpcRequest { id: 81, method: "propagation_status".to_string(), params: None })
+        .expect("propagation status")
+        .result
+        .expect("propagation status result");
+    assert_eq!(status["propagation"]["client_propagation_messages_received"].as_u64(), Some(1));
+    assert_eq!(status["propagation"]["total_ingested"].as_u64(), Some(1));
+    assert_eq!(status["propagation"]["last_ingest_count"].as_u64(), Some(0));
+}
+
+#[test]
+fn duplicate_byte_ingest_does_not_double_count_received() {
+    use sha2::{Digest, Sha256};
+
+    let daemon = RpcDaemon::test_instance();
+    let payload = b"duplicate-byte-ingest-payload";
+    let transient_id = hex::encode(Sha256::digest(payload));
+
+    for _ in 0..2 {
+        daemon
+            .ingest_propagation_payload_bytes(payload, Some(transient_id.as_str()))
+            .expect("byte ingest propagation payload");
+    }
+
+    let status = daemon
+        .handle_rpc(RpcRequest { id: 82, method: "propagation_status".to_string(), params: None })
+        .expect("propagation status")
+        .result
+        .expect("propagation status result");
+    assert_eq!(status["propagation"]["client_propagation_messages_received"].as_u64(), Some(1));
+    assert_eq!(status["propagation"]["total_ingested"].as_u64(), Some(1));
+    assert_eq!(status["propagation"]["last_ingest_count"].as_u64(), Some(0));
+}
+
+#[test]
 fn propagation_fetch_transfer_limit_accounts_for_stripped_stamp_bytes() {
     use sha2::{Digest, Sha256};
 
@@ -326,6 +424,51 @@ fn propagation_fetch_transfer_limit_accounts_for_stripped_stamp_bytes() {
         Some(python_budgeted_size),
     );
     assert_eq!(exact, vec![lxm_data]);
+}
+
+#[test]
+fn propagation_destination_fetch_combines_store_and_memory_payloads() {
+    use sha2::{Digest, Sha256};
+
+    let daemon = RpcDaemon::test_instance();
+    let destination = [0x78_u8; 16];
+    let mut stored_payload = destination.to_vec();
+    stored_payload.extend_from_slice(b" stored propagation lxm");
+    let mut cached_payload = destination.to_vec();
+    cached_payload.extend_from_slice(b" cached propagation lxm");
+    let stored_transient_id = Sha256::digest(&stored_payload).to_vec();
+    let cached_transient_id = Sha256::digest(&cached_payload).to_vec();
+    let cached_transient_hex = hex::encode(&cached_transient_id);
+
+    daemon
+        .ingest_propagation_payload_bytes_with_aliases(
+            stored_payload.as_slice(),
+            hex::encode(&stored_transient_id).as_str(),
+            &[],
+        )
+        .expect("ingest stored payload");
+    daemon
+        .ingest_propagation_payload_bytes_with_aliases(
+            cached_payload.as_slice(),
+            cached_transient_hex.as_str(),
+            &[],
+        )
+        .expect("ingest cached payload");
+    daemon
+        .store
+        .purge_propagation_entries_for_destination(
+            hex::encode(destination).as_str(),
+            std::slice::from_ref(&cached_transient_hex),
+        )
+        .expect("remove cached payload from persistent store");
+
+    let fetched = daemon.fetch_propagation_payloads_for_destination(
+        &destination,
+        &[stored_transient_id, cached_transient_id],
+        None,
+    );
+
+    assert_eq!(fetched, vec![stored_payload, cached_payload]);
 }
 
 #[test]
@@ -383,6 +526,45 @@ fn propagation_ingest_without_payload_does_not_increment_counts_or_store_payload
         ))
         .expect_err("payload should not have been stored");
     assert!(err.to_string().contains("transient_id not found"));
+}
+
+#[test]
+fn duplicate_propagation_ingest_does_not_double_count_received() {
+    use sha2::{Digest, Sha256};
+
+    let daemon = RpcDaemon::test_instance();
+    let payload = b"duplicate-local-propagation-ingest";
+    let payload_hex = hex::encode(payload);
+    let transient_id = hex::encode(Sha256::digest(payload));
+
+    let mut second = JsonValue::Null;
+    for request_id in [78, 79] {
+        second = daemon
+            .handle_rpc(rpc_request(
+                request_id,
+                "propagation_ingest",
+                json!({
+                    "transient_id": transient_id,
+                    "payload_hex": payload_hex,
+                }),
+            ))
+            .expect("propagation ingest")
+            .result
+            .expect("propagation ingest result");
+    }
+    assert_eq!(second["ingested_count"].as_u64(), Some(0));
+    assert_eq!(second["duplicate_count"].as_u64(), Some(1));
+    assert_eq!(second["payload_bytes"].as_u64(), Some(payload.len() as u64));
+    assert_eq!(second["transferred_bytes"].as_u64(), Some(payload.len() as u64));
+
+    let status = daemon
+        .handle_rpc(RpcRequest { id: 80, method: "propagation_status".to_string(), params: None })
+        .expect("propagation status")
+        .result
+        .expect("propagation status result");
+    assert_eq!(status["propagation"]["client_propagation_messages_received"].as_u64(), Some(1));
+    assert_eq!(status["propagation"]["total_ingested"].as_u64(), Some(1));
+    assert_eq!(status["propagation"]["last_ingest_count"].as_u64(), Some(0));
 }
 
 fn stamped_propagation_payload(lxm_data: &[u8], target_cost: u32) -> Vec<u8> {

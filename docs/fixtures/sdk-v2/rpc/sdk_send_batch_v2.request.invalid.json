@@ -1,0 +1,9 @@
+{
+  "id": 22,
+  "method": "sdk_send_batch_v2",
+  "params": {
+    "batch_id": "batch-1",
+    "source": "src",
+    "messages": []
+  }
+}

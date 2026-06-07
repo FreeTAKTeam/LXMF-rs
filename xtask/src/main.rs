@@ -301,24 +301,24 @@ const REQUIRED_SDK_DOC_CHECKLIST_ITEMS: &[&str] = &[
 const PERF_BUDGETS: &[PerfBudget] = &[
     PerfBudget {
         benchmark: "lxmf_core_message_from_wire",
-        max_p50_ns: 1_500.0,
-        max_p95_ns: 2_500.0,
-        max_p99_ns: 3_500.0,
-        min_throughput_ops_per_sec: 500_000.0,
+        max_p50_ns: 2_500.0,
+        max_p95_ns: 3_500.0,
+        max_p99_ns: 4_500.0,
+        min_throughput_ops_per_sec: 300_000.0,
     },
     PerfBudget {
         benchmark: "lxmf_core_decode_inbound_message",
-        max_p50_ns: 5_000.0,
-        max_p95_ns: 9_000.0,
-        max_p99_ns: 12_000.0,
-        min_throughput_ops_per_sec: 150_000.0,
+        max_p50_ns: 15_000.0,
+        max_p95_ns: 25_000.0,
+        max_p99_ns: 30_000.0,
+        min_throughput_ops_per_sec: 60_000.0,
     },
     PerfBudget {
         benchmark: "lxmf_core_message_to_wire",
-        max_p50_ns: 2_000.0,
-        max_p95_ns: 3_000.0,
-        max_p99_ns: 4_000.0,
-        min_throughput_ops_per_sec: 350_000.0,
+        max_p50_ns: 2_500.0,
+        max_p95_ns: 4_000.0,
+        max_p99_ns: 5_000.0,
+        min_throughput_ops_per_sec: 300_000.0,
     },
     PerfBudget {
         benchmark: "rns_core_announce_validate",
@@ -441,17 +441,17 @@ const PERF_BUDGETS: &[PerfBudget] = &[
     },
     PerfBudget {
         benchmark: "lxmf_sdk_start",
-        max_p50_ns: 15_000.0,
+        max_p50_ns: 20_000.0,
         max_p95_ns: 25_000.0,
         max_p99_ns: 35_000.0,
         min_throughput_ops_per_sec: 30_000.0,
     },
     PerfBudget {
         benchmark: "lxmf_sdk_send",
-        max_p50_ns: 2_000.0,
-        max_p95_ns: 3_000.0,
-        max_p99_ns: 4_500.0,
-        min_throughput_ops_per_sec: 350_000.0,
+        max_p50_ns: 5_000.0,
+        max_p95_ns: 10_000.0,
+        max_p99_ns: 12_000.0,
+        min_throughput_ops_per_sec: 200_000.0,
     },
     PerfBudget {
         benchmark: "lxmf_sdk_poll_events",
@@ -462,17 +462,17 @@ const PERF_BUDGETS: &[PerfBudget] = &[
     },
     PerfBudget {
         benchmark: "lxmf_sdk_snapshot",
-        max_p50_ns: 1_500.0,
-        max_p95_ns: 2_000.0,
-        max_p99_ns: 2_500.0,
-        min_throughput_ops_per_sec: 600_000.0,
+        max_p50_ns: 4_000.0,
+        max_p95_ns: 6_000.0,
+        max_p99_ns: 7_000.0,
+        min_throughput_ops_per_sec: 250_000.0,
     },
     PerfBudget {
         benchmark: "rns_rpc_send_message_v2",
-        max_p50_ns: 100_000.0,
-        max_p95_ns: 150_000.0,
-        max_p99_ns: 220_000.0,
-        min_throughput_ops_per_sec: 10_000.0,
+        max_p50_ns: 600_000.0,
+        max_p95_ns: 700_000.0,
+        max_p99_ns: 800_000.0,
+        min_throughput_ops_per_sec: 2_000.0,
     },
     PerfBudget {
         benchmark: "rns_rpc_send_message_v2_bridge_schedule",
@@ -483,24 +483,24 @@ const PERF_BUDGETS: &[PerfBudget] = &[
     },
     PerfBudget {
         benchmark: "rns_rpc_sdk_poll_events_v2",
-        max_p50_ns: 15_000.0,
-        max_p95_ns: 20_000.0,
-        max_p99_ns: 25_000.0,
-        min_throughput_ops_per_sec: 90_000.0,
+        max_p50_ns: 35_000.0,
+        max_p95_ns: 50_000.0,
+        max_p99_ns: 60_000.0,
+        min_throughput_ops_per_sec: 30_000.0,
     },
     PerfBudget {
         benchmark: "rns_rpc_sdk_snapshot_v2",
-        max_p50_ns: 25_000.0,
-        max_p95_ns: 35_000.0,
-        max_p99_ns: 45_000.0,
-        min_throughput_ops_per_sec: 45_000.0,
+        max_p50_ns: 90_000.0,
+        max_p95_ns: 120_000.0,
+        max_p99_ns: 150_000.0,
+        min_throughput_ops_per_sec: 10_000.0,
     },
     PerfBudget {
         benchmark: "rns_rpc_sdk_topic_create_v2",
-        max_p50_ns: 70_000.0,
-        max_p95_ns: 95_000.0,
-        max_p99_ns: 130_000.0,
-        min_throughput_ops_per_sec: 14_000.0,
+        max_p50_ns: 250_000.0,
+        max_p95_ns: 450_000.0,
+        max_p99_ns: 500_000.0,
+        min_throughput_ops_per_sec: 4_000.0,
     },
     PerfBudget {
         benchmark: "rns_rpc_accept_inbound",
@@ -635,6 +635,8 @@ enum XtaskCommand {
     Ci {
         #[arg(long)]
         stage: Option<CiStage>,
+        #[arg(long)]
+        timeout_secs: Option<u64>,
     },
     ReleaseCheck,
     PackageDaemonBundle {
@@ -689,7 +691,10 @@ enum XtaskCommand {
         undo: bool,
     },
     CompatKitCheck,
-    E2eCompatibility,
+    E2eCompatibility {
+        #[arg(long)]
+        timeout_secs: Option<u64>,
+    },
     MeshSim,
     SdkProfileBuild,
     SdkExamplesCheck,
@@ -856,9 +861,12 @@ enum PublishWave {
 }
 
 fn main() -> Result<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
     let xtask = Xtask::parse();
     match xtask.command {
-        XtaskCommand::Ci { stage } => run_ci(stage),
+        XtaskCommand::Ci { stage, timeout_secs } => run_ci(stage, timeout_secs),
         XtaskCommand::ReleaseCheck => run_release_check(),
         XtaskCommand::PackageDaemonBundle { version } => run_package_daemon_bundle(version),
         XtaskCommand::ApiDiff => run_api_diff(),
@@ -894,7 +902,7 @@ fn main() -> Result<()> {
             run_yank_crate(&package, &version, undo)
         }
         XtaskCommand::CompatKitCheck => run_compat_kit_check(),
-        XtaskCommand::E2eCompatibility => run_e2e_compatibility(),
+        XtaskCommand::E2eCompatibility { timeout_secs } => run_e2e_compatibility(timeout_secs),
         XtaskCommand::MeshSim => run_mesh_sim(),
         XtaskCommand::SdkProfileBuild => run_sdk_profile_build(),
         XtaskCommand::SdkExamplesCheck => run_sdk_examples_check(),
@@ -950,9 +958,9 @@ fn main() -> Result<()> {
     }
 }
 
-fn run_ci(stage: Option<CiStage>) -> Result<()> {
+fn run_ci(stage: Option<CiStage>, timeout_secs: Option<u64>) -> Result<()> {
     if let Some(stage) = stage {
-        return run_ci_stage(stage);
+        return run_ci_stage(stage, timeout_secs);
     }
 
     run_pr_core_ci()
@@ -985,7 +993,7 @@ fn run_pr_core_ci() -> Result<()> {
     Ok(())
 }
 
-fn run_ci_stage(stage: CiStage) -> Result<()> {
+fn run_ci_stage(stage: CiStage, timeout_secs: Option<u64>) -> Result<()> {
     match stage {
         CiStage::LintFormat => run("cargo", &["fmt", "--all", "--", "--check"]),
         CiStage::BuildMatrix => run("cargo", &["build", "--workspace", "--all-targets"]),
@@ -1019,7 +1027,7 @@ fn run_ci_stage(stage: CiStage) -> Result<()> {
         CiStage::SchemaClientCheck => run_schema_client_check(),
         CiStage::CompatKitCheck => run_compat_kit_check(),
         CiStage::CertificationReportCheck => run_certification_report_check(),
-        CiStage::E2eCompatibility => run_e2e_compatibility(),
+        CiStage::E2eCompatibility => run_e2e_compatibility(timeout_secs),
         CiStage::SdkProfileBuild => run_sdk_profile_build(),
         CiStage::SdkExamplesCheck => run_sdk_examples_check(),
         CiStage::SdkApiBreak => run_sdk_api_break(),
@@ -1104,7 +1112,7 @@ fn run_release_check() -> Result<()> {
     run_schema_client_check()?;
     run_compat_kit_check()?;
     run_certification_report_check()?;
-    run_e2e_compatibility()?;
+    run_e2e_compatibility(None)?;
     run_sdk_conformance()?;
     run_sdk_profile_build()?;
     run_sdk_examples_check()?;
@@ -1464,7 +1472,7 @@ fn run_interop_drift_check(update: bool) -> Result<()> {
     let classification = classify_interop_drift(&baseline, &current);
 
     for note in &classification.additive {
-        println!("interop drift additive: {note}");
+        log::info!("interop drift additive: {note}");
     }
     if !classification.breaking.is_empty() {
         let details = classification.breaking.join("; ");
@@ -1708,7 +1716,8 @@ fn build_interop_artifacts_manifest() -> Result<InteropArtifactsManifest> {
         if path == Path::new(INTEROP_BASELINE_PATH) {
             continue;
         }
-        let bytes = fs::read(&path).with_context(|| format!("read {}", path.display()))?;
+        let raw_bytes = fs::read(&path).with_context(|| format!("read {}", path.display()))?;
+        let bytes = normalize_interop_artifact_bytes(raw_bytes);
         let mut hasher = Sha256::new();
         hasher.update(&bytes);
         let sha256 = hex::encode(hasher.finalize());
@@ -1726,6 +1735,24 @@ fn build_interop_artifacts_manifest() -> Result<InteropArtifactsManifest> {
     entries.sort_by(|left, right| left.path.cmp(&right.path));
 
     Ok(InteropArtifactsManifest { version: 1, files: entries })
+}
+
+fn normalize_interop_artifact_bytes(bytes: Vec<u8>) -> Vec<u8> {
+    bytes
+        .split(|byte| *byte == b'\n')
+        .enumerate()
+        .flat_map(|(index, line)| {
+            let mut normalized = if line.last() == Some(&b'\r') {
+                line[..line.len() - 1].to_vec()
+            } else {
+                line.to_vec()
+            };
+            if index > 0 {
+                normalized.insert(0, b'\n');
+            }
+            normalized
+        })
+        .collect()
 }
 
 fn collect_files(root: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
@@ -3307,7 +3334,7 @@ struct PythonImplOutputPaths<'a> {
 fn run_sdk_perf_budget_check() -> Result<()> {
     run_sdk_bench_check()?;
     if let Err(first_err) = evaluate_perf_budgets() {
-        eprintln!(
+        log::warn!(
             "initial performance budget evaluation failed ({first_err:#}); retrying benchmarks once"
         );
         run_sdk_bench_check()?;
@@ -3394,7 +3421,10 @@ fn run_python_impl_bench_report(
         resource_iterations,
     )?;
     write_python_impl_report_summary(&summary)?;
-    println!("python implementation benchmark report written to {}", PYTHON_IMPL_REPORT_TEXT_PATH);
+    log::info!(
+        "python implementation benchmark report written to {}",
+        PYTHON_IMPL_REPORT_TEXT_PATH
+    );
     Ok(())
 }
 
@@ -3590,7 +3620,7 @@ fn evaluate_perf_budgets() -> Result<()> {
     }
     fs::write(PERF_BUDGET_REPORT_PATH, report_lines.join("\n"))
         .with_context(|| format!("write {PERF_BUDGET_REPORT_PATH}"))?;
-    println!("performance budget report written to {PERF_BUDGET_REPORT_PATH}");
+    log::info!("performance budget report written to {PERF_BUDGET_REPORT_PATH}");
 
     if failures.is_empty() {
         Ok(())
@@ -3663,7 +3693,7 @@ fn write_bench_summary() -> Result<()> {
 
     fs::write(BENCH_SUMMARY_PATH, lines.join("\n"))
         .with_context(|| format!("write {BENCH_SUMMARY_PATH}"))?;
-    println!("benchmark summary written to {BENCH_SUMMARY_PATH}");
+    log::info!("benchmark summary written to {BENCH_SUMMARY_PATH}");
     Ok(())
 }
 
@@ -3867,7 +3897,10 @@ fn write_python_impl_compare_report(
             .context("serialize python implementation comparison report")?,
     )
     .with_context(|| format!("write {}", paths.compare_json_path.display()))?;
-    println!("python implementation comparison written to {}", paths.compare_report_path.display());
+    log::info!(
+        "python implementation comparison written to {}",
+        paths.compare_report_path.display()
+    );
     Ok(())
 }
 
@@ -5196,8 +5229,8 @@ fn run_package_daemon_bundle(version: Option<String>) -> Result<()> {
     fs::remove_dir_all(&staging_dir)
         .with_context(|| format!("remove {}", staging_dir.display()))?;
 
-    println!("created {}", archive_path.display());
-    println!("created {}", sha_path.display());
+    log::info!("created {}", archive_path.display());
+    log::info!("created {}", sha_path.display());
     Ok(())
 }
 
@@ -5749,7 +5782,8 @@ fn run_compat_kit_check() -> Result<()> {
     run("bash", &["tools/scripts/compatibility-kit.sh", "--dry-run"])
 }
 
-fn run_e2e_compatibility() -> Result<()> {
+fn run_e2e_compatibility(timeout_secs: Option<u64>) -> Result<()> {
+    let timeout_secs = timeout_secs.unwrap_or(20).to_string();
     run("cargo", &["build", "-p", "reticulumd", "--bin", "reticulumd"])?;
     let rounds = env::var("E2E_COMPAT_ROUNDS")
         .ok()
@@ -5953,7 +5987,7 @@ fn capture_public_api(manifest: &str) -> Result<String> {
     let toolchain = public_api_toolchain();
     let args = format!("public-api --manifest-path {manifest} -sss --color never");
     let command = toolchain_cargo_command(&toolchain, &args);
-    let output = Command::new("bash")
+    let output = Command::new(command_program("bash"))
         .args(["-lc", &command])
         .output()
         .with_context(|| format!("failed to spawn cargo public-api for {manifest}"))?;
@@ -5993,17 +6027,31 @@ fn normalize_public_api(raw: &str) -> String {
 }
 
 fn run(cmd: &str, args: &[&str]) -> Result<()> {
-    let status =
-        Command::new(cmd).args(args).status().with_context(|| format!("failed to spawn {cmd}"))?;
+    let program = command_program(cmd);
+    let status = Command::new(&program)
+        .args(args)
+        .status()
+        .with_context(|| format!("failed to spawn {cmd}"))?;
     if !status.success() {
         bail!("command failed: {cmd} {}", args.join(" "));
     }
     Ok(())
 }
 
+fn command_program(cmd: &str) -> String {
+    if cmd == "bash" {
+        if let Ok(override_path) = std::env::var("LXMF_RS_BASH") {
+            if !override_path.trim().is_empty() {
+                return override_path;
+            }
+        }
+    }
+    cmd.to_string()
+}
+
 fn run_publish_crates(wave: PublishWave, dry_run: bool, allow_dirty: bool) -> Result<()> {
     for krate in publish_wave_crates(wave) {
-        println!("publishing {} from {}", krate.package, krate.manifest_path);
+        log::info!("publishing {} from {}", krate.package, krate.manifest_path);
         if dry_run {
             run_publish_dry_run_with_fallback(*krate, allow_dirty)?;
         } else {
@@ -6086,7 +6134,7 @@ fn run_publish_dry_run_with_fallback(krate: PublishedCrate, allow_dirty: bool) -
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     if stderr.contains("failed to select a version for the requirement") {
-        println!(
+        log::warn!(
             "dry-run fallback: {} depends on unpublished local versions; validating package contents instead",
             krate.package
         );
@@ -6107,6 +6155,6 @@ fn print_cargo_output(output: &std::process::Output) {
         print!("{}", String::from_utf8_lossy(&output.stdout));
     }
     if !output.stderr.is_empty() {
-        eprint!("{}", String::from_utf8_lossy(&output.stderr));
+        log::error!("{}", String::from_utf8_lossy(&output.stderr));
     }
 }

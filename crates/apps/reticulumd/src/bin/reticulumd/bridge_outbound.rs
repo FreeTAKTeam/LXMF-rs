@@ -2,6 +2,23 @@ use super::*;
 use rns_rpc::{OutboundBridge, OutboundDeliveryOptions, PaperDecodeOutcome, PaperEncodeEnvelope};
 
 impl OutboundBridge for TransportBridge {
+    fn validate_delivery(
+        &self,
+        record: &rns_rpc::MessageRecord,
+        options: &OutboundDeliveryOptions,
+    ) -> Result<(), std::io::Error> {
+        let _destination = parse_destination_hash_required(&record.destination)?;
+        let daemon = self
+            .daemon
+            .lock()
+            .expect("transport bridge daemon mutex poisoned")
+            .clone()
+            .ok_or_else(|| std::io::Error::other("daemon bridge unavailable"))?;
+        let requested_method = RequestedDeliveryMethod::parse(options.method.as_deref())?;
+        let propagation_node_hex = daemon.outbound_propagation_node();
+        validate_delivery_request(requested_method, propagation_node_hex.as_deref())
+    }
+
     fn encode_paper(
         &self,
         record: &rns_rpc::MessageRecord,
@@ -57,7 +74,6 @@ impl OutboundBridge for TransportBridge {
 
         let requested_method = RequestedDeliveryMethod::parse(options.method.as_deref())?;
         let propagation_node_hex = daemon.outbound_propagation_node();
-        validate_delivery_request(requested_method, propagation_node_hex.as_deref())?;
         let propagation_node_identity = if requested_method == RequestedDeliveryMethod::Propagated {
             propagation_node_hex.as_deref().and_then(|node_hex| {
                 self.outbound_propagation_identities

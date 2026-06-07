@@ -21,6 +21,37 @@ pub(super) async fn ingest_propagation_envelope(
     payload: &[u8],
     delivery_destination: Option<&Arc<tokio::sync::Mutex<SingleInputDestination>>>,
 ) -> Result<usize, std::io::Error> {
+    ingest_propagation_envelope_from_peer(daemon, payload, delivery_destination, None).await
+}
+
+pub(super) async fn ingest_propagation_resource_from_peer(
+    daemon: &RpcDaemon,
+    payload: &[u8],
+    delivery_destination: Option<&Arc<tokio::sync::Mutex<SingleInputDestination>>>,
+    remote_propagation_peer: Option<&str>,
+    peer_link_validated: bool,
+) -> Result<usize, std::io::Error> {
+    if !peer_link_validated && propagation_envelope_message_count(payload)? > 1 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "received multiple propagation messages without valid peering key",
+        ));
+    }
+    ingest_propagation_envelope_from_peer(
+        daemon,
+        payload,
+        delivery_destination,
+        remote_propagation_peer,
+    )
+    .await
+}
+
+pub(super) async fn ingest_propagation_envelope_from_peer(
+    daemon: &RpcDaemon,
+    payload: &[u8],
+    delivery_destination: Option<&Arc<tokio::sync::Mutex<SingleInputDestination>>>,
+    remote_propagation_peer: Option<&str>,
+) -> Result<usize, std::io::Error> {
     let (_timestamp, messages): (f64, Vec<Vec<u8>>) =
         rmp_serde::from_slice(payload).map_err(|err| {
             std::io::Error::new(
@@ -29,19 +60,66 @@ pub(super) async fn ingest_propagation_envelope(
             )
         })?;
     let accepted_stamp_cost = daemon.propagation_min_accepted_stamp_cost();
+    let mut invalid_stamp_error = None;
     for message in messages.iter() {
-        let transient_id =
-            daemon.canonical_propagation_payload_bytes_at_cost(message, accepted_stamp_cost)?;
-        if try_accept_local_propagated_message(daemon, delivery_destination, message).await? {
-            daemon.note_client_propagation_messages_received(1);
+        let transient_id = match daemon
+            .canonical_propagation_payload_bytes_at_cost(message, accepted_stamp_cost)
+        {
+            Ok(transient_id) => transient_id,
+            Err(error) => {
+                if let Some(peer) = remote_propagation_peer {
+                    daemon.throttle_propagation_peer_for_invalid_stamp(peer);
+                }
+                if invalid_stamp_error.is_none() {
+                    invalid_stamp_error = Some(error);
+                }
+                continue;
+            }
+        };
+        if try_accept_local_propagated_message(
+            daemon,
+            delivery_destination,
+            message,
+            remote_propagation_peer,
+        )
+        .await?
+        {
+            if let Some(peer) = remote_propagation_peer {
+                daemon.record_peer_received_propagation(peer, transient_id.as_str())?;
+            } else {
+                daemon.note_client_propagation_messages_received(1);
+            }
             continue;
         }
-        daemon.ingest_propagation_payload_bytes_at_cost(
-            message,
-            Some(transient_id.as_str()),
-            accepted_stamp_cost,
-        )?;
+        if let Some(peer) = remote_propagation_peer {
+            daemon.ingest_peer_propagation_payload_bytes_at_cost(
+                message,
+                Some(transient_id.as_str()),
+                accepted_stamp_cost,
+                peer,
+            )?;
+        } else {
+            daemon.ingest_propagation_payload_bytes_at_cost(
+                message,
+                Some(transient_id.as_str()),
+                accepted_stamp_cost,
+            )?;
+        }
     }
+    if let Some(error) = invalid_stamp_error {
+        return Err(error);
+    }
+    Ok(messages.len())
+}
+
+fn propagation_envelope_message_count(payload: &[u8]) -> Result<usize, std::io::Error> {
+    let (_timestamp, messages): (f64, Vec<Vec<u8>>) =
+        rmp_serde::from_slice(payload).map_err(|err| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("invalid propagation envelope: {err}"),
+            )
+        })?;
     Ok(messages.len())
 }
 
@@ -49,6 +127,7 @@ async fn try_accept_local_propagated_message(
     daemon: &RpcDaemon,
     delivery_destination: Option<&Arc<tokio::sync::Mutex<SingleInputDestination>>>,
     transient_payload: &[u8],
+    remote_propagation_peer: Option<&str>,
 ) -> Result<bool, std::io::Error> {
     let Some(delivery_destination) = delivery_destination else {
         return Ok(false);
@@ -90,14 +169,27 @@ async fn try_accept_local_propagated_message(
         &mut record,
         transient_payload,
         daemon.propagation_target_cost(),
+        daemon.propagation_min_accepted_stamp_cost(),
     );
+    if let Some(peer) = remote_propagation_peer {
+        let propagation_bytes = if daemon.propagation_target_cost() > 0 {
+            transient_payload.len().saturating_sub(32)
+        } else {
+            transient_payload.len()
+        };
+        if !daemon.record_inbound_propagation_peer_activity(peer, propagation_bytes) {
+            daemon.record_unpeered_propagation_attempt(propagation_bytes);
+        }
+    }
     if !inbound_record_allowed_by_delivery_policy(daemon, &record) {
         return Ok(true);
     }
     if daemon.message_exists(record.id.as_str())? {
         return Ok(true);
     }
-    daemon.record_inbound_peer_activity(&record.source, wire.len());
+    if remote_propagation_peer.is_none() {
+        daemon.record_inbound_peer_activity(&record.source, wire.len());
+    }
     daemon.accept_inbound_with_raw(record, &wire)?;
     Ok(true)
 }
@@ -106,11 +198,13 @@ fn annotate_inbound_record_propagation_stamp_status(
     record: &mut rns_rpc::MessageRecord,
     transient_payload: &[u8],
     target_cost: u32,
+    accepted_cost: u32,
 ) {
     if target_cost == 0 {
         return;
     }
-    let Some(value) = validate_propagation_stamp(transient_payload, target_cost) else {
+    let validation_cost = if accepted_cost == 0 { target_cost } else { accepted_cost };
+    let Some(value) = validate_propagation_stamp(transient_payload, validation_cost) else {
         return;
     };
 
@@ -131,7 +225,7 @@ fn annotate_inbound_record_propagation_stamp_status(
     lxmf.insert("propagation_stamp_valid".into(), JsonValue::Bool(true));
     lxmf.insert(
         "propagation_stamp_target_cost".into(),
-        JsonValue::Number(serde_json::Number::from(target_cost)),
+        JsonValue::Number(serde_json::Number::from(validation_cost)),
     );
     lxmf.insert(
         "propagation_stamp_value".into(),

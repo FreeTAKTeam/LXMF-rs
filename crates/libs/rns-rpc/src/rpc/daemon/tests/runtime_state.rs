@@ -1118,6 +1118,7 @@ fn sdk_property_cursor_churn_keeps_monotonic_progress() {
             payload: json!({ "idx": idx }),
         });
     }
+}
 
     let mut cursor: Option<String> = None;
     let mut last_seq = 0_u64;

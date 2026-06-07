@@ -37,10 +37,57 @@ struct SendMessageV2Params {
     source_private_key: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct SendBatchV2Params {
+    batch_id: String,
+    source: String,
+    messages: Vec<SendBatchV2Item>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SendBatchV2Item {
+    id: String,
+    destination: String,
+    #[serde(default)]
+    title: String,
+    content: String,
+    fields: Option<JsonValue>,
+    #[serde(default)]
+    method: Option<String>,
+    #[serde(default)]
+    stamp_cost: Option<u32>,
+    #[serde(default)]
+    include_ticket: Option<bool>,
+    #[serde(default)]
+    try_propagation_on_fail: Option<bool>,
+    #[serde(default)]
+    source_private_key: Option<String>,
+}
+
 #[derive(Debug)]
 pub(super) struct NormalizedSendRequest {
     pub(super) id: String,
     pub(super) source: String,
+    pub(super) destination: String,
+    pub(super) title: String,
+    pub(super) content: String,
+    pub(super) fields: Option<JsonValue>,
+    pub(super) method: Option<String>,
+    pub(super) stamp_cost: Option<u32>,
+    pub(super) options: OutboundDeliveryOptions,
+    pub(super) include_ticket: Option<bool>,
+}
+
+#[derive(Debug)]
+pub(super) struct NormalizedSendBatchRequest {
+    pub(super) batch_id: String,
+    pub(super) source: String,
+    pub(super) messages: Vec<NormalizedSendBatchItem>,
+}
+
+#[derive(Debug)]
+pub(super) struct NormalizedSendBatchItem {
+    pub(super) id: String,
     pub(super) destination: String,
     pub(super) title: String,
     pub(super) content: String,
@@ -107,6 +154,44 @@ pub(super) fn parse_outbound_send_request(
             Err(Error::new(ErrorKind::InvalidInput, format!("unsupported send method '{method}'")))
         }
     }
+}
+
+pub(super) fn parse_outbound_send_batch_request(
+    params: JsonValue,
+) -> Result<NormalizedSendBatchRequest, Error> {
+    let parsed: SendBatchV2Params =
+        serde_json::from_value(params).map_err(|err| Error::new(ErrorKind::InvalidInput, err))?;
+    if parsed.messages.is_empty() {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "sdk_send_batch_v2 requires at least one message",
+        ));
+    }
+    let mut messages = Vec::with_capacity(parsed.messages.len());
+    for item in parsed.messages {
+        validate_outbound_fields_strict(item.fields.as_ref())?;
+        let outbound_method = item.method.clone();
+        let include_ticket = item.include_ticket;
+        messages.push(NormalizedSendBatchItem {
+            id: item.id,
+            destination: item.destination,
+            title: item.title,
+            content: item.content,
+            fields: item.fields,
+            method: outbound_method.clone(),
+            stamp_cost: item.stamp_cost,
+            options: OutboundDeliveryOptions {
+                method: outbound_method,
+                stamp_cost: item.stamp_cost,
+                include_ticket: include_ticket.unwrap_or_default(),
+                try_propagation_on_fail: item.try_propagation_on_fail.unwrap_or_default(),
+                ticket: None,
+                source_private_key: item.source_private_key,
+            },
+            include_ticket,
+        });
+    }
+    Ok(NormalizedSendBatchRequest { batch_id: parsed.batch_id, source: parsed.source, messages })
 }
 
 fn validate_outbound_fields_strict(fields: Option<&JsonValue>) -> Result<(), Error> {

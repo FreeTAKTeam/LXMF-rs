@@ -1,14 +1,18 @@
 # Documentation Map
 
-Not every file under `docs/` serves the same purpose. Some files are source of
-truth, some are historical planning records, and some are test fixtures that
-just happen to live under `docs/`.
+Not every file under `docs/` serves the same purpose. Some files are maintained
+guidance, while others are contracts, fixtures, schemas, or generated baselines
+consumed by tests and tooling.
 
 ## Source-of-Truth Docs
 
 These are the first places to update when behavior changes:
 
-- `docs/status/`: current repository-wide delivery and parity status
+- `docs/status/current-roadmap.md`: repository-level posture, blockers, and
+  execution order
+- `docs/status/reticulum-parity-matrix.md`: maintained Reticulum row-level
+  parity status
+- `docs/status/lxmf-parity-matrix.md`: maintained LXMF row-level parity status
 - `docs/contracts/`: public contracts, compatibility policy, support policy, API
   behavior, and protocol-facing guarantees
 - `docs/sdk/`: integration guidance for embedding `lxmf-sdk`
@@ -31,23 +35,20 @@ delete these just because they are not linked from the root `README.md`.
 
 ## Historical and Change-Management Docs
 
-These are useful for context, but they are not the primary source of truth for
-current behavior:
-
-- `docs/migrations/`: cutover notes and migration guidance
-- `docs/releases/`: release-specific notes
-- `docs/plans/`: planning documents and parity tracking
-- `docs/plans/framework-parity-roadmap.md`: retained parity roadmap context
-
-If one of these becomes obsolete and has no remaining references, it can be
-deleted or folded into a newer source-of-truth doc.
+`docs/migrations/` contains retained cutover guidance for users crossing public
+API or architecture boundaries. Completed implementation plans and issue boards
+are kept in Git history instead of the live documentation tree.
 
 ## Directory Guide
 
-- `docs/status/current-roadmap.md`: current repo-wide delivery and parity status
+- `docs/status/current-roadmap.md`: current repo-wide posture and execution order
+- `docs/status/reticulum-parity-matrix.md`: current Reticulum parity rows
+- `docs/status/lxmf-parity-matrix.md`: current LXMF parity rows
 - `docs/sdk/README.md`: starting point for SDK integrators
 - `docs/lxmf-rs-api.md`: API surface and stability summary
 - `docs/lxmf-cli.md`: operator CLI quick reference
+- `docs/PerformancesComparison.html`: retained performance comparison snapshot;
+  use the benchmarking runbook for current measurements
 - `docs/runbooks/release-readiness.md`: release gate checklist
 - `docs/runbooks/reticulumd-operational-deployment.md`: daemon deployment,
   probes, shutdown, and service manager examples
@@ -63,6 +64,8 @@ deleted or folded into a newer source-of-truth doc.
 
 - Prefer one maintained doc over several overlapping notes.
 - When you add a new canonical doc, remove the superseded one in the same PR.
+- Keep completed implementation plans in Git history rather than maintaining a
+  second status or roadmap system.
 - Keep file paths portable. Do not commit `/Users/...` or other local absolute
   paths.
 - Link from broad entry points (`README.md`, this file, package READMEs) to the

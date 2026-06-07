@@ -214,8 +214,8 @@ pub fn evaluate_inbound_stamp_policy(
     let source_hex = hex::encode(message.source);
     let tickets = daemon.valid_issued_tickets_for(source_hex.as_str());
     let stamp = message.payload.stamp.as_deref().map(|value| value.as_ref());
-    if let Some(value) = validate_stamp(stamp, &message.message_id(), policy.target_cost, &tickets)
-    {
+    let accepted_cost = policy.target_cost.saturating_sub(policy.flexibility);
+    if let Some(value) = validate_stamp(stamp, &message.message_id(), accepted_cost, &tickets) {
         return Ok(InboundStampStatus { checked: true, valid: true, value: Some(value) });
     }
 
@@ -563,6 +563,56 @@ mod tests {
     }
 
     #[test]
+    fn inbound_stamp_policy_accepts_pow_stamp_within_flexibility_window_like_python() {
+        let daemon = RpcDaemon::test_instance();
+        daemon
+            .handle_rpc(RpcRequest {
+                id: 22,
+                method: "stamp_policy_set".to_string(),
+                params: Some(serde_json::json!({"target_cost": 3, "flexibility": 2})),
+            })
+            .expect("set stamp policy");
+        let identity = PrivateIdentity::new_from_name("inbound-flexible-stamp");
+        let mut source = [0u8; 16];
+        source.copy_from_slice(identity.address_hash().as_slice());
+        let destination = [0x7a_u8; 16];
+        let payload = Payload::new(
+            1_770_000_001.0,
+            Some(b"content".to_vec()),
+            Some(b"title".to_vec()),
+            None,
+            None,
+        );
+        let message_id = WireMessage::new(destination, source, payload.clone()).message_id();
+        let stamp = stamp_with_value_range(&message_id, 1, 3);
+        let mut wire = WireMessage::new(
+            destination,
+            source,
+            Payload::new(
+                payload.timestamp,
+                payload.content.as_ref().map(|value| value.to_vec()),
+                payload.title.as_ref().map(|value| value.to_vec()),
+                payload.fields.clone(),
+                Some(stamp),
+            ),
+        );
+        wire.sign(&identity).expect("sign");
+        let packed = wire.pack().expect("pack");
+
+        let status = evaluate_inbound_stamp_policy(
+            &daemon,
+            destination,
+            &packed,
+            InboundPayloadMode::FullWire,
+        )
+        .expect("stamp within flexibility window should pass");
+
+        assert!(status.checked);
+        assert!(status.valid);
+        assert!(status.value.is_some_and(|value| (1..3).contains(&value)));
+    }
+
+    #[test]
     fn inbound_stamp_policy_accepts_issued_ticket_stamp() {
         let daemon = RpcDaemon::test_instance();
         daemon
@@ -676,5 +726,21 @@ mod tests {
             InboundPayloadMode::DestinationStripped,
         )
         .expect("valid destination-stripped stamp should pass");
+    }
+
+    fn stamp_with_value_range(
+        message_id: &[u8; 32],
+        min_value: u32,
+        max_exclusive: u32,
+    ) -> Vec<u8> {
+        let workblock = crate::lxmf_stamps::stamp_workblock(message_id, 3000);
+        for nonce in 0u64.. {
+            let stamp = nonce.to_le_bytes().to_vec();
+            let value = crate::lxmf_stamps::stamp_value(&workblock, &stamp);
+            if (min_value..max_exclusive).contains(&value) {
+                return stamp;
+            }
+        }
+        unreachable!("u64 nonce space should contain a matching low-cost stamp")
     }
 }

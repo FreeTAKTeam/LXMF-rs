@@ -32,13 +32,33 @@ interfaces = [
 ]
 ```
 
+Reticulum-style serial configs are also accepted for migration. `type =
+"SerialInterface"` normalizes to `serial`; `port` maps to `device`, `speed`
+maps to `baud_rate`, `databits` maps to `data_bits`, and `stopbits` maps to
+`stop_bits`:
+
+```toml
+interfaces = [
+  {
+    type = "SerialInterface",
+    enabled = true,
+    name = "python-serial",
+    port = "/dev/ttyUSB0",
+    speed = 115200,
+    databits = 8,
+    parity = "N",
+    stopbits = 1
+  }
+]
+```
+
 ## Validation Rules
 
 - `device` is required when enabled.
 - `baud_rate` is required when enabled.
 - `data_bits` allowed: `5`, `6`, `7`, `8`.
 - `stop_bits` allowed: `1`, `2`.
-- `parity` allowed: `none`, `even`, `odd`.
+- `parity` allowed: `n`, `none`, `e`, `even`, `o`, `odd`.
 - `flow_control` allowed: `none`, `software`, `hardware`.
 - `mtu` allowed range: `256..=65535`.
 - `reconnect_backoff_ms` must be `>= 50`.

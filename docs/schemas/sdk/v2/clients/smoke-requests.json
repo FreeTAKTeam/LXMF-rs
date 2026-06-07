@@ -34,6 +34,21 @@
       }
     },
     {
+      "language": "javascript",
+      "method": "sdk_send_batch_v2",
+      "request": {
+        "batch_id": "batch-1",
+        "source": "source-a",
+        "messages": [
+          {
+            "id": "msg-id-2",
+            "destination": "destination-b",
+            "content": "hello batch"
+          }
+        ]
+      }
+    },
+    {
       "language": "python",
       "method": "sdk_snapshot_v2",
       "request": {

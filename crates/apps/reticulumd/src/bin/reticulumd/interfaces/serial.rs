@@ -35,7 +35,7 @@ pub(crate) fn build_adapter(iface: &InterfaceConfig) -> Result<SerialInterface, 
     if let Some(parity) = iface.parity.as_deref() {
         adapter = adapter.with_parity_name(parity)?;
     }
-    if let Some(flow_control) = iface.flow_control.as_deref() {
+    if let Some(flow_control) = iface.flow_control_name() {
         adapter = adapter.with_flow_control_name(flow_control)?;
     }
 

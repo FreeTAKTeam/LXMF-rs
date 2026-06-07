@@ -130,6 +130,7 @@ struct SchemaSet {
 struct RpcCoreSchemaSet {
     sdk_negotiate_v2: JSONSchema,
     sdk_send_v2: JSONSchema,
+    sdk_send_batch_v2: JSONSchema,
     sdk_status_v2: JSONSchema,
     sdk_configure_v2: JSONSchema,
     sdk_poll_events_v2: JSONSchema,
@@ -141,6 +142,7 @@ struct RpcCoreSchemaSet {
 struct OpenRpcCoreSchemaSet {
     sdk_negotiate_v2: JSONSchema,
     sdk_send_v2: JSONSchema,
+    sdk_send_batch_v2: JSONSchema,
     sdk_status_v2: JSONSchema,
     sdk_configure_v2: JSONSchema,
     sdk_poll_events_v2: JSONSchema,
@@ -198,6 +200,7 @@ fn load_rpc_core_schemas() -> RpcCoreSchemaSet {
 
     let sdk_negotiate_v2 = read_json(&schema_dir.join("sdk_negotiate_v2.schema.json"));
     let sdk_send_v2 = read_json(&schema_dir.join("sdk_send_v2.schema.json"));
+    let sdk_send_batch_v2 = read_json(&schema_dir.join("sdk_send_batch_v2.schema.json"));
     let sdk_status_v2 = read_json(&schema_dir.join("sdk_status_v2.schema.json"));
     let sdk_configure_v2 = read_json(&schema_dir.join("sdk_configure_v2.schema.json"));
     let sdk_poll_events_v2 = read_json(&schema_dir.join("sdk_poll_events_v2.schema.json"));
@@ -208,6 +211,7 @@ fn load_rpc_core_schemas() -> RpcCoreSchemaSet {
     RpcCoreSchemaSet {
         sdk_negotiate_v2: compile_schema(&sdk_negotiate_v2, "rpc/sdk_negotiate_v2"),
         sdk_send_v2: compile_schema(&sdk_send_v2, "rpc/sdk_send_v2"),
+        sdk_send_batch_v2: compile_schema(&sdk_send_batch_v2, "rpc/sdk_send_batch_v2"),
         sdk_status_v2: compile_schema(&sdk_status_v2, "rpc/sdk_status_v2"),
         sdk_configure_v2: compile_schema(&sdk_configure_v2, "rpc/sdk_configure_v2"),
         sdk_poll_events_v2: compile_schema(&sdk_poll_events_v2, "rpc/sdk_poll_events_v2"),
@@ -305,6 +309,10 @@ fn load_openrpc_core_schemas() -> OpenRpcCoreSchemaSet {
             &openrpc_component_schema(&document, "SdkSendV2Envelope"),
             "openrpc/SdkSendV2Envelope",
         ),
+        sdk_send_batch_v2: compile_schema(
+            &openrpc_component_schema(&document, "SdkSendBatchV2Envelope"),
+            "openrpc/SdkSendBatchV2Envelope",
+        ),
         sdk_status_v2: compile_schema(
             &openrpc_component_schema(&document, "SdkStatusV2Envelope"),
             "openrpc/SdkStatusV2Envelope",
@@ -400,6 +408,7 @@ fn validate_openrpc_document(document: &JsonValue) {
     let expected_core_methods = [
         "sdk_negotiate_v2",
         "sdk_send_v2",
+        "sdk_send_batch_v2",
         "sdk_status_v2",
         "sdk_configure_v2",
         "sdk_poll_events_v2",
@@ -445,6 +454,7 @@ fn validate_openrpc_document(document: &JsonValue) {
     for name in [
         "SdkNegotiateV2Envelope",
         "SdkSendV2Envelope",
+        "SdkSendBatchV2Envelope",
         "SdkStatusV2Envelope",
         "SdkConfigureV2Envelope",
         "SdkPollEventsV2Envelope",

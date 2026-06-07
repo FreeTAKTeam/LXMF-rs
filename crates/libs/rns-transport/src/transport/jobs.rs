@@ -11,8 +11,10 @@ use super::*;
 use crate::destination::link::LinkWatchdogAction;
 use crate::resource::ResourceRequest;
 
+#[allow(dead_code)]
 const MIN_LINKS_CHECK_DELAY: Duration = Duration::from_millis(10);
 
+#[allow(dead_code)]
 fn link_check_delay_from_deadline(
     now: std::time::Instant,
     earliest_retry: Option<std::time::Instant>,
@@ -425,8 +427,7 @@ pub(super) async fn manage_transport(
                     break;
                 }
 
-                let retry_delay = next_link_check_delay(&handler).await;
-
+                let delay = next_link_check_delay(&handler).await;
                 tokio::select! {
                     _ = cancel.cancelled() => {
                         break;
@@ -569,6 +570,8 @@ pub(super) async fn manage_transport(
                             )
                             .await;
                         }
+                        let events = handler.resource_manager.drain_events();
+                        super::resource_wire::publish_resource_events(&handler, events);
                     }
                 }
             }

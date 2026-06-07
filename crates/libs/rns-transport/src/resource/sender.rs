@@ -7,6 +7,7 @@ struct ResourceSender {
     parts: Vec<Vec<u8>>,
     sent_parts: Vec<bool>,
     map_hashes: Vec<[u8; MAPHASH_LEN]>,
+    hashmap_segment_len: usize,
     expected_proof: Hash,
     advertisement_packet: Packet,
     last_activity: Instant,
@@ -84,7 +85,7 @@ impl ResourceSender {
         let cipher_text = cipher.to_vec();
 
         let mut parts = Vec::new();
-        for chunk in cipher_text.chunks(PACKET_MDU) {
+        for chunk in cipher_text.chunks(resource_mdu) {
             parts.push(chunk.to_vec());
         }
 
@@ -113,7 +114,7 @@ impl ResourceSender {
                 }
                 flags
             },
-            hashmap: slice_hashmap_segment(&map_hashes, 0),
+            hashmap: slice_hashmap_segment(&map_hashes, 0, hashmap_segment_len),
         };
         let advertisement_packet = build_link_packet_for(
             link,
@@ -129,6 +130,7 @@ impl ResourceSender {
             parts,
             sent_parts: vec![false; map_hashes.len()],
             map_hashes,
+            hashmap_segment_len,
             expected_proof,
             advertisement_packet,
             last_activity: now,
@@ -150,7 +152,7 @@ impl ResourceSender {
         self.adv_sent = now;
         self.last_part_sent = now;
         self.max_retries = retry_limit;
-        self.retries_left = retry_limit;
+        self.retries_left = retry_limit.min(DEFAULT_RESOURCE_MAX_ADV_RETRIES);
         self.status = ResourceStatus::Advertised;
     }
 
@@ -190,6 +192,7 @@ impl ResourceSender {
                 self.last_part_sent = now;
                 OutboundResourcePoll::None
             }
+            ResourceStatus::Failed => OutboundResourcePoll::Failed,
             _ => OutboundResourcePoll::None,
         }
     }
@@ -242,23 +245,40 @@ impl ResourceSender {
                         sent_any = true;
                         packets.push(scratch_packet);
                     } else {
-                        log::warn!("resource: failed to build resource packet");
+                        self.status = ResourceStatus::Failed;
+                        return;
                     }
                 }
+            } else {
+                resource_diag(&format!(
+                    "request_part_miss hash={} requested_map_hash={:02x}{:02x}{:02x}{:02x}",
+                    self.resource_hash, hash[0], hash[1], hash[2], hash[3]
+                ));
             }
         }
+        resource_diag(&format!(
+            "request_parts_built hash={} requested={} built={} sent_any={}",
+            self.resource_hash,
+            request.requested_hashes.len(),
+            packets.len(),
+            sent_any
+        ));
 
         if hashmap_exhausted {
             if let Some(last_hash) = last_map_hash {
                 if let Some(last_index) =
                     self.map_hashes.iter().position(|entry| *entry == last_hash)
                 {
-                    let next_segment = (last_index / HASHMAP_MAX_LEN) + 1;
-                    if next_segment * HASHMAP_MAX_LEN < self.map_hashes.len() {
+                    let next_segment = (last_index / self.hashmap_segment_len) + 1;
+                    if next_segment * self.hashmap_segment_len < self.map_hashes.len() {
                         let update = ResourceHashUpdate {
                             resource_hash: self.resource_hash,
                             segment: next_segment as u32,
-                            hashmap: slice_hashmap_segment(&self.map_hashes, next_segment),
+                            hashmap: slice_hashmap_segment(
+                                &self.map_hashes,
+                                next_segment,
+                                self.hashmap_segment_len,
+                            ),
                         };
                         if let Ok(payload) = update.encode() {
                             if let Ok(packet) = build_link_packet_for(
@@ -269,7 +289,7 @@ impl ResourceSender {
                             ) {
                                 packets.push(packet);
                             } else {
-                                log::warn!("resource: failed to build hash update packet");
+                                self.status = ResourceStatus::Failed;
                             }
                         }
                     }

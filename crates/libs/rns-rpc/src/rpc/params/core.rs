@@ -41,6 +41,18 @@ struct AnnounceReceivedParams {
     peering_cost: Option<u32>,
     #[serde(default)]
     aspect: Option<String>,
+    #[serde(default)]
+    hops: Option<u32>,
+    #[serde(default)]
+    interface: Option<String>,
+    #[serde(default)]
+    source_private_key: Option<String>,
+    #[serde(default)]
+    source_identity: Option<String>,
+    #[serde(default)]
+    source_node: Option<String>,
+    #[serde(default)]
+    is_path_response: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -56,6 +68,10 @@ struct ReloadConfigParams {
 #[derive(Debug, Deserialize)]
 struct PeerOpParams {
     peer: String,
+    #[serde(default, deserialize_with = "deserialize_python_transfer_limit_kb")]
+    transfer_limit_kb: Option<f64>,
+    #[serde(default)]
+    wanted_ids: Option<JsonValue>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -141,6 +157,16 @@ struct TicketGenerateParams {
 }
 
 #[derive(Debug, Deserialize, Default)]
+struct ListMessagesParams {
+    #[serde(default)]
+    limit: Option<usize>,
+    #[serde(default)]
+    before_ts: Option<i64>,
+    #[serde(default)]
+    cursor: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
 struct ListAnnouncesParams {
     #[serde(default)]
     limit: Option<usize>,
@@ -163,6 +189,8 @@ struct PropagationRemoteStatusParams {
     identity_private_key_hex: Option<String>,
     #[serde(default)]
     timeout_secs: Option<f64>,
+    #[serde(default, deserialize_with = "deserialize_python_transfer_limit_kb")]
+    transfer_limit_kb: Option<f64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -173,6 +201,8 @@ struct PropagationRemotePeerParams {
     identity_private_key_hex: Option<String>,
     #[serde(default)]
     timeout_secs: Option<f64>,
+    #[serde(default, deserialize_with = "deserialize_python_transfer_limit_kb")]
+    transfer_limit_kb: Option<f64>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -181,6 +211,17 @@ struct PropagationAcknowledgeSyncParams {
     reset_state: bool,
     #[serde(default)]
     failure_state: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PropagationRemoteFetchParams {
+    remote: String,
+    #[serde(default)]
+    identity_private_key_hex: Option<String>,
+    #[serde(default)]
+    timeout_secs: Option<f64>,
+    #[serde(default, deserialize_with = "deserialize_python_transfer_limit_kb")]
+    transfer_limit_kb: Option<f64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -194,4 +235,34 @@ struct OutboundLxmQueryParams {
     message_id: Option<String>,
     #[serde(default)]
     lxm_hash: Option<String>,
+}
+
+fn deserialize_python_transfer_limit_kb<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let Some(value) = Option::<JsonValue>::deserialize(deserializer)? else {
+        return Ok(None);
+    };
+    let Some(limit) = transfer_limit_kb_from_json_value(&value) else {
+        return Err(serde::de::Error::custom("invalid transfer_limit_kb"));
+    };
+    Ok(limit)
+}
+
+fn transfer_limit_kb_from_json_value(value: &JsonValue) -> Option<Option<f64>> {
+    let limit = match value {
+        JsonValue::Null => return Some(None),
+        JsonValue::Number(value) => value.as_f64(),
+        JsonValue::String(value) => value.trim().parse::<f64>().ok(),
+        JsonValue::Bool(value) => Some(f64::from(*value as u8)),
+        _ => None,
+    }?;
+    if limit.is_nan() {
+        None
+    } else if limit.is_infinite() && limit.is_sign_positive() {
+        Some(None)
+    } else {
+        Some(Some(limit.max(0.0)))
+    }
 }

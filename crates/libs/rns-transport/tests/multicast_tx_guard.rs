@@ -3,11 +3,14 @@
 //! Two properties we want to guarantee end-to-end, against real UDP
 //! sockets (no mocks):
 //!
-//!   1. tx-guard — `TxMessageType::Direct` targeting the multicast
-//!      iface's own `AddressHash` never reaches the wire. Otherwise a
-//!      Link keepalive / Data packet routed "directly at the multicast
-//!      iface" would flood the whole group, which is the bug that
-//!      originally brought us here.
+//!   1. tx-guard — ordinary `TxMessageType::Direct` traffic targeting
+//!      the multicast iface's own `AddressHash` never reaches the wire.
+//!      Otherwise a Link keepalive / Data packet routed "directly at
+//!      the multicast iface" would flood the whole group, which is the
+//!      bug that originally brought us here. Encrypted link proofs are
+//!      the exception: when the peer-specific virtual unicast entry has
+//!      not arrived yet, they fall back to the multicast group so the
+//!      first link attempt can activate.
 //!
 //!   2. per-peer unicast routing — `TxMessageType::Direct` targeting a
 //!      *virtual* iface hash registered in the host multicast iface's
@@ -26,7 +29,7 @@ use std::time::Duration;
 
 use rns_transport::iface::udp::spawn_multicast_udp;
 use rns_transport::iface::{IfaceRole, InterfaceManager, TxMessage, TxMessageType};
-use rns_transport::packet::Packet;
+use rns_transport::packet::{Packet, PacketContext, PacketType};
 use socket2::{Domain, Protocol, Socket, Type};
 use tokio::net::UdpSocket;
 use tokio::sync::Mutex;
@@ -57,6 +60,17 @@ fn pick_free_port() -> u16 {
     let port = probe.local_addr().expect("probe local_addr").port();
     drop(probe);
     port
+}
+
+fn link_proof_packet() -> Packet {
+    Packet {
+        header: rns_transport::packet::Header {
+            packet_type: PacketType::Proof,
+            ..Default::default()
+        },
+        context: PacketContext::LinkProof,
+        ..Default::default()
+    }
 }
 
 #[tokio::test]
@@ -117,6 +131,35 @@ async fn direct_tx_targeting_multicast_iface_is_dropped() {
         "multicast listener must NOT see the Direct tx targeting the multicast iface itself; \
          saw {:?}",
         result
+    );
+}
+
+#[tokio::test]
+async fn direct_link_proof_targeting_multicast_iface_falls_back_to_broadcast() {
+    let port = pick_free_port();
+    let group_addr = format!("{}:{}", MCAST_GROUP, port);
+    let bind_addr = format!("127.0.0.1:{}", port);
+    let listener = bind_listener(port, true);
+
+    let mut mgr = InterfaceManager::new(64);
+    let (iface_hash, _routing) =
+        spawn_multicast_udp(&mut mgr, bind_addr.clone(), Some(group_addr.clone()));
+    let mgr = Arc::new(Mutex::new(mgr));
+
+    tokio::time::sleep(Duration::from_millis(150)).await;
+
+    let mut rx_buf = [0u8; 2048];
+    let _ = timeout(Duration::from_millis(150), listener.recv_from(&mut rx_buf)).await;
+
+    mgr.lock()
+        .await
+        .send(TxMessage { tx_type: TxMessageType::Direct(iface_hash), packet: link_proof_packet() })
+        .await;
+
+    let result = timeout(Duration::from_millis(500), listener.recv_from(&mut rx_buf)).await;
+    assert!(
+        result.is_ok(),
+        "multicast listener expected to see Direct LinkProof fallback within 500ms"
     );
 }
 

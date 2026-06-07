@@ -12,6 +12,29 @@
       ],
       "type": "object"
     },
+    "python_reference": {
+      "additionalProperties": false,
+      "properties": {
+        "python_lxmf_ref": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "python_reticulum_ref": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "reticulum_conformance_ref": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "python_lxmf_ref",
+        "python_reticulum_ref",
+        "reticulum_conformance_ref"
+      ],
+      "type": "object"
+    },
     "request": {
       "additionalProperties": false,
       "properties": {
@@ -46,6 +69,34 @@
         "error",
         "id"
       ],
+      "type": "object"
+    },
+    "response_meta": {
+      "additionalProperties": true,
+      "properties": {
+        "contract_version": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "profile": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "python_reference": {
+          "$ref": "#/$defs/python_reference"
+        },
+        "rpc_endpoint": {
+          "type": [
+            "object",
+            "string",
+            "null"
+          ]
+        },
+        "sdk_version": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
       "type": "object"
     },
     "response_ok": {
@@ -92,6 +143,9 @@
         "in_flight_messages": {
           "minimum": 0,
           "type": "integer"
+        },
+        "meta": {
+          "$ref": "#/$defs/response_meta"
         },
         "profile": {
           "minLength": 1,
