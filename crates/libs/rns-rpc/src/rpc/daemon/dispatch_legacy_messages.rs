@@ -888,6 +888,13 @@ impl RpcDaemon {
                 for transient_id in stale_unhandled_ids {
                     self.remove_peer_queue_snapshot_id(transient_id.as_str());
                 }
+                let stale_completed_ids = self
+                    .store
+                    .remove_stale_peer_completed_propagation_ids(peer_key)
+                    .map_err(std::io::Error::other)?;
+                for transient_id in stale_completed_ids {
+                    self.remove_peer_queue_snapshot_id(transient_id.as_str());
+                }
                 let mut pending_propagation = self
                     .store
                     .list_peer_unhandled_propagation(peer_key)

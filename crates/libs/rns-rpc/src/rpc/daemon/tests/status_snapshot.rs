@@ -8035,6 +8035,50 @@ fn list_peers_ignores_stale_handled_propagation_marks() {
 }
 
 #[test]
+fn peer_sync_prunes_stale_handled_peer_record_snapshot_ids() {
+    let daemon = RpcDaemon::test_instance();
+    let peer = "peer-stale-handled-snapshot";
+    let stale_id = "fd".repeat(32);
+    daemon
+        .handle_rpc(rpc_request(55, "peer_sync", json!({ "peer": peer })))
+        .expect("initial peer sync");
+    daemon
+        .store
+        .mark_peer_handled_propagation(peer, stale_id.as_str())
+        .expect("mark stale handled");
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let record = peers.get_mut(peer).expect("peer record");
+        record.restored_handled_ids.push(stale_id.clone());
+    }
+
+    let result = daemon
+        .handle_rpc(rpc_request(57, "peer_sync", json!({ "peer": peer })))
+        .expect("peer sync")
+        .result
+        .expect("peer sync result");
+    assert!(
+        result["messages"]["handled_ids"].as_array().expect("result handled ids").is_empty()
+    );
+    assert!(
+        result["messages"]["unhandled_ids"]
+            .as_array()
+            .expect("result unhandled ids")
+            .is_empty()
+    );
+
+    let peers = daemon.peers.lock().expect("peers mutex poisoned");
+    let record = peers.get(peer).expect("stored peer");
+    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    assert!(
+        serialized["handled_ids"].as_array().expect("serialized handled ids").is_empty()
+    );
+    assert!(
+        serialized["unhandled_ids"].as_array().expect("serialized unhandled ids").is_empty()
+    );
+}
+
+#[test]
 fn peer_sync_applies_per_peer_propagation_sync_limit() {
     let (daemon, peer) = ready_propagation_peer_daemon(0x44);
     {

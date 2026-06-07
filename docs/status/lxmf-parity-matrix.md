@@ -113,9 +113,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Rejoining from a persisted `unpeered` peer record clears stale serialized
   queue snapshots before the peer is active again, preventing pre-unpeer work
   from being restored on export/restart.
-- Peer sync stale unhandled cleanup prunes matching active peer record snapshot
-  IDs when the propagation payload has already been removed, keeping serialized
-  restart/export state aligned with live queue cleanup.
+- Peer sync stale queue cleanup prunes matching active peer record snapshot IDs
+  for unhandled and completed marks when the propagation payload has already
+  been removed, keeping serialized restart/export state aligned with live queue
+  cleanup.
 - Inbound propagation distinguishes clients, validated peers, unpeered
   identified senders, and local delivery; source peers are accounted and not
   re-offered their own payloads.

@@ -82,9 +82,10 @@ The project is best described by capability level:
 - Reactivating a persisted `unpeered` record clears stale serialized peer queue
   snapshots before the peer becomes active again, avoiding restart/export
   resurrection of pre-unpeer propagation work.
-- Peer sync stale unhandled cleanup now removes matching IDs from active peer
-  record snapshots when the underlying propagation payload no longer exists,
-  keeping export/restart state aligned with live queue cleanup.
+- Peer sync stale queue cleanup now removes matching unhandled and completed
+  IDs from active peer record snapshots when the underlying propagation payload
+  no longer exists, keeping export/restart state aligned with live queue
+  cleanup.
 
 ## Remaining Release Blockers
 
