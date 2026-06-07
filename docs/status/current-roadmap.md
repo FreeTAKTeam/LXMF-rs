@@ -97,6 +97,10 @@ The project is best described by capability level:
 - Payload-backed peer queue snapshot mirroring resolves stored peer IDs
   case-insensitively before reading live queue marks, so restart/export state
   preserves queued work when callers use Python-style peer case variants.
+- Incremental peer queue snapshot updates also resolve stored peer IDs before
+  checking completed live marks, preventing transfer-limited or handled work
+  from being serialized as retryable unhandled queue state through case
+  variants.
 - Restored Python peer records now update their serialized queue ID snapshot
   when peer sync handles, transfers, or transfer-limits queued offers, reducing
   restart/export drift after live offer-response processing.

@@ -136,6 +136,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Payload-backed peer queue snapshot mirroring resolves stored peer IDs
   case-insensitively before reading live queue marks, preserving queued
   restart/export work when callers use Python-style peer case variants.
+- Incremental peer queue snapshot updates resolve stored peer IDs before
+  checking completed live marks, so transfer-limited or handled work is not
+  serialized as retryable unhandled queue state through peer case variants.
 - Restored peer record queue IDs are replayed into the live store, newly queued
   existing and inbound/imported propagation IDs are reflected in the serialized
   peer snapshot, source-peer handled IDs are preserved for restart/export, and
