@@ -73,10 +73,10 @@ The project is best described by capability level:
 - Remote fetch and download bridge failures now mirror existing payload-backed
   live queue marks into active peer record snapshots before returning the
   failure, preserving restart/export retry state for already queued relay work.
-- Remote download bridge-unavailable errors now mirror existing payload-backed
-  live queue marks into active peer record snapshots before returning, so
-  already queued relay work stays restart/export visible even when no bridge is
-  configured.
+- Remote fetch and download bridge-unavailable errors now mirror existing
+  payload-backed live queue marks into active peer record snapshots before
+  returning, so already queued relay work stays restart/export visible even
+  when no bridge is configured.
 - Remote peer-sync backoff postponements now mirror existing payload-backed live
   queue marks into active peer record snapshots before returning, so
   restart/export state preserves queued retry work even when sync is deferred.

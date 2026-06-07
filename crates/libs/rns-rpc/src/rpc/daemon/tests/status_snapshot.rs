@@ -13502,6 +13502,59 @@ fn propagation_remote_download_forwards_transfer_limit_to_bridge() {
 }
 
 #[test]
+fn propagation_remote_fetch_missing_bridge_records_existing_queue_snapshot_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    let peer = "peer-remote-fetch-unavailable-snapshot";
+    daemon
+        .handle_rpc(rpc_request(78, "peer_sync", json!({ "peer": peer })))
+        .expect("seed peer");
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let record = peers.get_mut(peer).expect("peer record");
+        record.restored_handled_ids.clear();
+        record.restored_unhandled_ids.clear();
+    }
+
+    let pending = PropagationEntryRecord {
+        transient_id: "e9".repeat(32),
+        destination: "1f".repeat(16),
+        payload_hex: "1f".repeat(20),
+        received_at: 1_700_000_807,
+        size_bytes: 20,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&pending).expect("store entry");
+    daemon
+        .store
+        .mark_peer_unhandled_propagation(peer, pending.transient_id.as_str())
+        .expect("seed live queue mark");
+
+    let err = daemon
+        .handle_rpc(rpc_request(
+            79,
+            "propagation_remote_fetch",
+            json!({
+                "remote": "remote-without-bridge",
+            }),
+        ))
+        .expect_err("missing bridge should reject remote fetch");
+    assert_eq!(err.kind(), std::io::ErrorKind::Other);
+    assert_eq!(err.to_string(), "remote control bridge unavailable");
+
+    let peers = daemon.peers.lock().expect("peers mutex poisoned");
+    let record = peers.get(peer).expect("stored peer");
+    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    assert_eq!(
+        serialized["handled_ids"].as_array().expect("serialized handled ids"),
+        &[] as &[JsonValue]
+    );
+    assert_eq!(
+        serialized["unhandled_ids"].as_array().expect("serialized unhandled ids"),
+        &[json!(pending.transient_id.as_str())]
+    );
+}
+
+#[test]
 fn propagation_remote_download_missing_bridge_records_existing_queue_snapshot_like_python() {
     let daemon = RpcDaemon::test_instance();
     let peer = "peer-remote-download-unavailable-snapshot";

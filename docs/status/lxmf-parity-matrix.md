@@ -112,10 +112,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Remote fetch and download bridge failures mirror existing payload-backed
   queue marks into active peer record snapshots before returning the failure,
   so already queued relay work remains visible after restart/export.
-- Remote download bridge-unavailable errors mirror existing payload-backed
-  queue marks into active peer record snapshots before returning, so queued
-  relay work remains visible after restart/export even when no bridge is
-  configured.
+- Remote fetch and download bridge-unavailable errors mirror existing
+  payload-backed queue marks into active peer record snapshots before
+  returning, so queued relay work remains visible after restart/export even
+  when no bridge is configured.
 - Remote peer-sync backoff postponements mirror existing payload-backed queue
   marks into active peer record snapshots before returning, so deferred syncs
   preserve queued retry work across restart/export.
