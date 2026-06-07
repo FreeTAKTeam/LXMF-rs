@@ -1044,6 +1044,7 @@ impl RpcDaemon {
                         self.store
                             .mark_peer_transfer_limited_propagation(peer_key, transient_id.as_str())
                             .map_err(std::io::Error::other)?;
+                        self.record_peer_queue_handled(peer_key, transient_id.as_str());
                         propagation_transfer_limited_ids.push(transient_id);
                         continue;
                     }
@@ -1085,6 +1086,7 @@ impl RpcDaemon {
                             self.store
                                 .mark_peer_transferred_propagation(peer_key, transient_id.as_str())
                                 .map_err(std::io::Error::other)?;
+                            self.record_peer_queue_handled(peer_key, transient_id.as_str());
                             propagation_transferred = propagation_transferred.saturating_add(1);
                             propagation_bytes = propagation_bytes.saturating_add(entry.size_bytes);
                             propagation_transferred_ids.push(transient_id.clone());
@@ -1095,6 +1097,7 @@ impl RpcDaemon {
                         self.store
                             .mark_peer_handled_propagation(peer_key, transient_id.as_str())
                             .map_err(std::io::Error::other)?;
+                        self.record_peer_queue_handled(peer_key, transient_id.as_str());
                     }
                     propagation_handled_ids.push(transient_id);
                 }
@@ -1121,6 +1124,7 @@ impl RpcDaemon {
                         self.store
                             .mark_peer_transferred_propagation(peer_key, wanted_id.as_str())
                             .map_err(std::io::Error::other)?;
+                        self.record_peer_queue_handled(peer_key, wanted_id.as_str());
                         propagation_transferred = propagation_transferred.saturating_add(1);
                         propagation_bytes = propagation_bytes.saturating_add(entry.size_bytes);
                         propagation_transferred_ids.push(wanted_id.clone());
@@ -1186,6 +1190,7 @@ impl RpcDaemon {
                                         transient_id.as_str(),
                                     )
                                     .map_err(std::io::Error::other)?;
+                                self.record_peer_queue_handled(peer_key, transient_id.as_str());
                                 propagation_transfer_limited_ids.push(transient_id);
                                 continue;
                             }
@@ -1217,6 +1222,7 @@ impl RpcDaemon {
                             self.store
                                 .mark_peer_transferred_propagation(peer_key, transient_id.as_str())
                                 .map_err(std::io::Error::other)?;
+                            self.record_peer_queue_handled(peer_key, transient_id.as_str());
                             batch_transferred = batch_transferred.saturating_add(1);
                             propagation_handled = propagation_handled.saturating_add(1);
                             propagation_offered_bytes =
@@ -1960,6 +1966,22 @@ impl RpcDaemon {
         }
 
         Ok(())
+    }
+
+    fn record_peer_queue_handled(&self, peer: &str, transient_id: &str) {
+        let mut guard = self.peers.lock().expect("peers mutex poisoned");
+        let existing_peer_key =
+            guard.keys().find(|existing| existing.eq_ignore_ascii_case(peer)).cloned();
+        let Some(existing_peer_key) = existing_peer_key else {
+            return;
+        };
+        let Some(record) = guard.get_mut(&existing_peer_key) else {
+            return;
+        };
+        record.restored_unhandled_ids.retain(|id| !id.eq_ignore_ascii_case(transient_id));
+        if !record.restored_handled_ids.iter().any(|id| id.eq_ignore_ascii_case(transient_id)) {
+            record.restored_handled_ids.push(transient_id.to_string());
+        }
     }
 
     pub(super) fn restart_required_response(

@@ -4994,6 +4994,69 @@ fn peer_sync_restores_python_peer_record_queue_marks_for_existing_entries_like_p
 }
 
 #[test]
+fn peer_sync_updates_restored_peer_record_queue_ids_after_wants_none_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    let peer = "peer-restored-python-queue-response";
+    let entry = PropagationEntryRecord {
+        transient_id: "e3".repeat(32),
+        destination: "13".repeat(16),
+        payload_hex: "13".repeat(20),
+        received_at: 1_700_000_623,
+        size_bytes: 20,
+        stamp_value: Some(1),
+    };
+    daemon.store.upsert_propagation_entry(&entry).expect("store entry");
+
+    let record: PeerRecord = serde_json::from_value(json!({
+        "destination_hash": peer,
+        "last_heard": 1_700_000_620,
+        "alive": true,
+        "propagation_transfer_limit": 1,
+        "propagation_sync_limit": 1,
+        "propagation_stamp_cost": 1,
+        "propagation_stamp_cost_flexibility": 1,
+        "peering_cost": 1,
+        "peering_key": [null, 1],
+        "handled_ids": [],
+        "unhandled_ids": [entry.transient_id.clone()],
+    }))
+    .expect("deserialize restored Python peer");
+    daemon
+        .peers
+        .lock()
+        .expect("peers mutex poisoned")
+        .insert(peer.to_string(), record);
+
+    let result = daemon
+        .handle_rpc(rpc_request(58, "peer_sync", json!({ "peer": peer, "wanted_ids": [] })))
+        .expect("restored queue peer sync")
+        .result
+        .expect("peer sync result");
+    assert_eq!(result["synced"].as_bool(), Some(true));
+    assert_eq!(
+        result["messages"]["handled_ids"].as_array().expect("result handled ids"),
+        &[json!(entry.transient_id.as_str())]
+    );
+    assert!(
+        result["messages"]["unhandled_ids"]
+            .as_array()
+            .expect("result unhandled ids")
+            .is_empty()
+    );
+
+    let peers = daemon.peers.lock().expect("peers mutex poisoned");
+    let record = peers.get(peer).expect("stored peer");
+    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    assert_eq!(
+        serialized["handled_ids"].as_array().expect("serialized handled ids"),
+        &[json!(entry.transient_id.as_str())]
+    );
+    assert!(
+        serialized["unhandled_ids"].as_array().expect("serialized unhandled ids").is_empty()
+    );
+}
+
+#[test]
 fn empty_peer_sync_checks_peering_key_before_no_unhandled_shortcut_like_python() {
     let daemon = RpcDaemon::test_instance();
     let peer = "peer-empty-key-policy";

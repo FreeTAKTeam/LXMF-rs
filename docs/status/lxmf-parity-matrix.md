@@ -22,7 +22,7 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 | --- | --- | --- | --- | --- |
 | `LXMF/LXMF.py` | `crates/libs/lxmf-core` | partial | Constants, payload fields, message identity, inbound decoding, and wire helpers. | The complete convenience/module surface is not mirrored. |
 | `LXMF/LXMessage.py` | `crates/libs/lxmf-core` | done | Wire, storage, propagation, paper, signatures, message IDs, binary fidelity, and timestamp precision metadata. | No confirmed base-message blocker. |
-| `LXMF/LXMPeer.py` | `crates/libs/rns-rpc`, `crates/apps/reticulumd` | partial | Persistent peers, queue marks, offer selection, policy gates, peering keys, throttling, maintenance, source accounting, cumulative acceptance, and boolean/list/numeric offer responses. | Complete transfer/retry/restart lifecycle and broad live peer interop remain. |
+| `LXMF/LXMPeer.py` | `crates/libs/rns-rpc`, `crates/apps/reticulumd` | partial | Persistent peers, queue marks, offer selection, policy gates, peering keys, throttling, maintenance, source accounting, cumulative acceptance, serialized restored queue snapshots, and boolean/list/numeric offer responses. | Complete transfer/retry/restart lifecycle and broad live peer interop remain. |
 | `LXMF/LXMRouter.py` | `crates/libs/rns-rpc`, `crates/apps/reticulumd` | partial | Outbound modes, selected propagation nodes, direct/propagated resources, cancellation, fetch/download/sync RPCs, receipts, persistence, and status. | Full Python queue, retry, propagation-node, and command side effects remain. |
 | `LXMF/Handlers.py` | `crates/apps/reticulumd`, `crates/libs/rns-rpc` | partial | Delivery, announce, propagation app-data, receipt, and inbound bridge handling. | Some router-coupled side effects and negative/drop observability remain narrower. |
 | `LXMF/LXStamper.py` | `crates/libs/lxmf-core`, `crates/libs/rns-rpc`, `crates/apps/reticulumd` | partial | Validation, generation, ticket-derived stamps, cancellation-aware task work, and lifecycle metadata. | Python-style deferred worker queue, retry ownership, and continuous progress remain. |
@@ -98,6 +98,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   IDs, preserve no-transfer liveness, retain cumulative acceptance rates, and
   preserve peers and queues on retryable or otherwise unexpected numeric
   offer-response cleanup paths.
+- Restored peer record queue IDs are replayed into the live store and kept in
+  sync when offer-response handling marks queued IDs handled, transferred, or
+  transfer-limited, so later serialization does not restart from stale
+  unhandled IDs.
 - Inbound propagation distinguishes clients, validated peers, unpeered
   identified senders, and local delivery; source peers are accounted and not
   re-offered their own payloads.
