@@ -105,15 +105,25 @@ impl RpcDaemon {
             }
         }
 
+        let peer_key = {
+            let guard = self.peers.lock().expect("peers mutex poisoned");
+            guard.keys().find(|existing| existing.eq_ignore_ascii_case(peer)).cloned()
+        };
+        let Some(peer_key) = peer_key else {
+            return Ok(());
+        };
+
         let mut unhandled_ids = Vec::new();
         let mut handled_ids = Vec::new();
-        for entry in
-            self.store.list_peer_unhandled_propagation(peer).map_err(std::io::Error::other)?
+        for entry in self
+            .store
+            .list_peer_unhandled_propagation(peer_key.as_str())
+            .map_err(std::io::Error::other)?
         {
             let transient_id = entry.transient_id.trim().to_ascii_lowercase();
             if self
                 .store
-                .peer_completed_propagation_mark_exists(peer, transient_id.as_str())
+                .peer_completed_propagation_mark_exists(peer_key.as_str(), transient_id.as_str())
                 .map_err(std::io::Error::other)?
             {
                 push_unique(&mut handled_ids, transient_id);
@@ -121,8 +131,10 @@ impl RpcDaemon {
                 push_unique(&mut unhandled_ids, transient_id);
             }
         }
-        for transient_id in
-            self.store.list_peer_handled_propagation_ids(peer).map_err(std::io::Error::other)?
+        for transient_id in self
+            .store
+            .list_peer_handled_propagation_ids(peer_key.as_str())
+            .map_err(std::io::Error::other)?
         {
             let transient_id = transient_id.trim().to_ascii_lowercase();
             if self
@@ -139,13 +151,9 @@ impl RpcDaemon {
         });
 
         let mut guard = self.peers.lock().expect("peers mutex poisoned");
-        let existing_peer_key =
-            guard.keys().find(|existing| existing.eq_ignore_ascii_case(peer)).cloned();
-        if let Some(existing_peer_key) = existing_peer_key {
-            if let Some(record) = guard.get_mut(&existing_peer_key) {
-                record.restored_handled_ids = handled_ids;
-                record.restored_unhandled_ids = unhandled_ids;
-            }
+        if let Some(record) = guard.get_mut(&peer_key) {
+            record.restored_handled_ids = handled_ids;
+            record.restored_unhandled_ids = unhandled_ids;
         }
         Ok(())
     }

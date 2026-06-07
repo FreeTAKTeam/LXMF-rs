@@ -133,6 +133,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   active peer record snapshots before returning bridge-unavailable or
   bridge-execution errors, including case-insensitive peer requests, so failed
   peering teardown preserves queued retry work across restart/export.
+- Payload-backed peer queue snapshot mirroring resolves stored peer IDs
+  case-insensitively before reading live queue marks, preserving queued
+  restart/export work when callers use Python-style peer case variants.
 - Restored peer record queue IDs are replayed into the live store, newly queued
   existing and inbound/imported propagation IDs are reflected in the serialized
   peer snapshot, source-peer handled IDs are preserved for restart/export, and

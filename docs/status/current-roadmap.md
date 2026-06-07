@@ -94,6 +94,9 @@ The project is best described by capability level:
   marks into active peer record snapshots before returning bridge-unavailable
   or bridge-execution errors, including case-insensitive peer requests, so
   restart/export state preserves queued retry work when peering teardown fails.
+- Payload-backed peer queue snapshot mirroring resolves stored peer IDs
+  case-insensitively before reading live queue marks, so restart/export state
+  preserves queued work when callers use Python-style peer case variants.
 - Restored Python peer records now update their serialized queue ID snapshot
   when peer sync handles, transfers, or transfer-limits queued offers, reducing
   restart/export drift after live offer-response processing.
