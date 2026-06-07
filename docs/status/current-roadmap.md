@@ -209,6 +209,9 @@ gap, even though deeper propagation-router parity remains open.
 - Remote propagation sync now preserves peers on `ERROR_NOT_FOUND` offer
   responses as explicit peer-response cleanup, without treating that reply as
   a local peering break or generic liveness failure.
+- Remote propagation sync now also treats unexpected numeric propagation
+  control responses as Python-style failed offer-response cleanup, preserving
+  the peer and propagation queue without generic liveness failure/backoff.
 - Remote propagation sync success now treats imported payload bytes as inbound
   peer traffic only: it updates source-peer liveness/backoff and inbound
   counters without inflating outbound `tx_bytes`, `sync_transfer_rate`, or

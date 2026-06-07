@@ -212,8 +212,9 @@ The following contract is mandatory in v1:
   Numeric peer error responses including `0xf0`, `0xf3`, `0xf4`, `0xf5`,
   `0xfd`, and `0xfe` are mapped to explicit bridge errors so retryable
   peer-response cleanup can preserve local peer and queue state without generic
-  failure backoff; `0xf1` breaks local peering and `0xf6` applies throttle
-  postponement.
+  failure backoff. Other unexpected numeric control responses follow the same
+  preserve-and-retry cleanup path; `0xf1` breaks local peering and `0xf6`
+  applies throttle postponement.
 - `propagation_acknowledge_sync_completion`
 : Optional params keys: `reset_state`, `failure_state`. Mirrors Python
   `acknowledge_sync_completion`: clears progress, resets completed states to

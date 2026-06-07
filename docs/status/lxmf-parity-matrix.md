@@ -114,8 +114,9 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
   `handled_ids`/`unhandled_ids` queue-mark rehydration for existing propagation
   entries, and destination fetch duplicate-wanted de-duplication are exposed.
   Remote peer sync maps Python's retryable numeric offer-response errors,
-  including `ERROR_INVALID_STAMP`, to preserve-and-retry peer cleanup without
-  generic liveness backoff or queue removal.
+  including `ERROR_INVALID_STAMP`, and otherwise unexpected numeric control
+  responses to preserve-and-retry peer cleanup without generic liveness backoff
+  or queue removal.
   Local offer responses now accept
   Python's boolean all/none and list-shaped response forms, keep full-offer
   stamp-policy and peering-key gates for boolean wants-all, request-limited,

@@ -13745,6 +13745,105 @@ fn invalid_stamp_propagation_remote_sync_preserves_peer_queue_without_backoff() 
 }
 
 #[test]
+fn unknown_numeric_propagation_remote_sync_preserves_peer_queue_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    daemon.set_remote_control_bridge(Arc::new(RemoteSyncErrorBridge {
+        kind: std::io::ErrorKind::InvalidData,
+        message: "unexpected propagation control response",
+    }));
+    daemon
+        .handle_rpc(rpc_request(96, "peer_sync", json!({ "peer": "peer-unknown-response" })))
+        .expect("initial peer sync");
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let peer = peers.get_mut("peer-unknown-response").expect("peer record");
+        peer.alive = true;
+        peer.sync_backoff = 0;
+        peer.next_sync_attempt = 0;
+        peer.acceptance_rate = 0.35;
+    }
+    let pending = PropagationEntryRecord {
+        transient_id: "b1".repeat(32),
+        destination: "12".repeat(16),
+        payload_hex: "12".repeat(24),
+        received_at: 1_700_000_612,
+        size_bytes: 24,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&pending).expect("store propagation entry");
+    daemon
+        .store
+        .mark_peer_unhandled_propagation("peer-unknown-response", pending.transient_id.as_str())
+        .expect("mark unhandled");
+    daemon.event_queue.lock().expect("event_queue mutex poisoned").clear();
+
+    let err = daemon
+        .handle_rpc(rpc_request(
+            97,
+            "propagation_remote_sync",
+            json!({
+                "remote": "remote-node",
+                "peer": "peer-unknown-response",
+            }),
+        ))
+        .expect_err("unknown numeric response should return the bridge error");
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+    assert_eq!(err.to_string(), "unexpected propagation control response");
+
+    let peers = daemon
+        .handle_rpc(RpcRequest { id: 98, method: "list_peers".to_string(), params: None })
+        .expect("list peers")
+        .result
+        .expect("list peers result");
+    let row = peers["peers"]
+        .as_array()
+        .expect("peer rows")
+        .iter()
+        .find(|row| row["peer"].as_str() == Some("peer-unknown-response"))
+        .expect("peer should remain available for another offer");
+    assert_eq!(row["alive"].as_bool(), Some(true));
+    assert_eq!(row["sync_backoff"].as_u64(), Some(0));
+    assert_eq!(row["next_sync_attempt"].as_i64(), Some(0));
+    assert_eq!(row["acceptance_rate"].as_f64(), Some(0.35));
+    assert!(row["last_sync_attempt"].as_i64().expect("last sync attempt") > 0);
+    assert_eq!(
+        daemon
+            .store
+            .list_peer_unhandled_propagation("peer-unknown-response")
+            .expect("pending propagation"),
+        vec![pending.clone()]
+    );
+    assert!(
+        daemon
+            .store
+            .list_peer_handled_propagation_ids("peer-unknown-response")
+            .expect("handled ids")
+            .is_empty(),
+        "unknown numeric response should not accept queued messages"
+    );
+
+    let events = daemon.event_queue.lock().expect("event_queue mutex poisoned");
+    assert!(
+        events.iter().all(|event| event.event_type != "peer_unpeer"),
+        "unknown numeric response should not break peering"
+    );
+    let event = events
+        .iter()
+        .rev()
+        .find(|event| event.event_type == "peer_sync")
+        .expect("unknown response peer sync event");
+    assert_eq!(event.payload["peer"].as_str(), Some("peer-unknown-response"));
+    assert_eq!(event.payload["remote"].as_str(), Some("remote-node"));
+    assert_eq!(event.payload["alive"].as_bool(), Some(true));
+    assert_eq!(event.payload["sync_backoff"].as_u64(), Some(0));
+    assert_eq!(event.payload["next_sync_attempt"].as_i64(), Some(0));
+    assert_eq!(
+        event.payload["propagation"]["error"].as_str(),
+        Some("unexpected propagation control response")
+    );
+}
+
+#[test]
 fn failed_propagation_remote_sync_reports_effective_limits() {
     let daemon = RpcDaemon::test_instance();
     daemon.set_remote_control_bridge(Arc::new(FailingTransferLimitRemoteControlBridge {
