@@ -117,6 +117,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   for unhandled and completed marks when the propagation payload has already
   been removed, keeping serialized restart/export state aligned with live queue
   cleanup.
+- Restored peer record replay prunes serialized handled and unhandled IDs whose
+  payloads are absent, so stale Python snapshot entries are not exported again
+  after the live store skips them.
 - Transfer-limit decisions made before peering-key handling update active peer
   record snapshots as completed queue work, so restart/export state reflects
   the live transfer-limited mark.

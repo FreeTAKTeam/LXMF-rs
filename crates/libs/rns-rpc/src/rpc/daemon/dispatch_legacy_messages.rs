@@ -1951,6 +1951,7 @@ impl RpcDaemon {
             return Ok(());
         }
 
+        let mut restored_unhandled_ids = Vec::new();
         for transient_id in &record.restored_unhandled_ids {
             if self
                 .store
@@ -1961,9 +1962,11 @@ impl RpcDaemon {
                 self.store
                     .mark_peer_unhandled_propagation(record.peer.as_str(), transient_id)
                     .map_err(std::io::Error::other)?;
+                restored_unhandled_ids.push(transient_id.clone());
             }
         }
 
+        let mut restored_handled_ids = Vec::new();
         for transient_id in &record.restored_handled_ids {
             if self
                 .store
@@ -1974,6 +1977,24 @@ impl RpcDaemon {
                 self.store
                     .mark_peer_handled_propagation(record.peer.as_str(), transient_id)
                     .map_err(std::io::Error::other)?;
+                restored_handled_ids.push(transient_id.clone());
+            }
+        }
+        restored_unhandled_ids.retain(|transient_id| {
+            !restored_handled_ids
+                .iter()
+                .any(|handled_id| handled_id.eq_ignore_ascii_case(transient_id))
+        });
+
+        let mut guard = self.peers.lock().expect("peers mutex poisoned");
+        let existing_peer_key = guard
+            .keys()
+            .find(|existing| existing.eq_ignore_ascii_case(record.peer.as_str()))
+            .cloned();
+        if let Some(existing_peer_key) = existing_peer_key {
+            if let Some(existing) = guard.get_mut(&existing_peer_key) {
+                existing.restored_handled_ids = restored_handled_ids;
+                existing.restored_unhandled_ids = restored_unhandled_ids;
             }
         }
 

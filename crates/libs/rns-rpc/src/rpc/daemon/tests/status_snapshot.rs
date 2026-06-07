@@ -5233,6 +5233,18 @@ fn peer_sync_restores_python_peer_record_queue_marks_for_existing_entries_like_p
         row["messages"]["unhandled_ids"].as_array().expect("unhandled ids"),
         &[json!("e2".repeat(32))]
     );
+
+    let peers = daemon.peers.lock().expect("peers mutex poisoned");
+    let record = peers.get(peer).expect("stored peer");
+    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    assert_eq!(
+        serialized["handled_ids"].as_array().expect("serialized handled ids"),
+        &[json!("e1".repeat(32))]
+    );
+    assert_eq!(
+        serialized["unhandled_ids"].as_array().expect("serialized unhandled ids"),
+        &[json!("e2".repeat(32))]
+    );
 }
 
 #[test]
