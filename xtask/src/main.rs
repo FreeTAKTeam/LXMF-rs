@@ -444,6 +444,22 @@ enum XtaskCommand {
         #[arg(long)]
         timeout_secs: Option<u64>,
     },
+    E2eBench {
+        #[arg(long, value_enum, default_value_t = E2eBenchMode::All)]
+        mode: E2eBenchMode,
+        #[arg(long, value_enum, default_value_t = E2eBenchProfile::Smoke)]
+        profile: E2eBenchProfile,
+        #[arg(long)]
+        scenario: Vec<String>,
+        #[arg(long, value_enum)]
+        implementation: Vec<E2eBenchImplementation>,
+        #[arg(long)]
+        keep: bool,
+        #[arg(long)]
+        output: Option<PathBuf>,
+        #[arg(long)]
+        dry_run: bool,
+    },
     MeshSim,
     SdkProfileBuild,
     SdkExamplesCheck,
@@ -602,6 +618,26 @@ enum PythonImplImplementation {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
+enum E2eBenchMode {
+    Correctness,
+    Benchmark,
+    All,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
+enum E2eBenchProfile {
+    Smoke,
+    Report,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
+enum E2eBenchImplementation {
+    Rust,
+    Python,
+    Tcp,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
 enum PublishWave {
     Wave1,
     Facades,
@@ -651,6 +687,23 @@ fn main() -> Result<()> {
         }
         XtaskCommand::CompatKitCheck => run_compat_kit_check(),
         XtaskCommand::E2eCompatibility { timeout_secs } => run_e2e_compatibility(timeout_secs),
+        XtaskCommand::E2eBench {
+            mode,
+            profile,
+            scenario,
+            implementation,
+            keep,
+            output,
+            dry_run,
+        } => run_e2e_bench(
+            mode,
+            profile,
+            &scenario,
+            &implementation,
+            keep,
+            output.as_deref(),
+            dry_run,
+        ),
         XtaskCommand::MeshSim => run_mesh_sim(),
         XtaskCommand::SdkProfileBuild => run_sdk_profile_build(),
         XtaskCommand::SdkExamplesCheck => run_sdk_examples_check(),
@@ -5059,6 +5112,88 @@ fn run_e2e_compatibility(timeout_secs: Option<u64>) -> Result<()> {
             timeout_secs.as_str(),
         ],
     )
+}
+
+fn run_e2e_bench(
+    mode: E2eBenchMode,
+    profile: E2eBenchProfile,
+    scenarios: &[String],
+    implementations: &[E2eBenchImplementation],
+    keep: bool,
+    output: Option<&Path>,
+    dry_run: bool,
+) -> Result<()> {
+    const RUNNER_TOOLCHAIN: &str = "1.88.0";
+    const RUNNER_MANIFEST: &str = "tools/e2e-runner/Cargo.toml";
+
+    let toolchain_status = Command::new("rustup")
+        .args(["run", RUNNER_TOOLCHAIN, "rustc", "--version"])
+        .status()
+        .context("rustup is required to launch the isolated E2E runner")?;
+    if !toolchain_status.success() {
+        bail!(
+            "Rust {RUNNER_TOOLCHAIN} is required for the isolated E2E runner; install it with \
+             `rustup toolchain install {RUNNER_TOOLCHAIN} --profile minimal`"
+        );
+    }
+
+    let mut args = vec![
+        "run".to_string(),
+        RUNNER_TOOLCHAIN.to_string(),
+        "cargo".to_string(),
+        "run".to_string(),
+        "--locked".to_string(),
+        "--manifest-path".to_string(),
+        RUNNER_MANIFEST.to_string(),
+        "--".to_string(),
+        "--mode".to_string(),
+        match mode {
+            E2eBenchMode::Correctness => "correctness",
+            E2eBenchMode::Benchmark => "benchmark",
+            E2eBenchMode::All => "all",
+        }
+        .to_string(),
+        "--profile".to_string(),
+        match profile {
+            E2eBenchProfile::Smoke => "smoke",
+            E2eBenchProfile::Report => "report",
+        }
+        .to_string(),
+    ];
+    for scenario in scenarios {
+        args.push("--scenario".to_string());
+        args.push(scenario.clone());
+    }
+    for implementation in implementations {
+        args.push("--implementation".to_string());
+        args.push(
+            match implementation {
+                E2eBenchImplementation::Rust => "rust",
+                E2eBenchImplementation::Python => "python",
+                E2eBenchImplementation::Tcp => "tcp",
+            }
+            .to_string(),
+        );
+    }
+    if keep {
+        args.push("--keep".to_string());
+    }
+    if let Some(output) = output {
+        args.push("--output".to_string());
+        args.push(output.to_string_lossy().into_owned());
+    }
+    if dry_run {
+        args.push("--dry-run".to_string());
+    }
+
+    let status = Command::new("rustup")
+        .args(&args)
+        .status()
+        .context("failed to launch the isolated E2E runner")?;
+    if !status.success() {
+        bail!("isolated E2E runner failed");
+    }
+    Ok(())
 }
 
 fn run_mesh_sim() -> Result<()> {

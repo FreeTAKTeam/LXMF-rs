@@ -1,0 +1,18 @@
+[package]
+name = "lxmf-e2e-runner"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+license = "MIT"
+publish = false
+
+[workspace]
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4.5", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+testcontainers = { version = "=0.27.3", features = ["docker-compose"] }
+tokio = { version = "1.44", features = ["io-util", "macros", "net", "rt-multi-thread", "time"] }
+toml = "0.8"

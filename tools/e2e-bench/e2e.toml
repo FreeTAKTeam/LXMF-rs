@@ -1,0 +1,17 @@
+[[scenarios]]
+id = "c1-tcp-smoke"
+mode = "correctness"
+profile = "smoke"
+implementation = "tcp"
+topology = "c1_tcp_control"
+compose_file = "tools/e2e-bench/compose/c1-tcp.yml"
+expected_services = ["tcp_control"]
+
+[[scenarios]]
+id = "c1-tcp-report"
+mode = "benchmark"
+profile = "report"
+implementation = "tcp"
+topology = "c1_tcp_control"
+compose_file = "tools/e2e-bench/compose/c1-tcp.yml"
+expected_services = ["tcp_control"]

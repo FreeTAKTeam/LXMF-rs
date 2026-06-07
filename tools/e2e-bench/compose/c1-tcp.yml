@@ -1,0 +1,7 @@
+services:
+  tcp_control:
+    image: hashicorp/http-echo:1.0
+    command: ["-text=lxmf-e2e-ok"]
+    ports:
+      - "5678"
+
