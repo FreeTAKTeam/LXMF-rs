@@ -143,7 +143,11 @@ All methods below are required for full CLI feature coverage.
   `peer_unpeer`-shaped result with `reason: "access_denied"`. Numeric response
   `0xf6` (`ERROR_THROTTLED`) preserves the peer and queued offers, postpones
   `next_sync_attempt` by 180 seconds, and returns a postponed `peer_sync`
-  result with `postpone_reason: "throttled"`.
+  result with `postpone_reason: "throttled"`. Numeric responses `0xf3`
+  (`ERROR_INVALID_KEY`), `0xf4` (`ERROR_INVALID_DATA`), `0xf5`
+  (`ERROR_INVALID_STAMP`), `0xfd` (`ERROR_NOT_FOUND`), and `0xfe`
+  (`ERROR_TIMEOUT`) preserve the peer and queued offers for retry, record the
+  sync attempt, and avoid generic backoff or unpeer cleanup.
 - `peer_unpeer`
 : Params keys: `peer`. Result and `peer_unpeer` event include `removed`,
   `propagation_cleared`, `propagation_cleared_bytes`, top-level aggregate

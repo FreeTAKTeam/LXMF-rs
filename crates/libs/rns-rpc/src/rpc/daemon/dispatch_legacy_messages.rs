@@ -716,7 +716,12 @@ impl RpcDaemon {
                     let record =
                         existing_peer.as_ref().expect("offer responses require an existing peer");
                     match offer_error {
-                        LXMF_PEER_ERROR_NO_IDENTITY => {
+                        LXMF_PEER_ERROR_NO_IDENTITY
+                        | LXMF_PEER_ERROR_INVALID_KEY
+                        | LXMF_PEER_ERROR_INVALID_DATA
+                        | LXMF_PEER_ERROR_INVALID_STAMP
+                        | LXMF_PEER_ERROR_NOT_FOUND
+                        | LXMF_PEER_ERROR_TIMEOUT => {
                             self.restore_peer_record_queue_marks(record)?;
                             let record_transfer_limit_bytes =
                                 record.propagation_transfer_limit.map(|limit| limit as usize);
@@ -743,7 +748,7 @@ impl RpcDaemon {
                                 request.id,
                                 record,
                                 timestamp,
-                                "identity_required",
+                                local_retryable_peer_offer_error_reason(offer_error),
                                 offer_error,
                                 (transfer_limit_bytes, sync_limit_bytes),
                             ));
@@ -2242,8 +2247,25 @@ pub(super) fn peer_sync_backoff_active(timestamp: i64, next_sync_attempt: i64) -
 
 const LXMF_PEER_ERROR_NO_IDENTITY: u8 = 0xf0;
 const LXMF_PEER_ERROR_NO_ACCESS: u8 = 0xf1;
+const LXMF_PEER_ERROR_INVALID_KEY: u8 = 0xf3;
+const LXMF_PEER_ERROR_INVALID_DATA: u8 = 0xf4;
+const LXMF_PEER_ERROR_INVALID_STAMP: u8 = 0xf5;
 const LXMF_PEER_ERROR_THROTTLED: u8 = 0xf6;
+const LXMF_PEER_ERROR_NOT_FOUND: u8 = 0xfd;
+const LXMF_PEER_ERROR_TIMEOUT: u8 = 0xfe;
 const PN_STAMP_THROTTLE_SECS: i64 = 180;
+
+fn local_retryable_peer_offer_error_reason(offer_error: u8) -> &'static str {
+    match offer_error {
+        LXMF_PEER_ERROR_NO_IDENTITY => "identity_required",
+        LXMF_PEER_ERROR_INVALID_KEY => "invalid_key",
+        LXMF_PEER_ERROR_INVALID_DATA => "invalid_data",
+        LXMF_PEER_ERROR_INVALID_STAMP => "invalid_stamp",
+        LXMF_PEER_ERROR_NOT_FOUND => "not_found",
+        LXMF_PEER_ERROR_TIMEOUT => "timeout",
+        _ => "peer_offer_error",
+    }
+}
 
 #[derive(Debug)]
 enum PeerSyncWantedIds {

@@ -134,7 +134,10 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
   retry eligibility while preserving queued offers, maps Python's
   `ERROR_NO_ACCESS` offer response to local unpeering with propagation queue
   cleanup, maps Python's `ERROR_THROTTLED` offer response to the 180-second
-  retry window while preserving queued offers, and
+  retry window while preserving queued offers, maps Python's retryable numeric
+  offer responses (`ERROR_INVALID_KEY`, `ERROR_INVALID_DATA`,
+  `ERROR_INVALID_STAMP`, `ERROR_NOT_FOUND`, and `ERROR_TIMEOUT`) to
+  preserve-and-retry cleanup without generic backoff or unpeering, and
   offer ordering now applies Python's prioritised destination weighting before
   sync-limit selection. Persistent full-offer syncs plus selected-ID response
   syncs continue into the next eligible batch while lazy peers keep one-batch
@@ -222,6 +225,7 @@ Recent focused evidence:
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_no_identity_offer_response_preserves_peer_for_immediate_retry_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_no_access_offer_response_breaks_peering_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_throttled_offer_response_preserves_peer_queue_like_python -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib peer_sync_retryable_offer_responses_preserve_peer_queue_like_python -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_rejects_transfer_limited_wanted_ids_without_mutating_queue -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_boolean -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_stores_cumulative_acceptance_rate_like_python -- --nocapture`

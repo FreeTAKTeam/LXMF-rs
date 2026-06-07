@@ -7069,6 +7069,120 @@ fn peer_sync_no_identity_offer_response_preserves_peer_for_immediate_retry_like_
 }
 
 #[test]
+fn peer_sync_retryable_offer_responses_preserve_peer_queue_like_python() {
+    for (suffix, offer_response, reason) in [
+        ("invalid-key", 0xf3, "invalid_key"),
+        ("invalid-data", 0xf4, "invalid_data"),
+        ("invalid-stamp", 0xf5, "invalid_stamp"),
+        ("not-found", 0xfd, "not_found"),
+        ("timeout", 0xfe, "timeout"),
+    ] {
+        let daemon = RpcDaemon::test_instance();
+        let peer_id = format!("peer-local-{suffix}");
+        daemon
+            .handle_rpc(rpc_request(52, "peer_sync", json!({ "peer": peer_id })))
+            .expect("initial peer sync");
+        {
+            let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+            let peer = peers.get_mut(peer_id.as_str()).expect("peer record");
+            peer.alive = true;
+            peer.sync_backoff = 0;
+            peer.next_sync_attempt = 0;
+            peer.acceptance_rate = 0.6;
+        }
+        let pending = PropagationEntryRecord {
+            transient_id: "af".repeat(32),
+            destination: "12".repeat(16),
+            payload_hex: "12".repeat(24),
+            received_at: 1_700_000_610,
+            size_bytes: 24,
+            stamp_value: None,
+        };
+        daemon.store.upsert_propagation_entry(&pending).expect("store propagation entry");
+        daemon
+            .store
+            .mark_peer_unhandled_propagation(peer_id.as_str(), pending.transient_id.as_str())
+            .expect("mark unhandled");
+        daemon.event_queue.lock().expect("event_queue mutex poisoned").clear();
+
+        let result = daemon
+            .handle_rpc(rpc_request(
+                55,
+                "peer_sync",
+                json!({
+                    "peer": peer_id,
+                    "wanted_ids": offer_response,
+                }),
+            ))
+            .expect("retryable response should preserve peer queue for retry")
+            .result
+            .expect("peer sync result");
+
+        assert_eq!(result["peer"].as_str(), Some(peer_id.as_str()));
+        assert_eq!(result["synced"].as_bool(), Some(false));
+        assert_eq!(result["reason"].as_str(), Some(reason));
+        assert_eq!(result["offer_response"].as_u64(), Some(offer_response));
+        assert_eq!(result["alive"].as_bool(), Some(true));
+        assert_eq!(result["sync_backoff"].as_u64(), Some(0));
+        assert_eq!(result["next_sync_attempt"].as_i64(), Some(0));
+        assert_eq!(result["acceptance_rate"].as_f64(), Some(0.6));
+        assert_eq!(result["propagation"]["handled"].as_u64(), Some(0));
+        assert_eq!(result["propagation"]["postponed"].as_bool(), Some(false));
+        assert_eq!(
+            daemon
+                .store
+                .list_peer_unhandled_propagation(peer_id.as_str())
+                .expect("pending propagation"),
+            vec![pending.clone()]
+        );
+        assert!(
+            daemon
+                .store
+                .list_peer_handled_propagation_ids(peer_id.as_str())
+                .expect("handled ids")
+                .is_empty(),
+            "retryable response should not accept offered messages"
+        );
+
+        let peers = daemon
+            .handle_rpc(RpcRequest { id: 56, method: "list_peers".to_string(), params: None })
+            .expect("list peers")
+            .result
+            .expect("list peers result");
+        let row = peers["peers"]
+            .as_array()
+            .expect("peer rows")
+            .iter()
+            .find(|row| row["peer"].as_str() == Some(peer_id.as_str()))
+            .expect("peer row");
+        let last_sync_attempt = row["last_sync_attempt"].as_i64().expect("last sync attempt");
+        assert!(last_sync_attempt > 0);
+        assert_eq!(row["alive"].as_bool(), Some(true));
+        assert_eq!(row["sync_backoff"].as_u64(), Some(0));
+        assert_eq!(row["next_sync_attempt"].as_i64(), Some(0));
+
+        let events = daemon.event_queue.lock().expect("event_queue mutex poisoned");
+        assert!(
+            events.iter().all(|event| event.event_type != "peer_unpeer"),
+            "retryable response should not break peering"
+        );
+        let event = events
+            .iter()
+            .rev()
+            .find(|event| event.event_type == "peer_sync")
+            .cloned()
+            .expect("retryable peer sync event");
+        assert_eq!(event.payload["peer"].as_str(), Some(peer_id.as_str()));
+        assert_eq!(event.payload["synced"].as_bool(), Some(false));
+        assert_eq!(event.payload["reason"].as_str(), Some(reason));
+        assert_eq!(event.payload["offer_response"].as_u64(), Some(offer_response));
+        assert_eq!(event.payload["alive"].as_bool(), Some(true));
+        assert_eq!(event.payload["sync_backoff"].as_u64(), Some(0));
+        assert_eq!(event.payload["next_sync_attempt"].as_i64(), Some(0));
+    }
+}
+
+#[test]
 fn peer_sync_rejects_transfer_limited_wanted_ids_without_mutating_queue() {
     let daemon = RpcDaemon::test_instance();
     daemon
