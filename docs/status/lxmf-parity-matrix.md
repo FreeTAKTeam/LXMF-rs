@@ -137,10 +137,9 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
   retry eligibility while preserving queued offers, maps Python's
   `ERROR_NO_ACCESS` offer response to local unpeering with propagation queue
   cleanup, maps Python's `ERROR_THROTTLED` offer response to the 180-second
-  retry window while preserving queued offers, maps Python's retryable numeric
-  offer responses (`ERROR_INVALID_KEY`, `ERROR_INVALID_DATA`,
-  `ERROR_INVALID_STAMP`, `ERROR_NOT_FOUND`, and `ERROR_TIMEOUT`) to
-  preserve-and-retry cleanup without generic backoff or unpeering, and
+  retry window while preserving queued offers, maps Python's retryable and
+  otherwise unsupported numeric offer responses to preserve-and-retry cleanup
+  without generic backoff or unpeering, and
   offer ordering now applies Python's prioritised destination weighting before
   sync-limit selection. Persistent full-offer syncs plus selected-ID response
   syncs continue into the next eligible batch while lazy peers keep one-batch

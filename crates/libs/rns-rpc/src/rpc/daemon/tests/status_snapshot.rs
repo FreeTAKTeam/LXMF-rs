@@ -7074,6 +7074,7 @@ fn peer_sync_retryable_offer_responses_preserve_peer_queue_like_python() {
         ("invalid-key", 0xf3, "invalid_key"),
         ("invalid-data", 0xf4, "invalid_data"),
         ("invalid-stamp", 0xf5, "invalid_stamp"),
+        ("unknown", 0xf2, "peer_offer_error"),
         ("not-found", 0xfd, "not_found"),
         ("timeout", 0xfe, "timeout"),
     ] {

@@ -232,10 +232,9 @@ gap, even though deeper propagation-router parity remains open.
   (`wanted_ids: 0xf6`) to the `PN_STAMP_THROTTLE` retry window: the peer and
   queued offers are preserved, `next_sync_attempt` is postponed by 180 seconds,
   and generic sync backoff/liveness are left unchanged.
-- Local peer sync now also maps Python's retryable numeric offer responses
-  (`ERROR_INVALID_KEY`, `ERROR_INVALID_DATA`, `ERROR_INVALID_STAMP`,
-  `ERROR_NOT_FOUND`, and `ERROR_TIMEOUT`) to failed offer-response cleanup:
-  the peer and queued offers are preserved, `last_sync_attempt` is recorded,
+- Local peer sync now also maps Python's retryable and otherwise unsupported
+  numeric offer responses to failed offer-response cleanup: the peer and
+  queued offers are preserved, `last_sync_attempt` is recorded,
   `next_sync_attempt` remains immediately eligible, and no generic backoff or
   unpeer cleanup runs.
 - Local peer sync no-transfer offer responses now also preserve the previous

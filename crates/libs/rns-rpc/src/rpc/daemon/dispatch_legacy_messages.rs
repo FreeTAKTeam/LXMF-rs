@@ -716,43 +716,6 @@ impl RpcDaemon {
                     let record =
                         existing_peer.as_ref().expect("offer responses require an existing peer");
                     match offer_error {
-                        LXMF_PEER_ERROR_NO_IDENTITY
-                        | LXMF_PEER_ERROR_INVALID_KEY
-                        | LXMF_PEER_ERROR_INVALID_DATA
-                        | LXMF_PEER_ERROR_INVALID_STAMP
-                        | LXMF_PEER_ERROR_NOT_FOUND
-                        | LXMF_PEER_ERROR_TIMEOUT => {
-                            self.restore_peer_record_queue_marks(record)?;
-                            let record_transfer_limit_bytes =
-                                record.propagation_transfer_limit.map(|limit| limit as usize);
-                            let transfer_limit_bytes =
-                                match (record_transfer_limit_bytes, requested_transfer_limit_bytes)
-                                {
-                                    (Some(record_limit), Some(requested_limit)) => {
-                                        Some(record_limit.min(requested_limit))
-                                    }
-                                    (Some(record_limit), None) => Some(record_limit),
-                                    (None, Some(requested_limit)) => Some(requested_limit),
-                                    (None, None) => None,
-                                };
-                            let sync_limit_bytes =
-                                record.propagation_sync_limit.map(|limit| limit as usize);
-                            {
-                                let mut peers = self.peers.lock().expect("peers mutex poisoned");
-                                if let Some(peer) = peers.get_mut(record.peer.as_str()) {
-                                    peer.last_sync_attempt = timestamp;
-                                    peer.next_sync_attempt = 0;
-                                }
-                            }
-                            return Ok(self.local_peer_offer_error_response(
-                                request.id,
-                                record,
-                                timestamp,
-                                local_retryable_peer_offer_error_reason(offer_error),
-                                offer_error,
-                                (transfer_limit_bytes, sync_limit_bytes),
-                            ));
-                        }
                         LXMF_PEER_ERROR_NO_ACCESS => {
                             let cleanup = self.unpeer_local_state(record.peer.as_str())?;
                             let offered = cleanup.messages["offered"].as_u64().unwrap_or(0);
@@ -814,9 +777,35 @@ impl RpcDaemon {
                             ));
                         }
                         _ => {
-                            return Err(std::io::Error::new(
-                                std::io::ErrorKind::InvalidInput,
-                                "unsupported peer offer error response",
+                            self.restore_peer_record_queue_marks(record)?;
+                            let record_transfer_limit_bytes =
+                                record.propagation_transfer_limit.map(|limit| limit as usize);
+                            let transfer_limit_bytes =
+                                match (record_transfer_limit_bytes, requested_transfer_limit_bytes)
+                                {
+                                    (Some(record_limit), Some(requested_limit)) => {
+                                        Some(record_limit.min(requested_limit))
+                                    }
+                                    (Some(record_limit), None) => Some(record_limit),
+                                    (None, Some(requested_limit)) => Some(requested_limit),
+                                    (None, None) => None,
+                                };
+                            let sync_limit_bytes =
+                                record.propagation_sync_limit.map(|limit| limit as usize);
+                            {
+                                let mut peers = self.peers.lock().expect("peers mutex poisoned");
+                                if let Some(peer) = peers.get_mut(record.peer.as_str()) {
+                                    peer.last_sync_attempt = timestamp;
+                                    peer.next_sync_attempt = 0;
+                                }
+                            }
+                            return Ok(self.local_peer_offer_error_response(
+                                request.id,
+                                record,
+                                timestamp,
+                                local_retryable_peer_offer_error_reason(offer_error),
+                                offer_error,
+                                (transfer_limit_bytes, sync_limit_bytes),
                             ));
                         }
                     }
