@@ -8,7 +8,11 @@ just happen to live under `docs/`.
 
 These are the first places to update when behavior changes:
 
-- `docs/status/`: current repository-wide delivery and parity status
+- `docs/status/current-roadmap.md`: repository-level posture, blockers, and
+  execution order
+- `docs/status/reticulum-parity-matrix.md`: maintained Reticulum row-level
+  parity status
+- `docs/status/lxmf-parity-matrix.md`: maintained LXMF row-level parity status
 - `docs/contracts/`: public contracts, compatibility policy, support policy, API
   behavior, and protocol-facing guarantees
 - `docs/sdk/`: integration guidance for embedding `lxmf-sdk`
@@ -36,7 +40,7 @@ current behavior:
 
 - `docs/migrations/`: cutover notes and migration guidance
 - `docs/releases/`: release-specific notes
-- `docs/plans/`: planning documents and parity tracking
+- `docs/plans/`: historical planning and issue-tracking records
 - `docs/plans/framework-parity-roadmap.md`: retained parity roadmap context
 
 If one of these becomes obsolete and has no remaining references, it can be
@@ -44,7 +48,9 @@ deleted or folded into a newer source-of-truth doc.
 
 ## Directory Guide
 
-- `docs/status/current-roadmap.md`: current repo-wide delivery and parity status
+- `docs/status/current-roadmap.md`: current repo-wide posture and execution order
+- `docs/status/reticulum-parity-matrix.md`: current Reticulum parity rows
+- `docs/status/lxmf-parity-matrix.md`: current LXMF parity rows
 - `docs/sdk/README.md`: starting point for SDK integrators
 - `docs/lxmf-rs-api.md`: API surface and stability summary
 - `docs/lxmf-cli.md`: operator CLI quick reference
