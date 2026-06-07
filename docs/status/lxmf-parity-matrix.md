@@ -132,10 +132,10 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
   Python-style cumulative acceptance-rate cache values after multiple offer
   responses, offer ordering now applies Python's prioritised destination
   weighting before sync-limit selection, and persistent full-offer syncs
-  continue into the next eligible batch while lazy peers keep one-batch
-  behavior. Persistent sync transfer accounting now accumulates `tx_bytes`
-  across batches while reporting `sync_transfer_rate` from the last completed
-  batch.
+  plus selected-ID response syncs continue into the next eligible batch while
+  lazy peers keep one-batch behavior. Persistent sync transfer accounting now
+  accumulates `tx_bytes` across batches while reporting `sync_transfer_rate`
+  from the last completed batch.
   Explicit `wanted_ids` for brand-new peers are rejected before peer creation
   or queue fill, so a response without an existing offer cannot manufacture
   handled, transferred, or unhandled propagation marks.

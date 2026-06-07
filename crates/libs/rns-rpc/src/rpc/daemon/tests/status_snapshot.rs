@@ -7394,6 +7394,68 @@ fn persistent_peer_sync_continues_after_completed_batch_like_python() {
 }
 
 #[test]
+fn persistent_peer_sync_continues_after_selected_response_batch_like_python() {
+    let (daemon, peer) = ready_propagation_peer_daemon(0x52);
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let record = peers.get_mut(peer.as_str()).expect("peer record");
+        record.sync_strategy = 2;
+        record.propagation_sync_limit = Some((24 + 20 + 16 + 1) as u32);
+    }
+
+    let first = PropagationEntryRecord {
+        transient_id: "c7".repeat(32),
+        destination: "15".repeat(16),
+        payload_hex: "1b".repeat(20),
+        received_at: 1_700_000_608,
+        size_bytes: 20,
+        stamp_value: None,
+    };
+    let second = PropagationEntryRecord {
+        transient_id: "c8".repeat(32),
+        destination: "15".repeat(16),
+        payload_hex: "1c".repeat(20),
+        received_at: 1_700_000_609,
+        size_bytes: 20,
+        stamp_value: None,
+    };
+    for entry in [&first, &second] {
+        daemon.store.upsert_propagation_entry(entry).expect("store propagation entry");
+        daemon
+            .store
+            .mark_peer_unhandled_propagation(peer.as_str(), entry.transient_id.as_str())
+            .expect("mark unhandled");
+    }
+
+    let result = daemon
+        .handle_rpc(rpc_request(
+            58,
+            "peer_sync",
+            json!({
+                "peer": peer.as_str(),
+                "wanted_ids": [second.transient_id.as_str()],
+            }),
+        ))
+        .expect("persistent selected peer sync")
+        .result
+        .expect("peer sync result");
+    assert_eq!(result["sync_strategy"].as_u64(), Some(2));
+    assert_eq!(result["propagation"]["transferred"].as_u64(), Some(2));
+    assert_eq!(result["propagation"]["handled"].as_u64(), Some(2));
+    assert_eq!(result["messages"]["unhandled"].as_u64(), Some(0));
+    assert_eq!(
+        result["propagation"]["transferred_ids"].as_array().expect("transferred ids"),
+        &[json!(second.transient_id.as_str()), json!(first.transient_id.as_str())]
+    );
+
+    let pending = daemon
+        .store
+        .list_peer_unhandled_propagation(peer.as_str())
+        .expect("pending propagation");
+    assert!(pending.is_empty());
+}
+
+#[test]
 fn persistent_peer_sync_reports_last_batch_transfer_rate_like_python() {
     let (daemon, peer) = ready_propagation_peer_daemon(0x50);
     {

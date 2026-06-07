@@ -911,13 +911,10 @@ impl RpcDaemon {
                 let mut propagation_resource_bytes =
                     peer_sync_resource_data_size(propagation_resource_payloads.as_slice())?;
                 let mut propagation_last_resource_bytes = propagation_resource_bytes;
-                let persistent_full_offer_sync = record.sync_strategy == 2
-                    && wanted_ids
-                        .as_ref()
-                        .map_or(true, |ids| matches!(ids, PeerSyncWantedIds::All))
+                let persistent_followup_sync = record.sync_strategy == 2
                     && propagation_transferred > 0
                     && propagation_skipped > 0;
-                if persistent_full_offer_sync {
+                if persistent_followup_sync {
                     propagation_skipped = 0;
                     propagation_remaining_bytes = 0;
                     propagation_skipped_ids.clear();

@@ -278,6 +278,9 @@ gap, even though deeper propagation-router parity remains open.
 - Local peer sync now uses Python's persistent `sync_strategy` behavior after a
   completed full-offer transfer: persistent peers continue into the next
   eligible sync-limited batch while lazy peers retain one-batch queueing.
+- Local peer sync now also applies that persistent follow-up after completed
+  list-shaped `wanted_ids` transfers, so selected-ID peer responses continue
+  into the next sync-limited batch when unhandled messages remain.
 - Persistent local peer sync now keeps Python's transfer accounting split:
   `tx_bytes` accumulates every completed resource batch, while
   `sync_transfer_rate` reports the last completed resource instead of the
