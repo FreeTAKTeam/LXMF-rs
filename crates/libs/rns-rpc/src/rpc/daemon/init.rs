@@ -99,11 +99,27 @@ impl RpcDaemon {
         &self,
         peer: &str,
     ) -> Result<(), std::io::Error> {
+        fn push_unique(ids: &mut Vec<String>, transient_id: String) {
+            if !ids.iter().any(|id| id.eq_ignore_ascii_case(transient_id.as_str())) {
+                ids.push(transient_id);
+            }
+        }
+
+        let mut unhandled_ids = Vec::new();
+        let mut handled_ids = Vec::new();
         for entry in
             self.store.list_peer_unhandled_propagation(peer).map_err(std::io::Error::other)?
         {
             let transient_id = entry.transient_id.trim().to_ascii_lowercase();
-            self.record_peer_queue_unhandled_id(peer, transient_id.as_str());
+            if self
+                .store
+                .peer_completed_propagation_mark_exists(peer, transient_id.as_str())
+                .map_err(std::io::Error::other)?
+            {
+                push_unique(&mut handled_ids, transient_id);
+            } else {
+                push_unique(&mut unhandled_ids, transient_id);
+            }
         }
         for transient_id in
             self.store.list_peer_handled_propagation_ids(peer).map_err(std::io::Error::other)?
@@ -115,7 +131,20 @@ impl RpcDaemon {
                 .map_err(std::io::Error::other)?
                 .is_some()
             {
-                self.record_peer_queue_handled_id(peer, transient_id.as_str());
+                push_unique(&mut handled_ids, transient_id);
+            }
+        }
+        unhandled_ids.retain(|transient_id| {
+            !handled_ids.iter().any(|handled_id| handled_id.eq_ignore_ascii_case(transient_id))
+        });
+
+        let mut guard = self.peers.lock().expect("peers mutex poisoned");
+        let existing_peer_key =
+            guard.keys().find(|existing| existing.eq_ignore_ascii_case(peer)).cloned();
+        if let Some(existing_peer_key) = existing_peer_key {
+            if let Some(record) = guard.get_mut(&existing_peer_key) {
+                record.restored_handled_ids = handled_ids;
+                record.restored_unhandled_ids = unhandled_ids;
             }
         }
         Ok(())

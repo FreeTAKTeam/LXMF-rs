@@ -67,6 +67,9 @@ The project is best described by capability level:
   paths now perform the same payload-backed live queue snapshot mirroring
   before reporting the failed sync, keeping local and remote retry/export
   behavior aligned.
+- Payload-backed remote failure snapshots now replace stale serialized peer
+  queue IDs with live payload-backed marks, so bridge failures do not preserve
+  obsolete restart/export work after the underlying payload is gone.
 - Malformed remote fetch and download imports now mirror existing
   payload-backed live queue marks into active peer record snapshots before
   failing, preserving restart/export retry state for already queued relay work.
