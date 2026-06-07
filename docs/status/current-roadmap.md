@@ -296,6 +296,10 @@ gap, even though deeper propagation-router parity remains open.
   transient IDs like Python. Peer record export now also emits those restored
   Python queue IDs, so a Rust serialize/deserialize roundtrip preserves the
   LXMPeer queue marks used for later sync decisions.
+- Local offer-response handling now also rejects explicit `wanted_ids` for
+  brand-new peers before peer creation or queue fill, so a response without an
+  existing peer offer cannot manufacture handled, transferred, or unhandled
+  propagation marks.
 - Local peer sync now persists the peer acceptance-rate cache from cumulative
   `outgoing/offered` counters, matching Python `LXMPeer.acceptance_rate`
   instead of replacing the cache with only the latest offer-response ratio.

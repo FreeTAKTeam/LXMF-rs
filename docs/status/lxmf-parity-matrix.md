@@ -9,7 +9,9 @@ KISS/LoRa/RNode interface work improves the transport substrate available to
 LXMF, but it does not by itself complete LXMF peer sync, propagation router, or
 stamp worker parity.
 
-Last reassessed: 2026-06-07 (peer-record queue-ID serialization regression added)
+Last reassessed: 2026-06-07 (peer-record queue-ID serialization and new-peer
+offer-response guard regressions added; prioritised destination peer-offer
+weighting regression retained)
 
 Status legend: `not-started` | `partial` | `done`
 
@@ -134,6 +136,9 @@ names are `lxmf-wire` and `reticulum-rs-rpc`.
   behavior. Persistent sync transfer accounting now accumulates `tx_bytes`
   across batches while reporting `sync_transfer_rate` from the last completed
   batch.
+  Explicit `wanted_ids` for brand-new peers are rejected before peer creation
+  or queue fill, so a response without an existing offer cannot manufacture
+  handled, transferred, or unhandled propagation marks.
   Existing peers in local sync
   backoff now also postpone before the local existing-entry queue-fill path,
   preserve Python's liveness boundary when the attempted sync timestamp equals
@@ -204,6 +209,7 @@ Recent focused evidence:
 - `cargo test -p reticulum-rs-rpc --lib peer_record_derives_python_acceptance_rate_when_alias_is_absent -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_rejects_unknown_wanted_ids_without_mutating_queue -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_rejects_unknown_wanted_ids_without_creating_new_peer_queue -- --nocapture`
+- `cargo test -p reticulum-rs-rpc --lib peer_sync_rejects_offer_response_without_existing_peer_queue -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_rejects_transfer_limited_wanted_ids_without_mutating_queue -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_boolean -- --nocapture`
 - `cargo test -p reticulum-rs-rpc --lib peer_sync_stores_cumulative_acceptance_rate_like_python -- --nocapture`
