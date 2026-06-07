@@ -106,6 +106,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   paths mirror the same payload-backed queue marks into active peer record
   snapshots before publishing the failed sync event, so local and remote
   retry/export behavior stays aligned.
+- Malformed remote fetch imports mirror existing payload-backed queue marks into
+  active peer record snapshots before returning the import failure, so already
+  queued relay work remains visible after restart/export.
 - Restored peer record queue IDs are replayed into the live store, newly queued
   existing and inbound/imported propagation IDs are reflected in the serialized
   peer snapshot, source-peer handled IDs are preserved for restart/export, and
