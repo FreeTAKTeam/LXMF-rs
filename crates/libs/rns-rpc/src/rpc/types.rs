@@ -1,4 +1,6 @@
+use serde::de::Visitor;
 use serde::ser::SerializeMap;
+use std::fmt;
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct RpcRequest {
@@ -754,9 +756,9 @@ impl serde::Serialize for PeerRecord {
 #[derive(Deserialize)]
 struct PeerRecordWire {
     #[serde(default)]
-    peer: Option<String>,
+    peer: Option<PythonHexId>,
     #[serde(default)]
-    destination_hash: Option<String>,
+    destination_hash: Option<PythonHexId>,
     #[serde(default)]
     last_seen: Option<i64>,
     #[serde(default)]
@@ -824,9 +826,9 @@ struct PeerRecordWire {
     #[serde(default)]
     peering_key: Option<JsonValue>,
     #[serde(default)]
-    handled_ids: Vec<String>,
+    handled_ids: Vec<PythonHexId>,
     #[serde(default)]
-    unhandled_ids: Vec<String>,
+    unhandled_ids: Vec<PythonHexId>,
 }
 
 impl<'de> Deserialize<'de> for PeerRecord {
@@ -837,7 +839,8 @@ impl<'de> Deserialize<'de> for PeerRecord {
         let wire = PeerRecordWire::deserialize(deserializer)?;
         let peer = wire
             .peer
-            .or(wire.destination_hash)
+            .map(PythonHexId::into_string)
+            .or_else(|| wire.destination_hash.map(PythonHexId::into_string))
             .ok_or_else(|| serde::de::Error::missing_field("peer"))?;
         let last_seen = wire
             .last_seen
@@ -895,9 +898,72 @@ impl<'de> Deserialize<'de> for PeerRecord {
                 .or(wire.stamp_cost_flexibility),
             peering_cost: wire.peering_cost,
             peering_key_value: parse_python_peering_key_value(wire.peering_key.as_ref()),
-            restored_handled_ids: wire.handled_ids,
-            restored_unhandled_ids: wire.unhandled_ids,
+            restored_handled_ids: wire
+                .handled_ids
+                .into_iter()
+                .map(PythonHexId::into_string)
+                .collect(),
+            restored_unhandled_ids: wire
+                .unhandled_ids
+                .into_iter()
+                .map(PythonHexId::into_string)
+                .collect(),
         })
+    }
+}
+
+struct PythonHexId(String);
+
+impl PythonHexId {
+    fn into_string(self) -> String {
+        self.0
+    }
+}
+
+impl<'de> Deserialize<'de> for PythonHexId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct PythonHexIdVisitor;
+
+        impl Visitor<'_> for PythonHexIdVisitor {
+            type Value = PythonHexId;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("a hex string or MessagePack binary hash")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(PythonHexId(value.trim().to_ascii_lowercase()))
+            }
+
+            fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                self.visit_str(value.as_str())
+            }
+
+            fn visit_bytes<E>(self, value: &[u8]) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(PythonHexId(hex::encode(value)))
+            }
+
+            fn visit_byte_buf<E>(self, value: Vec<u8>) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                self.visit_bytes(value.as_slice())
+            }
+        }
+
+        deserializer.deserialize_any(PythonHexIdVisitor)
     }
 }
 
@@ -1103,6 +1169,53 @@ mod peer_record_serde_tests {
         assert_eq!(record.peering_cost, Some(3));
         assert_eq!(record.peering_key_value, Some(3));
         assert_eq!(record.sync_strategy, 2);
+    }
+
+    #[test]
+    fn peer_record_deserializes_python_msgpack_binary_peer_ids() {
+        fn key(value: &str) -> rmpv::Value {
+            rmpv::Value::String(value.into())
+        }
+
+        let destination_hash = (0x10_u8..0x20).collect::<Vec<_>>();
+        let handled_id = (0x20_u8..0x40).collect::<Vec<_>>();
+        let unhandled_id = (0x40_u8..0x60).collect::<Vec<_>>();
+        let payload = rmpv::Value::Map(vec![
+            (key("destination_hash"), rmpv::Value::Binary(destination_hash.clone())),
+            (key("last_heard"), rmpv::Value::from(1_700_001_008_i64)),
+            (key("sync_strategy"), rmpv::Value::from(2_u8)),
+            (key("peering_key"), rmpv::Value::Array(vec![rmpv::Value::Nil, rmpv::Value::from(3_u8)])),
+            (key("handled_ids"), rmpv::Value::Array(vec![rmpv::Value::Binary(handled_id.clone())])),
+            (
+                key("unhandled_ids"),
+                rmpv::Value::Array(vec![rmpv::Value::Binary(unhandled_id.clone())]),
+            ),
+            (key("offered"), rmpv::Value::from(2_u8)),
+            (key("outgoing"), rmpv::Value::from(1_u8)),
+            (key("incoming"), rmpv::Value::from(4_u8)),
+            (key("peering_cost"), rmpv::Value::from(3_u8)),
+        ]);
+        let encoded = rmp_serde::to_vec(&payload).expect("encode python peer record");
+        let record: PeerRecord =
+            rmp_serde::from_slice(encoded.as_slice()).expect("deserialize python binary peer");
+
+        assert_eq!(record.peer, hex::encode(destination_hash));
+        assert_eq!(record.restored_handled_ids, vec![hex::encode(handled_id)]);
+        assert_eq!(record.restored_unhandled_ids, vec![hex::encode(unhandled_id)]);
+        assert_eq!(record.last_seen, 1_700_001_008);
+        assert_eq!(record.peering_key_value, Some(3));
+
+        let peer_hash = (0xa0_u8..0xb0).collect::<Vec<_>>();
+        let peer_payload = rmpv::Value::Map(vec![
+            (key("peer"), rmpv::Value::Binary(peer_hash.clone())),
+            (key("last_heard"), rmpv::Value::from(1_700_001_009_i64)),
+            (key("handled_ids"), rmpv::Value::Array(Vec::new())),
+            (key("unhandled_ids"), rmpv::Value::Array(Vec::new())),
+        ]);
+        let encoded = rmp_serde::to_vec(&peer_payload).expect("encode binary peer record");
+        let record: PeerRecord =
+            rmp_serde::from_slice(encoded.as_slice()).expect("deserialize binary peer field");
+        assert_eq!(record.peer, hex::encode(peer_hash));
     }
 
     #[test]
