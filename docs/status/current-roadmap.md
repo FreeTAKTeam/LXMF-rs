@@ -87,8 +87,9 @@ The project is best described by capability level:
   no longer exists, keeping export/restart state aligned with live queue
   cleanup.
 - Restored peer records now prune serialized handled and unhandled queue IDs
-  whose payloads are missing during replay, avoiding restart/export drift when
-  Python snapshot entries outlive local propagation storage.
+  whose payloads are missing during replay, and canonicalize/deduplicate the
+  surviving IDs, avoiding restart/export drift when Python snapshot entries
+  outlive or duplicate local propagation storage.
 - Early transfer-limit decisions made before peering-key handling now update
   active peer record snapshots as completed work, keeping serialized state in
   sync with the live transfer-limited mark.

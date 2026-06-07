@@ -1953,31 +1953,37 @@ impl RpcDaemon {
 
         let mut restored_unhandled_ids = Vec::new();
         for transient_id in &record.restored_unhandled_ids {
+            let transient_id = transient_id.trim().to_ascii_lowercase();
             if self
                 .store
-                .get_propagation_entry(transient_id)
+                .get_propagation_entry(transient_id.as_str())
                 .map_err(std::io::Error::other)?
                 .is_some()
             {
                 self.store
-                    .mark_peer_unhandled_propagation(record.peer.as_str(), transient_id)
+                    .mark_peer_unhandled_propagation(record.peer.as_str(), transient_id.as_str())
                     .map_err(std::io::Error::other)?;
-                restored_unhandled_ids.push(transient_id.clone());
+                if !restored_unhandled_ids.iter().any(|id| id == &transient_id) {
+                    restored_unhandled_ids.push(transient_id);
+                }
             }
         }
 
         let mut restored_handled_ids = Vec::new();
         for transient_id in &record.restored_handled_ids {
+            let transient_id = transient_id.trim().to_ascii_lowercase();
             if self
                 .store
-                .get_propagation_entry(transient_id)
+                .get_propagation_entry(transient_id.as_str())
                 .map_err(std::io::Error::other)?
                 .is_some()
             {
                 self.store
-                    .mark_peer_handled_propagation(record.peer.as_str(), transient_id)
+                    .mark_peer_handled_propagation(record.peer.as_str(), transient_id.as_str())
                     .map_err(std::io::Error::other)?;
-                restored_handled_ids.push(transient_id.clone());
+                if !restored_handled_ids.iter().any(|id| id == &transient_id) {
+                    restored_handled_ids.push(transient_id);
+                }
             }
         }
         restored_unhandled_ids.retain(|transient_id| {

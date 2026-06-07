@@ -5195,8 +5195,16 @@ fn peer_sync_restores_python_peer_record_queue_marks_for_existing_entries_like_p
         "propagation_stamp_cost": 1,
         "propagation_stamp_cost_flexibility": 1,
         "peering_cost": 1,
-        "handled_ids": [handled.transient_id, "fa".repeat(32)],
-        "unhandled_ids": [unhandled.transient_id, "fb".repeat(32)],
+        "handled_ids": [
+            handled.transient_id.to_ascii_uppercase(),
+            handled.transient_id,
+            "fa".repeat(32)
+        ],
+        "unhandled_ids": [
+            unhandled.transient_id.to_ascii_uppercase(),
+            unhandled.transient_id,
+            "fb".repeat(32)
+        ],
     }))
     .expect("deserialize restored Python peer");
     daemon
