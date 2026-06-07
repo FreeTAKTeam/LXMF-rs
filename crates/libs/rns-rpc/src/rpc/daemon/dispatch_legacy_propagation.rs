@@ -1589,6 +1589,7 @@ impl RpcDaemon {
                                     state.last_sync_error = Some(err.to_string());
                                 });
                                 self.record_outbound_peer_activity(peer_key.as_str(), 0, false);
+                                self.record_payload_backed_peer_queue_snapshot(peer_key.as_str())?;
                                 self.publish_failed_remote_peer_sync_event(
                                     peer_key.as_str(),
                                     remote_id.as_str(),

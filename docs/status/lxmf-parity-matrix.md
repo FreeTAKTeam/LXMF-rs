@@ -102,10 +102,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   unhandled queue marks into active peer record snapshots before returning,
   preserving restart/export retry state even when the serialized snapshot was
   previously empty.
-- Retryable, throttled, and generic failed remote peer-sync paths mirror the
-  same payload-backed queue marks into active peer record snapshots before
-  publishing the failed sync event, so local and remote retry/export behavior
-  stays aligned.
+- Retryable, throttled, generic failed, and malformed-import remote peer-sync
+  paths mirror the same payload-backed queue marks into active peer record
+  snapshots before publishing the failed sync event, so local and remote
+  retry/export behavior stays aligned.
 - Restored peer record queue IDs are replayed into the live store, newly queued
   existing and inbound/imported propagation IDs are reflected in the serialized
   peer snapshot, source-peer handled IDs are preserved for restart/export, and
