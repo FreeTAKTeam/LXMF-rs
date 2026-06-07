@@ -7520,6 +7520,69 @@ fn peer_sync_retryable_offer_responses_preserve_peer_queue_like_python() {
 }
 
 #[test]
+fn peer_sync_retryable_offer_response_records_existing_queue_snapshot_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    let peer = "peer-local-retry-snapshot";
+    daemon
+        .handle_rpc(rpc_request(52, "peer_sync", json!({ "peer": peer })))
+        .expect("initial peer sync");
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let record = peers.get_mut(peer).expect("peer record");
+        record.restored_handled_ids.clear();
+        record.restored_unhandled_ids.clear();
+    }
+    let pending = PropagationEntryRecord {
+        transient_id: "b0".repeat(32),
+        destination: "12".repeat(16),
+        payload_hex: "12".repeat(24),
+        received_at: 1_700_000_611,
+        size_bytes: 24,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&pending).expect("store propagation entry");
+    daemon
+        .store
+        .mark_peer_unhandled_propagation(peer, pending.transient_id.as_str())
+        .expect("mark unhandled");
+
+    let result = daemon
+        .handle_rpc(rpc_request(
+            55,
+            "peer_sync",
+            json!({
+                "peer": peer,
+                "wanted_ids": 0xf0,
+            }),
+        ))
+        .expect("identity-required response should preserve peer queue for retry")
+        .result
+        .expect("peer sync result");
+
+    assert_eq!(result["synced"].as_bool(), Some(false));
+    assert_eq!(result["reason"].as_str(), Some("identity_required"));
+    assert_eq!(
+        daemon
+            .store
+            .list_peer_unhandled_propagation(peer)
+            .expect("pending propagation"),
+        vec![pending.clone()]
+    );
+
+    let peers = daemon.peers.lock().expect("peers mutex poisoned");
+    let record = peers.get(peer).expect("stored peer");
+    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    assert_eq!(
+        serialized["handled_ids"].as_array().expect("serialized handled ids"),
+        &[] as &[JsonValue]
+    );
+    assert_eq!(
+        serialized["unhandled_ids"].as_array().expect("serialized unhandled ids"),
+        &[json!(pending.transient_id.as_str())]
+    );
+}
+
+#[test]
 fn peer_sync_rejects_transfer_limited_wanted_ids_without_mutating_queue() {
     let daemon = RpcDaemon::test_instance();
     daemon

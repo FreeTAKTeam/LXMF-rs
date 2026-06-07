@@ -1947,8 +1947,10 @@ impl RpcDaemon {
     }
 
     fn restore_peer_record_queue_marks(&self, record: &PeerRecord) -> Result<(), std::io::Error> {
-        if record.restored_handled_ids.is_empty() && record.restored_unhandled_ids.is_empty() {
-            return Ok(());
+        fn push_unique(ids: &mut Vec<String>, transient_id: String) {
+            if !ids.iter().any(|id| id.eq_ignore_ascii_case(transient_id.as_str())) {
+                ids.push(transient_id);
+            }
         }
 
         let mut restored_unhandled_ids = Vec::new();
@@ -1963,10 +1965,18 @@ impl RpcDaemon {
                 self.store
                     .mark_peer_unhandled_propagation(record.peer.as_str(), transient_id.as_str())
                     .map_err(std::io::Error::other)?;
-                if !restored_unhandled_ids.iter().any(|id| id == &transient_id) {
-                    restored_unhandled_ids.push(transient_id);
-                }
+                push_unique(&mut restored_unhandled_ids, transient_id);
             }
+        }
+        for entry in self
+            .store
+            .list_peer_unhandled_propagation(record.peer.as_str())
+            .map_err(std::io::Error::other)?
+        {
+            push_unique(
+                &mut restored_unhandled_ids,
+                entry.transient_id.trim().to_ascii_lowercase(),
+            );
         }
 
         let mut restored_handled_ids = Vec::new();
@@ -1981,9 +1991,22 @@ impl RpcDaemon {
                 self.store
                     .mark_peer_handled_propagation(record.peer.as_str(), transient_id.as_str())
                     .map_err(std::io::Error::other)?;
-                if !restored_handled_ids.iter().any(|id| id == &transient_id) {
-                    restored_handled_ids.push(transient_id);
-                }
+                push_unique(&mut restored_handled_ids, transient_id);
+            }
+        }
+        for transient_id in self
+            .store
+            .list_peer_handled_propagation_ids(record.peer.as_str())
+            .map_err(std::io::Error::other)?
+        {
+            let transient_id = transient_id.trim().to_ascii_lowercase();
+            if self
+                .store
+                .get_propagation_entry(transient_id.as_str())
+                .map_err(std::io::Error::other)?
+                .is_some()
+            {
+                push_unique(&mut restored_handled_ids, transient_id);
             }
         }
         restored_unhandled_ids.retain(|transient_id| {

@@ -60,6 +60,9 @@ The project is best described by capability level:
   propagation queues for retry on retryable or otherwise unexpected numeric
   responses, while still treating access denial and throttling as distinct
   Python paths.
+- Retryable numeric local offer responses now mirror payload-backed live queue
+  marks into the active peer record snapshot before returning, so restart/export
+  state preserves the retry queue even when the serialized snapshot was empty.
 - Restored Python peer records now update their serialized queue ID snapshot
   when peer sync handles, transfers, or transfer-limits queued offers, reducing
   restart/export drift after live offer-response processing.
