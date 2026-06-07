@@ -15704,6 +15704,63 @@ fn failed_propagation_remote_unpeer_records_existing_queue_snapshot_like_python(
 }
 
 #[test]
+fn failed_propagation_remote_unpeer_records_case_insensitive_queue_snapshot_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    daemon.set_remote_control_bridge(Arc::new(TestRemoteControlBridge {
+        result: Err(std::io::ErrorKind::TimedOut),
+    }));
+    let stored_peer = "Peer-Remote-Unpeer-Fail-Snapshot-Case";
+    let request_peer = stored_peer.to_ascii_lowercase();
+    daemon
+        .handle_rpc(rpc_request(79, "peer_sync", json!({ "peer": stored_peer })))
+        .expect("peer sync");
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let record = peers.get_mut(stored_peer).expect("peer record");
+        record.restored_handled_ids.clear();
+        record.restored_unhandled_ids.clear();
+    }
+
+    let entry = PropagationEntryRecord {
+        transient_id: "ed".repeat(32),
+        destination: "24".repeat(16),
+        payload_hex: "24".repeat(20),
+        received_at: 1_700_000_809,
+        size_bytes: 20,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&entry).expect("store propagation entry");
+    daemon
+        .store
+        .mark_peer_unhandled_propagation(stored_peer, entry.transient_id.as_str())
+        .expect("mark unhandled");
+
+    let err = daemon
+        .handle_rpc(rpc_request(
+            80,
+            "propagation_remote_unpeer",
+            json!({
+                "remote": "remote-node",
+                "peer": request_peer,
+            }),
+        ))
+        .expect_err("remote unpeer failure should be returned");
+    assert_eq!(err.kind(), std::io::ErrorKind::TimedOut);
+
+    let peers = daemon.peers.lock().expect("peers mutex poisoned");
+    let record = peers.get(stored_peer).expect("stored peer");
+    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    assert_eq!(
+        serialized["handled_ids"].as_array().expect("serialized handled ids"),
+        &[] as &[JsonValue]
+    );
+    assert_eq!(
+        serialized["unhandled_ids"].as_array().expect("serialized unhandled ids"),
+        &[json!(entry.transient_id.as_str())]
+    );
+}
+
+#[test]
 fn unavailable_propagation_remote_unpeer_records_existing_queue_snapshot_like_python() {
     let daemon = RpcDaemon::test_instance();
     let peer = "peer-remote-unpeer-unavailable-snapshot";

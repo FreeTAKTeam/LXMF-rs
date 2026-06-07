@@ -86,8 +86,8 @@ The project is best described by capability level:
   peer creation when the bridge is absent.
 - Failed remote unpeer attempts now mirror existing payload-backed live queue
   marks into active peer record snapshots before returning bridge-unavailable
-  or bridge-execution errors, so restart/export state preserves queued retry
-  work when peering teardown fails.
+  or bridge-execution errors, including case-insensitive peer requests, so
+  restart/export state preserves queued retry work when peering teardown fails.
 - Restored Python peer records now update their serialized queue ID snapshot
   when peer sync handles, transfers, or transfer-limits queued offers, reducing
   restart/export drift after live offer-response processing.

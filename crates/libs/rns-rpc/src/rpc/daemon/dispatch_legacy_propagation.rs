@@ -2099,6 +2099,14 @@ impl RpcDaemon {
                         "peer is required",
                     ));
                 }
+                let snapshot_peer = {
+                    let guard = self.peers.lock().expect("peers mutex poisoned");
+                    guard
+                        .values()
+                        .find(|record| record.peer.eq_ignore_ascii_case(peer_id))
+                        .map(|record| record.peer.clone())
+                        .unwrap_or_else(|| peer_id.to_string())
+                };
                 let bridge = match self
                     .remote_control_bridge
                     .lock()
@@ -2107,7 +2115,8 @@ impl RpcDaemon {
                 {
                     Some(bridge) => bridge,
                     None => {
-                        let _ = self.record_payload_backed_peer_queue_snapshot(peer_id);
+                        let _ =
+                            self.record_payload_backed_peer_queue_snapshot(snapshot_peer.as_str());
                         return Err(std::io::Error::other("remote control bridge unavailable"));
                     }
                 };
@@ -2120,7 +2129,8 @@ impl RpcDaemon {
                 ) {
                     Ok(result) => result,
                     Err(err) => {
-                        let _ = self.record_payload_backed_peer_queue_snapshot(peer_id);
+                        let _ =
+                            self.record_payload_backed_peer_queue_snapshot(snapshot_peer.as_str());
                         return Err(err);
                     }
                 };

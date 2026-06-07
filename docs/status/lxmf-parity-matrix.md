@@ -125,8 +125,8 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   when the bridge is absent.
 - Failed remote unpeer attempts mirror existing payload-backed queue marks into
   active peer record snapshots before returning bridge-unavailable or
-  bridge-execution errors, so failed peering teardown preserves queued retry
-  work across restart/export.
+  bridge-execution errors, including case-insensitive peer requests, so failed
+  peering teardown preserves queued retry work across restart/export.
 - Restored peer record queue IDs are replayed into the live store, newly queued
   existing and inbound/imported propagation IDs are reflected in the serialized
   peer snapshot, source-peer handled IDs are preserved for restart/export, and
