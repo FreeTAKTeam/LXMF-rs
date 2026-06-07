@@ -313,6 +313,10 @@ impl Interface for TcpClient {
     fn mtu() -> usize {
         TcpClient::DEFAULT_MTU
     }
+
+    fn configured_mtu(&self) -> usize {
+        self.mtu
+    }
 }
 
 #[cfg(test)]

@@ -50,6 +50,14 @@ mod tests {
     }
 
     #[test]
+    fn new_context_records_configured_interface_mtu() {
+        let mut mgr = InterfaceManager::new(16);
+        let context = mgr.new_context(crate::iface::kiss::KissInterface::new("ttyUSB0", 57_600).with_mtu(220));
+
+        assert_eq!(mgr.mtu(context.channel.address()), Some(220));
+    }
+
+    #[test]
     fn set_announce_pacing_updates_registered_iface() {
         let mut mgr = InterfaceManager::new(16);
         let channel = mgr.new_channel(16);
@@ -149,6 +157,23 @@ mod tests {
         let virtual_iface =
             mgr.register_virtual_iface(host, IfaceRole::VirtualUnicast).expect("virtual iface");
         assert_eq!(mgr.announce_pacing(&virtual_iface), Some((1200, 5)));
+    }
+
+    #[test]
+    fn virtual_iface_inherits_host_mtu() {
+        let mut mgr = InterfaceManager::new(16);
+        let host = *mgr.new_channel_with_role_mode_mtu(
+            16,
+            IfaceRole::Multicast,
+            InterfaceMode::Gateway,
+            220,
+        )
+        .address();
+
+        let virtual_iface =
+            mgr.register_virtual_iface(host, IfaceRole::VirtualUnicast).expect("virtual iface");
+
+        assert_eq!(mgr.mtu(&virtual_iface), Some(220));
     }
 
     #[tokio::test]

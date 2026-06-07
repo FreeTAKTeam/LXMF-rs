@@ -351,6 +351,10 @@ impl Interface for KissInterface {
     fn mtu() -> usize {
         564
     }
+
+    fn configured_mtu(&self) -> usize {
+        self.mtu
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -514,6 +518,10 @@ impl KissTcpClientInterface {
 impl Interface for KissTcpClientInterface {
     fn mtu() -> usize {
         564
+    }
+
+    fn configured_mtu(&self) -> usize {
+        self.mtu
     }
 }
 

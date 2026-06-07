@@ -10,53 +10,6 @@ pub struct ResourceManager {
 }
 
 impl ResourceManager {
-    pub fn new() -> Self {
-        Self::new_with_config(
-            Duration::from_secs(DEFAULT_RESOURCE_RETRY_INTERVAL_SECS),
-            DEFAULT_RESOURCE_MAX_RETRIES,
-        )
-    }
-
-    pub fn new_with_config(retry_interval: Duration, retry_limit: u8) -> Self {
-        Self {
-            pending_outgoing: HashMap::new(),
-            outgoing: HashMap::new(),
-            incoming: HashMap::new(),
-            events: Vec::new(),
-            retry_interval,
-            retry_limit,
-            link_stats: HashMap::new(),
-        }
-    }
-
-    pub fn start_send(
-        &mut self,
-        link: &Link,
-        data: Vec<u8>,
-        metadata: Option<Vec<u8>>,
-    ) -> Result<(Hash, Packet), RnsError> {
-        let sender = ResourceSender::new(link, data, metadata)?;
-        let resource_hash = sender.resource_hash;
-        let packet = sender.advertisement_packet();
-        self.pending_outgoing.insert(resource_hash, sender);
-        Ok((resource_hash, packet))
-    }
-
-    pub fn start_send_with_options(
-        &mut self,
-        link: &Link,
-        data: Vec<u8>,
-        metadata: Option<Vec<u8>>,
-        request_id: Option<Vec<u8>>,
-        is_response: bool,
-    ) -> Result<(Hash, Packet), RnsError> {
-        let sender = ResourceSender::new_with_options(link, data, metadata, request_id, is_response)?;
-        let resource_hash = sender.resource_hash;
-        let packet = sender.advertisement_packet();
-        self.pending_outgoing.insert(resource_hash, sender);
-        Ok((resource_hash, packet))
-    }
-
     pub fn confirm_outbound_dispatch(&mut self, resource_hash: Hash, sent: bool) {
         let Some(mut sender) = self.pending_outgoing.remove(&resource_hash) else {
             return;
@@ -188,10 +141,20 @@ impl ResourceManager {
         link: &mut Link,
         responses: &mut Vec<Packet>,
     ) {
+        self.handle_packet_into_with_mtu(packet, link, responses, DEFAULT_RESOURCE_INTERFACE_MTU);
+    }
+
+    pub fn handle_packet_into_with_mtu(
+        &mut self,
+        packet: &Packet,
+        link: &mut Link,
+        responses: &mut Vec<Packet>,
+        interface_mtu: usize,
+    ) {
         responses.clear();
         match packet.context {
             PacketContext::ResourceAdvrtisement => {
-                self.handle_advertisement_into(packet, link, responses)
+                self.handle_advertisement_into(packet, link, responses, interface_mtu)
             }
             PacketContext::ResourceRequest => self.handle_request_into(packet, link, responses),
             PacketContext::ResourceHashUpdate => {
@@ -211,6 +174,7 @@ impl ResourceManager {
         packet: &Packet,
         link: &mut Link,
         responses: &mut Vec<Packet>,
+        interface_mtu: usize,
     ) {
         let Ok(advertisement) = ResourceAdvertisement::unpack(packet.data.as_slice()) else {
             resource_diag("reject_advertisement unpack_failed");
@@ -241,7 +205,12 @@ impl ResourceManager {
             resource_diag(&format!("advertisement_duplicate hash={resource_hash}"));
             return;
         }
-        let Ok(mut receiver) = ResourceReceiver::new(&advertisement, *link.id()) else {
+        let receiver = if interface_mtu == DEFAULT_RESOURCE_INTERFACE_MTU {
+            ResourceReceiver::new(&advertisement, *link.id())
+        } else {
+            ResourceReceiver::new_with_mtu(&advertisement, *link.id(), interface_mtu)
+        };
+        let Ok(mut receiver) = receiver else {
             log::warn!("rejecting unreasonable advertisement");
             resource_diag("reject_advertisement unreasonable");
             return;

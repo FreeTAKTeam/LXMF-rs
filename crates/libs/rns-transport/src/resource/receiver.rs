@@ -5,6 +5,7 @@ struct ResourceReceiver {
     random_hash: [u8; RANDOM_HASH_SIZE],
     parts: Vec<Option<Vec<u8>>>,
     hashmap: Vec<Option<[u8; MAPHASH_LEN]>>,
+    hashmap_segment_len: usize,
     received: usize,
     received_bytes: u64,
     total_bytes: u64,
@@ -49,8 +50,18 @@ enum PartOutcome {
 
 impl ResourceReceiver {
     fn new(adv: &ResourceAdvertisement, link_id: AddressHash) -> Result<Self, RnsError> {
+        Self::new_with_mtu(adv, link_id, DEFAULT_RESOURCE_INTERFACE_MTU)
+    }
+
+    fn new_with_mtu(
+        adv: &ResourceAdvertisement,
+        link_id: AddressHash,
+        interface_mtu: usize,
+    ) -> Result<Self, RnsError> {
         let now = Instant::now();
-        let max_parts = max_advertised_parts(adv.transfer_size)?;
+        let resource_mdu = resource_packet_mdu_for_mtu(interface_mtu)?;
+        let hashmap_segment_len = resource_hashmap_segment_len_for_mtu(interface_mtu)?;
+        let max_parts = max_advertised_parts(adv.transfer_size, resource_mdu)?;
         if adv.parts == 0 || u64::from(adv.parts) > max_parts {
             return Err(RnsError::InvalidArgument);
         }
@@ -61,6 +72,7 @@ impl ResourceReceiver {
             random_hash: adv.random_hash,
             parts: vec![None; total_parts],
             hashmap: vec![None; total_parts],
+            hashmap_segment_len,
             received: 0,
             received_bytes: 0,
             total_bytes: adv.transfer_size,
@@ -91,7 +103,7 @@ impl ResourceReceiver {
             let start = i * MAPHASH_LEN;
             let mut entry = [0u8; MAPHASH_LEN];
             entry.copy_from_slice(&bytes[start..start + MAPHASH_LEN]);
-            let idx = segment * HASHMAP_MAX_LEN + i;
+            let idx = segment * self.hashmap_segment_len + i;
             if idx < self.hashmap.len() && self.hashmap[idx].is_none() {
                 self.hashmap[idx] = Some(entry);
                 self.request_queue.push_back(idx);
@@ -370,11 +382,11 @@ fn max_decompressed_resource_size(advertised_data_size: u64) -> usize {
         .min(AUTO_COMPRESS_MAX_SIZE)
 }
 
-fn max_advertised_parts(transfer_size: u64) -> Result<u64, RnsError> {
+fn max_advertised_parts(transfer_size: u64, resource_mdu: usize) -> Result<u64, RnsError> {
     if transfer_size == 0 || transfer_size > MAX_INBOUND_RESOURCE_TRANSFER_SIZE {
         return Err(RnsError::InvalidArgument);
     }
-    let packet_mdu = PACKET_MDU as u64;
+    let packet_mdu = resource_mdu as u64;
     Ok(transfer_size.div_ceil(packet_mdu).max(1))
 }
 
