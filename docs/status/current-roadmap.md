@@ -83,6 +83,10 @@ The project is best described by capability level:
   payload-backed live queue marks into active peer record snapshots before
   returning, so already queued relay work stays restart/export visible even
   when no bridge is configured.
+- Successful remote fetch and download now also mirror existing payload-backed
+  live queue marks into active peer record snapshots after applying imports, so
+  restart/export state preserves queued retry work even when the remote
+  transfer succeeds without consuming those local queued offers.
 - Remote peer-sync backoff postponements now mirror existing payload-backed live
   queue marks into active peer record snapshots before returning, so
   restart/export state preserves queued retry work even when sync is deferred.

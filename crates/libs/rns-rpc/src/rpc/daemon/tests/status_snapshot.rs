@@ -14113,6 +14113,133 @@ fn propagation_remote_download_missing_bridge_records_existing_queue_snapshot_li
 }
 
 #[test]
+fn propagation_remote_fetch_success_records_existing_queue_snapshot_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    daemon.set_remote_control_bridge(Arc::new(TestRemoteControlBridge {
+        result: Ok(json!({
+            "available_count": 0,
+            "fetched_count": 0,
+            "messages": [],
+        })),
+    }));
+    let peer = "peer-remote-fetch-success-snapshot";
+    daemon
+        .handle_rpc(rpc_request(80, "peer_sync", json!({ "peer": peer })))
+        .expect("initial peer sync");
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let record = peers.get_mut(peer).expect("peer record");
+        record.restored_handled_ids.clear();
+        record.restored_unhandled_ids.clear();
+    }
+    let pending = PropagationEntryRecord {
+        transient_id: "e7".repeat(32),
+        destination: "17".repeat(16),
+        payload_hex: "17".repeat(24),
+        received_at: 1_700_000_805,
+        size_bytes: 24,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&pending).expect("store propagation entry");
+    daemon
+        .store
+        .mark_peer_unhandled_propagation(peer, pending.transient_id.as_str())
+        .expect("mark unhandled");
+
+    daemon
+        .handle_rpc(rpc_request(
+            81,
+            "propagation_remote_fetch",
+            json!({
+                "remote": "remote-node",
+            }),
+        ))
+        .expect("remote fetch success should preserve queued retry snapshot");
+    assert_eq!(
+        daemon
+            .store
+            .list_peer_unhandled_propagation(peer)
+            .expect("pending propagation"),
+        vec![pending.clone()]
+    );
+
+    let peers = daemon.peers.lock().expect("peers mutex poisoned");
+    let record = peers.get(peer).expect("stored peer");
+    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    assert_eq!(
+        serialized["handled_ids"].as_array().expect("serialized handled ids"),
+        &[] as &[JsonValue]
+    );
+    assert_eq!(
+        serialized["unhandled_ids"].as_array().expect("serialized unhandled ids"),
+        &[json!(pending.transient_id.as_str())]
+    );
+}
+
+#[test]
+fn propagation_remote_download_success_records_existing_queue_snapshot_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    daemon.set_remote_control_bridge(Arc::new(TestRemoteControlBridge {
+        result: Ok(json!({
+            "downloaded_count": 0,
+            "messages": [],
+        })),
+    }));
+    let peer = "peer-remote-download-success-snapshot";
+    daemon
+        .handle_rpc(rpc_request(80, "peer_sync", json!({ "peer": peer })))
+        .expect("initial peer sync");
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let record = peers.get_mut(peer).expect("peer record");
+        record.restored_handled_ids.clear();
+        record.restored_unhandled_ids.clear();
+    }
+    let pending = PropagationEntryRecord {
+        transient_id: "e6".repeat(32),
+        destination: "16".repeat(16),
+        payload_hex: "16".repeat(24),
+        received_at: 1_700_000_804,
+        size_bytes: 24,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&pending).expect("store propagation entry");
+    daemon
+        .store
+        .mark_peer_unhandled_propagation(peer, pending.transient_id.as_str())
+        .expect("mark unhandled");
+
+    daemon
+        .handle_rpc(rpc_request(
+            81,
+            "propagation_remote_download",
+            json!({
+                "remote": "remote-node",
+            }),
+        ))
+        .expect("remote download success should preserve queued retry snapshot");
+    assert_eq!(
+        daemon
+            .store
+            .list_peer_unhandled_propagation(peer)
+            .expect("pending propagation"),
+        vec![pending.clone()]
+    );
+
+    let peers = daemon.peers.lock().expect("peers mutex poisoned");
+    let record = peers.get(peer).expect("stored peer");
+    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    assert_eq!(
+        serialized["handled_ids"].as_array().expect("serialized handled ids"),
+        &[] as &[JsonValue]
+    );
+    assert_eq!(
+        serialized["unhandled_ids"].as_array().expect("serialized unhandled ids"),
+        &[json!(pending.transient_id.as_str())]
+    );
+}
+
+#[test]
 fn propagation_remote_sync_forwards_transfer_limit_to_bridge() {
     let daemon = RpcDaemon::test_instance();
     daemon.set_remote_control_bridge(Arc::new(TransferLimitRemoteControlBridge));

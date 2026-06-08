@@ -1957,6 +1957,9 @@ impl RpcDaemon {
                             imported.accepted_ids.as_slice(),
                             imported.transferred_bytes,
                         )?;
+                        for peer in self.active_peer_ids() {
+                            self.record_payload_backed_peer_queue_snapshot(peer.as_str())?;
+                        }
                         self.update_propagation_sync_state(|state| {
                             state.sync_state = PR_COMPLETE;
                             state.state_name = "completed".to_string();
@@ -2104,6 +2107,9 @@ impl RpcDaemon {
                     imported.accepted_ids.as_slice(),
                     imported.transferred_bytes,
                 )?;
+                for peer in self.active_peer_ids() {
+                    self.record_payload_backed_peer_queue_snapshot(peer.as_str())?;
+                }
                 self.update_propagation_sync_state(|state| {
                     state.sync_state = PR_COMPLETE;
                     state.state_name = "completed".to_string();

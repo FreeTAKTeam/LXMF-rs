@@ -122,6 +122,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   payload-backed queue marks into active peer record snapshots before
   returning, so queued relay work remains visible after restart/export even
   when no bridge is configured.
+- Successful remote fetch and download mirror existing payload-backed queue
+  marks into active peer record snapshots after applying imports, preserving
+  queued retry work across restart/export even when the remote transfer succeeds
+  without consuming those local queued offers.
 - Remote peer-sync backoff postponements mirror existing payload-backed queue
   marks into active peer record snapshots before returning, so deferred syncs
   preserve queued retry work across restart/export.
