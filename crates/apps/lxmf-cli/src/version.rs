@@ -1,5 +1,4 @@
 use clap::{Arg, ArgAction};
-use std::ffi::OsStr;
 
 pub const LXMF_RS_VERSION: &str = env!("LXMF_RS_VERSION");
 pub const LXMF_CLI_CRATE_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -21,22 +20,18 @@ pub fn parse_with_version<T>() -> T
 where
     T: clap::Parser + clap::CommandFactory,
 {
-    if std::env::args_os()
-        .skip(1)
-        .any(|arg| arg == OsStr::new("--version") || arg == OsStr::new("-V"))
+    let command = T::command().subcommand_required(false).arg(
+        Arg::new("diagnostic-version")
+            .short('V')
+            .long("version")
+            .help("Print project, crate, and compatibility reference versions")
+            .action(ArgAction::SetTrue),
+    );
+    if command.try_get_matches().ok().is_some_and(|matches| matches.get_flag("diagnostic-version"))
     {
         println!("{}", version_output());
         std::process::exit(0);
     }
 
-    let matches = T::command()
-        .arg(
-            Arg::new("diagnostic-version")
-                .short('V')
-                .long("version")
-                .help("Print project, crate, and compatibility reference versions")
-                .action(ArgAction::SetTrue),
-        )
-        .get_matches();
-    T::from_arg_matches(&matches).unwrap_or_else(|err| err.exit())
+    T::parse()
 }

@@ -138,8 +138,8 @@ fn negotiate_with_token_auth_preserves_remote_token_runtime_config() {
 
     assert_eq!(response.runtime_id, "runtime-zmq-token");
     assert_eq!(response.sdk_version, "9.8.7-test");
-    assert_eq!(response.python_reference.python_reticulum_version, "1.2.2-test");
-    assert_eq!(response.python_reference.python_lxmf_version, "0.9.6-test");
+    assert_eq!(response.python_reference.python_reticulum_version.as_deref(), Some("1.2.2-test"));
+    assert_eq!(response.python_reference.python_lxmf_version.as_deref(), Some("0.9.6-test"));
     assert_eq!(response.python_reference.python_lxmf_ref, "lxmf-test-ref");
     let captured = captured.lock().expect("captured request");
     let request = captured.as_ref().expect("zmq request");
@@ -200,8 +200,8 @@ fn negotiate_without_reported_parity_metadata_falls_back_to_local_constants() {
         crate::PYTHON_RETICULUM_REFERENCE_REF
     );
     assert_eq!(
-        response.python_reference.python_reticulum_version,
-        crate::PYTHON_RETICULUM_REFERENCE_VERSION
+        response.python_reference.python_reticulum_version.as_deref(),
+        Some(crate::PYTHON_RETICULUM_REFERENCE_VERSION)
     );
     server.join().expect("server joined");
 }

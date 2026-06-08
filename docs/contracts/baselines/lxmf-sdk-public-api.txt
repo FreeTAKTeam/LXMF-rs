@@ -616,9 +616,9 @@ pub lxmf_sdk::capability::NegotiationResponse::schema_namespace: alloc::string::
 pub lxmf_sdk::capability::NegotiationResponse::sdk_version: alloc::string::String
 #[non_exhaustive] pub struct lxmf_sdk::capability::ParityReference
 pub lxmf_sdk::capability::ParityReference::python_lxmf_ref: alloc::string::String
-pub lxmf_sdk::capability::ParityReference::python_lxmf_version: alloc::string::String
+pub lxmf_sdk::capability::ParityReference::python_lxmf_version: core::option::Option<alloc::string::String>
 pub lxmf_sdk::capability::ParityReference::python_reticulum_ref: alloc::string::String
-pub lxmf_sdk::capability::ParityReference::python_reticulum_version: alloc::string::String
+pub lxmf_sdk::capability::ParityReference::python_reticulum_version: core::option::Option<alloc::string::String>
 pub lxmf_sdk::capability::ParityReference::reticulum_conformance_ref: alloc::string::String
 impl core::default::Default for lxmf_sdk::capability::ParityReference
 pub fn lxmf_sdk::capability::ParityReference::default() -> Self
@@ -2097,9 +2097,9 @@ pub lxmf_sdk::PaperMessageEnvelope::transient_id: core::option::Option<alloc::st
 pub lxmf_sdk::PaperMessageEnvelope::uri: alloc::string::String
 #[non_exhaustive] pub struct lxmf_sdk::ParityReference
 pub lxmf_sdk::ParityReference::python_lxmf_ref: alloc::string::String
-pub lxmf_sdk::ParityReference::python_lxmf_version: alloc::string::String
+pub lxmf_sdk::ParityReference::python_lxmf_version: core::option::Option<alloc::string::String>
 pub lxmf_sdk::ParityReference::python_reticulum_ref: alloc::string::String
-pub lxmf_sdk::ParityReference::python_reticulum_version: alloc::string::String
+pub lxmf_sdk::ParityReference::python_reticulum_version: core::option::Option<alloc::string::String>
 pub lxmf_sdk::ParityReference::reticulum_conformance_ref: alloc::string::String
 impl core::default::Default for lxmf_sdk::capability::ParityReference
 pub fn lxmf_sdk::capability::ParityReference::default() -> Self

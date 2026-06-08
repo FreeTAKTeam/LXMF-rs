@@ -38,29 +38,21 @@ pub struct EffectiveLimits {
 #[non_exhaustive]
 pub struct ParityReference {
     pub reticulum_conformance_ref: String,
-    #[serde(default = "default_python_reticulum_reference_version")]
-    pub python_reticulum_version: String,
+    #[serde(default)]
+    pub python_reticulum_version: Option<String>,
     pub python_reticulum_ref: String,
-    #[serde(default = "default_python_lxmf_reference_version")]
-    pub python_lxmf_version: String,
+    #[serde(default)]
+    pub python_lxmf_version: Option<String>,
     pub python_lxmf_ref: String,
-}
-
-fn default_python_reticulum_reference_version() -> String {
-    crate::PYTHON_RETICULUM_REFERENCE_VERSION.to_owned()
-}
-
-fn default_python_lxmf_reference_version() -> String {
-    crate::PYTHON_LXMF_REFERENCE_VERSION.to_owned()
 }
 
 impl Default for ParityReference {
     fn default() -> Self {
         Self {
             reticulum_conformance_ref: crate::RETICULUM_CONFORMANCE_REFERENCE_REF.to_owned(),
-            python_reticulum_version: crate::PYTHON_RETICULUM_REFERENCE_VERSION.to_owned(),
+            python_reticulum_version: Some(crate::PYTHON_RETICULUM_REFERENCE_VERSION.to_owned()),
             python_reticulum_ref: crate::PYTHON_RETICULUM_REFERENCE_REF.to_owned(),
-            python_lxmf_version: crate::PYTHON_LXMF_REFERENCE_VERSION.to_owned(),
+            python_lxmf_version: Some(crate::PYTHON_LXMF_REFERENCE_VERSION.to_owned()),
             python_lxmf_ref: crate::PYTHON_LXMF_REFERENCE_REF.to_owned(),
         }
     }
@@ -164,7 +156,10 @@ pub fn negotiate_plugins(
 
 #[cfg(test)]
 mod tests {
-    use super::{negotiate_contract_version, negotiate_plugins, PluginDescriptor, PluginState};
+    use super::{
+        negotiate_contract_version, negotiate_plugins, ParityReference, PluginDescriptor,
+        PluginState,
+    };
 
     #[test]
     fn negotiate_contract_version_selects_highest_overlap() {
@@ -230,5 +225,35 @@ mod tests {
             &["sdk.capability.topics".to_owned()],
         );
         assert_eq!(resolved, vec!["domain.topics".to_owned()]);
+    }
+
+    #[test]
+    fn parity_reference_preserves_unknown_versions_from_legacy_metadata() {
+        let reference: ParityReference = serde_json::from_value(serde_json::json!({
+            "reticulum_conformance_ref": "legacy-conformance-ref",
+            "python_reticulum_ref": "legacy-reticulum-ref",
+            "python_lxmf_ref": "legacy-lxmf-ref"
+        }))
+        .expect("legacy metadata should decode");
+
+        assert_eq!(reference.reticulum_conformance_ref, "legacy-conformance-ref");
+        assert_eq!(reference.python_reticulum_version, None);
+        assert_eq!(reference.python_reticulum_ref, "legacy-reticulum-ref");
+        assert_eq!(reference.python_lxmf_version, None);
+        assert_eq!(reference.python_lxmf_ref, "legacy-lxmf-ref");
+    }
+
+    #[test]
+    fn default_parity_reference_reports_local_reference_versions() {
+        let reference = ParityReference::default();
+
+        assert_eq!(
+            reference.python_reticulum_version.as_deref(),
+            Some(crate::PYTHON_RETICULUM_REFERENCE_VERSION)
+        );
+        assert_eq!(
+            reference.python_lxmf_version.as_deref(),
+            Some(crate::PYTHON_LXMF_REFERENCE_VERSION)
+        );
     }
 }
