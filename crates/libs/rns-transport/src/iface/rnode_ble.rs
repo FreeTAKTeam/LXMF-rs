@@ -694,19 +694,25 @@ impl NativeRnodeBleKissInterface {
             let mut radio_config_sent = command_monitor.is_none();
             let mut first_tx_at: Option<TokioInstant> = None;
             while !context.cancel.is_cancelled() && !iface_stop.is_cancelled() {
-                while let Ok(message) = tx_channel.try_recv() {
-                    let mut output = OutputBuffer::new(&mut tx_buffer[..]);
-                    if message.packet.serialize(&mut output).is_err() {
-                        log::warn!("RNode BLE packet serialize failed iface={}", label);
-                        continue;
-                    }
-                    if let Err(err) = runtime.send_packet(output.as_slice()).await {
-                        log::warn!("RNode BLE packet write failed iface={} err={:?}", label, err);
-                        reconnect_needed = true;
-                        break;
-                    }
-                    if first_tx_at.is_none() {
-                        first_tx_at = Some(TokioInstant::now());
+                if radio_config_sent {
+                    while let Ok(message) = tx_channel.try_recv() {
+                        let mut output = OutputBuffer::new(&mut tx_buffer[..]);
+                        if message.packet.serialize(&mut output).is_err() {
+                            log::warn!("RNode BLE packet serialize failed iface={}", label);
+                            continue;
+                        }
+                        if let Err(err) = runtime.send_packet(output.as_slice()).await {
+                            log::warn!(
+                                "RNode BLE packet write failed iface={} err={:?}",
+                                label,
+                                err
+                            );
+                            reconnect_needed = true;
+                            break;
+                        }
+                        if first_tx_at.is_none() {
+                            first_tx_at = Some(TokioInstant::now());
+                        }
                     }
                 }
                 if reconnect_needed {
@@ -752,6 +758,8 @@ impl NativeRnodeBleKissInterface {
                                         err
                                     );
                                     reconnect_needed = true;
+                                } else {
+                                    monitor.reset_startup_deadline(startup_response_timeout);
                                 }
                             }
                         }
@@ -890,6 +898,10 @@ impl RnodeBleCommandMonitor {
     #[must_use]
     pub fn is_detected(&self) -> bool {
         self.lora.is_detected()
+    }
+
+    pub fn reset_startup_deadline(&mut self, timeout: Duration) {
+        self.startup_deadline = Some(Instant::now() + timeout);
     }
 
     #[must_use]
