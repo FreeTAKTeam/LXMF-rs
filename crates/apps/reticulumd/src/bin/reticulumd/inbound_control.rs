@@ -1217,8 +1217,8 @@ mod tests {
 
         let peer_status = &status["peers"][peer.as_str()];
         assert_eq!(peer_status["peering_timebase"].as_i64(), Some(1_700_000_700));
-        assert_eq!(peer_status["transfer_limit"].as_u64(), Some(512));
-        assert_eq!(peer_status["sync_limit"].as_u64(), Some(2048));
+        assert_eq!(peer_status["transfer_limit"].as_u64(), Some(512_000));
+        assert_eq!(peer_status["sync_limit"].as_u64(), Some(2_048_000));
         assert_eq!(peer_status["target_stamp_cost"].as_u64(), Some(4));
         assert_eq!(peer_status["stamp_cost_flexibility"].as_u64(), Some(1));
         assert_eq!(peer_status["peering_cost"].as_u64(), Some(6));
