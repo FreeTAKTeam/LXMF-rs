@@ -488,7 +488,6 @@ where
         self.session.status_with_connection(self.connected)
     }
 
-    #[cfg(feature = "rnode-ble")]
     pub async fn startup(&mut self) -> Result<(), RnodeBleKissError> {
         self.connected = false;
         self.backend
@@ -502,6 +501,7 @@ where
         //       until the stream is quiet (no message received for N ms), rather than
         //       sleeping a fixed interval. The correct signal is "no more stale frames",
         //       not "2 seconds have passed".
+        #[cfg(feature = "rnode-ble")]
         sleep(Duration::from_secs(2)).await;
         let writes = self.session.startup_frames();
         self.write_all(writes, "startup_write").await?;
