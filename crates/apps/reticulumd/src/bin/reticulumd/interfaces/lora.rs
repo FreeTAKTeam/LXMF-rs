@@ -105,7 +105,8 @@ pub(crate) fn build_rnode_ble_config(
             mtu: usize::from(lora_config.max_payload_bytes),
             max_write_len: iface.max_write_len.unwrap_or(20),
             write_with_response: false,
-            initial_frames: lora_config.command_frames(),
+            initial_frames: lora_config.probe_frames(),
+            deferred_frames: lora_config.radio_config_frames(),
             shutdown_frames: lora_config.shutdown_frames(),
             kiss: rnode_kiss_config(iface),
             ..RnodeBleKissConfig::default()

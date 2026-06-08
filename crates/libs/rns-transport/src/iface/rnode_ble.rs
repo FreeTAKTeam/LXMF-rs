@@ -53,6 +53,7 @@ pub struct RnodeBleKissConfig {
     pub max_write_len: usize,
     pub write_with_response: bool,
     pub initial_frames: Vec<Vec<u8>>,
+    pub deferred_frames: Vec<Vec<u8>>,
     pub shutdown_frames: Vec<Vec<u8>>,
     pub kiss: KissConfig,
 }
@@ -70,6 +71,7 @@ impl Default for RnodeBleKissConfig {
             max_write_len: 20,
             write_with_response: false,
             initial_frames: Vec::new(),
+            deferred_frames: Vec::new(),
             shutdown_frames: Vec::new(),
             kiss: KissConfig::default(),
         }
@@ -507,6 +509,12 @@ where
         Ok(())
     }
 
+    #[cfg(feature = "rnode-ble")]
+    pub async fn send_deferred_frames(&mut self) -> Result<(), RnodeBleKissError> {
+        let writes = self.session.deferred_frames();
+        self.write_all(writes, "deferred_frames_write").await
+    }
+
     pub async fn send_packet(&mut self, payload: &[u8]) -> Result<(), RnodeBleKissError> {
         if payload.len() > self.session.mtu() {
             return Err(RnodeBleKissError::PacketTooLarge {
@@ -683,6 +691,7 @@ impl NativeRnodeBleKissInterface {
             let mut reconnect_needed = false;
             let mut command_monitor = rnode_config
                 .map(|config| RnodeBleCommandMonitor::new(config, startup_response_timeout));
+            let mut radio_config_sent = command_monitor.is_none();
             let mut first_tx_at: Option<TokioInstant> = None;
             while !context.cancel.is_cancelled() && !iface_stop.is_cancelled() {
                 while let Ok(message) = tx_channel.try_recv() {
@@ -734,6 +743,20 @@ impl NativeRnodeBleKissInterface {
                                 reconnect_needed = true;
                                 break;
                             }
+                            if !radio_config_sent && monitor.is_detected() {
+                                radio_config_sent = true;
+                                if let Err(err) = runtime.send_deferred_frames().await {
+                                    log::warn!(
+                                        "RNode BLE radio config write failed iface={} err={:?}",
+                                        label,
+                                        err
+                                    );
+                                    reconnect_needed = true;
+                                }
+                            }
+                        }
+                        if reconnect_needed {
+                            break;
                         }
                         for payload in notification.packets {
                             if let Ok(packet) = Packet::deserialize(&mut InputBuffer::new(&payload))
@@ -865,6 +888,11 @@ impl RnodeBleCommandMonitor {
     }
 
     #[must_use]
+    pub fn is_detected(&self) -> bool {
+        self.lora.is_detected()
+    }
+
+    #[must_use]
     pub fn online(&self) -> bool {
         self.lora.online()
     }
@@ -949,6 +977,16 @@ impl RnodeBleKissSession {
             .command_frames()
             .into_iter()
             .chain(self.config.initial_frames.iter().cloned())
+            .flat_map(|frame| self.kiss_writes(frame))
+            .collect()
+    }
+
+    #[must_use]
+    pub fn deferred_frames(&mut self) -> Vec<RnodeBleWrite> {
+        self.config
+            .deferred_frames
+            .iter()
+            .cloned()
             .flat_map(|frame| self.kiss_writes(frame))
             .collect()
     }
