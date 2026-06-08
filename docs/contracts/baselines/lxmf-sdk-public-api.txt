@@ -2441,11 +2441,11 @@ pub lxmf_sdk::VoiceSessionUpdateRequest::extensions: alloc::collections::btree::
 pub lxmf_sdk::VoiceSessionUpdateRequest::session_id: lxmf_sdk::domain::VoiceSessionId
 pub lxmf_sdk::VoiceSessionUpdateRequest::state: lxmf_sdk::domain::VoiceSessionState
 pub const lxmf_sdk::CONTRACT_RELEASE: &str
-pub const lxmf_sdk::PYTHON_LXMF_REFERENCE_REF: &str
-pub const lxmf_sdk::PYTHON_LXMF_REFERENCE_VERSION: &str
-pub const lxmf_sdk::PYTHON_RETICULUM_REFERENCE_REF: &str
-pub const lxmf_sdk::PYTHON_RETICULUM_REFERENCE_VERSION: &str
-pub const lxmf_sdk::RETICULUM_CONFORMANCE_REFERENCE_REF: &str
+pub use lxmf_sdk::PYTHON_LXMF_REFERENCE_REF
+pub use lxmf_sdk::PYTHON_LXMF_REFERENCE_VERSION
+pub use lxmf_sdk::PYTHON_RETICULUM_REFERENCE_REF
+pub use lxmf_sdk::PYTHON_RETICULUM_REFERENCE_VERSION
+pub use lxmf_sdk::RETICULUM_CONFORMANCE_REFERENCE_REF
 pub const lxmf_sdk::SCHEMA_NAMESPACE: &str
 pub const lxmf_sdk::SDK_VERSION: &str
 pub trait lxmf_sdk::LxmfSdk
