@@ -11520,13 +11520,19 @@ fn selected_propagation_node_matches_existing_peer_case_insensitively_like_pytho
             .len(),
         1
     );
-    assert!(
-        daemon
-            .store
-            .list_peer_unhandled_propagation(stored_peer.to_ascii_lowercase().as_str())
-            .expect("lowercase peer unhandled")
-            .is_empty()
-    );
+    let peers = daemon
+        .handle_rpc(RpcRequest { id: 77, method: "list_peers".to_string(), params: None })
+        .expect("list peers")
+        .result
+        .expect("list peers result");
+    let peer_rows = peers["peers"].as_array().expect("peer rows");
+    let matching_rows = peer_rows
+        .iter()
+        .filter(|row| row["peer"].as_str().is_some_and(|peer| peer.eq_ignore_ascii_case(stored_peer.as_str())))
+        .collect::<Vec<_>>();
+    assert_eq!(matching_rows.len(), 1);
+    assert_eq!(matching_rows[0]["peer"].as_str(), Some(stored_peer.as_str()));
+    assert_eq!(matching_rows[0]["messages"]["unhandled"].as_u64(), Some(1));
 }
 
 #[test]
