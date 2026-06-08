@@ -12574,12 +12574,19 @@ fn selected_propagation_node_matches_existing_peer_case_insensitively_like_pytho
             .len(),
         1
     );
-    assert!(
+    assert_eq!(
         daemon
             .store
-            .list_peer_unhandled_propagation(stored_peer.to_ascii_lowercase().as_str())
-            .expect("lowercase peer unhandled")
-            .is_empty()
+            .exact_peer_unhandled_propagation_mark_count(stored_peer.as_str())
+            .expect("stored peer exact unhandled"),
+        1
+    );
+    assert_eq!(
+        daemon
+            .store
+            .exact_peer_unhandled_propagation_mark_count(stored_peer.to_ascii_lowercase().as_str())
+            .expect("lowercase peer exact unhandled"),
+        0
     );
 }
 

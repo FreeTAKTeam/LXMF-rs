@@ -237,6 +237,9 @@ The project is best described by capability level:
 - Peer activation also merges case-variant preexisting live completed marks
   into the activated peer key before queue replay, avoiding restart/export
   drift when transfer accounting arrives before the peer record case is known.
+- Selected propagation node activation now reuses the existing peer record case
+  before queue replay and canonicalizes merged live marks, so caller-case
+  variants do not leave duplicate peer queue rows.
 - Peer unpeer cleanup now clears case-variant propagation marks as one peer,
   so completed marks merged during activation cannot survive teardown and
   reappear as handled work when that peer is later reactivated.

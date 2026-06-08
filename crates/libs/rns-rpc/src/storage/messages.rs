@@ -920,6 +920,12 @@ impl MessagesStore {
                     updated_at = MAX(propagation_peer_entries.updated_at, excluded.updated_at)",
                 params![peer],
             )?;
+            conn.execute(
+                "DELETE FROM propagation_peer_entries
+                 WHERE LOWER(peer) = LOWER(?1)
+                   AND peer <> ?1",
+                params![peer],
+            )?;
             Ok(())
         })
     }
@@ -1241,6 +1247,24 @@ impl MessagesStore {
             )?;
             let rows = stmt.query_map(params![peer], |row| row.get(0))?;
             rows.collect()
+        })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn exact_peer_unhandled_propagation_mark_count(
+        &self,
+        peer: &str,
+    ) -> rusqlite::Result<usize> {
+        self.with_read_conn(|conn| {
+            let count: i64 = conn.query_row(
+                "SELECT COUNT(*)
+                 FROM propagation_peer_entries
+                 WHERE peer = ?1
+                   AND state = 'unhandled'",
+                params![peer],
+                |row| row.get(0),
+            )?;
+            Ok(count.max(0) as usize)
         })
     }
 

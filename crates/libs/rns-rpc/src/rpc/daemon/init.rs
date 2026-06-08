@@ -1321,21 +1321,27 @@ impl RpcDaemon {
         if peer.is_empty() {
             return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "peer is required"));
         }
-        let existing_peer_type = self
+        let existing_peer = self
             .peers
             .lock()
             .expect("peers mutex poisoned")
             .values()
             .find(|record| record.peer.eq_ignore_ascii_case(peer))
-            .and_then(|record| record.peer_type.clone());
-        let peer_type = if self.is_static_peer(peer) {
+            .map(|record| (record.peer.clone(), record.peer_type.clone()));
+        let peer_key = existing_peer
+            .as_ref()
+            .map(|(peer, _)| peer.clone())
+            .unwrap_or_else(|| peer.to_string());
+        let existing_peer_type =
+            existing_peer.as_ref().and_then(|(_, peer_type)| peer_type.clone());
+        let peer_type = if self.is_static_peer(peer_key.as_str()) {
             Some("static".to_string())
         } else if existing_peer_type.as_deref() == Some("unpeered") {
             Some("manual".to_string())
         } else {
             existing_peer_type.or(Some("manual".to_string()))
         };
-        self.upsert_peer(peer.to_string(), timestamp, Vec::new(), None, None, peer_type)
+        self.upsert_peer(peer_key, timestamp, Vec::new(), None, None, peer_type)
     }
 
     pub(super) fn activate_static_peers(
