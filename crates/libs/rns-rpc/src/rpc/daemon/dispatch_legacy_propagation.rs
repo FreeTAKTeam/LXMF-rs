@@ -287,7 +287,7 @@ impl RpcDaemon {
         let mut imported_count = 0usize;
         let mut duplicate_count = 0usize;
         let mut imported_ids = Vec::new();
-        let mut accepted_ids = Vec::new();
+        let mut accepted_ids: Vec<String> = Vec::new();
         let mut transferred_bytes = 0usize;
         for message in messages {
             let Some(payload_hex) = message.get("payload_hex").and_then(JsonValue::as_str) else {
@@ -352,7 +352,9 @@ impl RpcDaemon {
                 .lock()
                 .expect("propagation payload mutex poisoned")
                 .insert(transient_id.clone(), record.payload_hex);
-            accepted_ids.push(transient_id.clone());
+            if !accepted_ids.iter().any(|id| id.eq_ignore_ascii_case(transient_id.as_str())) {
+                accepted_ids.push(transient_id.clone());
+            }
             if already_known {
                 duplicate_count = duplicate_count.saturating_add(1);
             } else {

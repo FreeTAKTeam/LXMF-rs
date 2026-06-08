@@ -13134,6 +13134,79 @@ fn duplicate_propagation_remote_fetch_queues_known_payload_without_double_counti
 }
 
 #[test]
+fn propagation_remote_fetch_deduplicates_same_response_for_peer_incoming_like_python() {
+    let payload = b"duplicate-same-fetch-response-payload";
+    let payload_hex = hex::encode(payload);
+    let transient_id = hex::encode(Sha256::digest(payload));
+    let source_peer = "remote-fetch-dedup-source";
+    let relay_peer = "remote-fetch-dedup-relay";
+    let daemon = RpcDaemon::test_instance();
+    daemon
+        .handle_rpc(rpc_request(72, "peer_sync", json!({ "peer": source_peer })))
+        .expect("seed source peer");
+    daemon
+        .handle_rpc(rpc_request(73, "peer_sync", json!({ "peer": relay_peer })))
+        .expect("seed relay peer");
+    daemon.set_remote_control_bridge(Arc::new(TestRemoteControlBridge {
+        result: Ok(json!({
+            "available_count": 2,
+            "fetched_count": 2,
+            "messages": [
+                {
+                    "transient_id": transient_id,
+                    "payload_hex": payload_hex,
+                },
+                {
+                    "transient_id": transient_id,
+                    "payload_hex": payload_hex,
+                },
+            ],
+        })),
+    }));
+
+    let result = daemon
+        .handle_rpc(rpc_request(
+            74,
+            "propagation_remote_fetch",
+            json!({ "remote": source_peer }),
+        ))
+        .expect("remote fetch")
+        .result
+        .expect("remote fetch result");
+    assert_eq!(result["result"]["imported_count"].as_u64(), Some(1));
+    assert_eq!(result["result"]["duplicate_count"].as_u64(), Some(1));
+    assert_eq!(result["result"]["imported_ids"], json!([transient_id]));
+
+    assert_eq!(
+        daemon
+            .store
+            .list_peer_handled_propagation_ids(source_peer)
+            .expect("source handled ids"),
+        vec![transient_id.clone()]
+    );
+    let relay_pending = daemon
+        .store
+        .list_peer_unhandled_propagation(relay_peer)
+        .expect("relay pending");
+    assert_eq!(relay_pending.len(), 1);
+    assert_eq!(relay_pending[0].transient_id, transient_id);
+
+    let peers = daemon
+        .handle_rpc(RpcRequest { id: 75, method: "list_peers".to_string(), params: None })
+        .expect("list peers")
+        .result
+        .expect("list peers result");
+    let source_row = peers["peers"]
+        .as_array()
+        .expect("peer rows")
+        .iter()
+        .find(|row| row["peer"].as_str() == Some(source_peer))
+        .expect("source peer row");
+    assert_eq!(source_row["messages"]["incoming"].as_u64(), Some(1));
+    assert_eq!(source_row["incoming"].as_u64(), Some(1));
+}
+
+#[test]
 fn propagation_remote_fetch_preserves_transfer_limited_peer_queue_mark_like_python() {
     let payload = b"remote-fetch-retry-transfer-limited-payload";
     let payload_hex = hex::encode(payload);

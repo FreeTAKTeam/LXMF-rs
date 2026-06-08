@@ -114,6 +114,9 @@ The project is best described by capability level:
   snapshots when they queue new unhandled IDs or mark source peers handled,
   keeping restart/export state aligned with live queue fan-out and source
   accounting.
+- Remote import batches now deduplicate accepted transient IDs before applying
+  peer queue and incoming-message side effects, so duplicate payloads in one
+  fetch/download/sync response do not inflate peer queue accounting.
 - Propagation purge cleanup removes deleted local payload IDs from active peer
   record snapshots, so restart/export state does not retain purged queue entries
   after the live peer marks have been cleared.
