@@ -110,6 +110,9 @@ The project is best described by capability level:
 - Incremental peer queue snapshot helpers now canonicalize transient IDs before
   serializing handled or unhandled queue state, preventing padded or upper-case
   caller IDs from leaking into restart/export snapshots.
+- Transfer-limited peer marks now remain terminal when later generic handled
+  reports arrive, so transfer-limit retry decisions do not get reclassified as
+  offered/handled work in peer queue accounting.
 - Completed peer mark helpers now write and read received/transferred live
   marks under the stored peer ID case when a peer record already exists, keeping
   live queue state and serialized restart/export snapshots on the same peer key.

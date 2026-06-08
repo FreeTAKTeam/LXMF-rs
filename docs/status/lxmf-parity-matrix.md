@@ -148,6 +148,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Incremental peer queue snapshot helpers canonicalize transient IDs before
   serializing handled or unhandled queue state, so padded or upper-case caller
   IDs do not leak into restart/export snapshots.
+- Transfer-limited peer marks remain terminal when a later generic handled
+  report arrives, so transfer-limit retry decisions are not reclassified as
+  offered/handled work in peer queue accounting.
 - Completed peer mark helpers write and read received/transferred live marks
   under the stored peer ID case when a peer record already exists, keeping live
   queue state and serialized restart/export snapshots aligned.

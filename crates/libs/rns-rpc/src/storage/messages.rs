@@ -888,7 +888,7 @@ impl MessagesStore {
                  ON CONFLICT(peer, transient_id) DO UPDATE SET
                     state = 'handled',
                     updated_at = excluded.updated_at
-                 WHERE propagation_peer_entries.state NOT IN ('transferred', 'received')",
+                 WHERE propagation_peer_entries.state NOT IN ('transferred', 'received', 'transfer_limited')",
                 params![peer, normalize_hex_key(transient_id), now_unix_secs()],
             )?;
             Ok(())
@@ -2647,14 +2647,29 @@ mod tests {
             size_bytes: 28,
             stamp_value: None,
         };
+        let transfer_limited = PropagationEntryRecord {
+            transient_id: "c7".repeat(32),
+            destination: "77".repeat(16),
+            payload_hex: "77".repeat(32),
+            received_at: 106,
+            size_bytes: 32,
+            stamp_value: None,
+        };
         store.upsert_propagation_entry(&transferred).expect("transferred entry");
         store.upsert_propagation_entry(&received).expect("received entry");
+        store.upsert_propagation_entry(&transfer_limited).expect("transfer limited entry");
         store
             .mark_peer_transferred_propagation("peer-completed", transferred.transient_id.as_str())
             .expect("mark transferred");
         store
             .mark_peer_received_propagation("peer-completed", received.transient_id.as_str())
             .expect("mark received");
+        store
+            .mark_peer_transfer_limited_propagation(
+                "peer-completed",
+                transfer_limited.transient_id.as_str(),
+            )
+            .expect("mark transfer limited");
 
         store
             .mark_peer_handled_propagation("peer-completed", transferred.transient_id.as_str())
@@ -2662,6 +2677,9 @@ mod tests {
         store
             .mark_peer_handled_propagation("peer-completed", received.transient_id.as_str())
             .expect("ignore received downgrade");
+        store
+            .mark_peer_handled_propagation("peer-completed", transfer_limited.transient_id.as_str())
+            .expect("ignore transfer-limited downgrade");
 
         assert_eq!(
             store.peer_propagation_message_stats("peer-completed").expect("peer stats"),
