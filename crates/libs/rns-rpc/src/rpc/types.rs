@@ -786,15 +786,15 @@ struct PeerRecordWire {
     #[serde(default = "default_network_distance")]
     network_distance: u32,
     #[serde(default)]
-    offered: u64,
+    offered: Option<JsonValue>,
     #[serde(default)]
-    outgoing: u64,
+    outgoing: Option<JsonValue>,
     #[serde(default)]
-    incoming: u64,
+    incoming: Option<JsonValue>,
     #[serde(default)]
-    rx_bytes: u64,
+    rx_bytes: Option<JsonValue>,
     #[serde(default)]
-    tx_bytes: u64,
+    tx_bytes: Option<JsonValue>,
     #[serde(default)]
     sync_transfer_rate: Option<f64>,
     #[serde(default)]
@@ -875,11 +875,32 @@ impl<'de> Deserialize<'de> for PeerRecord {
             .map_err(serde::de::Error::custom)?
             .unwrap_or_default();
         let sync_transfer_rate = wire.sync_transfer_rate.or(wire.str).unwrap_or_default();
+        let offered = wire.offered.as_ref().and_then(parse_python_int_u64).unwrap_or_default();
+        let outgoing = wire
+            .outgoing
+            .as_ref()
+            .and_then(parse_python_int_u64)
+            .unwrap_or_default();
+        let incoming = wire
+            .incoming
+            .as_ref()
+            .and_then(parse_python_int_u64)
+            .unwrap_or_default();
+        let rx_bytes = wire
+            .rx_bytes
+            .as_ref()
+            .and_then(parse_python_int_u64)
+            .unwrap_or_default();
+        let tx_bytes = wire
+            .tx_bytes
+            .as_ref()
+            .and_then(parse_python_int_u64)
+            .unwrap_or_default();
         let acceptance_rate = wire.acceptance_rate.unwrap_or_else(|| {
-            if wire.offered == 0 {
+            if offered == 0 {
                 0.0
             } else {
-                (wire.outgoing as f64 / wire.offered as f64).max(0.0)
+                (outgoing as f64 / offered as f64).max(0.0)
             }
         });
         let python_transfer_limit = wire.propagation_transfer_limit.is_some();
@@ -909,11 +930,11 @@ impl<'de> Deserialize<'de> for PeerRecord {
             next_sync_attempt,
             sync_backoff: wire.sync_backoff,
             network_distance: wire.network_distance,
-            offered: wire.offered,
-            outgoing: wire.outgoing,
-            incoming: wire.incoming,
-            rx_bytes: wire.rx_bytes,
-            tx_bytes: wire.tx_bytes,
+            offered,
+            outgoing,
+            incoming,
+            rx_bytes,
+            tx_bytes,
             sync_transfer_rate,
             acceptance_rate,
             first_seen: wire.first_seen.unwrap_or(last_seen),
@@ -1242,6 +1263,23 @@ fn parse_python_int_u32(value: &JsonValue) -> Option<u32> {
         Some(u32::from(value))
     } else if let Some(value) = value.as_str() {
         u32::try_from(value.trim().parse::<i64>().ok()?.max(0)).ok()
+    } else {
+        None
+    }
+}
+
+fn parse_python_int_u64(value: &JsonValue) -> Option<u64> {
+    if let Some(value) = value.as_u64() {
+        Some(value)
+    } else if let Some(value) = value.as_i64() {
+        u64::try_from(value.max(0)).ok()
+    } else if let Some(value) = value.as_f64() {
+        let value = value.max(0.0).trunc();
+        (value.is_finite() && value <= u64::MAX as f64).then_some(value as u64)
+    } else if let Some(value) = value.as_bool() {
+        Some(u64::from(value))
+    } else if let Some(value) = value.as_str() {
+        u64::try_from(value.trim().parse::<i64>().ok()?.max(0)).ok()
     } else {
         None
     }

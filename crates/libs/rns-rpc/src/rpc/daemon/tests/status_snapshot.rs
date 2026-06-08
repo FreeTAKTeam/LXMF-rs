@@ -9143,6 +9143,75 @@ fn peer_sync_restored_python_float_timestamps_drive_transfer_like_python() {
 }
 
 #[test]
+fn peer_sync_restored_python_float_counters_preserve_queue_accounting_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    let peer = "peer-restored-float-counters";
+    let record: PeerRecord = serde_json::from_value(json!({
+        "destination_hash": peer,
+        "last_heard": 1_700_000_624,
+        "alive": true,
+        "offered": 2.0,
+        "outgoing": 1.0,
+        "incoming": 3.0,
+        "rx_bytes": 10.0,
+        "tx_bytes": 20.0,
+        "propagation_sync_limit": 1,
+        "propagation_stamp_cost": 0,
+        "propagation_stamp_cost_flexibility": 0,
+        "peering_cost": 0,
+        "peering_key": ["opaque-python-key", 0],
+        "sync_strategy": 1,
+        "handled_ids": [],
+        "unhandled_ids": [],
+    }))
+    .expect("deserialize restored Python peer with float counters");
+    assert_eq!(record.offered, 2);
+    assert_eq!(record.outgoing, 1);
+    assert_eq!(record.incoming, 3);
+    assert_eq!(record.rx_bytes, 10);
+    assert_eq!(record.tx_bytes, 20);
+    daemon
+        .peers
+        .lock()
+        .expect("peers mutex poisoned")
+        .insert(peer.to_string(), record);
+
+    let entry = PropagationEntryRecord {
+        transient_id: "ce".repeat(32),
+        destination: "15".repeat(16),
+        payload_hex: "22".repeat(20),
+        received_at: 1_700_000_625,
+        size_bytes: 20,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&entry).expect("store entry");
+    daemon
+        .store
+        .mark_peer_unhandled_propagation(peer, entry.transient_id.as_str())
+        .expect("mark unhandled");
+
+    let result = daemon
+        .handle_rpc(rpc_request(57, "peer_sync", json!({ "peer": peer })))
+        .expect("restored-float-counter peer sync")
+        .result
+        .expect("peer sync result");
+    assert_eq!(result["propagation"]["transferred"].as_u64(), Some(1));
+    assert_eq!(result["messages"]["offered"].as_u64(), Some(3));
+    assert_eq!(result["messages"]["outgoing"].as_u64(), Some(2));
+    assert_eq!(result["messages"]["incoming"].as_u64(), Some(3));
+    assert_eq!(result["rx_bytes"].as_u64(), Some(10));
+    assert!(
+        result["tx_bytes"].as_u64().is_some_and(|value| value > 20),
+        "tx_bytes should include the restored value plus this transfer"
+    );
+    assert!(
+        result["acceptance_rate"]
+            .as_f64()
+            .is_some_and(|value| (value - (2.0 / 3.0)).abs() < f64::EPSILON)
+    );
+}
+
+#[test]
 fn persistent_peer_sync_keeps_selected_response_skips_for_next_offer_like_python() {
     let (daemon, peer) = ready_propagation_peer_daemon(0x52);
     {
