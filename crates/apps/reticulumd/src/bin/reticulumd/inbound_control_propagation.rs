@@ -164,10 +164,6 @@ pub(super) fn handle_offer_request(
         }
         return ControlResponse::Bool(false);
     }
-    let remote_propagation_hash = hex::encode(remote_propagation_hash);
-    if daemon.record_propagation_offer_peer(remote_propagation_hash.as_str()).is_err() {
-        return ControlResponse::Code(error_no_access);
-    }
     if let Ok(mut guard) = control.validated_peer_links.lock() {
         guard.insert(*link_id);
     }
@@ -288,6 +284,8 @@ mod tests {
         let remote_private =
             rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
         let remote_identity = *remote_private.as_identity();
+        let remote_propagation_hash =
+            hex::encode(propagation_destination_hash_for_identity(&remote_identity));
         let mut peering_id = Vec::with_capacity(32);
         peering_id.extend_from_slice(local_identity_hash.as_slice());
         peering_id.extend_from_slice(remote_identity.address_hash.as_slice());
@@ -330,6 +328,19 @@ mod tests {
             .lock()
             .expect("validated peer links")
             .contains(&link_id));
+        let peers = daemon
+            .handle_rpc(RpcRequest { id: 11, method: "list_peers".to_string(), params: None })
+            .expect("list peers")
+            .result
+            .expect("list peers result");
+        assert!(
+            peers["peers"]
+                .as_array()
+                .expect("peer rows")
+                .iter()
+                .all(|row| row["peer"].as_str() != Some(remote_propagation_hash.as_str())),
+            "wanted offers should validate the link without admitting or queueing the peer"
+        );
     }
 
     #[test]
@@ -667,7 +678,7 @@ mod tests {
     }
 
     #[test]
-    fn offer_request_rejects_capacity_limited_peer_admission() {
+    fn offer_request_defers_capacity_limited_peer_admission_like_python() {
         let daemon = RpcDaemon::test_instance();
         daemon
             .handle_rpc(RpcRequest {
@@ -725,7 +736,7 @@ mod tests {
             0xF6,
         );
 
-        assert!(matches!(response, ControlResponse::Code(0xF1)));
+        assert!(matches!(response, ControlResponse::Bool(true)));
         let peers = daemon
             .handle_rpc(RpcRequest { id: 12, method: "list_peers".to_string(), params: None })
             .expect("list peers")
@@ -737,11 +748,11 @@ mod tests {
                 .expect("peer rows")
                 .iter()
                 .all(|row| row["peer"].as_str() != Some(remote_propagation_hash.as_str())),
-            "capacity-limited offer must not create a peer record"
+            "wanted offer response should not consume peer capacity before transfer admission"
         );
         assert!(
-            !control.validated_peer_links.lock().expect("validated peer links").contains(&link_id),
-            "capacity-limited offer must not validate the peering link"
+            control.validated_peer_links.lock().expect("validated peer links").contains(&link_id),
+            "valid wanted offer should still validate the peering link"
         );
     }
 

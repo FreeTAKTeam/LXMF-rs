@@ -197,9 +197,10 @@ The project is best described by capability level:
 - Inbound propagation offer requests with too-short list payloads now follow
   Python's caught-exception nil response path without validating the link or
   admitting a propagation peer.
-- Valid inbound propagation offers whose advertised IDs are empty or already
-  known now return Python's "wants none" response after peering-key validation
-  without admitting the remote peer or queuing local propagation payloads for it.
+- Valid inbound propagation offers now answer Python's `False`, `True`, or
+  wanted-ID list responses after peering-key validation without admitting the
+  remote peer or queuing local propagation payloads before a real transfer or
+  message-get admission point.
 - Remote fetch and download imports now mark inactive source peers as received
   before later activation, so a propagation node is not offered back payloads it
   previously supplied just because it was not yet an active peer record.
