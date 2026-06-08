@@ -11908,6 +11908,45 @@ fn propagation_remote_sync_trims_remote_before_bridge_event_and_response() {
 }
 
 #[test]
+fn propagation_remote_sync_uses_stored_peer_case_for_bridge_and_response_like_python() {
+    let stored_peer = "Ab".repeat(16);
+    let request_peer = stored_peer.to_ascii_lowercase();
+    let daemon = RpcDaemon::test_instance();
+    daemon.set_remote_control_bridge(Arc::new(TestRemoteControlBridge {
+        result: Ok(json!({"synced": true})),
+    }));
+    daemon
+        .handle_rpc(rpc_request(89, "peer_sync", json!({ "peer": stored_peer.as_str() })))
+        .expect("seed mixed-case peer");
+
+    let result = daemon
+        .handle_rpc(rpc_request(
+            90,
+            "propagation_remote_sync",
+            json!({
+                "remote": "remote-case-peer",
+                "peer": request_peer.as_str(),
+            }),
+        ))
+        .expect("remote sync with case-variant peer")
+        .result
+        .expect("remote sync result");
+
+    assert_eq!(result["peer"].as_str(), Some(stored_peer.as_str()));
+    assert_eq!(result["result"]["peer"].as_str(), Some(stored_peer.as_str()));
+    assert_eq!(result["peer_sync"]["peer"].as_str(), Some(stored_peer.as_str()));
+
+    let peers = daemon
+        .handle_rpc(RpcRequest { id: 91, method: "list_peers".to_string(), params: None })
+        .expect("list peers")
+        .result
+        .expect("list peers result");
+    let rows = peers["peers"].as_array().expect("peer rows");
+    assert!(rows.iter().any(|row| row["peer"].as_str() == Some(stored_peer.as_str())));
+    assert!(rows.iter().all(|row| row["peer"].as_str() != Some(request_peer.as_str())));
+}
+
+#[test]
 fn propagation_remote_sync_respects_peer_backoff_before_bridge_call() {
     let daemon = RpcDaemon::test_instance();
     daemon

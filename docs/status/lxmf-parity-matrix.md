@@ -129,6 +129,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   queue marks into active peer record snapshots for already known peers before
   returning, including case-insensitive requests, without creating new peers
   when the bridge is absent.
+- Remote peer-sync uses the stored peer ID case for the bridge call, import
+  source accounting, state updates, and response envelope when callers supply a
+  case-variant peer request.
 - Failed remote unpeer attempts mirror existing payload-backed queue marks into
   active peer record snapshots before returning bridge-unavailable or
   bridge-execution errors, including case-insensitive peer requests, so failed

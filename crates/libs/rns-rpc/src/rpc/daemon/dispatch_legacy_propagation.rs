@@ -1599,7 +1599,7 @@ impl RpcDaemon {
                 let mut peer_sync_result = JsonValue::Null;
                 let result = match bridge.propagation_remote_sync(
                     remote_id.as_str(),
-                    peer_id.as_str(),
+                    peer_key.as_str(),
                     parsed.identity_private_key_hex.as_deref(),
                     timeout_secs,
                     transfer_limit_kb,
@@ -1643,7 +1643,7 @@ impl RpcDaemon {
                             );
                         }
                         self.queue_remote_sync_imports_for_peers(
-                            peer_id.as_str(),
+                            peer_key.as_str(),
                             imported.accepted_ids.as_slice(),
                             imported.transferred_bytes,
                         )?;
@@ -1658,7 +1658,7 @@ impl RpcDaemon {
                         if let Ok(mut peers) = self.peers.lock() {
                             if let Some(peer) = peers
                                 .values_mut()
-                                .find(|record| record.peer.eq_ignore_ascii_case(peer_id.as_str()))
+                                .find(|record| record.peer.eq_ignore_ascii_case(peer_key.as_str()))
                             {
                                 peer.alive = true;
                                 peer.last_seen = peer_sync_completed_at;
@@ -1672,7 +1672,7 @@ impl RpcDaemon {
                             .lock()
                             .expect("peers mutex poisoned")
                             .values()
-                            .find(|record| record.peer.eq_ignore_ascii_case(peer_id.as_str()))
+                            .find(|record| record.peer.eq_ignore_ascii_case(peer_key.as_str()))
                             .cloned();
                         if let Some(peer) = peer {
                             let (
@@ -1842,7 +1842,7 @@ impl RpcDaemon {
                     id: request.id,
                     result: Some(json!({
                         "remote": remote_id,
-                        "peer": peer_id,
+                        "peer": peer_key,
                         "propagation": propagation,
                         "peer_sync": peer_sync_result,
                         "result": result,
