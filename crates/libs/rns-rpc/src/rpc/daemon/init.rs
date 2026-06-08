@@ -58,6 +58,10 @@ impl RpcDaemon {
     }
 
     pub(super) fn record_peer_queue_unhandled_id(&self, peer: &str, transient_id: &str) {
+        let transient_id = transient_id.trim().to_ascii_lowercase();
+        if transient_id.is_empty() {
+            return;
+        }
         let existing_peer_key = {
             let guard = self.peers.lock().expect("peers mutex poisoned");
             guard.keys().find(|existing| existing.eq_ignore_ascii_case(peer)).cloned()
@@ -67,25 +71,38 @@ impl RpcDaemon {
         };
         if self
             .store
-            .peer_completed_propagation_mark_exists(existing_peer_key.as_str(), transient_id)
+            .peer_completed_propagation_mark_exists(
+                existing_peer_key.as_str(),
+                transient_id.as_str(),
+            )
             .unwrap_or(false)
         {
-            self.record_peer_queue_handled_id(existing_peer_key.as_str(), transient_id);
+            self.record_peer_queue_handled_id(existing_peer_key.as_str(), transient_id.as_str());
             return;
         }
         let mut guard = self.peers.lock().expect("peers mutex poisoned");
         let Some(record) = guard.get_mut(&existing_peer_key) else {
             return;
         };
-        if record.restored_handled_ids.iter().any(|id| id.eq_ignore_ascii_case(transient_id))
-            || record.restored_unhandled_ids.iter().any(|id| id.eq_ignore_ascii_case(transient_id))
+        if record
+            .restored_handled_ids
+            .iter()
+            .any(|id| id.eq_ignore_ascii_case(transient_id.as_str()))
+            || record
+                .restored_unhandled_ids
+                .iter()
+                .any(|id| id.eq_ignore_ascii_case(transient_id.as_str()))
         {
             return;
         }
-        record.restored_unhandled_ids.push(transient_id.to_string());
+        record.restored_unhandled_ids.push(transient_id);
     }
 
     pub(super) fn record_peer_queue_handled_id(&self, peer: &str, transient_id: &str) {
+        let transient_id = transient_id.trim().to_ascii_lowercase();
+        if transient_id.is_empty() {
+            return;
+        }
         let mut guard = self.peers.lock().expect("peers mutex poisoned");
         let existing_peer_key =
             guard.keys().find(|existing| existing.eq_ignore_ascii_case(peer)).cloned();
@@ -95,9 +112,13 @@ impl RpcDaemon {
         let Some(record) = guard.get_mut(&existing_peer_key) else {
             return;
         };
-        record.restored_unhandled_ids.retain(|id| !id.eq_ignore_ascii_case(transient_id));
-        if !record.restored_handled_ids.iter().any(|id| id.eq_ignore_ascii_case(transient_id)) {
-            record.restored_handled_ids.push(transient_id.to_string());
+        record.restored_unhandled_ids.retain(|id| !id.eq_ignore_ascii_case(transient_id.as_str()));
+        if !record
+            .restored_handled_ids
+            .iter()
+            .any(|id| id.eq_ignore_ascii_case(transient_id.as_str()))
+        {
+            record.restored_handled_ids.push(transient_id);
         }
     }
 

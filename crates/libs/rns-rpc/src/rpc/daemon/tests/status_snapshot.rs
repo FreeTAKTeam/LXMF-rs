@@ -16592,6 +16592,61 @@ fn peer_queue_unhandled_snapshot_preserves_case_insensitive_completed_mark_like_
 }
 
 #[test]
+fn peer_queue_snapshot_helpers_canonicalize_transient_ids_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    let stored_peer = "Peer-Snapshot-Canonical-Ids";
+    let request_peer = stored_peer.to_ascii_lowercase();
+    daemon
+        .handle_rpc(rpc_request(91, "peer_sync", json!({ "peer": stored_peer })))
+        .expect("peer sync");
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let record = peers.get_mut(stored_peer).expect("peer record");
+        record.restored_handled_ids.clear();
+        record.restored_unhandled_ids.clear();
+    }
+
+    let entry = PropagationEntryRecord {
+        transient_id: "df".repeat(32),
+        destination: "25".repeat(16),
+        payload_hex: "25".repeat(24),
+        received_at: 1_700_000_945,
+        size_bytes: 24,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&entry).expect("store propagation entry");
+    let request_transient_id = format!("  {}  ", entry.transient_id.to_ascii_uppercase());
+
+    daemon.record_peer_queue_unhandled_id(request_peer.as_str(), request_transient_id.as_str());
+    {
+        let peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let record = peers.get(stored_peer).expect("stored peer");
+        let serialized = serde_json::to_value(record).expect("serialize peer record");
+        assert_eq!(
+            serialized["handled_ids"].as_array().expect("serialized handled ids"),
+            &[] as &[JsonValue]
+        );
+        assert_eq!(
+            serialized["unhandled_ids"].as_array().expect("serialized unhandled ids"),
+            &[json!(entry.transient_id.as_str())]
+        );
+    }
+
+    daemon.record_peer_queue_handled_id(request_peer.as_str(), request_transient_id.as_str());
+    let peers = daemon.peers.lock().expect("peers mutex poisoned");
+    let record = peers.get(stored_peer).expect("stored peer");
+    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    assert_eq!(
+        serialized["handled_ids"].as_array().expect("serialized handled ids"),
+        &[json!(entry.transient_id.as_str())]
+    );
+    assert_eq!(
+        serialized["unhandled_ids"].as_array().expect("serialized unhandled ids"),
+        &[] as &[JsonValue]
+    );
+}
+
+#[test]
 fn peer_completed_mark_helpers_write_stored_peer_case_like_python() {
     let daemon = RpcDaemon::test_instance();
     let stored_peer = "Peer-Mark-Mixed-Case";
