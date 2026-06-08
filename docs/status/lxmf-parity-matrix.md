@@ -132,6 +132,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Remote peer-sync bridge-unavailable errors for already known peers also
   publish the failed peer-sync event and mark the propagation sync lifecycle
   failed, keeping queued retry state observable without creating new peers.
+- Successful remote peer-sync mirrors existing payload-backed live queue marks
+  into active peer record snapshots after applying imports, preserving queued
+  retry work across restart/export even when the remote sync succeeds without
+  transferring those local queued offers.
 - Remote peer-sync uses the stored peer ID case for the bridge call, import
   source accounting, state updates, and response envelope when callers supply a
   case-variant peer request.

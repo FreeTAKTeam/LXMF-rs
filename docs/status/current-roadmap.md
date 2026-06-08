@@ -93,6 +93,10 @@ The project is best described by capability level:
 - Remote peer-sync bridge-unavailable errors for already known peers now also
   publish the failed peer-sync event and mark the propagation sync lifecycle
   failed, keeping queue retry state observable without creating new peers.
+- Successful remote peer-sync now also mirrors existing payload-backed live
+  queue marks into active peer record snapshots after applying imports, so
+  restart/export state preserves queued retry work even when the remote sync
+  itself succeeds without transferring those local queued offers.
 - Remote peer-sync now uses the stored peer ID case for the bridge call, import
   source accounting, state updates, and response envelope when callers use a
   case-variant peer request.
