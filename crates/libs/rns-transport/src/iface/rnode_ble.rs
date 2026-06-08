@@ -588,7 +588,12 @@ impl NativeRnodeBleKissInterface {
             settings,
             config,
             rnode_config: None,
-            startup_response_timeout: Duration::from_millis(1_500),
+            // TODO: startup_response_timeout should not exist. The device should send an
+            //       explicit "ready" notification after completing startup, removing the
+            //       need for a client-side deadline entirely. Consider raising a firmware
+            //       feature request with markqvist (https://github.com/markqvist/RNode_Firmware)
+            //       to add a CMD_READY or equivalent handshake frame.
+            startup_response_timeout: Duration::from_millis(5_000), // was 1_500; matches Python's ble_detect_timeout
             reconnect_backoff: Duration::from_millis(500),
             max_reconnect_backoff: Duration::from_millis(5_000),
         }

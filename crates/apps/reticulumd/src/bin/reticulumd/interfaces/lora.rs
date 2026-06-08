@@ -97,7 +97,7 @@ pub(crate) fn build_rnode_ble_config(
         peripheral_id,
         adapter,
         lora: lora_config,
-        startup_response_timeout: Duration::from_millis(iface.connect_timeout_ms.unwrap_or(1_500)),
+        startup_response_timeout: Duration::from_millis(iface.connect_timeout_ms.unwrap_or(5_000)), // was 1_500; matches Python's ble_detect_timeout
         transport: RnodeBleKissConfig {
             scan_timeout: Duration::from_millis(iface.scan_timeout_ms.unwrap_or(2_000)),
             connect_timeout: Duration::from_millis(iface.ble_connect_timeout_ms.unwrap_or(5_000)),
