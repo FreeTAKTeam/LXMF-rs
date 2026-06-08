@@ -807,8 +807,8 @@ struct PeerRecordWire {
     seen_count: Option<u64>,
     #[serde(default)]
     peering_timebase: i64,
-    #[serde(default = "default_peer_sync_strategy")]
-    sync_strategy: u8,
+    #[serde(default)]
+    sync_strategy: Option<JsonValue>,
     #[serde(default)]
     propagation_transfer_limit: Option<JsonValue>,
     #[serde(default)]
@@ -895,7 +895,11 @@ impl<'de> Deserialize<'de> for PeerRecord {
             first_seen: wire.first_seen.unwrap_or(last_seen),
             seen_count: wire.seen_count.unwrap_or_else(|| u64::from(last_seen > 0)),
             peering_timebase: wire.peering_timebase,
-            sync_strategy: wire.sync_strategy,
+            sync_strategy: wire
+                .sync_strategy
+                .as_ref()
+                .and_then(parse_python_int_u8)
+                .unwrap_or_else(default_peer_sync_strategy),
             propagation_transfer_limit: transfer_limit,
             propagation_sync_limit: sync_limit,
             propagation_stamp_cost: wire
@@ -1217,6 +1221,10 @@ fn parse_python_int_u32(value: &JsonValue) -> Option<u32> {
     } else {
         None
     }
+}
+
+fn parse_python_int_u8(value: &JsonValue) -> Option<u8> {
+    u8::try_from(parse_python_int_u32(value)?).ok()
 }
 
 fn bytes_to_kilobytes(value: u32) -> f64 {

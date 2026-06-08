@@ -160,6 +160,9 @@ The project is best described by capability level:
 - Restored Python peer records now coerce numeric stamp, stamp-flexibility, and
   peering costs through Python's integer restore path before peering checks, so
   float-valued snapshots can still transfer queued stamped offers.
+- Restored Python peer records now also coerce numeric `sync_strategy` through
+  Python's integer restore path, so float-valued persistent-peer snapshots keep
+  draining queued offers across sync-limit batches.
 - Peer sync queue creation also records newly queued existing propagation IDs in
   the peer record snapshot, so postponed syncs can restart/export with the same
   unhandled queue visible in live status.

@@ -9012,6 +9012,77 @@ fn persistent_peer_sync_continues_after_completed_batch_like_python() {
 }
 
 #[test]
+fn persistent_peer_sync_uses_restored_python_float_sync_strategy_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    let peer = "peer-restored-float-strategy";
+    let record: PeerRecord = serde_json::from_value(json!({
+        "destination_hash": peer,
+        "last_heard": 1_700_000_619,
+        "alive": true,
+        "propagation_sync_limit": 61,
+        "propagation_stamp_cost": 0,
+        "propagation_stamp_cost_flexibility": 0,
+        "peering_cost": 0,
+        "peering_key": ["opaque-python-key", 0],
+        "sync_strategy": 2.0,
+        "handled_ids": [],
+        "unhandled_ids": [],
+    }))
+    .expect("deserialize restored Python peer with float sync strategy");
+    assert_eq!(record.sync_strategy, 2);
+    daemon
+        .peers
+        .lock()
+        .expect("peers mutex poisoned")
+        .insert(peer.to_string(), record);
+
+    let first = PropagationEntryRecord {
+        transient_id: "cb".repeat(32),
+        destination: "15".repeat(16),
+        payload_hex: "1f".repeat(20),
+        received_at: 1_700_000_620,
+        size_bytes: 20,
+        stamp_value: None,
+    };
+    let second = PropagationEntryRecord {
+        transient_id: "cc".repeat(32),
+        destination: "15".repeat(16),
+        payload_hex: "20".repeat(20),
+        received_at: 1_700_000_621,
+        size_bytes: 20,
+        stamp_value: None,
+    };
+    for entry in [&first, &second] {
+        daemon.store.upsert_propagation_entry(entry).expect("store entry");
+        daemon
+            .store
+            .mark_peer_unhandled_propagation(peer, entry.transient_id.as_str())
+            .expect("mark unhandled");
+    }
+
+    let result = daemon
+        .handle_rpc(rpc_request(57, "peer_sync", json!({ "peer": peer })))
+        .expect("persistent restored-float-strategy peer sync")
+        .result
+        .expect("peer sync result");
+    assert_eq!(result["sync_strategy"].as_u64(), Some(2));
+    assert_eq!(result["propagation"]["transferred"].as_u64(), Some(2));
+    assert_eq!(
+        result["propagation"]["transferred_ids"]
+            .as_array()
+            .expect("transferred ids"),
+        &[json!(second.transient_id.as_str()), json!(first.transient_id.as_str())]
+    );
+    assert!(
+        daemon
+            .store
+            .list_peer_unhandled_propagation(peer)
+            .expect("pending propagation")
+            .is_empty()
+    );
+}
+
+#[test]
 fn persistent_peer_sync_keeps_selected_response_skips_for_next_offer_like_python() {
     let (daemon, peer) = ready_propagation_peer_daemon(0x52);
     {
