@@ -10,8 +10,10 @@ use lxmf_sdk::{
 use serde_json::{json, Value as JsonValue};
 use std::process::ExitCode;
 
+mod version;
+
 #[derive(Parser, Debug)]
-#[command(name = "lxmf", about = "LXMF operator CLI", version)]
+#[command(name = "lxmf", about = "LXMF operator CLI", disable_version_flag = true)]
 struct Cli {
     #[arg(long, default_value = "unix:/tmp/lxmf-rpc.sock")]
     rpc: String,
@@ -241,7 +243,7 @@ fn main() -> ExitCode {
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
-    let cli = Cli::parse();
+    let cli = version::parse_with_version::<Cli>();
     match run(&cli) {
         Ok(output) => {
             emit_output(&cli, output);

@@ -26,7 +26,9 @@
             result["python_reference"],
             json!({
                 "reticulum_conformance_ref": expected_python_reference("RETICULUM_CONFORMANCE_REF"),
+                "python_reticulum_version": crate::PYTHON_RETICULUM_REFERENCE_VERSION,
                 "python_reticulum_ref": expected_python_reference("PYTHON_RETICULUM_REF"),
+                "python_lxmf_version": crate::PYTHON_LXMF_REFERENCE_VERSION,
                 "python_lxmf_ref": expected_python_reference("PYTHON_LXMF_REF"),
             })
         );

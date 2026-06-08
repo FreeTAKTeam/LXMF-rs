@@ -38,15 +38,29 @@ pub struct EffectiveLimits {
 #[non_exhaustive]
 pub struct ParityReference {
     pub reticulum_conformance_ref: String,
+    #[serde(default = "default_python_reticulum_reference_version")]
+    pub python_reticulum_version: String,
     pub python_reticulum_ref: String,
+    #[serde(default = "default_python_lxmf_reference_version")]
+    pub python_lxmf_version: String,
     pub python_lxmf_ref: String,
+}
+
+fn default_python_reticulum_reference_version() -> String {
+    crate::PYTHON_RETICULUM_REFERENCE_VERSION.to_owned()
+}
+
+fn default_python_lxmf_reference_version() -> String {
+    crate::PYTHON_LXMF_REFERENCE_VERSION.to_owned()
 }
 
 impl Default for ParityReference {
     fn default() -> Self {
         Self {
             reticulum_conformance_ref: crate::RETICULUM_CONFORMANCE_REFERENCE_REF.to_owned(),
+            python_reticulum_version: crate::PYTHON_RETICULUM_REFERENCE_VERSION.to_owned(),
             python_reticulum_ref: crate::PYTHON_RETICULUM_REFERENCE_REF.to_owned(),
+            python_lxmf_version: crate::PYTHON_LXMF_REFERENCE_VERSION.to_owned(),
             python_lxmf_ref: crate::PYTHON_LXMF_REFERENCE_REF.to_owned(),
         }
     }
