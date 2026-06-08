@@ -9083,6 +9083,66 @@ fn persistent_peer_sync_uses_restored_python_float_sync_strategy_like_python() {
 }
 
 #[test]
+fn peer_sync_restored_python_float_timestamps_drive_transfer_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    let peer = "peer-restored-float-timestamps";
+    let record: PeerRecord = serde_json::from_value(json!({
+        "destination_hash": peer,
+        "last_heard": 1_700_000_622.9,
+        "last_sync_attempt": 1_700_000_610.4,
+        "next_sync_attempt": 0.0,
+        "peering_timebase": 1_700_000_600.8,
+        "alive": true,
+        "propagation_sync_limit": 1,
+        "propagation_stamp_cost": 0,
+        "propagation_stamp_cost_flexibility": 0,
+        "peering_cost": 0,
+        "peering_key": ["opaque-python-key", 0],
+        "sync_strategy": 1,
+        "handled_ids": [],
+        "unhandled_ids": [],
+    }))
+    .expect("deserialize restored Python peer with float timestamps");
+    assert_eq!(record.last_seen, 1_700_000_622);
+    assert_eq!(record.last_sync_attempt, 1_700_000_610);
+    assert_eq!(record.next_sync_attempt, 0);
+    assert_eq!(record.peering_timebase, 1_700_000_600);
+    daemon
+        .peers
+        .lock()
+        .expect("peers mutex poisoned")
+        .insert(peer.to_string(), record);
+
+    let entry = PropagationEntryRecord {
+        transient_id: "cd".repeat(32),
+        destination: "15".repeat(16),
+        payload_hex: "21".repeat(20),
+        received_at: 1_700_000_623,
+        size_bytes: 20,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&entry).expect("store entry");
+    daemon
+        .store
+        .mark_peer_unhandled_propagation(peer, entry.transient_id.as_str())
+        .expect("mark unhandled");
+
+    let result = daemon
+        .handle_rpc(rpc_request(57, "peer_sync", json!({ "peer": peer })))
+        .expect("restored-float-timestamp peer sync")
+        .result
+        .expect("peer sync result");
+    assert_eq!(result["synced"].as_bool(), Some(true));
+    assert_eq!(result["propagation"]["transferred"].as_u64(), Some(1));
+    assert_eq!(
+        result["propagation"]["transferred_ids"]
+            .as_array()
+            .expect("transferred ids"),
+        &[json!(entry.transient_id.as_str())]
+    );
+}
+
+#[test]
 fn persistent_peer_sync_keeps_selected_response_skips_for_next_offer_like_python() {
     let (daemon, peer) = ready_propagation_peer_daemon(0x52);
     {

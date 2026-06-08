@@ -764,9 +764,9 @@ struct PeerRecordWire {
     #[serde(default)]
     destination_hash: Option<PythonHexId>,
     #[serde(default)]
-    last_seen: Option<i64>,
+    last_seen: Option<JsonValue>,
     #[serde(default)]
-    last_heard: Option<i64>,
+    last_heard: Option<JsonValue>,
     #[serde(default)]
     capabilities: Vec<String>,
     #[serde(default)]
@@ -778,9 +778,9 @@ struct PeerRecordWire {
     #[serde(default)]
     alive: bool,
     #[serde(default)]
-    last_sync_attempt: i64,
+    last_sync_attempt: Option<JsonValue>,
     #[serde(default)]
-    next_sync_attempt: i64,
+    next_sync_attempt: Option<JsonValue>,
     #[serde(default)]
     sync_backoff: u32,
     #[serde(default = "default_network_distance")]
@@ -806,7 +806,7 @@ struct PeerRecordWire {
     #[serde(default)]
     seen_count: Option<u64>,
     #[serde(default)]
-    peering_timebase: i64,
+    peering_timebase: Option<JsonValue>,
     #[serde(default)]
     sync_strategy: Option<JsonValue>,
     #[serde(default)]
@@ -846,10 +846,34 @@ impl<'de> Deserialize<'de> for PeerRecord {
             .map(PythonHexId::into_string)
             .or_else(|| wire.destination_hash.map(PythonHexId::into_string))
             .ok_or_else(|| serde::de::Error::missing_field("peer"))?;
-        let last_seen = wire
-            .last_seen
-            .or(wire.last_heard)
-            .ok_or_else(|| serde::de::Error::missing_field("last_seen"))?;
+        let last_seen = if let Some(value) = wire.last_seen.as_ref() {
+            parse_python_timestamp_i64(value).map_err(serde::de::Error::custom)?
+        } else if let Some(value) = wire.last_heard.as_ref() {
+            parse_python_timestamp_i64(value).map_err(serde::de::Error::custom)?
+        } else {
+            return Err(serde::de::Error::missing_field("last_seen"));
+        };
+        let last_sync_attempt = wire
+            .last_sync_attempt
+            .as_ref()
+            .map(parse_python_timestamp_i64)
+            .transpose()
+            .map_err(serde::de::Error::custom)?
+            .unwrap_or_default();
+        let next_sync_attempt = wire
+            .next_sync_attempt
+            .as_ref()
+            .map(parse_python_timestamp_i64)
+            .transpose()
+            .map_err(serde::de::Error::custom)?
+            .unwrap_or_default();
+        let peering_timebase = wire
+            .peering_timebase
+            .as_ref()
+            .map(parse_python_timestamp_i64)
+            .transpose()
+            .map_err(serde::de::Error::custom)?
+            .unwrap_or_default();
         let sync_transfer_rate = wire.sync_transfer_rate.or(wire.str).unwrap_or_default();
         let acceptance_rate = wire.acceptance_rate.unwrap_or_else(|| {
             if wire.offered == 0 {
@@ -881,8 +905,8 @@ impl<'de> Deserialize<'de> for PeerRecord {
             name_source: wire.name_source,
             peer_type: wire.peer_type,
             alive: wire.alive,
-            last_sync_attempt: wire.last_sync_attempt,
-            next_sync_attempt: wire.next_sync_attempt,
+            last_sync_attempt,
+            next_sync_attempt,
             sync_backoff: wire.sync_backoff,
             network_distance: wire.network_distance,
             offered: wire.offered,
@@ -894,7 +918,7 @@ impl<'de> Deserialize<'de> for PeerRecord {
             acceptance_rate,
             first_seen: wire.first_seen.unwrap_or(last_seen),
             seen_count: wire.seen_count.unwrap_or_else(|| u64::from(last_seen > 0)),
-            peering_timebase: wire.peering_timebase,
+            peering_timebase,
             sync_strategy: wire
                 .sync_strategy
                 .as_ref()
@@ -1225,6 +1249,23 @@ fn parse_python_int_u32(value: &JsonValue) -> Option<u32> {
 
 fn parse_python_int_u8(value: &JsonValue) -> Option<u8> {
     u8::try_from(parse_python_int_u32(value)?).ok()
+}
+
+fn parse_python_timestamp_i64(value: &JsonValue) -> Result<i64, &'static str> {
+    if let Some(value) = value.as_i64() {
+        Ok(value)
+    } else if let Some(value) = value.as_u64() {
+        i64::try_from(value).map_err(|_| "timestamp exceeds i64 range")
+    } else if let Some(value) = value.as_f64() {
+        let value = value.trunc();
+        if value.is_finite() && value >= i64::MIN as f64 && value <= i64::MAX as f64 {
+            Ok(value as i64)
+        } else {
+            Err("invalid timestamp")
+        }
+    } else {
+        Err("invalid timestamp")
+    }
 }
 
 fn bytes_to_kilobytes(value: u32) -> f64 {

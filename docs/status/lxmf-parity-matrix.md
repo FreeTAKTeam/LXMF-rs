@@ -207,6 +207,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Restored Python peer records also coerce numeric `sync_strategy` through
   Python's integer restore path, so float-valued persistent-peer snapshots keep
   draining queued offers across sync-limit batches.
+- Restored Python peer records accept Python `time.time()` float timestamps for
+  heard/sync/backoff fields, so restart-loaded peers can still reach queued
+  transfer instead of failing restore before sync.
 - Duplicate inbound peer propagation payloads still fan out to active relay
   peers while keeping the source peer handled, so a known local payload does
   not bypass relay queue creation.

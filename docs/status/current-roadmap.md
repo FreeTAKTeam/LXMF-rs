@@ -163,6 +163,9 @@ The project is best described by capability level:
 - Restored Python peer records now also coerce numeric `sync_strategy` through
   Python's integer restore path, so float-valued persistent-peer snapshots keep
   draining queued offers across sync-limit batches.
+- Restored Python peer records now accept Python `time.time()` float
+  timestamps for heard/sync/backoff fields, so restart-loaded peers can still
+  reach queued transfer instead of failing restore before sync.
 - Peer sync queue creation also records newly queued existing propagation IDs in
   the peer record snapshot, so postponed syncs can restart/export with the same
   unhandled queue visible in live status.
