@@ -168,6 +168,10 @@ fn normalize_hex_key(value: &str) -> String {
     value.trim().to_ascii_lowercase()
 }
 
+fn normalize_peer_key(value: &str) -> String {
+    value.trim().to_ascii_lowercase()
+}
+
 fn remove_case_variant_unhandled_peer_mark(
     conn: &Connection,
     peer: &str,
@@ -869,6 +873,7 @@ impl MessagesStore {
         transient_id: &str,
     ) -> rusqlite::Result<()> {
         self.with_write_conn(|conn| {
+            let peer = normalize_peer_key(peer);
             conn.execute(
                 "INSERT OR IGNORE INTO propagation_peer_entries
                     (peer, transient_id, state, updated_at)
@@ -881,6 +886,7 @@ impl MessagesStore {
 
     pub fn mark_all_propagation_unhandled_for_peer(&self, peer: &str) -> rusqlite::Result<usize> {
         self.with_write_conn(|conn| {
+            let peer = normalize_peer_key(peer);
             conn.execute(
                 "INSERT OR IGNORE INTO propagation_peer_entries
                     (peer, transient_id, state, updated_at)
@@ -896,6 +902,7 @@ impl MessagesStore {
         peer: &str,
     ) -> rusqlite::Result<()> {
         self.with_write_conn(|conn| {
+            let peer = normalize_peer_key(peer);
             conn.execute(
                 "INSERT INTO propagation_peer_entries (peer, transient_id, state, updated_at)
                  SELECT ?1,
@@ -936,6 +943,7 @@ impl MessagesStore {
         transient_id: &str,
     ) -> rusqlite::Result<()> {
         self.with_write_conn(|conn| {
+            let peer = normalize_peer_key(peer);
             let transient_id = normalize_hex_key(transient_id);
             conn.execute(
                 "INSERT INTO propagation_peer_entries (peer, transient_id, state, updated_at)
@@ -946,7 +954,7 @@ impl MessagesStore {
                  WHERE propagation_peer_entries.state NOT IN ('transferred', 'received', 'transfer_limited')",
                 params![peer, transient_id, now_unix_secs()],
             )?;
-            remove_case_variant_unhandled_peer_mark(conn, peer, transient_id.as_str())?;
+            remove_case_variant_unhandled_peer_mark(conn, peer.as_str(), transient_id.as_str())?;
             Ok(())
         })
     }
@@ -957,6 +965,7 @@ impl MessagesStore {
         transient_id: &str,
     ) -> rusqlite::Result<()> {
         self.with_write_conn(|conn| {
+            let peer = normalize_peer_key(peer);
             let transient_id = normalize_hex_key(transient_id);
             conn.execute(
                 "INSERT INTO propagation_peer_entries (peer, transient_id, state, updated_at)
@@ -967,7 +976,7 @@ impl MessagesStore {
                  WHERE propagation_peer_entries.state NOT IN ('received', 'transfer_limited')",
                 params![peer, transient_id, now_unix_secs()],
             )?;
-            remove_case_variant_unhandled_peer_mark(conn, peer, transient_id.as_str())?;
+            remove_case_variant_unhandled_peer_mark(conn, peer.as_str(), transient_id.as_str())?;
             Ok(())
         })
     }
@@ -978,6 +987,7 @@ impl MessagesStore {
         transient_id: &str,
     ) -> rusqlite::Result<()> {
         self.with_write_conn(|conn| {
+            let peer = normalize_peer_key(peer);
             let transient_id = normalize_hex_key(transient_id);
             conn.execute(
                 "INSERT INTO propagation_peer_entries (peer, transient_id, state, updated_at)
@@ -988,7 +998,7 @@ impl MessagesStore {
                  WHERE propagation_peer_entries.state NOT IN ('transferred', 'transfer_limited')",
                 params![peer, transient_id, now_unix_secs()],
             )?;
-            remove_case_variant_unhandled_peer_mark(conn, peer, transient_id.as_str())?;
+            remove_case_variant_unhandled_peer_mark(conn, peer.as_str(), transient_id.as_str())?;
             Ok(())
         })
     }
@@ -999,6 +1009,7 @@ impl MessagesStore {
         transient_id: &str,
     ) -> rusqlite::Result<()> {
         self.with_write_conn(|conn| {
+            let peer = normalize_peer_key(peer);
             let transient_id = normalize_hex_key(transient_id);
             conn.execute(
                 "INSERT INTO propagation_peer_entries (peer, transient_id, state, updated_at)
@@ -1009,7 +1020,7 @@ impl MessagesStore {
                  WHERE propagation_peer_entries.state IN ('unhandled', 'transfer_limited')",
                 params![peer, transient_id, now_unix_secs()],
             )?;
-            remove_case_variant_unhandled_peer_mark(conn, peer, transient_id.as_str())?;
+            remove_case_variant_unhandled_peer_mark(conn, peer.as_str(), transient_id.as_str())?;
             Ok(())
         })
     }
@@ -1247,24 +1258,6 @@ impl MessagesStore {
             )?;
             let rows = stmt.query_map(params![peer], |row| row.get(0))?;
             rows.collect()
-        })
-    }
-
-    #[cfg(test)]
-    pub(crate) fn exact_peer_unhandled_propagation_mark_count(
-        &self,
-        peer: &str,
-    ) -> rusqlite::Result<usize> {
-        self.with_read_conn(|conn| {
-            let count: i64 = conn.query_row(
-                "SELECT COUNT(*)
-                 FROM propagation_peer_entries
-                 WHERE peer = ?1
-                   AND state = 'unhandled'",
-                params![peer],
-                |row| row.get(0),
-            )?;
-            Ok(count.max(0) as usize)
         })
     }
 
