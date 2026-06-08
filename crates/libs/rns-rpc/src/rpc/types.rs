@@ -865,7 +865,7 @@ impl<'de> Deserialize<'de> for PeerRecord {
             python_transfer_limit,
         );
         let python_sync_limit = wire.propagation_sync_limit.is_some();
-        let sync_limit = parse_peer_limit_bytes(
+        let sync_limit = parse_peer_sync_limit_bytes(
             wire.propagation_sync_limit.as_ref(),
             wire.sync_limit.as_ref(),
             python_sync_limit,
@@ -1151,6 +1151,20 @@ fn parse_peer_limit_bytes(
     }
 }
 
+fn parse_peer_sync_limit_bytes(
+    primary: Option<&JsonValue>,
+    alias: Option<&JsonValue>,
+    primary_is_python_kb: bool,
+) -> Option<u32> {
+    if let Some(alias) = alias {
+        parse_json_u32(alias)
+    } else if primary_is_python_kb {
+        parse_python_sync_limit_bytes(primary?)
+    } else {
+        parse_json_u32(primary?)
+    }
+}
+
 fn parse_json_u32(value: &JsonValue) -> Option<u32> {
     if let Some(value) = value.as_u64() {
         u32::try_from(value).ok()
@@ -1171,6 +1185,21 @@ fn parse_json_f64(value: &JsonValue) -> Option<f64> {
 fn kilobytes_to_bytes(value: f64) -> Option<u32> {
     let bytes = (value.max(0.0) * 1000.0).floor();
     (bytes.is_finite() && bytes <= f64::from(u32::MAX)).then_some(bytes as u32)
+}
+
+fn parse_python_sync_limit_bytes(value: &JsonValue) -> Option<u32> {
+    let kilobytes = if let Some(value) = value.as_u64() {
+        value as f64
+    } else if let Some(value) = value.as_i64() {
+        value as f64
+    } else if let Some(value) = value.as_f64() {
+        value.trunc()
+    } else if let Some(value) = value.as_str() {
+        value.trim().parse::<i64>().ok()? as f64
+    } else {
+        return None;
+    };
+    kilobytes_to_bytes(kilobytes)
 }
 
 fn bytes_to_kilobytes(value: u32) -> f64 {

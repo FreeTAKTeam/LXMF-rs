@@ -976,10 +976,7 @@ impl RpcDaemon {
                     for entry in pending_propagation {
                         let entry_size = usize::try_from(entry.size_bytes).unwrap_or(usize::MAX);
                         let transfer_size = entry_size.saturating_add(16);
-                        let wanted = wanted_ids
-                            .as_ref()
-                            .map_or(true, |ids| ids.wants(entry.transient_id.as_str()));
-                        if wanted && transfer_size > limit {
+                        if transfer_size > limit {
                             propagation_transfer_limited =
                                 propagation_transfer_limited.saturating_add(1);
                             propagation_transfer_limited_bytes =
@@ -1024,7 +1021,9 @@ impl RpcDaemon {
                         sync_limit_bytes,
                     ));
                 }
-                if (peer_policy_required || empty_peer_peering_key_required)
+                let peering_key_required = record.peering_cost.is_some()
+                    && (peer_policy_required || empty_peer_peering_key_required);
+                if peering_key_required
                     && peer_peering_key_value(&record, self.identity_hash.as_str()).is_none()
                 {
                     self.clear_invalid_restored_peer_peering_key(&record);
@@ -1157,9 +1156,11 @@ impl RpcDaemon {
                 let mut propagation_resource_bytes =
                     peer_sync_resource_data_size(propagation_resource_payloads.as_slice())?;
                 let mut propagation_last_resource_bytes = propagation_resource_bytes;
+                let explicit_offer_response = wanted_ids.is_some();
                 let persistent_followup_sync = record.sync_strategy == 2
                     && propagation_transferred > 0
-                    && propagation_skipped > 0;
+                    && propagation_skipped > 0
+                    && !explicit_offer_response;
                 if persistent_followup_sync {
                     propagation_skipped = 0;
                     propagation_remaining_bytes = 0;
@@ -2270,6 +2271,9 @@ pub(super) fn peer_acceptance_rate_for_reporting(
 }
 
 fn peer_stamp_policy_known(peer: &PeerRecord) -> bool {
+    if peer.propagation_stamp_cost == Some(0) {
+        return true;
+    }
     peer.propagation_stamp_cost.is_some()
         && peer.propagation_stamp_cost_flexibility.is_some()
         && peer.peering_cost.is_some()

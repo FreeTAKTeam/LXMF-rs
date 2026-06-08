@@ -266,6 +266,22 @@ fn parse_fuzzy_u32(value: &MsgPackValue) -> Option<u32> {
     }
 }
 
+fn parse_fuzzy_nonnegative_f64(value: &MsgPackValue) -> Option<f64> {
+    let parsed = match value {
+        MsgPackValue::Integer(value) => value
+            .as_f64()
+            .or_else(|| value.as_i64().map(|value| value as f64))
+            .or_else(|| value.as_u64().map(|value| value as f64))?,
+        MsgPackValue::F64(value) => *value,
+        MsgPackValue::F32(value) => f64::from(*value),
+        MsgPackValue::Boolean(value) => f64::from(u8::from(*value)),
+        MsgPackValue::Binary(bytes) => std::str::from_utf8(bytes).ok()?.trim().parse().ok()?,
+        MsgPackValue::String(text) => text.as_str()?.trim().parse().ok()?,
+        _ => return None,
+    };
+    (parsed.is_finite() && parsed >= 0.0).then_some(parsed)
+}
+
 fn parse_fuzzy_i64(value: &MsgPackValue) -> Option<i64> {
     match value {
         MsgPackValue::Integer(value) => value
@@ -367,20 +383,22 @@ fn parse_propagation_limits_from_app_data_hex(
         return (None, None);
     };
 
-    let transfer_limit = entries.get(3).and_then(parse_fuzzy_u32).map(python_kilobytes_to_bytes);
-    let sync_limit = match (
-        transfer_limit,
-        entries.get(4).and_then(parse_fuzzy_u32).map(python_kilobytes_to_bytes),
+    let transfer_limit_bytes = entries.get(3).and_then(parse_fuzzy_nonnegative_f64).and_then(|limit| {
+        let bytes = limit * 1000.0;
+        (bytes.is_finite() && bytes <= u32::MAX as f64).then_some(bytes as u32)
+    });
+    let sync_limit_bytes = match (
+        transfer_limit_bytes,
+        entries.get(4).and_then(parse_fuzzy_nonnegative_f64).and_then(|limit| {
+            let bytes = limit * 1000.0;
+            (bytes.is_finite() && bytes <= u32::MAX as f64).then_some(bytes as u32)
+        }),
     ) {
         (Some(transfer), Some(sync)) if sync < transfer => Some(transfer),
         (_, sync) => sync,
     };
 
-    (transfer_limit, sync_limit)
-}
-
-fn python_kilobytes_to_bytes(value: u32) -> u32 {
-    value.saturating_mul(1000)
+    (transfer_limit_bytes, sync_limit_bytes)
 }
 
 fn parse_propagation_timebase_from_app_data_hex(app_data_hex: Option<&str>) -> Option<i64> {
