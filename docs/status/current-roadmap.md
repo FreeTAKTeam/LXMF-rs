@@ -101,6 +101,9 @@ The project is best described by capability level:
   checking completed live marks, preventing transfer-limited or handled work
   from being serialized as retryable unhandled queue state through case
   variants.
+- Completed peer mark helpers now write and read received/transferred live
+  marks under the stored peer ID case when a peer record already exists, keeping
+  live queue state and serialized restart/export snapshots on the same peer key.
 - Restored Python peer records now update their serialized queue ID snapshot
   when peer sync handles, transfers, or transfer-limits queued offers, reducing
   restart/export drift after live offer-response processing.

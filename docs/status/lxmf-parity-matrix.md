@@ -139,6 +139,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Incremental peer queue snapshot updates resolve stored peer IDs before
   checking completed live marks, so transfer-limited or handled work is not
   serialized as retryable unhandled queue state through peer case variants.
+- Completed peer mark helpers write and read received/transferred live marks
+  under the stored peer ID case when a peer record already exists, keeping live
+  queue state and serialized restart/export snapshots aligned.
 - Restored peer record queue IDs are replayed into the live store, newly queued
   existing and inbound/imported propagation IDs are reflected in the serialized
   peer snapshot, source-peer handled IDs are preserved for restart/export, and

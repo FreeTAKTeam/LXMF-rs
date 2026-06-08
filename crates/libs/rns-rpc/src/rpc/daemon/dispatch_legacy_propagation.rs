@@ -756,16 +756,27 @@ impl RpcDaemon {
             .contains_key(normalize_propagation_transient_key(transient_id).as_str())
     }
 
+    fn peer_store_key_or_input(&self, peer: &str) -> String {
+        self.peers
+            .lock()
+            .expect("peers mutex poisoned")
+            .keys()
+            .find(|existing| existing.eq_ignore_ascii_case(peer))
+            .cloned()
+            .unwrap_or_else(|| peer.to_string())
+    }
+
     pub fn record_peer_received_propagation(
         &self,
         peer: &str,
         transient_id: &str,
     ) -> Result<(), std::io::Error> {
         let transient_id = normalize_propagation_transient_key(transient_id);
+        let peer_key = self.peer_store_key_or_input(peer);
         self.store
-            .mark_peer_received_propagation(peer, transient_id.as_str())
+            .mark_peer_received_propagation(peer_key.as_str(), transient_id.as_str())
             .map_err(std::io::Error::other)?;
-        self.record_peer_queue_handled_id(peer, transient_id.as_str());
+        self.record_peer_queue_handled_id(peer_key.as_str(), transient_id.as_str());
         Ok(())
     }
 
@@ -774,9 +785,10 @@ impl RpcDaemon {
         peer: &str,
         transient_id: &str,
     ) -> Result<bool, std::io::Error> {
+        let peer_key = self.peer_store_key_or_input(peer);
         self.store
             .peer_completed_propagation_mark_exists(
-                peer,
+                peer_key.as_str(),
                 normalize_propagation_transient_key(transient_id).as_str(),
             )
             .map_err(std::io::Error::other)
@@ -788,10 +800,11 @@ impl RpcDaemon {
         transient_id: &str,
     ) -> Result<(), std::io::Error> {
         let transient_id = normalize_propagation_transient_key(transient_id);
+        let peer_key = self.peer_store_key_or_input(peer);
         self.store
-            .mark_peer_transferred_propagation(peer, transient_id.as_str())
+            .mark_peer_transferred_propagation(peer_key.as_str(), transient_id.as_str())
             .map_err(std::io::Error::other)?;
-        self.record_peer_queue_handled_id(peer, transient_id.as_str());
+        self.record_peer_queue_handled_id(peer_key.as_str(), transient_id.as_str());
         Ok(())
     }
 

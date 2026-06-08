@@ -16478,6 +16478,81 @@ fn peer_queue_unhandled_snapshot_preserves_case_insensitive_completed_mark_like_
 }
 
 #[test]
+fn peer_completed_mark_helpers_write_stored_peer_case_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    let stored_peer = "Peer-Mark-Mixed-Case";
+    let request_peer = stored_peer.to_ascii_lowercase();
+    daemon
+        .handle_rpc(rpc_request(92, "peer_sync", json!({ "peer": stored_peer })))
+        .expect("peer sync");
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let record = peers.get_mut(stored_peer).expect("peer record");
+        record.restored_handled_ids.clear();
+        record.restored_unhandled_ids.clear();
+    }
+
+    let transferred = PropagationEntryRecord {
+        transient_id: "e1".repeat(32),
+        destination: "26".repeat(16),
+        payload_hex: "26".repeat(24),
+        received_at: 1_700_000_950,
+        size_bytes: 24,
+        stamp_value: None,
+    };
+    let received = PropagationEntryRecord {
+        transient_id: "e2".repeat(32),
+        destination: "27".repeat(16),
+        payload_hex: "27".repeat(28),
+        received_at: 1_700_000_951,
+        size_bytes: 28,
+        stamp_value: None,
+    };
+    for entry in [&transferred, &received] {
+        daemon.store.upsert_propagation_entry(entry).expect("store propagation entry");
+    }
+
+    daemon
+        .record_peer_transferred_propagation(request_peer.as_str(), transferred.transient_id.as_str())
+        .expect("record transferred");
+    daemon
+        .record_peer_received_propagation(request_peer.as_str(), received.transient_id.as_str())
+        .expect("record received");
+
+    assert!(
+        daemon
+            .has_peer_completed_propagation_mark(stored_peer, transferred.transient_id.as_str())
+            .expect("transferred mark"),
+        "transferred mark should be visible under stored peer case"
+    );
+    assert!(
+        daemon
+            .has_peer_completed_propagation_mark(stored_peer, received.transient_id.as_str())
+            .expect("received mark"),
+        "received mark should be visible under stored peer case"
+    );
+    assert_eq!(
+        daemon
+            .store
+            .list_peer_handled_propagation_ids(stored_peer)
+            .expect("stored peer handled ids"),
+        vec![transferred.transient_id.clone(), received.transient_id.clone()]
+    );
+
+    let peers = daemon.peers.lock().expect("peers mutex poisoned");
+    let record = peers.get(stored_peer).expect("stored peer");
+    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    assert_eq!(
+        serialized["handled_ids"].as_array().expect("serialized handled ids"),
+        &[json!(transferred.transient_id.as_str()), json!(received.transient_id.as_str())]
+    );
+    assert_eq!(
+        serialized["unhandled_ids"].as_array().expect("serialized unhandled ids"),
+        &[] as &[JsonValue]
+    );
+}
+
+#[test]
 fn peer_unpeer_clears_persisted_propagation_queue_marks() {
     let (daemon, peer) = ready_propagation_peer_daemon(0x52);
     daemon
