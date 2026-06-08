@@ -367,13 +367,20 @@ fn parse_propagation_limits_from_app_data_hex(
         return (None, None);
     };
 
-    let transfer_limit = entries.get(3).and_then(parse_fuzzy_u32);
-    let sync_limit = match (transfer_limit, entries.get(4).and_then(parse_fuzzy_u32)) {
+    let transfer_limit = entries.get(3).and_then(parse_fuzzy_u32).map(python_kilobytes_to_bytes);
+    let sync_limit = match (
+        transfer_limit,
+        entries.get(4).and_then(parse_fuzzy_u32).map(python_kilobytes_to_bytes),
+    ) {
         (Some(transfer), Some(sync)) if sync < transfer => Some(transfer),
         (_, sync) => sync,
     };
 
     (transfer_limit, sync_limit)
+}
+
+fn python_kilobytes_to_bytes(value: u32) -> u32 {
+    value.saturating_mul(1000)
 }
 
 fn parse_propagation_timebase_from_app_data_hex(app_data_hex: Option<&str>) -> Option<i64> {

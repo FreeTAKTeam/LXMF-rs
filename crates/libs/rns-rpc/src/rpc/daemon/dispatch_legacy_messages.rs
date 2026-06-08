@@ -47,10 +47,20 @@ impl RpcDaemon {
         row["last_heard"] = row.get("last_seen").cloned().unwrap_or(JsonValue::Null);
         let transfer_limit = row.get("transfer_limit").cloned().unwrap_or(JsonValue::Null);
         let sync_limit = row.get("sync_limit").cloned().unwrap_or(JsonValue::Null);
+        let propagation_transfer_limit = row
+            .get("propagation_transfer_limit")
+            .filter(|value| !value.is_null())
+            .cloned()
+            .unwrap_or_else(|| transfer_limit.clone());
+        let propagation_sync_limit = row
+            .get("propagation_sync_limit")
+            .filter(|value| !value.is_null())
+            .cloned()
+            .unwrap_or_else(|| sync_limit.clone());
         row["transfer_limit"] = transfer_limit.clone();
-        row["propagation_transfer_limit"] = transfer_limit;
+        row["propagation_transfer_limit"] = propagation_transfer_limit;
         row["sync_limit"] = sync_limit.clone();
-        row["propagation_sync_limit"] = sync_limit;
+        row["propagation_sync_limit"] = propagation_sync_limit;
         row["target_stamp_cost"] =
             row.get("propagation_stamp_cost").cloned().unwrap_or(JsonValue::Null);
         row["stamp_cost_flexibility"] =
