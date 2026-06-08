@@ -1628,14 +1628,23 @@ fn run_sdk_api_break() -> Result<()> {
     let current_normalized = normalize_public_api(&current);
 
     if baseline_normalized != current_normalized {
+        let diff = public_api_line_diff(&baseline_normalized, &current_normalized);
         bail!(
-            "sdk public API drift detected for {MANIFEST_PATH}; review and refresh {BASELINE_PATH}"
+            "sdk public API drift detected for {MANIFEST_PATH}; review and refresh {BASELINE_PATH}\n{diff}"
         );
     }
 
     run_sdk_api_stability_check(&current_normalized)?;
 
     Ok(())
+}
+
+fn public_api_line_diff(baseline: &str, current: &str) -> String {
+    let baseline_lines = baseline.lines().collect::<BTreeSet<_>>();
+    let current_lines = current.lines().collect::<BTreeSet<_>>();
+    let removed = baseline_lines.difference(&current_lines).map(|line| format!("- {line}"));
+    let added = current_lines.difference(&baseline_lines).map(|line| format!("+ {line}"));
+    removed.chain(added).collect::<Vec<_>>().join("\n")
 }
 
 fn run_sdk_api_stability_check(current_public_api: &str) -> Result<()> {
@@ -5579,7 +5588,18 @@ fn print_cargo_output(output: &std::process::Output) {
 
 #[cfg(test)]
 mod version_tests {
-    use super::resolve_release_version;
+    use super::{public_api_line_diff, resolve_release_version};
+
+    #[test]
+    fn public_api_diff_reports_removed_and_added_lines() {
+        assert_eq!(
+            public_api_line_diff(
+                "pub const OLD: &str\npub struct Shared",
+                "pub const NEW: &str\npub struct Shared"
+            ),
+            "- pub const OLD: &str\n+ pub const NEW: &str"
+        );
+    }
 
     #[test]
     fn explicit_release_version_wins() {
