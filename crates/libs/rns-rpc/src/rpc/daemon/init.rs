@@ -1146,25 +1146,27 @@ impl RpcDaemon {
                     record
                 }
                 Err(err) if err.kind() == std::io::ErrorKind::WouldBlock && !is_static => self
-                    .transient_peer_record(
+                    .transient_peer_record_with_state(
                         peer,
                         timestamp,
                         capability_list.clone(),
                         name,
                         name_source,
                         Some("discovered".to_string()),
+                        propagation_peer_state,
                     ),
                 Err(err) => return Err(err),
             };
             record
         } else {
-            self.transient_peer_record(
+            self.transient_peer_record_with_state(
                 peer,
                 timestamp,
                 capability_list.clone(),
                 name,
                 name_source,
                 peer_type,
+                propagation_peer_state,
             )
         };
 
@@ -1939,6 +1941,7 @@ impl RpcDaemon {
         Ok(())
     }
 
+    #[cfg(test)]
     pub(super) fn transient_peer_record(
         &self,
         peer: String,
@@ -1948,6 +1951,37 @@ impl RpcDaemon {
         name_source: Option<String>,
         peer_type: Option<String>,
     ) -> PeerRecord {
+        self.transient_peer_record_with_state(
+            peer,
+            timestamp,
+            capabilities,
+            name,
+            name_source,
+            peer_type,
+            PeerPropagationState {
+                transfer_limit: None,
+                sync_limit: None,
+                stamp_cost: None,
+                stamp_cost_flexibility: None,
+                peering_cost: None,
+                network_distance: None,
+                peering_timebase: None,
+            },
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn transient_peer_record_with_state(
+        &self,
+        peer: String,
+        timestamp: i64,
+        capabilities: Vec<String>,
+        name: Option<String>,
+        name_source: Option<String>,
+        peer_type: Option<String>,
+        state: PeerPropagationState,
+    ) -> PeerRecord {
+        let peering_timebase = state.peering_timebase.unwrap_or(timestamp);
         PeerRecord {
             peer,
             last_seen: timestamp,
@@ -1969,13 +2003,13 @@ impl RpcDaemon {
             acceptance_rate: 0.0,
             first_seen: timestamp,
             seen_count: 1,
-            peering_timebase: 0,
+            peering_timebase,
             sync_strategy: 2,
-            propagation_transfer_limit: None,
-            propagation_sync_limit: None,
-            propagation_stamp_cost: None,
-            propagation_stamp_cost_flexibility: None,
-            peering_cost: None,
+            propagation_transfer_limit: state.transfer_limit,
+            propagation_sync_limit: state.sync_limit.or(state.transfer_limit),
+            propagation_stamp_cost: state.stamp_cost,
+            propagation_stamp_cost_flexibility: state.stamp_cost_flexibility,
+            peering_cost: state.peering_cost,
             peering_key_stamp: None,
             peering_key_value: None,
             restored_handled_ids: Vec::new(),
