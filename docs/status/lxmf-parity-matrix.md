@@ -234,9 +234,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Inbound propagation offer requests with too-short list payloads return the
   Python-compatible nil response without validating the link or admitting the
   remote propagation peer.
-- Valid empty inbound propagation offers return Python's "wants none" response
-  after peering-key validation without admitting the remote propagation peer or
-  queuing local payloads for it.
+- Valid inbound propagation offers whose advertised IDs are empty or already
+  known return Python's "wants none" response after peering-key validation
+  without admitting the remote propagation peer or queuing local payloads for it.
 - Remote fetch and download imports mark inactive source peers as received
   before later activation, so source-accounting survives even when the
   propagation node was not yet an active peer record.

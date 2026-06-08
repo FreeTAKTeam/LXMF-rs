@@ -158,7 +158,7 @@ pub(super) fn handle_offer_request(
             wanted.push(bytes.clone());
         }
     }
-    if transient_ids.is_empty() {
+    if wanted.is_empty() {
         if let Ok(mut guard) = control.validated_peer_links.lock() {
             guard.insert(*link_id);
         }
@@ -172,9 +172,7 @@ pub(super) fn handle_offer_request(
         guard.insert(*link_id);
     }
 
-    if wanted.is_empty() {
-        ControlResponse::Bool(false)
-    } else if wanted.len() == transient_ids.len() {
+    if wanted.len() == transient_ids.len() {
         ControlResponse::Bool(true)
     } else {
         ControlResponse::Rmpv(rmpv::Value::Array(
@@ -411,7 +409,7 @@ mod tests {
     }
 
     #[test]
-    fn offer_request_does_not_mark_known_offers_received_like_python() {
+    fn offer_request_all_known_offer_does_not_queue_peer_like_python() {
         let daemon = RpcDaemon::test_instance();
         daemon
             .handle_rpc(RpcRequest {
@@ -452,10 +450,11 @@ mod tests {
             validated_peer_links: test_validated_peer_links(),
         };
 
+        let link_id = test_link_id();
         let response = handle_offer_request(
             &daemon,
             &control,
-            &test_link_id(),
+            &link_id,
             &remote_identity,
             Some(rmpv::Value::Array(vec![
                 rmpv::Value::Binary(peering_key),
@@ -470,21 +469,21 @@ mod tests {
         );
 
         assert!(matches!(response, ControlResponse::Bool(false)));
+        assert!(control
+            .validated_peer_links
+            .lock()
+            .expect("validated peer links")
+            .contains(&link_id));
         let peers = daemon
             .handle_rpc(RpcRequest { id: 11, method: "list_peers".to_string(), params: None })
             .expect("list peers")
             .result
             .expect("list peers result");
-        let row = peers["peers"]
+        assert!(peers["peers"]
             .as_array()
             .expect("peer rows")
             .iter()
-            .find(|row| row["peer"].as_str() == Some(remote_propagation_hash.as_str()))
-            .expect("authenticated offer peer row");
-        assert_eq!(row["messages"]["incoming"].as_u64(), Some(0));
-        assert_eq!(row["messages"]["unhandled"].as_u64(), Some(1));
-        assert_eq!(row["messages"]["handled_ids"], json!([]));
-        assert_eq!(row["messages"]["unhandled_ids"], json!([known_transient_id]));
+            .all(|row| row["peer"].as_str() != Some(remote_propagation_hash.as_str())));
     }
 
     #[test]
