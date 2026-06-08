@@ -157,6 +157,9 @@ The project is best described by capability level:
   values through Python's integer-kilobyte restore path before peer-sync queue
   selection, preventing restored fractional sync limits from transferring work
   that Python would leave queued.
+- Restored Python peer records now coerce numeric stamp, stamp-flexibility, and
+  peering costs through Python's integer restore path before peering checks, so
+  float-valued snapshots can still transfer queued stamped offers.
 - Peer sync queue creation also records newly queued existing propagation IDs in
   the peer record snapshot, so postponed syncs can restart/export with the same
   unhandled queue visible in live status.

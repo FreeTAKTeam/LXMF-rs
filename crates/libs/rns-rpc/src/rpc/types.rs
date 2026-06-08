@@ -818,15 +818,15 @@ struct PeerRecordWire {
     #[serde(default)]
     sync_limit: Option<JsonValue>,
     #[serde(default)]
-    propagation_stamp_cost: Option<u32>,
+    propagation_stamp_cost: Option<JsonValue>,
     #[serde(default)]
-    target_stamp_cost: Option<u32>,
+    target_stamp_cost: Option<JsonValue>,
     #[serde(default)]
-    propagation_stamp_cost_flexibility: Option<u32>,
+    propagation_stamp_cost_flexibility: Option<JsonValue>,
     #[serde(default)]
-    stamp_cost_flexibility: Option<u32>,
+    stamp_cost_flexibility: Option<JsonValue>,
     #[serde(default)]
-    peering_cost: Option<u32>,
+    peering_cost: Option<JsonValue>,
     #[serde(default)]
     peering_key: Option<PythonPeeringKey>,
     #[serde(default)]
@@ -898,11 +898,21 @@ impl<'de> Deserialize<'de> for PeerRecord {
             sync_strategy: wire.sync_strategy,
             propagation_transfer_limit: transfer_limit,
             propagation_sync_limit: sync_limit,
-            propagation_stamp_cost: wire.propagation_stamp_cost.or(wire.target_stamp_cost),
+            propagation_stamp_cost: wire
+                .propagation_stamp_cost
+                .as_ref()
+                .and_then(parse_python_int_u32)
+                .or_else(|| wire.target_stamp_cost.as_ref().and_then(parse_python_int_u32)),
             propagation_stamp_cost_flexibility: wire
                 .propagation_stamp_cost_flexibility
-                .or(wire.stamp_cost_flexibility),
-            peering_cost: wire.peering_cost,
+                .as_ref()
+                .and_then(parse_python_int_u32)
+                .or_else(|| {
+                    wire.stamp_cost_flexibility
+                        .as_ref()
+                        .and_then(parse_python_int_u32)
+                }),
+            peering_cost: wire.peering_cost.as_ref().and_then(parse_python_int_u32),
             peering_key_stamp,
             peering_key_value,
             restored_handled_ids: wire
@@ -1188,18 +1198,25 @@ fn kilobytes_to_bytes(value: f64) -> Option<u32> {
 }
 
 fn parse_python_sync_limit_bytes(value: &JsonValue) -> Option<u32> {
-    let kilobytes = if let Some(value) = value.as_u64() {
-        value as f64
-    } else if let Some(value) = value.as_i64() {
-        value as f64
-    } else if let Some(value) = value.as_f64() {
-        value.trunc()
-    } else if let Some(value) = value.as_str() {
-        value.trim().parse::<i64>().ok()? as f64
-    } else {
-        return None;
-    };
+    let kilobytes = f64::from(parse_python_int_u32(value)?);
     kilobytes_to_bytes(kilobytes)
+}
+
+fn parse_python_int_u32(value: &JsonValue) -> Option<u32> {
+    if let Some(value) = value.as_u64() {
+        u32::try_from(value).ok()
+    } else if let Some(value) = value.as_i64() {
+        u32::try_from(value.max(0)).ok()
+    } else if let Some(value) = value.as_f64() {
+        let value = value.max(0.0).trunc();
+        (value.is_finite() && value <= f64::from(u32::MAX)).then_some(value as u32)
+    } else if let Some(value) = value.as_bool() {
+        Some(u32::from(value))
+    } else if let Some(value) = value.as_str() {
+        u32::try_from(value.trim().parse::<i64>().ok()?.max(0)).ok()
+    } else {
+        None
+    }
 }
 
 fn bytes_to_kilobytes(value: u32) -> f64 {
