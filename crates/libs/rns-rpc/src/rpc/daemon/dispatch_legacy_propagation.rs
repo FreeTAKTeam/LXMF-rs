@@ -1556,11 +1556,39 @@ impl RpcDaemon {
                 {
                     Some(bridge) => bridge,
                     None => {
-                        let snapshot_peer = existing_record
-                            .as_ref()
-                            .map(|record| record.peer.as_str())
-                            .unwrap_or(peer_id.as_str());
-                        let _ = self.record_payload_backed_peer_queue_snapshot(snapshot_peer);
+                        if let Some(record) = existing_record.as_ref() {
+                            let peer_transfer_limit_kb = record
+                                .propagation_transfer_limit
+                                .map(|limit| f64::from(limit) / 1000.0);
+                            let request_transfer_limit_kb =
+                                parsed.transfer_limit_kb.map(|limit| limit.max(0.0));
+                            let transfer_limit_kb = effective_transfer_limit_kb(
+                                peer_transfer_limit_kb,
+                                request_transfer_limit_kb,
+                            );
+                            let transfer_limit =
+                                transfer_limit_kb.map(|limit| (limit.max(0.0) * 1000.0) as u64);
+                            let sync_limit =
+                                record.propagation_sync_limit.map(u64::from).or(transfer_limit);
+                            self.update_propagation_sync_state(|state| {
+                                state.sync_state = PR_FAILED;
+                                state.state_name = "failed".to_string();
+                                state.sync_progress = 0.0;
+                                state.last_sync_started = Some(timestamp);
+                                state.last_sync_completed = None;
+                                state.last_sync_error =
+                                    Some("remote control bridge unavailable".to_string());
+                            });
+                            self.record_payload_backed_peer_queue_snapshot(record.peer.as_str())?;
+                            self.publish_failed_remote_peer_sync_event(
+                                record.peer.as_str(),
+                                remote_id.as_str(),
+                                "remote control bridge unavailable",
+                                transfer_limit,
+                                sync_limit,
+                                None,
+                            );
+                        }
                         return Err(std::io::Error::other("remote control bridge unavailable"));
                     }
                 };

@@ -12324,6 +12324,83 @@ fn propagation_remote_sync_missing_bridge_records_existing_queue_snapshot_like_p
 }
 
 #[test]
+fn propagation_remote_sync_missing_bridge_reports_existing_peer_failure_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    let peer = "peer-remote-sync-unavailable-event";
+    daemon
+        .handle_rpc(rpc_request(96, "peer_sync", json!({ "peer": peer })))
+        .expect("seed peer");
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let record = peers.get_mut(peer).expect("peer record");
+        record.restored_handled_ids.clear();
+        record.restored_unhandled_ids.clear();
+    }
+
+    let pending = PropagationEntryRecord {
+        transient_id: "e6".repeat(32),
+        destination: "1e".repeat(16),
+        payload_hex: "1e".repeat(20),
+        received_at: 1_700_000_806,
+        size_bytes: 20,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&pending).expect("store entry");
+    daemon
+        .store
+        .mark_peer_unhandled_propagation(peer, pending.transient_id.as_str())
+        .expect("seed live queue mark");
+    daemon.event_queue.lock().expect("event_queue mutex poisoned").clear();
+
+    let err = daemon
+        .handle_rpc(rpc_request(
+            97,
+            "propagation_remote_sync",
+            json!({
+                "remote": "remote-without-bridge",
+                "peer": peer,
+            }),
+        ))
+        .expect_err("missing bridge should reject remote sync");
+    assert_eq!(err.kind(), std::io::ErrorKind::Other);
+    assert_eq!(err.to_string(), "remote control bridge unavailable");
+
+    let status = daemon
+        .handle_rpc(RpcRequest { id: 98, method: "propagation_status".to_string(), params: None })
+        .expect("propagation status")
+        .result
+        .expect("propagation status result");
+    assert_eq!(status["propagation"]["sync_state"].as_u64(), Some(0xfe));
+    assert_eq!(status["propagation"]["state_name"].as_str(), Some("failed"));
+    assert_eq!(
+        status["propagation"]["last_sync_error"].as_str(),
+        Some("remote control bridge unavailable")
+    );
+
+    let event = daemon
+        .event_queue
+        .lock()
+        .expect("event_queue mutex poisoned")
+        .iter()
+        .rev()
+        .find(|event| event.event_type == "peer_sync")
+        .cloned()
+        .expect("missing bridge peer sync event");
+    assert_eq!(event.payload["peer"].as_str(), Some(peer));
+    assert_eq!(event.payload["remote"].as_str(), Some("remote-without-bridge"));
+    assert_eq!(event.payload["remote_sync"].as_bool(), Some(true));
+    assert_eq!(event.payload["synced"].as_bool(), Some(false));
+    assert_eq!(
+        event.payload["propagation"]["error"].as_str(),
+        Some("remote control bridge unavailable")
+    );
+    assert_eq!(
+        event.payload["messages"]["unhandled_ids"].as_array().expect("event unhandled ids"),
+        &[json!(pending.transient_id.as_str())]
+    );
+}
+
+#[test]
 fn propagation_remote_sync_missing_bridge_records_case_insensitive_queue_snapshot_like_python() {
     let daemon = RpcDaemon::test_instance();
     let stored_peer = "Peer-Remote-Sync-Unavailable-Snapshot-Case";

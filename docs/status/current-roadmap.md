@@ -90,6 +90,9 @@ The project is best described by capability level:
   live queue marks into active peer record snapshots for already known peers
   before returning, including case-insensitive requests, while still avoiding
   peer creation when the bridge is absent.
+- Remote peer-sync bridge-unavailable errors for already known peers now also
+  publish the failed peer-sync event and mark the propagation sync lifecycle
+  failed, keeping queue retry state observable without creating new peers.
 - Remote peer-sync now uses the stored peer ID case for the bridge call, import
   source accounting, state updates, and response envelope when callers use a
   case-variant peer request.
