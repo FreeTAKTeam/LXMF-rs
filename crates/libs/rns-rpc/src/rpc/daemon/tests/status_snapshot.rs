@@ -15715,6 +15715,7 @@ fn propagation_remote_unpeer_reports_existing_peer_case_insensitively_like_pytho
         .result
         .expect("remote unpeer result");
     assert_eq!(result["peer"].as_str(), Some(stored_peer));
+    assert_eq!(result["result"]["peer"].as_str(), Some(stored_peer));
     assert_eq!(result["removed"].as_bool(), Some(true));
     assert_eq!(result["propagation_cleared"].as_u64(), Some(1));
     assert!(
@@ -15735,6 +15736,7 @@ fn propagation_remote_unpeer_reports_existing_peer_case_insensitively_like_pytho
         .cloned()
         .expect("peer unpeer event");
     assert_eq!(event.payload["peer"].as_str(), Some(stored_peer));
+    assert_eq!(event.payload["result"]["peer"].as_str(), Some(stored_peer));
     assert_eq!(event.payload["propagation_cleared"].as_u64(), Some(1));
 }
 

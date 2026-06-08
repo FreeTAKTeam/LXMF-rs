@@ -97,6 +97,9 @@ The project is best described by capability level:
   marks into active peer record snapshots before returning bridge-unavailable
   or bridge-execution errors, including case-insensitive peer requests, so
   restart/export state preserves queued retry work when peering teardown fails.
+- Successful remote unpeer now also uses the stored peer ID case for the bridge
+  call and nested bridge result when callers use a case-variant peer request,
+  keeping remote teardown identity aligned with local queue cleanup.
 - Payload-backed peer queue snapshot mirroring resolves stored peer IDs
   case-insensitively before reading live queue marks, so restart/export state
   preserves queued work when callers use Python-style peer case variants.

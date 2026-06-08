@@ -2138,7 +2138,7 @@ impl RpcDaemon {
                 let timeout_secs = parsed.timeout_secs.unwrap_or(5.0).max(0.1);
                 let result = match bridge.propagation_remote_unpeer(
                     remote_id.as_str(),
-                    peer_id,
+                    snapshot_peer.as_str(),
                     parsed.identity_private_key_hex.as_deref(),
                     timeout_secs,
                 ) {
