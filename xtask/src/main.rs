@@ -1644,7 +1644,30 @@ fn public_api_line_diff(baseline: &str, current: &str) -> String {
     let current_lines = current.lines().collect::<BTreeSet<_>>();
     let removed = baseline_lines.difference(&current_lines).map(|line| format!("- {line}"));
     let added = current_lines.difference(&baseline_lines).map(|line| format!("+ {line}"));
-    removed.chain(added).collect::<Vec<_>>().join("\n")
+    let line_diff = removed.chain(added).collect::<Vec<_>>();
+    if !line_diff.is_empty() {
+        return line_diff.join("\n");
+    }
+
+    let baseline_lines = baseline.lines().collect::<Vec<_>>();
+    let current_lines = current.lines().collect::<Vec<_>>();
+    let mismatch = baseline_lines
+        .iter()
+        .zip(&current_lines)
+        .position(|(baseline_line, current_line)| baseline_line != current_line);
+    match mismatch {
+        Some(index) => format!(
+            "first ordering difference at line {}:\nbaseline: {}\ncurrent: {}",
+            index + 1,
+            baseline_lines[index],
+            current_lines[index]
+        ),
+        None => format!(
+            "API line counts differ: baseline={}, current={}",
+            baseline_lines.len(),
+            current_lines.len()
+        ),
+    }
 }
 
 fn run_sdk_api_stability_check(current_public_api: &str) -> Result<()> {
@@ -5598,6 +5621,14 @@ mod version_tests {
                 "pub const NEW: &str\npub struct Shared"
             ),
             "- pub const OLD: &str\n+ pub const NEW: &str"
+        );
+    }
+
+    #[test]
+    fn public_api_diff_reports_ordering_changes() {
+        assert_eq!(
+            public_api_line_diff("pub const A: &str\npub const B: &str", "pub const B: &str\npub const A: &str"),
+            "first ordering difference at line 1:\nbaseline: pub const A: &str\ncurrent: pub const B: &str"
         );
     }
 
