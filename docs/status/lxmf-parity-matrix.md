@@ -151,6 +151,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Transfer-limited peer marks remain terminal when a later generic handled
   report arrives, so transfer-limit retry decisions are not reclassified as
   offered/handled work in peer queue accounting.
+- Static-only propagation peer replacement routes removed static peers through
+  the same local unpeer cleanup as explicit unpeer, so handled, received,
+  transfer-limited, and unhandled queue marks are cleared and accounted
+  consistently.
 - Completed peer mark helpers write and read received/transferred live marks
   under the stored peer ID case when a peer record already exists, keeping live
   queue state and serialized restart/export snapshots aligned.

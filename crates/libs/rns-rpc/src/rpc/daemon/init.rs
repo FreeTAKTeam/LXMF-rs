@@ -1349,10 +1349,6 @@ impl RpcDaemon {
                 }
             }
         }
-        for peer in &removed_static_peers {
-            guard.remove(peer);
-        }
-
         let mut static_peers_to_queue = Vec::new();
         for peer in &configured_static_peers {
             let existing_peer_key =
@@ -1407,62 +1403,18 @@ impl RpcDaemon {
         self.update_daemon_status_snapshot(|snapshot| {
             snapshot.peer_count = peer_count;
         });
-        let mut cleared_selected_node = false;
         for peer in removed_static_peers {
-            let propagation_stats = self
-                .store
-                .peer_propagation_message_stats(peer.as_str())
-                .map_err(std::io::Error::other)?;
-            let handled_ids = self
-                .store
-                .list_peer_handled_propagation_ids(peer.as_str())
-                .map_err(std::io::Error::other)?;
-            let unhandled_ids = self
-                .store
-                .list_peer_unhandled_propagation_ids(peer.as_str())
-                .map_err(std::io::Error::other)?;
-            self.store
-                .clear_peer_propagation_marks(peer.as_str())
-                .map_err(std::io::Error::other)?;
-            let messages = json!({
-                "offered": propagation_stats.offered,
-                "unhandled": propagation_stats.unhandled,
-                "offered_bytes": propagation_stats.offered_bytes,
-                "unhandled_bytes": propagation_stats.unhandled_bytes,
-                "handled_ids": handled_ids,
-                "unhandled_ids": unhandled_ids,
-            });
-            self.publish_event(RpcEvent {
-                event_type: "peer_unpeer".into(),
-                payload: json!({
-                    "peer": peer.as_str(),
-                    "removed": true,
-                    "reason": "static_only_policy",
-                    "propagation_cleared": propagation_stats
-                        .offered
-                        .saturating_add(propagation_stats.unhandled),
-                    "propagation_cleared_bytes": propagation_stats
-                        .offered_bytes
-                        .saturating_add(propagation_stats.unhandled_bytes),
-                    "messages": messages,
-                }),
-            });
-            let mut selected =
-                self.outbound_propagation_node.lock().expect("propagation node mutex poisoned");
-            if selected.as_deref() == Some(peer.as_str()) {
-                *selected = None;
-                cleared_selected_node = true;
+            let cleanup = self.unpeer_local_state(peer.as_str())?;
+            if cleanup.removed {
+                self.publish_event(RpcEvent {
+                    event_type: "peer_unpeer".into(),
+                    payload: policy_unpeer_event_payload(
+                        cleanup.peer.as_str(),
+                        "static_only_policy",
+                        &cleanup,
+                    ),
+                });
             }
-        }
-        if cleared_selected_node {
-            let state = {
-                let mut guard = self.propagation_state.lock().expect("propagation mutex poisoned");
-                guard.selected_node = None;
-                guard.clone()
-            };
-            self.update_daemon_status_snapshot(|snapshot| {
-                snapshot.propagation = state;
-            });
         }
         for peer in static_peers_to_queue {
             self.queue_existing_propagation_for_peer(peer.as_str())?;

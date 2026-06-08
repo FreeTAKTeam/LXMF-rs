@@ -542,6 +542,139 @@ fn propagation_enable_unpeers_removed_static_peers_when_static_only() {
 }
 
 #[test]
+fn propagation_enable_static_only_removed_static_peer_counts_all_queue_marks_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    daemon
+        .handle_rpc(rpc_request(
+            41,
+            "propagation_enable",
+            json!({
+                "enabled": true,
+                "from_static_only": true,
+                "static_peers": ["peer-static-all-marks"],
+            }),
+        ))
+        .expect("enable old static peer");
+    daemon.event_queue.lock().expect("event_queue mutex poisoned").clear();
+
+    let handled = PropagationEntryRecord {
+        transient_id: "b1".repeat(32),
+        destination: "13".repeat(16),
+        payload_hex: "13".repeat(10),
+        received_at: 1_700_000_106,
+        size_bytes: 10,
+        stamp_value: None,
+    };
+    let unhandled = PropagationEntryRecord {
+        transient_id: "b2".repeat(32),
+        destination: "14".repeat(16),
+        payload_hex: "14".repeat(20),
+        received_at: 1_700_000_107,
+        size_bytes: 20,
+        stamp_value: None,
+    };
+    let received = PropagationEntryRecord {
+        transient_id: "b3".repeat(32),
+        destination: "15".repeat(16),
+        payload_hex: "15".repeat(30),
+        received_at: 1_700_000_108,
+        size_bytes: 30,
+        stamp_value: None,
+    };
+    let transfer_limited = PropagationEntryRecord {
+        transient_id: "b4".repeat(32),
+        destination: "16".repeat(16),
+        payload_hex: "16".repeat(40),
+        received_at: 1_700_000_109,
+        size_bytes: 40,
+        stamp_value: None,
+    };
+    for entry in [&handled, &unhandled, &received, &transfer_limited] {
+        daemon.store.upsert_propagation_entry(entry).expect("store entry");
+    }
+    daemon
+        .store
+        .mark_peer_handled_propagation(
+            "peer-static-all-marks",
+            handled.transient_id.as_str(),
+        )
+        .expect("mark handled");
+    daemon
+        .store
+        .mark_peer_unhandled_propagation(
+            "peer-static-all-marks",
+            unhandled.transient_id.as_str(),
+        )
+        .expect("mark unhandled");
+    daemon
+        .store
+        .mark_peer_received_propagation(
+            "peer-static-all-marks",
+            received.transient_id.as_str(),
+        )
+        .expect("mark received");
+    daemon
+        .store
+        .mark_peer_transfer_limited_propagation(
+            "peer-static-all-marks",
+            transfer_limited.transient_id.as_str(),
+        )
+        .expect("mark transfer limited");
+
+    daemon
+        .handle_rpc(rpc_request(
+            42,
+            "propagation_enable",
+            json!({
+                "enabled": true,
+                "from_static_only": true,
+                "static_peers": ["peer-static-replacement"],
+            }),
+        ))
+        .expect("replace static peer list");
+
+    let event = daemon
+        .event_queue
+        .lock()
+        .expect("event_queue mutex poisoned")
+        .iter()
+        .rev()
+        .find(|event| event.event_type == "peer_unpeer")
+        .cloned()
+        .expect("static-only peer removal event");
+    assert_eq!(event.payload["peer"].as_str(), Some("peer-static-all-marks"));
+    assert_eq!(event.payload["reason"].as_str(), Some("static_only_policy"));
+    assert_eq!(event.payload["propagation_cleared"].as_u64(), Some(4));
+    assert_eq!(event.payload["propagation_cleared_bytes"].as_u64(), Some(100));
+    assert_eq!(
+        event.payload["messages"]["handled_ids"].as_array().expect("event handled ids"),
+        &[
+            json!(handled.transient_id.as_str()),
+            json!(received.transient_id.as_str()),
+            json!(transfer_limited.transient_id.as_str()),
+        ]
+    );
+    assert_eq!(
+        event.payload["messages"]["unhandled_ids"].as_array().expect("event unhandled ids"),
+        &[json!(unhandled.transient_id.as_str())]
+    );
+    assert_eq!(
+        daemon
+            .store
+            .list_peer_handled_propagation_ids("peer-static-all-marks")
+            .expect("remaining handled ids"),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        daemon
+            .store
+            .list_peer_unhandled_propagation("peer-static-all-marks")
+            .expect("remaining unhandled entries"),
+        Vec::<PropagationEntryRecord>::new()
+    );
+}
+
+#[test]
 fn propagation_enable_static_only_unpeers_existing_non_static_peers() {
     let daemon = RpcDaemon::test_instance();
     daemon
