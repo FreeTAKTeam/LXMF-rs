@@ -18,6 +18,16 @@ pub(super) struct PeerPropagationState {
     pub(super) peering_timebase: Option<i64>,
 }
 
+pub(super) struct PeerUpsertRequest {
+    pub(super) peer: String,
+    pub(super) timestamp: i64,
+    pub(super) capabilities: Vec<String>,
+    pub(super) name: Option<String>,
+    pub(super) name_source: Option<String>,
+    pub(super) metadata: Option<JsonValue>,
+    pub(super) peer_type: Option<String>,
+}
+
 impl RpcDaemon {
     pub(super) const DEFAULT_TICKET_EXPIRY_SECS: u64 = 21 * 24 * 60 * 60;
     pub(super) const TICKET_GRACE_SECS: i64 = 5 * 24 * 60 * 60;
@@ -1129,15 +1139,15 @@ impl RpcDaemon {
             parse_capabilities_from_app_data_hex(app_data_hex.as_deref())
         };
         let record = if should_peer {
-            let record = match self.upsert_peer_with_metadata(
-                peer.clone(),
+            let record = match self.upsert_peer_with_metadata(PeerUpsertRequest {
+                peer: peer.clone(),
                 timestamp,
-                capability_list.clone(),
-                name.clone(),
-                name_source.clone(),
-                Some(metadata.clone()),
+                capabilities: capability_list.clone(),
+                name: name.clone(),
+                name_source: name_source.clone(),
+                metadata: Some(metadata.clone()),
                 peer_type,
-            ) {
+            }) {
                 Ok(record) => {
                     self.refresh_peer_propagation_state(
                         record.peer.as_str(),
@@ -1232,27 +1242,30 @@ impl RpcDaemon {
         name_source: Option<String>,
         peer_type: Option<String>,
     ) -> Result<PeerRecord, std::io::Error> {
-        self.upsert_peer_with_metadata(
+        self.upsert_peer_with_metadata(PeerUpsertRequest {
             peer,
             timestamp,
             capabilities,
             name,
             name_source,
-            None,
+            metadata: None,
             peer_type,
-        )
+        })
     }
 
     pub(super) fn upsert_peer_with_metadata(
         &self,
-        peer: String,
-        timestamp: i64,
-        capabilities: Vec<String>,
-        name: Option<String>,
-        name_source: Option<String>,
-        metadata: Option<JsonValue>,
-        peer_type: Option<String>,
+        request: PeerUpsertRequest,
     ) -> Result<PeerRecord, std::io::Error> {
+        let PeerUpsertRequest {
+            peer,
+            timestamp,
+            capabilities,
+            name,
+            name_source,
+            metadata,
+            peer_type,
+        } = request;
         let cleaned_name = clean_optional_text(name);
         let cleaned_name_source = clean_optional_text(name_source);
         let cleaned_capabilities = normalize_capabilities(capabilities);
