@@ -321,6 +321,18 @@ impl RpcDaemon {
                 "paper URI must start with lxm://",
             ));
         }
+        let uri_payload = parsed.uri.trim_start_matches("lxm://");
+        if uri_payload.is_empty()
+            || uri_payload
+                .split_once('/')
+                .is_some_and(|(destination, _)| destination.trim().is_empty())
+        {
+            return Ok(self.sdk_error_response(
+                request.id,
+                "SDK_VALIDATION_INVALID_ARGUMENT",
+                "paper URI must include a destination",
+            ));
+        }
         let bridged_decode = match self.outbound_bridge.as_ref() {
             Some(bridge) => bridge.decode_paper_uri(parsed.uri.as_str())?,
             None => None,

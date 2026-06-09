@@ -1083,6 +1083,23 @@ fn sdk_paper_decode_prefers_bridge_destination_over_request_hint() {
 }
 
 #[test]
+fn sdk_paper_decode_rejects_empty_uri_before_calling_bridge() {
+    let daemon = RpcDaemon::with_store_and_bridge(
+        MessagesStore::in_memory().expect("store"),
+        "paper-validation-node".to_owned(),
+        Arc::new(PaperDestinationBridge),
+    );
+
+    let response = daemon
+        .handle_rpc(rpc_request(1, "sdk_paper_decode_v2", json!({ "uri": "lxm://" })))
+        .expect("paper decode validation");
+    assert_eq!(
+        response.error.expect("empty paper URI must fail validation").code,
+        "SDK_VALIDATION_INVALID_ARGUMENT"
+    );
+}
+
+#[test]
 fn sdk_operation_registry_roundtrips_workflow_family() {
     let daemon = RpcDaemon::test_instance();
 
