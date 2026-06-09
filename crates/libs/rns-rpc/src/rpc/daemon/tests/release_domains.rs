@@ -994,6 +994,112 @@ fn sdk_release_c_domain_methods_roundtrip() {
 }
 
 #[test]
+fn sdk_paper_decode_reports_ingest_metadata_and_duplicate_scans() {
+    let daemon = RpcDaemon::test_instance();
+    let destination = hex::decode("00112233445566778899aabbccddeeff").expect("destination");
+    let mut paper_bytes = destination;
+    paper_bytes.extend_from_slice(b"canonical-paper-payload");
+    let uri = format!(
+        "lxm://{}",
+        base64::Engine::encode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, paper_bytes)
+    );
+
+    let first = daemon
+        .handle_rpc(rpc_request(1, "sdk_paper_decode_v2", json!({ "uri": uri.clone() })))
+        .expect("first paper decode");
+    assert!(first.error.is_none());
+    let first = first.result.expect("first paper result");
+    assert_eq!(first["accepted"], json!(true));
+    assert_eq!(first["destination"], json!("00112233445566778899aabbccddeeff"));
+    assert_eq!(first["destination_hint"], first["destination"]);
+    assert!(first["transient_id"].as_str().is_some_and(|value| !value.is_empty()));
+    assert_eq!(first["duplicate"], json!(false));
+    assert_eq!(first["bytes_len"], json!(uri.len()));
+
+    let duplicate = daemon
+        .handle_rpc(rpc_request(2, "sdk_paper_decode_v2", json!({ "uri": uri })))
+        .expect("duplicate paper decode");
+    assert!(duplicate.error.is_none());
+    let duplicate = duplicate.result.expect("duplicate paper result");
+    assert_eq!(duplicate["transient_id"], first["transient_id"]);
+    assert_eq!(duplicate["destination"], first["destination"]);
+    assert_eq!(duplicate["bytes_len"], first["bytes_len"]);
+    assert_eq!(duplicate["duplicate"], json!(true));
+
+    let invalid = daemon
+        .handle_rpc(rpc_request(3, "sdk_paper_decode_v2", json!({ "uri": "lxm://" })))
+        .expect("invalid paper decode");
+    assert_eq!(
+        invalid.error.expect("destination-less URI must fail").code,
+        "SDK_VALIDATION_INVALID_ARGUMENT"
+    );
+}
+
+#[derive(Debug)]
+struct PaperDestinationBridge;
+
+impl OutboundBridge for PaperDestinationBridge {
+    fn deliver(
+        &self,
+        _record: &MessageRecord,
+        _options: &OutboundDeliveryOptions,
+    ) -> Result<(), std::io::Error> {
+        Ok(())
+    }
+
+    fn decode_paper_uri(&self, _uri: &str) -> Result<Option<PaperDecodeOutcome>, std::io::Error> {
+        Ok(Some(PaperDecodeOutcome {
+            transient_id: "decoded-transient-id".to_owned(),
+            destination_hint: "decoded-destination".to_owned(),
+            record: None,
+            raw_lxmf_bytes: Some(vec![1, 2, 3]),
+        }))
+    }
+}
+
+#[test]
+fn sdk_paper_decode_prefers_bridge_destination_over_request_hint() {
+    let daemon = RpcDaemon::with_store_and_bridge(
+        MessagesStore::in_memory().expect("store"),
+        "paper-destination-node".to_owned(),
+        Arc::new(PaperDestinationBridge),
+    );
+
+    let response = daemon
+        .handle_rpc(rpc_request(
+            1,
+            "sdk_paper_decode_v2",
+            json!({
+                "uri": "lxm://placeholder/message",
+                "destination_hint": "caller-destination",
+            }),
+        ))
+        .expect("paper decode");
+    assert!(response.error.is_none());
+    let result = response.result.expect("paper result");
+    assert_eq!(result["destination"], json!("decoded-destination"));
+    assert_eq!(result["destination_hint"], json!("decoded-destination"));
+    assert_eq!(result["bytes_len"], json!(3));
+}
+
+#[test]
+fn sdk_paper_decode_rejects_empty_uri_before_calling_bridge() {
+    let daemon = RpcDaemon::with_store_and_bridge(
+        MessagesStore::in_memory().expect("store"),
+        "paper-validation-node".to_owned(),
+        Arc::new(PaperDestinationBridge),
+    );
+
+    let response = daemon
+        .handle_rpc(rpc_request(1, "sdk_paper_decode_v2", json!({ "uri": "lxm://" })))
+        .expect("paper decode validation");
+    assert_eq!(
+        response.error.expect("empty paper URI must fail validation").code,
+        "SDK_VALIDATION_INVALID_ARGUMENT"
+    );
+}
+
+#[test]
 fn sdk_operation_registry_roundtrips_workflow_family() {
     let daemon = RpcDaemon::test_instance();
 

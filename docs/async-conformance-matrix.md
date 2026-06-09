@@ -1,6 +1,6 @@
 # Async Contract Conformance Matrix
 
-Last updated: 2026-02-20
+Last updated: 2026-06-09
 
 This matrix defines first-pass scenarios for validating the async client contract in `docs/lxmf-async-api.yaml` across adapters and interop paths.
 
@@ -34,14 +34,14 @@ Every scenario should run in all four lanes unless marked optional.
 | C06 | Ignore policy | Ignored destination yields terminal `failed` or `rejected` equivalent with normalized detail `ignored` | not-started | not-started | not-started | not-started |
 | C07 | Progress monotonicity | Progress events never decrease and never exceed `100` | not-started | not-started | not-started | not-started |
 | C08 | Event ordering | Per-handle event order is causal: progress before terminal | not-started | not-started | not-started | not-started |
-| C09 | Unknown handle lookup | `status(unknown)=null`, `cancel(unknown)=false` | not-started | not-started | not-started | not-started |
+| C09 | Unknown handle lookup | `status(unknown)=null`, `cancel(unknown)=false` (`CancelResult::NotFound` in the typed Rust API) | not-started | not-started | not-started | done |
 | C10 | Adapter deferred path | Backend transport failure maps to normalized deferred/failed status without panic | not-started | optional | optional | not-started |
 
 ## Extension scenarios
 
 | ID | Extension | Contract assertions | L1 | L2 | L3 | L4 |
 | --- | --- | --- | --- | --- | --- | --- |
-| E01 | Paper URI ingest | `paper.ingest_uri()` returns `destination`, `transient_id`, `duplicate` flag | not-started | not-started | not-started | not-started |
+| E01 | Paper URI ingest | `paper.ingest_uri()` returns `destination`, `transient_id`, `duplicate` flag, and `bytes_len` | not-started | not-started | not-started | done |
 | E02 | Propagation ingest/fetch | `propagation.ingest()` count > 0 then `propagation.fetch()` succeeds | optional | not-started | not-started | not-started |
 | E03 | Priority scheduling | Prioritised destination dequeues ahead of non-prioritised | not-started | not-started | not-started | not-started |
 | E04 | Inbound callback bridge | Inbound backend callback appears as `inbound.received` contract event | not-started | not-started | not-started | not-started |
