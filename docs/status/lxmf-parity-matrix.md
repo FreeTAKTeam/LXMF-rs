@@ -292,6 +292,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Rejoining from a persisted `unpeered` peer record clears stale serialized
   queue snapshots before the peer is active again, preventing pre-unpeer work
   from being restored on export/restart.
+- Rejoining from a persisted `unpeered` peer record also clears stale live
+  completed propagation marks before queue replay, so still-local payloads are
+  offered again when the peer rejoins as manual or configured static.
 - Rejoining from a persisted `unpeered` non-static record re-runs admission
   before activation, so static-only policy cannot be bypassed by stale teardown
   state.

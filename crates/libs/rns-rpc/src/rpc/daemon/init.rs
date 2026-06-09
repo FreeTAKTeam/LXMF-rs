@@ -1304,8 +1304,14 @@ impl RpcDaemon {
                 existing.restored_unhandled_ids.clear();
             }
             let record = existing.clone();
+            let reactivated_peer_key = reactivating_unpeered.then(|| existing.peer.clone());
             let peer_count = Self::active_peer_count_from_guard(&guard);
             drop(guard);
+            if let Some(peer) = reactivated_peer_key {
+                self.store
+                    .clear_peer_propagation_marks(peer.as_str())
+                    .map_err(std::io::Error::other)?;
+            }
             self.update_daemon_status_snapshot(|snapshot| {
                 snapshot.peer_count = peer_count;
             });
@@ -1396,6 +1402,7 @@ impl RpcDaemon {
         let from_static_only =
             self.propagation_state.lock().expect("propagation mutex poisoned").from_static_only;
         let mut removed_static_peers = Vec::new();
+        let mut reactivated_unpeered_static_peers = Vec::new();
         let mut guard = self.peers.lock().expect("peers mutex poisoned");
         for existing in guard.values_mut() {
             let is_configured_static = configured_static_peers
@@ -1405,6 +1412,7 @@ impl RpcDaemon {
                 if existing.peer_type.as_deref() == Some("unpeered") {
                     existing.restored_handled_ids.clear();
                     existing.restored_unhandled_ids.clear();
+                    reactivated_unpeered_static_peers.push(existing.peer.clone());
                 }
                 existing.peer_type = Some("static".to_string());
             } else if existing.peer_type.as_deref() == Some("static") {
@@ -1470,6 +1478,11 @@ impl RpcDaemon {
         self.update_daemon_status_snapshot(|snapshot| {
             snapshot.peer_count = peer_count;
         });
+        for peer in reactivated_unpeered_static_peers {
+            self.store
+                .clear_peer_propagation_marks(peer.as_str())
+                .map_err(std::io::Error::other)?;
+        }
         for peer in removed_static_peers {
             let cleanup = self.unpeer_local_state(peer.as_str())?;
             if cleanup.removed {
