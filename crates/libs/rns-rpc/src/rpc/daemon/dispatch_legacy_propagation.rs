@@ -753,14 +753,21 @@ impl RpcDaemon {
             .active_peer_ids()
             .into_iter()
             .find(|peer| peer.eq_ignore_ascii_case(source_peer.as_str()));
+        let source_peer_key = source_active_peer.as_deref().unwrap_or(source_peer.as_str());
+        let already_received = self
+            .store
+            .peer_received_propagation_mark_exists(source_peer_key, transient_id.as_str())
+            .map_err(std::io::Error::other)?;
         self.queue_propagation_entry_from_source_for_active_peers(
             source_peer.as_str(),
             transient_id.as_str(),
         )?;
-        if let Some(peer) = source_active_peer {
-            self.record_inbound_peer_activity(peer.as_str(), normalized_payload.len());
-        } else {
-            self.record_unpeered_propagation_attempt(normalized_payload.len());
+        if !already_received {
+            if let Some(peer) = source_active_peer {
+                self.record_inbound_peer_activity(peer.as_str(), normalized_payload.len());
+            } else {
+                self.record_unpeered_propagation_attempt(normalized_payload.len());
+            }
         }
         self.propagation_payloads
             .lock()

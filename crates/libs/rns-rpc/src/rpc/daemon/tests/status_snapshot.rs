@@ -1121,6 +1121,10 @@ fn duplicate_peer_propagation_ingest_still_queues_relay_peers_like_python() {
         .ingest_peer_propagation_payload_bytes_at_cost(payload, None, 0, source_peer)
         .expect("duplicate peer propagation ingest");
     assert_eq!(duplicate, transient_id);
+    let repeated_duplicate = daemon
+        .ingest_peer_propagation_payload_bytes_at_cost(payload, None, 0, source_peer)
+        .expect("repeated duplicate peer propagation ingest");
+    assert_eq!(repeated_duplicate, transient_id);
 
     assert_eq!(
         daemon
@@ -1144,6 +1148,21 @@ fn duplicate_peer_propagation_ingest_still_queues_relay_peers_like_python() {
         .expect("relay unhandled");
     assert_eq!(relay_pending.len(), 1);
     assert_eq!(relay_pending[0].transient_id, transient_id);
+
+    let peers = daemon
+        .handle_rpc(RpcRequest { id: 31, method: "list_peers".to_string(), params: None })
+        .expect("list peers")
+        .result
+        .expect("list peers result");
+    let source_row = peers["peers"]
+        .as_array()
+        .expect("peer rows")
+        .iter()
+        .find(|row| row["peer"].as_str() == Some(source_peer))
+        .expect("source peer row");
+    assert_eq!(source_row["messages"]["incoming"].as_u64(), Some(1));
+    assert_eq!(source_row["incoming"].as_u64(), Some(1));
+    assert_eq!(source_row["rx_bytes"].as_u64(), Some(payload.len() as u64));
 }
 
 #[test]

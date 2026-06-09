@@ -251,6 +251,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   counts and receive bytes only for payload IDs not already marked received
   from that source, while still replaying known payloads into relay queues when
   their live marks were cleared.
+- Repeated peer-origin propagation ingests also avoid double-counting source
+  peer incoming counts and receive bytes for already received payload IDs,
+  while still refreshing relay queue marks for peers that need the payload.
 - Remote peer-sync imports accept transferred payload arrays from full
   Python-style responses where top-level `messages` is a peer counter object
   and payloads live under `propagation.messages`/`propagation.payloads`, as
