@@ -996,10 +996,16 @@ fn sdk_release_c_domain_methods_roundtrip() {
 #[test]
 fn sdk_paper_decode_reports_ingest_metadata_and_duplicate_scans() {
     let daemon = RpcDaemon::test_instance();
-    let uri = "lxm://00112233445566778899aabbccddeeff/paper-message";
+    let destination = hex::decode("00112233445566778899aabbccddeeff").expect("destination");
+    let mut paper_bytes = destination;
+    paper_bytes.extend_from_slice(b"canonical-paper-payload");
+    let uri = format!(
+        "lxm://{}",
+        base64::Engine::encode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, paper_bytes)
+    );
 
     let first = daemon
-        .handle_rpc(rpc_request(1, "sdk_paper_decode_v2", json!({ "uri": uri })))
+        .handle_rpc(rpc_request(1, "sdk_paper_decode_v2", json!({ "uri": uri.clone() })))
         .expect("first paper decode");
     assert!(first.error.is_none());
     let first = first.result.expect("first paper result");
@@ -1027,6 +1033,53 @@ fn sdk_paper_decode_reports_ingest_metadata_and_duplicate_scans() {
         invalid.error.expect("destination-less URI must fail").code,
         "SDK_VALIDATION_INVALID_ARGUMENT"
     );
+}
+
+#[derive(Debug)]
+struct PaperDestinationBridge;
+
+impl OutboundBridge for PaperDestinationBridge {
+    fn deliver(
+        &self,
+        _record: &MessageRecord,
+        _options: &OutboundDeliveryOptions,
+    ) -> Result<(), std::io::Error> {
+        Ok(())
+    }
+
+    fn decode_paper_uri(&self, _uri: &str) -> Result<Option<PaperDecodeOutcome>, std::io::Error> {
+        Ok(Some(PaperDecodeOutcome {
+            transient_id: "decoded-transient-id".to_owned(),
+            destination_hint: "decoded-destination".to_owned(),
+            record: None,
+            raw_lxmf_bytes: Some(vec![1, 2, 3]),
+        }))
+    }
+}
+
+#[test]
+fn sdk_paper_decode_prefers_bridge_destination_over_request_hint() {
+    let daemon = RpcDaemon::with_store_and_bridge(
+        MessagesStore::in_memory().expect("store"),
+        "paper-destination-node".to_owned(),
+        Arc::new(PaperDestinationBridge),
+    );
+
+    let response = daemon
+        .handle_rpc(rpc_request(
+            1,
+            "sdk_paper_decode_v2",
+            json!({
+                "uri": "lxm://placeholder/message",
+                "destination_hint": "caller-destination",
+            }),
+        ))
+        .expect("paper decode");
+    assert!(response.error.is_none());
+    let result = response.result.expect("paper result");
+    assert_eq!(result["destination"], json!("decoded-destination"));
+    assert_eq!(result["destination_hint"], json!("decoded-destination"));
+    assert_eq!(result["bytes_len"], json!(3));
 }
 
 #[test]

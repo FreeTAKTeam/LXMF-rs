@@ -1,4 +1,5 @@
 use super::*;
+use base64::engine::general_purpose::{URL_SAFE, URL_SAFE_NO_PAD};
 
 type InboundSdkCommandUpdate = (
     String,
@@ -11,6 +12,17 @@ type InboundSdkCommandUpdate = (
 );
 
 impl RpcDaemon {
+    fn paper_uri_destination(uri: &str) -> Option<String> {
+        let encoded = uri.strip_prefix("lxm://")?;
+        if let Some((destination, _)) = encoded.split_once('/') {
+            return Self::normalize_non_empty(destination);
+        }
+
+        let paper_bytes =
+            URL_SAFE_NO_PAD.decode(encoded).or_else(|_| URL_SAFE.decode(encoded)).ok()?;
+        (paper_bytes.len() >= 16).then(|| encode_hex(&paper_bytes[..16]))
+    }
+
     pub(super) fn sdk_command_event_payload_summary(payload: &JsonValue) -> JsonValue {
         let byte_len = payload.to_string().len();
         match payload {
@@ -313,15 +325,11 @@ impl RpcDaemon {
             Some(bridge) => bridge.decode_paper_uri(parsed.uri.as_str())?,
             None => None,
         };
-        let uri_destination = parsed
-            .uri
-            .strip_prefix("lxm://")
-            .and_then(|remainder| remainder.split('/').next())
-            .and_then(Self::normalize_non_empty);
-        let destination = parsed
-            .destination_hint
-            .or_else(|| bridged_decode.as_ref().map(|outcome| outcome.destination_hint.clone()))
-            .or(uri_destination);
+        let destination = bridged_decode
+            .as_ref()
+            .map(|outcome| outcome.destination_hint.clone())
+            .or(parsed.destination_hint)
+            .or_else(|| Self::paper_uri_destination(parsed.uri.as_str()));
         let Some(destination) = destination else {
             return Ok(self.sdk_error_response(
                 request.id,
