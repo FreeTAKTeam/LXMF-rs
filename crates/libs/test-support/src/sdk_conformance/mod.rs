@@ -1184,6 +1184,28 @@ fn sdk_conformance_cancel_accepted_and_too_late_paths() {
     assert_eq!(too_late, CancelResult::TooLateToCancel);
 }
 
+#[tokio::test]
+async fn sdk_conformance_unknown_message_status_and_cancel() {
+    let harness = RpcHarness::new();
+    let client = harness.client();
+    client.start(base_start_request()).expect("start");
+
+    let unknown = MessageId("unknown-conformance-message".to_owned());
+    assert!(
+        client.status(unknown.clone()).expect("sync status").is_none(),
+        "unknown sync status must return no delivery snapshot"
+    );
+    assert!(
+        client.status_async(unknown.clone()).await.expect("async status").is_none(),
+        "unknown async status must return no delivery snapshot"
+    );
+    assert_eq!(
+        client.cancel(unknown).expect("cancel unknown message"),
+        CancelResult::NotFound,
+        "unknown cancel must return the typed equivalent of false"
+    );
+}
+
 #[test]
 fn sdk_conformance_configure_cas_conflict() {
     let harness = RpcHarness::new();
