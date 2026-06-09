@@ -216,6 +216,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Restored Python peer records preserve serialized LXMPeer metadata through
   Rust peer record round trips, so restart/export snapshots keep peer-specific
   metadata before later queue work resumes.
+- Live propagation announces retain Python PN metadata on active peer records,
+  so announce-derived peer metadata survives into later peering and queue
+  restart/export snapshots.
 - Duplicate inbound peer propagation payloads still fan out to active relay
   peers while keeping the source peer handled, so a known local payload does
   not bypass relay queue creation.

@@ -420,6 +420,22 @@ fn parse_propagation_enabled_from_app_data_hex(app_data_hex: Option<&str>) -> Op
     entries.get(2).map(parse_bool_capability_flag)
 }
 
+fn parse_propagation_metadata_from_app_data_hex(app_data_hex: Option<&str>) -> JsonValue {
+    let Some(raw_hex) = app_data_hex.map(str::trim).filter(|value| !value.is_empty()) else {
+        return JsonValue::Null;
+    };
+    let Ok(app_data) = hex::decode(raw_hex) else {
+        return JsonValue::Null;
+    };
+    let Ok(value) = rmp_serde::from_slice::<MsgPackValue>(&app_data) else {
+        return JsonValue::Null;
+    };
+    let Some(metadata) = value.as_array().and_then(|entries| entries.get(6)) else {
+        return JsonValue::Null;
+    };
+    pn_metadata_to_json(metadata).unwrap_or(JsonValue::Null)
+}
+
 fn parse_peer_name_from_app_data_hex(app_data_hex: Option<&str>) -> Option<(String, &'static str)> {
     let raw_hex = app_data_hex.map(str::trim).filter(|value| !value.is_empty())?;
     let app_data = hex::decode(raw_hex).ok()?;
@@ -433,6 +449,51 @@ fn parse_peer_name_from_app_data_hex(app_data_hex: Option<&str>) -> Option<(Stri
         return Some((name, "delivery_app_data"));
     }
     None
+}
+
+fn pn_metadata_to_json(value: &MsgPackValue) -> Option<JsonValue> {
+    let MsgPackValue::Map(entries) = value else {
+        return None;
+    };
+    let mut metadata = JsonMap::new();
+    for (key, value) in entries {
+        let Some(key) = pn_metadata_key_to_string(key) else {
+            continue;
+        };
+        let Some(value) = pn_metadata_value_to_json(value) else {
+            continue;
+        };
+        metadata.insert(key, value);
+    }
+    Some(JsonValue::Object(metadata))
+}
+
+fn pn_metadata_key_to_string(key: &MsgPackValue) -> Option<String> {
+    if is_pn_name_metadata_key(key) {
+        return Some("name".to_string());
+    }
+    match key {
+        MsgPackValue::Integer(value) => value.as_u64().map(|value| value.to_string()),
+        MsgPackValue::String(text) => text.as_str().map(str::to_string),
+        MsgPackValue::Binary(bytes) => String::from_utf8(bytes.clone()).ok(),
+        _ => None,
+    }
+}
+
+fn pn_metadata_value_to_json(value: &MsgPackValue) -> Option<JsonValue> {
+    match value {
+        MsgPackValue::Nil => Some(JsonValue::Null),
+        MsgPackValue::Boolean(value) => Some(json!(value)),
+        MsgPackValue::Integer(value) => value
+            .as_i64()
+            .map(JsonValue::from)
+            .or_else(|| value.as_u64().map(JsonValue::from)),
+        MsgPackValue::F32(value) => Some(json!(f64::from(*value))),
+        MsgPackValue::F64(value) => Some(json!(value)),
+        MsgPackValue::String(text) => text.as_str().map(JsonValue::from),
+        MsgPackValue::Binary(bytes) => String::from_utf8(bytes.clone()).ok().map(JsonValue::from),
+        _ => None,
+    }
 }
 
 fn parse_pn_metadata_name(value: &MsgPackValue) -> Option<String> {

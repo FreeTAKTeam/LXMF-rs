@@ -1081,6 +1081,7 @@ impl RpcDaemon {
             parse_propagation_enabled_from_app_data_hex(app_data_hex.as_deref());
         let peering_timebase =
             parse_propagation_timebase_from_app_data_hex(app_data_hex.as_deref());
+        let metadata = parse_propagation_metadata_from_app_data_hex(app_data_hex.as_deref());
         let propagation_peer_state = PeerPropagationState {
             transfer_limit: propagation_transfer_limit,
             sync_limit: propagation_sync_limit,
@@ -1128,12 +1129,13 @@ impl RpcDaemon {
             parse_capabilities_from_app_data_hex(app_data_hex.as_deref())
         };
         let record = if should_peer {
-            let record = match self.upsert_peer(
+            let record = match self.upsert_peer_with_metadata(
                 peer.clone(),
                 timestamp,
                 capability_list.clone(),
                 name.clone(),
                 name_source.clone(),
+                Some(metadata.clone()),
                 peer_type,
             ) {
                 Ok(record) => {
@@ -1152,6 +1154,7 @@ impl RpcDaemon {
                         capability_list.clone(),
                         name,
                         name_source,
+                        metadata,
                         Some("discovered".to_string()),
                         propagation_peer_state,
                     ),
@@ -1165,6 +1168,7 @@ impl RpcDaemon {
                 capability_list.clone(),
                 name,
                 name_source,
+                metadata,
                 peer_type,
                 propagation_peer_state,
             )
@@ -1228,6 +1232,27 @@ impl RpcDaemon {
         name_source: Option<String>,
         peer_type: Option<String>,
     ) -> Result<PeerRecord, std::io::Error> {
+        self.upsert_peer_with_metadata(
+            peer,
+            timestamp,
+            capabilities,
+            name,
+            name_source,
+            None,
+            peer_type,
+        )
+    }
+
+    pub(super) fn upsert_peer_with_metadata(
+        &self,
+        peer: String,
+        timestamp: i64,
+        capabilities: Vec<String>,
+        name: Option<String>,
+        name_source: Option<String>,
+        metadata: Option<JsonValue>,
+        peer_type: Option<String>,
+    ) -> Result<PeerRecord, std::io::Error> {
         let cleaned_name = clean_optional_text(name);
         let cleaned_name_source = clean_optional_text(name_source);
         let cleaned_capabilities = normalize_capabilities(capabilities);
@@ -1257,6 +1282,9 @@ impl RpcDaemon {
                 if let Some(peer_type) = peer_type {
                     existing.peer_type = Some(peer_type);
                 }
+                if let Some(metadata) = metadata.filter(|value| !value.is_null()) {
+                    existing.metadata = metadata;
+                }
             }
             if reactivating_unpeered {
                 existing.restored_handled_ids.clear();
@@ -1278,7 +1306,7 @@ impl RpcDaemon {
             capabilities: cleaned_capabilities,
             name: cleaned_name,
             name_source: cleaned_name_source,
-            metadata: JsonValue::Null,
+            metadata: metadata.unwrap_or(JsonValue::Null),
             peer_type,
             alive: true,
             last_sync_attempt: 0,
@@ -1965,6 +1993,7 @@ impl RpcDaemon {
             capabilities,
             name,
             name_source,
+            JsonValue::Null,
             peer_type,
             PeerPropagationState {
                 transfer_limit: None,
@@ -1986,6 +2015,7 @@ impl RpcDaemon {
         capabilities: Vec<String>,
         name: Option<String>,
         name_source: Option<String>,
+        metadata: JsonValue,
         peer_type: Option<String>,
         state: PeerPropagationState,
     ) -> PeerRecord {
@@ -1996,7 +2026,7 @@ impl RpcDaemon {
             capabilities: normalize_capabilities(capabilities),
             name: clean_optional_text(name),
             name_source: clean_optional_text(name_source),
-            metadata: JsonValue::Null,
+            metadata,
             peer_type,
             alive: true,
             last_sync_attempt: 0,

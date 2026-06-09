@@ -2729,6 +2729,7 @@ fn announce_received_parses_propagation_peer_name_from_python_metadata() {
     assert_eq!(row["peer"].as_str(), Some("peer-pn-name"));
     assert_eq!(row["name"].as_str(), Some("PN Alpha"));
     assert_eq!(row["name_source"].as_str(), Some("pn_meta"));
+    assert_eq!(row["metadata"]["name"].as_str(), Some("PN Alpha"));
 }
 
 #[test]
