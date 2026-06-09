@@ -324,6 +324,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Rejoining from a persisted `unpeered` peer record clears stale sync backoff
   postponement fields, preventing pre-unpeer retry scheduling from blocking
   manual or configured static peering.
+- Peer sync reactivation bypasses stale pre-unpeer backoff postponements
+  before admission and queue replay, preventing manual rejoins from returning
+  as postponed `unpeered` peers.
 - Peer sync stale queue cleanup prunes matching active peer record snapshot IDs
   for unhandled and completed marks when the propagation payload has already
   been removed, keeping serialized restart/export state aligned with live queue

@@ -827,7 +827,9 @@ impl RpcDaemon {
                         };
                     let sync_limit_bytes =
                         record.propagation_sync_limit.map(|limit| limit as usize);
-                    if peer_sync_backoff_active(timestamp, record.next_sync_attempt) {
+                    if record.peer_type.as_deref() != Some("unpeered")
+                        && peer_sync_backoff_active(timestamp, record.next_sync_attempt)
+                    {
                         return Ok(self.postponed_peer_sync_response(
                             request.id,
                             record,

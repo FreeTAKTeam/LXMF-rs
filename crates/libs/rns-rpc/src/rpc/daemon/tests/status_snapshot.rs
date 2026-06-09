@@ -18161,6 +18161,9 @@ fn peer_sync_reactivation_clears_unpeered_queue_snapshot() {
         );
         record.restored_handled_ids.push("aa".repeat(32));
         record.restored_unhandled_ids.push("bb".repeat(32));
+        record.last_sync_attempt = now_i64();
+        record.next_sync_attempt = now_i64().saturating_add(12 * 60);
+        record.sync_backoff = 12 * 60;
         guard.insert(peer.to_string(), record);
     }
 
@@ -18179,9 +18182,13 @@ fn peer_sync_reactivation_clears_unpeered_queue_snapshot() {
             .expect("result unhandled ids")
             .is_empty()
     );
+    assert_eq!(result["sync_backoff"].as_u64(), Some(0));
+    assert_eq!(result["next_sync_attempt"].as_i64(), Some(0));
 
     let peers = daemon.peers.lock().expect("peers mutex poisoned");
     let record = peers.get(peer).expect("stored peer");
+    assert_eq!(record.sync_backoff, 0);
+    assert_eq!(record.next_sync_attempt, 0);
     let serialized = serde_json::to_value(record).expect("serialize peer record");
     assert!(
         serialized["handled_ids"].as_array().expect("serialized handled ids").is_empty()

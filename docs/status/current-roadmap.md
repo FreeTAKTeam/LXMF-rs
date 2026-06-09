@@ -293,6 +293,9 @@ The project is best described by capability level:
 - Reactivating a persisted `unpeered` record now also clears stale sync
   backoff postponement fields, so rejoined manual or configured static peers
   are not blocked by pre-unpeer retry scheduling.
+- Peer sync reactivation now bypasses stale pre-unpeer backoff postponements
+  before admission and queue replay, so manual rejoins are not returned as
+  postponed `unpeered` peers.
 - Peer sync stale queue cleanup now removes matching unhandled and completed
   IDs from active peer record snapshots when the underlying propagation payload
   no longer exists, keeping export/restart state aligned with live queue
