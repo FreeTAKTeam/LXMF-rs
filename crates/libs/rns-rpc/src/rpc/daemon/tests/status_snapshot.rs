@@ -18284,6 +18284,9 @@ fn static_peer_activation_clears_unpeered_queue_snapshot() {
         );
         record.restored_handled_ids.push("aa".repeat(32));
         record.restored_unhandled_ids.push("bb".repeat(32));
+        record.last_sync_attempt = 1_700_000_900;
+        record.next_sync_attempt = 1_700_001_720;
+        record.sync_backoff = 720;
         daemon
             .peers
             .lock()
@@ -18323,6 +18326,8 @@ fn static_peer_activation_clears_unpeered_queue_snapshot() {
         .find(|row| row["peer"].as_str() == Some(peer))
         .expect("reactivated static peer row");
     assert_eq!(row["peer_type"].as_str(), Some("static"));
+    assert_eq!(row["sync_backoff"].as_u64(), Some(0));
+    assert_eq!(row["next_sync_attempt"].as_i64(), Some(0));
     assert_eq!(row["messages"]["handled_ids"].as_array().expect("handled ids"), &[] as &[JsonValue]);
     assert_eq!(
         row["messages"]["unhandled_ids"].as_array().expect("unhandled ids"),

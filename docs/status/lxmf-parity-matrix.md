@@ -321,6 +321,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Static peer activation clears stale serialized queue snapshots when it
   revives a persisted `unpeered` record, preventing configured static peering
   from restoring pre-unpeer propagation work on export/restart.
+- Rejoining from a persisted `unpeered` peer record clears stale sync backoff
+  postponement fields, preventing pre-unpeer retry scheduling from blocking
+  manual or configured static peering.
 - Peer sync stale queue cleanup prunes matching active peer record snapshot IDs
   for unhandled and completed marks when the propagation payload has already
   been removed, keeping serialized restart/export state aligned with live queue

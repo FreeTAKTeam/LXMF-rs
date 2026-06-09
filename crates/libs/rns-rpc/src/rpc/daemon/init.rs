@@ -1302,6 +1302,8 @@ impl RpcDaemon {
             if reactivating_unpeered {
                 existing.restored_handled_ids.clear();
                 existing.restored_unhandled_ids.clear();
+                existing.sync_backoff = 0;
+                existing.next_sync_attempt = 0;
             }
             let record = existing.clone();
             let reactivated_peer_key = reactivating_unpeered.then(|| existing.peer.clone());
@@ -1412,6 +1414,8 @@ impl RpcDaemon {
                 if existing.peer_type.as_deref() == Some("unpeered") {
                     existing.restored_handled_ids.clear();
                     existing.restored_unhandled_ids.clear();
+                    existing.sync_backoff = 0;
+                    existing.next_sync_attempt = 0;
                     reactivated_unpeered_static_peers.push(existing.peer.clone());
                 }
                 existing.peer_type = Some("static".to_string());

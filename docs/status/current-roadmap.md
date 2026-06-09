@@ -290,6 +290,9 @@ The project is best described by capability level:
 - Static peer activation now clears stale serialized queue snapshots when it
   revives a persisted `unpeered` record, so configured static peering cannot
   resurrect pre-unpeer propagation work on restart/export.
+- Reactivating a persisted `unpeered` record now also clears stale sync
+  backoff postponement fields, so rejoined manual or configured static peers
+  are not blocked by pre-unpeer retry scheduling.
 - Peer sync stale queue cleanup now removes matching unhandled and completed
   IDs from active peer record snapshots when the underlying propagation payload
   no longer exists, keeping export/restart state aligned with live queue
