@@ -73,7 +73,12 @@ pub(super) fn handle_message_get_request(
         &wants,
         transfer_limit_bytes,
     );
-    if !preview.is_empty()
+    let transfer_limited = daemon.transfer_limited_propagation_payload_ids_for_destination(
+        &remote_delivery_hash,
+        &wants,
+        transfer_limit_bytes,
+    );
+    if (!preview.is_empty() || !transfer_limited.is_empty())
         && daemon.record_propagation_offer_peer(remote_propagation_hash.as_str()).is_err()
     {
         return ControlResponse::Code(error_no_access);
@@ -86,6 +91,17 @@ pub(super) fn handle_message_get_request(
     for (transient_id, _) in &fetched {
         if daemon
             .record_peer_transferred_propagation(remote_propagation_hash.as_str(), transient_id)
+            .is_err()
+        {
+            return ControlResponse::Code(error_no_access);
+        }
+    }
+    for transient_id in &transfer_limited {
+        if daemon
+            .record_peer_transfer_limited_propagation(
+                remote_propagation_hash.as_str(),
+                transient_id.as_str(),
+            )
             .is_err()
         {
             return ControlResponse::Code(error_no_access);
@@ -1527,6 +1543,69 @@ mod tests {
             messages.is_empty(),
             "zero transfer limit should behave as a real zero-byte budget"
         );
+    }
+
+    #[test]
+    fn message_get_transfer_limited_wanted_payload_marks_peer_completed_like_python() {
+        let daemon = RpcDaemon::test_instance();
+        let remote_private =
+            rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let remote_identity = *remote_private.as_identity();
+        let remote_delivery_hash = delivery_destination_hash_for_identity(&remote_identity);
+        let remote_propagation_hash =
+            hex::encode(propagation_destination_hash_for_identity(&remote_identity));
+        let wanted = [0x67; 32];
+        let mut wanted_payload = remote_delivery_hash.to_vec();
+        wanted_payload.extend_from_slice(&[0x42; 2_000]);
+        daemon
+            .ingest_propagation_payload_bytes_with_aliases(
+                wanted_payload.as_slice(),
+                hex::encode(wanted).as_str(),
+                &[],
+            )
+            .expect("store wanted payload");
+        daemon
+            .record_propagation_offer_peer(remote_propagation_hash.as_str())
+            .expect("record propagation peer");
+
+        let fetch_response = handle_message_get_request(
+            &daemon,
+            &remote_identity,
+            Some(rmpv::Value::Array(vec![
+                rmpv::Value::Array(vec![rmpv::Value::Binary(wanted.to_vec())]),
+                rmpv::Value::Array(Vec::new()),
+                rmpv::Value::from(1u64),
+            ])),
+            0xF1,
+            0xF4,
+        );
+
+        let ControlResponse::Rmpv(rmpv::Value::Array(messages)) = fetch_response else {
+            panic!("expected fetched message list");
+        };
+        assert!(messages.is_empty());
+        assert!(
+            daemon
+                .has_peer_completed_propagation_mark(
+                    remote_propagation_hash.as_str(),
+                    hex::encode(wanted).as_str(),
+                )
+                .expect("completed propagation mark lookup"),
+            "transfer-limited message-get wants should be completed for this peer"
+        );
+        let peers = daemon
+            .handle_rpc(RpcRequest { id: 12, method: "list_peers".to_string(), params: None })
+            .expect("list peers")
+            .result
+            .expect("list peers result");
+        let row = peers["peers"]
+            .as_array()
+            .expect("peer rows")
+            .iter()
+            .find(|row| row["peer"].as_str() == Some(remote_propagation_hash.as_str()))
+            .expect("peer row");
+        assert_eq!(row["messages"]["handled_ids"], json!([hex::encode(wanted)]));
+        assert_eq!(row["messages"]["unhandled_ids"], json!([]));
     }
 
     #[test]

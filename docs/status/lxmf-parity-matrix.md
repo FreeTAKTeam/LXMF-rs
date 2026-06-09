@@ -240,6 +240,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Inbound propagation message-get `haves` handling applies peer admission
   before purging matching local payloads, so rejected peers cannot delete queued
   transfers they are not allowed to acknowledge.
+- Inbound propagation message-get requests mark wanted payloads skipped by the
+  peer's transfer budget as transfer-limited completed work after peer
+  admission, so oversized fetch attempts do not remain retryable queue entries.
 - Inbound propagation offer requests with too-short list payloads return the
   Python-compatible nil response without validating the link or admitting the
   remote propagation peer.

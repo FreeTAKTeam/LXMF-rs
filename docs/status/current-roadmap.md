@@ -204,6 +204,9 @@ The project is best described by capability level:
 - Inbound propagation message-get `haves` handling now applies peer admission
   before purging matching local payloads, so rejected peers cannot delete queued
   transfers they are not allowed to acknowledge.
+- Inbound propagation message-get requests now mark wanted payloads skipped by
+  the peer's transfer budget as transfer-limited completed work after peer
+  admission, so oversized fetch attempts do not remain retryable queue entries.
 - Inbound propagation offer requests with too-short list payloads now follow
   Python's caught-exception nil response path without validating the link or
   admitting a propagation peer.

@@ -885,6 +885,20 @@ impl RpcDaemon {
         Ok(())
     }
 
+    pub fn record_peer_transfer_limited_propagation(
+        &self,
+        peer: &str,
+        transient_id: &str,
+    ) -> Result<(), std::io::Error> {
+        let transient_id = normalize_propagation_transient_key(transient_id);
+        let peer_key = self.peer_store_key_or_input(peer);
+        self.store
+            .mark_peer_transfer_limited_propagation(peer_key.as_str(), transient_id.as_str())
+            .map_err(std::io::Error::other)?;
+        self.record_peer_queue_handled_id(peer_key.as_str(), transient_id.as_str());
+        Ok(())
+    }
+
     pub fn list_propagation_payloads_for_destination(
         &self,
         destination: &[u8; 16],
@@ -982,16 +996,45 @@ impl RpcDaemon {
         )
     }
 
+    pub fn transfer_limited_propagation_payload_ids_for_destination(
+        &self,
+        destination: &[u8; 16],
+        wanted: &[Vec<u8>],
+        transfer_limit_bytes: Option<usize>,
+    ) -> Vec<String> {
+        self.select_propagation_payloads_for_destination_with_budget_outcome(
+            destination,
+            wanted,
+            transfer_limit_bytes,
+        )
+        .1
+    }
+
     fn select_propagation_payloads_for_destination_with_ids(
         &self,
         destination: &[u8; 16],
         wanted: &[Vec<u8>],
         transfer_limit_bytes: Option<usize>,
     ) -> Vec<(String, Vec<u8>)> {
+        self.select_propagation_payloads_for_destination_with_budget_outcome(
+            destination,
+            wanted,
+            transfer_limit_bytes,
+        )
+        .0
+    }
+
+    fn select_propagation_payloads_for_destination_with_budget_outcome(
+        &self,
+        destination: &[u8; 16],
+        wanted: &[Vec<u8>],
+        transfer_limit_bytes: Option<usize>,
+    ) -> (Vec<(String, Vec<u8>)>, Vec<String>) {
         let destination_hex = hex::encode(destination);
         let per_message_overhead = 16usize;
         let mut cumulative_size = 24usize;
         let mut messages = Vec::new();
+        let mut transfer_limited_ids = Vec::new();
         let mut served_ids = HashSet::new();
         for transient_id in wanted {
             if transient_id.len() != 32 {
@@ -1033,13 +1076,14 @@ impl RpcDaemon {
             let stored_size = payload.len().saturating_add(PROPAGATION_STAMP_SIZE);
             let next_size = cumulative_size.saturating_add(stored_size + per_message_overhead);
             if transfer_limit_bytes.is_some_and(|limit| next_size > limit) {
+                transfer_limited_ids.push(transient_hex);
                 continue;
             }
             cumulative_size = next_size;
             messages.push((transient_hex, payload));
         }
 
-        messages
+        (messages, transfer_limited_ids)
     }
 
     pub fn purge_propagation_payloads_for_destination(
