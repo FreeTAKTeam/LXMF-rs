@@ -163,6 +163,7 @@ pub(super) fn handle_offer_request(
     }
 
     let mut offered_ids = Vec::with_capacity(transient_ids.len());
+    let mut seen_offered_ids = std::collections::HashSet::with_capacity(transient_ids.len());
     for transient_id in transient_ids {
         let rmpv::Value::Binary(bytes) = transient_id else {
             return ControlResponse::Code(error_invalid_data);
@@ -170,7 +171,9 @@ pub(super) fn handle_offer_request(
         if bytes.len() != 32 {
             return ControlResponse::Code(error_invalid_data);
         }
-        offered_ids.push(bytes.clone());
+        if seen_offered_ids.insert(bytes.clone()) {
+            offered_ids.push(bytes.clone());
+        }
     }
 
     let mut wanted = Vec::new();
@@ -809,6 +812,78 @@ mod tests {
                 )
                 .expect("known offer mark"),
             "invalid offer data must not leave partial source-accounting queue marks"
+        );
+    }
+
+    #[test]
+    fn offer_request_deduplicates_missing_wanted_ids_like_python() {
+        let daemon = RpcDaemon::test_instance();
+        daemon
+            .handle_rpc(RpcRequest {
+                id: 10,
+                method: "propagation_enable".to_string(),
+                params: Some(json!({
+                    "enabled": true,
+                    "peering_cost": 1,
+                })),
+            })
+            .expect("enable propagation");
+        let known_payload = b"known before duplicate missing offers";
+        let known_transient_id = hex::encode(sha2::Sha256::digest(known_payload));
+        daemon
+            .ingest_propagation_payload_bytes_with_aliases(
+                known_payload,
+                known_transient_id.as_str(),
+                &[],
+            )
+            .expect("store known payload");
+        let missing_transient = [0x64; 32];
+        let local_identity_hash = [0x11; 16];
+        let remote_private =
+            rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let remote_identity = *remote_private.as_identity();
+        let mut peering_id = Vec::with_capacity(32);
+        peering_id.extend_from_slice(local_identity_hash.as_slice());
+        peering_id.extend_from_slice(remote_identity.address_hash.as_slice());
+        let peering_key = generate_peering_key(peering_id.as_slice(), 1).expect("peering key");
+        let control = PropagationControlContext {
+            enabled: true,
+            local_identity_hash,
+            propagation_destination_hash_hex: Some("propagation".to_string()),
+            control_destination_hash_hex: Some("control".to_string()),
+            delivery_destination: None,
+            allowed_control_identities: Vec::new(),
+            validated_peer_links: test_validated_peer_links(),
+        };
+
+        let response = handle_offer_request(
+            &daemon,
+            &control,
+            &test_link_id(),
+            &remote_identity,
+            Some(rmpv::Value::Array(vec![
+                rmpv::Value::Binary(peering_key),
+                rmpv::Value::Array(vec![
+                    rmpv::Value::Binary(
+                        hex::decode(known_transient_id.as_str()).expect("known transient bytes"),
+                    ),
+                    rmpv::Value::Binary(missing_transient.to_vec()),
+                    rmpv::Value::Binary(missing_transient.to_vec()),
+                ]),
+            ])),
+            0xF1,
+            0xF3,
+            0xF4,
+            0xF6,
+        );
+
+        let ControlResponse::Rmpv(rmpv::Value::Array(wanted)) = response else {
+            panic!("expected partial wanted-id list");
+        };
+        assert_eq!(
+            wanted,
+            vec![rmpv::Value::Binary(missing_transient.to_vec())],
+            "duplicate offered missing IDs should be requested once"
         );
     }
 

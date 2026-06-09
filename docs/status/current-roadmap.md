@@ -221,6 +221,9 @@ The project is best described by capability level:
 - Inbound propagation offers now validate every offered transient ID before
   applying any source-accounting marks, so malformed mixed offers cannot leave
   partial received/completed queue state behind.
+- Inbound propagation offers now deduplicate validated offered transient IDs
+  before building wanted-ID responses or applying source-accounting marks, so a
+  duplicate offer cannot request or account the same payload more than once.
 - Remote fetch and download imports now mark inactive source peers as received
   before later activation, so a propagation node is not offered back payloads it
   previously supplied just because it was not yet an active peer record.
