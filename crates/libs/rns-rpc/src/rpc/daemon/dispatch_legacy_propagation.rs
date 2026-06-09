@@ -1074,9 +1074,13 @@ impl RpcDaemon {
                 }
             };
             let stored_size = payload.len().saturating_add(PROPAGATION_STAMP_SIZE);
-            let next_size = cumulative_size.saturating_add(stored_size + per_message_overhead);
-            if transfer_limit_bytes.is_some_and(|limit| next_size > limit) {
+            let transfer_size = stored_size.saturating_add(per_message_overhead);
+            if transfer_limit_bytes.is_some_and(|limit| transfer_size > limit) {
                 transfer_limited_ids.push(transient_hex);
+                continue;
+            }
+            let next_size = cumulative_size.saturating_add(transfer_size);
+            if transfer_limit_bytes.is_some_and(|limit| next_size > limit) {
                 continue;
             }
             cumulative_size = next_size;

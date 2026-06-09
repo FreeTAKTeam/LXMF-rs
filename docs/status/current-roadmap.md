@@ -207,6 +207,10 @@ The project is best described by capability level:
 - Inbound propagation message-get requests now mark wanted payloads skipped by
   the peer's transfer budget as transfer-limited completed work after peer
   admission, so oversized fetch attempts do not remain retryable queue entries.
+- Inbound propagation message-get transfer-budget handling now leaves payloads
+  skipped only by the cumulative response budget retryable for a later request,
+  while still completing individually oversized wanted payloads as
+  transfer-limited.
 - Inbound propagation offer requests with too-short list payloads now follow
   Python's caught-exception nil response path without validating the link or
   admitting a propagation peer.
