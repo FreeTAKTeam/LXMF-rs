@@ -1,6 +1,6 @@
 # Async Contract Conformance Matrix
 
-Last updated: 2026-02-20
+Last updated: 2026-06-09
 
 This matrix defines first-pass scenarios for validating the async client contract in `docs/lxmf-async-api.yaml` across adapters and interop paths.
 
@@ -41,7 +41,7 @@ Every scenario should run in all four lanes unless marked optional.
 
 | ID | Extension | Contract assertions | L1 | L2 | L3 | L4 |
 | --- | --- | --- | --- | --- | --- | --- |
-| E01 | Paper URI ingest | `paper.ingest_uri()` returns `destination`, `transient_id`, `duplicate` flag | not-started | not-started | not-started | not-started |
+| E01 | Paper URI ingest | `paper.ingest_uri()` returns `destination`, `transient_id`, `duplicate` flag, and `bytes_len` | not-started | not-started | not-started | done |
 | E02 | Propagation ingest/fetch | `propagation.ingest()` count > 0 then `propagation.fetch()` succeeds | optional | not-started | not-started | not-started |
 | E03 | Priority scheduling | Prioritised destination dequeues ahead of non-prioritised | not-started | not-started | not-started | not-started |
 | E04 | Inbound callback bridge | Inbound backend callback appears as `inbound.received` contract event | not-started | not-started | not-started | not-started |

@@ -994,6 +994,42 @@ fn sdk_release_c_domain_methods_roundtrip() {
 }
 
 #[test]
+fn sdk_paper_decode_reports_ingest_metadata_and_duplicate_scans() {
+    let daemon = RpcDaemon::test_instance();
+    let uri = "lxm://00112233445566778899aabbccddeeff/paper-message";
+
+    let first = daemon
+        .handle_rpc(rpc_request(1, "sdk_paper_decode_v2", json!({ "uri": uri })))
+        .expect("first paper decode");
+    assert!(first.error.is_none());
+    let first = first.result.expect("first paper result");
+    assert_eq!(first["accepted"], json!(true));
+    assert_eq!(first["destination"], json!("00112233445566778899aabbccddeeff"));
+    assert_eq!(first["destination_hint"], first["destination"]);
+    assert!(first["transient_id"].as_str().is_some_and(|value| !value.is_empty()));
+    assert_eq!(first["duplicate"], json!(false));
+    assert_eq!(first["bytes_len"], json!(uri.len()));
+
+    let duplicate = daemon
+        .handle_rpc(rpc_request(2, "sdk_paper_decode_v2", json!({ "uri": uri })))
+        .expect("duplicate paper decode");
+    assert!(duplicate.error.is_none());
+    let duplicate = duplicate.result.expect("duplicate paper result");
+    assert_eq!(duplicate["transient_id"], first["transient_id"]);
+    assert_eq!(duplicate["destination"], first["destination"]);
+    assert_eq!(duplicate["bytes_len"], first["bytes_len"]);
+    assert_eq!(duplicate["duplicate"], json!(true));
+
+    let invalid = daemon
+        .handle_rpc(rpc_request(3, "sdk_paper_decode_v2", json!({ "uri": "lxm://" })))
+        .expect("invalid paper decode");
+    assert_eq!(
+        invalid.error.expect("destination-less URI must fail").code,
+        "SDK_VALIDATION_INVALID_ARGUMENT"
+    );
+}
+
+#[test]
 fn sdk_operation_registry_roundtrips_workflow_family() {
     let daemon = RpcDaemon::test_instance();
 

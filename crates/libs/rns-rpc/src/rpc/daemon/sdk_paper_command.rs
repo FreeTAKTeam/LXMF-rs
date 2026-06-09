@@ -313,6 +313,26 @@ impl RpcDaemon {
             Some(bridge) => bridge.decode_paper_uri(parsed.uri.as_str())?,
             None => None,
         };
+        let uri_destination = parsed
+            .uri
+            .strip_prefix("lxm://")
+            .and_then(|remainder| remainder.split('/').next())
+            .and_then(Self::normalize_non_empty);
+        let destination = parsed
+            .destination_hint
+            .or_else(|| bridged_decode.as_ref().map(|outcome| outcome.destination_hint.clone()))
+            .or(uri_destination);
+        let Some(destination) = destination else {
+            return Ok(self.sdk_error_response(
+                request.id,
+                "SDK_VALIDATION_INVALID_ARGUMENT",
+                "paper URI must include a destination",
+            ));
+        };
+        let bytes_len = bridged_decode
+            .as_ref()
+            .and_then(|outcome| outcome.raw_lxmf_bytes.as_ref())
+            .map_or_else(|| parsed.uri.len(), Vec::len);
         let transient_id = parsed
             .transient_id
             .or_else(|| bridged_decode.as_ref().map(|outcome| outcome.transient_id.clone()))
@@ -342,16 +362,15 @@ impl RpcDaemon {
                 }
             }
         }
-        let destination_hint = parsed
-            .destination_hint
-            .or_else(|| bridged_decode.as_ref().map(|outcome| outcome.destination_hint.clone()));
         Ok(RpcResponse {
             id: request.id,
             result: Some(json!({
                 "accepted": true,
                 "transient_id": transient_id,
                 "duplicate": duplicate,
-                "destination_hint": destination_hint,
+                "destination": destination,
+                "destination_hint": destination,
+                "bytes_len": bytes_len,
             })),
             error: None,
         })
