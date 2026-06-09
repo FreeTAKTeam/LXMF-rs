@@ -185,6 +185,10 @@ The project is best described by capability level:
 - Duplicate inbound peer propagation payloads now still apply source-aware
   fan-out to active relay peers while keeping the source peer handled, so a
   known local payload does not skip relay queue creation.
+- Locally delivered inbound peer propagation payloads now also store the
+  accepted transient and apply source-aware relay fan-out without double
+  counting source peer activity, so local delivery does not bypass relay queue
+  creation.
 - Inbound peer propagation ingest now also marks inactive identified sources
   as received before later activation, so newly peered sources are not offered
   payloads they supplied while still unpeered.

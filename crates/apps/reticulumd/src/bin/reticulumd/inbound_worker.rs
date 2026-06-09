@@ -944,13 +944,16 @@ mod tests {
         let mut source_hash = [0u8; 16];
         source_hash.copy_from_slice(source_destination.desc.address_hash.as_slice());
         let propagation_peer = hex::encode([0x7F_u8; 16]);
-        daemon
-            .handle_rpc(RpcRequest {
-                id: 47,
-                method: "peer_sync".to_string(),
-                params: Some(serde_json::json!({ "peer": propagation_peer })),
-            })
-            .expect("seed propagation peer");
+        let relay_peer = hex::encode([0x80_u8; 16]);
+        for (id, peer) in [(47, &propagation_peer), (48, &relay_peer)] {
+            daemon
+                .handle_rpc(RpcRequest {
+                    id,
+                    method: "peer_sync".to_string(),
+                    params: Some(serde_json::json!({ "peer": peer })),
+                })
+                .expect("seed propagation peer");
+        }
 
         let wire = build_wire_message_with_options(
             source_hash,
@@ -992,7 +995,7 @@ mod tests {
         .expect("ingest peer propagation envelope");
         assert_eq!(ingested, 1);
 
-        let peer = peer_row(&daemon, propagation_peer.as_str(), 48);
+        let peer = peer_row(&daemon, propagation_peer.as_str(), 49);
         assert_eq!(peer["messages"]["incoming"].as_u64(), Some(1));
         assert_eq!(peer["rx_bytes"].as_u64(), Some(transient_len as u64));
         assert!(
@@ -1004,10 +1007,16 @@ mod tests {
                 .expect("completed propagation mark lookup"),
             "locally delivered peer propagation payloads should still mark the source peer handled"
         );
+        let relay = peer_row(&daemon, relay_peer.as_str(), 50);
+        assert_eq!(
+            relay["messages"]["unhandled_ids"].as_array().expect("relay unhandled ids"),
+            &[serde_json::json!(transient_id.as_str())],
+            "locally delivered peer propagation payloads should still fan out to relay peers"
+        );
 
         let status = daemon
             .handle_rpc(RpcRequest {
-                id: 49,
+                id: 51,
                 method: "propagation_status".to_string(),
                 params: None,
             })

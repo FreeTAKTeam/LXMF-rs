@@ -222,6 +222,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Duplicate inbound peer propagation payloads still fan out to active relay
   peers while keeping the source peer handled, so a known local payload does
   not bypass relay queue creation.
+- Locally delivered inbound peer propagation payloads are stored and fanned out
+  to active relay peers while keeping source peer activity counted once, so
+  local delivery does not bypass propagation queue creation.
 - Inbound peer propagation ingest marks inactive identified sources as
   received before later activation, so source-accounting survives when a sender
   becomes a propagation peer after supplying payloads.
