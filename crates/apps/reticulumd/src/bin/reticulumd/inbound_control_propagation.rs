@@ -64,18 +64,32 @@ pub(super) fn handle_message_get_request(
         Some(rmpv::Value::Array(values)) => binary_id_list(values),
         _ => return ControlResponse::Code(error_invalid_data),
     };
-    if wants.is_empty() {
+    let mut retryable_wants = Vec::with_capacity(wants.len());
+    for wanted in wants {
+        let transient_id = hex::encode(wanted.as_slice());
+        let completed = match daemon.has_peer_completed_propagation_mark(
+            remote_propagation_hash.as_str(),
+            transient_id.as_str(),
+        ) {
+            Ok(completed) => completed,
+            Err(_) => return ControlResponse::Code(error_no_access),
+        };
+        if !completed {
+            retryable_wants.push(wanted);
+        }
+    }
+    if retryable_wants.is_empty() {
         return ControlResponse::Rmpv(rmpv::Value::Array(Vec::new()));
     }
     let transfer_limit_bytes = entries.get(2).and_then(parse_transfer_limit_bytes);
     let preview = daemon.preview_propagation_payloads_for_destination_with_ids(
         &remote_delivery_hash,
-        &wants,
+        &retryable_wants,
         transfer_limit_bytes,
     );
     let transfer_limited = daemon.transfer_limited_propagation_payload_ids_for_destination(
         &remote_delivery_hash,
-        &wants,
+        &retryable_wants,
         transfer_limit_bytes,
     );
     if (!preview.is_empty() || !transfer_limited.is_empty())
@@ -85,7 +99,7 @@ pub(super) fn handle_message_get_request(
     }
     let fetched = daemon.fetch_propagation_payloads_for_destination_with_ids(
         &remote_delivery_hash,
-        &wants,
+        &retryable_wants,
         transfer_limit_bytes,
     );
     for (transient_id, _) in &fetched {
@@ -1752,6 +1766,79 @@ mod tests {
                 )
                 .expect("completed propagation mark lookup"),
             "transfer-limited message-get wants should be completed for this peer"
+        );
+        let peers = daemon
+            .handle_rpc(RpcRequest { id: 12, method: "list_peers".to_string(), params: None })
+            .expect("list peers")
+            .result
+            .expect("list peers result");
+        let row = peers["peers"]
+            .as_array()
+            .expect("peer rows")
+            .iter()
+            .find(|row| row["peer"].as_str() == Some(remote_propagation_hash.as_str()))
+            .expect("peer row");
+        assert_eq!(row["messages"]["handled_ids"], json!([hex::encode(wanted)]));
+        assert_eq!(row["messages"]["unhandled_ids"], json!([]));
+    }
+
+    #[test]
+    fn message_get_transfer_limited_retry_does_not_serve_completed_payload() {
+        let daemon = RpcDaemon::test_instance();
+        let remote_private =
+            rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let remote_identity = *remote_private.as_identity();
+        let remote_delivery_hash = delivery_destination_hash_for_identity(&remote_identity);
+        let remote_propagation_hash =
+            hex::encode(propagation_destination_hash_for_identity(&remote_identity));
+        let wanted = [0x6A; 32];
+        let mut wanted_payload = remote_delivery_hash.to_vec();
+        wanted_payload.extend_from_slice(&[0x42; 2_000]);
+        daemon
+            .ingest_propagation_payload_bytes_with_aliases(
+                wanted_payload.as_slice(),
+                hex::encode(wanted).as_str(),
+                &[],
+            )
+            .expect("store wanted payload");
+        daemon
+            .record_propagation_offer_peer(remote_propagation_hash.as_str())
+            .expect("record propagation peer");
+
+        let limited_response = handle_message_get_request(
+            &daemon,
+            &remote_identity,
+            Some(rmpv::Value::Array(vec![
+                rmpv::Value::Array(vec![rmpv::Value::Binary(wanted.to_vec())]),
+                rmpv::Value::Array(Vec::new()),
+                rmpv::Value::from(1u64),
+            ])),
+            0xF1,
+            0xF4,
+        );
+        let ControlResponse::Rmpv(rmpv::Value::Array(limited_messages)) = limited_response else {
+            panic!("expected limited fetched message list");
+        };
+        assert!(limited_messages.is_empty());
+
+        let retry_response = handle_message_get_request(
+            &daemon,
+            &remote_identity,
+            Some(rmpv::Value::Array(vec![
+                rmpv::Value::Array(vec![rmpv::Value::Binary(wanted.to_vec())]),
+                rmpv::Value::Array(Vec::new()),
+                rmpv::Value::from(10u64),
+            ])),
+            0xF1,
+            0xF4,
+        );
+
+        let ControlResponse::Rmpv(rmpv::Value::Array(retry_messages)) = retry_response else {
+            panic!("expected retry fetched message list");
+        };
+        assert!(
+            retry_messages.is_empty(),
+            "transfer-limited completed wants should not be served on a later retry"
         );
         let peers = daemon
             .handle_rpc(RpcRequest { id: 12, method: "list_peers".to_string(), params: None })
