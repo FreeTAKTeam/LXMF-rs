@@ -664,6 +664,7 @@ pub struct PeerRecord {
     pub capabilities: Vec<String>,
     pub name: Option<String>,
     pub name_source: Option<String>,
+    pub metadata: JsonValue,
     pub peer_type: Option<String>,
     pub alive: bool,
     pub last_sync_attempt: i64,
@@ -705,6 +706,7 @@ impl serde::Serialize for PeerRecord {
         map.serialize_entry("capabilities", &self.capabilities)?;
         map.serialize_entry("name", &self.name)?;
         map.serialize_entry("name_source", &self.name_source)?;
+        map.serialize_entry("metadata", &self.metadata)?;
         map.serialize_entry("peer_type", &self.peer_type)?;
         map.serialize_entry("alive", &self.alive)?;
         map.serialize_entry("last_sync_attempt", &self.last_sync_attempt)?;
@@ -773,6 +775,8 @@ struct PeerRecordWire {
     name: Option<String>,
     #[serde(default)]
     name_source: Option<String>,
+    #[serde(default)]
+    metadata: JsonValue,
     #[serde(default)]
     peer_type: Option<String>,
     #[serde(default)]
@@ -924,6 +928,7 @@ impl<'de> Deserialize<'de> for PeerRecord {
             capabilities: wire.capabilities,
             name: wire.name,
             name_source: wire.name_source,
+            metadata: wire.metadata,
             peer_type: wire.peer_type,
             alive: wire.alive,
             last_sync_attempt,
@@ -1456,6 +1461,25 @@ mod peer_record_serde_tests {
     }
 
     #[test]
+    fn peer_record_roundtrips_python_metadata_like_lxmpeer() {
+        let record: PeerRecord = serde_json::from_value(json!({
+            "destination_hash": "peer-python-metadata",
+            "last_heard": 1_700_001_009,
+            "metadata": {
+                "name": "Mesh Relay",
+                "operator": "alpha"
+            },
+            "handled_ids": [],
+            "unhandled_ids": [],
+        }))
+        .expect("deserialize python peer metadata");
+
+        assert_eq!(record.metadata["name"].as_str(), Some("Mesh Relay"));
+        let serialized = serde_json::to_value(&record).expect("serialize peer record");
+        assert_eq!(serialized["metadata"]["operator"].as_str(), Some("alpha"));
+    }
+
+    #[test]
     fn peer_record_deserializes_python_msgpack_binary_peer_ids() {
         fn key(value: &str) -> rmpv::Value {
             rmpv::Value::String(value.into())
@@ -1607,6 +1631,7 @@ mod peer_record_serde_tests {
             capabilities: vec!["propagation".to_string()],
             name: Some("Peer Python Status".to_string()),
             name_source: Some("announce".to_string()),
+            metadata: JsonValue::Null,
             peer_type: Some("auto".to_string()),
             alive: true,
             last_sync_attempt: 1_700_001_000,
@@ -1687,6 +1712,7 @@ mod peer_record_serde_tests {
             capabilities: vec!["propagation".to_string()],
             name: None,
             name_source: None,
+            metadata: JsonValue::Null,
             peer_type: Some("auto".to_string()),
             alive: true,
             last_sync_attempt: 1_700_001_000,
@@ -1730,6 +1756,7 @@ mod peer_record_serde_tests {
             capabilities: vec!["propagation".to_string()],
             name: None,
             name_source: None,
+            metadata: JsonValue::Null,
             peer_type: Some("auto".to_string()),
             alive: true,
             last_sync_attempt: 1_700_001_000,
@@ -1775,6 +1802,7 @@ mod peer_record_serde_tests {
             capabilities: vec!["propagation".to_string(), "delivery".to_string()],
             name: Some("Peer Roundtrip Status".to_string()),
             name_source: Some("announce".to_string()),
+            metadata: json!({"operator": "roundtrip"}),
             peer_type: Some("static".to_string()),
             alive: true,
             last_sync_attempt: 1_700_001_001,

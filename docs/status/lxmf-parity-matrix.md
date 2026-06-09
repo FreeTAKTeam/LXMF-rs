@@ -213,6 +213,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Restored Python peer records coerce numeric message and byte counters before
   peer-sync accounting, so restart-loaded peers preserve cumulative
   offered/outgoing/incoming totals while transferring newly queued work.
+- Restored Python peer records preserve serialized LXMPeer metadata through
+  Rust peer record round trips, so restart/export snapshots keep peer-specific
+  metadata before later queue work resumes.
 - Duplicate inbound peer propagation payloads still fan out to active relay
   peers while keeping the source peer handled, so a known local payload does
   not bypass relay queue creation.

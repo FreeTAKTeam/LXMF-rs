@@ -169,6 +169,9 @@ The project is best described by capability level:
 - Restored Python peer records now coerce numeric message and byte counters
   before peer-sync accounting, so restart-loaded peers keep cumulative
   offered/outgoing/incoming totals while transferring newly queued work.
+- Restored Python peer records now preserve serialized LXMPeer metadata through
+  Rust peer record round trips, so restart/export snapshots do not drop
+  peer-specific metadata before later queue work resumes.
 - Peer sync queue creation also records newly queued existing propagation IDs in
   the peer record snapshot, so postponed syncs can restart/export with the same
   unhandled queue visible in live status.
