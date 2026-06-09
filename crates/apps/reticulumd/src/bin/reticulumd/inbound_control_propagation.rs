@@ -109,7 +109,8 @@ pub(super) fn handle_offer_request(
     error_throttled: u8,
 ) -> ControlResponse {
     let remote_propagation_hash = propagation_destination_hash_for_identity(remote_identity);
-    if daemon.propagation_peer_is_throttled(hex::encode(remote_propagation_hash).as_str()) {
+    let remote_propagation_hash_hex = hex::encode(remote_propagation_hash);
+    if daemon.propagation_peer_is_throttled(remote_propagation_hash_hex.as_str()) {
         return ControlResponse::Code(error_throttled);
     }
     let propagation_state = daemon.current_propagation_state();
@@ -117,7 +118,7 @@ pub(super) fn handle_offer_request(
         && !propagation_state
             .static_peers
             .iter()
-            .any(|peer| peer.eq_ignore_ascii_case(hex::encode(remote_propagation_hash).as_str()))
+            .any(|peer| peer.eq_ignore_ascii_case(remote_propagation_hash_hex.as_str()))
     {
         return ControlResponse::Code(error_no_access);
     }
@@ -156,6 +157,14 @@ pub(super) fn handle_offer_request(
         let transient_hex = hex::encode(bytes);
         if !daemon.has_propagation_payload(transient_hex.as_str()) {
             wanted.push(bytes.clone());
+        } else if daemon
+            .record_peer_received_propagation(
+                remote_propagation_hash_hex.as_str(),
+                transient_hex.as_str(),
+            )
+            .is_err()
+        {
+            return ControlResponse::Code(error_no_access);
         }
     }
     if wanted.is_empty() {
@@ -495,6 +504,31 @@ mod tests {
             .expect("peer rows")
             .iter()
             .all(|row| row["peer"].as_str() != Some(remote_propagation_hash.as_str())));
+        assert!(
+            daemon
+                .has_peer_completed_propagation_mark(
+                    remote_propagation_hash.as_str(),
+                    known_transient_id.as_str(),
+                )
+                .expect("known offer mark"),
+            "known offered payloads should be marked as already received from the offering peer"
+        );
+        daemon
+            .record_propagation_offer_peer(remote_propagation_hash.as_str())
+            .expect("admit peer after offer");
+        let peers = daemon
+            .handle_rpc(RpcRequest { id: 12, method: "list_peers".to_string(), params: None })
+            .expect("list admitted peer")
+            .result
+            .expect("list admitted peer result");
+        let row = peers["peers"]
+            .as_array()
+            .expect("peer rows")
+            .iter()
+            .find(|row| row["peer"].as_str() == Some(remote_propagation_hash.as_str()))
+            .expect("admitted peer row");
+        assert_eq!(row["messages"]["handled_ids"], json!([known_transient_id]));
+        assert_eq!(row["messages"]["unhandled_ids"], json!([]));
     }
 
     #[test]

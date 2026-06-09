@@ -293,6 +293,9 @@ The project is best described by capability level:
 - Peer maintenance now replays payload-backed restored unhandled queue
   snapshots before choosing a sync candidate, so restart-loaded peers can be
   selected and transferred without waiting for a manual `peer_sync`.
+- Inbound propagation offers now mark already-known offered payload IDs as
+  received from the offering peer after peering-key validation, so later peer
+  admission does not queue those source payloads back to the sender.
 
 ## Remaining Release Blockers
 
