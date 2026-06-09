@@ -18051,7 +18051,7 @@ fn peer_sync_reactivates_persisted_unpeered_record() {
             "peer-rejoin".to_string(),
             daemon.transient_peer_record(
                 "peer-rejoin".to_string(),
-                1_700_000_901,
+                i64::MAX,
                 Vec::new(),
                 None,
                 None,

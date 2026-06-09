@@ -296,6 +296,9 @@ The project is best described by capability level:
 - Peer sync reactivation now bypasses stale pre-unpeer backoff postponements
   before admission and queue replay, so manual rejoins are not returned as
   postponed `unpeered` peers.
+- Peer sync reactivation now also applies the active peer type even when a
+  restored `unpeered` record has a future `last_seen` timestamp, so clock-skewed
+  restart state cannot leave a successfully rejoined peer marked unpeered.
 - Peer sync stale queue cleanup now removes matching unhandled and completed
   IDs from active peer record snapshots when the underlying propagation payload
   no longer exists, keeping export/restart state aligned with live queue

@@ -1292,12 +1292,12 @@ impl RpcDaemon {
                     existing.name = Some(name);
                     existing.name_source = cleaned_name_source;
                 }
-                if let Some(peer_type) = peer_type {
-                    existing.peer_type = Some(peer_type);
-                }
                 if let Some(metadata) = metadata.filter(|value| !value.is_null()) {
                     existing.metadata = metadata;
                 }
+            }
+            if let Some(peer_type) = peer_type.filter(|_| is_newer || reactivating_unpeered) {
+                existing.peer_type = Some(peer_type);
             }
             if reactivating_unpeered {
                 existing.restored_handled_ids.clear();
