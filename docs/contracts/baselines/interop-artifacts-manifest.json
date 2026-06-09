@@ -8,13 +8,13 @@
     },
     {
       "path": "docs/contracts/baselines/lxmf-sdk-public-api.txt",
-      "bytes": 246445,
-      "sha256": "3d34997453935f256dab1812e64cdc2bfcf7795b5cecb3cc5a95862029e7ee19"
+      "bytes": 246940,
+      "sha256": "284956d7d0c15f8492630b91c36117b205c062cd1bf97dcc67336157ce463d10"
     },
     {
       "path": "docs/contracts/baselines/schema-client-generation-baseline.json",
       "bytes": 373,
-      "sha256": "d409195dd61e6bf76a1d615d56551d7623759f1b8187c15a33cd7b926cba28bd"
+      "sha256": "e966db1c4a77d568bbb6a46c7f12f73caa024d76cf277b03d34117ea657c298b"
     },
     {
       "path": "docs/contracts/ble-camera-wire-v1.md",
@@ -28,8 +28,8 @@
     },
     {
       "path": "docs/contracts/compatibility-contract.md",
-      "bytes": 1665,
-      "sha256": "de2ced9a3eb71dd285f7995ebdc2e7bf28775ad84782f8a3a20d5fa199dcc1ec"
+      "bytes": 2208,
+      "sha256": "0d493502286c8870bf3f02237f978425fcc739e1b236a95d39e4f13a7fb65f8f"
     },
     {
       "path": "docs/contracts/compatibility-matrix.md",
@@ -1398,8 +1398,8 @@
     },
     {
       "path": "docs/fixtures/sdk-v2/rpc/sdk_negotiate_v2.response.valid.json",
-      "bytes": 973,
-      "sha256": "de5eaab3b747560588009045d4dc7277622f956b4388f830fcc1134c63bb3dbc"
+      "bytes": 1139,
+      "sha256": "c43079a8032b2367672b7a55983f49e3b731a1e413e87dd5dd6ba22219cc7753"
     },
     {
       "path": "docs/fixtures/sdk-v2/rpc/sdk_poll_events_v2.request.invalid.json",
@@ -1473,8 +1473,8 @@
     },
     {
       "path": "docs/fixtures/sdk-v2/rpc/sdk_snapshot_v2.response.valid.json",
-      "bytes": 735,
-      "sha256": "f132da1b0e974b9ce1135227beddfbdcc5b52d31a17122648d7504e7518ab1aa"
+      "bytes": 820,
+      "sha256": "62f01bd1d71c5ae6465bbd2eb14887bead93b27f2afae741c982eb5d3fdb47de"
     },
     {
       "path": "docs/fixtures/sdk-v2/rpc/sdk_status_v2.request.invalid.json",
@@ -1488,8 +1488,8 @@
     },
     {
       "path": "docs/fixtures/sdk-v2/rpc/sdk_status_v2.response.valid.json",
-      "bytes": 515,
-      "sha256": "51fd83d6a4c4ea7ba6f3734f32f1ee3a5141bc98c79725c46b734df924a341ba"
+      "bytes": 600,
+      "sha256": "9da882a153d4c053bcd03374b3dccb7dc7cfed09674c552ef17d8103440a0783"
     },
     {
       "path": "docs/fixtures/sdk-v2/telemetry.point.valid.json",
@@ -1593,8 +1593,8 @@
     },
     {
       "path": "docs/schemas/sdk/v2/rpc/sdk_negotiate_v2.schema.json",
-      "bytes": 6543,
-      "sha256": "309b6dbf5e553a5b90c6fe5b4c532bfee06def53a1e31af30e787f3ab4833da0"
+      "bytes": 6742,
+      "sha256": "c15e34fd04352e8dd038254cc63919f3563f7c764a1fcda1dcc4b8239f5d4d13"
     },
     {
       "path": "docs/schemas/sdk/v2/rpc/sdk_poll_events_v2.schema.json",
@@ -1628,13 +1628,13 @@
     },
     {
       "path": "docs/schemas/sdk/v2/rpc/sdk_snapshot_v2.schema.json",
-      "bytes": 5381,
-      "sha256": "06cac91ff1fede79302769ba3043e7f1a5f8907522a00e5d66a79d78eb0606cb"
+      "bytes": 5580,
+      "sha256": "c922f524fc99dba01ebde6167b7f94779311e3fb12b637880fb7b31e6083ce2e"
     },
     {
       "path": "docs/schemas/sdk/v2/rpc/sdk_status_v2.schema.json",
-      "bytes": 4320,
-      "sha256": "d7d4ddd7eec9cdcf573ac541cd450efbd03dcf1ff1d68a0a2c82cc507b7b168f"
+      "bytes": 4519,
+      "sha256": "339f01426780dbb4b8e6c3535506a1634ee27d4bd8214b81e8e6a16be9164f5e"
     },
     {
       "path": "docs/schemas/sdk/v2/telemetry.schema.json",

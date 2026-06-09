@@ -11,7 +11,9 @@
       "sdk_version": "0.2.1",
       "python_reference": {
         "reticulum_conformance_ref": "0319444b20e0815f26c6b9ceeba8fa44de037c9b",
+        "python_reticulum_version": "1.2.2",
         "python_reticulum_ref": "15320e4d2cfabb143c1db20ca887e275fd521585",
+        "python_lxmf_version": "0.9.6",
         "python_lxmf_ref": "727830cefda83d9c6e3982b48675425f3f988f9c"
       },
       "rpc_endpoint": null

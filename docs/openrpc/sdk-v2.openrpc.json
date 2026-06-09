@@ -849,7 +849,15 @@
             "type": "string",
             "minLength": 1
           },
+          "python_reticulum_version": {
+            "type": "string",
+            "minLength": 1
+          },
           "python_lxmf_ref": {
+            "type": "string",
+            "minLength": 1
+          },
+          "python_lxmf_version": {
             "type": "string",
             "minLength": 1
           }

@@ -152,6 +152,10 @@ struct PublishedCrate {
 
 const WAVE1_PUBLIC_CRATES: &[PublishedCrate] = &[
     PublishedCrate {
+        package: "lxmf-reference",
+        manifest_path: "crates/libs/lxmf-reference/Cargo.toml",
+    },
+    PublishedCrate {
         package: "reticulum-rs-core",
         manifest_path: "crates/libs/rns-core/Cargo.toml",
     },
@@ -1624,14 +1628,46 @@ fn run_sdk_api_break() -> Result<()> {
     let current_normalized = normalize_public_api(&current);
 
     if baseline_normalized != current_normalized {
+        let diff = public_api_line_diff(&baseline_normalized, &current_normalized);
         bail!(
-            "sdk public API drift detected for {MANIFEST_PATH}; review and refresh {BASELINE_PATH}"
+            "sdk public API drift detected for {MANIFEST_PATH}; review and refresh {BASELINE_PATH}\n{diff}"
         );
     }
 
     run_sdk_api_stability_check(&current_normalized)?;
 
     Ok(())
+}
+
+fn public_api_line_diff(baseline: &str, current: &str) -> String {
+    let baseline_lines = baseline.lines().collect::<BTreeSet<_>>();
+    let current_lines = current.lines().collect::<BTreeSet<_>>();
+    let removed = baseline_lines.difference(&current_lines).map(|line| format!("- {line}"));
+    let added = current_lines.difference(&baseline_lines).map(|line| format!("+ {line}"));
+    let line_diff = removed.chain(added).collect::<Vec<_>>();
+    if !line_diff.is_empty() {
+        return line_diff.join("\n");
+    }
+
+    let baseline_lines = baseline.lines().collect::<Vec<_>>();
+    let current_lines = current.lines().collect::<Vec<_>>();
+    let mismatch = baseline_lines
+        .iter()
+        .zip(&current_lines)
+        .position(|(baseline_line, current_line)| baseline_line != current_line);
+    match mismatch {
+        Some(index) => format!(
+            "first ordering difference at line {}:\nbaseline: {}\ncurrent: {}",
+            index + 1,
+            baseline_lines[index],
+            current_lines[index]
+        ),
+        None => format!(
+            "API line counts differ: baseline={}, current={}",
+            baseline_lines.len(),
+            current_lines.len()
+        ),
+    }
 }
 
 fn run_sdk_api_stability_check(current_public_api: &str) -> Result<()> {
@@ -4583,22 +4619,36 @@ fn release_version_label(version: Option<String>) -> Result<String> {
         }
     }
 
-    if let Ok(tag) = capture_command_stdout("git", &["describe", "--tags", "--exact-match"]) {
-        if !tag.is_empty() {
-            return Ok(tag.replace('/', "-"));
-        }
+    let project_version =
+        fs::read_to_string("VERSION").context("read project release version from VERSION")?;
+    let exact_tag = capture_command_stdout("git", &["describe", "--tags", "--exact-match"]).ok();
+    resolve_release_version(None, exact_tag.as_deref(), &project_version)
+}
+
+fn resolve_release_version(
+    explicit_version: Option<&str>,
+    exact_tag: Option<&str>,
+    project_version: &str,
+) -> Result<String> {
+    if let Some(version) = explicit_version.map(str::trim).filter(|value| !value.is_empty()) {
+        return Ok(version.replace('/', "-"));
     }
 
-    let manifest = fs::read_to_string("crates/apps/lxmf-cli/Cargo.toml")
-        .context("read crates/apps/lxmf-cli/Cargo.toml for release version")?;
-    for line in manifest.lines() {
-        let trimmed = line.trim();
-        if let Some(value) = trimmed.strip_prefix("version = ") {
-            return Ok(value.trim_matches('"').replace('/', "-"));
-        }
+    let project_version = project_version.trim();
+    if project_version.is_empty() || project_version.chars().any(char::is_whitespace) {
+        bail!("VERSION must contain exactly one non-empty version token");
     }
 
-    bail!("unable to determine release version for daemon bundle")
+    if let Some(tag) = exact_tag.map(str::trim).filter(|value| !value.is_empty()) {
+        let normalized_tag = tag.strip_prefix('v').unwrap_or(tag);
+        let normalized_project = project_version.strip_prefix('v').unwrap_or(project_version);
+        if normalized_tag != normalized_project {
+            bail!("exact git tag '{tag}' does not match project VERSION '{project_version}'");
+        }
+        return Ok(tag.replace('/', "-"));
+    }
+
+    Ok(project_version.replace('/', "-"))
 }
 
 fn release_platform_label() -> String {
@@ -5481,6 +5531,10 @@ fn publish_wave_crates(wave: PublishWave) -> &'static [PublishedCrate] {
         PublishWave::All => {
             static ALL_PUBLIC_CRATES: &[PublishedCrate] = &[
                 PublishedCrate {
+                    package: "lxmf-reference",
+                    manifest_path: "crates/libs/lxmf-reference/Cargo.toml",
+                },
+                PublishedCrate {
                     package: "reticulum-rs-core",
                     manifest_path: "crates/libs/rns-core/Cargo.toml",
                 },
@@ -5552,5 +5606,61 @@ fn print_cargo_output(output: &std::process::Output) {
     }
     if !output.stderr.is_empty() {
         log::error!("{}", String::from_utf8_lossy(&output.stderr));
+    }
+}
+
+#[cfg(test)]
+mod version_tests {
+    use super::{public_api_line_diff, resolve_release_version};
+
+    #[test]
+    fn public_api_diff_reports_removed_and_added_lines() {
+        assert_eq!(
+            public_api_line_diff(
+                "pub const OLD: &str\npub struct Shared",
+                "pub const NEW: &str\npub struct Shared"
+            ),
+            "- pub const OLD: &str\n+ pub const NEW: &str"
+        );
+    }
+
+    #[test]
+    fn public_api_diff_reports_ordering_changes() {
+        assert_eq!(
+            public_api_line_diff("pub const A: &str\npub const B: &str", "pub const B: &str\npub const A: &str"),
+            "first ordering difference at line 1:\nbaseline: pub const A: &str\ncurrent: pub const B: &str"
+        );
+    }
+
+    #[test]
+    fn explicit_release_version_wins() {
+        assert_eq!(
+            resolve_release_version(Some(" custom/1 "), Some("v0.2.3"), "0.2.3")
+                .expect("explicit version"),
+            "custom-1"
+        );
+    }
+
+    #[test]
+    fn matching_exact_tag_is_used() {
+        assert_eq!(
+            resolve_release_version(None, Some("v0.2.3"), "0.2.3").expect("matching tag"),
+            "v0.2.3"
+        );
+    }
+
+    #[test]
+    fn mismatched_exact_tag_is_rejected() {
+        let error = resolve_release_version(None, Some("v0.2.4"), "0.2.3")
+            .expect_err("mismatched tag must fail");
+        assert!(error.to_string().contains("does not match project VERSION"));
+    }
+
+    #[test]
+    fn project_version_is_used_without_exact_tag() {
+        assert_eq!(
+            resolve_release_version(None, None, "0.2.3\n").expect("VERSION fallback"),
+            "0.2.3"
+        );
     }
 }

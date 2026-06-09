@@ -1,0 +1,15 @@
+[package]
+name = "lxmf-reference"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Pinned reference implementation metadata for LXMF-rs compatibility."
+readme = "../../../README.md"
+documentation = "https://docs.rs/lxmf-reference"
+keywords = ["lxmf", "compatibility", "reference"]
+categories = ["development-tools::testing"]
+
+[lints]
+workspace = true

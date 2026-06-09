@@ -27,6 +27,8 @@ mod query;
 mod rpc_client;
 #[path = "lxmd/types.rs"]
 mod types;
+#[path = "../version.rs"]
+mod version;
 
 pub(crate) use types::{
     EffectiveArgs, LxmdConfigFile, LxmdPaths, PythonCompatConfig, SingleTomlConfigFile,
@@ -88,7 +90,11 @@ port = 4242
 "#;
 
 #[derive(Parser, Debug)]
-#[command(name = "lxmd", about = "LXMF daemon compatibility entrypoint", version)]
+#[command(
+    name = "lxmd",
+    about = "LXMF daemon compatibility entrypoint",
+    disable_version_flag = true
+)]
 struct Args {
     #[arg(long)]
     config: Option<PathBuf>,
@@ -146,7 +152,7 @@ fn main() -> ExitCode {
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
-    let args = Args::parse();
+    let args = version::parse_with_version::<Args>();
     if args.exampleconfig {
         print!("{}", example_config());
         return ExitCode::SUCCESS;

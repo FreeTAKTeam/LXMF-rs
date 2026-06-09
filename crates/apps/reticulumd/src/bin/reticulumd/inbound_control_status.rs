@@ -1,4 +1,5 @@
 use super::*;
+use serde_json::Number;
 
 pub(super) fn compose_python_status(
     daemon: &RpcDaemon,
@@ -62,6 +63,18 @@ pub(super) fn compose_python_status(
                         .get("propagation_stamp_cost_flexibility")
                         .cloned()
                         .unwrap_or(Value::Null);
+                    let transfer_limit = row
+                        .get("propagation_transfer_limit")
+                        .filter(|value| !value.is_null())
+                        .or_else(|| row.get("transfer_limit"))
+                        .map(python_transfer_limit_kilobytes)
+                        .unwrap_or(Value::Null);
+                    let sync_limit = row
+                        .get("propagation_sync_limit")
+                        .filter(|value| !value.is_null())
+                        .or_else(|| row.get("sync_limit"))
+                        .map(python_sync_limit_kilobytes)
+                        .unwrap_or(Value::Null);
                     let sync_transfer_rate =
                         row.get("sync_transfer_rate").and_then(Value::as_f64).unwrap_or(0.0);
                     let handled_ids = row.get("handled_ids").cloned().unwrap_or_else(|| json!([]));
@@ -104,8 +117,8 @@ pub(super) fn compose_python_status(
                             "ler": 0,
                             "str": sync_transfer_rate as u64,
                             "sync_transfer_rate": sync_transfer_rate,
-                            "transfer_limit": row.get("propagation_transfer_limit").cloned().unwrap_or(Value::Null),
-                            "sync_limit": row.get("propagation_sync_limit").cloned().unwrap_or(Value::Null),
+                            "transfer_limit": transfer_limit,
+                            "sync_limit": sync_limit,
                             "target_stamp_cost": target_stamp_cost,
                             "stamp_cost_flexibility": stamp_cost_flexibility,
                             "peering_cost": row.get("peering_cost").cloned().unwrap_or(Value::Null),
@@ -172,4 +185,38 @@ pub(super) fn compose_python_status(
         "max_peers": propagation.get("max_peers").and_then(Value::as_u64).unwrap_or(20),
         "peers": peer_map,
     })
+}
+
+fn normalize_python_limit_value(value: Value) -> Value {
+    let Some(number) = value.as_f64() else {
+        return value;
+    };
+    if !number.is_finite() || number.fract() != 0.0 || number < 0.0 || number > u64::MAX as f64 {
+        return value;
+    }
+    Value::Number(Number::from(number as u64))
+}
+
+fn python_transfer_limit_kilobytes(value: &Value) -> Value {
+    let Some(bytes) = value.as_f64() else {
+        return value.clone();
+    };
+    if !bytes.is_finite() || bytes < 0.0 {
+        return value.clone();
+    }
+    let Some(kilobytes) = Number::from_f64(bytes / 1000.0) else {
+        return value.clone();
+    };
+    normalize_python_limit_value(Value::Number(kilobytes))
+}
+
+fn python_sync_limit_kilobytes(value: &Value) -> Value {
+    let Some(bytes) = value.as_u64() else {
+        return value.clone();
+    };
+    if bytes == 0 {
+        Value::Number(Number::from(0))
+    } else {
+        Value::Number(Number::from(bytes.saturating_add(999) / 1000))
+    }
 }

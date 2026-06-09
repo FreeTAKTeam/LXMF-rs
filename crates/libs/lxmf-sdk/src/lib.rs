@@ -97,9 +97,10 @@ pub use types::{
 pub const CONTRACT_RELEASE: &str = "v2.5";
 pub const SCHEMA_NAMESPACE: &str = "v2";
 pub const SDK_VERSION: &str = env!("CARGO_PKG_VERSION");
-pub const RETICULUM_CONFORMANCE_REFERENCE_REF: &str = "0319444b20e0815f26c6b9ceeba8fa44de037c9b";
-pub const PYTHON_RETICULUM_REFERENCE_REF: &str = "15320e4d2cfabb143c1db20ca887e275fd521585";
-pub const PYTHON_LXMF_REFERENCE_REF: &str = "727830cefda83d9c6e3982b48675425f3f988f9c";
+pub use lxmf_reference::{
+    PYTHON_LXMF_REFERENCE_REF, PYTHON_LXMF_REFERENCE_VERSION, PYTHON_RETICULUM_REFERENCE_REF,
+    PYTHON_RETICULUM_REFERENCE_VERSION, RETICULUM_CONFORMANCE_REFERENCE_REF,
+};
 
 pub(crate) fn default_sdk_version() -> String {
     SDK_VERSION.to_owned()

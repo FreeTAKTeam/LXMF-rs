@@ -15,7 +15,7 @@ impl RpcDaemon {
             self.store.list_peer_unhandled_propagation_ids(peer.peer.as_str()).unwrap_or_default();
         let is_static_peer = self.is_static_peer(peer.peer.as_str());
         let sync_strategy = peer.sync_strategy;
-        let mut row = serde_json::to_value(peer).unwrap_or_else(|_| json!({}));
+        let mut row = serde_json::to_value(&peer).unwrap_or_else(|_| json!({}));
         row["type"] =
             JsonValue::String(if is_static_peer { "static" } else { "discovered" }.to_string());
         row["state"] = JsonValue::from(0);
@@ -45,12 +45,14 @@ impl RpcDaemon {
         row["peering_key"] = peering_key.map_or(JsonValue::Null, JsonValue::from);
         row["peering_key_status"] = json!(peering_key_status);
         row["last_heard"] = row.get("last_seen").cloned().unwrap_or(JsonValue::Null);
-        let transfer_limit = row.get("transfer_limit").cloned().unwrap_or(JsonValue::Null);
-        let sync_limit = row.get("sync_limit").cloned().unwrap_or(JsonValue::Null);
-        row["transfer_limit"] = transfer_limit.clone();
-        row["propagation_transfer_limit"] = transfer_limit;
-        row["sync_limit"] = sync_limit.clone();
-        row["propagation_sync_limit"] = sync_limit;
+        let transfer_limit =
+            peer.propagation_transfer_limit.map(JsonValue::from).unwrap_or(JsonValue::Null);
+        let sync_limit =
+            peer.propagation_sync_limit.map(JsonValue::from).unwrap_or(JsonValue::Null);
+        row["propagation_transfer_limit"] = transfer_limit.clone();
+        row["transfer_limit"] = transfer_limit;
+        row["propagation_sync_limit"] = sync_limit.clone();
+        row["sync_limit"] = sync_limit;
         row["target_stamp_cost"] =
             row.get("propagation_stamp_cost").cloned().unwrap_or(JsonValue::Null);
         row["stamp_cost_flexibility"] =

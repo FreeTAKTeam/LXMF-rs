@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
   "crates/libs/lxmf",
+  "crates/libs/lxmf-reference",
   "crates/libs/lxmf-embedded-mini",
   "crates/libs/rns-embedded-mininode",
   "crates/libs/rns-embedded-core",
@@ -21,6 +22,7 @@ members = [
 ]
 default-members = [
   "crates/libs/lxmf",
+  "crates/libs/lxmf-reference",
   "crates/libs/rns-embedded-mininode",
   "crates/libs/rns-embedded-core",
   "crates/libs/rns-embedded-ffi",
@@ -48,6 +50,7 @@ repository = "https://github.com/FreeTAKTeam/LXMF-rs"
 # Exact workspace-local dependency edges allowed between crates.
 # `tools/scripts/check-boundaries.sh` treats this as a strict allowlist.
 allowed_library_edges = [
+  "lxmf-sdk->lxmf-reference",
   "lxmf-embedded-mini->lxmf-wire",
   "lxmf->lxmf-sdk",
   "lxmf->lxmf-wire",
@@ -56,6 +59,7 @@ allowed_library_edges = [
   "reticulum-rs->reticulum-rs-core",
   "reticulum-rs->reticulum-rs-rpc",
   "reticulum-rs->reticulum-rs-transport",
+  "reticulum-rs-rpc->lxmf-reference",
   "lxmf-wire->reticulum-rs-core",
   "rns-embedded-ffi->rns-embedded-core",
   "rns-embedded-ffi->rns-embedded-runtime",
@@ -80,6 +84,7 @@ allowed_app_edges = [
 ]
 
 [workspace.dependencies]
+lxmf-reference = { version = "0.1.0", path = "crates/libs/lxmf-reference" }
 rns-embedded-core = { version = "0.1.0", path = "crates/libs/rns-embedded-core" }
 rns-embedded-ffi = { version = "0.1.0", path = "crates/libs/rns-embedded-ffi" }
 rns-embedded-runtime = { version = "0.1.0", path = "crates/libs/rns-embedded-runtime" }
