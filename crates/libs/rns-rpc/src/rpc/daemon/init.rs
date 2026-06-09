@@ -1753,6 +1753,7 @@ impl RpcDaemon {
             if timestamp > record.last_seen.saturating_add(LXMF_PEER_MAX_UNREACHABLE_SECS) {
                 continue;
             }
+            self.restore_peer_record_queue_marks(&record)?;
             let stats = self
                 .store
                 .peer_propagation_message_stats(record.peer.as_str())

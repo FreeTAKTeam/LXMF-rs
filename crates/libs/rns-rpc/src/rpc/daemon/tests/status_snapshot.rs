@@ -3744,6 +3744,59 @@ fn propagation_peer_maintenance_syncs_one_waiting_peer_like_python() {
 }
 
 #[test]
+fn propagation_peer_maintenance_replays_restored_unhandled_queue_like_python() {
+    let (daemon, peer) = ready_propagation_peer_daemon(0x63);
+    let entry = PropagationEntryRecord {
+        transient_id: "df".repeat(32),
+        destination: "1f".repeat(16),
+        payload_hex: "2b".repeat(32),
+        received_at: 1_700_000_628,
+        size_bytes: 32,
+        stamp_value: Some(12),
+    };
+    daemon.store.upsert_propagation_entry(&entry).expect("store propagation entry");
+    {
+        let timestamp = now_i64();
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let record = peers.get_mut(peer.as_str()).expect("peer record");
+        record.alive = true;
+        record.last_seen = timestamp;
+        record.last_sync_attempt = timestamp.saturating_sub(1);
+        record.next_sync_attempt = 0;
+        record.sync_transfer_rate = 1024.0;
+        record.restored_unhandled_ids.push(entry.transient_id.clone());
+    }
+    daemon.event_queue.lock().expect("event_queue mutex poisoned").clear();
+
+    let result = daemon
+        .handle_rpc(rpc_request(53, "propagation_peer_maintenance", json!({})))
+        .expect("peer maintenance")
+        .result
+        .expect("peer maintenance result");
+
+    assert_eq!(result["synced_peer"].as_str(), Some(peer.as_str()));
+    assert_eq!(result["peer_sync"]["propagation"]["transferred"].as_u64(), Some(1));
+    assert_eq!(
+        result["peer_sync"]["propagation"]["transferred_ids"]
+            .as_array()
+            .expect("transferred ids"),
+        &[json!(entry.transient_id.as_str())]
+    );
+    assert!(daemon
+        .store
+        .list_peer_unhandled_propagation(peer.as_str())
+        .expect("list unhandled")
+        .is_empty());
+    assert_eq!(
+        daemon
+            .store
+            .list_peer_handled_propagation_ids(peer.as_str())
+            .expect("handled ids"),
+        vec![entry.transient_id]
+    );
+}
+
+#[test]
 fn propagation_peer_maintenance_candidate_pool_includes_unknown_speed_peers_like_python() {
     let daemon = RpcDaemon::test_instance();
     let fast_peer = make_ready_propagation_peer(&daemon, 0x54);

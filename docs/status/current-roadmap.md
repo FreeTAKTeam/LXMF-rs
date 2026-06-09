@@ -290,6 +290,9 @@ The project is best described by capability level:
 - Persistent peer sync now preserves explicit offer-response boundaries by
   leaving sync-limit-skipped IDs queued for the next offer instead of
   auto-transferring messages outside the peer's current response.
+- Peer maintenance now replays payload-backed restored unhandled queue
+  snapshots before choosing a sync candidate, so restart-loaded peers can be
+  selected and transferred without waiting for a manual `peer_sync`.
 
 ## Remaining Release Blockers
 

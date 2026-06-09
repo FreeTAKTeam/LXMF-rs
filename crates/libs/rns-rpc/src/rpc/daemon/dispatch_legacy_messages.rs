@@ -1950,7 +1950,10 @@ impl RpcDaemon {
         }
     }
 
-    fn restore_peer_record_queue_marks(&self, record: &PeerRecord) -> Result<(), std::io::Error> {
+    pub(super) fn restore_peer_record_queue_marks(
+        &self,
+        record: &PeerRecord,
+    ) -> Result<(), std::io::Error> {
         fn push_unique(ids: &mut Vec<String>, transient_id: String) {
             if !ids.iter().any(|id| id.eq_ignore_ascii_case(transient_id.as_str())) {
                 ids.push(transient_id);

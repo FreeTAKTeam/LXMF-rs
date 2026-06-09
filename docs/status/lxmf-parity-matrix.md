@@ -321,6 +321,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Persistent peer sync preserves explicit offer-response boundaries by keeping
   sync-limit-skipped IDs queued for the next offer instead of auto-transferring
   messages outside the peer's current response.
+- Peer maintenance replays payload-backed restored unhandled queue snapshots
+  before selecting a sync candidate, so restart-loaded queue work can be
+  transferred by automatic maintenance without a manual peer sync first.
 - Inbound propagation distinguishes clients, validated peers, unpeered
   identified senders, and local delivery; source peers are accounted and not
   re-offered their own payloads.
