@@ -1,8 +1,23 @@
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+#[cfg(any(
+    target_os = "android",
+    target_os = "linux",
+    target_os = "macos",
+    target_os = "windows"
+))]
 use btleplug::api::{Central, Peripheral as _};
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+#[cfg(any(
+    target_os = "android",
+    target_os = "linux",
+    target_os = "macos",
+    target_os = "windows"
+))]
 use btleplug::platform::Peripheral;
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+#[cfg(any(
+    target_os = "android",
+    target_os = "linux",
+    target_os = "macos",
+    target_os = "windows"
+))]
 use uuid::Uuid;
 
 use std::io;
@@ -10,7 +25,7 @@ use std::time::{Duration, Instant};
 
 use crate::hex_lower;
 
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+#[cfg(any(target_os = "android", target_os = "linux", target_os = "macos", target_os = "windows"))]
 pub(super) fn format_manufacturer_data(data: &std::collections::HashMap<u16, Vec<u8>>) -> String {
     let mut entries: Vec<String> = data
         .iter()
@@ -22,7 +37,7 @@ pub(super) fn format_manufacturer_data(data: &std::collections::HashMap<u16, Vec
     format!("[{}]", entries.join(","))
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+#[cfg(any(target_os = "android", target_os = "linux", target_os = "macos", target_os = "windows"))]
 fn ascii_safe(bytes: &[u8]) -> String {
     bytes
         .iter()
@@ -30,12 +45,12 @@ fn ascii_safe(bytes: &[u8]) -> String {
         .collect()
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+#[cfg(any(target_os = "android", target_os = "linux", target_os = "macos", target_os = "windows"))]
 pub(super) fn ascii_lower(bytes: &[u8]) -> String {
     ascii_safe(bytes).to_lowercase()
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+#[cfg(any(target_os = "android", target_os = "linux", target_os = "macos", target_os = "windows"))]
 pub(super) async fn find_peripheral(
     adapter: &btleplug::platform::Adapter,
     peripheral_id: &str,
@@ -57,7 +72,7 @@ pub(super) async fn find_peripheral(
     }
 }
 
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(any(target_os = "android", target_os = "linux", target_os = "windows"))]
 pub(super) async fn find_camera_peripheral_by_profile(
     adapter: &btleplug::platform::Adapter,
     peripheral_hint: &str,
@@ -116,7 +131,7 @@ pub(super) async fn find_camera_peripheral_by_profile(
     }
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+#[cfg(any(target_os = "android", target_os = "linux", target_os = "macos", target_os = "windows"))]
 async fn peripheral_matches(
     peripheral: &Peripheral,
     configured_id: &str,
@@ -144,14 +159,14 @@ async fn peripheral_matches(
     Ok(false)
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+#[cfg(any(target_os = "android", target_os = "linux", target_os = "macos", target_os = "windows"))]
 fn identifiers_match(configured: &str, discovered: &str) -> bool {
     let configured = normalize_identifier(configured);
     let discovered = normalize_identifier(discovered);
     configured == discovered || discovered.contains(&configured) || configured.contains(&discovered)
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+#[cfg(any(target_os = "android", target_os = "linux", target_os = "macos", target_os = "windows"))]
 pub(super) fn normalize_identifier(value: &str) -> String {
     value
         .trim()
@@ -161,7 +176,7 @@ pub(super) fn normalize_identifier(value: &str) -> String {
         .collect()
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+#[cfg(any(target_os = "android", target_os = "linux", target_os = "macos", target_os = "windows"))]
 pub(super) fn parse_gatt_uuid(value: &str) -> io::Result<Uuid> {
     let normalized = value.trim();
     if normalized.len() == 4 && normalized.chars().all(|ch| ch.is_ascii_hexdigit()) {

@@ -1,21 +1,41 @@
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+#[cfg(any(
+    target_os = "android",
+    target_os = "linux",
+    target_os = "macos",
+    target_os = "windows"
+))]
 use btleplug::api::{Central, CharPropFlags, Manager as _, Peripheral as _, ScanFilter, WriteType};
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+#[cfg(any(
+    target_os = "android",
+    target_os = "linux",
+    target_os = "macos",
+    target_os = "windows"
+))]
 use btleplug::platform::Manager;
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+#[cfg(any(
+    target_os = "android",
+    target_os = "linux",
+    target_os = "macos",
+    target_os = "windows"
+))]
 use futures::StreamExt;
 
 use std::io;
 use std::time::{Duration, Instant};
 
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(any(target_os = "android", target_os = "linux", target_os = "windows"))]
 use crate::helpers::find_camera_peripheral_by_profile;
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+#[cfg(any(
+    target_os = "android",
+    target_os = "linux",
+    target_os = "macos",
+    target_os = "windows"
+))]
 use crate::helpers::{find_peripheral, parse_gatt_uuid};
 use crate::upload_attachment_via_rpc;
 use rns_rpc::e2e_harness::timestamp_millis;
 
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+#[cfg(any(target_os = "android", target_os = "linux", target_os = "macos", target_os = "windows"))]
 pub(crate) fn run_camera_capture_upload(
     rpc: String,
     peripheral_id: String,
@@ -52,7 +72,12 @@ fn camera_capture_upload_success_line(bytes: usize, attachment_id: &str) -> Stri
     format!("CAMERA_CAPTURE_UPLOAD ok: bytes={bytes} attachment_id={attachment_id}")
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+#[cfg(not(any(
+    target_os = "android",
+    target_os = "linux",
+    target_os = "macos",
+    target_os = "windows"
+)))]
 pub(crate) fn run_camera_capture_upload(
     _rpc: String,
     _peripheral_id: String,
@@ -63,10 +88,10 @@ pub(crate) fn run_camera_capture_upload(
     _chunk_size: usize,
     _timeout_secs: u64,
 ) -> io::Result<()> {
-    Err(io::Error::other("camera-capture-upload is only supported on linux/macos/windows"))
+    Err(io::Error::other("camera-capture-upload is only supported on android/linux/macos/windows"))
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+#[cfg(any(target_os = "android", target_os = "linux", target_os = "macos", target_os = "windows"))]
 fn capture_camera_over_ble(
     peripheral_id: &str,
     service_uuid: &str,

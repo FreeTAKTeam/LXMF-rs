@@ -1571,6 +1571,34 @@ fn kiss_docs_document_bearers_and_vtn76_bluetooth() {
 }
 
 #[test]
+fn android_ble_native_target_gates_include_android() {
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let reticulumd_manifest =
+        fs::read_to_string(repo_root.join("crates/apps/reticulumd/Cargo.toml"))
+            .expect("read reticulumd manifest");
+    let rns_tools_manifest = fs::read_to_string(repo_root.join("crates/apps/rns-tools/Cargo.toml"))
+        .expect("read rns-tools manifest");
+    let ble_mod = fs::read_to_string(
+        repo_root.join("crates/apps/reticulumd/src/bin/reticulumd/interfaces/ble/mod.rs"),
+    )
+    .expect("read reticulumd BLE module");
+    let rnx_ble = fs::read_to_string(repo_root.join("crates/apps/rns-tools/src/bin/rnx/ble.rs"))
+        .expect("read rns-tools BLE commands");
+
+    for (label, text) in [
+        ("reticulumd target dependencies", reticulumd_manifest.as_str()),
+        ("rns-tools target dependencies", rns_tools_manifest.as_str()),
+        ("reticulumd BLE dispatch", ble_mod.as_str()),
+        ("rns-tools BLE commands", rnx_ble.as_str()),
+    ] {
+        assert!(
+            text.contains("target_os = \"android\""),
+            "{label} should include android in native BLE target gates"
+        );
+    }
+}
+
+#[test]
 fn bootstrap_starts_udp_interface_from_config() {
     let temp = TempDir::new().expect("temp dir");
     let db_path = temp.path().join("reticulum.db");

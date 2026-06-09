@@ -4,11 +4,13 @@ use rns_transport::iface::InterfaceManager;
 use std::sync::Arc;
 use std::time::Duration;
 
+#[cfg(target_os = "android")]
+mod android;
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(target_os = "macos")]
 mod macos;
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+#[cfg(any(target_os = "android", target_os = "linux", target_os = "macos", target_os = "windows"))]
 mod native;
 #[cfg(target_os = "windows")]
 mod windows;
@@ -123,6 +125,10 @@ pub(crate) async fn spawn(
 ) -> Result<AddressHash, String> {
     let settings = runtime_settings(iface)?;
 
+    #[cfg(target_os = "android")]
+    {
+        return android::spawn(iface_manager, iface, settings).await;
+    }
     #[cfg(target_os = "linux")]
     {
         return linux::spawn(iface_manager, iface, settings).await;

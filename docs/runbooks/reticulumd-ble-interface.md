@@ -7,7 +7,7 @@ This runbook documents configuration, startup semantics, and recovery for `ble_g
 ## Scope
 
 - Interface kind: `ble_gatt`
-- Backends: Linux, macOS, Windows
+- Backends: Android, Linux, macOS, Windows
 - Startup lifecycle: daemon bootstrap only
 - Runtime mutation policy: `set_interfaces`/`reload_config` with `ble_gatt` changes require restart
 
@@ -51,6 +51,11 @@ interfaces = [
 6. Startup emits a deterministic configuration line with adapter/peripheral/service/characteristic IDs plus lifecycle attempt/transition counts.
 7. Invalid runtime bounds are rejected before backend startup.
 
+Android builds use the same native `btleplug` backend path as the desktop
+targets. The embedding Android app must package and initialize the `btleplug`
+Java/JNI support before adapter enumeration; otherwise BLE startup fails at
+runtime before any silent fallback path is used.
+
 Startup policy controls:
 
 - Default mode is best-effort (daemon continues in degraded mode when some interfaces fail).
@@ -60,6 +65,7 @@ Startup policy controls:
 
 Expected startup log examples:
 
+- `ble_gatt configured (android backend) ...`
 - `ble_gatt configured (linux backend) ...`
 - `ble_gatt configured (macos backend) ...`
 - `ble_gatt configured (windows backend) ...`
@@ -90,6 +96,7 @@ Runtime status visibility:
 cargo test -p reticulumd --test config
 cargo test -p reticulumd --bin reticulumd runtime_settings
 cargo check -p reticulumd --all-targets
+cargo check -p reticulumd --target aarch64-linux-android --features rnode-ble
 ```
 
 ## Rollback

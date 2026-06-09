@@ -1,17 +1,32 @@
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+#[cfg(any(
+    target_os = "android",
+    target_os = "linux",
+    target_os = "macos",
+    target_os = "windows"
+))]
 use btleplug::api::{Central, Manager as _, Peripheral as _, ScanFilter};
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+#[cfg(any(
+    target_os = "android",
+    target_os = "linux",
+    target_os = "macos",
+    target_os = "windows"
+))]
 use btleplug::platform::{Manager, Peripheral};
 use std::io;
 use std::time::{Duration, Instant};
 
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+#[cfg(any(
+    target_os = "android",
+    target_os = "linux",
+    target_os = "macos",
+    target_os = "windows"
+))]
 use crate::helpers::{
     ascii_lower, format_manufacturer_data, normalize_identifier, parse_gatt_uuid,
 };
 use crate::{hex_lower, NativePeerMode};
 
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+#[cfg(any(target_os = "android", target_os = "linux", target_os = "macos", target_os = "windows"))]
 pub(crate) fn run_camera_capture_upload(
     rpc: String,
     peripheral_id: String,
@@ -34,7 +49,12 @@ pub(crate) fn run_camera_capture_upload(
     )
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+#[cfg(not(any(
+    target_os = "android",
+    target_os = "linux",
+    target_os = "macos",
+    target_os = "windows"
+)))]
 pub(crate) fn run_camera_capture_upload(
     _rpc: String,
     _peripheral_id: String,
@@ -45,10 +65,10 @@ pub(crate) fn run_camera_capture_upload(
     _chunk_size: usize,
     _timeout_secs: u64,
 ) -> io::Result<()> {
-    Err(io::Error::other("camera-capture-upload is only supported on linux/macos/windows"))
+    Err(io::Error::other("camera-capture-upload is only supported on android/linux/macos/windows"))
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+#[cfg(any(target_os = "android", target_os = "linux", target_os = "macos", target_os = "windows"))]
 pub(crate) fn run_ble_scan(
     timeout_secs: u64,
     limit: usize,
@@ -122,7 +142,7 @@ pub(crate) fn run_ble_scan(
     })
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+#[cfg(any(target_os = "android", target_os = "linux", target_os = "macos", target_os = "windows"))]
 pub(crate) fn run_ble_find_camera(
     scan_secs: u64,
     name_hint: String,
@@ -216,8 +236,7 @@ pub(crate) fn run_ble_find_camera(
     })
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+#[cfg(any(target_os = "android", target_os = "linux", target_os = "macos", target_os = "windows"))]
 pub(crate) fn run_ble_native_peer(
     scan_secs: u64,
     name_hint: String,
@@ -248,7 +267,12 @@ pub(crate) fn run_ble_native_peer(
     )
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+#[cfg(not(any(
+    target_os = "android",
+    target_os = "linux",
+    target_os = "macos",
+    target_os = "windows"
+)))]
 pub(crate) fn run_ble_native_peer(
     _scan_secs: u64,
     _name_hint: String,
@@ -263,10 +287,10 @@ pub(crate) fn run_ble_native_peer(
     _source_hex: String,
     _timeout_secs: u64,
 ) -> io::Result<()> {
-    Err(io::Error::other("ble-native-peer is only supported on linux/macos/windows"))
+    Err(io::Error::other("ble-native-peer is only supported on android/linux/macos/windows"))
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+#[cfg(any(target_os = "android", target_os = "linux", target_os = "macos", target_os = "windows"))]
 pub(crate) fn run_ble_native_bridge(
     scan_secs: u64,
     name_hint: String,
@@ -299,7 +323,12 @@ pub(crate) fn run_ble_native_bridge(
     )
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+#[cfg(not(any(
+    target_os = "android",
+    target_os = "linux",
+    target_os = "macos",
+    target_os = "windows"
+)))]
 pub(crate) fn run_ble_native_bridge(
     _scan_secs: u64,
     _name_hint: String,
@@ -315,9 +344,14 @@ pub(crate) fn run_ble_native_bridge(
     _timeout_secs: u64,
     _content_type: String,
 ) -> io::Result<()> {
-    Err(io::Error::other("ble-native-bridge is only supported on linux/macos/windows"))
+    Err(io::Error::other("ble-native-bridge is only supported on android/linux/macos/windows"))
 }
-#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+#[cfg(not(any(
+    target_os = "android",
+    target_os = "linux",
+    target_os = "macos",
+    target_os = "windows"
+)))]
 pub(crate) fn run_ble_find_camera(
     _scan_secs: u64,
     _name_hint: String,
@@ -325,15 +359,20 @@ pub(crate) fn run_ble_find_camera(
     _write_char_uuid: String,
     _notify_char_uuid: String,
 ) -> io::Result<()> {
-    Err(io::Error::other("ble-find-camera is only supported on linux/macos/windows"))
+    Err(io::Error::other("ble-find-camera is only supported on android/linux/macos/windows"))
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+#[cfg(not(any(
+    target_os = "android",
+    target_os = "linux",
+    target_os = "macos",
+    target_os = "windows"
+)))]
 pub(crate) fn run_ble_scan(
     _timeout_secs: u64,
     _limit: usize,
     _service_uuid: Option<String>,
     _manufacturer_prefix: Option<String>,
 ) -> io::Result<()> {
-    Err(io::Error::other("ble-scan is only supported on linux/macos/windows"))
+    Err(io::Error::other("ble-scan is only supported on android/linux/macos/windows"))
 }
