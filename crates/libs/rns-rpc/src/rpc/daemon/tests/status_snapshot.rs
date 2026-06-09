@@ -3582,6 +3582,109 @@ fn propagation_peer_maintenance_rotates_low_acceptance_autopeers_like_python() {
 }
 
 #[test]
+fn propagation_peer_maintenance_rotation_replays_restored_queue_before_drop_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    daemon
+        .handle_rpc(rpc_request(
+            45,
+            "propagation_enable",
+            json!({
+                "enabled": true,
+                "autopeer": true,
+                "max_peers": 3,
+            }),
+        ))
+        .expect("enable propagation");
+
+    for (peer, timestamp) in [
+        ("peer-rotation-restored-low", 1_700_000_610),
+        ("peer-rotation-restored-keep-a", 1_700_000_611),
+        ("peer-rotation-restored-keep-b", 1_700_000_612),
+    ] {
+        daemon
+            .accept_announce_with_metadata(
+                peer.to_string(),
+                timestamp,
+                Some(peer.to_string()),
+                Some("announce".to_string()),
+                None,
+                Some(vec!["propagation".to_string()]),
+                None,
+                None,
+                None,
+                Some(1),
+                Some(Some(0)),
+                Some(Some(1)),
+                None,
+                Some(1),
+                None,
+                None,
+                None,
+                None,
+            )
+            .expect("accept autopeer announce");
+    }
+
+    let entry = PropagationEntryRecord {
+        transient_id: "ab".repeat(32),
+        destination: "12".repeat(16),
+        payload_hex: "12".repeat(24),
+        received_at: 1_700_000_613,
+        size_bytes: 24,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&entry).expect("store propagation entry");
+
+    let recent = now_i64();
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        for peer in [
+            "peer-rotation-restored-low",
+            "peer-rotation-restored-keep-a",
+            "peer-rotation-restored-keep-b",
+        ] {
+            let record = peers.get_mut(peer).expect("peer record");
+            record.last_seen = recent;
+            record.alive = true;
+            record.last_sync_attempt = recent - 1;
+            record.offered = 10;
+            record.outgoing = 10;
+        }
+        let low = peers.get_mut("peer-rotation-restored-low").expect("low-rate peer");
+        low.outgoing = 0;
+        low.restored_unhandled_ids.push(entry.transient_id.clone());
+    }
+    daemon.event_queue.lock().expect("event_queue mutex poisoned").clear();
+
+    let result = daemon
+        .handle_rpc(rpc_request(46, "propagation_peer_maintenance", json!({})))
+        .expect("peer maintenance")
+        .result
+        .expect("peer maintenance result");
+
+    assert_eq!(result["rotated"].as_u64(), Some(0));
+    assert_eq!(result["rotated_peers"].as_array().expect("rotated peers"), &[] as &[JsonValue]);
+    assert_eq!(
+        daemon
+            .store
+            .list_peer_unhandled_propagation("peer-rotation-restored-low")
+            .expect("pending propagation"),
+        vec![entry]
+    );
+
+    let peers = daemon
+        .handle_rpc(RpcRequest { id: 47, method: "list_peers".to_string(), params: None })
+        .expect("list peers")
+        .result
+        .expect("list peers result");
+    let rows = peers["peers"].as_array().expect("peer rows");
+    assert!(rows.iter().any(|row| {
+        row["peer"].as_str() == Some("peer-rotation-restored-low")
+            && row["peer_type"].as_str() == Some("auto")
+    }));
+}
+
+#[test]
 fn propagation_peer_maintenance_rotates_low_acceptance_non_static_peers_like_python() {
     let daemon = RpcDaemon::test_instance();
     daemon

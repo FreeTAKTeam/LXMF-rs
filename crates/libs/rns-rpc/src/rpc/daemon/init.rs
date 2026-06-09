@@ -1676,6 +1676,7 @@ impl RpcDaemon {
 
         let mut peer_stats = Vec::with_capacity(active_peers.len());
         for record in active_peers {
+            self.restore_peer_record_queue_marks(&record)?;
             let stats = self
                 .store
                 .peer_propagation_message_stats(record.peer.as_str())

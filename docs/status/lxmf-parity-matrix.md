@@ -353,6 +353,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Peer maintenance replays payload-backed restored unhandled queue snapshots
   before selecting a sync candidate, so restart-loaded queue work can be
   transferred by automatic maintenance without a manual peer sync first.
+- Peer maintenance rotation also replays restored queue snapshots before
+  low-acceptance drop decisions, so restart-loaded peers with pending transfer
+  work are not rotated out as empty.
 - Inbound propagation offers mark already-known offered payload IDs as received
   for the offering peer after peering-key validation, preventing later peer
   admission from offering the sender its own known payloads.
