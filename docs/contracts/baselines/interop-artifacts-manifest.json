@@ -193,8 +193,8 @@
     },
     {
       "path": "docs/contracts/sdk-v2-paper.md",
-      "bytes": 405,
-      "sha256": "796cf750987fbb69ea7f839760efff8f3e894f90327643f82f40762a984ee5b6"
+      "bytes": 750,
+      "sha256": "df4d5f0c7f021c99f9497ff7db9e9d3d116a80a1a68aec627181a8f1dfd547ac"
     },
     {
       "path": "docs/contracts/sdk-v2-shared-instance-auth.md",
