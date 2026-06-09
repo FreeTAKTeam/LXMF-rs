@@ -185,6 +185,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Peer sync unhandled transfer selection and retry cleanup read and remove
   caller-case peer variants as one effective peer, so queued transfer work is
   not skipped or left retryable under alternate peer casing.
+- Prospective peer queue selection also reads case-variant completed marks
+  before returning unhandled work, so helper-level queue selection cannot reopen
+  received, transferred, handled, or transfer-limited payloads under alternate
+  peer casing.
 - Static-only propagation peer replacement routes removed static peers through
   the same local unpeer cleanup as explicit unpeer, so handled, received,
   transfer-limited, and unhandled queue marks are cleared and accounted

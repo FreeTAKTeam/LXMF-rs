@@ -1154,9 +1154,20 @@ impl MessagesStore {
             let mut stmt = conn.prepare(
                 "SELECT e.transient_id, e.destination, e.payload_hex, e.received_at, e.size_bytes, e.stamp_value
                  FROM propagation_entries e
-                 LEFT JOIN propagation_peer_entries p
-                    ON p.peer = ?1
-                   AND p.transient_id = e.transient_id
+                 LEFT JOIN (
+                    SELECT transient_id,
+                           CASE
+                               WHEN SUM(CASE WHEN state = 'transfer_limited' THEN 1 ELSE 0 END) > 0 THEN 'transfer_limited'
+                               WHEN SUM(CASE WHEN state = 'received' THEN 1 ELSE 0 END) > 0 THEN 'received'
+                               WHEN SUM(CASE WHEN state = 'transferred' THEN 1 ELSE 0 END) > 0 THEN 'transferred'
+                               WHEN SUM(CASE WHEN state = 'handled' THEN 1 ELSE 0 END) > 0 THEN 'handled'
+                               ELSE 'unhandled'
+                           END AS state
+                    FROM propagation_peer_entries
+                    WHERE LOWER(peer) = LOWER(?1)
+                    GROUP BY transient_id
+                 ) p
+                    ON p.transient_id = e.transient_id
                  WHERE p.state IS NULL OR p.state = 'unhandled'
                  ORDER BY e.received_at ASC, e.transient_id ASC",
             )?;
@@ -2708,6 +2719,47 @@ mod tests {
             .list_peer_unhandled_propagation(request_peer.as_str())
             .expect("case-variant unhandled entries")
             .is_empty());
+    }
+
+    #[test]
+    fn prospective_unhandled_queue_selection_matches_peer_case_insensitively_like_python() {
+        let store = MessagesStore::in_memory().expect("in-memory store");
+        let stored_peer = "Peer-Prospective-Mixed";
+        let request_peer = stored_peer.to_ascii_lowercase();
+        let completed = PropagationEntryRecord {
+            transient_id: "b5".repeat(32),
+            destination: "55".repeat(16),
+            payload_hex: "55".repeat(10),
+            received_at: 100,
+            size_bytes: 10,
+            stamp_value: None,
+        };
+        let pending = PropagationEntryRecord {
+            transient_id: "b6".repeat(32),
+            destination: "66".repeat(16),
+            payload_hex: "66".repeat(20),
+            received_at: 101,
+            size_bytes: 20,
+            stamp_value: None,
+        };
+        store.upsert_propagation_entry(&completed).expect("completed entry");
+        store.upsert_propagation_entry(&pending).expect("pending entry");
+        store
+            .mark_peer_received_propagation(stored_peer, completed.transient_id.as_str())
+            .expect("mark stored received");
+        store
+            .mark_peer_unhandled_propagation(request_peer.as_str(), completed.transient_id.as_str())
+            .expect("mark case-variant duplicate unhandled");
+        store
+            .mark_peer_unhandled_propagation(request_peer.as_str(), pending.transient_id.as_str())
+            .expect("mark case-variant pending unhandled");
+
+        assert_eq!(
+            store
+                .list_peer_prospective_unhandled_propagation(stored_peer)
+                .expect("prospective unhandled entries"),
+            vec![pending]
+        );
     }
 
     #[test]
