@@ -3488,6 +3488,107 @@ fn propagation_peer_maintenance_culls_unreachable_non_static_peers_like_python()
 }
 
 #[test]
+fn propagation_peer_maintenance_cull_replays_restored_queue_before_cleanup_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    daemon
+        .handle_rpc(rpc_request(
+            43,
+            "propagation_enable",
+            json!({
+                "enabled": true,
+                "autopeer": true,
+            }),
+        ))
+        .expect("enable propagation");
+
+    daemon
+        .accept_announce_with_metadata(
+            "peer-auto-unreachable-restored-cull".to_string(),
+            1_700_000_511,
+            Some("Restored Cull Candidate".to_string()),
+            Some("announce".to_string()),
+            None,
+            Some(vec!["propagation".to_string()]),
+            None,
+            None,
+            None,
+            Some(1),
+            Some(Some(0)),
+            Some(Some(1)),
+            None,
+            Some(1),
+            None,
+            None,
+            None,
+            None,
+        )
+        .expect("accept autopeer announce");
+    let entry = PropagationEntryRecord {
+        transient_id: "cb".repeat(32),
+        destination: "14".repeat(16),
+        payload_hex: "14".repeat(24),
+        received_at: 1_700_000_502,
+        size_bytes: 24,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&entry).expect("store restored entry");
+
+    let stale_last_seen = now_i64() - (14 * 24 * 60 * 60) - 1;
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let stale = peers
+            .get_mut("peer-auto-unreachable-restored-cull")
+            .expect("stale peer");
+        stale.last_seen = stale_last_seen;
+        stale.alive = false;
+        stale.restored_unhandled_ids.push(entry.transient_id.clone());
+    }
+    daemon.event_queue.lock().expect("event_queue mutex poisoned").clear();
+
+    let result = daemon
+        .handle_rpc(rpc_request(44, "propagation_peer_maintenance", json!({})))
+        .expect("peer maintenance")
+        .result
+        .expect("peer maintenance result");
+
+    assert_eq!(result["culled"].as_u64(), Some(1));
+    assert_eq!(
+        result["culled_peers"].as_array().expect("culled peers"),
+        &[json!("peer-auto-unreachable-restored-cull")]
+    );
+
+    let event = daemon
+        .event_queue
+        .lock()
+        .expect("event_queue mutex poisoned")
+        .iter()
+        .rev()
+        .find(|event| event.event_type == "peer_unpeer")
+        .cloned()
+        .expect("peer unpeer event");
+    assert_eq!(
+        event.payload["peer"].as_str(),
+        Some("peer-auto-unreachable-restored-cull")
+    );
+    assert_eq!(event.payload["reason"].as_str(), Some("max_unreachable"));
+    assert_eq!(event.payload["propagation_cleared"].as_u64(), Some(1));
+    assert_eq!(event.payload["propagation_cleared_bytes"].as_u64(), Some(24));
+    assert_eq!(
+        event.payload["messages"]["unhandled_ids"]
+            .as_array()
+            .expect("event unhandled ids"),
+        &[json!(entry.transient_id.as_str())]
+    );
+    assert!(
+        daemon
+            .store
+            .list_peer_unhandled_propagation("peer-auto-unreachable-restored-cull")
+            .expect("remaining unhandled")
+            .is_empty()
+    );
+}
+
+#[test]
 fn propagation_peer_maintenance_rotates_low_acceptance_autopeers_like_python() {
     let daemon = RpcDaemon::test_instance();
     daemon

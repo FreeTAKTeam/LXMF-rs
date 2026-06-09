@@ -356,6 +356,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Peer maintenance rotation also replays restored queue snapshots before
   low-acceptance drop decisions, so restart-loaded peers with pending transfer
   work are not rotated out as empty.
+- Shared unpeer cleanup replays restored queue snapshots before computing and
+  clearing propagation marks, so policy culls and explicit teardown account for
+  restart-loaded peer queue work before removing the peer.
 - Inbound propagation offers mark already-known offered payload IDs as received
   for the offering peer after peering-key validation, preventing later peer
   admission from offering the sender its own known payloads.

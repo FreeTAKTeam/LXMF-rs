@@ -326,6 +326,9 @@ The project is best described by capability level:
 - Peer maintenance rotation now also replays restored queue snapshots before
   low-acceptance drop decisions, so restart-loaded peers with pending transfer
   work are not rotated out as if their queues were empty.
+- Shared unpeer cleanup now replays restored queue snapshots before computing
+  and clearing propagation marks, so policy culls and explicit teardown do not
+  discard restart-loaded peer queue work without cleanup accounting.
 - Inbound propagation offers now mark already-known offered payload IDs as
   received from the offering peer after peering-key validation, so later peer
   admission does not queue those source payloads back to the sender.
