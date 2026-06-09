@@ -218,6 +218,9 @@ The project is best described by capability level:
   wanted-ID list responses after peering-key validation without admitting the
   remote peer or queuing local propagation payloads before a real transfer or
   message-get admission point.
+- Inbound propagation offers now validate every offered transient ID before
+  applying any source-accounting marks, so malformed mixed offers cannot leave
+  partial received/completed queue state behind.
 - Remote fetch and download imports now mark inactive source peers as received
   before later activation, so a propagation node is not offered back payloads it
   previously supplied just because it was not yet an active peer record.

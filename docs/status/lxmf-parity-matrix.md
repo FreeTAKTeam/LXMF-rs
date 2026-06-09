@@ -254,6 +254,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   wanted-ID list responses after peering-key validation without admitting the
   remote propagation peer or queuing local payloads before a real transfer or
   message-get admission point.
+- Inbound propagation offers validate every offered transient ID before
+  applying source-accounting marks, so malformed mixed offers cannot leave
+  partial received/completed queue state behind.
 - Remote fetch and download imports mark inactive source peers as received
   before later activation, so source-accounting survives even when the
   propagation node was not yet an active peer record.
