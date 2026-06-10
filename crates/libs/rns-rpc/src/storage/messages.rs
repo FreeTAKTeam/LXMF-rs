@@ -168,6 +168,25 @@ fn normalize_hex_key(value: &str) -> String {
     value.trim().to_ascii_lowercase()
 }
 
+fn normalize_peer_key(value: &str) -> String {
+    value.trim().to_ascii_lowercase()
+}
+
+fn remove_case_variant_unhandled_peer_mark(
+    conn: &Connection,
+    peer: &str,
+    transient_id: &str,
+) -> rusqlite::Result<()> {
+    conn.execute(
+        "DELETE FROM propagation_peer_entries
+         WHERE LOWER(peer) = LOWER(?1)
+           AND transient_id = ?2
+           AND state = 'unhandled'",
+        params![peer, transient_id],
+    )?;
+    Ok(())
+}
+
 fn now_unix_secs() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -854,6 +873,7 @@ impl MessagesStore {
         transient_id: &str,
     ) -> rusqlite::Result<()> {
         self.with_write_conn(|conn| {
+            let peer = normalize_peer_key(peer);
             conn.execute(
                 "INSERT OR IGNORE INTO propagation_peer_entries
                     (peer, transient_id, state, updated_at)
@@ -866,6 +886,7 @@ impl MessagesStore {
 
     pub fn mark_all_propagation_unhandled_for_peer(&self, peer: &str) -> rusqlite::Result<usize> {
         self.with_write_conn(|conn| {
+            let peer = normalize_peer_key(peer);
             conn.execute(
                 "INSERT OR IGNORE INTO propagation_peer_entries
                     (peer, transient_id, state, updated_at)
@@ -876,21 +897,64 @@ impl MessagesStore {
         })
     }
 
+    pub fn merge_case_insensitive_peer_propagation_marks(
+        &self,
+        peer: &str,
+    ) -> rusqlite::Result<()> {
+        self.with_write_conn(|conn| {
+            let peer = normalize_peer_key(peer);
+            conn.execute(
+                "INSERT INTO propagation_peer_entries (peer, transient_id, state, updated_at)
+                 SELECT ?1,
+                        transient_id,
+                        CASE
+                            WHEN SUM(CASE WHEN state = 'transfer_limited' THEN 1 ELSE 0 END) > 0 THEN 'transfer_limited'
+                            WHEN SUM(CASE WHEN state = 'received' THEN 1 ELSE 0 END) > 0 THEN 'received'
+                            WHEN SUM(CASE WHEN state = 'transferred' THEN 1 ELSE 0 END) > 0 THEN 'transferred'
+                            WHEN SUM(CASE WHEN state = 'handled' THEN 1 ELSE 0 END) > 0 THEN 'handled'
+                            ELSE 'unhandled'
+                        END,
+                        MAX(updated_at)
+                 FROM propagation_peer_entries
+                 WHERE LOWER(peer) = LOWER(?1)
+                 GROUP BY transient_id
+                 ON CONFLICT(peer, transient_id) DO UPDATE SET
+                    state = CASE
+                        WHEN propagation_peer_entries.state IN ('transfer_limited', 'received', 'transferred', 'handled') THEN propagation_peer_entries.state
+                        WHEN excluded.state IN ('transfer_limited', 'received', 'transferred', 'handled') THEN excluded.state
+                        ELSE excluded.state
+                    END,
+                    updated_at = MAX(propagation_peer_entries.updated_at, excluded.updated_at)",
+                params![peer],
+            )?;
+            conn.execute(
+                "DELETE FROM propagation_peer_entries
+                 WHERE LOWER(peer) = LOWER(?1)
+                   AND peer <> ?1",
+                params![peer],
+            )?;
+            Ok(())
+        })
+    }
+
     pub fn mark_peer_handled_propagation(
         &self,
         peer: &str,
         transient_id: &str,
     ) -> rusqlite::Result<()> {
         self.with_write_conn(|conn| {
+            let peer = normalize_peer_key(peer);
+            let transient_id = normalize_hex_key(transient_id);
             conn.execute(
                 "INSERT INTO propagation_peer_entries (peer, transient_id, state, updated_at)
                  VALUES (?1, ?2, 'handled', ?3)
                  ON CONFLICT(peer, transient_id) DO UPDATE SET
                     state = 'handled',
                     updated_at = excluded.updated_at
-                 WHERE propagation_peer_entries.state NOT IN ('transferred', 'received')",
-                params![peer, normalize_hex_key(transient_id), now_unix_secs()],
+                 WHERE propagation_peer_entries.state NOT IN ('transferred', 'received', 'transfer_limited')",
+                params![peer, transient_id, now_unix_secs()],
             )?;
+            remove_case_variant_unhandled_peer_mark(conn, peer.as_str(), transient_id.as_str())?;
             Ok(())
         })
     }
@@ -901,15 +965,18 @@ impl MessagesStore {
         transient_id: &str,
     ) -> rusqlite::Result<()> {
         self.with_write_conn(|conn| {
+            let peer = normalize_peer_key(peer);
+            let transient_id = normalize_hex_key(transient_id);
             conn.execute(
                 "INSERT INTO propagation_peer_entries (peer, transient_id, state, updated_at)
              VALUES (?1, ?2, 'transferred', ?3)
-             ON CONFLICT(peer, transient_id) DO UPDATE SET
-                state = 'transferred',
-                updated_at = excluded.updated_at
-             WHERE propagation_peer_entries.state != 'received'",
-                params![peer, normalize_hex_key(transient_id), now_unix_secs()],
+                 ON CONFLICT(peer, transient_id) DO UPDATE SET
+                    state = 'transferred',
+                    updated_at = excluded.updated_at
+                 WHERE propagation_peer_entries.state NOT IN ('received', 'transfer_limited')",
+                params![peer, transient_id, now_unix_secs()],
             )?;
+            remove_case_variant_unhandled_peer_mark(conn, peer.as_str(), transient_id.as_str())?;
             Ok(())
         })
     }
@@ -920,15 +987,18 @@ impl MessagesStore {
         transient_id: &str,
     ) -> rusqlite::Result<()> {
         self.with_write_conn(|conn| {
+            let peer = normalize_peer_key(peer);
+            let transient_id = normalize_hex_key(transient_id);
             conn.execute(
                 "INSERT INTO propagation_peer_entries (peer, transient_id, state, updated_at)
                  VALUES (?1, ?2, 'received', ?3)
                  ON CONFLICT(peer, transient_id) DO UPDATE SET
                     state = 'received',
                     updated_at = excluded.updated_at
-                 WHERE propagation_peer_entries.state != 'transferred'",
-                params![peer, normalize_hex_key(transient_id), now_unix_secs()],
+                 WHERE propagation_peer_entries.state NOT IN ('transferred', 'transfer_limited')",
+                params![peer, transient_id, now_unix_secs()],
             )?;
+            remove_case_variant_unhandled_peer_mark(conn, peer.as_str(), transient_id.as_str())?;
             Ok(())
         })
     }
@@ -939,6 +1009,8 @@ impl MessagesStore {
         transient_id: &str,
     ) -> rusqlite::Result<()> {
         self.with_write_conn(|conn| {
+            let peer = normalize_peer_key(peer);
+            let transient_id = normalize_hex_key(transient_id);
             conn.execute(
                 "INSERT INTO propagation_peer_entries (peer, transient_id, state, updated_at)
                  VALUES (?1, ?2, 'transfer_limited', ?3)
@@ -946,8 +1018,9 @@ impl MessagesStore {
                     state = 'transfer_limited',
                     updated_at = excluded.updated_at
                  WHERE propagation_peer_entries.state IN ('unhandled', 'transfer_limited')",
-                params![peer, normalize_hex_key(transient_id), now_unix_secs()],
+                params![peer, transient_id, now_unix_secs()],
             )?;
+            remove_case_variant_unhandled_peer_mark(conn, peer.as_str(), transient_id.as_str())?;
             Ok(())
         })
     }
@@ -960,7 +1033,7 @@ impl MessagesStore {
         self.with_write_conn(|conn| {
             let affected = conn.execute(
                 "DELETE FROM propagation_peer_entries
-                 WHERE peer = ?1 AND transient_id = ?2 AND state = 'unhandled'",
+                 WHERE LOWER(peer) = LOWER(?1) AND transient_id = ?2 AND state = 'unhandled'",
                 params![peer, normalize_hex_key(transient_id)],
             )?;
             Ok(affected > 0)
@@ -980,7 +1053,7 @@ impl MessagesStore {
                 let mut stmt = conn.prepare(
                     "SELECT transient_id
                      FROM propagation_peer_entries
-                     WHERE peer = ?1
+                     WHERE LOWER(peer) = LOWER(?1)
                        AND state = 'unhandled'
                        AND NOT EXISTS (
                            SELECT 1
@@ -994,7 +1067,7 @@ impl MessagesStore {
             };
             conn.execute(
                 "DELETE FROM propagation_peer_entries
-                 WHERE peer = ?1
+                 WHERE LOWER(peer) = LOWER(?1)
                    AND state = 'unhandled'
                    AND NOT EXISTS (
                        SELECT 1
@@ -1016,7 +1089,7 @@ impl MessagesStore {
                 let mut stmt = conn.prepare(
                     "SELECT transient_id
                      FROM propagation_peer_entries
-                     WHERE peer = ?1
+                     WHERE LOWER(peer) = LOWER(?1)
                        AND state IN ('handled', 'transferred', 'received', 'transfer_limited')
                        AND NOT EXISTS (
                            SELECT 1
@@ -1030,7 +1103,7 @@ impl MessagesStore {
             };
             conn.execute(
                 "DELETE FROM propagation_peer_entries
-                 WHERE peer = ?1
+                 WHERE LOWER(peer) = LOWER(?1)
                    AND state IN ('handled', 'transferred', 'received', 'transfer_limited')
                    AND NOT EXISTS (
                        SELECT 1
@@ -1051,9 +1124,21 @@ impl MessagesStore {
             let mut stmt = conn.prepare(
                 "SELECT e.transient_id, e.destination, e.payload_hex, e.received_at, e.size_bytes, e.stamp_value
                  FROM propagation_entries e
-                 INNER JOIN propagation_peer_entries p
+                 INNER JOIN (
+                    SELECT transient_id,
+                           CASE
+                               WHEN SUM(CASE WHEN state = 'transfer_limited' THEN 1 ELSE 0 END) > 0 THEN 'transfer_limited'
+                               WHEN SUM(CASE WHEN state = 'received' THEN 1 ELSE 0 END) > 0 THEN 'received'
+                               WHEN SUM(CASE WHEN state = 'transferred' THEN 1 ELSE 0 END) > 0 THEN 'transferred'
+                               WHEN SUM(CASE WHEN state = 'handled' THEN 1 ELSE 0 END) > 0 THEN 'handled'
+                               ELSE 'unhandled'
+                           END AS state
+                    FROM propagation_peer_entries
+                    WHERE LOWER(peer) = LOWER(?1)
+                    GROUP BY transient_id
+                 ) p
                     ON p.transient_id = e.transient_id
-                 WHERE p.peer = ?1 AND p.state = 'unhandled'
+                 WHERE p.state = 'unhandled'
                  ORDER BY e.received_at ASC, e.transient_id ASC",
             )?;
             let rows = stmt.query_map(params![peer], propagation_entry_from_row)?;
@@ -1069,9 +1154,20 @@ impl MessagesStore {
             let mut stmt = conn.prepare(
                 "SELECT e.transient_id, e.destination, e.payload_hex, e.received_at, e.size_bytes, e.stamp_value
                  FROM propagation_entries e
-                 LEFT JOIN propagation_peer_entries p
-                    ON p.peer = ?1
-                   AND p.transient_id = e.transient_id
+                 LEFT JOIN (
+                    SELECT transient_id,
+                           CASE
+                               WHEN SUM(CASE WHEN state = 'transfer_limited' THEN 1 ELSE 0 END) > 0 THEN 'transfer_limited'
+                               WHEN SUM(CASE WHEN state = 'received' THEN 1 ELSE 0 END) > 0 THEN 'received'
+                               WHEN SUM(CASE WHEN state = 'transferred' THEN 1 ELSE 0 END) > 0 THEN 'transferred'
+                               WHEN SUM(CASE WHEN state = 'handled' THEN 1 ELSE 0 END) > 0 THEN 'handled'
+                               ELSE 'unhandled'
+                           END AS state
+                    FROM propagation_peer_entries
+                    WHERE LOWER(peer) = LOWER(?1)
+                    GROUP BY transient_id
+                 ) p
+                    ON p.transient_id = e.transient_id
                  WHERE p.state IS NULL OR p.state = 'unhandled'
                  ORDER BY e.received_at ASC, e.transient_id ASC",
             )?;
@@ -1083,13 +1179,24 @@ impl MessagesStore {
     pub fn list_peer_handled_propagation_ids(&self, peer: &str) -> rusqlite::Result<Vec<String>> {
         self.with_read_conn(|conn| {
             let mut stmt = conn.prepare(
-                "SELECT p.transient_id
-                 FROM propagation_peer_entries p
+                "SELECT marks.transient_id
+                 FROM (
+                    SELECT transient_id,
+                           CASE
+                               WHEN SUM(CASE WHEN state = 'transfer_limited' THEN 1 ELSE 0 END) > 0 THEN 'transfer_limited'
+                               WHEN SUM(CASE WHEN state = 'received' THEN 1 ELSE 0 END) > 0 THEN 'received'
+                               WHEN SUM(CASE WHEN state = 'transferred' THEN 1 ELSE 0 END) > 0 THEN 'transferred'
+                               WHEN SUM(CASE WHEN state = 'handled' THEN 1 ELSE 0 END) > 0 THEN 'handled'
+                               ELSE 'unhandled'
+                           END AS state
+                    FROM propagation_peer_entries
+                    WHERE LOWER(peer) = LOWER(?1)
+                    GROUP BY transient_id
+                 ) marks
                  INNER JOIN propagation_entries e
-                    ON e.transient_id = p.transient_id
-                 WHERE p.peer = ?1
-                   AND p.state IN ('handled', 'transferred', 'received', 'transfer_limited')
-                 ORDER BY p.transient_id ASC",
+                    ON e.transient_id = marks.transient_id
+                 WHERE marks.state IN ('handled', 'transferred', 'received', 'transfer_limited')
+                 ORDER BY marks.transient_id ASC",
             )?;
             let rows = stmt.query_map(params![peer], |row| row.get(0))?;
             rows.collect()
@@ -1106,9 +1213,30 @@ impl MessagesStore {
                 "SELECT EXISTS(
                     SELECT 1
                     FROM propagation_peer_entries
-                    WHERE peer = ?1
+                    WHERE LOWER(peer) = LOWER(?1)
                       AND transient_id = ?2
                       AND state IN ('handled', 'transferred', 'received', 'transfer_limited')
+                    LIMIT 1
+                 )",
+                params![peer, normalize_hex_key(transient_id)],
+                |row| row.get(0),
+            )
+        })
+    }
+
+    pub fn peer_received_propagation_mark_exists(
+        &self,
+        peer: &str,
+        transient_id: &str,
+    ) -> rusqlite::Result<bool> {
+        self.with_read_conn(|conn| {
+            conn.query_row(
+                "SELECT EXISTS(
+                    SELECT 1
+                    FROM propagation_peer_entries
+                    WHERE LOWER(peer) = LOWER(?1)
+                      AND transient_id = ?2
+                      AND state = 'received'
                     LIMIT 1
                  )",
                 params![peer, normalize_hex_key(transient_id)],
@@ -1120,12 +1248,24 @@ impl MessagesStore {
     pub fn list_peer_unhandled_propagation_ids(&self, peer: &str) -> rusqlite::Result<Vec<String>> {
         self.with_read_conn(|conn| {
             let mut stmt = conn.prepare(
-                "SELECT p.transient_id
-                 FROM propagation_peer_entries p
+                "SELECT marks.transient_id
+                 FROM (
+                    SELECT transient_id,
+                           CASE
+                               WHEN SUM(CASE WHEN state = 'transfer_limited' THEN 1 ELSE 0 END) > 0 THEN 'transfer_limited'
+                               WHEN SUM(CASE WHEN state = 'received' THEN 1 ELSE 0 END) > 0 THEN 'received'
+                               WHEN SUM(CASE WHEN state = 'transferred' THEN 1 ELSE 0 END) > 0 THEN 'transferred'
+                               WHEN SUM(CASE WHEN state = 'handled' THEN 1 ELSE 0 END) > 0 THEN 'handled'
+                               ELSE 'unhandled'
+                           END AS state
+                    FROM propagation_peer_entries
+                    WHERE LOWER(peer) = LOWER(?1)
+                    GROUP BY transient_id
+                 ) marks
                  INNER JOIN propagation_entries e
-                    ON e.transient_id = p.transient_id
-                 WHERE p.peer = ?1 AND p.state = 'unhandled'
-                 ORDER BY p.transient_id ASC",
+                    ON e.transient_id = marks.transient_id
+                 WHERE marks.state = 'unhandled'
+                 ORDER BY marks.transient_id ASC",
             )?;
             let rows = stmt.query_map(params![peer], |row| row.get(0))?;
             rows.collect()
@@ -1134,8 +1274,10 @@ impl MessagesStore {
 
     pub fn clear_peer_propagation_marks(&self, peer: &str) -> rusqlite::Result<usize> {
         self.with_write_conn(|conn| {
-            let affected = conn
-                .execute("DELETE FROM propagation_peer_entries WHERE peer = ?1", params![peer])?;
+            let affected = conn.execute(
+                "DELETE FROM propagation_peer_entries WHERE LOWER(peer) = LOWER(?1)",
+                params![peer],
+            )?;
             Ok(affected)
         })
     }
@@ -1156,10 +1298,14 @@ impl MessagesStore {
                 "SELECT
                     COALESCE(SUM(CASE WHEN e.transient_id IS NOT NULL THEN 1 ELSE 0 END), 0),
                     COALESCE(SUM(CASE WHEN e.transient_id IS NOT NULL THEN e.size_bytes ELSE 0 END), 0)
-                 FROM propagation_peer_entries p
+                 FROM (
+                    SELECT transient_id
+                    FROM propagation_peer_entries
+                    WHERE LOWER(peer) = LOWER(?1)
+                    GROUP BY transient_id
+                 ) marks
                  LEFT JOIN propagation_entries e
-                    ON e.transient_id = p.transient_id
-                 WHERE p.peer = ?1",
+                    ON e.transient_id = marks.transient_id",
                 params![peer],
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )?;
@@ -1190,10 +1336,21 @@ impl MessagesStore {
                     COALESCE(SUM(CASE WHEN e.transient_id IS NOT NULL AND state = 'unhandled' THEN 1 ELSE 0 END), 0),
                     COALESCE(SUM(CASE WHEN e.transient_id IS NOT NULL AND state IN ('handled', 'transferred') THEN e.size_bytes ELSE 0 END), 0),
                     COALESCE(SUM(CASE WHEN e.transient_id IS NOT NULL AND state = 'unhandled' THEN e.size_bytes ELSE 0 END), 0)
-                 FROM propagation_peer_entries p
+                 FROM (
+                    SELECT transient_id,
+                           CASE
+                               WHEN SUM(CASE WHEN state = 'transfer_limited' THEN 1 ELSE 0 END) > 0 THEN 'transfer_limited'
+                               WHEN SUM(CASE WHEN state = 'received' THEN 1 ELSE 0 END) > 0 THEN 'received'
+                               WHEN SUM(CASE WHEN state = 'transferred' THEN 1 ELSE 0 END) > 0 THEN 'transferred'
+                               WHEN SUM(CASE WHEN state = 'handled' THEN 1 ELSE 0 END) > 0 THEN 'handled'
+                               ELSE 'unhandled'
+                           END AS state
+                    FROM propagation_peer_entries
+                    WHERE LOWER(peer) = LOWER(?1)
+                    GROUP BY transient_id
+                 ) marks
                  LEFT JOIN propagation_entries e
-                    ON e.transient_id = p.transient_id
-                 WHERE p.peer = ?1",
+                    ON e.transient_id = marks.transient_id",
                 params![peer],
                 |row| {
                     Ok((
@@ -1300,7 +1457,8 @@ impl MessagesStore {
                 if affected > 0 {
                     tx.execute(
                         "DELETE FROM propagation_peer_entries
-                         WHERE transient_id = ?1",
+                         WHERE transient_id = ?1
+                           AND state = 'unhandled'",
                         params![transient_id],
                     )?;
                     purged = purged.saturating_add(affected);
@@ -2421,6 +2579,240 @@ mod tests {
     }
 
     #[test]
+    fn stale_peer_mark_cleanup_matches_peer_case_insensitively_like_python() {
+        let store = MessagesStore::in_memory().expect("in-memory store");
+        let stored_peer = "Peer-Stale-Mixed";
+        let request_peer = stored_peer.to_ascii_lowercase();
+        let unhandled_id = "ac".repeat(32);
+        let handled_id = "ad".repeat(32);
+
+        store
+            .mark_peer_unhandled_propagation(stored_peer, unhandled_id.as_str())
+            .expect("mark stale unhandled");
+        store
+            .mark_peer_handled_propagation(stored_peer, handled_id.as_str())
+            .expect("mark stale handled");
+
+        assert_eq!(
+            store
+                .remove_stale_peer_unhandled_propagation_ids(request_peer.as_str())
+                .expect("remove stale unhandled"),
+            vec![unhandled_id]
+        );
+        assert_eq!(
+            store
+                .remove_stale_peer_completed_propagation_ids(request_peer.as_str())
+                .expect("remove stale completed"),
+            vec![handled_id]
+        );
+        assert!(store
+            .remove_stale_peer_unhandled_propagation_ids(stored_peer)
+            .expect("stored-case stale unhandled")
+            .is_empty());
+        assert!(store
+            .remove_stale_peer_completed_propagation_ids(stored_peer)
+            .expect("stored-case stale completed")
+            .is_empty());
+    }
+
+    #[test]
+    fn peer_queue_stats_merge_case_variant_marks_without_duplicate_counts_like_python() {
+        let store = MessagesStore::in_memory().expect("in-memory store");
+        let stored_peer = "Peer-Stats-Mixed";
+        let request_peer = stored_peer.to_ascii_lowercase();
+        let duplicated = PropagationEntryRecord {
+            transient_id: "ae".repeat(32),
+            destination: "33".repeat(16),
+            payload_hex: "33".repeat(10),
+            received_at: 100,
+            size_bytes: 10,
+            stamp_value: None,
+        };
+        let unhandled = PropagationEntryRecord {
+            transient_id: "af".repeat(32),
+            destination: "44".repeat(16),
+            payload_hex: "44".repeat(20),
+            received_at: 101,
+            size_bytes: 20,
+            stamp_value: None,
+        };
+        store.upsert_propagation_entry(&duplicated).expect("duplicated entry");
+        store.upsert_propagation_entry(&unhandled).expect("unhandled entry");
+        store
+            .mark_peer_handled_propagation(stored_peer, duplicated.transient_id.as_str())
+            .expect("mark stored handled");
+        store
+            .mark_peer_unhandled_propagation(
+                request_peer.as_str(),
+                duplicated.transient_id.as_str(),
+            )
+            .expect("mark case-variant duplicate unhandled");
+        store
+            .mark_peer_unhandled_propagation(request_peer.as_str(), unhandled.transient_id.as_str())
+            .expect("mark case-variant unhandled");
+
+        assert_eq!(
+            store.peer_propagation_mark_stats(stored_peer).expect("mark stats"),
+            PropagationEntryStats { entries: 2, bytes: 30 }
+        );
+        assert_eq!(
+            store.peer_propagation_message_stats(stored_peer).expect("message stats"),
+            PeerPropagationMessageStats {
+                outgoing: 0,
+                incoming: 0,
+                offered: 1,
+                unhandled: 1,
+                offered_bytes: 10,
+                unhandled_bytes: 20,
+            }
+        );
+        assert_eq!(
+            store.list_peer_handled_propagation_ids(stored_peer).expect("handled ids"),
+            vec![duplicated.transient_id]
+        );
+        assert_eq!(
+            store.list_peer_unhandled_propagation_ids(stored_peer).expect("unhandled ids"),
+            vec![unhandled.transient_id]
+        );
+    }
+
+    #[test]
+    fn unhandled_peer_queue_selection_matches_peer_case_insensitively_like_python() {
+        let store = MessagesStore::in_memory().expect("in-memory store");
+        let stored_peer = "Peer-Select-Mixed";
+        let request_peer = stored_peer.to_ascii_lowercase();
+        let completed = PropagationEntryRecord {
+            transient_id: "b1".repeat(32),
+            destination: "55".repeat(16),
+            payload_hex: "55".repeat(10),
+            received_at: 100,
+            size_bytes: 10,
+            stamp_value: None,
+        };
+        let pending = PropagationEntryRecord {
+            transient_id: "b2".repeat(32),
+            destination: "66".repeat(16),
+            payload_hex: "66".repeat(20),
+            received_at: 101,
+            size_bytes: 20,
+            stamp_value: None,
+        };
+        store.upsert_propagation_entry(&completed).expect("completed entry");
+        store.upsert_propagation_entry(&pending).expect("pending entry");
+        store
+            .mark_peer_handled_propagation(stored_peer, completed.transient_id.as_str())
+            .expect("mark stored handled");
+        store
+            .mark_peer_unhandled_propagation(request_peer.as_str(), completed.transient_id.as_str())
+            .expect("mark case-variant duplicate unhandled");
+        store
+            .mark_peer_unhandled_propagation(request_peer.as_str(), pending.transient_id.as_str())
+            .expect("mark case-variant unhandled");
+
+        assert_eq!(
+            store.list_peer_unhandled_propagation(stored_peer).expect("unhandled entries"),
+            vec![pending.clone()]
+        );
+        assert!(store
+            .remove_peer_unhandled_propagation(stored_peer, pending.transient_id.as_str())
+            .expect("remove case-variant unhandled"));
+        assert!(store
+            .list_peer_unhandled_propagation(request_peer.as_str())
+            .expect("case-variant unhandled entries")
+            .is_empty());
+    }
+
+    #[test]
+    fn prospective_unhandled_queue_selection_matches_peer_case_insensitively_like_python() {
+        let store = MessagesStore::in_memory().expect("in-memory store");
+        let stored_peer = "Peer-Prospective-Mixed";
+        let request_peer = stored_peer.to_ascii_lowercase();
+        let completed = PropagationEntryRecord {
+            transient_id: "b5".repeat(32),
+            destination: "55".repeat(16),
+            payload_hex: "55".repeat(10),
+            received_at: 100,
+            size_bytes: 10,
+            stamp_value: None,
+        };
+        let pending = PropagationEntryRecord {
+            transient_id: "b6".repeat(32),
+            destination: "66".repeat(16),
+            payload_hex: "66".repeat(20),
+            received_at: 101,
+            size_bytes: 20,
+            stamp_value: None,
+        };
+        store.upsert_propagation_entry(&completed).expect("completed entry");
+        store.upsert_propagation_entry(&pending).expect("pending entry");
+        store
+            .mark_peer_received_propagation(stored_peer, completed.transient_id.as_str())
+            .expect("mark stored received");
+        store
+            .mark_peer_unhandled_propagation(request_peer.as_str(), completed.transient_id.as_str())
+            .expect("mark case-variant duplicate unhandled");
+        store
+            .mark_peer_unhandled_propagation(request_peer.as_str(), pending.transient_id.as_str())
+            .expect("mark case-variant pending unhandled");
+
+        assert_eq!(
+            store
+                .list_peer_prospective_unhandled_propagation(stored_peer)
+                .expect("prospective unhandled entries"),
+            vec![pending]
+        );
+    }
+
+    #[test]
+    fn terminal_peer_marks_clear_case_variant_unhandled_rows_like_python() {
+        let store = MessagesStore::in_memory().expect("in-memory store");
+        let stored_peer = "Peer-Terminal-Mixed";
+        let request_peer = stored_peer.to_ascii_lowercase();
+        let transferred = PropagationEntryRecord {
+            transient_id: "b3".repeat(32),
+            destination: "55".repeat(16),
+            payload_hex: "55".repeat(10),
+            received_at: 100,
+            size_bytes: 10,
+            stamp_value: None,
+        };
+        let transfer_limited = PropagationEntryRecord {
+            transient_id: "b4".repeat(32),
+            destination: "66".repeat(16),
+            payload_hex: "66".repeat(20),
+            received_at: 101,
+            size_bytes: 20,
+            stamp_value: None,
+        };
+        store.upsert_propagation_entry(&transferred).expect("transferred entry");
+        store.upsert_propagation_entry(&transfer_limited).expect("transfer-limited entry");
+        for entry in [&transferred, &transfer_limited] {
+            store
+                .mark_peer_unhandled_propagation(request_peer.as_str(), entry.transient_id.as_str())
+                .expect("mark case-variant unhandled");
+        }
+
+        store
+            .mark_peer_transferred_propagation(stored_peer, transferred.transient_id.as_str())
+            .expect("mark stored transferred");
+        store
+            .mark_peer_transfer_limited_propagation(
+                stored_peer,
+                transfer_limited.transient_id.as_str(),
+            )
+            .expect("mark stored transfer limited");
+
+        assert!(store
+            .list_peer_unhandled_propagation(request_peer.as_str())
+            .expect("case-variant unhandled rows")
+            .is_empty());
+        assert_eq!(
+            store.list_peer_handled_propagation_ids(stored_peer).expect("handled ids"),
+            vec![transferred.transient_id, transfer_limited.transient_id]
+        );
+    }
+
+    #[test]
     fn queue_existing_propagation_preserves_transfer_limited_marks_like_python() {
         let store = MessagesStore::in_memory().expect("in-memory store");
         let transfer_limited = PropagationEntryRecord {
@@ -2629,6 +3021,92 @@ mod tests {
     }
 
     #[test]
+    fn received_report_does_not_downgrade_transfer_limited_peer_mark() {
+        let store = MessagesStore::in_memory().expect("in-memory store");
+        let transfer_limited = PropagationEntryRecord {
+            transient_id: "c9".repeat(32),
+            destination: "99".repeat(16),
+            payload_hex: "99".repeat(24),
+            received_at: 108,
+            size_bytes: 24,
+            stamp_value: None,
+        };
+        store.upsert_propagation_entry(&transfer_limited).expect("transfer limited entry");
+        store
+            .mark_peer_transfer_limited_propagation(
+                "peer-completed",
+                transfer_limited.transient_id.as_str(),
+            )
+            .expect("mark transfer limited");
+
+        store
+            .mark_peer_received_propagation(
+                "peer-completed",
+                transfer_limited.transient_id.as_str(),
+            )
+            .expect("ignore received downgrade");
+
+        assert_eq!(
+            store.peer_propagation_message_stats("peer-completed").expect("peer stats"),
+            PeerPropagationMessageStats {
+                outgoing: 0,
+                incoming: 0,
+                offered: 0,
+                unhandled: 0,
+                offered_bytes: 0,
+                unhandled_bytes: 0,
+            }
+        );
+        assert_eq!(
+            store.list_peer_handled_propagation_ids("peer-completed").expect("handled ids"),
+            vec![transfer_limited.transient_id]
+        );
+    }
+
+    #[test]
+    fn transferred_report_does_not_downgrade_transfer_limited_peer_mark() {
+        let store = MessagesStore::in_memory().expect("in-memory store");
+        let transfer_limited = PropagationEntryRecord {
+            transient_id: "c8".repeat(32),
+            destination: "88".repeat(16),
+            payload_hex: "88".repeat(24),
+            received_at: 107,
+            size_bytes: 24,
+            stamp_value: None,
+        };
+        store.upsert_propagation_entry(&transfer_limited).expect("transfer limited entry");
+        store
+            .mark_peer_transfer_limited_propagation(
+                "peer-completed",
+                transfer_limited.transient_id.as_str(),
+            )
+            .expect("mark transfer limited");
+
+        store
+            .mark_peer_transferred_propagation(
+                "peer-completed",
+                transfer_limited.transient_id.as_str(),
+            )
+            .expect("ignore transferred downgrade");
+
+        assert_eq!(
+            store.peer_propagation_message_stats("peer-completed").expect("peer stats"),
+            PeerPropagationMessageStats {
+                outgoing: 0,
+                incoming: 0,
+                offered: 0,
+                unhandled: 0,
+                offered_bytes: 0,
+                unhandled_bytes: 0,
+            }
+        );
+        assert_eq!(
+            store.list_peer_handled_propagation_ids("peer-completed").expect("handled ids"),
+            vec![transfer_limited.transient_id]
+        );
+    }
+
+    #[test]
     fn handled_report_does_not_downgrade_completed_peer_marks() {
         let store = MessagesStore::in_memory().expect("in-memory store");
         let transferred = PropagationEntryRecord {
@@ -2647,14 +3125,29 @@ mod tests {
             size_bytes: 28,
             stamp_value: None,
         };
+        let transfer_limited = PropagationEntryRecord {
+            transient_id: "c7".repeat(32),
+            destination: "77".repeat(16),
+            payload_hex: "77".repeat(32),
+            received_at: 106,
+            size_bytes: 32,
+            stamp_value: None,
+        };
         store.upsert_propagation_entry(&transferred).expect("transferred entry");
         store.upsert_propagation_entry(&received).expect("received entry");
+        store.upsert_propagation_entry(&transfer_limited).expect("transfer limited entry");
         store
             .mark_peer_transferred_propagation("peer-completed", transferred.transient_id.as_str())
             .expect("mark transferred");
         store
             .mark_peer_received_propagation("peer-completed", received.transient_id.as_str())
             .expect("mark received");
+        store
+            .mark_peer_transfer_limited_propagation(
+                "peer-completed",
+                transfer_limited.transient_id.as_str(),
+            )
+            .expect("mark transfer limited");
 
         store
             .mark_peer_handled_propagation("peer-completed", transferred.transient_id.as_str())
@@ -2662,6 +3155,9 @@ mod tests {
         store
             .mark_peer_handled_propagation("peer-completed", received.transient_id.as_str())
             .expect("ignore received downgrade");
+        store
+            .mark_peer_handled_propagation("peer-completed", transfer_limited.transient_id.as_str())
+            .expect("ignore transfer-limited downgrade");
 
         assert_eq!(
             store.peer_propagation_message_stats("peer-completed").expect("peer stats"),
@@ -2848,7 +3344,7 @@ mod tests {
     }
 
     #[test]
-    fn purge_propagation_entries_removes_peer_marks_for_deleted_entries() {
+    fn purge_propagation_entries_removes_unhandled_marks_but_preserves_completed_state() {
         let store = MessagesStore::in_memory().expect("in-memory store");
         let entry = PropagationEntryRecord {
             transient_id: "af".repeat(32),
@@ -2862,6 +3358,9 @@ mod tests {
         store
             .mark_peer_handled_propagation("peer-cleanup", entry.transient_id.as_str())
             .expect("mark handled");
+        store
+            .mark_peer_unhandled_propagation("peer-retry", entry.transient_id.as_str())
+            .expect("mark unhandled");
 
         let purged = store
             .purge_propagation_entries_for_destination(
@@ -2875,6 +3374,19 @@ mod tests {
             .list_peer_handled_propagation_ids("peer-cleanup")
             .expect("handled ids")
             .is_empty());
+        assert!(
+            store
+                .peer_completed_propagation_mark_exists("peer-cleanup", entry.transient_id.as_str())
+                .expect("completed mark"),
+            "completed peer accounting survives payload purge for future reingest"
+        );
+        assert!(
+            store
+                .list_peer_unhandled_propagation_ids("peer-retry")
+                .expect("unhandled ids")
+                .is_empty(),
+            "retryable marks for the deleted payload are stale and should be removed"
+        );
     }
 
     #[test]

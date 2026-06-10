@@ -1,4 +1,9 @@
 pub mod lxmf_sdk
+pub use lxmf_sdk::PYTHON_LXMF_REFERENCE_REF
+pub use lxmf_sdk::PYTHON_LXMF_REFERENCE_VERSION
+pub use lxmf_sdk::PYTHON_RETICULUM_REFERENCE_REF
+pub use lxmf_sdk::PYTHON_RETICULUM_REFERENCE_VERSION
+pub use lxmf_sdk::RETICULUM_CONFORMANCE_REFERENCE_REF
 pub mod lxmf_sdk::app
 #[non_exhaustive] pub enum lxmf_sdk::app::AttemptDisposition
 pub lxmf_sdk::app::AttemptDisposition::Failed
@@ -611,7 +616,9 @@ pub lxmf_sdk::capability::NegotiationResponse::schema_namespace: alloc::string::
 pub lxmf_sdk::capability::NegotiationResponse::sdk_version: alloc::string::String
 #[non_exhaustive] pub struct lxmf_sdk::capability::ParityReference
 pub lxmf_sdk::capability::ParityReference::python_lxmf_ref: alloc::string::String
+pub lxmf_sdk::capability::ParityReference::python_lxmf_version: core::option::Option<alloc::string::String>
 pub lxmf_sdk::capability::ParityReference::python_reticulum_ref: alloc::string::String
+pub lxmf_sdk::capability::ParityReference::python_reticulum_version: core::option::Option<alloc::string::String>
 pub lxmf_sdk::capability::ParityReference::reticulum_conformance_ref: alloc::string::String
 impl core::default::Default for lxmf_sdk::capability::ParityReference
 pub fn lxmf_sdk::capability::ParityReference::default() -> Self
@@ -2090,7 +2097,9 @@ pub lxmf_sdk::PaperMessageEnvelope::transient_id: core::option::Option<alloc::st
 pub lxmf_sdk::PaperMessageEnvelope::uri: alloc::string::String
 #[non_exhaustive] pub struct lxmf_sdk::ParityReference
 pub lxmf_sdk::ParityReference::python_lxmf_ref: alloc::string::String
+pub lxmf_sdk::ParityReference::python_lxmf_version: core::option::Option<alloc::string::String>
 pub lxmf_sdk::ParityReference::python_reticulum_ref: alloc::string::String
+pub lxmf_sdk::ParityReference::python_reticulum_version: core::option::Option<alloc::string::String>
 pub lxmf_sdk::ParityReference::reticulum_conformance_ref: alloc::string::String
 impl core::default::Default for lxmf_sdk::capability::ParityReference
 pub fn lxmf_sdk::capability::ParityReference::default() -> Self
@@ -2437,9 +2446,6 @@ pub lxmf_sdk::VoiceSessionUpdateRequest::extensions: alloc::collections::btree::
 pub lxmf_sdk::VoiceSessionUpdateRequest::session_id: lxmf_sdk::domain::VoiceSessionId
 pub lxmf_sdk::VoiceSessionUpdateRequest::state: lxmf_sdk::domain::VoiceSessionState
 pub const lxmf_sdk::CONTRACT_RELEASE: &str
-pub const lxmf_sdk::PYTHON_LXMF_REFERENCE_REF: &str
-pub const lxmf_sdk::PYTHON_RETICULUM_REFERENCE_REF: &str
-pub const lxmf_sdk::RETICULUM_CONFORMANCE_REFERENCE_REF: &str
 pub const lxmf_sdk::SCHEMA_NAMESPACE: &str
 pub const lxmf_sdk::SDK_VERSION: &str
 pub trait lxmf_sdk::LxmfSdk

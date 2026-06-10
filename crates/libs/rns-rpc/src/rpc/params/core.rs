@@ -72,6 +72,10 @@ struct PeerOpParams {
     transfer_limit_kb: Option<f64>,
     #[serde(default)]
     wanted_ids: Option<JsonValue>,
+    #[serde(default)]
+    maintenance_claimed: bool,
+    #[serde(default)]
+    force_sync: bool,
 }
 
 #[derive(Debug, Deserialize)]

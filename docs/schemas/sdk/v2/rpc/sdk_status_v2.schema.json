@@ -20,7 +20,15 @@
           "minLength": 1,
           "type": "string"
         },
+        "python_lxmf_version": {
+          "minLength": 1,
+          "type": "string"
+        },
         "python_reticulum_ref": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "python_reticulum_version": {
           "minLength": 1,
           "type": "string"
         },

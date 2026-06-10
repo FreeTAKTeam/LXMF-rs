@@ -1,8 +1,23 @@
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+#[cfg(any(
+    target_os = "android",
+    target_os = "linux",
+    target_os = "macos",
+    target_os = "windows"
+))]
 use btleplug::api::{Central, CharPropFlags, Manager as _, Peripheral as _, ScanFilter, WriteType};
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+#[cfg(any(
+    target_os = "android",
+    target_os = "linux",
+    target_os = "macos",
+    target_os = "windows"
+))]
 use btleplug::platform::{Manager, Peripheral};
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+#[cfg(any(
+    target_os = "android",
+    target_os = "linux",
+    target_os = "macos",
+    target_os = "windows"
+))]
 use futures::StreamExt;
 
 use std::io;
@@ -22,7 +37,7 @@ use rns_embedded_runtime::{
 
 use super::helpers::{find_peripheral, parse_gatt_uuid};
 
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+#[cfg(any(target_os = "android", target_os = "linux", target_os = "macos", target_os = "windows"))]
 pub(crate) fn run_ble_native_peer(
     scan_secs: u64,
     name_hint: String,
@@ -188,7 +203,7 @@ pub(crate) fn run_ble_native_peer(
     })
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+#[cfg(any(target_os = "android", target_os = "linux", target_os = "macos", target_os = "windows"))]
 pub(crate) fn run_ble_native_bridge(
     scan_secs: u64,
     name_hint: String,

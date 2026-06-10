@@ -1,4 +1,5 @@
 use super::*;
+use base64::engine::general_purpose::{URL_SAFE, URL_SAFE_NO_PAD};
 
 type InboundSdkCommandUpdate = (
     String,
@@ -11,6 +12,17 @@ type InboundSdkCommandUpdate = (
 );
 
 impl RpcDaemon {
+    fn paper_uri_destination(uri: &str) -> Option<String> {
+        let encoded = uri.strip_prefix("lxm://")?;
+        if let Some((destination, _)) = encoded.split_once('/') {
+            return Self::normalize_non_empty(destination);
+        }
+
+        let paper_bytes =
+            URL_SAFE_NO_PAD.decode(encoded).or_else(|_| URL_SAFE.decode(encoded)).ok()?;
+        (paper_bytes.len() >= 16).then(|| encode_hex(&paper_bytes[..16]))
+    }
+
     pub(super) fn sdk_command_event_payload_summary(payload: &JsonValue) -> JsonValue {
         let byte_len = payload.to_string().len();
         match payload {
@@ -309,10 +321,38 @@ impl RpcDaemon {
                 "paper URI must start with lxm://",
             ));
         }
+        let uri_payload = parsed.uri.trim_start_matches("lxm://");
+        if uri_payload.is_empty()
+            || uri_payload
+                .split_once('/')
+                .is_some_and(|(destination, _)| destination.trim().is_empty())
+        {
+            return Ok(self.sdk_error_response(
+                request.id,
+                "SDK_VALIDATION_INVALID_ARGUMENT",
+                "paper URI must include a destination",
+            ));
+        }
         let bridged_decode = match self.outbound_bridge.as_ref() {
             Some(bridge) => bridge.decode_paper_uri(parsed.uri.as_str())?,
             None => None,
         };
+        let destination = bridged_decode
+            .as_ref()
+            .map(|outcome| outcome.destination_hint.clone())
+            .or(parsed.destination_hint)
+            .or_else(|| Self::paper_uri_destination(parsed.uri.as_str()));
+        let Some(destination) = destination else {
+            return Ok(self.sdk_error_response(
+                request.id,
+                "SDK_VALIDATION_INVALID_ARGUMENT",
+                "paper URI must include a destination",
+            ));
+        };
+        let bytes_len = bridged_decode
+            .as_ref()
+            .and_then(|outcome| outcome.raw_lxmf_bytes.as_ref())
+            .map_or_else(|| parsed.uri.len(), Vec::len);
         let transient_id = parsed
             .transient_id
             .or_else(|| bridged_decode.as_ref().map(|outcome| outcome.transient_id.clone()))
@@ -342,16 +382,15 @@ impl RpcDaemon {
                 }
             }
         }
-        let destination_hint = parsed
-            .destination_hint
-            .or_else(|| bridged_decode.as_ref().map(|outcome| outcome.destination_hint.clone()));
         Ok(RpcResponse {
             id: request.id,
             result: Some(json!({
                 "accepted": true,
                 "transient_id": transient_id,
                 "duplicate": duplicate,
-                "destination_hint": destination_hint,
+                "destination": destination,
+                "destination_hint": destination,
+                "bytes_len": bytes_len,
             })),
             error: None,
         })

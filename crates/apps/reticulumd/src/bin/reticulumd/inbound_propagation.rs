@@ -85,7 +85,12 @@ pub(super) async fn ingest_propagation_envelope_from_peer(
         .await?
         {
             if let Some(peer) = remote_propagation_peer {
-                daemon.record_peer_received_propagation(peer, transient_id.as_str())?;
+                daemon.relay_accepted_peer_propagation_payload_bytes_at_cost(
+                    message,
+                    Some(transient_id.as_str()),
+                    accepted_stamp_cost,
+                    peer,
+                )?;
             } else {
                 daemon.note_client_propagation_messages_received(1);
             }

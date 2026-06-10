@@ -308,11 +308,15 @@ fn rnode_ble_flow_control_queues_id_beacon_until_ready_notification() {
 struct TestRnodeBleBackend {
     events: Vec<&'static str>,
     writes: Vec<RnodeBleWrite>,
-    notifications: std::collections::VecDeque<Vec<u8>>,
+    notifications: std::collections::VecDeque<Option<Vec<u8>>>,
 }
 
 impl TestRnodeBleBackend {
     fn with_notifications(notifications: Vec<Vec<u8>>) -> Self {
+        Self { notifications: notifications.into_iter().map(Some).collect(), ..Default::default() }
+    }
+
+    fn with_notification_sequence(notifications: Vec<Option<Vec<u8>>>) -> Self {
         Self { notifications: notifications.into(), ..Default::default() }
     }
 }
@@ -336,7 +340,7 @@ impl RnodeBleBackend for TestRnodeBleBackend {
 
     async fn next_notification(&mut self) -> Result<Option<Vec<u8>>, String> {
         self.events.push("next_notification");
-        Ok(self.notifications.pop_front())
+        Ok(self.notifications.pop_front().flatten())
     }
 }
 
@@ -354,9 +358,24 @@ async fn rnode_ble_runtime_connects_subscribes_and_writes_startup_frames() {
     assert_eq!(runtime.status().pending_payloads, 0);
     assert_eq!(runtime.status().pending_writes, 0);
     let backend = runtime.backend();
+    #[cfg(feature = "rnode-ble")]
     assert_eq!(
-        &backend.events[..7],
-        &["connect", "subscribe_notifications", "write", "write", "write", "write", "write"]
+        backend.events,
+        vec![
+            "connect",
+            "subscribe_notifications",
+            "next_notification",
+            "write",
+            "write",
+            "write",
+            "write",
+            "write",
+        ]
+    );
+    #[cfg(not(feature = "rnode-ble"))]
+    assert_eq!(
+        backend.events,
+        vec!["connect", "subscribe_notifications", "write", "write", "write", "write", "write",]
     );
     assert_eq!(backend.writes.len(), 5);
     assert!(backend
@@ -368,7 +387,16 @@ async fn rnode_ble_runtime_connects_subscribes_and_writes_startup_frames() {
 
 #[tokio::test]
 async fn rnode_ble_runtime_writes_packets_and_polls_notifications() {
-    let backend = TestRnodeBleBackend::with_notifications(vec![encode_data_frame(&[0xAA, 0xBB])]);
+    #[cfg(feature = "rnode-ble")]
+    let backend = TestRnodeBleBackend::with_notification_sequence(vec![
+        None,
+        Some(encode_data_frame(&[0xAA, 0xBB])),
+    ]);
+    #[cfg(not(feature = "rnode-ble"))]
+    let backend =
+        TestRnodeBleBackend::with_notification_sequence(vec![Some(encode_data_frame(&[
+            0xAA, 0xBB,
+        ]))]);
     let mut runtime = RnodeBleKissRuntime::new(backend, RnodeBleKissConfig::default());
 
     runtime.startup().await.expect("startup");
@@ -384,6 +412,32 @@ async fn rnode_ble_runtime_writes_packets_and_polls_notifications() {
             payload: encode_data_frame(&[0x01, 0x02]),
         })
     );
+}
+
+#[cfg(feature = "rnode-ble")]
+#[tokio::test]
+async fn rnode_ble_runtime_drains_stale_notifications_before_startup_writes() {
+    let backend = TestRnodeBleBackend::with_notification_sequence(vec![
+        Some(encode_command_frame(CMD_DETECT, &[DETECT_RESP])),
+        Some(encode_data_frame(&[0xAA, 0xBB])),
+        None,
+    ]);
+    let mut runtime = RnodeBleKissRuntime::new(backend, RnodeBleKissConfig::default());
+
+    runtime.startup().await.expect("startup");
+
+    let backend = runtime.backend();
+    assert_eq!(
+        &backend.events[..5],
+        &[
+            "connect",
+            "subscribe_notifications",
+            "next_notification",
+            "next_notification",
+            "next_notification"
+        ]
+    );
+    assert_eq!(backend.writes.len(), 5);
 }
 
 #[tokio::test]

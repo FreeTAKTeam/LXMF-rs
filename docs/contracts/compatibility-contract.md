@@ -2,9 +2,17 @@
 
 ## Version Mapping
 
+- LXMF-rs project releases are recorded in the root `VERSION` file and are
+  independent from Cargo package versions.
 - Release baseline: `lxmf` `0.3.0` supports `reticulum-rs` `0.1.3`.
 - Compatibility track: `lxmf` `0.3.x` supports `reticulum-rs` `0.1.x`.
 - During active refactor development, integration CI may pin exact git revisions.
+- Python Reticulum compatibility is validated against version `1.2.2` at commit
+  `15320e4d2cfabb143c1db20ca887e275fd521585`. The version is diagnostic; the
+  commit remains the reproducible compatibility identity.
+- Python LXMF compatibility is validated against version `0.9.6` at commit
+  `727830cefda83d9c6e3982b48675425f3f988f9c`. The version is diagnostic; the
+  commit remains the reproducible compatibility identity.
 
 ## Canonical Payload Policy (v0.3 clean-break)
 

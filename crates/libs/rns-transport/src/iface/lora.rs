@@ -673,12 +673,18 @@ impl LoraConfig {
     }
 
     #[must_use]
-    pub fn command_frames(self) -> Vec<Vec<u8>> {
-        let mut frames = vec![
+    pub fn probe_frames(&self) -> Vec<Vec<u8>> {
+        vec![
             encode_command_frame(CMD_DETECT, &[DETECT_REQ]),
             encode_command_frame(CMD_FW_VERSION, &[0x00]),
             encode_command_frame(CMD_PLATFORM, &[0x00]),
             encode_command_frame(CMD_MCU, &[0x00]),
+        ]
+    }
+
+    #[must_use]
+    pub fn radio_config_frames(self) -> Vec<Vec<u8>> {
+        let mut frames = vec![
             encode_command_frame(CMD_FREQUENCY, &u32_be_bytes(self.frequency_hz)),
             encode_command_frame(CMD_BANDWIDTH, &self.bandwidth_hz.to_be_bytes()),
             encode_command_frame(CMD_TXPOWER, &[self.tx_power_dbm as u8]),
@@ -693,6 +699,11 @@ impl LoraConfig {
         }
         frames.push(encode_command_frame(CMD_RADIO_STATE, &[RADIO_STATE_ON]));
         frames
+    }
+
+    #[must_use]
+    pub fn command_frames(self) -> Vec<Vec<u8>> {
+        self.probe_frames().into_iter().chain(self.radio_config_frames()).collect()
     }
 
     #[must_use]
@@ -925,6 +936,10 @@ impl LoraInterface {
     pub fn record_inbound_data_frame(&mut self) {
         self.radio_status.rssi_dbm = None;
         self.radio_status.snr_db = None;
+    }
+
+    pub fn is_detected(&self) -> bool {
+        self.probe_status.detected
     }
 
     pub fn validate_probe_status(&self) -> Result<(), String> {

@@ -27,6 +27,8 @@ mod query;
 mod rpc_client;
 #[path = "lxmd/types.rs"]
 mod types;
+#[path = "../version.rs"]
+mod version;
 
 pub(crate) use types::{
     EffectiveArgs, LxmdConfigFile, LxmdPaths, PythonCompatConfig, SingleTomlConfigFile,
@@ -88,7 +90,11 @@ port = 4242
 "#;
 
 #[derive(Parser, Debug)]
-#[command(name = "lxmd", about = "LXMF daemon compatibility entrypoint", version)]
+#[command(
+    name = "lxmd",
+    about = "LXMF daemon compatibility entrypoint",
+    disable_version_flag = true
+)]
 struct Args {
     #[arg(long)]
     config: Option<PathBuf>,
@@ -146,7 +152,7 @@ fn main() -> ExitCode {
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
-    let args = Args::parse();
+    let args = version::parse_with_version::<Args>();
     if args.exampleconfig {
         print!("{}", example_config());
         return ExitCode::SUCCESS;
@@ -628,6 +634,32 @@ enable_node = yes
         assert!(generated_contents.contains("type = \"tcp_server\""));
         assert!(generated_contents.contains("host = \"0.0.0.0\""));
         assert!(generated_contents.contains("port = 4242"));
+    }
+
+    #[test]
+    fn python_config_keeps_lxmf_peer_and_propagation_node_announce_intervals_separate() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let config_dir = temp.path().join("lxmd");
+        std::fs::create_dir_all(&config_dir).expect("create config dir");
+        let config_path = config_dir.join("config");
+        fs::write(
+            &config_path,
+            r#"
+[lxmf]
+announce_interval = 3
+
+[propagation]
+announce_interval = 2
+"#,
+        )
+        .expect("write config");
+
+        let args =
+            super::Args::parse_from(["lxmd", "--config", config_path.to_str().expect("utf8 path")]);
+        let effective = load_effective_args(&args).expect("effective args");
+
+        assert_eq!(effective.python_compat.peer_announce_interval_min, Some(3));
+        assert_eq!(effective.python_compat.node_announce_interval_min, Some(2));
     }
 
     #[test]

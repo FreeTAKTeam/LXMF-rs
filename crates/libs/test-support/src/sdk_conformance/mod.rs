@@ -1184,6 +1184,28 @@ fn sdk_conformance_cancel_accepted_and_too_late_paths() {
     assert_eq!(too_late, CancelResult::TooLateToCancel);
 }
 
+#[tokio::test]
+async fn sdk_conformance_unknown_message_status_and_cancel() {
+    let harness = RpcHarness::new();
+    let client = harness.client();
+    client.start(base_start_request()).expect("start");
+
+    let unknown = MessageId("unknown-conformance-message".to_owned());
+    assert!(
+        client.status(unknown.clone()).expect("sync status").is_none(),
+        "unknown sync status must return no delivery snapshot"
+    );
+    assert!(
+        client.status_async(unknown.clone()).await.expect("async status").is_none(),
+        "unknown async status must return no delivery snapshot"
+    );
+    assert_eq!(
+        client.cancel(unknown).expect("cancel unknown message"),
+        CancelResult::NotFound,
+        "unknown cancel must return the typed equivalent of false"
+    );
+}
+
 #[test]
 fn sdk_conformance_configure_cas_conflict() {
     let harness = RpcHarness::new();
@@ -1316,12 +1338,24 @@ fn sdk_conformance_delivery_modes_and_paper_workflows_are_compatible() {
 
     let paper_decode = harness.rpc_call("sdk_paper_decode_v2", Some(json!({ "uri": uri })));
     assert!(paper_decode.error.is_none(), "sdk_paper_decode_v2 should succeed");
-    assert_eq!(
-        paper_decode
-            .result
-            .and_then(|value| value.get("accepted").cloned())
-            .and_then(|value| value.as_bool()),
-        Some(true),
-        "paper decode result must report accepted=true"
+    let paper_result = paper_decode.result.expect("paper decode result");
+    assert_eq!(paper_result["accepted"], json!(true));
+    assert_eq!(paper_result["destination"], json!("destination.test"));
+    assert!(
+        paper_result["transient_id"].as_str().is_some_and(|value| !value.is_empty()),
+        "paper ingest must return a transient ID"
     );
+    assert_eq!(paper_result["duplicate"], json!(false));
+    assert_eq!(
+        paper_result["bytes_len"].as_u64(),
+        Some(u64::try_from(uri.len()).expect("URI length fits u64"))
+    );
+
+    let duplicate_decode = harness.rpc_call("sdk_paper_decode_v2", Some(json!({ "uri": uri })));
+    assert!(duplicate_decode.error.is_none(), "duplicate paper ingest should succeed");
+    let duplicate_result = duplicate_decode.result.expect("duplicate paper decode result");
+    assert_eq!(duplicate_result["transient_id"], paper_result["transient_id"]);
+    assert_eq!(duplicate_result["destination"], paper_result["destination"]);
+    assert_eq!(duplicate_result["bytes_len"], paper_result["bytes_len"]);
+    assert_eq!(duplicate_result["duplicate"], json!(true));
 }

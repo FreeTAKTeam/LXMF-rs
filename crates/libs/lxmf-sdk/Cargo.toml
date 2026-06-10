@@ -12,6 +12,7 @@ keywords = ["lxmf", "sdk", "messaging", "reticulum"]
 categories = ["network-programming", "api-bindings"]
 
 [dependencies]
+lxmf-reference.workspace = true
 lxmf-core.workspace = true
 rns-rpc = { workspace = true, optional = true }
 rustls = { workspace = true, optional = true }

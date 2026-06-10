@@ -37,6 +37,10 @@ pub const RNODE_BLE_TX_CHARACTERISTIC_UUID: &str = "6E400003-B5A3-F393-E0A9-E50E
 pub const RNODE_BLE_SCAN_TIMEOUT: Duration = Duration::from_secs(2);
 pub const RNODE_BLE_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 pub const RNODE_BLE_READ_FRAME_TIMEOUT: Duration = Duration::from_millis(1_250);
+#[cfg(feature = "rnode-ble")]
+const RNODE_BLE_STARTUP_STABILIZATION_TIMEOUT: Duration = Duration::from_secs(2);
+#[cfg(feature = "rnode-ble")]
+const RNODE_BLE_STARTUP_NOTIFICATION_QUIET_TIMEOUT: Duration = Duration::from_millis(100);
 
 #[cfg(feature = "rnode-ble")]
 type NativeNotificationStream = Pin<Box<dyn Stream<Item = ValueNotification> + Send>>;
@@ -53,6 +57,7 @@ pub struct RnodeBleKissConfig {
     pub max_write_len: usize,
     pub write_with_response: bool,
     pub initial_frames: Vec<Vec<u8>>,
+    pub deferred_frames: Vec<Vec<u8>>,
     pub shutdown_frames: Vec<Vec<u8>>,
     pub kiss: KissConfig,
 }
@@ -70,6 +75,7 @@ impl Default for RnodeBleKissConfig {
             max_write_len: 20,
             write_with_response: false,
             initial_frames: Vec::new(),
+            deferred_frames: Vec::new(),
             shutdown_frames: Vec::new(),
             kiss: KissConfig::default(),
         }
@@ -495,10 +501,50 @@ where
         self.backend.subscribe_notifications().await.map_err(|message| {
             RnodeBleKissError::Backend { operation: "subscribe_notifications", message }
         })?;
+        #[cfg(feature = "rnode-ble")]
+        self.drain_startup_notifications().await?;
         let writes = self.session.startup_frames();
         self.write_all(writes, "startup_write").await?;
         self.connected = true;
         Ok(())
+    }
+
+    #[cfg(feature = "rnode-ble")]
+    async fn drain_startup_notifications(&mut self) -> Result<(), RnodeBleKissError> {
+        let deadline = TokioInstant::now() + RNODE_BLE_STARTUP_STABILIZATION_TIMEOUT;
+        let mut drained = 0_usize;
+        loop {
+            let now = TokioInstant::now();
+            if now >= deadline {
+                break;
+            }
+            let quiet_timeout = deadline
+                .saturating_duration_since(now)
+                .min(RNODE_BLE_STARTUP_NOTIFICATION_QUIET_TIMEOUT);
+            match timeout(quiet_timeout, self.backend.next_notification()).await {
+                Ok(Ok(Some(_))) => {
+                    drained += 1;
+                }
+                Ok(Ok(None)) | Err(_) => break,
+                Ok(Err(message)) => {
+                    self.connected = false;
+                    return Err(RnodeBleKissError::Backend {
+                        operation: "drain_startup_notifications",
+                        message,
+                    });
+                }
+            }
+        }
+        if drained > 0 {
+            log::debug!("drained {drained} stale RNode BLE startup notifications");
+        }
+        Ok(())
+    }
+
+    #[cfg(feature = "rnode-ble")]
+    pub async fn send_deferred_frames(&mut self) -> Result<(), RnodeBleKissError> {
+        let writes = self.session.deferred_frames();
+        self.write_all(writes, "deferred_frames_write").await
     }
 
     pub async fn send_packet(&mut self, payload: &[u8]) -> Result<(), RnodeBleKissError> {
@@ -582,7 +628,12 @@ impl NativeRnodeBleKissInterface {
             settings,
             config,
             rnode_config: None,
-            startup_response_timeout: Duration::from_millis(1_500),
+            // TODO: startup_response_timeout should not exist. The device should send an
+            //       explicit "ready" notification after completing startup, removing the
+            //       need for a client-side deadline entirely. Consider raising a firmware
+            //       feature request with markqvist (https://github.com/markqvist/RNode_Firmware)
+            //       to add a CMD_READY or equivalent handshake frame.
+            startup_response_timeout: Duration::from_millis(5_000), // was 1_500; matches Python's ble_detect_timeout
             reconnect_backoff: Duration::from_millis(500),
             max_reconnect_backoff: Duration::from_millis(5_000),
         }
@@ -672,21 +723,28 @@ impl NativeRnodeBleKissInterface {
             let mut reconnect_needed = false;
             let mut command_monitor = rnode_config
                 .map(|config| RnodeBleCommandMonitor::new(config, startup_response_timeout));
+            let mut radio_config_sent = command_monitor.is_none();
             let mut first_tx_at: Option<TokioInstant> = None;
             while !context.cancel.is_cancelled() && !iface_stop.is_cancelled() {
-                while let Ok(message) = tx_channel.try_recv() {
-                    let mut output = OutputBuffer::new(&mut tx_buffer[..]);
-                    if message.packet.serialize(&mut output).is_err() {
-                        log::warn!("RNode BLE packet serialize failed iface={}", label);
-                        continue;
-                    }
-                    if let Err(err) = runtime.send_packet(output.as_slice()).await {
-                        log::warn!("RNode BLE packet write failed iface={} err={:?}", label, err);
-                        reconnect_needed = true;
-                        break;
-                    }
-                    if first_tx_at.is_none() {
-                        first_tx_at = Some(TokioInstant::now());
+                if radio_config_sent {
+                    while let Ok(message) = tx_channel.try_recv() {
+                        let mut output = OutputBuffer::new(&mut tx_buffer[..]);
+                        if message.packet.serialize(&mut output).is_err() {
+                            log::warn!("RNode BLE packet serialize failed iface={}", label);
+                            continue;
+                        }
+                        if let Err(err) = runtime.send_packet(output.as_slice()).await {
+                            log::warn!(
+                                "RNode BLE packet write failed iface={} err={:?}",
+                                label,
+                                err
+                            );
+                            reconnect_needed = true;
+                            break;
+                        }
+                        if first_tx_at.is_none() {
+                            first_tx_at = Some(TokioInstant::now());
+                        }
                     }
                 }
                 if reconnect_needed {
@@ -723,6 +781,22 @@ impl NativeRnodeBleKissInterface {
                                 reconnect_needed = true;
                                 break;
                             }
+                            if !radio_config_sent && monitor.is_detected() {
+                                radio_config_sent = true;
+                                if let Err(err) = runtime.send_deferred_frames().await {
+                                    log::warn!(
+                                        "RNode BLE radio config write failed iface={} err={:?}",
+                                        label,
+                                        err
+                                    );
+                                    reconnect_needed = true;
+                                } else {
+                                    monitor.reset_startup_deadline(startup_response_timeout);
+                                }
+                            }
+                        }
+                        if reconnect_needed {
+                            break;
                         }
                         for payload in notification.packets {
                             if let Ok(packet) = Packet::deserialize(&mut InputBuffer::new(&payload))
@@ -854,6 +928,15 @@ impl RnodeBleCommandMonitor {
     }
 
     #[must_use]
+    pub fn is_detected(&self) -> bool {
+        self.lora.is_detected()
+    }
+
+    pub fn reset_startup_deadline(&mut self, timeout: Duration) {
+        self.startup_deadline = Some(Instant::now() + timeout);
+    }
+
+    #[must_use]
     pub fn online(&self) -> bool {
         self.lora.online()
     }
@@ -938,6 +1021,16 @@ impl RnodeBleKissSession {
             .command_frames()
             .into_iter()
             .chain(self.config.initial_frames.iter().cloned())
+            .flat_map(|frame| self.kiss_writes(frame))
+            .collect()
+    }
+
+    #[must_use]
+    pub fn deferred_frames(&mut self) -> Vec<RnodeBleWrite> {
+        self.config
+            .deferred_frames
+            .iter()
+            .cloned()
             .flat_map(|frame| self.kiss_writes(frame))
             .collect()
     }

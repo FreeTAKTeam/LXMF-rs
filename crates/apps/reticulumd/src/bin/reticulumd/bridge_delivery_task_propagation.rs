@@ -14,7 +14,9 @@ impl DeliveryTask {
             .and_then(|value| value.as_array())
             .and_then(|rows| {
                 rows.iter().find(|row| {
-                    row.get("peer").and_then(|value| value.as_str()) == Some(propagation_node_hex)
+                    row.get("peer")
+                        .and_then(|value| value.as_str())
+                        .is_some_and(|peer| peer.eq_ignore_ascii_case(propagation_node_hex))
                 })
             })
             .and_then(|row| row.get("propagation_stamp_cost"))

@@ -39,6 +39,8 @@ pub(crate) fn apply_python_config_file(
             .get("announce_at_start")
             .and_then(|value| parse_python_bool(value))
             .unwrap_or(false);
+        effective.python_compat.peer_announce_interval_min =
+            lxmf.get("announce_interval").and_then(|value| value.parse::<u64>().ok());
     }
 
     if let Some(propagation) = sections.get("propagation") {
@@ -101,8 +103,11 @@ pub(crate) fn apply_python_config_file(
             .unwrap_or(false);
         effective.python_compat.node_announce_interval_min =
             propagation.get("announce_interval").and_then(|value| value.parse::<u64>().ok());
-        effective.python_compat.peer_announce_interval_min =
-            propagation.get("peer_announce_interval").and_then(|value| value.parse::<u64>().ok());
+        if effective.python_compat.peer_announce_interval_min.is_none() {
+            effective.python_compat.peer_announce_interval_min = propagation
+                .get("peer_announce_interval")
+                .and_then(|value| value.parse::<u64>().ok());
+        }
     }
 
     effective.python_compat.allowed_identities =

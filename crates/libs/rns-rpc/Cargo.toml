@@ -15,6 +15,7 @@ categories = ["network-programming", "api-bindings"]
 name = "rns_rpc"
 
 [dependencies]
+lxmf-reference.workspace = true
 rand_core = { workspace = true, features = ["getrandom"] }
 rmp-serde.workspace = true
 rmpv = { workspace = true, features = ["with-serde"] }

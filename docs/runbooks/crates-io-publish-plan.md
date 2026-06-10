@@ -31,6 +31,7 @@ Use a two-tier public model:
   - `lxmf`
   - `reticulum-rs`
 - Component crates:
+  - `lxmf-reference`
   - `lxmf-wire`
   - `lxmf-sdk`
   - `reticulum-rs-core`
@@ -59,6 +60,7 @@ not have to rewrite `use` paths just to complete the package rename.
 
 | Current workspace package | crates.io package | Rust crate name | Version target | Publish |
 | --- | --- | --- | --- | --- |
+| `lxmf-reference` | `lxmf-reference` | `lxmf_reference` | `0.1.0` | yes |
 | `lxmf-core` | `lxmf-wire` | `lxmf_core` | `0.2.0` | yes |
 | `lxmf-sdk` | `lxmf-sdk` | `lxmf_sdk` | `0.2.1` | yes |
 | `rns-core` | `reticulum-rs-core` | `rns_core` | `0.2.0` | yes |
@@ -102,6 +104,8 @@ revived, they need a fresh support-policy decision before publication.
 
 - Do not apply one blanket version to every existing published crate.
 - New component package names may start at `0.2.0`.
+- `lxmf-reference` starts at `0.1.0` and changes only when pinned compatibility
+  metadata changes.
 - `reticulum-rs-rpc` moved to `0.3.0` when the gRPC/protobuf surface was removed from the public crate.
 - Already-published umbrella crates must continue forward monotonically from
   their crates.io history:
@@ -163,15 +167,18 @@ Publish in dependency order, not with a blanket `cargo publish --workspace`.
 
 Recommended order:
 
-1. `reticulum-rs-core`
-2. `lxmf-wire`
-3. `reticulum-rs-transport`
-4. `reticulum-rs-rpc`
-5. `lxmf-sdk`
-6. `reticulum-rs`
-7. `lxmf`
+1. `lxmf-reference`
+2. `reticulum-rs-core`
+3. `lxmf-wire`
+4. `reticulum-rs-transport`
+5. `reticulum-rs-rpc`
+6. `lxmf-sdk`
+7. `reticulum-rs`
+8. `lxmf`
 Reason:
 
+- `reticulum-rs-rpc` and `lxmf-sdk` share pinned compatibility metadata through
+  `lxmf-reference`
 - `lxmf-wire` depends on `reticulum-rs-core`
 - `reticulum-rs-transport` depends on `reticulum-rs-core`
 - `lxmf-sdk` depends on `reticulum-rs-rpc`

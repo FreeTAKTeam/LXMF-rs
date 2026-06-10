@@ -152,6 +152,10 @@ struct PublishedCrate {
 
 const WAVE1_PUBLIC_CRATES: &[PublishedCrate] = &[
     PublishedCrate {
+        package: "lxmf-reference",
+        manifest_path: "crates/libs/lxmf-reference/Cargo.toml",
+    },
+    PublishedCrate {
         package: "reticulum-rs-core",
         manifest_path: "crates/libs/rns-core/Cargo.toml",
     },
@@ -444,6 +448,22 @@ enum XtaskCommand {
         #[arg(long)]
         timeout_secs: Option<u64>,
     },
+    E2eBench {
+        #[arg(long, value_enum, default_value_t = E2eBenchMode::All)]
+        mode: E2eBenchMode,
+        #[arg(long, value_enum, default_value_t = E2eBenchProfile::Smoke)]
+        profile: E2eBenchProfile,
+        #[arg(long)]
+        scenario: Vec<String>,
+        #[arg(long, value_enum)]
+        implementation: Vec<E2eBenchImplementation>,
+        #[arg(long)]
+        keep: bool,
+        #[arg(long)]
+        output: Option<PathBuf>,
+        #[arg(long)]
+        dry_run: bool,
+    },
     MeshSim,
     SdkProfileBuild,
     SdkExamplesCheck,
@@ -602,6 +622,26 @@ enum PythonImplImplementation {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
+enum E2eBenchMode {
+    Correctness,
+    Benchmark,
+    All,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
+enum E2eBenchProfile {
+    Smoke,
+    Report,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
+enum E2eBenchImplementation {
+    Rust,
+    Python,
+    Tcp,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
 enum PublishWave {
     Wave1,
     Facades,
@@ -651,6 +691,23 @@ fn main() -> Result<()> {
         }
         XtaskCommand::CompatKitCheck => run_compat_kit_check(),
         XtaskCommand::E2eCompatibility { timeout_secs } => run_e2e_compatibility(timeout_secs),
+        XtaskCommand::E2eBench {
+            mode,
+            profile,
+            scenario,
+            implementation,
+            keep,
+            output,
+            dry_run,
+        } => run_e2e_bench(
+            mode,
+            profile,
+            &scenario,
+            &implementation,
+            keep,
+            output.as_deref(),
+            dry_run,
+        ),
         XtaskCommand::MeshSim => run_mesh_sim(),
         XtaskCommand::SdkProfileBuild => run_sdk_profile_build(),
         XtaskCommand::SdkExamplesCheck => run_sdk_examples_check(),
@@ -1571,14 +1628,46 @@ fn run_sdk_api_break() -> Result<()> {
     let current_normalized = normalize_public_api(&current);
 
     if baseline_normalized != current_normalized {
+        let diff = public_api_line_diff(&baseline_normalized, &current_normalized);
         bail!(
-            "sdk public API drift detected for {MANIFEST_PATH}; review and refresh {BASELINE_PATH}"
+            "sdk public API drift detected for {MANIFEST_PATH}; review and refresh {BASELINE_PATH}\n{diff}"
         );
     }
 
     run_sdk_api_stability_check(&current_normalized)?;
 
     Ok(())
+}
+
+fn public_api_line_diff(baseline: &str, current: &str) -> String {
+    let baseline_lines = baseline.lines().collect::<BTreeSet<_>>();
+    let current_lines = current.lines().collect::<BTreeSet<_>>();
+    let removed = baseline_lines.difference(&current_lines).map(|line| format!("- {line}"));
+    let added = current_lines.difference(&baseline_lines).map(|line| format!("+ {line}"));
+    let line_diff = removed.chain(added).collect::<Vec<_>>();
+    if !line_diff.is_empty() {
+        return line_diff.join("\n");
+    }
+
+    let baseline_lines = baseline.lines().collect::<Vec<_>>();
+    let current_lines = current.lines().collect::<Vec<_>>();
+    let mismatch = baseline_lines
+        .iter()
+        .zip(&current_lines)
+        .position(|(baseline_line, current_line)| baseline_line != current_line);
+    match mismatch {
+        Some(index) => format!(
+            "first ordering difference at line {}:\nbaseline: {}\ncurrent: {}",
+            index + 1,
+            baseline_lines[index],
+            current_lines[index]
+        ),
+        None => format!(
+            "API line counts differ: baseline={}, current={}",
+            baseline_lines.len(),
+            current_lines.len()
+        ),
+    }
 }
 
 fn run_sdk_api_stability_check(current_public_api: &str) -> Result<()> {
@@ -4530,22 +4619,36 @@ fn release_version_label(version: Option<String>) -> Result<String> {
         }
     }
 
-    if let Ok(tag) = capture_command_stdout("git", &["describe", "--tags", "--exact-match"]) {
-        if !tag.is_empty() {
-            return Ok(tag.replace('/', "-"));
-        }
+    let project_version =
+        fs::read_to_string("VERSION").context("read project release version from VERSION")?;
+    let exact_tag = capture_command_stdout("git", &["describe", "--tags", "--exact-match"]).ok();
+    resolve_release_version(None, exact_tag.as_deref(), &project_version)
+}
+
+fn resolve_release_version(
+    explicit_version: Option<&str>,
+    exact_tag: Option<&str>,
+    project_version: &str,
+) -> Result<String> {
+    if let Some(version) = explicit_version.map(str::trim).filter(|value| !value.is_empty()) {
+        return Ok(version.replace('/', "-"));
     }
 
-    let manifest = fs::read_to_string("crates/apps/lxmf-cli/Cargo.toml")
-        .context("read crates/apps/lxmf-cli/Cargo.toml for release version")?;
-    for line in manifest.lines() {
-        let trimmed = line.trim();
-        if let Some(value) = trimmed.strip_prefix("version = ") {
-            return Ok(value.trim_matches('"').replace('/', "-"));
-        }
+    let project_version = project_version.trim();
+    if project_version.is_empty() || project_version.chars().any(char::is_whitespace) {
+        bail!("VERSION must contain exactly one non-empty version token");
     }
 
-    bail!("unable to determine release version for daemon bundle")
+    if let Some(tag) = exact_tag.map(str::trim).filter(|value| !value.is_empty()) {
+        let normalized_tag = tag.strip_prefix('v').unwrap_or(tag);
+        let normalized_project = project_version.strip_prefix('v').unwrap_or(project_version);
+        if normalized_tag != normalized_project {
+            bail!("exact git tag '{tag}' does not match project VERSION '{project_version}'");
+        }
+        return Ok(tag.replace('/', "-"));
+    }
+
+    Ok(project_version.replace('/', "-"))
 }
 
 fn release_platform_label() -> String {
@@ -5061,6 +5164,88 @@ fn run_e2e_compatibility(timeout_secs: Option<u64>) -> Result<()> {
     )
 }
 
+fn run_e2e_bench(
+    mode: E2eBenchMode,
+    profile: E2eBenchProfile,
+    scenarios: &[String],
+    implementations: &[E2eBenchImplementation],
+    keep: bool,
+    output: Option<&Path>,
+    dry_run: bool,
+) -> Result<()> {
+    const RUNNER_TOOLCHAIN: &str = "1.88.0";
+    const RUNNER_MANIFEST: &str = "tools/e2e-runner/Cargo.toml";
+
+    let toolchain_status = Command::new("rustup")
+        .args(["run", RUNNER_TOOLCHAIN, "rustc", "--version"])
+        .status()
+        .context("rustup is required to launch the isolated E2E runner")?;
+    if !toolchain_status.success() {
+        bail!(
+            "Rust {RUNNER_TOOLCHAIN} is required for the isolated E2E runner; install it with \
+             `rustup toolchain install {RUNNER_TOOLCHAIN} --profile minimal`"
+        );
+    }
+
+    let mut args = vec![
+        "run".to_string(),
+        RUNNER_TOOLCHAIN.to_string(),
+        "cargo".to_string(),
+        "run".to_string(),
+        "--locked".to_string(),
+        "--manifest-path".to_string(),
+        RUNNER_MANIFEST.to_string(),
+        "--".to_string(),
+        "--mode".to_string(),
+        match mode {
+            E2eBenchMode::Correctness => "correctness",
+            E2eBenchMode::Benchmark => "benchmark",
+            E2eBenchMode::All => "all",
+        }
+        .to_string(),
+        "--profile".to_string(),
+        match profile {
+            E2eBenchProfile::Smoke => "smoke",
+            E2eBenchProfile::Report => "report",
+        }
+        .to_string(),
+    ];
+    for scenario in scenarios {
+        args.push("--scenario".to_string());
+        args.push(scenario.clone());
+    }
+    for implementation in implementations {
+        args.push("--implementation".to_string());
+        args.push(
+            match implementation {
+                E2eBenchImplementation::Rust => "rust",
+                E2eBenchImplementation::Python => "python",
+                E2eBenchImplementation::Tcp => "tcp",
+            }
+            .to_string(),
+        );
+    }
+    if keep {
+        args.push("--keep".to_string());
+    }
+    if let Some(output) = output {
+        args.push("--output".to_string());
+        args.push(output.to_string_lossy().into_owned());
+    }
+    if dry_run {
+        args.push("--dry-run".to_string());
+    }
+
+    let status = Command::new("rustup")
+        .args(&args)
+        .status()
+        .context("failed to launch the isolated E2E runner")?;
+    if !status.success() {
+        bail!("isolated E2E runner failed");
+    }
+    Ok(())
+}
+
 fn run_mesh_sim() -> Result<()> {
     run("cargo", &["build", "-p", "reticulumd", "--bin", "reticulumd"])?;
     run(
@@ -5346,6 +5531,10 @@ fn publish_wave_crates(wave: PublishWave) -> &'static [PublishedCrate] {
         PublishWave::All => {
             static ALL_PUBLIC_CRATES: &[PublishedCrate] = &[
                 PublishedCrate {
+                    package: "lxmf-reference",
+                    manifest_path: "crates/libs/lxmf-reference/Cargo.toml",
+                },
+                PublishedCrate {
                     package: "reticulum-rs-core",
                     manifest_path: "crates/libs/rns-core/Cargo.toml",
                 },
@@ -5394,7 +5583,9 @@ fn run_publish_dry_run_with_fallback(krate: PublishedCrate, allow_dirty: bool) -
     }
 
     let stderr = String::from_utf8_lossy(&output.stderr);
-    if stderr.contains("failed to select a version for the requirement") {
+    if stderr.contains("failed to select a version for the requirement")
+        || stderr.contains("no matching package named")
+    {
         log::warn!(
             "dry-run fallback: {} depends on unpublished local versions; validating package contents instead",
             krate.package
@@ -5417,5 +5608,61 @@ fn print_cargo_output(output: &std::process::Output) {
     }
     if !output.stderr.is_empty() {
         log::error!("{}", String::from_utf8_lossy(&output.stderr));
+    }
+}
+
+#[cfg(test)]
+mod version_tests {
+    use super::{public_api_line_diff, resolve_release_version};
+
+    #[test]
+    fn public_api_diff_reports_removed_and_added_lines() {
+        assert_eq!(
+            public_api_line_diff(
+                "pub const OLD: &str\npub struct Shared",
+                "pub const NEW: &str\npub struct Shared"
+            ),
+            "- pub const OLD: &str\n+ pub const NEW: &str"
+        );
+    }
+
+    #[test]
+    fn public_api_diff_reports_ordering_changes() {
+        assert_eq!(
+            public_api_line_diff("pub const A: &str\npub const B: &str", "pub const B: &str\npub const A: &str"),
+            "first ordering difference at line 1:\nbaseline: pub const A: &str\ncurrent: pub const B: &str"
+        );
+    }
+
+    #[test]
+    fn explicit_release_version_wins() {
+        assert_eq!(
+            resolve_release_version(Some(" custom/1 "), Some("v0.2.3"), "0.2.3")
+                .expect("explicit version"),
+            "custom-1"
+        );
+    }
+
+    #[test]
+    fn matching_exact_tag_is_used() {
+        assert_eq!(
+            resolve_release_version(None, Some("v0.2.3"), "0.2.3").expect("matching tag"),
+            "v0.2.3"
+        );
+    }
+
+    #[test]
+    fn mismatched_exact_tag_is_rejected() {
+        let error = resolve_release_version(None, Some("v0.2.4"), "0.2.3")
+            .expect_err("mismatched tag must fail");
+        assert!(error.to_string().contains("does not match project VERSION"));
+    }
+
+    #[test]
+    fn project_version_is_used_without_exact_tag() {
+        assert_eq!(
+            resolve_release_version(None, None, "0.2.3\n").expect("VERSION fallback"),
+            "0.2.3"
+        );
     }
 }

@@ -306,9 +306,13 @@ impl Default for PathTable {
 mod tests {
     use super::*;
 
+    fn test_now() -> Instant {
+        Instant::now() + DESTINATION_TIMEOUT + Duration::from_secs(1)
+    }
+
     #[test]
     fn remove_stale_uses_shorter_access_point_timeout() {
-        let now = Instant::now();
+        let now = test_now();
         let destination = AddressHash::new_from_hash(&Hash::new_from_slice(b"destination"));
         let iface = AddressHash::new_from_hash(&Hash::new_from_slice(b"iface"));
         let mut table = PathTable::new();
@@ -329,7 +333,7 @@ mod tests {
 
     #[test]
     fn remove_stale_keeps_full_mode_until_destination_timeout() {
-        let now = Instant::now();
+        let now = test_now();
         let destination = AddressHash::new_from_hash(&Hash::new_from_slice(b"destination"));
         let iface = AddressHash::new_from_hash(&Hash::new_from_slice(b"iface"));
         let mut table = PathTable::new();
@@ -350,7 +354,7 @@ mod tests {
 
     #[test]
     fn remove_stale_uses_roaming_timeout() {
-        let now = Instant::now();
+        let now = test_now();
         let destination = AddressHash::new_from_hash(&Hash::new_from_slice(b"destination"));
         let iface = AddressHash::new_from_hash(&Hash::new_from_slice(b"iface"));
         let mut table = PathTable::new();
@@ -371,7 +375,7 @@ mod tests {
 
     #[test]
     fn remove_stale_drops_paths_for_missing_iface() {
-        let now = Instant::now();
+        let now = test_now();
         let destination = AddressHash::new_from_hash(&Hash::new_from_slice(b"destination"));
         let iface = AddressHash::new_from_hash(&Hash::new_from_slice(b"iface"));
         let mut table = PathTable::new();

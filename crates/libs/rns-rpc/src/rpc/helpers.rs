@@ -266,6 +266,22 @@ fn parse_fuzzy_u32(value: &MsgPackValue) -> Option<u32> {
     }
 }
 
+fn parse_fuzzy_nonnegative_f64(value: &MsgPackValue) -> Option<f64> {
+    let parsed = match value {
+        MsgPackValue::Integer(value) => value
+            .as_f64()
+            .or_else(|| value.as_i64().map(|value| value as f64))
+            .or_else(|| value.as_u64().map(|value| value as f64))?,
+        MsgPackValue::F64(value) => *value,
+        MsgPackValue::F32(value) => f64::from(*value),
+        MsgPackValue::Boolean(value) => f64::from(u8::from(*value)),
+        MsgPackValue::Binary(bytes) => std::str::from_utf8(bytes).ok()?.trim().parse().ok()?,
+        MsgPackValue::String(text) => text.as_str()?.trim().parse().ok()?,
+        _ => return None,
+    };
+    (parsed.is_finite() && parsed >= 0.0).then_some(parsed)
+}
+
 fn parse_fuzzy_i64(value: &MsgPackValue) -> Option<i64> {
     match value {
         MsgPackValue::Integer(value) => value
@@ -367,13 +383,22 @@ fn parse_propagation_limits_from_app_data_hex(
         return (None, None);
     };
 
-    let transfer_limit = entries.get(3).and_then(parse_fuzzy_u32);
-    let sync_limit = match (transfer_limit, entries.get(4).and_then(parse_fuzzy_u32)) {
+    let transfer_limit_bytes = entries.get(3).and_then(parse_fuzzy_nonnegative_f64).and_then(|limit| {
+        let bytes = limit * 1000.0;
+        (bytes.is_finite() && bytes <= u32::MAX as f64).then_some(bytes as u32)
+    });
+    let sync_limit_bytes = match (
+        transfer_limit_bytes,
+        entries.get(4).and_then(parse_fuzzy_nonnegative_f64).and_then(|limit| {
+            let bytes = limit * 1000.0;
+            (bytes.is_finite() && bytes <= u32::MAX as f64).then_some(bytes as u32)
+        }),
+    ) {
         (Some(transfer), Some(sync)) if sync < transfer => Some(transfer),
         (_, sync) => sync,
     };
 
-    (transfer_limit, sync_limit)
+    (transfer_limit_bytes, sync_limit_bytes)
 }
 
 fn parse_propagation_timebase_from_app_data_hex(app_data_hex: Option<&str>) -> Option<i64> {
@@ -395,6 +420,22 @@ fn parse_propagation_enabled_from_app_data_hex(app_data_hex: Option<&str>) -> Op
     entries.get(2).map(parse_bool_capability_flag)
 }
 
+fn parse_propagation_metadata_from_app_data_hex(app_data_hex: Option<&str>) -> JsonValue {
+    let Some(raw_hex) = app_data_hex.map(str::trim).filter(|value| !value.is_empty()) else {
+        return JsonValue::Null;
+    };
+    let Ok(app_data) = hex::decode(raw_hex) else {
+        return JsonValue::Null;
+    };
+    let Ok(value) = rmp_serde::from_slice::<MsgPackValue>(&app_data) else {
+        return JsonValue::Null;
+    };
+    let Some(metadata) = value.as_array().and_then(|entries| entries.get(6)) else {
+        return JsonValue::Null;
+    };
+    pn_metadata_to_json(metadata).unwrap_or(JsonValue::Null)
+}
+
 fn parse_peer_name_from_app_data_hex(app_data_hex: Option<&str>) -> Option<(String, &'static str)> {
     let raw_hex = app_data_hex.map(str::trim).filter(|value| !value.is_empty())?;
     let app_data = hex::decode(raw_hex).ok()?;
@@ -408,6 +449,51 @@ fn parse_peer_name_from_app_data_hex(app_data_hex: Option<&str>) -> Option<(Stri
         return Some((name, "delivery_app_data"));
     }
     None
+}
+
+fn pn_metadata_to_json(value: &MsgPackValue) -> Option<JsonValue> {
+    let MsgPackValue::Map(entries) = value else {
+        return None;
+    };
+    let mut metadata = JsonMap::new();
+    for (key, value) in entries {
+        let Some(key) = pn_metadata_key_to_string(key) else {
+            continue;
+        };
+        let Some(value) = pn_metadata_value_to_json(value) else {
+            continue;
+        };
+        metadata.insert(key, value);
+    }
+    Some(JsonValue::Object(metadata))
+}
+
+fn pn_metadata_key_to_string(key: &MsgPackValue) -> Option<String> {
+    if is_pn_name_metadata_key(key) {
+        return Some("name".to_string());
+    }
+    match key {
+        MsgPackValue::Integer(value) => value.as_u64().map(|value| value.to_string()),
+        MsgPackValue::String(text) => text.as_str().map(str::to_string),
+        MsgPackValue::Binary(bytes) => String::from_utf8(bytes.clone()).ok(),
+        _ => None,
+    }
+}
+
+fn pn_metadata_value_to_json(value: &MsgPackValue) -> Option<JsonValue> {
+    match value {
+        MsgPackValue::Nil => Some(JsonValue::Null),
+        MsgPackValue::Boolean(value) => Some(json!(value)),
+        MsgPackValue::Integer(value) => value
+            .as_i64()
+            .map(JsonValue::from)
+            .or_else(|| value.as_u64().map(JsonValue::from)),
+        MsgPackValue::F32(value) => Some(json!(f64::from(*value))),
+        MsgPackValue::F64(value) => Some(json!(value)),
+        MsgPackValue::String(text) => text.as_str().map(JsonValue::from),
+        MsgPackValue::Binary(bytes) => String::from_utf8(bytes.clone()).ok().map(JsonValue::from),
+        _ => None,
+    }
 }
 
 fn parse_pn_metadata_name(value: &MsgPackValue) -> Option<String> {

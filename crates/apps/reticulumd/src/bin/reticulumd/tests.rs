@@ -24,7 +24,7 @@ use rns_transport::destination::{link::LinkStatus, DestinationDesc, DestinationN
 use rns_transport::destination_hash::parse_destination_hash_required;
 use rns_transport::hash::AddressHash;
 use rns_transport::iface::lora::{
-    CMD_DETECT, CMD_LEAVE, CMD_RADIO_STATE, DETECT_REQ, RADIO_STATE_OFF,
+    CMD_DETECT, CMD_FREQUENCY, CMD_LEAVE, CMD_MCU, CMD_RADIO_STATE, DETECT_REQ, RADIO_STATE_OFF,
 };
 use rns_transport::iface::tcp_client::TcpClient;
 use rns_transport::iface::vrn76_kiss_ble::Vrn76FrameMode;
@@ -825,12 +825,25 @@ fn rnode_ble_builder_uses_native_ble_and_kiss_defaults() {
     assert_eq!(config.transport.kiss.persistence, 80);
     assert_eq!(config.transport.kiss.slot_time_ms, 40);
     assert!(config.transport.kiss.flow_control);
+    // initial_frames carries only probe frames (Phase 1: detect handshake)
     assert_eq!(
         config.transport.initial_frames.first(),
         Some(&rns_transport::kiss::encode_command_frame(CMD_DETECT, &[DETECT_REQ]))
     );
     assert_eq!(
         config.transport.initial_frames.last(),
+        Some(&rns_transport::kiss::encode_command_frame(CMD_MCU, &[0x00]))
+    );
+    // deferred_frames carries radio config (Phase 2: sent after detect confirmed)
+    assert_eq!(
+        config.transport.deferred_frames.first(),
+        Some(&rns_transport::kiss::encode_command_frame(
+            CMD_FREQUENCY,
+            &915_000_000_u32.to_be_bytes()
+        ))
+    );
+    assert_eq!(
+        config.transport.deferred_frames.last(),
         Some(&rns_transport::kiss::encode_command_frame(CMD_RADIO_STATE, &[1]))
     );
     assert_eq!(
@@ -861,8 +874,10 @@ fn rnode_ble_builder_keeps_ble_connect_timeout_distinct_from_rnode_command_timeo
 
     let config = lora::build_rnode_ble_config(&iface).expect("build rnode BLE config");
 
+    // BLE physical connect timeout and RNode detect timeout are separate fields,
+    // configured independently via ble_connect_timeout_ms and connect_timeout_ms.
     assert_eq!(config.transport.connect_timeout, Duration::from_millis(5_000));
-    assert_eq!(config.startup_response_timeout, Duration::from_millis(1_500));
+    assert_eq!(config.startup_response_timeout, Duration::from_millis(5_000)); // matches Python's ble_detect_timeout
 }
 
 #[test]
@@ -1568,6 +1583,34 @@ fn kiss_docs_document_bearers_and_vtn76_bluetooth() {
             && vrn76_interface.contains("pairing or bonding"),
         "VR-N76 interface doc should separate repo-owned KISS/Benshi logic from OS Bluetooth setup"
     );
+}
+
+#[test]
+fn android_ble_native_target_gates_include_android() {
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let reticulumd_manifest =
+        fs::read_to_string(repo_root.join("crates/apps/reticulumd/Cargo.toml"))
+            .expect("read reticulumd manifest");
+    let rns_tools_manifest = fs::read_to_string(repo_root.join("crates/apps/rns-tools/Cargo.toml"))
+        .expect("read rns-tools manifest");
+    let ble_mod = fs::read_to_string(
+        repo_root.join("crates/apps/reticulumd/src/bin/reticulumd/interfaces/ble/mod.rs"),
+    )
+    .expect("read reticulumd BLE module");
+    let rnx_ble = fs::read_to_string(repo_root.join("crates/apps/rns-tools/src/bin/rnx/ble.rs"))
+        .expect("read rns-tools BLE commands");
+
+    for (label, text) in [
+        ("reticulumd target dependencies", reticulumd_manifest.as_str()),
+        ("rns-tools target dependencies", rns_tools_manifest.as_str()),
+        ("reticulumd BLE dispatch", ble_mod.as_str()),
+        ("rns-tools BLE commands", rnx_ble.as_str()),
+    ] {
+        assert!(
+            text.contains("target_os = \"android\""),
+            "{label} should include android in native BLE target gates"
+        );
+    }
 }
 
 #[test]

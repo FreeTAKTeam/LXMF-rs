@@ -15,7 +15,7 @@ impl RpcDaemon {
             self.store.list_peer_unhandled_propagation_ids(peer.peer.as_str()).unwrap_or_default();
         let is_static_peer = self.is_static_peer(peer.peer.as_str());
         let sync_strategy = peer.sync_strategy;
-        let mut row = serde_json::to_value(peer).unwrap_or_else(|_| json!({}));
+        let mut row = serde_json::to_value(&peer).unwrap_or_else(|_| json!({}));
         row["type"] =
             JsonValue::String(if is_static_peer { "static" } else { "discovered" }.to_string());
         row["state"] = JsonValue::from(0);
@@ -45,12 +45,14 @@ impl RpcDaemon {
         row["peering_key"] = peering_key.map_or(JsonValue::Null, JsonValue::from);
         row["peering_key_status"] = json!(peering_key_status);
         row["last_heard"] = row.get("last_seen").cloned().unwrap_or(JsonValue::Null);
-        let transfer_limit = row.get("transfer_limit").cloned().unwrap_or(JsonValue::Null);
-        let sync_limit = row.get("sync_limit").cloned().unwrap_or(JsonValue::Null);
-        row["transfer_limit"] = transfer_limit.clone();
-        row["propagation_transfer_limit"] = transfer_limit;
-        row["sync_limit"] = sync_limit.clone();
-        row["propagation_sync_limit"] = sync_limit;
+        let transfer_limit =
+            peer.propagation_transfer_limit.map(JsonValue::from).unwrap_or(JsonValue::Null);
+        let sync_limit =
+            peer.propagation_sync_limit.map(JsonValue::from).unwrap_or(JsonValue::Null);
+        row["propagation_transfer_limit"] = transfer_limit.clone();
+        row["transfer_limit"] = transfer_limit;
+        row["propagation_sync_limit"] = sync_limit.clone();
+        row["sync_limit"] = sync_limit;
         row["target_stamp_cost"] =
             row.get("propagation_stamp_cost").cloned().unwrap_or(JsonValue::Null);
         row["stamp_cost_flexibility"] =
@@ -825,7 +827,11 @@ impl RpcDaemon {
                         };
                     let sync_limit_bytes =
                         record.propagation_sync_limit.map(|limit| limit as usize);
-                    if peer_sync_backoff_active(timestamp, record.next_sync_attempt) {
+                    if !parsed.maintenance_claimed
+                        && !parsed.force_sync
+                        && record.peer_type.as_deref() != Some("unpeered")
+                        && peer_sync_backoff_active(timestamp, record.next_sync_attempt)
+                    {
                         return Ok(self.postponed_peer_sync_response(
                             request.id,
                             record,
@@ -870,7 +876,10 @@ impl RpcDaemon {
                         (None, None) => None,
                     };
                 let sync_limit_bytes = record.propagation_sync_limit.map(|limit| limit as usize);
-                if peer_sync_backoff_active(timestamp, record.next_sync_attempt) {
+                if !parsed.maintenance_claimed
+                    && !parsed.force_sync
+                    && peer_sync_backoff_active(timestamp, record.next_sync_attempt)
+                {
                     return Ok(self.postponed_peer_sync_response(
                         request.id,
                         &record,
@@ -966,10 +975,7 @@ impl RpcDaemon {
                     for entry in pending_propagation {
                         let entry_size = usize::try_from(entry.size_bytes).unwrap_or(usize::MAX);
                         let transfer_size = entry_size.saturating_add(16);
-                        let wanted = wanted_ids
-                            .as_ref()
-                            .map_or(true, |ids| ids.wants(entry.transient_id.as_str()));
-                        if wanted && transfer_size > limit {
+                        if transfer_size > limit {
                             propagation_transfer_limited =
                                 propagation_transfer_limited.saturating_add(1);
                             propagation_transfer_limited_bytes =
@@ -1014,7 +1020,9 @@ impl RpcDaemon {
                         sync_limit_bytes,
                     ));
                 }
-                if (peer_policy_required || empty_peer_peering_key_required)
+                let peering_key_required = record.peering_cost.is_some()
+                    && (peer_policy_required || empty_peer_peering_key_required);
+                if peering_key_required
                     && peer_peering_key_value(&record, self.identity_hash.as_str()).is_none()
                 {
                     self.clear_invalid_restored_peer_peering_key(&record);
@@ -1147,9 +1155,11 @@ impl RpcDaemon {
                 let mut propagation_resource_bytes =
                     peer_sync_resource_data_size(propagation_resource_payloads.as_slice())?;
                 let mut propagation_last_resource_bytes = propagation_resource_bytes;
+                let explicit_offer_response = wanted_ids.is_some();
                 let persistent_followup_sync = record.sync_strategy == 2
                     && propagation_transferred > 0
-                    && propagation_skipped > 0;
+                    && propagation_skipped > 0
+                    && !explicit_offer_response;
                 if persistent_followup_sync {
                     propagation_skipped = 0;
                     propagation_remaining_bytes = 0;
@@ -1947,7 +1957,10 @@ impl RpcDaemon {
         }
     }
 
-    fn restore_peer_record_queue_marks(&self, record: &PeerRecord) -> Result<(), std::io::Error> {
+    pub(super) fn restore_peer_record_queue_marks(
+        &self,
+        record: &PeerRecord,
+    ) -> Result<(), std::io::Error> {
         fn push_unique(ids: &mut Vec<String>, transient_id: String) {
             if !ids.iter().any(|id| id.eq_ignore_ascii_case(transient_id.as_str())) {
                 ids.push(transient_id);
@@ -2155,6 +2168,13 @@ impl RpcDaemon {
             .find(|record| record.peer.eq_ignore_ascii_case(peer_id))
             .map(|record| record.peer.clone())
             .unwrap_or_else(|| peer_id.to_string());
+        let record = {
+            let peers = self.peers.lock().expect("peers mutex poisoned");
+            peers.get(peer_key.as_str()).cloned()
+        };
+        if let Some(record) = record {
+            self.restore_peer_record_queue_marks(&record)?;
+        }
         let propagation_mark_stats = self
             .store
             .peer_propagation_mark_stats(peer_key.as_str())
@@ -2213,6 +2233,17 @@ impl RpcDaemon {
                 snapshot.propagation = state;
             });
         }
+        let static_peer_state = {
+            let mut guard = self.propagation_state.lock().expect("propagation mutex poisoned");
+            let before = guard.static_peers.len();
+            guard.static_peers.retain(|peer| !peer.eq_ignore_ascii_case(peer_key.as_str()));
+            (guard.static_peers.len() != before).then(|| guard.clone())
+        };
+        if let Some(state) = static_peer_state {
+            self.update_daemon_status_snapshot(|snapshot| {
+                snapshot.propagation = state;
+            });
+        }
         Ok(LocalUnpeerCleanup {
             peer: peer_key,
             removed,
@@ -2260,6 +2291,9 @@ pub(super) fn peer_acceptance_rate_for_reporting(
 }
 
 fn peer_stamp_policy_known(peer: &PeerRecord) -> bool {
+    if peer.propagation_stamp_cost == Some(0) {
+        return true;
+    }
     peer.propagation_stamp_cost.is_some()
         && peer.propagation_stamp_cost_flexibility.is_some()
         && peer.peering_cost.is_some()

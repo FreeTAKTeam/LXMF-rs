@@ -7,6 +7,14 @@ license.workspace = true
 repository.workspace = true
 publish = false
 
+[[bin]]
+name = "lxmf"
+path = "src/main.rs"
+
+[[bin]]
+name = "lxmf-cli"
+path = "src/main.rs"
+
 [dependencies]
 clap.workspace = true
 clap_complete.workspace = true

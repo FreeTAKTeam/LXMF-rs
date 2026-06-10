@@ -90,7 +90,13 @@ check_no_app_dependencies() {
 }
 
 metadata_deps() {
-  jq -r '.packages[] | select(.manifest_path | contains("/crates/libs/")) | .name as $from | .dependencies[]? | "\($from)\t\(.name)"' "$METADATA_FILE"
+  jq -r '
+    .packages[]
+    | select(.manifest_path | gsub("\\\\"; "/") | contains("/crates/libs/"))
+    | .name as $from
+    | .dependencies[]?
+    | "\($from)\t\(.name)"
+  ' "$METADATA_FILE"
 }
 
 normalize_lines() {
@@ -108,10 +114,10 @@ load_allowlisted_edges() {
 metadata_lib_workspace_edges() {
   jq -r '
     .packages[]
-    | select(.manifest_path | contains("/crates/libs/"))
+    | select(.manifest_path | gsub("\\\\"; "/") | contains("/crates/libs/"))
     | .name as $from
     | .dependencies[]?
-    | select(.path != null and (.path | contains("/crates/libs/")))
+    | select(.path != null and (.path | gsub("\\\\"; "/") | contains("/crates/libs/")))
     | "\($from)\t\(.name)"
   ' "$METADATA_FILE" | normalize_lines
 }
@@ -119,10 +125,10 @@ metadata_lib_workspace_edges() {
 metadata_app_workspace_edges() {
   jq -r '
     .packages[]
-    | select(.manifest_path | contains("/crates/apps/"))
+    | select(.manifest_path | gsub("\\\\"; "/") | contains("/crates/apps/"))
     | .name as $from
     | .dependencies[]?
-    | select(.path != null and ((.path | contains("/crates/libs/")) or (.path | contains("/crates/apps/"))))
+    | select(.path != null and ((.path | gsub("\\\\"; "/") | contains("/crates/libs/")) or (.path | gsub("\\\\"; "/") | contains("/crates/apps/"))))
     | "\($from)\t\(.name)"
   ' "$METADATA_FILE" | normalize_lines
 }

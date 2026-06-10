@@ -1469,6 +1469,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "lxmf-reference"
+version = "0.1.0"
+
+[[package]]
 name = "lxmf-sdk"
 version = "0.2.1"
 dependencies = [
@@ -1476,6 +1480,7 @@ dependencies = [
  "hex",
  "hmac",
  "loom",
+ "lxmf-reference",
  "lxmf-wire",
  "reticulum-rs-rpc",
  "rustls",
@@ -2039,6 +2044,7 @@ dependencies = [
  "hex",
  "hkdf",
  "hmac",
+ "lxmf-reference",
  "rand_core 0.6.4",
  "rmp-serde",
  "rmpv",
