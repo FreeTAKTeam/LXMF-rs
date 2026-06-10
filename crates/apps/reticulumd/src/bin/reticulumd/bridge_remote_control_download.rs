@@ -119,13 +119,25 @@ pub(super) async fn propagation_download_request(
                 rmpv::Value::Array(haves.into_iter().map(rmpv::Value::Binary).collect()),
             ]),
         )?;
-        let _ = send_link_context_packet(
+        let ack_request_id = send_link_context_packet(
             transport,
             &link,
             PacketContext::Request,
             ack_payload.as_slice(),
         )
-        .await?;
+        .await?
+        .ok_or_else(|| std::io::Error::other("missing propagation haves request id"))?;
+        let ack_response = wait_for_link_request_response(
+            &mut data_rx,
+            &mut resource_rx,
+            destination.desc.address_hash,
+            link_id,
+            ack_request_id,
+            timeout,
+        )
+        .await
+        .map_err(|err| std::io::Error::new(std::io::ErrorKind::TimedOut, err))?;
+        propagation_download_ack_response_result(&ack_response)?;
     }
 
     Ok((
@@ -138,6 +150,11 @@ pub(super) async fn propagation_download_request(
         ),
         remote_identity,
     ))
+}
+
+fn propagation_download_ack_response_result(response: &rmpv::Value) -> Result<(), std::io::Error> {
+    super::remote_control::response_to_result(response.clone())?;
+    Ok(())
 }
 
 fn propagation_download_summary_json(
@@ -383,5 +400,14 @@ mod tests {
             DownloadAcceptOutcome::Rejected,
             "policy-rejected downloads are not local haves and must not be acked"
         );
+    }
+
+    #[test]
+    fn propagation_download_ack_rejects_remote_error_code() {
+        let err = propagation_download_ack_response_result(&rmpv::Value::from(0xF4_u64))
+            .expect_err("remote ack rejection must fail the download");
+
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+        assert!(err.to_string().contains("rejected"));
     }
 }

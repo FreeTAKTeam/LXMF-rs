@@ -244,6 +244,10 @@ The project is best described by capability level:
   haves as received/completed work for the requesting propagation peer after
   purge, so reintroduced payloads are not queued back to peers that already
   declared them.
+- Link-based remote propagation downloads now wait for the final haves
+  acknowledgement response after imported or duplicate payloads are reported,
+  so node-side rejection or timeout is surfaced instead of reporting a
+  completed download before remote cleanup is confirmed.
 - Inbound propagation message-get purge-only requests now return the
   Python-style boolean success response after haves are applied, and payload
   purge cleanup preserves completed peer accounting for other peers while
