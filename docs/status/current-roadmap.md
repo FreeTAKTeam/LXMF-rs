@@ -41,6 +41,12 @@ The project is best described by capability level:
 - AutoInterface has a live daemon runtime, including discovery, peer lifecycle,
   peer-data sockets, transport ingress, outbound routing, and multicast proof
   fallback.
+- Known but unsupported Python interface families now fail config parsing with
+  deterministic unsupported-family diagnostics instead of silently becoming
+  inert unknown interface entries.
+- `rnstatus-rs` now provides a local daemon status utility over the existing
+  RPC status surface, including JSON output and human interface runtime
+  startup state.
 
 ### LXMF
 
@@ -77,6 +83,13 @@ The project is best described by capability level:
   advertised integer or fractional kilobytes into the byte limits used by
   peer-sync queue selection, so valid queued payloads are not misclassified as
   transfer-limited.
+- Propagation peer maintenance selection now claims the chosen peer before
+  invoking sync by recording the sync attempt and next backoff window, while
+  allowing the internal maintenance-triggered sync to consume that claim, so
+  concurrent scheduler passes cannot double-select the same peer.
+- Remote fetch/download/sync imports now validate the full returned propagation
+  payload batch before mutating the local store or in-memory payload cache, so a
+  mixed valid/invalid remote response fails without leaving partial relay state.
 - Malformed remote fetch and download imports now mirror existing
   payload-backed live queue marks into active peer record snapshots before
   failing, preserving restart/export retry state for already queued relay work.
@@ -106,6 +119,10 @@ The project is best described by capability level:
   queue marks into active peer record snapshots after applying imports, so
   restart/export state preserves queued retry work even when the remote sync
   itself succeeds without transferring those local queued offers.
+- Successful remote peer-sync imports now also refresh payload-backed queue
+  snapshots for all active peers affected by imported payloads, so relay peers
+  preserve complete restart/export-visible unhandled queues instead of only the
+  newly imported IDs.
 - Remote peer-sync now uses the stored peer ID case for the bridge call, import
   source accounting, state updates, and response envelope when callers use a
   case-variant peer request.
@@ -179,6 +196,12 @@ The project is best described by capability level:
 - Live propagation announces now retain Python PN metadata on active peer
   records, so announce-derived peer metadata survives into later peering and
   queue restart/export snapshots.
+- Python-style `lxmd` `[lxmf] announce_interval` now drives peer/delivery
+  announce cadence separately from `[propagation] announce_interval`, which
+  remains the propagation-node announce cadence.
+- Outbound propagated delivery now resolves selected propagation-node
+  `propagation_stamp_cost` case-insensitively, so Python-style hash casing does
+  not fall back to the default propagation stamp cost.
 - Peer sync queue creation also records newly queued existing propagation IDs in
   the peer record snapshot, so postponed syncs can restart/export with the same
   unhandled queue visible in live status.
@@ -208,6 +231,10 @@ The project is best described by capability level:
 - Inbound propagation message-get `haves` handling now applies peer admission
   before purging matching local payloads, so rejected peers cannot delete queued
   transfers they are not allowed to acknowledge.
+- Inbound propagation message-get `haves` handling now also records matched
+  haves as received/completed work for the requesting propagation peer after
+  purge, so reintroduced payloads are not queued back to peers that already
+  declared them.
 - Inbound propagation message-get requests now mark wanted payloads skipped by
   the peer's transfer budget as transfer-limited completed work after peer
   admission, so oversized fetch attempts do not remain retryable queue entries.
@@ -332,6 +359,10 @@ The project is best described by capability level:
 - Inbound propagation offers now mark already-known offered payload IDs as
   received from the offering peer after peering-key validation, so later peer
   admission does not queue those source payloads back to the sender.
+- Valid inbound propagation offers now start the peer offer throttle window
+  after peering-key and transient-ID validation, so repeated replication offers
+  from the same peer take the throttled response path instead of immediately
+  reprocessing the same offer.
 
 ## Remaining Release Blockers
 

@@ -637,6 +637,32 @@ enable_node = yes
     }
 
     #[test]
+    fn python_config_keeps_lxmf_peer_and_propagation_node_announce_intervals_separate() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let config_dir = temp.path().join("lxmd");
+        std::fs::create_dir_all(&config_dir).expect("create config dir");
+        let config_path = config_dir.join("config");
+        fs::write(
+            &config_path,
+            r#"
+[lxmf]
+announce_interval = 3
+
+[propagation]
+announce_interval = 2
+"#,
+        )
+        .expect("write config");
+
+        let args =
+            super::Args::parse_from(["lxmd", "--config", config_path.to_str().expect("utf8 path")]);
+        let effective = load_effective_args(&args).expect("effective args");
+
+        assert_eq!(effective.python_compat.peer_announce_interval_min, Some(3));
+        assert_eq!(effective.python_compat.node_announce_interval_min, Some(2));
+    }
+
+    #[test]
     fn python_config_sections_are_parsed() {
         let sections = parse_python_lxmd_config(
             r#"

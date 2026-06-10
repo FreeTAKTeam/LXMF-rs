@@ -116,6 +116,13 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   advertised integer or fractional kilobytes into the byte limits used by
   peer-sync queue selection, so valid queued payloads are not misclassified as
   transfer-limited.
+- Propagation peer maintenance selection claims the chosen peer before invoking
+  sync by recording the sync attempt and next backoff window, while allowing the
+  internal maintenance-triggered sync to consume that claim, so concurrent
+  scheduler passes cannot double-select the same peer.
+- Remote fetch/download/sync imports validate the full returned propagation
+  payload batch before mutating the local store or in-memory payload cache, so
+  mixed valid/invalid remote responses fail without leaving partial relay state.
 - Malformed remote fetch and download imports mirror existing payload-backed
   queue marks into active peer record snapshots before returning the import
   failure, so already queued relay work remains visible after restart/export.
@@ -145,6 +152,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   into active peer record snapshots after applying imports, preserving queued
   retry work across restart/export even when the remote sync succeeds without
   transferring those local queued offers.
+- Successful remote peer-sync imports refresh payload-backed queue snapshots
+  for all active peers affected by imported payloads, so relay peers preserve
+  complete restart/export-visible unhandled queues rather than only newly
+  imported IDs.
 - Remote peer-sync imports transferred propagation payloads from both daemon
   `payload_hex` fields and MessagePack binary payload arrays, so bridge results
   converted through `rmpv_to_json` enqueue the same relay work without treating
@@ -223,6 +234,12 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Live propagation announces retain Python PN metadata on active peer records,
   so announce-derived peer metadata survives into later peering and queue
   restart/export snapshots.
+- Python-style `lxmd` `[lxmf] announce_interval` drives peer/delivery announce
+  cadence separately from `[propagation] announce_interval`, which remains the
+  propagation-node announce cadence.
+- Outbound propagated delivery resolves selected propagation-node
+  `propagation_stamp_cost` case-insensitively, so Python-style hash casing does
+  not fall back to the default propagation stamp cost.
 - Duplicate inbound peer propagation payloads still fan out to active relay
   peers while keeping the source peer handled, so a known local payload does
   not bypass relay queue creation.
@@ -244,6 +261,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Inbound propagation message-get `haves` handling applies peer admission
   before purging matching local payloads, so rejected peers cannot delete queued
   transfers they are not allowed to acknowledge.
+- Inbound propagation message-get `haves` handling records matched haves as
+  received/completed work for the requesting propagation peer after purge, so
+  reintroduced payloads are not queued back to peers that already declared
+  them.
 - Inbound propagation message-get requests mark wanted payloads skipped by the
   peer's transfer budget as transfer-limited completed work after peer
   admission, so oversized fetch attempts do not remain retryable queue entries.
@@ -362,6 +383,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Inbound propagation offers mark already-known offered payload IDs as received
   for the offering peer after peering-key validation, preventing later peer
   admission from offering the sender its own known payloads.
+- Valid inbound propagation offers start the peer offer throttle window after
+  peering-key and transient-ID validation, so repeated replication offers from
+  the same peer return the throttled response instead of reprocessing
+  immediately.
 - Inbound propagation distinguishes clients, validated peers, unpeered
   identified senders, and local delivery; source peers are accounted and not
   re-offered their own payloads.

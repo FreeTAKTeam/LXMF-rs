@@ -3948,6 +3948,45 @@ fn propagation_peer_maintenance_syncs_one_waiting_peer_like_python() {
 }
 
 #[test]
+fn propagation_peer_maintenance_selection_claims_peer_before_sync_like_python() {
+    let (daemon, peer) = ready_propagation_peer_daemon(0x64);
+    let entry = PropagationEntryRecord {
+        transient_id: "e2".repeat(32),
+        destination: "20".repeat(16),
+        payload_hex: "2c".repeat(32),
+        received_at: 1_700_000_629,
+        size_bytes: 32,
+        stamp_value: Some(12),
+    };
+    daemon.store.upsert_propagation_entry(&entry).expect("store propagation entry");
+    daemon
+        .store
+        .mark_peer_unhandled_propagation(peer.as_str(), entry.transient_id.as_str())
+        .expect("mark unhandled");
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let record = peers.get_mut(peer.as_str()).expect("peer record");
+        record.alive = true;
+        record.last_seen = 1_700_000_629;
+        record.last_sync_attempt = 1_700_000_600;
+        record.next_sync_attempt = 0;
+        record.sync_backoff = 0;
+        record.sync_transfer_rate = 1024.0;
+    }
+
+    let selected = daemon
+        .select_peer_for_maintenance_sync(1_700_000_629)
+        .expect("select maintenance sync peer");
+
+    assert_eq!(selected.as_deref(), Some(peer.as_str()));
+    let peers = daemon.peers.lock().expect("peers mutex poisoned");
+    let record = peers.get(peer.as_str()).expect("peer record");
+    assert_eq!(record.last_sync_attempt, 1_700_000_629);
+    assert_eq!(record.sync_backoff, 12 * 60);
+    assert_eq!(record.next_sync_attempt, 1_700_000_629 + 12 * 60);
+}
+
+#[test]
 fn propagation_peer_maintenance_replays_restored_unhandled_queue_like_python() {
     let (daemon, peer) = ready_propagation_peer_daemon(0x63);
     let entry = PropagationEntryRecord {
@@ -13914,6 +13953,29 @@ fn propagation_remote_sync_marks_source_handled_and_queues_other_peers() {
     daemon
         .handle_rpc(rpc_request(75, "peer_sync", json!({ "peer": relay_peer })))
         .expect("seed relay peer");
+    let pending_payload = b"remote-sync-preexisting-relay-pending";
+    let pending_transient_id = hex::encode(Sha256::digest(pending_payload));
+    daemon
+        .store
+        .upsert_propagation_entry(&PropagationEntryRecord {
+            transient_id: pending_transient_id.clone(),
+            destination: "41".repeat(16),
+            payload_hex: hex::encode(pending_payload),
+            received_at: 1_700_000_745,
+            size_bytes: pending_payload.len() as u64,
+            stamp_value: None,
+        })
+        .expect("store preexisting relay pending payload");
+    daemon
+        .store
+        .mark_peer_unhandled_propagation(relay_peer.as_str(), pending_transient_id.as_str())
+        .expect("seed preexisting relay live queue mark");
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let record = peers.get_mut(relay_peer.as_str()).expect("relay peer record");
+        record.restored_unhandled_ids.clear();
+        record.restored_handled_ids.clear();
+    }
 
     let remote_sync = daemon
         .handle_rpc(rpc_request(
@@ -13967,8 +14029,21 @@ fn propagation_remote_sync_marks_source_handled_and_queues_other_peers() {
         .store
         .list_peer_unhandled_propagation(relay_peer.as_str())
         .expect("relay unhandled");
-    assert_eq!(relay_unhandled.len(), 1);
-    assert_eq!(relay_unhandled[0].transient_id, transient_id);
+    assert_eq!(relay_unhandled.len(), 2);
+    assert!(relay_unhandled
+        .iter()
+        .any(|entry| entry.transient_id == pending_transient_id));
+    assert!(relay_unhandled.iter().any(|entry| entry.transient_id == transient_id));
+    let peer_records = daemon.peers.lock().expect("peers mutex poisoned");
+    let relay_record = peer_records
+        .get(relay_peer.as_str())
+        .expect("relay peer record after remote sync");
+    let serialized = serde_json::to_value(relay_record).expect("serialize relay peer");
+    let restored_unhandled = serialized["unhandled_ids"]
+        .as_array()
+        .expect("serialized relay unhandled ids");
+    assert!(restored_unhandled.contains(&json!(pending_transient_id.as_str())));
+    assert!(restored_unhandled.contains(&json!(transient_id.as_str())));
 }
 
 #[test]
@@ -15084,6 +15159,72 @@ fn propagation_remote_fetch_rejects_mismatched_transient_id() {
             .get_propagation_entry("aa".repeat(32).as_str())
             .expect("load bogus transient id")
             .is_none()
+    );
+}
+
+#[test]
+fn propagation_remote_fetch_rejects_mixed_batch_without_partial_import_side_effects() {
+    let valid_payload = b"remote-fetch-valid-before-invalid";
+    let valid_payload_hex = hex::encode(valid_payload);
+    let valid_transient_id = hex::encode(Sha256::digest(valid_payload));
+    let invalid_payload_hex = hex::encode(b"remote-fetch-invalid-after-valid");
+    let relay_peer = "peer-fetch-atomic-relay";
+    let daemon = RpcDaemon::test_instance();
+    daemon
+        .handle_rpc(rpc_request(77, "peer_sync", json!({ "peer": relay_peer })))
+        .expect("seed relay peer");
+    daemon.set_remote_control_bridge(Arc::new(TestRemoteControlBridge {
+        result: Ok(json!({
+            "available_count": 2,
+            "fetched_count": 2,
+            "imported_count": 2,
+            "messages": [
+                {
+                    "transient_id": valid_transient_id,
+                    "payload_hex": valid_payload_hex,
+                },
+                {
+                    "transient_id": "aa".repeat(32),
+                    "payload_hex": invalid_payload_hex,
+                }
+            ],
+        })),
+    }));
+
+    let err = daemon
+        .handle_rpc(rpc_request(
+            78,
+            "propagation_remote_fetch",
+            json!({
+                "remote": "remote-node",
+            }),
+        ))
+        .expect_err("mixed remote import batch should reject atomically");
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+    assert!(err.to_string().contains("transient_id does not match propagation payload"));
+    assert!(
+        daemon
+            .store
+            .get_propagation_entry(valid_transient_id.as_str())
+            .expect("load valid transient id")
+            .is_none(),
+        "valid payload preceding an invalid payload must not be persisted"
+    );
+    assert!(
+        !daemon
+            .propagation_payloads
+            .lock()
+            .expect("propagation payload mutex poisoned")
+            .contains_key(valid_transient_id.as_str()),
+        "valid payload preceding an invalid payload must not be cached in memory"
+    );
+    assert!(
+        daemon
+            .store
+            .list_peer_unhandled_propagation(relay_peer)
+            .expect("relay pending")
+            .is_empty(),
+        "rejected mixed batch must not queue relay work"
     );
 }
 

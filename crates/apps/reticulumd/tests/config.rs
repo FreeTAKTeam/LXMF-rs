@@ -1002,6 +1002,31 @@ interfaces = [
 }
 
 #[test]
+fn rejects_known_unsupported_python_interface_families_with_specific_error() {
+    for kind in
+        ["PipeInterface", "LocalInterface", "I2PInterface", "WeaveInterface", "BackboneInterface"]
+    {
+        let input = format!(
+            r#"
+interfaces = [
+  {{ type = "{kind}", enabled = true, name = "unsupported" }}
+]
+"#
+        );
+        let err = match DaemonConfig::from_toml(&input) {
+            Ok(_) => panic!("{kind} should be rejected as known unsupported"),
+            Err(err) => err,
+        };
+        let message = err.to_string();
+        assert!(
+            message.contains("known unsupported Reticulum interface family"),
+            "unexpected parse error for {kind}: {message}"
+        );
+        assert!(message.contains(kind), "error should name {kind}: {message}");
+    }
+}
+
+#[test]
 fn allows_disabled_new_interface_without_required_fields() {
     let input = r#"
 interfaces = [

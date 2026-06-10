@@ -3,6 +3,45 @@ use rand_core::OsRng;
 use rns_rpc::{MessageRecord, MessagesStore};
 use rns_transport::transport::TransportConfig;
 
+fn delivery_task_for_propagation_cost_lookup(daemon: Arc<RpcDaemon>) -> DeliveryTask {
+    let signer = PrivateIdentity::new_from_name("propagation-cost-lookup-task");
+    let transport_identity = rns_transport::identity_bridge::to_transport_private_identity(&signer);
+    let transport = Arc::new(Transport::new(TransportConfig::new(
+        "propagation-cost-lookup-task",
+        &transport_identity,
+        true,
+    )));
+    let (receipt_tx, _receipt_rx) = tokio::sync::mpsc::channel(16);
+    let destination = [0u8; 16];
+    DeliveryTask {
+        daemon,
+        transport,
+        peer_crypto: Arc::new(Mutex::new(HashMap::new())),
+        outbound_propagation_identities: Arc::new(Mutex::new(HashMap::new())),
+        receipt_map: Arc::new(Mutex::new(HashMap::new())),
+        outbound_resource_map: Arc::new(Mutex::new(HashMap::new())),
+        outbound_propagation_link: Arc::new(tokio::sync::Mutex::new(None)),
+        receipt_tx,
+        message_id: "propagation-cost-lookup-message".to_string(),
+        source_hash: [1u8; 16],
+        destination,
+        destination_hash: AddressHash::new(destination),
+        destination_hex: hex::encode(destination),
+        title: String::new(),
+        content: String::new(),
+        fields: None,
+        signer,
+        stamp_cost: None,
+        outbound_ticket: None,
+        include_ticket: None,
+        peer_identity: None,
+        propagation_node_identity: None,
+        requested_method: RequestedDeliveryMethod::Propagated,
+        try_propagation_on_fail: false,
+        propagation_node_hex: None,
+    }
+}
+
 #[test]
 fn cancelled_status_detection_is_case_and_space_tolerant() {
     assert!(DeliveryTask::is_cancelled_status(Some("cancelled")));
@@ -518,4 +557,48 @@ async fn record_propagation_payload_metadata_persists_packed_bytes() {
     );
     assert_eq!(message["fields"]["_lxmf"]["propagation_packed_size"], json!(26));
     assert_eq!(message["fields"]["_lxmf"]["propagation_stamp_value"], json!(17));
+}
+
+#[tokio::test]
+async fn propagation_target_cost_matches_selected_node_case_insensitively() {
+    let daemon = Arc::new(RpcDaemon::test_instance());
+    daemon
+        .handle_rpc(RpcRequest {
+            id: 701,
+            method: "propagation_enable".to_string(),
+            params: Some(json!({
+                "enabled": true,
+                "autopeer": true,
+            })),
+        })
+        .expect("enable propagation");
+    let peer = "aabbccddeeff00112233445566778899";
+    let app_data = rmp_serde::to_vec_named(&rmpv::Value::Array(vec![
+        rmpv::Value::Boolean(false),
+        rmpv::Value::from(1_700_000_021i64),
+        rmpv::Value::Boolean(true),
+        rmpv::Value::from(333),
+        rmpv::Value::from(999),
+        rmpv::Value::Array(vec![rmpv::Value::from(23), rmpv::Value::from(2), rmpv::Value::from(5)]),
+        rmpv::Value::Map(Vec::new()),
+    ]))
+    .expect("encode propagation app data");
+    let announce = daemon
+        .handle_rpc(RpcRequest {
+            id: 702,
+            method: "announce_received".to_string(),
+            params: Some(json!({
+                "peer": peer,
+                "timestamp": 1_700_000_021i64,
+                "app_data_hex": hex::encode(app_data),
+                "aspect": "lxmf.propagation",
+                "hops": 1,
+            })),
+        })
+        .expect("announce received");
+    assert!(announce.error.is_none(), "unexpected announce error: {announce:?}");
+
+    let task = delivery_task_for_propagation_cost_lookup(daemon);
+
+    assert_eq!(task.propagation_target_cost(&peer.to_ascii_uppercase()), Some(23));
 }

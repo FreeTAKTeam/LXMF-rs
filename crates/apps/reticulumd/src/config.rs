@@ -462,6 +462,9 @@ impl InterfaceConfig {
             "ble_gatt" => self.validate_ble(index),
             "vrn76_kiss_ble" => self.validate_vrn76_kiss_ble(index),
             "lora" => self.validate_lora(index, original_kind),
+            _ if is_known_unsupported_python_interface(original_kind) => Err(format!(
+                "interfaces[{index}].type {original_kind} is a known unsupported Reticulum interface family"
+            )),
             _ => Ok(()),
         }
     }
@@ -1597,6 +1600,17 @@ fn normalize_interface_kind(value: &str) -> String {
         "Vrn76KissBluetoothInterface" | "Vrn76KissBleInterface" => "vrn76_kiss_ble".to_string(),
         value => value.to_string(),
     }
+}
+
+fn is_known_unsupported_python_interface(value: &str) -> bool {
+    matches!(
+        value,
+        "PipeInterface"
+            | "LocalInterface"
+            | "I2PInterface"
+            | "WeaveInterface"
+            | "BackboneInterface"
+    )
 }
 
 fn is_tcp_lora_port(value: &str) -> bool {

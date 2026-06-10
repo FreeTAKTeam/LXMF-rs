@@ -1793,15 +1793,33 @@ impl RpcDaemon {
                     .cloned(),
             );
             let selected_index = timestamp.rem_euclid(peer_pool.len() as i64) as usize;
-            return Ok(peer_pool.into_iter().nth(selected_index).map(|record| record.peer));
+            let selected = peer_pool.into_iter().nth(selected_index).map(|record| record.peer);
+            self.claim_peer_for_maintenance_sync(selected.as_deref(), timestamp);
+            return Ok(selected);
         }
 
         if !unresponsive.is_empty() {
             unresponsive.sort_by(|left, right| left.peer.cmp(&right.peer));
             let selected_index = timestamp.rem_euclid(unresponsive.len() as i64) as usize;
-            return Ok(unresponsive.into_iter().nth(selected_index).map(|record| record.peer));
+            let selected = unresponsive.into_iter().nth(selected_index).map(|record| record.peer);
+            self.claim_peer_for_maintenance_sync(selected.as_deref(), timestamp);
+            return Ok(selected);
         }
         Ok(None)
+    }
+
+    fn claim_peer_for_maintenance_sync(&self, peer: Option<&str>, timestamp: i64) {
+        let Some(peer) = peer else {
+            return;
+        };
+        let mut peers = self.peers.lock().expect("peers mutex poisoned");
+        let Some(record) = peers.values_mut().find(|record| record.peer.eq_ignore_ascii_case(peer))
+        else {
+            return;
+        };
+        record.last_sync_attempt = timestamp;
+        record.sync_backoff = record.sync_backoff.saturating_add(LXMF_PEER_SYNC_BACKOFF_STEP_SECS);
+        record.next_sync_attempt = timestamp.saturating_add(i64::from(record.sync_backoff));
     }
 
     pub(super) fn ensure_peer_admission_allowed(
