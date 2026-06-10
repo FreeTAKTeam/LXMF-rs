@@ -210,7 +210,6 @@ pub(super) fn handle_offer_request(
     if daemon.propagation_peer_offer_is_throttled(remote_propagation_hash_hex.as_str()) {
         return ControlResponse::Code(error_throttled);
     }
-    daemon.throttle_propagation_peer_offer(remote_propagation_hash_hex.as_str());
 
     let mut wanted = Vec::new();
     for bytes in &offered_ids {
@@ -227,16 +226,20 @@ pub(super) fn handle_offer_request(
             return ControlResponse::Code(error_no_access);
         }
     }
-    if wanted.is_empty() {
-        if let Ok(mut guard) = control.validated_peer_links.lock() {
-            guard.insert(*link_id);
-        }
-        return ControlResponse::Bool(false);
-    }
     if let Ok(mut guard) = control.validated_peer_links.lock() {
         guard.insert(*link_id);
     }
 
+    if wanted.len() == offered_ids.len()
+        && !daemon.propagation_peer_admission_allowed(remote_propagation_hash_hex.as_str())
+    {
+        return ControlResponse::Rmpv(rmpv::Value::Array(Vec::new()));
+    }
+    daemon.throttle_propagation_peer_offer(remote_propagation_hash_hex.as_str());
+
+    if wanted.is_empty() {
+        return ControlResponse::Bool(false);
+    }
     if wanted.len() == offered_ids.len() {
         ControlResponse::Bool(true)
     } else {

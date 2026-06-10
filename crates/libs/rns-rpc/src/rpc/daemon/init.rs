@@ -542,6 +542,17 @@ impl RpcDaemon {
         self.propagation_state.lock().expect("propagation mutex poisoned").clone()
     }
 
+    pub fn propagation_peer_admission_allowed(&self, peer: &str) -> bool {
+        let guard = self.peers.lock().expect("peers mutex poisoned");
+        if guard.values().any(|record| {
+            record.peer.eq_ignore_ascii_case(peer)
+                && record.peer_type.as_deref() != Some("unpeered")
+        }) {
+            return true;
+        }
+        self.ensure_peer_admission_allowed(peer, Self::active_peer_count_from_guard(&guard)).is_ok()
+    }
+
     pub fn valid_issued_tickets_for(&self, destination: &str) -> Vec<Vec<u8>> {
         let now = now_i64();
         self.prune_expired_tickets(now);
