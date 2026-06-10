@@ -235,6 +235,11 @@ The project is best described by capability level:
   haves as received/completed work for the requesting propagation peer after
   purge, so reintroduced payloads are not queued back to peers that already
   declared them.
+- Inbound propagation message-get purge-only requests now return the
+  Python-style boolean success response after haves are applied, and payload
+  purge cleanup preserves completed peer accounting for other peers while
+  removing stale unhandled marks, so reintroduced payloads are not offered back
+  to peers that already completed them.
 - Inbound propagation message-get requests now mark wanted payloads skipped by
   the peer's transfer budget as transfer-limited completed work after peer
   admission, so oversized fetch attempts do not remain retryable queue entries.

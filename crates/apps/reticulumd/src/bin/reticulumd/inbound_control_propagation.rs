@@ -74,8 +74,11 @@ pub(super) fn handle_message_get_request(
         }
     }
 
+    if entries.first().is_some_and(rmpv::Value::is_nil) {
+        return ControlResponse::Bool(true);
+    }
+
     let wants = match entries.first() {
-        Some(value) if value.is_nil() => Vec::new(),
         Some(rmpv::Value::Array(values)) => binary_id_list(values),
         _ => return ControlResponse::Code(error_invalid_data),
     };
@@ -1062,7 +1065,9 @@ mod tests {
             0xF6,
         );
 
-        assert!(matches!(response, ControlResponse::Bool(true)));
+        assert!(
+            matches!(response, ControlResponse::Rmpv(rmpv::Value::Array(values)) if values.is_empty())
+        );
         let peers = daemon
             .handle_rpc(RpcRequest { id: 12, method: "list_peers".to_string(), params: None })
             .expect("list peers")
@@ -1422,9 +1427,7 @@ mod tests {
             0xF4,
         );
 
-        assert!(
-            matches!(response, ControlResponse::Rmpv(rmpv::Value::Array(values)) if values.is_empty())
-        );
+        assert!(matches!(response, ControlResponse::Bool(true)));
         assert!(!daemon.has_propagation_payload(have_hex.as_str()));
         assert!(
             daemon
@@ -1467,6 +1470,86 @@ mod tests {
             row["messages"]["unhandled_ids"],
             json!([]),
             "reingested haves should not be queued back to the declaring peer"
+        );
+    }
+
+    #[test]
+    fn message_get_haves_preserve_other_peer_completed_marks_across_purge_and_reingest() {
+        let daemon = RpcDaemon::test_instance();
+        let remote_private =
+            rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let remote_identity = *remote_private.as_identity();
+        let remote_delivery_hash = delivery_destination_hash_for_identity(&remote_identity);
+        let remote_propagation_hash =
+            hex::encode(propagation_destination_hash_for_identity(&remote_identity));
+        let other_peer = "ab".repeat(16);
+        let have = [0x37; 32];
+        let have_hex = hex::encode(have);
+        let mut have_payload = remote_delivery_hash.to_vec();
+        have_payload.extend_from_slice(b" haves should preserve other peer accounting");
+        daemon.record_propagation_offer_peer(other_peer.as_str()).expect("activate other peer");
+        daemon
+            .ingest_propagation_payload_bytes_with_aliases(
+                have_payload.as_slice(),
+                have_hex.as_str(),
+                &[],
+            )
+            .expect("store have payload");
+        daemon
+            .record_peer_transferred_propagation(other_peer.as_str(), have_hex.as_str())
+            .expect("mark other peer transferred");
+
+        let response = handle_message_get_request(
+            &daemon,
+            &remote_identity,
+            Some(rmpv::Value::Array(vec![
+                rmpv::Value::Nil,
+                rmpv::Value::Array(vec![rmpv::Value::Binary(have.to_vec())]),
+            ])),
+            0xF1,
+            0xF4,
+        );
+
+        assert!(matches!(response, ControlResponse::Bool(true)));
+        assert!(!daemon.has_propagation_payload(have_hex.as_str()));
+        assert!(
+            daemon
+                .has_peer_completed_propagation_mark(other_peer.as_str(), have_hex.as_str())
+                .expect("other peer completed mark"),
+            "purging one peer's haves must not erase another peer's completed mark"
+        );
+        assert!(
+            daemon
+                .has_peer_completed_propagation_mark(
+                    remote_propagation_hash.as_str(),
+                    have_hex.as_str(),
+                )
+                .expect("requesting peer completed mark"),
+            "requesting peer should still be marked completed after purge"
+        );
+
+        daemon
+            .ingest_propagation_payload_bytes_with_aliases(
+                have_payload.as_slice(),
+                have_hex.as_str(),
+                &[],
+            )
+            .expect("reingest have payload");
+        let peers = daemon
+            .handle_rpc(RpcRequest { id: 16, method: "list_peers".to_string(), params: None })
+            .expect("list peers")
+            .result
+            .expect("list peers result");
+        let row = peers["peers"]
+            .as_array()
+            .expect("peer rows")
+            .iter()
+            .find(|row| row["peer"].as_str() == Some(other_peer.as_str()))
+            .expect("other peer row");
+        assert_eq!(
+            row["messages"]["unhandled_ids"],
+            json!([]),
+            "reingested payload must not be requeued to a peer that already completed it"
         );
     }
 

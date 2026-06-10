@@ -1457,7 +1457,8 @@ impl MessagesStore {
                 if affected > 0 {
                     tx.execute(
                         "DELETE FROM propagation_peer_entries
-                         WHERE transient_id = ?1",
+                         WHERE transient_id = ?1
+                           AND state = 'unhandled'",
                         params![transient_id],
                     )?;
                     purged = purged.saturating_add(affected);
@@ -3343,7 +3344,7 @@ mod tests {
     }
 
     #[test]
-    fn purge_propagation_entries_removes_peer_marks_for_deleted_entries() {
+    fn purge_propagation_entries_removes_unhandled_marks_but_preserves_completed_state() {
         let store = MessagesStore::in_memory().expect("in-memory store");
         let entry = PropagationEntryRecord {
             transient_id: "af".repeat(32),
@@ -3357,6 +3358,9 @@ mod tests {
         store
             .mark_peer_handled_propagation("peer-cleanup", entry.transient_id.as_str())
             .expect("mark handled");
+        store
+            .mark_peer_unhandled_propagation("peer-retry", entry.transient_id.as_str())
+            .expect("mark unhandled");
 
         let purged = store
             .purge_propagation_entries_for_destination(
@@ -3370,6 +3374,19 @@ mod tests {
             .list_peer_handled_propagation_ids("peer-cleanup")
             .expect("handled ids")
             .is_empty());
+        assert!(
+            store
+                .peer_completed_propagation_mark_exists("peer-cleanup", entry.transient_id.as_str())
+                .expect("completed mark"),
+            "completed peer accounting survives payload purge for future reingest"
+        );
+        assert!(
+            store
+                .list_peer_unhandled_propagation_ids("peer-retry")
+                .expect("unhandled ids")
+                .is_empty(),
+            "retryable marks for the deleted payload are stale and should be removed"
+        );
     }
 
     #[test]
