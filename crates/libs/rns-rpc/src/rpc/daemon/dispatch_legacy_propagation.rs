@@ -569,8 +569,8 @@ impl RpcDaemon {
             .insert(peer, now_i64().saturating_add(PN_STAMP_THROTTLE_SECS));
     }
 
-    pub fn throttle_propagation_peer_offer(&self, peer: &str, offered_ids: &[Vec<u8>]) {
-        if let Some(key) = propagation_offer_throttle_key(peer, offered_ids) {
+    pub fn throttle_propagation_peer_offer(&self, peer: &str) {
+        if let Some(key) = propagation_offer_throttle_key(peer) {
             self.throttle_propagation_peer_key(key.as_str());
         }
     }
@@ -595,8 +595,8 @@ impl RpcDaemon {
         }
     }
 
-    pub fn propagation_peer_offer_is_throttled(&self, peer: &str, offered_ids: &[Vec<u8>]) -> bool {
-        propagation_offer_throttle_key(peer, offered_ids)
+    pub fn propagation_peer_offer_is_throttled(&self, peer: &str) -> bool {
+        propagation_offer_throttle_key(peer)
             .is_some_and(|key| self.propagation_peer_is_throttled(key.as_str()))
     }
 
@@ -2654,18 +2654,12 @@ pub(super) fn propagation_payload_hash_input(
     Ok(lxm_data)
 }
 
-fn propagation_offer_throttle_key(peer: &str, offered_ids: &[Vec<u8>]) -> Option<String> {
+fn propagation_offer_throttle_key(peer: &str) -> Option<String> {
     let peer = peer.trim().to_ascii_lowercase();
     if peer.is_empty() {
         return None;
     }
-    let mut offered_ids = offered_ids.to_vec();
-    offered_ids.sort();
-    let mut hasher = Sha256::new();
-    for offered_id in offered_ids {
-        hasher.update(offered_id);
-    }
-    Some(format!("offer:{peer}:{}", hex::encode(hasher.finalize())))
+    Some(format!("offer:{peer}"))
 }
 
 pub(super) fn split_propagation_stamp(transient_data: &[u8]) -> Option<(&[u8], &[u8])> {

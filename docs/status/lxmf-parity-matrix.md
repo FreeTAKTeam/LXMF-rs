@@ -393,8 +393,8 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   admission from offering the sender its own known payloads.
 - Valid inbound propagation offers start the peer offer throttle window after
   peering-key and transient-ID validation, so repeated replication offers from
-  the same peer return the throttled response instead of reprocessing
-  immediately.
+  the same peer return the throttled response even when the peer changes the
+  offered transient-ID set.
 - Inbound propagation distinguishes clients, validated peers, unpeered
   identified senders, and local delivery; source peers are accounted and not
   re-offered their own payloads.

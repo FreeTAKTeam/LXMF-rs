@@ -370,8 +370,8 @@ The project is best described by capability level:
   admission does not queue those source payloads back to the sender.
 - Valid inbound propagation offers now start the peer offer throttle window
   after peering-key and transient-ID validation, so repeated replication offers
-  from the same peer take the throttled response path instead of immediately
-  reprocessing the same offer.
+  from the same peer take the throttled response path even when the peer changes
+  the offered transient-ID set.
 
 ## Remaining Release Blockers
 

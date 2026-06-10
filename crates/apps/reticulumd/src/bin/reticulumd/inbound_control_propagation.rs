@@ -207,12 +207,10 @@ pub(super) fn handle_offer_request(
             offered_ids.push(bytes.clone());
         }
     }
-    if daemon
-        .propagation_peer_offer_is_throttled(remote_propagation_hash_hex.as_str(), &offered_ids)
-    {
+    if daemon.propagation_peer_offer_is_throttled(remote_propagation_hash_hex.as_str()) {
         return ControlResponse::Code(error_throttled);
     }
-    daemon.throttle_propagation_peer_offer(remote_propagation_hash_hex.as_str(), &offered_ids);
+    daemon.throttle_propagation_peer_offer(remote_propagation_hash_hex.as_str());
 
     let mut wanted = Vec::new();
     for bytes in &offered_ids {
@@ -724,7 +722,7 @@ mod tests {
 
         assert!(matches!(first, ControlResponse::Bool(true)));
         assert!(matches!(second, ControlResponse::Code(0xF6)));
-        assert!(matches!(different_offer, ControlResponse::Bool(true)));
+        assert!(matches!(different_offer, ControlResponse::Code(0xF6)));
     }
 
     #[test]
