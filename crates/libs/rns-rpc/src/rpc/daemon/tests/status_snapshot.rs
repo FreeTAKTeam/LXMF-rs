@@ -18419,6 +18419,49 @@ fn list_peers_static_type_tracks_current_static_peer_config() {
 }
 
 #[test]
+fn peer_unpeer_removes_configured_static_peer_membership_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    daemon
+        .handle_rpc(rpc_request(
+            78,
+            "propagation_enable",
+            json!({
+                "enabled": true,
+                "static_peers": ["peer-static-unpeer"],
+            }),
+        ))
+        .expect("enable static peer");
+    daemon
+        .handle_rpc(rpc_request(79, "peer_sync", json!({ "peer": "peer-static-unpeer" })))
+        .expect("sync static peer");
+
+    let unpeered = daemon
+        .handle_rpc(rpc_request(80, "peer_unpeer", json!({ "peer": "peer-static-unpeer" })))
+        .expect("unpeer static peer");
+    assert!(unpeered.error.is_none());
+
+    let status = daemon
+        .handle_rpc(RpcRequest { id: 81, method: "propagation_status".to_string(), params: None })
+        .expect("propagation status")
+        .result
+        .expect("propagation status result");
+    assert_eq!(
+        status["propagation"]["static_peers"].as_array().expect("static peers"),
+        &[] as &[JsonValue]
+    );
+
+    let peers = daemon
+        .handle_rpc(RpcRequest { id: 82, method: "list_peers".to_string(), params: None })
+        .expect("list peers")
+        .result
+        .expect("list peers result");
+    assert!(
+        peers["peers"].as_array().expect("peer rows").is_empty(),
+        "explicit unpeer should not be undone by static-peer activation"
+    );
+}
+
+#[test]
 fn unpeered_peers_do_not_consume_max_peer_capacity() {
     let daemon = RpcDaemon::test_instance();
     daemon

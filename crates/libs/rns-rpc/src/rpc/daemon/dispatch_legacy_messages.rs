@@ -2233,6 +2233,17 @@ impl RpcDaemon {
                 snapshot.propagation = state;
             });
         }
+        let static_peer_state = {
+            let mut guard = self.propagation_state.lock().expect("propagation mutex poisoned");
+            let before = guard.static_peers.len();
+            guard.static_peers.retain(|peer| !peer.eq_ignore_ascii_case(peer_key.as_str()));
+            (guard.static_peers.len() != before).then(|| guard.clone())
+        };
+        if let Some(state) = static_peer_state {
+            self.update_daemon_status_snapshot(|snapshot| {
+                snapshot.propagation = state;
+            });
+        }
         Ok(LocalUnpeerCleanup {
             peer: peer_key,
             removed,

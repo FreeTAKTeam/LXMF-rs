@@ -310,6 +310,9 @@ The project is best described by capability level:
 - Peer unpeer cleanup now clears case-variant propagation marks as one peer,
   so completed marks merged during activation cannot survive teardown and
   reappear as handled work when that peer is later reactivated.
+- Peer unpeer cleanup now also removes the peer from configured static
+  propagation membership, so an explicit unpeer cannot be undone by the next
+  static-peer activation pass.
 - Peer unpeer cleanup accounting now also reads case-variant live queue marks
   as one effective peer before clearing them, so the response and event report
   the same handled/unhandled IDs and byte totals that teardown actually
