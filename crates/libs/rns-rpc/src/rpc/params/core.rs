@@ -74,6 +74,8 @@ struct PeerOpParams {
     wanted_ids: Option<JsonValue>,
     #[serde(default)]
     maintenance_claimed: bool,
+    #[serde(default)]
+    force_sync: bool,
 }
 
 #[derive(Debug, Deserialize)]

@@ -5247,6 +5247,53 @@ fn peer_sync_during_backoff_postpones_skipped_offers() {
 }
 
 #[test]
+fn forced_peer_sync_bypasses_existing_backoff_like_manual_control() {
+    let (daemon, peer) = ready_propagation_peer_daemon(0x48);
+    let entry = PropagationEntryRecord {
+        transient_id: "ef".repeat(32),
+        destination: "18".repeat(16),
+        payload_hex: "18".repeat(20),
+        received_at: 1_700_000_614,
+        size_bytes: 20,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&entry).expect("store entry");
+    daemon
+        .store
+        .mark_peer_unhandled_propagation(peer.as_str(), entry.transient_id.as_str())
+        .expect("mark unhandled");
+    daemon.record_outbound_peer_activity(peer.as_str(), 64, false);
+
+    let postponed = daemon
+        .handle_rpc(rpc_request(54, "peer_sync", json!({ "peer": peer.as_str() })))
+        .expect("default peer sync")
+        .result
+        .expect("default peer sync result");
+    assert_eq!(postponed["synced"].as_bool(), Some(false));
+    assert_eq!(postponed["postpone_reason"].as_str(), Some("backoff"));
+
+    let result = daemon
+        .handle_rpc(rpc_request(
+            55,
+            "peer_sync",
+            json!({
+                "peer": peer.as_str(),
+                "force_sync": true,
+            }),
+        ))
+        .expect("forced peer sync")
+        .result
+        .expect("forced peer sync result");
+
+    assert_eq!(result["synced"].as_bool(), Some(true));
+    assert_ne!(result["postpone_reason"].as_str(), Some("backoff"));
+    assert_eq!(result["propagation"]["transferred"].as_u64(), Some(1));
+    assert_eq!(result["propagation"]["transferred_ids"], json!([entry.transient_id]));
+    assert_eq!(result["sync_backoff"].as_u64(), Some(0));
+    assert_eq!(result["next_sync_attempt"].as_i64(), Some(0));
+}
+
+#[test]
 fn peer_sync_during_backoff_does_not_queue_new_existing_entries_like_python() {
     let daemon = RpcDaemon::test_instance();
     daemon

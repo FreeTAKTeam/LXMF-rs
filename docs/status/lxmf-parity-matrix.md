@@ -120,6 +120,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   sync by recording the sync attempt and next backoff window, while allowing the
   internal maintenance-triggered sync to consume that claim, so concurrent
   scheduler passes cannot double-select the same peer.
+- Manual `/pn/peer/sync` control requests force an immediate peer sync through
+  ordinary backoff windows, while scheduled maintenance and remote syncs still
+  respect retry postponement, matching the operator-triggered retry path.
 - Remote fetch/download/sync imports validate the full returned propagation
   payload batch before mutating the local store or in-memory payload cache, so
   mixed valid/invalid remote responses fail without leaving partial relay state.

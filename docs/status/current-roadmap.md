@@ -87,6 +87,10 @@ The project is best described by capability level:
   invoking sync by recording the sync attempt and next backoff window, while
   allowing the internal maintenance-triggered sync to consume that claim, so
   concurrent scheduler passes cannot double-select the same peer.
+- Manual `/pn/peer/sync` control requests now force an immediate peer sync
+  through ordinary backoff windows, while scheduled maintenance and remote
+  syncs still respect retry postponement, matching the operator-triggered
+  retry path.
 - Remote fetch/download/sync imports now validate the full returned propagation
   payload batch before mutating the local store or in-memory payload cache, so a
   mixed valid/invalid remote response fails without leaving partial relay state.

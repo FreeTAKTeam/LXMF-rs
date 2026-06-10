@@ -22,6 +22,9 @@ pub(super) fn handle_peer_command(
         return Some(ControlResponse::Code(error_not_found));
     }
     let mut params = json!({ "peer": peer_hex });
+    if sync_command {
+        params["force_sync"] = json!(true);
+    }
     if let Some(transfer_limit_kb) = transfer_limit_kb {
         params["transfer_limit_kb"] = json!(transfer_limit_kb);
     }
@@ -252,6 +255,68 @@ mod tests {
         assert_eq!(result["propagation"]["transferred"].as_u64(), Some(1));
         assert_eq!(result["propagation"]["transferred_ids"], json!([transient_id]));
         assert_eq!(result["propagation"]["messages"].as_array().map(Vec::len), Some(1));
+    }
+
+    #[test]
+    fn peer_sync_command_bypasses_existing_backoff_like_python() {
+        let peer_bytes = [0xC6; 16];
+        let peer_hex = hex::encode(peer_bytes);
+        let payload_hex = format!("{}{}", "23".repeat(16), "46".repeat(24));
+        let daemon = RpcDaemon::test_instance_with_identity(hex::encode([2u8; 16]));
+        daemon
+            .handle_rpc(RpcRequest {
+                id: 1,
+                method: "propagation_enable".to_string(),
+                params: Some(json!({
+                    "enabled": true,
+                    "static_peers": [peer_hex],
+                })),
+            })
+            .expect("enable propagation");
+        assert_eq!(make_ready_propagation_peer(&daemon, 0xC6), peer_hex);
+        let ingest = daemon
+            .handle_rpc(RpcRequest {
+                id: 2,
+                method: "propagation_ingest".to_string(),
+                params: Some(json!({ "payload_hex": payload_hex })),
+            })
+            .expect("ingest propagation")
+            .result
+            .expect("ingest result");
+        let transient_id = ingest["transient_id"].as_str().expect("transient id");
+        daemon.record_outbound_peer_activity(peer_hex.as_str(), 64, false);
+        let peers = daemon
+            .handle_rpc(RpcRequest { id: 3, method: "list_peers".to_string(), params: None })
+            .expect("list peers")
+            .result
+            .expect("peers result");
+        let row = peers["peers"]
+            .as_array()
+            .expect("peer rows")
+            .iter()
+            .find(|row| row["peer"].as_str() == Some(peer_hex.as_str()))
+            .expect("peer row");
+        assert!(row["sync_backoff"].as_u64().expect("sync backoff") > 0);
+        assert!(row["next_sync_attempt"].as_i64().expect("next sync attempt") > 0);
+
+        let response = handle_peer_command(
+            &daemon,
+            control_path_hash("/pn/peer/sync"),
+            Some(rmpv::Value::Binary(peer_bytes.to_vec())),
+            ERROR_INVALID_DATA,
+            ERROR_NOT_FOUND,
+        )
+        .expect("peer sync command response");
+
+        let ControlResponse::Value(result) = response else {
+            panic!("expected peer sync result value");
+        };
+        assert_eq!(result["peer"].as_str(), Some(peer_hex.as_str()));
+        assert_eq!(result["synced"].as_bool(), Some(true));
+        assert_ne!(result["postpone_reason"].as_str(), Some("backoff"));
+        assert_eq!(result["propagation"]["transferred_ids"], json!([transient_id]));
+        assert_eq!(result["sync_backoff"].as_u64(), Some(0));
+        assert_eq!(result["next_sync_attempt"].as_i64(), Some(0));
     }
 
     #[test]
