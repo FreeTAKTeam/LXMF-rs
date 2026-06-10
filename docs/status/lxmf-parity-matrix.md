@@ -308,6 +308,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Remote import batch byte accounting follows the same deduplicated accepted
   IDs, so duplicate payloads in one fetch/download/sync response do not inflate
   transferred byte totals or source peer receive byte counters.
+- Local propagation ingest persists processed transient IDs separately from
+  retained payload entries, so payloads reintroduced after purge or peer
+  acknowledgement can refresh relay state without inflating local received or
+  ingested counters.
 - Repeated remote fetch/download/sync imports increment source peer incoming
   counts and receive bytes only for payload IDs not already marked received
   from that source, while still replaying known payloads into relay queues when
