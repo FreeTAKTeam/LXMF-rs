@@ -189,6 +189,12 @@ pub(super) fn handle_offer_request(
             offered_ids.push(bytes.clone());
         }
     }
+    if daemon
+        .propagation_peer_offer_is_throttled(remote_propagation_hash_hex.as_str(), &offered_ids)
+    {
+        return ControlResponse::Code(error_throttled);
+    }
+    daemon.throttle_propagation_peer_offer(remote_propagation_hash_hex.as_str(), &offered_ids);
 
     let mut wanted = Vec::new();
     for bytes in &offered_ids {
@@ -610,7 +616,7 @@ mod tests {
             &test_link_id(),
             &remote_identity,
             Some(rmpv::Value::Array(vec![
-                rmpv::Value::Binary(peering_key),
+                rmpv::Value::Binary(peering_key.clone()),
                 rmpv::Value::Array(vec![rmpv::Value::Binary(offered.to_vec())]),
             ])),
             0xF1,
@@ -620,6 +626,87 @@ mod tests {
         );
 
         assert!(matches!(response, ControlResponse::Code(0xF6)));
+    }
+
+    #[test]
+    fn offer_request_repeated_valid_offer_is_throttled_like_python() {
+        let daemon = RpcDaemon::test_instance();
+        daemon
+            .handle_rpc(RpcRequest {
+                id: 10,
+                method: "propagation_enable".to_string(),
+                params: Some(json!({
+                    "enabled": true,
+                    "peering_cost": 1,
+                })),
+            })
+            .expect("enable propagation");
+        let local_identity_hash = [0x11; 16];
+        let remote_private =
+            rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let remote_identity = *remote_private.as_identity();
+        let mut peering_id = Vec::with_capacity(32);
+        peering_id.extend_from_slice(local_identity_hash.as_slice());
+        peering_id.extend_from_slice(remote_identity.address_hash.as_slice());
+        let peering_key = generate_peering_key(peering_id.as_slice(), 1).expect("peering key");
+        let offered = [0xBB; 32];
+        let other_offered = [0xBC; 32];
+        let control = PropagationControlContext {
+            enabled: true,
+            local_identity_hash,
+            propagation_destination_hash_hex: Some("propagation".to_string()),
+            control_destination_hash_hex: Some("control".to_string()),
+            delivery_destination: None,
+            allowed_control_identities: Vec::new(),
+            validated_peer_links: test_validated_peer_links(),
+        };
+
+        let first = handle_offer_request(
+            &daemon,
+            &control,
+            &test_link_id(),
+            &remote_identity,
+            Some(rmpv::Value::Array(vec![
+                rmpv::Value::Binary(peering_key.clone()),
+                rmpv::Value::Array(vec![rmpv::Value::Binary(offered.to_vec())]),
+            ])),
+            0xF1,
+            0xF3,
+            0xF4,
+            0xF6,
+        );
+        let second = handle_offer_request(
+            &daemon,
+            &control,
+            &test_link_id(),
+            &remote_identity,
+            Some(rmpv::Value::Array(vec![
+                rmpv::Value::Binary(peering_key.clone()),
+                rmpv::Value::Array(vec![rmpv::Value::Binary(offered.to_vec())]),
+            ])),
+            0xF1,
+            0xF3,
+            0xF4,
+            0xF6,
+        );
+        let different_offer = handle_offer_request(
+            &daemon,
+            &control,
+            &test_link_id(),
+            &remote_identity,
+            Some(rmpv::Value::Array(vec![
+                rmpv::Value::Binary(peering_key),
+                rmpv::Value::Array(vec![rmpv::Value::Binary(other_offered.to_vec())]),
+            ])),
+            0xF1,
+            0xF3,
+            0xF4,
+            0xF6,
+        );
+
+        assert!(matches!(first, ControlResponse::Bool(true)));
+        assert!(matches!(second, ControlResponse::Code(0xF6)));
+        assert!(matches!(different_offer, ControlResponse::Bool(true)));
     }
 
     #[test]
