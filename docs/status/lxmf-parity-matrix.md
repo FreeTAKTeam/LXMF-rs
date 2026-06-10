@@ -102,10 +102,11 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   unhandled queue marks into active peer record snapshots before returning,
   preserving restart/export retry state even when the serialized snapshot was
   previously empty.
-- Retryable, throttled, generic failed, and malformed-import remote peer-sync
-  paths mirror the same payload-backed queue marks into active peer record
-  snapshots before publishing the failed sync event, so local and remote
-  retry/export behavior stays aligned.
+- Retryable, throttled, generic failed, malformed-import, and
+  bridge-unavailable remote peer-sync paths mirror the same payload-backed live
+  and restored queue marks into active peer record snapshots before publishing
+  the failed sync event, so local and remote retry/export behavior stays
+  aligned.
 - Payload-backed remote failure snapshots replace stale serialized peer queue
   IDs with live payload-backed marks, so bridge failures do not preserve
   obsolete restart/export work after the underlying payload is gone.
@@ -145,9 +146,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   marks into active peer record snapshots before returning, so deferred syncs
   preserve queued retry work across restart/export.
 - Remote peer-sync bridge-unavailable errors mirror existing payload-backed
-  queue marks into active peer record snapshots for already known peers before
-  returning, including case-insensitive requests, without creating new peers
-  when the bridge is absent.
+  live marks and restored peer-record queue IDs into active peer record
+  snapshots for already known peers before returning, including
+  case-insensitive requests, without creating new peers when the bridge is
+  absent.
 - Remote peer-sync bridge-unavailable errors for already known peers also
   publish the failed peer-sync event and mark the propagation sync lifecycle
   failed, keeping queued retry state observable without creating new peers.

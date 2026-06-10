@@ -69,10 +69,10 @@ The project is best described by capability level:
 - Retryable numeric local offer responses now mirror payload-backed live queue
   marks into the active peer record snapshot before returning, so restart/export
   state preserves the retry queue even when the serialized snapshot was empty.
-- Retryable, throttled, generic failed, and malformed-import remote peer-sync
-  paths now perform the same payload-backed live queue snapshot mirroring
-  before reporting the failed sync, keeping local and remote retry/export
-  behavior aligned.
+- Retryable, throttled, generic failed, malformed-import, and
+  bridge-unavailable remote peer-sync paths now perform the same payload-backed
+  live and restored queue snapshot mirroring before reporting the failed sync,
+  keeping local and remote retry/export behavior aligned.
 - Payload-backed remote failure snapshots now replace stale serialized peer
   queue IDs with live payload-backed marks, so bridge failures do not preserve
   obsolete restart/export work after the underlying payload is gone.
@@ -113,9 +113,10 @@ The project is best described by capability level:
   queue marks into active peer record snapshots before returning, so
   restart/export state preserves queued retry work even when sync is deferred.
 - Remote peer-sync bridge-unavailable errors now mirror existing payload-backed
-  live queue marks into active peer record snapshots for already known peers
-  before returning, including case-insensitive requests, while still avoiding
-  peer creation when the bridge is absent.
+  live marks and restored peer-record queue IDs into active peer record
+  snapshots for already known peers before returning, including
+  case-insensitive requests, while still avoiding peer creation when the bridge
+  is absent.
 - Remote peer-sync bridge-unavailable errors for already known peers now also
   publish the failed peer-sync event and mark the propagation sync lifecycle
   failed, keeping queue retry state observable without creating new peers.
