@@ -17024,6 +17024,19 @@ fn timeout_propagation_remote_sync_preserves_peer_without_backoff() {
         peer.next_sync_attempt = 0;
         peer.acceptance_rate = 0.5;
     }
+    let pending = PropagationEntryRecord {
+        transient_id: "fa".repeat(32),
+        destination: "1f".repeat(16),
+        payload_hex: "1f".repeat(24),
+        received_at: 1_700_001_010,
+        size_bytes: 24,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&pending).expect("store propagation entry");
+    daemon
+        .store
+        .mark_peer_unhandled_propagation("peer-timeout", pending.transient_id.as_str())
+        .expect("mark timeout peer unhandled");
     daemon.event_queue.lock().expect("event_queue mutex poisoned").clear();
 
     let err = daemon
@@ -17055,6 +17068,16 @@ fn timeout_propagation_remote_sync_preserves_peer_without_backoff() {
     assert_eq!(row["next_sync_attempt"].as_i64(), Some(0));
     assert_eq!(row["acceptance_rate"].as_f64(), Some(0.5));
     assert!(row["last_sync_attempt"].as_i64().expect("last sync attempt") > 0);
+    assert_eq!(row["messages"]["unhandled_ids"], json!([pending.transient_id.as_str()]));
+
+    let peers = daemon.peers.lock().expect("peers mutex poisoned");
+    let record = peers.get("peer-timeout").expect("stored peer");
+    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    assert_eq!(
+        serialized["unhandled_ids"].as_array().expect("serialized unhandled ids"),
+        &[json!(pending.transient_id.as_str())]
+    );
+    drop(peers);
 
     let events = daemon.event_queue.lock().expect("event_queue mutex poisoned");
     assert!(
