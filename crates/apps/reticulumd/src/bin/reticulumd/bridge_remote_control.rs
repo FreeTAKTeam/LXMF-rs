@@ -406,7 +406,7 @@ fn response_to_result(response: rmpv::Value) -> Result<rmpv::Value, std::io::Err
     Ok(response)
 }
 
-fn response_code_error(response: &rmpv::Value) -> Option<std::io::Error> {
+pub(super) fn response_code_error(response: &rmpv::Value) -> Option<std::io::Error> {
     if let Some(code) = response.as_u64().or_else(|| response.as_i64().map(|value| value as u64)) {
         let (kind, message) = match code as u8 {
             0xF0 => (std::io::ErrorKind::PermissionDenied, "propagation node requires identity"),
