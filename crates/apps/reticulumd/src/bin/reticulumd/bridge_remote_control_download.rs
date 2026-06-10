@@ -2,6 +2,7 @@ use super::remote_control_link::{
     build_link_identify_payload, build_link_request_payload, open_refreshed_remote_link,
     resolve_remote_identity, send_link_context_packet, wait_for_link_request_response,
 };
+use super::remote_fetch::propagation_payload_ack_transient_id;
 use super::*;
 use lxmf::inbound_decode::InboundPayloadMode;
 use reticulum_daemon::inbound_delivery::{
@@ -9,7 +10,6 @@ use reticulum_daemon::inbound_delivery::{
     inbound_record_allowed_by_delivery_policy,
 };
 use rns_transport::identity::DecryptIdentity;
-use sha2::{Digest, Sha256};
 use x25519_dalek::PublicKey;
 
 pub(super) async fn propagation_download_request(
@@ -97,15 +97,15 @@ pub(super) async fn propagation_download_request(
     let mut duplicates = 0usize;
     let mut rejected = 0usize;
     for payload in &payloads {
-        let transient_id = Sha256::digest(payload);
+        let transient_id = propagation_payload_ack_transient_id(payload);
         match accept_downloaded_propagation_payload(daemon, delivery_destination, payload).await? {
             DownloadAcceptOutcome::Stored => {
                 downloaded += 1;
-                haves.push(transient_id.to_vec());
+                haves.push(transient_id);
             }
             DownloadAcceptOutcome::Duplicate => {
                 duplicates += 1;
-                haves.push(transient_id.to_vec());
+                haves.push(transient_id);
             }
             DownloadAcceptOutcome::Rejected => rejected += 1,
         }

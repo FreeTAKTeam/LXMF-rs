@@ -2,9 +2,10 @@ use super::remote_control_download::propagation_download_request;
 use super::*;
 use reticulum_daemon::lxmf_bridge::rmpv_to_json;
 use rns_rpc::RemoteControlBridge;
-use sha2::{Digest, Sha256};
 
-use super::remote_fetch::{rmpv_binary_array, LocalPropagationImportOutcome};
+use super::remote_fetch::{
+    propagation_payload_ack_transient_id, rmpv_binary_array, LocalPropagationImportOutcome,
+};
 use super::remote_request::remote_control_request;
 
 impl TransportBridge {
@@ -377,7 +378,9 @@ fn propagation_remote_fetch_ack_payload(
                 LocalPropagationImportOutcome::Imported | LocalPropagationImportOutcome::Duplicate
             )
         })
-        .map(|(payload, _outcome)| rmpv::Value::Binary(Sha256::digest(payload).to_vec()))
+        .map(|(payload, _outcome)| {
+            rmpv::Value::Binary(propagation_payload_ack_transient_id(payload))
+        })
         .collect();
     rmpv::Value::Array(vec![rmpv::Value::Nil, rmpv::Value::Array(haves)])
 }
@@ -427,6 +430,7 @@ fn response_code_error(response: &rmpv::Value) -> Option<std::io::Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use reticulum_daemon::lxmf_stamps::generate_propagation_stamp;
     use sha2::{Digest, Sha256};
 
     #[test]
@@ -469,7 +473,15 @@ mod tests {
     #[test]
     fn propagation_remote_fetch_ack_payload_reports_imported_and_duplicate_haves() {
         let imported_payload = b"imported remote fetch payload".to_vec();
-        let duplicate_payload = b"duplicate remote fetch payload".to_vec();
+        let duplicate_lxm_data = vec![0x51; 160];
+        let duplicate_transient_id = Sha256::digest(&duplicate_lxm_data);
+        let duplicate_stamp = generate_propagation_stamp(
+            duplicate_transient_id.as_slice().try_into().expect("transient id width"),
+            1,
+        )
+        .expect("propagation stamp");
+        let mut duplicate_payload = duplicate_lxm_data.clone();
+        duplicate_payload.extend_from_slice(duplicate_stamp.as_slice());
         let rejected_payload = b"rejected remote fetch payload".to_vec();
 
         let ack = propagation_remote_fetch_ack_payload(&[
@@ -487,6 +499,7 @@ mod tests {
         };
         assert_eq!(haves.len(), 2);
         assert_eq!(haves[0], rmpv::Value::Binary(Sha256::digest(imported_payload).to_vec()));
-        assert_eq!(haves[1], rmpv::Value::Binary(Sha256::digest(duplicate_payload).to_vec()));
+        assert_eq!(haves[1], rmpv::Value::Binary(duplicate_transient_id.to_vec()));
+        assert_ne!(haves[1], rmpv::Value::Binary(Sha256::digest(duplicate_payload).to_vec()));
     }
 }
