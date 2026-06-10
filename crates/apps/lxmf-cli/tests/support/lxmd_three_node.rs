@@ -408,10 +408,29 @@ fn decode_rpc_frame(bytes: &[u8]) -> Result<Value, String> {
 }
 
 pub fn terminate_child(node: &mut SpawnedNode) {
-    if node.child.try_wait().ok().flatten().is_none() {
-        let _ = node.child.kill();
-        let _ = node.child.wait();
+    terminate_process_tree(&mut node.child);
+}
+
+fn terminate_process_tree(child: &mut Child) {
+    if child.try_wait().ok().flatten().is_some() {
+        return;
     }
+
+    #[cfg(windows)]
+    {
+        let _ = Command::new("taskkill")
+            .args(["/PID", &child.id().to_string(), "/T", "/F"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+
+    #[cfg(not(windows))]
+    {
+        let _ = child.kill();
+    }
+
+    let _ = child.wait();
 }
 
 impl SpawnedNode {

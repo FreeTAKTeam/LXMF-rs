@@ -5583,7 +5583,9 @@ fn run_publish_dry_run_with_fallback(krate: PublishedCrate, allow_dirty: bool) -
     }
 
     let stderr = String::from_utf8_lossy(&output.stderr);
-    if stderr.contains("failed to select a version for the requirement") {
+    if stderr.contains("failed to select a version for the requirement")
+        || stderr.contains("no matching package named")
+    {
         log::warn!(
             "dry-run fallback: {} depends on unpublished local versions; validating package contents instead",
             krate.package

@@ -232,11 +232,20 @@ impl AnnounceLimits {
         packet: &Packet,
         destination_known: bool,
     ) -> AnnounceLimitAction {
+        self.check_at(iface, packet, destination_known, Instant::now())
+    }
+
+    fn check_at(
+        &mut self,
+        iface: AddressHash,
+        packet: &Packet,
+        destination_known: bool,
+        now: Instant,
+    ) -> AnnounceLimitAction {
         if packet.context == PacketContext::PathResponse {
             return AnnounceLimitAction::Allow;
         }
 
-        let now = Instant::now();
         let entry = self.limits.entry(iface).or_insert_with(|| AnnounceLimitEntry::new(now));
         entry.record_announce(now, &self.rate_limit);
 
@@ -254,7 +263,10 @@ impl AnnounceLimits {
     }
 
     pub fn release_ready(&mut self) -> Vec<ReleasedAnnounce> {
-        let now = Instant::now();
+        self.release_ready_at(Instant::now())
+    }
+
+    fn release_ready_at(&mut self, now: Instant) -> Vec<ReleasedAnnounce> {
         let mut released = Vec::new();
 
         for (iface, entry) in self.limits.iter_mut() {
@@ -273,8 +285,6 @@ impl AnnounceLimits {
 mod tests {
     use super::*;
     use crate::packet::{Header, PacketType};
-    use std::thread::sleep;
-    use std::time::Duration as StdDuration;
 
     fn test_rate_limit() -> AnnounceRateLimit {
         AnnounceRateLimit {
@@ -302,18 +312,28 @@ mod tests {
         let mut limits = AnnounceLimits::with_rate_limit(test_rate_limit());
         let iface_a = AddressHash::new([0xAA; crate::hash::ADDRESS_HASH_SIZE]);
         let iface_b = AddressHash::new([0xBB; crate::hash::ADDRESS_HASH_SIZE]);
+        let now = Instant::now();
 
         assert_eq!(
-            limits.check(iface_a, &announce_packet(AddressHash::new([1; 16]), 1), false),
+            limits.check_at(iface_a, &announce_packet(AddressHash::new([1; 16]), 1), false, now),
             AnnounceLimitAction::Allow
         );
-        sleep(StdDuration::from_millis(5));
         assert!(matches!(
-            limits.check(iface_a, &announce_packet(AddressHash::new([2; 16]), 1), false),
+            limits.check_at(
+                iface_a,
+                &announce_packet(AddressHash::new([2; 16]), 1),
+                false,
+                now + Duration::from_millis(5)
+            ),
             AnnounceLimitAction::Hold(_)
         ));
         assert_eq!(
-            limits.check(iface_b, &announce_packet(AddressHash::new([3; 16]), 1), false),
+            limits.check_at(
+                iface_b,
+                &announce_packet(AddressHash::new([3; 16]), 1),
+                false,
+                now + Duration::from_millis(5)
+            ),
             AnnounceLimitAction::Allow
         );
     }
@@ -322,34 +342,39 @@ mod tests {
     fn held_announces_release_lowest_hops_first() {
         let mut limits = AnnounceLimits::with_rate_limit(test_rate_limit());
         let iface = AddressHash::new([0xCC; crate::hash::ADDRESS_HASH_SIZE]);
+        let now = Instant::now();
 
         assert_eq!(
-            limits.check(iface, &announce_packet(AddressHash::new([1; 16]), 4), false),
+            limits.check_at(iface, &announce_packet(AddressHash::new([1; 16]), 4), false, now),
             AnnounceLimitAction::Allow
         );
-        sleep(StdDuration::from_millis(5));
         assert!(matches!(
-            limits.check(iface, &announce_packet(AddressHash::new([2; 16]), 3), false),
+            limits.check_at(
+                iface,
+                &announce_packet(AddressHash::new([2; 16]), 3),
+                false,
+                now + Duration::from_millis(5)
+            ),
             AnnounceLimitAction::Hold(_)
         ));
-        sleep(StdDuration::from_millis(5));
         assert!(matches!(
-            limits.check(iface, &announce_packet(AddressHash::new([3; 16]), 1), false),
+            limits.check_at(
+                iface,
+                &announce_packet(AddressHash::new([3; 16]), 1),
+                false,
+                now + Duration::from_millis(10)
+            ),
             AnnounceLimitAction::Hold(_)
         ));
 
-        sleep(StdDuration::from_millis(55));
-        assert!(limits.release_ready().is_empty());
+        assert!(limits.release_ready_at(now + Duration::from_millis(65)).is_empty());
 
-        sleep(StdDuration::from_millis(25));
-        let released = limits.release_ready();
+        let released = limits.release_ready_at(now + Duration::from_millis(90));
         assert_eq!(released.len(), 1);
         assert_eq!(released[0].iface, iface);
         assert_eq!(released[0].packet.destination, AddressHash::new([3; 16]));
 
-        sleep(StdDuration::from_millis(15));
-
-        let released = limits.release_ready();
+        let released = limits.release_ready_at(now + Duration::from_millis(105));
         assert_eq!(released.len(), 1);
         assert_eq!(released[0].packet.destination, AddressHash::new([2; 16]));
     }
@@ -360,27 +385,34 @@ mod tests {
         rate_limit.max_held_announces = 1;
         let mut limits = AnnounceLimits::with_rate_limit(rate_limit);
         let iface = AddressHash::new([0xDD; crate::hash::ADDRESS_HASH_SIZE]);
+        let now = Instant::now();
 
         assert_eq!(
-            limits.check(iface, &announce_packet(AddressHash::new([1; 16]), 4), false),
+            limits.check_at(iface, &announce_packet(AddressHash::new([1; 16]), 4), false, now),
             AnnounceLimitAction::Allow
         );
-        sleep(StdDuration::from_millis(5));
         assert!(matches!(
-            limits.check(iface, &announce_packet(AddressHash::new([2; 16]), 5), false),
+            limits.check_at(
+                iface,
+                &announce_packet(AddressHash::new([2; 16]), 5),
+                false,
+                now + Duration::from_millis(5)
+            ),
             AnnounceLimitAction::Hold(_)
         ));
-        sleep(StdDuration::from_millis(5));
         assert!(matches!(
-            limits.check(iface, &announce_packet(AddressHash::new([3; 16]), 1), false),
+            limits.check_at(
+                iface,
+                &announce_packet(AddressHash::new([3; 16]), 1),
+                false,
+                now + Duration::from_millis(10)
+            ),
             AnnounceLimitAction::Hold(_)
         ));
 
-        sleep(StdDuration::from_millis(55));
-        assert!(limits.release_ready().is_empty());
+        assert!(limits.release_ready_at(now + Duration::from_millis(65)).is_empty());
 
-        sleep(StdDuration::from_millis(25));
-        let released = limits.release_ready();
+        let released = limits.release_ready_at(now + Duration::from_millis(90));
         assert_eq!(released.len(), 1);
         assert_eq!(released[0].packet.destination, AddressHash::new([3; 16]));
     }

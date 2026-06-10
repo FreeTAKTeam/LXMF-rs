@@ -694,10 +694,25 @@ fn decode_rpc_frame(bytes: &[u8]) -> Result<Value, String> {
 }
 
 pub fn terminate_child(child: &mut Child) {
-    if child.try_wait().ok().flatten().is_none() {
-        let _ = child.kill();
-        let _ = child.wait();
+    if child.try_wait().ok().flatten().is_some() {
+        return;
     }
+
+    #[cfg(windows)]
+    {
+        let _ = Command::new("taskkill")
+            .args(["/PID", &child.id().to_string(), "/T", "/F"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+
+    #[cfg(not(windows))]
+    {
+        let _ = child.kill();
+    }
+
+    let _ = child.wait();
 }
 
 fn live_child_logs_enabled() -> bool {
