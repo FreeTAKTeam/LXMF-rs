@@ -157,6 +157,13 @@ impl RpcDaemon {
         let Some(peer_key) = peer_key else {
             return Ok(());
         };
+        let record = {
+            let guard = self.peers.lock().expect("peers mutex poisoned");
+            guard.get(&peer_key).cloned()
+        };
+        if let Some(record) = record {
+            self.restore_peer_record_queue_marks(&record)?;
+        }
 
         let mut unhandled_ids = Vec::new();
         let mut handled_ids = Vec::new();

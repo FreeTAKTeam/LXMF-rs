@@ -166,12 +166,12 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Remote peer-sync uses the stored peer ID case for the bridge call, import
   source accounting, state updates, and response envelope when callers supply a
   case-variant peer request.
-- Failed remote unpeer attempts mirror existing payload-backed queue marks into
-  active peer record snapshots before returning bridge-unavailable or
-  bridge-execution errors, including case-insensitive peer requests, so failed
-  peering teardown preserves queued retry work across restart/export and marks
-  the propagation lifecycle failed instead of leaving stale idle/completed
-  state.
+- Failed remote unpeer attempts mirror existing payload-backed queue marks and
+  restored peer-record queue IDs into active peer record snapshots before
+  returning bridge-unavailable or bridge-execution errors, including
+  case-insensitive peer requests, so failed peering teardown preserves queued
+  retry work across restart/export and marks the propagation lifecycle failed
+  instead of leaving stale idle/completed state.
 - Successful remote unpeer uses the stored peer ID case for the bridge call and
   nested bridge result when callers supply a case-variant peer request, keeping
   remote teardown identity aligned with local queue cleanup.

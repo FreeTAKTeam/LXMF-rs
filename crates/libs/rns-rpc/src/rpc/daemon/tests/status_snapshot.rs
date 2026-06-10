@@ -17975,6 +17975,72 @@ fn failed_propagation_remote_unpeer_records_existing_queue_snapshot_like_python(
 }
 
 #[test]
+fn failed_propagation_remote_unpeer_replays_restored_queue_snapshot_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    daemon.set_remote_control_bridge(Arc::new(TestRemoteControlBridge {
+        result: Err(std::io::ErrorKind::TimedOut),
+    }));
+    let peer = "peer-remote-unpeer-fail-restored-snapshot";
+    daemon
+        .handle_rpc(rpc_request(79, "peer_sync", json!({ "peer": peer })))
+        .expect("peer sync");
+
+    let entry = PropagationEntryRecord {
+        transient_id: "e5".repeat(32),
+        destination: "1d".repeat(16),
+        payload_hex: "1d".repeat(20),
+        received_at: 1_700_000_805,
+        size_bytes: 20,
+        stamp_value: None,
+    };
+    let handled_entry = PropagationEntryRecord {
+        transient_id: "e6".repeat(32),
+        destination: "1e".repeat(16),
+        payload_hex: "1e".repeat(20),
+        received_at: 1_700_000_806,
+        size_bytes: 20,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&entry).expect("store propagation entry");
+    daemon
+        .store
+        .upsert_propagation_entry(&handled_entry)
+        .expect("store handled propagation entry");
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let record = peers.get_mut(peer).expect("peer record");
+        record.restored_handled_ids.clear();
+        record.restored_unhandled_ids.clear();
+        record.restored_handled_ids.push(handled_entry.transient_id.clone());
+        record.restored_unhandled_ids.push(entry.transient_id.clone());
+    }
+
+    let err = daemon
+        .handle_rpc(rpc_request(
+            80,
+            "propagation_remote_unpeer",
+            json!({
+                "remote": "remote-node",
+                "peer": peer,
+            }),
+        ))
+        .expect_err("remote unpeer failure should be returned");
+    assert_eq!(err.kind(), std::io::ErrorKind::TimedOut);
+
+    let peers = daemon.peers.lock().expect("peers mutex poisoned");
+    let record = peers.get(peer).expect("stored peer");
+    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    assert_eq!(
+        serialized["handled_ids"].as_array().expect("serialized handled ids"),
+        &[json!(handled_entry.transient_id.as_str())]
+    );
+    assert_eq!(
+        serialized["unhandled_ids"].as_array().expect("serialized unhandled ids"),
+        &[json!(entry.transient_id.as_str())]
+    );
+}
+
+#[test]
 fn failed_propagation_remote_unpeer_records_case_insensitive_queue_snapshot_like_python() {
     let daemon = RpcDaemon::test_instance();
     daemon.set_remote_control_bridge(Arc::new(TestRemoteControlBridge {
