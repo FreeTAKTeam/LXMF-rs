@@ -3354,6 +3354,53 @@ fn autopeer_capacity_rejects_peer_but_preserves_announce() {
 }
 
 #[test]
+fn propagation_transient_exists_uses_local_propagation_store() {
+    let daemon = RpcDaemon::test_instance();
+    let transient_id = "ab".repeat(32);
+    daemon
+        .store
+        .upsert_propagation_entry(&PropagationEntryRecord {
+            transient_id: transient_id.clone(),
+            destination: "cd".repeat(16),
+            payload_hex: "ef".repeat(24),
+            received_at: 1_700_000_400,
+            size_bytes: 24,
+            stamp_value: None,
+        })
+        .expect("store propagation entry");
+
+    assert!(daemon.propagation_transient_exists(transient_id.as_str()).expect("known transient"));
+    assert!(
+        !daemon
+            .propagation_transient_exists("12".repeat(32).as_str())
+            .expect("unknown transient")
+    );
+}
+
+#[test]
+fn propagation_transient_exists_normalizes_case() {
+    let daemon = RpcDaemon::test_instance();
+    let transient_id = "ac".repeat(32);
+    daemon
+        .store
+        .upsert_propagation_entry(&PropagationEntryRecord {
+            transient_id: transient_id.clone(),
+            destination: "cd".repeat(16),
+            payload_hex: "ef".repeat(24),
+            received_at: 1_700_000_401,
+            size_bytes: 24,
+            stamp_value: None,
+        })
+        .expect("store propagation entry");
+
+    assert!(
+        daemon
+            .propagation_transient_exists(transient_id.to_ascii_uppercase().as_str())
+            .expect("uppercase transient")
+    );
+}
+
+#[test]
 fn propagation_peer_maintenance_culls_unreachable_non_static_peers_like_python() {
     let daemon = RpcDaemon::test_instance();
     daemon

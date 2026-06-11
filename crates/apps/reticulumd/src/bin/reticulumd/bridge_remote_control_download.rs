@@ -12,6 +12,8 @@ use rns_transport::identity::DecryptIdentity;
 use sha2::{Digest, Sha256};
 use x25519_dalek::PublicKey;
 
+type RemoteTransientPartition = (Vec<Vec<u8>>, Vec<Vec<u8>>);
+
 pub(super) async fn propagation_download_request(
     transport: &Transport,
     daemon: &RpcDaemon,
@@ -62,19 +64,33 @@ pub(super) async fn propagation_download_request(
     )
     .await
     .map_err(|err| std::io::Error::new(std::io::ErrorKind::TimedOut, err))?;
-    let wanted = binary_array_response(&list_response)?;
+    let available = binary_array_response(&list_response)?;
+    let (wanted, haves) = classify_remote_transient_ids(daemon, available)?;
+    let available_count = wanted.len().saturating_add(haves.len());
 
-    if wanted.is_empty() {
+    if wanted.is_empty() && haves.is_empty() {
         return Ok((propagation_download_summary_json(0, &[], 0, 0, 0), remote_identity));
     }
 
-    let get_payload = build_link_request_payload(
-        "/get",
-        rmpv::Value::Array(vec![
-            rmpv::Value::Array(wanted.iter().cloned().map(rmpv::Value::Binary).collect()),
-            rmpv::Value::Array(Vec::new()),
-            transfer_limit_kb.map(rmpv::Value::F64).unwrap_or_else(|| rmpv::Value::F64(1000.0)),
-        ]),
+    if wanted.is_empty() {
+        let ack_payload = propagation_download_get_payload(None, haves.as_slice(), None)?;
+        let _ = send_link_context_packet(
+            transport,
+            &link,
+            PacketContext::Request,
+            ack_payload.as_slice(),
+        )
+        .await?;
+        return Ok((
+            propagation_download_summary_json(available_count, &[], 0, 0, 0),
+            remote_identity,
+        ));
+    }
+
+    let get_payload = propagation_download_get_payload(
+        Some(wanted.as_slice()),
+        haves.as_slice(),
+        transfer_limit_kb,
     )?;
     let get_request_id =
         send_link_context_packet(transport, &link, PacketContext::Request, get_payload.as_slice())
@@ -92,7 +108,7 @@ pub(super) async fn propagation_download_request(
     .map_err(|err| std::io::Error::new(std::io::ErrorKind::TimedOut, err))?;
     let payloads = binary_array_response(&get_response)?;
 
-    let mut haves = Vec::new();
+    let mut accepted_haves = Vec::new();
     let mut downloaded = 0usize;
     let mut duplicates = 0usize;
     let mut rejected = 0usize;
@@ -101,24 +117,18 @@ pub(super) async fn propagation_download_request(
         match accept_downloaded_propagation_payload(daemon, delivery_destination, payload).await? {
             DownloadAcceptOutcome::Stored => {
                 downloaded += 1;
-                haves.push(transient_id.to_vec());
+                accepted_haves.push(transient_id.to_vec());
             }
             DownloadAcceptOutcome::Duplicate => {
                 duplicates += 1;
-                haves.push(transient_id.to_vec());
+                accepted_haves.push(transient_id.to_vec());
             }
             DownloadAcceptOutcome::Rejected => rejected += 1,
         }
     }
 
-    if !haves.is_empty() {
-        let ack_payload = build_link_request_payload(
-            "/get",
-            rmpv::Value::Array(vec![
-                rmpv::Value::Nil,
-                rmpv::Value::Array(haves.into_iter().map(rmpv::Value::Binary).collect()),
-            ]),
-        )?;
+    if !accepted_haves.is_empty() {
+        let ack_payload = propagation_download_get_payload(None, accepted_haves.as_slice(), None)?;
         let _ = send_link_context_packet(
             transport,
             &link,
@@ -130,7 +140,7 @@ pub(super) async fn propagation_download_request(
 
     Ok((
         propagation_download_summary_json(
-            wanted.len(),
+            available_count,
             &payloads,
             downloaded,
             duplicates,
@@ -138,6 +148,61 @@ pub(super) async fn propagation_download_request(
         ),
         remote_identity,
     ))
+}
+
+fn classify_remote_transient_ids(
+    daemon: &RpcDaemon,
+    remote_ids: Vec<Vec<u8>>,
+) -> Result<RemoteTransientPartition, std::io::Error> {
+    classify_remote_transient_ids_with(remote_ids, |transient_id| {
+        daemon.propagation_transient_exists(hex::encode(transient_id).as_str())
+    })
+}
+
+fn classify_remote_transient_ids_with<F>(
+    remote_ids: Vec<Vec<u8>>,
+    mut exists: F,
+) -> Result<RemoteTransientPartition, std::io::Error>
+where
+    F: FnMut(&[u8]) -> Result<bool, std::io::Error>,
+{
+    let mut wants = Vec::new();
+    let mut haves = Vec::new();
+    for transient_id in remote_ids {
+        if exists(transient_id.as_slice())? {
+            haves.push(transient_id);
+        } else {
+            wants.push(transient_id);
+        }
+    }
+    Ok((wants, haves))
+}
+
+fn propagation_download_get_payload(
+    wants: Option<&[Vec<u8>]>,
+    haves: &[Vec<u8>],
+    transfer_limit_kb: Option<f64>,
+) -> Result<Vec<u8>, std::io::Error> {
+    let wants = wants
+        .map(|ids| rmpv::Value::Array(ids.iter().cloned().map(rmpv::Value::Binary).collect()))
+        .unwrap_or(rmpv::Value::Nil);
+    let haves = rmpv::Value::Array(haves.iter().cloned().map(rmpv::Value::Binary).collect());
+    let mut entries = vec![wants, haves];
+    if let Some(limit) = transfer_limit_kb {
+        entries.push(rmpv::Value::F64(limit));
+    } else if entries.first().is_some_and(|value| !value.is_nil()) {
+        entries.push(rmpv::Value::F64(1000.0));
+    }
+    build_link_request_payload("/get", rmpv::Value::Array(entries))
+}
+
+#[cfg(test)]
+fn decode_link_request_payload(payload: &[u8]) -> rmpv::Value {
+    let decoded: rmpv::Value = rmp_serde::from_slice(payload).expect("decode link request");
+    let rmpv::Value::Array(entries) = decoded else {
+        panic!("request should be an array");
+    };
+    entries.get(2).cloned().expect("request data")
 }
 
 fn propagation_download_summary_json(
@@ -314,6 +379,67 @@ mod tests {
             summary["transferred_bytes"].as_u64(),
             Some(payloads.iter().map(Vec::len).sum::<usize>() as u64)
         );
+    }
+
+    #[test]
+    fn classify_remote_transient_ids_reports_known_entries_as_haves() {
+        let known = [0x11; 32];
+        let unknown = [0x22; 32];
+
+        let (wants, haves) = classify_remote_transient_ids_with(
+            vec![known.to_vec(), unknown.to_vec()],
+            |transient_id| Ok(transient_id == known.as_slice()),
+        )
+        .expect("classify remote ids");
+
+        assert_eq!(wants, vec![unknown.to_vec()]);
+        assert_eq!(haves, vec![known.to_vec()]);
+    }
+
+    #[test]
+    fn propagation_download_get_payload_sends_mixed_wants_and_haves() {
+        let wanted = vec![vec![0x11; 32]];
+        let haves = vec![vec![0x22; 32]];
+
+        let data = decode_link_request_payload(
+            propagation_download_get_payload(Some(wanted.as_slice()), haves.as_slice(), Some(42.0))
+                .expect("build get payload")
+                .as_slice(),
+        );
+
+        let rmpv::Value::Array(entries) = data else {
+            panic!("request data should be an array");
+        };
+        assert_eq!(
+            entries.first(),
+            Some(&rmpv::Value::Array(vec![rmpv::Value::Binary(wanted[0].clone())]))
+        );
+        assert_eq!(
+            entries.get(1),
+            Some(&rmpv::Value::Array(vec![rmpv::Value::Binary(haves[0].clone())]))
+        );
+        assert_eq!(entries.get(2).and_then(rmpv::Value::as_f64), Some(42.0));
+    }
+
+    #[test]
+    fn propagation_download_get_payload_sends_purge_only_when_no_wants() {
+        let haves = vec![vec![0x33; 32]];
+
+        let data = decode_link_request_payload(
+            propagation_download_get_payload(None, haves.as_slice(), None)
+                .expect("build purge payload")
+                .as_slice(),
+        );
+
+        let rmpv::Value::Array(entries) = data else {
+            panic!("request data should be an array");
+        };
+        assert!(entries.first().is_some_and(rmpv::Value::is_nil));
+        assert_eq!(
+            entries.get(1),
+            Some(&rmpv::Value::Array(vec![rmpv::Value::Binary(haves[0].clone())]))
+        );
+        assert_eq!(entries.len(), 2);
     }
 
     #[tokio::test]

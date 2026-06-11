@@ -312,6 +312,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   counts and receive bytes only for payload IDs not already marked received
   from that source, while still replaying known payloads into relay queues when
   their live marks were cleared.
+- Link-based remote propagation downloads classify listed transient IDs before
+  payload retrieval, report locally known IDs as `/get` haves, and use the
+  purge-only `[nil, haves]` request when every listed ID is already local, so
+  duplicate payloads are not downloaded just to acknowledge them.
 - Repeated peer-origin propagation ingests also avoid double-counting source
   peer incoming counts and receive bytes for already received payload IDs,
   while still refreshing relay queue marks for peers that need the payload.
