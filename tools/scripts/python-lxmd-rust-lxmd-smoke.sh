@@ -880,6 +880,80 @@ fi
 PY_DELIVERY_HASH="$(destination_hash_from_identity "${PY_DIR}/identity" "lxmf" "delivery")"
 PY_PROPAGATION_HASH="$(destination_hash_from_identity "${PY_DIR}/identity" "lxmf" "propagation")"
 
+write_report() {
+  "${PYTHON_BIN}" - <<'PY' \
+    "${REPORT_PATH}" \
+    "${TMP_ROOT}" \
+    "${RUST_LOG}" \
+    "${PY_LOG}" \
+    "${PY_REMOTE_STATUS_LOG}" \
+    "${RUST_REMOTE_STATUS_LOG}" \
+    "${RUST_HOOK_LOG}" \
+    "${PY_HOOK_LOG}" \
+    "${RUST_DELIVERY_HASH}" \
+    "${RUST_PROPAGATION_HASH}" \
+    "${PY_DELIVERY_HASH}" \
+    "${PY_PROPAGATION_HASH}" \
+    "${HOOK_MESSAGE_FILE}" \
+    "${SMOKE_MESSAGE_MARKER}" \
+    "${COMPAT_CASE}"
+import json
+import sys
+
+(
+    report_path,
+    tmp_root,
+    rust_log,
+    py_log,
+    py_remote_status_log,
+    rust_remote_status_log,
+    rust_hook_log,
+    py_hook_log,
+    rust_delivery_hash,
+    rust_propagation_hash,
+    py_delivery_hash,
+    py_propagation_hash,
+    hook_message_file,
+    smoke_message_content,
+    compat_case,
+) = sys.argv[1:16]
+
+report = {
+    "status": "pass",
+    "case": compat_case,
+    "proof": {
+        "python_remote_status_to_rust": rust_propagation_hash,
+        "rust_remote_status_to_python": py_propagation_hash,
+        "smoke_message_content": smoke_message_content,
+        "hook_message_file": hook_message_file,
+    },
+    "hashes": {
+        "rust_delivery": rust_delivery_hash,
+        "rust_propagation": rust_propagation_hash,
+        "python_delivery": py_delivery_hash,
+        "python_propagation": py_propagation_hash,
+    },
+    "logs": {
+        "tmp_root": tmp_root,
+        "rust_lxmd": rust_log,
+        "python_lxmd": py_log,
+        "python_remote_status": py_remote_status_log,
+        "rust_remote_status": rust_remote_status_log,
+        "rust_hook": rust_hook_log,
+        "python_hook": py_hook_log,
+    },
+}
+
+with open(report_path, "w", encoding="utf-8") as handle:
+    json.dump(report, handle, indent=2)
+    handle.write("\n")
+PY
+}
+
+if [[ "${COMPAT_CASE}" == "propagation_remote_status_bidir" ]]; then
+  REMOTE_STATUS_PREFLIGHT=1
+fi
+
 if [[ "${REMOTE_STATUS_PREFLIGHT}" == "1" && "${COMPAT_CASE}" != "propagated_python_to_rust" && "${COMPAT_CASE}" != "propagated_rust_to_python" ]]; then
   PY_REMOTE_STATUS_OK=0
   for _ in $(seq 1 "${TIMEOUT_SECS}"); do
@@ -922,6 +996,16 @@ if [[ "${REMOTE_STATUS_PREFLIGHT}" == "1" && "${COMPAT_CASE}" != "propagated_pyt
 else
   printf 'skipped remote-status preflight\n' >"${PY_REMOTE_STATUS_LOG}"
   printf 'skipped remote-status preflight\n' >"${RUST_REMOTE_STATUS_LOG}"
+fi
+
+if [[ "${COMPAT_CASE}" == "propagation_remote_status_bidir" ]]; then
+  SMOKE_MESSAGE_MARKER="remote-status-${COMPAT_CASE}-$(date +%s)"
+  HOOK_MESSAGE_FILE=""
+  write_report
+  echo "[python-lxmd-rust-lxmd-smoke] pass"
+  echo "[python-lxmd-rust-lxmd-smoke] report=${REPORT_PATH}"
+  echo "[python-lxmd-rust-lxmd-smoke] logs=${TMP_ROOT}"
+  exit 0
 fi
 
 SMOKE_MESSAGE_MARKER="smoke-message-${COMPAT_CASE}-$(date +%s)"
@@ -1160,73 +1244,7 @@ PY
 
 fi
 
-"${PYTHON_BIN}" - <<'PY' \
-  "${REPORT_PATH}" \
-  "${TMP_ROOT}" \
-  "${RUST_LOG}" \
-  "${PY_LOG}" \
-  "${PY_REMOTE_STATUS_LOG}" \
-  "${RUST_REMOTE_STATUS_LOG}" \
-  "${RUST_HOOK_LOG}" \
-  "${PY_HOOK_LOG}" \
-  "${RUST_DELIVERY_HASH}" \
-  "${RUST_PROPAGATION_HASH}" \
-  "${PY_DELIVERY_HASH}" \
-  "${PY_PROPAGATION_HASH}" \
-  "${HOOK_MESSAGE_FILE}" \
-  "${SMOKE_MESSAGE_MARKER}" \
-  "${COMPAT_CASE}"
-import json
-import sys
-
-(
-    report_path,
-    tmp_root,
-    rust_log,
-    py_log,
-    py_remote_status_log,
-    rust_remote_status_log,
-    rust_hook_log,
-    py_hook_log,
-    rust_delivery_hash,
-    rust_propagation_hash,
-    py_delivery_hash,
-    py_propagation_hash,
-    hook_message_file,
-    smoke_message_content,
-    compat_case,
-) = sys.argv[1:16]
-
-report = {
-    "status": "pass",
-    "case": compat_case,
-    "proof": {
-        "python_remote_status_to_rust": rust_propagation_hash,
-        "rust_remote_status_to_python": py_propagation_hash,
-        "smoke_message_content": smoke_message_content,
-        "hook_message_file": hook_message_file,
-    },
-    "hashes": {
-        "rust_delivery": rust_delivery_hash,
-        "rust_propagation": rust_propagation_hash,
-        "python_delivery": py_delivery_hash,
-        "python_propagation": py_propagation_hash,
-    },
-    "logs": {
-        "tmp_root": tmp_root,
-        "rust_lxmd": rust_log,
-        "python_lxmd": py_log,
-        "python_remote_status": py_remote_status_log,
-        "rust_remote_status": rust_remote_status_log,
-        "rust_hook": rust_hook_log,
-        "python_hook": py_hook_log,
-    },
-}
-
-with open(report_path, "w", encoding="utf-8") as handle:
-    json.dump(report, handle, indent=2)
-    handle.write("\n")
-PY
+write_report
 
 echo "[python-lxmd-rust-lxmd-smoke] pass"
 echo "[python-lxmd-rust-lxmd-smoke] report=${REPORT_PATH}"
