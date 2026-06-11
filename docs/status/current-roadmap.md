@@ -424,6 +424,9 @@ the implemented subset.
 4. **Reticulum behavioral breadth**
    - Finish channel ordering, resolver/bootstrap, announce/path edge behavior,
      and runtime mutation parity.
+   - Held UDP announces now retain their peer source through delayed release,
+     so multicast discovery still installs the per-peer virtual unicast route
+     after announce limiting.
 5. **Operational breadth**
    - Add prepared-host hardware evidence for BLE/RNode paths.
    - Implement or explicitly defer missing Python interface families and

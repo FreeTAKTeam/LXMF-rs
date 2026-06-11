@@ -43,6 +43,8 @@ placeholders:
 
 - TCP client and server, including fixed-MTU and KISS-framed client modes.
 - UDP unicast and multicast with peer routing and multicast proof fallback.
+- Held UDP multicast announces retain peer source metadata through delayed
+  release, preserving virtual unicast route installation after announce limiting.
 - Serial and serial KISS.
 - AutoInterface discovery, authenticated peering, peer lifecycle, duplicate
   suppression, multicast announcements, data sockets, and transport bridging.
