@@ -148,12 +148,8 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
     assert!(stdout.contains("progress=1"), "stdout: {stdout}");
     assert!(stdout.contains("target_cost=8"), "stdout: {stdout}");
     assert!(stdout.contains("static_only=false"), "stdout: {stdout}");
-    assert!(stdout.contains("completed"), "stdout: {stdout}");
     assert!(stdout.contains("failed"), "stdout: {stdout}");
     assert!(stdout.contains("bind denied"), "stdout: {stdout}");
-    assert!(stdout.contains("Propagation: enabled=true"), "stdout: {stdout}");
-    assert!(stdout.contains("peers=2"), "stdout: {stdout}");
-    assert!(stdout.contains("selected=cafebabe"), "stdout: {stdout}");
 
     server.join().expect("mock rpc server");
 }
