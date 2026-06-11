@@ -249,9 +249,13 @@ The project is best described by capability level:
   haves as received/completed work for the requesting propagation peer after
   purge, so reintroduced payloads are not queued back to peers that already
   declared them.
-- Propagation nodes can now retain synced payloads after message-get `haves`
-  while still marking the declaring peer completed, matching the router setting
-  used by operators that keep node-side LXMs available for other peers.
+- Inbound propagation message-get `haves` handling now records declared haves for
+  already-known requesting peers even when the local payload row is already
+  gone, clearing stale retry marks and preventing reintroduced payloads from
+  being offered back to the declaring peer.
+- `retain_synced_on_node` policy is still honored, so payloads can remain local
+  for reuse after peer `haves` acknowledgement while accounting is still
+  completed for the declaring peer.
 - Link-based remote propagation downloads now wait for the final haves
   acknowledgement response after imported or duplicate payloads are reported,
   so node-side rejection or timeout is surfaced instead of reporting a

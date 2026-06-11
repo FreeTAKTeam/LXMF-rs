@@ -903,6 +903,40 @@ impl RpcDaemon {
         Ok(())
     }
 
+    pub fn record_existing_peer_received_propagation(
+        &self,
+        peer: &str,
+        transient_id: &str,
+    ) -> Result<bool, std::io::Error> {
+        let transient_id = normalize_propagation_transient_key(transient_id);
+        let peer_key = {
+            let guard = self.peers.lock().expect("peers mutex poisoned");
+            guard.keys().find(|existing| existing.eq_ignore_ascii_case(peer)).cloned()
+        };
+        let Some(peer_key) = peer_key else {
+            return Ok(false);
+        };
+        self.store
+            .mark_peer_received_propagation(peer_key.as_str(), transient_id.as_str())
+            .map_err(std::io::Error::other)?;
+        self.record_peer_queue_handled_id(peer_key.as_str(), transient_id.as_str());
+        Ok(true)
+    }
+
+    pub fn record_peer_unhandled_propagation(
+        &self,
+        peer: &str,
+        transient_id: &str,
+    ) -> Result<(), std::io::Error> {
+        let transient_id = normalize_propagation_transient_key(transient_id);
+        let peer_key = self.peer_store_key_or_input(peer);
+        self.store
+            .mark_peer_unhandled_propagation(peer_key.as_str(), transient_id.as_str())
+            .map_err(std::io::Error::other)?;
+        self.record_peer_queue_unhandled_id(peer_key.as_str(), transient_id.as_str());
+        Ok(())
+    }
+
     pub fn has_peer_completed_propagation_mark(
         &self,
         peer: &str,
