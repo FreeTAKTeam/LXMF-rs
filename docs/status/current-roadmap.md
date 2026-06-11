@@ -45,8 +45,8 @@ The project is best described by capability level:
   deterministic unsupported-family diagnostics instead of silently becoming
   inert unknown interface entries.
 - `rnstatus-rs` now provides a local daemon status utility over the existing
-  RPC status surface, including JSON output and human interface runtime
-  startup state.
+  RPC status surface, including JSON output plus human interface runtime,
+  peer-count, and selected propagation-node state.
 
 ### LXMF
 

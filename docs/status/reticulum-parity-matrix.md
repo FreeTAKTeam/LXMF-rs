@@ -33,7 +33,7 @@ Workspace paths are used for navigation. Published package names are
 | `RNS/Discovery.py` | `crates/libs/rns-transport`, `crates/apps/reticulumd` | partial | Announce/path discovery plus live AutoInterface discovery and peer runtime. | Public bootstrap/discovery breadth remains narrower than Python. |
 | `RNS/Resolver.py` | `crates/libs/rns-transport` | partial | Resolver helpers and cached lookup behavior exist. | Full resolver/discovery surface parity is not established. |
 | `RNS/Cryptography/*` | `crates/libs/rns-core` | done | Required Reticulum primitives used by identities, packets, links, and receipts. | No confirmed parity blocker. |
-| `RNS/Utilities/*` | `crates/apps/rns-tools` | partial | `rnx` is substantial; `rnsd` delegates to `reticulumd`; `rnstatus-rs` reports local daemon/interface status from RPC with JSON and human output. | Full equivalents for retired `rncp`, `rnid`, `rnir`, `rnodeconf`, `rnpath`, `rnpkg`, and `rnprobe` remain absent; `rnstatus-rs` is local status only. |
+| `RNS/Utilities/*` | `crates/apps/rns-tools` | partial | `rnx` is substantial; `rnsd` delegates to `reticulumd`; `rnstatus-rs` reports local daemon, interface, peer count, and selected propagation-node status from RPC with JSON and human output. | Full equivalents for retired `rncp`, `rnid`, `rnir`, `rnodeconf`, `rnpath`, `rnpkg`, and `rnprobe` remain absent; `rnstatus-rs` is local status only. |
 | `CRNS/*` | `crates/apps/rns-tools` | partial | Selected command workflows exist. | The Python command ecosystem is not reproduced. |
 
 ## Interface Detail
