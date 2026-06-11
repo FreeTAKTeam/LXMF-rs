@@ -11,6 +11,7 @@ enum CompatibilityMode {
     Direct,
     Opportunistic,
     Propagated,
+    PropagationControl,
     LinkLifecycle,
     Resource,
     LxmInterchange,
@@ -23,7 +24,7 @@ struct CompatibilityCase {
     description: &'static str,
 }
 
-const COMPATIBILITY_CASES: [CompatibilityCase; 12] = [
+const COMPATIBILITY_CASES: [CompatibilityCase; 13] = [
     CompatibilityCase {
         id: "direct_rust_to_python",
         mode: CompatibilityMode::Direct,
@@ -53,6 +54,11 @@ const COMPATIBILITY_CASES: [CompatibilityCase; 12] = [
         id: "propagated_python_to_rust",
         mode: CompatibilityMode::Propagated,
         description: "Python node can deliver to Rust node through a Rust propagation node",
+    },
+    CompatibilityCase {
+        id: "propagation_remote_status_bidir",
+        mode: CompatibilityMode::PropagationControl,
+        description: "Python can resolve Rust propagation control and Rust can query Python propagation status",
     },
     CompatibilityCase {
         id: "link_liveness_rust_to_python",
@@ -88,7 +94,7 @@ const COMPATIBILITY_CASES: [CompatibilityCase; 12] = [
 
 pub(crate) fn assert_required_modes_covered() {
     assert!(
-        COMPATIBILITY_CASES.len() >= 12,
+        COMPATIBILITY_CASES.len() >= 13,
         "matrix should cover the documented required scenarios"
     );
     assert_case_present("direct_rust_to_python");
@@ -97,6 +103,7 @@ pub(crate) fn assert_required_modes_covered() {
     assert_case_present("opportunistic_rust_to_python");
     assert_case_present("propagated_rust_to_python");
     assert_case_present("propagated_python_to_rust");
+    assert_case_present("propagation_remote_status_bidir");
     assert_case_present("link_liveness_rust_to_python");
     assert_case_present("link_liveness_python_to_rust");
     assert_case_present("link_teardown_rust_to_python");
@@ -106,6 +113,9 @@ pub(crate) fn assert_required_modes_covered() {
     assert!(COMPATIBILITY_CASES.iter().any(|case| case.mode == CompatibilityMode::Direct));
     assert!(COMPATIBILITY_CASES.iter().any(|case| case.mode == CompatibilityMode::Opportunistic));
     assert!(COMPATIBILITY_CASES.iter().any(|case| case.mode == CompatibilityMode::Propagated));
+    assert!(COMPATIBILITY_CASES
+        .iter()
+        .any(|case| case.mode == CompatibilityMode::PropagationControl));
     assert!(COMPATIBILITY_CASES.iter().any(|case| case.mode == CompatibilityMode::LinkLifecycle));
     assert!(COMPATIBILITY_CASES.iter().any(|case| case.mode == CompatibilityMode::Resource));
     assert!(COMPATIBILITY_CASES.iter().any(|case| case.mode == CompatibilityMode::LxmInterchange));

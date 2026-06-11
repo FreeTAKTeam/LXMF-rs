@@ -81,8 +81,7 @@ fn write_human_status(output: &mut dyn Write, status: &Value) -> io::Result<()> 
             status.get("interfaces").and_then(Value::as_array).map_or(0, |rows| rows.len() as u64)
         })
     )?;
-    writeln!(output, "Peers: {}", status.get("peer_count").and_then(Value::as_u64).unwrap_or(0))?;
-    writeln!(output, "Propagation: {}", propagation_summary(status))?;
+    write_propagation_status(output, status)?;
 
     let Some(interfaces) = status.get("interfaces").and_then(Value::as_array) else {
         return Ok(());
@@ -108,26 +107,54 @@ fn write_human_status(output: &mut dyn Write, status: &Value) -> io::Result<()> 
     Ok(())
 }
 
-fn propagation_summary(status: &Value) -> String {
-    let Some(propagation) = status.get("propagation").and_then(Value::as_object) else {
-        return "unknown".to_string();
+fn write_propagation_status(output: &mut dyn Write, status: &Value) -> io::Result<()> {
+    let Some(propagation) = status.get("propagation") else {
+        return Ok(());
     };
-    let enabled = propagation
-        .get("enabled")
+    let enabled = value_bool(propagation, "enabled");
+    let peers = status
+        .get("peer_count")
+        .and_then(Value::as_u64)
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "-".to_string());
+    let selected = value_str(propagation, "selected_node");
+    let sync = value_u64(propagation, "sync_state");
+    let progress = propagation
+        .get("sync_progress")
+        .and_then(Value::as_f64)
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "-".to_string());
+    let target_cost = value_u64(propagation, "target_cost");
+    let static_only = value_bool(propagation, "from_static_only");
+    writeln!(
+        output,
+        "Propagation: enabled={enabled} peers={peers} selected={selected} sync={sync} progress={progress} target_cost={target_cost} static_only={static_only}"
+    )
+}
+
+fn value_bool(value: &Value, key: &str) -> String {
+    value
+        .get(key)
         .and_then(Value::as_bool)
-        .map(|value| if value { "enabled" } else { "disabled" })
-        .unwrap_or("unknown");
-    let selected_node = propagation
-        .get("selected_node")
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "-".to_string())
+}
+
+fn value_u64(value: &Value, key: &str) -> String {
+    value
+        .get(key)
+        .and_then(Value::as_u64)
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "-".to_string())
+}
+
+fn value_str(value: &Value, key: &str) -> String {
+    value
+        .get(key)
         .and_then(Value::as_str)
         .filter(|value| !value.is_empty())
-        .unwrap_or("-");
-    let state = propagation
-        .get("state_name")
-        .and_then(Value::as_str)
-        .filter(|value| !value.is_empty())
-        .unwrap_or("-");
-    format!("{enabled}, selected_node={selected_node}, state={state}")
+        .unwrap_or("-")
+        .to_string()
 }
 
 fn interface_endpoint(interface: &Value) -> String {
@@ -165,12 +192,6 @@ mod tests {
         let status = json!({
             "identity_hash": "abc",
             "running": true,
-            "peer_count": 2,
-            "propagation": {
-                "enabled": true,
-                "selected_node": "aabb",
-                "state_name": "completed"
-            },
             "interface_count": 1,
             "interfaces": [{
                 "name": "uplink",
@@ -193,8 +214,37 @@ mod tests {
         let output = String::from_utf8(output).expect("utf8");
         assert!(output.contains("uplink"));
         assert!(output.contains("tcp_server"));
-        assert!(output.contains("Peers: 2"));
-        assert!(output.contains("Propagation: enabled, selected_node=aabb, state=completed"));
         assert!(output.contains("failed (bind denied)"));
+    }
+
+    #[test]
+    fn human_status_includes_propagation_peer_summary() {
+        let status = json!({
+            "identity_hash": "abc",
+            "running": true,
+            "interface_count": 0,
+            "peer_count": 3,
+            "propagation": {
+                "enabled": true,
+                "selected_node": "feedface",
+                "sync_state": 255,
+                "sync_progress": 0.5,
+                "target_cost": 12,
+                "from_static_only": true
+            },
+            "interfaces": []
+        });
+        let mut output = Vec::new();
+
+        write_human_status(&mut output, &status).expect("write status");
+
+        let output = String::from_utf8(output).expect("utf8");
+        assert!(output.contains("Propagation: enabled=true"));
+        assert!(output.contains("peers=3"));
+        assert!(output.contains("selected=feedface"));
+        assert!(output.contains("sync=255"));
+        assert!(output.contains("progress=0.5"));
+        assert!(output.contains("target_cost=12"));
+        assert!(output.contains("static_only=true"));
     }
 }

@@ -31,6 +31,15 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
                     "state_name": "completed"
                 },
                 "interface_count": 1,
+                "peer_count": 2,
+                "propagation": {
+                    "enabled": true,
+                    "selected_node": "cafebabe",
+                    "sync_state": 0,
+                    "sync_progress": 1.0,
+                    "target_cost": 8,
+                    "from_static_only": false
+                },
                 "interfaces": [{
                     "name": "field-uplink",
                     "type": "tcp_server",
@@ -91,6 +100,15 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
                     "state_name": "completed"
                 },
                 "interface_count": 1,
+                "peer_count": 2,
+                "propagation": {
+                    "enabled": true,
+                    "selected_node": "cafebabe",
+                    "sync_state": 0,
+                    "sync_progress": 1.0,
+                    "target_cost": 8,
+                    "from_static_only": false
+                },
                 "interfaces": [{
                     "name": "field-uplink",
                     "type": "tcp_server",

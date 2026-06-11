@@ -348,6 +348,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   retained payload entries, so payloads reintroduced after purge or peer
   acknowledgement can refresh relay state without inflating local received or
   ingested counters.
+- Propagation-node ingest enforces the configured message-storage byte limit
+  against retained propagation entries, pruning oldest payloads and stale
+  retryable peer marks.
 - Link-based remote downloads wait for the propagation node's `/get` haves
   acknowledgement and propagate peer/control errors, so failed remote cleanup is
   not reported as a completed replication drain.
@@ -473,6 +476,11 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - `.github/workflows/python-interop.yml` runs pinned Python reference
   conformance plus live channel, paper, compatibility-matrix, and LXMD
   remote-relay tests.
+- The compatibility matrix includes an ignored live
+  `propagation_remote_status_bidir` case that validates Python discovery of
+  the Rust propagation-control path and dispatches a Rust-to-Python
+  propagation-node status query when the Python harness environment is
+  available.
 - Focused daemon/RPC tests cover delivery modes, propagation offers, peer
   maintenance, queue policy, source accounting, stamps, tickets, receipts, and
   cancellation.

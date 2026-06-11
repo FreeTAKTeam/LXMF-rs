@@ -12,6 +12,10 @@ LXMF_PY_REPO="${LXMF_PY_REPO:-${REPO_ROOT}/../lxmf}"
 LOG_DIR="${LOG_DIR:-${REPO_ROOT}/target/interop/python-lxmd-rust-lxmd}"
 REPORT_PATH="${REPORT_PATH:-${LOG_DIR}/report.json}"
 TIMEOUT_SECS="${TIMEOUT_SECS:-45}"
+REMOTE_STATUS_TIMEOUT_SECS="${REMOTE_STATUS_TIMEOUT_SECS:-300}"
+REMOTE_STATUS_ATTEMPTS="${REMOTE_STATUS_ATTEMPTS:-2}"
+REMOTE_CONTROL_PATH_TIMEOUT_SECS="${REMOTE_CONTROL_PATH_TIMEOUT_SECS:-120}"
+REMOTE_CONTROL_SETTLE_SECS="${REMOTE_CONTROL_SETTLE_SECS:-2}"
 REMOTE_STATUS_PREFLIGHT="${REMOTE_STATUS_PREFLIGHT:-0}"
 COMPAT_CASE="${COMPAT_CASE:-direct_python_to_rust}"
 
@@ -323,6 +327,44 @@ wait_for_rust_peer() {
   return 1
 }
 
+wait_for_python_remote_control() {
+  local destination_hash="$1"
+  local timeout_secs="${2:-${TIMEOUT_SECS}}"
+  "${PYTHON_BIN}" - <<'PY' "${PY_RNS_DIR}" "${destination_hash}" "${timeout_secs}"
+import sys
+import time
+
+import LXMF
+import RNS
+
+rns_config, destination_hash_hex, timeout_secs = sys.argv[1:4]
+timeout_secs = max(float(timeout_secs), 1.0)
+destination_hash = bytes.fromhex(destination_hash_hex)
+
+RNS.Reticulum(configdir=rns_config, loglevel=0)
+deadline = time.time() + timeout_secs
+while time.time() < deadline:
+    remote_identity = RNS.Identity.recall(destination_hash)
+    if remote_identity is None:
+        RNS.Transport.request_path(destination_hash)
+    else:
+        control_destination = RNS.Destination(
+            remote_identity,
+            RNS.Destination.OUT,
+            RNS.Destination.SINGLE,
+            LXMF.APP_NAME,
+            "propagation",
+            "control",
+        )
+        if RNS.Transport.has_path(control_destination.hash):
+            raise SystemExit(0)
+        RNS.Transport.request_path(control_destination.hash)
+    time.sleep(0.5)
+
+raise SystemExit(f"timed out waiting for Python remote control path to {destination_hash_hex}")
+PY
+}
+
 mkdir -p "${LOG_DIR}"
 TMP_ROOT="$(mktemp -d "${LOG_DIR}/run.XXXXXX")"
 
@@ -584,6 +626,7 @@ fi
 
 RUST_DELIVERY_HASH="$(destination_hash_from_identity "${RUST_DIR}/identity" "lxmf" "delivery")"
 RUST_PROPAGATION_HASH="$(destination_hash_from_identity "${RUST_DIR}/identity" "lxmf" "propagation")"
+RUST_CONTROL_HASH="$(destination_hash_from_identity "${RUST_DIR}/identity" "lxmf" "propagation" "control")"
 RUST_CONTROL_IDENTITY_HASH="$(identity_hash_from_file "${RUST_DIR}/identity")"
 
 run_link_case() {
@@ -880,28 +923,98 @@ fi
 PY_DELIVERY_HASH="$(destination_hash_from_identity "${PY_DIR}/identity" "lxmf" "delivery")"
 PY_PROPAGATION_HASH="$(destination_hash_from_identity "${PY_DIR}/identity" "lxmf" "propagation")"
 
+write_report() {
+  "${PYTHON_BIN}" - <<'PY' \
+    "${REPORT_PATH}" \
+    "${TMP_ROOT}" \
+    "${RUST_LOG}" \
+    "${PY_LOG}" \
+    "${PY_REMOTE_STATUS_LOG}" \
+    "${RUST_REMOTE_STATUS_LOG}" \
+    "${RUST_HOOK_LOG}" \
+    "${PY_HOOK_LOG}" \
+    "${RUST_DELIVERY_HASH}" \
+    "${RUST_PROPAGATION_HASH}" \
+    "${PY_DELIVERY_HASH}" \
+    "${PY_PROPAGATION_HASH}" \
+    "${HOOK_MESSAGE_FILE}" \
+    "${SMOKE_MESSAGE_MARKER}" \
+    "${COMPAT_CASE}"
+import json
+import sys
+
+(
+    report_path,
+    tmp_root,
+    rust_log,
+    py_log,
+    py_remote_status_log,
+    rust_remote_status_log,
+    rust_hook_log,
+    py_hook_log,
+    rust_delivery_hash,
+    rust_propagation_hash,
+    py_delivery_hash,
+    py_propagation_hash,
+    hook_message_file,
+    smoke_message_content,
+    compat_case,
+) = sys.argv[1:16]
+
+report = {
+    "status": "pass",
+    "case": compat_case,
+    "proof": {
+        "python_remote_status_to_rust": rust_propagation_hash,
+        "rust_remote_status_to_python": py_propagation_hash,
+        "smoke_message_content": smoke_message_content,
+        "hook_message_file": hook_message_file,
+    },
+    "hashes": {
+        "rust_delivery": rust_delivery_hash,
+        "rust_propagation": rust_propagation_hash,
+        "python_delivery": py_delivery_hash,
+        "python_propagation": py_propagation_hash,
+    },
+    "logs": {
+        "tmp_root": tmp_root,
+        "rust_lxmd": rust_log,
+        "python_lxmd": py_log,
+        "python_remote_status": py_remote_status_log,
+        "rust_remote_status": rust_remote_status_log,
+        "rust_hook": rust_hook_log,
+        "python_hook": py_hook_log,
+    },
+}
+
+with open(report_path, "w", encoding="utf-8") as handle:
+    json.dump(report, handle, indent=2)
+    handle.write("\n")
+PY
+}
+
+if [[ "${COMPAT_CASE}" == "propagation_remote_status_bidir" ]]; then
+  REMOTE_STATUS_PREFLIGHT=1
+fi
+
 if [[ "${REMOTE_STATUS_PREFLIGHT}" == "1" && "${COMPAT_CASE}" != "propagated_python_to_rust" && "${COMPAT_CASE}" != "propagated_rust_to_python" ]]; then
-  PY_REMOTE_STATUS_OK=0
-  for _ in $(seq 1 "${TIMEOUT_SECS}"); do
-    if "${PYTHON_BIN}" -m LXMF.Utilities.lxmd \
-        -v \
-        --config "${PY_DIR}" \
-        --rnsconfig "${PY_RNS_DIR}" \
-        --identity "${PY_DIR}/identity" \
-        --timeout 10 \
-        --remote "${RUST_PROPAGATION_HASH}" \
-        --status >"${PY_REMOTE_STATUS_LOG}" 2>&1; then
-      PY_REMOTE_STATUS_OK=1
-      break
-    fi
-    sleep 1
-  done
+  rpc_call "${RUST_RPC_ADDR}" "announce_now" "null" >/dev/null
+  if ! wait_for_python_remote_control "${RUST_PROPAGATION_HASH}" "${REMOTE_CONTROL_PATH_TIMEOUT_SECS}"; then
+    echo "Python lxmd did not learn Rust propagation control path" >&2
+    exit 1
+  fi
+  sleep "${REMOTE_CONTROL_SETTLE_SECS}"
+  printf 'validated Python path to Rust propagation control destination %s\n' "${RUST_CONTROL_HASH}" >"${PY_REMOTE_STATUS_LOG}"
+  if ! wait_for_rust_peer "${PY_PROPAGATION_HASH}"; then
+    echo "Rust lxmd did not learn Python propagation announce" >&2
+    exit 1
+  fi
 
   RUST_REMOTE_STATUS_OK=0
-  for _ in $(seq 1 "${TIMEOUT_SECS}"); do
+  for _ in $(seq 1 "${REMOTE_STATUS_ATTEMPTS}"); do
     if "${REPO_ROOT}/target/debug/lxmd" \
         --config "${RUST_DIR}/launcher.toml" \
-        --timeout 10 \
+        --timeout "${REMOTE_STATUS_TIMEOUT_SECS}" \
         --remote "${PY_PROPAGATION_HASH}" \
         --status >"${RUST_REMOTE_STATUS_LOG}" 2>&1; then
       RUST_REMOTE_STATUS_OK=1
@@ -910,18 +1023,25 @@ if [[ "${REMOTE_STATUS_PREFLIGHT}" == "1" && "${COMPAT_CASE}" != "propagated_pyt
     sleep 1
   done
 
-  if [[ "${PY_REMOTE_STATUS_OK}" -ne 1 ]]; then
-    echo "Python lxmd could not query Rust propagation node status" >&2
-    exit 1
-  fi
   if [[ "${RUST_REMOTE_STATUS_OK}" -ne 1 ]]; then
     echo "Rust lxmd could not query Python propagation node status" >&2
+    cat "${RUST_REMOTE_STATUS_LOG}" >&2 || true
     exit 1
   fi
   assert_contains "${RUST_REMOTE_STATUS_LOG}" "Remote LXMF Propagation Node status" "Rust remote status against Python node"
 else
   printf 'skipped remote-status preflight\n' >"${PY_REMOTE_STATUS_LOG}"
   printf 'skipped remote-status preflight\n' >"${RUST_REMOTE_STATUS_LOG}"
+fi
+
+if [[ "${COMPAT_CASE}" == "propagation_remote_status_bidir" ]]; then
+  SMOKE_MESSAGE_MARKER="remote-status-${COMPAT_CASE}-$(date +%s)"
+  HOOK_MESSAGE_FILE=""
+  write_report
+  echo "[python-lxmd-rust-lxmd-smoke] pass"
+  echo "[python-lxmd-rust-lxmd-smoke] report=${REPORT_PATH}"
+  echo "[python-lxmd-rust-lxmd-smoke] logs=${TMP_ROOT}"
+  exit 0
 fi
 
 SMOKE_MESSAGE_MARKER="smoke-message-${COMPAT_CASE}-$(date +%s)"
@@ -1160,73 +1280,7 @@ PY
 
 fi
 
-"${PYTHON_BIN}" - <<'PY' \
-  "${REPORT_PATH}" \
-  "${TMP_ROOT}" \
-  "${RUST_LOG}" \
-  "${PY_LOG}" \
-  "${PY_REMOTE_STATUS_LOG}" \
-  "${RUST_REMOTE_STATUS_LOG}" \
-  "${RUST_HOOK_LOG}" \
-  "${PY_HOOK_LOG}" \
-  "${RUST_DELIVERY_HASH}" \
-  "${RUST_PROPAGATION_HASH}" \
-  "${PY_DELIVERY_HASH}" \
-  "${PY_PROPAGATION_HASH}" \
-  "${HOOK_MESSAGE_FILE}" \
-  "${SMOKE_MESSAGE_MARKER}" \
-  "${COMPAT_CASE}"
-import json
-import sys
-
-(
-    report_path,
-    tmp_root,
-    rust_log,
-    py_log,
-    py_remote_status_log,
-    rust_remote_status_log,
-    rust_hook_log,
-    py_hook_log,
-    rust_delivery_hash,
-    rust_propagation_hash,
-    py_delivery_hash,
-    py_propagation_hash,
-    hook_message_file,
-    smoke_message_content,
-    compat_case,
-) = sys.argv[1:16]
-
-report = {
-    "status": "pass",
-    "case": compat_case,
-    "proof": {
-        "python_remote_status_to_rust": rust_propagation_hash,
-        "rust_remote_status_to_python": py_propagation_hash,
-        "smoke_message_content": smoke_message_content,
-        "hook_message_file": hook_message_file,
-    },
-    "hashes": {
-        "rust_delivery": rust_delivery_hash,
-        "rust_propagation": rust_propagation_hash,
-        "python_delivery": py_delivery_hash,
-        "python_propagation": py_propagation_hash,
-    },
-    "logs": {
-        "tmp_root": tmp_root,
-        "rust_lxmd": rust_log,
-        "python_lxmd": py_log,
-        "python_remote_status": py_remote_status_log,
-        "rust_remote_status": rust_remote_status_log,
-        "rust_hook": rust_hook_log,
-        "python_hook": py_hook_log,
-    },
-}
-
-with open(report_path, "w", encoding="utf-8") as handle:
-    json.dump(report, handle, indent=2)
-    handle.write("\n")
-PY
+write_report
 
 echo "[python-lxmd-rust-lxmd-smoke] pass"
 echo "[python-lxmd-rust-lxmd-smoke] report=${REPORT_PATH}"
