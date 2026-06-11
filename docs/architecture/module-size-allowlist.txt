@@ -57,6 +57,7 @@ crates/libs/test-support/src/sdk_schema/fixtures_contract_tests.rs
 xtask/src/client_codegen.rs
 crates/apps/reticulumd/src/bin/reticulumd/bootstrap.rs
 crates/apps/reticulumd/src/bin/reticulumd/bootstrap_interface_startup.rs
+crates/apps/reticulumd/src/bin/reticulumd/bridge_remote_control.rs
 crates/apps/reticulumd/src/bin/reticulumd/bridge_delivery_task_tests.rs
 crates/apps/reticulumd/src/bin/reticulumd/interfaces/auto.rs
 crates/apps/reticulumd/src/bin/reticulumd/interfaces/ble/mod.rs
