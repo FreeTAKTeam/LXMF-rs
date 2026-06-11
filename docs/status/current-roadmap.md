@@ -442,9 +442,9 @@ the implemented subset.
 3. **Interop breadth**
    - Add bidirectional live Python cases for every claimed delivery mode and
      newly completed peer/router row.
-   - Propagation remote-status/control now has a dispatchable bidirectional
-     Rust/Python compatibility case in the live harness; broader peer/router
-     row coverage still needs additional live scenarios.
+   - Propagation remote-status/control now has a dispatchable compatibility
+     case for Python control-path discovery and Rust-to-Python remote status;
+     broader peer/router row coverage still needs additional live scenarios.
    - Capture release evidence for Sideband, MeshChatX, and Columba before making
      client-specific compatibility claims.
 4. **Reticulum behavioral breadth**

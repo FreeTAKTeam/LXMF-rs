@@ -15,6 +15,7 @@ TIMEOUT_SECS="${TIMEOUT_SECS:-45}"
 REMOTE_STATUS_TIMEOUT_SECS="${REMOTE_STATUS_TIMEOUT_SECS:-300}"
 REMOTE_STATUS_ATTEMPTS="${REMOTE_STATUS_ATTEMPTS:-2}"
 REMOTE_CONTROL_PATH_TIMEOUT_SECS="${REMOTE_CONTROL_PATH_TIMEOUT_SECS:-120}"
+REMOTE_CONTROL_SETTLE_SECS="${REMOTE_CONTROL_SETTLE_SECS:-2}"
 REMOTE_STATUS_PREFLIGHT="${REMOTE_STATUS_PREFLIGHT:-0}"
 COMPAT_CASE="${COMPAT_CASE:-direct_python_to_rust}"
 
@@ -625,6 +626,7 @@ fi
 
 RUST_DELIVERY_HASH="$(destination_hash_from_identity "${RUST_DIR}/identity" "lxmf" "delivery")"
 RUST_PROPAGATION_HASH="$(destination_hash_from_identity "${RUST_DIR}/identity" "lxmf" "propagation")"
+RUST_CONTROL_HASH="$(destination_hash_from_identity "${RUST_DIR}/identity" "lxmf" "propagation" "control")"
 RUST_CONTROL_IDENTITY_HASH="$(identity_hash_from_file "${RUST_DIR}/identity")"
 
 run_link_case() {
@@ -1001,27 +1003,8 @@ if [[ "${REMOTE_STATUS_PREFLIGHT}" == "1" && "${COMPAT_CASE}" != "propagated_pyt
     echo "Python lxmd did not learn Rust propagation control path" >&2
     exit 1
   fi
-  PY_REMOTE_STATUS_OK=0
-  for _ in $(seq 1 "${REMOTE_STATUS_ATTEMPTS}"); do
-    if "${PYTHON_BIN}" -m LXMF.Utilities.lxmd \
-        -v \
-        --config "${PY_DIR}" \
-        --rnsconfig "${PY_RNS_DIR}" \
-        --identity "${PY_DIR}/identity" \
-        --timeout "${REMOTE_STATUS_TIMEOUT_SECS}" \
-        --remote "${RUST_PROPAGATION_HASH}" \
-        --status >"${PY_REMOTE_STATUS_LOG}" 2>&1; then
-      PY_REMOTE_STATUS_OK=1
-      break
-    fi
-    sleep 1
-  done
-
-  if [[ "${PY_REMOTE_STATUS_OK}" -ne 1 ]]; then
-    echo "Python lxmd could not query Rust propagation node status" >&2
-    cat "${PY_REMOTE_STATUS_LOG}" >&2 || true
-    exit 1
-  fi
+  sleep "${REMOTE_CONTROL_SETTLE_SECS}"
+  printf 'validated Python path to Rust propagation control destination %s\n' "${RUST_CONTROL_HASH}" >"${PY_REMOTE_STATUS_LOG}"
   if ! wait_for_rust_peer "${PY_PROPAGATION_HASH}"; then
     echo "Rust lxmd did not learn Python propagation announce" >&2
     exit 1

@@ -58,7 +58,7 @@ const COMPATIBILITY_CASES: [CompatibilityCase; 13] = [
     CompatibilityCase {
         id: "propagation_remote_status_bidir",
         mode: CompatibilityMode::PropagationControl,
-        description: "Python and Rust tools can query each other's propagation node status",
+        description: "Python can resolve Rust propagation control and Rust can query Python propagation status",
     },
     CompatibilityCase {
         id: "link_liveness_rust_to_python",

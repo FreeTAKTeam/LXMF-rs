@@ -466,9 +466,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   conformance plus live channel, paper, compatibility-matrix, and LXMD
   remote-relay tests.
 - The compatibility matrix includes an ignored live
-  `propagation_remote_status_bidir` case that dispatches Python-to-Rust and
-  Rust-to-Python propagation-node status queries when the Python harness
-  environment is available.
+  `propagation_remote_status_bidir` case that validates Python discovery of
+  the Rust propagation-control path and dispatches a Rust-to-Python
+  propagation-node status query when the Python harness environment is
+  available.
 - Focused daemon/RPC tests cover delivery modes, propagation offers, peer
   maintenance, queue policy, source accounting, stamps, tickets, receipts, and
   cancellation.
