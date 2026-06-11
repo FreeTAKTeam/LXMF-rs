@@ -12,6 +12,8 @@ LXMF_PY_REPO="${LXMF_PY_REPO:-${REPO_ROOT}/../lxmf}"
 LOG_DIR="${LOG_DIR:-${REPO_ROOT}/target/interop/python-lxmd-rust-lxmd}"
 REPORT_PATH="${REPORT_PATH:-${LOG_DIR}/report.json}"
 TIMEOUT_SECS="${TIMEOUT_SECS:-45}"
+REMOTE_STATUS_TIMEOUT_SECS="${REMOTE_STATUS_TIMEOUT_SECS:-180}"
+REMOTE_STATUS_ATTEMPTS="${REMOTE_STATUS_ATTEMPTS:-2}"
 REMOTE_STATUS_PREFLIGHT="${REMOTE_STATUS_PREFLIGHT:-0}"
 COMPAT_CASE="${COMPAT_CASE:-direct_python_to_rust}"
 
@@ -321,6 +323,43 @@ wait_for_rust_peer() {
     sleep 1
   done
   return 1
+}
+
+wait_for_python_remote_control() {
+  local destination_hash="$1"
+  "${PYTHON_BIN}" - <<'PY' "${PY_RNS_DIR}" "${destination_hash}" "${TIMEOUT_SECS}"
+import sys
+import time
+
+import LXMF
+import RNS
+
+rns_config, destination_hash_hex, timeout_secs = sys.argv[1:4]
+timeout_secs = max(float(timeout_secs), 1.0)
+destination_hash = bytes.fromhex(destination_hash_hex)
+
+RNS.Reticulum(configdir=rns_config, loglevel=0)
+deadline = time.time() + timeout_secs
+while time.time() < deadline:
+    remote_identity = RNS.Identity.recall(destination_hash)
+    if remote_identity is None:
+        RNS.Transport.request_path(destination_hash)
+    else:
+        control_destination = RNS.Destination(
+            remote_identity,
+            RNS.Destination.OUT,
+            RNS.Destination.SINGLE,
+            LXMF.APP_NAME,
+            "propagation",
+            "control",
+        )
+        if RNS.Transport.has_path(control_destination.hash):
+            raise SystemExit(0)
+        RNS.Transport.request_path(control_destination.hash)
+    time.sleep(0.5)
+
+raise SystemExit(f"timed out waiting for Python remote control path to {destination_hash_hex}")
+PY
 }
 
 mkdir -p "${LOG_DIR}"
@@ -955,14 +994,19 @@ if [[ "${COMPAT_CASE}" == "propagation_remote_status_bidir" ]]; then
 fi
 
 if [[ "${REMOTE_STATUS_PREFLIGHT}" == "1" && "${COMPAT_CASE}" != "propagated_python_to_rust" && "${COMPAT_CASE}" != "propagated_rust_to_python" ]]; then
+  rpc_call "${RUST_RPC_ADDR}" "announce_now" "null" >/dev/null
+  if ! wait_for_python_remote_control "${RUST_PROPAGATION_HASH}"; then
+    echo "Python lxmd did not learn Rust propagation control path" >&2
+    exit 1
+  fi
   PY_REMOTE_STATUS_OK=0
-  for _ in $(seq 1 "${TIMEOUT_SECS}"); do
+  for _ in $(seq 1 "${REMOTE_STATUS_ATTEMPTS}"); do
     if "${PYTHON_BIN}" -m LXMF.Utilities.lxmd \
         -v \
         --config "${PY_DIR}" \
         --rnsconfig "${PY_RNS_DIR}" \
         --identity "${PY_DIR}/identity" \
-        --timeout 10 \
+        --timeout "${REMOTE_STATUS_TIMEOUT_SECS}" \
         --remote "${RUST_PROPAGATION_HASH}" \
         --status >"${PY_REMOTE_STATUS_LOG}" 2>&1; then
       PY_REMOTE_STATUS_OK=1
@@ -971,11 +1015,21 @@ if [[ "${REMOTE_STATUS_PREFLIGHT}" == "1" && "${COMPAT_CASE}" != "propagated_pyt
     sleep 1
   done
 
+  if [[ "${PY_REMOTE_STATUS_OK}" -ne 1 ]]; then
+    echo "Python lxmd could not query Rust propagation node status" >&2
+    cat "${PY_REMOTE_STATUS_LOG}" >&2 || true
+    exit 1
+  fi
+  if ! wait_for_rust_peer "${PY_PROPAGATION_HASH}"; then
+    echo "Rust lxmd did not learn Python propagation announce" >&2
+    exit 1
+  fi
+
   RUST_REMOTE_STATUS_OK=0
-  for _ in $(seq 1 "${TIMEOUT_SECS}"); do
+  for _ in $(seq 1 "${REMOTE_STATUS_ATTEMPTS}"); do
     if "${REPO_ROOT}/target/debug/lxmd" \
         --config "${RUST_DIR}/launcher.toml" \
-        --timeout 10 \
+        --timeout "${REMOTE_STATUS_TIMEOUT_SECS}" \
         --remote "${PY_PROPAGATION_HASH}" \
         --status >"${RUST_REMOTE_STATUS_LOG}" 2>&1; then
       RUST_REMOTE_STATUS_OK=1
@@ -984,12 +1038,9 @@ if [[ "${REMOTE_STATUS_PREFLIGHT}" == "1" && "${COMPAT_CASE}" != "propagated_pyt
     sleep 1
   done
 
-  if [[ "${PY_REMOTE_STATUS_OK}" -ne 1 ]]; then
-    echo "Python lxmd could not query Rust propagation node status" >&2
-    exit 1
-  fi
   if [[ "${RUST_REMOTE_STATUS_OK}" -ne 1 ]]; then
     echo "Rust lxmd could not query Python propagation node status" >&2
+    cat "${RUST_REMOTE_STATUS_LOG}" >&2 || true
     exit 1
   fi
   assert_contains "${RUST_REMOTE_STATUS_LOG}" "Remote LXMF Propagation Node status" "Rust remote status against Python node"
