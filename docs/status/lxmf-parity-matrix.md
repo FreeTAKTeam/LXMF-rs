@@ -133,6 +133,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Remote fetch and download bridge failures mirror existing payload-backed
   queue marks into active peer record snapshots before returning the failure,
   so already queued relay work remains visible after restart/export.
+- Remote fetch and download access-denied bridge failures follow the remote
+  peer-sync denial path for the source peer, clearing local peering and queued
+  propagation marks instead of preserving denied relay work for retry.
 - Remote fetch and download bridge-unavailable errors mirror existing
   payload-backed queue marks into active peer record snapshots before
   returning and mark the propagation sync lifecycle failed, so queued relay work

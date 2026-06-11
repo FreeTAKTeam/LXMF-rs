@@ -2188,14 +2188,23 @@ impl RpcDaemon {
                         result
                     }
                     Err(err) => {
+                        let error = err.to_string();
                         self.update_propagation_sync_state(|state| {
                             state.sync_state = PR_FAILED;
                             state.state_name = "failed".to_string();
                             state.sync_progress = 0.0;
-                            state.last_sync_error = Some(err.to_string());
+                            state.last_sync_error = Some(error.clone());
                         });
-                        for peer in self.active_peer_ids() {
-                            self.record_payload_backed_peer_queue_snapshot(peer.as_str())?;
+                        if is_remote_access_denied_error(&err) {
+                            self.break_remote_peer_sync_peering_on_denied_access(
+                                remote_id.as_str(),
+                                remote_id.as_str(),
+                                error.as_str(),
+                            )?;
+                        } else {
+                            for peer in self.active_peer_ids() {
+                                self.record_payload_backed_peer_queue_snapshot(peer.as_str())?;
+                            }
                         }
                         return Err(err);
                     }
@@ -2296,14 +2305,23 @@ impl RpcDaemon {
                 ) {
                     Ok(result) => result,
                     Err(err) => {
+                        let error = err.to_string();
                         self.update_propagation_sync_state(|state| {
                             state.sync_state = PR_FAILED;
                             state.state_name = "failed".to_string();
                             state.sync_progress = 0.0;
-                            state.last_sync_error = Some(err.to_string());
+                            state.last_sync_error = Some(error.clone());
                         });
-                        for peer in self.active_peer_ids() {
-                            self.record_payload_backed_peer_queue_snapshot(peer.as_str())?;
+                        if is_remote_access_denied_error(&err) {
+                            self.break_remote_peer_sync_peering_on_denied_access(
+                                remote_id.as_str(),
+                                remote_id.as_str(),
+                                error.as_str(),
+                            )?;
+                        } else {
+                            for peer in self.active_peer_ids() {
+                                self.record_payload_backed_peer_queue_snapshot(peer.as_str())?;
+                            }
                         }
                         return Err(err);
                     }
