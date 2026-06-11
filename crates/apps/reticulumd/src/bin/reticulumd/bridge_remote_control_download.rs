@@ -413,4 +413,13 @@ mod tests {
             "policy-rejected downloads are not local haves and must not be acked"
         );
     }
+
+    #[test]
+    fn propagation_download_ack_rejects_remote_rejection_code() {
+        let err = propagation_download_ack_response_result(&rmpv::Value::from(0xF4_u64))
+            .expect_err("remote ack rejection must fail the download");
+
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+        assert!(err.to_string().contains("rejected"));
+    }
 }

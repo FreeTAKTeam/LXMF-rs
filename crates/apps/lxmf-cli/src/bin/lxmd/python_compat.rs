@@ -62,6 +62,7 @@ pub(crate) fn compatibility_notes(
     if effective.python_compat.max_peers.is_some()
         || !effective.python_compat.static_peers.is_empty()
         || effective.python_compat.from_static_only
+        || effective.python_compat.retain_synced_on_node
         || effective.python_compat.message_storage_limit_mb.is_some()
         || effective.python_compat.peering_cost.is_some()
         || effective.python_compat.remote_peering_cost_max.is_some()

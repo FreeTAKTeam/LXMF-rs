@@ -402,7 +402,7 @@ fn response_to_json(response: &rmpv::Value) -> Result<JsonValue, std::io::Error>
     }
 }
 
-fn response_to_result(response: rmpv::Value) -> Result<rmpv::Value, std::io::Error> {
+pub(super) fn response_to_result(response: rmpv::Value) -> Result<rmpv::Value, std::io::Error> {
     if let Some(error) = response_code_error(&response) {
         return Err(error);
     }

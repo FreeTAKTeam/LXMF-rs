@@ -249,6 +249,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Outbound propagated delivery resolves selected propagation-node
   `propagation_stamp_cost` case-insensitively, so Python-style hash casing does
   not fall back to the default propagation stamp cost.
+- The live Rust/Python remote-relay interop gate now selects a Python `lxmd`
+  propagation destination as the Rust outbound propagation node, covering mixed
+  propagation-node discovery and selection before broader store-and-forward
+  claims are made.
 - Duplicate inbound peer propagation payloads still fan out to active relay
   peers while keeping the source peer handled, so a known local payload does
   not bypass relay queue creation.
@@ -274,6 +278,12 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   received/completed work for the requesting propagation peer after purge, so
   reintroduced payloads are not queued back to peers that already declared
   them.
+- Propagation-node `haves` handling honors retained synced payload settings,
+  keeping local LXMs available while completing the declaring peer's accounting.
+- Link-based remote propagation downloads wait for the final haves
+  acknowledgement response after imported or duplicate payloads are reported,
+  so node-side rejection or timeout is surfaced instead of reporting a
+  completed download before remote cleanup is confirmed.
 - Inbound propagation message-get purge-only requests return the Python-style
   boolean success response after haves are applied, and payload purge cleanup
   preserves completed peer accounting for other peers while removing stale
@@ -302,6 +312,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Inbound propagation offers deduplicate validated offered transient IDs before
   building wanted-ID responses or applying source-accounting marks, so duplicate
   offers cannot request or account the same payload more than once.
+- Capacity-limited but valid inbound propagation offers also start the offer
+  throttle after peering-key and transient-ID validation, so repeated
+  deferred-admission offers return the Python-style throttled response instead
+  of repeatedly probing peer capacity.
 - Remote fetch and download imports mark inactive source peers as received
   before later activation, so source-accounting survives even when the
   propagation node was not yet an active peer record.
@@ -311,6 +325,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Remote import batch byte accounting follows the same deduplicated accepted
   IDs, so duplicate payloads in one fetch/download/sync response do not inflate
   transferred byte totals or source peer receive byte counters.
+- Local propagation ingest persists processed transient IDs separately from
+  retained payload entries, so payloads reintroduced after purge or peer
+  acknowledgement can refresh relay state without inflating local received or
+  ingested counters.
 - Link-based remote downloads wait for the propagation node's `/get` haves
   acknowledgement and propagate peer/control errors, so failed remote cleanup is
   not reported as a completed replication drain.

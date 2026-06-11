@@ -244,6 +244,13 @@ The project is best described by capability level:
   haves as received/completed work for the requesting propagation peer after
   purge, so reintroduced payloads are not queued back to peers that already
   declared them.
+- Propagation nodes can now retain synced payloads after message-get `haves`
+  while still marking the declaring peer completed, matching the router setting
+  used by operators that keep node-side LXMs available for other peers.
+- Link-based remote propagation downloads now wait for the final haves
+  acknowledgement response after imported or duplicate payloads are reported,
+  so node-side rejection or timeout is surfaced instead of reporting a
+  completed download before remote cleanup is confirmed.
 - Inbound propagation message-get purge-only requests now return the
   Python-style boolean success response after haves are applied, and payload
   purge cleanup preserves completed peer accounting for other peers while
@@ -272,6 +279,10 @@ The project is best described by capability level:
 - Inbound propagation offers now deduplicate validated offered transient IDs
   before building wanted-ID responses or applying source-accounting marks, so a
   duplicate offer cannot request or account the same payload more than once.
+- Capacity-limited but valid inbound propagation offers now also start the
+  offer throttle after peering-key and transient-ID validation, so repeated
+  deferred-admission offers return the Python-style throttled response instead
+  of repeatedly probing peer capacity.
 - Remote fetch and download imports now mark inactive source peers as received
   before later activation, so a propagation node is not offered back payloads it
   previously supplied just because it was not yet an active peer record.
@@ -281,6 +292,10 @@ The project is best described by capability level:
 - Remote import batch byte accounting now uses the same deduplicated accepted
   IDs, so duplicate payloads in one fetch/download/sync response do not inflate
   transferred byte totals or source peer receive byte counters.
+- Local propagation ingest now persists processed transient IDs separately
+  from retained payload entries, so reintroduced payloads after purge or peer
+  acknowledgement can refresh relay state without inflating local received or
+  ingested counters.
 - Link-based remote downloads now wait for the propagation node's `/get` haves
   acknowledgement and surface peer/control errors, so failed remote cleanup does
   not look like a completed replication drain.
@@ -390,6 +405,10 @@ The project is best described by capability level:
   after peering-key and transient-ID validation, so repeated replication offers
   from the same peer take the throttled response path even when the peer changes
   the offered transient-ID set.
+- The live Rust/Python remote-relay interop gate now covers selecting a Python
+  `lxmd` propagation destination as the Rust outbound propagation node, so
+  mixed propagation-node discovery and selection stay under pinned reference
+  coverage.
 
 ## Remaining Release Blockers
 

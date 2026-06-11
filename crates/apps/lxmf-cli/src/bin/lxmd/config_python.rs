@@ -99,6 +99,7 @@ pub(crate) fn apply_python_config_file(
             .unwrap_or(false);
         effective.python_compat.retain_synced_on_node = propagation
             .get("retain_synced_on_node")
+            .or_else(|| propagation.get("retain_node_lxms"))
             .and_then(|value| parse_python_bool(value))
             .unwrap_or(false);
         effective.python_compat.node_announce_at_start = propagation

@@ -600,6 +600,61 @@ fn duplicate_propagation_ingest_does_not_double_count_received() {
     assert_eq!(status["propagation"]["last_ingest_count"].as_u64(), Some(0));
 }
 
+#[test]
+fn purged_propagation_ingest_does_not_recount_processed_transient() {
+    use sha2::{Digest, Sha256};
+
+    let daemon = RpcDaemon::test_instance();
+    let destination = [0x9b_u8; 16];
+    let mut payload = destination.to_vec();
+    payload.extend_from_slice(b" purged local propagation idempotence");
+    let payload_hex = hex::encode(&payload);
+    let transient_id = Sha256::digest(&payload).to_vec();
+    let transient_hex = hex::encode(&transient_id);
+
+    let first = daemon
+        .handle_rpc(rpc_request(
+            83,
+            "propagation_ingest",
+            json!({
+                "transient_id": transient_hex,
+                "payload_hex": payload_hex,
+            }),
+        ))
+        .expect("first propagation ingest")
+        .result
+        .expect("first propagation ingest result");
+    assert_eq!(first["ingested_count"].as_u64(), Some(1));
+
+    let purged = daemon
+        .purge_propagation_payloads_for_destination(&destination, std::slice::from_ref(&transient_id));
+    assert!(purged > 0);
+
+    let second = daemon
+        .handle_rpc(rpc_request(
+            84,
+            "propagation_ingest",
+            json!({
+                "transient_id": transient_hex,
+                "payload_hex": payload_hex,
+            }),
+        ))
+        .expect("second propagation ingest")
+        .result
+        .expect("second propagation ingest result");
+    assert_eq!(second["ingested_count"].as_u64(), Some(0));
+    assert_eq!(second["duplicate_count"].as_u64(), Some(1));
+
+    let status = daemon
+        .handle_rpc(RpcRequest { id: 85, method: "propagation_status".to_string(), params: None })
+        .expect("propagation status")
+        .result
+        .expect("propagation status result");
+    assert_eq!(status["propagation"]["client_propagation_messages_received"].as_u64(), Some(1));
+    assert_eq!(status["propagation"]["total_ingested"].as_u64(), Some(1));
+    assert_eq!(status["propagation"]["last_ingest_count"].as_u64(), Some(0));
+}
+
 fn stamped_propagation_payload(lxm_data: &[u8], target_cost: u32) -> Vec<u8> {
     use hkdf::Hkdf;
     use sha2::{Digest, Sha256};
