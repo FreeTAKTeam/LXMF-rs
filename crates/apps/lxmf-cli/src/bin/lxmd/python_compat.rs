@@ -128,6 +128,7 @@ pub(crate) fn apply_python_compat_config(
                 "static_peers": compat.static_peers,
                 "max_peers": compat.max_peers,
                 "from_static_only": compat.from_static_only,
+                "retain_synced_on_node": compat.retain_synced_on_node,
                 "peering_cost": compat.peering_cost,
                 "remote_peering_cost_max": compat.remote_peering_cost_max,
             })),

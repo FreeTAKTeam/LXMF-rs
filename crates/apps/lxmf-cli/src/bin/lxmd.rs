@@ -541,6 +541,7 @@ announce_at_start = true
 announce_interval = 90
 autopeer = true
 autopeer_maxdepth = 7
+retain_synced_on_node = true
 
 [lxmf]
 on_inbound = "echo hi"
@@ -564,6 +565,7 @@ port = 4242
         assert!(effective.propagation_node);
         assert_eq!(effective.on_inbound.as_deref(), Some("echo hi"));
         assert_eq!(effective.python_compat.autopeer_maxdepth, Some(7));
+        assert!(effective.python_compat.retain_synced_on_node);
         assert_eq!(effective.db.as_deref(), Some(temp.path().join("state/reticulum.db").as_path()));
         assert_eq!(
             effective.identity.as_deref(),
@@ -614,6 +616,7 @@ port = 4242
             r#"
 [propagation]
 enable_node = yes
+retain_synced_on_node = yes
 
 [interfaces]
   [[Server]]
@@ -630,6 +633,7 @@ enable_node = yes
         let generated = config_dir.join(super::GENERATED_RETICULUMD_CONFIG);
         let generated_contents = fs::read_to_string(&generated).expect("generated config");
 
+        assert!(effective.python_compat.retain_synced_on_node);
         assert_eq!(effective.rnsconfig.as_deref(), Some(generated.as_path()));
         assert!(generated_contents.contains("type = \"tcp_server\""));
         assert!(generated_contents.contains("host = \"0.0.0.0\""));

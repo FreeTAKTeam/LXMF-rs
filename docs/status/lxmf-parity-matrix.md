@@ -279,6 +279,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   preserves completed peer accounting for other peers while removing stale
   unhandled marks, so reintroduced payloads are not offered back to peers that
   already completed them.
+- Propagation nodes honor `retain_synced_on_node` during message-get haves
+  handling: requesting peers are still marked completed, while retained payloads
+  remain stored and queued for peers that have not completed them.
 - Inbound propagation message-get requests mark wanted payloads skipped by the
   peer's transfer budget as transfer-limited completed work after peer
   admission, so oversized fetch attempts do not remain retryable queue entries.
