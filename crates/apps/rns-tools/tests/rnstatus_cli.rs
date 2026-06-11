@@ -125,7 +125,9 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
     assert!(stdout.contains("tcp_server"), "stdout: {stdout}");
     assert!(stdout.contains("Peers: 2"), "stdout: {stdout}");
     assert!(
-        stdout.contains("Propagation: enabled, selected_node=aabbccddeeff00112233445566778899, state=completed"),
+        stdout.contains(
+            "Propagation: enabled, selected_node=aabbccddeeff00112233445566778899, state=completed"
+        ),
         "stdout: {stdout}"
     );
     assert!(stdout.contains("Propagation: enabled"), "stdout: {stdout}");
