@@ -107,6 +107,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   and restored queue marks into active peer record snapshots before publishing
   the failed sync event, so local and remote retry/export behavior stays
   aligned.
+- Retryable remote peer-sync errors keep those queued snapshots but now advance
+  the peer's ordinary sync backoff window, avoiding immediate retry loops after
+  transient propagation-control failures.
 - Payload-backed remote failure snapshots replace stale serialized peer queue
   IDs with live payload-backed marks, so bridge failures do not preserve
   obsolete restart/export work after the underlying payload is gone.

@@ -16794,7 +16794,7 @@ fn denied_access_propagation_remote_sync_breaks_peering_like_python() {
 }
 
 #[test]
-fn identity_required_propagation_remote_sync_preserves_peer_for_immediate_retry() {
+fn identity_required_propagation_remote_sync_preserves_peer_with_retry_backoff() {
     let daemon = RpcDaemon::test_instance();
     daemon.set_remote_control_bridge(Arc::new(RemoteSyncErrorBridge {
         kind: std::io::ErrorKind::PermissionDenied,
@@ -16836,12 +16836,13 @@ fn identity_required_propagation_remote_sync_preserves_peer_for_immediate_retry(
         .expect("peer rows")
         .iter()
         .find(|row| row["peer"].as_str() == Some("peer-remote-needs-id"))
-        .expect("peer should remain available for retry");
+        .expect("peer should remain queued for retry");
     assert_eq!(row["alive"].as_bool(), Some(true));
-    assert_eq!(row["sync_backoff"].as_u64(), Some(0));
-    assert_eq!(row["next_sync_attempt"].as_i64(), Some(0));
+    assert_eq!(row["sync_backoff"].as_u64(), Some(12 * 60));
     assert_eq!(row["acceptance_rate"].as_f64(), Some(0.8));
-    assert!(row["last_sync_attempt"].as_i64().expect("last sync attempt") > 0);
+    let last_sync_attempt = row["last_sync_attempt"].as_i64().expect("last sync attempt");
+    assert!(last_sync_attempt > 0);
+    assert_eq!(row["next_sync_attempt"].as_i64(), Some(last_sync_attempt + 12 * 60));
 
     let events = daemon.event_queue.lock().expect("event_queue mutex poisoned");
     assert!(
@@ -16856,8 +16857,12 @@ fn identity_required_propagation_remote_sync_preserves_peer_for_immediate_retry(
     assert_eq!(event.payload["peer"].as_str(), Some("peer-remote-needs-id"));
     assert_eq!(event.payload["remote"].as_str(), Some("remote-node"));
     assert_eq!(event.payload["alive"].as_bool(), Some(true));
-    assert_eq!(event.payload["sync_backoff"].as_u64(), Some(0));
-    assert_eq!(event.payload["next_sync_attempt"].as_i64(), Some(0));
+    assert_eq!(event.payload["sync_backoff"].as_u64(), Some(12 * 60));
+    assert_eq!(event.payload["last_sync_attempt"].as_i64(), Some(last_sync_attempt));
+    assert_eq!(
+        event.payload["next_sync_attempt"].as_i64(),
+        Some(last_sync_attempt + 12 * 60)
+    );
     assert_eq!(
         event.payload["propagation"]["error"].as_str(),
         Some("propagation node requires identity")
@@ -16865,7 +16870,7 @@ fn identity_required_propagation_remote_sync_preserves_peer_for_immediate_retry(
 }
 
 #[test]
-fn invalid_peering_key_propagation_remote_sync_preserves_peer_without_backoff() {
+fn invalid_peering_key_propagation_remote_sync_preserves_peer_with_retry_backoff() {
     let daemon = RpcDaemon::test_instance();
     daemon.set_remote_control_bridge(Arc::new(RemoteSyncErrorBridge {
         kind: std::io::ErrorKind::PermissionDenied,
@@ -16907,12 +16912,13 @@ fn invalid_peering_key_propagation_remote_sync_preserves_peer_without_backoff() 
         .expect("peer rows")
         .iter()
         .find(|row| row["peer"].as_str() == Some("peer-invalid-key"))
-        .expect("peer should remain available for another offer");
+        .expect("peer should remain queued for retry");
     assert_eq!(row["alive"].as_bool(), Some(true));
-    assert_eq!(row["sync_backoff"].as_u64(), Some(0));
-    assert_eq!(row["next_sync_attempt"].as_i64(), Some(0));
+    assert_eq!(row["sync_backoff"].as_u64(), Some(12 * 60));
     assert_eq!(row["acceptance_rate"].as_f64(), Some(0.7));
-    assert!(row["last_sync_attempt"].as_i64().expect("last sync attempt") > 0);
+    let last_sync_attempt = row["last_sync_attempt"].as_i64().expect("last sync attempt");
+    assert!(last_sync_attempt > 0);
+    assert_eq!(row["next_sync_attempt"].as_i64(), Some(last_sync_attempt + 12 * 60));
 
     let events = daemon.event_queue.lock().expect("event_queue mutex poisoned");
     assert!(
@@ -16927,8 +16933,12 @@ fn invalid_peering_key_propagation_remote_sync_preserves_peer_without_backoff() 
     assert_eq!(event.payload["peer"].as_str(), Some("peer-invalid-key"));
     assert_eq!(event.payload["remote"].as_str(), Some("remote-node"));
     assert_eq!(event.payload["alive"].as_bool(), Some(true));
-    assert_eq!(event.payload["sync_backoff"].as_u64(), Some(0));
-    assert_eq!(event.payload["next_sync_attempt"].as_i64(), Some(0));
+    assert_eq!(event.payload["sync_backoff"].as_u64(), Some(12 * 60));
+    assert_eq!(event.payload["last_sync_attempt"].as_i64(), Some(last_sync_attempt));
+    assert_eq!(
+        event.payload["next_sync_attempt"].as_i64(),
+        Some(last_sync_attempt + 12 * 60)
+    );
     assert_eq!(
         event.payload["propagation"]["error"].as_str(),
         Some("propagation peer invalid peering key")
@@ -16936,7 +16946,7 @@ fn invalid_peering_key_propagation_remote_sync_preserves_peer_without_backoff() 
 }
 
 #[test]
-fn invalid_data_propagation_remote_sync_preserves_peer_without_backoff() {
+fn invalid_data_propagation_remote_sync_preserves_peer_with_retry_backoff() {
     let daemon = RpcDaemon::test_instance();
     daemon.set_remote_control_bridge(Arc::new(RemoteSyncErrorBridge {
         kind: std::io::ErrorKind::InvalidInput,
@@ -16978,12 +16988,13 @@ fn invalid_data_propagation_remote_sync_preserves_peer_without_backoff() {
         .expect("peer rows")
         .iter()
         .find(|row| row["peer"].as_str() == Some("peer-invalid-data"))
-        .expect("peer should remain available for another offer");
+        .expect("peer should remain queued for retry");
     assert_eq!(row["alive"].as_bool(), Some(true));
-    assert_eq!(row["sync_backoff"].as_u64(), Some(0));
-    assert_eq!(row["next_sync_attempt"].as_i64(), Some(0));
+    assert_eq!(row["sync_backoff"].as_u64(), Some(12 * 60));
     assert_eq!(row["acceptance_rate"].as_f64(), Some(0.6));
-    assert!(row["last_sync_attempt"].as_i64().expect("last sync attempt") > 0);
+    let last_sync_attempt = row["last_sync_attempt"].as_i64().expect("last sync attempt");
+    assert!(last_sync_attempt > 0);
+    assert_eq!(row["next_sync_attempt"].as_i64(), Some(last_sync_attempt + 12 * 60));
 
     let events = daemon.event_queue.lock().expect("event_queue mutex poisoned");
     assert!(
@@ -16998,8 +17009,12 @@ fn invalid_data_propagation_remote_sync_preserves_peer_without_backoff() {
     assert_eq!(event.payload["peer"].as_str(), Some("peer-invalid-data"));
     assert_eq!(event.payload["remote"].as_str(), Some("remote-node"));
     assert_eq!(event.payload["alive"].as_bool(), Some(true));
-    assert_eq!(event.payload["sync_backoff"].as_u64(), Some(0));
-    assert_eq!(event.payload["next_sync_attempt"].as_i64(), Some(0));
+    assert_eq!(event.payload["sync_backoff"].as_u64(), Some(12 * 60));
+    assert_eq!(event.payload["last_sync_attempt"].as_i64(), Some(last_sync_attempt));
+    assert_eq!(
+        event.payload["next_sync_attempt"].as_i64(),
+        Some(last_sync_attempt + 12 * 60)
+    );
     assert_eq!(
         event.payload["propagation"]["error"].as_str(),
         Some("propagation node rejected the request")
@@ -17007,7 +17022,7 @@ fn invalid_data_propagation_remote_sync_preserves_peer_without_backoff() {
 }
 
 #[test]
-fn timeout_propagation_remote_sync_preserves_peer_without_backoff() {
+fn timeout_propagation_remote_sync_preserves_peer_with_retry_backoff() {
     let daemon = RpcDaemon::test_instance();
     daemon.set_remote_control_bridge(Arc::new(RemoteSyncErrorBridge {
         kind: std::io::ErrorKind::TimedOut,
@@ -17062,12 +17077,13 @@ fn timeout_propagation_remote_sync_preserves_peer_without_backoff() {
         .expect("peer rows")
         .iter()
         .find(|row| row["peer"].as_str() == Some("peer-timeout"))
-        .expect("peer should remain available for another offer");
+        .expect("peer should remain queued for retry");
     assert_eq!(row["alive"].as_bool(), Some(true));
-    assert_eq!(row["sync_backoff"].as_u64(), Some(0));
-    assert_eq!(row["next_sync_attempt"].as_i64(), Some(0));
+    assert_eq!(row["sync_backoff"].as_u64(), Some(12 * 60));
     assert_eq!(row["acceptance_rate"].as_f64(), Some(0.5));
-    assert!(row["last_sync_attempt"].as_i64().expect("last sync attempt") > 0);
+    let last_sync_attempt = row["last_sync_attempt"].as_i64().expect("last sync attempt");
+    assert!(last_sync_attempt > 0);
+    assert_eq!(row["next_sync_attempt"].as_i64(), Some(last_sync_attempt + 12 * 60));
     assert_eq!(row["messages"]["unhandled_ids"], json!([pending.transient_id.as_str()]));
 
     let peers = daemon.peers.lock().expect("peers mutex poisoned");
@@ -17092,8 +17108,12 @@ fn timeout_propagation_remote_sync_preserves_peer_without_backoff() {
     assert_eq!(event.payload["peer"].as_str(), Some("peer-timeout"));
     assert_eq!(event.payload["remote"].as_str(), Some("remote-node"));
     assert_eq!(event.payload["alive"].as_bool(), Some(true));
-    assert_eq!(event.payload["sync_backoff"].as_u64(), Some(0));
-    assert_eq!(event.payload["next_sync_attempt"].as_i64(), Some(0));
+    assert_eq!(event.payload["sync_backoff"].as_u64(), Some(12 * 60));
+    assert_eq!(event.payload["last_sync_attempt"].as_i64(), Some(last_sync_attempt));
+    assert_eq!(
+        event.payload["next_sync_attempt"].as_i64(),
+        Some(last_sync_attempt + 12 * 60)
+    );
     assert_eq!(
         event.payload["propagation"]["error"].as_str(),
         Some("propagation peer timed out")
@@ -17101,7 +17121,7 @@ fn timeout_propagation_remote_sync_preserves_peer_without_backoff() {
 }
 
 #[test]
-fn not_found_propagation_remote_sync_preserves_peer_without_backoff() {
+fn not_found_propagation_remote_sync_preserves_peer_with_retry_backoff() {
     let daemon = RpcDaemon::test_instance();
     daemon.set_remote_control_bridge(Arc::new(RemoteSyncErrorBridge {
         kind: std::io::ErrorKind::NotFound,
@@ -17143,12 +17163,13 @@ fn not_found_propagation_remote_sync_preserves_peer_without_backoff() {
         .expect("peer rows")
         .iter()
         .find(|row| row["peer"].as_str() == Some("peer-not-found"))
-        .expect("peer should remain available for another offer");
+        .expect("peer should remain queued for retry");
     assert_eq!(row["alive"].as_bool(), Some(true));
-    assert_eq!(row["sync_backoff"].as_u64(), Some(0));
-    assert_eq!(row["next_sync_attempt"].as_i64(), Some(0));
+    assert_eq!(row["sync_backoff"].as_u64(), Some(12 * 60));
     assert_eq!(row["acceptance_rate"].as_f64(), Some(0.4));
-    assert!(row["last_sync_attempt"].as_i64().expect("last sync attempt") > 0);
+    let last_sync_attempt = row["last_sync_attempt"].as_i64().expect("last sync attempt");
+    assert!(last_sync_attempt > 0);
+    assert_eq!(row["next_sync_attempt"].as_i64(), Some(last_sync_attempt + 12 * 60));
 
     let events = daemon.event_queue.lock().expect("event_queue mutex poisoned");
     assert!(
@@ -17163,8 +17184,12 @@ fn not_found_propagation_remote_sync_preserves_peer_without_backoff() {
     assert_eq!(event.payload["peer"].as_str(), Some("peer-not-found"));
     assert_eq!(event.payload["remote"].as_str(), Some("remote-node"));
     assert_eq!(event.payload["alive"].as_bool(), Some(true));
-    assert_eq!(event.payload["sync_backoff"].as_u64(), Some(0));
-    assert_eq!(event.payload["next_sync_attempt"].as_i64(), Some(0));
+    assert_eq!(event.payload["sync_backoff"].as_u64(), Some(12 * 60));
+    assert_eq!(event.payload["last_sync_attempt"].as_i64(), Some(last_sync_attempt));
+    assert_eq!(
+        event.payload["next_sync_attempt"].as_i64(),
+        Some(last_sync_attempt + 12 * 60)
+    );
     assert_eq!(
         event.payload["propagation"]["error"].as_str(),
         Some("propagation peer not found")
@@ -17172,7 +17197,7 @@ fn not_found_propagation_remote_sync_preserves_peer_without_backoff() {
 }
 
 #[test]
-fn invalid_stamp_propagation_remote_sync_preserves_peer_queue_without_backoff() {
+fn invalid_stamp_propagation_remote_sync_preserves_peer_queue_with_retry_backoff() {
     let daemon = RpcDaemon::test_instance();
     daemon.set_remote_control_bridge(Arc::new(RemoteSyncErrorBridge {
         kind: std::io::ErrorKind::PermissionDenied,
@@ -17227,12 +17252,13 @@ fn invalid_stamp_propagation_remote_sync_preserves_peer_queue_without_backoff() 
         .expect("peer rows")
         .iter()
         .find(|row| row["peer"].as_str() == Some("peer-invalid-stamp"))
-        .expect("peer should remain available for another offer");
+        .expect("peer should remain queued for retry");
     assert_eq!(row["alive"].as_bool(), Some(true));
-    assert_eq!(row["sync_backoff"].as_u64(), Some(0));
-    assert_eq!(row["next_sync_attempt"].as_i64(), Some(0));
+    assert_eq!(row["sync_backoff"].as_u64(), Some(12 * 60));
     assert_eq!(row["acceptance_rate"].as_f64(), Some(0.45));
-    assert!(row["last_sync_attempt"].as_i64().expect("last sync attempt") > 0);
+    let last_sync_attempt = row["last_sync_attempt"].as_i64().expect("last sync attempt");
+    assert!(last_sync_attempt > 0);
+    assert_eq!(row["next_sync_attempt"].as_i64(), Some(last_sync_attempt + 12 * 60));
     assert_eq!(
         daemon
             .store
@@ -17262,8 +17288,12 @@ fn invalid_stamp_propagation_remote_sync_preserves_peer_queue_without_backoff() 
     assert_eq!(event.payload["peer"].as_str(), Some("peer-invalid-stamp"));
     assert_eq!(event.payload["remote"].as_str(), Some("remote-node"));
     assert_eq!(event.payload["alive"].as_bool(), Some(true));
-    assert_eq!(event.payload["sync_backoff"].as_u64(), Some(0));
-    assert_eq!(event.payload["next_sync_attempt"].as_i64(), Some(0));
+    assert_eq!(event.payload["sync_backoff"].as_u64(), Some(12 * 60));
+    assert_eq!(event.payload["last_sync_attempt"].as_i64(), Some(last_sync_attempt));
+    assert_eq!(
+        event.payload["next_sync_attempt"].as_i64(),
+        Some(last_sync_attempt + 12 * 60)
+    );
     assert_eq!(
         event.payload["propagation"]["error"].as_str(),
         Some("propagation peer invalid stamp")
@@ -17454,12 +17484,13 @@ fn unknown_numeric_propagation_remote_sync_preserves_peer_queue_like_python() {
         .expect("peer rows")
         .iter()
         .find(|row| row["peer"].as_str() == Some("peer-unknown-response"))
-        .expect("peer should remain available for another offer");
+        .expect("peer should remain queued for retry");
     assert_eq!(row["alive"].as_bool(), Some(true));
-    assert_eq!(row["sync_backoff"].as_u64(), Some(0));
-    assert_eq!(row["next_sync_attempt"].as_i64(), Some(0));
+    assert_eq!(row["sync_backoff"].as_u64(), Some(12 * 60));
     assert_eq!(row["acceptance_rate"].as_f64(), Some(0.35));
-    assert!(row["last_sync_attempt"].as_i64().expect("last sync attempt") > 0);
+    let last_sync_attempt = row["last_sync_attempt"].as_i64().expect("last sync attempt");
+    assert!(last_sync_attempt > 0);
+    assert_eq!(row["next_sync_attempt"].as_i64(), Some(last_sync_attempt + 12 * 60));
     assert_eq!(
         daemon
             .store
@@ -17489,8 +17520,12 @@ fn unknown_numeric_propagation_remote_sync_preserves_peer_queue_like_python() {
     assert_eq!(event.payload["peer"].as_str(), Some("peer-unknown-response"));
     assert_eq!(event.payload["remote"].as_str(), Some("remote-node"));
     assert_eq!(event.payload["alive"].as_bool(), Some(true));
-    assert_eq!(event.payload["sync_backoff"].as_u64(), Some(0));
-    assert_eq!(event.payload["next_sync_attempt"].as_i64(), Some(0));
+    assert_eq!(event.payload["sync_backoff"].as_u64(), Some(12 * 60));
+    assert_eq!(event.payload["last_sync_attempt"].as_i64(), Some(last_sync_attempt));
+    assert_eq!(
+        event.payload["next_sync_attempt"].as_i64(),
+        Some(last_sync_attempt + 12 * 60)
+    );
     assert_eq!(
         event.payload["propagation"]["error"].as_str(),
         Some("unexpected propagation control response")
