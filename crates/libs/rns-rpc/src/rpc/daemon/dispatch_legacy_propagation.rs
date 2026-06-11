@@ -354,13 +354,17 @@ impl RpcDaemon {
                 .get_propagation_entry(transient_id.as_str())
                 .map_err(std::io::Error::other)?
                 .is_some();
+            let already_processed = self
+                .store
+                .local_propagation_processed_mark_exists(transient_id.as_str())
+                .map_err(std::io::Error::other)?;
             let already_accepted =
                 accepted_ids.iter().any(|id| id.eq_ignore_ascii_case(transient_id.as_str()));
             if !already_accepted {
                 transferred_bytes = transferred_bytes.saturating_add(payload.len());
                 accepted_ids.push(transient_id.clone());
             }
-            if already_known_store || already_accepted {
+            if already_known_store || already_processed || already_accepted {
                 duplicate_count = duplicate_count.saturating_add(1);
             } else {
                 imported_count = imported_count.saturating_add(1);
@@ -370,6 +374,9 @@ impl RpcDaemon {
         }
         for record in validated {
             self.store.upsert_propagation_entry(&record).map_err(std::io::Error::other)?;
+            self.store
+                .mark_local_propagation_processed(record.transient_id.as_str())
+                .map_err(std::io::Error::other)?;
             self.propagation_payloads
                 .lock()
                 .expect("propagation payload mutex poisoned")
@@ -615,10 +622,16 @@ impl RpcDaemon {
         };
         let transient_id = normalize_propagation_transient_key(transient_id);
         let already_known = if normalized.is_some() && !transient_id.is_empty() {
-            self.store
+            let already_stored = self
+                .store
                 .get_propagation_entry(transient_id.as_str())
                 .map_err(std::io::Error::other)?
-                .is_some()
+                .is_some();
+            let already_processed = self
+                .store
+                .local_propagation_processed_mark_exists(transient_id.as_str())
+                .map_err(std::io::Error::other)?;
+            already_stored || already_processed
         } else {
             false
         };
@@ -634,6 +647,9 @@ impl RpcDaemon {
                 self.store_propagation_payload_hex(alias, payload_hex.as_str())?;
                 guard.insert(normalize_propagation_transient_key(alias), payload_hex.clone());
             }
+            self.store
+                .mark_local_propagation_processed(transient_id.as_str())
+                .map_err(std::io::Error::other)?;
         }
 
         let state = {
@@ -696,10 +712,16 @@ impl RpcDaemon {
             });
 
         let already_known = if normalized_payload.is_some() && !transient_id.is_empty() {
-            self.store
+            let already_stored = self
+                .store
                 .get_propagation_entry(transient_id.as_str())
                 .map_err(std::io::Error::other)?
-                .is_some()
+                .is_some();
+            let already_processed = self
+                .store
+                .local_propagation_processed_mark_exists(transient_id.as_str())
+                .map_err(std::io::Error::other)?;
+            already_stored || already_processed
         } else {
             false
         };
@@ -711,6 +733,9 @@ impl RpcDaemon {
                 .lock()
                 .expect("propagation payload mutex poisoned")
                 .insert(transient_id.clone(), payload_hex);
+            self.store
+                .mark_local_propagation_processed(transient_id.as_str())
+                .map_err(std::io::Error::other)?;
         }
 
         self.note_client_propagation_messages_received(usize::from(
@@ -1404,10 +1429,16 @@ impl RpcDaemon {
                             })
                     });
                 let already_known = if !payload_hex.is_empty() && !transient_id.is_empty() {
-                    self.store
+                    let already_stored = self
+                        .store
                         .get_propagation_entry(transient_id.as_str())
                         .map_err(std::io::Error::other)?
-                        .is_some()
+                        .is_some();
+                    let already_processed = self
+                        .store
+                        .local_propagation_processed_mark_exists(transient_id.as_str())
+                        .map_err(std::io::Error::other)?;
+                    already_stored || already_processed
                 } else {
                     false
                 };
@@ -1434,6 +1465,9 @@ impl RpcDaemon {
                         .lock()
                         .expect("propagation payload mutex poisoned")
                         .insert(transient_id.clone(), payload_hex);
+                    self.store
+                        .mark_local_propagation_processed(transient_id.as_str())
+                        .map_err(std::io::Error::other)?;
                 }
 
                 let state = {

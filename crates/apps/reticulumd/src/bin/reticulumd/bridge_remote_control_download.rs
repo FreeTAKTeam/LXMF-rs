@@ -1,7 +1,9 @@
+use super::remote_control::response_code_error;
 use super::remote_control_link::{
     build_link_identify_payload, build_link_request_payload, open_refreshed_remote_link,
     resolve_remote_identity, send_link_context_packet, wait_for_link_request_response,
 };
+use super::remote_fetch::propagation_payload_ack_transient_id;
 use super::*;
 use lxmf::inbound_decode::InboundPayloadMode;
 use reticulum_daemon::inbound_delivery::{
@@ -9,7 +11,6 @@ use reticulum_daemon::inbound_delivery::{
     inbound_record_allowed_by_delivery_policy,
 };
 use rns_transport::identity::DecryptIdentity;
-use sha2::{Digest, Sha256};
 use x25519_dalek::PublicKey;
 
 type RemoteTransientPartition = (Vec<Vec<u8>>, Vec<Vec<u8>>);
@@ -108,12 +109,12 @@ pub(super) async fn propagation_download_request(
     .map_err(|err| std::io::Error::new(std::io::ErrorKind::TimedOut, err))?;
     let payloads = binary_array_response(&get_response)?;
 
-    let mut accepted_haves = Vec::new();
+    let mut accepted_haves = haves;
     let mut downloaded = 0usize;
     let mut duplicates = 0usize;
     let mut rejected = 0usize;
     for payload in &payloads {
-        let transient_id = Sha256::digest(payload);
+        let transient_id = propagation_payload_ack_transient_id(payload);
         match accept_downloaded_propagation_payload(daemon, delivery_destination, payload).await? {
             DownloadAcceptOutcome::Stored => {
                 downloaded += 1;
@@ -129,13 +130,25 @@ pub(super) async fn propagation_download_request(
 
     if !accepted_haves.is_empty() {
         let ack_payload = propagation_download_get_payload(None, accepted_haves.as_slice(), None)?;
-        let _ = send_link_context_packet(
+        let ack_request_id = send_link_context_packet(
             transport,
             &link,
             PacketContext::Request,
             ack_payload.as_slice(),
         )
-        .await?;
+        .await?
+        .ok_or_else(|| std::io::Error::other("missing propagation haves ack request id"))?;
+        let ack_response = wait_for_link_request_response(
+            &mut data_rx,
+            &mut resource_rx,
+            destination.desc.address_hash,
+            link_id,
+            ack_request_id,
+            timeout,
+        )
+        .await
+        .map_err(|err| std::io::Error::new(std::io::ErrorKind::TimedOut, err))?;
+        propagation_download_ack_response_result(&ack_response)?;
     }
 
     Ok((
@@ -224,6 +237,13 @@ fn propagation_download_summary_json(
         "rejected": rejected,
         "transferred_bytes": transferred_bytes,
     })
+}
+
+fn propagation_download_ack_response_result(response: &rmpv::Value) -> Result<(), std::io::Error> {
+    if let Some(error) = response_code_error(response) {
+        return Err(error);
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -442,6 +462,15 @@ mod tests {
         assert_eq!(entries.len(), 2);
     }
 
+    #[test]
+    fn propagation_download_ack_rejects_remote_error_code() {
+        let err = propagation_download_ack_response_result(&rmpv::Value::from(0xF6_u8))
+            .expect_err("throttled ack response should fail");
+
+        assert_eq!(err.kind(), std::io::ErrorKind::WouldBlock);
+        assert!(err.to_string().contains("throttled"));
+    }
+
     #[tokio::test]
     async fn policy_rejected_downloaded_payload_is_not_reported_as_duplicate_have() {
         let daemon = RpcDaemon::test_instance();
@@ -509,5 +538,14 @@ mod tests {
             DownloadAcceptOutcome::Rejected,
             "policy-rejected downloads are not local haves and must not be acked"
         );
+    }
+
+    #[test]
+    fn propagation_download_ack_rejects_remote_rejection_code() {
+        let err = propagation_download_ack_response_result(&rmpv::Value::from(0xF4_u64))
+            .expect_err("remote ack rejection must fail the download");
+
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+        assert!(err.to_string().contains("rejected"));
     }
 }

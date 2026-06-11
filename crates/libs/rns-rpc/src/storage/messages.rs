@@ -853,6 +853,36 @@ impl MessagesStore {
         })
     }
 
+    pub fn mark_local_propagation_processed(&self, transient_id: &str) -> rusqlite::Result<bool> {
+        self.with_write_conn(|conn| {
+            let affected = conn.execute(
+                "INSERT OR IGNORE INTO propagation_local_entries
+                    (transient_id, processed_at)
+                 VALUES (?1, ?2)",
+                params![normalize_hex_key(transient_id), now_unix_secs()],
+            )?;
+            Ok(affected > 0)
+        })
+    }
+
+    pub fn local_propagation_processed_mark_exists(
+        &self,
+        transient_id: &str,
+    ) -> rusqlite::Result<bool> {
+        self.with_read_conn(|conn| {
+            let exists: Option<i64> = conn
+                .query_row(
+                    "SELECT 1 FROM propagation_local_entries
+                     WHERE transient_id = ?1
+                     LIMIT 1",
+                    params![normalize_hex_key(transient_id)],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            Ok(exists.is_some())
+        })
+    }
+
     pub fn propagation_entry_stats(&self) -> rusqlite::Result<PropagationEntryStats> {
         self.with_read_conn(|conn| {
             let (entries, bytes): (i64, Option<i64>) = conn.query_row(
@@ -2086,6 +2116,10 @@ impl MessagesStore {
                     state TEXT NOT NULL,
                     updated_at INTEGER NOT NULL,
                     PRIMARY KEY(peer, transient_id)
+                );
+                CREATE TABLE IF NOT EXISTS propagation_local_entries (
+                    transient_id TEXT PRIMARY KEY,
+                    processed_at INTEGER NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS idx_messages_timestamp_desc
                     ON messages(timestamp DESC);
@@ -3387,6 +3421,25 @@ mod tests {
                 .is_empty(),
             "retryable marks for the deleted payload are stale and should be removed"
         );
+    }
+
+    #[test]
+    fn local_propagation_processed_mark_is_idempotent() {
+        let store = MessagesStore::in_memory().expect("in-memory store");
+        let transient_id = "ac".repeat(32);
+
+        assert!(!store
+            .local_propagation_processed_mark_exists(transient_id.as_str())
+            .expect("missing processed mark"));
+        assert!(store
+            .mark_local_propagation_processed(transient_id.as_str())
+            .expect("insert processed mark"));
+        assert!(!store
+            .mark_local_propagation_processed(transient_id.as_str())
+            .expect("repeat processed mark"));
+        assert!(store
+            .local_propagation_processed_mark_exists(transient_id.as_str())
+            .expect("processed mark exists"));
     }
 
     #[test]

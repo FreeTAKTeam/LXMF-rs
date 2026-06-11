@@ -175,11 +175,34 @@ pub fn write_rust_config(dir: &Path, config: &str) {
 }
 
 pub fn write_python_lxmd_config(dir: &Path, display_name: &str) {
+    write_python_lxmd_config_with_propagation(dir, display_name, false);
+}
+
+pub fn write_python_lxmd_propagation_config(dir: &Path, display_name: &str) {
+    write_python_lxmd_config_with_propagation(dir, display_name, true);
+}
+
+fn write_python_lxmd_config_with_propagation(
+    dir: &Path,
+    display_name: &str,
+    propagation_enabled: bool,
+) {
     fs::create_dir_all(dir).expect("create python lxmd dir");
+    if !propagation_enabled {
+        fs::write(
+            dir.join("config"),
+            format!(
+                "[propagation]\nenable_node = no\nannounce_at_start = no\nautopeer = no\nauth_required = no\n\n[lxmf]\ndisplay_name = {display_name}\nannounce_at_start = no\ndelivery_transfer_max_accepted_size = 1000\n\n[logging]\nloglevel = 7\n"
+            ),
+        )
+        .expect("write python lxmd config");
+        return;
+    }
+
     fs::write(
         dir.join("config"),
         format!(
-            "[propagation]\nenable_node = no\nannounce_at_start = no\nautopeer = no\nauth_required = no\n\n[lxmf]\ndisplay_name = {display_name}\nannounce_at_start = no\ndelivery_transfer_max_accepted_size = 1000\n\n[logging]\nloglevel = 7\n"
+            "[propagation]\nenable_node = yes\nannounce_at_start = yes\nannounce_interval = 1\nautopeer = yes\nautopeer_maxdepth = 6\nauth_required = no\npropagation_stamp_cost_target = 0\npropagation_stamp_cost_flexibility = 0\n\n[lxmf]\ndisplay_name = {display_name}\nannounce_at_start = no\ndelivery_transfer_max_accepted_size = 1000\n\n[logging]\nloglevel = 7\n"
         ),
     )
     .expect("write python lxmd config");
@@ -579,6 +602,77 @@ pub fn python_control_call(
             .to_string());
     }
     Ok(value.get("result").cloned().unwrap_or(Value::Null))
+}
+
+pub fn python_destination_hash(
+    python_bin: &str,
+    reticulum_repo: &str,
+    lxmd_dir: &Path,
+    destination_aspect: &str,
+) -> Result<String, String> {
+    let identity_path = lxmd_dir.join("identity");
+    let python_path =
+        std::env::join_paths([Path::new(reticulum_repo)]).map_err(|err| err.to_string())?;
+    let script = r#"
+import os
+import sys
+import tempfile
+
+import RNS
+
+identity_path, destination_aspect = sys.argv[1:3]
+cfg = tempfile.mkdtemp(prefix="rns-hash-")
+with open(os.path.join(cfg, "config"), "w", encoding="utf-8") as handle:
+    handle.write(
+        "[reticulum]\n"
+        "share_instance = no\n"
+        "enable_transport = no\n"
+        "discover_interfaces = false\n"
+        "autoconnect_discovered_interfaces = 0\n"
+    )
+
+RNS.Reticulum(configdir=cfg, loglevel=0)
+identity = RNS.Identity.from_file(identity_path)
+if identity is None:
+    raise SystemExit(f"failed to load identity from {identity_path}")
+
+destination = RNS.Destination(
+    identity,
+    RNS.Destination.IN,
+    RNS.Destination.SINGLE,
+    "lxmf",
+    destination_aspect,
+)
+print(RNS.hexrep(destination.hash, delimit=False).lower())
+"#;
+    let output = Command::new(python_bin)
+        .arg("-c")
+        .arg(script)
+        .arg(&identity_path)
+        .arg(destination_aspect)
+        .env("PYTHONPATH", python_path)
+        .output()
+        .map_err(|err| err.to_string())?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        return Err(format!(
+            "failed to derive Python destination hash from {}: {}{}{}",
+            identity_path.display(),
+            stderr,
+            if stderr.is_empty() || stdout.is_empty() { "" } else { "\n" },
+            stdout,
+        ));
+    }
+    let hash = String::from_utf8(output.stdout).map_err(|err| err.to_string())?.trim().to_string();
+    if hash.is_empty() {
+        return Err(format!(
+            "empty Python destination hash for {} aspect {}",
+            identity_path.display(),
+            destination_aspect
+        ));
+    }
+    Ok(hash)
 }
 
 fn rpc_snapshot(rpc_port: u16, method: &str, params: Option<Value>) -> String {
