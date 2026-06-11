@@ -123,10 +123,12 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
     let stdout = String::from_utf8(output.stdout).expect("utf8 stdout");
     assert!(stdout.contains("field-uplink"), "stdout: {stdout}");
     assert!(stdout.contains("tcp_server"), "stdout: {stdout}");
-    assert!(stdout.contains("Propagation: enabled"), "stdout: {stdout}");
     assert!(stdout.contains("Peers: 2"), "stdout: {stdout}");
-    assert!(stdout.contains("selected_node="), "stdout: {stdout}");
-    assert!(stdout.contains("state=completed"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("Propagation: enabled, selected_node=aabbccddeeff00112233445566778899, state=completed"),
+        "stdout: {stdout}"
+    );
+    assert!(stdout.contains("Propagation: enabled"), "stdout: {stdout}");
     assert!(stdout.contains("completed"), "stdout: {stdout}");
     assert!(stdout.contains("failed"), "stdout: {stdout}");
     assert!(stdout.contains("bind denied"), "stdout: {stdout}");
