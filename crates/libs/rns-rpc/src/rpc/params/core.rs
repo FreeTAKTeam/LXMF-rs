@@ -120,6 +120,8 @@ struct PropagationEnableParams {
     #[serde(default)]
     from_static_only: Option<bool>,
     #[serde(default)]
+    retain_synced_on_node: Option<bool>,
+    #[serde(default)]
     peering_cost: Option<u32>,
     #[serde(default)]
     remote_peering_cost_max: Option<u32>,

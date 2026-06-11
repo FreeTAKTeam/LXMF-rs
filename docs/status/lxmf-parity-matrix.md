@@ -274,6 +274,8 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   received/completed work for the requesting propagation peer after purge, so
   reintroduced payloads are not queued back to peers that already declared
   them.
+- Propagation-node `haves` handling honors retained synced payload settings,
+  keeping local LXMs available while completing the declaring peer's accounting.
 - Link-based remote propagation downloads wait for the final haves
   acknowledgement response after imported or duplicate payloads are reported,
   so node-side rejection or timeout is surfaced instead of reporting a

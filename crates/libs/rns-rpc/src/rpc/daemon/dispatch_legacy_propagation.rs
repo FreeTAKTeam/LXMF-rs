@@ -1332,6 +1332,9 @@ impl RpcDaemon {
                     if let Some(from_static_only) = parsed.from_static_only {
                         guard.from_static_only = from_static_only;
                     }
+                    if let Some(retain_synced_on_node) = parsed.retain_synced_on_node {
+                        guard.retain_synced_on_node = retain_synced_on_node;
+                    }
                     if let Some(peering_cost) = parsed.peering_cost {
                         guard.peering_cost = Some(peering_cost);
                     }
