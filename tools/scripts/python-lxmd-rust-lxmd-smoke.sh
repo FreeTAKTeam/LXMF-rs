@@ -752,7 +752,7 @@ import sys
 closed = json.loads(sys.argv[1])
 assert closed["status_name"] == "closed", closed
 reason = closed.get("teardown_reason") or {}
-      assert reason.get("name") == "initiator_closed", closed
+assert reason.get("name") == "initiator_closed", closed
 assert closed["initiator"] is False, closed
 PY
       if ! wait_for_file_pattern "${RUST_LOG}" "link: close" "${TIMEOUT_SECS}"; then
