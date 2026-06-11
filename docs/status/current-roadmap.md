@@ -45,8 +45,8 @@ The project is best described by capability level:
   deterministic unsupported-family diagnostics instead of silently becoming
   inert unknown interface entries.
 - `rnstatus-rs` now provides a local daemon status utility over the existing
-  RPC status surface, including JSON output and human interface runtime
-  startup state.
+  RPC status surface, including JSON output plus human interface runtime,
+  peer-count, and selected propagation-node state.
 
 ### LXMF
 
@@ -75,6 +75,9 @@ The project is best described by capability level:
   bridge-unavailable remote peer-sync paths now perform the same payload-backed
   live and restored queue snapshot mirroring before reporting the failed sync,
   keeping local and remote retry/export behavior aligned.
+- Retryable remote peer-sync errors now also retain the queued work while
+  advancing the peer's normal sync backoff window, preventing immediate retry
+  loops after transient propagation-control failures.
 - Payload-backed remote failure snapshots now replace stale serialized peer
   queue IDs with live payload-backed marks, so bridge failures do not preserve
   obsolete restart/export work after the underlying payload is gone.
@@ -105,6 +108,9 @@ The project is best described by capability level:
 - Remote fetch and download bridge failures now mirror existing payload-backed
   live queue marks into active peer record snapshots before returning the
   failure, preserving restart/export retry state for already queued relay work.
+- Remote fetch and download access-denied bridge failures now follow the remote
+  peer-sync denial path for the source peer, clearing local peering and queued
+  propagation marks instead of preserving denied relay work for retry.
 - Remote fetch and download bridge-unavailable errors now mirror existing
   payload-backed live queue marks into active peer record snapshots before
   returning and mark the propagation sync lifecycle failed, so already queued
@@ -309,6 +315,9 @@ The project is best described by capability level:
   from retained payload entries, so reintroduced payloads after purge or peer
   acknowledgement can refresh relay state without inflating local received or
   ingested counters.
+- Propagation payload ingest now enforces the configured node message-storage
+  byte limit against retained propagation entries, pruning oldest payloads while
+  clearing retryable peer queue marks.
 - Link-based remote downloads now wait for the propagation node's `/get` haves
   acknowledgement and surface peer/control errors, so failed remote cleanup does
   not look like a completed replication drain.
@@ -450,6 +459,9 @@ the implemented subset.
 4. **Reticulum behavioral breadth**
    - Finish channel ordering, resolver/bootstrap, announce/path edge behavior,
      and runtime mutation parity.
+   - Held UDP announces now retain their peer source through delayed release,
+     so multicast discovery still installs the per-peer virtual unicast route
+     after announce limiting.
 5. **Operational breadth**
    - Add prepared-host hardware evidence for BLE/RNode paths.
    - Implement or explicitly defer missing Python interface families and

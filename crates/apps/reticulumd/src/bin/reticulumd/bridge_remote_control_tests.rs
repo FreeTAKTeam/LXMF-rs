@@ -28,7 +28,7 @@ fn propagation_control_response_code_maps_peer_errors_like_python() {
         (0xFE_u64, std::io::ErrorKind::TimedOut, "propagation peer timed out"),
     ] {
         let err = response_code_error(&rmpv::Value::from(code))
-            .expect("peer response code maps to error");
+            .expect("peer response code should map to error");
 
         assert_eq!(err.kind(), kind);
         assert_eq!(err.to_string(), message);

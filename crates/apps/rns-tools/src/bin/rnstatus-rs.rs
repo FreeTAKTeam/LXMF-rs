@@ -81,6 +81,8 @@ fn write_human_status(output: &mut dyn Write, status: &Value) -> io::Result<()> 
             status.get("interfaces").and_then(Value::as_array).map_or(0, |rows| rows.len() as u64)
         })
     )?;
+    writeln!(output, "Peers: {}", status.get("peer_count").and_then(Value::as_u64).unwrap_or(0))?;
+    writeln!(output, "Propagation: {}", propagation_summary(status))?;
 
     let Some(interfaces) = status.get("interfaces").and_then(Value::as_array) else {
         return Ok(());
@@ -104,6 +106,28 @@ fn write_human_status(output: &mut dyn Write, status: &Value) -> io::Result<()> 
         writeln!(output, "{name:<24} {kind:<16} {enabled:<8} {endpoint:<22} {runtime}")?;
     }
     Ok(())
+}
+
+fn propagation_summary(status: &Value) -> String {
+    let Some(propagation) = status.get("propagation").and_then(Value::as_object) else {
+        return "unknown".to_string();
+    };
+    let enabled = propagation
+        .get("enabled")
+        .and_then(Value::as_bool)
+        .map(|value| if value { "enabled" } else { "disabled" })
+        .unwrap_or("unknown");
+    let selected_node = propagation
+        .get("selected_node")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("-");
+    let state = propagation
+        .get("state_name")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("-");
+    format!("{enabled}, selected_node={selected_node}, state={state}")
 }
 
 fn interface_endpoint(interface: &Value) -> String {
@@ -141,6 +165,12 @@ mod tests {
         let status = json!({
             "identity_hash": "abc",
             "running": true,
+            "peer_count": 2,
+            "propagation": {
+                "enabled": true,
+                "selected_node": "aabb",
+                "state_name": "completed"
+            },
             "interface_count": 1,
             "interfaces": [{
                 "name": "uplink",
@@ -163,6 +193,8 @@ mod tests {
         let output = String::from_utf8(output).expect("utf8");
         assert!(output.contains("uplink"));
         assert!(output.contains("tcp_server"));
+        assert!(output.contains("Peers: 2"));
+        assert!(output.contains("Propagation: enabled, selected_node=aabb, state=completed"));
         assert!(output.contains("failed (bind denied)"));
     }
 }

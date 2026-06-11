@@ -109,6 +109,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   and restored queue marks into active peer record snapshots before publishing
   the failed sync event, so local and remote retry/export behavior stays
   aligned.
+- Retryable remote peer-sync errors keep those queued snapshots but now advance
+  the peer's ordinary sync backoff window, avoiding immediate retry loops after
+  transient propagation-control failures.
 - Payload-backed remote failure snapshots replace stale serialized peer queue
   IDs with live payload-backed marks, so bridge failures do not preserve
   obsolete restart/export work after the underlying payload is gone.
@@ -138,6 +141,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Remote fetch and download bridge failures mirror existing payload-backed
   queue marks into active peer record snapshots before returning the failure,
   so already queued relay work remains visible after restart/export.
+- Remote fetch and download access-denied bridge failures follow the remote
+  peer-sync denial path for the source peer, clearing local peering and queued
+  propagation marks instead of preserving denied relay work for retry.
 - Remote fetch and download bridge-unavailable errors mirror existing
   payload-backed queue marks into active peer record snapshots before
   returning and mark the propagation sync lifecycle failed, so queued relay work
@@ -340,6 +346,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   retained payload entries, so payloads reintroduced after purge or peer
   acknowledgement can refresh relay state without inflating local received or
   ingested counters.
+- Propagation-node ingest enforces the configured message-storage byte limit
+  against retained propagation entries, pruning oldest payloads and stale
+  retryable peer marks.
 - Link-based remote downloads wait for the propagation node's `/get` haves
   acknowledgement and propagate peer/control errors, so failed remote cleanup is
   not reported as a completed replication drain.
