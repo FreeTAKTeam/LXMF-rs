@@ -184,6 +184,9 @@ pub(super) fn handle_offer_request(
         Some(rmpv::Value::Array(values)) => values,
         _ => return ControlResponse::Code(error_invalid_data),
     };
+    if daemon.propagation_peer_offer_is_throttled(remote_propagation_hash_hex.as_str()) {
+        return ControlResponse::Code(error_throttled);
+    }
     let peering_cost = daemon.current_propagation_state().peering_cost.unwrap_or_else(|| {
         reticulum_daemon::announce_names::PropagationNodeAnnounceConfig::default().peering_cost
     });
@@ -191,6 +194,11 @@ pub(super) fn handle_offer_request(
     peering_id.extend_from_slice(control.local_identity_hash.as_slice());
     peering_id.extend_from_slice(remote_identity.address_hash.as_slice());
     if validate_peering_key(peering_id.as_slice(), peering_key, peering_cost).is_none() {
+        if transient_ids.iter().all(
+            |transient_id| matches!(transient_id, rmpv::Value::Binary(bytes) if bytes.len() == 32),
+        ) {
+            daemon.throttle_propagation_peer_offer(remote_propagation_hash_hex.as_str());
+        }
         return ControlResponse::Code(error_invalid_key);
     }
 
@@ -207,10 +215,6 @@ pub(super) fn handle_offer_request(
             offered_ids.push(bytes.clone());
         }
     }
-    if daemon.propagation_peer_offer_is_throttled(remote_propagation_hash_hex.as_str()) {
-        return ControlResponse::Code(error_throttled);
-    }
-
     let mut wanted = Vec::new();
     for bytes in &offered_ids {
         let transient_hex = hex::encode(bytes);
@@ -726,6 +730,100 @@ mod tests {
         assert!(matches!(first, ControlResponse::Bool(true)));
         assert!(matches!(second, ControlResponse::Code(0xF6)));
         assert!(matches!(different_offer, ControlResponse::Code(0xF6)));
+    }
+
+    #[test]
+    fn offer_request_invalid_peering_key_starts_offer_throttle_like_python() {
+        let daemon = RpcDaemon::test_instance();
+        daemon
+            .handle_rpc(RpcRequest {
+                id: 10,
+                method: "propagation_enable".to_string(),
+                params: Some(json!({
+                    "enabled": true,
+                    "peering_cost": 255,
+                })),
+            })
+            .expect("enable propagation");
+        let local_identity_hash = [0x11; 16];
+        let remote_private =
+            rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let remote_identity = *remote_private.as_identity();
+        let offered = [0xBB; 32];
+        let other_offered = [0xBC; 32];
+        let invalid_peering_key = vec![0x00; 1];
+        let control = PropagationControlContext {
+            enabled: true,
+            local_identity_hash,
+            propagation_destination_hash_hex: Some("propagation".to_string()),
+            control_destination_hash_hex: Some("control".to_string()),
+            delivery_destination: None,
+            allowed_control_identities: Vec::new(),
+            validated_peer_links: test_validated_peer_links(),
+        };
+
+        let first = handle_offer_request(
+            &daemon,
+            &control,
+            &test_link_id(),
+            &remote_identity,
+            Some(rmpv::Value::Array(vec![
+                rmpv::Value::Binary(invalid_peering_key.clone()),
+                rmpv::Value::Array(vec![rmpv::Value::Binary(offered.to_vec())]),
+            ])),
+            0xF1,
+            0xF3,
+            0xF4,
+            0xF6,
+        );
+        let second = handle_offer_request(
+            &daemon,
+            &control,
+            &test_link_id(),
+            &remote_identity,
+            Some(rmpv::Value::Array(vec![
+                rmpv::Value::Binary(invalid_peering_key),
+                rmpv::Value::Array(vec![rmpv::Value::Binary(other_offered.to_vec())]),
+            ])),
+            0xF1,
+            0xF3,
+            0xF4,
+            0xF6,
+        );
+
+        assert!(matches!(first, ControlResponse::Code(0xF3)));
+        assert!(matches!(second, ControlResponse::Code(0xF6)));
+        let remote_propagation_hash =
+            hex::encode(propagation_destination_hash_for_identity(&remote_identity));
+        let peers = daemon
+            .handle_rpc(RpcRequest {
+                id: 11,
+                method: "list_propagation_nodes".to_string(),
+                params: None,
+            })
+            .expect("list propagation nodes")
+            .result
+            .expect("peer rows");
+        let peer_rows = peers["nodes"].as_array().expect("peer rows");
+        assert!(
+            !peer_rows
+                .iter()
+                .any(|row| row["peer"].as_str() == Some(remote_propagation_hash.as_str())),
+            "invalid peering keys should not admit the peer"
+        );
+        assert!(
+            control.validated_peer_links.lock().expect("validated peer links").is_empty(),
+            "invalid peering keys should not validate the offer link"
+        );
+        assert!(
+            !daemon
+                .has_peer_completed_propagation_mark(
+                    remote_propagation_hash.as_str(),
+                    hex::encode(offered).as_str(),
+                )
+                .expect("completed mark"),
+            "invalid peering keys should not create peer queue marks"
+        );
     }
 
     #[test]

@@ -267,6 +267,10 @@ The project is best described by capability level:
   wanted-ID list responses after peering-key validation without admitting the
   remote peer or queuing local propagation payloads before a real transfer or
   message-get admission point.
+- Structurally decoded inbound propagation offers with invalid peering keys now
+  start the per-peer offer throttle while still avoiding peer admission or queue
+  marks, so repeated bad replication offers follow the same throttle window as
+  valid offers.
 - Inbound propagation offers now validate every offered transient ID before
   applying any source-accounting marks, so malformed mixed offers cannot leave
   partial received/completed queue state behind.
