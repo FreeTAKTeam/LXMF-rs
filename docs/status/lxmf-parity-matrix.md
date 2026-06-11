@@ -316,6 +316,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   retained payload entries, so payloads reintroduced after purge or peer
   acknowledgement can refresh relay state without inflating local received or
   ingested counters.
+- Propagation-node ingest enforces the configured message-storage byte limit
+  against retained propagation entries, pruning oldest payloads and stale
+  retryable peer marks.
 - Link-based remote downloads wait for the propagation node's `/get` haves
   acknowledgement and propagate peer/control errors, so failed remote cleanup is
   not reported as a completed replication drain.

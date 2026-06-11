@@ -655,6 +655,62 @@ fn purged_propagation_ingest_does_not_recount_processed_transient() {
     assert_eq!(status["propagation"]["last_ingest_count"].as_u64(), Some(0));
 }
 
+#[test]
+fn propagation_ingest_prunes_oldest_payload_when_storage_limit_is_exceeded() {
+    let daemon = RpcDaemon::test_instance();
+    daemon
+        .handle_rpc(rpc_request(
+            86,
+            "propagation_enable",
+            json!({
+                "enabled": true,
+                "message_storage_limit_mb": 1,
+            }),
+        ))
+        .expect("enable propagation storage limit");
+
+    let destination = [0x5a_u8; 16];
+    let mut first_payload = destination.to_vec();
+    first_payload.extend(std::iter::repeat(0x11_u8).take(600_000));
+    let mut second_payload = destination.to_vec();
+    second_payload.extend(std::iter::repeat(0x22_u8).take(600_000));
+
+    let first = daemon
+        .handle_rpc(rpc_request(
+            87,
+            "propagation_ingest",
+            json!({
+                "payload_hex": hex::encode(&first_payload),
+            }),
+        ))
+        .expect("first propagation ingest")
+        .result
+        .expect("first ingest result");
+    let first_transient = first["transient_id"].as_str().expect("first transient id").to_string();
+    assert!(daemon.has_propagation_payload(first_transient.as_str()));
+
+    let second = daemon
+        .handle_rpc(rpc_request(
+            88,
+            "propagation_ingest",
+            json!({
+                "payload_hex": hex::encode(&second_payload),
+            }),
+        ))
+        .expect("second propagation ingest")
+        .result
+        .expect("second ingest result");
+    let second_transient = second["transient_id"].as_str().expect("second transient id").to_string();
+
+    assert!(
+        !daemon.has_propagation_payload(first_transient.as_str()),
+        "oldest propagation payload should be pruned when storage limit is exceeded"
+    );
+    assert!(daemon.has_propagation_payload(second_transient.as_str()));
+    let stats = daemon.store.propagation_entry_stats().expect("propagation stats");
+    assert!(stats.bytes <= 1_000_000, "stats after prune: {stats:?}");
+}
+
 fn stamped_propagation_payload(lxm_data: &[u8], target_cost: u32) -> Vec<u8> {
     use hkdf::Hkdf;
     use sha2::{Digest, Sha256};

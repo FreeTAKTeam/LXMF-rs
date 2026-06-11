@@ -286,6 +286,9 @@ The project is best described by capability level:
   from retained payload entries, so reintroduced payloads after purge or peer
   acknowledgement can refresh relay state without inflating local received or
   ingested counters.
+- Propagation payload ingest now enforces the configured node message-storage
+  byte limit against retained propagation entries, pruning oldest payloads while
+  clearing retryable peer queue marks.
 - Link-based remote downloads now wait for the propagation node's `/get` haves
   acknowledgement and surface peer/control errors, so failed remote cleanup does
   not look like a completed replication drain.
