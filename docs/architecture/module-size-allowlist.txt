@@ -10,7 +10,6 @@ crates/apps/reticulumd/src/bin/reticulumd/bridge_remote_control.rs
 crates/apps/reticulumd/src/bin/reticulumd/bridge_remote_control_download.rs
 crates/apps/reticulumd/src/bin/reticulumd/inbound_control.rs
 crates/apps/reticulumd/src/bin/reticulumd/inbound_control_propagation.rs
-crates/apps/reticulumd/src/bin/reticulumd/bridge_remote_control.rs
 crates/apps/reticulumd/src/bin/reticulumd/inbound_worker.rs
 crates/apps/reticulumd/src/bin/reticulumd/rpc_loop.rs
 crates/apps/reticulumd/src/config.rs
