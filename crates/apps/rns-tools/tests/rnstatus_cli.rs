@@ -124,7 +124,7 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
     assert!(stdout.contains("field-uplink"), "stdout: {stdout}");
     assert!(stdout.contains("tcp_server"), "stdout: {stdout}");
     assert!(stdout.contains("Propagation: enabled"), "stdout: {stdout}");
-    assert!(stdout.contains("peers=2"), "stdout: {stdout}");
+    assert!(stdout.contains("Peers: 2"), "stdout: {stdout}");
     assert!(stdout.contains("selected="), "stdout: {stdout}");
     assert!(stdout.contains("sync=0"), "stdout: {stdout}");
     assert!(stdout.contains("progress=1"), "stdout: {stdout}");
