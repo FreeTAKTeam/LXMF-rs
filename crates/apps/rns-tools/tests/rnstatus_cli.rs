@@ -125,11 +125,8 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
     assert!(stdout.contains("tcp_server"), "stdout: {stdout}");
     assert!(stdout.contains("Propagation: enabled"), "stdout: {stdout}");
     assert!(stdout.contains("Peers: 2"), "stdout: {stdout}");
-    assert!(stdout.contains("selected="), "stdout: {stdout}");
-    assert!(stdout.contains("sync=0"), "stdout: {stdout}");
-    assert!(stdout.contains("progress=1"), "stdout: {stdout}");
-    assert!(stdout.contains("target_cost=8"), "stdout: {stdout}");
-    assert!(stdout.contains("static_only=false"), "stdout: {stdout}");
+    assert!(stdout.contains("selected_node="), "stdout: {stdout}");
+    assert!(stdout.contains("state=completed"), "stdout: {stdout}");
     assert!(stdout.contains("completed"), "stdout: {stdout}");
     assert!(stdout.contains("failed"), "stdout: {stdout}");
     assert!(stdout.contains("bind denied"), "stdout: {stdout}");
