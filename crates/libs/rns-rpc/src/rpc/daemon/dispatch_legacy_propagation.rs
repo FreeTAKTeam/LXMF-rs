@@ -5,6 +5,7 @@ const PN_STAMP_THROTTLE_SECS: i64 = 180;
 const PR_REQUEST_SENT: u32 = 0x04;
 const PR_COMPLETE: u32 = 0x07;
 const PR_IDLE: u32 = 0x00;
+const PR_NO_ACCESS: u32 = 0xf4;
 const PR_FAILED: u32 = 0xfe;
 
 struct RemotePropagationImportSummary {
@@ -2226,19 +2227,19 @@ impl RpcDaemon {
                         });
                         result
                     }
-                    Err(err) => {
-                        let error = err.to_string();
+                      Err(err) => {
+                        let sync_state = remote_propagation_failure_state(&err);
                         self.update_propagation_sync_state(|state| {
-                            state.sync_state = PR_FAILED;
-                            state.state_name = "failed".to_string();
-                            state.sync_progress = 0.0;
-                            state.last_sync_error = Some(error.clone());
+                            state.sync_state = sync_state;
+                            state.state_name = propagation_sync_state_name(sync_state).to_string();
+                             state.sync_progress = 0.0;
+                            state.last_sync_error = Some(err.to_string());
                         });
                         if is_remote_access_denied_error(&err) {
                             self.break_remote_peer_sync_peering_on_denied_access(
                                 remote_id.as_str(),
                                 remote_id.as_str(),
-                                error.as_str(),
+                                err.to_string().as_str(),
                             )?;
                         } else {
                             for peer in self.active_peer_ids() {
@@ -2343,19 +2344,19 @@ impl RpcDaemon {
                     parsed.transfer_limit_kb,
                 ) {
                     Ok(result) => result,
-                    Err(err) => {
-                        let error = err.to_string();
+                      Err(err) => {
+                        let sync_state = remote_propagation_failure_state(&err);
                         self.update_propagation_sync_state(|state| {
-                            state.sync_state = PR_FAILED;
-                            state.state_name = "failed".to_string();
-                            state.sync_progress = 0.0;
-                            state.last_sync_error = Some(error.clone());
+                            state.sync_state = sync_state;
+                            state.state_name = propagation_sync_state_name(sync_state).to_string();
+                             state.sync_progress = 0.0;
+                            state.last_sync_error = Some(err.to_string());
                         });
                         if is_remote_access_denied_error(&err) {
                             self.break_remote_peer_sync_peering_on_denied_access(
                                 remote_id.as_str(),
                                 remote_id.as_str(),
-                                error.as_str(),
+                                err.to_string().as_str(),
                             )?;
                         } else {
                             for peer in self.active_peer_ids() {
@@ -2545,7 +2546,7 @@ fn propagation_sync_state_name(state: u32) -> &'static str {
         0xf1 => "link_failed",
         0xf2 => "transfer_failed",
         0xf3 => "no_identity",
-        0xf4 => "no_access",
+        PR_NO_ACCESS => "no_access",
         _ => "unknown",
     }
 }
@@ -2617,6 +2618,14 @@ fn remote_propagation_byte_array(
 fn is_remote_access_denied_error(err: &std::io::Error) -> bool {
     err.kind() == std::io::ErrorKind::PermissionDenied
         && err.to_string() == "propagation node denied access"
+}
+
+fn remote_propagation_failure_state(err: &std::io::Error) -> u32 {
+    if is_remote_access_denied_error(err) {
+        PR_NO_ACCESS
+    } else {
+        PR_FAILED
+    }
 }
 
 fn is_retryable_remote_peer_sync_error(err: &std::io::Error) -> bool {
