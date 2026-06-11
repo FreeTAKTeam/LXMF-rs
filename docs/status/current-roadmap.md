@@ -57,6 +57,8 @@ The project is best described by capability level:
   are ignored is obsolete.
 - Direct and propagated resource sends support receipt-state separation,
   timeout/failure propagation, and active resource cancellation.
+- Oversized opportunistic peer delivery now falls back to link/resource delivery
+  instead of terminating at the opportunistic packet-size boundary.
 - Ticket validity, renewal, derivation, persistence, and inbound ticket reuse
   are implemented.
 - Propagation peers have real queue, policy, maintenance, throttling, peering,

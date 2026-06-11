@@ -309,10 +309,7 @@ impl DeliveryTask {
                 "opportunistic",
                 "payload too large",
             );
-            let _ = self.receipt_tx.try_send(ReceiptEvent {
-                message_id: self.message_id,
-                status: "failed: opportunistic payload too large".to_string(),
-            });
+            self.run_opportunistic_link_fallback(payload, identity, "payload too large").await;
             return;
         }
 
@@ -361,10 +358,7 @@ impl DeliveryTask {
                 "opportunistic",
                 "ciphertext too large",
             );
-            let _ = self.receipt_tx.try_send(ReceiptEvent {
-                message_id: self.message_id,
-                status: "failed: opportunistic ciphertext too large".to_string(),
-            });
+            self.run_opportunistic_link_fallback(payload, identity, "ciphertext too large").await;
             return;
         }
         packet.data = encrypted_data;
@@ -394,6 +388,53 @@ impl DeliveryTask {
             message_id: self.message_id,
             status: send_outcome_status("opportunistic", outcome),
         });
+    }
+
+    async fn run_opportunistic_link_fallback(
+        self,
+        payload: Vec<u8>,
+        identity: Identity,
+        reason: &str,
+    ) {
+        if self.abort_if_cancelled("opportunistic-link") {
+            return;
+        }
+        log_delivery_trace(
+            &self.message_id,
+            &self.destination_hex,
+            "opportunistic",
+            &format!("{reason}; falling back to link delivery"),
+        );
+        let destination_desc = DestinationDesc {
+            identity,
+            address_hash: self.destination_hash,
+            name: DestinationName::new("lxmf", "delivery"),
+        };
+        if let Err(err) = self
+            .send_via_link_mode(
+                "opportunistic-link",
+                self.destination_hex.as_str(),
+                destination_desc,
+                &payload,
+                LinkModeStatuses {
+                    packet: "sent: opportunistic link",
+                    resource: "sending: link resource",
+                    resource_sent: OUTBOUND_RESOURCE_SENT_STATUS,
+                },
+            )
+            .await
+        {
+            log_delivery_trace(
+                &self.message_id,
+                &self.destination_hex,
+                "opportunistic-link",
+                &format!("fallback failed err={err}"),
+            );
+            let _ = self.receipt_tx.try_send(ReceiptEvent {
+                message_id: self.message_id,
+                status: format!("failed: {err}"),
+            });
+        }
     }
 
     async fn resolve_destination_identity(&self) -> Option<Identity> {

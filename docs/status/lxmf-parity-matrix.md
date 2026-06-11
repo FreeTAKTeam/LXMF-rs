@@ -76,6 +76,8 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Direct, opportunistic, propagated, and paper modes are distinct.
 - Transport completion remains `sent`; final delivery receipts produce
   `delivered`.
+- Oversized opportunistic peer sends fall back to link/resource delivery, with
+  resource advertisement and outbound tracking coverage.
 - Resource advertisement failure, retry exhaustion, timeout, and explicit
   cancellation reach daemon message state.
 
