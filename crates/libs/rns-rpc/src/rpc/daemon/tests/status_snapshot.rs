@@ -122,6 +122,7 @@ fn propagation_policy_is_reported_and_enforced_for_new_peers() {
                 "static_peers": ["static-peer"],
                 "max_peers": 1,
                 "from_static_only": true,
+                "retain_synced_on_node": true,
                 "peering_cost": 18,
                 "remote_peering_cost_max": 26,
             }),
@@ -141,6 +142,7 @@ fn propagation_policy_is_reported_and_enforced_for_new_peers() {
     assert_eq!(result["propagation"]["sync_limit"].as_u64(), Some(987));
     assert_eq!(result["propagation"]["max_peers"].as_u64(), Some(1));
     assert_eq!(result["propagation"]["from_static_only"].as_bool(), Some(true));
+    assert_eq!(result["propagation"]["retain_synced_on_node"].as_bool(), Some(true));
     assert_eq!(result["propagation"]["peering_cost"].as_u64(), Some(18));
     assert_eq!(result["propagation"]["remote_peering_cost_max"].as_u64(), Some(26));
     assert_eq!(result["propagation"]["message_storage_limit_mb"].as_u64(), None);
@@ -3351,6 +3353,53 @@ fn autopeer_capacity_rejects_peer_but_preserves_announce() {
         .find(|event| event.payload["peer"].as_str() == Some("peer-auto-full-b"))
         .expect("capacity-limited announce event");
     assert_eq!(event.payload["name"].as_str(), Some("Peer Auto Full B"));
+}
+
+#[test]
+fn propagation_transient_exists_uses_local_propagation_store() {
+    let daemon = RpcDaemon::test_instance();
+    let transient_id = "ab".repeat(32);
+    daemon
+        .store
+        .upsert_propagation_entry(&PropagationEntryRecord {
+            transient_id: transient_id.clone(),
+            destination: "cd".repeat(16),
+            payload_hex: "ef".repeat(24),
+            received_at: 1_700_000_400,
+            size_bytes: 24,
+            stamp_value: None,
+        })
+        .expect("store propagation entry");
+
+    assert!(daemon.propagation_transient_exists(transient_id.as_str()).expect("known transient"));
+    assert!(
+        !daemon
+            .propagation_transient_exists("12".repeat(32).as_str())
+            .expect("unknown transient")
+    );
+}
+
+#[test]
+fn propagation_transient_exists_normalizes_case() {
+    let daemon = RpcDaemon::test_instance();
+    let transient_id = "ac".repeat(32);
+    daemon
+        .store
+        .upsert_propagation_entry(&PropagationEntryRecord {
+            transient_id: transient_id.clone(),
+            destination: "cd".repeat(16),
+            payload_hex: "ef".repeat(24),
+            received_at: 1_700_000_401,
+            size_bytes: 24,
+            stamp_value: None,
+        })
+        .expect("store propagation entry");
+
+    assert!(
+        daemon
+            .propagation_transient_exists(transient_id.to_ascii_uppercase().as_str())
+            .expect("uppercase transient")
+    );
 }
 
 #[test]
@@ -11221,6 +11270,87 @@ fn peer_sync_reports_transferred_propagation_messages() {
     assert_eq!(messages[0]["received_at"].as_i64(), Some(entry.received_at));
     assert_eq!(messages[0]["size_bytes"].as_u64(), Some(entry.size_bytes));
     assert_eq!(messages[0]["stamp_value"].as_u64(), Some(11));
+}
+
+#[test]
+fn peer_sync_invalid_response_payload_does_not_partially_mark_transferred_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    let peer = "peer-invalid-response-payload";
+    daemon
+        .handle_rpc(rpc_request(63, "peer_sync", json!({ "peer": peer })))
+        .expect("initial peer sync");
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let record = peers.get_mut(peer).expect("peer record");
+        record.propagation_stamp_cost = Some(0);
+    }
+
+    let valid = PropagationEntryRecord {
+        transient_id: "a1".repeat(32),
+        destination: "18".repeat(16),
+        payload_hex: "23".repeat(24),
+        received_at: 1_700_000_617,
+        size_bytes: 24,
+        stamp_value: None,
+    };
+    let invalid = PropagationEntryRecord {
+        transient_id: "a2".repeat(32),
+        destination: "18".repeat(16),
+        payload_hex: "not-hex".to_string(),
+        received_at: 1_700_000_618,
+        size_bytes: 7,
+        stamp_value: None,
+    };
+    for entry in [&valid, &invalid] {
+        daemon.store.upsert_propagation_entry(entry).expect("store propagation entry");
+        daemon
+            .store
+            .mark_peer_unhandled_propagation(peer, entry.transient_id.as_str())
+            .expect("mark unhandled");
+        daemon.record_peer_queue_unhandled_id(peer, entry.transient_id.as_str());
+    }
+
+    let err = daemon
+        .handle_rpc(rpc_request(
+            64,
+            "peer_sync",
+            json!({
+                "peer": peer,
+                "wanted_ids": [valid.transient_id.as_str(), invalid.transient_id.as_str()],
+            }),
+        ))
+        .expect_err("invalid response payload should fail peer sync");
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+    assert!(
+        err.to_string().contains("invalid propagation payload hex"),
+        "unexpected error: {err}"
+    );
+
+    let pending = daemon
+        .store
+        .list_peer_unhandled_propagation(peer)
+        .expect("pending propagation");
+    assert_eq!(pending, vec![valid.clone(), invalid.clone()]);
+    assert!(
+        daemon
+            .store
+            .list_peer_handled_propagation_ids(peer)
+            .expect("handled propagation")
+            .is_empty()
+    );
+    let peers = daemon.peers.lock().expect("peers mutex poisoned");
+    let record = peers.get(peer).expect("peer record");
+    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    assert!(
+        serialized["handled_ids"]
+            .as_array()
+            .expect("serialized handled ids")
+            .is_empty()
+    );
+    assert_eq!(
+        serialized["unhandled_ids"].as_array().expect("serialized unhandled ids"),
+        &[json!(valid.transient_id.as_str()), json!(invalid.transient_id.as_str())]
+    );
 }
 
 #[test]

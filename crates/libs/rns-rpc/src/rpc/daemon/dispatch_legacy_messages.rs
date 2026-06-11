@@ -1122,6 +1122,7 @@ impl RpcDaemon {
                     propagation_handled_ids.push(transient_id);
                 }
                 if let Some(selected_response_ids) = selected_response_ids.as_ref() {
+                    let mut selected_transfers = Vec::new();
                     for wanted_id in selected_response_ids {
                         let Some(entry) = selected_offer_entries.get(wanted_id) else {
                             continue;
@@ -1141,12 +1142,22 @@ impl RpcDaemon {
                             "size_bytes": entry.size_bytes,
                             "stamp_value": entry.stamp_value,
                         });
+                        selected_transfers.push((
+                            wanted_id.clone(),
+                            entry.size_bytes,
+                            propagation_message,
+                            payload_bytes,
+                        ));
+                    }
+                    for (wanted_id, size_bytes, propagation_message, payload_bytes) in
+                        selected_transfers
+                    {
                         self.store
                             .mark_peer_transferred_propagation(peer_key, wanted_id.as_str())
                             .map_err(std::io::Error::other)?;
                         self.record_peer_queue_handled(peer_key, wanted_id.as_str());
                         propagation_transferred = propagation_transferred.saturating_add(1);
-                        propagation_bytes = propagation_bytes.saturating_add(entry.size_bytes);
+                        propagation_bytes = propagation_bytes.saturating_add(size_bytes);
                         propagation_transferred_ids.push(wanted_id.clone());
                         propagation_messages.push(propagation_message);
                         propagation_resource_payloads.push(payload_bytes);

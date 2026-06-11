@@ -206,6 +206,8 @@ pub struct PropagationState {
     pub max_peers: Option<u32>,
     #[serde(default)]
     pub from_static_only: bool,
+    #[serde(default)]
+    pub retain_synced_on_node: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub peering_cost: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -247,6 +249,7 @@ impl Default for PropagationState {
             static_peers: Vec::new(),
             max_peers: None,
             from_static_only: false,
+            retain_synced_on_node: false,
             peering_cost: None,
             remote_peering_cost_max: None,
             total_ingested: 0,

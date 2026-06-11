@@ -57,6 +57,8 @@ The project is best described by capability level:
   are ignored is obsolete.
 - Direct and propagated resource sends support receipt-state separation,
   timeout/failure propagation, and active resource cancellation.
+- Oversized opportunistic peer delivery now falls back to link/resource delivery
+  instead of terminating at the opportunistic packet-size boundary.
 - Ticket validity, renewal, derivation, persistence, and inbound ticket reuse
   are implemented.
 - Propagation peers have real queue, policy, maintenance, throttling, peering,
@@ -94,6 +96,9 @@ The project is best described by capability level:
 - Remote fetch/download/sync imports now validate the full returned propagation
   payload batch before mutating the local store or in-memory payload cache, so a
   mixed valid/invalid remote response fails without leaving partial relay state.
+- Selected local peer-sync offer responses now also validate the full selected
+  propagation response payload batch before marking any selected ID transferred,
+  so malformed queued payloads cannot partially drain peer retry state.
 - Malformed remote fetch and download imports now mirror existing
   payload-backed live queue marks into active peer record snapshots before
   failing, preserving restart/export retry state for already queued relay work.
@@ -244,11 +249,25 @@ The project is best described by capability level:
   haves as received/completed work for the requesting propagation peer after
   purge, so reintroduced payloads are not queued back to peers that already
   declared them.
+- Inbound propagation message-get `haves` handling now records declared haves for
+  already-known requesting peers even when the local payload row is already
+  gone, clearing stale retry marks and preventing reintroduced payloads from
+  being offered back to the declaring peer.
+- `retain_synced_on_node` policy is still honored, so payloads can remain local
+  for reuse after peer `haves` acknowledgement while accounting is still
+  completed for the declaring peer.
+- Link-based remote propagation downloads now wait for the final haves
+  acknowledgement response after imported or duplicate payloads are reported,
+  so node-side rejection or timeout is surfaced instead of reporting a
+  completed download before remote cleanup is confirmed.
 - Inbound propagation message-get purge-only requests now return the
   Python-style boolean success response after haves are applied, and payload
   purge cleanup preserves completed peer accounting for other peers while
   removing stale unhandled marks, so reintroduced payloads are not offered back
   to peers that already completed them.
+- Propagation nodes can now honor `retain_synced_on_node` during message-get
+  haves handling: requesting peers are still marked completed, while retained
+  payloads remain stored and queued for peers that have not completed them.
 - Inbound propagation message-get requests now mark wanted payloads skipped by
   the peer's transfer budget as transfer-limited completed work after peer
   admission, so oversized fetch attempts do not remain retryable queue entries.
@@ -263,12 +282,20 @@ The project is best described by capability level:
   wanted-ID list responses after peering-key validation without admitting the
   remote peer or queuing local propagation payloads before a real transfer or
   message-get admission point.
+- Structurally decoded inbound propagation offers with invalid peering keys now
+  start the per-peer offer throttle while still avoiding peer admission or queue
+  marks, so repeated bad replication offers follow the same throttle window as
+  valid offers.
 - Inbound propagation offers now validate every offered transient ID before
   applying any source-accounting marks, so malformed mixed offers cannot leave
   partial received/completed queue state behind.
 - Inbound propagation offers now deduplicate validated offered transient IDs
   before building wanted-ID responses or applying source-accounting marks, so a
   duplicate offer cannot request or account the same payload more than once.
+- Capacity-limited but valid inbound propagation offers now also start the
+  offer throttle after peering-key and transient-ID validation, so repeated
+  deferred-admission offers return the Python-style throttled response instead
+  of repeatedly probing peer capacity.
 - Remote fetch and download imports now mark inactive source peers as received
   before later activation, so a propagation node is not offered back payloads it
   previously supplied just because it was not yet an active peer record.
@@ -278,10 +305,25 @@ The project is best described by capability level:
 - Remote import batch byte accounting now uses the same deduplicated accepted
   IDs, so duplicate payloads in one fetch/download/sync response do not inflate
   transferred byte totals or source peer receive byte counters.
+- Local propagation ingest now persists processed transient IDs separately
+  from retained payload entries, so reintroduced payloads after purge or peer
+  acknowledgement can refresh relay state without inflating local received or
+  ingested counters.
+- Link-based remote downloads now wait for the propagation node's `/get` haves
+  acknowledgement and surface peer/control errors, so failed remote cleanup does
+  not look like a completed replication drain.
+- Remote fetch/download acknowledgements now use canonical propagation
+  transient IDs for stamped payloads, so `/get` haves purge the peer's offered
+  queue entry instead of acknowledging the stamped payload bytes under a
+  different hash.
 - Repeated remote fetch/download/sync imports now increment source peer
   incoming counts and receive bytes only for payload IDs not already marked
   received from that source, while still replaying known payloads into relay
   queues when their live marks were cleared.
+- Link-based remote propagation downloads now classify listed transient IDs
+  before payload retrieval, sending locally known IDs as `/get` haves and using
+  the purge-only `[nil, haves]` request when every listed ID is already local,
+  so duplicate payloads are not downloaded just to acknowledge them.
 - Repeated peer-origin propagation ingests now also avoid double-counting
   source peer incoming counts and receive bytes for already received payload
   IDs, while still refreshing relay queue marks for peers that need the
@@ -380,6 +422,10 @@ The project is best described by capability level:
   after peering-key and transient-ID validation, so repeated replication offers
   from the same peer take the throttled response path even when the peer changes
   the offered transient-ID set.
+- The live Rust/Python remote-relay interop gate now covers selecting a Python
+  `lxmd` propagation destination as the Rust outbound propagation node, so
+  mixed propagation-node discovery and selection stay under pinned reference
+  coverage.
 
 ## Remaining Release Blockers
 

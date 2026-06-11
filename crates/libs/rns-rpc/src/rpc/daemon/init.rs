@@ -735,6 +735,14 @@ impl RpcDaemon {
         Ok(self.store.get_message(message_id).map_err(std::io::Error::other)?.is_some())
     }
 
+    pub fn propagation_transient_exists(&self, transient_id: &str) -> Result<bool, std::io::Error> {
+        let transient_id = transient_id.trim();
+        if transient_id.is_empty() {
+            return Ok(false);
+        }
+        Ok(self.store.get_propagation_entry(transient_id).map_err(std::io::Error::other)?.is_some())
+    }
+
     pub fn peer_message_stats(
         &self,
         peer: &str,

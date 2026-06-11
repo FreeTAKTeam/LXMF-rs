@@ -157,6 +157,7 @@ pub(super) fn compose_python_status(
         "autopeer": propagation.get("autopeer").and_then(Value::as_bool).unwrap_or(true),
         "autopeer_maxdepth": propagation.get("autopeer_maxdepth").and_then(Value::as_u64).unwrap_or(6),
         "from_static_only": propagation.get("from_static_only").and_then(Value::as_bool).unwrap_or(false),
+        "retain_synced_on_node": propagation.get("retain_synced_on_node").and_then(Value::as_bool).unwrap_or(false),
         "total_ingested": propagation.get("total_ingested").and_then(Value::as_u64).unwrap_or(0),
         "last_ingest_count": propagation.get("last_ingest_count").and_then(Value::as_u64).unwrap_or(0),
         "messages_received": propagation.get("messages_received").and_then(Value::as_u64).unwrap_or(0),
