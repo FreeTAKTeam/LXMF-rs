@@ -94,6 +94,9 @@ The project is best described by capability level:
 - Remote fetch/download/sync imports now validate the full returned propagation
   payload batch before mutating the local store or in-memory payload cache, so a
   mixed valid/invalid remote response fails without leaving partial relay state.
+- Selected local peer-sync offer responses now also validate the full selected
+  propagation response payload batch before marking any selected ID transferred,
+  so malformed queued payloads cannot partially drain peer retry state.
 - Malformed remote fetch and download imports now mirror existing
   payload-backed live queue marks into active peer record snapshots before
   failing, preserving restart/export retry state for already queued relay work.

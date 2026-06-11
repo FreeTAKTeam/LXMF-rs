@@ -11224,6 +11224,87 @@ fn peer_sync_reports_transferred_propagation_messages() {
 }
 
 #[test]
+fn peer_sync_invalid_response_payload_does_not_partially_mark_transferred_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    let peer = "peer-invalid-response-payload";
+    daemon
+        .handle_rpc(rpc_request(63, "peer_sync", json!({ "peer": peer })))
+        .expect("initial peer sync");
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let record = peers.get_mut(peer).expect("peer record");
+        record.propagation_stamp_cost = Some(0);
+    }
+
+    let valid = PropagationEntryRecord {
+        transient_id: "a1".repeat(32),
+        destination: "18".repeat(16),
+        payload_hex: "23".repeat(24),
+        received_at: 1_700_000_617,
+        size_bytes: 24,
+        stamp_value: None,
+    };
+    let invalid = PropagationEntryRecord {
+        transient_id: "a2".repeat(32),
+        destination: "18".repeat(16),
+        payload_hex: "not-hex".to_string(),
+        received_at: 1_700_000_618,
+        size_bytes: 7,
+        stamp_value: None,
+    };
+    for entry in [&valid, &invalid] {
+        daemon.store.upsert_propagation_entry(entry).expect("store propagation entry");
+        daemon
+            .store
+            .mark_peer_unhandled_propagation(peer, entry.transient_id.as_str())
+            .expect("mark unhandled");
+        daemon.record_peer_queue_unhandled_id(peer, entry.transient_id.as_str());
+    }
+
+    let err = daemon
+        .handle_rpc(rpc_request(
+            64,
+            "peer_sync",
+            json!({
+                "peer": peer,
+                "wanted_ids": [valid.transient_id.as_str(), invalid.transient_id.as_str()],
+            }),
+        ))
+        .expect_err("invalid response payload should fail peer sync");
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+    assert!(
+        err.to_string().contains("invalid propagation payload hex"),
+        "unexpected error: {err}"
+    );
+
+    let pending = daemon
+        .store
+        .list_peer_unhandled_propagation(peer)
+        .expect("pending propagation");
+    assert_eq!(pending, vec![valid.clone(), invalid.clone()]);
+    assert!(
+        daemon
+            .store
+            .list_peer_handled_propagation_ids(peer)
+            .expect("handled propagation")
+            .is_empty()
+    );
+    let peers = daemon.peers.lock().expect("peers mutex poisoned");
+    let record = peers.get(peer).expect("peer record");
+    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    assert!(
+        serialized["handled_ids"]
+            .as_array()
+            .expect("serialized handled ids")
+            .is_empty()
+    );
+    assert_eq!(
+        serialized["unhandled_ids"].as_array().expect("serialized unhandled ids"),
+        &[json!(valid.transient_id.as_str()), json!(invalid.transient_id.as_str())]
+    );
+}
+
+#[test]
 fn peer_sync_offers_low_value_stamped_entries_like_python() {
     let store = MessagesStore::in_memory().expect("store");
     let daemon = RpcDaemon::with_store(store, hex::encode([2u8; 16]));

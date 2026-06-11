@@ -127,6 +127,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Remote fetch/download/sync imports validate the full returned propagation
   payload batch before mutating the local store or in-memory payload cache, so
   mixed valid/invalid remote responses fail without leaving partial relay state.
+- Selected local peer-sync offer responses validate the full selected
+  propagation response payload batch before marking any selected ID transferred,
+  so malformed queued payloads cannot partially drain peer retry state.
 - Malformed remote fetch and download imports mirror existing payload-backed
   queue marks into active peer record snapshots before returning the import
   failure, so already queued relay work remains visible after restart/export.
