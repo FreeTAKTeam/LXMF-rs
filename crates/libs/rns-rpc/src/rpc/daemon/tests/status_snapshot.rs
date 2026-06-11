@@ -70,6 +70,33 @@ fn daemon_status_ex_reads_cached_status_snapshot() {
     assert_eq!(result["stamp_policy"]["enforce"].as_bool(), Some(true));
 }
 
+#[test]
+fn propagation_enable_updates_auth_required_policy() {
+    let daemon = RpcDaemon::test_instance();
+
+    let response = daemon
+        .handle_rpc(rpc_request(
+            14,
+            "propagation_enable",
+            json!({
+                "enabled": true,
+                "auth_required": true,
+            }),
+        ))
+        .expect("enable propagation auth policy")
+        .result
+        .expect("propagation enable result");
+
+    assert_eq!(response["propagation"]["auth_required"].as_bool(), Some(true));
+
+    let status = daemon
+        .handle_rpc(RpcRequest { id: 15, method: "propagation_status".to_string(), params: None })
+        .expect("propagation status")
+        .result
+        .expect("propagation status result");
+    assert_eq!(status["propagation"]["auth_required"].as_bool(), Some(true));
+}
+
 fn make_ready_propagation_peer(daemon: &RpcDaemon, peer_seed: u8) -> String {
     let peer = hex::encode([peer_seed; 16]);
     daemon

@@ -96,6 +96,8 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   queue accounting, sync/transfer limits, stamp policy, throttling, candidate
   selection, unreachable culling, low-acceptance rotation, and prioritized
   offers.
+- Python-style propagation `auth_required` configuration is applied to the
+  daemon propagation state and reported with the propagation peer policy.
 - Offer responses support Python boolean and list forms, reject out-of-offer
   IDs, preserve no-transfer liveness, retain cumulative acceptance rates, and
   preserve peers and queues on retryable or otherwise unexpected numeric

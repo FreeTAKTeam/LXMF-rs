@@ -96,6 +96,8 @@ struct DeliveryPolicyParams {
 struct PropagationEnableParams {
     enabled: bool,
     #[serde(default)]
+    auth_required: Option<bool>,
+    #[serde(default)]
     store_root: Option<String>,
     #[serde(default)]
     target_cost: Option<u32>,

@@ -1328,6 +1328,9 @@ impl RpcDaemon {
                     let mut guard =
                         self.propagation_state.lock().expect("propagation mutex poisoned");
                     guard.enabled = parsed.enabled;
+                    if let Some(auth_required) = parsed.auth_required {
+                        guard.auth_required = auth_required;
+                    }
                     if parsed.store_root.is_some() {
                         guard.store_root = parsed.store_root;
                     }

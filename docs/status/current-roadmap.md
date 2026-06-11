@@ -64,6 +64,10 @@ The project is best described by capability level:
 - Propagation peers have real queue, policy, maintenance, throttling, peering,
   offer-response, source-accounting, and acceptance-rate behavior. These are
   substantial implementations, not SDK-only placeholders.
+- Python-style propagation `auth_required` configuration now reaches
+  `propagation_enable` and the daemon propagation status, so node-level
+  propagation auth policy is visible with the rest of the propagation peer
+  policy.
 - Local and remote peer-sync offer-response cleanup now preserves peers and
   propagation queues for retry on retryable or otherwise unexpected numeric
   responses, while still treating access denial and throttling as distinct
