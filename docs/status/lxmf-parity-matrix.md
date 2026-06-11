@@ -312,6 +312,12 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   retained payload entries, so payloads reintroduced after purge or peer
   acknowledgement can refresh relay state without inflating local received or
   ingested counters.
+- Link-based remote downloads wait for the propagation node's `/get` haves
+  acknowledgement and propagate peer/control errors, so failed remote cleanup is
+  not reported as a completed replication drain.
+- Remote fetch/download acknowledgements use canonical propagation transient
+  IDs for stamped payloads, so `/get` haves clear the peer's offered queue entry
+  instead of reporting the stamped payload bytes under a different hash.
 - Repeated remote fetch/download/sync imports increment source peer incoming
   counts and receive bytes only for payload IDs not already marked received
   from that source, while still replaying known payloads into relay queues when

@@ -282,6 +282,13 @@ The project is best described by capability level:
   from retained payload entries, so reintroduced payloads after purge or peer
   acknowledgement can refresh relay state without inflating local received or
   ingested counters.
+- Link-based remote downloads now wait for the propagation node's `/get` haves
+  acknowledgement and surface peer/control errors, so failed remote cleanup does
+  not look like a completed replication drain.
+- Remote fetch/download acknowledgements now use canonical propagation
+  transient IDs for stamped payloads, so `/get` haves purge the peer's offered
+  queue entry instead of acknowledging the stamped payload bytes under a
+  different hash.
 - Repeated remote fetch/download/sync imports now increment source peer
   incoming counts and receive bytes only for payload IDs not already marked
   received from that source, while still replaying known payloads into relay
