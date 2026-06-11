@@ -49,7 +49,7 @@ fn python_compat_propagated_python_to_rust() {
 
 #[test]
 #[ignore = "requires live Python compatibility harness environment"]
-fn python_compat_propagation_remote_status_bidir() {
+fn python_compat_a_propagation_remote_status_bidir() {
     run_case("propagation_remote_status_bidir");
 }
 
