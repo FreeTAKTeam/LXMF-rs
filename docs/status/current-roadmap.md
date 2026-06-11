@@ -269,6 +269,10 @@ The project is best described by capability level:
 - Inbound propagation offers now deduplicate validated offered transient IDs
   before building wanted-ID responses or applying source-accounting marks, so a
   duplicate offer cannot request or account the same payload more than once.
+- Capacity-limited but valid inbound propagation offers now also start the
+  offer throttle after peering-key and transient-ID validation, so repeated
+  deferred-admission offers return the Python-style throttled response instead
+  of repeatedly probing peer capacity.
 - Remote fetch and download imports now mark inactive source peers as received
   before later activation, so a propagation node is not offered back payloads it
   previously supplied just because it was not yet an active peer record.

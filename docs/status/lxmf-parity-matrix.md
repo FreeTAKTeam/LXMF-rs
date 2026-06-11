@@ -299,6 +299,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Inbound propagation offers deduplicate validated offered transient IDs before
   building wanted-ID responses or applying source-accounting marks, so duplicate
   offers cannot request or account the same payload more than once.
+- Capacity-limited but valid inbound propagation offers also start the offer
+  throttle after peering-key and transient-ID validation, so repeated
+  deferred-admission offers return the Python-style throttled response instead
+  of repeatedly probing peer capacity.
 - Remote fetch and download imports mark inactive source peers as received
   before later activation, so source-accounting survives even when the
   propagation node was not yet an active peer record.
