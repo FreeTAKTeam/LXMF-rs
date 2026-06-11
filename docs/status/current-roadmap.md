@@ -380,6 +380,10 @@ The project is best described by capability level:
   after peering-key and transient-ID validation, so repeated replication offers
   from the same peer take the throttled response path even when the peer changes
   the offered transient-ID set.
+- The live Rust/Python remote-relay interop gate now covers selecting a Python
+  `lxmd` propagation destination as the Rust outbound propagation node, so
+  mixed propagation-node discovery and selection stay under pinned reference
+  coverage.
 
 ## Remaining Release Blockers
 
