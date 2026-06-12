@@ -17079,6 +17079,8 @@ fn failed_propagation_remote_sync_updates_lifecycle_error() {
     assert_eq!(event.payload["remote"].as_str(), Some("remote-node"));
     assert_eq!(event.payload["remote_sync"].as_bool(), Some(true));
     assert_eq!(event.payload["synced"].as_bool(), Some(false));
+    assert_eq!(event.payload["failure_kind"].as_str(), Some("timeout"));
+    assert_eq!(event.payload["propagation"]["failure_kind"].as_str(), Some("timeout"));
     assert_eq!(event.payload["alive"].as_bool(), Some(false));
     assert_eq!(event.payload["sync_backoff"].as_u64(), Some(12 * 60));
 }
@@ -17145,6 +17147,8 @@ fn failed_propagation_remote_sync_updates_peer_backoff() {
     assert_eq!(event.payload["remote"].as_str(), Some("remote-node"));
     assert_eq!(event.payload["remote_sync"].as_bool(), Some(true));
     assert_eq!(event.payload["synced"].as_bool(), Some(false));
+    assert_eq!(event.payload["failure_kind"].as_str(), Some("timeout"));
+    assert_eq!(event.payload["propagation"]["failure_kind"].as_str(), Some("timeout"));
     assert_eq!(event.payload["alive"].as_bool(), Some(false));
     assert_eq!(event.payload["sync_backoff"].as_u64(), Some(12 * 60));
     assert_eq!(event.payload["last_sync_attempt"].as_i64(), Some(last_sync_attempt));
@@ -17285,6 +17289,8 @@ fn throttled_propagation_remote_sync_uses_python_retry_window_without_breaking_l
     assert_eq!(event.payload["remote_sync"].as_bool(), Some(true));
     assert_eq!(event.payload["synced"].as_bool(), Some(false));
     assert_eq!(event.payload["postpone_reason"].as_str(), Some("throttled"));
+    assert_eq!(event.payload["failure_kind"].as_str(), Some("throttled"));
+    assert_eq!(event.payload["propagation"]["failure_kind"].as_str(), Some("throttled"));
     assert_eq!(event.payload["alive"].as_bool(), Some(true));
     assert_eq!(event.payload["sync_backoff"].as_u64(), Some(0));
     assert_eq!(event.payload["last_sync_attempt"].as_i64(), Some(last_sync_attempt));
@@ -17566,6 +17572,8 @@ fn identity_required_propagation_remote_sync_preserves_peer_with_retry_backoff()
     assert_eq!(event.payload["remote"].as_str(), Some("remote-node"));
     assert_eq!(event.payload["alive"].as_bool(), Some(true));
     assert_eq!(event.payload["sync_backoff"].as_u64(), Some(12 * 60));
+    assert_eq!(event.payload["failure_kind"].as_str(), Some("no_identity"));
+    assert_eq!(event.payload["propagation"]["failure_kind"].as_str(), Some("no_identity"));
     assert_eq!(event.payload["last_sync_attempt"].as_i64(), Some(last_sync_attempt));
     assert_eq!(
         event.payload["next_sync_attempt"].as_i64(),
@@ -17642,6 +17650,8 @@ fn invalid_peering_key_propagation_remote_sync_preserves_peer_with_retry_backoff
     assert_eq!(event.payload["remote"].as_str(), Some("remote-node"));
     assert_eq!(event.payload["alive"].as_bool(), Some(true));
     assert_eq!(event.payload["sync_backoff"].as_u64(), Some(12 * 60));
+    assert_eq!(event.payload["failure_kind"].as_str(), Some("invalid_key"));
+    assert_eq!(event.payload["propagation"]["failure_kind"].as_str(), Some("invalid_key"));
     assert_eq!(event.payload["last_sync_attempt"].as_i64(), Some(last_sync_attempt));
     assert_eq!(
         event.payload["next_sync_attempt"].as_i64(),
@@ -17718,6 +17728,8 @@ fn invalid_data_propagation_remote_sync_preserves_peer_with_retry_backoff() {
     assert_eq!(event.payload["remote"].as_str(), Some("remote-node"));
     assert_eq!(event.payload["alive"].as_bool(), Some(true));
     assert_eq!(event.payload["sync_backoff"].as_u64(), Some(12 * 60));
+    assert_eq!(event.payload["failure_kind"].as_str(), Some("invalid_data"));
+    assert_eq!(event.payload["propagation"]["failure_kind"].as_str(), Some("invalid_data"));
     assert_eq!(event.payload["last_sync_attempt"].as_i64(), Some(last_sync_attempt));
     assert_eq!(
         event.payload["next_sync_attempt"].as_i64(),
@@ -17817,6 +17829,8 @@ fn timeout_propagation_remote_sync_preserves_peer_with_retry_backoff() {
     assert_eq!(event.payload["remote"].as_str(), Some("remote-node"));
     assert_eq!(event.payload["alive"].as_bool(), Some(true));
     assert_eq!(event.payload["sync_backoff"].as_u64(), Some(12 * 60));
+    assert_eq!(event.payload["failure_kind"].as_str(), Some("timeout"));
+    assert_eq!(event.payload["propagation"]["failure_kind"].as_str(), Some("timeout"));
     assert_eq!(event.payload["last_sync_attempt"].as_i64(), Some(last_sync_attempt));
     assert_eq!(
         event.payload["next_sync_attempt"].as_i64(),
@@ -17893,6 +17907,8 @@ fn not_found_propagation_remote_sync_preserves_peer_with_retry_backoff() {
     assert_eq!(event.payload["remote"].as_str(), Some("remote-node"));
     assert_eq!(event.payload["alive"].as_bool(), Some(true));
     assert_eq!(event.payload["sync_backoff"].as_u64(), Some(12 * 60));
+    assert_eq!(event.payload["failure_kind"].as_str(), Some("not_found"));
+    assert_eq!(event.payload["propagation"]["failure_kind"].as_str(), Some("not_found"));
     assert_eq!(event.payload["last_sync_attempt"].as_i64(), Some(last_sync_attempt));
     assert_eq!(
         event.payload["next_sync_attempt"].as_i64(),
@@ -17997,6 +18013,8 @@ fn invalid_stamp_propagation_remote_sync_preserves_peer_queue_with_retry_backoff
     assert_eq!(event.payload["remote"].as_str(), Some("remote-node"));
     assert_eq!(event.payload["alive"].as_bool(), Some(true));
     assert_eq!(event.payload["sync_backoff"].as_u64(), Some(12 * 60));
+    assert_eq!(event.payload["failure_kind"].as_str(), Some("invalid_stamp"));
+    assert_eq!(event.payload["propagation"]["failure_kind"].as_str(), Some("invalid_stamp"));
     assert_eq!(event.payload["last_sync_attempt"].as_i64(), Some(last_sync_attempt));
     assert_eq!(
         event.payload["next_sync_attempt"].as_i64(),
