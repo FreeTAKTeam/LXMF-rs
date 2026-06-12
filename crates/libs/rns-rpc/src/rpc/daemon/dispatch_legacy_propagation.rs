@@ -240,7 +240,7 @@ impl RpcDaemon {
         self.publish_event(RpcEvent {
             event_type: "peer_unpeer".into(),
             payload: json!({
-                "peer": peer_id,
+                "peer": cleanup.peer,
                 "remote": remote,
                 "removed": cleanup.removed,
                 "reason": "access_denied",

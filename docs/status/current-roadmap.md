@@ -111,6 +111,10 @@ The project is best described by capability level:
 - Remote fetch and download access-denied bridge errors now preserve the
   propagation `no_access` lifecycle state instead of collapsing the denial into
   generic failure, while retaining the bridge error text for operators.
+- Access-denied remote transfer cleanup now reports the stored peer identifier
+  in peer-unpeer events even when callers address the remote with different hex
+  casing, keeping operator-visible teardown events aligned with the peer record
+  that was actually removed.
 - Remote fetch and download bridge-unavailable errors now mirror existing
   payload-backed live queue marks into active peer record snapshots before
   returning and mark the propagation sync lifecycle failed, so already queued

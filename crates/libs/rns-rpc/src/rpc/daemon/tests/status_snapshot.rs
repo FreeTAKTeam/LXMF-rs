@@ -17017,6 +17017,47 @@ fn denied_access_propagation_remote_fetch_breaks_source_peering_like_python() {
 }
 
 #[test]
+fn denied_access_propagation_remote_fetch_reports_stored_peer_case_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    daemon.set_remote_control_bridge(Arc::new(RemoteTransferErrorBridge {
+        kind: std::io::ErrorKind::PermissionDenied,
+        message: "propagation node denied access",
+        fail_download: false,
+        fail_fetch: true,
+    }));
+    let stored_peer = "Peer-Remote-Fetch-Denied-Case";
+    let request_peer = stored_peer.to_ascii_lowercase();
+    daemon
+        .handle_rpc(rpc_request(80, "peer_sync", json!({ "peer": stored_peer })))
+        .expect("initial peer sync");
+    daemon.event_queue.lock().expect("event_queue mutex poisoned").clear();
+
+    let err = daemon
+        .handle_rpc(rpc_request(
+            81,
+            "propagation_remote_fetch",
+            json!({
+                "remote": request_peer,
+            }),
+        ))
+        .expect_err("denied remote fetch should return the bridge error");
+    assert_eq!(err.kind(), std::io::ErrorKind::PermissionDenied);
+
+    let event = daemon
+        .event_queue
+        .lock()
+        .expect("event_queue mutex poisoned")
+        .iter()
+        .rev()
+        .find(|event| event.event_type == "peer_unpeer")
+        .cloned()
+        .expect("denied access unpeer event");
+    assert_eq!(event.payload["peer"].as_str(), Some(stored_peer));
+    assert_eq!(event.payload["remote"].as_str(), Some(request_peer.as_str()));
+    assert_eq!(event.payload["reason"].as_str(), Some("access_denied"));
+}
+
+#[test]
 fn failed_propagation_remote_sync_updates_lifecycle_error() {
     let daemon = RpcDaemon::test_instance();
     daemon.set_remote_control_bridge(Arc::new(TestRemoteControlBridge {

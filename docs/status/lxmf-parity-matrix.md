@@ -151,6 +151,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   peer-sync denial path for the source peer, clearing local peering and queued
   propagation marks instead of preserving denied relay work for retry, while
   preserving the propagation `no_access` lifecycle state and bridge error text.
+- Access-denied remote transfer cleanup emits peer-unpeer events with the
+  stored peer identifier even when the remote request uses alternate casing,
+  keeping event observability tied to the removed peer record.
 - Remote fetch and download bridge-unavailable errors mirror existing
   payload-backed queue marks into active peer record snapshots before
   returning and mark the propagation sync lifecycle failed, so queued relay work
