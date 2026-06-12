@@ -445,6 +445,132 @@ async fn oversized_opportunistic_delivery_falls_back_to_link_delivery() {
 }
 
 #[tokio::test]
+async fn propagated_link_send_tracks_resource_with_propagated_status() {
+    let message_id = "propagated-resource-tracking";
+    let store = MessagesStore::in_memory().expect("store");
+    store
+        .insert_message(&MessageRecord {
+            id: message_id.to_string(),
+            source: "source".to_string(),
+            destination: "00000000000000000000000000000000".to_string(),
+            title: String::new(),
+            content: String::new(),
+            timestamp: 0,
+            direction: "out".to_string(),
+            fields: None,
+            receipt_status: Some("sending: propagated resource".to_string()),
+        })
+        .expect("insert message");
+    let daemon = Arc::new(RpcDaemon::with_store(store, "propagated-resource-node".to_string()));
+    let signer = PrivateIdentity::new_from_name("propagated-resource-tracking");
+    let transport_identity = rns_transport::identity_bridge::to_transport_private_identity(&signer);
+    let transport = Arc::new(Transport::new(TransportConfig::new(
+        "propagated-resource-tracking",
+        &transport_identity,
+        true,
+    )));
+    let mut channel = transport
+        .iface_manager()
+        .lock()
+        .await
+        .new_channel_with_role(8, rns_transport::iface::IfaceRole::Unicast);
+    let iface = *channel.address();
+
+    let propagation_signer = rns_transport::identity::PrivateIdentity::new_from_rand(OsRng);
+    let propagation_identity = *propagation_signer.as_identity();
+    let propagation_destination = DestinationDesc {
+        identity: propagation_identity,
+        address_hash: propagation_identity.address_hash,
+        name: DestinationName::new("lxmf", "propagation"),
+    };
+    let propagation_link = transport.link(propagation_destination).await;
+    let request_message =
+        tokio::time::timeout(Duration::from_millis(200), channel.tx_channel.recv())
+            .await
+            .expect("link request tx")
+            .expect("link request message");
+    let (tx, _) = tokio::sync::broadcast::channel(8);
+    let mut inbound = Link::new_from_request(
+        &request_message.packet,
+        propagation_signer.sign_key().clone(),
+        propagation_destination,
+        tx,
+    )
+    .expect("link request should parse");
+    assert!(matches!(
+        propagation_link.lock().await.handle_packet(&inbound.prove(), iface),
+        rns_transport::destination::link::LinkHandleResult::Activated
+    ));
+
+    let (receipt_tx, mut receipt_rx) = tokio::sync::mpsc::channel(16);
+    let outbound_resource_map = Arc::new(Mutex::new(HashMap::new()));
+    let mut final_destination = [0u8; 16];
+    final_destination.copy_from_slice(&[0x55; 16]);
+    let propagation_node_hex = hex::encode(propagation_identity.address_hash.as_slice());
+    let task = DeliveryTask {
+        daemon,
+        transport,
+        peer_crypto: Arc::new(Mutex::new(HashMap::new())),
+        outbound_propagation_identities: Arc::new(Mutex::new(HashMap::new())),
+        receipt_map: Arc::new(Mutex::new(HashMap::new())),
+        outbound_resource_map: outbound_resource_map.clone(),
+        outbound_propagation_link: Arc::new(tokio::sync::Mutex::new(None)),
+        receipt_tx,
+        message_id: message_id.to_string(),
+        source_hash: [1u8; 16],
+        destination: final_destination,
+        destination_hash: AddressHash::new(final_destination),
+        destination_hex: hex::encode(final_destination),
+        title: String::new(),
+        content: String::new(),
+        fields: None,
+        signer,
+        stamp_cost: None,
+        outbound_ticket: None,
+        include_ticket: None,
+        peer_identity: None,
+        propagation_node_identity: Some(propagation_identity),
+        requested_method: RequestedDeliveryMethod::Propagated,
+        try_propagation_on_fail: false,
+        propagation_node_hex: Some(propagation_node_hex.clone()),
+    };
+
+    task.send_via_existing_link_mode(
+        "propagation",
+        propagation_node_hex.as_str(),
+        propagation_link,
+        b"propagated payload",
+        LinkModeStatuses {
+            packet: "sent: propagated",
+            resource: "sending: propagated resource",
+            resource_sent: "sent: propagated resource",
+        },
+    )
+    .await
+    .expect("propagated resource send");
+
+    let advertisement = tokio::time::timeout(Duration::from_millis(200), channel.tx_channel.recv())
+        .await
+        .expect("resource advertisement")
+        .expect("resource advertisement");
+    assert_eq!(advertisement.packet.context, PacketContext::ResourceAdvrtisement);
+
+    let receipt = tokio::time::timeout(Duration::from_millis(200), receipt_rx.recv())
+        .await
+        .expect("receipt")
+        .expect("receipt");
+    assert_eq!(receipt.message_id, message_id);
+    assert_eq!(receipt.status, "sending: propagated resource");
+
+    let tracked = outbound_resource_map.lock().expect("map");
+    let resource_tracking = tracked.values().next().expect("tracked outbound resource");
+    assert_eq!(resource_tracking.message_id, message_id);
+    assert_eq!(resource_tracking.peer, propagation_node_hex);
+    assert_eq!(resource_tracking.bytes, b"propagated payload".len());
+    assert_eq!(resource_tracking.sent_status, "sent: propagated resource");
+}
+
+#[tokio::test]
 async fn build_payload_records_normal_stamp_lifecycle_metadata() {
     let message_id = "stamped-delivery-task";
     let store = MessagesStore::in_memory().expect("store");
