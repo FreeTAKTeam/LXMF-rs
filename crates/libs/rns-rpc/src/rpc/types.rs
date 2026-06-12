@@ -184,6 +184,8 @@ pub struct DeliveryPolicy {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct PropagationState {
     pub enabled: bool,
+    #[serde(default)]
+    pub auth_required: bool,
     pub store_root: Option<String>,
     pub target_cost: u32,
     #[serde(default = "default_propagation_stamp_cost_flexibility")]
@@ -237,6 +239,7 @@ impl Default for PropagationState {
     fn default() -> Self {
         Self {
             enabled: false,
+            auth_required: false,
             store_root: None,
             target_cost: 0,
             stamp_cost_flexibility: default_propagation_stamp_cost_flexibility(),

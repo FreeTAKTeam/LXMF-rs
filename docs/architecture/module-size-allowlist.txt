@@ -6,11 +6,9 @@ crates/apps/lxmf-cli/src/main.rs
 crates/apps/rns-tools/src/bin/rnx.rs
 crates/apps/lxmf-cli/src/bin/lxmd.rs
 crates/apps/reticulumd/src/bin/reticulumd/bridge_delivery_task.rs
-crates/apps/reticulumd/src/bin/reticulumd/bridge_remote_control.rs
 crates/apps/reticulumd/src/bin/reticulumd/bridge_remote_control_download.rs
 crates/apps/reticulumd/src/bin/reticulumd/inbound_control.rs
 crates/apps/reticulumd/src/bin/reticulumd/inbound_control_propagation.rs
-crates/apps/reticulumd/src/bin/reticulumd/bridge_remote_control.rs
 crates/apps/reticulumd/src/bin/reticulumd/inbound_worker.rs
 crates/apps/reticulumd/src/bin/reticulumd/rpc_loop.rs
 crates/apps/reticulumd/src/config.rs
@@ -57,7 +55,6 @@ crates/libs/test-support/src/sdk_schema/fixtures_contract_tests.rs
 xtask/src/client_codegen.rs
 crates/apps/reticulumd/src/bin/reticulumd/bootstrap.rs
 crates/apps/reticulumd/src/bin/reticulumd/bootstrap_interface_startup.rs
-crates/apps/reticulumd/src/bin/reticulumd/bridge_remote_control.rs
 crates/apps/reticulumd/src/bin/reticulumd/bridge_delivery_task_tests.rs
 crates/apps/reticulumd/src/bin/reticulumd/interfaces/auto.rs
 crates/apps/reticulumd/src/bin/reticulumd/interfaces/ble/mod.rs

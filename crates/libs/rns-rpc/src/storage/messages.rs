@@ -1499,6 +1499,62 @@ impl MessagesStore {
         })
     }
 
+    pub fn prune_propagation_entries_to_limit_bytes(
+        &self,
+        limit_bytes: u64,
+    ) -> rusqlite::Result<Vec<String>> {
+        self.with_write_conn(|conn| {
+            let tx = conn.unchecked_transaction()?;
+            let total: i64 = tx.query_row(
+                "SELECT COALESCE(SUM(size_bytes), 0) FROM propagation_entries",
+                [],
+                |row| row.get(0),
+            )?;
+            let mut total = total.max(0) as u64;
+            if total <= limit_bytes {
+                tx.commit()?;
+                return Ok(Vec::new());
+            }
+
+            let entries = {
+                let mut stmt = tx.prepare(
+                    "SELECT transient_id, size_bytes
+                     FROM propagation_entries
+                     ORDER BY received_at ASC, transient_id ASC",
+                )?;
+                let rows = stmt.query_map([], |row| {
+                    let transient_id: String = row.get(0)?;
+                    let size_bytes: i64 = row.get(1)?;
+                    Ok((transient_id, size_bytes.max(0) as u64))
+                })?;
+                rows.collect::<rusqlite::Result<Vec<_>>>()?
+            };
+
+            let mut pruned = Vec::new();
+            for (transient_id, size_bytes) in entries {
+                if total <= limit_bytes {
+                    break;
+                }
+                let affected = tx.execute(
+                    "DELETE FROM propagation_entries WHERE transient_id = ?1",
+                    params![transient_id],
+                )?;
+                if affected > 0 {
+                    tx.execute(
+                        "DELETE FROM propagation_peer_entries
+                         WHERE transient_id = ?1
+                           AND state = 'unhandled'",
+                        params![transient_id],
+                    )?;
+                    total = total.saturating_sub(size_bytes);
+                    pruned.push(transient_id);
+                }
+            }
+            tx.commit()?;
+            Ok(pruned)
+        })
+    }
+
     pub fn count_message_buckets(&self) -> rusqlite::Result<(u64, u64)> {
         let (queued, in_flight): (i64, i64) = self.with_read_conn(|conn| {
             let mut stmt = conn.prepare(
@@ -3420,6 +3476,61 @@ mod tests {
                 .expect("unhandled ids")
                 .is_empty(),
             "retryable marks for the deleted payload are stale and should be removed"
+        );
+    }
+
+    #[test]
+    fn prune_propagation_entries_to_limit_bytes_removes_oldest_payloads() {
+        let store = MessagesStore::in_memory().expect("in-memory store");
+        let old = PropagationEntryRecord {
+            transient_id: "10".repeat(32),
+            destination: "44".repeat(16),
+            payload_hex: "10".repeat(80),
+            received_at: 1,
+            size_bytes: 80,
+            stamp_value: None,
+        };
+        let new = PropagationEntryRecord {
+            transient_id: "20".repeat(32),
+            destination: "55".repeat(16),
+            payload_hex: "20".repeat(40),
+            received_at: 2,
+            size_bytes: 40,
+            stamp_value: None,
+        };
+        store.upsert_propagation_entry(&old).expect("upsert old");
+        store.upsert_propagation_entry(&new).expect("upsert new");
+        store
+            .mark_peer_unhandled_propagation("peer-prune", old.transient_id.as_str())
+            .expect("mark old unhandled");
+        store
+            .mark_peer_unhandled_propagation("peer-prune", new.transient_id.as_str())
+            .expect("mark new unhandled");
+        store
+            .mark_peer_handled_propagation("peer-done", old.transient_id.as_str())
+            .expect("mark old handled");
+
+        let pruned =
+            store.prune_propagation_entries_to_limit_bytes(64).expect("prune propagation entries");
+
+        assert_eq!(pruned, vec![old.transient_id.clone()]);
+        assert!(store
+            .get_propagation_entry(old.transient_id.as_str())
+            .expect("old lookup")
+            .is_none());
+        assert!(store
+            .get_propagation_entry(new.transient_id.as_str())
+            .expect("new lookup")
+            .is_some());
+        assert_eq!(
+            store.list_peer_unhandled_propagation_ids("peer-prune").expect("peer unhandled ids"),
+            vec![new.transient_id]
+        );
+        assert!(
+            store
+                .peer_completed_propagation_mark_exists("peer-done", old.transient_id.as_str())
+                .expect("completed mark"),
+            "completed peer accounting should survive propagation storage pruning"
         );
     }
 

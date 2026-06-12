@@ -125,7 +125,7 @@ jobs:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum
           LXMF_PY_REPO: ${{ github.workspace }}/LXMF
           LXMF_PY_COMPAT_HARNESS: ${{ github.workspace }}/lxmf-rs/tools/scripts/python_compat_harness.py
-        run: cargo test -p reticulumd --test python_compat_matrix -- --ignored --nocapture
+        run: cargo test -p reticulumd --test python_compat_matrix -- --ignored --nocapture --test-threads=1
 
       - name: Rust/Python LXMD remote relay interop
         working-directory: lxmf-rs

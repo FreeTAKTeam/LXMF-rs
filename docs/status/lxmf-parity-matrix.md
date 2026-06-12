@@ -96,6 +96,8 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   queue accounting, sync/transfer limits, stamp policy, throttling, candidate
   selection, unreachable culling, low-acceptance rotation, and prioritized
   offers.
+- Python-style propagation `auth_required` configuration is applied to the
+  daemon propagation state and reported with the propagation peer policy.
 - Offer responses support Python boolean and list forms, reject out-of-offer
   IDs, preserve no-transfer liveness, retain cumulative acceptance rates, and
   preserve peers and queues on retryable or otherwise unexpected numeric
@@ -141,9 +143,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Remote fetch and download bridge failures mirror existing payload-backed
   queue marks into active peer record snapshots before returning the failure,
   so already queued relay work remains visible after restart/export.
-- Remote fetch and download access-denied bridge errors preserve the
-  propagation `no_access` lifecycle state instead of collapsing the denial into
-  generic failure, while retaining the bridge error text for operators.
+- Remote fetch and download access-denied bridge failures follow the remote
+  peer-sync denial path for the source peer, clearing local peering and queued
+  propagation marks instead of preserving denied relay work for retry, while
+  preserving the propagation `no_access` lifecycle state and bridge error text.
 - Remote fetch and download bridge-unavailable errors mirror existing
   payload-backed queue marks into active peer record snapshots before
   returning and mark the propagation sync lifecycle failed, so queued relay work
@@ -346,6 +349,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   retained payload entries, so payloads reintroduced after purge or peer
   acknowledgement can refresh relay state without inflating local received or
   ingested counters.
+- Propagation-node ingest enforces the configured message-storage byte limit
+  against retained propagation entries, pruning oldest payloads and stale
+  retryable peer marks.
 - Link-based remote downloads wait for the propagation node's `/get` haves
   acknowledgement and propagate peer/control errors, so failed remote cleanup is
   not reported as a completed replication drain.
@@ -471,6 +477,11 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - `.github/workflows/python-interop.yml` runs pinned Python reference
   conformance plus live channel, paper, compatibility-matrix, and LXMD
   remote-relay tests.
+- The compatibility matrix includes an ignored live
+  `propagation_remote_status_bidir` case that validates Python discovery of
+  the Rust propagation-control path and dispatches a Rust-to-Python
+  propagation-node status query when the Python harness environment is
+  available.
 - Focused daemon/RPC tests cover delivery modes, propagation offers, peer
   maintenance, queue policy, source accounting, stamps, tickets, receipts, and
   cancellation.

@@ -236,6 +236,38 @@ impl RpcDaemon {
             .map_err(std::io::Error::other)
     }
 
+    fn prune_propagation_payloads_to_storage_limit(&self) -> Result<(), std::io::Error> {
+        let Some(limit_mb) = self
+            .propagation_state
+            .lock()
+            .expect("propagation mutex poisoned")
+            .message_storage_limit_mb
+        else {
+            return Ok(());
+        };
+        let Some(limit_bytes) = limit_mb.checked_mul(1_000_000) else {
+            return Ok(());
+        };
+        let pruned = self
+            .store
+            .prune_propagation_entries_to_limit_bytes(limit_bytes)
+            .map_err(std::io::Error::other)?;
+        if pruned.is_empty() {
+            return Ok(());
+        }
+        {
+            let mut guard =
+                self.propagation_payloads.lock().expect("propagation payload mutex poisoned");
+            for transient_id in &pruned {
+                guard.remove(transient_id.as_str());
+            }
+        }
+        for transient_id in pruned {
+            self.remove_peer_queue_snapshot_id(transient_id.as_str());
+        }
+        Ok(())
+    }
+
     fn queue_propagation_entry_for_active_peers(
         &self,
         transient_id: &str,
@@ -385,6 +417,7 @@ impl RpcDaemon {
                 .expect("propagation payload mutex poisoned")
                 .insert(record.transient_id, record.payload_hex);
         }
+        self.prune_propagation_payloads_to_storage_limit()?;
         if !messages.is_empty() {
             self.note_client_propagation_messages_received(imported_count);
         }
@@ -653,6 +686,8 @@ impl RpcDaemon {
             self.store
                 .mark_local_propagation_processed(transient_id.as_str())
                 .map_err(std::io::Error::other)?;
+            drop(guard);
+            self.prune_propagation_payloads_to_storage_limit()?;
         }
 
         let state = {
@@ -739,6 +774,7 @@ impl RpcDaemon {
             self.store
                 .mark_local_propagation_processed(transient_id.as_str())
                 .map_err(std::io::Error::other)?;
+            self.prune_propagation_payloads_to_storage_limit()?;
         }
 
         self.note_client_propagation_messages_received(usize::from(
@@ -822,6 +858,7 @@ impl RpcDaemon {
             .lock()
             .expect("propagation payload mutex poisoned")
             .insert(transient_id.clone(), payload_hex);
+        self.prune_propagation_payloads_to_storage_limit()?;
         Ok(transient_id)
     }
 
@@ -863,6 +900,7 @@ impl RpcDaemon {
             .lock()
             .expect("propagation payload mutex poisoned")
             .insert(transient_id.clone(), payload_hex);
+        self.prune_propagation_payloads_to_storage_limit()?;
         Ok(transient_id)
     }
 
@@ -1329,6 +1367,9 @@ impl RpcDaemon {
                     let mut guard =
                         self.propagation_state.lock().expect("propagation mutex poisoned");
                     guard.enabled = parsed.enabled;
+                    if let Some(auth_required) = parsed.auth_required {
+                        guard.auth_required = auth_required;
+                    }
                     if parsed.store_root.is_some() {
                         guard.store_root = parsed.store_root;
                     }
@@ -1508,6 +1549,7 @@ impl RpcDaemon {
                     self.store
                         .mark_local_propagation_processed(transient_id.as_str())
                         .map_err(std::io::Error::other)?;
+                    self.prune_propagation_payloads_to_storage_limit()?;
                 }
 
                 let state = {
@@ -2227,12 +2269,12 @@ impl RpcDaemon {
                         });
                         result
                     }
-                      Err(err) => {
+                    Err(err) => {
                         let sync_state = remote_propagation_failure_state(&err);
                         self.update_propagation_sync_state(|state| {
                             state.sync_state = sync_state;
                             state.state_name = propagation_sync_state_name(sync_state).to_string();
-                             state.sync_progress = 0.0;
+                            state.sync_progress = 0.0;
                             state.last_sync_error = Some(err.to_string());
                         });
                         if is_remote_access_denied_error(&err) {
@@ -2344,12 +2386,12 @@ impl RpcDaemon {
                     parsed.transfer_limit_kb,
                 ) {
                     Ok(result) => result,
-                      Err(err) => {
+                    Err(err) => {
                         let sync_state = remote_propagation_failure_state(&err);
                         self.update_propagation_sync_state(|state| {
                             state.sync_state = sync_state;
                             state.state_name = propagation_sync_state_name(sync_state).to_string();
-                             state.sync_progress = 0.0;
+                            state.sync_progress = 0.0;
                             state.last_sync_error = Some(err.to_string());
                         });
                         if is_remote_access_denied_error(&err) {

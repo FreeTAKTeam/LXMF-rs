@@ -70,6 +70,33 @@ fn daemon_status_ex_reads_cached_status_snapshot() {
     assert_eq!(result["stamp_policy"]["enforce"].as_bool(), Some(true));
 }
 
+#[test]
+fn propagation_enable_updates_auth_required_policy() {
+    let daemon = RpcDaemon::test_instance();
+
+    let response = daemon
+        .handle_rpc(rpc_request(
+            14,
+            "propagation_enable",
+            json!({
+                "enabled": true,
+                "auth_required": true,
+            }),
+        ))
+        .expect("enable propagation auth policy")
+        .result
+        .expect("propagation enable result");
+
+    assert_eq!(response["propagation"]["auth_required"].as_bool(), Some(true));
+
+    let status = daemon
+        .handle_rpc(RpcRequest { id: 15, method: "propagation_status".to_string(), params: None })
+        .expect("propagation status")
+        .result
+        .expect("propagation status result");
+    assert_eq!(status["propagation"]["auth_required"].as_bool(), Some(true));
+}
+
 fn make_ready_propagation_peer(daemon: &RpcDaemon, peer_seed: u8) -> String {
     let peer = hex::encode([peer_seed; 16]);
     daemon
@@ -12490,7 +12517,12 @@ struct RemoteSyncErrorBridge {
     message: &'static str,
 }
 
-struct RemoteAccessDeniedBridge;
+struct RemoteTransferErrorBridge {
+    kind: std::io::ErrorKind,
+    message: &'static str,
+    fail_download: bool,
+    fail_fetch: bool,
+}
 
 struct CountingRemoteControlBridge {
     status_calls: Arc<std::sync::atomic::AtomicUsize>,
@@ -12575,6 +12607,66 @@ impl RemoteControlBridge for TestRemoteControlBridge {
                 result
             })
             .map_err(|kind| std::io::Error::new(kind, "remote fetch failed"))
+    }
+}
+
+struct RemoteAccessDeniedBridge;
+
+impl RemoteAccessDeniedBridge {
+    fn denied() -> std::io::Error {
+        std::io::Error::new(std::io::ErrorKind::PermissionDenied, "propagation node denied access")
+    }
+}
+
+impl RemoteControlBridge for RemoteAccessDeniedBridge {
+    fn propagation_remote_status(
+        &self,
+        _remote: &str,
+        _identity_private_key_hex: Option<&str>,
+        _timeout_secs: f64,
+    ) -> Result<JsonValue, std::io::Error> {
+        Err(Self::denied())
+    }
+
+    fn propagation_remote_sync(
+        &self,
+        _remote: &str,
+        _peer: &str,
+        _identity_private_key_hex: Option<&str>,
+        _timeout_secs: f64,
+        _transfer_limit_kb: Option<f64>,
+    ) -> Result<JsonValue, std::io::Error> {
+        Err(Self::denied())
+    }
+
+    fn propagation_remote_download(
+        &self,
+        _remote: &str,
+        _identity_private_key_hex: Option<&str>,
+        _timeout_secs: f64,
+        _transfer_limit_kb: Option<f64>,
+    ) -> Result<JsonValue, std::io::Error> {
+        Err(Self::denied())
+    }
+
+    fn propagation_remote_unpeer(
+        &self,
+        _remote: &str,
+        _peer: &str,
+        _identity_private_key_hex: Option<&str>,
+        _timeout_secs: f64,
+    ) -> Result<JsonValue, std::io::Error> {
+        Err(Self::denied())
+    }
+
+    fn propagation_remote_fetch(
+        &self,
+        _remote: &str,
+        _identity_private_key_hex: Option<&str>,
+        _timeout_secs: f64,
+        _transfer_limit_kb: Option<f64>,
+    ) -> Result<JsonValue, std::io::Error> {
+        Err(Self::denied())
     }
 }
 
@@ -12714,7 +12806,7 @@ impl RemoteControlBridge for RemoteSyncErrorBridge {
     }
 }
 
-impl RemoteControlBridge for RemoteAccessDeniedBridge {
+impl RemoteControlBridge for RemoteTransferErrorBridge {
     fn propagation_remote_status(
         &self,
         remote: &str,
@@ -12729,55 +12821,64 @@ impl RemoteControlBridge for RemoteAccessDeniedBridge {
 
     fn propagation_remote_sync(
         &self,
-        _remote: &str,
-        _peer: &str,
+        remote: &str,
+        peer: &str,
         _identity_private_key_hex: Option<&str>,
         _timeout_secs: f64,
         _transfer_limit_kb: Option<f64>,
     ) -> Result<JsonValue, std::io::Error> {
-        Err(std::io::Error::new(
-            std::io::ErrorKind::PermissionDenied,
-            "propagation node denied access",
-        ))
+        Ok(json!({
+            "remote": remote,
+            "peer": peer,
+            "synced": true,
+        }))
     }
 
     fn propagation_remote_download(
         &self,
-        _remote: &str,
+        remote: &str,
         _identity_private_key_hex: Option<&str>,
         _timeout_secs: f64,
         _transfer_limit_kb: Option<f64>,
     ) -> Result<JsonValue, std::io::Error> {
-        Err(std::io::Error::new(
-            std::io::ErrorKind::PermissionDenied,
-            "propagation node denied access",
-        ))
+        if self.fail_download {
+            Err(std::io::Error::new(self.kind, self.message))
+        } else {
+            Ok(json!({
+                "remote": remote,
+                "messages": [],
+            }))
+        }
     }
 
     fn propagation_remote_fetch(
         &self,
-        _remote: &str,
+        remote: &str,
         _identity_private_key_hex: Option<&str>,
         _timeout_secs: f64,
         _transfer_limit_kb: Option<f64>,
     ) -> Result<JsonValue, std::io::Error> {
-        Err(std::io::Error::new(
-            std::io::ErrorKind::PermissionDenied,
-            "propagation node denied access",
-        ))
+        if self.fail_fetch {
+            Err(std::io::Error::new(self.kind, self.message))
+        } else {
+            Ok(json!({
+                "remote": remote,
+                "messages": [],
+            }))
+        }
     }
 
     fn propagation_remote_unpeer(
         &self,
-        _remote: &str,
-        _peer: &str,
+        remote: &str,
+        peer: &str,
         _identity_private_key_hex: Option<&str>,
         _timeout_secs: f64,
     ) -> Result<JsonValue, std::io::Error> {
-        Err(std::io::Error::new(
-            std::io::ErrorKind::PermissionDenied,
-            "propagation node denied access",
-        ))
+        Ok(json!({
+            "remote": remote,
+            "peer": peer,
+        }))
     }
 }
 
@@ -16630,8 +16731,8 @@ fn assert_denied_remote_transfer_breaks_source_peering(method: &str, peer: &str)
         .expect("propagation status")
         .result
         .expect("propagation status result");
-    assert_eq!(status["propagation"]["sync_state"].as_u64(), Some(0xfe));
-    assert_eq!(status["propagation"]["state_name"].as_str(), Some("failed"));
+    assert_eq!(status["propagation"]["sync_state"].as_u64(), Some(0xf4));
+    assert_eq!(status["propagation"]["state_name"].as_str(), Some("no_access"));
     assert_eq!(
         status["propagation"]["last_sync_error"].as_str(),
         Some("propagation node denied access")

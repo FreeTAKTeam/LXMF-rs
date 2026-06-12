@@ -118,6 +118,7 @@ pub(crate) fn apply_python_compat_config(
             "propagation_enable",
             Some(json!({
                 "enabled": args.propagation_node,
+                "auth_required": compat.auth_required,
                 "store_root": args
                     .config_dir
                     .as_ref()
