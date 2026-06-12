@@ -77,6 +77,10 @@ The project is best described by capability level:
   bridge-unavailable remote peer-sync paths now perform the same payload-backed
   live and restored queue snapshot mirroring before reporting the failed sync,
   keeping local and remote retry/export behavior aligned.
+- Remote peer-sync failure events now include a structured `failure_kind` on
+  the top-level event and nested propagation payload, preserving observer-level
+  distinctions for throttling, identity, key, data, stamp, not-found, timeout,
+  access-denied, and generic failures without changing retry behavior.
 - Payload-backed remote failure snapshots now replace stale serialized peer
   queue IDs with live payload-backed marks, so bridge failures do not preserve
   obsolete restart/export work after the underlying payload is gone.
@@ -279,8 +283,9 @@ The project is best described by capability level:
   declared them.
 - Link-based remote propagation downloads now wait for the final haves
   acknowledgement response after imported or duplicate payloads are reported,
-  so node-side rejection or timeout is surfaced instead of reporting a
-  completed download before remote cleanup is confirmed.
+  and also after all-known listings are acknowledged with purge-only haves, so
+  node-side rejection or timeout is surfaced instead of reporting a completed
+  download before remote cleanup is confirmed.
 - Inbound propagation message-get purge-only requests now return the
   Python-style boolean success response after haves are applied, and payload
   purge cleanup preserves completed peer accounting for other peers while

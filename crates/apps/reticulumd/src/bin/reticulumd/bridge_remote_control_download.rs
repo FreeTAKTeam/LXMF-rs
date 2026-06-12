@@ -74,16 +74,19 @@ pub(super) async fn propagation_download_request(
     }
 
     if wanted.is_empty() {
-        let ack_payload = propagation_download_get_payload(None, haves.as_slice(), None)?;
-        let _ = send_link_context_packet(
+        let ack_response = PropagationDownloadAckWait {
             transport,
-            &link,
-            PacketContext::Request,
-            ack_payload.as_slice(),
-        )
+            link: &link,
+            data_rx: &mut data_rx,
+            resource_rx: &mut resource_rx,
+            expected_destination: destination.desc.address_hash,
+            link_id,
+            timeout,
+        }
+        .send_haves(haves.as_slice())
         .await?;
         return Ok((
-            propagation_download_summary_json(available_count, &[], 0, 0, 0),
+            propagation_download_haves_only_summary(available_count, &ack_response)?,
             remote_identity,
         ));
     }
@@ -129,25 +132,17 @@ pub(super) async fn propagation_download_request(
     }
 
     if !accepted_haves.is_empty() {
-        let ack_payload = propagation_download_get_payload(None, accepted_haves.as_slice(), None)?;
-        let ack_request_id = send_link_context_packet(
+        let ack_response = PropagationDownloadAckWait {
             transport,
-            &link,
-            PacketContext::Request,
-            ack_payload.as_slice(),
-        )
-        .await?
-        .ok_or_else(|| std::io::Error::other("missing propagation haves ack request id"))?;
-        let ack_response = wait_for_link_request_response(
-            &mut data_rx,
-            &mut resource_rx,
-            destination.desc.address_hash,
+            link: &link,
+            data_rx: &mut data_rx,
+            resource_rx: &mut resource_rx,
+            expected_destination: destination.desc.address_hash,
             link_id,
-            ack_request_id,
             timeout,
-        )
-        .await
-        .map_err(|err| std::io::Error::new(std::io::ErrorKind::TimedOut, err))?;
+        }
+        .send_haves(accepted_haves.as_slice())
+        .await?;
         propagation_download_ack_response_result(&ack_response)?;
     }
 
@@ -161,6 +156,40 @@ pub(super) async fn propagation_download_request(
         ),
         remote_identity,
     ))
+}
+
+struct PropagationDownloadAckWait<'a> {
+    transport: &'a Transport,
+    link: &'a Arc<tokio::sync::Mutex<Link>>,
+    data_rx: &'a mut tokio::sync::broadcast::Receiver<rns_transport::transport::ReceivedData>,
+    resource_rx: &'a mut tokio::sync::broadcast::Receiver<rns_transport::resource::ResourceEvent>,
+    expected_destination: AddressHash,
+    link_id: AddressHash,
+    timeout: Duration,
+}
+
+impl PropagationDownloadAckWait<'_> {
+    async fn send_haves(&mut self, haves: &[Vec<u8>]) -> Result<rmpv::Value, std::io::Error> {
+        let ack_payload = propagation_download_get_payload(None, haves, None)?;
+        let ack_request_id = send_link_context_packet(
+            self.transport,
+            self.link,
+            PacketContext::Request,
+            ack_payload.as_slice(),
+        )
+        .await?
+        .ok_or_else(|| std::io::Error::other("missing propagation haves ack request id"))?;
+        wait_for_link_request_response(
+            self.data_rx,
+            self.resource_rx,
+            self.expected_destination,
+            self.link_id,
+            ack_request_id,
+            self.timeout,
+        )
+        .await
+        .map_err(|err| std::io::Error::new(std::io::ErrorKind::TimedOut, err))
+    }
 }
 
 fn classify_remote_transient_ids(
@@ -244,6 +273,14 @@ fn propagation_download_ack_response_result(response: &rmpv::Value) -> Result<()
         return Err(error);
     }
     Ok(())
+}
+
+fn propagation_download_haves_only_summary(
+    available_count: usize,
+    ack_response: &rmpv::Value,
+) -> Result<JsonValue, std::io::Error> {
+    propagation_download_ack_response_result(ack_response)?;
+    Ok(propagation_download_summary_json(available_count, &[], 0, 0, 0))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -469,6 +506,24 @@ mod tests {
 
         assert_eq!(err.kind(), std::io::ErrorKind::WouldBlock);
         assert!(err.to_string().contains("throttled"));
+    }
+
+    #[test]
+    fn propagation_download_haves_only_summary_requires_ack_success() {
+        let err = propagation_download_haves_only_summary(2, &rmpv::Value::from(0xF4_u64))
+            .expect_err("remote cleanup rejection must fail purge-only download");
+
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+        assert!(err.to_string().contains("rejected"));
+
+        let summary = propagation_download_haves_only_summary(2, &rmpv::Value::Boolean(true))
+            .expect("successful ack returns summary");
+
+        assert_eq!(summary["available_count"].as_u64(), Some(2));
+        assert_eq!(summary["downloaded_count"].as_u64(), Some(0));
+        assert_eq!(summary["duplicate_count"].as_u64(), Some(0));
+        assert_eq!(summary["rejected_count"].as_u64(), Some(0));
+        assert_eq!(summary["transferred_bytes"].as_u64(), Some(0));
     }
 
     #[tokio::test]
