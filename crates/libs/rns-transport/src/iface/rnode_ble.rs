@@ -582,6 +582,14 @@ where
         else {
             return Ok(RnodeBleNotification::default());
         };
+        {
+            let hex: String = payload
+                .iter()
+                .map(|b| format!("{:02x}", b))
+                .collect::<Vec<_>>()
+                .join(" ");
+            log::trace!("RNode BLE raw notification {} bytes: [{}]", payload.len(), hex);
+        }
         let notification = self.session.accept_notification_events(&payload)?;
         let writes = self.session.take_pending_writes();
         self.write_all(writes, "write_pending").await?;
