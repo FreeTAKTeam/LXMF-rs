@@ -460,6 +460,66 @@ fn propagation_destination_fetch_deduplicates_repeated_wanted_ids_like_python() 
 }
 
 #[test]
+fn propagation_ingest_rejects_ignored_destination_before_queueing() {
+    use sha2::{Digest, Sha256};
+
+    let daemon = RpcDaemon::test_instance();
+    let destination = [0x9a_u8; 16];
+    let destination_hex = hex::encode(destination);
+    let mut payload = destination.to_vec();
+    payload.extend_from_slice(b" ignored propagation payload");
+    let transient_id = hex::encode(Sha256::digest(&payload));
+
+    daemon
+        .handle_rpc(rpc_request(
+            83,
+            "set_delivery_policy",
+            json!({
+                "ignored_destinations": [destination_hex],
+            }),
+        ))
+        .expect("set ignored destination policy");
+
+    let err = daemon
+        .handle_rpc(rpc_request(
+            84,
+            "propagation_ingest",
+            json!({
+                "payload_hex": hex::encode(&payload),
+            }),
+        ))
+        .expect_err("ignored destination propagation payload must be rejected");
+    assert!(err.to_string().contains("ignored propagation destination"));
+
+    assert!(
+        daemon
+            .store
+            .get_propagation_entry(transient_id.as_str())
+            .expect("load propagation entry")
+            .is_none(),
+        "ignored destination payload must not be stored"
+    );
+    assert!(
+        daemon
+            .fetch_propagation_payloads_for_destination(
+                &destination,
+                &[Sha256::digest(&payload).to_vec()],
+                None,
+            )
+            .is_empty(),
+        "ignored destination payload must not be fetchable"
+    );
+
+    let status = daemon
+        .handle_rpc(RpcRequest { id: 85, method: "propagation_status".to_string(), params: None })
+        .expect("propagation status")
+        .result
+        .expect("propagation status result");
+    assert_eq!(status["propagation"]["client_propagation_messages_received"].as_u64(), Some(0));
+    assert_eq!(status["propagation"]["total_ingested"].as_u64(), Some(0));
+}
+
+#[test]
 fn propagation_destination_fetch_combines_store_and_memory_payloads() {
     use sha2::{Digest, Sha256};
 

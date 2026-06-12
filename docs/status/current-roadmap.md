@@ -432,6 +432,9 @@ The project is best described by capability level:
   after peering-key and transient-ID validation, so repeated replication offers
   from the same peer take the throttled response path even when the peer changes
   the offered transient-ID set.
+- Propagation ingest now rejects payloads for ignored destinations before
+  storing or queueing them, enforcing local replication policy before relay
+  state is created.
 - The live Python compatibility gate now includes a Python-origin propagation
   `/get` haves-only case against Rust `reticulumd`, covering `true`
   acknowledgement, Rust-side payload purge, and suppression of retryable

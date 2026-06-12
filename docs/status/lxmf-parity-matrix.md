@@ -492,6 +492,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   peering-key and transient-ID validation, so repeated replication offers from
   the same peer return the throttled response even when the peer changes the
   offered transient-ID set.
+- Propagation ingest rejects payloads for ignored destinations before storing
+  or queueing them, so local replication policy is enforced before relay state
+  is created.
 - Inbound propagation distinguishes clients, validated peers, unpeered
   identified senders, and local delivery; source peers are accounted and not
   re-offered their own payloads.
